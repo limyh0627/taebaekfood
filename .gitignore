@@ -1,0 +1,15 @@
+# 환경변수 (Firebase 키 등)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# 용량 큰 패키지 폴더
+node_modules
+
+# 빌드 결과물
+/build
+
+# 기타
+.DS_Store
