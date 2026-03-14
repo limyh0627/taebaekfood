@@ -530,9 +530,11 @@ const App: React.FC = () => {
     localStorage.removeItem('tb_user');
   };
 
+  const isAdmin = currentUser?.id === 'admin';
+
   const handleNavClick = (view: ViewType) => {
     const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant'];
-    if (adminOnlyViews.includes(view) && !isAdminAuthenticated) {
+    if (adminOnlyViews.includes(view) && !isAdminAuthenticated && !isAdmin) {
       setPendingAdminView(view);
       setIsAdminAuthModalOpen(true);
     } else {
@@ -636,15 +638,17 @@ const App: React.FC = () => {
               </nav>
             </div>
 
-            <div>
-              {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">분석 및 관리자</p>}
-              <nav className="space-y-1">
-                <NavItem icon={LayoutDashboard} label="비즈니스 대시보드" active={currentView === 'dashboard'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} />
-                <NavItem icon={Sparkles} label="AI 인사이트" active={currentView === 'ai-consultant'} onClick={() => handleNavClick('ai-consultant')} collapsed={isSidebarCollapsed} />
-                <NavItem icon={UserCheck} label="인사/연차 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} />
-                <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
-              </nav>
-            </div>
+            {isAdmin && (
+              <div>
+                {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">분석 및 관리자</p>}
+                <nav className="space-y-1">
+                  <NavItem icon={LayoutDashboard} label="비즈니스 대시보드" active={currentView === 'dashboard'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} />
+                  <NavItem icon={Sparkles} label="AI 인사이트" active={currentView === 'ai-consultant'} onClick={() => handleNavClick('ai-consultant')} collapsed={isSidebarCollapsed} />
+                  <NavItem icon={UserCheck} label="인사/연차 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} />
+                  <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
+                </nav>
+              </div>
+            )}
 
             <div>
               {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">외부 서비스</p>}

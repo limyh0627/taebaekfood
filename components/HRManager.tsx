@@ -56,33 +56,36 @@ const HRManager: React.FC<HRManagerProps> = ({
     manualAdjustment: 0
   });
 
-  const calculateTotalGeneratedLeave = (joinDate: string) => {
-    const start = new Date(joinDate);
-    const today = new Date();
-    
-    // 연도 차이 계산
-    const diffYears = today.getFullYear() - start.getFullYear();
-    
-    // 만근 개월 수 계산 (1년 미만용)
-    let months = (today.getFullYear() - start.getFullYear()) * 12 + (today.getMonth() - start.getMonth());
-    // 입사일의 '일'보다 현재 '일'이 작으면 아직 이번 달을 다 채우지 못한 것으로 간주
-    if (today.getDate() < start.getDate()) {
-      months--;
-    }
+  const today = new Date();
+  const CURRENT_YEAR = today.getFullYear();
 
-    // 1년 미만 여부 판단 (날짜 기준으로 정확히 1년이 지났는지 확인)
+  // 1년 미만 여부 판단
+  const isUnderOneYear = (joinDate: string) => {
+    const start = new Date(joinDate);
     const oneYearLater = new Date(start);
     oneYearLater.setFullYear(start.getFullYear() + 1);
+    return today < oneYearLater;
+  };
 
-    if (today < oneYearLater) {
-      // 1년 미만: 만근 시 1일씩, 최대 11일
-      return Math.max(0, Math.min(11, months));
-    } else {
-      // 1년 이상: 기본 15일 + 2년마다 1일 가산 (최대 25일)
-      const base = 15;
-      const seniorYears = Math.floor((diffYears - 1) / 2);
-      return Math.min(25, base + seniorYears);
+  // 월차: 입사일+N개월 기준일이 올해에 해당하고 오늘 이전인 것만 카운트
+  const calculateMonthlyLeaveThisYear = (joinDate: string) => {
+    const start = new Date(joinDate);
+    let count = 0;
+    for (let m = 1; m <= 11; m++) {
+      const grantDate = new Date(start.getFullYear(), start.getMonth() + m, start.getDate());
+      if (grantDate > today) break;
+      if (grantDate.getFullYear() === CURRENT_YEAR) count++;
     }
+    return count;
+  };
+
+  // 연차: 1년 미만이면 0, 이상이면 15일 + 가산
+  const calculateAnnualLeave = (joinDate: string) => {
+    if (isUnderOneYear(joinDate)) return 0;
+    const start = new Date(joinDate);
+    const diffYears = today.getFullYear() - start.getFullYear();
+    const seniorYears = Math.floor((diffYears - 1) / 2);
+    return Math.min(25, 15 + seniorYears);
   };
 
   const getApprovedLeaveCount = (empId: string) => {
@@ -302,14 +305,18 @@ const HRManager: React.FC<HRManagerProps> = ({
               <AlertCircle className="text-indigo-500" size={24} />
               <div className="text-xs font-bold text-indigo-700 leading-relaxed">
                 <p>연차 정보는 인사팀에 의해 안전하게 관리됩니다. 우측 상단의 <b>&apos;편집 모드&apos;</b>를 활성화해야 수정이 가능합니다.</p>
-                <p>총 부여 = [당해 발생 + 보너스 + 이월], 실 잔여 = [총 부여 - (승인된 연차 + 수동 차감)]</p>
+                <p>1년 미만 직원은 올해 발생한 월차만 표시됩니다. 총 부여 = [월차/연차 + 보너스 + 이월], 실 잔여 = [총 부여 - (사용 + 수동 차감)]</p>
               </div>
             </div>
             <table className="w-full text-left">
               <thead className="bg-slate-50 border-b border-slate-100 sticky top-0 z-10">
                 <tr>
                   <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">임직원</th>
-                  <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">당해 발생</th>
+                  <th className="px-4 py-5 text-[10px] font-black text-emerald-400 uppercase tracking-widest text-center">월차</th>
+                  <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">
+                    <span className="block">연차</span>
+                    <span className="text-[9px] font-bold text-slate-300 normal-case tracking-normal">입사일 기준</span>
+                  </th>
                   <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center bg-indigo-50/30">보너스 (+)</th>
                   <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">이월 (+)</th>
                   <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center text-rose-500">사용 개수</th>
@@ -319,7 +326,10 @@ const HRManager: React.FC<HRManagerProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {employees.map(emp => {
-                  const totalGenerated = calculateTotalGeneratedLeave(emp.joinDate);
+                  const underOneYear = isUnderOneYear(emp.joinDate);
+                  const monthlyLeave = underOneYear ? calculateMonthlyLeaveThisYear(emp.joinDate) : 0;
+                  const annualLeave = calculateAnnualLeave(emp.joinDate);
+                  const totalGenerated = monthlyLeave + annualLeave;
                   const approvedUsed = getApprovedLeaveCount(emp.id);
                   const finalTotalUsable = totalGenerated + (emp.annualLeave?.carryOverLeave || 0) + (emp.annualLeave?.bonusLeave || 0);
                   const totalUsedCount = approvedUsed + (emp.manualAdjustment || 0);
@@ -331,8 +341,23 @@ const HRManager: React.FC<HRManagerProps> = ({
                         <p className="font-black text-slate-800">{emp.name}</p>
                         <p className="text-[10px] text-slate-400 font-bold uppercase">{emp.position}</p>
                       </td>
-                      <td className="px-6 py-6 text-center">
-                        <span className="text-sm font-bold text-slate-500">{totalGenerated}</span>
+                      {/* 월차 */}
+                      <td className="px-4 py-6 text-center">
+                        {underOneYear ? (
+                          <div className="flex flex-col items-center">
+                            <span className="text-sm font-bold text-emerald-600">{monthlyLeave}</span>
+                            <span className="text-[9px] font-bold text-emerald-300 uppercase">올해</span>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-slate-200">-</span>
+                        )}
+                      </td>
+                      {/* 연차 */}
+                      <td className="px-4 py-6 text-center">
+                        <div className="flex flex-col items-center">
+                          <span className="text-sm font-bold text-slate-500">{annualLeave}</span>
+                          {underOneYear && <span className="text-[9px] font-bold text-slate-300 uppercase">입사일 기준</span>}
+                        </div>
                       </td>
                       <td className="px-6 py-6 text-center bg-indigo-50/20">
                         {isEditMode ? (
