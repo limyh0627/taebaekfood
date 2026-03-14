@@ -582,8 +582,8 @@ const DeliveryRow = memo<DeliveryRowProps>(({ order, clientName, products, onTog
 
 // ─── OrdersList ───────────────────────────────────────────────────────────────
 
-const defaultUnits: Record<string, number> = { pending_col: 2, processing_col: 2, dispatch_col: 1 };
-const maxUnits: Record<string, number> = { pending_col: 2, processing_col: 3, dispatch_col: 2 };
+const defaultUnits: Record<string, number> = { pending_col: 2, processing_col: 2, dispatch_col: 1, shipped_col: 1 };
+const maxUnits: Record<string, number> = { pending_col: 2, processing_col: 3, dispatch_col: 2, shipped_col: 2 };
 
 const activeConfigs = [
   { id: 'pending_col',    label: '대기중',   icon: Clock,     color: 'bg-amber-500',   bgColor: 'bg-amber-50/50',   borderColor: 'border-amber-100',   textColor: 'text-amber-700',   statusFilter: [OrderStatus.PENDING],    targetStatus: OrderStatus.PENDING },
@@ -660,38 +660,38 @@ const OrdersList: React.FC<OrdersListProps> = ({
   };
 
   return (
-    <div className="flex flex-col space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-        <div>
-          <h2 className="text-3xl font-bold text-slate-900">{title}</h2>
-          <p className="text-slate-500">{subtitle}</p>
+    <div className="flex flex-col space-y-4 md:space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+      <div className="flex flex-row items-center justify-between gap-2 md:gap-6">
+        <div className="min-w-0">
+          <h2 className="text-lg md:text-3xl font-bold text-slate-900 truncate">{title}</h2>
+          <p className="text-xs md:text-sm text-slate-500 hidden sm:block">{subtitle}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2 md:gap-4 shrink-0">
           <div className="flex bg-white p-1 rounded-2xl border border-slate-200 shadow-sm">
             <button onClick={() => setActiveTab('delivery')}
-              className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${activeTab === 'delivery' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>
-              택배 관리
+              className={`px-2.5 md:px-5 py-2 md:py-2.5 rounded-xl text-[10px] md:text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'delivery' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>
+              택배
             </button>
             <button onClick={() => setActiveTab('active')}
-              className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${activeTab === 'active' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>
-              운영 중
+              className={`px-2.5 md:px-5 py-2 md:py-2.5 rounded-xl text-[10px] md:text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'active' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>
+              운영
             </button>
             <button onClick={() => setActiveTab('history')}
-              className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${activeTab === 'history' ? 'bg-slate-700 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>
-              주문 이력
+              className={`px-2.5 md:px-5 py-2 md:py-2.5 rounded-xl text-[10px] md:text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'history' ? 'bg-slate-700 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>
+              이력
             </button>
           </div>
-          <button onClick={onAddClick} className="flex items-center justify-center space-x-2 bg-indigo-600 text-white px-6 py-3 rounded-2xl font-bold shadow-lg hover:bg-indigo-700 transition-all">
-            <Plus size={20} /><span>주문 생성</span>
+          <button onClick={onAddClick} className="flex items-center justify-center gap-1.5 bg-indigo-600 text-white px-3 md:px-6 py-2.5 md:py-3 rounded-2xl font-bold shadow-lg hover:bg-indigo-700 transition-all">
+            <Plus size={18} /><span className="hidden sm:inline text-sm">주문 생성</span>
           </button>
         </div>
       </div>
 
-      <div className="relative max-w-md">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+      <div className="relative max-w-full md:max-w-md">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
         <input type="text" placeholder="고객명, 주문번호 검색..." value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full bg-white border border-slate-200 rounded-2xl pl-12 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+          className="w-full bg-white border border-slate-200 rounded-2xl pl-11 pr-4 py-2.5 md:py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
         />
       </div>
 
@@ -743,8 +743,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
       )}
 
       {activeTab !== 'delivery' && (
-        <div className="pb-4">
-          <div className="flex space-x-4">
+        <div className="pb-4 md:overflow-x-auto md:no-scrollbar">
+          <div className="flex flex-col md:flex-row gap-3 md:gap-4 md:min-w-max">
             {currentConfigs.map((col) => {
               const Icon = col.icon;
               const colOrders = filteredOrders.filter(o => col.statusFilter.includes(o.status));
@@ -764,8 +764,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
                     const orderId = e.dataTransfer.getData('orderId');
                     if (orderId && col.targetStatus) onUpdateStatus(orderId, col.targetStatus);
                   }}
-                  style={{ width: `calc(${units} * (100vw - 9rem) / 5)`, flexShrink: 0 }}
-                  className={`flex flex-col rounded-3xl border ${col.borderColor} ${col.bgColor} shadow-sm transition-all duration-300`}
+                  className={`flex flex-col rounded-3xl border ${col.borderColor} ${col.bgColor} shadow-sm transition-all duration-300 w-full md:w-auto md:flex-shrink-0`}
+                  style={{ ...(typeof window !== 'undefined' && window.innerWidth >= 768 ? { width: `calc(${units} * (100vw - 9rem) / 5)` } : {}) }}
                 >
                   <div className="p-5 border-b border-white/50 flex items-center justify-between">
                     <div className="flex items-center space-x-3">

@@ -78,6 +78,14 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, onUp
     return schedules;
   }, [orders]);
 
+  const hasWeekendOrders = useMemo(() => {
+    return Object.keys(deliverySchedules).some(dateStr => {
+      const d = new Date(dateStr + 'T00:00:00');
+      const dow = d.getDay();
+      return (dow === 0 || dow === 6) && d.getFullYear() === year && d.getMonth() === month;
+    });
+  }, [deliverySchedules, year, month]);
+
   const regionList = useMemo(() => ["서울/경기", "강원", "충청", "전라", "경상", "제주", "미지정"], []);
 
   // 시 단위 → 광역권 매핑
@@ -118,31 +126,23 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, onUp
     const startDay = firstDayOfMonth(year, month);
     const days = [];
 
-    // Empty slots for previous month
-    for (let i = 0; i < startDay; i++) {
-      days.push(<div key={`empty-${i}`} className="h-32 border-b border-r border-slate-100 bg-slate-50/30" />);
-    }
+    const getStatusColor = (status: OrderStatus) => {
+      switch (status) {
+        case OrderStatus.PENDING: return 'bg-amber-100 text-amber-700 border-amber-200';
+        case OrderStatus.PROCESSING: return 'bg-sky-100 text-sky-700 border-sky-200';
+        case OrderStatus.SHIPPED: return 'bg-indigo-100 text-indigo-700 border-indigo-200';
+        case OrderStatus.DISPATCHED: return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+        case OrderStatus.DELIVERED: return 'bg-slate-100 text-slate-500 border-slate-200';
+        default: return 'bg-slate-100 text-slate-600 border-slate-200';
+      }
+    };
 
-    // Days of current month
-    for (let day = 1; day <= totalDays; day++) {
-      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const renderDayCell = (day: number, dateStr: string) => {
       const dayOrders = deliverySchedules[dateStr] || [];
       const isToday = new Date().toISOString().split('T')[0] === dateStr;
-
-      const getStatusColor = (status: OrderStatus) => {
-        switch (status) {
-          case OrderStatus.PENDING: return 'bg-amber-100 text-amber-700 border-amber-200';
-          case OrderStatus.PROCESSING: return 'bg-sky-100 text-sky-700 border-sky-200';
-          case OrderStatus.SHIPPED: return 'bg-indigo-100 text-indigo-700 border-indigo-200';
-          case OrderStatus.DISPATCHED: return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-          case OrderStatus.DELIVERED: return 'bg-slate-100 text-slate-500 border-slate-200';
-          default: return 'bg-slate-100 text-slate-600 border-slate-200';
-        }
-      };
-
-      days.push(
-        <div 
-          key={day} 
+      return (
+        <div
+          key={day}
           onDragOver={handleDragOver}
           onDrop={(e) => handleDrop(e, dateStr)}
           className={`h-32 border-b border-r border-slate-100 p-2 transition-all hover:bg-indigo-50/30 group relative ${isToday ? 'bg-indigo-50/20' : 'bg-white'}`}
@@ -168,9 +168,9 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, onUp
                   onClick={() => handleOrderClick(order)}
                   draggable
                   onDragStart={(e) => handleDragStart(e, order.id)}
-                  className={`text-[9px] font-bold py-1 px-2 rounded-lg truncate border flex justify-between items-center cursor-pointer hover:brightness-95 transition-all active:scale-95 ${getStatusColor(order.status)}`}
+                  className={`text-[9px] font-bold py-1 px-2 rounded-lg border flex justify-between items-center cursor-pointer hover:brightness-95 transition-all active:scale-95 ${getStatusColor(order.status)}`}
                 >
-                  <span className="truncate">{order.customerName}</span>
+                  <span className="flex-1 min-w-[32px] truncate">{order.customerName}</span>
                   <span className="ml-1 shrink-0 opacity-70">{progress}%</span>
                 </div>
               );
@@ -178,6 +178,29 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, onUp
           </div>
         </div>
       );
+    };
+
+    if (hasWeekendOrders) {
+      // 7-column full grid (Sun–Sat)
+      for (let i = 0; i < startDay; i++) {
+        days.push(<div key={`empty-${i}`} className="h-32 border-b border-r border-slate-100 bg-slate-50/30" />);
+      }
+      for (let day = 1; day <= totalDays; day++) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        days.push(renderDayCell(day, dateStr));
+      }
+    } else {
+      // 5-column Mon–Fri grid (weekends hidden)
+      const mondayOffset = startDay === 0 || startDay === 6 ? 0 : startDay - 1;
+      for (let i = 0; i < mondayOffset; i++) {
+        days.push(<div key={`empty-${i}`} className="h-32 border-b border-r border-slate-100 bg-slate-50/30" />);
+      }
+      for (let day = 1; day <= totalDays; day++) {
+        const dow = new Date(year, month, day).getDay();
+        if (dow === 0 || dow === 6) continue;
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        days.push(renderDayCell(day, dateStr));
+      }
     }
 
     return days;
@@ -220,14 +243,14 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, onUp
           </div>
         </div>
 
-        <div className="grid grid-cols-7 bg-slate-50/50 border-b border-slate-100">
-          {["일", "월", "화", "수", "목", "금", "토"].map(day => (
+        <div className={`grid ${hasWeekendOrders ? 'grid-cols-7' : 'grid-cols-5'} bg-slate-50/50 border-b border-slate-100`}>
+          {(hasWeekendOrders ? ["일", "월", "화", "수", "목", "금", "토"] : ["월", "화", "수", "목", "금"]).map(day => (
             <div key={day} className="py-3 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">
               {day}
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-7 border-l border-slate-100">
+        <div className={`grid ${hasWeekendOrders ? 'grid-cols-7' : 'grid-cols-5'} border-l border-slate-100`}>
           {renderCalendar()}
         </div>
       </div>
@@ -334,13 +357,13 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, onUp
           <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center">
+                <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center shrink-0">
                   <CalendarIcon size={20} />
                 </div>
-                <div>
-                  <h3 className="text-lg font-black text-slate-900">배송일 변경</h3>
-                  <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">{editingOrder.customerName}</p>
-                </div>
+                <h3 className="text-xl font-black text-slate-900">
+                  {editingOrder.customerName}
+                  <span className="text-slate-400 font-bold text-base ml-2">({editingOrder.deliveryDate.split('T')[0]})</span>
+                </h3>
               </div>
               <button onClick={() => setEditingOrder(null)} className="p-2 hover:bg-white rounded-xl text-slate-400 hover:text-slate-600 transition-all">
                 <X size={20} />

@@ -93,6 +93,12 @@ const ProductList: React.FC<ProductListProps> = ({
   const [rmOpenBalance, setRmOpenBalance] = useState('');
   const [rmOpenDate, setRmOpenDate] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`; });
   const [activeSubCategory, setActiveSubCategory] = useState<InventoryCategory | '전체' | string>('전체');
+  const [filterMode, setFilterMode] = useState<null | 'supplier' | 'category'>(null);
+
+  const toggleFilterMode = (mode: 'supplier' | 'category') => {
+    setFilterMode(prev => prev === mode ? null : mode);
+    setActiveSubCategory('전체');
+  };
   const [searchTerm, setSearchTerm] = useState('');
   
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -290,63 +296,72 @@ const ProductList: React.FC<ProductListProps> = ({
           </div>
         )}
 
-        {topTab === 'product' && <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-2 pt-2 px-1">
-            {suppliers.map((supplier) => {
-              const isActive = activeSubCategory === supplier.id;
-              return (
-                <button
-                  key={supplier.id}
-                  onClick={() => setActiveSubCategory(supplier.id)}
-                  className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl transition-all whitespace-nowrap border text-[11px] font-black relative ${
-                    isActive
-                      ? 'bg-white border-orange-200 text-orange-500 shadow-sm ring-2 ring-orange-50'
-                      : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'
-                  }`}
-                >
-                  <Building2 size={14} />
-                  <span>{supplier.name}</span>
-                </button>
-              );
-            })}
-            {suppliers.length > 0 && (
-              <div className="w-full" />
-            )}
-            {subCategories.map((sub) => {
-              const Icon = sub.icon;
-              const isActive = activeSubCategory === sub.id;
-              const count = sub.id === '전체' ? orderRequests.length : categoryCounts[sub.id] || 0;
-              return (
-                <button
-                  key={sub.id}
-                  onClick={() => setActiveSubCategory(sub.id)}
-                  className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl transition-all whitespace-nowrap border text-[11px] font-black uppercase relative ${
-                    isActive
-                      ? 'bg-white border-indigo-200 text-indigo-600 shadow-sm ring-2 ring-indigo-50'
-                      : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'
-                  }`}
-                >
-                  <Icon size={14} />
-                  <span>{sub.label}</span>
-                  {count > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-rose-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow-lg border border-white">
-                      {count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+        {topTab === 'product' && <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => toggleFilterMode('supplier')}
+              className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl border text-[11px] font-black transition-all ${filterMode === 'supplier' ? 'bg-orange-50 border-orange-200 text-orange-500 ring-2 ring-orange-50' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
+            >
+              <Building2 size={14} />
+              <span>거래처별</span>
+            </button>
+            <button
+              onClick={() => toggleFilterMode('category')}
+              className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl border text-[11px] font-black transition-all ${filterMode === 'category' ? 'bg-indigo-50 border-indigo-200 text-indigo-600 ring-2 ring-indigo-50' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
+            >
+              <LayoutGrid size={14} />
+              <span>품목별</span>
+            </button>
+            <div className="relative w-36 md:w-48">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={15} />
+              <input
+                type="text"
+                placeholder="품목 검색..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-2xl pl-9 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 shadow-sm transition-all"
+              />
+            </div>
           </div>
-          <div className="relative max-w-sm w-full">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-            <input 
-              type="text" 
-              placeholder="필요한 품목을 검색하세요..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-white border border-slate-200 rounded-2xl pl-12 pr-4 py-3.5 text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 shadow-sm transition-all"
-            />
-          </div>
+          {filterMode === 'supplier' && (
+            <div className="flex flex-wrap gap-2 animate-in fade-in duration-150">
+              {suppliers.map((supplier) => {
+                const isActive = activeSubCategory === supplier.id;
+                return (
+                  <button
+                    key={supplier.id}
+                    onClick={() => setActiveSubCategory(isActive ? '전체' : supplier.id)}
+                    className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl transition-all whitespace-nowrap border text-[11px] font-black relative ${isActive ? 'bg-white border-orange-200 text-orange-500 shadow-sm ring-2 ring-orange-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
+                  >
+                    <Building2 size={14} />
+                    <span>{supplier.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {filterMode === 'category' && (
+            <div className="flex flex-wrap gap-2 animate-in fade-in duration-150">
+              {subCategories.map((sub) => {
+                const Icon = sub.icon;
+                const isActive = activeSubCategory === sub.id;
+                const count = sub.id === '전체' ? orderRequests.length : categoryCounts[sub.id] || 0;
+                return (
+                  <button
+                    key={sub.id}
+                    onClick={() => setActiveSubCategory(sub.id)}
+                    className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl transition-all whitespace-nowrap border text-[11px] font-black uppercase relative ${isActive ? 'bg-white border-indigo-200 text-indigo-600 shadow-sm ring-2 ring-indigo-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
+                  >
+                    <Icon size={14} />
+                    <span>{sub.label}</span>
+                    {count > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-rose-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow-lg border border-white">{count}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>}
       </div>
 
@@ -420,7 +435,7 @@ const ProductList: React.FC<ProductListProps> = ({
             </div>
           </div>
         )}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 pb-32">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3 pb-32">
           {pagedProducts.map((product) => {
             const isSelected = selectedIds.has(product.id);
             const reqInfo = orderRequests.find(r => r.id === product.id);

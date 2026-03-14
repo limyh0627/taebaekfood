@@ -394,10 +394,8 @@ const PalletManager: React.FC<PalletManagerProps> = ({
             <table className="w-full text-left">
               <thead className="bg-slate-50/50 border-b border-slate-100">
                 <tr>
-                  <th className="px-8 py-5 text-xs font-bold text-slate-400 uppercase tracking-widest">거래처명</th>
-                  <th className="px-8 py-5 text-xs font-bold text-slate-400 uppercase tracking-widest">파렛트 혼합 구성</th>
-                  <th className="px-8 py-5 text-xs font-bold text-slate-400 uppercase tracking-widest text-right">총계</th>
-                  <th className="px-8 py-5 text-xs font-bold text-slate-400 uppercase tracking-widest text-right">관리</th>
+                  <th className="px-3 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">거래처</th>
+                  <th className="px-3 py-3 text-xs font-bold text-slate-400 uppercase tracking-widest">파렛트 현황</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -408,67 +406,33 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                       onClick={() => setSelectedClientIdForDetail(status.id)}
                       className="hover:bg-slate-50/30 transition-colors group cursor-pointer"
                     >
-                      <td className="px-8 py-6">
-                        <div className="flex items-center space-x-3">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs uppercase ${status.total > 0 ? 'bg-indigo-50 text-indigo-500' : 'bg-slate-50 text-slate-300'}`}>
+                      <td className="px-3 py-4">
+                        <div className="flex items-center space-x-2">
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs uppercase shrink-0 ${status.total > 0 ? 'bg-indigo-50 text-indigo-500' : 'bg-slate-50 text-slate-300'}`}>
                             {status.name[0]}
                           </div>
-                          <span className={`font-bold ${status.total > 0 ? 'text-slate-800' : 'text-slate-400'}`}>{status.name}</span>
+                          <span className={`text-[11px] font-bold whitespace-nowrap ${status.total > 0 ? 'text-slate-800' : 'text-slate-400'}`}>
+                            {status.name.length > 5 ? status.name.slice(0, 5) + '...' : status.name}
+                          </span>
                         </div>
                       </td>
-                      <td className="px-8 py-6">
-                        <div className="flex flex-wrap gap-2">
+                      <td className="px-3 py-4">
+                        <div className="flex flex-wrap gap-1.5">
                           {Object.entries(status.pallets).map(([type, qty]) => (
                             qty !== 0 && (
-                              <div key={type} className={`flex items-center space-x-1.5 px-3 py-1 rounded-lg border ${qty > 0 ? 'bg-amber-50 border-amber-100' : 'bg-emerald-50 border-emerald-100'}`}>
-                                <Layers size={12} className={qty > 0 ? 'text-amber-500' : 'text-emerald-500'} />
-                                <span className={`text-[11px] font-bold ${qty > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{type}: {qty}개</span>
+                              <div key={type} className={`flex items-center space-x-1 px-2 py-1 rounded-lg border ${qty > 0 ? 'bg-amber-50 border-amber-100' : 'bg-emerald-50 border-emerald-100'}`}>
+                                <span className={`text-[11px] font-bold whitespace-nowrap ${qty > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{type}: {qty > 0 ? `+${qty}` : qty}개</span>
                               </div>
                             )
                           ))}
                           {Object.values(status.pallets).every(v => v === 0) && <span className="text-[10px] text-slate-300 italic">잔량 없음</span>}
                         </div>
                       </td>
-                      <td className="px-8 py-6 text-right">
-                        <span className={`text-lg font-black ${status.total !== 0 ? (status.total > 0 ? 'text-emerald-600' : 'text-rose-600') : 'text-slate-300'}`}>
-                          {status.total > 0 ? `+${status.total}` : status.total}<span className="text-xs font-bold ml-1">개</span>
-                        </span>
-                      </td>
-                      <td className="px-8 py-6 text-right">
-                        <div className="flex items-center justify-end space-x-2" onClick={(e) => e.stopPropagation()}>
-                          <button 
-                            onClick={() => {
-                              const client = clients.find(c => c.id === status.id);
-                              if (client) {
-                                setSelectedClientForTrans(client);
-                                setTransType('in');
-                                setIsTransactionModalOpen(true);
-                              }
-                            }}
-                            className="px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-black uppercase hover:bg-emerald-100 transition-all"
-                          >
-                            입고
-                          </button>
-                          <button 
-                            onClick={() => {
-                              const client = clients.find(c => c.id === status.id);
-                              if (client) {
-                                setSelectedClientForTrans(client);
-                                setTransType('out');
-                                setIsTransactionModalOpen(true);
-                              }
-                            }}
-                            className="px-3 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-[10px] font-black uppercase hover:bg-rose-100 transition-all"
-                          >
-                            출고
-                          </button>
-                        </div>
-                      </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={4} className="px-8 py-20 text-center">
+                    <td colSpan={2} className="px-8 py-20 text-center">
                       <div className="flex flex-col items-center">
                         <Layers size={48} className="text-slate-100 mb-4" />
                         <p className="text-slate-400 font-bold">검색 결과가 없거나 출고된 파렛트가 없습니다.</p>

@@ -143,29 +143,29 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h2 className="text-3xl font-black text-slate-900">연차 신청 및 확인</h2>
-          <p className="text-slate-500 mt-1">임직원 본인의 연차 사용 내역을 확인하고 신규 휴가를 신청하세요.</p>
+          <h2 className="text-2xl md:text-3xl font-black text-slate-900">연차 신청 및 확인</h2>
+          <p className="text-sm md:text-base text-slate-500 mt-1">임직원 본인의 연차 사용 내역을 확인하고 신규 휴가를 신청하세요.</p>
         </div>
-        <div className="flex items-center space-x-3">
-          <div className="bg-white p-1.5 rounded-2xl border border-slate-100 shadow-sm flex">
+        <div className="flex items-center space-x-2 md:space-x-3">
+          <div className="bg-white p-1 md:p-1.5 rounded-2xl border border-slate-100 shadow-sm flex overflow-x-auto no-scrollbar">
             <button 
               onClick={() => setActiveTab('my')}
-              className={`px-6 py-2.5 rounded-xl text-xs font-black transition-all ${activeTab === 'my' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`px-4 md:px-6 py-2 md:py-2.5 rounded-xl text-xs font-black transition-all whitespace-nowrap ${activeTab === 'my' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
             >
               내 휴가
             </button>
             <button 
               onClick={() => setActiveTab('calendar')}
-              className={`px-6 py-2.5 rounded-xl text-xs font-black transition-all ${activeTab === 'calendar' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`px-4 md:px-6 py-2 md:py-2.5 rounded-xl text-xs font-black transition-all whitespace-nowrap ${activeTab === 'calendar' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
             >
               임직원 캘린더
             </button>
           </div>
           <button 
             onClick={() => setIsModalOpen(true)}
-            className="bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-indigo-100 hover:bg-indigo-700 hover:scale-105 active:scale-95 transition-all flex items-center space-x-2"
+            className="bg-indigo-600 text-white px-4 md:px-8 py-3 md:py-4 rounded-2xl font-black shadow-xl shadow-indigo-100 hover:bg-indigo-700 hover:scale-105 active:scale-95 transition-all flex items-center space-x-2"
           >
-            <Plus size={22} />
+            <Plus size={20} className="md:w-[22px] md:h-[22px]" />
             <span className="hidden sm:inline">신규 연차 신청</span>
           </button>
         </div>
@@ -249,23 +249,23 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
             const usagePercent = total > 0 ? (totalUsed / total) * 100 : 0;
 
             return (
-              <div key={emp.id} className="flex gap-5 items-start">
+              <div key={emp.id} className="flex flex-col lg:flex-row gap-4 md:gap-5 items-start">
                 {/* 왼쪽: 연차 요약 카드 */}
-                <div className="flex-[4] bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                <div className="w-full lg:flex-[4] bg-white p-4 md:p-6 rounded-3xl border border-slate-100 shadow-sm">
                   {/* 직원 */}
-                  <div className="flex items-center space-x-3 mb-5">
-                    <div className="w-11 h-11 bg-indigo-600 text-white rounded-xl flex items-center justify-center font-black text-lg">{emp.name[0]}</div>
+                  <div className="flex items-center space-x-2 md:space-x-3 mb-4 md:mb-5">
+                    <div className="w-10 h-10 md:w-11 md:h-11 bg-indigo-600 text-white rounded-xl flex items-center justify-center font-black text-base md:text-lg">{emp.name[0]}</div>
                     <div>
-                      <h4 className="font-black text-slate-800">{emp.name} {emp.position}</h4>
+                      <h4 className="text-sm md:text-base font-black text-slate-800">{emp.name} {emp.position}</h4>
                       <p className="text-[10px] text-slate-400 font-bold">{emp.department} · {emp.joinDate}</p>
                     </div>
                   </div>
 
                   {/* 총 연차 */}
-                  <div className="bg-slate-50 rounded-2xl p-4 mb-3 border border-slate-100">
+                  <div className="bg-slate-50 rounded-2xl p-3 md:p-4 mb-3 border border-slate-100">
                     <div className="flex items-center justify-between mb-2">
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">총 연차</p>
-                      <p className="text-xl font-black text-slate-900">{total}<span className="text-xs ml-0.5 font-bold text-slate-400">일</span></p>
+                      <p className="text-xl md:text-2xl font-black text-slate-900">{total}<span className="text-xs ml-0.5 font-bold text-slate-400">일</span></p>
                     </div>
                     <div className="flex flex-wrap gap-1 text-[10px] font-bold text-slate-400">
                       <span className="bg-white border border-slate-200 px-1.5 py-0.5 rounded">당해 {statutory}일</span>
@@ -277,18 +277,18 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
                   </div>
 
                   {/* 3칸: 휴가 | 개인연차 | 잔여 */}
-                  <div className="grid grid-cols-3 gap-2 mb-4">
-                    <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-center">
+                  <div className="grid grid-cols-3 gap-1.5 md:gap-2 mb-3 md:mb-4">
+                    <div className="bg-amber-50 border border-amber-100 rounded-xl p-2 md:p-3 text-center">
                       <p className="text-[9px] font-black text-amber-400 uppercase mb-1">휴가</p>
-                      <p className="text-xl font-black text-amber-500">{usedVacation}</p>
+                      <p className="text-lg md:text-xl font-black text-amber-500">{usedVacation}</p>
                     </div>
-                    <div className="bg-rose-50 border border-rose-100 rounded-xl p-3 text-center">
+                    <div className="bg-rose-50 border border-rose-100 rounded-xl p-2 md:p-3 text-center">
                       <p className="text-[9px] font-black text-rose-400 uppercase mb-1">개인연차</p>
-                      <p className="text-xl font-black text-rose-500">{usedPersonal}</p>
+                      <p className="text-lg md:text-xl font-black text-rose-500">{usedPersonal}</p>
                     </div>
-                    <div className={`rounded-xl p-3 text-center border ${remaining < 0 ? 'bg-rose-50 border-rose-200' : 'bg-indigo-50 border-indigo-100'}`}>
+                    <div className={`rounded-xl p-2 md:p-3 text-center border ${remaining < 0 ? 'bg-rose-50 border-rose-200' : 'bg-indigo-50 border-indigo-100'}`}>
                       <p className="text-[9px] font-black text-slate-400 uppercase mb-1">잔여</p>
-                      <p className={`text-xl font-black ${remaining < 0 ? 'text-rose-600' : 'text-indigo-600'}`}>{remaining}</p>
+                      <p className={`text-lg md:text-xl font-black ${remaining < 0 ? 'text-rose-600' : 'text-indigo-600'}`}>{remaining}</p>
                     </div>
                   </div>
 
@@ -309,34 +309,34 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
                 </div>
 
                 {/* 오른쪽: 신청 내역 */}
-                <div className="flex-[6] bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-                  <div className="px-6 py-4 border-b border-slate-50 flex items-center justify-between">
-                    <h3 className="text-base font-black text-slate-800 flex items-center"><FileText className="mr-2 text-indigo-600" size={18} />내 신청 내역</h3>
-                    <div className="relative w-40">
+                <div className="w-full lg:flex-[6] bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                  <div className="px-4 md:px-6 py-3 md:py-4 border-b border-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <h3 className="text-sm md:text-base font-black text-slate-800 flex items-center"><FileText className="mr-2 text-indigo-600 w-4 md:w-[18px] h-4 md:h-[18px]" />내 신청 내역</h3>
+                    <div className="relative w-full sm:w-40">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={13} />
                       <input type="text" placeholder="검색..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500" />
                     </div>
                   </div>
-                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 260px)' }}>
-                    <table className="w-full text-left">
+                  <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: 'calc(100vh - 260px)' }}>
+                    <table className="w-full text-left min-w-[500px]">
                       <thead className="bg-slate-50 sticky top-0">
                         <tr>
-                          <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">항목</th>
-                          <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">기간</th>
-                          <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">상태</th>
+                          <th className="px-3 md:px-5 py-2 md:py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">항목</th>
+                          <th className="px-3 md:px-5 py-2 md:py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">기간</th>
+                          <th className="px-3 md:px-5 py-2 md:py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">상태</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
                         {filteredRequests.length === 0 ? (
-                          <tr><td colSpan={3} className="px-5 py-16 text-center text-slate-400 font-bold text-sm">신청 내역이 없습니다.</td></tr>
+                          <tr><td colSpan={3} className="px-3 md:px-5 py-12 md:py-16 text-center text-slate-400 font-bold text-sm">신청 내역이 없습니다.</td></tr>
                         ) : filteredRequests.map(req => (
                           <tr key={req.id} className="hover:bg-slate-50 transition-colors">
-                            <td className="px-5 py-3.5">
+                            <td className="px-3 md:px-5 py-2.5 md:py-3.5">
                               <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${req.type === '연차' ? 'bg-indigo-500 text-white' : 'bg-emerald-500 text-white'}`}>{req.type}</span>
                               <p className="text-xs text-slate-400 mt-0.5 italic leading-tight">&quot;{req.reason}&quot;</p>
                             </td>
-                            <td className="px-5 py-3.5 text-xs font-bold text-slate-600 whitespace-nowrap">{req.startDate} ~ {req.endDate}</td>
-                            <td className="px-5 py-3.5 text-center">
+                            <td className="px-3 md:px-5 py-2.5 md:py-3.5 text-xs font-bold text-slate-600 whitespace-nowrap">{req.startDate} ~ {req.endDate}</td>
+                            <td className="px-3 md:px-5 py-2.5 md:py-3.5 text-center">
                               {req.status === 'pending' && <span className="bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full text-[10px] font-black uppercase">대기</span>}
                               {req.status === 'approved' && <span className="bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full text-[10px] font-black uppercase">승인</span>}
                               {req.status === 'rejected' && <span className="bg-rose-100 text-rose-700 px-2.5 py-1 rounded-full text-[10px] font-black uppercase">반려</span>}

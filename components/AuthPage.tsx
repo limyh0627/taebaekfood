@@ -13,8 +13,7 @@ import {
   EyeOff,
   UserPlus,
   Search,
-  KeyRound,
-  Zap
+  KeyRound
 } from 'lucide-react';
 import { Employee } from '../types';
 
@@ -44,6 +43,13 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin, registeredEmployees, onReg
 
   // Find info state
   const [findData, setFindData] = useState({ name: '', phone: '' });
+
+  const formatPhone = (value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 11);
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 7) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+    return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
+  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -238,14 +244,6 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin, registeredEmployees, onReg
                     <span>시스템 접속하기</span>
                   </button>
 
-                  <button 
-                    type="button"
-                    onClick={handleQuickLogin}
-                    className="w-full bg-emerald-50 text-emerald-600 py-4 rounded-3xl font-black border border-emerald-100 hover:bg-emerald-100 transition-all flex items-center justify-center space-x-2"
-                  >
-                    <Zap size={18} />
-                    <span>관리자 계정으로 즉시 시작</span>
-                  </button>
                 </div>
 
                 <div className="pt-6 text-center border-t border-slate-50 flex flex-col space-y-3">
@@ -290,7 +288,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin, registeredEmployees, onReg
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">핸드폰 번호</label>
                   <div className="relative">
                     <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-                    <input required type="text" value={verifyData.phone} onChange={(e) => setVerifyData({...verifyData, phone: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-11 pr-4 py-3.5 text-sm font-bold outline-none focus:border-indigo-500" placeholder="010-0000-0000" />
+                    <input required type="text" inputMode="numeric" value={verifyData.phone} onChange={(e) => setVerifyData({...verifyData, phone: formatPhone(e.target.value)})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-11 pr-4 py-3.5 text-sm font-bold outline-none focus:border-indigo-500" placeholder="01012345678" />
                   </div>
                 </div>
 
@@ -394,8 +392,9 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin, registeredEmployees, onReg
                           required
                           type="text"
                           value={findData.phone}
-                          onChange={(e) => setFindData({...findData, phone: e.target.value})}
-                          placeholder="010-0000-0000"
+                          onChange={(e) => setFindData({...findData, phone: formatPhone(e.target.value)})}
+                          placeholder="01012345678"
+                          inputMode="numeric"
                           className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-4 py-4 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
                         />
                       </div>

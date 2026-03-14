@@ -112,15 +112,15 @@ const ItemManager: React.FC<ItemManagerProps> = ({
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/50 border-b border-slate-100">
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[200px]">품목 정보</th>
-                {activeCategory === '완제품' && <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">거래처</th>}
-                {activeCategory !== '완제품' && <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">매입거래처</th>}
-                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">용기</th>
-                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">마개</th>
-                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">라벨</th>
-                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">테이프</th>
-                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">박스</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">관리</th>
+                <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[100px]">품목 정보</th>
+                {activeCategory === '완제품' && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">거래처</th>}
+                {activeCategory !== '완제품' && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">매입거래처</th>}
+                <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">용기</th>
+                <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">마개</th>
+                <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">라벨</th>
+                <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">테이프</th>
+                <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">박스</th>
+                <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center whitespace-nowrap">관리</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -133,28 +133,28 @@ const ItemManager: React.FC<ItemManagerProps> = ({
               ) : (
                 pagedItems.map((item) => (
                   <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center space-x-2">
+                    <td className="px-3 py-3">
+                      <div className="flex items-center space-x-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-slate-300 shrink-0" />
-                        <p className="text-[11px] font-bold text-slate-600">{item.name}</p>
+                        <p className="text-[11px] font-bold text-slate-600 whitespace-nowrap">{item.name}</p>
                       </div>
                     </td>
                     {activeCategory === '완제품' && (
-                      <td className="px-4 py-4">
+                      <td className="px-2 py-3">
                         <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
                           {clients.find(c => c.id === item.clientId)?.name ?? <span className="text-slate-200">-</span>}
                         </span>
                       </td>
                     )}
                     {activeCategory !== '완제품' && (
-                      <td className="px-4 py-4">
+                      <td className="px-2 py-3">
                         <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
                           {clients.find(c => c.id === item.supplierId)?.name ?? <span className="text-slate-200">-</span>}
                         </span>
                       </td>
                     )}
                     {['용기', '마개', '라벨', '테이프', '박스'].map(cat => (
-                      <td key={cat} className="px-4 py-4">
+                      <td key={cat} className="px-2 py-3">
                         {item.category === '완제품' && item.submaterials ? (
                           (() => {
                             const subs = item.submaterials.filter(s => {
@@ -162,7 +162,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({
                               return normalizeCategory(fullProduct?.category || '') === cat;
                             });
                             return subs.length > 0 ? (
-                              <span className="text-[11px] font-bold text-slate-600">{subs.map(s => s.name).join(', ')}</span>
+                              <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">{subs.map(s => s.name).join(', ')}</span>
                             ) : (
                               <span className="text-[10px] text-slate-200">-</span>
                             );
@@ -172,7 +172,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({
                         )}
                       </td>
                     ))}
-                    <td className="px-6 py-4">
+                    <td className="px-3 py-3">
                       <div className="flex items-center justify-center space-x-2">
                         <button 
                           onClick={() => onEditProduct(item)}

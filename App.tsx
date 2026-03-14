@@ -129,17 +129,37 @@ const INITIAL_CLIENTS: Client[] = [
   { id: 'sup-3', name: '밝은디자인', email: '', phone: '', type: '일반', partnerType: '매입처' },
 ];
 
+const INITIAL_SUPPLIERS: Client[] = [];
+
 const App: React.FC = () => {
   const loadData = <T,>(key: string, defaultValue: T): T => {
     const saved = localStorage.getItem(key);
     return saved ? JSON.parse(saved) : defaultValue;
   };
 
-  const [currentUser, setCurrentUser] = useState<Employee | null>(() => loadData('tb_user', null));
+  const [currentUser, setCurrentUser] = useState<Employee | null>(() => {
+    const saved = localStorage.getItem('tb_user');
+    return saved ? JSON.parse(saved) : null;
+  });
   const [currentView, setCurrentView] = useState<ViewType>('orders');
   const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부'>('생산판매기록부');
   const [docYearMonth, setDocYearMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [rmActiveMaterial, setRmActiveMaterial] = useState('참깨');
+  const [isMobile, setIsMobile] = useState(false);
+
+  // 모바일 감지
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+      if (window.innerWidth < 768) {
+        setIsSidebarCollapsed(true); // 모바일에서는 기본적으로 사이드바 숨김
+      }
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
   
   const [noticePosts, setNoticePosts] = useState<Post[]>([]);
   const [pallets, setPallets] = useState<PalletStock[]>([]);
@@ -169,7 +189,7 @@ const App: React.FC = () => {
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => window.innerWidth < 768);
 
   // --- Firebase Real-time Sync ---
   useEffect(() => {
@@ -517,6 +537,10 @@ const App: React.FC = () => {
       setIsAdminAuthModalOpen(true);
     } else {
       setCurrentView(view);
+      // 모바일에서는 메뉴 클릭 시 사이드바 자동으로 닫기
+      if (isMobile) {
+        setIsSidebarCollapsed(true);
+      }
     }
   };
 
@@ -540,25 +564,35 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
-      <aside className={`fixed inset-y-0 left-0 z-50 ${isSidebarCollapsed ? 'w-20' : 'w-64'} bg-white border-r border-slate-200 lg:static lg:translate-x-0 transition-all duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      {/* 모바일 오버레이 배경 */}
+      {isMobile && !isSidebarCollapsed && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40"
+          onClick={() => setIsSidebarCollapsed(true)}
+        />
+      )}
+
+      <aside className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-slate-200 transition-all duration-300 ${
+        isMobile
+          ? (isSidebarCollapsed ? '-translate-x-full' : 'translate-x-0 w-64')
+          : (isSidebarCollapsed ? 'w-20' : 'w-64')
+      }`}>
         <div className={`flex flex-col h-full ${isSidebarCollapsed ? 'p-4' : 'p-6'}`}>
-          <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between px-2'} mb-10`}>
+          <div className={`flex items-center ${isSidebarCollapsed ? 'flex-col gap-2' : 'px-2 justify-between'} mb-10`}>
             <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setCurrentView('orders')}>
-              <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg flex-shrink-0"><Package size={24} /></div>
+              <div className="w-10 h-10 bg-pink-500 rounded-xl flex items-center justify-center text-white shadow-lg flex-shrink-0 font-black text-sm tracking-tight leading-none">태백</div>
               {!isSidebarCollapsed && <h1 className="text-xl font-bold uppercase tracking-tight text-indigo-600 break-words leading-tight">스마트오더</h1>}
             </div>
-            {!isSidebarCollapsed && (
-              <button onClick={() => setIsSidebarCollapsed(true)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hidden lg:block">
-                <ChevronLeft size={20} />
+            {!isMobile && (
+              <button
+                onClick={() => setIsSidebarCollapsed(prev => !prev)}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all flex-shrink-0"
+                title={isSidebarCollapsed ? '사이드바 펼치기' : '사이드바 접기'}
+              >
+                {isSidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
               </button>
             )}
           </div>
-          
-          {isSidebarCollapsed && (
-            <button onClick={() => setIsSidebarCollapsed(false)} className="mb-4 mx-auto p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hidden lg:block">
-              <ChevronRight size={20} />
-            </button>
-          )}
 
           {/* 계정 정보 (클릭 → 로그아웃) */}
           <div
@@ -596,6 +630,7 @@ const App: React.FC = () => {
                 <NavItem icon={Layers} label="파렛트 관리" active={currentView === 'pallets'} onClick={() => handleNavClick('pallets')} collapsed={isSidebarCollapsed} />
                 <NavItem icon={CalendarCheck} label="연차 신청" active={currentView === 'leave-portal'} onClick={() => handleNavClick('leave-portal')} collapsed={isSidebarCollapsed} />
                 <NavItem icon={Users} label="거래처 관리" active={currentView === 'clients'} onClick={() => handleNavClick('clients')} collapsed={isSidebarCollapsed} />
+                <NavItem icon={ShieldCheck} label="확인사항" active={currentView === 'confirmation-items'} onClick={() => handleNavClick('confirmation-items')} collapsed={isSidebarCollapsed} />
                 <NavItem icon={DatabaseIcon} label="데이터베이스" active={currentView === 'database'} onClick={() => handleNavClick('database')} collapsed={isSidebarCollapsed} />
                 <NavItem icon={BellRing} label="공지사항" active={currentView === 'notice'} onClick={() => handleNavClick('notice')} collapsed={isSidebarCollapsed} />
               </nav>
@@ -605,7 +640,6 @@ const App: React.FC = () => {
               {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">분석 및 관리자</p>}
               <nav className="space-y-1">
                 <NavItem icon={LayoutDashboard} label="비즈니스 대시보드" active={currentView === 'dashboard'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} />
-                <NavItem icon={ShieldCheck} label="확인사항" active={currentView === 'confirmation-items'} onClick={() => handleNavClick('confirmation-items')} collapsed={isSidebarCollapsed} />
                 <NavItem icon={Sparkles} label="AI 인사이트" active={currentView === 'ai-consultant'} onClick={() => handleNavClick('ai-consultant')} collapsed={isSidebarCollapsed} />
                 <NavItem icon={UserCheck} label="인사/연차 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} />
                 <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
@@ -633,8 +667,24 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        <div className="flex-1 overflow-auto p-4 custom-scrollbar">
+      <main className={`flex-1 flex flex-col min-w-0 h-screen overflow-hidden transition-all duration-300 ${isMobile ? '' : (isSidebarCollapsed ? 'ml-20' : 'ml-64')}`}>
+        {/* 모바일 헤더 */}
+        <header className="md:hidden bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between">
+          <button
+            onClick={() => setIsSidebarCollapsed(false)}
+            className="p-2 rounded-lg hover:bg-slate-100 text-slate-600"
+          >
+            <Menu size={24} />
+          </button>
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 bg-pink-500 rounded-lg flex items-center justify-center text-white font-black text-xs tracking-tight leading-none">태백</div>
+            <h1 className="text-sm font-bold text-indigo-600">스마트오더</h1>
+          </div>
+          <div className="w-10" /> {/* Spacer for centering */}
+        </header>
+        
+        <div className="flex-1 overflow-auto p-3 md:p-4 lg:p-6 custom-scrollbar">
+          <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'clients', 'notice', 'pallets', 'confirmation-items'].includes(currentView)) ? '' : 'min-w-[720px] md:min-w-0 h-full'}>
           {currentView === 'dashboard' && <Dashboard orders={orders} products={allProducts} />}
           {currentView === 'shipping' && (
             <DeliveryManager 
@@ -659,6 +709,8 @@ const App: React.FC = () => {
                   const order = orders.find(o => o.id === id);
                   if (order) await deductSubmaterialsForOrder(order);
                   await updateItem('orders', id, { status, deliveredAt: new Date().toISOString() });
+                } else {
+                  await updateItem('orders', id, { status });
                 }
               }}
               onUpdateDeliveryDate={(id, date) => updateItem('orders', id, { deliveryDate: date })} 
@@ -1327,6 +1379,7 @@ const App: React.FC = () => {
               }}
             />
           )}
+          </div>
         </div>
       </main>
 

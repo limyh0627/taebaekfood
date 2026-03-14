@@ -239,7 +239,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, onClos
                 {!searchTerm && quickClients.length > 0 && (
                   <div className="space-y-2">
                     <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest px-1">자주 사용하는 거래처</p>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-1 gap-2">
                       {quickClients.map(client => {
                         const typeConfig = {
                           '일반': { icon: User, color: 'bg-indigo-100 text-indigo-600' },
