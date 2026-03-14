@@ -125,7 +125,7 @@ const GoogleSheetsSync: React.FC<GoogleSheetsSyncProps> = ({ onSync, onClose }) 
             price: Number(getFuzzyValue(p, ['Price', '가격', '단가', '금액']) || 0),
             stock: Number(getFuzzyValue(p, ['Stock', '재고', '현재고', '수량']) || 0),
             minStock: Number(getFuzzyValue(p, ['MinStock', '최소재고', '안전재고', '알림수량']) || 10),
-            unit: safeString(getFuzzyValue(p, ['Unit', '단위']), '병'),
+            unit: safeString(getFuzzyValue(p, ['Unit', '단위']), '개'),
             clientId: safeString(getFuzzyValue(p, ['ClientID', '거래처ID', '거래처코드', 'Client'])),
             submaterials: submaterials
           };

@@ -45,6 +45,7 @@ import DatabaseView from './components/DatabaseView';
 import AuthPage from './components/AuthPage';
 import ClientPortal from './components/ClientPortal';
 import ItemManager from './components/ItemManager';
+import TradeStatement from './components/TradeStatement';
 import OfficeTalk from './components/OfficeTalk';
 import ExcelJS from 'exceljs';
 
@@ -91,7 +92,7 @@ const INITIAL_PRODUCTS: Product[] = [
     price: 18500, 
     stock: 450, 
     minStock: 100, 
-    unit: '병', 
+    unit: '개',
     image: '',
     submaterials: [
       { id: 'p7', name: '골드캡 마개', stock: 1, unit: '개', category: '마개' },
@@ -99,14 +100,14 @@ const INITIAL_PRODUCTS: Product[] = [
       { id: 'sub-02', name: '참기름 전용 박스', stock: 1, unit: '개', category: '박스' }
     ]
   },
-  { 
-    id: 'p2', 
-    name: '태백 전통들기름 (300ml)', 
-    category: '완제품', 
-    price: 16500, 
-    stock: 220, 
-    minStock: 80, 
-    unit: '병', 
+  {
+    id: 'p2',
+    name: '태백 전통들기름 (300ml)',
+    category: '완제품',
+    price: 16500,
+    stock: 220,
+    minStock: 80,
+    unit: '개',
     image: '',
     submaterials: [
       { id: 'p7', name: '골드캡 마개', stock: 1, unit: '개', category: '마개' },
@@ -114,12 +115,14 @@ const INITIAL_PRODUCTS: Product[] = [
       { id: 'sub-03', name: '들기름 전용 박스', stock: 1, unit: '개', category: '박스' }
     ]
   },
-  { id: 'p3', name: '생들기름 (180ml)', category: '완제품', price: 14000, stock: 15, minStock: 50, unit: '병', image: '' },
+  { id: 'p3', name: '생들기름 (180ml)', category: '완제품', price: 14000, stock: 15, minStock: 50, unit: '개', image: '' },
   { id: 'p7', name: '골드캡 마개', category: '마개', price: 80, stock: 120, minStock: 1000, unit: '개', image: '' },
   { id: 'p8', name: '태백 로고 테이프', category: '테이프', price: 1200, stock: 45, minStock: 20, unit: '롤', image: '' },
   { id: 'sub-01', name: '300ml 유리용기', category: '용기', price: 450, stock: 1200, minStock: 500, unit: '개', image: '' },
   { id: 'sub-02', name: '참기름 전용 박스', category: '박스', price: 300, stock: 800, minStock: 200, unit: '개', image: '' },
   { id: 'sub-03', name: '들기름 전용 박스', category: '박스', price: 300, stock: 600, minStock: 200, unit: '개', image: '' },
+  { id: 'gck-1', name: '고춧가루 1kg', category: '고춧가루', price: 0, stock: 0, minStock: 0, unit: '개', image: '', boxSize: 20 },
+  { id: 'gck-5', name: '고춧가루 5kg', category: '고춧가루', price: 0, stock: 0, minStock: 0, unit: '개', image: '', boxSize: 4 },
 ];
 
 const INITIAL_CLIENTS: Client[] = [
@@ -142,7 +145,7 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
   const [currentView, setCurrentView] = useState<ViewType>('orders');
-  const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부'>('생산판매기록부');
+  const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부' | '거래명세서'>('생산판매기록부');
   const [docYearMonth, setDocYearMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [rmActiveMaterial, setRmActiveMaterial] = useState('참깨');
   const [isMobile, setIsMobile] = useState(false);
@@ -178,6 +181,60 @@ const App: React.FC = () => {
 
   // Combined products for UI
   const allProducts = useMemo(() => [...products, ...submaterials], [products, submaterials]);
+
+  // 원료 자동 사용량 (DELIVERED 주문 → 원료별·날짜별 집계)
+  const autoRawMaterialUsage = useMemo<Array<{material: string; date: string; used: number; note: string}>>(() => {
+    const PRODUCT_FORMULA: Record<string, { raw: string; ratio: number }[]> = {
+      '시골향참기름1': [{ raw: '통깨참기름', ratio: 1.0 }],
+      '시골향참기름2': [{ raw: '통깨참기름', ratio: 0.5 }, { raw: '깨분참기름', ratio: 0.5 }],
+      '시골향참기름3': [{ raw: '깨분참기름', ratio: 1.0 }],
+      '시골향참기름4': [{ raw: '통깨참기름', ratio: 0.25 }, { raw: '깨분참기름', ratio: 0.75 }],
+      '시골향들기름1': [{ raw: '통들깨들기름', ratio: 1.0 }],
+      '시골향들기름2': [{ raw: '통들깨들기름', ratio: 0.1 }, { raw: '수입들기름', ratio: 0.9 }],
+      '시골향볶음참깨': [{ raw: '볶음참깨', ratio: 1.0 }],
+      '시골향들깨가루': [{ raw: '볶음들깨', ratio: 1.0 }],
+      '시골향탈피들깨가루': [{ raw: '탈피들깨가루', ratio: 1.0 }],
+      '시골향볶음검정참깨': [{ raw: '볶음검정참깨', ratio: 1.0 }],
+    };
+    const DENSITY: Record<string, number> = { '통깨참기름': 0.916, '깨분참기름': 0.916, '통들깨들기름': 0.924, '수입들기름': 0.924 };
+    const toKg = (용량: string, raw: string, qty: number) => {
+      const m = 용량.match(/^([\d.]+)\s*(ml|l|g|kg)/i);
+      if (!m) return 0;
+      const val = parseFloat(m[1]); const unit = m[2].toLowerCase(); const d = DENSITY[raw] ?? 1.0;
+      if (unit === 'ml') return val / 1000 * d * qty;
+      if (unit === 'l') return val * d * qty;
+      if (unit === 'g') return val / 1000 * qty;
+      if (unit === 'kg') return val * qty;
+      return 0;
+    };
+    const dayMap: Record<string, Record<string, { used: number; clients: string[] }>> = {};
+    for (const o of orders.filter(o => o.status === OrderStatus.DELIVERED && o.deliveredAt)) {
+      const dateStr = o.deliveredAt!.slice(0, 10);
+      const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '';
+      for (const item of o.items) {
+        const prod = allProducts.find(p => p.id === item.productId);
+        if (!prod || prod.category !== '완제품') continue;
+        const formula = PRODUCT_FORMULA[prod.품목 || prod.name];
+        if (!formula) continue;
+        for (const f of formula) {
+          const usedKg = toKg(prod.용량 || '', f.raw, item.quantity) * f.ratio;
+          if (usedKg <= 0) continue;
+          if (!dayMap[f.raw]) dayMap[f.raw] = {};
+          if (!dayMap[f.raw][dateStr]) dayMap[f.raw][dateStr] = { used: 0, clients: [] };
+          dayMap[f.raw][dateStr].used += usedKg;
+          if (clientName && !dayMap[f.raw][dateStr].clients.includes(clientName)) dayMap[f.raw][dateStr].clients.push(clientName);
+        }
+      }
+    }
+    const result: Array<{ material: string; date: string; used: number; note: string }> = [];
+    for (const [mat, dates] of Object.entries(dayMap)) {
+      for (const [date, { used, clients }] of Object.entries(dates)) {
+        const note = clients.length === 0 ? '생산' : clients.length === 1 ? clients[0] : `${clients[0]} 외 ${clients.length - 1}`;
+        result.push({ material: mat, date, used: Math.round(used * 1000) / 1000, note });
+      }
+    }
+    return result;
+  }, [orders, allProducts, clients]);
 
   // 재고 발주 관련 상태
   const [orderRequests, setOrderRequests] = useState<{id: string, quantity: number, confirmedByUser?: boolean}[]>(() => loadData('tb_order_requests', []));
@@ -747,6 +804,7 @@ const App: React.FC = () => {
               onAddAdjustmentRequest={(req) => addItem('adjustmentRequests', req)}
               suppliers={clients.filter(c => c.partnerType === '매입처' || c.partnerType === '매출+매입처')}
               rawMaterialLedger={rawMaterialLedger}
+              autoUsageEntries={autoRawMaterialUsage}
               onAddRawMaterialEntry={async (entry) => {
                 await addItem('rawMaterialLedger', entry);
                 // 수율 파생 입고 자동 추가
@@ -840,8 +898,9 @@ const App: React.FC = () => {
               return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
             };
 
-            // 우측: 완제품만 표시
-            const rightRows = shippedOrders.flatMap(order => {
+            // 우측: 완제품만, (상호, 품목, 용량) 기준 그룹화
+            type RightRow = { 상호: string; 품목: string; 용량: string; 수량: number; 소비기한: string; 제조일자: string; orderItems: Array<{orderId: string; itemIdx: number}>; };
+            const rightRowsRaw = shippedOrders.flatMap(order => {
               const client = clients.find(c => c.id === order.clientId);
               const clientName = client?.name || order.customerName || '';
               return order.items.flatMap((item, itemIdx) => {
@@ -850,15 +909,31 @@ const App: React.FC = () => {
                 return [{ 상호: clientName, 품목: product?.품목 || item.name, 용량: product?.용량 || '', 수량: item.quantity, 소비기한: calcExpiry(item.expirationDate || ''), 제조일자: item.expirationDate || '', orderId: order.id, itemIdx }];
               });
             });
+            const rightRows: RightRow[] = Object.values(
+              rightRowsRaw.reduce((acc, row) => {
+                const key = `${row.상호}||${row.품목}||${row.용량}`;
+                if (!acc[key]) {
+                  acc[key] = { 상호: row.상호, 품목: row.품목, 용량: row.용량, 수량: row.수량, 소비기한: row.소비기한, 제조일자: row.제조일자, orderItems: [{ orderId: row.orderId, itemIdx: row.itemIdx }] };
+                } else {
+                  acc[key].수량 += row.수량;
+                  acc[key].orderItems.push({ orderId: row.orderId, itemIdx: row.itemIdx });
+                  if (row.제조일자 && (!acc[key].제조일자 || row.제조일자 < acc[key].제조일자)) {
+                    acc[key].제조일자 = row.제조일자;
+                    acc[key].소비기한 = calcExpiry(row.제조일자);
+                  }
+                }
+                return acc;
+              }, {} as Record<string, RightRow>)
+            );
 
-            // (품목, 용량) 집계
-            const agg: Record<string, { qty: number; dates: string[]; clients: string[] }> = {};
+            // (품목, 용량) 집계 - 가장 빠른 제조일자, 거래처 "외 N" 형식
+            const agg: Record<string, { qty: number; mfgDates: string[]; clients: string[] }> = {};
             rightRows.forEach(r => {
               const key = `${r.품목}||${r.용량}`;
-              if (!agg[key]) agg[key] = { qty: 0, dates: [], clients: [] };
+              if (!agg[key]) agg[key] = { qty: 0, mfgDates: [], clients: [] };
               agg[key].qty += r.수량;
-              if (r.소비기한) agg[key].dates.push(r.소비기한);
-              if (r.상호) agg[key].clients.push(r.상호);
+              if (r.제조일자) agg[key].mfgDates.push(r.제조일자);
+              if (r.상호 && !agg[key].clients.includes(r.상호)) agg[key].clients.push(r.상호);
             });
 
             // 좌측 상단 템플릿 (참기름/들기름 계열)
@@ -887,8 +962,11 @@ const App: React.FC = () => {
             const leftRows: { groupLabel: string; 용량: string; 수량: number; 소비기한: string; 비고: string }[] = [];
             topTemplate.forEach(({ label, key, volumes }) => {
               volumes.forEach((vol, i) => {
-                const a = agg[`${key}||${vol}`] || { qty: 0, dates: [], clients: [] };
-                leftRows.push({ groupLabel: i === 0 ? label : '', 용량: vol, 수량: a.qty, 소비기한: a.dates.join(', '), 비고: a.clients.join(', ') });
+                const a = agg[`${key}||${vol}`] || { qty: 0, mfgDates: [], clients: [] };
+                const earliestMfg = a.mfgDates.length ? [...a.mfgDates].sort()[0] : '';
+                const expiryStr = earliestMfg ? calcExpiry(earliestMfg) : '';
+                const clientNote = a.clients.length === 0 ? '' : a.clients.length === 1 ? a.clients[0] : `${a.clients[0]} 외 ${a.clients.length - 1}`;
+                leftRows.push({ groupLabel: i === 0 ? label : '', 용량: vol, 수량: a.qty, 소비기한: expiryStr, 비고: clientNote });
               });
             });
 
@@ -992,8 +1070,11 @@ const App: React.FC = () => {
               ws.addRow([]);
 
               bottomTemplate.forEach(({ 품목, 용량 }) => {
-                const a = agg[`${품목}||${용량}`] || { qty: 0, dates: [], clients: [] };
-                const row = ws.addRow([품목, 용량, a.qty, a.dates.join(', '), a.clients.join(', ')]);
+                const a = agg[`${품목}||${용량}`] || { qty: 0, mfgDates: [], clients: [] };
+                const earliestMfg = a.mfgDates.length ? [...a.mfgDates].sort()[0] : '';
+                const expiryStr = earliestMfg ? calcExpiry(earliestMfg) : '';
+                const clientNote = a.clients.length === 0 ? '' : a.clients.length === 1 ? a.clients[0] : `${a.clients[0]} 외 ${a.clients.length - 1}`;
+                const row = ws.addRow([품목, 용량, a.qty, expiryStr, clientNote]);
                 row.height = 16;
                 [1,2,3,4,5].forEach(c => {
                   const cell = row.getCell(c);
@@ -1039,6 +1120,10 @@ const App: React.FC = () => {
                         onClick={() => setDocTab('원료수불부')}
                         className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '원료수불부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
                       >원료수불부</button>
+                      <button
+                        onClick={() => setDocTab('거래명세서')}
+                        className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '거래명세서' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                      >거래명세서</button>
                     </div>
                     {docTab === '생산판매기록부' && (
                       <button
@@ -1079,23 +1164,20 @@ const App: React.FC = () => {
                               <td className="px-5 py-3 text-[11px] font-bold text-slate-500">{row.용량}</td>
                               <td className="px-5 py-3 text-[11px] font-black text-indigo-700">{row.수량}</td>
                               <td className="px-5 py-3">
-                                <div className="relative inline-block">
-                                  <input
-                                    type="date"
-                                    value={row.제조일자}
-                                    onChange={(e) => {
-                                      const order = orders.find(o => o.id === row.orderId);
-                                      if (!order) return;
-                                      const newItems = [...order.items];
-                                      newItems[row.itemIdx] = { ...newItems[row.itemIdx], expirationDate: e.target.value };
-                                      updateItem('orders', row.orderId, { items: newItems });
-                                    }}
-                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                  />
-                                  <div className="text-[10px] font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1 pointer-events-none whitespace-nowrap">
-                                    {row.제조일자 || '제조일자 선택'}
-                                  </div>
-                                </div>
+                                <input
+                                  type="date"
+                                  value={row.제조일자}
+                                  onChange={(e) => {
+                                    for (const { orderId, itemIdx } of row.orderItems) {
+                                      const o = orders.find(ord => ord.id === orderId);
+                                      if (!o) continue;
+                                      const newItems = [...o.items];
+                                      newItems[itemIdx] = { ...newItems[itemIdx], expirationDate: e.target.value };
+                                      updateItem('orders', orderId, { items: newItems });
+                                    }
+                                  }}
+                                  className="text-[10px] font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1 cursor-pointer outline-none focus:ring-2 focus:ring-indigo-400 transition-all"
+                                />
                               </td>
                               <td className="px-5 py-3 text-[11px] font-bold text-slate-500">{row.소비기한 || '-'}</td>
                             </tr>
@@ -1142,14 +1224,15 @@ const App: React.FC = () => {
                     return perUnitKg * qty;
                   };
 
-                  // DELIVERED 주문에서 원료별 사용량 계산 (B안: 품목별 행)
+                  // DELIVERED 주문에서 원료별 사용량 계산 (날짜별 합산, 거래처 "외 N" 비고)
                   type UsageRow = { date: string; received: number; used: number; note: string; type: 'auto' | 'manual' };
                   const calcAutoUsage = (material: string): UsageRow[] => {
-                    const rows: UsageRow[] = [];
+                    const dayMap: Record<string, { used: number; clients: string[] }> = {};
                     const deliveredOrders = orders.filter(o => o.status === OrderStatus.DELIVERED && o.deliveredAt);
                     for (const o of deliveredOrders) {
                       const dateStr = o.deliveredAt!.slice(0, 10);
                       if (!dateStr.startsWith(docYearMonth)) continue;
+                      const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '';
                       for (const item of o.items) {
                         const prod = allProducts.find(p => p.id === item.productId);
                         if (!prod || prod.category !== '완제품') continue;
@@ -1159,11 +1242,16 @@ const App: React.FC = () => {
                           if (f.raw !== material) continue;
                           const usedKg = toKgAmount(prod.용량 || '', f.raw, item.quantity) * f.ratio;
                           if (usedKg <= 0) continue;
-                          rows.push({ date: dateStr, received: 0, used: Math.round(usedKg * 1000) / 1000, note: `${prod.품목 || prod.name} ${item.quantity}개 (생산)`, type: 'auto' });
+                          if (!dayMap[dateStr]) dayMap[dateStr] = { used: 0, clients: [] };
+                          dayMap[dateStr].used += usedKg;
+                          if (clientName && !dayMap[dateStr].clients.includes(clientName)) dayMap[dateStr].clients.push(clientName);
                         }
                       }
                     }
-                    return rows;
+                    return Object.entries(dayMap).map(([date, { used, clients }]) => {
+                      const note = clients.length === 0 ? '생산' : clients.length === 1 ? clients[0] : `${clients[0]} 외 ${clients.length - 1}`;
+                      return { date, received: 0, used: Math.round(used * 1000) / 1000, note, type: 'auto' as const };
+                    });
                   };
 
                   // 수율: 원재료 사용 → 반제품 입고 자동 파생
@@ -1298,6 +1386,14 @@ const App: React.FC = () => {
                     </div>
                   );
                 })()}
+
+                {docTab === '거래명세서' && (
+                  <TradeStatement
+                    orders={orders}
+                    allProducts={allProducts}
+                    clients={clients}
+                  />
+                )}
               </div>
             );
           })()}

@@ -92,11 +92,11 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, onClos
     return products.filter(p => p.category === '고춧가루');
   }, [products, selectedClient]);
 
-  // 제품의 박스 submaterial이 있거나 향미유에 boxSize가 있으면 박스 단위 기본값 true
+  // 제품 자체 boxSize 또는 박스 submaterial의 boxSize가 있으면 박스 단위 기본값 true
   const getDefaultBoxUnit = (productId: string): boolean => {
     const p = products.find(pr => pr.id === productId);
     if (!p) return false;
-    if (p.category === '향미유' && (p.boxSize ?? 0) > 0) return true;
+    if ((p.boxSize ?? 0) > 0) return true;
     if (!p.submaterials) return false;
     return p.submaterials.some(s => {
       const sub = products.find(pr => pr.id === s.id);
@@ -107,9 +107,9 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, onClos
   const getBoxSize = (productId: string): number => {
     const p = products.find(pr => pr.id === productId);
     if (!p) return 0;
-    // 향미유: product.boxSize 직접 사용
-    if (p.category === '향미유' && (p.boxSize ?? 0) > 0) return p.boxSize!;
-    // 완제품: 박스 submaterial의 boxSize 사용
+    // 제품 자체 boxSize 우선 사용 (완제품, 향미유 등)
+    if ((p.boxSize ?? 0) > 0) return p.boxSize!;
+    // 폴백: 박스 submaterial의 boxSize 사용
     if (!p.submaterials) return 0;
     for (const s of p.submaterials) {
       const sub = products.find(pr => pr.id === s.id);
@@ -337,7 +337,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, onClos
                             )}
                             <input type="number" value={selection.quantity === '' ? '' : selection.quantity} onChange={(e) => handleQuantityInput(product.id, e.target.value)} className="text-xs font-black w-full text-center text-slate-800 bg-white border border-slate-200 rounded-lg outline-none py-0.5" />
                             <span className="text-[10px] font-bold text-slate-400 shrink-0">
-                              {selection.isBoxUnit && getBoxSize(product.id) > 0 ? '박스' : product.unit || '병'}
+                              {selection.isBoxUnit && getBoxSize(product.id) > 0 ? '박스' : product.unit || '개'}
                             </span>
                           </div>
                         )}

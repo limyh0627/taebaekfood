@@ -99,7 +99,14 @@ const PalletManager: React.FC<PalletManagerProps> = ({
           total
         };
       })
-      .filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()))
+      .filter(item => {
+        if (!item.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+        // 검색어 없을 때는 잔량 있는 거래처만 표시
+        if (!searchTerm.trim()) {
+          return Object.values(item.pallets).some(v => v !== 0);
+        }
+        return true;
+      })
       .sort((a, b) => {
         // Non-zero totals first
         if (a.total !== 0 && b.total === 0) return -1;

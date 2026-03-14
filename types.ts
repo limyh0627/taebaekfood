@@ -94,7 +94,7 @@ export interface Product {
   clientId?: string; // 소속 거래처 ID
   supplierId?: string; // 매입 거래처 ID
   freightType?: 's' | 'a' | 'b' | 'c' | 'd' | 'e'; // 박스 운임타입
-  boxSize?: number; // 향미유: 1박스당 개수
+  boxSize?: number; // 1박스당 개수 (완제품, 향미유 등)
   품목?: string; // 서류용 품목명 (예: 시골향참기름1)
   용량?: string; // 서류용 용량 (예: 1800ml, 1kg)
   submaterials?: SubmaterialComponent[];

@@ -55,6 +55,7 @@ interface ProductListProps {
   onAddAdjustmentRequest: (req: AdjustmentRequest) => void;
   suppliers: { id: string; name: string }[];
   rawMaterialLedger: RawMaterialEntry[];
+  autoUsageEntries?: Array<{ material: string; date: string; used: number; note: string }>;
   onAddRawMaterialEntry: (entry: RawMaterialEntry) => void;
   onDeleteRawMaterialEntry: (id: string) => void;
 }
@@ -79,6 +80,7 @@ const ProductList: React.FC<ProductListProps> = ({
   onAddAdjustmentRequest,
   suppliers,
   rawMaterialLedger,
+  autoUsageEntries = [],
   onAddRawMaterialEntry,
   onDeleteRawMaterialEntry,
 }) => {
@@ -767,19 +769,23 @@ const ProductList: React.FC<ProductListProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {(() => {
-                  const filtered = rmFilter === '전체'
-                    ? rawMaterialLedger
-                    : rawMaterialLedger.filter(e => e.material === rmFilter);
-                  const sorted = [...filtered].sort((a, b) => a.date.localeCompare(b.date));
+                  // auto 사용량 항목 (isAuto: true, id 없음)
+                  type DisplayEntry = { id?: string; material: string; date: string; received: number; used: number; note: string; isAuto: boolean };
+                  const manualEntries: DisplayEntry[] = (rmFilter === '전체' ? rawMaterialLedger : rawMaterialLedger.filter(e => e.material === rmFilter))
+                    .map(e => ({ id: e.id, material: e.material, date: e.date, received: e.received, used: e.used, note: e.note, isAuto: false }));
+                  const autoEntries: DisplayEntry[] = (rmFilter === '전체' ? autoUsageEntries : autoUsageEntries.filter(e => e.material === rmFilter))
+                    .map(e => ({ material: e.material, date: e.date, received: 0, used: e.used, note: e.note, isAuto: true }));
+                  const sorted = [...manualEntries, ...autoEntries].sort((a, b) => a.date.localeCompare(b.date) || (a.isAuto ? 1 : -1));
+
                   // 특정 원료 선택 시 running balance 계산
                   if (rmFilter !== '전체') {
                     let balance = 0;
-                    return sorted.map(entry => {
-                      const isOpen = entry.note === '전월이월';
+                    return sorted.map((entry, idx) => {
+                      const isOpen = !entry.isAuto && entry.note === '전월이월';
                       if (isOpen) {
                         balance = entry.received;
                         return (
-                          <tr key={entry.id} className="hover:bg-amber-50 bg-amber-50/50 transition-colors">
+                          <tr key={entry.id || `auto-${idx}`} className="hover:bg-amber-50 bg-amber-50/50 transition-colors">
                             <td className="px-4 py-2.5 text-[11px] font-bold text-slate-500">{entry.date}</td>
                             <td className="px-4 py-2.5 text-[11px] font-black text-amber-600 text-right">{entry.received}</td>
                             <td className="px-4 py-2.5 text-[11px] text-slate-300 text-right">-</td>
@@ -787,10 +793,10 @@ const ProductList: React.FC<ProductListProps> = ({
                             <td className="px-4 py-2.5 text-[11px] font-black text-amber-600 text-right">{entry.received}</td>
                             <td className="px-4 py-2.5 text-[11px] text-amber-500 font-bold">전월이월</td>
                             <td className="px-4 py-2.5">
-                              <button onClick={() => onDeleteRawMaterialEntry(entry.id)}
+                              {entry.id && <button onClick={() => onDeleteRawMaterialEntry(entry.id!)}
                                 className="p-1 text-slate-300 hover:text-rose-400 hover:bg-rose-50 rounded transition-all">
                                 <Trash2 size={12} />
-                              </button>
+                              </button>}
                             </td>
                           </tr>
                         );
@@ -799,38 +805,46 @@ const ProductList: React.FC<ProductListProps> = ({
                       balance += entry.received - entry.used;
                       const curr = Math.round(balance * 1000) / 1000;
                       return (
-                        <tr key={entry.id} className="hover:bg-slate-50 transition-colors">
+                        <tr key={entry.id || `auto-${idx}`} className={`transition-colors ${entry.isAuto ? 'hover:bg-indigo-50/30 bg-indigo-50/10' : 'hover:bg-slate-50'}`}>
                           <td className="px-4 py-2.5 text-[11px] font-bold text-slate-500">{entry.date}</td>
                           <td className="px-4 py-2.5 text-[11px] text-slate-400 text-right">{prev}</td>
                           <td className="px-4 py-2.5 text-[11px] font-black text-indigo-600 text-right">{entry.received > 0 ? `+${entry.received}` : '-'}</td>
                           <td className="px-4 py-2.5 text-[11px] font-black text-rose-500 text-right">{entry.used > 0 ? `-${entry.used}` : '-'}</td>
                           <td className="px-4 py-2.5 text-[11px] font-black text-slate-800 text-right">{curr}</td>
-                          <td className="px-4 py-2.5 text-[11px] text-slate-500">{entry.note || '-'}</td>
+                          <td className="px-4 py-2.5 text-[11px] text-slate-500">
+                            {entry.isAuto
+                              ? <span className="text-indigo-400">{entry.note}</span>
+                              : (entry.note || '-')}
+                          </td>
                           <td className="px-4 py-2.5">
-                            <button onClick={() => onDeleteRawMaterialEntry(entry.id)}
+                            {!entry.isAuto && entry.id && <button onClick={() => onDeleteRawMaterialEntry(entry.id!)}
                               className="p-1 text-slate-300 hover:text-rose-400 hover:bg-rose-50 rounded transition-all">
                               <Trash2 size={12} />
-                            </button>
+                            </button>}
                           </td>
                         </tr>
                       );
                     });
                   }
                   // 전체 필터: 원료명 표시, 전재고/현재고 없음
-                  return sorted.map(entry => (
-                    <tr key={entry.id} className="hover:bg-slate-50 transition-colors">
+                  return sorted.map((entry, idx) => (
+                    <tr key={entry.id || `auto-${idx}`} className={`transition-colors ${entry.isAuto ? 'hover:bg-indigo-50/30 bg-indigo-50/10' : 'hover:bg-slate-50'}`}>
                       <td className="px-4 py-2.5"><span className="text-[11px] font-black text-slate-800 bg-emerald-50 px-2 py-0.5 rounded-lg">{entry.material}</span></td>
                       <td className="px-4 py-2.5 text-[11px] font-bold text-slate-500">{entry.date}</td>
                       <td className="px-4 py-2.5 text-[11px] text-slate-300 text-right">-</td>
                       <td className="px-4 py-2.5 text-[11px] font-black text-indigo-600 text-right">{entry.received > 0 ? `+${entry.received}` : '-'}</td>
                       <td className="px-4 py-2.5 text-[11px] font-black text-rose-500 text-right">{entry.used > 0 ? `-${entry.used}` : '-'}</td>
                       <td className="px-4 py-2.5 text-[11px] text-slate-300 text-right">-</td>
-                      <td className="px-4 py-2.5 text-[11px] text-slate-500">{entry.note || '-'}</td>
+                      <td className="px-4 py-2.5 text-[11px] text-slate-500">
+                        {entry.isAuto
+                          ? <span className="text-indigo-400">{entry.note}</span>
+                          : (entry.note || '-')}
+                      </td>
                       <td className="px-4 py-2.5">
-                        <button onClick={() => onDeleteRawMaterialEntry(entry.id)}
+                        {!entry.isAuto && entry.id && <button onClick={() => onDeleteRawMaterialEntry(entry.id!)}
                           className="p-1 text-slate-300 hover:text-rose-400 hover:bg-rose-50 rounded transition-all">
                           <Trash2 size={12} />
-                        </button>
+                        </button>}
                       </td>
                     </tr>
                   ));

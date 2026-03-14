@@ -212,7 +212,7 @@ function doPost(e) {
           minStock: Number(getVal(p, ['MinStock', '최소재고', '안전재고']) || 10),
           price: Number(getVal(p, ['Price', '가격', '단가']) || 0),
           clientId: String(getVal(p, ['ClientID', '거래처ID', '거래처코드', 'Client']) || ''),
-          unit: '병',
+          unit: '개',
           image: '',
           submaterials: submaterials
         };

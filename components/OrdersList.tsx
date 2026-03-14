@@ -277,7 +277,7 @@ const OrderCard = memo<OrderCardProps>(({
                     </div>
                     <span className={`truncate ${isItemChecked ? 'text-emerald-800 line-through opacity-50' : 'text-slate-700'}`}>{abbrev(item.name)}</span>
                     <span className={`ml-1.5 px-1 py-0.5 rounded text-[8px] font-black shrink-0 ${isItemChecked ? 'text-emerald-700 bg-emerald-100' : 'text-indigo-600 bg-indigo-50'}`}>
-                      {item.quantity}{productInfo?.unit || '병'}
+                      {item.quantity}{productInfo?.unit || '개'}
                     </span>
                   </div>
                   {productInfo?.submaterials && productInfo.submaterials.filter(sm => {
@@ -306,37 +306,60 @@ const OrderCard = memo<OrderCardProps>(({
                 </div>
               );
             })}
-            {/* 향미유·고춧가루: 인라인 나열 (항상 표시) */}
-            {order.items.filter(item => {
-              const p = products.find(p => p.id === item.productId);
-              return isSecondary(p?.category);
-            }).length > 0 && (
-              <div className="flex flex-wrap gap-x-2 gap-y-0.5 pt-1.5 border-t-2 border-dashed border-slate-200 mt-1.5">
-                {order.items.filter(item => {
-                  const p = products.find(p => p.id === item.productId);
-                  return isSecondary(p?.category);
-                }).map((item) => {
-                  const idx = order.items.indexOf(item);
-                  const isItemChecked = !!item.checked;
-                  const productInfo = products.find(p => p.id === item.productId);
-                  const abbrev = (name: string) => name
-                    .replace(/참진한기름/g, '참진').replace(/참고소한기름/g, '참고소')
-                    .replace(/들향기름골드/g, '들향골드').replace(/참향기름/g, '참향')
-                    .replace(/들향기름/g, '들향').replace(/맛기름/g, '맛');
-                  return (
-                    <div key={idx} className={`flex items-center gap-1 text-[10px] font-bold ${isItemChecked ? 'opacity-50' : ''}`}>
-                      <div className={`shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`} onClick={() => onToggleItemChecked?.(order.id, idx)} style={{cursor:'pointer'}}>
-                        {isItemChecked ? <CheckSquare size={12} /> : <Square size={12} />}
-                      </div>
-                      <span className={`${isItemChecked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{abbrev(item.name)}</span>
-                      <span className={`text-[8px] font-black shrink-0 ${isItemChecked ? 'text-emerald-700 bg-emerald-100' : 'text-indigo-600 bg-indigo-50'} px-1 py-0.5 rounded`}>
-                        {item.isBoxUnit && item.boxQuantity ? `${item.boxQuantity}B` : `${item.quantity}개`}
-                      </span>
+            {/* 향미유·고춧가루: 카테고리별 구분 표시 */}
+            {(() => {
+              const abbrev = (name: string) => name
+                .replace(/참진한기름/g, '참진').replace(/참고소한기름/g, '참고소')
+                .replace(/들향기름골드/g, '들향골드').replace(/참향기름/g, '참향')
+                .replace(/들향기름/g, '들향').replace(/맛기름/g, '맛');
+              const hyangmiyuItems = order.items.filter(item => products.find(p => p.id === item.productId)?.category === '향미유');
+              const gochuItems = order.items.filter(item => products.find(p => p.id === item.productId)?.category === '고춧가루');
+              if (hyangmiyuItems.length === 0 && gochuItems.length === 0) return null;
+              return (
+                <div className="space-y-1 pt-1.5 border-t-2 border-dashed border-slate-200 mt-1.5">
+                  {hyangmiyuItems.length > 0 && (
+                    <div className="flex flex-wrap gap-x-2 gap-y-0.5 items-center">
+                      <span className="text-[8px] font-black text-teal-500 bg-teal-50 px-1.5 py-0.5 rounded shrink-0">향미유</span>
+                      {hyangmiyuItems.map((item) => {
+                        const idx = order.items.indexOf(item);
+                        const isItemChecked = !!item.checked;
+                        return (
+                          <div key={idx} className={`flex items-center gap-1 text-[10px] font-bold ${isItemChecked ? 'opacity-50' : ''}`}>
+                            <div className={`shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`} onClick={() => onToggleItemChecked?.(order.id, idx)} style={{cursor:'pointer'}}>
+                              {isItemChecked ? <CheckSquare size={12} /> : <Square size={12} />}
+                            </div>
+                            <span className={`${isItemChecked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{abbrev(item.name)}</span>
+                            <span className={`text-[8px] font-black shrink-0 ${isItemChecked ? 'text-emerald-700 bg-emerald-100' : 'text-teal-600 bg-teal-50'} px-1 py-0.5 rounded`}>
+                              {item.isBoxUnit && item.boxQuantity ? `${item.boxQuantity}B` : `${item.quantity}개`}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  )}
+                  {gochuItems.length > 0 && (
+                    <div className="flex flex-wrap gap-x-2 gap-y-0.5 items-center">
+                      <span className="text-[8px] font-black text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded shrink-0">고춧가루</span>
+                      {gochuItems.map((item) => {
+                        const idx = order.items.indexOf(item);
+                        const isItemChecked = !!item.checked;
+                        return (
+                          <div key={idx} className={`flex items-center gap-1 text-[10px] font-bold ${isItemChecked ? 'opacity-50' : ''}`}>
+                            <div className={`shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`} onClick={() => onToggleItemChecked?.(order.id, idx)} style={{cursor:'pointer'}}>
+                              {isItemChecked ? <CheckSquare size={12} /> : <Square size={12} />}
+                            </div>
+                            <span className={`${isItemChecked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{item.name}</span>
+                            <span className={`text-[8px] font-black shrink-0 ${isItemChecked ? 'text-emerald-700 bg-emerald-100' : 'text-orange-600 bg-orange-50'} px-1 py-0.5 rounded`}>
+                              {item.isBoxUnit && item.boxQuantity ? `${item.boxQuantity}B` : `${item.quantity}개`}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>

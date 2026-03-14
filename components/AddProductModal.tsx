@@ -45,7 +45,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
 
   const [activeSubCategory, setActiveSubCategory] = useState<string | null>(null);
 
-  const categories: InventoryCategory[] = ['완제품', '향미유', '용기', '마개', '테이프', '박스', '라벨'];
+  const categories: InventoryCategory[] = ['완제품', '향미유', '고춧가루', '용기', '마개', '테이프', '박스', '라벨'];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,7 +64,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
         ? formData.submaterials
         : (initialData?.submaterials || []),
       ...(formData.category === '박스' && { freightType: formData.freightType, boxSize: formData.boxSize }),
-      ...(formData.category === '향미유' && { boxSize: formData.boxSize }),
+      ...((formData.category === '향미유' || formData.category === '고춧가루' || formData.category === '완제품') && { boxSize: formData.boxSize }),
       ...(formData.category === '완제품' && formData.clientId && { clientId: formData.clientId }),
       ...(formData.category !== '완제품' && formData.supplierId && { supplierId: formData.supplierId }),
     };
@@ -129,7 +129,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                 type="text"
                 value={formData.unit}
                 onChange={(e) => setFormData({...formData, unit: e.target.value})}
-                placeholder="개, 병, 팩 등"
+                placeholder="개, 팩, 롤 등"
                 className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
               />
             </div>
@@ -153,7 +153,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             </div>
           )}
 
-          {(formData.category === '향미유' || formData.category === '박스') && (
+          {(formData.category === '향미유' || formData.category === '고춧가루' || formData.category === '박스' || formData.category === '완제품') && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Hash size={14} className="mr-2" /> 1박스 당 수량 (개)
