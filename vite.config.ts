@@ -8,7 +8,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
-        maximumFileSizeToCacheInBytes: 5000000 // 5MB로 증가
+        maximumFileSizeToCacheInBytes: 5000000,
+        skipWaiting: true,
+        clientsClaim: true
       },
 manifest: {
   name: '태백푸드',
@@ -19,14 +21,16 @@ manifest: {
   theme_color: '#000000',
   icons: [
     {
-      src: '/icon-192x192.svg',
+      src: '/icon-192x192.png',
       sizes: '192x192',
-      type: 'image/svg+xml'
+      type: 'image/png',
+      purpose: 'any maskable'
     },
     {
-      src: '/icon-512x512.svg',
+      src: '/icon-512x512.png',
       sizes: '512x512',
-      type: 'image/svg+xml'
+      type: 'image/png',
+      purpose: 'any maskable'
     }
   ]
 }  
