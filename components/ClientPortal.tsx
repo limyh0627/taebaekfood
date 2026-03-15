@@ -43,7 +43,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clients, products, onOrderS
     if (!selectedClient) return [];
     return products.filter(p => 
       p.category === '완제품' && 
-      (!p.clientId || p.clientId === selectedClient.id)
+      (!p.clientIds?.length || p.clientIds.includes(selectedClient.id))
     );
   }, [products, selectedClient]);
 

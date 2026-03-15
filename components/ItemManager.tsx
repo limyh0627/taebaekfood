@@ -47,7 +47,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       result = result.filter(p => {
-        const clientName = clients.find(c => c.id === p.clientId)?.name?.toLowerCase() ?? '';
+        const clientName = p.clientIds?.map(id => clients.find(c => c.id === id)?.name ?? '').filter(Boolean).join(' ').toLowerCase() ?? '';
         return (
           p.name.toLowerCase().includes(term) ||
           p.id.toLowerCase().includes(term) ||
@@ -142,7 +142,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({
                     {activeCategory === '완제품' && (
                       <td className="px-2 py-3">
                         <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
-                          {clients.find(c => c.id === item.clientId)?.name ?? <span className="text-slate-200">-</span>}
+                          {item.clientIds?.length ? item.clientIds.map(id => clients.find(c => c.id === id)?.name).filter(Boolean).join(', ') : <span className="text-slate-200">-</span>}
                         </span>
                       </td>
                     )}

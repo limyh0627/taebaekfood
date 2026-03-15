@@ -91,7 +91,8 @@ export interface Product {
   unit: string;
   image: string;
   oil?: string; // 완제품에 포함되는 원유 정보 추가
-  clientId?: string; // 소속 거래처 ID
+  clientId?: string; // @deprecated — clientIds 사용
+  clientIds?: string[]; // 소속 거래처 ID 목록
   supplierId?: string; // 매입 거래처 ID
   freightType?: 's' | 'a' | 'b' | 'c' | 'd' | 'e'; // 박스 운임타입
   boxSize?: number; // 1박스당 개수 (완제품, 향미유 등)

@@ -259,7 +259,14 @@ const App: React.FC = () => {
       subscribeToCollection<AdjustmentRequest>('adjustmentRequests', setAdjustmentRequests),
       subscribeToCollection<{id: string, quantity: number}>('confirmedOrders', setConfirmedOrders),
       subscribeToCollection<Order>('orders', setOrders),
-      subscribeToCollection<Product>('products', setProducts),
+      subscribeToCollection<Product>('products', (data) => {
+        // clientId → clientIds 마이그레이션
+        const migrated = data.map(p => {
+          if (!p.clientIds && p.clientId) return { ...p, clientIds: [p.clientId] };
+          return p;
+        });
+        setProducts(migrated);
+      }),
       subscribeToCollection<Product>('submaterials', setSubmaterials),
       subscribeToCollection<Client>('clients', setClients),
       subscribeToCollection<ChatRoom>('chatRooms', setChatRooms),

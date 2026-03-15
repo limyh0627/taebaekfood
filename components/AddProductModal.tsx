@@ -28,7 +28,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     boxSize: initialData?.boxSize || 12,
     용량: initialData?.용량 || '',
     품목: initialData?.품목 || '',
-    clientId: initialData?.clientId || '',
+    clientIds: initialData?.clientIds ?? (initialData?.clientId ? [initialData.clientId] : []),
     supplierId: initialData?.supplierId || '',
     submaterials: (initialData?.submaterials || []).map(s => ({
       ...s,
@@ -69,7 +69,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       ...((formData.category === '향미유' || formData.category === '고춧가루' || formData.category === '완제품') && { boxSize: formData.boxSize }),
       ...(formData.용량 && { 용량: formData.용량 }),
       ...(formData.품목 && { 품목: formData.품목 }),
-      ...(formData.category === '완제품' && formData.clientId && { clientId: formData.clientId }),
+      ...(formData.category === '완제품' && formData.clientIds.length > 0 && { clientIds: formData.clientIds }),
       ...(formData.category !== '완제품' && formData.supplierId && { supplierId: formData.supplierId }),
     };
 
@@ -142,18 +142,30 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
           {formData.category === '완제품' && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Building2 size={14} className="mr-2" /> 매출거래처
+                <Building2 size={14} className="mr-2" /> 매출거래처 (복수 선택 가능)
               </label>
-              <select
-                value={formData.clientId}
-                onChange={(e) => setFormData({...formData, clientId: e.target.value})}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all appearance-none"
-              >
-                <option value="">선택 안 함</option>
-                {salesClients.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 max-h-40 overflow-y-auto space-y-1 custom-scrollbar">
+                {salesClients.length === 0 && <p className="text-xs text-slate-400">등록된 매출거래처 없음</p>}
+                {salesClients.map(c => {
+                  const checked = formData.clientIds.includes(c.id);
+                  return (
+                    <label key={c.id} className="flex items-center gap-2.5 py-1 cursor-pointer hover:bg-white rounded-lg px-2 transition-all">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          const next = checked
+                            ? formData.clientIds.filter(id => id !== c.id)
+                            : [...formData.clientIds, c.id];
+                          setFormData({...formData, clientIds: next});
+                        }}
+                        className="w-4 h-4 rounded accent-indigo-600"
+                      />
+                      <span className="text-sm font-bold text-slate-700">{c.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
           )}
 

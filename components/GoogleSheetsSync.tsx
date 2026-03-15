@@ -153,7 +153,7 @@ const GoogleSheetsSync: React.FC<GoogleSheetsSyncProps> = ({ onSync, onClose }) 
 
           // PRODUCTS 탭에서 이 거래처 ID를 가진 품목들 추가
           const productsForThisClient = allProducts
-            .filter((p: any) => p.clientId === id)
+            .filter((p: any) => p.clientIds?.includes(id))
             .map((p: any) => p.id);
           
           // 중복 제거 합치기

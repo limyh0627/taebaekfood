@@ -41,7 +41,7 @@ function doPost(e) {
     productSheet.clearContents();
     productSheet.appendRow(['ID', 'Name', 'OIL', 'Category', 'Stock', 'MinStock', 'Price', 'ClientID']);
     data.products.filter(function(p) { return p.category === '완제품'; }).forEach(function(p) {
-      productSheet.appendRow([p.id, p.name, p.oil || '', p.category, p.stock, p.minStock, p.price, p.clientId || '']);
+      productSheet.appendRow([p.id, p.name, p.oil || '', p.category, p.stock, p.minStock, p.price, p.clientIds?.join(',') || '']);
     });
 
     var subSheet = ss.getSheetByName('Submaterials') || ss.insertSheet('Submaterials');
@@ -245,7 +245,7 @@ function doPost(e) {
 
           // PRODUCTS 탭에서 이 거래처 ID를 가진 품목들 추가
           const productsForThisClient = mappedProducts
-            .filter(p => p.clientId === id)
+            .filter(p => p.clientIds?.includes(id))
             .map(p => p.id);
           
           // 중복 제거 합치기
