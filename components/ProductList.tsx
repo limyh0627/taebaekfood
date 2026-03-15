@@ -670,13 +670,8 @@ const ProductList: React.FC<ProductListProps> = ({
                 className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-indigo-400">
                 {RAW_MATERIALS.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
-              <div className="relative">
-                <input type="date" value={rmDate} onChange={e => setRmDate(e.target.value)}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 pointer-events-none">
-                  {rmDate || '날짜'}
-                </div>
-              </div>
+              <input type="date" value={rmDate} onChange={e => setRmDate(e.target.value)}
+                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-indigo-400 cursor-pointer" />
               <input type="number" placeholder="입고량" value={rmReceived} onChange={e => setRmReceived(e.target.value)}
                 className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-indigo-400" />
               <input type="number" placeholder="사용량" value={rmUsed} onChange={e => setRmUsed(e.target.value)}
