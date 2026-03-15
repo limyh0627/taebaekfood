@@ -353,6 +353,22 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             </div>
           )}
 
+          {/* 용량 (용기 카테고리) */}
+          {formData.category === '용기' && (
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
+                <Box size={14} className="mr-2" /> 용량
+              </label>
+              <input
+                type="text"
+                value={formData.용량}
+                onChange={(e) => setFormData({...formData, 용량: e.target.value})}
+                placeholder="예: 16.5kg, 300ml"
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+              />
+            </div>
+          )}
+
           {/* 서류용 품목명 (완제품) — 커스텀 드롭다운 */}
           {formData.category === '완제품' && (
             <div className="space-y-2" ref={pumokRef}>
