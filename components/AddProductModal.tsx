@@ -266,7 +266,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                             <button
                               type="button"
                               onClick={() => {
-                                setFormData({ ...formData, submaterials: formData.submaterials.filter(s => s.category !== cat) });
+                                setFormData({ ...formData, submaterials: formData.submaterials.filter(s => getSubCat(s) !== cat) });
                                 setActiveSubCategory(null);
                               }}
                               className={`flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all border ${!selectedSub ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-slate-50 border-slate-100 text-slate-500 hover:bg-slate-100'}`}
@@ -282,7 +282,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                                   key={sub.id}
                                   type="button"
                                   onClick={() => {
-                                    const filtered = formData.submaterials.filter(s => s.category !== cat);
+                                    const filtered = formData.submaterials.filter(s => getSubCat(s) !== cat);
                                     const autoCapacity = cat === '용기' ? (allSubmaterials.find(a => a.id === sub.id) as Product | undefined)?.용량 || '' : formData.용량;
                                     setFormData({
                                       ...formData,
