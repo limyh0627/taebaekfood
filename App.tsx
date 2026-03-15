@@ -1158,7 +1158,7 @@ const App: React.FC = () => {
                               for (const o of targetOrders) {
                                 o.items.forEach((item, itemIdx) => {
                                   const p = allProducts.find(pr => pr.id === item.productId);
-                                  if (p?.category === '완제품' && !item.expirationDate) {
+                                  if (p?.category === '완제품') {
                                     unset.push({ orderId: o.id, itemIdx, productName: p.품목 || item.name });
                                   }
                                 });
