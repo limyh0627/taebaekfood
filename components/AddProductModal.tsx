@@ -21,7 +21,7 @@ const PRESET_PUMOK = [
   '시골향들기름1', '시골향들기름2',
   '토마토참기름',
   '새싹참기름', '새싹들기름',
-  '시골향볶음참깨', '시골향볶음들깨', '시골향볶음검정참깨',
+  '시골향볶음참깨', '시골향들깨가루', '시골향탈피들깨가루', '시골향볶음검정참깨',
 ];
 
 const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], clients = [], onClose, onSave }) => {
