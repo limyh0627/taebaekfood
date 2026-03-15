@@ -147,6 +147,7 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewType>('orders');
   const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부' | '거래명세서'>('생산판매기록부');
   const [docYearMonth, setDocYearMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [bulkMfgDate, setBulkMfgDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [rmActiveMaterial, setRmActiveMaterial] = useState('참깨');
   const [isMobile, setIsMobile] = useState(false);
 
@@ -895,7 +896,10 @@ const App: React.FC = () => {
             />
           )}
           {currentView === 'documents' && (() => {
-            const shippedOrders = orders.filter(o => o.status === OrderStatus.SHIPPED);
+            const shippedOrders = orders.filter(o =>
+              (o.status === OrderStatus.SHIPPED || o.status === OrderStatus.PENDING) &&
+              o.items.some(item => item.expirationDate?.startsWith(docYearMonth))
+            );
 
             // 소비기한 계산 헬퍼 (제조일자 + 1년)
             const calcExpiry = (mfgDate: string) => {
@@ -1133,13 +1137,71 @@ const App: React.FC = () => {
                       >거래명세서</button>
                     </div>
                     {docTab === '생산판매기록부' && (
-                      <button
-                        onClick={exportExcel}
-                        className="flex items-center space-x-2 bg-emerald-600 text-white px-5 py-2.5 rounded-2xl font-bold shadow hover:bg-emerald-700 transition-all text-sm"
-                      >
-                        <FileText size={16} />
-                        <span>엑셀 저장</span>
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-3 py-1.5 shadow-sm">
+                          <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">서류 날짜</span>
+                          <input
+                            type="date"
+                            value={bulkMfgDate}
+                            onChange={e => setBulkMfgDate(e.target.value)}
+                            className="text-xs font-bold text-slate-700 bg-transparent outline-none cursor-pointer"
+                          />
+                          <span className="text-[10px] text-slate-400 whitespace-nowrap">→ 제조 -3일 ±1</span>
+                          <button
+                            onClick={async () => {
+                              if (!bulkMfgDate) return;
+                              type UnsetItem = { orderId: string; itemIdx: number; productName: string };
+                              const unset: UnsetItem[] = [];
+                              const targetOrders = orders.filter(o =>
+                                o.status === OrderStatus.SHIPPED || o.status === OrderStatus.PENDING
+                              );
+                              for (const o of targetOrders) {
+                                o.items.forEach((item, itemIdx) => {
+                                  const p = allProducts.find(pr => pr.id === item.productId);
+                                  if (p?.category === '완제품' && !item.expirationDate) {
+                                    unset.push({ orderId: o.id, itemIdx, productName: p.품목 || item.name });
+                                  }
+                                });
+                              }
+                              if (unset.length === 0) { alert('제조일자 미입력 항목이 없습니다.'); return; }
+                              const uniqueProducts: string[] = [];
+                              for (const { productName } of unset) {
+                                if (!uniqueProducts.includes(productName)) uniqueProducts.push(productName);
+                              }
+                              // 서류날짜 - 3일 base, 품목별 index % 3 → -1, 0, +1 분산
+                              const offsets = [-1, 0, 1];
+                              const productDateMap: Record<string, string> = {};
+                              uniqueProducts.forEach((name, idx) => {
+                                const d = new Date(bulkMfgDate);
+                                d.setDate(d.getDate() - 3 + offsets[idx % 3]);
+                                productDateMap[name] = d.toISOString().slice(0, 10);
+                              });
+                              const byOrder: Record<string, { itemIdx: number; date: string }[]> = {};
+                              for (const { orderId, itemIdx, productName } of unset) {
+                                if (!byOrder[orderId]) byOrder[orderId] = [];
+                                byOrder[orderId].push({ itemIdx, date: productDateMap[productName] });
+                              }
+                              for (const [orderId, updates] of Object.entries(byOrder)) {
+                                const o = orders.find(ord => ord.id === orderId);
+                                if (!o) continue;
+                                const newItems = [...o.items];
+                                for (const { itemIdx, date } of updates) {
+                                  newItems[itemIdx] = { ...newItems[itemIdx], expirationDate: date };
+                                }
+                                await updateItem('orders', orderId, { items: newItems });
+                              }
+                            }}
+                            className="text-[11px] font-black text-white bg-amber-500 hover:bg-amber-600 px-3 py-1 rounded-xl transition-all whitespace-nowrap"
+                          >미입력 일괄 적용</button>
+                        </div>
+                        <button
+                          onClick={exportExcel}
+                          className="flex items-center space-x-2 bg-emerald-600 text-white px-5 py-2.5 rounded-2xl font-bold shadow hover:bg-emerald-700 transition-all text-sm"
+                        >
+                          <FileText size={16} />
+                          <span>엑셀 저장</span>
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1290,14 +1352,22 @@ const App: React.FC = () => {
                     return perUnitKg * qty;
                   };
 
-                  // DELIVERED 주문에서 원료별 사용량 계산 (날짜별 합산, 거래처 "외 N" 비고)
+                  // 주문에서 원료별 사용량 계산 (제조일자 기준, 날짜별 합산)
                   type UsageRow = { date: string; received: number; used: number; note: string; type: 'auto' | 'manual' };
                   const calcAutoUsage = (material: string): UsageRow[] => {
                     const dayMap: Record<string, { used: number; clients: string[] }> = {};
-                    const deliveredOrders = orders.filter(o => o.status === OrderStatus.DELIVERED && o.deliveredAt);
+                    const deliveredOrders = orders.filter(o =>
+                      o.status === OrderStatus.DELIVERED ||
+                      o.status === OrderStatus.SHIPPED ||
+                      o.status === OrderStatus.PENDING
+                    );
                     for (const o of deliveredOrders) {
-                      const dateStr = o.deliveredAt!.slice(0, 10);
-                      if (!dateStr.startsWith(docYearMonth)) continue;
+                      // 제조일자 기준: 항목 중 가장 빠른 제조일자 사용, 없으면 deliveredAt
+                      const mfgDates = o.items.map(i => i.expirationDate).filter(Boolean) as string[];
+                      const dateStr = mfgDates.length > 0
+                        ? [...mfgDates].sort()[0]
+                        : (o.deliveredAt?.slice(0, 10) || '');
+                      if (!dateStr || !dateStr.startsWith(docYearMonth)) continue;
                       const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '';
                       for (const item of o.items) {
                         const prod = allProducts.find(p => p.id === item.productId);
@@ -1379,11 +1449,22 @@ const App: React.FC = () => {
                       const border = { top: { style: 'thin' as const }, bottom: { style: 'thin' as const }, left: { style: 'thin' as const }, right: { style: 'thin' as const } };
                       hRow.eachCell(c => { c.border = border; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } }; });
                       const ledger = buildLedger(mat);
-                      for (const row of ledger) {
-                        const r = ws.addRow([row.date, row.prevBalance || 0, row.received || 0, row.used || 0, row.currentBalance || 0, row.note || '']);
+                      ledger.forEach((row, idx) => {
+                        const dataRowNum = idx + 2; // 헤더가 1행
+                        const r = ws.addRow([
+                          row.date,
+                          idx === 0 ? (row.prevBalance || 0) : { formula: `E${dataRowNum - 1}` },
+                          row.received || 0,
+                          row.used || 0,
+                          { formula: `B${dataRowNum}+C${dataRowNum}-D${dataRowNum}` },
+                          row.note || ''
+                        ]);
                         r.font = { size: 9 };
                         r.eachCell(c => { c.border = border; });
-                      }
+                        // 수식 셀 배경 연하게
+                        r.getCell(2).fill = idx === 0 ? { type: 'pattern', pattern: 'none' } : { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } };
+                        r.getCell(5).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } };
+                      });
                     }
                     const buf = await wb.xlsx.writeBuffer();
                     const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
