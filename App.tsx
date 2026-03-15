@@ -972,7 +972,7 @@ const App: React.FC = () => {
                 const a = agg[`${key}||${vol}`] || { qty: 0, mfgDates: [], clients: [] };
                 const earliestMfg = a.mfgDates.length ? [...a.mfgDates].sort()[0] : '';
                 const expiryStr = earliestMfg ? calcExpiry(earliestMfg) : '';
-                const clientNote = a.clients.length === 0 ? '' : a.clients.length === 1 ? a.clients[0] : `${a.clients[0]} 외 ${a.clients.length - 1}`;
+                const clientNote = a.clients.join(', ');
                 leftRows.push({ groupLabel: i === 0 ? label : '', 용량: vol, 수량: a.qty, 소비기한: expiryStr, 비고: clientNote });
               });
             });
@@ -1047,7 +1047,7 @@ const App: React.FC = () => {
                     const cell = row.getCell(c);
                     cell.border = thinBorder;
                     cell.font = { size: 9 };
-                    cell.alignment = { horizontal: c === 1 ? 'left' : 'center', vertical: 'middle' };
+                    cell.alignment = { horizontal: c === 1 ? 'left' : 'center', vertical: 'middle', wrapText: c === 5 };
                     if (c === 1 && l.groupLabel) {
                       cell.font = { bold: true, size: 9 };
                       cell.fill = groupFill;
@@ -1080,14 +1080,14 @@ const App: React.FC = () => {
                 const a = agg[`${품목}||${용량}`] || { qty: 0, mfgDates: [], clients: [] };
                 const earliestMfg = a.mfgDates.length ? [...a.mfgDates].sort()[0] : '';
                 const expiryStr = earliestMfg ? calcExpiry(earliestMfg) : '';
-                const clientNote = a.clients.length === 0 ? '' : a.clients.length === 1 ? a.clients[0] : `${a.clients[0]} 외 ${a.clients.length - 1}`;
+                const clientNote = a.clients.join(', ');
                 const row = ws.addRow([품목, 용량, a.qty, expiryStr, clientNote]);
                 row.height = 16;
                 [1,2,3,4,5].forEach(c => {
                   const cell = row.getCell(c);
                   cell.border = thinBorder;
                   cell.font = { bold: c === 1, size: 9 };
-                  cell.alignment = { horizontal: c <= 2 ? 'left' : 'center', vertical: 'middle' };
+                  cell.alignment = { horizontal: c <= 2 ? 'left' : 'center', vertical: 'middle', wrapText: c === 5 };
                   if (c === 3 && a.qty > 0) cell.font = { bold: true, size: 9, color: { argb: 'FF1E3A5F' } };
                 });
                 ws.addRow([]);
@@ -1146,13 +1146,6 @@ const App: React.FC = () => {
 
                 {docTab === '생산판매기록부' && (
                   <div className="space-y-4">
-                    {/* 경고 배너 */}
-                    {missingMfgDate.length > 0 && (
-                      <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3 flex items-center gap-3">
-                        <span className="text-amber-600 font-black text-xs">⚠</span>
-                        <p className="text-xs font-bold text-amber-700">제조일자 미입력: <span className="font-black">{[...new Set(missingMfgDate)].join(', ')}</span></p>
-                      </div>
-                    )}
 
                     {/* 상단: 생산 내역(좌) + 판매 내역(우) */}
                     <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-x-auto">
@@ -1183,14 +1176,15 @@ const App: React.FC = () => {
                             {Array.from({ length: Math.max(leftRows.length, rightRows.length) }).map((_, i) => {
                               const l = leftRows[i];
                               const r = rightRows[i];
+                              const hasIssue = r && (!r.품목 || !r.용량 || !r.제조일자);
                               return (
-                                <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                                <tr key={i} className={`transition-colors ${hasIssue ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-slate-50/50'}`}>
                                   {/* 좌측 */}
                                   <td className={`px-3 py-1.5 border border-slate-200 font-bold whitespace-nowrap ${l?.groupLabel ? 'bg-blue-50 text-slate-800' : 'text-slate-400'}`}>{l?.groupLabel ?? ''}</td>
                                   <td className="px-3 py-1.5 border border-slate-200 text-center text-slate-600">{l?.용량 ?? ''}</td>
                                   <td className={`px-3 py-1.5 border border-slate-200 text-center font-black ${l && l.수량 > 0 ? 'text-indigo-700' : 'text-slate-300'}`}>{l ? (l.수량 || 0) : ''}</td>
                                   <td className="px-3 py-1.5 border border-slate-200 text-center text-slate-500 whitespace-nowrap">{l?.소비기한 ?? ''}</td>
-                                  <td className="px-3 py-1.5 border border-slate-200 text-slate-500 text-[10px]">{l?.비고 ?? ''}</td>
+                                  <td className="px-3 py-1.5 border border-slate-200 text-slate-500 text-[10px] break-words max-w-[160px]">{l?.비고 ?? ''}</td>
                                   {/* 구분 */}
                                   <td className="w-3 bg-slate-100 border-y border-slate-200" />
                                   {/* 우측 */}
@@ -1243,14 +1237,14 @@ const App: React.FC = () => {
                             const a = agg[`${품목}||${용량}`] || { qty: 0, mfgDates: [], clients: [] };
                             const earliestMfg = a.mfgDates.length ? [...a.mfgDates].sort()[0] : '';
                             const expiryStr = earliestMfg ? calcExpiry(earliestMfg) : '';
-                            const clientNote = a.clients.length === 0 ? '' : a.clients.length === 1 ? a.clients[0] : `${a.clients[0]} 외 ${a.clients.length - 1}`;
+                            const clientNote = a.clients.join(', ');
                             return (
                               <tr key={`${품목}${용량}`} className="hover:bg-slate-50/50">
                                 <td className="px-3 py-1.5 border border-slate-200 font-bold text-slate-800">{품목}</td>
                                 <td className="px-3 py-1.5 border border-slate-200 text-center text-slate-600">{용량}</td>
                                 <td className={`px-3 py-1.5 border border-slate-200 text-center font-black ${a.qty > 0 ? 'text-indigo-700' : 'text-slate-300'}`}>{a.qty}</td>
                                 <td className="px-3 py-1.5 border border-slate-200 text-center text-slate-500 whitespace-nowrap">{expiryStr}</td>
-                                <td className="px-3 py-1.5 border border-slate-200 text-slate-500 text-[10px]">{clientNote}</td>
+                                <td className="px-3 py-1.5 border border-slate-200 text-slate-500 text-[10px] break-words max-w-[160px]">{clientNote}</td>
                               </tr>
                             );
                           })}
