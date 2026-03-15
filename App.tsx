@@ -1102,9 +1102,8 @@ const App: React.FC = () => {
               const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
-              const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
               a.href = url;
-              a.download = `생산작업판매일지${today}.xlsx`;
+              a.download = `생산작업판매일지_${bulkMfgDate || new Date().toISOString().slice(0, 10)}.xlsx`;
               a.click();
               URL.revokeObjectURL(url);
 
