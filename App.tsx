@@ -1145,53 +1145,118 @@ const App: React.FC = () => {
                 </div>
 
                 {docTab === '생산판매기록부' && (
-                  <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-                    {rightRows.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-32 opacity-20">
-                        <FileText size={40} />
-                        <p className="text-xs font-bold mt-2">출고 주문이 없습니다</p>
+                  <div className="space-y-4">
+                    {/* 경고 배너 */}
+                    {missingMfgDate.length > 0 && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3 flex items-center gap-3">
+                        <span className="text-amber-600 font-black text-xs">⚠</span>
+                        <p className="text-xs font-bold text-amber-700">제조일자 미입력: <span className="font-black">{[...new Set(missingMfgDate)].join(', ')}</span></p>
                       </div>
-                    ) : (
-                      <table className="w-full text-sm">
+                    )}
+
+                    {/* 상단: 생산 내역(좌) + 판매 내역(우) */}
+                    <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-x-auto">
+                      {rightRows.length === 0 && leftRows.every(r => r.수량 === 0) ? (
+                        <div className="flex flex-col items-center justify-center py-24 opacity-20">
+                          <FileText size={40} />
+                          <p className="text-xs font-bold mt-2">출고 주문이 없습니다</p>
+                        </div>
+                      ) : (
+                        <table className="text-xs border-collapse min-w-[900px] w-full">
+                          <thead>
+                            <tr>
+                              <th colSpan={5} className="px-3 py-2.5 text-center text-[10px] font-black text-slate-500 bg-blue-50 border border-slate-200">생산 내역</th>
+                              <th className="w-3 bg-slate-100 border-y border-slate-200" />
+                              <th colSpan={6} className="px-3 py-2.5 text-center text-[10px] font-black text-slate-500 bg-indigo-50 border border-slate-200">판매 내역</th>
+                            </tr>
+                            <tr className="bg-slate-50">
+                              {['품목(제품명)','용량','수량','소비기한','비고'].map(h => (
+                                <th key={h} className="px-3 py-2 text-center text-[9px] font-black text-slate-400 uppercase border border-slate-200 whitespace-nowrap">{h}</th>
+                              ))}
+                              <th className="w-3 bg-slate-100 border-y border-slate-200" />
+                              {['상호','품목','용량','수량','제조일자','소비기한'].map(h => (
+                                <th key={h} className="px-3 py-2 text-center text-[9px] font-black text-slate-400 uppercase border border-slate-200 whitespace-nowrap">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Array.from({ length: Math.max(leftRows.length, rightRows.length) }).map((_, i) => {
+                              const l = leftRows[i];
+                              const r = rightRows[i];
+                              return (
+                                <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                                  {/* 좌측 */}
+                                  <td className={`px-3 py-1.5 border border-slate-200 font-bold whitespace-nowrap ${l?.groupLabel ? 'bg-blue-50 text-slate-800' : 'text-slate-400'}`}>{l?.groupLabel ?? ''}</td>
+                                  <td className="px-3 py-1.5 border border-slate-200 text-center text-slate-600">{l?.용량 ?? ''}</td>
+                                  <td className={`px-3 py-1.5 border border-slate-200 text-center font-black ${l && l.수량 > 0 ? 'text-indigo-700' : 'text-slate-300'}`}>{l ? (l.수량 || 0) : ''}</td>
+                                  <td className="px-3 py-1.5 border border-slate-200 text-center text-slate-500 whitespace-nowrap">{l?.소비기한 ?? ''}</td>
+                                  <td className="px-3 py-1.5 border border-slate-200 text-slate-500 text-[10px]">{l?.비고 ?? ''}</td>
+                                  {/* 구분 */}
+                                  <td className="w-3 bg-slate-100 border-y border-slate-200" />
+                                  {/* 우측 */}
+                                  <td className="px-3 py-1.5 border border-slate-200 font-bold text-slate-800 whitespace-nowrap">{r?.상호 ?? ''}</td>
+                                  <td className="px-3 py-1.5 border border-slate-200 text-slate-700">{r?.품목 ?? ''}</td>
+                                  <td className="px-3 py-1.5 border border-slate-200 text-center text-slate-600">{r?.용량 ?? ''}</td>
+                                  <td className={`px-3 py-1.5 border border-slate-200 text-center font-black ${r && r.수량 > 0 ? 'text-indigo-700' : 'text-slate-300'}`}>{r?.수량 ?? ''}</td>
+                                  <td className="px-2 py-1 border border-slate-200">
+                                    {r && (
+                                      <input
+                                        type="date"
+                                        value={r.제조일자}
+                                        onChange={(e) => {
+                                          for (const { orderId, itemIdx } of r.orderItems) {
+                                            const o = orders.find(ord => ord.id === orderId);
+                                            if (!o) continue;
+                                            const newItems = [...o.items];
+                                            newItems[itemIdx] = { ...newItems[itemIdx], expirationDate: e.target.value };
+                                            updateItem('orders', orderId, { items: newItems });
+                                          }
+                                        }}
+                                        className="text-[10px] font-bold text-slate-700 bg-white border border-slate-200 rounded-lg px-2 py-0.5 cursor-pointer outline-none focus:ring-1 focus:ring-indigo-400 w-28"
+                                      />
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-1.5 border border-slate-200 text-center text-slate-500 whitespace-nowrap">{r?.소비기한 ?? ''}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+
+                    {/* 하단: 참깨/들깨 계열 */}
+                    <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-x-auto">
+                      <table className="text-xs border-collapse min-w-[500px] w-full">
                         <thead>
-                          <tr className="border-b border-slate-100">
-                            <th className="px-5 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">거래처</th>
-                            <th className="px-5 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">품목</th>
-                            <th className="px-5 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">용량</th>
-                            <th className="px-5 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">수량</th>
-                            <th className="px-5 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">제조일자</th>
-                            <th className="px-5 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">소비기한</th>
+                          <tr>
+                            <th colSpan={5} className="px-3 py-2.5 text-center text-[10px] font-black text-slate-500 bg-blue-50 border border-slate-200">생산 내역 (참깨·들깨)</th>
+                          </tr>
+                          <tr className="bg-slate-50">
+                            {['품목(제품명)','용량','수량','소비기한','비고'].map(h => (
+                              <th key={h} className="px-3 py-2 text-center text-[9px] font-black text-slate-400 uppercase border border-slate-200 whitespace-nowrap">{h}</th>
+                            ))}
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-50">
-                          {rightRows.map((row, idx) => (
-                            <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                              <td className="px-5 py-3 text-[11px] font-bold text-slate-800">{row.상호}</td>
-                              <td className="px-5 py-3 text-[11px] font-bold text-slate-800">{row.품목}</td>
-                              <td className="px-5 py-3 text-[11px] font-bold text-slate-500">{row.용량}</td>
-                              <td className="px-5 py-3 text-[11px] font-black text-indigo-700">{row.수량}</td>
-                              <td className="px-5 py-3">
-                                <input
-                                  type="date"
-                                  value={row.제조일자}
-                                  onChange={(e) => {
-                                    for (const { orderId, itemIdx } of row.orderItems) {
-                                      const o = orders.find(ord => ord.id === orderId);
-                                      if (!o) continue;
-                                      const newItems = [...o.items];
-                                      newItems[itemIdx] = { ...newItems[itemIdx], expirationDate: e.target.value };
-                                      updateItem('orders', orderId, { items: newItems });
-                                    }
-                                  }}
-                                  className="text-[10px] font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1 cursor-pointer outline-none focus:ring-2 focus:ring-indigo-400 transition-all"
-                                />
-                              </td>
-                              <td className="px-5 py-3 text-[11px] font-bold text-slate-500">{row.소비기한 || '-'}</td>
-                            </tr>
-                          ))}
+                        <tbody>
+                          {bottomTemplate.map(({ 품목, 용량 }) => {
+                            const a = agg[`${품목}||${용량}`] || { qty: 0, mfgDates: [], clients: [] };
+                            const earliestMfg = a.mfgDates.length ? [...a.mfgDates].sort()[0] : '';
+                            const expiryStr = earliestMfg ? calcExpiry(earliestMfg) : '';
+                            const clientNote = a.clients.length === 0 ? '' : a.clients.length === 1 ? a.clients[0] : `${a.clients[0]} 외 ${a.clients.length - 1}`;
+                            return (
+                              <tr key={`${품목}${용량}`} className="hover:bg-slate-50/50">
+                                <td className="px-3 py-1.5 border border-slate-200 font-bold text-slate-800">{품목}</td>
+                                <td className="px-3 py-1.5 border border-slate-200 text-center text-slate-600">{용량}</td>
+                                <td className={`px-3 py-1.5 border border-slate-200 text-center font-black ${a.qty > 0 ? 'text-indigo-700' : 'text-slate-300'}`}>{a.qty}</td>
+                                <td className="px-3 py-1.5 border border-slate-200 text-center text-slate-500 whitespace-nowrap">{expiryStr}</td>
+                                <td className="px-3 py-1.5 border border-slate-200 text-slate-500 text-[10px]">{clientNote}</td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
-                    )}
+                    </div>
                   </div>
                 )}
 
