@@ -6,6 +6,7 @@ import { Product, InventoryCategory, Client } from '../types';
 interface ProductModalProps {
   initialData?: Product;
   allSubmaterials?: Product[];
+  products?: Product[];
   clients?: Client[];
   onClose: () => void;
   onSave: (_product: Product) => void;
@@ -24,7 +25,7 @@ const PRESET_PUMOK = [
   '시골향볶음참깨', '시골향들깨가루', '시골향탈피들깨가루', '시골향볶음검정참깨',
 ];
 
-const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], clients = [], onClose, onSave }) => {
+const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], products = [], clients = [], onClose, onSave }) => {
   const [formData, setFormData] = useState(() => ({
     name: initialData?.name || '',
     category: (initialData?.category as InventoryCategory) || '완제품',
@@ -47,6 +48,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const [activeSubCategory, setActiveSubCategory] = useState<string | null>(null);
   const [clientSearch, setClientSearch] = useState('');
   const [showPumokDrop, setShowPumokDrop] = useState(false);
+  const [pumokWarn, setPumokWarn] = useState(false);
   const pumokRef = useRef<HTMLDivElement>(null);
 
   // 품목 드롭다운 외부 클릭 닫기
@@ -60,11 +62,11 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // 품목 자동완성 옵션 (프리셋 + DB 기존값, 입력값으로 필터)
+  // 품목 자동완성 옵션 (DB 완제품 기존값 + 프리셋)
   const pumokOptions = [
     ...new Set([
+      ...products.map(p => p.품목).filter(Boolean) as string[],
       ...PRESET_PUMOK,
-      ...allSubmaterials.map(s => (s as Product).품목).filter(Boolean) as string[],
     ])
   ].filter(v => !formData.품목 || v.toLowerCase().includes(formData.품목.toLowerCase()));
 
@@ -80,6 +82,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const handleSubmit = (e?: React.SyntheticEvent) => {
     e?.preventDefault();
     if (!formData.name) return;
+    if (formData.category === '완제품' && !formData.품목) { setPumokWarn(true); return; }
 
     const finalProduct: Product = {
       id: initialData ? initialData.id : `p-${Date.now()}`,
@@ -375,14 +378,15 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Tag size={14} className="mr-2" /> 품목 (서류용)
               </label>
+              {pumokWarn && <p className="text-xs font-bold text-red-500">서류용 품목을 선택해주세요.</p>}
               <div className="relative">
                 <input
                   type="text"
                   value={formData.품목}
-                  onChange={(e) => { setFormData({...formData, 품목: e.target.value}); setShowPumokDrop(true); }}
+                  onChange={(e) => { setFormData({...formData, 품목: e.target.value}); setShowPumokDrop(true); setPumokWarn(false); }}
                   onFocus={() => setShowPumokDrop(true)}
                   placeholder="예: 시골향참기름1"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                  className={`w-full bg-slate-50 border rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 transition-all ${pumokWarn ? 'border-red-400 focus:ring-red-400' : 'border-slate-200 focus:ring-indigo-500'}`}
                 />
                 {showPumokDrop && pumokOptions.length > 0 && (
                   <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl z-20 overflow-hidden max-h-48 overflow-y-auto custom-scrollbar">

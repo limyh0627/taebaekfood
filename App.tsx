@@ -1645,6 +1645,7 @@ const App: React.FC = () => {
         <ProductModal
           initialData={editingProduct || undefined}
           allSubmaterials={submaterials}
+          products={products}
           clients={clients}
           onClose={() => {setIsProductModalOpen(false); setEditingProduct(null);}} 
           onSave={async (p) => {
