@@ -14,7 +14,7 @@ interface ProductModalProps {
 const CAT_NORM: Record<string, string> = {
   'Cap': '마개', 'Tape': '테이프', '박스': '박스', '용기': '용기', '라벨': '라벨', '마개': '마개', '테이프': '테이프'
 };
-const normCat = (c: string) => CAT_NORM[c] || c;
+const normCat = (c?: string) => c ? (CAT_NORM[c] || c) : '';
 
 const PRESET_PUMOK = [
   '시골향참기름1', '시골향참기름2', '시골향참기름3', '시골향참기름4',
