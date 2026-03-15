@@ -109,11 +109,11 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, onClos
     if (!p) return 0;
     // 제품 자체 boxSize 우선 사용 (완제품, 향미유 등)
     if ((p.boxSize ?? 0) > 0) return p.boxSize!;
-    // 폴백: 박스 submaterial의 boxSize 사용
+    // 폴백: submaterial 중 boxSize 있는 항목 사용 (박스/자루/벌크비닐 등 포함)
     if (!p.submaterials) return 0;
     for (const s of p.submaterials) {
       const sub = products.find(pr => pr.id === s.id);
-      if (sub?.category === '박스' && (sub.boxSize ?? 0) > 0) return sub.boxSize!;
+      if (sub && (sub.boxSize ?? 0) > 0) return sub.boxSize!;
     }
     return 0;
   };

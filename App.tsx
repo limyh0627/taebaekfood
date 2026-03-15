@@ -1495,17 +1495,18 @@ const App: React.FC = () => {
           allSubmaterials={submaterials}
           clients={clients}
           onClose={() => {setIsProductModalOpen(false); setEditingProduct(null);}} 
-          onSave={async (p) => { 
+          onSave={async (p) => {
             const collectionName = p.category === '완제품' ? 'products' : 'submaterials';
-            
-            // 1. 메인 문서 저장 (submaterials 필드 포함)
-            if(editingProduct) {
-              await updateItem(collectionName, p.id, p);
-            } else {
-              await addItem(collectionName, p);
+            // 기존 컬렉션과 다른 경우(카테고리 변경) 이전 문서 삭제
+            if (editingProduct) {
+              const prevCollection = editingProduct.category === '완제품' ? 'products' : 'submaterials';
+              if (prevCollection !== collectionName) {
+                await deleteItem(prevCollection, p.id);
+              }
             }
-            
-            setIsProductModalOpen(false); 
+            // setDoc 기반 addItem으로 통일 (문서 없어도 생성, 있으면 덮어쓰기)
+            await addItem(collectionName, p);
+            setIsProductModalOpen(false);
             setEditingProduct(null);
           }} 
         />
