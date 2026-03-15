@@ -33,7 +33,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     minStock: initialData?.minStock || 10,
     unit: initialData?.unit || '개',
     freightType: (initialData?.freightType || 's') as 's' | 'a' | 'b' | 'c' | 'd' | 'e',
-    boxSize: initialData?.boxSize || 12,
+    boxSize: initialData?.boxSize ?? 0,
     용량: initialData?.용량 || '',
     품목: initialData?.품목 || '',
     clientIds: initialData?.clientIds ?? (initialData?.clientId ? [initialData.clientId] : []),
@@ -90,9 +90,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       minStock: formData.category === '완제품' ? 0 : formData.minStock,
       unit: formData.unit,
       image: initialData?.image || '',
-      submaterials: formData.submaterials.length > 0
+      submaterials: formData.category === '완제품'
         ? formData.submaterials
-        : (initialData?.submaterials || []),
+        : (formData.submaterials.length > 0 ? formData.submaterials : (initialData?.submaterials || [])),
       ...(formData.category === '박스' && { freightType: formData.freightType, boxSize: formData.boxSize }),
       ...((formData.category === '향미유' || formData.category === '고춧가루' || formData.category === '완제품') && { boxSize: formData.boxSize }),
       ...(formData.용량 && { 용량: formData.용량 }),
@@ -345,9 +345,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
               </label>
               <input
                 type="number"
-                min={1}
-                value={formData.boxSize}
-                onChange={(e) => setFormData({...formData, boxSize: Number(e.target.value) || 12})}
+                min={0}
+                value={formData.boxSize === 0 ? '' : formData.boxSize}
+                onChange={(e) => setFormData({...formData, boxSize: e.target.value === '' ? 0 : Number(e.target.value)})}
                 className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
               />
             </div>
