@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { X, Package, Tag, Box, Layers, Plus, Hash, ShieldAlert, Building2 } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { X, Package, Tag, Box, Layers, Plus, Hash, ShieldAlert, Building2, Check } from 'lucide-react';
 import { Product, InventoryCategory, Client } from '../types';
 
 interface ProductModalProps {
@@ -15,6 +15,14 @@ const CAT_NORM: Record<string, string> = {
   'Cap': '마개', 'Tape': '테이프', '박스': '박스', '용기': '용기', '라벨': '라벨', '마개': '마개', '테이프': '테이프'
 };
 const normCat = (c: string) => CAT_NORM[c] || c;
+
+const PRESET_PUMOK = [
+  '시골향참기름1', '시골향참기름2', '시골향참기름3', '시골향참기름4',
+  '시골향들기름1', '시골향들기름2',
+  '토마토참기름',
+  '새싹참기름', '새싹들기름',
+  '시골향볶음참깨', '시골향볶음들깨', '시골향볶음검정참깨',
+];
 
 const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], clients = [], onClose, onSave }) => {
   const [formData, setFormData] = useState(() => ({
@@ -36,6 +44,29 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     }))
   }));
 
+  const [activeSubCategory, setActiveSubCategory] = useState<string | null>(null);
+  const [showPumokDrop, setShowPumokDrop] = useState(false);
+  const pumokRef = useRef<HTMLDivElement>(null);
+
+  // 품목 드롭다운 외부 클릭 닫기
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (pumokRef.current && !pumokRef.current.contains(e.target as Node)) {
+        setShowPumokDrop(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // 품목 자동완성 옵션 (프리셋 + DB 기존값, 입력값으로 필터)
+  const pumokOptions = [
+    ...new Set([
+      ...PRESET_PUMOK,
+      ...allSubmaterials.map(s => (s as Product).품목).filter(Boolean) as string[],
+    ])
+  ].filter(v => !formData.품목 || v.toLowerCase().includes(formData.품목.toLowerCase()));
+
   const supplierClients = clients.filter(c =>
     c.partnerType === '매입처' || c.partnerType === '매출+매입처'
   );
@@ -43,21 +74,17 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처'
   );
 
-
-
-  const [activeSubCategory, setActiveSubCategory] = useState<string | null>(null);
-
   const categories: InventoryCategory[] = ['완제품', '향미유', '고춧가루', '용기', '마개', '테이프', '박스', '라벨'];
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (e?: React.SyntheticEvent) => {
+    e?.preventDefault();
     if (!formData.name) return;
 
     const finalProduct: Product = {
       id: initialData ? initialData.id : `p-${Date.now()}`,
       name: formData.name,
       category: formData.category,
-      price: formData.category === '완제품' ? formData.price : 0,
+      price: formData.price,
       stock: formData.stock,
       minStock: formData.category === '완제품' ? 0 : formData.minStock,
       unit: formData.unit,
@@ -79,7 +106,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   return (
     <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4 sm:p-6">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose} />
-      
+
       <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300">
         <div className="p-6 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -97,11 +124,13 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
         </div>
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+
+          {/* 품목명 */}
           <div className="space-y-2">
             <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
               <Tag size={14} className="mr-2" /> 품목명
             </label>
-            <input 
+            <input
               required
               autoFocus
               type="text"
@@ -112,12 +141,13 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             />
           </div>
 
+          {/* 카테고리 + 단위 */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Package size={14} className="mr-2" /> 카테고리
               </label>
-              <select 
+              <select
                 value={formData.category}
                 onChange={(e) => setFormData({...formData, category: e.target.value as InventoryCategory})}
                 className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all appearance-none"
@@ -129,7 +159,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Box size={14} className="mr-2" /> 단위
               </label>
-              <input 
+              <input
                 type="text"
                 value={formData.unit}
                 onChange={(e) => setFormData({...formData, unit: e.target.value})}
@@ -139,192 +169,52 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             </div>
           </div>
 
+          {/* 매출거래처 (완제품) — 그리드 버튼 */}
           {formData.category === '완제품' && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Building2 size={14} className="mr-2" /> 매출거래처 (복수 선택 가능)
+                <Building2 size={14} className="mr-2" /> 매출거래처
               </label>
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 max-h-40 overflow-y-auto space-y-1 custom-scrollbar">
-                {salesClients.length === 0 && <p className="text-xs text-slate-400">등록된 매출거래처 없음</p>}
-                {salesClients.map(c => {
-                  const checked = formData.clientIds.includes(c.id);
-                  return (
-                    <label key={c.id} className="flex items-center gap-2.5 py-1 cursor-pointer hover:bg-white rounded-lg px-2 transition-all">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => {
+              {salesClients.length === 0 ? (
+                <p className="text-xs text-slate-400 px-1">등록된 매출거래처 없음</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {salesClients.map(c => {
+                    const checked = formData.clientIds.includes(c.id);
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => {
                           const next = checked
                             ? formData.clientIds.filter(id => id !== c.id)
                             : [...formData.clientIds, c.id];
                           setFormData({...formData, clientIds: next});
                         }}
-                        className="w-4 h-4 rounded accent-indigo-600"
-                      />
-                      <span className="text-sm font-bold text-slate-700">{c.name}</span>
-                    </label>
-                  );
-                })}
-              </div>
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
+                          checked
+                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                            : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600'
+                        }`}
+                      >
+                        {checked && <Check size={11} />}
+                        {c.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
-          {formData.category === '용기' && (
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Box size={14} className="mr-2" /> 용량 (예: 1800ml, 500ml)
-              </label>
-              <input
-                type="text"
-                value={formData.용량}
-                onChange={(e) => setFormData({...formData, 용량: e.target.value})}
-                placeholder="예: 1800ml, 500ml, 1kg"
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-              />
-            </div>
-          )}
-
-          {(formData.category === '향미유' || formData.category === '고춧가루' || formData.category === '박스' || formData.category === '완제품') && (
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Hash size={14} className="mr-2" /> 1박스 당 수량 (개)
-              </label>
-              <input
-                type="number"
-                min={1}
-                value={formData.boxSize}
-                onChange={(e) => setFormData({...formData, boxSize: Number(e.target.value) || 12})}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-              />
-            </div>
-          )}
-
+          {/* BOM 설정 (완제품) — 매출거래처 바로 아래 */}
           {formData.category === '완제품' && (
-            <div className="space-y-2">
+            <div className="space-y-3 pt-2 border-t border-slate-100">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Tag size={14} className="mr-2" /> 품목 (서류용, 예: 시골향참기름3번)
+                <Layers size={14} className="mr-2" /> 구성 부자재 (BOM)
               </label>
-              <input
-                type="text"
-                list="품목-suggestions"
-                value={formData.품목}
-                onChange={(e) => setFormData({...formData, 품목: e.target.value})}
-                placeholder="예: 시골향참기름1, 시골향참기름3번"
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-              />
-              <datalist id="품목-suggestions">
-                {[...new Set(allSubmaterials.map(s => (s as Product).품목).filter(Boolean))].map(v => (
-                  <option key={v} value={v} />
-                ))}
-              </datalist>
-            </div>
-          )}
-
-          {(formData.category === '완제품' || formData.category === '향미유' || formData.category === '고춧가루') && (
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Box size={14} className="mr-2" /> 용량 (용기 선택 시 자동 입력)
-              </label>
-              <input
-                type="text"
-                value={formData.용량}
-                onChange={(e) => setFormData({...formData, 용량: e.target.value})}
-                placeholder="예: 1800ml, 500ml, 1kg"
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-              />
-            </div>
-          )}
-
-          {formData.category !== '완제품' && (
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Building2 size={14} className="mr-2" /> 매입거래처
-              </label>
-              <select
-                value={formData.supplierId}
-                onChange={(e) => setFormData({...formData, supplierId: e.target.value})}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all appearance-none"
-              >
-                <option value="">선택 안 함</option>
-                {supplierClients.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {formData.category === '박스' && (
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Tag size={14} className="mr-2" /> 운임타입
-              </label>
-              <div className="flex gap-2">
-                {(['s', 'a', 'b', 'c', 'd', 'e'] as const).map(t => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setFormData({...formData, freightType: t})}
-                    className={`flex-1 py-2.5 rounded-xl text-sm font-black border transition-all uppercase ${
-                      formData.freightType === t
-                        ? 'bg-indigo-600 border-indigo-600 text-white shadow'
-                        : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
-                    }`}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <label className={`text-xs font-bold uppercase tracking-widest flex items-center ${formData.category === '완제품' ? 'text-slate-400' : 'text-slate-200'}`}>
-              <Hash size={14} className="mr-2" /> 판매 가격 (원)
-            </label>
-            <input 
-              disabled={formData.category !== '완제품'}
-              type="number"
-              value={formData.price}
-              onChange={(e) => setFormData({...formData, price: Number(e.target.value)})}
-              className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all disabled:opacity-50"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 pt-2">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Hash size={14} className="mr-2" /> 현재 재고량
-              </label>
-              <input 
-                type="number"
-                value={formData.stock}
-                onChange={(e) => setFormData({...formData, stock: Number(e.target.value)})}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className={`text-xs font-bold uppercase tracking-widest flex items-center ${formData.category === '완제품' ? 'text-slate-200' : 'text-amber-600'}`}>
-                <ShieldAlert size={14} className="mr-2" /> 최소 수량 알림 기준
-              </label>
-              <input 
-                disabled={formData.category === '완제품'}
-                type="number"
-                value={formData.category === '완제품' ? 0 : formData.minStock}
-                onChange={(e) => setFormData({...formData, minStock: Number(e.target.value)})}
-                className="w-full bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3.5 text-sm font-bold text-amber-700 outline-none focus:ring-2 focus:ring-amber-500 transition-all disabled:opacity-30"
-              />
-            </div>
-          </div>
-
-          {formData.category === '완제품' && (
-            <div className="space-y-6 pt-4 border-t border-slate-100">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Layers size={14} className="mr-2" /> 구성 부자재 (BOM) 설정
-              </label>
-              
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {(['용기', '마개', '라벨', '박스', '테이프'] as const).map(cat => {
-                  // category 필드가 없을 때 allSubmaterials에서 ID로 카테고리 조회
                   const getSubCat = (s: typeof formData.submaterials[0]) => {
                     if (s.category) return normCat(s.category);
                     return normCat(allSubmaterials.find(a => a.id === s.id)?.category || '');
@@ -333,10 +223,10 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                     .filter(s => s.id !== 's-auto-C-NONE' && s.name !== 'C-NONE')
                     .find(s => getSubCat(s) === cat);
                   const isOpen = activeSubCategory === cat;
-                  
+
                   return (
                     <div key={cat} className="bg-slate-50 rounded-2xl border border-slate-100 overflow-hidden transition-all">
-                      <button 
+                      <button
                         type="button"
                         onClick={() => setActiveSubCategory(isOpen ? null : cat)}
                         className="w-full flex items-center justify-between p-4 hover:bg-slate-100/50 transition-all"
@@ -361,8 +251,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                             <button
                               type="button"
                               onClick={() => {
-                                const filtered = formData.submaterials.filter(s => s.category !== cat);
-                                setFormData({ ...formData, submaterials: filtered });
+                                setFormData({ ...formData, submaterials: formData.submaterials.filter(s => s.category !== cat) });
                                 setActiveSubCategory(null);
                               }}
                               className={`flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all border ${!selectedSub ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-slate-50 border-slate-100 text-slate-500 hover:bg-slate-100'}`}
@@ -370,7 +259,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                               <span>{cat} 선택 안함</span>
                               {!selectedSub && <div className="w-2 h-2 bg-indigo-600 rounded-full" />}
                             </button>
-                            
+
                             {allSubmaterials.filter(s => s.category === cat).map(sub => {
                               const isSelected = selectedSub?.id === sub.id;
                               return (
@@ -385,7 +274,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                                       submaterials: [...filtered, {
                                         id: sub.id,
                                         name: sub.name,
-                                        category: cat, // Use the BOM category (용기, 마개, etc.)
+                                        category: cat,
                                         stock: selectedSub?.stock || 1,
                                         unit: sub.unit
                                       }],
@@ -407,7 +296,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                               <div className="flex items-center space-x-2">
                                 <span className="text-[10px] font-black text-slate-400 uppercase">필요 수량</span>
                                 <div className="flex items-center bg-white border border-slate-200 rounded-lg px-2 py-1">
-                                  <input 
+                                  <input
                                     type="number"
                                     value={selectedSub.stock}
                                     onChange={(e) => {
@@ -430,21 +319,141 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                   );
                 })}
               </div>
-
             </div>
           )}
+
+          {/* 1박스 당 수량 */}
+          {(formData.category === '향미유' || formData.category === '고춧가루' || formData.category === '박스' || formData.category === '완제품') && (
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
+                <Hash size={14} className="mr-2" /> 1박스 당 수량 (개)
+              </label>
+              <input
+                type="number"
+                min={1}
+                value={formData.boxSize}
+                onChange={(e) => setFormData({...formData, boxSize: Number(e.target.value) || 12})}
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+              />
+            </div>
+          )}
+
+          {/* 서류용 품목명 (완제품) — 커스텀 드롭다운 */}
+          {formData.category === '완제품' && (
+            <div className="space-y-2" ref={pumokRef}>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
+                <Tag size={14} className="mr-2" /> 품목 (서류용)
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={formData.품목}
+                  onChange={(e) => { setFormData({...formData, 품목: e.target.value}); setShowPumokDrop(true); }}
+                  onFocus={() => setShowPumokDrop(true)}
+                  placeholder="예: 시골향참기름1"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                />
+                {showPumokDrop && pumokOptions.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl z-20 overflow-hidden max-h-48 overflow-y-auto custom-scrollbar">
+                    {pumokOptions.map(v => (
+                      <button
+                        key={v}
+                        type="button"
+                        onMouseDown={(e) => { e.preventDefault(); setFormData({...formData, 품목: v}); setShowPumokDrop(false); }}
+                        className={`w-full text-left px-5 py-2.5 text-sm font-bold hover:bg-indigo-50 hover:text-indigo-700 transition-all ${formData.품목 === v ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700'}`}
+                      >
+                        {v}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 매입거래처 (비완제품) */}
+          {formData.category !== '완제품' && (
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
+                <Building2 size={14} className="mr-2" /> 매입거래처
+              </label>
+              <select
+                value={formData.supplierId}
+                onChange={(e) => setFormData({...formData, supplierId: e.target.value})}
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all appearance-none"
+              >
+                <option value="">선택 안 함</option>
+                {supplierClients.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* 운임타입 (박스) */}
+          {formData.category === '박스' && (
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
+                <Tag size={14} className="mr-2" /> 운임타입
+              </label>
+              <div className="flex gap-2">
+                {(['s', 'a', 'b', 'c', 'd', 'e'] as const).map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setFormData({...formData, freightType: t})}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-black border transition-all uppercase ${
+                      formData.freightType === t
+                        ? 'bg-indigo-600 border-indigo-600 text-white shadow'
+                        : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 재고량 + 최소 수량 */}
+          <div className="grid grid-cols-2 gap-4 pt-2">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
+                <Hash size={14} className="mr-2" /> 현재 재고량
+              </label>
+              <input
+                type="number"
+                value={formData.stock}
+                onChange={(e) => setFormData({...formData, stock: Number(e.target.value)})}
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className={`text-xs font-bold uppercase tracking-widest flex items-center ${formData.category === '완제품' ? 'text-slate-200' : 'text-amber-600'}`}>
+                <ShieldAlert size={14} className="mr-2" /> 최소 수량 알림
+              </label>
+              <input
+                disabled={formData.category === '완제품'}
+                type="number"
+                value={formData.category === '완제품' ? 0 : formData.minStock}
+                onChange={(e) => setFormData({...formData, minStock: Number(e.target.value)})}
+                className="w-full bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3.5 text-sm font-bold text-amber-700 outline-none focus:ring-2 focus:ring-amber-500 transition-all disabled:opacity-30"
+              />
+            </div>
+          </div>
+
         </form>
 
         <div className="p-6 border-t border-slate-100 bg-slate-50/50 rounded-b-3xl flex space-x-3">
-          <button 
+          <button
             type="button"
             onClick={onClose}
             className="flex-1 py-4 rounded-2xl font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 transition-all"
           >
             취소
           </button>
-          <button 
-            type="submit"
+          <button
+            type="button"
             onClick={handleSubmit}
             className="flex-1 py-4 rounded-2xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all"
           >
