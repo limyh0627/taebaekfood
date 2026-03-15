@@ -632,6 +632,11 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [showAddProductSelect, setShowAddProductSelect] = useState<string | null>(null);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [columnUnits, setColumnUnits] = useState<Record<string, number>>(defaultUnits);
+  const [showAllHistory, setShowAllHistory] = useState(false);
+  const [historySearch, setHistorySearch] = useState('');
+  const [historyDateFrom, setHistoryDateFrom] = useState('');
+  const [historyDateTo, setHistoryDateTo] = useState('');
+  const HISTORY_PREVIEW = 5;
 
   const expandColumn = (colId: string) =>
     setColumnUnits(prev => ({ ...prev, [colId]: Math.min((prev[colId] ?? defaultUnits[colId] ?? 1) + 1, maxUnits[colId] ?? 2) }));
@@ -770,7 +775,19 @@ const OrdersList: React.FC<OrdersListProps> = ({
           <div className="flex flex-col md:flex-row gap-3 md:gap-4 md:min-w-max">
             {currentConfigs.map((col) => {
               const Icon = col.icon;
-              const colOrders = filteredOrders.filter(o => col.statusFilter.includes(o.status));
+              const allColOrders = filteredOrders.filter(o => col.statusFilter.includes(o.status));
+              const isHistory = col.id === 'history_col';
+              const filteredHistoryOrders = isHistory ? allColOrders.filter(o => {
+                if (historySearch && !((o.customerName || '').includes(historySearch))) return false;
+                const dateStr = (o.deliveredAt || o.deliveryDate || o.createdAt || '').slice(0, 10);
+                if (historyDateFrom && dateStr < historyDateFrom) return false;
+                if (historyDateTo && dateStr > historyDateTo) return false;
+                return true;
+              }) : allColOrders;
+              const hasHistoryFilter = isHistory && (historySearch || historyDateFrom || historyDateTo);
+              const colOrders = isHistory
+                ? (hasHistoryFilter ? filteredHistoryOrders : (showAllHistory ? filteredHistoryOrders : filteredHistoryOrders.slice(0, HISTORY_PREVIEW)))
+                : allColOrders;
               const groupedOrders: Record<OrderSource, Order[]> = {
                 '스마트스토어': colOrders.filter(o => o.source === '스마트스토어'),
                 '택배': colOrders.filter(o => o.source === '택배' || (o.source === '일반' && o.deliveryBoxes !== undefined)),
@@ -793,7 +810,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   <div className="p-5 border-b border-white/50 flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                       <div className={`p-2 rounded-xl ${col.color} text-white`}><Icon size={20} /></div>
-                      <h3 className={`font-black text-base ${col.textColor}`}>{col.label} ({colOrders.length})</h3>
+                      <h3 className={`font-black text-base ${col.textColor}`}>
+                        {col.label} ({isHistory ? `${colOrders.length}/${allColOrders.length}` : colOrders.length})
+                      </h3>
                     </div>
                     <div className="flex items-center space-x-0.5">
                       {units > 1 && (
@@ -811,6 +830,28 @@ const OrdersList: React.FC<OrdersListProps> = ({
                       )}
                     </div>
                   </div>
+                  {isHistory && (
+                    <div className="px-5 py-3 border-b border-white/50 flex flex-col gap-2">
+                      <input
+                        type="text"
+                        placeholder="거래처 검색"
+                        value={historySearch}
+                        onChange={e => setHistorySearch(e.target.value)}
+                        className="w-full text-xs px-3 py-1.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-1 focus:ring-slate-400"
+                      />
+                      <div className="flex items-center gap-1">
+                        <input type="date" value={historyDateFrom} onChange={e => setHistoryDateFrom(e.target.value)}
+                          className="flex-1 text-[10px] px-2 py-1 rounded-xl border border-slate-200 bg-white outline-none" />
+                        <span className="text-[10px] text-slate-400">~</span>
+                        <input type="date" value={historyDateTo} onChange={e => setHistoryDateTo(e.target.value)}
+                          className="flex-1 text-[10px] px-2 py-1 rounded-xl border border-slate-200 bg-white outline-none" />
+                        {(historySearch || historyDateFrom || historyDateTo) && (
+                          <button onClick={() => { setHistorySearch(''); setHistoryDateFrom(''); setHistoryDateTo(''); }}
+                            className="text-[10px] text-slate-400 hover:text-slate-600 px-1">✕</button>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="p-5 space-y-6">
                     {(['스마트스토어', '택배', '일반'] as OrderSource[]).map(source => (
@@ -830,6 +871,14 @@ const OrdersList: React.FC<OrdersListProps> = ({
                         <Inbox size={48} />
                         <p className="text-xs font-bold mt-2">주문이 없습니다</p>
                       </div>
+                    )}
+                    {isHistory && !hasHistoryFilter && filteredHistoryOrders.length > HISTORY_PREVIEW && (
+                      <button
+                        onClick={() => setShowAllHistory(v => !v)}
+                        className="w-full py-2 text-[11px] font-bold text-slate-400 hover:text-slate-600 hover:bg-white/60 rounded-xl transition-all"
+                      >
+                        {showAllHistory ? '▲ 접기' : `▼ 더 보기 (${filteredHistoryOrders.length - HISTORY_PREVIEW}건 더)`}
+                      </button>
                     )}
                   </div>
                 </div>
