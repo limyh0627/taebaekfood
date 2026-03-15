@@ -68,6 +68,7 @@ export interface Order {
   deliveryBoxes?: DeliveryBox[];
   invoicePrinted?: boolean;
   deliveredAt?: string; // 주문이력으로 이동한 날짜
+  documentDate?: string; // 서류 날짜 (원료수불부 기준일)
 }
 
 export interface SubmaterialComponent {

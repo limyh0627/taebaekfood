@@ -1195,7 +1195,7 @@ const App: React.FC = () => {
                                 for (const { itemIdx, date } of updates) {
                                   newItems[itemIdx] = { ...newItems[itemIdx], expirationDate: date };
                                 }
-                                await updateItem('orders', orderId, { items: newItems });
+                                await updateItem('orders', orderId, { items: newItems, documentDate: bulkMfgDate });
                               }
                             }}
                             className="text-[11px] font-black text-white bg-amber-500 hover:bg-amber-600 px-3 py-1 rounded-xl transition-all whitespace-nowrap"
@@ -1369,11 +1369,8 @@ const App: React.FC = () => {
                       o.status === OrderStatus.PENDING
                     );
                     for (const o of deliveredOrders) {
-                      // 제조일자 기준: 항목 중 가장 빠른 제조일자 사용, 없으면 deliveredAt
-                      const mfgDates = o.items.map(i => i.expirationDate).filter(Boolean) as string[];
-                      const dateStr = mfgDates.length > 0
-                        ? [...mfgDates].sort()[0]
-                        : (o.deliveredAt?.slice(0, 10) || '');
+                      // 서류날짜 기준: documentDate → deliveredAt 순으로 폴백
+                      const dateStr = o.documentDate || o.deliveredAt?.slice(0, 10) || '';
                       if (!dateStr || !dateStr.startsWith(docYearMonth)) continue;
                       const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '';
                       for (const item of o.items) {

@@ -149,8 +149,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, onClos
       if (item.productId !== productId) return item;
       const qty = typeof item.quantity === 'number' && item.quantity > 0 ? item.quantity : 1;
       if (item.isBoxUnit) {
-        // B → 개: 박스수 × boxSize
-        return { ...item, isBoxUnit: false, quantity: qty * (boxSize || 1) };
+        // B → 개: 1로 초기화
+        return { ...item, isBoxUnit: false, quantity: 1 };
       } else {
         // 개 → B: 낱개수 ÷ boxSize (올림)
         return { ...item, isBoxUnit: true, quantity: Math.ceil(qty / (boxSize || 1)) };
