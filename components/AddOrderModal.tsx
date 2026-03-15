@@ -135,6 +135,14 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, onClos
     ));
   };
 
+  const handleQuantityStep = (productId: string, delta: number) => {
+    setSelectedItems(prev => prev.map(item => {
+      if (item.productId !== productId) return item;
+      const current = typeof item.quantity === 'number' ? item.quantity : 1;
+      return { ...item, quantity: Math.max(1, current + delta) };
+    }));
+  };
+
   const toggleBoxUnit = (productId: string) => {
     const boxSize = getBoxSize(productId);
     setSelectedItems(prev => prev.map(item => {
@@ -335,7 +343,9 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, onClos
                                 B
                               </button>
                             )}
-                            <input type="number" value={selection.quantity === '' ? '' : selection.quantity} onChange={(e) => handleQuantityInput(product.id, e.target.value)} className="text-xs font-black w-full text-center text-slate-800 bg-white border border-slate-200 rounded-lg outline-none py-0.5" />
+                            <button type="button" onClick={() => handleQuantityStep(product.id, -1)} className="text-sm font-black w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 shrink-0">−</button>
+                          <input type="number" value={selection.quantity === '' ? '' : selection.quantity} onChange={(e) => handleQuantityInput(product.id, e.target.value)} className="text-xs font-black w-full text-center text-slate-800 bg-white border border-slate-200 rounded-lg outline-none py-0.5" />
+                          <button type="button" onClick={() => handleQuantityStep(product.id, 1)} className="text-sm font-black w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 shrink-0">+</button>
                             <span className="text-[10px] font-bold text-slate-400 shrink-0">
                               {selection.isBoxUnit && getBoxSize(product.id) > 0 ? '박스' : product.unit || '개'}
                             </span>
@@ -384,7 +394,9 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, onClos
                               B
                             </button>
                           )}
+                          <button type="button" onClick={() => handleQuantityStep(product.id, -1)} className="text-sm font-black w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 shrink-0">−</button>
                           <input type="number" value={selection.quantity === '' ? '' : selection.quantity} onChange={(e) => handleQuantityInput(product.id, e.target.value)} className="text-xs font-black w-full text-center text-slate-800 bg-white border border-slate-200 rounded-lg outline-none py-0.5" />
+                          <button type="button" onClick={() => handleQuantityStep(product.id, 1)} className="text-sm font-black w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 shrink-0">+</button>
                           <span className="text-[10px] font-bold text-slate-400 shrink-0">
                             {selection.isBoxUnit && getBoxSize(product.id) > 0 ? '박스' : product.unit || 'L'}
                           </span>
@@ -427,7 +439,9 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, onClos
                               B
                             </button>
                           )}
+                          <button type="button" onClick={() => handleQuantityStep(product.id, -1)} className="text-sm font-black w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 shrink-0">−</button>
                           <input type="number" value={selection.quantity === '' ? '' : selection.quantity} onChange={(e) => handleQuantityInput(product.id, e.target.value)} className="text-xs font-black w-full text-center text-slate-800 bg-white border border-slate-200 rounded-lg outline-none py-0.5" />
+                          <button type="button" onClick={() => handleQuantityStep(product.id, 1)} className="text-sm font-black w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 shrink-0">+</button>
                           <span className="text-[10px] font-bold text-slate-400 shrink-0">
                             {selection.isBoxUnit && getBoxSize(product.id) > 0 ? '박스' : product.unit || 'kg'}
                           </span>

@@ -26,6 +26,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     unit: initialData?.unit || '개',
     freightType: (initialData?.freightType || 's') as 's' | 'a' | 'b' | 'c' | 'd' | 'e',
     boxSize: initialData?.boxSize || 12,
+    용량: initialData?.용량 || '',
+    품목: initialData?.품목 || '',
     clientId: initialData?.clientId || '',
     supplierId: initialData?.supplierId || '',
     submaterials: (initialData?.submaterials || []).map(s => ({
@@ -65,6 +67,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
         : (initialData?.submaterials || []),
       ...(formData.category === '박스' && { freightType: formData.freightType, boxSize: formData.boxSize }),
       ...((formData.category === '향미유' || formData.category === '고춧가루' || formData.category === '완제품') && { boxSize: formData.boxSize }),
+      ...(formData.용량 && { 용량: formData.용량 }),
+      ...(formData.품목 && { 품목: formData.품목 }),
       ...(formData.category === '완제품' && formData.clientId && { clientId: formData.clientId }),
       ...(formData.category !== '완제품' && formData.supplierId && { supplierId: formData.supplierId }),
     };
@@ -153,6 +157,21 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             </div>
           )}
 
+          {formData.category === '용기' && (
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
+                <Box size={14} className="mr-2" /> 용량 (예: 1800ml, 500ml)
+              </label>
+              <input
+                type="text"
+                value={formData.용량}
+                onChange={(e) => setFormData({...formData, 용량: e.target.value})}
+                placeholder="예: 1800ml, 500ml, 1kg"
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+              />
+            </div>
+          )}
+
           {(formData.category === '향미유' || formData.category === '고춧가루' || formData.category === '박스' || formData.category === '완제품') && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
@@ -163,6 +182,42 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                 min={1}
                 value={formData.boxSize}
                 onChange={(e) => setFormData({...formData, boxSize: Number(e.target.value) || 12})}
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+              />
+            </div>
+          )}
+
+          {formData.category === '완제품' && (
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
+                <Tag size={14} className="mr-2" /> 품목 (서류용, 예: 시골향참기름3번)
+              </label>
+              <input
+                type="text"
+                list="품목-suggestions"
+                value={formData.품목}
+                onChange={(e) => setFormData({...formData, 품목: e.target.value})}
+                placeholder="예: 시골향참기름1, 시골향참기름3번"
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+              />
+              <datalist id="품목-suggestions">
+                {[...new Set(allSubmaterials.map(s => (s as Product).품목).filter(Boolean))].map(v => (
+                  <option key={v} value={v} />
+                ))}
+              </datalist>
+            </div>
+          )}
+
+          {(formData.category === '완제품' || formData.category === '향미유' || formData.category === '고춧가루') && (
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
+                <Box size={14} className="mr-2" /> 용량 (용기 선택 시 자동 입력)
+              </label>
+              <input
+                type="text"
+                value={formData.용량}
+                onChange={(e) => setFormData({...formData, 용량: e.target.value})}
+                placeholder="예: 1800ml, 500ml, 1kg"
                 className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
               />
             </div>
@@ -312,15 +367,17 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                                   type="button"
                                   onClick={() => {
                                     const filtered = formData.submaterials.filter(s => s.category !== cat);
+                                    const autoCapacity = cat === '용기' ? (allSubmaterials.find(a => a.id === sub.id) as Product | undefined)?.용량 || '' : formData.용량;
                                     setFormData({
                                       ...formData,
-                                      submaterials: [...filtered, { 
-                                        id: sub.id, 
-                                        name: sub.name, 
+                                      submaterials: [...filtered, {
+                                        id: sub.id,
+                                        name: sub.name,
                                         category: cat, // Use the BOM category (용기, 마개, etc.)
-                                        stock: selectedSub?.stock || 1, 
-                                        unit: sub.unit 
-                                      }]
+                                        stock: selectedSub?.stock || 1,
+                                        unit: sub.unit
+                                      }],
+                                      ...(cat === '용기' && { 용량: autoCapacity }),
                                     });
                                     setActiveSubCategory(null);
                                   }}
