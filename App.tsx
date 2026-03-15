@@ -1143,10 +1143,18 @@ const App: React.FC = () => {
                           <input
                             type="date"
                             value={bulkMfgDate}
-                            onChange={e => setBulkMfgDate(e.target.value)}
+                            onChange={e => {
+                              setBulkMfgDate(e.target.value);
+                              if (e.target.value) setDocYearMonth(e.target.value.slice(0, 7));
+                            }}
                             className="text-xs font-bold text-slate-700 bg-transparent outline-none cursor-pointer"
                           />
                           <span className="text-[10px] text-slate-400 whitespace-nowrap">→ 제조 -3일 ±1</span>
+                          {(() => {
+                            const cnt = orders.filter(o => o.status === OrderStatus.SHIPPED || o.status === OrderStatus.PENDING)
+                              .flatMap(o => o.items.filter(item => allProducts.find(p => p.id === item.productId)?.category === '완제품')).length;
+                            return cnt > 0 ? <span className="text-[10px] font-bold text-amber-500 whitespace-nowrap">{cnt}건</span> : null;
+                          })()}
                           <button
                             onClick={async () => {
                               if (!bulkMfgDate) return;
@@ -1163,7 +1171,7 @@ const App: React.FC = () => {
                                   }
                                 });
                               }
-                              if (unset.length === 0) { alert('제조일자 미입력 항목이 없습니다.'); return; }
+                              if (unset.length === 0) { alert('적용할 항목이 없습니다.'); return; }
                               const uniqueProducts: string[] = [];
                               for (const { productName } of unset) {
                                 if (!uniqueProducts.includes(productName)) uniqueProducts.push(productName);
