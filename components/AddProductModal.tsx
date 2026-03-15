@@ -45,6 +45,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   }));
 
   const [activeSubCategory, setActiveSubCategory] = useState<string | null>(null);
+  const [clientSearch, setClientSearch] = useState('');
   const [showPumokDrop, setShowPumokDrop] = useState(false);
   const pumokRef = useRef<HTMLDivElement>(null);
 
@@ -169,39 +170,53 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             </div>
           </div>
 
-          {/* 매출거래처 (완제품) — 그리드 버튼 */}
+          {/* 매출거래처 (완제품) — 검색 + 그리드 */}
           {formData.category === '완제품' && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Building2 size={14} className="mr-2" /> 매출거래처
+                {formData.clientIds.length > 0 && (
+                  <span className="ml-2 px-1.5 py-0.5 bg-indigo-600 text-white text-[9px] font-black rounded-full">{formData.clientIds.length}</span>
+                )}
               </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={clientSearch}
+                  onChange={e => setClientSearch(e.target.value)}
+                  placeholder="거래처 검색..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-4 pr-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-400 transition-all"
+                />
+              </div>
               {salesClients.length === 0 ? (
                 <p className="text-xs text-slate-400 px-1">등록된 매출거래처 없음</p>
               ) : (
-                <div className="flex flex-wrap gap-2">
-                  {salesClients.map(c => {
-                    const checked = formData.clientIds.includes(c.id);
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => {
-                          const next = checked
-                            ? formData.clientIds.filter(id => id !== c.id)
-                            : [...formData.clientIds, c.id];
-                          setFormData({...formData, clientIds: next});
-                        }}
-                        className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-                          checked
-                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
-                            : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600'
-                        }`}
-                      >
-                        {checked && <Check size={11} />}
-                        {c.name}
-                      </button>
-                    );
-                  })}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                  {salesClients
+                    .filter(c => !clientSearch.trim() || c.name.toLowerCase().includes(clientSearch.toLowerCase()))
+                    .map(c => {
+                      const checked = formData.clientIds.includes(c.id);
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => {
+                            const next = checked
+                              ? formData.clientIds.filter(id => id !== c.id)
+                              : [...formData.clientIds, c.id];
+                            setFormData({...formData, clientIds: next});
+                          }}
+                          className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold border transition-all text-left ${
+                            checked
+                              ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                              : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'
+                          }`}
+                        >
+                          {checked && <Check size={10} className="shrink-0" />}
+                          <span className="truncate">{c.name}</span>
+                        </button>
+                      );
+                    })}
                 </div>
               )}
             </div>
