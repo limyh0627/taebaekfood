@@ -17,7 +17,7 @@ interface DatabaseViewProps {
   onSync: (data: { clients: Client[], products: Product[] }) => void;
 }
 
-const DatabaseView: React.FC<DatabaseViewProps> = ({ onSync: _onSync }) => {
+const DatabaseView: React.FC<DatabaseViewProps> = ({ onSync }) => {
   return (
     <div className="flex items-center justify-center h-64 text-slate-300 font-bold text-lg">
       준비 중
