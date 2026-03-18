@@ -900,8 +900,7 @@ const App: React.FC = () => {
               (o.status === OrderStatus.SHIPPED || o.status === OrderStatus.PENDING) &&
               o.items.some(item => {
                 const p = allProducts.find(pr => pr.id === item.productId);
-                if (p?.category !== '완제품') return false;
-                return !item.expirationDate || item.expirationDate.startsWith(docYearMonth);
+                return p?.category === '완제품';
               })
             );
 
