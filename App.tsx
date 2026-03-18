@@ -980,7 +980,7 @@ const App: React.FC = () => {
               const base = agg[`${품목}||${용량}`]?.qty ?? 0;
               const extra = mergeIntoKg
                 .filter(m => m.품목 === 품목 && m.기준용량 === 용량)
-                .reduce((sum, m) => sum + Math.round((agg[`${m.품목}||${m.소용량}`]?.qty ?? 0) * m.비율), 0);
+                .reduce((sum, m) => sum + Math.round((agg[`${m.품목}||${m.소용량}`]?.qty ?? 0) * m.비율 * 10) / 10, 0);
               return base + extra;
             };
 
