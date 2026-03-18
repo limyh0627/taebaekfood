@@ -897,7 +897,7 @@ const App: React.FC = () => {
           )}
           {currentView === 'documents' && (() => {
             const shippedOrders = orders.filter(o =>
-              (o.status === OrderStatus.SHIPPED || o.status === OrderStatus.PENDING) &&
+              o.status === OrderStatus.SHIPPED &&
               o.items.some(item => {
                 const p = allProducts.find(pr => pr.id === item.productId);
                 return p?.category === '완제품';
@@ -1179,7 +1179,7 @@ const App: React.FC = () => {
                           />
                           <span className="text-[10px] text-slate-400 whitespace-nowrap">→ 제조 -3일 ±1</span>
                           {(() => {
-                            const cnt = orders.filter(o => o.status === OrderStatus.SHIPPED || o.status === OrderStatus.PENDING)
+                            const cnt = orders.filter(o => o.status === OrderStatus.SHIPPED)
                               .flatMap(o => o.items.filter(item => allProducts.find(p => p.id === item.productId)?.category === '완제품')).length;
                             return cnt > 0 ? <span className="text-[10px] font-bold text-amber-500 whitespace-nowrap">{cnt}건</span> : null;
                           })()}
@@ -1189,7 +1189,7 @@ const App: React.FC = () => {
                               type UnsetItem = { orderId: string; itemIdx: number; productName: string };
                               const unset: UnsetItem[] = [];
                               const targetOrders = orders.filter(o =>
-                                o.status === OrderStatus.SHIPPED || o.status === OrderStatus.PENDING
+                                o.status === OrderStatus.SHIPPED
                               );
                               for (const o of targetOrders) {
                                 o.items.forEach((item, itemIdx) => {
