@@ -898,7 +898,11 @@ const App: React.FC = () => {
           {currentView === 'documents' && (() => {
             const shippedOrders = orders.filter(o =>
               (o.status === OrderStatus.SHIPPED || o.status === OrderStatus.PENDING) &&
-              o.items.some(item => item.expirationDate?.startsWith(docYearMonth))
+              o.items.some(item => {
+                const p = allProducts.find(pr => pr.id === item.productId);
+                if (p?.category !== '완제품') return false;
+                return !item.expirationDate || item.expirationDate.startsWith(docYearMonth);
+              })
             );
 
             // 소비기한 계산 헬퍼 (제조일자 + 1년)
