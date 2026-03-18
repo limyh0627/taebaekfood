@@ -971,6 +971,19 @@ const App: React.FC = () => {
               { 품목: '시골향볶음검정참깨', 용량: '1kg' },
             ];
 
+            // 소용량 → 1kg 환산 합산 규칙 (서류 표시용)
+            // 예: 시골향볶음참깨 200g 40개 → 8kg → 1kg 행에 8개 추가
+            const mergeIntoKg: { 품목: string; 기준용량: string; 소용량: string; 비율: number }[] = [
+              { 품목: '시골향볶음참깨', 기준용량: '1kg', 소용량: '200g', 비율: 0.2 },
+            ];
+            const getBottomQty = (품목: string, 용량: string): number => {
+              const base = agg[`${품목}||${용량}`]?.qty ?? 0;
+              const extra = mergeIntoKg
+                .filter(m => m.품목 === 품목 && m.기준용량 === 용량)
+                .reduce((sum, m) => sum + Math.round((agg[`${m.품목}||${m.소용량}`]?.qty ?? 0) * m.비율), 0);
+              return base + extra;
+            };
+
             // 좌측 rows 생성
             const leftRows: { groupLabel: string; 용량: string; 수량: number; 소비기한: string; 비고: string }[] = [];
             topTemplate.forEach(({ label, key, volumes }) => {
@@ -1087,14 +1100,15 @@ const App: React.FC = () => {
                 const earliestMfg = a.mfgDates.length ? [...a.mfgDates].sort()[0] : '';
                 const expiryStr = earliestMfg ? calcExpiry(earliestMfg) : '';
                 const clientNote = a.clients.join(', ');
-                const row = ws.addRow([품목, 용량, a.qty, expiryStr, clientNote]);
+                const displayQty = getBottomQty(품목, 용량);
+                const row = ws.addRow([품목, 용량, displayQty, expiryStr, clientNote]);
                 row.height = 16;
                 [1,2,3,4,5].forEach(c => {
                   const cell = row.getCell(c);
                   cell.border = thinBorder;
                   cell.font = { bold: c === 1, size: 9 };
                   cell.alignment = { horizontal: c <= 2 ? 'left' : 'center', vertical: 'middle', wrapText: c === 5 };
-                  if (c === 3 && a.qty > 0) cell.font = { bold: true, size: 9, color: { argb: 'FF1E3A5F' } };
+                  if (c === 3 && displayQty > 0) cell.font = { bold: true, size: 9, color: { argb: 'FF1E3A5F' } };
                 });
                 ws.addRow([]);
               });
@@ -1309,11 +1323,12 @@ const App: React.FC = () => {
                             const earliestMfg = a.mfgDates.length ? [...a.mfgDates].sort()[0] : '';
                             const expiryStr = earliestMfg ? calcExpiry(earliestMfg) : '';
                             const clientNote = a.clients.join(', ');
+                            const displayQty = getBottomQty(품목, 용량);
                             return (
                               <tr key={`${품목}${용량}`} className="hover:bg-slate-50/50">
                                 <td className="px-3 py-1.5 border border-slate-200 font-bold text-slate-800">{품목}</td>
                                 <td className="px-3 py-1.5 border border-slate-200 text-center text-slate-600">{용량}</td>
-                                <td className={`px-3 py-1.5 border border-slate-200 text-center font-black ${a.qty > 0 ? 'text-indigo-700' : 'text-slate-300'}`}>{a.qty}</td>
+                                <td className={`px-3 py-1.5 border border-slate-200 text-center font-black ${displayQty > 0 ? 'text-indigo-700' : 'text-slate-300'}`}>{displayQty}</td>
                                 <td className="px-3 py-1.5 border border-slate-200 text-center text-slate-500 whitespace-nowrap">{expiryStr}</td>
                                 <td className="px-3 py-1.5 border border-slate-200 text-slate-500 text-[10px] break-words max-w-[160px]">{clientNote}</td>
                               </tr>
