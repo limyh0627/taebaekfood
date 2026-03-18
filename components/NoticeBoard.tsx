@@ -1,13 +1,14 @@
 
 import React, { useState } from 'react';
-import { 
-  BellRing, 
-  Search, 
-  Calendar, 
-  User, 
-  ChevronRight, 
-  AlertCircle, 
-  X
+import {
+  BellRing,
+  Search,
+  Calendar,
+  User,
+  ChevronRight,
+  AlertCircle,
+  X,
+  Plus
 } from 'lucide-react';
 import { Post } from '../types';
 
@@ -16,9 +17,11 @@ interface NoticeBoardProps {
   onAddPost?: (_post: Post) => void;
 }
 
-const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts }) => {
+const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, onAddPost }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ title: '', content: '', author: '', tag: '공지' as '공지' | '긴급' | '매뉴얼' | '업무' });
 
   const filteredPosts = posts.filter(post => 
     post.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -32,15 +35,25 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts }) => {
           <h2 className="text-3xl font-black text-slate-900">공지사항</h2>
           <p className="text-slate-500 mt-1">사내 주요 소식 및 긴급 공지를 확인하세요.</p>
         </div>
-        <div className="relative max-w-md w-full">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-          <input 
-            type="text" 
-            placeholder="공지 내용 검색..." 
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-white border border-slate-200 rounded-2xl pl-12 pr-4 py-3.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm transition-all"
-          />
+        <div className="flex items-center gap-3">
+          <div className="relative max-w-md w-full">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input
+              type="text"
+              placeholder="공지 내용 검색..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-white border border-slate-200 rounded-2xl pl-12 pr-4 py-3.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm transition-all"
+            />
+          </div>
+          {onAddPost && (
+            <button
+              onClick={() => setShowForm(true)}
+              className="flex items-center gap-2 px-4 py-3.5 bg-indigo-600 text-white rounded-2xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-sm whitespace-nowrap"
+            >
+              <Plus size={16} /> 공지 추가
+            </button>
+          )}
         </div>
       </div>
 
@@ -72,6 +85,72 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts }) => {
           </div>
         ))}
       </div>
+
+      {/* 공지 작성 모달 */}
+      {showForm && onAddPost && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setShowForm(false)} />
+          <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl p-8 space-y-5 animate-in zoom-in-95 duration-300">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-black text-slate-900">공지 작성</h3>
+              <button onClick={() => setShowForm(false)} className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-full"><X size={20} /></button>
+            </div>
+            <div className="space-y-4">
+              <input
+                type="text"
+                placeholder="제목"
+                value={form.title}
+                onChange={e => setForm({ ...form, title: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  type="text"
+                  placeholder="작성자"
+                  value={form.author}
+                  onChange={e => setForm({ ...form, author: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <select
+                  value={form.tag}
+                  onChange={e => setForm({ ...form, tag: e.target.value as typeof form.tag })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {(['공지', '긴급', '매뉴얼', '업무'] as const).map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <textarea
+                placeholder="내용"
+                rows={6}
+                value={form.content}
+                onChange={e => setForm({ ...form, content: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+              />
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => setShowForm(false)} className="flex-1 py-3 rounded-2xl font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50">취소</button>
+              <button
+                onClick={() => {
+                  if (!form.title || !form.content) return;
+                  onAddPost({
+                    id: `notice-${Date.now()}`,
+                    title: form.title,
+                    content: form.content,
+                    author: form.author || '관리자',
+                    date: new Date().toISOString().slice(0, 10),
+                    tag: form.tag,
+                  });
+                  setForm({ title: '', content: '', author: '', tag: '공지' });
+                  setShowForm(false);
+                }}
+                className="flex-1 py-3 rounded-2xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-100"
+              >
+                등록
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Notice Detail Modal */}
       {selectedPost && (

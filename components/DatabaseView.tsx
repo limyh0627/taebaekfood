@@ -17,7 +17,12 @@ interface DatabaseViewProps {
   onSync: (data: { clients: Client[], products: Product[] }) => void;
 }
 
-const DatabaseView: React.FC<DatabaseViewProps> = ({ onSync }) => {
+const DatabaseView: React.FC<DatabaseViewProps> = ({ onSync: _onSync }) => {
+  return (
+    <div className="flex items-center justify-center h-64 text-slate-300 font-bold text-lg">
+      준비 중
+    </div>
+  );
   const [activeTab, setActiveTab] = useState<'sync' | 'script'>('sync');
   const [sheetId, setSheetId] = useState(localStorage.getItem('gsheet_id') || '');
   const [appsScriptUrl, setAppsScriptUrl] = useState(localStorage.getItem('apps_script_url') || '');

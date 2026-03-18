@@ -280,6 +280,16 @@ const App: React.FC = () => {
     };
   }, []);
 
+  // 완료/반려 후 1일 지난 확인사항 자동 삭제
+  useEffect(() => {
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    adjustmentRequests.forEach(r => {
+      if ((r.status === 'processed' || r.status === 'rejected') && r.processedAt && r.processedAt < oneDayAgo) {
+        deleteItem('adjustmentRequests', r.id);
+      }
+    });
+  }, [adjustmentRequests]);
+
   // 신규 주문 등록 시 부자재 부족 여부 체크 후 확인사항 등록
   const checkAndAlertShortage = async (orderItems: Order['items']) => {
     const usage: Record<string, { name: string; needed: number; unit: string }> = {};
@@ -873,7 +883,7 @@ const App: React.FC = () => {
               }} />
             </div>
           )}
-          {currentView === 'notice' && <NoticeBoard posts={noticePosts} />}
+          {currentView === 'notice' && <NoticeBoard posts={noticePosts} onAddPost={(post) => addItem('notices', post)} />}
           {currentView === 'pallets' && (
             <PalletManager 
               pallets={pallets} 
