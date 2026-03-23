@@ -13,10 +13,13 @@ export interface OrderItem {
   quantity: number;
   price: number;
   checked?: boolean;
-  expirationDate?: string;
+  mfgDate?: string;      // 제조일자 (소비기한은 +1년으로 자동 계산)
   labelType?: '대기' | '날인' | '부착';
-  isBoxUnit?: boolean;   // 박스 단위로 주문했는지
-  boxQuantity?: number;  // 박스 수량 (isBoxUnit이 true일 때)
+  isBoxUnit?: boolean;    // 박스 단위로 주문했는지
+  boxQuantity?: number;   // 박스 수 (isBoxUnit이 true일 때)
+  unitsPerBox?: number;   // 박스당 낱개 수 (주문 시점 기준)
+  boxType?: string;       // 박스 종류 표시명 (예: "2번박스")
+  boxSubId?: string;      // 부자재 박스 ID (재고 차감 대상)
 }
 
 export interface OrderPallet {
@@ -71,6 +74,17 @@ export interface Order {
   documentDate?: string; // 서류 날짜 (원료수불부 기준일)
 }
 
+export interface BoxConfig {
+  boxType: string;     // 박스 종류 표시명 (예: "2번박스", "3번박스")
+  unitsPerBox: number; // 박스당 낱개 수 (예: 12, 10)
+  boxSubId?: string;   // 부자재 박스 ID (재고 차감 대상)
+}
+
+export interface ClientBoxConfig {
+  clientId: string;
+  configs: BoxConfig[]; // 거래처당 여러 박스 설정 가능
+}
+
 export interface SubmaterialComponent {
   id: string;
   name: string;
@@ -96,7 +110,9 @@ export interface Product {
   clientIds?: string[]; // 소속 거래처 ID 목록
   supplierId?: string; // 매입 거래처 ID
   freightType?: 's' | 'a' | 'b' | 'c' | 'd' | 'e'; // 박스 운임타입
-  boxSize?: number; // 1박스당 개수 (완제품, 향미유 등)
+  boxSize?: number; // @deprecated — defaultBoxConfig.unitsPerBox 사용
+  defaultBoxConfig?: BoxConfig;       // 기본 박스 설정
+  clientBoxConfigs?: ClientBoxConfig[]; // 거래처별 박스 설정
   품목?: string; // 서류용 품목명 (예: 시골향참기름1)
   용량?: string; // 서류용 용량 (예: 1800ml, 1kg)
   submaterials?: SubmaterialComponent[];
@@ -207,9 +223,11 @@ export interface RawMaterialEntry {
   material: string;  // 원료명
   date: string;
   received: number;  // 입고량
-  used: number;      // 사용량
+  used: number;      // 사용량 (정정은 음수)
   note: string;      // 비고
   createdAt: string;
+  type?: 'auto' | 'manual' | 'correction'; // auto: 주문 자동생성, manual: 직접입력, correction: 정정
+  orderId?: string;  // auto 타입일 때 출처 주문 ID
 }
 
 export type AdjustmentType = 'quantity_change' | 'cancel_receipt' | 'chat_mention' | 'reorder_alert';

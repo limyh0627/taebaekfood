@@ -50,6 +50,7 @@ import OfficeTalk from './components/OfficeTalk';
 import ExcelJS from 'exceljs';
 
 import { db } from './src/firebase';
+import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg } from './src/constants/formula';
 import { 
   subscribeToCollection, 
   addItem, 
@@ -149,6 +150,8 @@ const App: React.FC = () => {
   const [docYearMonth, setDocYearMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [bulkMfgDate, setBulkMfgDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [rmActiveMaterial, setRmActiveMaterial] = useState('참깨');
+  const [rmCorrectionTargetId, setRmCorrectionTargetId] = useState<string | null>(null);
+  const [rmCorrectionForm, setRmCorrectionForm] = useState({ date: new Date().toISOString().slice(0, 10), amount: '', isNegative: true, note: '' });
   const [isMobile, setIsMobile] = useState(false);
 
   // 모바일 감지
@@ -183,31 +186,12 @@ const App: React.FC = () => {
   // Combined products for UI
   const allProducts = useMemo(() => [...products, ...submaterials], [products, submaterials]);
 
+  // 판매 상품(완제품/향미유/고춧가루)은 products, 부자재는 submaterials
+  const getProductCollection = (category: string) =>
+    ['완제품', '향미유', '고춧가루'].includes(category) ? 'products' : 'submaterials';
+
   // 원료 자동 사용량 (DELIVERED 주문 → 원료별·날짜별 집계)
   const autoRawMaterialUsage = useMemo<Array<{material: string; date: string; used: number; note: string}>>(() => {
-    const PRODUCT_FORMULA: Record<string, { raw: string; ratio: number }[]> = {
-      '시골향참기름1': [{ raw: '통깨참기름', ratio: 1.0 }],
-      '시골향참기름2': [{ raw: '통깨참기름', ratio: 0.5 }, { raw: '깨분참기름', ratio: 0.5 }],
-      '시골향참기름3': [{ raw: '깨분참기름', ratio: 1.0 }],
-      '시골향참기름4': [{ raw: '통깨참기름', ratio: 0.25 }, { raw: '깨분참기름', ratio: 0.75 }],
-      '시골향들기름1': [{ raw: '통들깨들기름', ratio: 1.0 }],
-      '시골향들기름2': [{ raw: '통들깨들기름', ratio: 0.1 }, { raw: '수입들기름', ratio: 0.9 }],
-      '시골향볶음참깨': [{ raw: '볶음참깨', ratio: 1.0 }],
-      '시골향들깨가루': [{ raw: '볶음들깨', ratio: 1.0 }],
-      '시골향탈피들깨가루': [{ raw: '탈피들깨가루', ratio: 1.0 }],
-      '시골향볶음검정참깨': [{ raw: '볶음검정참깨', ratio: 1.0 }],
-    };
-    const DENSITY: Record<string, number> = { '통깨참기름': 0.916, '깨분참기름': 0.916, '통들깨들기름': 0.924, '수입들기름': 0.924 };
-    const toKg = (용량: string, raw: string, qty: number) => {
-      const m = 용량.match(/^([\d.]+)\s*(ml|l|g|kg)/i);
-      if (!m) return 0;
-      const val = parseFloat(m[1]); const unit = m[2].toLowerCase(); const d = DENSITY[raw] ?? 1.0;
-      if (unit === 'ml') return val / 1000 * d * qty;
-      if (unit === 'l') return val * d * qty;
-      if (unit === 'g') return val / 1000 * qty;
-      if (unit === 'kg') return val * qty;
-      return 0;
-    };
     const dayMap: Record<string, Record<string, { used: number; clients: string[] }>> = {};
     for (const o of orders.filter(o => o.status === OrderStatus.DELIVERED && o.deliveredAt)) {
       const dateStr = o.deliveredAt!.slice(0, 10);
@@ -260,14 +244,7 @@ const App: React.FC = () => {
       subscribeToCollection<AdjustmentRequest>('adjustmentRequests', setAdjustmentRequests),
       subscribeToCollection<{id: string, quantity: number}>('confirmedOrders', setConfirmedOrders),
       subscribeToCollection<Order>('orders', setOrders),
-      subscribeToCollection<Product>('products', (data) => {
-        // clientId → clientIds 마이그레이션
-        const migrated = data.map(p => {
-          if (!p.clientIds && p.clientId) return { ...p, clientIds: [p.clientId] };
-          return p;
-        });
-        setProducts(migrated);
-      }),
+      subscribeToCollection<Product>('products', setProducts),
       subscribeToCollection<Product>('submaterials', setSubmaterials),
       subscribeToCollection<Client>('clients', setClients),
       subscribeToCollection<ChatRoom>('chatRooms', setChatRooms),
@@ -350,45 +327,6 @@ const App: React.FC = () => {
     }
   };
 
-  // 파트너(거래처) 자동 시딩 및 마이그레이션
-  useEffect(() => {
-    const migratePartners = async () => {
-      // 1. 매입처 시딩 (없는 경우만)
-      const supplierSeeds = [
-        { id: 'sup-1', name: '형제프라콘', partnerType: '매입처' as const },
-        { id: 'sup-2', name: '호계', partnerType: '매입처' as const },
-        { id: 'sup-3', name: '밝은디자인', partnerType: '매입처' as const },
-      ];
-      for (const s of supplierSeeds) {
-        const ref = doc(db, 'clients', s.id);
-        const snap = await getDoc(ref);
-        if (!snap.exists()) {
-          await setDoc(ref, { name: s.name, email: '', phone: '', type: '일반', partnerType: s.partnerType });
-        }
-      }
-
-      // 2. 가득찬식품/청정식품: 기존 문서를 찾아 매출+매입처로 업데이트, 새로 만든 중복 삭제
-      const allClients = await getDocs(collection(db, 'clients'));
-      const targets = ['가득찬식품', '청정식품'];
-      for (const name of targets) {
-        const docs = allClients.docs.filter(d => d.data().name === name);
-        if (docs.length > 1) {
-          // partner- 접두사 문서는 삭제, 나머지는 매출+매입처로 업데이트
-          for (const d of docs) {
-            if (d.id.startsWith('partner-')) {
-              await deleteItem('clients', d.id);
-            } else {
-              await updateItem('clients', d.id, { partnerType: '매출+매입처' });
-            }
-          }
-        } else if (docs.length === 1) {
-          // 하나만 있으면 그냥 partnerType만 업데이트
-          await updateItem('clients', docs[0].id, { partnerType: '매출+매입처' });
-        }
-      }
-    };
-    migratePartners();
-  }, []);
 
   // 향미유 제품 시딩
   useEffect(() => {
@@ -403,7 +341,7 @@ const App: React.FC = () => {
         { id: 'f2-1', name: '참고소(연한)', category: '향미유', supplierId: 'C001', stock: 0, minStock: 0,  price: 0, unit: '개', image: '' },
       ];
       for (const item of items) {
-        const ref = doc(db, 'submaterials', item.id);
+        const ref = doc(db, 'products', item.id);  // 향미유는 products에 저장
         const snap = await getDoc(ref);
         if (!snap.exists()) {
           const { id, ...rest } = item;
@@ -529,39 +467,76 @@ const App: React.FC = () => {
       const product = allProducts.find(p => p.id === item.productId);
       if (!product) continue;
 
-      // 향미유: 재고는 박스 단위로 차감
-      if (product.category === '향미유') {
-        const sub = submaterials.find(s => s.id === product.id);
-        if (sub) {
-          const boxesUsed = item.isBoxUnit && item.boxQuantity
-            ? item.boxQuantity
-            : Math.ceil(item.quantity / (product.boxSize || 1));
-          await updateItem('submaterials', sub.id, { stock: sub.stock - boxesUsed });
-        }
+      // 향미유/고춧가루: 박스 단위로 재고 차감
+      if (product.category === '향미유' || product.category === '고춧가루') {
+        const uPerBox = item.unitsPerBox || product.defaultBoxConfig?.unitsPerBox || product.boxSize || 1;
+        const boxesUsed = item.isBoxUnit && item.boxQuantity
+          ? item.boxQuantity
+          : Math.ceil(item.quantity / uPerBox);
+        const collection = products.find(p => p.id === product.id) ? 'products' : 'submaterials';
+        await updateItem(collection, product.id, { stock: product.stock - boxesUsed });
         continue;
       }
 
       // 완제품: 부자재만 차감
       if (product.category !== '완제품' || !product.submaterials) continue;
 
-      // 박스 boxSize 찾기
-      let boxSize = 0;
-      for (const s of product.submaterials) {
-        const actualSub = submaterials.find(sm => sm.id === s.id);
-        if (actualSub?.category === '박스' && (actualSub.boxSize ?? 0) > 0) {
-          boxSize = actualSub.boxSize!;
-          break;
+      // 사용한 박스 수 계산
+      const boxesUsed = item.isBoxUnit && item.boxQuantity
+        ? item.boxQuantity
+        : item.unitsPerBox
+          ? Math.ceil(item.quantity / item.unitsPerBox)
+          : null;
+
+      // 박스 차감: boxSubId 직접 참조 → BOM 박스 순으로 폴백
+      const boxSubToDeduct = (() => {
+        if (item.boxSubId) {
+          const byId = submaterials.find(sm => sm.id === item.boxSubId);
+          if (byId) return byId;
+        }
+        for (const s of product.submaterials!) {
+          const sub = submaterials.find(sm => sm.id === s.id && sm.category === '박스');
+          if (sub) return sub;
+        }
+        return null;
+      })();
+
+      if (boxSubToDeduct) {
+        const deductQty = boxesUsed ?? Math.ceil(item.quantity / (boxSubToDeduct.boxSize || 1));
+        if (deductQty > 0) {
+          await updateItem('submaterials', boxSubToDeduct.id, { stock: boxSubToDeduct.stock - deductQty });
         }
       }
 
+      // 박스·테이프 외 부자재 차감 (낱개 수량 기준)
       for (const s of product.submaterials) {
         const actualSub = submaterials.find(sm => sm.id === s.id);
         if (!actualSub) continue;
-        if (actualSub.category === '테이프') continue; // 테이프 차감 제외
-        const deductQty = actualSub.category === '박스'
-          ? Math.ceil(item.quantity / (boxSize || 1))
-          : item.quantity;
-        await updateItem('submaterials', actualSub.id, { stock: actualSub.stock - deductQty });
+        if (actualSub.category === '박스' || actualSub.category === '테이프') continue;
+        await updateItem('submaterials', actualSub.id, { stock: actualSub.stock - item.quantity });
+      }
+
+      // 원료 사용량 → rawMaterialLedger 기록 (완제품 한정)
+      const formula = PRODUCT_FORMULA[product.품목 || product.name];
+      if (formula) {
+        const dateStr = order.deliveredAt?.slice(0, 10) || new Date().toISOString().slice(0, 10);
+        const clientName = clients.find(c => c.id === order.clientId)?.name || order.customerName || '';
+        for (const f of formula) {
+          const usedKg = toKg(product.용량 || '', f.raw, item.quantity) * f.ratio;
+          if (usedKg <= 0) continue;
+          const entryId = `rm-auto-${order.id}-${f.raw.replace(/\s/g, '_')}`;
+          await setDoc(doc(db, 'rawMaterialLedger', entryId), {
+            id: entryId,
+            material: f.raw,
+            date: dateStr,
+            received: 0,
+            used: Math.round(usedKg * 1000) / 1000,
+            note: `자동: ${clientName}`,
+            createdAt: new Date().toISOString(),
+            type: 'auto',
+            orderId: order.id,
+          }, { merge: true });
+        }
       }
     }
   };
@@ -571,7 +546,7 @@ const App: React.FC = () => {
     if (!conf) return;
     const product = allProducts.find(p => p.id === id);
     if (product) {
-      const collectionName = product.category === '완제품' ? 'products' : 'submaterials';
+      const collectionName = getProductCollection(product.category);
       await updateItem(collectionName, id, { stock: product.stock + conf.quantity });
     }
     await deleteItem('confirmedOrders', id);
@@ -802,8 +777,8 @@ const App: React.FC = () => {
           {currentView === 'inventory' && (
             <ProductList 
               products={allProducts} 
-              onUpdateProduct={(p) => updateItem(p.category === '완제품' ? 'products' : 'submaterials', p.id, p)} 
-              onAddProduct={(p) => addItem(p.category === '완제품' ? 'products' : 'submaterials', p)} 
+              onUpdateProduct={(p) => updateItem(getProductCollection(p.category), p.id, p)} 
+              onAddProduct={(p) => addItem(getProductCollection(p.category), p)} 
               orderRequests={orderRequests} 
               confirmedOrders={confirmedOrders} 
               onAddOrderRequest={handleAddOrderRequest} 
@@ -876,7 +851,7 @@ const App: React.FC = () => {
                 
                 // Products sync
                 for (const p of data.products) {
-                  const collectionName = p.category === '완제품' ? 'products' : 'submaterials';
+                  const collectionName = getProductCollection(p.category);
                   await addItem(collectionName, p);
                 }
                 alert('동기화가 완료되었습니다.');
@@ -930,7 +905,7 @@ const App: React.FC = () => {
               return order.items.flatMap((item, itemIdx) => {
                 const product = allProducts.find(p => p.id === item.productId);
                 if (product?.category !== '완제품') return [];
-                return [{ 상호: clientName, 품목: product?.품목 || item.name, 용량: product?.용량 || '', 수량: item.quantity, 소비기한: calcExpiry(item.expirationDate || ''), 제조일자: item.expirationDate || '', orderId: order.id, itemIdx }];
+                return [{ 상호: clientName, 품목: product?.품목 || item.name, 용량: product?.용량 || '', 수량: item.quantity, 소비기한: calcExpiry(item.mfgDate || ''), 제조일자: item.mfgDate || '', orderId: order.id, itemIdx }];
               });
             });
             const rightRows: RightRow[] = Object.values(
@@ -1023,7 +998,7 @@ const App: React.FC = () => {
             const missingMfgDate = shippedOrders.flatMap(o =>
               o.items.filter(item => {
                 const p = allProducts.find(pr => pr.id === item.productId);
-                return p?.category === '완제품' && !item.expirationDate;
+                return p?.category === '완제품' && !item.mfgDate;
               }).map(item => item.name)
             );
 
@@ -1232,7 +1207,7 @@ const App: React.FC = () => {
                                 if (!o) continue;
                                 const newItems = [...o.items];
                                 for (const { itemIdx, date } of updates) {
-                                  newItems[itemIdx] = { ...newItems[itemIdx], expirationDate: date };
+                                  newItems[itemIdx] = { ...newItems[itemIdx], mfgDate: date };
                                 }
                                 await updateItem('orders', orderId, { items: newItems, documentDate: bulkMfgDate });
                               }
@@ -1310,7 +1285,7 @@ const App: React.FC = () => {
                                             const o = orders.find(ord => ord.id === orderId);
                                             if (!o) continue;
                                             const newItems = [...o.items];
-                                            newItems[itemIdx] = { ...newItems[itemIdx], expirationDate: e.target.value };
+                                            newItems[itemIdx] = { ...newItems[itemIdx], mfgDate: e.target.value };
                                             updateItem('orders', orderId, { items: newItems });
                                           }
                                         }}
@@ -1364,75 +1339,7 @@ const App: React.FC = () => {
                 )}
 
                 {docTab === '원료수불부' && (() => {
-                  // ── 배합비율 (품목명 → 원료) ──────────────────────────────
-                  const PRODUCT_FORMULA: Record<string, { raw: string; ratio: number }[]> = {
-                    '시골향참기름1': [{ raw: '통깨참기름', ratio: 1.0 }],
-                    '시골향참기름2': [{ raw: '통깨참기름', ratio: 0.5 }, { raw: '깨분참기름', ratio: 0.5 }],
-                    '시골향참기름3': [{ raw: '깨분참기름', ratio: 1.0 }],
-                    '시골향참기름4': [{ raw: '통깨참기름', ratio: 0.25 }, { raw: '깨분참기름', ratio: 0.75 }],
-                    '시골향들기름1': [{ raw: '통들깨들기름', ratio: 1.0 }],
-                    '시골향들기름2': [{ raw: '통들깨들기름', ratio: 0.1 }, { raw: '수입들기름', ratio: 0.9 }],
-                    '시골향볶음참깨': [{ raw: '볶음참깨', ratio: 1.0 }],
-                    '시골향들깨가루': [{ raw: '볶음들깨', ratio: 1.0 }],
-                    '시골향탈피들깨가루': [{ raw: '탈피들깨가루', ratio: 1.0 }],
-                    '시골향볶음검정참깨': [{ raw: '볶음검정참깨', ratio: 1.0 }],
-                  };
-                  // 밀도 (kg/L) - 고체류는 용량 단위(g,kg)로 직접 계산
-                  const DENSITY: Record<string, number> = {
-                    '통깨참기름': 0.916, '깨분참기름': 0.916,
-                    '통들깨들기름': 0.924, '수입들기름': 0.924,
-                  };
-                  const RM_LIST = ['참깨','들깨','검정깨','탈피들깨가루','깨분','볶음참깨','볶음들깨','볶음검정참깨','통깨참기름','깨분참기름','통들깨들기름','수입들기름'];
-
-                  // 용량 파싱 → kg 환산
-                  const toKgAmount = (용량: string, raw: string, qty: number): number => {
-                    const m = 용량.match(/^([\d.]+)\s*(ml|l|g|kg)/i);
-                    if (!m) return 0;
-                    const val = parseFloat(m[1]);
-                    const unit = m[2].toLowerCase();
-                    const density = DENSITY[raw] ?? 1.0;
-                    let perUnitKg = 0;
-                    if (unit === 'ml') perUnitKg = val / 1000 * density;
-                    else if (unit === 'l') perUnitKg = val * density;
-                    else if (unit === 'g') perUnitKg = val / 1000;
-                    else if (unit === 'kg') perUnitKg = val;
-                    return perUnitKg * qty;
-                  };
-
-                  // 주문에서 원료별 사용량 계산 (제조일자 기준, 날짜별 합산)
-                  type UsageRow = { date: string; received: number; used: number; note: string; type: 'auto' | 'manual' };
-                  const calcAutoUsage = (material: string): UsageRow[] => {
-                    const dayMap: Record<string, { used: number; clients: string[] }> = {};
-                    const deliveredOrders = orders.filter(o =>
-                      o.status === OrderStatus.DELIVERED ||
-                      o.status === OrderStatus.SHIPPED ||
-                      o.status === OrderStatus.PENDING
-                    );
-                    for (const o of deliveredOrders) {
-                      // 서류날짜 기준: documentDate → deliveredAt 순으로 폴백
-                      const dateStr = o.documentDate || o.deliveredAt?.slice(0, 10) || '';
-                      if (!dateStr || !dateStr.startsWith(docYearMonth)) continue;
-                      const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '';
-                      for (const item of o.items) {
-                        const prod = allProducts.find(p => p.id === item.productId);
-                        if (!prod || prod.category !== '완제품') continue;
-                        const formula = PRODUCT_FORMULA[prod.품목 || prod.name];
-                        if (!formula) continue;
-                        for (const f of formula) {
-                          if (f.raw !== material) continue;
-                          const usedKg = toKgAmount(prod.용량 || '', f.raw, item.quantity) * f.ratio;
-                          if (usedKg <= 0) continue;
-                          if (!dayMap[dateStr]) dayMap[dateStr] = { used: 0, clients: [] };
-                          dayMap[dateStr].used += usedKg;
-                          if (clientName && !dayMap[dateStr].clients.includes(clientName)) dayMap[dateStr].clients.push(clientName);
-                        }
-                      }
-                    }
-                    return Object.entries(dayMap).map(([date, { used, clients }]) => {
-                      const note = clients.length === 0 ? '생산' : clients.length === 1 ? clients[0] : `${clients[0]} 외 ${clients.length - 1}`;
-                      return { date, received: 0, used: Math.round(used * 1000) / 1000, note, type: 'auto' as const };
-                    });
-                  };
+                  type UsageRow = { date: string; received: number; used: number; note: string; type: 'auto' | 'manual' | 'correction'; id?: string };
 
                   // 수율: 원재료 사용 → 반제품 입고 자동 파생
                   const YIELD_MAP: Record<string, { product: string; yield: number }> = {
@@ -1440,17 +1347,15 @@ const App: React.FC = () => {
                     '깨분': { product: '깨분참기름', yield: 0.45 },
                     '들깨': { product: '통들깨들기름', yield: 0.37 },
                     '검정깨': { product: '볶음검정참깨', yield: 0.95 },
-                    // 직접 볶음 수율: 참깨→볶음참깨 0.95, 들깨→볶음들깨 0.95 (수동 입력)
                   };
-                  // 특정 원재료(source)의 사용 기록으로부터 반제품 파생 입고 계산
+
                   const calcDerivedReceived = (material: string): UsageRow[] => {
                     const rows: UsageRow[] = [];
-                    // 이 material이 어떤 원재료의 반제품인지 찾기
                     const sourceEntry = Object.entries(YIELD_MAP).find(([, v]) => v.product === material);
                     if (!sourceEntry) return rows;
                     const [sourceMaterial, { yield: yieldRate }] = sourceEntry;
                     rawMaterialLedger
-                      .filter(e => e.material === sourceMaterial && e.used > 0)
+                      .filter(e => e.material === sourceMaterial && e.used > 0 && e.type !== 'auto')
                       .forEach(e => {
                         const derivedKg = Math.round(e.used * yieldRate * 1000) / 1000;
                         rows.push({ date: e.date, received: derivedKg, used: 0, note: `${sourceMaterial} 압착 (수율 ${yieldRate * 100}%)`, type: 'auto' as const });
@@ -1458,14 +1363,13 @@ const App: React.FC = () => {
                     return rows;
                   };
 
-                  // 수불부 행 계산 (전재고 포함)
+                  // 수불부 행 계산 — DB 데이터만 사용 (auto/manual/correction 모두 포함)
                   const buildLedger = (material: string) => {
-                    const manualEntries: UsageRow[] = rawMaterialLedger
+                    const dbEntries: UsageRow[] = rawMaterialLedger
                       .filter(e => e.material === material)
-                      .map(e => ({ date: e.date, received: e.received, used: e.used, note: e.note, type: 'manual' as const }));
-                    const autoEntries = calcAutoUsage(material);
+                      .map(e => ({ date: e.date, received: e.received, used: e.used, note: e.note, type: (e.type || 'manual') as UsageRow['type'], id: e.id }));
                     const derivedEntries = calcDerivedReceived(material);
-                    const allEntries = [...manualEntries, ...autoEntries, ...derivedEntries].sort((a, b) => a.date.localeCompare(b.date));
+                    const allEntries = [...dbEntries, ...derivedEntries].sort((a, b) => a.date.localeCompare(b.date));
                     // 전재고 계산 (월 이전 누적)
                     const prevBalance = allEntries
                       .filter(e => e.date < `${docYearMonth}-01`)
@@ -1556,20 +1460,89 @@ const App: React.FC = () => {
                               <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">사용량(kg)</th>
                               <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">현재고(kg)</th>
                               <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase">비고</th>
+                              <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase"></th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-50">
                             {activeLedger.length === 0 ? (
-                              <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-300 text-sm font-bold">데이터 없음</td></tr>
+                              <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-300 text-sm font-bold">데이터 없음</td></tr>
                             ) : activeLedger.map((row, i) => (
-                              <tr key={i} className={`hover:bg-slate-50 transition-colors ${row.type === 'auto' ? 'bg-blue-50/30' : ''}`}>
-                                <td className="px-4 py-2.5 text-[11px] font-bold text-slate-600">{row.date}</td>
-                                <td className="px-4 py-2.5 text-[11px] text-slate-500 text-right">{row.prevBalance}</td>
-                                <td className="px-4 py-2.5 text-[11px] font-black text-indigo-600 text-right">{row.received > 0 ? `+${row.received}` : '-'}</td>
-                                <td className="px-4 py-2.5 text-[11px] font-black text-rose-500 text-right">{row.used > 0 ? `-${row.used}` : '-'}</td>
-                                <td className="px-4 py-2.5 text-[11px] font-black text-slate-800 text-right">{row.currentBalance}</td>
-                                <td className="px-4 py-2.5 text-[11px] text-slate-500">{row.note || '-'}</td>
-                              </tr>
+                              <React.Fragment key={row.id || i}>
+                                <tr className={`hover:bg-slate-50 transition-colors ${row.type === 'correction' ? 'bg-amber-50/40' : row.type === 'auto' ? 'bg-blue-50/30' : ''}`}>
+                                  <td className="px-4 py-2.5 text-[11px] font-bold text-slate-600">
+                                    {row.date}
+                                    {row.type === 'auto' && <span className="ml-1 text-[9px] text-blue-400 font-black">자동</span>}
+                                    {row.type === 'correction' && <span className="ml-1 text-[9px] text-amber-500 font-black">정정</span>}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-[11px] text-slate-500 text-right">{row.prevBalance}</td>
+                                  <td className="px-4 py-2.5 text-[11px] font-black text-indigo-600 text-right">{row.received > 0 ? `+${row.received}` : '-'}</td>
+                                  <td className="px-4 py-2.5 text-[11px] font-black text-rose-500 text-right">{row.used !== 0 ? (row.used > 0 ? `-${row.used}` : `+${Math.abs(row.used)}`) : '-'}</td>
+                                  <td className="px-4 py-2.5 text-[11px] font-black text-slate-800 text-right">{row.currentBalance}</td>
+                                  <td className="px-4 py-2.5 text-[11px] text-slate-500">{row.note || '-'}</td>
+                                  <td className="px-3 py-2.5 text-right">
+                                    <div className="flex items-center justify-end gap-1">
+                                      {row.id && (
+                                        <button
+                                          onClick={() => { setRmCorrectionTargetId(rmCorrectionTargetId === row.id ? null : row.id!); setRmCorrectionForm({ date: new Date().toISOString().slice(0, 10), amount: '', isNegative: true, note: '' }); }}
+                                          className="px-2 py-1 rounded-lg text-[10px] font-black bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
+                                        >정정</button>
+                                      )}
+                                      {row.id && row.type !== 'auto' && (
+                                        <button
+                                          onClick={() => { if (confirm('삭제할까요?')) deleteItem('rawMaterialLedger', row.id!); }}
+                                          className="px-2 py-1 rounded-lg text-[10px] font-black bg-slate-100 text-slate-400 hover:bg-rose-100 hover:text-rose-500 transition-colors"
+                                        >삭제</button>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                                {rmCorrectionTargetId === row.id && (
+                                  <tr className="bg-amber-50 border-t border-amber-200">
+                                    <td colSpan={7} className="px-4 py-3">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-[11px] font-black text-amber-700">정정 추가</span>
+                                        <input type="date" value={rmCorrectionForm.date}
+                                          onChange={e => setRmCorrectionForm(f => ({ ...f, date: e.target.value }))}
+                                          className="border border-amber-300 rounded-lg px-2 py-1 text-[11px] outline-none focus:border-amber-500" />
+                                        <select value={rmCorrectionForm.isNegative ? 'neg' : 'pos'}
+                                          onChange={e => setRmCorrectionForm(f => ({ ...f, isNegative: e.target.value === 'neg' }))}
+                                          className="border border-amber-300 rounded-lg px-2 py-1 text-[11px] outline-none focus:border-amber-500">
+                                          <option value="neg">사용량 감소 (−)</option>
+                                          <option value="pos">사용량 증가 (+)</option>
+                                        </select>
+                                        <input type="number" min="0" step="0.001" placeholder="수량(kg)" value={rmCorrectionForm.amount}
+                                          onChange={e => setRmCorrectionForm(f => ({ ...f, amount: e.target.value }))}
+                                          className="border border-amber-300 rounded-lg px-2 py-1 text-[11px] w-24 outline-none focus:border-amber-500" />
+                                        <input type="text" placeholder="비고" value={rmCorrectionForm.note}
+                                          onChange={e => setRmCorrectionForm(f => ({ ...f, note: e.target.value }))}
+                                          className="border border-amber-300 rounded-lg px-2 py-1 text-[11px] flex-1 min-w-32 outline-none focus:border-amber-500" />
+                                        <button
+                                          onClick={async () => {
+                                            const amt = parseFloat(rmCorrectionForm.amount);
+                                            if (!amt || amt <= 0) return;
+                                            const correctionUsed = rmCorrectionForm.isNegative ? -amt : amt;
+                                            await addItem('rawMaterialLedger', {
+                                              id: `rm-corr-${Date.now()}`,
+                                              material: rmActiveMaterial,
+                                              date: rmCorrectionForm.date,
+                                              received: 0,
+                                              used: correctionUsed,
+                                              note: rmCorrectionForm.note || `정정 (원본: ${row.id})`,
+                                              createdAt: new Date().toISOString(),
+                                              type: 'correction',
+                                            });
+                                            setRmCorrectionTargetId(null);
+                                          }}
+                                          className="px-3 py-1 rounded-lg text-[11px] font-black bg-amber-600 text-white hover:bg-amber-700 transition-colors"
+                                        >저장</button>
+                                        <button onClick={() => setRmCorrectionTargetId(null)}
+                                          className="px-3 py-1 rounded-lg text-[11px] font-black bg-slate-200 text-slate-500 hover:bg-slate-300 transition-colors"
+                                        >취소</button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
                             ))}
                           </tbody>
                         </table>
@@ -1596,7 +1569,7 @@ const App: React.FC = () => {
                 // 실제 재고 반영 로직
                 const product = allProducts.find(p => p.id === req.productId);
                 if (product) {
-                  const collectionName = product.category === '완제품' ? 'products' : 'submaterials';
+                  const collectionName = getProductCollection(product.category);
                   if (req.type === 'quantity_change') {
                     // 수량 변동 승인 시, 요청된 수량만큼 재고에 더함
                     await updateItem(collectionName, req.productId, { stock: product.stock + (req.requestedQuantity || 0) });
@@ -1630,7 +1603,7 @@ const App: React.FC = () => {
               clients={clients}
               onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
               onAddProduct={() => { setEditingProduct(null); setIsProductModalOpen(true); }}
-              onDeleteProduct={(id, category) => deleteItem(category === '완제품' ? 'products' : 'submaterials', id)}
+              onDeleteProduct={(id, category) => deleteItem(getProductCollection(category), id)}
             />
           )}
           {currentView === 'officetalk' && (
@@ -1688,10 +1661,10 @@ const App: React.FC = () => {
           clients={clients}
           onClose={() => {setIsProductModalOpen(false); setEditingProduct(null);}} 
           onSave={async (p) => {
-            const collectionName = p.category === '완제품' ? 'products' : 'submaterials';
+            const collectionName = getProductCollection(p.category);
             // 기존 컬렉션과 다른 경우(카테고리 변경) 이전 문서 삭제
             if (editingProduct) {
-              const prevCollection = editingProduct.category === '완제품' ? 'products' : 'submaterials';
+              const prevCollection = getProductCollection(editingProduct.category);
               if (prevCollection !== collectionName) {
                 await deleteItem(prevCollection, p.id);
               }

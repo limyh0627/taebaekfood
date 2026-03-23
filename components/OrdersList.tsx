@@ -159,13 +159,19 @@ const OrderCard = memo<OrderCardProps>(({
   const handleDirectQtyChange = (idx: number, value: string) => {
     const qty = parseInt(value) || 0;
     const newItems = [...order.items];
-    newItems[idx] = { ...newItems[idx], quantity: qty };
+    const item = newItems[idx];
+    if (item.isBoxUnit && item.unitsPerBox) {
+      // 박스 수 입력 → 낱개 수 자동 계산
+      newItems[idx] = { ...item, boxQuantity: qty, quantity: qty * item.unitsPerBox };
+    } else {
+      newItems[idx] = { ...item, quantity: qty };
+    }
     onUpdateItems?.(order.id, newItems);
   };
 
   const handleExpirationDateChange = (idx: number, value: string) => {
     const newItems = [...order.items];
-    newItems[idx] = { ...newItems[idx], expirationDate: value };
+    newItems[idx] = { ...newItems[idx], mfgDate: value };
     onUpdateItems?.(order.id, newItems);
   };
 
@@ -228,18 +234,22 @@ const OrderCard = memo<OrderCardProps>(({
                 <div key={idx} className="flex flex-col gap-0.5 text-[10px] font-bold border-b border-slate-50 pb-1.5 last:border-0">
                   <div className="flex items-center gap-1.5">
                     <span className="truncate text-slate-700 flex-1">{item.name}</span>
-                    <input type="number" value={item.quantity} onChange={(e) => handleDirectQtyChange(idx, e.target.value)}
-                      className="w-10 text-center bg-slate-50 border border-indigo-200 rounded outline-none font-bold py-0.5 shrink-0" />
+                    {item.isBoxUnit && item.unitsPerBox ? (
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <input type="number" value={item.boxQuantity ?? Math.round(item.quantity / item.unitsPerBox)} onChange={(e) => handleDirectQtyChange(idx, e.target.value)}
+                          className="w-8 text-center bg-slate-50 border border-indigo-200 rounded outline-none font-bold py-0.5" />
+                        <span className="text-[8px] font-bold text-slate-400">박스</span>
+                        <span className="text-[8px] font-bold text-indigo-400">={item.quantity}개</span>
+                      </div>
+                    ) : (
+                      <input type="number" value={item.quantity} onChange={(e) => handleDirectQtyChange(idx, e.target.value)}
+                        className="w-10 text-center bg-slate-50 border border-indigo-200 rounded outline-none font-bold py-0.5 shrink-0" />
+                    )}
                     <button onClick={() => handleRemoveItem(idx)} className="p-1 text-rose-400 hover:bg-rose-50 rounded shrink-0"><Trash2 size={10} /></button>
                   </div>
                   {!isSecondary(editProductInfo?.category) && (
-                    <div className="relative w-full">
-                      <input type="date" value={item.expirationDate || ''} onChange={(e) => handleExpirationDateChange(idx, e.target.value)}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                      <div className="text-[9px] bg-slate-50 border border-indigo-200 rounded font-bold py-0.5 px-1 w-full text-center text-slate-600 pointer-events-none">
-                        {item.expirationDate || '제조일자 선택'}
-                      </div>
-                    </div>
+                    <input type="date" value={item.mfgDate || ''} onChange={(e) => handleExpirationDateChange(idx, e.target.value)}
+                      className="text-[9px] bg-slate-50 border border-indigo-200 rounded font-bold py-0.5 px-1 w-full text-center text-slate-600 cursor-pointer" />
                   )}
                 </div>
               );
@@ -277,7 +287,9 @@ const OrderCard = memo<OrderCardProps>(({
                     </div>
                     <span className={`truncate ${isItemChecked ? 'text-emerald-800 line-through opacity-50' : 'text-slate-700'}`}>{abbrev(item.name)}</span>
                     <span className={`ml-1.5 px-1 py-0.5 rounded text-[8px] font-black shrink-0 ${isItemChecked ? 'text-emerald-700 bg-emerald-100' : 'text-indigo-600 bg-indigo-50'}`}>
-                      {item.quantity}{productInfo?.unit || '개'}
+                      {item.isBoxUnit && item.boxQuantity && item.unitsPerBox
+                        ? `${item.boxType ? item.boxType + ' ' : ''}${item.boxQuantity}박스(${item.quantity}개)`
+                        : `${item.quantity}${productInfo?.unit || '개'}`}
                     </span>
                   </div>
                   {productInfo?.submaterials && productInfo.submaterials.filter(sm => {
@@ -296,9 +308,9 @@ const OrderCard = memo<OrderCardProps>(({
                   <div className="flex flex-wrap items-center gap-1 mt-0.5 pl-[20px]">
                     <button type="button" onClick={(e) => { e.stopPropagation(); const ni = [...order.items]; ni[idx] = { ...ni[idx], labelType: next }; onUpdateItems?.(order.id, ni); }}
                       className={`text-[8px] font-black px-1 py-0.5 rounded border transition-all shrink-0 ${colorMap[current]}`}>{current}</button>
-                    {item.expirationDate && (
+                    {item.mfgDate && (
                       <span className="text-[8px] font-bold text-slate-400 bg-slate-50 px-1 py-0.5 rounded border border-slate-100">
-                        ~{(() => { const d = new Date(item.expirationDate!); d.setFullYear(d.getFullYear() + 1); return d.toISOString().slice(2, 10); })()}
+                        ~{(() => { const d = new Date(item.mfgDate!); d.setFullYear(d.getFullYear() + 1); return d.toISOString().slice(2, 10); })()}
                       </span>
                     )}
                     {productInfo?.oil && <span className="text-[8px] text-indigo-500 font-bold">{productInfo.oil}</span>}
