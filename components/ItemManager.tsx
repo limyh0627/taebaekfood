@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Plus, Edit, Search, Trash2, X, ChevronRight, LayoutGrid } from 'lucide-react';
+import { Plus, Edit, Search, Trash2, LayoutGrid } from 'lucide-react';
 import { Product, InventoryCategory, Client } from '../types';
 
 interface ItemManagerProps {
@@ -34,7 +34,6 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
     [clients]
   );
 
-  // 거래처별 품목 수
   const clientProductCount = useMemo(() => {
     const map = new Map<string, number>();
     for (const p of products) {
@@ -52,11 +51,12 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
 
   const selectedClient = selectedClientId ? clients.find(c => c.id === selectedClientId) : null;
 
-  // 품목 필터링
   const filteredItems = useMemo(() => {
     let result = showAll
       ? products.filter(p => p.category === activeCategory)
-      : products.filter(p => p.category === activeCategory && (p.clientIds ?? []).includes(selectedClientId ?? ''));
+      : selectedClientId
+        ? products.filter(p => p.category === activeCategory && (p.clientIds ?? []).includes(selectedClientId))
+        : [];
 
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
@@ -85,117 +85,111 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
     setSearchTerm('');
   };
 
-  const handleBack = () => {
-    setSelectedClientId(null);
-    setShowAll(false);
-    setSearchTerm('');
-    setPage(1);
-  };
+  // 모바일: 거래처 선택 전 목록 화면
+  const showMobileClientList = !selectedClientId && !showAll;
 
-  // 거래처 목록 화면
-  if (!selectedClientId && !showAll) {
-    return (
-      <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div>
-            <h2 className="text-3xl font-black text-slate-900 uppercase">품목 정보 관리</h2>
-            <p className="text-slate-500 text-sm font-medium">거래처를 선택하거나 전체 품목을 조회하세요.</p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={handleShowAll}
-              className="flex items-center gap-2 bg-slate-100 text-slate-600 px-5 py-3 rounded-2xl font-bold text-sm hover:bg-slate-200 transition-all"
-            >
-              <LayoutGrid size={16} />
-              전체 품목
-            </button>
-            <button
-              onClick={onAddProduct}
-              className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-2xl font-black shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95"
-            >
-              <Plus size={18} />
-              신규 품목 등록
-            </button>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-5 border-b border-slate-100 bg-slate-50/50">
-            <div className="relative max-w-sm">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-              <input
-                type="text"
-                placeholder="거래처 검색..."
-                value={clientSearch}
-                onChange={e => setClientSearch(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-2xl pl-11 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
-              />
-            </div>
-          </div>
-          <div className="divide-y divide-slate-50">
-            {filteredClients.map(c => {
-              const count = clientProductCount.get(c.id) ?? 0;
-              return (
-                <button
-                  key={c.id}
-                  onClick={() => handleSelectClient(c.id)}
-                  className="w-full flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition-colors group"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-bold text-slate-700">{c.name}</span>
-                    {count > 0 && (
-                      <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] font-black rounded-full">
-                        {count}개
-                      </span>
-                    )}
-                  </div>
-                  <ChevronRight size={16} className="text-slate-300 group-hover:text-indigo-400 transition-colors" />
-                </button>
-              );
-            })}
-            {filteredClients.length === 0 && (
-              <p className="px-6 py-12 text-center text-slate-400 text-sm">거래처가 없습니다.</p>
-            )}
-          </div>
-        </div>
+  // 클라이언트 목록 패널 (공통)
+  const clientListPanel = (
+    <div className="flex flex-col gap-3">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+        <input
+          type="text"
+          placeholder="거래처 검색..."
+          value={clientSearch}
+          onChange={e => setClientSearch(e.target.value)}
+          className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
+        />
       </div>
-    );
-  }
+      <button
+        onClick={handleShowAll}
+        className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-black transition-all ${
+          showAll
+            ? 'bg-indigo-600 text-white shadow-md'
+            : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+        }`}
+      >
+        <LayoutGrid size={13} />
+        전체 품목
+      </button>
+      <div className="flex flex-col gap-1 overflow-y-auto max-h-[calc(100vh-280px)]">
+        {filteredClients.map(c => {
+          const count = clientProductCount.get(c.id) ?? 0;
+          const isSelected = selectedClientId === c.id;
+          return (
+            <button
+              key={c.id}
+              onClick={() => handleSelectClient(c.id)}
+              className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-left transition-all ${
+                isSelected
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'hover:bg-slate-100 text-slate-700'
+              }`}
+            >
+              <span className={`text-xs font-bold truncate ${isSelected ? 'text-white' : ''}`}>{c.name}</span>
+              {count > 0 && (
+                <span className={`text-[10px] font-black shrink-0 ml-2 ${isSelected ? 'text-indigo-200' : 'text-indigo-400'}`}>
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+        {filteredClients.length === 0 && (
+          <p className="text-center text-slate-400 text-xs py-6">거래처 없음</p>
+        )}
+      </div>
+    </div>
+  );
 
-  // 품목 테이블 화면
-  return (
-    <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+  // 품목 테이블 패널 (공통)
+  const productPanel = (
+    <div className="flex flex-col gap-3 min-w-0">
+      {/* 모바일 뒤로가기 */}
+      <div className="flex items-center justify-between lg:hidden">
+        <button
+          onClick={() => { setSelectedClientId(null); setShowAll(false); setSearchTerm(''); setPage(1); }}
+          className="flex items-center gap-1 text-xs text-indigo-600 font-bold"
+        >
+          ← 거래처 목록
+        </button>
+        <button
+          onClick={onAddProduct}
+          className="flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-2 rounded-xl font-black text-xs shadow-md"
+        >
+          <Plus size={14} />
+          신규 등록
+        </button>
+      </div>
+
+      <div className="hidden lg:flex items-center justify-between">
         <div>
-          <button onClick={handleBack} className="text-xs text-slate-400 hover:text-indigo-600 font-bold mb-1 flex items-center gap-1 transition-colors">
-            ← 거래처 목록
-          </button>
-          <h2 className="text-3xl font-black text-slate-900 uppercase">
-            {showAll ? '전체 품목' : selectedClient?.name}
-          </h2>
-          <p className="text-slate-500 text-sm font-medium">
-            {showAll ? '모든 품목을 조회합니다.' : `${selectedClient?.name} 거래처에 연결된 품목`}
+          <h3 className="text-lg font-black text-slate-900">
+            {showAll ? '전체 품목' : selectedClient?.name ?? ''}
+          </h3>
+          <p className="text-xs text-slate-400 font-medium">
+            {showAll ? '모든 품목' : `${filteredItems.length}개 품목`}
           </p>
         </div>
         <button
           onClick={onAddProduct}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-2xl font-black shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95"
+          className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-black text-sm shadow-md hover:bg-indigo-700 transition-all active:scale-95"
         >
-          <Plus size={18} />
+          <Plus size={15} />
           신규 품목 등록
         </button>
       </div>
 
-      <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          <div className="flex items-center space-x-2 overflow-x-auto pb-1 no-scrollbar">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center gap-2">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar flex-1">
             {CATEGORIES.map(cat => (
               <button
                 key={cat}
                 onClick={() => { setActiveCategory(cat); setPage(1); }}
-                className={`px-4 py-2 rounded-xl text-[11px] font-black uppercase transition-all border whitespace-nowrap ${
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border whitespace-nowrap ${
                   activeCategory === cat
-                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-md'
+                    ? 'bg-indigo-600 border-indigo-600 text-white shadow'
                     : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
                 }`}
               >
@@ -203,14 +197,14 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
               </button>
             ))}
           </div>
-          <div className="relative max-w-sm w-full">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+          <div className="relative shrink-0 w-full sm:w-44">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={13} />
             <input
               type="text"
               placeholder="품목명 검색..."
               value={searchTerm}
               onChange={e => { setSearchTerm(e.target.value); setPage(1); }}
-              className="w-full bg-white border border-slate-200 rounded-2xl pl-11 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
+              className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
             />
           </div>
         </div>
@@ -231,9 +225,15 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {pagedItems.length === 0 ? (
+              {!selectedClientId && !showAll ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-20 text-center text-slate-400 font-medium">
+                  <td colSpan={9} className="px-6 py-16 text-center text-slate-300 font-medium text-sm">
+                    거래처를 선택하세요.
+                  </td>
+                </tr>
+              ) : pagedItems.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="px-6 py-16 text-center text-slate-400 font-medium text-sm">
                     {showAll ? '등록된 품목이 없습니다.' : '이 거래처에 연결된 품목이 없습니다.'}
                   </td>
                 </tr>
@@ -317,6 +317,90 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
                 className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:bg-slate-100 disabled:opacity-30 transition-all">→</button>
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4 animate-in slide-in-from-right-4 duration-500">
+      {/* 헤더 */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-black text-slate-900 uppercase">품목 정보 관리</h2>
+          <p className="text-slate-500 text-sm font-medium">거래처를 선택하거나 전체 품목을 조회하세요.</p>
+        </div>
+        {/* 데스크탑 신규 등록은 productPanel에서 */}
+        <button
+          onClick={onAddProduct}
+          className="lg:hidden flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-black text-sm shadow-md"
+        >
+          <Plus size={16} />
+          신규 품목 등록
+        </button>
+      </div>
+
+      {/* 모바일: 거래처 목록 그리드 */}
+      {showMobileClientList && (
+        <div className="lg:hidden space-y-3">
+          <div className="relative max-w-sm">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+            <input
+              type="text"
+              placeholder="거래처 검색..."
+              value={clientSearch}
+              onChange={e => setClientSearch(e.target.value)}
+              className="w-full bg-white border border-slate-200 rounded-2xl pl-10 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all shadow-sm"
+            />
+          </div>
+          <button
+            onClick={handleShowAll}
+            className="flex items-center gap-2 bg-slate-100 text-slate-600 px-4 py-2.5 rounded-xl font-bold text-xs hover:bg-slate-200 transition-all"
+          >
+            <LayoutGrid size={13} />
+            전체 품목 보기
+          </button>
+          {filteredClients.length === 0 ? (
+            <p className="py-12 text-center text-slate-400 text-sm">거래처가 없습니다.</p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {filteredClients.map(c => {
+                const count = clientProductCount.get(c.id) ?? 0;
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => handleSelectClient(c.id)}
+                    className="bg-white border border-slate-200 rounded-2xl px-4 py-4 text-left hover:border-indigo-300 hover:shadow-md hover:shadow-indigo-50 transition-all group active:scale-95"
+                  >
+                    <p className="text-sm font-bold text-slate-700 group-hover:text-indigo-600 transition-colors truncate">{c.name}</p>
+                    <p className="text-[11px] text-slate-400 mt-1 font-medium">
+                      {count > 0 ? <span className="text-indigo-500 font-black">{count}</span> : <span>0</span>}
+                      <span className="ml-0.5">개 품목</span>
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 모바일: 품목 테이블 (거래처 선택 후) */}
+      {!showMobileClientList && (
+        <div className="lg:hidden">
+          {productPanel}
+        </div>
+      )}
+
+      {/* 데스크탑: 좌우 분할 */}
+      <div className="hidden lg:flex gap-4 items-start">
+        {/* 왼쪽 거래처 패널 */}
+        <div className="w-52 shrink-0 bg-white rounded-2xl border border-slate-200 shadow-sm p-3">
+          {clientListPanel}
+        </div>
+        {/* 오른쪽 품목 패널 */}
+        <div className="flex-1 min-w-0">
+          {productPanel}
         </div>
       </div>
     </div>
