@@ -112,7 +112,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
         <LayoutGrid size={13} />
         전체 품목
       </button>
-      <div className="flex flex-col gap-1 overflow-y-auto max-h-[calc(100vh-280px)]">
+      <div className="flex flex-col overflow-y-auto max-h-[calc(100vh-280px)] divide-y divide-slate-100">
         {filteredClients.map(c => {
           const count = clientProductCount.get(c.id) ?? 0;
           const isSelected = selectedClientId === c.id;
@@ -120,10 +120,10 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
             <button
               key={c.id}
               onClick={() => handleSelectClient(c.id)}
-              className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-left transition-all ${
+              className={`flex items-center justify-between px-3 py-2.5 text-left transition-all ${
                 isSelected
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'hover:bg-slate-100 text-slate-700'
+                  ? 'bg-indigo-600 text-white'
+                  : 'hover:bg-slate-50 text-slate-700'
               }`}
             >
               <span className={`text-xs font-bold truncate ${isSelected ? 'text-white' : ''}`}>{c.name}</span>
