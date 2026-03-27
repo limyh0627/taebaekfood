@@ -1603,7 +1603,10 @@ const App: React.FC = () => {
               clients={clients}
               onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
               onAddProduct={() => { setEditingProduct(null); setIsProductModalOpen(true); }}
-              onDeleteProduct={(id, category) => deleteItem(getProductCollection(category), id)}
+              onDeleteProduct={(id) => {
+                const inProducts = products.some(p => p.id === id);
+                deleteItem(inProducts ? 'products' : 'submaterials', id);
+              }}
             />
           )}
           {currentView === 'officetalk' && (
