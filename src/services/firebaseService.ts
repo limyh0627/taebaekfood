@@ -1,12 +1,13 @@
-import { 
-  collection, 
-  onSnapshot, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  doc, 
+import {
+  collection,
+  onSnapshot,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
   setDoc,
   query,
+  writeBatch,
   DocumentData,
   QuerySnapshot
 } from "firebase/firestore";
@@ -98,6 +99,25 @@ export const deleteSubItem = async (
 ) => {
   const docRef = doc(db, parentCollection, parentId, subCollectionName, id);
   await deleteDoc(docRef);
+};
+
+// productClients 컬렉션에 품목-거래처 매핑 저장 (기존 전체 교체)
+export const setProductClients = async (productId: string, clientIds: string[]) => {
+  const batch = writeBatch(db);
+
+  // 기존 매핑 삭제
+  const existing = await import('firebase/firestore').then(m =>
+    m.getDocs(m.query(m.collection(db, 'productClients'), m.where('productId', '==', productId)))
+  );
+  existing.docs.forEach(d => batch.delete(d.ref));
+
+  // 새 매핑 추가
+  for (const clientId of clientIds) {
+    const ref = doc(db, 'productClients', `${productId}_${clientId}`);
+    batch.set(ref, { productId, clientId });
+  }
+
+  await batch.commit();
 };
 
 export const syncInitialData = async (collectionName: string, initialData: any[]) => {

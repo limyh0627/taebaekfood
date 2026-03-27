@@ -42,6 +42,12 @@ export interface PurchaseItem {
   name: string;
 }
 
+export interface ProductClient {
+  id: string;       // `${productId}_${clientId}`
+  productId: string;
+  clientId: string;
+}
+
 export interface Client {
   id: string;
   name: string;

@@ -26,7 +26,7 @@ import {
   ChevronRight,
   FileText
 } from 'lucide-react';
-import { Order, Product, ViewType, OrderStatus, Client, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry } from './types';
+import { Order, Product, ProductClient, ViewType, OrderStatus, Client, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry } from './types';
 import Dashboard from './components/Dashboard';
 import OrdersList from './components/OrdersList';
 import ProductList from './components/ProductList';
@@ -51,11 +51,12 @@ import ExcelJS from 'exceljs';
 
 import { db } from './src/firebase';
 import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg } from './src/constants/formula';
-import { 
-  subscribeToCollection, 
-  addItem, 
-  updateItem, 
-  deleteItem
+import {
+  subscribeToCollection,
+  addItem,
+  updateItem,
+  deleteItem,
+  setProductClients
 } from './src/services/firebaseService';
 import { collection, getDocs, writeBatch, doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 
@@ -179,12 +180,30 @@ const App: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [submaterials, setSubmaterials] = useState<Product[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  const [productClients, setProductClientsList] = useState<ProductClient[]>([]);
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [rawMaterialLedger, setRawMaterialLedger] = useState<RawMaterialEntry[]>([]);
 
-  // Combined products for UI
-  const allProducts = useMemo(() => [...products, ...submaterials], [products, submaterials]);
+  // productClients로부터 productId → clientIds[] 맵 생성
+  const productClientMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const pc of productClients) {
+      const arr = map.get(pc.productId) ?? [];
+      arr.push(pc.clientId);
+      map.set(pc.productId, arr);
+    }
+    return map;
+  }, [productClients]);
+
+  // Combined products for UI — clientIds를 productClients 기반으로 조인
+  const allProducts = useMemo(() =>
+    [...products, ...submaterials].map(p => ({
+      ...p,
+      clientIds: productClientMap.get(p.id) ?? p.clientIds ?? [],
+    })),
+    [products, submaterials, productClientMap]
+  );
 
   // 판매 상품(완제품/향미유/고춧가루)은 products, 부자재는 submaterials
   const getProductCollection = (category: string) =>
@@ -247,6 +266,7 @@ const App: React.FC = () => {
       subscribeToCollection<Product>('products', setProducts),
       subscribeToCollection<Product>('submaterials', setSubmaterials),
       subscribeToCollection<Client>('clients', setClients),
+      subscribeToCollection<ProductClient>('productClients', setProductClientsList),
       subscribeToCollection<ChatRoom>('chatRooms', setChatRooms),
       subscribeToCollection<ChatMessage>('chatMessages', setChatMessages),
       subscribeToCollection<RawMaterialEntry>('rawMaterialLedger', setRawMaterialLedger),
@@ -1672,8 +1692,12 @@ const App: React.FC = () => {
                 await deleteItem(prevCollection, p.id);
               }
             }
-            // setDoc 기반 addItem으로 통일 (문서 없어도 생성, 있으면 덮어쓰기)
-            await addItem(collectionName, p);
+            // productClients 컬렉션에 거래처 매핑 저장
+            const clientIds = p.clientIds ?? [];
+            await setProductClients(p.id, clientIds);
+            // products/submaterials에 저장 시 clientIds 제외
+            const { clientIds: _cids, ...productData } = p;
+            await addItem(collectionName, productData);
             setIsProductModalOpen(false);
             setEditingProduct(null);
           }} 
