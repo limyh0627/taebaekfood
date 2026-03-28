@@ -70,7 +70,7 @@ const ClientManager: React.FC<ClientManagerProps> = ({ clients, onUpdateClient, 
       );
     }
 
-    return result;
+    return [...result].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
   }, [clients, activeTab, activeTypeTab, searchTerm]);
 
   const totalPages = Math.max(1, Math.ceil(filteredClients.length / PAGE_SIZE));

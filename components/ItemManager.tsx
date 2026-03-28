@@ -18,6 +18,10 @@ const CATEGORY_MAP: Record<string, string> = {
 const normalizeCategory = (cat: string) => CATEGORY_MAP[cat] || cat;
 
 const CATEGORIES: InventoryCategory[] = ['완제품', '향미유', '고춧가루', '용기', '마개', '테이프', '박스', '라벨'];
+const LINK_CATEGORIES = ['완제품', '향미유', '고춧가루', '참기름', '들기름', '깨', '검정깨', '들깨'];
+const SUB_ORDER: Record<string, number> = { '라벨': 0, '용기': 1, '마개': 2, '테이프': 3, '박스': 4 };
+const sortSubs = (subs: { name: string; category: string }[]) =>
+  [...subs].sort((a, b) => (SUB_ORDER[normalizeCategory(a.category)] ?? 9) - (SUB_ORDER[normalizeCategory(b.category)] ?? 9));
 
 const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct }) => {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
@@ -29,7 +33,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
   const PAGE_SIZE = 20;
   const [linkSearch, setLinkSearch] = useState('');
   const [showLinkPanel, setShowLinkPanel] = useState(false);
-  const [linkCategory, setLinkCategory] = useState<InventoryCategory>('완제품');
+  const [linkCategory, setLinkCategory] = useState('완제품');
 
   const salesClients = useMemo(() =>
     clients
@@ -266,16 +270,9 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
                 pagedItems.map(item => (
                   <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
                     <td className="px-3 py-3">
-                      <div className="flex items-start space-x-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-slate-300 shrink-0 mt-1" />
-                        <div>
-                          <p className="text-[11px] font-bold text-slate-600 whitespace-nowrap">{item.name}</p>
-                          {item.submaterials && item.submaterials.length > 0 && (
-                            <p className="text-[9px] text-slate-400 font-medium mt-0.5">
-                              {item.submaterials.map(s => s.name).join(' · ')}
-                            </p>
-                          )}
-                        </div>
+                      <div className="flex items-center space-x-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-300 shrink-0" />
+                        <p className="text-[11px] font-bold text-slate-600 whitespace-nowrap">{item.name}</p>
                       </div>
                     </td>
                     {activeCategory === '완제품' && (
@@ -452,8 +449,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
               </button>
             </div>
             {/* 카테고리 탭 */}
-            <div className="px-6 pt-4 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-              {CATEGORIES.map(cat => (
+            <div className="px-6 pt-4 pb-1 flex flex-wrap gap-1.5">
+              {LINK_CATEGORIES.map(cat => (
                 <button
                   key={cat}
                   onClick={() => { setLinkCategory(cat); setLinkSearch(''); }}
@@ -492,7 +489,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
                       <div>
                         <p className="text-xs font-bold text-slate-700">{p.name}</p>
                         {p.submaterials && p.submaterials.length > 0 && (
-                          <p className="text-[9px] text-slate-400 font-medium mt-0.5">{p.submaterials.map(s => s.name).join(' · ')}</p>
+                          <p className="text-[9px] text-slate-400 font-medium mt-0.5">{sortSubs(p.submaterials).map(s => s.name).join(' · ')}</p>
                         )}
                       </div>
                       <button
