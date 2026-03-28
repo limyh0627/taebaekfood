@@ -261,18 +261,16 @@ const ClientManager: React.FC<ClientManagerProps> = ({ clients, onUpdateClient, 
                     </div>
                   </div>
                   {!isEditing ? (
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <button onClick={() => startEditing(client)} className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all">
-                        <Edit size={15} />
-                      </button>
-                      <button onClick={() => { if (confirm(`"${client.name}" 거래처를 삭제하시겠습니까?`)) onDeleteClient(client.id); }} className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
+                    <button onClick={() => startEditing(client)} className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all flex-shrink-0">
+                      <Edit size={15} />
+                    </button>
                   ) : (
                     <div className="flex items-center space-x-1.5 flex-shrink-0">
                       <button onClick={saveEditing} className="p-1.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700">
                         <Check size={15} />
+                      </button>
+                      <button onClick={() => { if (confirm(`"${client.name}" 거래처를 삭제하시겠습니까?`)) { onDeleteClient(client.id); cancelEditing(); } }} className="p-1.5 bg-rose-50 text-rose-400 rounded-xl hover:bg-rose-100 hover:text-rose-600">
+                        <Trash2 size={15} />
                       </button>
                       <button onClick={cancelEditing} className="p-1.5 bg-slate-100 text-slate-500 rounded-xl hover:bg-slate-200">
                         <X size={15} />

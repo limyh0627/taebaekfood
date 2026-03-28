@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Plus, Edit, Search, Trash2, LayoutGrid, Link } from 'lucide-react';
+import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X } from 'lucide-react';
 import { Product, InventoryCategory, Client } from '../types';
 
 interface ItemManagerProps {
@@ -29,6 +29,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
   const PAGE_SIZE = 20;
   const [linkSearch, setLinkSearch] = useState('');
   const [showLinkPanel, setShowLinkPanel] = useState(false);
+  const [linkCategory, setLinkCategory] = useState<InventoryCategory>('완제품');
 
   const salesClients = useMemo(() =>
     clients
@@ -145,15 +146,15 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
     </div>
   );
 
-  // 연결 가능한 품목 (현재 카테고리 기준, 이미 연결된 것 제외)
+  // 연결 가능한 품목 (모달 카테고리 기준, 이미 연결된 것 제외)
   const linkableProduts = useMemo(() => {
     if (!selectedClientId) return [];
     const term = linkSearch.toLowerCase().trim();
     return products
-      .filter(p => p.category === activeCategory && !(p.clientIds ?? []).includes(selectedClientId))
+      .filter(p => p.category === linkCategory && !(p.clientIds ?? []).includes(selectedClientId))
       .filter(p => !term || p.name.toLowerCase().includes(term))
       .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-  }, [products, selectedClientId, activeCategory, linkSearch]);
+  }, [products, selectedClientId, linkCategory, linkSearch]);
 
   // 품목 테이블 패널 (공통)
   const productPanel = (
@@ -187,8 +188,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
         <div className="flex items-center gap-2">
           {selectedClientId && (
             <button
-              onClick={() => { setShowLinkPanel(v => !v); setLinkSearch(''); }}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-sm shadow-sm transition-all active:scale-95 ${showLinkPanel ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}
+              onClick={() => { setShowLinkPanel(true); setLinkSearch(''); setLinkCategory('완제품'); }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-sm shadow-sm transition-all active:scale-95 bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
             >
               <Link size={14} />
               품목 연결
@@ -265,9 +266,16 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
                 pagedItems.map(item => (
                   <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
                     <td className="px-3 py-3">
-                      <div className="flex items-center space-x-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-slate-300 shrink-0" />
-                        <p className="text-[11px] font-bold text-slate-600 whitespace-nowrap">{item.name}</p>
+                      <div className="flex items-start space-x-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-300 shrink-0 mt-1" />
+                        <div>
+                          <p className="text-[11px] font-bold text-slate-600 whitespace-nowrap">{item.name}</p>
+                          {item.submaterials && item.submaterials.length > 0 && (
+                            <p className="text-[9px] text-slate-400 font-medium mt-0.5">
+                              {item.submaterials.map(s => s.name).join(' · ')}
+                            </p>
+                          )}
+                        </div>
                       </div>
                     </td>
                     {activeCategory === '완제품' && (
@@ -344,41 +352,6 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
         </div>
       </div>
 
-      {/* 품목 연결 패널 */}
-      {showLinkPanel && selectedClientId && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex flex-col gap-3">
-          <p className="text-xs font-black text-emerald-700 uppercase tracking-widest">
-            {activeCategory} 품목 연결 — {selectedClient?.name}
-          </p>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-400" size={13} />
-            <input
-              type="text"
-              placeholder="품목명 검색..."
-              value={linkSearch}
-              onChange={e => setLinkSearch(e.target.value)}
-              className="w-full bg-white border border-emerald-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-400/30 focus:border-emerald-400"
-            />
-          </div>
-          {linkableProduts.length === 0 ? (
-            <p className="text-center text-xs text-emerald-400 py-4">연결 가능한 품목이 없습니다.</p>
-          ) : (
-            <div className="flex flex-col divide-y divide-emerald-100 max-h-60 overflow-y-auto rounded-xl bg-white border border-emerald-100">
-              {linkableProduts.map(p => (
-                <div key={p.id} className="flex items-center justify-between px-3 py-2 hover:bg-emerald-50 transition-colors">
-                  <span className="text-xs font-bold text-slate-700">{p.name}</span>
-                  <button
-                    onClick={() => { onLinkProduct(p.id, selectedClientId); }}
-                    className="flex items-center gap-1 text-[10px] font-black text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg transition-all"
-                  >
-                    <Plus size={11} /> 연결
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 
@@ -463,6 +436,79 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
           {productPanel}
         </div>
       </div>
+
+      {/* 품목 연결 모달 */}
+      {showLinkPanel && selectedClientId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowLinkPanel(false)}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl mx-4 flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+            {/* 헤더 */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-black text-slate-900">품목 연결</h3>
+                <p className="text-xs text-slate-400 font-medium mt-0.5">{selectedClient?.name}에 추가할 품목을 선택하세요</p>
+              </div>
+              <button onClick={() => setShowLinkPanel(false)} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 transition-all">
+                <X size={18} />
+              </button>
+            </div>
+            {/* 카테고리 탭 */}
+            <div className="px-6 pt-4 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+              {CATEGORIES.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => { setLinkCategory(cat); setLinkSearch(''); }}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border whitespace-nowrap ${
+                    linkCategory === cat
+                      ? 'bg-emerald-600 border-emerald-600 text-white shadow'
+                      : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+            {/* 검색 */}
+            <div className="px-6 py-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+                <input
+                  type="text"
+                  placeholder="품목명 검색..."
+                  value={linkSearch}
+                  onChange={e => setLinkSearch(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-400/30 focus:border-emerald-400"
+                  autoFocus
+                />
+              </div>
+            </div>
+            {/* 목록 */}
+            <div className="flex-1 overflow-y-auto px-6 pb-6">
+              {linkableProduts.length === 0 ? (
+                <p className="text-center text-sm text-slate-400 py-12">연결 가능한 품목이 없습니다.</p>
+              ) : (
+                <div className="flex flex-col divide-y divide-slate-50">
+                  {linkableProduts.map(p => (
+                    <div key={p.id} className="flex items-center justify-between py-2.5 hover:bg-slate-50 -mx-2 px-2 rounded-xl transition-colors">
+                      <div>
+                        <p className="text-xs font-bold text-slate-700">{p.name}</p>
+                        {p.submaterials && p.submaterials.length > 0 && (
+                          <p className="text-[9px] text-slate-400 font-medium mt-0.5">{p.submaterials.map(s => s.name).join(' · ')}</p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => onLinkProduct(p.id, selectedClientId)}
+                        className="flex items-center gap-1 text-[10px] font-black text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-all shrink-0 ml-3"
+                      >
+                        <Plus size={11} /> 연결
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
