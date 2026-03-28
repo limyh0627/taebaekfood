@@ -371,7 +371,11 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, onClos
                           <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isSelected ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}><Package size={16} /></div>
                           <div className="flex flex-col min-w-0">
                             <p className="text-xs font-bold text-slate-800 truncate">{product.name}</p>
-                            <p className="text-[10px] text-slate-400 font-bold">{product.price.toLocaleString()}원</p>
+                            {product.submaterials && product.submaterials.length > 0 && (
+                              <p className="text-[9px] text-slate-400 font-bold truncate leading-tight">
+                                {product.submaterials.map(s => s.name).join(' · ')}
+                              </p>
+                            )}
                           </div>
                         </div>
                         {isSelected && renderItemControls(product)}

@@ -12,7 +12,8 @@ import {
   Truck,
   Store,
   LayoutGrid,
-  Search
+  Search,
+  Trash2
 } from 'lucide-react';
 import RegionSelect from './RegionSelect';
 import { Client, ClientType, PartnerType } from '../types';
@@ -22,9 +23,10 @@ interface ClientManagerProps {
   clients: Client[];
   onUpdateClient: (_client: Client) => void;
   onAddClient: (_client: Client) => void;
+  onDeleteClient: (_id: string) => void;
 }
 
-const ClientManager: React.FC<ClientManagerProps> = ({ clients, onUpdateClient, onAddClient }) => {
+const ClientManager: React.FC<ClientManagerProps> = ({ clients, onUpdateClient, onAddClient, onDeleteClient }) => {
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Client | null>(null);
   const [activeTab, setActiveTab] = useState<PartnerType | '전체'>('전체');
@@ -259,9 +261,14 @@ const ClientManager: React.FC<ClientManagerProps> = ({ clients, onUpdateClient, 
                     </div>
                   </div>
                   {!isEditing ? (
-                    <button onClick={() => startEditing(client)} className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all flex-shrink-0">
-                      <Edit size={15} />
-                    </button>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button onClick={() => startEditing(client)} className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all">
+                        <Edit size={15} />
+                      </button>
+                      <button onClick={() => { if (confirm(`"${client.name}" 거래처를 삭제하시겠습니까?`)) onDeleteClient(client.id); }} className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   ) : (
                     <div className="flex items-center space-x-1.5 flex-shrink-0">
                       <button onClick={saveEditing} className="p-1.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700">

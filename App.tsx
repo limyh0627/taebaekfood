@@ -772,7 +772,11 @@ const App: React.FC = () => {
               orders={orders} 
               clients={clients} 
               products={allProducts} 
-              onDeleteOrder={(id) => deleteItem('orders', id)} 
+              onDeleteOrder={(id) => {
+                const o = orders.find(x => x.id === id);
+                if (o?.status === OrderStatus.DELIVERED) { alert('예전 주문은 삭제할 수 없습니다.'); return; }
+                deleteItem('orders', id);
+              }}
               onAddClick={() => setIsAddOrderOpen(true)} 
               title="주문 관리" 
               subtitle="전체 주문 현황" 
@@ -847,7 +851,7 @@ const App: React.FC = () => {
             />
           )}
           {currentView === 'ai-consultant' && <AIConsultant orders={orders} products={allProducts} />}
-          {currentView === 'clients' && <ClientManager clients={clients} onUpdateClient={(c) => updateItem('clients', c.id, c)} onAddClient={(c) => addItem('clients', c)} />}
+          {currentView === 'clients' && <ClientManager clients={clients} onUpdateClient={(c) => updateItem('clients', c.id, c)} onAddClient={(c) => addItem('clients', c)} onDeleteClient={(id) => deleteItem('clients', id)} />}
           {currentView === 'database' && (
             <div className="space-y-6">
               <div className="bg-indigo-50 p-6 rounded-3xl border border-indigo-100 flex items-center justify-between">
@@ -1626,6 +1630,12 @@ const App: React.FC = () => {
               onDeleteProduct={(id) => {
                 const inProducts = products.some(p => p.id === id);
                 deleteItem(inProducts ? 'products' : 'submaterials', id);
+              }}
+              onLinkProduct={async (productId, clientId) => {
+                const current = productClients.filter(pc => pc.productId === productId).map(pc => pc.clientId);
+                if (!current.includes(clientId)) {
+                  await setProductClients(productId, [...current, clientId]);
+                }
               }}
             />
           )}
