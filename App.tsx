@@ -12,6 +12,7 @@ import {
   Layers,
   Database as DatabaseIcon,
   Download,
+  Bell,
   BellRing,
   Settings,
   Lock,
@@ -26,7 +27,7 @@ import {
   ChevronRight,
   FileText
 } from 'lucide-react';
-import { Order, Product, ProductClient, ViewType, OrderStatus, Client, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry } from './types';
+import { Order, Product, ProductClient, ViewType, OrderStatus, Client, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification } from './types';
 import Dashboard from './components/Dashboard';
 import OrdersList from './components/OrdersList';
 import ProductList from './components/ProductList';
@@ -147,9 +148,15 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
   const [currentView, setCurrentView] = useState<ViewType>('orders');
-  const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부' | '거래명세서'>('생산판매기록부');
+  const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부' | '거래명세서' | '생산작업기록부' | '생산작업기록부2'>('생산판매기록부');
   const [docYearMonth, setDocYearMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [bulkMfgDate, setBulkMfgDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [productionWorkCat, setProductionWorkCat] = useState('시골향참기름1');
+  const [productionWorkMonth, setProductionWorkMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [prodLedger2Month, setProdLedger2Month] = useState(() => new Date().toISOString().slice(0, 7));
+  const [sesameInputLedger, setSesameInputLedger] = useState<{id:string;type:string;date:string;amount:number}[]>([]);
+  const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
+  const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [rmActiveMaterial, setRmActiveMaterial] = useState('참깨');
   const [rmCorrectionTargetId, setRmCorrectionTargetId] = useState<string | null>(null);
   const [rmCorrectionForm, setRmCorrectionForm] = useState({ date: new Date().toISOString().slice(0, 10), amount: '', isNegative: true, note: '' });
@@ -168,6 +175,16 @@ const App: React.FC = () => {
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  useEffect(() => {
+    if (!showNotifPanel) return;
+    const handler = (e: MouseEvent) => {
+      const panel = document.getElementById('notif-panel-root');
+      if (panel && !panel.contains(e.target as Node)) setShowNotifPanel(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showNotifPanel]);
   
   const [noticePosts, setNoticePosts] = useState<Post[]>([]);
   const [pallets, setPallets] = useState<PalletStock[]>([]);
@@ -270,6 +287,8 @@ const App: React.FC = () => {
       subscribeToCollection<ChatRoom>('chatRooms', setChatRooms),
       subscribeToCollection<ChatMessage>('chatMessages', setChatMessages),
       subscribeToCollection<RawMaterialEntry>('rawMaterialLedger', setRawMaterialLedger),
+      subscribeToCollection<{id:string;type:string;date:string;amount:number}>('sesameInputLedger', setSesameInputLedger),
+      subscribeToCollection<AppNotification>('notifications', setAppNotifications),
     ];
 
     return () => {
@@ -344,6 +363,7 @@ const App: React.FC = () => {
         status: 'pending',
         requestedAt: new Date().toISOString(),
       });
+      await addItem('notifications', { type: 'confirmation', title: '확인사항 발생', body: `${data.name} ${shortage}${data.unit} 부족 — 발주 필요`, readBy: [], createdAt: new Date().toISOString() } as Omit<AppNotification,'id'>);
     }
   };
 
@@ -418,36 +438,6 @@ const App: React.FC = () => {
     alert('기본 데이터가 Firebase에 성공적으로 저장되었습니다.');
   };
 
-  // --- 자동 발주 감지 시스템 ---
-  useEffect(() => {
-    // 완제품은 자체 생산이므로 자동 발주 대상에서 제외
-    // 향미유 및 기타 부자재는 재고 부족 시 자동 발주 요청함으로 이동
-    const lowStockItems = allProducts.filter(p => p.category !== '완제품' && p.stock < p.minStock);
-    
-    const timer = setTimeout(() => {
-      setOrderRequests(prev => {
-        // 기존 요청 목록에서 완제품이 있다면 제거 (강제 정화)
-        const cleanedPrev = prev.filter(r => {
-          const product = allProducts.find(p => p.id === r.id);
-          return product && product.category !== '완제품';
-        });
-
-        let updated = [...cleanedPrev];
-        let hasChange = cleanedPrev.length !== prev.length;
-
-        lowStockItems.forEach(item => {
-          const isInRequests = updated.some(r => r.id === item.id);
-          const isInConfirmed = confirmedOrders.some(c => c.id === item.id);
-          if (!isInRequests && !isInConfirmed) {
-            updated.push({ id: item.id, quantity: item.minStock * 2, confirmedByUser: false });
-            hasChange = true;
-          }
-        });
-        return hasChange ? updated : prev;
-      });
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [allProducts, confirmedOrders]);
 
   // 로컬 스토리지 저장 (세션 관련만 유지)
   useEffect(() => { localStorage.setItem('tb_order_requests', JSON.stringify(orderRequests)); }, [orderRequests]);
@@ -666,6 +656,67 @@ const App: React.FC = () => {
             )}
           </div>
 
+          {/* 알림 벨 + 패널 */}
+          {(() => {
+            const unread = appNotifications.filter(n => !n.readBy.includes(currentUser.id));
+            const markRead = async (id: string) => {
+              const n = appNotifications.find(x => x.id === id);
+              if (!n || n.readBy.includes(currentUser.id)) return;
+              await updateItem('notifications', id, { readBy: [...n.readBy, currentUser.id] });
+            };
+            const markAll = async () => {
+              await Promise.all(unread.map(n => updateItem('notifications', n.id, { readBy: [...n.readBy, currentUser.id] })));
+            };
+            const sorted = [...appNotifications].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+            return (
+              <div id="notif-panel-root" className={`relative mb-2 ${isSidebarCollapsed ? 'flex justify-center' : 'px-1'}`}>
+                <button
+                  onClick={() => setShowNotifPanel(p => !p)}
+                  className={`relative flex items-center gap-2 w-full rounded-2xl px-3 py-2 hover:bg-slate-100 transition-all ${showNotifPanel ? 'bg-slate-100' : ''}`}
+                >
+                  <div className="relative shrink-0">
+                    {unread.length > 0 ? <BellRing size={18} className="text-amber-500" /> : <Bell size={18} className="text-slate-400" />}
+                    {unread.length > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center">{unread.length > 99 ? '99+' : unread.length}</span>
+                    )}
+                  </div>
+                  {!isSidebarCollapsed && <span className="text-xs font-bold text-slate-600">알림{unread.length > 0 ? ` (${unread.length})` : ''}</span>}
+                </button>
+                {showNotifPanel && (
+                  <div className="absolute top-0 left-full ml-2 w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                      <span className="text-xs font-black text-slate-700">알림</span>
+                      {unread.length > 0 && (
+                        <button onClick={markAll} className="text-[10px] font-bold text-indigo-500 hover:text-indigo-700 transition-colors">일괄 확인</button>
+                      )}
+                    </div>
+                    <div className="max-h-80 overflow-y-auto">
+                      {sorted.length === 0 ? (
+                        <p className="text-center text-slate-400 text-xs py-8">알림이 없습니다</p>
+                      ) : sorted.map(n => {
+                        const isUnread = !n.readBy.includes(currentUser.id);
+                        return (
+                          <div
+                            key={n.id}
+                            onClick={() => markRead(n.id)}
+                            className={`flex items-start gap-3 px-4 py-3 border-b border-slate-50 cursor-pointer hover:bg-slate-50 transition-colors ${isUnread ? 'bg-indigo-50/60' : ''}`}
+                          >
+                            <div className={`mt-0.5 shrink-0 w-2 h-2 rounded-full ${isUnread ? 'bg-indigo-500' : 'bg-transparent'}`} />
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-[11px] font-bold ${isUnread ? 'text-slate-800' : 'text-slate-500'}`}>{n.title}</p>
+                              <p className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">{n.body}</p>
+                              <p className="text-[9px] text-slate-300 mt-1">{new Date(n.createdAt).toLocaleString('ko-KR', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' })}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* 계정 정보 (클릭 → 로그아웃) */}
           <div
             className={`mb-6 cursor-pointer group ${isSidebarCollapsed ? 'flex justify-center' : ''}`}
@@ -758,13 +809,30 @@ const App: React.FC = () => {
         </header>
         
         <div className="flex-1 overflow-auto p-3 md:p-4 lg:p-6 custom-scrollbar">
-          <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'clients', 'notice', 'pallets', 'confirmation-items'].includes(currentView)) ? '' : 'min-w-[720px] md:min-w-0 h-full'}>
+          <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'clients', 'notice', 'pallets', 'confirmation-items', 'shipping'].includes(currentView)) ? '' : 'min-w-[720px] md:min-w-0 h-full'}>
           {currentView === 'dashboard' && <Dashboard orders={orders} products={allProducts} />}
           {currentView === 'shipping' && (
-            <DeliveryManager 
-              orders={orders} 
-              clients={clients} 
+            <DeliveryManager
+              orders={orders}
+              clients={clients}
+              products={allProducts}
               onUpdateDeliveryDate={(id, date) => updateItem('orders', id, { deliveryDate: date })}
+              onUpdateStatus={async (id, status) => {
+                if (status === OrderStatus.DELIVERED) {
+                  const order = orders.find(o => o.id === id);
+                  if (order) await deductSubmaterialsForOrder(order);
+                  await updateItem('orders', id, { status, deliveredAt: new Date().toISOString() });
+                } else {
+                  await updateItem('orders', id, { status });
+                }
+              }}
+              onUpdateItems={handleUpdateItems}
+              onToggleItemChecked={handleToggleItemChecked}
+              onDeleteOrder={(id) => {
+                const o = orders.find(x => x.id === id);
+                if (o?.status === OrderStatus.DELIVERED) { alert('예전 주문은 삭제할 수 없습니다.'); return; }
+                deleteItem('orders', id);
+              }}
             />
           )}
           {currentView === 'orders' && (
@@ -907,6 +975,7 @@ const App: React.FC = () => {
           {currentView === 'documents' && (() => {
             const shippedOrders = orders.filter(o =>
               o.status === OrderStatus.SHIPPED &&
+              o.customerName !== '생산기록' &&
               o.items.some(item => {
                 const p = allProducts.find(pr => pr.id === item.productId);
                 return p?.category === '완제품';
@@ -950,9 +1019,18 @@ const App: React.FC = () => {
             );
 
             // (품목, 용량) 집계 - 가장 빠른 제조일자, 거래처 "외 N" 형식
+            // 하남댁참기름/들기름 리매핑: 새싹 계열 + 해피유통(00) 300ml 시골향 계열
+            const remapSalesPumok = (상호: string, 품목: string, 용량: string): string => {
+              if (품목 === '새싹참기름') return '하남댁참기름';
+              if (품목 === '새싹들기름') return '하남댁들기름';
+              if (상호 === '해피유통(00)' && 품목 === '시골향참기름1' && 용량 === '300ml') return '하남댁참기름';
+              if (상호 === '해피유통(00)' && 품목 === '시골향들기름2' && 용량 === '300ml') return '하남댁들기름';
+              return 품목;
+            };
             const agg: Record<string, { qty: number; mfgDates: string[]; clients: string[] }> = {};
             rightRows.forEach(r => {
-              const key = `${r.품목}||${r.용량}`;
+              const mappedPumok = remapSalesPumok(r.상호, r.품목, r.용량);
+              const key = `${mappedPumok}||${r.용량}`;
               if (!agg[key]) agg[key] = { qty: 0, mfgDates: [], clients: [] };
               agg[key].qty += r.수량;
               if (r.제조일자) agg[key].mfgDates.push(r.제조일자);
@@ -968,8 +1046,8 @@ const App: React.FC = () => {
               { label: '시골향들기름①', key: '시골향들기름1', volumes: ['270ml','350ml','1800ml','16.5kg'] },
               { label: '시골향들기름②', key: '시골향들기름2', volumes: ['180ml','300ml','350ml','1500ml','1750ml','1800ml'] },
               { label: '토마토참기름',  key: '토마토참기름',  volumes: ['1800ml'] },
-              { label: '새싹참기름',   key: '새싹참기름',   volumes: ['300ml','350ml'] },
-              { label: '새싹들기름',   key: '새싹들기름',   volumes: ['300ml','350ml'] },
+              { label: '하남댁참기름', key: '하남댁참기름', volumes: ['300ml'] },
+              { label: '하남댁들기름', key: '하남댁들기름', volumes: ['300ml'] },
             ];
 
             // 좌측 하단 템플릿 (참깨/들깨 계열)
@@ -1172,6 +1250,14 @@ const App: React.FC = () => {
                         onClick={() => setDocTab('거래명세서')}
                         className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '거래명세서' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
                       >거래명세서</button>
+                      <button
+                        onClick={() => setDocTab('생산작업기록부')}
+                        className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '생산작업기록부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                      >생산작업기록부</button>
+                      <button
+                        onClick={() => setDocTab('생산작업기록부2')}
+                        className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '생산작업기록부2' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                      >생산작업기록부2</button>
                     </div>
                     {docTab === '생산판매기록부' && (
                       <div className="flex items-center gap-2">
@@ -1188,7 +1274,7 @@ const App: React.FC = () => {
                           />
                           <span className="text-[10px] text-slate-400 whitespace-nowrap">→ 제조 -3일 ±1</span>
                           {(() => {
-                            const cnt = orders.filter(o => o.status === OrderStatus.SHIPPED)
+                            const cnt = orders.filter(o => o.status === OrderStatus.SHIPPED && o.customerName !== '생산기록')
                               .flatMap(o => o.items.filter(item => allProducts.find(p => p.id === item.productId)?.category === '완제품')).length;
                             return cnt > 0 ? <span className="text-[10px] font-bold text-amber-500 whitespace-nowrap">{cnt}건</span> : null;
                           })()}
@@ -1198,7 +1284,7 @@ const App: React.FC = () => {
                               type UnsetItem = { orderId: string; itemIdx: number; productName: string };
                               const unset: UnsetItem[] = [];
                               const targetOrders = orders.filter(o =>
-                                o.status === OrderStatus.SHIPPED
+                                o.status === OrderStatus.SHIPPED && o.customerName !== '생산기록'
                               );
                               for (const o of targetOrders) {
                                 o.items.forEach((item, itemIdx) => {
@@ -1248,6 +1334,313 @@ const App: React.FC = () => {
                         </button>
                       </div>
                     )}
+                    {docTab === '생산작업기록부' && (
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-3 py-1.5 shadow-sm">
+                          <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">년월</span>
+                          <input
+                            type="month"
+                            value={productionWorkMonth}
+                            onChange={e => setProductionWorkMonth(e.target.value)}
+                            className="text-xs font-bold text-slate-700 bg-transparent outline-none cursor-pointer"
+                          />
+                        </div>
+                        <button
+                          onClick={async () => {
+                            const ExcelJS = (await import('exceljs')).default;
+                            const wb = new ExcelJS.Workbook();
+                            const ALL_CATS = [
+                              '시골향참기름1', '시골향참기름2', '시골향참기름3', '시골향참기름4',
+                              '하남댁참기름', '시골향들기름1', '시골향들기름2', '하남댁들기름',
+                            ];
+                            const CATEGORY_DISPLAY: Record<string, string> = {
+                              '시골향참기름1': '시골향참기름① (통깨 100%)',
+                              '시골향참기름2': '시골향참기름② (통깨 100%)',
+                              '시골향참기름3': '시골향참기름③ (통깨 100%)',
+                              '시골향참기름4': '시골향참기름④ (통깨 100%)',
+                              '하남댁참기름': '하남댁참기름',
+                              '시골향들기름1': '시골향들기름①',
+                              '시골향들기름2': '시골향들기름②',
+                              '하남댁들기름': '하남댁들기름',
+                            };
+                            const parseVolumeLiter = (vol: string): number => {
+                              if (vol.endsWith('ml')) return parseFloat(vol) / 1000;
+                              if (vol.endsWith('l')) return parseFloat(vol);
+                              if (vol.endsWith('kg')) return parseFloat(vol);
+                              return 0;
+                            };
+                            const [wy, wm] = productionWorkMonth.split('-').map(Number);
+                            const daysInMonth = new Date(wy, wm, 0).getDate();
+                            const thin: Partial<ExcelJS.Borders> = {
+                              top:{style:'thin'}, bottom:{style:'thin'}, left:{style:'thin'}, right:{style:'thin'}
+                            };
+                            const hFill: ExcelJS.Fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFD9E1F2'} };
+                            const center = { horizontal: 'center' as const, vertical: 'middle' as const };
+                            const left = { horizontal: 'left' as const, vertical: 'middle' as const };
+
+                            for (const cat of ALL_CATS) {
+                              type WRow = { 용량: string; 수량: number; mfgDate: string };
+                              const dayMap: Record<number, WRow[]> = {};
+                              orders
+                                .filter(o => [OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(o.status as OrderStatus))
+                                .forEach(order => {
+                                  const docStr = order.documentDate || order.deliveryDate;
+                                  if (!docStr) return;
+                                  const d = new Date(docStr);
+                                  if (d.getFullYear() !== wy || d.getMonth() + 1 !== wm) return;
+                                  const day = d.getDate();
+                                  order.items.forEach(item => {
+                                    const p = allProducts.find(pr => pr.id === item.productId);
+                                    const remappedPumok = p?.품목 === '새싹참기름' ? '하남댁참기름' : p?.품목 === '새싹들기름' ? '하남댁들기름' : p?.품목;
+                                    if (!p || remappedPumok !== cat) return;
+                                    if (!dayMap[day]) dayMap[day] = [];
+                                    const existing = dayMap[day].find(r => r.용량 === (p.용량 || ''));
+                                    if (existing) existing.수량 += item.quantity;
+                                    else dayMap[day].push({ 용량: p.용량 || '', 수량: item.quantity, mfgDate: item.mfgDate || '' });
+                                  });
+                                });
+                              const ws = wb.addWorksheet(cat);
+                              ws.columns = [
+                                { width: 6 }, { width: 12 }, { width: 10 }, { width: 10 }, { width: 12 }, { width: 14 }, { width: 10 },
+                              ];
+                              ws.pageSetup = {
+                                paperSize: 9, orientation: 'portrait',
+                                fitToPage: true, fitToWidth: 1, fitToHeight: 1,
+                                margins: { left: 0.5, right: 0.5, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 },
+                              };
+                              // 헤더 행 추가 후 셀 병합
+                              const r1 = ws.addRow([`년 월 : ${wy}년 ${wm}월`, '', '', '', '', `관리자 : 임 기 주`, '']);
+                              ws.mergeCells(`A1:E1`);
+                              ws.mergeCells(`F1:G1`);
+                              r1.getCell(1).alignment = left; r1.getCell(1).font = { bold: true, size: 9 };
+                              r1.getCell(6).alignment = center; r1.getCell(6).font = { bold: true, size: 9 };
+
+                              const r2 = ws.addRow([`품 목 : ${CATEGORY_DISPLAY[cat] || cat}`, '', '', '', '', '', '']);
+                              ws.mergeCells(`A2:G2`);
+                              r2.getCell(1).alignment = left; r2.getCell(1).font = { bold: true, size: 9 };
+
+                              const r3 = ws.addRow([`담당자 : 이 은 경`, '', '', '', '', `( 단 위 : Kg )`, '']);
+                              ws.mergeCells(`A3:E3`);
+                              ws.mergeCells(`F3:G3`);
+                              r3.getCell(1).alignment = left; r3.getCell(1).font = { bold: true, size: 9 };
+                              r3.getCell(6).alignment = center; r3.getCell(6).font = { size: 9 };
+
+                              ws.addRow([]);
+                              const hRow = ws.addRow(['일 자', '투입량(Kg)', '생산품목', '생산수량(개)', '생산량', '유통기한', '비고']);
+                              hRow.eachCell(cell => {
+                                cell.font = { bold: true, size: 9 };
+                                cell.fill = hFill;
+                                cell.border = thin;
+                                cell.alignment = center;
+                              });
+                              hRow.height = 18;
+                              let totalInput = 0;
+                              for (let d = 1; d <= daysInMonth; d++) {
+                                const rows = (dayMap[d] || []).sort((a, b) => a.용량.localeCompare(b.용량));
+                                if (rows.length === 0) {
+                                  const r = ws.addRow([d, '-', '', '', '-', '', '']);
+                                  r.eachCell((cell, col) => {
+                                    cell.border = thin;
+                                    cell.alignment = col === 1 ? center : left;
+                                    cell.font = { size: 9 };
+                                  });
+                                } else {
+                                  rows.forEach((row, i) => {
+                                    const vol = parseVolumeLiter(row.용량);
+                                    const inputKg = Math.round(vol * row.수량 * 0.92);
+                                    totalInput += inputKg;
+                                    const dv = row.용량.endsWith('ml') && parseFloat(row.용량) >= 1000
+                                      ? `${parseFloat(row.용량)/1000}l` : row.용량;
+                                    const sobiDisp = row.mfgDate ? row.mfgDate.replace(/-/g, '.') : '';
+                                    const r = ws.addRow([i === 0 ? d : '', inputKg, dv, row.수량, inputKg, sobiDisp, '']);
+                                    r.eachCell((cell, col) => {
+                                      cell.border = thin;
+                                      cell.alignment = [1,2,4,5].includes(col) ? center : left;
+                                      cell.font = { size: 9 };
+                                    });
+                                  });
+                                }
+                              }
+                              const totRow = ws.addRow(['총 량', totalInput, '', '', '', '', '']);
+                              totRow.eachCell(cell => {
+                                cell.border = thin;
+                                cell.font = { bold: true, size: 9 };
+                                cell.fill = hFill;
+                                cell.alignment = center;
+                              });
+                            }
+                            const buf = await wb.xlsx.writeBuffer();
+                            const a = document.createElement('a');
+                            a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+                            a.download = `생산작업기록부_${productionWorkMonth}.xlsx`;
+                            a.click();
+                          }}
+                          className="flex items-center space-x-2 bg-emerald-600 text-white px-5 py-2.5 rounded-2xl font-bold shadow hover:bg-emerald-700 transition-all text-sm"
+                        >
+                          <FileText size={16} />
+                          <span>엑셀 저장</span>
+                        </button>
+                      </div>
+                    )}
+                    {docTab === '생산작업기록부2' && (
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-3 py-1.5 shadow-sm">
+                          <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">년월</span>
+                          <input
+                            type="month"
+                            value={prodLedger2Month}
+                            onChange={e => setProdLedger2Month(e.target.value)}
+                            className="text-xs font-bold text-slate-700 bg-transparent outline-none cursor-pointer"
+                          />
+                        </div>
+                        <button
+                          onClick={async () => {
+                            const ExcelJSMod = (await import('exceljs')).default;
+                            const wb2 = new ExcelJSMod.Workbook();
+                            const [xl2Year, xl2Month] = prodLedger2Month.split('-').map(Number);
+                            const xl2Days = new Date(xl2Year, xl2Month, 0).getDate();
+                            const parseVolL2 = (vol: string): number => {
+                              if (!vol) return 0;
+                              const v = vol.toLowerCase();
+                              if (v.endsWith('ml')) return parseFloat(v) / 1000;
+                              if (v.endsWith('l')) return parseFloat(v);
+                              return 0;
+                            };
+                            const getDayKg2 = (day: number, catKey: string): number => {
+                              let total = 0;
+                              orders.filter(o => [OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(o.status as OrderStatus))
+                                .forEach(order => {
+                                  const docStr = order.documentDate || order.deliveryDate;
+                                  if (!docStr) return;
+                                  const d = new Date(docStr);
+                                  if (d.getFullYear() !== xl2Year || d.getMonth() + 1 !== xl2Month || d.getDate() !== day) return;
+                                  order.items.forEach(item => {
+                                    const p = allProducts.find(pr => pr.id === item.productId);
+                                    if (!p || p.품목 !== catKey) return;
+                                    total += Math.round(parseVolL2(p.용량 || '') * item.quantity * 0.92);
+                                  });
+                                });
+                              return total;
+                            };
+                            const getOutflow2 = (day: number, type: string): number => {
+                              const kg1 = getDayKg2(day, '시골향참기름1');
+                              const kg2 = getDayKg2(day, '시골향참기름2');
+                              const kg3 = getDayKg2(day, '시골향참기름3');
+                              if (type === '통깨참기름') return kg1 + Math.round(kg2 / 2);
+                              return kg3 + Math.round(kg2 / 2);
+                            };
+                            const getLEntry = (type: string, date: string) =>
+                              sesameInputLedger.find(e => e.type === type && e.date === date);
+                            const getInflow2 = (day: number, type: string): number =>
+                              getLEntry(type, `${prodLedger2Month}-${String(day).padStart(2, '0')}`)?.amount || 0;
+                            const getInit2 = (type: string): number =>
+                              getLEntry(type, `${prodLedger2Month}-init`)?.amount || 0;
+                            const tStocks2: number[] = new Array(xl2Days + 1).fill(0);
+                            const gStocks2: number[] = new Array(xl2Days + 1).fill(0);
+                            let tSt2 = getInit2('통깨참기름'), gSt2 = getInit2('깨분참기름');
+                            let totTIn2 = 0, totTOut2 = 0, totGIn2 = 0, totGOut2 = 0;
+                            for (let day = 1; day <= xl2Days; day++) {
+                              const tIn = getInflow2(day, '통깨참기름');
+                              const tOut = getOutflow2(day, '통깨참기름');
+                              const gIn = getInflow2(day, '깨분참기름');
+                              const gOut = getOutflow2(day, '깨분참기름');
+                              tSt2 = tSt2 + tIn - tOut;
+                              gSt2 = gSt2 + gIn - gOut;
+                              tStocks2[day] = tSt2;
+                              gStocks2[day] = gSt2;
+                              totTIn2 += tIn; totTOut2 += tOut;
+                              totGIn2 += gIn; totGOut2 += gOut;
+                            }
+                            // A:일자 B:통깨입고 C:통깨출고 D:통깨재고 E:깨분입고 F:깨분출고 G:깨분재고 H:총입고 I:총출고 J:총재고
+                            const ws2 = wb2.addWorksheet('참기름수불부');
+                            ws2.columns = [
+                              { width: 6 }, { width: 7 }, { width: 7 }, { width: 7 },
+                              { width: 7 }, { width: 7 }, { width: 7 },
+                              { width: 7 }, { width: 7 }, { width: 7 },
+                            ];
+                            ws2.pageSetup = {
+                              paperSize: 9, orientation: 'landscape',
+                              fitToPage: true, fitToWidth: 1, fitToHeight: 1,
+                              margins: { left: 0.5, right: 0.5, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 },
+                            };
+                            const thin2: Partial<ExcelJS.Borders> = {
+                              top:{style:'thin'}, bottom:{style:'thin'}, left:{style:'thin'}, right:{style:'thin'}
+                            };
+                            const hFill2: ExcelJS.Fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFD9E1F2'} };
+                            const center2 = { horizontal: 'center' as const, vertical: 'middle' as const };
+                            // 제목 (행1)
+                            const titleRow = ws2.addRow([`참기름 원료 수불부  ${xl2Year}년 ${xl2Month}월`, '', '', '', '', '', '', '', '', '']);
+                            ws2.mergeCells('A1:J1');
+                            titleRow.getCell(1).font = { bold: true, size: 12 };
+                            titleRow.getCell(1).alignment = center2;
+                            titleRow.height = 22;
+                            ws2.addRow([]); // 행2 빈 줄
+                            // 헤더 행1 (행3): 일자 | 통깨참기름(3) | 깨분참기름(3) | 참기름총량(3)
+                            const h1 = ws2.addRow(['일자', '통깨참기름 (Kg)', '', '', '깨분참기름 (Kg)', '', '', '참기름 총량 (Kg)', '', '']);
+                            ws2.mergeCells('B3:D3'); ws2.mergeCells('E3:G3'); ws2.mergeCells('H3:J3');
+                            h1.eachCell(cell => { cell.font = { bold: true, size: 9 }; cell.fill = hFill2; cell.border = thin2; cell.alignment = center2; });
+                            h1.getCell(1).border = thin2;
+                            // 헤더 행2 (행4)
+                            const h2 = ws2.addRow(['', '입고', '출고', '재고', '입고', '출고', '재고', '입고', '출고', '재고']);
+                            h2.eachCell(cell => { cell.font = { bold: true, size: 9 }; cell.fill = hFill2; cell.border = thin2; cell.alignment = center2; });
+                            // 전기이월 (행5)
+                            const tInit = getInit2('통깨참기름');
+                            const gInit = getInit2('깨분참기름');
+                            const initRow = ws2.addRow(['전기이월', 0, 0, tInit, 0, 0, gInit, 0, 0, { formula: `D5+G5`, result: tInit + gInit }]);
+                            initRow.eachCell((cell, col) => { cell.border = thin2; cell.alignment = center2; cell.font = { size: 9, bold: true }; });
+                            // 데이터 행 (행6~)
+                            for (let day = 1; day <= xl2Days; day++) {
+                              const rn = day + 5; // 행 번호
+                              const prevRn = rn - 1;
+                              const tIn = getInflow2(day, '통깨참기름');
+                              const tOut = getOutflow2(day, '통깨참기름');
+                              const gIn = getInflow2(day, '깨분참기름');
+                              const gOut = getOutflow2(day, '깨분참기름');
+                              const tSt = tStocks2[day];
+                              const gSt = gStocks2[day];
+                              const r = ws2.addRow([
+                                day,
+                                tIn || 0,
+                                tOut || 0,
+                                { formula: `D${prevRn}+B${rn}-C${rn}`, result: tSt },
+                                gIn || 0,
+                                gOut || 0,
+                                { formula: `G${prevRn}+E${rn}-F${rn}`, result: gSt },
+                                { formula: `B${rn}+E${rn}`, result: tIn + gIn },
+                                { formula: `C${rn}+F${rn}`, result: tOut + gOut },
+                                { formula: `D${rn}+G${rn}`, result: tSt + gSt },
+                              ]);
+                              r.eachCell((cell, col) => { cell.border = thin2; cell.alignment = center2; cell.font = { size: 9 }; });
+                            }
+                            // 총량 행
+                            const lastDataRn = xl2Days + 5;
+                            const firstDataRn = 6;
+                            const totRow2 = ws2.addRow([
+                              '총 량',
+                              { formula: `SUM(B${firstDataRn}:B${lastDataRn})`, result: totTIn2 },
+                              { formula: `SUM(C${firstDataRn}:C${lastDataRn})`, result: totTOut2 },
+                              tStocks2[xl2Days],
+                              { formula: `SUM(E${firstDataRn}:E${lastDataRn})`, result: totGIn2 },
+                              { formula: `SUM(F${firstDataRn}:F${lastDataRn})`, result: totGOut2 },
+                              gStocks2[xl2Days],
+                              { formula: `SUM(H${firstDataRn}:H${lastDataRn})`, result: totTIn2 + totGIn2 },
+                              { formula: `SUM(I${firstDataRn}:I${lastDataRn})`, result: totTOut2 + totGOut2 },
+                              { formula: `D${lastDataRn + 1}+G${lastDataRn + 1}`, result: tStocks2[xl2Days] + gStocks2[xl2Days] },
+                            ]);
+                            totRow2.eachCell(cell => { cell.border = thin2; cell.font = { bold: true, size: 9 }; cell.fill = hFill2; cell.alignment = center2; });
+                            const buf2 = await wb2.xlsx.writeBuffer();
+                            const a2 = document.createElement('a');
+                            a2.href = URL.createObjectURL(new Blob([buf2], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+                            a2.download = `참기름수불부_${prodLedger2Month}.xlsx`;
+                            a2.click();
+                          }}
+                          className="flex items-center space-x-2 bg-emerald-600 text-white px-5 py-2.5 rounded-2xl font-bold shadow hover:bg-emerald-700 transition-all text-sm"
+                        >
+                          <FileText size={16} />
+                          <span>엑셀 저장</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1256,12 +1649,8 @@ const App: React.FC = () => {
 
                     {/* 상단: 생산 내역(좌) + 판매 내역(우) */}
                     <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-x-auto">
-                      {rightRows.length === 0 && leftRows.every(r => r.수량 === 0) ? (
-                        <div className="flex flex-col items-center justify-center py-24 opacity-20">
-                          <FileText size={40} />
-                          <p className="text-xs font-bold mt-2">출고 주문이 없습니다</p>
-                        </div>
-                      ) : (
+                      {(() => {
+                        return (
                         <table className="text-xs border-collapse min-w-[900px] w-full">
                           <thead>
                             <tr>
@@ -1323,7 +1712,8 @@ const App: React.FC = () => {
                             })}
                           </tbody>
                         </table>
-                      )}
+                        );
+                      })()}
                     </div>
 
                     {/* 하단: 참깨/들깨 계열 */}
@@ -1582,6 +1972,336 @@ const App: React.FC = () => {
                     clients={clients}
                   />
                 )}
+
+                {docTab === '생산작업기록부' && (() => {
+                  const PRODUCTION_CATEGORIES = [
+                    '시골향참기름1', '시골향참기름2', '시골향참기름3', '시골향참기름4',
+                    '하남댁참기름', '시골향들기름1', '시골향들기름2', '하남댁들기름',
+                  ];
+                  const CATEGORY_DISPLAY: Record<string, string> = {
+                    '시골향참기름1': '시골향참기름① (통깨 100%)',
+                    '시골향참기름2': '시골향참기름② (통깨 100%)',
+                    '시골향참기름3': '시골향참기름③ (통깨 100%)',
+                    '시골향참기름4': '시골향참기름④ (통깨 100%)',
+                    '하남댁참기름': '하남댁참기름',
+                    '시골향들기름1': '시골향들기름①',
+                    '시골향들기름2': '시골향들기름②',
+                    '하남댁들기름': '하남댁들기름',
+                  };
+                  const parseVolumeLiter = (vol: string): number => {
+                    if (vol.endsWith('ml')) return parseFloat(vol) / 1000;
+                    if (vol.endsWith('l')) return parseFloat(vol);
+                    if (vol.endsWith('kg')) return parseFloat(vol);
+                    return 0;
+                  };
+                  const displayVol = (vol: string) =>
+                    vol.endsWith('ml') && parseFloat(vol) >= 1000
+                      ? `${parseFloat(vol) / 1000}l` : vol;
+                  const calcExpiry = (mfgDate: string) => {
+                    if (!mfgDate) return '';
+                    const d = new Date(mfgDate);
+                    d.setFullYear(d.getFullYear() + 1);
+                    return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
+                  };
+                  const [wy, wm] = productionWorkMonth.split('-').map(Number);
+                  const daysInMonth = new Date(wy, wm, 0).getDate();
+                  // 해당 카테고리 + 해당 월의 데이터 수집
+                  type WRow = { 용량: string; 수량: number; mfgDate: string };
+                  const dayMap: Record<number, WRow[]> = {};
+                  orders
+                    .filter(o => [OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(o.status as OrderStatus))
+                    .forEach(order => {
+                      const docStr = order.documentDate || order.deliveryDate;
+                      if (!docStr) return;
+                      const d = new Date(docStr);
+                      if (d.getFullYear() !== wy || d.getMonth() + 1 !== wm) return;
+                      const day = d.getDate();
+                      order.items.forEach(item => {
+                        const p = allProducts.find(pr => pr.id === item.productId);
+                        const remappedPumok = p?.품목 === '새싹참기름' ? '하남댁참기름' : p?.품목 === '새싹들기름' ? '하남댁들기름' : p?.품목;
+                        if (!p || remappedPumok !== productionWorkCat) return;
+                        if (!dayMap[day]) dayMap[day] = [];
+                        const existing = dayMap[day].find(r => r.용량 === (p.용량 || ''));
+                        if (existing) existing.수량 += item.quantity;
+                        else dayMap[day].push({ 용량: p.용량 || '', 수량: item.quantity, mfgDate: item.mfgDate || '' });
+                      });
+                    });
+                  let totalInput = 0;
+                  let totalQty = 0;
+                  return (
+                    <div className="space-y-4">
+                      {/* 카테고리 탭 */}
+                      <div className="flex bg-white p-1 rounded-2xl border border-slate-200 shadow-sm flex-wrap gap-1">
+                        {PRODUCTION_CATEGORIES.map(cat => (
+                          <button
+                            key={cat}
+                            onClick={() => setProductionWorkCat(cat)}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${productionWorkCat === cat ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                          >
+                            {cat}
+                          </button>
+                        ))}
+                      </div>
+                      {/* 문서 헤더 */}
+                      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="text-sm font-bold text-slate-700">년 월 : {wy}년 {wm}월</span>
+                          <span className="text-sm font-bold text-slate-700">관리자 : 임 기 주</span>
+                        </div>
+                        <div className="text-sm font-bold text-slate-700 mb-1">품 목 : {CATEGORY_DISPLAY[productionWorkCat] || productionWorkCat}</div>
+                        <div className="flex justify-between items-start">
+                          <span className="text-sm font-bold text-slate-700">담당자 : 이 은 경</span>
+                          <span className="text-xs text-slate-400 font-bold">( 단 위 : Kg )</span>
+                        </div>
+                      </div>
+                      {/* 테이블 */}
+                      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-x-auto">
+                        <table className="text-xs border-collapse w-full min-w-[640px]">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200">
+                              {['일 자', '투입량(Kg)', '생산품목', '생산수량(개)', '생산량', '유통기한', '비고'].map(h => (
+                                <th key={h} className="px-3 py-2.5 text-center text-[10px] font-black text-slate-500 border border-slate-200">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Array.from({ length: daysInMonth }, (_, i) => i + 1).flatMap(day => {
+                              const rows = (dayMap[day] || []).sort((a, b) => a.용량.localeCompare(b.용량));
+                              if (rows.length === 0) {
+                                return [(
+                                  <tr key={day} className="border-b border-slate-100">
+                                    <td className="px-3 py-1.5 text-center font-bold text-slate-600 border border-slate-100 w-12">{day}</td>
+                                    <td className="px-3 py-1.5 text-center text-slate-300 border border-slate-100">-</td>
+                                    <td className="border border-slate-100" />
+                                    <td className="border border-slate-100" />
+                                    <td className="px-3 py-1.5 text-center text-slate-300 border border-slate-100">-</td>
+                                    <td className="border border-slate-100" />
+                                    <td className="border border-slate-100" />
+                                  </tr>
+                                )];
+                              }
+                              return rows.map((row, i) => {
+                                const vol = parseVolumeLiter(row.용량);
+                                const inputKg = Math.round(vol * row.수량 * 0.92);
+                                totalInput += inputKg;
+                                const sobiDisp = row.mfgDate ? row.mfgDate.replace(/-/g, '.') : '';
+                                return (
+                                  <tr key={`${day}-${i}`} className="border-b border-slate-100 hover:bg-slate-50/50">
+                                    <td className="px-3 py-1.5 text-center font-bold text-slate-600 border border-slate-100">
+                                      {i === 0 ? day : ''}
+                                    </td>
+                                    <td className="px-3 py-1.5 text-center font-bold text-indigo-700 border border-slate-100">{inputKg}</td>
+                                    <td className="px-3 py-1.5 text-center text-slate-700 border border-slate-100">{displayVol(row.용량)}</td>
+                                    <td className="px-3 py-1.5 text-center text-slate-700 border border-slate-100">{row.수량}</td>
+                                    <td className="px-3 py-1.5 text-center font-bold text-indigo-700 border border-slate-100">{inputKg}</td>
+                                    <td className="px-3 py-1.5 text-center text-slate-600 border border-slate-100">{sobiDisp}</td>
+                                    <td className="border border-slate-100" />
+                                  </tr>
+                                );
+                              });
+                            })}
+                            <tr className="bg-slate-50 font-bold">
+                              <td className="px-3 py-2 text-center text-slate-700 border border-slate-200">총 량</td>
+                              <td className="px-3 py-2 text-center text-indigo-800 border border-slate-200">{totalInput}</td>
+                              <td className="border border-slate-200" />
+                              <td className="border border-slate-200" />
+                              <td className="border border-slate-200" />
+                              <td className="border border-slate-200" />
+                              <td className="border border-slate-200" />
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {docTab === '생산작업기록부2' && (() => {
+                  const [lm2Year, lm2Month] = prodLedger2Month.split('-').map(Number);
+                  const daysInMonth2 = new Date(lm2Year, lm2Month, 0).getDate();
+
+                  const parseVolL = (vol: string): number => {
+                    if (!vol) return 0;
+                    const v = vol.toLowerCase();
+                    if (v.endsWith('ml')) return parseFloat(v) / 1000;
+                    if (v.endsWith('l')) return parseFloat(v);
+                    return 0;
+                  };
+
+                  const getDayKg = (day: number, catKey: string): number => {
+                    let total = 0;
+                    orders
+                      .filter(o => [OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(o.status as OrderStatus))
+                      .forEach(order => {
+                        const docStr = order.documentDate || order.deliveryDate;
+                        if (!docStr) return;
+                        const d = new Date(docStr);
+                        if (d.getFullYear() !== lm2Year || d.getMonth() + 1 !== lm2Month || d.getDate() !== day) return;
+                        order.items.forEach(item => {
+                          const p = allProducts.find(pr => pr.id === item.productId);
+                          if (!p || p.품목 !== catKey) return;
+                          total += Math.round(parseVolL(p.용량 || '') * item.quantity * 0.92);
+                        });
+                      });
+                    return total;
+                  };
+
+                  const getOutflow = (day: number, type: '통깨참기름' | '깨분참기름'): number => {
+                    const kg1 = getDayKg(day, '시골향참기름1');
+                    const kg2 = getDayKg(day, '시골향참기름2');
+                    const kg3 = getDayKg(day, '시골향참기름3');
+                    if (type === '통깨참기름') return kg1 + Math.round(kg2 / 2);
+                    return kg3 + Math.round(kg2 / 2);
+                  };
+
+                  const getLedgerEntry = (type: string, date: string) =>
+                    sesameInputLedger.find(e => e.type === type && e.date === date);
+
+                  const getInflow = (day: number, type: string): number =>
+                    getLedgerEntry(type, `${prodLedger2Month}-${String(day).padStart(2, '0')}`)?.amount || 0;
+
+                  const getInitStock = (type: string): number =>
+                    getLedgerEntry(type, `${prodLedger2Month}-init`)?.amount || 0;
+
+                  const saveEntry = async (type: string, date: string, amount: number) => {
+                    const existing = getLedgerEntry(type, date);
+                    if (existing) {
+                      await updateItem('sesameInputLedger', existing.id, { amount });
+                    } else {
+                      await addItem('sesameInputLedger', { type, date, amount });
+                    }
+                  };
+
+                  const tongkaeStocks: number[] = new Array(daysInMonth2 + 1).fill(0);
+                  const gaebbunStocks: number[] = new Array(daysInMonth2 + 1).fill(0);
+                  let tStock = getInitStock('통깨참기름');
+                  let gStock = getInitStock('깨분참기름');
+                  for (let day = 1; day <= daysInMonth2; day++) {
+                    tStock = tStock + getInflow(day, '통깨참기름') - getOutflow(day, '통깨참기름');
+                    gStock = gStock + getInflow(day, '깨분참기름') - getOutflow(day, '깨분참기름');
+                    tongkaeStocks[day] = tStock;
+                    gaebbunStocks[day] = gStock;
+                  }
+
+                  let totalTIn = 0, totalTOut = 0, totalGIn = 0, totalGOut = 0;
+                  for (let day = 1; day <= daysInMonth2; day++) {
+                    totalTIn += getInflow(day, '통깨참기름');
+                    totalTOut += getOutflow(day, '통깨참기름');
+                    totalGIn += getInflow(day, '깨분참기름');
+                    totalGOut += getOutflow(day, '깨분참기름');
+                  }
+
+                  return (
+                    <div className="space-y-4">
+                      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-x-auto">
+                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+                          <span className="text-sm font-bold text-slate-700">참기름 원료 수불부</span>
+                          <span className="text-sm font-bold text-slate-500">{lm2Year}년 {lm2Month}월</span>
+                        </div>
+                        <table className="text-xs border-collapse w-full min-w-[720px]">
+                          <thead>
+                            <tr className="bg-slate-50">
+                              <th rowSpan={2} className="px-3 py-2.5 text-center text-[10px] font-black text-slate-500 border border-slate-200 w-12">일자</th>
+                              <th colSpan={3} className="px-3 py-2 text-center text-[10px] font-black text-slate-500 border border-slate-200">통깨참기름 (Kg)</th>
+                              <th colSpan={3} className="px-3 py-2 text-center text-[10px] font-black text-slate-500 border border-slate-200">깨분참기름 (Kg)</th>
+                              <th colSpan={3} className="px-3 py-2 text-center text-[10px] font-black text-slate-500 border border-slate-200">참기름 총량 (Kg)</th>
+                            </tr>
+                            <tr className="bg-slate-50">
+                              {['입고', '출고', '재고', '입고', '출고', '재고', '입고', '출고', '재고'].map((h, i) => (
+                                <th key={i} className="px-3 py-1.5 text-center text-[10px] font-black text-slate-400 border border-slate-200">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr key={`init-${prodLedger2Month}`} className="bg-amber-50">
+                              <td className="px-3 py-1.5 text-center font-bold text-slate-600 border border-slate-200 text-[10px] whitespace-nowrap">전기이월</td>
+                              <td className="border border-slate-200" />
+                              <td className="border border-slate-200" />
+                              <td className="border border-slate-200 p-0">
+                                <input
+                                  key={`ti-${prodLedger2Month}-${getInitStock('통깨참기름')}`}
+                                  type="number"
+                                  defaultValue={getInitStock('통깨참기름') || ''}
+                                  onBlur={e => saveEntry('통깨참기름', `${prodLedger2Month}-init`, Number(e.target.value))}
+                                  className="w-full text-center text-xs font-bold text-amber-800 bg-transparent outline-none px-2 py-1.5"
+                                  placeholder="0"
+                                />
+                              </td>
+                              <td className="border border-slate-200" />
+                              <td className="border border-slate-200" />
+                              <td className="border border-slate-200 p-0">
+                                <input
+                                  key={`gi-${prodLedger2Month}-${getInitStock('깨분참기름')}`}
+                                  type="number"
+                                  defaultValue={getInitStock('깨분참기름') || ''}
+                                  onBlur={e => saveEntry('깨분참기름', `${prodLedger2Month}-init`, Number(e.target.value))}
+                                  className="w-full text-center text-xs font-bold text-amber-800 bg-transparent outline-none px-2 py-1.5"
+                                  placeholder="0"
+                                />
+                              </td>
+                              <td className="border border-slate-200" />
+                              <td className="border border-slate-200" />
+                              <td className="px-3 py-1.5 text-center font-bold text-amber-800 border border-slate-200">{getInitStock('통깨참기름') + getInitStock('깨분참기름') || ''}</td>
+                            </tr>
+                            {Array.from({ length: daysInMonth2 }, (_, i) => i + 1).map(day => {
+                              const dateStr = `${prodLedger2Month}-${String(day).padStart(2, '0')}`;
+                              const tIn = getInflow(day, '통깨참기름');
+                              const tOut = getOutflow(day, '통깨참기름');
+                              const tSt = tongkaeStocks[day];
+                              const gIn = getInflow(day, '깨분참기름');
+                              const gOut = getOutflow(day, '깨분참기름');
+                              const gSt = gaebbunStocks[day];
+                              return (
+                                <tr key={`${prodLedger2Month}-${day}`} className="border-b border-slate-100 hover:bg-slate-50/50">
+                                  <td className="px-3 py-1.5 text-center font-bold text-slate-600 border border-slate-100">{day}</td>
+                                  <td className="border border-slate-100 p-0">
+                                    <input
+                                      key={`t-in-${dateStr}-${tIn}`}
+                                      type="number"
+                                      defaultValue={tIn || ''}
+                                      onBlur={e => saveEntry('통깨참기름', dateStr, Number(e.target.value))}
+                                      className="w-full text-center text-xs text-slate-700 bg-transparent outline-none px-2 py-1.5"
+                                      placeholder="-"
+                                    />
+                                  </td>
+                                  <td className="px-3 py-1.5 text-center text-slate-700 border border-slate-100">{tOut > 0 ? tOut : '-'}</td>
+                                  <td className="px-3 py-1.5 text-center font-bold text-indigo-700 border border-slate-100">{tSt}</td>
+                                  <td className="border border-slate-100 p-0">
+                                    <input
+                                      key={`g-in-${dateStr}-${gIn}`}
+                                      type="number"
+                                      defaultValue={gIn || ''}
+                                      onBlur={e => saveEntry('깨분참기름', dateStr, Number(e.target.value))}
+                                      className="w-full text-center text-xs text-slate-700 bg-transparent outline-none px-2 py-1.5"
+                                      placeholder="-"
+                                    />
+                                  </td>
+                                  <td className="px-3 py-1.5 text-center text-slate-700 border border-slate-100">{gOut > 0 ? gOut : '-'}</td>
+                                  <td className="px-3 py-1.5 text-center font-bold text-indigo-700 border border-slate-100">{gSt}</td>
+                                  <td className="px-3 py-1.5 text-center text-slate-700 border border-slate-100">{tIn + gIn > 0 ? tIn + gIn : '-'}</td>
+                                  <td className="px-3 py-1.5 text-center text-slate-700 border border-slate-100">{tOut + gOut > 0 ? tOut + gOut : '-'}</td>
+                                  <td className="px-3 py-1.5 text-center font-bold text-indigo-800 border border-slate-100">{tSt + gSt}</td>
+                                </tr>
+                              );
+                            })}
+                            <tr className="bg-slate-50 font-bold border-t-2 border-slate-300">
+                              <td className="px-3 py-2 text-center text-slate-700 border border-slate-200">총 량</td>
+                              <td className="px-3 py-2 text-center text-slate-800 border border-slate-200">{totalTIn || '-'}</td>
+                              <td className="px-3 py-2 text-center text-slate-800 border border-slate-200">{totalTOut || '-'}</td>
+                              <td className="px-3 py-2 text-center text-indigo-800 border border-slate-200">{tongkaeStocks[daysInMonth2]}</td>
+                              <td className="px-3 py-2 text-center text-slate-800 border border-slate-200">{totalGIn || '-'}</td>
+                              <td className="px-3 py-2 text-center text-slate-800 border border-slate-200">{totalGOut || '-'}</td>
+                              <td className="px-3 py-2 text-center text-indigo-800 border border-slate-200">{gaebbunStocks[daysInMonth2]}</td>
+                              <td className="px-3 py-2 text-center text-slate-800 border border-slate-200">{(totalTIn + totalGIn) || '-'}</td>
+                              <td className="px-3 py-2 text-center text-slate-800 border border-slate-200">{(totalTOut + totalGOut) || '-'}</td>
+                              <td className="px-3 py-2 text-center text-indigo-800 border border-slate-200">{tongkaeStocks[daysInMonth2] + gaebbunStocks[daysInMonth2]}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })()}
@@ -1684,6 +2404,8 @@ const App: React.FC = () => {
       {isAddOrderOpen && <AddOrderModal products={allProducts} clients={clients} onClose={() => setIsAddOrderOpen(false)} onSave={async (o) => {
         await addItem('orders', {...o, id: `ORD-${Date.now()}`, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
         await checkAndAlertShortage(o.items);
+        const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '거래처';
+        await addItem('notifications', { type: 'new_order', title: '신규 주문', body: `${currentUser.name}님이 ${clientName} 주문을 등록했습니다.`, readBy: [], createdAt: new Date().toISOString(), senderId: currentUser.id } as Omit<AppNotification,'id'>);
         setIsAddOrderOpen(false);
       }} />}
       {isProductModalOpen && (
@@ -1692,7 +2414,12 @@ const App: React.FC = () => {
           allSubmaterials={submaterials}
           products={products}
           clients={clients}
-          onClose={() => {setIsProductModalOpen(false); setEditingProduct(null);}} 
+          onClose={() => {setIsProductModalOpen(false); setEditingProduct(null);}}
+          onAddSubmaterial={async (name, category) => {
+            const unit = category === '라벨' ? '매' : '개';
+            const id = await addItem('submaterials', { name, category, stock: 0, minStock: 0, unit, price: 0, image: '' });
+            return id as string;
+          }}
           onSave={async (p) => {
             const collectionName = getProductCollection(p.category);
             // 기존 컬렉션과 다른 경우(카테고리 변경) 이전 문서 삭제

@@ -76,6 +76,7 @@ const ProductList: React.FC<ProductListProps> = ({
   onToggleConfirmRequestQty,
   onBulkAddConfirmedOrders,
   onFinishConfirmedOrder,
+  onUpdateConfirmedQty,
   onEditProduct,
   onAddAdjustmentRequest,
   suppliers,
@@ -108,6 +109,24 @@ const ProductList: React.FC<ProductListProps> = ({
   
   const [requestingProductId, setRequestingProductId] = useState<string | null>(null);
   const [requestingQty, setRequestingQty] = useState<number>(0);
+  const [expandedReqId, setExpandedReqId] = useState<string | null>(null);
+  const [reqEditQty, setReqEditQty] = useState<number>(0);
+  const [reqNote, setReqNote] = useState<string>('');
+  const [inlineCartId, setInlineCartId] = useState<string | null>(null);
+  const [inlineCartQty, setInlineCartQty] = useState<number>(0);
+  const [cart, setCart] = useState<{ id: string; qty: number }[]>([]);
+  const [showCartPanel, setShowCartPanel] = useState(false);
+
+  const addToCart = (productId: string, defaultQty: number) => {
+    setCart(prev => prev.some(c => c.id === productId) ? prev : [...prev, { id: productId, qty: defaultQty }]);
+  };
+  const removeFromCart = (id: string) => setCart(prev => prev.filter(c => c.id !== id));
+  const updateCartQty = (id: string, qty: number) => setCart(prev => prev.map(c => c.id === id ? { ...c, qty: Math.max(1, qty) } : c));
+  const submitCart = () => {
+    onBulkAddConfirmedOrders(cart.map(item => ({ id: item.id, quantity: item.qty })));
+    setCart([]);
+    setShowCartPanel(false);
+  };
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -135,7 +154,6 @@ const ProductList: React.FC<ProductListProps> = ({
   const [adjustmentQty, setAdjustmentQty] = useState<number>(0);
 
   const subCategories: { id: InventoryCategory | '전체', label: string, icon: any }[] = [
-    { id: '전체', label: '전체 품목', icon: LayoutGrid },
     { id: '완제품', label: '완제품', icon: Package },
     { id: '향미유', label: '향미유', icon: Grape },
     { id: '고춧가루', label: '고춧가루', icon: Tag },
@@ -169,11 +187,16 @@ const ProductList: React.FC<ProductListProps> = ({
       result = result.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
     }
     
-    // 현재고가 0이 아닌 품목을 위쪽으로 정렬
+    const CATEGORY_ORDER = ['완제품', '향미유', '고춧가루', '용기', '마개', '테이프', '박스', '라벨'];
     return [...result].sort((a, b) => {
-      if (a.stock > 0 && b.stock === 0) return -1;
-      if (a.stock === 0 && b.stock > 0) return 1;
-      return 0;
+      const aCritical = a.category !== '완제품' && a.stock < a.minStock ? 0 : 1;
+      const bCritical = b.category !== '완제품' && b.stock < b.minStock ? 0 : 1;
+      if (aCritical !== bCritical) return aCritical - bCritical;
+      const aCatIdx = CATEGORY_ORDER.indexOf(a.category);
+      const bCatIdx = CATEGORY_ORDER.indexOf(b.category);
+      const aIdx = aCatIdx === -1 ? 99 : aCatIdx;
+      const bIdx = bCatIdx === -1 ? 99 : bCatIdx;
+      return aIdx - bIdx;
     });
   }, [products, activeTab, activeSubCategory, searchTerm, orderRequests, confirmedOrders, suppliers]);
 
@@ -234,86 +257,52 @@ const ProductList: React.FC<ProductListProps> = ({
 
   return (
     <div className="space-y-6 animate-in slide-in-from-right-4 duration-500 h-full flex flex-col relative">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-black text-slate-900 uppercase">재고 및 물류 관리</h2>
           <p className="text-slate-500 text-sm font-medium">실시간 재고 현황을 파악하고 부족한 자재를 즉시 발주하세요.</p>
         </div>
-        <div className="flex items-center space-x-3">
-          <button 
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center justify-center space-x-2 bg-indigo-600 text-white px-6 py-3.5 rounded-2xl font-black shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95"
+        {/* 상위 탭 — 우측 상단 */}
+        <div className="bg-slate-200/50 p-1.5 rounded-3xl flex items-center shadow-inner self-start border border-slate-200 shrink-0">
+          <button
+            onClick={() => setTopTab('product')}
+            className={`px-5 py-2.5 rounded-2xl flex items-center space-x-2 transition-all text-xs font-black ${topTab === 'product' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
           >
-            <Plus size={20} />
-            <span>품목 추가</span>
+            <Box size={16} />
+            <span>상품·부자재</span>
+          </button>
+          <button
+            onClick={() => setTopTab('rawmaterial')}
+            className={`px-5 py-2.5 rounded-2xl flex items-center space-x-2 transition-all text-xs font-black ${topTab === 'rawmaterial' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+          >
+            <Grape size={16} />
+            <span>원료 재고</span>
           </button>
         </div>
       </div>
 
       <div className="flex flex-col space-y-4">
-        {/* 상위 탭 */}
-        <div className="bg-slate-200/50 p-1.5 rounded-3xl flex items-center shadow-inner self-start border border-slate-200">
-          <button
-            onClick={() => setTopTab('product')}
-            className={`px-6 py-3 rounded-2xl flex items-center space-x-2.5 transition-all text-xs font-black ${topTab === 'product' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-          >
-            <Box size={18} />
-            <span>상품 및 부자재 재고</span>
-          </button>
-          <button
-            onClick={() => setTopTab('rawmaterial')}
-            className={`px-6 py-3 rounded-2xl flex items-center space-x-2.5 transition-all text-xs font-black ${topTab === 'rawmaterial' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-          >
-            <Grape size={18} />
-            <span>원료 재고</span>
-          </button>
-        </div>
 
-        {/* 하위 탭 (상품 및 부자재 재고 선택 시) */}
+        {/* 하위 탭 + 검색 */}
         {topTab === 'product' && (
-          <div className="bg-slate-100/50 p-1 rounded-2xl flex items-center self-start border border-slate-200">
-            <button
-              onClick={() => setActiveTab('master')}
-              className={`px-5 py-2 rounded-xl flex items-center space-x-2 transition-all text-xs font-black ${activeTab === 'master' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              <Box size={16} />
-              <span>재고 현황</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('requests')}
-              className={`px-5 py-2 rounded-xl flex items-center space-x-2 transition-all text-xs font-black relative ${activeTab === 'requests' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              <ShoppingCart size={16} />
-              <span>발주 요청</span>
-              {orderRequests.length > 0 && <span className="absolute -top-1 -right-1 bg-rose-500 text-white w-5 h-5 flex items-center justify-center rounded-full text-[10px] shadow-lg">{orderRequests.length}</span>}
-            </button>
-            <button
-              onClick={() => setActiveTab('history')}
-              className={`px-5 py-2 rounded-xl flex items-center space-x-2 transition-all text-xs font-black ${activeTab === 'history' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              <ClipboardCheck size={16} />
-              <span>발주 내역</span>
-              {confirmedOrders.length > 0 && <span className="ml-2 bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-full text-[10px]">{confirmedOrders.length}</span>}
-            </button>
-          </div>
-        )}
-
-        {topTab === 'product' && <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={() => toggleFilterMode('supplier')}
-              className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl border text-[11px] font-black transition-all ${filterMode === 'supplier' ? 'bg-orange-50 border-orange-200 text-orange-500 ring-2 ring-orange-50' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
-            >
-              <Building2 size={14} />
-              <span>거래처별</span>
-            </button>
-            <button
-              onClick={() => toggleFilterMode('category')}
-              className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl border text-[11px] font-black transition-all ${filterMode === 'category' ? 'bg-indigo-50 border-indigo-200 text-indigo-600 ring-2 ring-indigo-50' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
-            >
-              <LayoutGrid size={14} />
-              <span>품목별</span>
-            </button>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="bg-slate-100/50 p-1 rounded-2xl flex items-center self-start border border-slate-200">
+              <button
+                onClick={() => setActiveTab('master')}
+                className={`px-5 py-2 rounded-xl flex items-center space-x-2 transition-all text-xs font-black ${activeTab === 'master' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <Box size={16} />
+                <span>재고 현황</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('requests')}
+                className={`px-5 py-2 rounded-xl flex items-center space-x-2 transition-all text-xs font-black relative ${activeTab === 'requests' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <ClipboardCheck size={16} />
+                <span>발주 내역</span>
+                {cart.length > 0 && <span className="absolute -top-1 -right-1 bg-rose-500 text-white w-5 h-5 flex items-center justify-center rounded-full text-[10px] shadow-lg">{cart.length}</span>}
+              </button>
+            </div>
             <div className="relative w-36 md:w-48">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={15} />
               <input
@@ -325,45 +314,60 @@ const ProductList: React.FC<ProductListProps> = ({
               />
             </div>
           </div>
-          {filterMode === 'supplier' && (
-            <div className="flex flex-wrap gap-2 animate-in fade-in duration-150">
-              {suppliers.map((supplier) => {
-                const isActive = activeSubCategory === supplier.id;
-                return (
-                  <button
-                    key={supplier.id}
-                    onClick={() => setActiveSubCategory(isActive ? '전체' : supplier.id)}
-                    className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl transition-all whitespace-nowrap border text-[11px] font-black relative ${isActive ? 'bg-white border-orange-200 text-orange-500 shadow-sm ring-2 ring-orange-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
-                  >
-                    <Building2 size={14} />
-                    <span>{supplier.name}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          {filterMode === 'category' && (
-            <div className="flex flex-wrap gap-2 animate-in fade-in duration-150">
-              {subCategories.map((sub) => {
-                const Icon = sub.icon;
-                const isActive = activeSubCategory === sub.id;
-                const count = sub.id === '전체' ? orderRequests.length : categoryCounts[sub.id] || 0;
-                return (
-                  <button
-                    key={sub.id}
-                    onClick={() => setActiveSubCategory(sub.id)}
-                    className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl transition-all whitespace-nowrap border text-[11px] font-black uppercase relative ${isActive ? 'bg-white border-indigo-200 text-indigo-600 shadow-sm ring-2 ring-indigo-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
-                  >
-                    <Icon size={14} />
-                    <span>{sub.label}</span>
-                    {count > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-rose-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow-lg border border-white">{count}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+        )}
+
+        {topTab === 'product' && <div className="flex flex-col gap-2">
+          {/* 품목별 필터 */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => toggleFilterMode('category')}
+              className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl border text-[11px] font-black transition-all ${filterMode === 'category' ? 'bg-indigo-50 border-indigo-200 text-indigo-600 ring-2 ring-indigo-50' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
+            >
+              <LayoutGrid size={14} />
+              <span>품목별</span>
+            </button>
+            {filterMode === 'category' && subCategories.map((sub) => {
+              const Icon = sub.icon;
+              const isActive = activeSubCategory === sub.id;
+              const count = categoryCounts[sub.id] || 0;
+              return (
+                <button
+                  key={sub.id}
+                  onClick={() => setActiveSubCategory(isActive ? '전체' : sub.id)}
+                  className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl transition-all whitespace-nowrap border text-[11px] font-black uppercase relative ${isActive ? 'bg-white border-indigo-200 text-indigo-600 shadow-sm ring-2 ring-indigo-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
+                >
+                  <Icon size={14} />
+                  <span>{sub.label}</span>
+                  {count > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-rose-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow-lg border border-white">{count}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {/* 거래처별 필터 */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => toggleFilterMode('supplier')}
+              className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl border text-[11px] font-black transition-all ${filterMode === 'supplier' ? 'bg-orange-50 border-orange-200 text-orange-500 ring-2 ring-orange-50' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
+            >
+              <Building2 size={14} />
+              <span>거래처별</span>
+            </button>
+            {filterMode === 'supplier' && suppliers.map((supplier) => {
+              const isActive = activeSubCategory === supplier.id;
+              return (
+                <button
+                  key={supplier.id}
+                  onClick={() => setActiveSubCategory(isActive ? '전체' : supplier.id)}
+                  className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl transition-all whitespace-nowrap border text-[11px] font-black relative ${isActive ? 'bg-white border-orange-200 text-orange-500 shadow-sm ring-2 ring-orange-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
+                >
+                  <Building2 size={14} />
+                  <span>{supplier.name}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>}
       </div>
 
@@ -437,212 +441,258 @@ const ProductList: React.FC<ProductListProps> = ({
             </div>
           </div>
         )}
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3 pb-32">
-          {pagedProducts.map((product) => {
-            const isSelected = selectedIds.has(product.id);
-            const reqInfo = orderRequests.find(r => r.id === product.id);
-            const confInfo = confirmedOrders.find(c => c.id === product.id);
-            const isCritical = product.category !== '완제품' && product.stock < product.minStock;
-            
-            const isAlreadyRequested = !!reqInfo;
-            const isAlreadyConfirmed = !!confInfo;
-            const isRequestingNow = requestingProductId === product.id;
-
-            return (
-              <div 
-                key={product.id} 
-                className={`bg-white rounded-2xl shadow-sm border transition-all duration-300 flex flex-col h-full relative group/card ${
-                  isSelected ? 'ring-4 ring-indigo-500/20 border-indigo-500 shadow-xl scale-[1.02] z-10' : 'border-slate-100 hover:border-indigo-200'
-                }`}
-              >
-                <div className={`p-3 flex flex-col items-center justify-center border-b transition-colors relative pt-8 ${isSelected ? 'bg-indigo-50 border-indigo-100' : 'bg-slate-50/50 border-slate-100'}`}>
-                   <div className="absolute top-2 left-3 text-[7px] font-black px-1.5 py-0.5 rounded-full bg-white border border-slate-200 text-slate-400 uppercase tracking-widest shadow-sm">
-                      {product.category}
-                   </div>
-                   <button
-                     onClick={(e) => { e.stopPropagation(); onEditProduct(product); }}
-                     className="absolute top-2 right-3 p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-                   >
-                     <Edit size={12} />
-                   </button>
-                   {isCritical && (
-                     <div className="absolute top-0 left-1/2 -translate-x-1/2 flex items-center space-x-1 px-2 py-0.5 bg-rose-600 text-white rounded-b-xl text-[9px] font-black shadow-lg z-20">
-                        <AlertCircle size={10} />
-                        <span>재고 부족</span>
-                     </div>
-                   )}
-                   <div className="h-8 flex items-center justify-center w-full">
-                     <h3 className={`font-black text-center px-2 leading-tight text-xs line-clamp-2 ${isSelected ? 'text-indigo-900' : 'text-slate-800'}`}>{product.name}</h3>
-                   </div>
-                </div>
-
-                <div className="p-3 space-y-2">
-                  <div className={`flex flex-col items-center justify-center p-2 rounded-xl ${isCritical ? 'bg-rose-50 border border-rose-100' : 'bg-slate-50 border border-slate-100'}`}>
-                    <span className={`text-[7px] font-black uppercase tracking-tighter mb-0.5 ${isCritical ? 'text-rose-400' : 'text-slate-400'}`}>현재 재고</span>
-                    <div className="flex items-baseline space-x-1">
-                      <span className={`text-lg font-black ${isCritical ? 'text-rose-600' : 'text-slate-900'}`}>{product.stock}</span>
-                      <span className={`text-[9px] font-bold ${isCritical ? 'text-rose-400' : 'text-slate-400'}`}>{product.category === '향미유' ? 'B' : product.unit}</span>
-                    </div>
-                    {product.category !== '완제품' && (
-                      <div className="mt-0.5 pt-0.5 border-t border-slate-200/50 w-full flex justify-center items-center space-x-1.5">
-                        <span className="text-[7px] font-black text-slate-300 uppercase tracking-tighter">최소</span>
-                        <span className="text-[9px] font-black text-amber-600">{product.minStock}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap gap-1.5 min-h-[24px]">
-                    {isAlreadyConfirmed && activeTab !== 'history' && (
-                      <div className="flex items-center space-x-1 px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg border border-emerald-100 shadow-sm animate-in zoom-in-95">
-                        <CheckCircle size={10} />
-                        <span className="text-[9px] font-black">확정: {confInfo.quantity}{product.unit}</span>
-                      </div>
-                    )}
-                    {isAlreadyRequested && activeTab !== 'history' && (
-                      <div className="flex items-center gap-1 w-full animate-in zoom-in-95">
-                        <div className={`flex items-center space-x-1 px-2 py-1 rounded-lg border ${reqInfo.confirmedByUser ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
-                          <ShoppingCart size={10} />
-                          <span className="text-[9px] font-black">{reqInfo.confirmedByUser ? '확정' : '요청'}: {reqInfo.quantity}{product.unit}</span>
-                        </div>
-                        {activeTab === 'requests' && (
-                          <button
-                            onClick={() => onRemoveOrderRequest(product.id)}
-                            className="ml-auto p-1 text-rose-400 hover:bg-rose-50 rounded-lg transition-all"
-                          >
-                            <Trash2 size={12} />
+        {/* ── 재고 현황: 테이블 뷰 ── */}
+        {activeTab === 'master' && (
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-4">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-100">
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">카테고리</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">품목명</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">현재 재고</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right hidden sm:table-cell">최소 수량</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center hidden sm:table-cell">상태</th>
+                  <th className="px-4 py-3"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {pagedProducts.map(product => {
+                  const isCritical = product.category !== '완제품' && product.stock < product.minStock;
+                  const reqInfo = orderRequests.find(r => r.id === product.id);
+                  const confInfo = confirmedOrders.find(c => c.id === product.id);
+                  const inCart = cart.some(c => c.id === product.id);
+                  return (
+                    <tr key={product.id} className={`transition-colors ${inCart ? 'bg-indigo-50/40' : isCritical ? 'bg-rose-50/30 hover:bg-rose-50/50' : 'hover:bg-slate-50/50'}`}>
+                      <td className="px-4 py-3">
+                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${
+                          product.category === '완제품' ? 'bg-indigo-50 text-indigo-600' :
+                          product.category === '향미유' ? 'bg-purple-50 text-purple-600' :
+                          product.category === '고춧가루' ? 'bg-red-50 text-red-500' :
+                          product.category === '용기' ? 'bg-sky-50 text-sky-600' :
+                          product.category === '라벨' ? 'bg-amber-50 text-amber-600' :
+                          product.category === '박스' ? 'bg-emerald-50 text-emerald-600' :
+                          'bg-slate-100 text-slate-500'
+                        }`}>{product.category}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-slate-800">{product.name}</span>
+                          {isCritical && <AlertCircle size={12} className="text-rose-500 shrink-0" />}
+                          <button onClick={e => { e.stopPropagation(); onEditProduct(product); }} className="text-slate-200 hover:text-indigo-500 transition-all shrink-0">
+                            <Edit size={12} />
                           </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="pt-1">
-                    {activeTab === 'master' && (
-                      product.category === '완제품' ? (
-                        <div className="py-2 text-center text-[8px] font-black text-slate-300 uppercase tracking-widest bg-slate-50/50 rounded-xl border border-slate-100/50">
-                          자체 생산
                         </div>
-                      ) : isRequestingNow ? (
-                        <div className="space-y-2 animate-in fade-in duration-300">
-                          <div className="flex items-center justify-center bg-white rounded-xl p-1.5 border border-amber-200 shadow-inner">
-                            <div className="flex items-center space-x-1 font-black">
-                              <input 
-                                type="number" 
-                                value={requestingQty}
-                                onChange={(e) => setRequestingQty(parseInt(e.target.value) || 0)}
-                                className="w-20 text-center text-xs outline-none text-slate-800 bg-transparent"
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <span className={`text-base font-black ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}>{product.stock}</span>
+                        <span className="text-[10px] text-slate-400 ml-1">{product.category === '향미유' ? 'B' : product.unit}</span>
+                      </td>
+                      <td className="px-4 py-3 text-right hidden sm:table-cell">
+                        {product.category !== '완제품'
+                          ? <span className="text-xs font-bold text-slate-400">{product.minStock} {product.unit}</span>
+                          : <span className="text-[10px] text-slate-200">-</span>}
+                      </td>
+                      <td className="px-4 py-3 text-center hidden sm:table-cell">
+                        {product.category === '완제품' ? (
+                          <span className="text-[9px] font-black text-slate-300">자체생산</span>
+                        ) : confInfo ? (
+                          <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full whitespace-nowrap">입고대기 {confInfo.quantity}{product.unit}</span>
+                        ) : inCart ? (
+                          <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full whitespace-nowrap">발주요청</span>
+                        ) : isCritical ? (
+                          <span className="text-[9px] font-black text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">재고부족</span>
+                        ) : (
+                          <span className="text-[9px] font-black text-slate-300">정상</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        {product.category !== '완제품' && (
+                          inCart ? (
+                            <button
+                              onClick={() => removeFromCart(product.id)}
+                              className="text-[10px] font-black px-2.5 py-1.5 rounded-xl bg-indigo-500 text-white hover:bg-indigo-600 transition-all shadow-sm"
+                            >담김 ✓</button>
+                          ) : inlineCartId === product.id ? (
+                            <div className="flex items-center gap-1 justify-end">
+                              <input
+                                autoFocus
+                                type="number"
+                                value={inlineCartQty}
+                                onChange={e => setInlineCartQty(parseInt(e.target.value) || 1)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') { addToCart(product.id, inlineCartQty); setInlineCartId(null); }
+                                  if (e.key === 'Escape') setInlineCartId(null);
+                                }}
+                                className="w-14 text-center text-xs font-black border border-indigo-300 rounded-lg py-1 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                               />
-                              <span className="text-[8px] text-slate-400">{product.unit}</span>
+                              <span className="text-[10px] text-slate-400">{product.unit}</span>
+                              <button
+                                onClick={() => { addToCart(product.id, inlineCartQty); setInlineCartId(null); }}
+                                className="text-[10px] font-black px-2 py-1 rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 transition-all"
+                              >담기</button>
+                              <button onClick={() => setInlineCartId(null)} className="text-slate-300 hover:text-slate-500"><X size={12} /></button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => { setInlineCartId(product.id); setInlineCartQty(product.minStock * 2 || 20); }}
+                              className="text-[10px] font-black px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-all border border-slate-200"
+                            >+ 담기</button>
+                          )
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {pagedProducts.length === 0 && (
+                  <tr><td colSpan={6} className="px-4 py-16 text-center text-slate-300 text-sm font-bold">품목이 없습니다</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* ── 발주 내역 (카트 + 이력) ── */}
+        {activeTab === 'requests' && (
+          <div className="space-y-4 pb-32">
+            {/* 장바구니 섹션 */}
+            {cart.length > 0 && (
+              <>
+                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                  <div className="px-5 py-3 border-b border-slate-50 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ShoppingCart size={16} className="text-indigo-500" />
+                      <span className="font-black text-sm text-slate-800">발주 예정 목록</span>
+                      <span className="text-[10px] font-black bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">{cart.length}건</span>
+                    </div>
+                    <button onClick={() => setCart([])} className="text-[10px] font-bold text-slate-400 hover:text-rose-500 transition-all">전체 비우기</button>
+                  </div>
+                  <div className="divide-y divide-slate-50">
+                    {cart.map(item => {
+                      const product = products.find(p => p.id === item.id);
+                      if (!product) return null;
+                      return (
+                        <div key={item.id} className="px-5 py-3 flex items-center gap-4">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
+                            <p className="text-[10px] text-slate-400">현재 재고 {product.stock} {product.unit}</p>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button onClick={() => updateCartQty(item.id, item.qty - 1)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black transition-all">-</button>
+                            <input
+                              type="number"
+                              value={item.qty}
+                              onChange={e => updateCartQty(item.id, parseInt(e.target.value) || 1)}
+                              className="w-14 text-center text-sm font-black border border-slate-200 rounded-xl py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                            />
+                            <button onClick={() => updateCartQty(item.id, item.qty + 1)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black transition-all">+</button>
+                            <span className="text-[11px] text-slate-400 w-6 shrink-0">{product.unit}</span>
+                          </div>
+                          <button onClick={() => removeFromCart(item.id)} className="text-slate-300 hover:text-rose-400 transition-all shrink-0 ml-1"><X size={15} /></button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                <button
+                  onClick={submitCart}
+                  className="w-full py-4 bg-indigo-600 text-white rounded-2xl text-sm font-black shadow-lg hover:bg-indigo-700 active:scale-[0.99] transition-all flex items-center justify-center gap-2"
+                >
+                  <ShoppingCart size={16} />
+                  발주 확정 ({cart.length}건)
+                </button>
+              </>
+            )}
+
+            {/* 발주 내역 — 입고대기 목록 */}
+            {confirmedOrders.length > 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                <div className="px-5 py-3 border-b border-slate-50">
+                  <div className="flex items-center gap-2">
+                    <ClipboardCheck size={16} className="text-emerald-500" />
+                    <span className="font-black text-sm text-slate-800">입고 대기</span>
+                    <span className="text-[10px] font-black bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">{confirmedOrders.length}건</span>
+                  </div>
+                </div>
+                <div className="divide-y divide-slate-50">
+                  {confirmedOrders.map(conf => {
+                    const product = products.find(p => p.id === conf.id);
+                    if (!product) return null;
+                    const isExpanded = expandedReqId === conf.id;
+                    return (
+                      <div key={conf.id}>
+                        <div className="px-5 py-3 flex items-center gap-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
+                            <p className="text-[10px] text-slate-400">{product.category}</p>
+                          </div>
+                          <span className="text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-xl shrink-0">입고대기 {conf.quantity}{product.unit}</span>
+                          <button
+                            onClick={() => {
+                              if (isExpanded) { setExpandedReqId(null); }
+                              else { setExpandedReqId(conf.id); setReqEditQty(conf.quantity); setReqNote(''); }
+                            }}
+                            className={`text-[10px] font-black px-2.5 py-1.5 rounded-xl transition-all shrink-0 border ${isExpanded ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'}`}
+                          >{isExpanded ? '닫기' : '수정'}</button>
+                          <button
+                            onClick={() => onFinishConfirmedOrder(product.id)}
+                            className="text-[10px] font-black px-2.5 py-1.5 rounded-xl bg-slate-800 text-white hover:bg-slate-900 transition-all shrink-0"
+                          >입고확인</button>
+                        </div>
+                        {isExpanded && (
+                          <div className="px-5 py-4 bg-slate-50/60 space-y-3 animate-in slide-in-from-top-1 duration-150">
+                            <div className="flex items-center gap-3">
+                              <span className="text-[10px] font-black text-slate-500 w-16 shrink-0">수량 변경</span>
+                              <div className="flex items-center gap-1.5">
+                                <button onClick={() => setReqEditQty(q => Math.max(1, q - 1))} className="w-7 h-7 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-600 font-black hover:bg-slate-100 transition-all">-</button>
+                                <input
+                                  type="number"
+                                  value={reqEditQty}
+                                  onChange={e => setReqEditQty(parseInt(e.target.value) || 1)}
+                                  className="w-16 text-center text-sm font-black border border-slate-200 rounded-xl py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                                />
+                                <button onClick={() => setReqEditQty(q => q + 1)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-600 font-black hover:bg-slate-100 transition-all">+</button>
+                                <span className="text-[11px] text-slate-400">{product.unit}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-[10px] font-black text-slate-500 w-16 shrink-0">사유</span>
+                              <input
+                                type="text"
+                                value={reqNote}
+                                onChange={e => setReqNote(e.target.value)}
+                                placeholder="수량 수정 사유 (선택)"
+                                className="flex-1 text-xs border border-slate-200 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                              />
+                            </div>
+                            <div className="flex gap-2 pt-1">
+                              <button
+                                onClick={() => {
+                                  onUpdateConfirmedQty(conf.id, reqEditQty);
+                                  setExpandedReqId(null);
+                                }}
+                                className="flex-1 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-xl text-xs font-black hover:bg-indigo-50 transition-all"
+                              >수량 저장</button>
+                              <button
+                                onClick={() => { onFinishConfirmedOrder(conf.id); setExpandedReqId(null); }}
+                                className="flex-1 py-2 bg-slate-800 text-white rounded-xl text-xs font-black hover:bg-slate-900 transition-all"
+                              >입고 확인</button>
                             </div>
                           </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <button onClick={cancelRequestInput} className="py-2 rounded-xl text-[8px] font-black uppercase bg-slate-100 text-slate-400 hover:bg-slate-200 transition-all">취소</button>
-                            <button onClick={() => confirmRequestInput(product.id)} className="py-2 rounded-xl text-[8px] font-black uppercase bg-amber-600 text-white shadow-lg shadow-amber-100 hover:bg-amber-700 active:scale-95 transition-all">확정</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-2 gap-2">
-                          {isAlreadyRequested ? (
-                            <button 
-                              onClick={() => onRemoveOrderRequest(product.id)}
-                              className="flex items-center justify-center space-x-1 py-2 rounded-xl text-[8px] font-black uppercase transition-all bg-rose-50 text-rose-500 border border-rose-100 hover:bg-rose-500 hover:text-white col-span-2"
-                            >
-                              <RotateCcw size={12} />
-                              <span>요청 취소</span>
-                            </button>
-                          ) : (
-                            <button 
-                              disabled={isAlreadyConfirmed}
-                              onClick={() => startRequestInput(product)}
-                              className={`flex items-center justify-center space-x-1 py-2 rounded-xl text-[8px] font-black uppercase transition-all border col-span-2 ${
-                                isAlreadyConfirmed 
-                                  ? 'bg-slate-50 border-slate-100 text-slate-300' 
-                                  : 'bg-amber-50 border-amber-100 text-amber-600 hover:bg-amber-500 hover:text-white shadow-sm'
-                              }`}
-                            >
-                              <ShoppingCart size={12} />
-                              <span>발주 요청</span>
-                            </button>
-                          )}
-                        </div>
-                      )
-                    )}
-
-                    {activeTab === 'requests' && reqInfo && (
-                      <div className="flex flex-col space-y-2">
-                        <div className="flex items-center space-x-2 bg-white border border-slate-200 p-1 rounded-xl shadow-inner">
-                          <div className="flex-1 text-center">
-                             <input
-                                type="number"
-                                value={reqInfo.quantity}
-                                onChange={(e) => onUpdateOrderRequestQty(product.id, parseInt(e.target.value) || 0)}
-                                className="w-14 text-center font-black text-xs outline-none text-slate-800 bg-transparent"
-                             />
-                             <span className="text-[9px] font-black text-slate-400 ml-0.5">{product.unit}</span>
-                          </div>
-                          <button
-                            onClick={() => onToggleConfirmRequestQty(product.id)}
-                            className={`px-2 py-1 rounded-lg text-[9px] font-black transition-all border ${
-                              reqInfo.confirmedByUser
-                                ? 'bg-emerald-50 border-emerald-100 text-emerald-600'
-                                : 'bg-amber-50 border-amber-100 text-amber-600'
-                            }`}
-                          >
-                            {reqInfo.confirmedByUser ? '취소' : '확정'}
-                          </button>
-                        </div>
-                        <div className="grid grid-cols-1 gap-2">
-                           <button 
-                              onClick={() => moveRequestToDraft(reqInfo)}
-                              className="py-3.5 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg shadow-indigo-100 hover:bg-indigo-700 flex items-center justify-center space-x-2 active:scale-95 transition-all w-full"
-                           >
-                              <ListPlus size={14} />
-                              <span>리스트로</span>
-                           </button>
-                        </div>
+                        )}
                       </div>
-                    )}
-
-                    {activeTab === 'history' && confInfo && (
-                      <div className="space-y-1.5">
-                         <div className="bg-emerald-50 border border-emerald-100 px-3 py-2 rounded-xl flex items-center justify-between">
-                            <span className="text-[8px] font-black text-emerald-500 uppercase tracking-wider">입고 예정</span>
-                            <span className="text-sm font-black text-emerald-700">{confInfo.quantity}{product.unit}</span>
-                         </div>
-                         <button
-                            onClick={() => onFinishConfirmedOrder(product.id)}
-                            className="w-full py-2.5 bg-slate-800 text-white rounded-xl text-[10px] font-black hover:bg-slate-900 active:scale-[0.98] transition-all flex items-center justify-center space-x-1.5 shadow-sm"
-                         >
-                            <CheckCircle size={12} />
-                            <span>입고 확인 및 재고 반영</span>
-                         </button>
-                         <button
-                            onClick={() => {
-                              setAdjustmentModal({
-                                isOpen: true,
-                                productId: product.id,
-                                productName: product.name,
-                                originalQuantity: confInfo.quantity,
-                                type: 'quantity_change'
-                              });
-                              setAdjustmentQty(confInfo.quantity);
-                              setAdjustmentReason('');
-                            }}
-                            className="w-full py-1.5 bg-white border border-slate-200 text-slate-400 rounded-xl text-[8px] font-black hover:bg-slate-50 transition-all flex items-center justify-center space-x-1"
-                         >
-                            <RefreshCw size={10} />
-                            <span>수량 변동 및 취소 요청</span>
-                         </button>
-                      </div>
-                    )}
-                    
-                    {/* Footer removed as requested */}
-                  </div>
+                    );
+                  })}
                 </div>
               </div>
-            );
-          })}
-        </div>
+            ) : cart.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-100 py-20 flex flex-col items-center justify-center gap-3 opacity-30">
+                <ClipboardCheck size={40} />
+                <p className="text-sm font-bold">발주 내역이 없습니다</p>
+              </div>
+            ) : null}
+          </div>
+        )}
+
         {totalPages > 1 && (
           <div className="flex items-center justify-center gap-1 py-5">
             <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={safePage === 1}
@@ -854,6 +904,88 @@ const ProductList: React.FC<ProductListProps> = ({
       )}
 
       {/* Draft Orders Floating Button removed as requested */}
+
+      {/* ── 플로팅 카트 아이콘 ── */}
+      {topTab === 'product' && cart.length > 0 && (
+        <button
+          onClick={() => setShowCartPanel(true)}
+          className="fixed bottom-8 right-6 z-40 flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-3 rounded-2xl shadow-xl transition-all active:scale-95 animate-in fade-in zoom-in-95 duration-300"
+        >
+          <ShoppingCart size={20} />
+          <span className="font-black text-sm">발주 내역</span>
+          <span className="w-6 h-6 bg-white text-indigo-600 text-xs font-black rounded-full flex items-center justify-center shadow-sm">{cart.length}</span>
+        </button>
+      )}
+
+      {/* ── 발주 장바구니 패널 ── */}
+      {showCartPanel && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm" onClick={() => setShowCartPanel(false)} />
+          <div className="relative bg-white w-full max-w-sm h-full flex flex-col shadow-2xl animate-in slide-in-from-right-4 duration-300">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-indigo-600 text-white"><ShoppingCart size={18} /></div>
+                <div>
+                  <h3 className="font-black text-slate-900">발주 내역</h3>
+                  <p className="text-[11px] text-slate-400 font-medium">{cart.length}개 품목</p>
+                </div>
+              </div>
+              <button onClick={() => setShowCartPanel(false)} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 transition-all">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-2">
+              {cart.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full opacity-30 gap-3">
+                  <ShoppingCart size={36} />
+                  <p className="text-sm font-bold">담긴 품목이 없습니다</p>
+                </div>
+              ) : cart.map(item => {
+                const product = products.find(p => p.id === item.id);
+                if (!product) return null;
+                return (
+                  <div key={item.id} className="bg-slate-50 rounded-2xl border border-slate-100 p-3 flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
+                      <p className="text-[10px] text-slate-400 font-medium">현재 재고 {product.stock}{product.unit}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button onClick={() => updateCartQty(item.id, item.qty - 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 text-sm font-black transition-all">-</button>
+                      <input
+                        type="number"
+                        value={item.qty}
+                        onChange={e => updateCartQty(item.id, parseInt(e.target.value) || 1)}
+                        className="w-12 text-center text-sm font-black border border-slate-200 rounded-lg py-1 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                      />
+                      <button onClick={() => updateCartQty(item.id, item.qty + 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 text-sm font-black transition-all">+</button>
+                      <span className="text-[10px] text-slate-400 w-6">{product.unit}</span>
+                    </div>
+                    <button onClick={() => removeFromCart(item.id)} className="text-slate-300 hover:text-rose-400 transition-all shrink-0">
+                      <X size={14} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="p-4 border-t border-slate-100 space-y-2">
+              <button
+                disabled={cart.length === 0}
+                onClick={submitCart}
+                className="w-full py-3.5 bg-indigo-600 text-white rounded-2xl text-sm font-black shadow-lg hover:bg-indigo-700 active:scale-[0.98] transition-all disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center gap-2"
+              >
+                <ShoppingCart size={16} />
+                발주 확정 ({cart.length}건)
+              </button>
+              <button
+                onClick={() => setCart([])}
+                className="w-full py-2.5 text-xs font-bold text-slate-400 hover:text-slate-600 transition-all"
+              >전체 비우기</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isAddModalOpen && (
         <AddProductModal onClose={() => setIsAddModalOpen(false)} onSave={(newProduct) => { onAddProduct(newProduct); setIsAddModalOpen(false); }} />

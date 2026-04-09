@@ -10,6 +10,7 @@ interface ProductModalProps {
   clients?: Client[];
   onClose: () => void;
   onSave: (_product: Product) => void;
+  onAddSubmaterial?: (name: string, category: string) => Promise<string>;
 }
 
 const CAT_NORM: Record<string, string> = {
@@ -25,7 +26,7 @@ const PRESET_PUMOK = [
   '시골향볶음참깨', '시골향들깨가루', '시골향탈피들깨가루', '시골향볶음검정참깨',
 ];
 
-const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], products = [], clients = [], onClose, onSave }) => {
+const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], products = [], clients = [], onClose, onSave, onAddSubmaterial }) => {
   const [formData, setFormData] = useState(() => ({
     name: initialData?.name || '',
     category: (initialData?.category as InventoryCategory) || '완제품',
@@ -43,6 +44,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     clientBoxConfigs: initialData?.clientBoxConfigs ?? [] as ClientBoxConfig[],
     용량: initialData?.용량 || '',
     품목: initialData?.품목 || '',
+    isSmartStore: initialData?.isSmartStore ?? false,
     clientIds: initialData?.clientIds ?? (initialData?.clientId ? [initialData.clientId] : []),
     supplierId: initialData?.supplierId || '',
     submaterials: (initialData?.submaterials || []).map(s => ({
@@ -52,7 +54,12 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   }));
 
   const [activeSubCategory, setActiveSubCategory] = useState<string | null>(null);
+  const [addingSubCat, setAddingSubCat] = useState<string | null>(null);
+  const [newSubName, setNewSubName] = useState('');
+  const [localNewSubs, setLocalNewSubs] = useState<{ id: string; name: string; category: string; unit: string; stock: number }[]>([]);
   const [clientSearch, setClientSearch] = useState('');
+  const [categorySearch, setCategorySearch] = useState('');
+  const [supplierSearch, setSupplierSearch] = useState('');
   const [showPumokDrop, setShowPumokDrop] = useState(false);
   const [pumokWarn, setPumokWarn] = useState(false);
   const [expandedBoxClient, setExpandedBoxClient] = useState<string | null>(null);
@@ -126,6 +133,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       ...(formData.품목 && { 품목: formData.품목 }),
       ...(formData.category === '완제품' && formData.clientIds.length > 0 && { clientIds: formData.clientIds }),
       ...(formData.category !== '완제품' && formData.supplierId && { supplierId: formData.supplierId }),
+      ...(formData.category === '완제품' && { isSmartStore: formData.isSmartStore }),
     };
 
     onSave(finalProduct);
@@ -169,32 +177,53 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             />
           </div>
 
-          {/* 카테고리 + 단위 */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Package size={14} className="mr-2" /> 카테고리
-              </label>
-              <select
-                value={formData.category}
-                onChange={(e) => setFormData({...formData, category: e.target.value as InventoryCategory})}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all appearance-none"
-              >
-                {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-              </select>
+          {/* 카테고리 */}
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
+              <Package size={14} className="mr-2" /> 카테고리
+            </label>
+            <input
+              type="text"
+              value={categorySearch}
+              onChange={e => setCategorySearch(e.target.value)}
+              placeholder="카테고리 검색..."
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-400 transition-all"
+            />
+            <div className="grid grid-cols-4 gap-1.5">
+              {categories
+                .filter(cat => !categorySearch.trim() || cat.includes(categorySearch))
+                .map(cat => {
+                  const isSelected = formData.category === cat;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setFormData({...formData, category: cat as InventoryCategory})}
+                      className={`py-2 rounded-xl text-xs font-black border transition-all ${
+                        isSelected
+                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                          : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  );
+                })}
             </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Box size={14} className="mr-2" /> 단위
-              </label>
-              <input
-                type="text"
-                value={formData.unit}
-                onChange={(e) => setFormData({...formData, unit: e.target.value})}
-                placeholder="개, 팩, 롤 등"
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-              />
-            </div>
+          </div>
+
+          {/* 단위 */}
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
+              <Box size={14} className="mr-2" /> 단위
+            </label>
+            <input
+              type="text"
+              value={formData.unit}
+              onChange={(e) => setFormData({...formData, unit: e.target.value})}
+              placeholder="개, 팩, 롤 등"
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+            />
           </div>
 
           {/* 매출거래처 (완제품) — 검색 + 그리드 */}
@@ -221,6 +250,11 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
                   {salesClients
                     .filter(c => !clientSearch.trim() || c.name.toLowerCase().includes(clientSearch.toLowerCase()))
+                    .sort((a, b) => {
+                      const aChecked = formData.clientIds.includes(a.id) ? 0 : 1;
+                      const bChecked = formData.clientIds.includes(b.id) ? 0 : 1;
+                      return aChecked - bChecked;
+                    })
                     .map(c => {
                       const checked = formData.clientIds.includes(c.id);
                       return (
@@ -246,6 +280,20 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                     })}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* 스마트스토어 전용 토글 (완제품) */}
+          {formData.category === '완제품' && (
+            <div className="flex items-center justify-between px-1">
+              <label className="text-xs font-bold text-slate-500">스마트스토어 전용 품목</label>
+              <button
+                type="button"
+                onClick={() => setFormData({...formData, isSmartStore: !formData.isSmartStore})}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${formData.isSmartStore ? 'bg-indigo-600' : 'bg-slate-200'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${formData.isSmartStore ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
             </div>
           )}
 
@@ -355,6 +403,50 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                               </div>
                             </div>
                           )}
+
+                          {/* 새 항목 추가 */}
+                          {onAddSubmaterial && (
+                            addingSubCat === cat ? (
+                              <div className="flex items-center gap-2 mt-2">
+                                <input
+                                  autoFocus
+                                  type="text"
+                                  value={newSubName}
+                                  onChange={e => setNewSubName(e.target.value)}
+                                  onKeyDown={async e => {
+                                    if (e.key === 'Enter' && newSubName.trim()) {
+                                      const unit = cat === '라벨' ? '매' : cat === '박스' ? '개' : cat === '용기' ? '개' : cat === '마개' ? '개' : '개';
+                                      const newId = await onAddSubmaterial(newSubName.trim(), cat);
+                                      const newSub = { id: newId, name: newSubName.trim(), category: cat, unit, stock: 1 };
+                                      setLocalNewSubs(prev => [...prev, newSub]);
+                                      const filtered = formData.submaterials.filter(s => getSubCat(s) !== cat);
+                                      setFormData({ ...formData, submaterials: [...filtered, newSub] });
+                                      setNewSubName('');
+                                      setAddingSubCat(null);
+                                      setActiveSubCategory(null);
+                                    } else if (e.key === 'Escape') {
+                                      setNewSubName(''); setAddingSubCat(null);
+                                    }
+                                  }}
+                                  placeholder={`새 ${cat} 이름 입력 후 Enter`}
+                                  className="flex-1 bg-slate-50 border border-indigo-300 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => { setNewSubName(''); setAddingSubCat(null); }}
+                                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+                                ><X size={14} /></button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => { setAddingSubCat(cat); setNewSubName(''); }}
+                                className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-indigo-500 border border-dashed border-indigo-200 hover:bg-indigo-50 transition-all"
+                              >
+                                <Plus size={12} /> 새 {cat} 추가
+                              </button>
+                            )
+                          )}
                         </div>
                       )}
                     </div>
@@ -364,8 +456,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             </div>
           )}
 
-          {/* 박스 설정 (완제품/향미유/고춧가루) */}
-          {(formData.category === '완제품' || formData.category === '향미유' || formData.category === '고춧가루') && (() => {
+          {/* 박스 설정 (완제품) */}
+          {formData.category === '완제품' && (() => {
             const boxSubs = allSubmaterials.filter(s => s.category === '박스');
 
             // 박스 선택 + 개수 입력 공통 컴포넌트 (inline)
@@ -600,8 +692,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             </div>
           )}
 
-          {/* 용량 (용기 카테고리 또는 완제품) */}
-          {(formData.category === '용기' || formData.category === '완제품') && (
+          {/* 용량 (완제품) */}
+          {formData.category === '완제품' && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Box size={14} className="mr-2" /> 용량 (서류용)
@@ -658,17 +750,55 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Building2 size={14} className="mr-2" /> 매입거래처
+                {formData.supplierId && (
+                  <span className="ml-2 px-1.5 py-0.5 bg-indigo-600 text-white text-[9px] font-black rounded-full">1</span>
+                )}
               </label>
-              <select
-                value={formData.supplierId}
-                onChange={(e) => setFormData({...formData, supplierId: e.target.value})}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all appearance-none"
-              >
-                <option value="">선택 안 함</option>
-                {supplierClients.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
+              <input
+                type="text"
+                value={supplierSearch}
+                onChange={e => setSupplierSearch(e.target.value)}
+                placeholder="거래처 검색..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-400 transition-all"
+              />
+              {supplierClients.length === 0 ? (
+                <p className="text-xs text-slate-400 px-1">등록된 매입거래처 없음</p>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({...formData, supplierId: ''})}
+                    className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold border transition-all ${
+                      !formData.supplierId
+                        ? 'bg-slate-600 border-slate-600 text-white shadow-sm'
+                        : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
+                    }`}
+                  >
+                    선택 안 함
+                  </button>
+                  {supplierClients
+                    .filter(c => !supplierSearch.trim() || c.name.toLowerCase().includes(supplierSearch.toLowerCase()))
+                    .sort((a, b) => (formData.supplierId === a.id ? -1 : formData.supplierId === b.id ? 1 : 0))
+                    .map(c => {
+                      const selected = formData.supplierId === c.id;
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => setFormData({...formData, supplierId: selected ? '' : c.id})}
+                          className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold border transition-all text-left ${
+                            selected
+                              ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                              : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'
+                          }`}
+                        >
+                          {selected && <Check size={10} className="shrink-0" />}
+                          <span className="truncate">{c.name}</span>
+                        </button>
+                      );
+                    })}
+                </div>
+              )}
             </div>
           )}
 

@@ -22,7 +22,10 @@ import {
   Droplets,
   User,
   Minus,
-  Package as PackageBox
+  Package as PackageBox,
+  X,
+  ListOrdered,
+  GripVertical
 } from 'lucide-react';
 import { Order, OrderStatus, Client, OrderSource, OrderItem, Product, OrderPallet, DeliveryBox } from '../types';
 
@@ -114,7 +117,7 @@ type TabType = 'delivery' | 'active' | 'history';
 
 // ─── OrderCard ────────────────────────────────────────────────────────────────
 
-const OrderCard = memo<OrderCardProps>(({
+export const OrderCard = memo<OrderCardProps>(({
   order, clients, products,
   editingOrderId, setEditingOrderId,
   showAddProductSelect, setShowAddProductSelect,
@@ -621,15 +624,16 @@ const defaultUnits: Record<string, number> = { pending_col: 2, processing_col: 2
 const maxUnits: Record<string, number> = { pending_col: 2, processing_col: 3, dispatch_col: 2, shipped_col: 2 };
 
 const activeConfigs = [
-  { id: 'pending_col',    label: '대기중',   icon: Clock,     color: 'bg-amber-500',   bgColor: 'bg-amber-50/50',   borderColor: 'border-amber-100',   textColor: 'text-amber-700',   statusFilter: [OrderStatus.PENDING],    targetStatus: OrderStatus.PENDING },
-  { id: 'processing_col', label: '작업중',   icon: Activity,  color: 'bg-sky-500',     bgColor: 'bg-sky-50/50',     borderColor: 'border-sky-100',     textColor: 'text-sky-700',     statusFilter: [OrderStatus.PROCESSING], targetStatus: OrderStatus.PROCESSING },
-  { id: 'dispatch_col',   label: '작업완료', icon: Truck,     color: 'bg-emerald-600', bgColor: 'bg-emerald-50/50', borderColor: 'border-emerald-100', textColor: 'text-emerald-700', statusFilter: [OrderStatus.DISPATCHED], targetStatus: OrderStatus.DISPATCHED },
+  { id: 'pending_col',    label: '대기중',   icon: Clock,    color: 'bg-amber-500',   bgColor: 'bg-amber-50/50',   borderColor: 'border-amber-100',   textColor: 'text-amber-700',   statusFilter: [OrderStatus.PENDING],    targetStatus: OrderStatus.PENDING },
+  { id: 'processing_col', label: '작업중',   icon: Activity, color: 'bg-sky-500',     bgColor: 'bg-sky-50/50',     borderColor: 'border-sky-100',     textColor: 'text-sky-700',     statusFilter: [OrderStatus.PROCESSING], targetStatus: OrderStatus.PROCESSING },
 ];
 
-const historyConfigs = [
-  { id: 'shipped_col', label: '출고',          icon: Truck,   color: 'bg-indigo-500', bgColor: 'bg-indigo-50/50', borderColor: 'border-indigo-100', textColor: 'text-indigo-700', statusFilter: [OrderStatus.SHIPPED],   targetStatus: OrderStatus.SHIPPED },
-  { id: 'history_col', label: '예전 주문 이력', icon: History, color: 'bg-slate-700',  bgColor: 'bg-slate-50/80',  borderColor: 'border-slate-200',  textColor: 'text-slate-700',  statusFilter: [OrderStatus.DELIVERED], targetStatus: undefined },
+const deliveryExtraConfigs = [
+  { id: 'dispatch_col', label: '작업완료', icon: Truck,   color: 'bg-emerald-600', bgColor: 'bg-emerald-50/50', borderColor: 'border-emerald-100', textColor: 'text-emerald-700', statusFilter: [OrderStatus.DISPATCHED], targetStatus: OrderStatus.DISPATCHED },
+  { id: 'shipped_col',  label: '출고',    icon: Truck,   color: 'bg-indigo-500',  bgColor: 'bg-indigo-50/50',  borderColor: 'border-indigo-100',  textColor: 'text-indigo-700',  statusFilter: [OrderStatus.SHIPPED],   targetStatus: OrderStatus.SHIPPED },
 ];
+
+const historyConfig = { id: 'history_col', label: '예전 주문 이력', icon: History, color: 'bg-slate-700', bgColor: 'bg-slate-50/80', borderColor: 'border-slate-200', textColor: 'text-slate-700', statusFilter: [OrderStatus.DELIVERED], targetStatus: undefined };
 
 const OrdersList: React.FC<OrdersListProps> = ({
   title, subtitle, orders, clients, products,
@@ -649,6 +653,18 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [historyDateFrom, setHistoryDateFrom] = useState('');
   const [historyDateTo, setHistoryDateTo] = useState('');
   const HISTORY_PREVIEW = 5;
+  type WorkItem = { key: string; orderId: string; productId: string; itemName: string; clientName: string; qty: number; category: string; };
+  const [workItems, setWorkItems] = useState<WorkItem[]>(() => {
+    try { return JSON.parse(localStorage.getItem('workOrderItems') || '[]'); } catch { return []; }
+  });
+  useEffect(() => {
+    localStorage.setItem('workOrderItems', JSON.stringify(workItems));
+  }, [workItems]);
+  const [showWorkOrderPicker, setShowWorkOrderPicker] = useState(false);
+  const [mobileCollapsed, setMobileCollapsed] = useState<Set<string>>(new Set());
+  const toggleMobileCollapse = (id: string) => setMobileCollapsed(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  const [pickerOrdering, setPickerOrdering] = useState<string[]>([]); // 선택 순서 배열
+  const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
 
   const expandColumn = (colId: string) =>
     setColumnUnits(prev => ({ ...prev, [colId]: Math.min((prev[colId] ?? defaultUnits[colId] ?? 1) + 1, maxUnits[colId] ?? 2) }));
@@ -665,7 +681,14 @@ const OrdersList: React.FC<OrdersListProps> = ({
     });
   };
 
-  const currentConfigs = activeTab === 'active' ? activeConfigs : historyConfigs;
+  // 완료된 주문의 품목 자동 정리
+  const validWorkItems = useMemo(() => {
+    const activeIds = new Set(orders.filter(o => o.status === OrderStatus.PENDING || o.status === OrderStatus.PROCESSING).map(o => o.id));
+    return workItems.filter(wi => activeIds.has(wi.orderId));
+  }, [workItems, orders]);
+
+  const isPowder = (name: string) => name.includes('가루') || name.includes('깨') || name.includes('Garu');
+  const isOil = (name: string) => !isPowder(name);
 
   const filteredOrders = useMemo(() => {
     if (!searchTerm.trim()) return orders;
@@ -678,7 +701,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
   const deliveryOrders = useMemo(() =>
     filteredOrders
-      .filter(o => o.source === '택배' || o.source === '스마트스토어' || o.deliveryBoxes !== undefined)
+      .filter(o => (o.source === '택배' || o.source === '스마트스토어' || o.deliveryBoxes !== undefined) && o.status !== OrderStatus.DELIVERED)
       .sort((a, b) => new Date(a.deliveryDate).getTime() - new Date(b.deliveryDate).getTime()),
     [filteredOrders]
   );
@@ -736,7 +759,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
       </div>
 
       {activeTab === 'delivery' && (
-        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+        <div>
+          {/* 택배 목록 */}
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
           <div className="p-5 border-b border-slate-50 flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="p-2 rounded-xl bg-sky-500 text-white"><Truck size={18} /></div>
@@ -779,126 +804,363 @@ const OrdersList: React.FC<OrdersListProps> = ({
               })}
             </div>
           )}
-        </div>
-      )}
-
-      {activeTab !== 'delivery' && (
-        <div className="pb-4 md:overflow-x-auto md:no-scrollbar">
-          <div className="flex flex-col md:flex-row gap-3 md:gap-4 md:min-w-max">
-            {currentConfigs.map((col) => {
-              const Icon = col.icon;
-              const allColOrders = filteredOrders.filter(o => col.statusFilter.includes(o.status));
-              const isHistory = col.id === 'history_col';
-              const filteredHistoryOrders = isHistory ? allColOrders.filter(o => {
-                if (historySearch && !((o.customerName || '').includes(historySearch))) return false;
-                const dateStr = (o.deliveredAt || o.deliveryDate || o.createdAt || '').slice(0, 10);
-                if (historyDateFrom && dateStr < historyDateFrom) return false;
-                if (historyDateTo && dateStr > historyDateTo) return false;
-                return true;
-              }) : allColOrders;
-              const hasHistoryFilter = isHistory && (historySearch || historyDateFrom || historyDateTo);
-              const colOrders = isHistory
-                ? (hasHistoryFilter ? filteredHistoryOrders : (showAllHistory ? filteredHistoryOrders : filteredHistoryOrders.slice(0, HISTORY_PREVIEW)))
-                : allColOrders;
-              const groupedOrders: Record<OrderSource, Order[]> = {
-                '스마트스토어': colOrders.filter(o => o.source === '스마트스토어'),
-                '택배': colOrders.filter(o => o.source === '택배' || (o.source === '일반' && o.deliveryBoxes !== undefined)),
-                '일반': colOrders.filter(o => o.source === '일반' && o.deliveryBoxes === undefined),
-              };
-              const units = columnUnits[col.id] ?? defaultUnits[col.id] ?? 1;
-              const colMax = maxUnits[col.id] ?? 2;
-
-              return (
-                <div key={col.id}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const orderId = e.dataTransfer.getData('orderId');
-                    if (orderId && col.targetStatus) onUpdateStatus(orderId, col.targetStatus);
-                  }}
-                  className={`flex flex-col rounded-3xl border ${col.borderColor} ${col.bgColor} shadow-sm transition-all duration-300 w-full md:w-auto md:flex-shrink-0`}
-                  style={{ ...(typeof window !== 'undefined' && window.innerWidth >= 768 ? { width: `calc(${units} * (100vw - 9rem) / 5)` } : {}) }}
-                >
-                  <div className="p-5 border-b border-white/50 flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className={`p-2 rounded-xl ${col.color} text-white`}><Icon size={20} /></div>
-                      <h3 className={`font-black text-base ${col.textColor}`}>
-                        {col.label} ({isHistory ? `${colOrders.length}/${allColOrders.length}` : colOrders.length})
-                      </h3>
-                    </div>
-                    <div className="flex items-center space-x-0.5">
-                      {units > 1 && (
-                        <button onClick={() => collapseColumn(col.id)}
-                          className="p-1.5 rounded-lg hover:bg-white/60 text-slate-400 hover:text-slate-600 transition-all" title="축소">
-                          <ChevronLeft size={14} />
-                        </button>
-                      )}
-                      <span className="text-[10px] font-black text-slate-400 px-1">{units}</span>
-                      {units < colMax && (
-                        <button onClick={() => expandColumn(col.id)}
-                          className="p-1.5 rounded-lg hover:bg-white/60 text-slate-400 hover:text-slate-600 transition-all" title="확장">
-                          <ChevronRight size={14} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  {isHistory && (
-                    <div className="px-5 py-3 border-b border-white/50 flex flex-col gap-2">
-                      <input
-                        type="text"
-                        placeholder="거래처 검색"
-                        value={historySearch}
-                        onChange={e => setHistorySearch(e.target.value)}
-                        className="w-full text-xs px-3 py-1.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-1 focus:ring-slate-400"
-                      />
-                      <div className="flex items-center gap-1">
-                        <input type="date" value={historyDateFrom} onChange={e => setHistoryDateFrom(e.target.value)}
-                          className="flex-1 text-[10px] px-2 py-1 rounded-xl border border-slate-200 bg-white outline-none" />
-                        <span className="text-[10px] text-slate-400">~</span>
-                        <input type="date" value={historyDateTo} onChange={e => setHistoryDateTo(e.target.value)}
-                          className="flex-1 text-[10px] px-2 py-1 rounded-xl border border-slate-200 bg-white outline-none" />
-                        {(historySearch || historyDateFrom || historyDateTo) && (
-                          <button onClick={() => { setHistorySearch(''); setHistoryDateFrom(''); setHistoryDateTo(''); }}
-                            className="text-[10px] text-slate-400 hover:text-slate-600 px-1">✕</button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="p-5 space-y-6">
-                    {(['스마트스토어', '택배', '일반'] as OrderSource[]).map(source => (
-                      <OrderSourceGroup
-                        key={source}
-                        colId={col.id}
-                        source={source}
-                        orders={groupedOrders[source]}
-                        gridCols={units}
-                        collapsedCategories={collapsedCategories}
-                        onToggleCategory={onToggleCategory}
-                        {...cardSharedProps}
-                      />
-                    ))}
-                    {colOrders.length === 0 && (
-                      <div className="flex flex-col items-center justify-center py-20 opacity-20">
-                        <Inbox size={48} />
-                        <p className="text-xs font-bold mt-2">주문이 없습니다</p>
-                      </div>
-                    )}
-                    {isHistory && !hasHistoryFilter && filteredHistoryOrders.length > HISTORY_PREVIEW && (
-                      <button
-                        onClick={() => setShowAllHistory(v => !v)}
-                        className="w-full py-2 text-[11px] font-bold text-slate-400 hover:text-slate-600 hover:bg-white/60 rounded-xl transition-all"
-                      >
-                        {showAllHistory ? '▲ 접기' : `▼ 더 보기 (${filteredHistoryOrders.length - HISTORY_PREVIEW}건 더)`}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
           </div>
         </div>
       )}
+
+      {/* ── 운영 탭: 금일 작업순서(좌) + 대기중/작업중(우) ── */}
+      {activeTab === 'active' && (() => {
+        const pickableOrders = filteredOrders.filter(o => o.status === OrderStatus.PENDING || o.status === OrderStatus.PROCESSING);
+
+        // 픽커용 전체 품목 목록 (향미유·고춧가루 제외)
+        const allPickableItems: WorkItem[] = pickableOrders.flatMap(o => {
+          const clientName = o.customerName || clients.find(c => c.id === o.clientId)?.name || '이름없음';
+          return o.items
+            .map((item, idx) => ({
+              key: `${o.id}-${idx}`,
+              orderId: o.id,
+              productId: item.productId,
+              itemName: item.name,
+              clientName,
+              qty: item.quantity,
+              category: products.find(p => p.id === item.productId)?.category || '',
+            }))
+            .filter(wi => wi.category !== '향미유' && wi.category !== '고춧가루');
+        });
+
+        // 기름 / 가루 분류
+        const oilItems = validWorkItems.filter(wi => isOil(wi.itemName));
+        const powderItems = validWorkItems.filter(wi => isPowder(wi.itemName));
+
+        // 섹션 내에서만 순서 이동 (기름↔기름, 가루↔가루)
+        const getSection = (name: string) => isPowder(name) ? 'powder' : 'oil';
+        const moveInSection = (key: string, dir: 'up' | 'down') => setWorkItems(prev => {
+          const a = [...prev];
+          const i = a.findIndex(x => x.key === key);
+          if (i === -1) return prev;
+          const sec = getSection(a[i].itemName);
+          if (dir === 'up') {
+            for (let j = i - 1; j >= 0; j--) {
+              if (getSection(a[j].itemName) === sec) { [a[j], a[i]] = [a[i], a[j]]; return a; }
+            }
+          } else {
+            for (let j = i + 1; j < a.length; j++) {
+              if (getSection(a[j].itemName) === sec) { [a[i], a[j]] = [a[j], a[i]]; return a; }
+            }
+          }
+          return prev;
+        });
+        const removeItem = (key: string) => setWorkItems(prev => prev.filter(x => x.key !== key));
+
+        const renderItemRow = (wi: WorkItem, sectionItems: WorkItem[]) => {
+          const sectionIdx = sectionItems.findIndex(x => x.key === wi.key);
+          const isFirst = sectionIdx === 0;
+          const isLast = sectionIdx === sectionItems.length - 1;
+          return (
+            <div
+              key={wi.key}
+              draggable
+              onDragStart={e => { e.dataTransfer.setData('workItemKey', wi.key); e.dataTransfer.effectAllowed = 'move'; }}
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => {
+                e.preventDefault();
+                const dragKey = e.dataTransfer.getData('workItemKey');
+                if (!dragKey || dragKey === wi.key) return;
+                setWorkItems(prev => {
+                  const a = [...prev];
+                  const fromIdx = a.findIndex(x => x.key === dragKey);
+                  const toIdx = a.findIndex(x => x.key === wi.key);
+                  if (fromIdx === -1 || toIdx === -1) return prev;
+                  if (getSection(a[fromIdx].itemName) !== getSection(a[toIdx].itemName)) return prev;
+                  const [removed] = a.splice(fromIdx, 1);
+                  const newTo = a.findIndex(x => x.key === wi.key);
+                  a.splice(newTo, 0, removed);
+                  return a;
+                });
+              }}
+              className={`flex items-center gap-2 bg-white rounded-xl px-2.5 py-2 shadow-sm border cursor-grab active:cursor-grabbing ${isPowder(wi.itemName) ? 'border-orange-100' : 'border-pink-100'}`}
+            >
+              <GripVertical size={11} className="text-slate-200 shrink-0" />
+              <span className={`text-[10px] font-black w-4 shrink-0 ${isPowder(wi.itemName) ? 'text-orange-400' : 'text-pink-500'}`}>{sectionIdx + 1}</span>
+              <button
+                onClick={e => { e.stopPropagation(); setPreviewOrderId(wi.orderId); }}
+                className="flex-1 min-w-0 text-left hover:opacity-70 transition-opacity"
+              >
+                <p className="text-[11px] font-bold text-slate-700 truncate">{wi.itemName}</p>
+                <p className="text-[9px] text-slate-400 truncate">{wi.clientName} · {wi.qty}개</p>
+              </button>
+              <div className="flex flex-col gap-0.5">
+                <button onClick={e => { e.stopPropagation(); moveInSection(wi.key, 'up'); }} disabled={isFirst} className="text-slate-300 hover:text-violet-500 disabled:opacity-20 transition-all"><ChevronUp size={12} /></button>
+                <button onClick={e => { e.stopPropagation(); moveInSection(wi.key, 'down'); }} disabled={isLast} className="text-slate-300 hover:text-violet-500 disabled:opacity-20 transition-all"><ChevronDown size={12} /></button>
+              </div>
+              <button onClick={e => { e.stopPropagation(); removeItem(wi.key); }} className="text-slate-200 hover:text-rose-400 transition-all ml-0.5"><X size={12} /></button>
+            </div>
+          );
+        };
+
+        const renderCol = (col: typeof activeConfigs[0]) => {
+          const allColOrders = filteredOrders.filter(o =>
+            col.statusFilter.includes(o.status) &&
+            o.source !== '택배' &&
+            o.source !== '스마트스토어' &&
+            !o.deliveryBoxes?.length
+          );
+          const units = columnUnits[col.id] ?? defaultUnits[col.id] ?? 1;
+          const colMax = maxUnits[col.id] ?? 2;
+          const Icon = col.icon;
+          const groupedOrders: Record<OrderSource, Order[]> = {
+            '스마트스토어': allColOrders.filter(o => o.source === '스마트스토어'),
+            '택배': allColOrders.filter(o => o.source === '택배' || (o.source === '일반' && o.deliveryBoxes !== undefined)),
+            '일반': allColOrders.filter(o => o.source === '일반' && o.deliveryBoxes === undefined),
+          };
+          return (
+            <div key={col.id}
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => { e.preventDefault(); const id = e.dataTransfer.getData('orderId'); if (id && col.targetStatus) onUpdateStatus(id, col.targetStatus); }}
+              className={`flex flex-col rounded-3xl border ${col.borderColor} ${col.bgColor} shadow-sm flex-shrink-0`}
+              style={{
+                ...(typeof window !== 'undefined' && window.innerWidth >= 768 ? { width: `calc(${units} * (100vw - 9rem) / 5)` } : {}),
+                minWidth: 280,
+              }}
+            >
+              <div className="p-5 border-b border-white/50 flex items-center justify-between">
+                <button className="flex items-center space-x-3 md:cursor-default" onClick={() => { if (window.innerWidth < 768) toggleMobileCollapse(col.id); }}>
+                  <div className={`p-2 rounded-xl ${col.color} text-white`}><Icon size={20} /></div>
+                  <h3 className={`font-black text-base ${col.textColor}`}>{col.label} ({allColOrders.length})</h3>
+                  <ChevronDown size={14} className={`md:hidden text-slate-400 transition-transform ${mobileCollapsed.has(col.id) ? '' : 'rotate-180'}`} />
+                </button>
+                <div className="flex items-center space-x-0.5">
+                  {units > 1 && <button onClick={() => collapseColumn(col.id)} className="p-1.5 rounded-lg hover:bg-white/60 text-slate-400 transition-all"><ChevronLeft size={14} /></button>}
+                  <span className="text-[10px] font-black text-slate-400 px-1">{units}</span>
+                  {units < colMax && <button onClick={() => expandColumn(col.id)} className="p-1.5 rounded-lg hover:bg-white/60 text-slate-400 transition-all"><ChevronRight size={14} /></button>}
+                </div>
+              </div>
+              <div className={`p-5 space-y-6 ${mobileCollapsed.has(col.id) ? 'hidden md:block' : ''}`}>
+                {(['스마트스토어', '택배', '일반'] as OrderSource[]).map(source => (
+                  <OrderSourceGroup key={source} colId={col.id} source={source} orders={groupedOrders[source]} gridCols={units} collapsedCategories={collapsedCategories} onToggleCategory={onToggleCategory} {...cardSharedProps} />
+                ))}
+                {allColOrders.length === 0 && <div className="flex flex-col items-center justify-center py-20 opacity-20"><Inbox size={48} /><p className="text-xs font-bold mt-2">주문이 없습니다</p></div>}
+              </div>
+            </div>
+          );
+        };
+
+        return (
+          <div className="flex flex-col md:flex-row gap-4 pb-4 md:items-start">
+            {/* 금일 작업순서 패널 */}
+            <div className="w-full md:w-60 md:shrink-0 flex flex-col rounded-3xl border border-violet-100 bg-violet-50/50 shadow-sm">
+              <div className="p-4 border-b border-white/50 flex items-center justify-between">
+                <button className="flex items-center gap-2 md:cursor-default" onClick={() => { if (window.innerWidth < 768) toggleMobileCollapse('work-order'); }}>
+                  <div className="p-1.5 rounded-xl bg-violet-600 text-white"><ListOrdered size={16} /></div>
+                  <h3 className="font-black text-sm text-violet-700">금일 작업순서</h3>
+                  <ChevronDown size={14} className={`md:hidden text-violet-400 transition-transform ${mobileCollapsed.has('work-order') ? '' : 'rotate-180'}`} />
+                </button>
+                <button
+                  onClick={() => { setPickerOrdering(validWorkItems.map(wi => wi.key)); setShowWorkOrderPicker(true); }}
+                  className="flex items-center gap-1 text-[10px] font-black text-violet-600 bg-violet-100 hover:bg-violet-200 px-2.5 py-1.5 rounded-lg transition-all"
+                >
+                  <Plus size={11} /> 주문추가
+                </button>
+              </div>
+              <div className={`p-3 flex flex-col gap-2 min-h-[100px] ${mobileCollapsed.has('work-order') ? 'hidden md:flex' : ''}`}>
+                {validWorkItems.length === 0 ? (
+                  <p className="text-center text-[11px] text-violet-300 py-8 font-bold">주문추가 버튼으로<br/>순서를 설정하세요</p>
+                ) : (
+                  <>
+                    {oilItems.length > 0 && (
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-[9px] font-black text-pink-500 uppercase tracking-wider px-1">기름</span>
+                        {oilItems.map(wi => renderItemRow(wi, oilItems))}
+                      </div>
+                    )}
+                    {powderItems.length > 0 && (
+                      <div className="flex flex-col gap-1.5">
+                        {oilItems.length > 0 && <div className="border-t border-violet-100 my-1" />}
+                        <span className="text-[9px] font-black text-orange-500 uppercase tracking-wider px-1">가루</span>
+                        {powderItems.map(wi => renderItemRow(wi, powderItems))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+            {/* 대기중 + 작업중 컬럼들 */}
+            <div className="flex-1 md:overflow-x-auto no-scrollbar">
+              <div className="flex flex-col md:flex-row md:min-w-max gap-4 pb-4">
+                {activeConfigs.map(col => renderCol(col))}
+              </div>
+            </div>
+
+            {/* 작업순서 설정 모달 */}
+            {showWorkOrderPicker && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowWorkOrderPicker(false)}>
+                <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md mx-4 flex flex-col max-h-[75vh] animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                    <h3 className="font-black text-slate-900">작업순서 설정</h3>
+                    <button onClick={() => setShowWorkOrderPicker(false)} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto">
+                    {allPickableItems.length === 0 ? (
+                      <p className="text-center text-sm text-slate-400 py-12">대기중/작업중 주문이 없습니다.</p>
+                    ) : pickableOrders.map(o => {
+                      const clientName = o.customerName || clients.find(c => c.id === o.clientId)?.name || '이름없음';
+                      const orderItems = allPickableItems.filter(wi => wi.orderId === o.id);
+                      return (
+                        <div key={o.id} className="px-5 py-3 border-b border-slate-50">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-sm font-bold text-slate-700">{clientName}</span>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${o.status === OrderStatus.PROCESSING ? 'bg-sky-100 text-sky-600' : 'bg-amber-100 text-amber-600'}`}>
+                              {o.status === OrderStatus.PROCESSING ? '작업중' : '대기중'}
+                            </span>
+                          </div>
+                          <div className="space-y-1">
+                            {orderItems.map(wi => {
+                              const isSelected = pickerOrdering.includes(wi.key);
+                              // 섹션별 독립 번호
+                              const sectionOrder = pickerOrdering.filter(k => {
+                                const it = allPickableItems.find(x => x.key === k);
+                                return it && (isPowder(wi.itemName) ? isPowder(it.itemName) : isOil(it.itemName));
+                              });
+                              const sectionPos = sectionOrder.indexOf(wi.key) + 1;
+                              return (
+                                <div key={wi.key}
+                                  onClick={() => setPickerOrdering(prev => isSelected ? prev.filter(k => k !== wi.key) : [...prev, wi.key])}
+                                  className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors ${isSelected ? (isPowder(wi.itemName) ? 'bg-orange-50' : 'bg-pink-50') : 'hover:bg-slate-50'}`}
+                                >
+                                  <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 text-[10px] font-black transition-all ${isSelected ? (isPowder(wi.itemName) ? 'bg-orange-500 border-orange-500 text-white' : 'bg-pink-500 border-pink-500 text-white') : 'border-slate-300 text-transparent'}`}>
+                                    {isSelected ? sectionPos : ''}
+                                  </div>
+                                  <span className="flex-1 text-sm font-bold text-slate-700 truncate">{wi.itemName}</span>
+                                  <span className="text-[10px] font-black text-slate-400 shrink-0">{wi.qty}개</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="p-4 border-t border-slate-100 flex gap-2">
+                    <button onClick={() => setShowWorkOrderPicker(false)} className="flex-1 py-2.5 text-sm font-bold text-slate-400 hover:text-slate-600 transition-all">취소</button>
+                    <button
+                      onClick={() => {
+                        const newItems = pickerOrdering
+                          .map(key => allPickableItems.find(wi => wi.key === key))
+                          .filter((wi): wi is WorkItem => wi !== undefined);
+                        setWorkItems(newItems);
+                        setShowWorkOrderPicker(false);
+                      }}
+                      className="flex-1 py-2.5 text-sm font-black bg-violet-600 text-white rounded-2xl hover:bg-violet-700 transition-all shadow"
+                    >
+                      확인 ({pickerOrdering.length}건)
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ── 주문이력 탭: 예전주문이력 전체 폭 ── */}
+      {activeTab === 'history' && (() => {
+        const col = historyConfig;
+        const allColOrders = filteredOrders.filter(o => col.statusFilter.includes(o.status));
+        const filteredHistoryOrders = allColOrders.filter(o => {
+          if (historySearch && !((o.customerName || '').includes(historySearch))) return false;
+          const dateStr = (o.deliveredAt || o.deliveryDate || o.createdAt || '').slice(0, 10);
+          if (historyDateFrom && dateStr < historyDateFrom) return false;
+          if (historyDateTo && dateStr > historyDateTo) return false;
+          return true;
+        });
+        const hasHistoryFilter = !!(historySearch || historyDateFrom || historyDateTo);
+        const colOrders = hasHistoryFilter ? filteredHistoryOrders : (showAllHistory ? filteredHistoryOrders : filteredHistoryOrders.slice(0, HISTORY_PREVIEW));
+        const Icon = col.icon;
+        const groupedOrders: Record<OrderSource, Order[]> = {
+          '스마트스토어': colOrders.filter(o => o.source === '스마트스토어'),
+          '택배': colOrders.filter(o => o.source === '택배' || (o.source === '일반' && o.deliveryBoxes !== undefined)),
+          '일반': colOrders.filter(o => o.source === '일반' && o.deliveryBoxes === undefined),
+        };
+        return (
+          <div className={`flex flex-col rounded-3xl border ${col.borderColor} ${col.bgColor} shadow-sm`}>
+            <div className="p-5 border-b border-white/50 flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className={`p-2 rounded-xl ${col.color} text-white`}><Icon size={20} /></div>
+                <h3 className={`font-black text-base ${col.textColor}`}>{col.label} ({colOrders.length}/{allColOrders.length})</h3>
+              </div>
+            </div>
+            <div className="px-5 py-3 border-b border-white/50 flex flex-col gap-2">
+              <input type="text" placeholder="거래처 검색" value={historySearch} onChange={e => setHistorySearch(e.target.value)}
+                className="w-full text-xs px-3 py-1.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-1 focus:ring-slate-400" />
+              <div className="flex items-center gap-1">
+                <input type="date" value={historyDateFrom} onChange={e => setHistoryDateFrom(e.target.value)} className="flex-1 text-[10px] px-2 py-1 rounded-xl border border-slate-200 bg-white outline-none" />
+                <span className="text-[10px] text-slate-400">~</span>
+                <input type="date" value={historyDateTo} onChange={e => setHistoryDateTo(e.target.value)} className="flex-1 text-[10px] px-2 py-1 rounded-xl border border-slate-200 bg-white outline-none" />
+                {hasHistoryFilter && <button onClick={() => { setHistorySearch(''); setHistoryDateFrom(''); setHistoryDateTo(''); }} className="text-[10px] text-slate-400 hover:text-slate-600 px-1">✕</button>}
+              </div>
+            </div>
+            <div className="p-5 space-y-6">
+              {(['스마트스토어', '택배', '일반'] as OrderSource[]).map(source => (
+                <OrderSourceGroup key={source} colId={col.id} source={source} orders={groupedOrders[source]} gridCols={3} collapsedCategories={collapsedCategories} onToggleCategory={onToggleCategory} {...cardSharedProps} />
+              ))}
+              {colOrders.length === 0 && <div className="flex flex-col items-center justify-center py-20 opacity-20"><Inbox size={48} /><p className="text-xs font-bold mt-2">주문이 없습니다</p></div>}
+              {!hasHistoryFilter && filteredHistoryOrders.length > HISTORY_PREVIEW && (
+                <button onClick={() => setShowAllHistory(v => !v)} className="w-full py-2 text-[11px] font-bold text-slate-400 hover:text-slate-600 hover:bg-white/60 rounded-xl transition-all">
+                  {showAllHistory ? '▲ 접기' : `▼ 더 보기 (${filteredHistoryOrders.length - HISTORY_PREVIEW}건 더)`}
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── 작업순서 품목 클릭 → 주문카드 팝업 ── */}
+      {previewOrderId && (() => {
+        const order = orders.find(o => o.id === previewOrderId);
+        if (!order) return null;
+        const clientName = order.customerName || clients.find(c => c.id === order.clientId)?.name || '이름없음';
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            onClick={() => setPreviewOrderId(null)}
+          >
+            <div
+              className="bg-slate-50 rounded-3xl shadow-2xl w-full max-w-sm mx-4 animate-in fade-in zoom-in-95 duration-200 flex flex-col overflow-hidden"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-white rounded-t-3xl">
+                <div>
+                  <h3 className="font-black text-slate-900">{clientName}</h3>
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                    order.status === OrderStatus.PROCESSING ? 'bg-sky-100 text-sky-600' : 'bg-amber-100 text-amber-600'
+                  }`}>
+                    {order.status === OrderStatus.PROCESSING ? '작업중' : '대기중'}
+                  </span>
+                </div>
+                <button onClick={() => setPreviewOrderId(null)} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400">
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="p-4 overflow-y-auto max-h-[70vh]">
+                <OrderCard
+                  order={order}
+                  clients={clients}
+                  products={products}
+                  editingOrderId={editingOrderId}
+                  setEditingOrderId={setEditingOrderId}
+                  showAddProductSelect={showAddProductSelect}
+                  setShowAddProductSelect={setShowAddProductSelect}
+                  onUpdateItems={onUpdateItems}
+                  onUpdateDeliveryDate={onUpdateDeliveryDate}
+                  onUpdateStatus={onUpdateStatus}
+                  onToggleItemChecked={onToggleItemChecked}
+                  onDeleteOrder={onDeleteOrder}
+                />
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

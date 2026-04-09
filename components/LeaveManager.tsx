@@ -61,13 +61,15 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
     return result;
   }, [currentMonth]);
 
+  const parseLocal = (s: string) => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); };
+
   const getLeavesForDate = (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
     return leaveRequests.filter(req => {
       if (req.status !== 'approved') return false;
-      const start = new Date(req.startDate);
-      const end = new Date(req.endDate);
-      const current = new Date(dateStr);
+      const start = parseLocal(req.startDate);
+      const end = parseLocal(req.endDate);
+      const current = parseLocal(dateStr);
       return current >= start && current <= end;
     });
   };
@@ -103,10 +105,16 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
 
   const calculateRequestDays = (start: string, end: string, type: LeaveType) => {
     if (type === '오전반차' || type === '오후반차') return 0.5;
-    const s = new Date(start);
-    const e = new Date(end);
-    const diffTime = Math.abs(e.getTime() - s.getTime());
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    const s = parseLocal(start);
+    const e = parseLocal(end);
+    let count = 0;
+    const cur = new Date(s);
+    while (cur <= e) {
+      const dow = cur.getDay();
+      if (dow !== 0 && dow !== 6) count++;
+      cur.setDate(cur.getDate() + 1);
+    }
+    return count;
   };
 
   const handleApply = (e: React.FormEvent) => {

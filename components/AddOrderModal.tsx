@@ -275,9 +275,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, onClos
                           <div>
                             <div className="flex items-center space-x-2">
                               <p className="font-bold text-slate-800 text-sm">{client.name || '이름 없음'}</p>
-                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-black">{client.type}</span>
+                              {client.region && <span className="text-[9px] text-slate-400">{client.region}</span>}
                             </div>
-                            <p className="text-xs text-slate-400">{client.phone}</p>
                           </div>
                           <ArrowRight size={16} className="text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
                         </button>
@@ -312,10 +311,9 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, onClos
                                   <h3 className="text-sm font-bold text-slate-900 truncate">{client.name}</h3>
                                   <span className={`px-1.5 py-0.5 rounded text-[9px] font-black flex-shrink-0 ${typeConfig.color}`}>{client.type}</span>
                                 </div>
-                                <div className="flex flex-wrap items-center gap-x-3 mt-0.5 text-slate-400">
-                                  {client.phone && <span className="flex items-center text-[11px]"><Phone size={10} className="mr-1" />{client.phone}</span>}
-                                  {client.region && <span className="flex items-center text-[11px]"><LayoutGrid size={10} className="mr-1" />{client.region}</span>}
-                                </div>
+                                {client.region && (
+                                  <p className="text-[11px] text-slate-400 mt-0.5">{client.region}</p>
+                                )}
                               </div>
                             </div>
                           </button>
@@ -332,7 +330,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, onClos
                     <h4 className="font-black text-indigo-900 text-sm truncate">{selectedClient.name}</h4>
                     <span className="px-1.5 py-0.5 rounded-full bg-indigo-600 text-white text-[8px] font-black shrink-0">{selectedClient.type}</span>
                   </div>
-                  <p className="text-[10px] text-indigo-500 font-medium">{selectedClient.phone || '연락처 없음'}</p>
+                  {selectedClient.region && <p className="text-[10px] text-indigo-500 font-medium">{selectedClient.region}</p>}
                 </div>
                 <input
                   type="date"

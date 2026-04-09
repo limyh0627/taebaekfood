@@ -35,10 +35,14 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
   const [showLinkPanel, setShowLinkPanel] = useState(false);
   const [linkCategory, setLinkCategory] = useState('완제품');
 
+  const TYPE_ORDER: Record<string, number> = { '일반': 0, '택배': 1, '스마트스토어': 2 };
   const salesClients = useMemo(() =>
     clients
       .filter(c => !c.partnerType || c.partnerType === '매출처')
-      .sort((a, b) => a.name.localeCompare(b.name, 'ko')),
+      .sort((a, b) => {
+        const tDiff = (TYPE_ORDER[a.type] ?? 0) - (TYPE_ORDER[b.type] ?? 0);
+        return tDiff !== 0 ? tDiff : a.name.localeCompare(b.name, 'ko');
+      }),
     [clients]
   );
 
@@ -277,16 +281,28 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
                     </td>
                     {activeCategory === '완제품' && (
                       <td className="px-2 py-3">
-                        <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
-                          {(() => {
-                            const names = (item.clientIds ?? []).map(id => clients.find(c => c.id === id)?.name).filter(Boolean) as string[];
-                            if (!names.length) return <span className="text-slate-200">-</span>;
-                            const MAX = 2;
-                            return names.length > MAX
-                              ? <>{names.slice(0, MAX).join(', ')} <span className="text-slate-400">+{names.length - MAX}</span></>
-                              : names.join(', ');
-                          })()}
-                        </span>
+                        {(() => {
+                          const BADGE_COLORS = [
+                            'bg-indigo-100 text-indigo-700','bg-emerald-100 text-emerald-700','bg-amber-100 text-amber-700',
+                            'bg-rose-100 text-rose-700','bg-sky-100 text-sky-700','bg-violet-100 text-violet-700',
+                            'bg-teal-100 text-teal-700','bg-orange-100 text-orange-700','bg-pink-100 text-pink-700',
+                          ];
+                          const clientList = clients.filter(c => !c.partnerType || c.partnerType === '매출처');
+                          const matched = (item.clientIds ?? []).map(id => clientList.find(c => c.id === id)).filter(Boolean) as typeof clientList;
+                          if (!matched.length) return <span className="text-slate-200">-</span>;
+                          const MAX = 3;
+                          return (
+                            <div className="flex flex-wrap gap-1">
+                              {matched.slice(0, MAX).map((c) => {
+                                const colorIdx = clientList.indexOf(c) % BADGE_COLORS.length;
+                                return (
+                                  <span key={c.id} className={`inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-black ${BADGE_COLORS[colorIdx]}`}>{c.name}</span>
+                                );
+                              })}
+                              {matched.length > MAX && <span className="text-[10px] text-slate-400 font-bold">+{matched.length - MAX}</span>}
+                            </div>
+                          );
+                        })()}
                       </td>
                     )}
                     {activeCategory !== '완제품' && (

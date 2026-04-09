@@ -1,28 +1,55 @@
 
 import React, { useState, useMemo } from 'react';
-import { 
-  Calendar as CalendarIcon, 
-  ChevronLeft, 
-  ChevronRight, 
-  Truck, 
-  MapPin, 
-  Package, 
+import {
+  Calendar as CalendarIcon,
+  ChevronLeft,
+  ChevronRight,
+  Truck,
+  MapPin,
+  Package,
   Clock,
-  Building2
+  Building2,
+  CheckCircle2,
+  Send,
+  ListOrdered,
+  Plus,
+  GripVertical,
+  ChevronDown
 } from 'lucide-react';
-import { Order, Client, OrderStatus } from '../types';
+import { Order, Client, OrderStatus, Product } from '../types';
 import { X, Save } from 'lucide-react';
+import { OrderCard } from './OrdersList';
+
+import { OrderItem } from '../types';
 
 interface DeliveryManagerProps {
   orders: Order[];
   clients: Client[];
+  products: Product[];
   onUpdateDeliveryDate?: (_id: string, _date: string) => void;
+  onUpdateStatus?: (_id: string, _status: OrderStatus) => void;
+  onUpdateItems?: (_id: string, _items: OrderItem[]) => void;
+  onToggleItemChecked?: (_orderId: string, _itemIdx: number) => void;
+  onDeleteOrder?: (_id: string) => void;
 }
 
-const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, onUpdateDeliveryDate }) => {
+const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, products, onUpdateDeliveryDate, onUpdateStatus, onUpdateItems, onToggleItemChecked, onDeleteOrder }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [newDate, setNewDate] = useState('');
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [showAddProductSelect, setShowAddProductSelect] = useState<string | null>(null);
+  const [deliveryOrdering, setDeliveryOrdering] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('deliveryOrdering') || '[]'); } catch { return []; }
+  });
+  const [showDeliveryPicker, setShowDeliveryPicker] = useState(false);
+  const [pickerDeliveryOrdering, setPickerDeliveryOrdering] = useState<string[]>([]);
+  const [dragDeliveryIdx, setDragDeliveryIdx] = useState<number | null>(null);
+  const [deliveryTab, setDeliveryTab] = useState<'배송일정관리' | '배송캘린더'>('배송일정관리');
+  const [mobileCollapsed, setMobileCollapsed] = useState<Set<string>>(new Set());
+  const toggleMobileCollapse = (id: string) => setMobileCollapsed(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  const [expandedDeliveredDates, setExpandedDeliveredDates] = useState<Set<string>>(new Set());
+  const toggleDeliveredDate = (dateStr: string) => setExpandedDeliveredDates(prev => { const next = new Set(prev); next.has(dateStr) ? next.delete(dateStr) : next.add(dateStr); return next; });
 
   const handleOrderClick = (order: Order) => {
     setEditingOrder(order);
@@ -69,7 +96,19 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, onUp
   const deliverySchedules = useMemo(() => {
     const schedules: Record<string, Order[]> = {};
     orders.forEach(order => {
-      if (order.deliveryDate) {
+      if (order.deliveryDate && order.customerName !== '생산기록' && order.status !== OrderStatus.DELIVERED) {
+        const date = order.deliveryDate.split('T')[0];
+        if (!schedules[date]) schedules[date] = [];
+        schedules[date].push(order);
+      }
+    });
+    return schedules;
+  }, [orders]);
+
+  const deliveredSchedules = useMemo(() => {
+    const schedules: Record<string, Order[]> = {};
+    orders.forEach(order => {
+      if (order.deliveryDate && order.customerName !== '생산기록' && order.status === OrderStatus.DELIVERED) {
         const date = order.deliveryDate.split('T')[0];
         if (!schedules[date]) schedules[date] = [];
         schedules[date].push(order);
@@ -137,45 +176,77 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, onUp
       }
     };
 
+    const todayStr = new Date().toISOString().split('T')[0];
     const renderDayCell = (day: number, dateStr: string) => {
       const dayOrders = deliverySchedules[dateStr] || [];
-      const isToday = new Date().toISOString().split('T')[0] === dateStr;
+      const deliveredOrders = deliveredSchedules[dateStr] || [];
+      const isToday = todayStr === dateStr;
+      const isPast = dateStr < todayStr;
+      const compact = isPast && dayOrders.length === 0 && deliveredOrders.length === 0;
+      const showDelivered = expandedDeliveredDates.has(dateStr);
       return (
         <div
           key={day}
           onDragOver={handleDragOver}
           onDrop={(e) => handleDrop(e, dateStr)}
-          className={`h-32 border-b border-r border-slate-100 p-2 transition-all hover:bg-indigo-50/30 group relative ${isToday ? 'bg-indigo-50/20' : 'bg-white'}`}
+          className={`border-b border-r border-slate-100 p-2 transition-all hover:bg-indigo-50/30 group relative ${isToday ? 'bg-indigo-50/20' : compact ? 'bg-slate-50/40' : 'bg-white'}`}
+          style={{ minHeight: compact ? 36 : 110 }}
         >
-          <div className="flex justify-between items-start mb-1">
-            <span className={`text-xs font-black w-6 h-6 flex items-center justify-center rounded-full ${isToday ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 group-hover:text-indigo-600'}`}>
+          <div className="flex justify-between items-center">
+            <span className={`text-xs font-black w-6 h-6 flex items-center justify-center rounded-full ${isToday ? 'bg-indigo-600 text-white shadow-md' : compact ? 'text-slate-300' : 'text-slate-400 group-hover:text-indigo-600'}`}>
               {day}
             </span>
-            {dayOrders.length > 0 && (
-              <span className="text-[10px] font-black text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-md">
-                {dayOrders.length}건
-              </span>
-            )}
+            <div className="flex items-center gap-1">
+              {dayOrders.length > 0 && (
+                <span className="text-[10px] font-black text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-md">
+                  {dayOrders.length}건
+                </span>
+              )}
+              {deliveredOrders.length > 0 && (
+                <button
+                  onClick={e => { e.stopPropagation(); toggleDeliveredDate(dateStr); }}
+                  className="text-[10px] font-black text-slate-400 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded-md transition-all"
+                >
+                  이전 {deliveredOrders.length}건
+                </button>
+              )}
+            </div>
           </div>
-          <div className="space-y-1 overflow-y-auto max-h-[88px]" style={{scrollbarWidth:'thin'}}>
-            {dayOrders.map(order => {
-              const progress = order.items.length > 0
-                ? Math.round((order.items.filter(i => i.checked).length / order.items.length) * 100)
-                : 0;
-              return (
+          {dayOrders.length > 0 && (
+            <div className="mt-1 space-y-1 overflow-y-auto" style={{ maxHeight: 110, scrollbarWidth: 'thin' }}>
+              {dayOrders.map(order => {
+                const progress = order.items.length > 0
+                  ? Math.round((order.items.filter(i => i.checked).length / order.items.length) * 100)
+                  : 0;
+                return (
+                  <div
+                    key={order.id}
+                    onClick={() => handleOrderClick(order)}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, order.id)}
+                    className={`text-[9px] font-bold py-1 px-2 rounded-lg border flex justify-between items-center cursor-pointer hover:brightness-95 transition-all active:scale-95 ${getStatusColor(order.status)}`}
+                  >
+                    <span className="flex-1 min-w-[32px] truncate">{order.customerName}</span>
+                    <span className="ml-1 shrink-0 opacity-70">{progress}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {showDelivered && deliveredOrders.length > 0 && (
+            <div className="mt-1 space-y-1 overflow-y-auto border-t border-slate-100 pt-1" style={{ maxHeight: 80, scrollbarWidth: 'thin' }}>
+              {deliveredOrders.map(order => (
                 <div
                   key={order.id}
                   onClick={() => handleOrderClick(order)}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, order.id)}
-                  className={`text-[9px] font-bold py-1 px-2 rounded-lg border flex justify-between items-center cursor-pointer hover:brightness-95 transition-all active:scale-95 ${getStatusColor(order.status)}`}
+                  className="text-[9px] font-bold py-1 px-2 rounded-lg border flex justify-between items-center cursor-pointer bg-slate-50 border-slate-200 text-slate-400 hover:brightness-95 transition-all"
                 >
                   <span className="flex-1 min-w-[32px] truncate">{order.customerName}</span>
-                  <span className="ml-1 shrink-0 opacity-70">{progress}%</span>
+                  <span className="ml-1 shrink-0">완료</span>
                 </div>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       );
     };
@@ -183,7 +254,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, onUp
     if (hasWeekendOrders) {
       // 7-column full grid (Sun–Sat)
       for (let i = 0; i < startDay; i++) {
-        days.push(<div key={`empty-${i}`} className="h-32 border-b border-r border-slate-100 bg-slate-50/30" />);
+        days.push(<div key={`empty-${i}`} className="border-b border-r border-slate-100 bg-slate-50/30" />);
       }
       for (let day = 1; day <= totalDays; day++) {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -193,7 +264,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, onUp
       // 5-column Mon–Fri grid (weekends hidden)
       const mondayOffset = startDay === 0 || startDay === 6 ? 0 : startDay - 1;
       for (let i = 0; i < mondayOffset; i++) {
-        days.push(<div key={`empty-${i}`} className="h-32 border-b border-r border-slate-100 bg-slate-50/30" />);
+        days.push(<div key={`empty-${i}`} className="border-b border-r border-slate-100 bg-slate-50/30" />);
       }
       for (let day = 1; day <= totalDays; day++) {
         const dow = new Date(year, month, day).getDay();
@@ -218,8 +289,210 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, onUp
         </div>
       </div>
 
+      {/* 탭 */}
+      <div className="flex bg-white p-1 rounded-2xl border border-slate-200 shadow-sm w-fit">
+        {(['배송일정관리', '배송캘린더'] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setDeliveryTab(tab)}
+            className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${deliveryTab === tab ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+          >{tab}</button>
+        ))}
+      </div>
+
+      {/* 작업완료 / 출고 컬럼 */}
+      {deliveryTab === '배송일정관리' && (() => {
+        const dispatchedOrders = orders
+          .filter(o => o.status === OrderStatus.DISPATCHED && o.customerName !== '생산기록')
+          .sort((a, b) => (a.deliveryDate || '').localeCompare(b.deliveryDate || ''));
+        const shippedOrders = orders.filter(o => o.status === OrderStatus.SHIPPED && o.customerName !== '생산기록');
+        // 배송순서 유효 주문 (작업완료 중 deliveryOrdering에 있는 것)
+        const validDelivery = deliveryOrdering.filter(id => dispatchedOrders.some(o => o.id === id));
+
+        const saveDeliveryOrdering = (next: string[]) => {
+          setDeliveryOrdering(next);
+          localStorage.setItem('deliveryOrdering', JSON.stringify(next));
+        };
+
+        return (
+          <div className="md:overflow-x-auto no-scrollbar">
+            <div className="flex flex-col md:flex-row md:min-w-max gap-4 pb-1 md:items-start">
+
+              {/* 금일 배송순서 패널 */}
+              <div className="w-full md:w-56 md:shrink-0 flex flex-col rounded-3xl border border-teal-100 bg-teal-50/50 shadow-sm">
+                <div className="p-4 border-b border-white/50 flex items-center justify-between">
+                  <button className="flex items-center gap-2 md:cursor-default" onClick={() => { if (window.innerWidth < 768) toggleMobileCollapse('delivery-order'); }}>
+                    <div className="p-1.5 rounded-xl bg-teal-600 text-white"><ListOrdered size={16} /></div>
+                    <h3 className="font-black text-sm text-teal-700">금일 배송순서</h3>
+                    <ChevronDown size={14} className={`md:hidden text-teal-400 transition-transform ${mobileCollapsed.has('delivery-order') ? '' : 'rotate-180'}`} />
+                  </button>
+                  <button
+                    onClick={() => { setPickerDeliveryOrdering(validDelivery); setShowDeliveryPicker(true); }}
+                    className="flex items-center gap-1 text-[10px] font-black text-teal-600 bg-teal-100 hover:bg-teal-200 px-2.5 py-1.5 rounded-lg transition-all"
+                  >
+                    <Plus size={11} /> 추가
+                  </button>
+                </div>
+                <div className={`p-3 flex flex-col gap-2 min-h-[80px] ${mobileCollapsed.has('delivery-order') ? 'hidden md:flex' : ''}`}>
+                  {validDelivery.length === 0 ? (
+                    <p className="text-center text-[11px] text-teal-300 py-6 font-bold">추가 버튼으로<br/>순서를 설정하세요</p>
+                  ) : validDelivery.map((id, idx) => {
+                    const o = dispatchedOrders.find(x => x.id === id);
+                    if (!o) return null;
+                    const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '';
+                    return (
+                      <div
+                        key={id}
+                        draggable
+                        onDragStart={() => setDragDeliveryIdx(idx)}
+                        onDragOver={e => e.preventDefault()}
+                        onDrop={() => {
+                          if (dragDeliveryIdx === null || dragDeliveryIdx === idx) return;
+                          const next = [...validDelivery];
+                          const [moved] = next.splice(dragDeliveryIdx, 1);
+                          next.splice(idx, 0, moved);
+                          setDragDeliveryIdx(null);
+                          saveDeliveryOrdering(next);
+                        }}
+                        className="flex items-center gap-2 bg-white border border-teal-100 rounded-xl px-2 py-1.5 cursor-grab active:cursor-grabbing"
+                      >
+                        <GripVertical size={12} className="text-teal-300 shrink-0" />
+                        <span className="text-[10px] font-black text-teal-600 bg-teal-50 w-4 h-4 rounded-full flex items-center justify-center shrink-0">{idx + 1}</span>
+                        <span className="text-[11px] font-bold text-slate-700 truncate flex-1">{clientName}</span>
+                        <button
+                          onClick={() => saveDeliveryOrdering(validDelivery.filter(x => x !== id))}
+                          className="text-slate-300 hover:text-rose-400 shrink-0"
+                        ><X size={10} /></button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 작업완료 컬럼 (2열) */}
+              <div
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => { e.preventDefault(); const id = e.dataTransfer.getData('orderId'); if (id) onUpdateStatus?.(id, OrderStatus.DISPATCHED); }}
+                className="flex flex-col rounded-3xl border border-emerald-100 bg-emerald-50/50 shadow-sm w-full md:w-72 md:shrink-0"
+              >
+                <div className="p-5 border-b border-white/50 flex items-center gap-3">
+                  <button className="flex items-center gap-3 md:cursor-default" onClick={() => { if (window.innerWidth < 768) toggleMobileCollapse('dispatched'); }}>
+                    <div className="p-2 rounded-xl bg-emerald-500 text-white"><CheckCircle2 size={20} /></div>
+                    <h3 className="font-black text-base text-emerald-700">작업완료 ({dispatchedOrders.length})</h3>
+                    <ChevronDown size={14} className={`md:hidden text-emerald-400 transition-transform ${mobileCollapsed.has('dispatched') ? '' : 'rotate-180'}`} />
+                  </button>
+                </div>
+                <div className={`p-4 grid grid-cols-1 gap-3 overflow-y-auto no-scrollbar ${mobileCollapsed.has('dispatched') ? 'hidden md:grid' : ''}`}>
+                  {dispatchedOrders.length === 0 ? (
+                    <p className="col-span-2 text-center text-[11px] text-slate-300 font-bold py-10">주문이 없습니다</p>
+                  ) : dispatchedOrders.map(order => (
+                    <OrderCard
+                      key={order.id}
+                      order={order}
+                      clients={clients}
+                      products={products}
+                      editingOrderId={editingOrderId}
+                      setEditingOrderId={setEditingOrderId}
+                      showAddProductSelect={showAddProductSelect}
+                      setShowAddProductSelect={setShowAddProductSelect}
+                      onUpdateItems={onUpdateItems}
+                      onUpdateDeliveryDate={onUpdateDeliveryDate!}
+                      onUpdateStatus={onUpdateStatus!}
+                      onToggleItemChecked={onToggleItemChecked}
+                      onDeleteOrder={onDeleteOrder ?? (() => {})}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* 출고 컬럼 (1열, 컴팩트) */}
+              <div
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => { e.preventDefault(); const id = e.dataTransfer.getData('orderId'); if (id) onUpdateStatus?.(id, OrderStatus.SHIPPED); }}
+                className="flex flex-col rounded-3xl border border-indigo-100 bg-indigo-50/50 shadow-sm w-full md:w-72 md:shrink-0"
+              >
+                <div className="p-4 border-b border-white/50 flex items-center gap-3">
+                  <button className="flex items-center gap-3 md:cursor-default" onClick={() => { if (window.innerWidth < 768) toggleMobileCollapse('shipped'); }}>
+                    <div className="p-2 rounded-xl bg-indigo-500 text-white"><Send size={18} /></div>
+                    <h3 className="font-black text-sm text-indigo-700">출고 ({shippedOrders.length})</h3>
+                    <ChevronDown size={14} className={`md:hidden text-indigo-400 transition-transform ${mobileCollapsed.has('shipped') ? '' : 'rotate-180'}`} />
+                  </button>
+                </div>
+                <div className={`p-4 grid grid-cols-1 gap-3 overflow-y-auto no-scrollbar ${mobileCollapsed.has('shipped') ? 'hidden md:grid' : ''}`}>
+                  {shippedOrders.length === 0 ? (
+                    <p className="col-span-1 text-center text-[11px] text-slate-300 font-bold py-10">주문이 없습니다</p>
+                  ) : shippedOrders.map(order => (
+                    <OrderCard
+                      key={order.id}
+                      order={order}
+                      clients={clients}
+                      products={products}
+                      editingOrderId={editingOrderId}
+                      setEditingOrderId={setEditingOrderId}
+                      showAddProductSelect={showAddProductSelect}
+                      setShowAddProductSelect={setShowAddProductSelect}
+                      onUpdateItems={onUpdateItems}
+                      onUpdateDeliveryDate={onUpdateDeliveryDate!}
+                      onUpdateStatus={onUpdateStatus!}
+                      onToggleItemChecked={onToggleItemChecked}
+                      onDeleteOrder={onDeleteOrder ?? (() => {})}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* 배송순서 설정 모달 */}
+            {showDeliveryPicker && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowDeliveryPicker(false)}>
+                <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm mx-4 flex flex-col max-h-[70vh] animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                    <h3 className="font-black text-slate-900">배송순서 설정</h3>
+                    <button onClick={() => setShowDeliveryPicker(false)} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"><X size={16} /></button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto">
+                    {dispatchedOrders.length === 0 ? (
+                      <p className="text-center text-sm text-slate-400 py-10">작업완료 주문이 없습니다.</p>
+                    ) : dispatchedOrders.map(o => {
+                      const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '';
+                      const isSelected = pickerDeliveryOrdering.includes(o.id);
+                      const idx = pickerDeliveryOrdering.indexOf(o.id);
+                      return (
+                        <button
+                          key={o.id}
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) setPickerDeliveryOrdering(pickerDeliveryOrdering.filter(x => x !== o.id));
+                            else setPickerDeliveryOrdering([...pickerDeliveryOrdering, o.id]);
+                          }}
+                          className={`w-full flex items-center gap-3 px-5 py-3 border-b border-slate-50 hover:bg-slate-50 transition-colors text-left ${isSelected ? 'bg-teal-50' : ''}`}
+                        >
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 ${isSelected ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                            {isSelected ? idx + 1 : ''}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-slate-700 truncate">{clientName}</p>
+                            <p className="text-[10px] text-slate-400 truncate">{o.items.map(i => i.name).join(', ')}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="p-4 border-t border-slate-100">
+                    <button
+                      onClick={() => { saveDeliveryOrdering(pickerDeliveryOrdering); setShowDeliveryPicker(false); }}
+                      className="w-full bg-teal-600 text-white font-black py-3 rounded-2xl hover:bg-teal-700 transition-all"
+                    >확인</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Calendar Section */}
-      <div className="bg-white rounded-[40px] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
+      {deliveryTab === '배송캘린더' && <div className="bg-white rounded-[40px] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
         <div className="p-8 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center shadow-inner">
@@ -253,10 +526,9 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, onUp
         <div className={`grid ${hasWeekendOrders ? 'grid-cols-7' : 'grid-cols-5'} border-l border-slate-100`}>
           {renderCalendar()}
         </div>
-      </div>
+      </div>}
 
-      {/* Region Based Section */}
-      <div className="space-y-6">
+      {deliveryTab === '배송일정관리' && <div className="space-y-6">
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center">
             <MapPin size={20} />
@@ -350,7 +622,8 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, onUp
             <p className="text-slate-400 font-bold">현재 진행 중인 배송 일정이 없습니다.</p>
           </div>
         )}
-      </div>
+      </div>}
+
       {/* Date Edit Modal */}
       {editingOrder && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">

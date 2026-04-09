@@ -121,6 +121,7 @@ export interface Product {
   clientBoxConfigs?: ClientBoxConfig[]; // 거래처별 박스 설정
   품목?: string; // 서류용 품목명 (예: 시골향참기름1)
   용량?: string; // 서류용 용량 (예: 1800ml, 1kg)
+  isSmartStore?: boolean; // 스마트스토어 전용 품목 여부
   submaterials?: SubmaterialComponent[];
 }
 
@@ -223,6 +224,17 @@ export interface ChatRoom {
 
 
 export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'clients' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'client-portal' | 'item-management' | 'confirmation-items' | 'officetalk' | 'documents';
+
+export interface AppNotification {
+  id: string;
+  type: 'new_order' | 'confirmation' | 'mention';
+  title: string;
+  body: string;
+  readBy: string[];   // 읽은 userId 목록
+  createdAt: string;
+  linkedId?: string;  // 관련 order/request ID
+  senderId?: string;  // 발생시킨 userId
+}
 
 export interface RawMaterialEntry {
   id: string;
