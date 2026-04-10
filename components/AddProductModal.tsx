@@ -68,6 +68,12 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const boxClientSearchRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (boxClientSearchRef.current && !boxClientSearchRef.current.contains(e.target as Node)) {
         setShowBoxClientDrop(false);

@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { X, Search, ShoppingBag, User, ArrowRight, Package, AlertCircle, Phone, Mail, Truck, Store, LayoutGrid, CalendarDays } from 'lucide-react';
 import { Product, OrderItem, Order, Client, OrderSource, OrderPallet } from '../types';
 
@@ -35,6 +35,12 @@ const matchClient = (name: string, query: string): boolean => {
 };
 
 const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, onClose, onSave }) => {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [selectedItems, setSelectedItems] = useState<{ productId: string, quantity: number | '', isBoxUnit: boolean, unitsPerBox: number, boxType: string, boxSubId?: string }[]>([]);

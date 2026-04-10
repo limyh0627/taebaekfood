@@ -8,9 +8,10 @@ interface TradeStatementProps {
   orders: Order[];
   allProducts: Product[];
   clients: Client[];
+  onUpdateStatus?: (id: string, status: OrderStatus) => void;
 }
 
-const TradeStatement: React.FC<TradeStatementProps> = ({ orders, allProducts, clients }) => {
+const TradeStatement: React.FC<TradeStatementProps> = ({ orders, allProducts, clients, onUpdateStatus }) => {
   const [selectedClientId, setSelectedClientId] = useState<string>('');
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const printRef = useRef<HTMLDivElement>(null);
@@ -63,6 +64,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({ orders, allProducts, cl
 
   const fmt = (n: number) => n.toLocaleString('ko-KR');
 
+  const markSelectedAsDelivered = () => {
+    if (onUpdateStatus) {
+      selectedOrderIds.forEach(id => onUpdateStatus(id, OrderStatus.DELIVERED));
+      setSelectedOrderIds([]);
+    }
+  };
+
   const handlePrint = () => {
     const content = printRef.current;
     if (!content) return;
@@ -89,6 +97,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({ orders, allProducts, cl
     printWindow.focus();
     printWindow.print();
     printWindow.close();
+    markSelectedAsDelivered();
   };
 
   const handleExcel = async () => {
@@ -186,6 +195,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({ orders, allProducts, cl
     a.download = `거래명세서_${selectedClient?.name || ''}_${today.toISOString().slice(0, 10)}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
+    markSelectedAsDelivered();
   };
 
   return (

@@ -1970,6 +1970,15 @@ const App: React.FC = () => {
                     orders={orders}
                     allProducts={allProducts}
                     clients={clients}
+                    onUpdateStatus={async (id, status) => {
+                      if (status === OrderStatus.DELIVERED) {
+                        const order = orders.find(o => o.id === id);
+                        if (order) await deductSubmaterialsForOrder(order);
+                        await updateItem('orders', id, { status, deliveredAt: new Date().toISOString() });
+                      } else {
+                        await updateItem('orders', id, { status });
+                      }
+                    }}
                   />
                 )}
 
