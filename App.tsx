@@ -2366,13 +2366,12 @@ const App: React.FC = () => {
             />
           )}
           {currentView === 'leave-portal' && (
-            <LeaveManager 
+            <LeaveManager
               currentUser={currentUser}
-              employees={employees} 
-              leaveRequests={leaveRequests} 
-              onAddLeaveRequest={(req) => addItem('leaveRequests', req)} 
-              onUpdateLeaveStatus={(id, status) => updateItem('leaveRequests', id, { status })} 
-              onDeleteLeaveRequest={(id) => deleteItem('leaveRequests', id)} 
+              employees={employees}
+              leaveRequests={leaveRequests}
+              onAddLeaveRequest={(req) => addItem('leaveRequests', req)}
+              onUpdateLeaveStatus={(id, status) => updateItem('leaveRequests', id, { status })}
             />
           )}
           {currentView === 'item-management' && (

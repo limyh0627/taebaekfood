@@ -1,11 +1,10 @@
 
 import React, { useState, useMemo } from 'react';
-import { 
-  CalendarCheck, 
-  Plus, 
-  Search, 
-  Trash2, 
-  Calendar, 
+import {
+  CalendarCheck,
+  Plus,
+  Search,
+  Calendar,
   FileText,
   X,
   Check,
@@ -20,19 +19,17 @@ interface LeaveManagerProps {
   leaveRequests: LeaveRequest[];
   onAddLeaveRequest: (_req: LeaveRequest) => void;
   onUpdateLeaveStatus: (_id: string, _status: LeaveStatus) => void;
-  onDeleteLeaveRequest: (_id: string) => void;
 }
 
 type LeaveTab = 'my' | 'calendar';
 
-const generateLeaveId = () => `lv-${Math.random().toString(36).substr(2, 9)}`;
+const generateLeaveId = () => `lv-${Math.random().toString(36).substring(2, 11)}`;
 
 const LeaveManager: React.FC<LeaveManagerProps> = ({ 
   currentUser,
-  employees, 
-  leaveRequests, 
-  onAddLeaveRequest, 
-  onDeleteLeaveRequest 
+  employees,
+  leaveRequests,
+  onAddLeaveRequest,
 }) => {
   const [activeTab, setActiveTab] = useState<LeaveTab>('my');
   const [searchTerm, setSearchTerm] = useState('');
@@ -103,8 +100,20 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
       .reduce((sum, r) => sum + r.daysUsed, 0);
   };
 
+  const LEAVE_DEDUCTION: Record<LeaveType, number | 'days'> = {
+    '연차': 'days',
+    '오전반차': 0.5,
+    '오후반차': 0.5,
+    '경조사': 0,
+    '기타': 0,
+    '병가': 'days',
+  };
+
   const calculateRequestDays = (start: string, end: string, type: LeaveType) => {
-    if (type === '오전반차' || type === '오후반차') return 0.5;
+    const rule = LEAVE_DEDUCTION[type];
+    if (rule === 0) return 0;
+    if (typeof rule === 'number') return rule;
+    // 'days' — 평일 기준 일수 계산 (최소 1일)
     const s = parseLocal(start);
     const e = parseLocal(end);
     let count = 0;
@@ -114,11 +123,15 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
       if (dow !== 0 && dow !== 6) count++;
       cur.setDate(cur.getDate() + 1);
     }
-    return count;
+    return Math.max(1, count);
   };
 
   const handleApply = (e: React.FormEvent) => {
     e.preventDefault();
+    if (formData.type === '기타' && !formData.reason.trim()) {
+      alert('기타 유형은 상세 사유를 반드시 입력해야 합니다.');
+      return;
+    }
     const emp = employees.find(e => e.id === selectedEmployeeId);
     if (!emp) return;
     const daysUsed = calculateRequestDays(formData.startDate, formData.endDate, formData.type);
@@ -392,10 +405,25 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
                 <div className="space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">시작일</label><input required type="date" value={formData.startDate} onChange={(e) => setFormData({...formData, startDate: e.target.value, endDate: e.target.value > formData.endDate ? e.target.value : formData.endDate})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500" /></div>
                 <div className="space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">종료일</label><input required disabled={formData.type.includes('반차')} type="date" value={formData.type.includes('반차') ? formData.startDate : formData.endDate} onChange={(e) => setFormData({...formData, endDate: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50" /></div>
               </div>
-              <div className="space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">상세 사유</label><textarea required rows={4} value={formData.reason} onChange={(e) => setFormData({...formData, reason: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-3xl px-6 py-5 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 resize-none" placeholder="휴가 사유를 작성해 주세요." /></div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                  상세 사유{formData.type === '기타' && <span className="ml-1 text-rose-500">*필수</span>}
+                </label>
+                <textarea
+                  rows={4}
+                  value={formData.reason}
+                  onChange={(e) => setFormData({...formData, reason: e.target.value})}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-3xl px-6 py-5 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                  placeholder={formData.type === '기타' ? '기타 유형은 상세 사유를 반드시 입력해 주세요.' : '휴가 사유를 작성해 주세요.'}
+                />
+              </div>
               {selectedEmployeeId && (
-                <div className="bg-indigo-50 border border-indigo-100 p-5 rounded-3xl flex items-center justify-between text-indigo-700 font-black text-sm">
-                  <div className="flex items-center space-x-2"><Info size={18} /><span>총 {calculateRequestDays(formData.startDate, formData.endDate, formData.type)}일이 차감됩니다.</span></div>
+                <div className={`p-5 rounded-3xl flex items-center space-x-2 font-black text-sm ${LEAVE_DEDUCTION[formData.type] === 0 ? 'bg-slate-50 border border-slate-100 text-slate-500' : 'bg-indigo-50 border border-indigo-100 text-indigo-700'}`}>
+                  <Info size={18} />
+                  {LEAVE_DEDUCTION[formData.type] === 0
+                    ? <span>연차에서 차감되지 않습니다.</span>
+                    : <span>총 {calculateRequestDays(formData.startDate, formData.endDate, formData.type)}일이 차감됩니다.</span>
+                  }
                 </div>
               )}
             </form>

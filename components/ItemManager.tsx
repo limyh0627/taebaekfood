@@ -34,6 +34,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
   const [linkSearch, setLinkSearch] = useState('');
   const [showLinkPanel, setShowLinkPanel] = useState(false);
   const [linkCategory, setLinkCategory] = useState('완제품');
+  const [clientTypeFilter, setClientTypeFilter] = useState<string | null>(null);
 
   const TYPE_ORDER: Record<string, number> = { '일반': 0, '택배': 1, '스마트스토어': 2 };
   const salesClients = useMemo(() =>
@@ -57,9 +58,24 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
   }, [products]);
 
   const filteredClients = useMemo(() =>
-    salesClients.filter(c => !clientSearch.trim() || c.name.includes(clientSearch)),
-    [salesClients, clientSearch]
+    salesClients.filter(c =>
+      (!clientSearch.trim() || c.name.includes(clientSearch)) &&
+      (!clientTypeFilter || c.type === clientTypeFilter)
+    ),
+    [salesClients, clientSearch, clientTypeFilter]
   );
+
+  const handleClientTypeFilter = (type: string) => {
+    const next = clientTypeFilter === type ? null : type;
+    setClientTypeFilter(next);
+    if (next && selectedClientId) {
+      const cur = clients.find(c => c.id === selectedClientId);
+      if (cur && cur.type !== next) {
+        setSelectedClientId(null);
+        setShowAll(false);
+      }
+    }
+  };
 
   const selectedClient = selectedClientId ? clients.find(c => c.id === selectedClientId) : null;
 
@@ -113,17 +129,21 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
           className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
         />
       </div>
-      <button
-        onClick={handleShowAll}
-        className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-black transition-all ${
-          showAll
-            ? 'bg-indigo-600 text-white shadow-md'
-            : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-        }`}
-      >
-        <LayoutGrid size={13} />
-        전체 품목
-      </button>
+      <div className="flex gap-1">
+        {([['일반 거래처', '일반'], ['택배사/대행', '택배'], ['스마트스토어', '스마트스토어']] as const).map(([label, type]) => (
+          <button
+            key={type}
+            onClick={() => handleClientTypeFilter(type)}
+            className={`flex-1 px-1.5 py-1.5 rounded-lg text-[9px] font-black transition-all whitespace-nowrap ${
+              clientTypeFilter === type
+                ? 'bg-indigo-600 text-white shadow'
+                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       <div className="flex flex-col overflow-y-auto max-h-[calc(100vh-280px)] divide-y divide-slate-100">
         {filteredClients.map(c => {
           const count = clientProductCount.get(c.id) ?? 0;
@@ -216,6 +236,17 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center gap-2">
           <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar flex-1">
+            <button
+              onClick={() => { handleShowAll(); setPage(1); }}
+              className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border whitespace-nowrap flex items-center gap-1 ${
+                showAll
+                  ? 'bg-indigo-600 border-indigo-600 text-white shadow'
+                  : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+              }`}
+            >
+              <LayoutGrid size={11} />
+              전체 품목
+            </button>
             {CATEGORIES.map(cat => (
               <button
                 key={cat}
