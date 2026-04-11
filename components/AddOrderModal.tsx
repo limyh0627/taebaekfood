@@ -82,8 +82,6 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, onClos
       if (p.clientIds?.includes(selectedClient.id)) return true;
       // 스마트스토어 타입 거래처 선택 시 SMARTSTORE 태그 제품도 표시
       if (selectedClient.type === '스마트스토어' && p.clientIds?.includes('SMARTSTORE')) return true;
-      // 스마트스토어 전용 체크된 품목도 스마트스토어 거래처에 표시
-      if (selectedClient.type === '스마트스토어' && p.isSmartStore) return true;
       return false;
     });
   }, [products, selectedClient]);
