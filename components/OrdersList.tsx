@@ -926,18 +926,15 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
         const renderCol = (col: typeof activeConfigs[0]) => {
           const allColOrders = filteredOrders.filter(o =>
-            col.statusFilter.includes(o.status) &&
-            o.source !== '택배' &&
-            o.source !== '스마트스토어' &&
-            !o.deliveryBoxes?.length
+            col.statusFilter.includes(o.status)
           );
           const units = columnUnits[col.id] ?? defaultUnits[col.id] ?? 1;
           const colMax = maxUnits[col.id] ?? 2;
           const Icon = col.icon;
           const groupedOrders: Record<OrderSource, Order[]> = {
             '스마트스토어': allColOrders.filter(o => o.source === '스마트스토어'),
-            '택배': allColOrders.filter(o => o.source === '택배' || (o.source === '일반' && o.deliveryBoxes !== undefined)),
-            '일반': allColOrders.filter(o => o.source === '일반' && o.deliveryBoxes === undefined),
+            '택배': allColOrders.filter(o => o.source === '택배'),
+            '일반': allColOrders.filter(o => o.source === '일반'),
           };
           return (
             <div key={col.id}
