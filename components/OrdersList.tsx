@@ -28,6 +28,7 @@ import {
   GripVertical
 } from 'lucide-react';
 import { Order, OrderStatus, Client, OrderSource, OrderItem, Product, OrderPallet, DeliveryBox } from '../types';
+import ConfirmModal from './ConfirmModal';
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
@@ -125,6 +126,7 @@ export const OrderCard = memo<OrderCardProps>(({
   onToggleItemChecked, onDeleteOrder,
 }) => {
   const isEditing = editingOrderId === order.id;
+  const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
 
   // 향미유·고춧가루 제외한 품목만 진행률 및 완료 판단에 사용
   const isSecondary = (cat?: string) => cat === '향미유' || cat === '고춧가루';
@@ -179,7 +181,16 @@ export const OrderCard = memo<OrderCardProps>(({
   };
 
   const handleRemoveItem = (idx: number) => {
-    onUpdateItems?.(order.id, order.items.filter((_, i) => i !== idx));
+    const item = order.items[idx];
+    setConfirmModal({
+      message: `"${item.name}" 품목을 삭제할까요?`,
+      subMessage: '주문에서 해당 품목이 제거됩니다.',
+      confirmText: '삭제',
+      onConfirm: () => {
+        onUpdateItems?.(order.id, order.items.filter((_, i) => i !== idx));
+        setConfirmModal(null);
+      },
+    });
   };
 
   const handleAddItem = (product: Product) => {
@@ -450,12 +461,24 @@ export const OrderCard = memo<OrderCardProps>(({
               <option key={val} value={val}>{label}</option>
             ))}
           </select>
-          <button onClick={() => window.confirm('주문을 삭제하시겠습니까?') && onDeleteOrder(order.id)}
+          <button onClick={() => setConfirmModal({
+              message: '주문을 삭제하시겠습니까?',
+              subMessage: `${clients.find(c => c.id === order.clientId)?.name ?? ''} · 삭제 후 복구할 수 없습니다.`,
+              onConfirm: () => { onDeleteOrder(order.id); setConfirmModal(null); },
+            })}
             className="p-1.5 text-rose-400 hover:bg-rose-50 rounded-lg transition-all"
           >
             <Trash2 size={14} />
           </button>
         </div>
+      )}
+      {confirmModal && (
+        <ConfirmModal
+          message={confirmModal.message}
+          subMessage={confirmModal.subMessage}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={() => setConfirmModal(null)}
+        />
       )}
     </div>
   );
@@ -665,6 +688,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const toggleMobileCollapse = (id: string) => setMobileCollapsed(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
   const [pickerOrdering, setPickerOrdering] = useState<string[]>([]); // 선택 순서 배열
   const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
 
   const expandColumn = (colId: string) =>
     setColumnUnits(prev => ({ ...prev, [colId]: Math.min((prev[colId] ?? defaultUnits[colId] ?? 1) + 1, maxUnits[colId] ?? 2) }));
@@ -771,9 +795,11 @@ const OrdersList: React.FC<OrdersListProps> = ({
               <button
                 onClick={() => {
                   const checked = deliveryOrders.filter(o => o.invoicePrinted);
-                  if (window.confirm(`체크된 ${checked.length}건을 출고 처리하시겠습니까?`)) {
-                    checked.forEach(o => onUpdateStatus(o.id, OrderStatus.SHIPPED));
-                  }
+                  setConfirmModal({
+                    message: `체크된 ${checked.length}건을 출고 처리하시겠습니까?`,
+                    confirmText: '출고 처리',
+                    onConfirm: () => { checked.forEach(o => onUpdateStatus(o.id, OrderStatus.SHIPPED)); setConfirmModal(null); },
+                  } as any);
                 }}
                 className="flex items-center space-x-1.5 bg-indigo-600 text-white px-4 py-2 rounded-xl text-xs font-black hover:bg-indigo-700 transition-all shadow"
               >
@@ -1161,6 +1187,15 @@ const OrdersList: React.FC<OrdersListProps> = ({
           </div>
         );
       })()}
+      {confirmModal && (
+        <ConfirmModal
+          message={confirmModal.message}
+          subMessage={confirmModal.subMessage}
+          confirmText={confirmModal.confirmText}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={() => setConfirmModal(null)}
+        />
+      )}
     </div>
   );
 };

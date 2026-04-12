@@ -18,6 +18,7 @@ import {
 import RegionSelect from './RegionSelect';
 import { Client, ClientType, PartnerType } from '../types';
 import AddClientModal from './AddClientModal';
+import ConfirmModal from './ConfirmModal';
 
 interface ClientManagerProps {
   clients: Client[];
@@ -28,6 +29,7 @@ interface ClientManagerProps {
 
 const ClientManager: React.FC<ClientManagerProps> = ({ clients, onUpdateClient, onAddClient, onDeleteClient }) => {
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
   const [editForm, setEditForm] = useState<Client | null>(null);
   const [activeTab, setActiveTab] = useState<PartnerType | '전체'>('전체');
   const [activeTypeTab, setActiveTypeTab] = useState<ClientType | '전체'>('전체');
@@ -269,7 +271,11 @@ const ClientManager: React.FC<ClientManagerProps> = ({ clients, onUpdateClient, 
                       <button onClick={saveEditing} className="p-1.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700">
                         <Check size={15} />
                       </button>
-                      <button onClick={() => { if (confirm(`"${client.name}" 거래처를 삭제하시겠습니까?`)) { onDeleteClient(client.id); cancelEditing(); } }} className="p-1.5 bg-rose-50 text-rose-400 rounded-xl hover:bg-rose-100 hover:text-rose-600">
+                      <button onClick={() => setConfirmModal({
+                          message: `"${client.name}" 거래처를 삭제하시겠습니까?`,
+                          subMessage: '연결된 주문 및 품목 데이터에 영향을 줄 수 있습니다.',
+                          onConfirm: () => { onDeleteClient(client.id); cancelEditing(); setConfirmModal(null); },
+                        })} className="p-1.5 bg-rose-50 text-rose-400 rounded-xl hover:bg-rose-100 hover:text-rose-600">
                         <Trash2 size={15} />
                       </button>
                       <button onClick={cancelEditing} className="p-1.5 bg-slate-100 text-slate-500 rounded-xl hover:bg-slate-200">
@@ -310,12 +316,20 @@ const ClientManager: React.FC<ClientManagerProps> = ({ clients, onUpdateClient, 
       </div>
 
       {isAddModalOpen && (
-        <AddClientModal 
+        <AddClientModal
           onClose={() => setIsAddModalOpen(false)}
           onSave={(newClient) => {
             onAddClient(newClient);
             setIsAddModalOpen(false);
           }}
+        />
+      )}
+      {confirmModal && (
+        <ConfirmModal
+          message={confirmModal.message}
+          subMessage={confirmModal.subMessage}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={() => setConfirmModal(null)}
         />
       )}
     </div>

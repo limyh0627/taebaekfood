@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X } from 'lucide-react';
 import { Product, InventoryCategory, Client } from '../types';
+import ConfirmModal from './ConfirmModal';
 
 interface ItemManagerProps {
   products: Product[];
@@ -10,6 +11,7 @@ interface ItemManagerProps {
   onAddProduct: () => void;
   onDeleteProduct: (_id: string, _category: string) => void;
   onLinkProduct: (_productId: string, _clientId: string) => void;
+  onUnlinkProduct: (_productId: string, _clientId: string) => void;
 }
 
 const CATEGORY_MAP: Record<string, string> = {
@@ -23,7 +25,7 @@ const SUB_ORDER: Record<string, number> = { '라벨': 0, '용기': 1, '마개': 
 const sortSubs = (subs: { name: string; category: string }[]) =>
   [...subs].sort((a, b) => (SUB_ORDER[normalizeCategory(a.category)] ?? 9) - (SUB_ORDER[normalizeCategory(b.category)] ?? 9));
 
-const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct }) => {
+const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct }) => {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [activeCategory, setActiveCategory] = useState<InventoryCategory>('완제품');
@@ -33,6 +35,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
   const PAGE_SIZE = 20;
   const [linkSearch, setLinkSearch] = useState('');
   const [showLinkPanel, setShowLinkPanel] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
   const [linkCategory, setLinkCategory] = useState('완제품');
   const [clientTypeFilter, setClientTypeFilter] = useState<string | null>(null);
 
@@ -365,8 +368,25 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
                         <button onClick={() => onEditProduct(item)} className="p-2 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl transition-all" title="수정">
                           <Edit size={18} />
                         </button>
+                        {selectedClientId && !showAll && (
+                          <button
+                            onClick={() => setConfirmModal({
+                              message: `'${item.name}' 연결을 해제하시겠습니까?`,
+                              subMessage: `${selectedClient?.name}에서 이 품목이 제거됩니다. 품목 자체는 삭제되지 않습니다.`,
+                              onConfirm: () => { onUnlinkProduct(item.id, selectedClientId); setConfirmModal(null); },
+                            })}
+                            className="p-2 text-amber-300 hover:bg-amber-50 hover:text-amber-500 rounded-xl transition-all"
+                            title="연결 해제"
+                          >
+                            <X size={18} />
+                          </button>
+                        )}
                         <button
-                          onClick={() => { if (confirm('정말로 이 품목을 삭제하시겠습니까?')) onDeleteProduct(item.id, item.category); }}
+                          onClick={() => setConfirmModal({
+                            message: `'${item.name}'을(를) 삭제하시겠습니까?`,
+                            subMessage: '삭제 후 복구할 수 없습니다.',
+                            onConfirm: () => { onDeleteProduct(item.id, item.category); setConfirmModal(null); },
+                          })}
                           className="p-2 text-rose-300 hover:bg-rose-50 hover:text-rose-500 rounded-xl transition-all"
                           title="삭제"
                         >
@@ -552,6 +572,15 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
             </div>
           </div>
         </div>
+      )}
+
+      {confirmModal && (
+        <ConfirmModal
+          message={confirmModal.message}
+          subMessage={confirmModal.subMessage}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={() => setConfirmModal(null)}
+        />
       )}
     </div>
   );

@@ -53,12 +53,12 @@ import ExcelJS from 'exceljs';
 import { db } from './src/firebase';
 import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg } from './src/constants/formula';
 import {
-  subscribeToCollection,
   addItem,
   updateItem,
   deleteItem,
   setProductClients
 } from './src/services/firebaseService';
+import { useAppData } from './src/hooks/useAppData';
 import { collection, getDocs, writeBatch, doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 
 // --- INITIAL DATA ---
@@ -154,8 +154,6 @@ const App: React.FC = () => {
   const [productionWorkCat, setProductionWorkCat] = useState('시골향참기름1');
   const [productionWorkMonth, setProductionWorkMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [prodLedger2Month, setProdLedger2Month] = useState(() => new Date().toISOString().slice(0, 7));
-  const [sesameInputLedger, setSesameInputLedger] = useState<{id:string;type:string;date:string;amount:number}[]>([]);
-  const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [rmActiveMaterial, setRmActiveMaterial] = useState('참깨');
   const [rmCorrectionTargetId, setRmCorrectionTargetId] = useState<string | null>(null);
@@ -186,21 +184,16 @@ const App: React.FC = () => {
     return () => document.removeEventListener('mousedown', handler);
   }, [showNotifPanel]);
   
-  const [noticePosts, setNoticePosts] = useState<Post[]>([]);
-  const [pallets, setPallets] = useState<PalletStock[]>([]);
-  const [palletTransactions, setPalletTransactions] = useState<PalletTransaction[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
-  const [adjustmentRequests, setAdjustmentRequests] = useState<AdjustmentRequest[]>([]);
-  const [confirmedOrders, setConfirmedOrders] = useState<{id: string, quantity: number}[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [submaterials, setSubmaterials] = useState<Product[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
-  const [productClients, setProductClientsList] = useState<ProductClient[]>([]);
-  const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [rawMaterialLedger, setRawMaterialLedger] = useState<RawMaterialEntry[]>([]);
+  const {
+    orders, confirmedOrders,
+    products, submaterials, productClients,
+    clients, employees, leaveRequests,
+    pallets, palletTransactions, adjustmentRequests,
+    noticePosts, chatRooms, chatMessages,
+    rawMaterialLedger, sesameInputLedger,
+    appNotifications,
+    isDataLoading,
+  } = useAppData();
 
   // productClients로부터 productId → clientIds[] 맵 생성
   const productClientMap = useMemo(() => {
@@ -269,32 +262,6 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => window.innerWidth < 768);
 
-  // --- Firebase Real-time Sync ---
-  useEffect(() => {
-    const unsubscribes = [
-      subscribeToCollection<Post>('notices', setNoticePosts),
-      subscribeToCollection<PalletStock>('pallets', setPallets),
-      subscribeToCollection<PalletTransaction>('palletTransactions', setPalletTransactions),
-      subscribeToCollection<Employee>('employees', setEmployees),
-      subscribeToCollection<LeaveRequest>('leaveRequests', setLeaveRequests),
-      subscribeToCollection<AdjustmentRequest>('adjustmentRequests', setAdjustmentRequests),
-      subscribeToCollection<{id: string, quantity: number}>('confirmedOrders', setConfirmedOrders),
-      subscribeToCollection<Order>('orders', setOrders),
-      subscribeToCollection<Product>('products', setProducts),
-      subscribeToCollection<Product>('submaterials', setSubmaterials),
-      subscribeToCollection<Client>('clients', setClients),
-      subscribeToCollection<ProductClient>('productClients', setProductClientsList),
-      subscribeToCollection<ChatRoom>('chatRooms', setChatRooms),
-      subscribeToCollection<ChatMessage>('chatMessages', setChatMessages),
-      subscribeToCollection<RawMaterialEntry>('rawMaterialLedger', setRawMaterialLedger),
-      subscribeToCollection<{id:string;type:string;date:string;amount:number}>('sesameInputLedger', setSesameInputLedger),
-      subscribeToCollection<AppNotification>('notifications', setAppNotifications),
-    ];
-
-    return () => {
-      unsubscribes.forEach(unsub => unsub());
-    };
-  }, []);
 
   // 완료/반려 후 1일 지난 확인사항 자동 삭제
   useEffect(() => {
@@ -638,15 +605,15 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
-      {/* 모바일 오버레이 배경 */}
-      {isMobile && !isSidebarCollapsed && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40"
-          onClick={() => setIsSidebarCollapsed(true)}
-        />
-      )}
+      {/* 모바일 오버레이 배경 — 항상 렌더, opacity로 fade 트랜지션 */}
+      <div
+        className={`fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 md:hidden ${
+          isMobile && !isSidebarCollapsed ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        onClick={() => setIsSidebarCollapsed(true)}
+      />
 
-      <aside className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-slate-200 transition-all duration-300 ${
+      <aside className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-slate-200 overflow-hidden transition-all duration-300 ${
         isMobile
           ? (isSidebarCollapsed ? '-translate-x-full' : 'translate-x-0 w-64')
           : (isSidebarCollapsed ? 'w-20' : 'w-64')
@@ -655,7 +622,7 @@ const App: React.FC = () => {
           <div className={`flex items-center ${isSidebarCollapsed ? 'flex-col gap-2' : 'px-2 justify-between'} mb-10`}>
             <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setCurrentView('orders')}>
               <div className="w-10 h-10 bg-pink-500 rounded-xl flex items-center justify-center text-white shadow-lg flex-shrink-0 font-black text-sm tracking-tight leading-none">태백</div>
-              {!isSidebarCollapsed && <h1 className="text-xl font-bold uppercase tracking-tight text-indigo-600 break-words leading-tight">스마트오더</h1>}
+              <h1 className={`text-xl font-bold uppercase tracking-tight text-indigo-600 leading-tight whitespace-nowrap overflow-hidden transition-all duration-200 ${isSidebarCollapsed ? 'opacity-0 w-0' : 'opacity-100'}`}>스마트오더</h1>
             </div>
             {!isMobile && (
               <button
@@ -821,8 +788,37 @@ const App: React.FC = () => {
         </header>
         
         <div className="flex-1 overflow-auto p-3 md:p-4 lg:p-6 custom-scrollbar">
+          {/* 초기 데이터 로딩 스켈레톤 */}
+          {isDataLoading ? (
+            <div className="space-y-4 animate-pulse">
+              <div className="h-8 bg-slate-200 rounded-xl w-48" />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="bg-white rounded-2xl p-6 border border-slate-100 space-y-3">
+                    <div className="w-10 h-10 bg-slate-200 rounded-xl" />
+                    <div className="h-3 bg-slate-200 rounded w-2/3" />
+                    <div className="h-6 bg-slate-200 rounded w-1/2" />
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 p-6 h-64" />
+                <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-3">
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <div className="w-9 h-9 bg-slate-200 rounded-full shrink-0" />
+                      <div className="flex-1 space-y-1.5">
+                        <div className="h-3 bg-slate-200 rounded w-3/4" />
+                        <div className="h-2.5 bg-slate-100 rounded w-1/2" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
           <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'clients', 'notice', 'pallets', 'confirmation-items', 'shipping'].includes(currentView)) ? '' : 'min-w-[720px] md:min-w-0 h-full'}>
-          {currentView === 'dashboard' && <Dashboard orders={orders} products={allProducts} />}
+          {currentView === 'dashboard' && <Dashboard orders={orders} products={allProducts} onNavigate={handleNavClick} />}
           {currentView === 'shipping' && (
             <DeliveryManager
               orders={orders}
@@ -905,7 +901,7 @@ const App: React.FC = () => {
               onFinishConfirmedOrder={handleFinishConfirmedOrder} 
               onFinishConfirmedOrders={(ids: string[]) => ids.forEach(handleFinishConfirmedOrder)} 
               onFinishAllConfirmedOrders={() => confirmedOrders.forEach(c => handleFinishConfirmedOrder(c.id))} 
-              onUpdateConfirmedQty={(id: string, qty: number) => setConfirmedOrders(prev => prev.map(c => c.id === id ? { ...c, quantity: qty } : c))} 
+              onUpdateConfirmedQty={(id: string, qty: number) => updateItem('confirmedOrders', id, { quantity: qty })}
               onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
               onDeleteProduct={(id) => {
                 const inProducts = products.some(p => p.id === id);
@@ -1070,7 +1066,6 @@ const App: React.FC = () => {
               { label: '시골향참기름④', key: '시골향참기름4', volumes: ['300ml','350ml','1500ml','1750ml','1800ml'] },
               { label: '시골향들기름①', key: '시골향들기름1', volumes: ['270ml','350ml','1800ml','16.5kg'] },
               { label: '시골향들기름②', key: '시골향들기름2', volumes: ['180ml','300ml','350ml','1500ml','1750ml','1800ml'] },
-              { label: '토마토참기름',  key: '토마토참기름',  volumes: ['1800ml'] },
               { label: '하남댁참기름', key: '하남댁참기름', volumes: ['300ml'] },
               { label: '하남댁들기름', key: '하남댁들기름', volumes: ['300ml'] },
             ];
@@ -2390,6 +2385,10 @@ const App: React.FC = () => {
                   await setProductClients(productId, [...current, clientId]);
                 }
               }}
+              onUnlinkProduct={async (productId, clientId) => {
+                const current = productClients.filter(pc => pc.productId === productId).map(pc => pc.clientId);
+                await setProductClients(productId, current.filter(id => id !== clientId));
+              }}
             />
           )}
           {currentView === 'officetalk' && (
@@ -2432,6 +2431,7 @@ const App: React.FC = () => {
             />
           )}
           </div>
+          )}
         </div>
       </main>
 
@@ -2490,7 +2490,7 @@ const NavItem = ({ icon: Icon, label, active, onClick, collapsed }: { icon: any,
     }`}
   >
     <Icon size={18} className="flex-shrink-0" />
-    {!collapsed && <span className="text-sm whitespace-nowrap overflow-hidden">{label}</span>}
+    <span className={`text-sm whitespace-nowrap overflow-hidden transition-all duration-200 ${collapsed ? 'opacity-0 w-0' : 'opacity-100'}`}>{label}</span>
   </button>
 );
 

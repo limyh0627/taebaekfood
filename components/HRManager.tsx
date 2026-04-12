@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import ConfirmModal from './ConfirmModal';
 import { 
   Users, 
   Search, 
@@ -39,6 +40,7 @@ const HRManager: React.FC<HRManagerProps> = ({
   onUpdateLeaveStatus
 }) => {
   const [activeTab, setActiveTab] = useState<'employees' | 'leave-approval' | 'leave-balance'>('employees');
+  const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
@@ -71,7 +73,7 @@ const HRManager: React.FC<HRManagerProps> = ({
   const calculateMonthlyLeaveThisYear = (joinDate: string) => {
     const start = new Date(joinDate);
     let count = 0;
-    for (let m = 1; m <= 11; m++) {
+    for (let m = 1; m <= 12; m++) {
       const grantDate = new Date(start.getFullYear(), start.getMonth() + m, start.getDate());
       if (grantDate > today) break;
       if (grantDate.getFullYear() === CURRENT_YEAR) count++;
@@ -241,7 +243,11 @@ const HRManager: React.FC<HRManagerProps> = ({
                       <td className="px-8 py-6 text-right">
                         <div className="flex justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-all">
                           <button onClick={() => { setEditingEmployee(emp); setFormData({ name: emp.name, position: emp.position, department: emp.department, joinDate: emp.joinDate, birthDate: emp.birthDate || '', phone: emp.phone, status: emp.status, annualLeave: { carryOverLeave: emp.annualLeave?.carryOverLeave || 0, bonusLeave: emp.annualLeave?.bonusLeave || 0 }, manualAdjustment: emp.manualAdjustment || 0 }); setIsModalOpen(true); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><Edit2 size={18} /></button>
-                          <button onClick={() => window.confirm('직원 정보를 삭제하시겠습니까?') && onDeleteEmployee(emp.id)} className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"><Trash2 size={18} /></button>
+                          <button onClick={() => setConfirmModal({
+                              message: `'${emp.name}' 직원 정보를 삭제하시겠습니까?`,
+                              subMessage: '휴가 기록 등 관련 데이터도 함께 삭제됩니다.',
+                              onConfirm: () => { onDeleteEmployee(emp.id); setConfirmModal(null); },
+                            })} className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"><Trash2 size={18} /></button>
                         </div>
                       </td>
                     </tr>
@@ -507,6 +513,14 @@ const HRManager: React.FC<HRManagerProps> = ({
             </form>
           </div>
         </div>
+      )}
+      {confirmModal && (
+        <ConfirmModal
+          message={confirmModal.message}
+          subMessage={confirmModal.subMessage}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={() => setConfirmModal(null)}
+        />
       )}
     </div>
   );

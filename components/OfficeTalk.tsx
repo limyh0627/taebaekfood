@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import ConfirmModal from './ConfirmModal';
 import { 
   MessageSquare, 
   Plus, 
@@ -56,6 +57,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   const [newRoomName, setNewRoomName] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [showRoomMenu, setShowRoomMenu] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteSelected, setInviteSelected] = useState<string[]>([]);
   const [mentionSearch, setMentionSearch] = useState<string | null>(null);
@@ -401,11 +403,12 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                     </button>
                     <button
                       onClick={() => {
-                        if (window.confirm('대화방을 삭제하시겠습니까?')) {
-                          onDeleteRoom(activeRoom.id);
-                          setActiveRoomId(null);
-                        }
                         setShowRoomMenu(false);
+                        setConfirmModal({
+                          message: `'${activeRoom.name}' 대화방을 삭제하시겠습니까?`,
+                          subMessage: '모든 메시지가 삭제되며 복구할 수 없습니다.',
+                          onConfirm: () => { onDeleteRoom(activeRoom.id); setActiveRoomId(null); setConfirmModal(null); },
+                        });
                       }}
                       className="w-full px-4 py-3 text-left text-sm font-bold text-rose-500 hover:bg-rose-50 transition-colors"
                     >
@@ -725,6 +728,14 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
           </div>
         )}
       </AnimatePresence>
+      {confirmModal && (
+        <ConfirmModal
+          message={confirmModal.message}
+          subMessage={confirmModal.subMessage}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={() => setConfirmModal(null)}
+        />
+      )}
     </div>
   );
 };

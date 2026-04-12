@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { Product, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry } from '../types';
 import AddProductModal from './AddProductModal';
+import ConfirmModal from './ConfirmModal';
 
 interface OrderRequest {
   id: string;
@@ -92,6 +93,7 @@ const ProductList: React.FC<ProductListProps> = ({
   const [rmFilter, setRmFilter] = useState('전체');
   const [rmOpenBalance, setRmOpenBalance] = useState('');
   const [rmOpenDate, setRmOpenDate] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`; });
+  const [rmOpenMaterial, setRmOpenMaterial] = useState(RAW_MATERIALS[0]);
   const [activeSubCategory, setActiveSubCategory] = useState<InventoryCategory | '전체' | string>('전체');
   const [filterMode, setFilterMode] = useState<null | 'supplier' | 'category'>(null);
 
@@ -134,6 +136,7 @@ const ProductList: React.FC<ProductListProps> = ({
     setShowCartPanel(false);
   };
 
+  const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 24;
@@ -212,6 +215,31 @@ const ProductList: React.FC<ProductListProps> = ({
 
 
 
+  // 원료별 현재 잔량 계산 (오래된 순으로 순방향 누적)
+  const rawMaterialBalances = useMemo(() => {
+    const result: Record<string, number> = {};
+    for (const material of RAW_MATERIALS) {
+      const entries = [
+        ...rawMaterialLedger.filter(e => e.material === material),
+        ...autoUsageEntries.filter(e => e.material === material).map(e => ({
+          id: '', material: e.material, date: e.date,
+          received: 0, used: e.used, note: e.note, createdAt: e.date,
+        })),
+      ].sort((a, b) => a.date.localeCompare(b.date));
+
+      let balance = 0;
+      for (const entry of entries) {
+        if (entry.note === '전월이월') {
+          balance = entry.received;
+        } else {
+          balance += entry.received - entry.used;
+        }
+      }
+      result[material] = Math.round(balance * 1000) / 1000;
+    }
+    return result;
+  }, [rawMaterialLedger, autoUsageEntries]);
+
   const updateDraftQty = (id: string, qty: number) => {
     setDraftOrders(prev => prev.map(d => d.id === id ? { ...d, quantity: Math.max(0, qty) } : d));
   };
@@ -238,12 +266,13 @@ const ProductList: React.FC<ProductListProps> = ({
 
   return (
     <div className="space-y-6 animate-in slide-in-from-right-4 duration-500 h-full flex flex-col relative">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-3xl font-black text-slate-900 uppercase">재고 및 물류 관리</h2>
+          <h2 className="text-2xl sm:text-3xl font-black text-slate-900 uppercase">재고 및 물류 관리</h2>
           <p className="text-slate-500 text-sm font-medium">실시간 재고 현황을 파악하고 부족한 자재를 즉시 발주하세요.</p>
         </div>
-        {/* 상위 탭 — 우측 상단 */}
+        {/* 상위 탭 */}
         <div className="bg-slate-200/50 p-1.5 rounded-3xl flex items-center shadow-inner self-start border border-slate-200 shrink-0">
           <button
             onClick={() => setTopTab('product')}
@@ -259,6 +288,7 @@ const ProductList: React.FC<ProductListProps> = ({
             <Grape size={16} />
             <span>원료 재고</span>
           </button>
+        </div>
         </div>
       </div>
 
@@ -375,8 +405,8 @@ const ProductList: React.FC<ProductListProps> = ({
                 const product = products.find(p => p.id === draft.id);
                 if (!product) return null;
                 return (
-                  <div key={draft.id} className="bg-white border border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm hover:shadow-md transition-shadow">
-                    <div className="flex items-center space-x-4 flex-1 min-w-0">
+                  <div key={draft.id} className="bg-white border border-slate-100 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm hover:shadow-md transition-shadow">
+                    <div className="flex items-center space-x-3 flex-1 min-w-0">
                       <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 shrink-0">
                         <Package size={20} />
                       </div>
@@ -385,33 +415,31 @@ const ProductList: React.FC<ProductListProps> = ({
                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">{product.category}</p>
                       </div>
                     </div>
-                    
-                    <div className="flex items-center space-x-12 ml-6">
-                      <div className="text-center w-24">
+
+                    <div className="flex items-center gap-4 sm:gap-8 justify-between sm:justify-end">
+                      <div className="text-left sm:text-center">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter mb-0.5">현재 재고</p>
                         <p className="text-sm font-black text-slate-900">
                           {product.category === '향미유' ? `${product.stock}B` : `${product.stock}${product.unit}`}
                         </p>
                       </div>
-                      
-                      <div className="text-center w-32">
+
+                      <div className="text-left sm:text-center">
                         <p className="text-[10px] font-black text-indigo-400 uppercase tracking-tighter mb-0.5">발주 예정 수량</p>
-                        <div className="flex items-center justify-center space-x-2">
-                           <div className="flex items-center space-x-1">
-                             <input 
-                               type="number"
-                               value={draft.quantity}
-                               onChange={(e) => updateDraftQty(draft.id, parseInt(e.target.value) || 0)}
-                               className="w-16 text-center text-sm font-black text-indigo-600 bg-white border border-indigo-100 rounded-lg py-1 outline-none focus:border-indigo-500"
-                             />
-                             <span className="text-[10px] font-black text-indigo-400">{product.unit}</span>
-                           </div>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            value={draft.quantity}
+                            onChange={(e) => updateDraftQty(draft.id, parseInt(e.target.value) || 0)}
+                            className="w-16 text-center text-sm font-black text-indigo-600 bg-white border border-indigo-100 rounded-lg py-1 outline-none focus:border-indigo-500"
+                          />
+                          <span className="text-[10px] font-black text-indigo-400">{product.unit}</span>
                         </div>
                       </div>
 
-                      <button 
+                      <button
                         onClick={() => removeFromDraft(draft.id)}
-                        className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
+                        className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all shrink-0"
                       >
                         <X size={18} />
                       </button>
@@ -425,7 +453,8 @@ const ProductList: React.FC<ProductListProps> = ({
         {/* ── 재고 현황: 테이블 뷰 ── */}
         {activeTab === 'master' && (
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-4">
-            <table className="w-full text-left">
+            <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] text-left">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
                   <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">카테고리</th>
@@ -564,10 +593,19 @@ const ProductList: React.FC<ProductListProps> = ({
                   );
                 })}
                 {pagedProducts.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-16 text-center text-slate-300 text-sm font-bold">품목이 없습니다</td></tr>
+                  <tr>
+                    <td colSpan={6} className="px-4 py-16 text-center">
+                      <div className="flex flex-col items-center gap-2 text-slate-300">
+                        <Package size={32} strokeWidth={1.5} />
+                        <p className="text-sm font-bold">등록된 품목이 없습니다</p>
+                        <p className="text-xs font-medium">상단의 + 버튼으로 품목을 추가해보세요</p>
+                      </div>
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         )}
 
@@ -638,11 +676,11 @@ const ProductList: React.FC<ProductListProps> = ({
               </div>
               <div className="p-5 border-t border-slate-100 flex gap-2">
                 <button
-                  onClick={() => {
-                    if (!window.confirm(`'${rowEditProduct.name}'을(를) 삭제하시겠습니까?`)) return;
-                    onDeleteProduct(rowEditProduct.id);
-                    setRowEditProduct(null);
-                  }}
+                  onClick={() => setConfirmModal({
+                    message: `'${rowEditProduct.name}'을(를) 삭제하시겠습니까?`,
+                    subMessage: '삭제 후 복구할 수 없습니다.',
+                    onConfirm: () => { onDeleteProduct(rowEditProduct.id); setRowEditProduct(null); setConfirmModal(null); },
+                  })}
                   className="px-4 py-2.5 bg-rose-50 text-rose-500 font-black rounded-xl text-xs hover:bg-rose-100 transition-all border border-rose-100 flex items-center gap-1"
                 >
                   <Trash2 size={13} />삭제
@@ -862,17 +900,12 @@ const ProductList: React.FC<ProductListProps> = ({
           <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 space-y-3">
             <p className="text-xs font-black text-amber-600 uppercase tracking-widest">전월이월 설정 (매월 1일 잔량)</p>
             <div className="flex flex-wrap gap-2 items-end">
-              <select value={rmMaterial} onChange={e => setRmMaterial(e.target.value)}
+              <select value={rmOpenMaterial} onChange={e => setRmOpenMaterial(e.target.value)}
                 className="bg-white border border-amber-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-amber-400">
                 {RAW_MATERIALS.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
-              <div className="relative">
-                <input type="date" value={rmOpenDate} onChange={e => setRmOpenDate(e.target.value)}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                <div className="bg-white border border-amber-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 pointer-events-none whitespace-nowrap">
-                  {rmOpenDate || '날짜'}
-                </div>
-              </div>
+              <input type="date" value={rmOpenDate} onChange={e => setRmOpenDate(e.target.value)}
+                className="bg-white border border-amber-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-amber-400 cursor-pointer" />
               <input type="number" placeholder="전월 마감 잔량 (kg)" value={rmOpenBalance} onChange={e => setRmOpenBalance(e.target.value)}
                 className="bg-white border border-amber-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-amber-400 w-40" />
               <button
@@ -880,7 +913,7 @@ const ProductList: React.FC<ProductListProps> = ({
                   if (!rmOpenDate || !rmOpenBalance) return;
                   onAddRawMaterialEntry({
                     id: `rm-open-${Date.now()}`,
-                    material: rmMaterial,
+                    material: rmOpenMaterial,
                     date: rmOpenDate,
                     received: Number(rmOpenBalance),
                     used: 0,
@@ -896,14 +929,63 @@ const ProductList: React.FC<ProductListProps> = ({
             </div>
           </div>
 
-          {/* 필터 */}
-          <div className="flex flex-wrap gap-2">
-            {['전체', ...RAW_MATERIALS].map(m => (
-              <button key={m} onClick={() => setRmFilter(m)}
-                className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all border ${rmFilter === m ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'}`}>
-                {m}
-              </button>
-            ))}
+          {/* 원료별 잔량 요약 카드 */}
+          <div className="overflow-x-auto pb-1 no-scrollbar">
+            <div className="flex gap-2 min-w-max">
+              {RAW_MATERIALS.map(m => {
+                const bal = rawMaterialBalances[m] ?? 0;
+                const hasData = rawMaterialLedger.some(e => e.material === m);
+                if (!hasData) return null;
+                const isLow = bal < 20;
+                return (
+                  <button
+                    key={m}
+                    onClick={() => setRmFilter(m)}
+                    className={`flex flex-col items-start px-4 py-3 rounded-2xl border transition-all min-w-[110px] ${
+                      rmFilter === m
+                        ? 'bg-emerald-600 border-emerald-600 text-white shadow-md'
+                        : isLow
+                        ? 'bg-rose-50 border-rose-200 text-slate-700 hover:border-rose-400'
+                        : 'bg-white border-slate-200 text-slate-700 hover:border-emerald-300 hover:shadow-sm'
+                    }`}
+                  >
+                    <span className={`text-[10px] font-black uppercase tracking-wide truncate w-full text-left ${rmFilter === m ? 'text-emerald-100' : isLow ? 'text-rose-400' : 'text-slate-400'}`}>
+                      {m}
+                    </span>
+                    <span className={`text-lg font-black mt-0.5 leading-tight ${rmFilter === m ? 'text-white' : isLow ? 'text-rose-600' : 'text-slate-800'}`}>
+                      {bal.toLocaleString('ko-KR')}
+                      <span className={`text-[10px] font-bold ml-0.5 ${rmFilter === m ? 'text-emerald-200' : 'text-slate-400'}`}>kg</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 필터 — 가로 스크롤 chip */}
+          <div className="flex items-center gap-2">
+            <div className="overflow-x-auto no-scrollbar flex-1">
+              <div className="flex gap-1.5 min-w-max">
+                {['전체', ...RAW_MATERIALS].map(m => (
+                  <button key={m} onClick={() => setRmFilter(m)}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all border whitespace-nowrap ${
+                      rmFilter === m
+                        ? 'bg-emerald-600 text-white border-emerald-600'
+                        : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
+                    }`}>
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* select 병행 - 모바일에서 빠른 선택용 */}
+            <select
+              value={rmFilter}
+              onChange={e => setRmFilter(e.target.value)}
+              className="shrink-0 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-[11px] font-black outline-none focus:border-emerald-400 sm:hidden"
+            >
+              {['전체', ...RAW_MATERIALS].map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
           </div>
 
           {/* 테이블: 전재고+입고-사용=현재고 */}
@@ -947,7 +1029,11 @@ const ProductList: React.FC<ProductListProps> = ({
                             <td className="px-4 py-2.5 text-[11px] font-black text-amber-600 text-right">{entry.received}</td>
                             <td className="px-4 py-2.5 text-[11px] text-amber-500 font-bold">전월이월</td>
                             <td className="px-4 py-2.5">
-                              {entry.id && <button onClick={() => onDeleteRawMaterialEntry(entry.id!)}
+                              {entry.id && <button onClick={() => setConfirmModal({
+                                  message: '이 기록을 삭제하시겠습니까?',
+                                  subMessage: `${entry.material} · ${entry.date} · ${entry.received}kg (전월이월)`,
+                                  onConfirm: () => { onDeleteRawMaterialEntry(entry.id!); setConfirmModal(null); },
+                                })}
                                 className="p-1 text-slate-300 hover:text-rose-400 hover:bg-rose-50 rounded transition-all">
                                 <Trash2 size={12} />
                               </button>}
@@ -971,7 +1057,11 @@ const ProductList: React.FC<ProductListProps> = ({
                               : (entry.note || '-')}
                           </td>
                           <td className="px-4 py-2.5">
-                            {!entry.isAuto && entry.id && <button onClick={() => onDeleteRawMaterialEntry(entry.id!)}
+                            {!entry.isAuto && entry.id && <button onClick={() => setConfirmModal({
+                                message: '이 기록을 삭제하시겠습니까?',
+                                subMessage: `${entry.date} · 입고 ${entry.received > 0 ? entry.received + 'kg' : '-'} / 사용 ${entry.used > 0 ? entry.used + 'kg' : '-'}${entry.note ? ' · ' + entry.note : ''}`,
+                                onConfirm: () => { onDeleteRawMaterialEntry(entry.id!); setConfirmModal(null); },
+                              })}
                               className="p-1 text-slate-300 hover:text-rose-400 hover:bg-rose-50 rounded transition-all">
                               <Trash2 size={12} />
                             </button>}
@@ -995,7 +1085,11 @@ const ProductList: React.FC<ProductListProps> = ({
                           : (entry.note || '-')}
                       </td>
                       <td className="px-4 py-2.5">
-                        {!entry.isAuto && entry.id && <button onClick={() => onDeleteRawMaterialEntry(entry.id!)}
+                        {!entry.isAuto && entry.id && <button onClick={() => setConfirmModal({
+                            message: '이 기록을 삭제하시겠습니까?',
+                            subMessage: `${entry.material} · ${entry.date} · 입고 ${entry.received > 0 ? entry.received + 'kg' : '-'} / 사용 ${entry.used > 0 ? entry.used + 'kg' : '-'}${entry.note ? ' · ' + entry.note : ''}`,
+                            onConfirm: () => { onDeleteRawMaterialEntry(entry.id!); setConfirmModal(null); },
+                          })}
                           className="p-1 text-slate-300 hover:text-rose-400 hover:bg-rose-50 rounded transition-all">
                           <Trash2 size={12} />
                         </button>}
@@ -1098,6 +1192,15 @@ const ProductList: React.FC<ProductListProps> = ({
 
       {isAddModalOpen && (
         <AddProductModal onClose={() => setIsAddModalOpen(false)} onSave={(newProduct) => { onAddProduct(newProduct); setIsAddModalOpen(false); }} />
+      )}
+
+      {confirmModal && (
+        <ConfirmModal
+          message={confirmModal.message}
+          subMessage={confirmModal.subMessage}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={() => setConfirmModal(null)}
+        />
       )}
 
       {adjustmentModal?.isOpen && (

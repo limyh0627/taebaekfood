@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base styles */
+body {
+  font-family: 'Inter', 'Pretendard', system-ui, -apple-system, sans-serif;
+}
+
+/* PWA standalone mode */
+@media all and (display-mode: standalone) {
+  body {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+/* Hide number input arrows */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type=number] {
+  -moz-appearance: textfield;
+}
