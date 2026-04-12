@@ -15,12 +15,12 @@ import {
   PackageCheck,
   Truck
 } from 'lucide-react';
-import { Order, Product, OrderStatus } from '../types';
+import { Order, Product, OrderStatus, ViewType } from '../types';
 
 interface DashboardProps {
   orders: Order[];
   products: Product[];
-  onNavigate?: (view: string) => void;
+  onNavigate?: (view: ViewType) => void;
 }
 
 interface StatCardProps {

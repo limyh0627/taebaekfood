@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   LayoutDashboard, 
   ShoppingCart, 
@@ -155,6 +156,8 @@ const App: React.FC = () => {
   const [productionWorkMonth, setProductionWorkMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [prodLedger2Month, setProdLedger2Month] = useState(() => new Date().toISOString().slice(0, 7));
   const [showNotifPanel, setShowNotifPanel] = useState(false);
+  const [notifPanelPos, setNotifPanelPos] = useState({ top: 0, left: 0 });
+  const notifBtnRef = useRef<HTMLButtonElement>(null);
   const [rmActiveMaterial, setRmActiveMaterial] = useState('참깨');
   const [rmCorrectionTargetId, setRmCorrectionTargetId] = useState<string | null>(null);
   const [rmCorrectionForm, setRmCorrectionForm] = useState({ date: new Date().toISOString().slice(0, 10), amount: '', isNegative: true, note: '' });
@@ -174,15 +177,6 @@ const App: React.FC = () => {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  useEffect(() => {
-    if (!showNotifPanel) return;
-    const handler = (e: MouseEvent) => {
-      const panel = document.getElementById('notif-panel-root');
-      if (panel && !panel.contains(e.target as Node)) setShowNotifPanel(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [showNotifPanel]);
   
   const {
     orders, confirmedOrders,
@@ -635,22 +629,20 @@ const App: React.FC = () => {
             )}
           </div>
 
-          {/* 알림 벨 + 패널 */}
+          {/* 알림 벨 */}
           {(() => {
             const unread = appNotifications.filter(n => !n.readBy.includes(currentUser.id));
-            const markRead = async (id: string) => {
-              const n = appNotifications.find(x => x.id === id);
-              if (!n || n.readBy.includes(currentUser.id)) return;
-              await updateItem('notifications', id, { readBy: [...n.readBy, currentUser.id] });
-            };
-            const markAll = async () => {
-              await Promise.all(unread.map(n => updateItem('notifications', n.id, { readBy: [...n.readBy, currentUser.id] })));
-            };
-            const sorted = [...appNotifications].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
             return (
-              <div id="notif-panel-root" className={`relative mb-2 ${isSidebarCollapsed ? 'flex justify-center' : 'px-1'}`}>
+              <div className={`mb-2 ${isSidebarCollapsed ? 'flex justify-center' : 'px-1'}`}>
                 <button
-                  onClick={() => setShowNotifPanel(p => !p)}
+                  ref={notifBtnRef}
+                  onClick={() => {
+                    if (notifBtnRef.current) {
+                      const rect = notifBtnRef.current.getBoundingClientRect();
+                      setNotifPanelPos({ top: rect.top, left: rect.right + 8 });
+                    }
+                    setShowNotifPanel(p => !p);
+                  }}
                   className={`relative flex items-center gap-2 w-full rounded-2xl px-3 py-2 hover:bg-slate-100 transition-all ${showNotifPanel ? 'bg-slate-100' : ''}`}
                 >
                   <div className="relative shrink-0">
@@ -661,37 +653,6 @@ const App: React.FC = () => {
                   </div>
                   {!isSidebarCollapsed && <span className="text-xs font-bold text-slate-600">알림{unread.length > 0 ? ` (${unread.length})` : ''}</span>}
                 </button>
-                {showNotifPanel && (
-                  <div className="absolute top-0 left-full ml-2 w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 overflow-hidden">
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-                      <span className="text-xs font-black text-slate-700">알림</span>
-                      {unread.length > 0 && (
-                        <button onClick={markAll} className="text-[10px] font-bold text-indigo-500 hover:text-indigo-700 transition-colors">일괄 확인</button>
-                      )}
-                    </div>
-                    <div className="max-h-80 overflow-y-auto">
-                      {sorted.length === 0 ? (
-                        <p className="text-center text-slate-400 text-xs py-8">알림이 없습니다</p>
-                      ) : sorted.map(n => {
-                        const isUnread = !n.readBy.includes(currentUser.id);
-                        return (
-                          <div
-                            key={n.id}
-                            onClick={() => markRead(n.id)}
-                            className={`flex items-start gap-3 px-4 py-3 border-b border-slate-50 cursor-pointer hover:bg-slate-50 transition-colors ${isUnread ? 'bg-indigo-50/60' : ''}`}
-                          >
-                            <div className={`mt-0.5 shrink-0 w-2 h-2 rounded-full ${isUnread ? 'bg-indigo-500' : 'bg-transparent'}`} />
-                            <div className="flex-1 min-w-0">
-                              <p className={`text-[11px] font-bold ${isUnread ? 'text-slate-800' : 'text-slate-500'}`}>{n.title}</p>
-                              <p className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">{n.body}</p>
-                              <p className="text-[9px] text-slate-300 mt-1">{new Date(n.createdAt).toLocaleString('ko-KR', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' })}</p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
               </div>
             );
           })()}
@@ -2474,6 +2435,60 @@ const App: React.FC = () => {
             setEditingProduct(null);
           }} 
         />
+      )}
+
+      {/* 알림 패널 — aside overflow-hidden 우회용 포털 */}
+      {showNotifPanel && createPortal(
+        (() => {
+          const unread = appNotifications.filter(n => !n.readBy.includes(currentUser.id));
+          const markRead = async (id: string) => {
+            const n = appNotifications.find(x => x.id === id);
+            if (!n || n.readBy.includes(currentUser.id)) return;
+            await updateItem('notifications', id, { readBy: [...n.readBy, currentUser.id] });
+          };
+          const markAll = async () => {
+            await Promise.all(unread.map(n => updateItem('notifications', n.id, { readBy: [...n.readBy, currentUser.id] })));
+          };
+          const sorted = [...appNotifications].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+          return (
+            <>
+              <div className="fixed inset-0 z-[999]" onClick={() => setShowNotifPanel(false)} />
+              <div
+                style={{ top: notifPanelPos.top, left: notifPanelPos.left }}
+                className="fixed z-[1000] w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden"
+              >
+                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                  <span className="text-xs font-black text-slate-700">알림</span>
+                  {unread.length > 0 && (
+                    <button onClick={markAll} className="text-[10px] font-bold text-indigo-500 hover:text-indigo-700 transition-colors">일괄 확인</button>
+                  )}
+                </div>
+                <div className="max-h-80 overflow-y-auto">
+                  {sorted.length === 0 ? (
+                    <p className="text-center text-slate-400 text-xs py-8">알림이 없습니다</p>
+                  ) : sorted.map(n => {
+                    const isUnread = !n.readBy.includes(currentUser.id);
+                    return (
+                      <div
+                        key={n.id}
+                        onClick={() => markRead(n.id)}
+                        className={`flex items-start gap-3 px-4 py-3 border-b border-slate-50 cursor-pointer hover:bg-slate-50 transition-colors ${isUnread ? 'bg-indigo-50/60' : ''}`}
+                      >
+                        <div className={`mt-0.5 shrink-0 w-2 h-2 rounded-full ${isUnread ? 'bg-indigo-500' : 'bg-transparent'}`} />
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-[11px] font-bold ${isUnread ? 'text-slate-800' : 'text-slate-500'}`}>{n.title}</p>
+                          <p className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">{n.body}</p>
+                          <p className="text-[9px] text-slate-300 mt-1">{new Date(n.createdAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          );
+        })(),
+        document.body
       )}
     </div>
   );
