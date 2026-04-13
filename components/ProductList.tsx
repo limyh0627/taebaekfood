@@ -20,7 +20,7 @@ import {
   Tag,
   Building2
 } from 'lucide-react';
-import { Product, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry } from '../types';
+import { Product, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement } from '../types';
 import AddProductModal from './AddProductModal';
 import ConfirmModal from './ConfirmModal';
 
@@ -48,11 +48,16 @@ interface ProductListProps {
   onFinishConfirmedOrders: (ids: string[]) => void;
   onFinishAllConfirmedOrders: () => void;
   onUpdateConfirmedQty: (id: string, qty: number) => void;
+  onRemoveConfirmedOrder: (id: string) => void;
+  onClearAllConfirmedOrders: () => void;
   onEditProduct: (product: Product) => void;
   onDeleteProduct: (id: string) => void;
   onAddAdjustmentRequest: (req: AdjustmentRequest) => void;
   suppliers: { id: string; name: string }[];
   rawMaterialLedger: RawMaterialEntry[];
+  onRequestPurchaseInvoice?: (supplierId: string, supplierName: string, items: Array<{ name: string; spec: string; qty: number; price: number }>) => void;
+  issuedStatements?: IssuedStatement[];
+  onMarkStatementReceived?: (id: string) => void;
   autoUsageEntries?: Array<{ material: string; date: string; used: number; note: string }>;
   onAddRawMaterialEntry: (entry: RawMaterialEntry) => void;
   onDeleteRawMaterialEntry: (id: string) => void;
@@ -75,11 +80,16 @@ const ProductList: React.FC<ProductListProps> = ({
   onBulkAddConfirmedOrders,
   onFinishConfirmedOrder,
   onUpdateConfirmedQty,
+  onRemoveConfirmedOrder,
+  onClearAllConfirmedOrders,
   onEditProduct,
   onDeleteProduct,
   onAddAdjustmentRequest,
   suppliers,
   rawMaterialLedger,
+  onRequestPurchaseInvoice,
+  issuedStatements = [],
+  onMarkStatementReceived,
   autoUsageEntries = [],
   onAddRawMaterialEntry,
   onDeleteRawMaterialEntry,
@@ -92,7 +102,8 @@ const ProductList: React.FC<ProductListProps> = ({
   const [rmReceived, setRmReceived] = useState('');
   const [rmUsed, setRmUsed] = useState('');
   const [rmNote, setRmNote] = useState('');
-  const [rmFilter, setRmFilter] = useState('전체');
+  const [rmFilter, setRmFilter] = useState(RAW_MATERIALS[0]);
+  const [rmMonth, setRmMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [rmOpenBalance, setRmOpenBalance] = useState('');
   const [rmOpenDate, setRmOpenDate] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`; });
   const [rmOpenMaterial, setRmOpenMaterial] = useState(RAW_MATERIALS[0]);
@@ -129,6 +140,7 @@ const ProductList: React.FC<ProductListProps> = ({
   const [rmSheetTab, setRmSheetTab] = useState<'new' | 'carryover'>('new');
   const [cart, setCart] = useState<{ id: string; qty: number }[]>([]);
   const [showCartPanel, setShowCartPanel] = useState(false);
+  const [showCartModal, setShowCartModal] = useState(false);
 
   const addToCart = (productId: string, defaultQty: number) => {
     setCart(prev => prev.some(c => c.id === productId) ? prev : [...prev, { id: productId, qty: defaultQty }]);
@@ -746,16 +758,6 @@ const ProductList: React.FC<ProductListProps> = ({
                 </div>
               </div>
               <div className="p-5 border-t border-slate-100 flex gap-2">
-                <button
-                  onClick={() => setConfirmModal({
-                    message: `'${rowEditProduct.name}'을(를) 삭제하시겠습니까?`,
-                    subMessage: '삭제 후 복구할 수 없습니다.',
-                    onConfirm: () => { onDeleteProduct(rowEditProduct.id); setRowEditProduct(null); setConfirmModal(null); },
-                  })}
-                  className="px-4 py-2.5 bg-rose-50 text-rose-500 font-black rounded-xl text-xs hover:bg-rose-100 transition-all border border-rose-100 flex items-center gap-1"
-                >
-                  <Trash2 size={13} />삭제
-                </button>
                 <button onClick={() => setRowEditProduct(null)} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm">취소</button>
                 <button
                   onClick={() => {
@@ -785,14 +787,26 @@ const ProductList: React.FC<ProductListProps> = ({
                     <button onClick={() => setCart([])} className="text-[10px] font-bold text-slate-400 hover:text-rose-500 transition-all">전체 비우기</button>
                   </div>
                   <div className="divide-y divide-slate-50">
-                    {cart.map(item => {
+                    {cart
+                      .filter(item => {
+                        if (filterMode !== 'supplier' || activeSubCategory === '전체') return true;
+                        const product = products.find(p => p.id === item.id);
+                        return product?.supplierId === activeSubCategory;
+                      })
+                      .map(item => {
                       const product = products.find(p => p.id === item.id);
                       if (!product) return null;
+                      const supplierName = suppliers.find(s => s.id === product.supplierId)?.name;
                       return (
                         <div key={item.id} className="px-5 py-3 flex items-center gap-4">
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
-                            <p className="text-[10px] text-slate-400">현재 재고 {product.stock} {product.unit}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <p className="text-[10px] text-slate-400">현재 재고 {product.stock} {product.unit}</p>
+                              {supplierName && (
+                                <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-md">{supplierName}</span>
+                              )}
+                            </div>
                           </div>
                           <div className="flex items-center gap-1.5 shrink-0">
                             <button onClick={() => updateCartQty(item.id, item.qty - 1)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black transition-all">-</button>
@@ -812,7 +826,7 @@ const ProductList: React.FC<ProductListProps> = ({
                   </div>
                 </div>
                 <button
-                  onClick={submitCart}
+                  onClick={() => setShowCartModal(true)}
                   className="w-full py-4 bg-indigo-600 text-white rounded-2xl text-sm font-black shadow-lg hover:bg-indigo-700 active:scale-[0.99] transition-all flex items-center justify-center gap-2"
                 >
                   <ShoppingCart size={16} />
@@ -824,24 +838,37 @@ const ProductList: React.FC<ProductListProps> = ({
             {/* 발주 내역 — 입고대기 목록 */}
             {confirmedOrders.length > 0 ? (
               <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                <div className="px-5 py-3 border-b border-slate-50">
+                <div className="px-5 py-3 border-b border-slate-50 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <ClipboardCheck size={16} className="text-emerald-500" />
                     <span className="font-black text-sm text-slate-800">입고 대기</span>
                     <span className="text-[10px] font-black bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">{confirmedOrders.length}건</span>
                   </div>
+                  <button onClick={onClearAllConfirmedOrders} className="text-[10px] font-bold text-slate-400 hover:text-rose-500 transition-all">전체 비우기</button>
                 </div>
                 <div className="divide-y divide-slate-50">
-                  {confirmedOrders.map(conf => {
+                  {confirmedOrders
+                    .filter(conf => {
+                      if (filterMode !== 'supplier' || activeSubCategory === '전체') return true;
+                      const product = products.find(p => p.id === conf.id);
+                      return product?.supplierId === activeSubCategory;
+                    })
+                    .map(conf => {
                     const product = products.find(p => p.id === conf.id);
                     if (!product) return null;
+                    const supplierName = suppliers.find(s => s.id === product.supplierId)?.name;
                     const isExpanded = expandedReqId === conf.id;
                     return (
                       <div key={conf.id}>
                         <div className="px-5 py-3 flex items-center gap-3">
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
-                            <p className="text-[10px] text-slate-400">{product.category}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <p className="text-[10px] text-slate-400">{product.category}</p>
+                              {supplierName && (
+                                <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-md">{supplierName}</span>
+                              )}
+                            </div>
                           </div>
                           <span className="text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-xl shrink-0">입고대기 {conf.quantity}{product.unit}</span>
                           <button
@@ -884,6 +911,10 @@ const ProductList: React.FC<ProductListProps> = ({
                             </div>
                             <div className="flex gap-2 pt-1">
                               <button
+                                onClick={() => { onRemoveConfirmedOrder(conf.id); setExpandedReqId(null); }}
+                                className="py-2 px-3 bg-rose-50 border border-rose-100 text-rose-500 rounded-xl text-xs font-black hover:bg-rose-100 transition-all"
+                              >발주 취소</button>
+                              <button
                                 onClick={() => {
                                   onUpdateConfirmedQty(conf.id, reqEditQty);
                                   setExpandedReqId(null);
@@ -908,6 +939,52 @@ const ProductList: React.FC<ProductListProps> = ({
                 <p className="text-sm font-bold">발주 내역이 없습니다</p>
               </div>
             ) : null}
+
+            {/* ── 전표 기반 입고대기 ── */}
+            {(() => {
+              const pending = issuedStatements.filter(s => s.type === '매입' && !s.receivedAt);
+              if (pending.length === 0) return null;
+              return (
+                <div className="bg-white rounded-2xl border border-emerald-100 shadow-sm overflow-hidden">
+                  <div className="px-5 py-3 border-b border-slate-50 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ClipboardCheck size={16} className="text-emerald-500" />
+                      <span className="font-black text-sm text-slate-800">전표 기반 입고대기</span>
+                      <span className="text-[10px] font-black bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">{pending.length}건</span>
+                    </div>
+                  </div>
+                  <div className="divide-y divide-slate-50">
+                    {pending
+                      .filter(stmt => {
+                        if (filterMode !== 'supplier' || activeSubCategory === '전체') return true;
+                        return stmt.clientId === activeSubCategory;
+                      })
+                      .map(stmt => (
+                      <div key={stmt.id} className="px-5 py-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black text-orange-500 bg-orange-50 px-2 py-0.5 rounded-md">{stmt.clientName}</span>
+                            <span className="text-[10px] text-slate-400">{stmt.tradeDate} · {stmt.docNo}</span>
+                          </div>
+                          <button
+                            onClick={() => onMarkStatementReceived?.(stmt.id)}
+                            className="text-[10px] font-black px-3 py-1.5 rounded-xl bg-slate-800 text-white hover:bg-slate-900 transition-all shrink-0"
+                          >전체 입고확인</button>
+                        </div>
+                        <div className="space-y-1">
+                          {stmt.items.map((item, i) => (
+                            <div key={i} className="flex items-center justify-between text-xs px-1">
+                              <span className="font-bold text-slate-700">{item.name}{item.spec ? ` (${item.spec})` : ''}</span>
+                              <span className="text-slate-500 font-black">{item.qty.toLocaleString()}개</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -1117,7 +1194,7 @@ const ProductList: React.FC<ProductListProps> = ({
           <div className="flex items-center gap-2">
             <div className="overflow-x-auto no-scrollbar flex-1">
               <div className="flex gap-1.5 min-w-max">
-                {['전체', ...RAW_MATERIALS].map(m => (
+                {RAW_MATERIALS.map(m => (
                   <button key={m} onClick={() => setRmFilter(m)}
                     className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all border whitespace-nowrap ${
                       rmFilter === m
@@ -1135,9 +1212,33 @@ const ProductList: React.FC<ProductListProps> = ({
               onChange={e => setRmFilter(e.target.value)}
               className="shrink-0 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-[11px] font-black outline-none focus:border-emerald-400 sm:hidden"
             >
-              {['전체', ...RAW_MATERIALS].map(m => <option key={m} value={m}>{m}</option>)}
+              {RAW_MATERIALS.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
           </div>
+
+          {/* 월 선택 */}
+          {(() => {
+            const allMonths = Array.from(new Set([
+              ...rawMaterialLedger.map(e => e.date.slice(0, 7)),
+              ...autoUsageEntries.map(e => e.date.slice(0, 7)),
+            ])).sort((a, b) => b.localeCompare(a));
+            return allMonths.length > 0 ? (
+              <div className="overflow-x-auto no-scrollbar pb-1">
+                <div className="flex gap-1.5 min-w-max">
+                  {allMonths.map(m => (
+                    <button key={m} onClick={() => setRmMonth(m)}
+                      className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all border whitespace-nowrap ${
+                        rmMonth === m
+                          ? 'bg-emerald-600 text-white border-emerald-600'
+                          : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
+                      }`}>
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null;
+          })()}
 
           {/* 테이블: 전재고+입고-사용=현재고 */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -1165,8 +1266,7 @@ const ProductList: React.FC<ProductListProps> = ({
                     .map(e => ({ material: e.material, date: e.date, received: 0, used: e.used, note: e.note, isAuto: true }));
                   const sorted = [...manualEntries, ...autoEntries].sort((a, b) => b.date.localeCompare(a.date) || (a.isAuto ? 1 : -1));
 
-                  // 특정 원료 선택 시 running balance 계산
-                  if (rmFilter !== '전체') {
+                  {
                     let balance = 0;
                     return sorted.map((entry, idx) => {
                       const isOpen = !entry.isAuto && entry.note === '전월이월';
@@ -1366,6 +1466,82 @@ const ProductList: React.FC<ProductListProps> = ({
           onConfirm={confirmModal.onConfirm}
           onCancel={() => setConfirmModal(null)}
         />
+      )}
+
+      {/* ── 발주 확정 모달 ── */}
+      {showCartModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={() => setShowCartModal(false)}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <ShoppingCart size={16} className="text-indigo-500" />
+                <span className="font-black text-slate-800">발주 확정</span>
+                <span className="text-[10px] font-black bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">{cart.length}건</span>
+              </div>
+              <button onClick={() => setShowCartModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+              {(() => {
+                // 거래처별 그룹화
+                const groups = new Map<string, { supplierId: string; supplierName: string; items: Array<{ name: string; spec: string; qty: number; price: number; productId: string }> }>();
+                cart.forEach(item => {
+                  const product = products.find(p => p.id === item.id);
+                  if (!product) return;
+                  const sid = product.supplierId || '__none__';
+                  const sname = suppliers.find(s => s.id === product.supplierId)?.name || '거래처 미지정';
+                  if (!groups.has(sid)) groups.set(sid, { supplierId: sid, supplierName: sname, items: [] });
+                  groups.get(sid)!.items.push({
+                    name: product.name,
+                    spec: product.용량 || '',
+                    qty: item.qty,
+                    price: product.price ?? 0,
+                    productId: product.id,
+                  });
+                });
+                return Array.from(groups.values()).map(group => (
+                  <div key={group.supplierId} className="border border-slate-200 rounded-2xl overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50">
+                      <span className="font-black text-sm text-slate-700">{group.supplierName}</span>
+                      {group.supplierId !== '__none__' && onRequestPurchaseInvoice && (
+                        <button
+                          onClick={() => {
+                            onRequestPurchaseInvoice(group.supplierId, group.supplierName, group.items);
+                            setShowCartModal(false);
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 text-white rounded-xl text-[11px] font-black hover:bg-rose-700 transition-all"
+                        >
+                          매입전표 작성
+                        </button>
+                      )}
+                    </div>
+                    <div className="divide-y divide-slate-50">
+                      {group.items.map((item, i) => (
+                        <div key={i} className="px-4 py-2 flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-700">{item.name}{item.spec ? ` (${item.spec})` : ''}</span>
+                          <span className="text-xs font-black text-slate-500">{item.qty}개</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+            <div className="px-5 py-4 border-t border-slate-100 flex gap-2">
+              <button onClick={() => setShowCartModal(false)}
+                className="flex-1 py-3 rounded-2xl border border-slate-200 text-sm font-black text-slate-500 hover:bg-slate-50 transition-all">
+                취소
+              </button>
+              <button
+                onClick={() => { submitCart(); setShowCartModal(false); }}
+                className="flex-1 py-3 bg-indigo-600 text-white rounded-2xl text-sm font-black hover:bg-indigo-700 transition-all flex items-center justify-center gap-2"
+              >
+                <ShoppingCart size={14} />발주 확정
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {adjustmentModal?.isOpen && (

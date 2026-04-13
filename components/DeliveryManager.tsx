@@ -42,6 +42,9 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
   const [deliveryOrdering, setDeliveryOrdering] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('deliveryOrdering') || '[]'); } catch { return []; }
   });
+  const [deliveryTimeSlots, setDeliveryTimeSlots] = useState<Record<string, '오전' | '오후'>>(() => {
+    try { return JSON.parse(localStorage.getItem('deliveryTimeSlots') || '{}'); } catch { return {}; }
+  });
   const [showDeliveryPicker, setShowDeliveryPicker] = useState(false);
   const [pickerDeliveryOrdering, setPickerDeliveryOrdering] = useState<string[]>([]);
   const [dragDeliveryIdx, setDragDeliveryIdx] = useState<number | null>(null);
@@ -314,6 +317,15 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
           localStorage.setItem('deliveryOrdering', JSON.stringify(next));
         };
 
+        const toggleTimeSlot = (id: string) => {
+          const next: Record<string, '오전' | '오후'> = { ...deliveryTimeSlots, [id]: deliveryTimeSlots[id] === '오후' ? '오전' : '오후' };
+          setDeliveryTimeSlots(next);
+          localStorage.setItem('deliveryTimeSlots', JSON.stringify(next));
+        };
+
+        const morningIds = validDelivery.filter(id => (deliveryTimeSlots[id] || '오전') === '오전');
+        const afternoonIds = validDelivery.filter(id => deliveryTimeSlots[id] === '오후');
+
         return (
           <div className="md:overflow-x-auto no-scrollbar">
             <div className="flex flex-col md:flex-row md:min-w-max gap-4 pb-1 md:items-start">
@@ -333,39 +345,81 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
                     <Plus size={11} /> 추가
                   </button>
                 </div>
-                <div className={`p-3 flex flex-col gap-2 min-h-[80px] ${mobileCollapsed.has('delivery-order') ? 'hidden md:flex' : ''}`}>
+                <div className={`p-3 flex flex-col gap-1 min-h-[80px] ${mobileCollapsed.has('delivery-order') ? 'hidden md:flex' : ''}`}>
                   {validDelivery.length === 0 ? (
                     <p className="text-center text-[11px] text-teal-300 py-6 font-bold">추가 버튼으로<br/>순서를 설정하세요</p>
-                  ) : validDelivery.map((id, idx) => {
-                    const o = dispatchedOrders.find(x => x.id === id);
-                    if (!o) return null;
-                    const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '';
-                    return (
-                      <div
-                        key={id}
-                        draggable
-                        onDragStart={() => setDragDeliveryIdx(idx)}
-                        onDragOver={e => e.preventDefault()}
-                        onDrop={() => {
-                          if (dragDeliveryIdx === null || dragDeliveryIdx === idx) return;
-                          const next = [...validDelivery];
-                          const [moved] = next.splice(dragDeliveryIdx, 1);
-                          next.splice(idx, 0, moved);
-                          setDragDeliveryIdx(null);
-                          saveDeliveryOrdering(next);
-                        }}
-                        className="flex items-center gap-2 bg-white border border-teal-100 rounded-xl px-2 py-1.5 cursor-grab active:cursor-grabbing"
-                      >
-                        <GripVertical size={12} className="text-teal-300 shrink-0" />
-                        <span className="text-[10px] font-black text-teal-600 bg-teal-50 w-4 h-4 rounded-full flex items-center justify-center shrink-0">{idx + 1}</span>
-                        <span className="text-[11px] font-bold text-slate-700 truncate flex-1">{clientName}</span>
-                        <button
-                          onClick={() => saveDeliveryOrdering(validDelivery.filter(x => x !== id))}
-                          className="text-slate-300 hover:text-rose-400 shrink-0"
-                        ><X size={10} /></button>
-                      </div>
-                    );
-                  })}
+                  ) : (
+                    <>
+                      {/* 오전 섹션 */}
+                      <div className="text-[9px] font-black text-amber-500 px-1 pt-1">오전</div>
+                      {morningIds.length === 0 && (
+                        <p className="text-[10px] text-slate-300 text-center py-1 font-bold">없음</p>
+                      )}
+                      {morningIds.map((id, idx) => {
+                        const o = dispatchedOrders.find(x => x.id === id);
+                        if (!o) return null;
+                        const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '';
+                        const globalIdx = validDelivery.indexOf(id);
+                        return (
+                          <div
+                            key={id}
+                            draggable
+                            onDragStart={() => setDragDeliveryIdx(globalIdx)}
+                            onDragOver={e => e.preventDefault()}
+                            onDrop={() => {
+                              if (dragDeliveryIdx === null || dragDeliveryIdx === globalIdx) return;
+                              const next = [...validDelivery];
+                              const [moved] = next.splice(dragDeliveryIdx, 1);
+                              next.splice(globalIdx, 0, moved);
+                              setDragDeliveryIdx(null);
+                              saveDeliveryOrdering(next);
+                            }}
+                            className="flex items-center gap-2 bg-white border border-amber-100 rounded-xl px-2 py-1.5 cursor-grab active:cursor-grabbing"
+                          >
+                            <GripVertical size={12} className="text-amber-300 shrink-0" />
+                            <span className="text-[10px] font-black text-amber-600 bg-amber-50 w-4 h-4 rounded-full flex items-center justify-center shrink-0">{idx + 1}</span>
+                            <span className="text-[11px] font-bold text-slate-700 truncate flex-1">{clientName}</span>
+                            <button onClick={() => toggleTimeSlot(id)} className="text-[8px] font-black text-amber-400 hover:text-indigo-500 shrink-0 px-1">→오후</button>
+                            <button onClick={() => saveDeliveryOrdering(validDelivery.filter(x => x !== id))} className="text-slate-300 hover:text-rose-400 shrink-0"><X size={10} /></button>
+                          </div>
+                        );
+                      })}
+                      {/* 오후 섹션 */}
+                      <div className="text-[9px] font-black text-indigo-500 px-1 pt-2">오후</div>
+                      {afternoonIds.length === 0 && (
+                        <p className="text-[10px] text-slate-300 text-center py-1 font-bold">없음</p>
+                      )}
+                      {afternoonIds.map((id, idx) => {
+                        const o = dispatchedOrders.find(x => x.id === id);
+                        if (!o) return null;
+                        const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '';
+                        const globalIdx = validDelivery.indexOf(id);
+                        return (
+                          <div
+                            key={id}
+                            draggable
+                            onDragStart={() => setDragDeliveryIdx(globalIdx)}
+                            onDragOver={e => e.preventDefault()}
+                            onDrop={() => {
+                              if (dragDeliveryIdx === null || dragDeliveryIdx === globalIdx) return;
+                              const next = [...validDelivery];
+                              const [moved] = next.splice(dragDeliveryIdx, 1);
+                              next.splice(globalIdx, 0, moved);
+                              setDragDeliveryIdx(null);
+                              saveDeliveryOrdering(next);
+                            }}
+                            className="flex items-center gap-2 bg-white border border-indigo-100 rounded-xl px-2 py-1.5 cursor-grab active:cursor-grabbing"
+                          >
+                            <GripVertical size={12} className="text-indigo-300 shrink-0" />
+                            <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 w-4 h-4 rounded-full flex items-center justify-center shrink-0">{idx + 1}</span>
+                            <span className="text-[11px] font-bold text-slate-700 truncate flex-1">{clientName}</span>
+                            <button onClick={() => toggleTimeSlot(id)} className="text-[8px] font-black text-indigo-400 hover:text-amber-500 shrink-0 px-1">→오전</button>
+                            <button onClick={() => saveDeliveryOrdering(validDelivery.filter(x => x !== id))} className="text-slate-300 hover:text-rose-400 shrink-0"><X size={10} /></button>
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
                 </div>
               </div>
 

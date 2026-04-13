@@ -46,6 +46,8 @@ export interface ProductClient {
   id: string;       // `${productId}_${clientId}`
   productId: string;
   clientId: string;
+  price?: number;
+  taxType?: '과세' | '면세'; // 과세: 입력단가는 부가세 포함, 면세: 세금 없음
 }
 
 export interface Client {
@@ -223,7 +225,34 @@ export interface ChatRoom {
 }
 
 
-export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'clients' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'client-portal' | 'item-management' | 'confirmation-items' | 'officetalk' | 'documents';
+export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'clients' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'client-portal' | 'item-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement';
+
+export interface IssuedStatementItem {
+  name: string;
+  spec: string;
+  qty: number;
+  price: number;
+  supply: number;
+  tax: number;
+  total: number;
+  isTaxExempt: boolean;
+}
+
+export interface IssuedStatement {
+  id: string;
+  issuedAt: string;       // ISO timestamp (전표일자)
+  tradeDate: string;      // YYYY-MM-DD
+  type: '매출' | '매입';
+  clientId: string;
+  clientName: string;
+  orderId: string;
+  docNo: string;
+  totalSupply: number;
+  totalTax: number;
+  totalAmount: number;
+  items: IssuedStatementItem[];
+  receivedAt?: string;    // 입고 확인 일시 (매입 전표)
+}
 
 export interface AppNotification {
   id: string;

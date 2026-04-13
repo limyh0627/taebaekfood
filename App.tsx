@@ -149,6 +149,7 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
   const [currentView, setCurrentView] = useState<ViewType>('orders');
+  const [pendingInvoice, setPendingInvoice] = useState<{ supplierId: string; supplierName: string; items: Array<{ name: string; spec: string; qty: number; price: number }> } | null>(null);
   const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부' | '거래명세서' | '생산작업기록부' | '생산작업기록부2'>('생산판매기록부');
   const [docYearMonth, setDocYearMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [bulkMfgDate, setBulkMfgDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -179,7 +180,7 @@ const App: React.FC = () => {
 
   
   const {
-    orders, confirmedOrders,
+    orders, confirmedOrders, orderRequests,
     products, submaterials, productClients,
     clients, employees, leaveRequests,
     pallets, palletTransactions, adjustmentRequests,
@@ -187,6 +188,7 @@ const App: React.FC = () => {
     rawMaterialLedger, sesameInputLedger,
     appNotifications,
     workOrderItems,
+    issuedStatements,
     isDataLoading,
   } = useAppData();
 
@@ -245,8 +247,7 @@ const App: React.FC = () => {
     return result;
   }, [orders, allProducts, clients]);
 
-  // 재고 발주 관련 상태
-  const [orderRequests, setOrderRequests] = useState<{id: string, quantity: number, confirmedByUser?: boolean}[]>(() => loadData('tb_order_requests', []));
+  // 재고 발주 관련 상태 (orderRequests는 useAppData에서 Firebase로 관리)
 
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [pendingAdminView, setPendingAdminView] = useState<ViewType | null>(null);
@@ -401,8 +402,6 @@ const App: React.FC = () => {
   };
 
 
-  // 로컬 스토리지 저장 (세션 관련만 유지)
-  useEffect(() => { localStorage.setItem('tb_order_requests', JSON.stringify(orderRequests)); }, [orderRequests]);
 
   // --- minStock 초기값 10 migration ---
   const minStockMigrationDone = useRef(false);
@@ -416,33 +415,34 @@ const App: React.FC = () => {
     });
   }, [allProducts]);
 
-  // --- 재고 관리 핸들러 ---
-  const handleAddOrderRequest = (id: string, quantity: number) => {
-    setOrderRequests(prev => {
-      const exists = prev.find(r => r.id === id);
-      if (exists) return prev.map(r => r.id === id ? { ...r, quantity, confirmedByUser: true } : r);
-      return [...prev, { id, quantity, confirmedByUser: true }];
-    });
+  // --- 재고 관리 핸들러 (Firebase 기반) ---
+  const handleAddOrderRequest = async (id: string, quantity: number) => {
+    const exists = orderRequests.find(r => r.id === id);
+    if (exists) {
+      await updateItem('orderRequests', id, { quantity, confirmedByUser: true });
+    } else {
+      await addItem('orderRequests', { id, quantity, confirmedByUser: true });
+    }
   };
 
-  const handleRemoveOrderRequest = (id: string) => {
-    setOrderRequests(prev => prev.filter(r => r.id !== id));
+  const handleRemoveOrderRequest = async (id: string) => {
+    await deleteItem('orderRequests', id);
   };
 
-  const handleUpdateOrderRequestQty = (id: string, quantity: number) => {
-    setOrderRequests(prev => prev.map(r => r.id === id ? { ...r, quantity } : r));
+  const handleUpdateOrderRequestQty = async (id: string, quantity: number) => {
+    await updateItem('orderRequests', id, { quantity });
   };
 
-  const handleToggleConfirmRequestQty = (id: string) => {
-    setOrderRequests(prev => prev.map(r => r.id === id ? { ...r, confirmedByUser: !r.confirmedByUser } : r));
+  const handleToggleConfirmRequestQty = async (id: string) => {
+    const req = orderRequests.find(r => r.id === id);
+    if (req) await updateItem('orderRequests', id, { confirmedByUser: !req.confirmedByUser });
   };
 
   const handleBulkAddConfirmedOrders = async (items: { id: string, quantity: number }[]) => {
     for (const item of items) {
       await addItem('confirmedOrders', item);
+      await deleteItem('orderRequests', item.id);
     }
-    const idsToRemove = items.map(i => i.id);
-    setOrderRequests(prev => prev.filter(r => !idsToRemove.includes(r.id)));
   };
 
   // 주문이 이력으로 이동할 때 부자재 차감 (완제품 재고는 변동 없음)
@@ -522,6 +522,16 @@ const App: React.FC = () => {
           }, { merge: true });
         }
       }
+    }
+  };
+
+  const handleRemoveConfirmedOrder = async (id: string) => {
+    await deleteItem('confirmedOrders', id);
+  };
+
+  const handleClearAllConfirmedOrders = async () => {
+    for (const conf of confirmedOrders) {
+      await deleteItem('confirmedOrders', conf.id);
     }
   };
 
@@ -708,6 +718,7 @@ const App: React.FC = () => {
                   <NavItem icon={Sparkles} label="AI 인사이트" active={currentView === 'ai-consultant'} onClick={() => handleNavClick('ai-consultant')} collapsed={isSidebarCollapsed} />
                   <NavItem icon={UserCheck} label="인사/연차 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} />
                   <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
+                  <NavItem icon={FileText} label="거래명세서" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} />
                 </nav>
               </div>
             )}
@@ -849,13 +860,6 @@ const App: React.FC = () => {
               products={allProducts} 
               onUpdateProduct={async (p) => {
                 await updateItem(getProductCollection(p.category), p.id, p);
-                // 재고가 최소 수량 미만이면 자동 발주 (이미 입고대기 중이 아닐 때만)
-                if (p.minStock > 0 && p.stock < p.minStock) {
-                  const alreadyOrdered = confirmedOrders.some(c => c.id === p.id);
-                  if (!alreadyOrdered) {
-                    await handleBulkAddConfirmedOrders([{ id: p.id, quantity: p.minStock * 2 }]);
-                  }
-                }
               }}
               onAddProduct={(p) => addItem(getProductCollection(p.category), p)} 
               orderRequests={orderRequests} 
@@ -868,10 +872,12 @@ const App: React.FC = () => {
               onConfirmRequests={(ids: string[]) => handleBulkAddConfirmedOrders(orderRequests.filter(r => ids.includes(r.id)).map(r => ({id: r.id, quantity: r.quantity})))} 
               onBulkAddConfirmedOrders={handleBulkAddConfirmedOrders} 
               onConfirmAllRequests={() => handleBulkAddConfirmedOrders(orderRequests.map(r => ({id: r.id, quantity: r.quantity})))} 
-              onFinishConfirmedOrder={handleFinishConfirmedOrder} 
-              onFinishConfirmedOrders={(ids: string[]) => ids.forEach(handleFinishConfirmedOrder)} 
-              onFinishAllConfirmedOrders={() => confirmedOrders.forEach(c => handleFinishConfirmedOrder(c.id))} 
+              onFinishConfirmedOrder={handleFinishConfirmedOrder}
+              onFinishConfirmedOrders={(ids: string[]) => ids.forEach(handleFinishConfirmedOrder)}
+              onFinishAllConfirmedOrders={() => confirmedOrders.forEach(c => handleFinishConfirmedOrder(c.id))}
               onUpdateConfirmedQty={(id: string, qty: number) => updateItem('confirmedOrders', id, { quantity: qty })}
+              onRemoveConfirmedOrder={handleRemoveConfirmedOrder}
+              onClearAllConfirmedOrders={handleClearAllConfirmedOrders}
               onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
               onDeleteProduct={(id) => {
                 const inProducts = products.some(p => p.id === id);
@@ -880,6 +886,12 @@ const App: React.FC = () => {
               onAddAdjustmentRequest={(req) => addItem('adjustmentRequests', req)}
               suppliers={clients.filter(c => c.partnerType === '매입처' || c.partnerType === '매출+매입처')}
               currentUser={currentUser}
+              issuedStatements={issuedStatements}
+              onMarkStatementReceived={(id) => updateItem('issuedStatements', id, { receivedAt: new Date().toISOString() })}
+              onRequestPurchaseInvoice={(supplierId, supplierName, items) => {
+                setPendingInvoice({ supplierId, supplierName, items });
+                setCurrentView('trade-statement');
+              }}
               rawMaterialLedger={rawMaterialLedger}
               autoUsageEntries={autoRawMaterialUsage}
               onAddRawMaterialEntry={async (entry) => {
@@ -1237,10 +1249,6 @@ const App: React.FC = () => {
                         onClick={() => setDocTab('원료수불부')}
                         className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '원료수불부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
                       >원료수불부</button>
-                      <button
-                        onClick={() => setDocTab('거래명세서')}
-                        className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '거래명세서' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
-                      >거래명세서</button>
                       <button
                         onClick={() => setDocTab('생산작업기록부')}
                         className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '생산작업기록부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
@@ -1956,22 +1964,6 @@ const App: React.FC = () => {
                   );
                 })()}
 
-                {docTab === '거래명세서' && (
-                  <TradeStatement
-                    orders={orders}
-                    allProducts={allProducts}
-                    clients={clients}
-                    onUpdateStatus={async (id, status) => {
-                      if (status === OrderStatus.DELIVERED) {
-                        const order = orders.find(o => o.id === id);
-                        if (order) await deductSubmaterialsForOrder(order);
-                        await updateItem('orders', id, { status, deliveredAt: new Date().toISOString() });
-                      } else {
-                        await updateItem('orders', id, { status });
-                      }
-                    }}
-                  />
-                )}
 
                 {docTab === '생산작업기록부' && (() => {
                   const PRODUCTION_CATEGORIES = [
@@ -2305,6 +2297,31 @@ const App: React.FC = () => {
               </div>
             );
           })()}
+          {currentView === 'trade-statement' && (
+            <TradeStatement
+              orders={orders}
+              allProducts={allProducts}
+              clients={clients}
+              productClients={productClients}
+              issuedStatements={issuedStatements}
+              onUpdateStatus={async (id, status) => {
+                if (status === OrderStatus.DELIVERED) {
+                  const order = orders.find(o => o.id === id);
+                  if (order) await deductSubmaterialsForOrder(order);
+                  await updateItem('orders', id, { status, deliveredAt: new Date().toISOString() });
+                } else {
+                  await updateItem('orders', id, { status });
+                }
+              }}
+              onUpdateProductClientPrice={(id, price) => updateItem('productClients', id, { price })}
+              onUpdateProductClientTaxType={(id, taxType) => updateItem('productClients', id, { taxType })}
+              onMarkInvoicePrinted={(id, value) => updateItem('orders', id, { invoicePrinted: value })}
+              onAddIssuedStatement={(stmt) => addItem('issuedStatements', stmt)}
+              onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
+              pendingInvoice={pendingInvoice}
+              onClearPendingInvoice={() => setPendingInvoice(null)}
+            />
+          )}
           {currentView === 'confirmation-items' && (
             <ConfirmationItems 
               requests={adjustmentRequests}

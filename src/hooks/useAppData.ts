@@ -3,7 +3,7 @@ import {
   Order, Product, Client, ProductClient, Post,
   PalletStock, PalletTransaction, Employee, LeaveRequest,
   AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry,
-  AppNotification, OrderStatus,
+  AppNotification, OrderStatus, IssuedStatement,
 } from '../../types';
 import { subscribeToCollection } from '../services/firebaseService';
 
@@ -23,6 +23,7 @@ export interface AppData {
   // 주문
   orders: Order[];
   confirmedOrders: { id: string; quantity: number }[];
+  orderRequests: { id: string; quantity: number; confirmedByUser?: boolean }[];
   // 상품
   products: Product[];
   submaterials: Product[];
@@ -46,6 +47,8 @@ export interface AppData {
   appNotifications: AppNotification[];
   // 금일 작업순서
   workOrderItems: WorkOrderItem[];
+  // 발행된 전표
+  issuedStatements: IssuedStatement[];
   // 로딩 상태
   isDataLoading: boolean;
 }
@@ -53,6 +56,7 @@ export interface AppData {
 export function useAppData(): AppData {
   const [orders, setOrders] = useState<Order[]>([]);
   const [confirmedOrders, setConfirmedOrders] = useState<{ id: string; quantity: number }[]>([]);
+  const [orderRequests, setOrderRequests] = useState<{ id: string; quantity: number; confirmedByUser?: boolean }[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [submaterials, setSubmaterials] = useState<Product[]>([]);
   const [productClients, setProductClients] = useState<ProductClient[]>([]);
@@ -69,6 +73,7 @@ export function useAppData(): AppData {
   const [sesameInputLedger, setSesameInputLedger] = useState<{ id: string; type: string; date: string; amount: number }[]>([]);
   const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
   const [workOrderItems, setWorkOrderItems] = useState<WorkOrderItem[]>([]);
+  const [issuedStatements, setIssuedStatements] = useState<IssuedStatement[]>([]);
   const [isDataLoading, setIsDataLoading] = useState(true);
   const loadedRef = useRef(new Set<string>());
 
@@ -88,6 +93,7 @@ export function useAppData(): AppData {
       subscribeToCollection<LeaveRequest>('leaveRequests', setLeaveRequests),
       subscribeToCollection<AdjustmentRequest>('adjustmentRequests', setAdjustmentRequests),
       subscribeToCollection<{ id: string; quantity: number }>('confirmedOrders', setConfirmedOrders),
+      subscribeToCollection<{ id: string; quantity: number; confirmedByUser?: boolean }>('orderRequests', setOrderRequests),
       subscribeToCollection<Order>('orders', (data) => { setOrders(data); markLoaded('orders'); }),
       subscribeToCollection<Product>('products', (data) => { setProducts(data); markLoaded('products'); }),
       subscribeToCollection<Product>('submaterials', setSubmaterials),
@@ -99,12 +105,13 @@ export function useAppData(): AppData {
       subscribeToCollection<{ id: string; type: string; date: string; amount: number }>('sesameInputLedger', setSesameInputLedger),
       subscribeToCollection<AppNotification>('notifications', setAppNotifications),
       subscribeToCollection<WorkOrderItem>('workOrderItems', (data) => setWorkOrderItems([...data].sort((a, b) => a.sortIndex - b.sortIndex))),
+      subscribeToCollection<IssuedStatement>('issuedStatements', setIssuedStatements),
     ];
     return () => unsubscribes.forEach(u => u());
   }, []);
 
   return {
-    orders, confirmedOrders,
+    orders, confirmedOrders, orderRequests,
     products, submaterials, productClients,
     clients, employees, leaveRequests,
     pallets, palletTransactions, adjustmentRequests,
@@ -112,6 +119,7 @@ export function useAppData(): AppData {
     rawMaterialLedger, sesameInputLedger,
     appNotifications,
     workOrderItems,
+    issuedStatements,
     isDataLoading,
   };
 }
