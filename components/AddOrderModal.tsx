@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { X, Search, ShoppingBag, User, ArrowRight, Package, AlertCircle, Phone, Mail, Truck, Store, LayoutGrid, CalendarDays } from 'lucide-react';
+import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Phone, Mail, Truck, Store, LayoutGrid, CalendarDays } from 'lucide-react';
 import { Product, OrderItem, Order, Client, OrderSource, OrderPallet } from '../types';
 
 interface AddOrderModalProps {
@@ -238,7 +238,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, onClos
 
     onSave({
       clientId: selectedClient.id,
-      customerName: `${selectedClient.name || '이름 없음'} (${new Date().toLocaleDateString()})`,
+      customerName: selectedClient.name || '이름 없음',
       email: selectedClient.email || '',
       items,
       totalAmount,
@@ -374,7 +374,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, onClos
                     return (
                       <div key={product.id} onClick={() => toggleProduct(product.id)} className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col gap-2 ${isSelected ? 'bg-white border-indigo-500 shadow-md ring-1 ring-indigo-500' : 'bg-white border-slate-100 hover:border-indigo-200'}`}>
                         <div className="flex items-center gap-2">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isSelected ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}><Package size={16} /></div>
+                          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 ${isSelected ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}>{product.category}</span>
                           <div className="flex flex-col min-w-0">
                             <p className="text-xs font-bold text-slate-800 truncate">{product.name}</p>
                             {(() => {
@@ -417,7 +417,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, onClos
                   return (
                     <div key={product.id} onClick={() => toggleProduct(product.id)} className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col gap-2 ${isSelected ? 'bg-white border-indigo-500 shadow-md ring-1 ring-indigo-500' : 'bg-white border-slate-100 hover:border-indigo-200'}`}>
                       <div className="flex items-center gap-2">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isSelected ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}><Package size={16} /></div>
+                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 ${isSelected ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}>{product.category}</span>
                         <p className="text-xs font-bold text-slate-800 truncate">{product.name}</p>
                       </div>
                       {isSelected && renderItemControls(product)}
@@ -443,7 +443,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, onClos
                   return (
                     <div key={product.id} onClick={() => toggleProduct(product.id)} className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col gap-2 ${isSelected ? 'bg-white border-indigo-500 shadow-md ring-1 ring-indigo-500' : 'bg-white border-slate-100 hover:border-indigo-200'}`}>
                       <div className="flex items-center gap-2">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isSelected ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}><Package size={16} /></div>
+                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 ${isSelected ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}>{product.category}</span>
                         <p className="text-xs font-bold text-slate-800 truncate">{product.name}</p>
                       </div>
                       {isSelected && renderItemControls(product)}

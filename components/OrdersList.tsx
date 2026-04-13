@@ -66,9 +66,10 @@ interface OrdersListProps {
   onUpdateItems?: (id: string, items: OrderItem[]) => void;
   onUpdateDeliveryBoxes?: (id: string, boxes: DeliveryBox[]) => void;
   onToggleInvoicePrinted?: (id: string, value: boolean) => void;
-  onToggleItemChecked?: (orderId: string, itemIdx: number) => void;
+  onToggleItemChecked?: (orderId: string, itemIdx: number, checkedBy?: string) => void;
   onDeleteOrder: (id: string) => void;
   onAddClick: () => void;
+  currentUserName?: string;
   workOrderItems?: { key: string; orderId: string; productId: string; itemName: string; clientName: string; qty: number; category: string }[];
   onSetWorkOrderItems?: (items: { key: string; orderId: string; productId: string; itemName: string; clientName: string; qty: number; category: string }[]) => void;
 }
@@ -84,8 +85,10 @@ interface OrderCardProps {
   onUpdateItems?: (id: string, items: OrderItem[]) => void;
   onUpdateDeliveryDate: (id: string, date: string) => void;
   onUpdateStatus: (id: string, status: OrderStatus) => void;
-  onToggleItemChecked?: (orderId: string, itemIdx: number) => void;
+  onToggleItemChecked?: (orderId: string, itemIdx: number, checkedBy?: string) => void;
   onDeleteOrder: (id: string) => void;
+  currentUserName?: string;
+  gridCols?: number;
 }
 
 interface OrderSourceGroupProps {
@@ -104,8 +107,9 @@ interface OrderSourceGroupProps {
   onUpdateItems?: (id: string, items: OrderItem[]) => void;
   onUpdateDeliveryDate: (id: string, date: string) => void;
   onUpdateStatus: (id: string, status: OrderStatus) => void;
-  onToggleItemChecked?: (orderId: string, itemIdx: number) => void;
+  onToggleItemChecked?: (orderId: string, itemIdx: number, checkedBy?: string) => void;
   onDeleteOrder: (id: string) => void;
+  currentUserName?: string;
 }
 
 interface DeliveryRowProps {
@@ -125,7 +129,7 @@ export const OrderCard = memo<OrderCardProps>(({
   editingOrderId, setEditingOrderId,
   showAddProductSelect, setShowAddProductSelect,
   onUpdateItems, onUpdateDeliveryDate, onUpdateStatus,
-  onToggleItemChecked, onDeleteOrder,
+  onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1,
 }) => {
   const isEditing = editingOrderId === order.id;
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
@@ -161,7 +165,8 @@ export const OrderCard = memo<OrderCardProps>(({
   }, [allNonHyangmiyuDone]);
 
   const client = clients.find(c => c.id === order.clientId);
-  const displayName = order.customerName || client?.name || '이름 없음';
+  const rawName = order.customerName || client?.name || '이름 없음';
+  const displayName = rawName.replace(/\s*\(\d{4}\.\s*\d+\.\s*\d+\.?\)\s*$/, '');
 
   const handleDirectQtyChange = (idx: number, value: string) => {
     const qty = parseInt(value) || 0;
@@ -298,7 +303,7 @@ export const OrderCard = memo<OrderCardProps>(({
               return (
                 <div key={idx} className="flex flex-col border-b border-slate-50 pb-1 last:border-0">
                   <div className="flex items-center text-[10px] font-bold">
-                    <div className={`mr-1.5 shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`} onClick={() => onToggleItemChecked?.(order.id, idx)} style={{cursor:'pointer'}}>
+                    <div className={`mr-1.5 shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`} onClick={(e) => { e.stopPropagation(); onToggleItemChecked?.(order.id, idx, currentUserName); }} style={{cursor:'pointer'}}>
                       {isItemChecked ? <CheckSquare size={14} /> : <Square size={14} />}
                     </div>
                     <span className={`truncate ${isItemChecked ? 'text-emerald-800 line-through opacity-50' : 'text-slate-700'}`}>{abbrev(item.name)}</span>
@@ -312,7 +317,7 @@ export const OrderCard = memo<OrderCardProps>(({
                     const fullSub = products.find(p => p.id === sm.id);
                     return ['마개', '테이프', '박스'].includes(normalizeCategory(fullSub?.category || sm.category || ''));
                   }).length > 0 && (
-                    <div className="flex flex-wrap items-center gap-1 mt-0.5 pl-[20px]">
+                    <div className={`mt-0.5 ${gridCols >= 2 ? 'grid grid-cols-2 md:flex md:flex-wrap md:items-center gap-x-1 gap-y-0.5 md:gap-1 md:pl-[20px]' : 'flex flex-wrap items-center gap-x-1 gap-y-0.5 pl-[20px]'}`}>
                       {productInfo.submaterials.filter(sm => {
                         const fullSub = products.find(p => p.id === sm.id);
                         return ['마개', '테이프', '박스'].includes(normalizeCategory(fullSub?.category || sm.category || ''));
@@ -324,6 +329,9 @@ export const OrderCard = memo<OrderCardProps>(({
                   <div className="flex flex-wrap items-center gap-1 mt-0.5 pl-[20px]">
                     <button type="button" onClick={(e) => { e.stopPropagation(); const ni = [...order.items]; ni[idx] = { ...ni[idx], labelType: next }; onUpdateItems?.(order.id, ni); }}
                       className={`text-[8px] font-black px-1 py-0.5 rounded border transition-all shrink-0 ${colorMap[current]}`}>{current}</button>
+                    {item.checked && item.checkedBy && (
+                      <span className="text-[8px] font-bold text-slate-400">{item.checkedBy}</span>
+                    )}
                     {item.mfgDate && (
                       <span className="text-[8px] font-bold text-slate-400 bg-slate-50 px-1 py-0.5 rounded border border-slate-100">
                         ~{(() => { const d = new Date(item.mfgDate!); d.setFullYear(d.getFullYear() + 1); return d.toISOString().slice(2, 10); })()}
@@ -430,6 +438,30 @@ export const OrderCard = memo<OrderCardProps>(({
         </div>
       )}
 
+      {/* 상태 변경 버튼 */}
+      {!isEditing && (
+        <div className="flex gap-1 mt-2">
+          {([
+            [OrderStatus.PENDING,    '대기중'],
+            [OrderStatus.PROCESSING, '작업중'],
+            [OrderStatus.DISPATCHED, '작업완료'],
+          ] as [OrderStatus, string][]).map(([st, label]) => (
+            <button
+              key={st}
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onUpdateStatus(order.id, st); }}
+              className={`flex-1 py-1 rounded-lg text-[9px] font-black transition-all ${
+                order.status === st
+                  ? 'bg-slate-700 text-white'
+                  : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="flex items-center justify-between pt-2 border-t border-slate-50 mt-2">
         {isEditing ? (
           <div className="flex flex-col">
@@ -440,12 +472,20 @@ export const OrderCard = memo<OrderCardProps>(({
             />
           </div>
         ) : (
-          <div className="flex flex-col">
-            <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">배송기한</span>
-            <span className="text-[9px] font-bold text-slate-500">{new Date(order.deliveryDate).toLocaleDateString().slice(2)}</span>
-          </div>
+          <>
+            <div className="flex flex-col">
+              <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">주문일자</span>
+              <span className="text-[9px] font-bold text-slate-400">
+                {new Date(order.createdAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}
+              </span>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">배송기한</span>
+              <span className="text-[9px] font-bold text-slate-500">{new Date(order.deliveryDate).toLocaleDateString().slice(2)}</span>
+            </div>
+            <div className="text-[9px] font-black text-slate-400 uppercase">{order.source}</div>
+          </>
         )}
-        <div className="text-[9px] font-black text-slate-400 uppercase">{order.source}</div>
       </div>
 
       {isEditing && (
@@ -519,7 +559,7 @@ const OrderSourceGroup = memo<OrderSourceGroupProps>(({
       </button>
       {!isCollapsed && (
         <div className={`grid gap-3 ${gridCols === 3 ? 'grid-cols-3' : gridCols === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-          {orders.map(order => <OrderCard key={order.id} order={order} {...cardProps} />)}
+          {orders.map(order => <OrderCard key={order.id} order={order} {...cardProps} gridCols={gridCols} />)}
         </div>
       )}
     </div>
@@ -553,7 +593,7 @@ const DeliveryRow = memo<DeliveryRowProps>(({ order, clientName, products, onTog
   };
 
   return (
-    <div className={`px-5 py-4 hover:bg-slate-50 transition-colors ${order.invoicePrinted ? 'opacity-50' : ''}`}>
+    <div className={`px-5 py-4 transition-colors ${order.invoicePrinted ? 'bg-emerald-50/60 hover:bg-emerald-50' : 'hover:bg-slate-50'}`}>
       <div className="flex items-center gap-3">
         <button type="button"
           onClick={() => onToggleInvoicePrinted?.(order.id, !order.invoicePrinted)}
@@ -564,9 +604,6 @@ const DeliveryRow = memo<DeliveryRowProps>(({ order, clientName, products, onTog
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`text-sm font-bold truncate ${order.invoicePrinted ? 'line-through text-slate-400' : 'text-slate-800'}`}>{clientName}</span>
-            <span className="text-[10px] font-bold text-slate-400">
-              {new Date(order.createdAt).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
-            </span>
             <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${STATUS_COLOR[order.status] || 'bg-slate-100 text-slate-500'}`}>
               {STATUS_LABEL[order.status] || order.status}
             </span>
@@ -668,6 +705,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   onDeleteOrder, onAddClick,
   workOrderItems: workOrderItemsProp = [],
   onSetWorkOrderItems,
+  currentUserName,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('active');
   const [searchTerm, setSearchTerm] = useState('');
@@ -746,7 +784,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
     editingOrderId, setEditingOrderId,
     showAddProductSelect, setShowAddProductSelect,
     onUpdateItems, onUpdateDeliveryDate, onUpdateStatus,
-    onToggleItemChecked, onDeleteOrder,
+    onToggleItemChecked, onDeleteOrder, currentUserName,
   };
 
   return (
@@ -945,7 +983,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
               onDrop={e => { e.preventDefault(); const id = e.dataTransfer.getData('orderId'); if (id && col.targetStatus) onUpdateStatus(id, col.targetStatus); }}
               className={`flex flex-col rounded-3xl border ${col.borderColor} ${col.bgColor} shadow-sm flex-shrink-0`}
               style={{
-                ...(typeof window !== 'undefined' && window.innerWidth >= 768 ? { width: `calc(${units} * (100vw - 9rem) / 5)` } : {}),
+                ...(typeof window !== 'undefined' && window.innerWidth >= 768 ? { width: `calc(${units} * (100vw - 9rem) / 6)` } : {}),
                 minWidth: 280,
               }}
             >

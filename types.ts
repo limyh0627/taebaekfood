@@ -13,6 +13,7 @@ export interface OrderItem {
   quantity: number;
   price: number;
   checked?: boolean;
+  checkedBy?: string;    // 체크한 사람 이름
   mfgDate?: string;      // 제조일자 (소비기한은 +1년으로 자동 계산)
   labelType?: '대기' | '날인' | '부착';
   isBoxUnit?: boolean;    // 박스 단위로 주문했는지

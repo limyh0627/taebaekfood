@@ -546,11 +546,15 @@ const App: React.FC = () => {
     await deleteItem('confirmedOrders', id);
   };
 
-  const handleToggleItemChecked = (orderId: string, itemIdx: number) => {
+  const handleToggleItemChecked = (orderId: string, itemIdx: number, checkedBy?: string) => {
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
     const newItems = [...order.items];
-    newItems[itemIdx] = { ...newItems[itemIdx], checked: !newItems[itemIdx].checked };
+    const isChecking = !newItems[itemIdx].checked;
+    const { checkedBy: _old, ...baseItem } = newItems[itemIdx];
+    newItems[itemIdx] = isChecking
+      ? { ...baseItem, checked: true, ...(checkedBy ? { checkedBy } : {}) }
+      : { ...baseItem, checked: false };
     const allChecked = newItems.every(i => i.checked);
     const wasNotDispatched = order.status !== OrderStatus.DISPATCHED && order.status !== OrderStatus.SHIPPED;
     if (allChecked && wasNotDispatched) {
@@ -845,6 +849,7 @@ const App: React.FC = () => {
               onUpdateItems={handleUpdateItems}
               onUpdateDeliveryBoxes={(id, boxes) => updateItem('orders', id, { deliveryBoxes: boxes })}
               onToggleInvoicePrinted={(id, value) => updateItem('orders', id, { invoicePrinted: value })}
+              currentUserName={currentUser?.name}
               workOrderItems={workOrderItems}
               onSetWorkOrderItems={async (items) => {
                 // 기존 항목 전체 삭제 후 새 항목 저장
@@ -2320,6 +2325,8 @@ const App: React.FC = () => {
               onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
               pendingInvoice={pendingInvoice}
               onClearPendingInvoice={() => setPendingInvoice(null)}
+              confirmedOrders={confirmedOrders}
+              onAddConfirmedOrder={(item) => addItem('confirmedOrders', item)}
             />
           )}
           {currentView === 'confirmation-items' && (
