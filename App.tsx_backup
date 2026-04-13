@@ -1,6 +1,5 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { 
   LayoutDashboard, 
   ShoppingCart, 
@@ -54,12 +53,12 @@ import ExcelJS from 'exceljs';
 import { db } from './src/firebase';
 import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg } from './src/constants/formula';
 import {
+  subscribeToCollection,
   addItem,
   updateItem,
   deleteItem,
   setProductClients
 } from './src/services/firebaseService';
-import { useAppData } from './src/hooks/useAppData';
 import { collection, getDocs, writeBatch, doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 
 // --- INITIAL DATA ---
@@ -149,16 +148,15 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
   const [currentView, setCurrentView] = useState<ViewType>('orders');
-  const [pendingInvoice, setPendingInvoice] = useState<{ supplierId: string; supplierName: string; items: Array<{ name: string; spec: string; qty: number; price: number }> } | null>(null);
   const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부' | '거래명세서' | '생산작업기록부' | '생산작업기록부2'>('생산판매기록부');
   const [docYearMonth, setDocYearMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [bulkMfgDate, setBulkMfgDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [productionWorkCat, setProductionWorkCat] = useState('시골향참기름1');
   const [productionWorkMonth, setProductionWorkMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [prodLedger2Month, setProdLedger2Month] = useState(() => new Date().toISOString().slice(0, 7));
+  const [sesameInputLedger, setSesameInputLedger] = useState<{id:string;type:string;date:string;amount:number}[]>([]);
+  const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
-  const [notifPanelPos, setNotifPanelPos] = useState({ top: 0, left: 0 });
-  const notifBtnRef = useRef<HTMLButtonElement>(null);
   const [rmActiveMaterial, setRmActiveMaterial] = useState('참깨');
   const [rmCorrectionTargetId, setRmCorrectionTargetId] = useState<string | null>(null);
   const [rmCorrectionForm, setRmCorrectionForm] = useState({ date: new Date().toISOString().slice(0, 10), amount: '', isNegative: true, note: '' });
@@ -178,19 +176,31 @@ const App: React.FC = () => {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  useEffect(() => {
+    if (!showNotifPanel) return;
+    const handler = (e: MouseEvent) => {
+      const panel = document.getElementById('notif-panel-root');
+      if (panel && !panel.contains(e.target as Node)) setShowNotifPanel(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showNotifPanel]);
   
-  const {
-    orders, confirmedOrders, orderRequests,
-    products, submaterials, productClients,
-    clients, employees, leaveRequests,
-    pallets, palletTransactions, adjustmentRequests,
-    noticePosts, chatRooms, chatMessages,
-    rawMaterialLedger, sesameInputLedger,
-    appNotifications,
-    workOrderItems,
-    issuedStatements,
-    isDataLoading,
-  } = useAppData();
+  const [noticePosts, setNoticePosts] = useState<Post[]>([]);
+  const [pallets, setPallets] = useState<PalletStock[]>([]);
+  const [palletTransactions, setPalletTransactions] = useState<PalletTransaction[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [adjustmentRequests, setAdjustmentRequests] = useState<AdjustmentRequest[]>([]);
+  const [confirmedOrders, setConfirmedOrders] = useState<{id: string, quantity: number}[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [submaterials, setSubmaterials] = useState<Product[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [productClients, setProductClientsList] = useState<ProductClient[]>([]);
+  const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [rawMaterialLedger, setRawMaterialLedger] = useState<RawMaterialEntry[]>([]);
 
   // productClients로부터 productId → clientIds[] 맵 생성
   const productClientMap = useMemo(() => {
@@ -247,7 +257,8 @@ const App: React.FC = () => {
     return result;
   }, [orders, allProducts, clients]);
 
-  // 재고 발주 관련 상태 (orderRequests는 useAppData에서 Firebase로 관리)
+  // 재고 발주 관련 상태
+  const [orderRequests, setOrderRequests] = useState<{id: string, quantity: number, confirmedByUser?: boolean}[]>(() => loadData('tb_order_requests', []));
 
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [pendingAdminView, setPendingAdminView] = useState<ViewType | null>(null);
@@ -258,6 +269,32 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => window.innerWidth < 768);
 
+  // --- Firebase Real-time Sync ---
+  useEffect(() => {
+    const unsubscribes = [
+      subscribeToCollection<Post>('notices', setNoticePosts),
+      subscribeToCollection<PalletStock>('pallets', setPallets),
+      subscribeToCollection<PalletTransaction>('palletTransactions', setPalletTransactions),
+      subscribeToCollection<Employee>('employees', setEmployees),
+      subscribeToCollection<LeaveRequest>('leaveRequests', setLeaveRequests),
+      subscribeToCollection<AdjustmentRequest>('adjustmentRequests', setAdjustmentRequests),
+      subscribeToCollection<{id: string, quantity: number}>('confirmedOrders', setConfirmedOrders),
+      subscribeToCollection<Order>('orders', setOrders),
+      subscribeToCollection<Product>('products', setProducts),
+      subscribeToCollection<Product>('submaterials', setSubmaterials),
+      subscribeToCollection<Client>('clients', setClients),
+      subscribeToCollection<ProductClient>('productClients', setProductClientsList),
+      subscribeToCollection<ChatRoom>('chatRooms', setChatRooms),
+      subscribeToCollection<ChatMessage>('chatMessages', setChatMessages),
+      subscribeToCollection<RawMaterialEntry>('rawMaterialLedger', setRawMaterialLedger),
+      subscribeToCollection<{id:string;type:string;date:string;amount:number}>('sesameInputLedger', setSesameInputLedger),
+      subscribeToCollection<AppNotification>('notifications', setAppNotifications),
+    ];
+
+    return () => {
+      unsubscribes.forEach(unsub => unsub());
+    };
+  }, []);
 
   // 완료/반려 후 1일 지난 확인사항 자동 삭제
   useEffect(() => {
@@ -402,6 +439,8 @@ const App: React.FC = () => {
   };
 
 
+  // 로컬 스토리지 저장 (세션 관련만 유지)
+  useEffect(() => { localStorage.setItem('tb_order_requests', JSON.stringify(orderRequests)); }, [orderRequests]);
 
   // --- minStock 초기값 10 migration ---
   const minStockMigrationDone = useRef(false);
@@ -415,34 +454,33 @@ const App: React.FC = () => {
     });
   }, [allProducts]);
 
-  // --- 재고 관리 핸들러 (Firebase 기반) ---
-  const handleAddOrderRequest = async (id: string, quantity: number) => {
-    const exists = orderRequests.find(r => r.id === id);
-    if (exists) {
-      await updateItem('orderRequests', id, { quantity, confirmedByUser: true });
-    } else {
-      await addItem('orderRequests', { id, quantity, confirmedByUser: true });
-    }
+  // --- 재고 관리 핸들러 ---
+  const handleAddOrderRequest = (id: string, quantity: number) => {
+    setOrderRequests(prev => {
+      const exists = prev.find(r => r.id === id);
+      if (exists) return prev.map(r => r.id === id ? { ...r, quantity, confirmedByUser: true } : r);
+      return [...prev, { id, quantity, confirmedByUser: true }];
+    });
   };
 
-  const handleRemoveOrderRequest = async (id: string) => {
-    await deleteItem('orderRequests', id);
+  const handleRemoveOrderRequest = (id: string) => {
+    setOrderRequests(prev => prev.filter(r => r.id !== id));
   };
 
-  const handleUpdateOrderRequestQty = async (id: string, quantity: number) => {
-    await updateItem('orderRequests', id, { quantity });
+  const handleUpdateOrderRequestQty = (id: string, quantity: number) => {
+    setOrderRequests(prev => prev.map(r => r.id === id ? { ...r, quantity } : r));
   };
 
-  const handleToggleConfirmRequestQty = async (id: string) => {
-    const req = orderRequests.find(r => r.id === id);
-    if (req) await updateItem('orderRequests', id, { confirmedByUser: !req.confirmedByUser });
+  const handleToggleConfirmRequestQty = (id: string) => {
+    setOrderRequests(prev => prev.map(r => r.id === id ? { ...r, confirmedByUser: !r.confirmedByUser } : r));
   };
 
   const handleBulkAddConfirmedOrders = async (items: { id: string, quantity: number }[]) => {
     for (const item of items) {
       await addItem('confirmedOrders', item);
-      await deleteItem('orderRequests', item.id);
     }
+    const idsToRemove = items.map(i => i.id);
+    setOrderRequests(prev => prev.filter(r => !idsToRemove.includes(r.id)));
   };
 
   // 주문이 이력으로 이동할 때 부자재 차감 (완제품 재고는 변동 없음)
@@ -525,16 +563,6 @@ const App: React.FC = () => {
     }
   };
 
-  const handleRemoveConfirmedOrder = async (id: string) => {
-    await deleteItem('confirmedOrders', id);
-  };
-
-  const handleClearAllConfirmedOrders = async () => {
-    for (const conf of confirmedOrders) {
-      await deleteItem('confirmedOrders', conf.id);
-    }
-  };
-
   const handleFinishConfirmedOrder = async (id: string) => {
     const conf = confirmedOrders.find(c => c.id === id);
     if (!conf) return;
@@ -546,15 +574,11 @@ const App: React.FC = () => {
     await deleteItem('confirmedOrders', id);
   };
 
-  const handleToggleItemChecked = (orderId: string, itemIdx: number, checkedBy?: string) => {
+  const handleToggleItemChecked = (orderId: string, itemIdx: number) => {
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
     const newItems = [...order.items];
-    const isChecking = !newItems[itemIdx].checked;
-    const { checkedBy: _old, ...baseItem } = newItems[itemIdx];
-    newItems[itemIdx] = isChecking
-      ? { ...baseItem, checked: true, ...(checkedBy ? { checkedBy } : {}) }
-      : { ...baseItem, checked: false };
+    newItems[itemIdx] = { ...newItems[itemIdx], checked: !newItems[itemIdx].checked };
     const allChecked = newItems.every(i => i.checked);
     const wasNotDispatched = order.status !== OrderStatus.DISPATCHED && order.status !== OrderStatus.SHIPPED;
     if (allChecked && wasNotDispatched) {
@@ -613,25 +637,25 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex overflow-hidden bg-slate-50" style={{ height: '100dvh' }}>
-      {/* 모바일 오버레이 배경 — 항상 렌더, opacity로 fade 트랜지션 */}
-      <div
-        className={`fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 md:hidden ${
-          isMobile && !isSidebarCollapsed ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
-        onClick={() => setIsSidebarCollapsed(true)}
-      />
+    <div className="flex h-screen overflow-hidden bg-slate-50">
+      {/* 모바일 오버레이 배경 */}
+      {isMobile && !isSidebarCollapsed && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40"
+          onClick={() => setIsSidebarCollapsed(true)}
+        />
+      )}
 
-      <aside className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-slate-200 overflow-hidden transition-all duration-300 ${
+      <aside className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-slate-200 transition-all duration-300 ${
         isMobile
           ? (isSidebarCollapsed ? '-translate-x-full' : 'translate-x-0 w-64')
           : (isSidebarCollapsed ? 'w-20' : 'w-64')
       }`}>
-        <div className={`flex flex-col h-full ${isSidebarCollapsed ? 'p-4' : 'p-6'}`} style={{ paddingTop: `max(${isSidebarCollapsed ? '1rem' : '1.5rem'}, env(safe-area-inset-top))`, paddingBottom: `max(${isSidebarCollapsed ? '1rem' : '1.5rem'}, env(safe-area-inset-bottom))` }}>
+        <div className={`flex flex-col h-full ${isSidebarCollapsed ? 'p-4' : 'p-6'}`}>
           <div className={`flex items-center ${isSidebarCollapsed ? 'flex-col gap-2' : 'px-2 justify-between'} mb-10`}>
             <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setCurrentView('orders')}>
               <div className="w-10 h-10 bg-pink-500 rounded-xl flex items-center justify-center text-white shadow-lg flex-shrink-0 font-black text-sm tracking-tight leading-none">태백</div>
-              <h1 className={`text-xl font-bold uppercase tracking-tight text-indigo-600 leading-tight whitespace-nowrap overflow-hidden transition-all duration-200 ${isSidebarCollapsed ? 'opacity-0 w-0' : 'opacity-100'}`}>스마트오더</h1>
+              {!isSidebarCollapsed && <h1 className="text-xl font-bold uppercase tracking-tight text-indigo-600 break-words leading-tight">스마트오더</h1>}
             </div>
             {!isMobile && (
               <button
@@ -644,20 +668,22 @@ const App: React.FC = () => {
             )}
           </div>
 
-          {/* 알림 벨 */}
+          {/* 알림 벨 + 패널 */}
           {(() => {
-            const unread = appNotifications.filter(n => !n.readBy.includes(currentUser.id) && (!n.targetId || n.targetId === currentUser.id));
+            const unread = appNotifications.filter(n => !n.readBy.includes(currentUser.id));
+            const markRead = async (id: string) => {
+              const n = appNotifications.find(x => x.id === id);
+              if (!n || n.readBy.includes(currentUser.id)) return;
+              await updateItem('notifications', id, { readBy: [...n.readBy, currentUser.id] });
+            };
+            const markAll = async () => {
+              await Promise.all(unread.map(n => updateItem('notifications', n.id, { readBy: [...n.readBy, currentUser.id] })));
+            };
+            const sorted = [...appNotifications].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
             return (
-              <div className={`mb-2 ${isSidebarCollapsed ? 'flex justify-center' : 'px-1'}`}>
+              <div id="notif-panel-root" className={`relative mb-2 ${isSidebarCollapsed ? 'flex justify-center' : 'px-1'}`}>
                 <button
-                  ref={notifBtnRef}
-                  onClick={() => {
-                    if (notifBtnRef.current) {
-                      const rect = notifBtnRef.current.getBoundingClientRect();
-                      setNotifPanelPos({ top: rect.top, left: rect.right + 8 });
-                    }
-                    setShowNotifPanel(p => !p);
-                  }}
+                  onClick={() => setShowNotifPanel(p => !p)}
                   className={`relative flex items-center gap-2 w-full rounded-2xl px-3 py-2 hover:bg-slate-100 transition-all ${showNotifPanel ? 'bg-slate-100' : ''}`}
                 >
                   <div className="relative shrink-0">
@@ -668,6 +694,37 @@ const App: React.FC = () => {
                   </div>
                   {!isSidebarCollapsed && <span className="text-xs font-bold text-slate-600">알림{unread.length > 0 ? ` (${unread.length})` : ''}</span>}
                 </button>
+                {showNotifPanel && (
+                  <div className="absolute top-0 left-full ml-2 w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                      <span className="text-xs font-black text-slate-700">알림</span>
+                      {unread.length > 0 && (
+                        <button onClick={markAll} className="text-[10px] font-bold text-indigo-500 hover:text-indigo-700 transition-colors">일괄 확인</button>
+                      )}
+                    </div>
+                    <div className="max-h-80 overflow-y-auto">
+                      {sorted.length === 0 ? (
+                        <p className="text-center text-slate-400 text-xs py-8">알림이 없습니다</p>
+                      ) : sorted.map(n => {
+                        const isUnread = !n.readBy.includes(currentUser.id);
+                        return (
+                          <div
+                            key={n.id}
+                            onClick={() => markRead(n.id)}
+                            className={`flex items-start gap-3 px-4 py-3 border-b border-slate-50 cursor-pointer hover:bg-slate-50 transition-colors ${isUnread ? 'bg-indigo-50/60' : ''}`}
+                          >
+                            <div className={`mt-0.5 shrink-0 w-2 h-2 rounded-full ${isUnread ? 'bg-indigo-500' : 'bg-transparent'}`} />
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-[11px] font-bold ${isUnread ? 'text-slate-800' : 'text-slate-500'}`}>{n.title}</p>
+                              <p className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">{n.body}</p>
+                              <p className="text-[9px] text-slate-300 mt-1">{new Date(n.createdAt).toLocaleString('ko-KR', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' })}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })()}
@@ -700,7 +757,7 @@ const App: React.FC = () => {
             <div>
               {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">운영 관리</p>}
               <nav className="space-y-1">
-                <NavItem icon={MessageSquare} label="오피스톡" active={currentView === 'officetalk'} onClick={() => handleNavClick('officetalk')} collapsed={isSidebarCollapsed} badge={chatRooms.filter(r => r.participantIds.includes(currentUser.id) && r.lastUpdatedAt > (r.lastReadBy?.[currentUser.id] ?? '')).length || undefined} />
+                <NavItem icon={MessageSquare} label="오피스톡" active={currentView === 'officetalk'} onClick={() => handleNavClick('officetalk')} collapsed={isSidebarCollapsed} />
                 <NavItem icon={Truck} label="배송 관리" active={currentView === 'shipping'} onClick={() => handleNavClick('shipping')} collapsed={isSidebarCollapsed} />
                 <NavItem icon={ShoppingCart} label="주문 관리" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} />
                 <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} />
@@ -722,7 +779,6 @@ const App: React.FC = () => {
                   <NavItem icon={Sparkles} label="AI 인사이트" active={currentView === 'ai-consultant'} onClick={() => handleNavClick('ai-consultant')} collapsed={isSidebarCollapsed} />
                   <NavItem icon={UserCheck} label="인사/연차 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} />
                   <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
-                  <NavItem icon={FileText} label="거래명세서" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} />
                 </nav>
               </div>
             )}
@@ -748,9 +804,9 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      <main className={`flex-1 flex flex-col min-w-0 overflow-hidden transition-all duration-300 ${isMobile ? '' : (isSidebarCollapsed ? 'ml-20' : 'ml-64')}`} style={{ height: '100dvh' }}>
+      <main className={`flex-1 flex flex-col min-w-0 h-screen overflow-hidden transition-all duration-300 ${isMobile ? '' : (isSidebarCollapsed ? 'ml-20' : 'ml-64')}`}>
         {/* 모바일 헤더 */}
-        <header className="md:hidden bg-white border-b border-slate-200 px-4 flex items-center justify-between" style={{ paddingTop: `max(0.75rem, env(safe-area-inset-top))`, paddingBottom: '0.75rem' }}>
+        <header className="md:hidden bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between">
           <button
             onClick={() => setIsSidebarCollapsed(false)}
             className="p-2 rounded-lg hover:bg-slate-100 text-slate-600"
@@ -765,37 +821,8 @@ const App: React.FC = () => {
         </header>
         
         <div className="flex-1 overflow-auto p-3 md:p-4 lg:p-6 custom-scrollbar">
-          {/* 초기 데이터 로딩 스켈레톤 */}
-          {isDataLoading ? (
-            <div className="space-y-4 animate-pulse">
-              <div className="h-8 bg-slate-200 rounded-xl w-48" />
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {[...Array(4)].map((_, i) => (
-                  <div key={i} className="bg-white rounded-2xl p-6 border border-slate-100 space-y-3">
-                    <div className="w-10 h-10 bg-slate-200 rounded-xl" />
-                    <div className="h-3 bg-slate-200 rounded w-2/3" />
-                    <div className="h-6 bg-slate-200 rounded w-1/2" />
-                  </div>
-                ))}
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 p-6 h-64" />
-                <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-3">
-                  {[...Array(5)].map((_, i) => (
-                    <div key={i} className="flex items-center gap-3">
-                      <div className="w-9 h-9 bg-slate-200 rounded-full shrink-0" />
-                      <div className="flex-1 space-y-1.5">
-                        <div className="h-3 bg-slate-200 rounded w-3/4" />
-                        <div className="h-2.5 bg-slate-100 rounded w-1/2" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : (
           <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'clients', 'notice', 'pallets', 'confirmation-items', 'shipping'].includes(currentView)) ? '' : 'min-w-[720px] md:min-w-0 h-full'}>
-          {currentView === 'dashboard' && <Dashboard orders={orders} products={allProducts} onNavigate={handleNavClick} />}
+          {currentView === 'dashboard' && <Dashboard orders={orders} products={allProducts} />}
           {currentView === 'shipping' && (
             <DeliveryManager
               orders={orders}
@@ -849,15 +876,6 @@ const App: React.FC = () => {
               onUpdateItems={handleUpdateItems}
               onUpdateDeliveryBoxes={(id, boxes) => updateItem('orders', id, { deliveryBoxes: boxes })}
               onToggleInvoicePrinted={(id, value) => updateItem('orders', id, { invoicePrinted: value })}
-              currentUserName={currentUser?.name}
-              workOrderItems={workOrderItems}
-              onSetWorkOrderItems={async (items) => {
-                // 기존 항목 전체 삭제 후 새 항목 저장
-                await Promise.all(workOrderItems.map(w => deleteItem('workOrderItems', w.id)));
-                await Promise.all(items.map((item, idx) =>
-                  addItem('workOrderItems', { ...item, id: `wo-${Date.now()}-${idx}`, sortIndex: idx })
-                ));
-              }}
             />
           )}
           {currentView === 'inventory' && (
@@ -865,6 +883,13 @@ const App: React.FC = () => {
               products={allProducts} 
               onUpdateProduct={async (p) => {
                 await updateItem(getProductCollection(p.category), p.id, p);
+                // 재고가 최소 수량 미만이면 자동 발주 (이미 입고대기 중이 아닐 때만)
+                if (p.minStock > 0 && p.stock < p.minStock) {
+                  const alreadyOrdered = confirmedOrders.some(c => c.id === p.id);
+                  if (!alreadyOrdered) {
+                    await handleBulkAddConfirmedOrders([{ id: p.id, quantity: p.minStock * 2 }]);
+                  }
+                }
               }}
               onAddProduct={(p) => addItem(getProductCollection(p.category), p)} 
               orderRequests={orderRequests} 
@@ -877,12 +902,10 @@ const App: React.FC = () => {
               onConfirmRequests={(ids: string[]) => handleBulkAddConfirmedOrders(orderRequests.filter(r => ids.includes(r.id)).map(r => ({id: r.id, quantity: r.quantity})))} 
               onBulkAddConfirmedOrders={handleBulkAddConfirmedOrders} 
               onConfirmAllRequests={() => handleBulkAddConfirmedOrders(orderRequests.map(r => ({id: r.id, quantity: r.quantity})))} 
-              onFinishConfirmedOrder={handleFinishConfirmedOrder}
-              onFinishConfirmedOrders={(ids: string[]) => ids.forEach(handleFinishConfirmedOrder)}
-              onFinishAllConfirmedOrders={() => confirmedOrders.forEach(c => handleFinishConfirmedOrder(c.id))}
-              onUpdateConfirmedQty={(id: string, qty: number) => updateItem('confirmedOrders', id, { quantity: qty })}
-              onRemoveConfirmedOrder={handleRemoveConfirmedOrder}
-              onClearAllConfirmedOrders={handleClearAllConfirmedOrders}
+              onFinishConfirmedOrder={handleFinishConfirmedOrder} 
+              onFinishConfirmedOrders={(ids: string[]) => ids.forEach(handleFinishConfirmedOrder)} 
+              onFinishAllConfirmedOrders={() => confirmedOrders.forEach(c => handleFinishConfirmedOrder(c.id))} 
+              onUpdateConfirmedQty={(id: string, qty: number) => setConfirmedOrders(prev => prev.map(c => c.id === id ? { ...c, quantity: qty } : c))} 
               onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
               onDeleteProduct={(id) => {
                 const inProducts = products.some(p => p.id === id);
@@ -890,13 +913,6 @@ const App: React.FC = () => {
               }}
               onAddAdjustmentRequest={(req) => addItem('adjustmentRequests', req)}
               suppliers={clients.filter(c => c.partnerType === '매입처' || c.partnerType === '매출+매입처')}
-              currentUser={currentUser}
-              issuedStatements={issuedStatements}
-              onMarkStatementReceived={(id) => updateItem('issuedStatements', id, { receivedAt: new Date().toISOString() })}
-              onRequestPurchaseInvoice={(supplierId, supplierName, items) => {
-                setPendingInvoice({ supplierId, supplierName, items });
-                setCurrentView('trade-statement');
-              }}
               rawMaterialLedger={rawMaterialLedger}
               autoUsageEntries={autoRawMaterialUsage}
               onAddRawMaterialEntry={async (entry) => {
@@ -1054,6 +1070,7 @@ const App: React.FC = () => {
               { label: '시골향참기름④', key: '시골향참기름4', volumes: ['300ml','350ml','1500ml','1750ml','1800ml'] },
               { label: '시골향들기름①', key: '시골향들기름1', volumes: ['270ml','350ml','1800ml','16.5kg'] },
               { label: '시골향들기름②', key: '시골향들기름2', volumes: ['180ml','300ml','350ml','1500ml','1750ml','1800ml'] },
+              { label: '토마토참기름',  key: '토마토참기름',  volumes: ['1800ml'] },
               { label: '하남댁참기름', key: '하남댁참기름', volumes: ['300ml'] },
               { label: '하남댁들기름', key: '하남댁들기름', volumes: ['300ml'] },
             ];
@@ -1236,16 +1253,6 @@ const App: React.FC = () => {
                 await deductSubmaterialsForOrder(o);
                 await updateItem('orders', o.id, { status: OrderStatus.DELIVERED, deliveredAt: new Date().toISOString() });
               }
-              // 향미유만 있는 출고 주문도 이력으로 이동
-              const hyangmiyuOnlyOrders = orders.filter(o =>
-                o.status === OrderStatus.SHIPPED &&
-                o.customerName !== '생산기록' &&
-                o.items.length > 0 &&
-                o.items.every(item => allProducts.find(pr => pr.id === item.productId)?.category === '향미유')
-              );
-              for (const o of hyangmiyuOnlyOrders) {
-                await updateItem('orders', o.id, { status: OrderStatus.DELIVERED, deliveredAt: new Date().toISOString() });
-              }
             };
 
             return (
@@ -1264,6 +1271,10 @@ const App: React.FC = () => {
                         onClick={() => setDocTab('원료수불부')}
                         className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '원료수불부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
                       >원료수불부</button>
+                      <button
+                        onClick={() => setDocTab('거래명세서')}
+                        className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '거래명세서' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                      >거래명세서</button>
                       <button
                         onClick={() => setDocTab('생산작업기록부')}
                         className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '생산작업기록부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
@@ -1979,6 +1990,22 @@ const App: React.FC = () => {
                   );
                 })()}
 
+                {docTab === '거래명세서' && (
+                  <TradeStatement
+                    orders={orders}
+                    allProducts={allProducts}
+                    clients={clients}
+                    onUpdateStatus={async (id, status) => {
+                      if (status === OrderStatus.DELIVERED) {
+                        const order = orders.find(o => o.id === id);
+                        if (order) await deductSubmaterialsForOrder(order);
+                        await updateItem('orders', id, { status, deliveredAt: new Date().toISOString() });
+                      } else {
+                        await updateItem('orders', id, { status });
+                      }
+                    }}
+                  />
+                )}
 
                 {docTab === '생산작업기록부' && (() => {
                   const PRODUCTION_CATEGORIES = [
@@ -2312,33 +2339,6 @@ const App: React.FC = () => {
               </div>
             );
           })()}
-          {currentView === 'trade-statement' && (
-            <TradeStatement
-              orders={orders}
-              allProducts={allProducts}
-              clients={clients}
-              productClients={productClients}
-              issuedStatements={issuedStatements}
-              onUpdateStatus={async (id, status) => {
-                if (status === OrderStatus.DELIVERED) {
-                  const order = orders.find(o => o.id === id);
-                  if (order) await deductSubmaterialsForOrder(order);
-                  await updateItem('orders', id, { status, deliveredAt: new Date().toISOString() });
-                } else {
-                  await updateItem('orders', id, { status });
-                }
-              }}
-              onUpdateProductClientPrice={(id, price) => updateItem('productClients', id, { price })}
-              onUpdateProductClientTaxType={(id, taxType) => updateItem('productClients', id, { taxType })}
-              onMarkInvoicePrinted={(id, value) => updateItem('orders', id, { invoicePrinted: value })}
-              onAddIssuedStatement={(stmt) => addItem('issuedStatements', stmt)}
-              onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
-              pendingInvoice={pendingInvoice}
-              onClearPendingInvoice={() => setPendingInvoice(null)}
-              confirmedOrders={confirmedOrders}
-              onAddConfirmedOrder={(item) => addItem('confirmedOrders', item)}
-            />
-          )}
           {currentView === 'confirmation-items' && (
             <ConfirmationItems 
               requests={adjustmentRequests}
@@ -2390,10 +2390,6 @@ const App: React.FC = () => {
                   await setProductClients(productId, [...current, clientId]);
                 }
               }}
-              onUnlinkProduct={async (productId, clientId) => {
-                const current = productClients.filter(pc => pc.productId === productId).map(pc => pc.clientId);
-                await setProductClients(productId, current.filter(id => id !== clientId));
-              }}
             />
           )}
           {currentView === 'officetalk' && (
@@ -2412,31 +2408,10 @@ const App: React.FC = () => {
                 // 대화방 마지막 메시지 업데이트 (부가 동작 — 실패해도 메시지 저장은 유지)
                 const room = chatRooms.find(r => r.id === msg.roomId);
                 if (room) {
-                  const now = new Date().toISOString();
                   updateItem('chatRooms', room.id, {
                     lastMessage: msg.text,
-                    lastUpdatedAt: now,
-                    lastReadBy: { ...(room.lastReadBy ?? {}), [msg.senderId]: now }
+                    lastUpdatedAt: new Date().toISOString()
                   }).catch(console.error);
-
-                  // 채팅 알림 — 본인 제외 참여자에게 전송
-                  const recipients = room.participantIds.filter(id => id !== msg.senderId);
-                  const roomName = room.name || (room.participantIds.length === 2
-                    ? (employees.find(e => e.id === recipients[0])?.name ?? '알 수 없음')
-                    : `단체 채팅`);
-                  const preview = msg.text.length > 40 ? msg.text.slice(0, 40) + '…' : msg.text;
-                  await Promise.all(recipients.map(recipientId =>
-                    addItem('notifications', {
-                      type: 'mention',
-                      title: `${msg.senderName} (${roomName})`,
-                      body: preview,
-                      readBy: [],
-                      createdAt: new Date().toISOString(),
-                      senderId: msg.senderId,
-                      linkedId: msg.roomId,
-                      targetId: recipientId,
-                    } as Omit<AppNotification, 'id'> & { targetId: string })
-                  )).catch(console.error);
                 }
 
                 // @관리자 멘션 처리 (부가 동작)
@@ -2457,7 +2432,6 @@ const App: React.FC = () => {
             />
           )}
           </div>
-          )}
         </div>
       </main>
 
@@ -2501,83 +2475,22 @@ const App: React.FC = () => {
           }} 
         />
       )}
-
-      {/* 알림 패널 — aside overflow-hidden 우회용 포털 */}
-      {showNotifPanel && createPortal(
-        (() => {
-          const unread = appNotifications.filter(n => !n.readBy.includes(currentUser.id) && (!n.targetId || n.targetId === currentUser.id));
-          const markRead = async (id: string) => {
-            const n = appNotifications.find(x => x.id === id);
-            if (!n || n.readBy.includes(currentUser.id)) return;
-            await updateItem('notifications', id, { readBy: [...n.readBy, currentUser.id] });
-          };
-          const markAll = async () => {
-            await Promise.all(unread.map(n => updateItem('notifications', n.id, { readBy: [...n.readBy, currentUser.id] })));
-          };
-          const sorted = [...appNotifications].filter(n => !n.targetId || n.targetId === currentUser.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-          return (
-            <>
-              <div className="fixed inset-0 z-[999]" onClick={() => setShowNotifPanel(false)} />
-              <div
-                style={{ top: notifPanelPos.top, left: notifPanelPos.left }}
-                className="fixed z-[1000] w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden"
-              >
-                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-                  <span className="text-xs font-black text-slate-700">알림</span>
-                  {unread.length > 0 && (
-                    <button onClick={markAll} className="text-[10px] font-bold text-indigo-500 hover:text-indigo-700 transition-colors">일괄 확인</button>
-                  )}
-                </div>
-                <div className="max-h-80 overflow-y-auto">
-                  {sorted.length === 0 ? (
-                    <p className="text-center text-slate-400 text-xs py-8">알림이 없습니다</p>
-                  ) : sorted.map(n => {
-                    const isUnread = !n.readBy.includes(currentUser.id);
-                    return (
-                      <div
-                        key={n.id}
-                        onClick={() => markRead(n.id)}
-                        className={`flex items-start gap-3 px-4 py-3 border-b border-slate-50 cursor-pointer hover:bg-slate-50 transition-colors ${isUnread ? 'bg-indigo-50/60' : ''}`}
-                      >
-                        <div className={`mt-0.5 shrink-0 w-2 h-2 rounded-full ${isUnread ? 'bg-indigo-500' : 'bg-transparent'}`} />
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-[11px] font-bold ${isUnread ? 'text-slate-800' : 'text-slate-500'}`}>{n.title}</p>
-                          <p className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">{n.body}</p>
-                          <p className="text-[9px] text-slate-300 mt-1">{new Date(n.createdAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </>
-          );
-        })(),
-        document.body
-      )}
     </div>
   );
 };
 
-const NavItem = ({ icon: Icon, label, active, onClick, collapsed, badge }: { icon: any, label: string, active: boolean, onClick: () => void, collapsed?: boolean, badge?: number }) => (
+const NavItem = ({ icon: Icon, label, active, onClick, collapsed }: { icon: any, label: string, active: boolean, onClick: () => void, collapsed?: boolean }) => (
   <button
     onClick={onClick}
     title={collapsed ? label : undefined}
     className={`w-full flex items-center ${collapsed ? 'justify-center' : 'space-x-3 px-4'} py-3 rounded-xl transition-all duration-200 ${
-      active
-        ? 'bg-indigo-600 text-white shadow-lg font-bold'
+      active 
+        ? 'bg-indigo-600 text-white shadow-lg font-bold' 
         : 'text-slate-500 hover:bg-slate-50'
     }`}
   >
-    <div className="relative flex-shrink-0">
-      <Icon size={18} />
-      {badge != null && badge > 0 && (
-        <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] bg-rose-500 text-white text-[8px] font-black rounded-full flex items-center justify-center px-0.5 leading-none">
-          {badge > 99 ? '99+' : badge}
-        </span>
-      )}
-    </div>
-    <span className={`text-sm whitespace-nowrap overflow-hidden transition-all duration-200 ${collapsed ? 'opacity-0 w-0' : 'opacity-100'}`}>{label}</span>
+    <Icon size={18} className="flex-shrink-0" />
+    {!collapsed && <span className="text-sm whitespace-nowrap overflow-hidden">{label}</span>}
   </button>
 );
 

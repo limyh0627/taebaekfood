@@ -71,6 +71,15 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const markRoomAsRead = (roomId: string) => {
+    const room = chatRooms.find(r => r.id === roomId);
+    if (!room) return;
+    const now = new Date().toISOString();
+    onUpdateRoom(roomId, {
+      lastReadBy: { ...(room.lastReadBy ?? {}), [currentUser.id]: now }
+    });
+  };
+
   // Firestore 실시간 리스너
   useEffect(() => {
     // 이전 리스너 정리
@@ -80,6 +89,9 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     setFirestoreError(null);
 
     if (!activeRoomId) return;
+
+    // 방 열릴 때 읽음 처리
+    markRoomAsRead(activeRoomId);
 
     setIsLoadingMore(true);
 
@@ -290,34 +302,39 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
           ) : (
             myRooms
               .filter(room => getRoomName(room).toLowerCase().includes(searchTerm.toLowerCase()))
-              .map(room => (
-              <button
-                key={room.id}
-                onClick={() => setActiveRoomId(room.id)}
-                className={`w-full flex items-center space-x-3 p-4 rounded-2xl transition-all ${
-                  activeRoomId === room.id 
-                    ? 'bg-white shadow-md border border-slate-100' 
-                    : 'hover:bg-white/50'
-                }`}
-              >
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm ${
-                  room.isGroup ? 'bg-amber-100 text-amber-600' : 'bg-indigo-100 text-indigo-600'
-                }`}>
-                  {room.isGroup ? <Users size={24} /> : <User size={24} />}
-                </div>
-                <div className="flex-1 text-left overflow-hidden">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-sm font-black text-slate-800 truncate">{getRoomName(room)}</p>
-                    <span className="text-[9px] font-bold text-slate-400">
-                      {room.lastUpdatedAt ? new Date(room.lastUpdatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                    </span>
+              .map(room => {
+                const isUnread = room.lastUpdatedAt > (room.lastReadBy?.[currentUser.id] ?? '');
+                return (
+                <button
+                  key={room.id}
+                  onClick={() => { setActiveRoomId(room.id); markRoomAsRead(room.id); }}
+                  className={`w-full flex items-center space-x-3 p-4 rounded-2xl transition-all ${
+                    activeRoomId === room.id
+                      ? 'bg-white shadow-md border border-slate-100'
+                      : 'hover:bg-white/50'
+                  }`}
+                >
+                  <div className={`relative w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm ${
+                    room.isGroup ? 'bg-amber-100 text-amber-600' : 'bg-indigo-100 text-indigo-600'
+                  }`}>
+                    {room.isGroup ? <Users size={24} /> : <User size={24} />}
+                    {isUnread && activeRoomId !== room.id && (
+                      <span className="absolute top-0 right-0 w-3 h-3 bg-rose-500 rounded-full border-2 border-white" />
+                    )}
                   </div>
-                  <p className="text-[11px] text-slate-500 truncate font-medium">
-                    {room.lastMessage || '대화 내용이 없습니다.'}
-                  </p>
-                </div>
-              </button>
-            ))
+                  <div className="flex-1 text-left overflow-hidden">
+                    <div className="flex items-center justify-between mb-1">
+                      <p className={`text-sm truncate ${isUnread && activeRoomId !== room.id ? 'font-black text-slate-900' : 'font-black text-slate-800'}`}>{getRoomName(room)}</p>
+                      <span className="text-[9px] font-bold text-slate-400 shrink-0 ml-1">
+                        {room.lastUpdatedAt ? new Date(room.lastUpdatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                      </span>
+                    </div>
+                    <p className={`text-[11px] truncate ${isUnread && activeRoomId !== room.id ? 'font-bold text-slate-700' : 'font-medium text-slate-500'}`}>
+                      {room.lastMessage || '대화 내용이 없습니다.'}
+                    </p>
+                  </div>
+                </button>
+              )})
           )}
         </div>
       </div>

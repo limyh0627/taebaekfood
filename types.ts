@@ -223,6 +223,7 @@ export interface ChatRoom {
   lastMessage?: string;
   lastUpdatedAt: string;
   isGroup: boolean;
+  lastReadBy?: Record<string, string>; // userId → ISO timestamp
 }
 
 
