@@ -69,6 +69,8 @@ interface OrdersListProps {
   onToggleItemChecked?: (orderId: string, itemIdx: number) => void;
   onDeleteOrder: (id: string) => void;
   onAddClick: () => void;
+  workOrderItems?: { key: string; orderId: string; productId: string; itemName: string; clientName: string; qty: number; category: string }[];
+  onSetWorkOrderItems?: (items: { key: string; orderId: string; productId: string; itemName: string; clientName: string; qty: number; category: string }[]) => void;
 }
 
 interface OrderCardProps {
@@ -664,6 +666,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
   onUpdateItems, onUpdateDeliveryBoxes,
   onToggleInvoicePrinted, onToggleItemChecked,
   onDeleteOrder, onAddClick,
+  workOrderItems: workOrderItemsProp = [],
+  onSetWorkOrderItems,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('active');
   const [searchTerm, setSearchTerm] = useState('');
@@ -677,12 +681,11 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [historyDateTo, setHistoryDateTo] = useState('');
   const HISTORY_PREVIEW = 5;
   type WorkItem = { key: string; orderId: string; productId: string; itemName: string; clientName: string; qty: number; category: string; };
-  const [workItems, setWorkItems] = useState<WorkItem[]>(() => {
-    try { return JSON.parse(localStorage.getItem('workOrderItems') || '[]'); } catch { return []; }
-  });
-  useEffect(() => {
-    localStorage.setItem('workOrderItems', JSON.stringify(workItems));
-  }, [workItems]);
+  const workItems: WorkItem[] = workOrderItemsProp;
+  const setWorkItems = (items: WorkItem[] | ((prev: WorkItem[]) => WorkItem[])) => {
+    const resolved = typeof items === 'function' ? items(workItems) : items;
+    onSetWorkOrderItems?.(resolved);
+  };
   const [showWorkOrderPicker, setShowWorkOrderPicker] = useState(false);
   const [mobileCollapsed, setMobileCollapsed] = useState<Set<string>>(new Set());
   const toggleMobileCollapse = (id: string) => setMobileCollapsed(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });

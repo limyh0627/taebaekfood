@@ -1144,14 +1144,14 @@ const ProductList: React.FC<ProductListProps> = ({
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
-                  {rmFilter === '전체' && <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">원료명</th>}
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">날짜</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">전재고</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">입고량</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">사용량</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">현재고</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">비고</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hidden sm:table-cell">작성자</th>
+                  {rmFilter === '전체' && <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">원료명</th>}
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">날짜</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap">전재고</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap">입고량</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap">사용량</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap">현재고</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[120px]">비고</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hidden sm:table-cell whitespace-nowrap">작성자</th>
                   <th className="px-4 py-3"></th>
                 </tr>
               </thead>
@@ -1179,7 +1179,7 @@ const ProductList: React.FC<ProductListProps> = ({
                             <td className="px-4 py-2.5 text-[11px] text-slate-300 text-right">-</td>
                             <td className="px-4 py-2.5 text-[11px] text-slate-300 text-right">-</td>
                             <td className="px-4 py-2.5 text-[11px] font-black text-amber-600 text-right">{entry.received}</td>
-                            <td className="px-4 py-2.5 text-[11px] text-amber-500 font-bold">전월이월</td>
+                            <td className="px-4 py-2.5 text-[11px] text-amber-500 font-bold whitespace-nowrap">전월이월</td>
                             <td className="px-4 py-2.5 hidden sm:table-cell">
                               {entry.addedBy && <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md">{entry.addedBy}</span>}
                             </td>
@@ -1201,15 +1201,15 @@ const ProductList: React.FC<ProductListProps> = ({
                       const curr = Math.round(balance * 1000) / 1000;
                       return (
                         <tr key={entry.id || `auto-${idx}`} className={`transition-colors ${entry.isAuto ? 'hover:bg-indigo-50/30 bg-indigo-50/10' : 'hover:bg-slate-50'}`}>
-                          <td className="px-4 py-2.5 text-[11px] font-bold text-slate-500">{entry.date}</td>
-                          <td className="px-4 py-2.5 text-[11px] text-slate-400 text-right">{prev}</td>
-                          <td className="px-4 py-2.5 text-[11px] font-black text-indigo-600 text-right">{entry.received > 0 ? `+${entry.received}` : '-'}</td>
-                          <td className="px-4 py-2.5 text-[11px] font-black text-rose-500 text-right">{entry.used > 0 ? `-${entry.used}` : '-'}</td>
-                          <td className="px-4 py-2.5 text-[11px] font-black text-slate-800 text-right">{curr}</td>
-                          <td className="px-4 py-2.5 text-[11px] text-slate-500">
+                          <td className="px-4 py-2.5 text-[11px] font-bold text-slate-500 whitespace-nowrap">{entry.date}</td>
+                          <td className="px-4 py-2.5 text-[11px] text-slate-400 text-right whitespace-nowrap">{prev}</td>
+                          <td className="px-4 py-2.5 text-[11px] font-black text-indigo-600 text-right whitespace-nowrap">{entry.received > 0 ? `+${entry.received}` : '-'}</td>
+                          <td className="px-4 py-2.5 text-[11px] font-black text-rose-500 text-right whitespace-nowrap">{entry.used > 0 ? `-${entry.used}` : '-'}</td>
+                          <td className="px-4 py-2.5 text-[11px] font-black text-slate-800 text-right whitespace-nowrap">{curr}</td>
+                          <td className="px-4 py-2.5 text-[11px] text-slate-500 max-w-[160px]">
                             {entry.isAuto
-                              ? <span className="text-indigo-400">{entry.note}</span>
-                              : (entry.note || '-')}
+                              ? <span className="text-indigo-400 truncate block" title={entry.note}>{entry.note}</span>
+                              : <span className="truncate block" title={entry.note || '-'}>{entry.note || '-'}</span>}
                           </td>
                           <td className="px-4 py-2.5 hidden sm:table-cell">
                             {entry.addedBy
@@ -1233,16 +1233,16 @@ const ProductList: React.FC<ProductListProps> = ({
                   // 전체 필터: 원료명 표시, 전재고/현재고 없음
                   return sorted.map((entry, idx) => (
                     <tr key={entry.id || `auto-${idx}`} className={`transition-colors ${entry.isAuto ? 'hover:bg-indigo-50/30 bg-indigo-50/10' : 'hover:bg-slate-50'}`}>
-                      <td className="px-4 py-2.5"><span className="text-[11px] font-black text-slate-800 bg-emerald-50 px-2 py-0.5 rounded-lg">{entry.material}</span></td>
-                      <td className="px-4 py-2.5 text-[11px] font-bold text-slate-500">{entry.date}</td>
+                      <td className="px-4 py-2.5 whitespace-nowrap"><span className="text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-lg">{entry.material}</span></td>
+                      <td className="px-4 py-2.5 text-[11px] font-bold text-slate-500 whitespace-nowrap">{entry.date}</td>
                       <td className="px-4 py-2.5 text-[11px] text-slate-300 text-right">-</td>
-                      <td className="px-4 py-2.5 text-[11px] font-black text-indigo-600 text-right">{entry.received > 0 ? `+${entry.received}` : '-'}</td>
-                      <td className="px-4 py-2.5 text-[11px] font-black text-rose-500 text-right">{entry.used > 0 ? `-${entry.used}` : '-'}</td>
+                      <td className="px-4 py-2.5 text-[11px] font-black text-indigo-600 text-right whitespace-nowrap">{entry.received > 0 ? `+${entry.received}` : '-'}</td>
+                      <td className="px-4 py-2.5 text-[11px] font-black text-rose-500 text-right whitespace-nowrap">{entry.used > 0 ? `-${entry.used}` : '-'}</td>
                       <td className="px-4 py-2.5 text-[11px] text-slate-300 text-right">-</td>
-                      <td className="px-4 py-2.5 text-[11px] text-slate-500">
+                      <td className="px-4 py-2.5 text-[11px] text-slate-500 max-w-[160px]">
                         {entry.isAuto
-                          ? <span className="text-indigo-400">{entry.note}</span>
-                          : (entry.note || '-')}
+                          ? <span className="text-indigo-400 truncate block" title={entry.note}>{entry.note}</span>
+                          : <span className="truncate block" title={entry.note || '-'}>{entry.note || '-'}</span>}
                       </td>
                       <td className="px-4 py-2.5 hidden sm:table-cell">
                         {entry.addedBy

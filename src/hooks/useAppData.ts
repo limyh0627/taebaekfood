@@ -7,6 +7,18 @@ import {
 } from '../../types';
 import { subscribeToCollection } from '../services/firebaseService';
 
+export interface WorkOrderItem {
+  id: string;
+  key: string;
+  orderId: string;
+  productId: string;
+  itemName: string;
+  clientName: string;
+  qty: number;
+  category: string;
+  sortIndex: number;
+}
+
 export interface AppData {
   // 주문
   orders: Order[];
@@ -32,6 +44,8 @@ export interface AppData {
   sesameInputLedger: { id: string; type: string; date: string; amount: number }[];
   // 알림
   appNotifications: AppNotification[];
+  // 금일 작업순서
+  workOrderItems: WorkOrderItem[];
   // 로딩 상태
   isDataLoading: boolean;
 }
@@ -54,6 +68,7 @@ export function useAppData(): AppData {
   const [rawMaterialLedger, setRawMaterialLedger] = useState<RawMaterialEntry[]>([]);
   const [sesameInputLedger, setSesameInputLedger] = useState<{ id: string; type: string; date: string; amount: number }[]>([]);
   const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
+  const [workOrderItems, setWorkOrderItems] = useState<WorkOrderItem[]>([]);
   const [isDataLoading, setIsDataLoading] = useState(true);
   const loadedRef = useRef(new Set<string>());
 
@@ -83,6 +98,7 @@ export function useAppData(): AppData {
       subscribeToCollection<RawMaterialEntry>('rawMaterialLedger', setRawMaterialLedger),
       subscribeToCollection<{ id: string; type: string; date: string; amount: number }>('sesameInputLedger', setSesameInputLedger),
       subscribeToCollection<AppNotification>('notifications', setAppNotifications),
+      subscribeToCollection<WorkOrderItem>('workOrderItems', (data) => setWorkOrderItems([...data].sort((a, b) => a.sortIndex - b.sortIndex))),
     ];
     return () => unsubscribes.forEach(u => u());
   }, []);
@@ -95,6 +111,7 @@ export function useAppData(): AppData {
     noticePosts, chatRooms, chatMessages,
     rawMaterialLedger, sesameInputLedger,
     appNotifications,
+    workOrderItems,
     isDataLoading,
   };
 }

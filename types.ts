@@ -234,6 +234,7 @@ export interface AppNotification {
   createdAt: string;
   linkedId?: string;  // 관련 order/request ID
   senderId?: string;  // 발생시킨 userId
+  targetId?: string;  // 수신 대상 userId (없으면 전체)
 }
 
 export interface RawMaterialEntry {

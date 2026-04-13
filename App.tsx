@@ -186,6 +186,7 @@ const App: React.FC = () => {
     noticePosts, chatRooms, chatMessages,
     rawMaterialLedger, sesameInputLedger,
     appNotifications,
+    workOrderItems,
     isDataLoading,
   } = useAppData();
 
@@ -631,7 +632,7 @@ const App: React.FC = () => {
 
           {/* 알림 벨 */}
           {(() => {
-            const unread = appNotifications.filter(n => !n.readBy.includes(currentUser.id));
+            const unread = appNotifications.filter(n => !n.readBy.includes(currentUser.id) && (!n.targetId || n.targetId === currentUser.id));
             return (
               <div className={`mb-2 ${isSidebarCollapsed ? 'flex justify-center' : 'px-1'}`}>
                 <button
@@ -833,6 +834,14 @@ const App: React.FC = () => {
               onUpdateItems={handleUpdateItems}
               onUpdateDeliveryBoxes={(id, boxes) => updateItem('orders', id, { deliveryBoxes: boxes })}
               onToggleInvoicePrinted={(id, value) => updateItem('orders', id, { invoicePrinted: value })}
+              workOrderItems={workOrderItems}
+              onSetWorkOrderItems={async (items) => {
+                // 기존 항목 전체 삭제 후 새 항목 저장
+                await Promise.all(workOrderItems.map(w => deleteItem('workOrderItems', w.id)));
+                await Promise.all(items.map((item, idx) =>
+                  addItem('workOrderItems', { ...item, id: `wo-${Date.now()}-${idx}`, sortIndex: idx })
+                ));
+              }}
             />
           )}
           {currentView === 'inventory' && (
@@ -2373,6 +2382,25 @@ const App: React.FC = () => {
                     lastMessage: msg.text,
                     lastUpdatedAt: new Date().toISOString()
                   }).catch(console.error);
+
+                  // 채팅 알림 — 본인 제외 참여자에게 전송
+                  const recipients = room.participantIds.filter(id => id !== msg.senderId);
+                  const roomName = room.name || (room.participantIds.length === 2
+                    ? (employees.find(e => e.id === recipients[0])?.name ?? '알 수 없음')
+                    : `단체 채팅`);
+                  const preview = msg.text.length > 40 ? msg.text.slice(0, 40) + '…' : msg.text;
+                  await Promise.all(recipients.map(recipientId =>
+                    addItem('notifications', {
+                      type: 'mention',
+                      title: `${msg.senderName} (${roomName})`,
+                      body: preview,
+                      readBy: [],
+                      createdAt: new Date().toISOString(),
+                      senderId: msg.senderId,
+                      linkedId: msg.roomId,
+                      targetId: recipientId,
+                    } as Omit<AppNotification, 'id'> & { targetId: string })
+                  )).catch(console.error);
                 }
 
                 // @관리자 멘션 처리 (부가 동작)
@@ -2441,7 +2469,7 @@ const App: React.FC = () => {
       {/* 알림 패널 — aside overflow-hidden 우회용 포털 */}
       {showNotifPanel && createPortal(
         (() => {
-          const unread = appNotifications.filter(n => !n.readBy.includes(currentUser.id));
+          const unread = appNotifications.filter(n => !n.readBy.includes(currentUser.id) && (!n.targetId || n.targetId === currentUser.id));
           const markRead = async (id: string) => {
             const n = appNotifications.find(x => x.id === id);
             if (!n || n.readBy.includes(currentUser.id)) return;
@@ -2450,7 +2478,7 @@ const App: React.FC = () => {
           const markAll = async () => {
             await Promise.all(unread.map(n => updateItem('notifications', n.id, { readBy: [...n.readBy, currentUser.id] })));
           };
-          const sorted = [...appNotifications].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+          const sorted = [...appNotifications].filter(n => !n.targetId || n.targetId === currentUser.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
           return (
             <>
               <div className="fixed inset-0 z-[999]" onClick={() => setShowNotifPanel(false)} />
