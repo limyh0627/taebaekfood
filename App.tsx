@@ -1236,6 +1236,16 @@ const App: React.FC = () => {
                 await deductSubmaterialsForOrder(o);
                 await updateItem('orders', o.id, { status: OrderStatus.DELIVERED, deliveredAt: new Date().toISOString() });
               }
+              // 향미유만 있는 출고 주문도 이력으로 이동
+              const hyangmiyuOnlyOrders = orders.filter(o =>
+                o.status === OrderStatus.SHIPPED &&
+                o.customerName !== '생산기록' &&
+                o.items.length > 0 &&
+                o.items.every(item => allProducts.find(pr => pr.id === item.productId)?.category === '향미유')
+              );
+              for (const o of hyangmiyuOnlyOrders) {
+                await updateItem('orders', o.id, { status: OrderStatus.DELIVERED, deliveredAt: new Date().toISOString() });
+              }
             };
 
             return (

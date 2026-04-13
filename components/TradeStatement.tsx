@@ -360,17 +360,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     if (!selectedClientId || lineItems.length === 0) return;
     if (!manualMode && selectedOrderId) {
       onMarkInvoicePrinted?.(selectedOrderId, true);
-      // 향미유만 있는 출고 주문은 전표 발행 시 이력으로 이동
-      const order = orders.find(o => o.id === selectedOrderId);
-      if (order && order.status === OrderStatus.SHIPPED) {
-        const allHyangmiyu = order.items.length > 0 && order.items.every(item => {
-          const product = allProducts.find(p => p.id === item.productId);
-          return product?.category === '향미유';
-        });
-        if (allHyangmiyu) {
-          onUpdateStatus?.(selectedOrderId, OrderStatus.DELIVERED);
-        }
-      }
     }
     const stmt: IssuedStatement = {
       id: `stmt-${Date.now()}`,
@@ -399,7 +388,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         }
       }
     }
-  }, [manualMode, selectedOrderId, selectedClientId, tradeDate, stmtType, selectedClient, docNo, totalSupply, totalTax, totalAmount, lineItems, onMarkInvoicePrinted, onAddIssuedStatement, onAddConfirmedOrder, allProducts, confirmedOrders, orders, onUpdateStatus]);
+  }, [manualMode, selectedOrderId, selectedClientId, tradeDate, stmtType, selectedClient, docNo, totalSupply, totalTax, totalAmount, lineItems, onMarkInvoicePrinted, onAddIssuedStatement, onAddConfirmedOrder, allProducts, confirmedOrders]);
 
   const handleIssue = () => {
     markIssued();
