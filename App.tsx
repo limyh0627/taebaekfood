@@ -598,7 +598,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
+    <div className="flex overflow-hidden bg-slate-50" style={{ height: '100dvh' }}>
       {/* 모바일 오버레이 배경 — 항상 렌더, opacity로 fade 트랜지션 */}
       <div
         className={`fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 md:hidden ${
@@ -612,7 +612,7 @@ const App: React.FC = () => {
           ? (isSidebarCollapsed ? '-translate-x-full' : 'translate-x-0 w-64')
           : (isSidebarCollapsed ? 'w-20' : 'w-64')
       }`}>
-        <div className={`flex flex-col h-full ${isSidebarCollapsed ? 'p-4' : 'p-6'}`}>
+        <div className={`flex flex-col h-full ${isSidebarCollapsed ? 'p-4' : 'p-6'}`} style={{ paddingTop: `max(${isSidebarCollapsed ? '1rem' : '1.5rem'}, env(safe-area-inset-top))`, paddingBottom: `max(${isSidebarCollapsed ? '1rem' : '1.5rem'}, env(safe-area-inset-bottom))` }}>
           <div className={`flex items-center ${isSidebarCollapsed ? 'flex-col gap-2' : 'px-2 justify-between'} mb-10`}>
             <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setCurrentView('orders')}>
               <div className="w-10 h-10 bg-pink-500 rounded-xl flex items-center justify-center text-white shadow-lg flex-shrink-0 font-black text-sm tracking-tight leading-none">태백</div>
@@ -732,9 +732,9 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      <main className={`flex-1 flex flex-col min-w-0 h-screen overflow-hidden transition-all duration-300 ${isMobile ? '' : (isSidebarCollapsed ? 'ml-20' : 'ml-64')}`}>
+      <main className={`flex-1 flex flex-col min-w-0 overflow-hidden transition-all duration-300 ${isMobile ? '' : (isSidebarCollapsed ? 'ml-20' : 'ml-64')}`} style={{ height: '100dvh' }}>
         {/* 모바일 헤더 */}
-        <header className="md:hidden bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between">
+        <header className="md:hidden bg-white border-b border-slate-200 px-4 flex items-center justify-between" style={{ paddingTop: `max(0.75rem, env(safe-area-inset-top))`, paddingBottom: '0.75rem' }}>
           <button
             onClick={() => setIsSidebarCollapsed(false)}
             className="p-2 rounded-lg hover:bg-slate-100 text-slate-600"
@@ -870,6 +870,7 @@ const App: React.FC = () => {
               }}
               onAddAdjustmentRequest={(req) => addItem('adjustmentRequests', req)}
               suppliers={clients.filter(c => c.partnerType === '매입처' || c.partnerType === '매출+매입처')}
+              currentUser={currentUser}
               rawMaterialLedger={rawMaterialLedger}
               autoUsageEntries={autoRawMaterialUsage}
               onAddRawMaterialEntry={async (entry) => {

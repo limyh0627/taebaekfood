@@ -244,6 +244,7 @@ export interface RawMaterialEntry {
   used: number;      // 사용량 (정정은 음수)
   note: string;      // 비고
   createdAt: string;
+  addedBy?: string;  // 작성자
   type?: 'auto' | 'manual' | 'correction'; // auto: 주문 자동생성, manual: 직접입력, correction: 정정
   orderId?: string;  // auto 타입일 때 출처 주문 ID
 }

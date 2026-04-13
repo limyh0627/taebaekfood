@@ -56,6 +56,7 @@ interface ProductListProps {
   autoUsageEntries?: Array<{ material: string; date: string; used: number; note: string }>;
   onAddRawMaterialEntry: (entry: RawMaterialEntry) => void;
   onDeleteRawMaterialEntry: (id: string) => void;
+  currentUser?: { name: string; id: string } | null;
 }
 
 const RAW_MATERIALS = ['참깨','들깨','검정깨','탈피들깨가루','깨분','볶음참깨','볶음들깨','볶음검정참깨','통깨참기름','깨분참기름','통들깨들기름','수입들기름'];
@@ -82,6 +83,7 @@ const ProductList: React.FC<ProductListProps> = ({
   autoUsageEntries = [],
   onAddRawMaterialEntry,
   onDeleteRawMaterialEntry,
+  currentUser,
 }) => {
   const [topTab, setTopTab] = useState<TopTab>('product');
   const [activeTab, setActiveTab] = useState<MainTab>('master');
@@ -122,6 +124,9 @@ const ProductList: React.FC<ProductListProps> = ({
   const [reqNote, setReqNote] = useState<string>('');
   const [inlineCartId, setInlineCartId] = useState<string | null>(null);
   const [inlineCartQty, setInlineCartQty] = useState<number>(0);
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+  const [showRmSheet, setShowRmSheet] = useState(false);
+  const [rmSheetTab, setRmSheetTab] = useState<'new' | 'carryover'>('new');
   const [cart, setCart] = useState<{ id: string; qty: number }[]>([]);
   const [showCartPanel, setShowCartPanel] = useState(false);
 
@@ -454,7 +459,7 @@ const ProductList: React.FC<ProductListProps> = ({
         {activeTab === 'master' && (
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-4">
             <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] text-left">
+            <table className="w-full text-left">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
                   <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">카테고리</th>
@@ -462,7 +467,7 @@ const ProductList: React.FC<ProductListProps> = ({
                   <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">현재 재고</th>
                   <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right hidden sm:table-cell">최소 수량</th>
                   <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center hidden sm:table-cell">상태</th>
-                  <th className="px-4 py-3"></th>
+                  <th className="px-4 py-3 hidden sm:table-cell"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -470,8 +475,24 @@ const ProductList: React.FC<ProductListProps> = ({
                   const isCritical = product.category !== '완제품' && product.stock < product.minStock;
                   const confInfo = confirmedOrders.find(c => c.id === product.id);
                   const inCart = cart.some(c => c.id === product.id);
+                  const isExpanded = expandedRowId === product.id;
+                  const statusBadge = product.category === '완제품' ? (
+                    <span className="text-[9px] font-black text-slate-300">자체생산</span>
+                  ) : confInfo ? (
+                    <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full whitespace-nowrap">입고대기 {confInfo.quantity}{product.unit}</span>
+                  ) : inCart ? (
+                    <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full whitespace-nowrap">발주요청</span>
+                  ) : isCritical ? (
+                    <span className="text-[9px] font-black text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">재고부족</span>
+                  ) : (
+                    <span className="text-[9px] font-black text-slate-300">정상</span>
+                  );
                   return (
-                    <tr key={product.id} className={`transition-colors ${inCart ? 'bg-indigo-50/40' : isCritical ? 'bg-rose-50/30 hover:bg-rose-50/50' : 'hover:bg-slate-50/50'}`}>
+                    <React.Fragment key={product.id}>
+                    <tr
+                      className={`transition-colors cursor-pointer sm:cursor-default ${inCart ? 'bg-indigo-50/40' : isCritical ? 'bg-rose-50/30 hover:bg-rose-50/50' : 'hover:bg-slate-50/50'}`}
+                      onClick={() => setExpandedRowId(isExpanded ? null : product.id)}
+                    >
                       <td className="px-4 py-3">
                         <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${
                           product.category === '완제품' ? 'bg-indigo-50 text-indigo-600' :
@@ -487,7 +508,7 @@ const ProductList: React.FC<ProductListProps> = ({
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-bold text-slate-800">{product.name}</span>
                           {isCritical && <AlertCircle size={12} className="text-rose-500 shrink-0" />}
-                          <button onClick={e => { e.stopPropagation(); onEditProduct(product); }} className="text-slate-200 hover:text-indigo-500 transition-all shrink-0">
+                          <button onClick={e => { e.stopPropagation(); onEditProduct(product); }} className="text-slate-200 hover:text-indigo-500 transition-all shrink-0 hidden sm:inline-flex">
                             <Edit size={12} />
                           </button>
                         </div>
@@ -513,13 +534,14 @@ const ProductList: React.FC<ProductListProps> = ({
                                 if (!isNaN(val) && val >= 0) onUpdateProduct({ ...product, stock: val });
                                 setEditingStockId(null);
                               }}
+                              onClick={e => e.stopPropagation()}
                               className="w-20 text-right text-sm font-black border border-indigo-300 rounded-lg py-1 px-2 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                             />
                             <span className="text-[10px] text-slate-400">{product.category === '향미유' ? 'B' : product.unit}</span>
                           </div>
                         ) : (
                           <button
-                            onClick={() => { setEditingStockId(product.id); setEditingStockVal(String(product.stock)); }}
+                            onClick={e => { e.stopPropagation(); setEditingStockId(product.id); setEditingStockVal(String(product.stock)); }}
                             className={`text-base font-black hover:underline hover:text-indigo-600 transition-colors cursor-pointer ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}
                             title="클릭하여 수량 수정"
                           >
@@ -536,28 +558,18 @@ const ProductList: React.FC<ProductListProps> = ({
                           : <span className="text-[10px] text-slate-200">-</span>}
                       </td>
                       <td className="px-4 py-3 text-center hidden sm:table-cell">
-                        {product.category === '완제품' ? (
-                          <span className="text-[9px] font-black text-slate-300">자체생산</span>
-                        ) : confInfo ? (
-                          <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full whitespace-nowrap">입고대기 {confInfo.quantity}{product.unit}</span>
-                        ) : inCart ? (
-                          <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full whitespace-nowrap">발주요청</span>
-                        ) : isCritical ? (
-                          <span className="text-[9px] font-black text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">재고부족</span>
-                        ) : (
-                          <span className="text-[9px] font-black text-slate-300">정상</span>
-                        )}
+                        {statusBadge}
                       </td>
-                      <td className="px-3 py-3 text-right">
+                      <td className="px-3 py-3 text-right hidden sm:table-cell">
                         <div className="flex items-center justify-end gap-1.5">
                           {product.category !== '완제품' && (
                             inCart ? (
                               <button
-                                onClick={() => removeFromCart(product.id)}
+                                onClick={e => { e.stopPropagation(); removeFromCart(product.id); }}
                                 className="text-[10px] font-black px-2.5 py-1.5 rounded-xl bg-indigo-500 text-white hover:bg-indigo-600 transition-all shadow-sm"
                               >담김 ✓</button>
                             ) : inlineCartId === product.id ? (
-                              <div className="flex items-center gap-1 justify-end">
+                              <div className="flex items-center gap-1 justify-end" onClick={e => e.stopPropagation()}>
                                 <input
                                   autoFocus
                                   type="number"
@@ -578,18 +590,77 @@ const ProductList: React.FC<ProductListProps> = ({
                               </div>
                             ) : (
                               <button
-                                onClick={() => { setInlineCartId(product.id); setInlineCartQty(product.minStock * 2 || 20); }}
+                                onClick={e => { e.stopPropagation(); setInlineCartId(product.id); setInlineCartQty(product.minStock * 2 || 20); }}
                                 className="text-[10px] font-black px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-all border border-slate-200"
                               >+ 담기</button>
                             )
                           )}
                           <button
-                            onClick={() => { setRowEditProduct(product); setRowEditForm({ name: product.name, category: product.category, stock: product.stock, minStock: product.minStock, unit: product.unit }); }}
+                            onClick={e => { e.stopPropagation(); setRowEditProduct(product); setRowEditForm({ name: product.name, category: product.category, stock: product.stock, minStock: product.minStock, unit: product.unit }); }}
                             className="text-[10px] font-black px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-500 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition-all border border-slate-200"
                           >수정</button>
                         </div>
                       </td>
                     </tr>
+                    {/* 모바일 펼침 행 */}
+                    {isExpanded && (
+                      <tr className="sm:hidden bg-slate-50/80">
+                        <td colSpan={3} className="px-4 py-3">
+                          <div className="flex flex-col gap-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-black text-slate-400 uppercase">최소수량</span>
+                              <span className="text-xs font-bold text-slate-500">
+                                {product.category !== '완제품' ? `${product.minStock} ${product.unit}` : '-'}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-black text-slate-400 uppercase">상태</span>
+                              <div>{statusBadge}</div>
+                            </div>
+                            <div className="flex items-center gap-2 pt-1" onClick={e => e.stopPropagation()}>
+                              {product.category !== '완제품' && (
+                                inCart ? (
+                                  <button
+                                    onClick={() => removeFromCart(product.id)}
+                                    className="flex-1 text-[11px] font-black py-2 rounded-xl bg-indigo-500 text-white"
+                                  >담김 ✓</button>
+                                ) : inlineCartId === product.id ? (
+                                  <div className="flex-1 flex items-center gap-1">
+                                    <input
+                                      autoFocus
+                                      type="number"
+                                      value={inlineCartQty}
+                                      onChange={e => setInlineCartQty(parseInt(e.target.value) || 1)}
+                                      onKeyDown={e => {
+                                        if (e.key === 'Enter') { addToCart(product.id, inlineCartQty); setInlineCartId(null); setExpandedRowId(null); }
+                                        if (e.key === 'Escape') setInlineCartId(null);
+                                      }}
+                                      className="flex-1 text-center text-xs font-black border border-indigo-300 rounded-lg py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                                    />
+                                    <span className="text-[10px] text-slate-400">{product.unit}</span>
+                                    <button
+                                      onClick={() => { addToCart(product.id, inlineCartQty); setInlineCartId(null); setExpandedRowId(null); }}
+                                      className="text-[11px] font-black px-3 py-1.5 rounded-xl bg-indigo-500 text-white"
+                                    >담기</button>
+                                    <button onClick={() => setInlineCartId(null)} className="text-slate-300"><X size={14} /></button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => { setInlineCartId(product.id); setInlineCartQty(product.minStock * 2 || 20); }}
+                                    className="flex-1 text-[11px] font-black py-2 rounded-xl bg-slate-100 text-slate-500 border border-slate-200"
+                                  >+ 발주담기</button>
+                                )
+                              )}
+                              <button
+                                onClick={() => { setRowEditProduct(product); setRowEditForm({ name: product.name, category: product.category, stock: product.stock, minStock: product.minStock, unit: product.unit }); setExpandedRowId(null); }}
+                                className="flex-1 text-[11px] font-black py-2 rounded-xl bg-slate-100 text-slate-500 border border-slate-200"
+                              >수정</button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   );
                 })}
                 {pagedProducts.length === 0 && (
@@ -859,74 +930,154 @@ const ProductList: React.FC<ProductListProps> = ({
       {/* 원료 재고 탭 */}
       {topTab === 'rawmaterial' && (
         <div className="space-y-4 animate-in slide-in-from-right-4 duration-500">
-          {/* 입력 폼 */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
-            <p className="text-xs font-black text-slate-500 uppercase tracking-widest">새 기록 추가</p>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-              <select value={rmMaterial} onChange={e => setRmMaterial(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-indigo-400">
-                {RAW_MATERIALS.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-              <input type="date" value={rmDate} onChange={e => setRmDate(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-indigo-400 cursor-pointer" />
-              <input type="number" placeholder="입고량" value={rmReceived} onChange={e => setRmReceived(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-indigo-400" />
-              <input type="number" placeholder="사용량" value={rmUsed} onChange={e => setRmUsed(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-indigo-400" />
-              <input type="text" placeholder="비고" value={rmNote} onChange={e => setRmNote(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-indigo-400" />
-            </div>
-            <button
-              onClick={() => {
-                if (!rmDate) return;
-                onAddRawMaterialEntry({
-                  id: `rm-${Date.now()}`,
-                  material: rmMaterial,
-                  date: rmDate,
-                  received: Number(rmReceived) || 0,
-                  used: Number(rmUsed) || 0,
-                  note: rmNote,
-                  createdAt: new Date().toISOString(),
-                });
-                setRmReceived(''); setRmUsed(''); setRmNote('');
-              }}
-              className="px-5 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black hover:bg-emerald-700 transition-all"
-            >
-              추가
-            </button>
-          </div>
+          {/* Bottom Sheet */}
+          {showRmSheet && (
+            <div className="fixed inset-0 z-[200] flex flex-col justify-end sm:justify-center sm:items-center">
+              {/* 배경 */}
+              <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowRmSheet(false)} />
+              {/* 시트 */}
+              <div className="relative bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md shadow-2xl animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
+                {/* 핸들바 */}
+                <div className="flex justify-center pt-3 pb-1 sm:hidden">
+                  <div className="w-10 h-1 rounded-full bg-slate-200" />
+                </div>
+                {/* 헤더 */}
+                <div className="px-5 pt-3 pb-0 flex items-center justify-between sm:pt-5">
+                  <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+                    <button
+                      onClick={() => setRmSheetTab('new')}
+                      className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${rmSheetTab === 'new' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                    >새 기록</button>
+                    <button
+                      onClick={() => setRmSheetTab('carryover')}
+                      className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${rmSheetTab === 'carryover' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                    >전월이월</button>
+                  </div>
+                  <button onClick={() => setShowRmSheet(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl transition-all">
+                    <X size={18} />
+                  </button>
+                </div>
 
-          {/* 전월이월 설정 */}
-          <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 space-y-3">
-            <p className="text-xs font-black text-amber-600 uppercase tracking-widest">전월이월 설정 (매월 1일 잔량)</p>
-            <div className="flex flex-wrap gap-2 items-end">
-              <select value={rmOpenMaterial} onChange={e => setRmOpenMaterial(e.target.value)}
-                className="bg-white border border-amber-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-amber-400">
-                {RAW_MATERIALS.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-              <input type="date" value={rmOpenDate} onChange={e => setRmOpenDate(e.target.value)}
-                className="bg-white border border-amber-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-amber-400 cursor-pointer" />
-              <input type="number" placeholder="전월 마감 잔량 (kg)" value={rmOpenBalance} onChange={e => setRmOpenBalance(e.target.value)}
-                className="bg-white border border-amber-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-amber-400 w-40" />
-              <button
-                onClick={() => {
-                  if (!rmOpenDate || !rmOpenBalance) return;
-                  onAddRawMaterialEntry({
-                    id: `rm-open-${Date.now()}`,
-                    material: rmOpenMaterial,
-                    date: rmOpenDate,
-                    received: Number(rmOpenBalance),
-                    used: 0,
-                    note: '전월이월',
-                    createdAt: new Date().toISOString(),
-                  });
-                  setRmOpenBalance('');
-                }}
-                className="px-4 py-2 bg-amber-500 text-white rounded-xl text-xs font-black hover:bg-amber-600 transition-all"
-              >
-                전월이월 저장
-              </button>
+                {/* 새 기록 탭 */}
+                {rmSheetTab === 'new' && (
+                  <div className="px-5 pt-4 pb-6 space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">원료명</label>
+                        <select value={rmMaterial} onChange={e => setRmMaterial(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-emerald-400">
+                          {RAW_MATERIALS.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">날짜</label>
+                        <input type="date" value={rmDate} onChange={e => setRmDate(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-emerald-400 cursor-pointer" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">입고량 (kg)</label>
+                        <input type="number" placeholder="0" value={rmReceived} onChange={e => setRmReceived(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-emerald-400" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">사용량 (kg)</label>
+                        <input type="number" placeholder="0" value={rmUsed} onChange={e => setRmUsed(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-emerald-400" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">비고</label>
+                      <input type="text" placeholder="거래처명, 메모 등" value={rmNote} onChange={e => setRmNote(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-emerald-400" />
+                    </div>
+                    {currentUser && (
+                      <div className="flex items-center gap-2 px-1">
+                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">작성자</span>
+                        <span className="text-xs font-bold text-slate-500">{currentUser.name}</span>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => {
+                        if (!rmDate) return;
+                        onAddRawMaterialEntry({
+                          id: `rm-${Date.now()}`,
+                          material: rmMaterial,
+                          date: rmDate,
+                          received: Number(rmReceived) || 0,
+                          used: Number(rmUsed) || 0,
+                          note: rmNote,
+                          createdAt: new Date().toISOString(),
+                          addedBy: currentUser?.name,
+                        });
+                        setRmReceived(''); setRmUsed(''); setRmNote('');
+                        setShowRmSheet(false);
+                      }}
+                      className="w-full py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 active:scale-[0.99] transition-all"
+                    >
+                      추가
+                    </button>
+                  </div>
+                )}
+
+                {/* 전월이월 탭 */}
+                {rmSheetTab === 'carryover' && (
+                  <div className="px-5 pt-4 pb-6 space-y-3">
+                    <p className="text-xs text-slate-400 font-bold">매월 1일 기준 전월 마감 잔량을 입력하세요.</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">원료명</label>
+                        <select value={rmOpenMaterial} onChange={e => setRmOpenMaterial(e.target.value)}
+                          className="w-full bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-amber-400">
+                          {RAW_MATERIALS.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">기준일</label>
+                        <input type="date" value={rmOpenDate} onChange={e => setRmOpenDate(e.target.value)}
+                          className="w-full bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-amber-400 cursor-pointer" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">전월 마감 잔량 (kg)</label>
+                      <input type="number" placeholder="0" value={rmOpenBalance} onChange={e => setRmOpenBalance(e.target.value)}
+                        className="w-full bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-amber-400" />
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (!rmOpenDate || !rmOpenBalance) return;
+                        onAddRawMaterialEntry({
+                          id: `rm-open-${Date.now()}`,
+                          material: rmOpenMaterial,
+                          date: rmOpenDate,
+                          received: Number(rmOpenBalance),
+                          used: 0,
+                          note: '전월이월',
+                          createdAt: new Date().toISOString(),
+                        });
+                        setRmOpenBalance('');
+                        setShowRmSheet(false);
+                      }}
+                      className="w-full py-3 bg-amber-500 text-white rounded-2xl text-sm font-black hover:bg-amber-600 active:scale-[0.99] transition-all"
+                    >
+                      전월이월 저장
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
+          )}
+
+          {/* 헤더: 기록 추가 버튼 */}
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">원료별 현재고</p>
+            <button
+              onClick={() => { setRmSheetTab('new'); setShowRmSheet(true); }}
+              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black hover:bg-emerald-700 active:scale-95 transition-all shadow-sm"
+            >
+              <span className="text-base leading-none">+</span> 기록 추가
+            </button>
           </div>
 
           {/* 원료별 잔량 요약 카드 */}
@@ -1000,15 +1151,16 @@ const ProductList: React.FC<ProductListProps> = ({
                   <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">사용량</th>
                   <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">현재고</th>
                   <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">비고</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hidden sm:table-cell">작성자</th>
                   <th className="px-4 py-3"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {(() => {
                   // auto 사용량 항목 (isAuto: true, id 없음)
-                  type DisplayEntry = { id?: string; material: string; date: string; received: number; used: number; note: string; isAuto: boolean };
+                  type DisplayEntry = { id?: string; material: string; date: string; received: number; used: number; note: string; isAuto: boolean; addedBy?: string };
                   const manualEntries: DisplayEntry[] = (rmFilter === '전체' ? rawMaterialLedger : rawMaterialLedger.filter(e => e.material === rmFilter))
-                    .map(e => ({ id: e.id, material: e.material, date: e.date, received: e.received, used: e.used, note: e.note, isAuto: false }));
+                    .map(e => ({ id: e.id, material: e.material, date: e.date, received: e.received, used: e.used, note: e.note, isAuto: false, addedBy: e.addedBy }));
                   const autoEntries: DisplayEntry[] = (rmFilter === '전체' ? autoUsageEntries : autoUsageEntries.filter(e => e.material === rmFilter))
                     .map(e => ({ material: e.material, date: e.date, received: 0, used: e.used, note: e.note, isAuto: true }));
                   const sorted = [...manualEntries, ...autoEntries].sort((a, b) => b.date.localeCompare(a.date) || (a.isAuto ? 1 : -1));
@@ -1028,6 +1180,9 @@ const ProductList: React.FC<ProductListProps> = ({
                             <td className="px-4 py-2.5 text-[11px] text-slate-300 text-right">-</td>
                             <td className="px-4 py-2.5 text-[11px] font-black text-amber-600 text-right">{entry.received}</td>
                             <td className="px-4 py-2.5 text-[11px] text-amber-500 font-bold">전월이월</td>
+                            <td className="px-4 py-2.5 hidden sm:table-cell">
+                              {entry.addedBy && <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md">{entry.addedBy}</span>}
+                            </td>
                             <td className="px-4 py-2.5">
                               {entry.id && <button onClick={() => setConfirmModal({
                                   message: '이 기록을 삭제하시겠습니까?',
@@ -1055,6 +1210,11 @@ const ProductList: React.FC<ProductListProps> = ({
                             {entry.isAuto
                               ? <span className="text-indigo-400">{entry.note}</span>
                               : (entry.note || '-')}
+                          </td>
+                          <td className="px-4 py-2.5 hidden sm:table-cell">
+                            {entry.addedBy
+                              ? <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md">{entry.addedBy}</span>
+                              : entry.isAuto ? <span className="text-[10px] text-slate-200">자동</span> : null}
                           </td>
                           <td className="px-4 py-2.5">
                             {!entry.isAuto && entry.id && <button onClick={() => setConfirmModal({
@@ -1084,6 +1244,11 @@ const ProductList: React.FC<ProductListProps> = ({
                           ? <span className="text-indigo-400">{entry.note}</span>
                           : (entry.note || '-')}
                       </td>
+                      <td className="px-4 py-2.5 hidden sm:table-cell">
+                        {entry.addedBy
+                          ? <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md">{entry.addedBy}</span>
+                          : entry.isAuto ? <span className="text-[10px] text-slate-200">자동</span> : null}
+                      </td>
                       <td className="px-4 py-2.5">
                         {!entry.isAuto && entry.id && <button onClick={() => setConfirmModal({
                             message: '이 기록을 삭제하시겠습니까?',
@@ -1098,7 +1263,7 @@ const ProductList: React.FC<ProductListProps> = ({
                   ));
                 })()}
                 {rawMaterialLedger.length === 0 && (
-                  <tr><td colSpan={8} className="px-4 py-12 text-center text-slate-300 text-sm font-bold">기록이 없습니다</td></tr>
+                  <tr><td colSpan={9} className="px-4 py-12 text-center text-slate-300 text-sm font-bold">기록이 없습니다</td></tr>
                 )}
               </tbody>
             </table>

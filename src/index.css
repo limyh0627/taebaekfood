@@ -3,15 +3,39 @@
 @tailwind utilities;
 
 /* Base styles */
+html {
+  height: -webkit-fill-available;
+}
+
 body {
   font-family: 'Inter', 'Pretendard', system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
+  min-height: -webkit-fill-available;
+  /* iOS 고무줄 스크롤 방지 */
+  overscroll-behavior: none;
 }
+
+/* iOS safe area */
+.safe-top    { padding-top:    env(safe-area-inset-top); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+.safe-left   { padding-left:   env(safe-area-inset-left); }
+.safe-right  { padding-right:  env(safe-area-inset-right); }
 
 /* PWA standalone mode */
 @media all and (display-mode: standalone) {
   body {
     -webkit-user-select: none;
     user-select: none;
+  }
+}
+
+/* input 포커스 시 iOS 자동 확대 방지 */
+input, select, textarea {
+  font-size: 16px;
+}
+@media (min-width: 640px) {
+  input, select, textarea {
+    font-size: inherit;
   }
 }
 
@@ -25,3 +49,12 @@ input::-webkit-inner-spin-button {
 input[type=number] {
   -moz-appearance: textfield;
 }
+
+/* iOS Safari 스크롤 부드럽게 */
+.overflow-y-auto, .overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* no-scrollbar */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

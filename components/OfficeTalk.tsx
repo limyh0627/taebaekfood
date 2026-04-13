@@ -255,7 +255,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   }, [employees, mentionSearch, currentUser.id]);
 
   return (
-    <div className="flex h-[calc(100vh-120px)] bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden relative">
+    <div className="flex bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden relative" style={{ height: 'calc(100dvh - 120px)' }}>
       {/* Sidebar: Room List */}
       <div className={`w-full lg:w-80 border-r border-slate-100 flex flex-col bg-slate-50/30 ${activeRoomId ? 'hidden lg:flex' : 'flex'}`}>
         <div className="p-6 border-b border-slate-100">
@@ -323,7 +323,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
       </div>
 
       {/* Main Content: Chat Window */}
-      <div className={`flex-1 flex flex-col bg-white ${!activeRoomId ? 'hidden lg:flex' : 'flex'}`}>
+      <div className={`flex-1 flex flex-col bg-white min-h-0 min-w-0 ${!activeRoomId ? 'hidden lg:flex' : 'flex'}`}>
         {activeRoom ? (
           <>
             {/* Chat Header */}
@@ -381,8 +381,12 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                       </button>
                     </div>
                   )}
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                    참여자 {activeRoom.participantIds.length}명
+                  <p className="text-[10px] font-bold text-slate-400 truncate max-w-[180px] lg:max-w-xs">
+                    {(() => {
+                      const names = activeRoom.participantIds.map(id => employees.find(e => e.id === id)?.name || '').filter(Boolean);
+                      const joined = names.join(', ');
+                      return `${names.length}명 · ${joined}`;
+                    })()}
                   </p>
                 </div>
               </div>
@@ -420,7 +424,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
             </div>
 
             {/* Messages List */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-slate-50/30">
+            <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-slate-50/30">
               {firestoreError && (
                 <div className="flex items-center space-x-2 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-xs font-bold text-rose-600">
                   <X size={14} className="shrink-0" />
