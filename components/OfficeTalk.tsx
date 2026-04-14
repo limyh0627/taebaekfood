@@ -74,6 +74,15 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>(
     'Notification' in window ? Notification.permission : 'denied'
   );
+  const [notifMode, setNotifMode] = useState<'sound' | 'vibration' | 'both'>(() => {
+    return (localStorage.getItem('officetalk_notif_mode') as 'sound' | 'vibration' | 'both') ?? 'both';
+  });
+  const [showNotifSettings, setShowNotifSettings] = useState(false);
+
+  const saveNotifMode = (mode: 'sound' | 'vibration' | 'both') => {
+    setNotifMode(mode);
+    localStorage.setItem('officetalk_notif_mode', mode);
+  };
 
   // 알림 권한 요청
   const requestNotifPermission = async () => {
@@ -119,9 +128,9 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
 
       if (isNew && isUnread && isOtherRoom) {
         // 소리
-        playNotificationSound();
+        if (notifMode === 'sound' || notifMode === 'both') playNotificationSound();
         // 진동 (Android)
-        if ('vibrate' in navigator) navigator.vibrate([150, 80, 150]);
+        if ((notifMode === 'vibration' || notifMode === 'both') && 'vibrate' in navigator) navigator.vibrate([150, 80, 150]);
         // 브라우저 알림
         if (notifPermission === 'granted' && !document.hasFocus()) {
           const roomName = room.name || '오피스톡';
@@ -339,21 +348,59 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
         <div className="p-6 border-b border-slate-100">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-black text-slate-900">오피스톡</h2>
-            <button
-              onClick={() => setIsNewChatModalOpen(true)}
-              className="p-2 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all"
-            >
-              <Plus size={20} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowNotifSettings(p => !p)}
+                className={`p-2 rounded-xl transition-all ${showNotifSettings ? 'bg-indigo-100 text-indigo-600' : 'text-slate-400 hover:bg-slate-100'}`}
+                title="알림 설정"
+              >
+                🔔
+              </button>
+              <button
+                onClick={() => setIsNewChatModalOpen(true)}
+                className="p-2 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all"
+              >
+                <Plus size={20} />
+              </button>
+            </div>
           </div>
-          {notifPermission !== 'granted' && (
-            <button
-              onClick={requestNotifPermission}
-              className="w-full mb-4 flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-[11px] font-bold hover:bg-amber-100 transition-all"
-            >
-              <span className="text-base">🔔</span>
-              <span>{notifPermission === 'denied' ? '알림이 차단되어 있습니다 (브라우저 설정에서 허용)' : '알림 허용하기 — 새 메시지 소리·진동 수신'}</span>
-            </button>
+
+          {/* 알림 설정 패널 */}
+          {showNotifSettings && (
+            <div className="mb-4 p-3 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col gap-2">
+              <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest">알림 방식</p>
+              <div className="flex gap-2">
+                {([
+                  { value: 'sound',     label: '🔊 소리' },
+                  { value: 'vibration', label: '📳 진동' },
+                  { value: 'both',      label: '🔊+📳 둘 다' },
+                ] as const).map(({ value, label }) => (
+                  <button
+                    key={value}
+                    onClick={() => saveNotifMode(value)}
+                    className={`flex-1 py-2 rounded-xl text-[11px] font-black transition-all border ${
+                      notifMode === value
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow'
+                        : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {notifPermission !== 'granted' && (
+                <button
+                  onClick={requestNotifPermission}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-[11px] font-bold hover:bg-amber-100 transition-all"
+                >
+                  <span>🔔</span>
+                  <span>{notifPermission === 'denied' ? '알림 차단됨 — 브라우저 설정에서 허용' : '알림 허용하기'}</span>
+                </button>
+              )}
+              {notifPermission === 'granted' && (
+                <p className="text-[10px] text-emerald-600 font-bold px-1">✅ 알림 허용됨</p>
+              )}
+            </div>
           )}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
