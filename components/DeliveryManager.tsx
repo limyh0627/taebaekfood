@@ -14,7 +14,9 @@ import {
   ListOrdered,
   Plus,
   GripVertical,
-  ChevronDown
+  ChevronDown,
+  Square,
+  CheckSquare
 } from 'lucide-react';
 import { Order, Client, OrderStatus, Product } from '../types';
 import { X, Save } from 'lucide-react';
@@ -51,6 +53,9 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
   const [deliveryTab, setDeliveryTab] = useState<'배송일정관리' | '배송캘린더'>('배송일정관리');
   const [mobileCollapsed, setMobileCollapsed] = useState<Set<string>>(new Set());
   const toggleMobileCollapse = (id: string) => setMobileCollapsed(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  const [selectedDispatchedIds, setSelectedDispatchedIds] = useState<Set<string>>(new Set());
+  const toggleDispatchedSelect = (id: string) => setSelectedDispatchedIds(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  const handleBulkShip = () => { selectedDispatchedIds.forEach(id => onUpdateStatus?.(id, OrderStatus.SHIPPED)); setSelectedDispatchedIds(new Set()); };
   const [expandedDeliveredDates, setExpandedDeliveredDates] = useState<Set<string>>(new Set());
   const toggleDeliveredDate = (dateStr: string) => setExpandedDeliveredDates(prev => { const next = new Set(prev); next.has(dateStr) ? next.delete(dateStr) : next.add(dateStr); return next; });
 
@@ -429,33 +434,82 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
                 onDrop={e => { e.preventDefault(); const id = e.dataTransfer.getData('orderId'); if (id) onUpdateStatus?.(id, OrderStatus.DISPATCHED); }}
                 className="flex flex-col rounded-3xl border border-emerald-100 bg-emerald-50/50 shadow-sm w-full md:w-72 md:shrink-0"
               >
-                <div className="p-5 border-b border-white/50 flex items-center gap-3">
+                <div className="p-4 border-b border-white/50 flex items-center gap-3">
                   <button className="flex items-center gap-3 md:cursor-default" onClick={() => { if (window.innerWidth < 768) toggleMobileCollapse('dispatched'); }}>
                     <div className="p-2 rounded-xl bg-emerald-500 text-white"><CheckCircle2 size={20} /></div>
                     <h3 className="font-black text-base text-emerald-700">작업완료 ({dispatchedOrders.length})</h3>
                     <ChevronDown size={14} className={`md:hidden text-emerald-400 transition-transform ${mobileCollapsed.has('dispatched') ? '' : 'rotate-180'}`} />
                   </button>
                 </div>
-                <div className={`p-4 grid grid-cols-1 gap-3 overflow-y-auto no-scrollbar ${mobileCollapsed.has('dispatched') ? 'hidden md:grid' : ''}`}>
+                <div className={`p-4 flex flex-col gap-3 overflow-y-auto no-scrollbar ${mobileCollapsed.has('dispatched') ? 'hidden md:flex' : ''}`}>
                   {dispatchedOrders.length === 0 ? (
-                    <p className="col-span-2 text-center text-[11px] text-slate-300 font-bold py-10">주문이 없습니다</p>
-                  ) : dispatchedOrders.map(order => (
-                    <OrderCard
-                      key={order.id}
-                      order={order}
-                      clients={clients}
-                      products={products}
-                      editingOrderId={editingOrderId}
-                      setEditingOrderId={setEditingOrderId}
-                      showAddProductSelect={showAddProductSelect}
-                      setShowAddProductSelect={setShowAddProductSelect}
-                      onUpdateItems={onUpdateItems}
-                      onUpdateDeliveryDate={onUpdateDeliveryDate!}
-                      onUpdateStatus={onUpdateStatus!}
-                      onToggleItemChecked={onToggleItemChecked}
-                      onDeleteOrder={onDeleteOrder ?? (() => {})}
-                    />
-                  ))}
+                    <p className="text-center text-[11px] text-slate-300 font-bold py-10">주문이 없습니다</p>
+                  ) : dispatchedOrders.map(order => {
+                    const isChecked = selectedDispatchedIds.has(order.id);
+                    return (
+                      <div key={order.id} className="flex items-start gap-2">
+                        <button
+                          onClick={() => toggleDispatchedSelect(order.id)}
+                          className={`mt-3 shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${
+                            isChecked
+                              ? 'border-indigo-500 bg-white'
+                              : 'bg-white border-slate-300 hover:border-indigo-400'
+                          }`}
+                        >
+                          {isChecked && (
+                            <svg viewBox="0 0 10 8" className="w-2.5 h-2.5 text-indigo-600" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="1,4 3.5,7 9,1" />
+                            </svg>
+                          )}
+                        </button>
+                        <div className={`flex-1 transition-all rounded-2xl ${isChecked ? 'ring-2 ring-indigo-400 ring-offset-1' : ''}`}>
+                          <OrderCard
+                            order={order}
+                            clients={clients}
+                            products={products}
+                            editingOrderId={editingOrderId}
+                            setEditingOrderId={setEditingOrderId}
+                            showAddProductSelect={showAddProductSelect}
+                            setShowAddProductSelect={setShowAddProductSelect}
+                            onUpdateItems={onUpdateItems}
+                            onUpdateDeliveryDate={onUpdateDeliveryDate!}
+                            onUpdateStatus={onUpdateStatus!}
+                            onToggleItemChecked={onToggleItemChecked}
+                            onDeleteOrder={onDeleteOrder ?? (() => {})}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {dispatchedOrders.length > 0 && (
+                    <div className="flex items-center gap-2 pt-1 border-t border-emerald-100 mt-1">
+                      <button
+                        onClick={() => {
+                          if (selectedDispatchedIds.size === dispatchedOrders.length) {
+                            setSelectedDispatchedIds(new Set());
+                          } else {
+                            setSelectedDispatchedIds(new Set(dispatchedOrders.map(o => o.id)));
+                          }
+                        }}
+                        className="flex items-center gap-1.5 text-[10px] font-black text-emerald-600 hover:text-emerald-800 transition-all"
+                      >
+                        {selectedDispatchedIds.size === dispatchedOrders.length
+                          ? <CheckSquare size={13} />
+                          : <Square size={13} />
+                        }
+                        {selectedDispatchedIds.size === dispatchedOrders.length ? '전체 해제' : '전체 선택'}
+                      </button>
+                      {selectedDispatchedIds.size > 0 && (
+                        <button
+                          onClick={handleBulkShip}
+                          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black rounded-xl shadow transition-all active:scale-95"
+                        >
+                          <Send size={12} />
+                          일괄 출고 등록 ({selectedDispatchedIds.size})
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 

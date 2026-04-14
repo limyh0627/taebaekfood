@@ -411,9 +411,16 @@ export const OrderCard = memo<OrderCardProps>(({
               >
                 <option value="" disabled>추가할 품목 선택...</option>
                 <optgroup label="완제품">
-                  {products.filter(p => p.category === '완제품' && p.clientId === order.clientId).map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
+                  {products
+                    .filter(p => p.category === '완제품' && p.clientId === order.clientId)
+                    .sort((a, b) => {
+                      const order = (name: string) => /가루/.test(name) ? 3 : /참기름|참진|참고소|참향/.test(name) ? 0 : /들기름|들향|들진|들고소/.test(name) ? 1 : /깨/.test(name) ? 2 : 4;
+                      const diff = order(a.name) - order(b.name);
+                      return diff !== 0 ? diff : a.name.localeCompare(b.name, 'ko');
+                    })
+                    .map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
                 </optgroup>
                 <optgroup label="향미유">
                   {products.filter(p => p.category === '향미유').map(p => (
