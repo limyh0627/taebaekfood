@@ -17,6 +17,7 @@ export interface WorkOrderItem {
   qty: number;
   category: string;
   sortIndex: number;
+  date?: string; // KST 날짜 YYYY-MM-DD
 }
 
 export interface AppData {

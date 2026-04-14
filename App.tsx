@@ -159,6 +159,8 @@ const App: React.FC = () => {
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [notifPanelPos, setNotifPanelPos] = useState({ top: 0, left: 0 });
   const notifBtnRef = useRef<HTMLButtonElement>(null);
+  const [highlightOrderId, setHighlightOrderId] = useState<string | null>(null);
+  const [openChatRoomId, setOpenChatRoomId] = useState<string | null>(null);
   const [rmActiveMaterial, setRmActiveMaterial] = useState('참깨');
   const [rmCorrectionTargetId, setRmCorrectionTargetId] = useState<string | null>(null);
   const [rmCorrectionForm, setRmCorrectionForm] = useState({ date: new Date().toISOString().slice(0, 10), amount: '', isNegative: true, note: '' });
@@ -268,6 +270,28 @@ const App: React.FC = () => {
       }
     });
   }, [adjustmentRequests]);
+
+  // 날짜가 바뀐 뒤 첫 접속 시 작업순서 자동 초기화 (주문 데이터는 유지)
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const lastReset = localStorage.getItem('workOrderLastReset');
+    if (lastReset !== today) {
+      getDocs(collection(db, 'workOrderItems')).then(snap => {
+        Promise.all(snap.docs.map(d => deleteItem('workOrderItems', d.id)));
+      });
+      localStorage.setItem('workOrderLastReset', today);
+    }
+  }, []);
+
+  // 2주 지난 알림 자동 삭제
+  useEffect(() => {
+    const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    appNotifications.forEach(n => {
+      if (n.createdAt < twoWeeksAgo) {
+        deleteItem('notifications', n.id);
+      }
+    });
+  }, [appNotifications]);
 
   // 신규 주문 등록 시 부자재 부족 여부 체크 후 확인사항 등록
   const checkAndAlertShortage = async (orderItems: Order['items']) => {
@@ -850,6 +874,8 @@ const App: React.FC = () => {
               onUpdateDeliveryBoxes={(id, boxes) => updateItem('orders', id, { deliveryBoxes: boxes })}
               onToggleInvoicePrinted={(id, value) => updateItem('orders', id, { invoicePrinted: value })}
               currentUserName={currentUser?.name}
+              highlightOrderId={highlightOrderId}
+              onHighlightClear={() => setHighlightOrderId(null)}
               workOrderItems={workOrderItems}
               onSetWorkOrderItems={async (items) => {
                 // 기존 항목 전체 삭제 후 새 항목 저장
@@ -2397,11 +2423,13 @@ const App: React.FC = () => {
             />
           )}
           {currentView === 'officetalk' && (
-            <OfficeTalk 
+            <OfficeTalk
               currentUser={currentUser}
               employees={employees}
               chatRooms={chatRooms}
               chatMessages={chatMessages}
+              initialRoomId={openChatRoomId}
+              onRoomOpened={() => setOpenChatRoomId(null)}
               onAddRoom={(room) => addItem('chatRooms', room)}
               onUpdateRoom={(id, data) => updateItem('chatRooms', id, data)}
               onDeleteRoom={(id) => deleteItem('chatRooms', id)}
@@ -2463,10 +2491,11 @@ const App: React.FC = () => {
 
       {isAdminAuthModalOpen && <AdminAuthModal onClose={() => setIsAdminAuthModalOpen(false)} onSuccess={onAdminAuthSuccess} />}
       {isAddOrderOpen && <AddOrderModal products={allProducts} clients={clients} onClose={() => setIsAddOrderOpen(false)} onSave={async (o) => {
-        await addItem('orders', {...o, id: `ORD-${Date.now()}`, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
+        const orderId = `ORD-${Date.now()}`;
+        await addItem('orders', {...o, id: orderId, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
         await checkAndAlertShortage(o.items);
         const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '거래처';
-        await addItem('notifications', { type: 'new_order', title: '신규 주문', body: `${currentUser.name}님이 ${clientName} 주문을 등록했습니다.`, readBy: [], createdAt: new Date().toISOString(), senderId: currentUser.id } as Omit<AppNotification,'id'>);
+        await addItem('notifications', { type: 'new_order', title: '신규 주문', body: `${clientName} 주문이 등록되었습니다.`, readBy: [], createdAt: new Date().toISOString(), senderId: currentUser.id, linkedId: orderId } as Omit<AppNotification,'id'>);
         setIsAddOrderOpen(false);
       }} />}
       {isProductModalOpen && (
@@ -2515,6 +2544,68 @@ const App: React.FC = () => {
             await Promise.all(unread.map(n => updateItem('notifications', n.id, { readBy: [...n.readBy, currentUser.id] })));
           };
           const sorted = [...appNotifications].filter(n => !n.targetId || n.targetId === currentUser.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+          const handleNotifClick = async (n: AppNotification) => {
+            await markRead(n.id);
+            setShowNotifPanel(false);
+            if (n.type === 'new_order' && n.linkedId) {
+              setCurrentView('orders');
+              setHighlightOrderId(n.linkedId);
+            } else if (n.type === 'mention' && n.linkedId) {
+              setCurrentView('officetalk');
+              setOpenChatRoomId(n.linkedId);
+            }
+          };
+
+          const notifList = sorted.length === 0 ? (
+            <p className="text-center text-slate-400 text-xs py-8">알림이 없습니다</p>
+          ) : sorted.map(n => {
+            const isUnread = !n.readBy.includes(currentUser.id);
+            return (
+              <div
+                key={n.id}
+                onClick={() => handleNotifClick(n)}
+                className={`flex items-start gap-3 px-4 py-3 border-b border-slate-50 cursor-pointer hover:bg-slate-50 transition-colors ${isUnread ? 'bg-indigo-50/60' : ''}`}
+              >
+                <div className={`mt-0.5 shrink-0 w-2 h-2 rounded-full ${isUnread ? 'bg-indigo-500' : 'bg-transparent'}`} />
+                <div className="flex-1 min-w-0">
+                  <p className={`text-[11px] font-bold ${isUnread ? 'text-slate-800' : 'text-slate-500'}`}>{n.title}</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">
+                    {n.type === 'new_order' && n.body.includes(' 주문이') ? (
+                      <><span className="font-black text-slate-800 text-[11px]">{n.body.split(' 주문이')[0]}</span>{' '}주문이 등록되었습니다.</>
+                    ) : n.body}
+                  </p>
+                  <p className="text-[9px] text-slate-300 mt-1">{new Date(n.createdAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                </div>
+                {(n.type === 'new_order' || n.type === 'mention') && (
+                  <span className="text-[9px] text-indigo-400 font-bold shrink-0 mt-0.5">바로가기 →</span>
+                )}
+              </div>
+            );
+          });
+
+          if (isMobile) {
+            return (
+              <div className="fixed inset-0 z-[1000] bg-white flex flex-col">
+                <div className="flex items-center px-4 py-3 border-b border-slate-100 bg-white">
+                  <button
+                    onClick={() => setShowNotifPanel(false)}
+                    className="p-1 rounded-xl hover:bg-slate-100 transition-colors mr-2"
+                  >
+                    <ChevronLeft size={20} className="text-slate-600" />
+                  </button>
+                  <span className="flex-1 text-sm font-black text-slate-700">알림</span>
+                  {unread.length > 0 && (
+                    <button onClick={markAll} className="text-xs font-bold text-indigo-500 hover:text-indigo-700 transition-colors px-2 py-1">전부 읽음</button>
+                  )}
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                  {notifList}
+                </div>
+              </div>
+            );
+          }
+
           return (
             <>
               <div className="fixed inset-0 z-[999]" onClick={() => setShowNotifPanel(false)} />
@@ -2525,29 +2616,11 @@ const App: React.FC = () => {
                 <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
                   <span className="text-xs font-black text-slate-700">알림</span>
                   {unread.length > 0 && (
-                    <button onClick={markAll} className="text-[10px] font-bold text-indigo-500 hover:text-indigo-700 transition-colors">일괄 확인</button>
+                    <button onClick={markAll} className="text-[10px] font-bold text-indigo-500 hover:text-indigo-700 transition-colors">전부 읽음</button>
                   )}
                 </div>
                 <div className="max-h-80 overflow-y-auto">
-                  {sorted.length === 0 ? (
-                    <p className="text-center text-slate-400 text-xs py-8">알림이 없습니다</p>
-                  ) : sorted.map(n => {
-                    const isUnread = !n.readBy.includes(currentUser.id);
-                    return (
-                      <div
-                        key={n.id}
-                        onClick={() => markRead(n.id)}
-                        className={`flex items-start gap-3 px-4 py-3 border-b border-slate-50 cursor-pointer hover:bg-slate-50 transition-colors ${isUnread ? 'bg-indigo-50/60' : ''}`}
-                      >
-                        <div className={`mt-0.5 shrink-0 w-2 h-2 rounded-full ${isUnread ? 'bg-indigo-500' : 'bg-transparent'}`} />
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-[11px] font-bold ${isUnread ? 'text-slate-800' : 'text-slate-500'}`}>{n.title}</p>
-                          <p className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">{n.body}</p>
-                          <p className="text-[9px] text-slate-300 mt-1">{new Date(n.createdAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {notifList}
                 </div>
               </div>
             </>

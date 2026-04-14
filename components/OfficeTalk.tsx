@@ -33,6 +33,8 @@ interface OfficeTalkProps {
   employees: Employee[];
   chatRooms: ChatRoom[];
   chatMessages: ChatMessage[];
+  initialRoomId?: string | null;
+  onRoomOpened?: () => void;
   onAddRoom: (_room: ChatRoom) => void;
   onUpdateRoom: (_id: string, _data: Partial<ChatRoom>) => void;
   onDeleteRoom: (_id: string) => void;
@@ -44,12 +46,21 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   currentUser,
   employees,
   chatRooms,
+  initialRoomId,
+  onRoomOpened,
   onAddRoom,
   onUpdateRoom,
   onDeleteRoom,
   onSendMessage
 }) => {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialRoomId) {
+      setActiveRoomId(initialRoomId);
+      onRoomOpened?.();
+    }
+  }, [initialRoomId]);
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
   const [messageText, setMessageText] = useState('');

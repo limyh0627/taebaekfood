@@ -70,6 +70,8 @@ interface OrdersListProps {
   onDeleteOrder: (id: string) => void;
   onAddClick: () => void;
   currentUserName?: string;
+  highlightOrderId?: string | null;
+  onHighlightClear?: () => void;
   workOrderItems?: { key: string; orderId: string; productId: string; itemName: string; clientName: string; qty: number; category: string }[];
   onSetWorkOrderItems?: (items: { key: string; orderId: string; productId: string; itemName: string; clientName: string; qty: number; category: string }[]) => void;
 }
@@ -89,6 +91,8 @@ interface OrderCardProps {
   onDeleteOrder: (id: string) => void;
   currentUserName?: string;
   gridCols?: number;
+  isHighlighted?: boolean;
+  highlightOrderId?: string | null;
 }
 
 interface OrderSourceGroupProps {
@@ -110,6 +114,7 @@ interface OrderSourceGroupProps {
   onToggleItemChecked?: (orderId: string, itemIdx: number, checkedBy?: string) => void;
   onDeleteOrder: (id: string) => void;
   currentUserName?: string;
+  highlightOrderId?: string | null;
 }
 
 interface DeliveryRowProps {
@@ -129,8 +134,9 @@ export const OrderCard = memo<OrderCardProps>(({
   editingOrderId, setEditingOrderId,
   showAddProductSelect, setShowAddProductSelect,
   onUpdateItems, onUpdateDeliveryDate, onUpdateStatus,
-  onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1,
+  onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1, isHighlighted = false, highlightOrderId,
 }) => {
+  const highlighted = isHighlighted || highlightOrderId === order.id;
   const isEditing = editingOrderId === order.id;
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
 
@@ -211,9 +217,10 @@ export const OrderCard = memo<OrderCardProps>(({
 
   return (
     <div
+      id={`order-card-${order.id}`}
       draggable={!isEditing}
       onDragStart={(e) => { e.dataTransfer.setData('orderId', order.id); e.dataTransfer.effectAllowed = 'move'; }}
-      className={`bg-white rounded-2xl shadow-sm border transition-all group relative animate-in zoom-in-95 duration-200 ${isEditing ? 'ring-2 ring-indigo-500 border-indigo-200 shadow-xl z-20' : 'border-slate-100 hover:shadow-md hover:border-indigo-100 cursor-grab active:cursor-grabbing'} ${isCollapsed ? 'p-2.5' : 'p-4'} flex flex-col`}
+      className={`bg-white rounded-2xl shadow-sm border transition-all group relative animate-in zoom-in-95 duration-200 ${isEditing ? 'ring-2 ring-indigo-500 border-indigo-200 shadow-xl z-20' : highlighted ? 'ring-2 ring-amber-400 border-amber-300 shadow-lg shadow-amber-100' : 'border-slate-100 hover:shadow-md hover:border-indigo-100 cursor-grab active:cursor-grabbing'} ${isCollapsed ? 'p-2.5' : 'p-4'} flex flex-col`}
     >
       <div className={`flex justify-between items-start ${isCollapsed ? 'mb-1.5' : 'mb-3'}`}>
         <div className="flex-1 min-w-0 flex items-center gap-1.5">
@@ -713,6 +720,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
   workOrderItems: workOrderItemsProp = [],
   onSetWorkOrderItems,
   currentUserName,
+  highlightOrderId,
+  onHighlightClear,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('active');
   const [searchTerm, setSearchTerm] = useState('');
@@ -737,6 +746,22 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [pickerOrdering, setPickerOrdering] = useState<string[]>([]); // 선택 순서 배열
   const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
+
+  // 알림에서 넘어온 주문 하이라이트 + 스크롤
+  useEffect(() => {
+    if (!highlightOrderId) return;
+    // 히스토리 탭에 있을 경우 active 탭으로 전환
+    setActiveTab('active');
+    const timer = setTimeout(() => {
+      const el = document.getElementById(`order-card-${highlightOrderId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      const clearTimer = setTimeout(() => onHighlightClear?.(), 3000);
+      return () => clearTimeout(clearTimer);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [highlightOrderId]);
 
   const expandColumn = (colId: string) =>
     setColumnUnits(prev => ({ ...prev, [colId]: Math.min((prev[colId] ?? defaultUnits[colId] ?? 1) + 1, maxUnits[colId] ?? 2) }));
@@ -792,6 +817,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
     showAddProductSelect, setShowAddProductSelect,
     onUpdateItems, onUpdateDeliveryDate, onUpdateStatus,
     onToggleItemChecked, onDeleteOrder, currentUserName,
+    highlightOrderId,
   };
 
   return (
