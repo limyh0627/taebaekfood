@@ -129,8 +129,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
             body: room.lastMessage || '새 메시지가 도착했습니다.',
             icon: '/pwa-192x192.png',
             tag: room.id,
-            renotify: true,
-          });
+          } as NotificationOptions);
           notif.onclick = () => { window.focus(); };
         }
       }
