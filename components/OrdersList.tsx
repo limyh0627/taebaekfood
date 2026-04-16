@@ -158,7 +158,20 @@ export const OrderCard = memo<OrderCardProps>(({
   const [isCollapsed, setIsCollapsed] = useState(
     order.status === OrderStatus.DISPATCHED || order.status === OrderStatus.SHIPPED || order.status === OrderStatus.ON_HOLD
   );
-  const [isCompact, setIsCompact] = useState(false);
+  const [isCompact, setIsCompact] = useState(() => {
+    try {
+      const stored: string[] = JSON.parse(localStorage.getItem('compactOrders') || '[]');
+      return stored.includes(order.id);
+    } catch { return false; }
+  });
+  const toggleCompact = (value: boolean) => {
+    setIsCompact(value);
+    try {
+      const stored: string[] = JSON.parse(localStorage.getItem('compactOrders') || '[]');
+      const next = value ? [...stored.filter(id => id !== order.id), order.id] : stored.filter(id => id !== order.id);
+      localStorage.setItem('compactOrders', JSON.stringify(next));
+    } catch {}
+  };
 
   // 완제품 모두 체크 시 → 작업완료(DISPATCHED)로 자동 이동 + 접힘
   useEffect(() => {
@@ -237,7 +250,7 @@ export const OrderCard = memo<OrderCardProps>(({
         )}
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); setIsCompact(false); }}
+          onClick={(e) => { e.stopPropagation(); toggleCompact(false); }}
           className="shrink-0 text-slate-300 hover:text-indigo-400 transition-all"
           title="펼치기"
         >
@@ -270,7 +283,7 @@ export const OrderCard = memo<OrderCardProps>(({
         {!isEditing && (
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); setIsCompact(true); }}
+            onClick={(e) => { e.stopPropagation(); toggleCompact(true); }}
             className="p-1.5 rounded-lg text-slate-300 hover:bg-slate-50 hover:text-slate-500 transition-all"
             title="간소화"
           >
