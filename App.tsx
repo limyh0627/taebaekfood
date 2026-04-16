@@ -272,15 +272,19 @@ const App: React.FC = () => {
   }, [adjustmentRequests]);
 
   // 날짜가 바뀐 뒤 첫 접속 시 작업순서 자동 초기화 (주문 데이터는 유지)
+  // Firestore에 초기화 날짜를 저장해 모든 기기에서 하루 1회만 실행
   useEffect(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    const lastReset = localStorage.getItem('workOrderLastReset');
-    if (lastReset !== today) {
-      getDocs(collection(db, 'workOrderItems')).then(snap => {
-        Promise.all(snap.docs.map(d => deleteItem('workOrderItems', d.id)));
-      });
-      localStorage.setItem('workOrderLastReset', today);
-    }
+    const today = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' }).replace(/\. /g, '-').replace('.', '');
+    const resetRef = doc(db, 'appMeta', 'workOrderReset');
+    getDoc(resetRef).then(snap => {
+      const lastReset = snap.exists() ? snap.data().date : null;
+      if (lastReset !== today) {
+        getDocs(collection(db, 'workOrderItems')).then(snap => {
+          Promise.all(snap.docs.map(d => deleteItem('workOrderItems', d.id)));
+        });
+        setDoc(resetRef, { date: today });
+      }
+    });
   }, []);
 
   // 2주 지난 알림 자동 삭제
@@ -1072,18 +1076,6 @@ const App: React.FC = () => {
               if (r.상호 && !agg[key].clients.includes(r.상호)) agg[key].clients.push(r.상호);
             });
 
-            // 좌측 상단 템플릿 (참기름/들기름 계열)
-            const topTemplate: { label: string; key: string; volumes: string[] }[] = [
-              { label: '시골향참기름①', key: '시골향참기름1', volumes: ['180ml','300ml','350ml','1500ml','1750ml','1800ml','16.5kg'] },
-              { label: '시골향참기름②', key: '시골향참기름2', volumes: ['300ml','350ml','1500ml','1750ml','1800ml'] },
-              { label: '시골향참기름③', key: '시골향참기름3', volumes: ['300ml','350ml','1500ml','1750ml','1800ml','16.5kg'] },
-              { label: '시골향참기름④', key: '시골향참기름4', volumes: ['300ml','350ml','1500ml','1750ml','1800ml'] },
-              { label: '시골향들기름①', key: '시골향들기름1', volumes: ['270ml','350ml','1800ml','16.5kg'] },
-              { label: '시골향들기름②', key: '시골향들기름2', volumes: ['180ml','300ml','350ml','1500ml','1750ml','1800ml'] },
-              { label: '하남댁참기름', key: '하남댁참기름', volumes: ['300ml'] },
-              { label: '하남댁들기름', key: '하남댁들기름', volumes: ['300ml'] },
-            ];
-
             // 좌측 하단 템플릿 (참깨/들깨 계열)
             const bottomTemplate: { 품목: string; 용량: string }[] = [
               { 품목: '시골향볶음참깨',    용량: '500g' },
@@ -1094,6 +1086,69 @@ const App: React.FC = () => {
               { 품목: '시골향탈피들깨가루', 용량: '1kg' },
               { 품목: '시골향볶음검정참깨', 용량: '1kg' },
             ];
+
+            // 좌측 상단 템플릿 — 기본값 유지 + 등록된 완제품에서 추가 자동 반영
+            const labelMap: Record<string, string> = {
+              '시골향참기름1': '시골향참기름①',
+              '시골향참기름2': '시골향참기름②',
+              '시골향참기름3': '시골향참기름③',
+              '시골향참기름4': '시골향참기름④',
+              '시골향들기름1': '시골향들기름①',
+              '시골향들기름2': '시골향들기름②',
+            };
+            const pumokOrder = [
+              '시골향참기름1','시골향참기름2','시골향참기름3','시골향참기름4',
+              '시골향들기름1','시골향들기름2',
+              '하남댁참기름','하남댁들기름','하남댁맑음들기름',
+              '가득찬순참기름',
+              '해달참기름','해달들기름',
+              '시골집참기름(해내음)',
+            ];
+            // 기본 템플릿 (품목이 미등록이어도 항상 표시)
+            const defaultTopTemplate: { key: string; volumes: string[] }[] = [
+              { key: '시골향참기름1', volumes: ['180ml','300ml','350ml','1500ml','1750ml','1800ml','16.5kg'] },
+              { key: '시골향참기름2', volumes: ['300ml','350ml','1500ml','1750ml','1800ml'] },
+              { key: '시골향참기름3', volumes: ['300ml','350ml','1500ml','1750ml','1800ml','16.5kg'] },
+              { key: '시골향참기름4', volumes: ['300ml','350ml','1500ml','1750ml','1800ml'] },
+              { key: '시골향들기름1', volumes: ['270ml','350ml','1800ml','16.5kg'] },
+              { key: '시골향들기름2', volumes: ['180ml','300ml','350ml','1500ml','1750ml','1800ml'] },
+              { key: '하남댁참기름', volumes: ['300ml'] },
+              { key: '하남댁들기름', volumes: ['300ml'] },
+              { key: '하남댁맑음들기름', volumes: ['300ml'] },
+              { key: '가득찬순참기름', volumes: ['1800ml'] },
+              { key: '해달참기름', volumes: ['350ml'] },
+              { key: '해달들기름', volumes: ['350ml'] },
+              { key: '시골집참기름(해내음)', volumes: ['1800ml'] },
+            ];
+            const bottomPumokSet = new Set(bottomTemplate.map(t => t.품목));
+            const volumeOrder = ['180ml','270ml','300ml','350ml','500ml','1kg','1500ml','1750ml','1800ml','4kg','16.5kg','20kg','25kg'];
+            const sortVolumes = (vols: string[]) => [...vols].sort((a, b) => {
+              const ia = volumeOrder.indexOf(a), ib = volumeOrder.indexOf(b);
+              if (ia !== -1 && ib !== -1) return ia - ib;
+              if (ia !== -1) return -1;
+              if (ib !== -1) return 1;
+              return a.localeCompare(b);
+            });
+            // 등록된 완제품에서 기본값에 없는 품목/용량 추가 반영
+            const topTemplateMap = new Map<string, Set<string>>(
+              defaultTopTemplate.map(t => [t.key, new Set(t.volumes)])
+            );
+            allProducts
+              .filter(p => p.category === '완제품' && p.품목 && p.용량 && !bottomPumokSet.has(p.품목))
+              .forEach(p => {
+                if (!topTemplateMap.has(p.품목!)) topTemplateMap.set(p.품목!, new Set());
+                topTemplateMap.get(p.품목!)!.add(p.용량!);
+              });
+            const topTemplate: { label: string; key: string; volumes: string[] }[] = Array.from(topTemplateMap.entries())
+              .map(([key, volSet]) => ({ label: labelMap[key] || key, key, volumes: sortVolumes(Array.from(volSet)) }))
+              .sort((a, b) => {
+                const ia = pumokOrder.indexOf(a.key);
+                const ib = pumokOrder.indexOf(b.key);
+                if (ia !== -1 && ib !== -1) return ia - ib;
+                if (ia !== -1) return -1;
+                if (ib !== -1) return 1;
+                return 0;
+              });
 
             // 소용량 → 1kg 환산 합산 규칙 (서류 표시용)
             // 예: 시골향볶음참깨 200g 40개 → 8kg → 1kg 행에 8개 추가
