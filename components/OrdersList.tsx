@@ -72,6 +72,8 @@ interface OrdersListProps {
   currentUserName?: string;
   highlightOrderId?: string | null;
   onHighlightClear?: () => void;
+  newOrderId?: string | null;
+  onNewOrderIdClear?: () => void;
   workOrderItems?: { key: string; orderId: string; productId: string; itemName: string; clientName: string; qty: number; category: string }[];
   onSetWorkOrderItems?: (items: { key: string; orderId: string; productId: string; itemName: string; clientName: string; qty: number; category: string }[]) => void;
 }
@@ -154,8 +156,9 @@ export const OrderCard = memo<OrderCardProps>(({
 
   // 접힘 상태: DISPATCHED/SHIPPED 카드는 초기에 접힘
   const [isCollapsed, setIsCollapsed] = useState(
-    order.status === OrderStatus.DISPATCHED || order.status === OrderStatus.SHIPPED
+    order.status === OrderStatus.DISPATCHED || order.status === OrderStatus.SHIPPED || order.status === OrderStatus.ON_HOLD
   );
+  const [isCompact, setIsCompact] = useState(false);
 
   // 완제품 모두 체크 시 → 작업완료(DISPATCHED)로 자동 이동 + 접힘
   useEffect(() => {
@@ -163,7 +166,8 @@ export const OrderCard = memo<OrderCardProps>(({
       allNonHyangmiyuDone &&
       order.status !== OrderStatus.DISPATCHED &&
       order.status !== OrderStatus.SHIPPED &&
-      order.status !== OrderStatus.DELIVERED
+      order.status !== OrderStatus.DELIVERED &&
+      order.status !== OrderStatus.ON_HOLD
     ) {
       onUpdateStatus(order.id, OrderStatus.DISPATCHED);
       setIsCollapsed(true);
@@ -215,6 +219,34 @@ export const OrderCard = memo<OrderCardProps>(({
     setShowAddProductSelect(null);
   };
 
+  if (isCompact) {
+    return (
+      <div
+        id={`order-card-${order.id}`}
+        draggable
+        onDragStart={(e) => { e.dataTransfer.setData('orderId', order.id); e.dataTransfer.effectAllowed = 'move'; }}
+        className={`bg-white rounded-xl border px-3 py-2 flex items-center gap-2 cursor-grab active:cursor-grabbing transition-all hover:shadow-sm ${isFullyDone ? 'border-emerald-100' : 'border-slate-100 hover:border-indigo-100'}`}
+      >
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isFullyDone ? 'bg-emerald-400' : progress > 0 ? 'bg-amber-400' : 'bg-slate-300'}`} />
+        <span className="text-[12px] font-bold text-slate-800 truncate flex-1">{displayName}</span>
+        {progress > 0 && !isFullyDone && (
+          <span className="text-[9px] font-black text-amber-500 shrink-0">{progress}%</span>
+        )}
+        {isFullyDone && (
+          <span className="text-[9px] font-black text-emerald-500 shrink-0">완료</span>
+        )}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setIsCompact(false); }}
+          className="shrink-0 text-slate-300 hover:text-indigo-400 transition-all"
+          title="펼치기"
+        >
+          <ChevronDown size={13} />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div
       id={`order-card-${order.id}`}
@@ -235,6 +267,16 @@ export const OrderCard = memo<OrderCardProps>(({
             </button>
           )}
         </div>
+        {!isEditing && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setIsCompact(true); }}
+            className="p-1.5 rounded-lg text-slate-300 hover:bg-slate-50 hover:text-slate-500 transition-all"
+            title="간소화"
+          >
+            <ChevronUp size={14} />
+          </button>
+        )}
         <button
           onClick={(e) => { e.stopPropagation(); setEditingOrderId(isEditing ? null : order.id); setShowAddProductSelect(null); }}
           className={`p-1.5 rounded-lg transition-all ${isEditing ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-indigo-50 hover:text-indigo-600'}`}
@@ -512,6 +554,7 @@ export const OrderCard = memo<OrderCardProps>(({
               [OrderStatus.PENDING, '대기중'],
               [OrderStatus.PROCESSING, '작업중'],
               [OrderStatus.DISPATCHED, '작업완료'],
+              [OrderStatus.ON_HOLD, '보류'],
               [OrderStatus.SHIPPED, '출고'],
             ] as [OrderStatus, string][]).map(([val, label]) => (
               <option key={val} value={val}>{label}</option>
@@ -722,6 +765,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
   currentUserName,
   highlightOrderId,
   onHighlightClear,
+  newOrderId,
+  onNewOrderIdClear,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('active');
   const [searchTerm, setSearchTerm] = useState('');
@@ -746,6 +791,19 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [pickerOrdering, setPickerOrdering] = useState<string[]>([]); // 선택 순서 배열
   const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
+
+  // 신규 주문 생성 시 자동으로 편집 모드 열기
+  useEffect(() => {
+    if (!newOrderId) return;
+    setActiveTab('active');
+    const timer = setTimeout(() => {
+      setEditingOrderId(newOrderId);
+      const el = document.getElementById(`order-card-${newOrderId}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      onNewOrderIdClear?.();
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [newOrderId]);
 
   // 알림에서 넘어온 주문 하이라이트 + 스크롤
   useEffect(() => {

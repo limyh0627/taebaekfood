@@ -255,6 +255,7 @@ const App: React.FC = () => {
   const [pendingAdminView, setPendingAdminView] = useState<ViewType | null>(null);
   const [isAdminAuthModalOpen, setIsAdminAuthModalOpen] = useState(false);
   const [isAddOrderOpen, setIsAddOrderOpen] = useState(false);
+  const [newOrderId, setNewOrderId] = useState<string | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -584,7 +585,7 @@ const App: React.FC = () => {
       ? { ...baseItem, checked: true, ...(checkedBy ? { checkedBy } : {}) }
       : { ...baseItem, checked: false };
     const allChecked = newItems.every(i => i.checked);
-    const wasNotDispatched = order.status !== OrderStatus.DISPATCHED && order.status !== OrderStatus.SHIPPED;
+    const wasNotDispatched = order.status !== OrderStatus.DISPATCHED && order.status !== OrderStatus.SHIPPED && order.status !== OrderStatus.ON_HOLD;
     if (allChecked && wasNotDispatched) {
       updateItem('orders', orderId, { items: newItems, status: OrderStatus.DISPATCHED });
     } else {
@@ -880,6 +881,8 @@ const App: React.FC = () => {
               currentUserName={currentUser?.name}
               highlightOrderId={highlightOrderId}
               onHighlightClear={() => setHighlightOrderId(null)}
+              newOrderId={newOrderId}
+              onNewOrderIdClear={() => setNewOrderId(null)}
               workOrderItems={workOrderItems}
               onSetWorkOrderItems={async (items) => {
                 // 기존 항목 전체 삭제 후 새 항목 저장
@@ -2551,6 +2554,7 @@ const App: React.FC = () => {
         await checkAndAlertShortage(o.items);
         const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '거래처';
         await addItem('notifications', { type: 'new_order', title: '신규 주문', body: `${clientName} 주문이 등록되었습니다.`, readBy: [], createdAt: new Date().toISOString(), senderId: currentUser.id, linkedId: orderId } as Omit<AppNotification,'id'>);
+        setNewOrderId(orderId);
         setIsAddOrderOpen(false);
       }} />}
       {isProductModalOpen && (

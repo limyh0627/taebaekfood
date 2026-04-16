@@ -4,7 +4,8 @@ export enum OrderStatus {
   PROCESSING = 'PROCESSING',
   SHIPPED = 'SHIPPED',
   DISPATCHED = 'DISPATCHED',
-  DELIVERED = 'DELIVERED'
+  DELIVERED = 'DELIVERED',
+  ON_HOLD = 'ON_HOLD'
 }
 
 export interface OrderItem {

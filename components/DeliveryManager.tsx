@@ -308,11 +308,12 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
         ))}
       </div>
 
-      {/* 작업완료 / 출고 컬럼 */}
+      {/* 작업완료 / 보류 / 출고 컬럼 */}
       {deliveryTab === '배송일정관리' && (() => {
         const dispatchedOrders = orders
           .filter(o => o.status === OrderStatus.DISPATCHED && o.customerName !== '생산기록')
           .sort((a, b) => (a.deliveryDate || '').localeCompare(b.deliveryDate || ''));
+        const onHoldOrders = orders.filter(o => o.status === OrderStatus.ON_HOLD && o.customerName !== '생산기록');
         const shippedOrders = orders.filter(o => o.status === OrderStatus.SHIPPED && o.customerName !== '생산기록');
         // 배송순서 유효 주문 (작업완료 중 deliveryOrdering에 있는 것)
         const validDelivery = deliveryOrdering.filter(id => dispatchedOrders.some(o => o.id === id));
@@ -548,6 +549,42 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
                   ))}
                 </div>
               </div>
+
+              {/* 보류 컬럼 */}
+              <div
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => { e.preventDefault(); const id = e.dataTransfer.getData('orderId'); if (id) onUpdateStatus?.(id, OrderStatus.ON_HOLD); }}
+                className="flex flex-col rounded-3xl border border-orange-100 bg-orange-50/50 shadow-sm w-full md:w-72 md:shrink-0"
+              >
+                <div className="p-4 border-b border-white/50 flex items-center gap-3">
+                  <button className="flex items-center gap-3 md:cursor-default" onClick={() => { if (window.innerWidth < 768) toggleMobileCollapse('onhold'); }}>
+                    <div className="p-2 rounded-xl bg-orange-400 text-white"><Clock size={18} /></div>
+                    <h3 className="font-black text-sm text-orange-700">보류 ({onHoldOrders.length})</h3>
+                    <ChevronDown size={14} className={`md:hidden text-orange-400 transition-transform ${mobileCollapsed.has('onhold') ? '' : 'rotate-180'}`} />
+                  </button>
+                </div>
+                <div className={`p-4 grid grid-cols-1 gap-3 overflow-y-auto no-scrollbar ${mobileCollapsed.has('onhold') ? 'hidden md:grid' : ''}`}>
+                  {onHoldOrders.length === 0 ? (
+                    <p className="col-span-1 text-center text-[11px] text-slate-300 font-bold py-10">보류 중인 주문이 없습니다</p>
+                  ) : onHoldOrders.map(order => (
+                    <OrderCard
+                      key={order.id}
+                      order={order}
+                      clients={clients}
+                      products={products}
+                      editingOrderId={editingOrderId}
+                      setEditingOrderId={setEditingOrderId}
+                      showAddProductSelect={showAddProductSelect}
+                      setShowAddProductSelect={setShowAddProductSelect}
+                      onUpdateItems={onUpdateItems}
+                      onUpdateDeliveryDate={onUpdateDeliveryDate!}
+                      onUpdateStatus={onUpdateStatus!}
+                      onToggleItemChecked={onToggleItemChecked}
+                      onDeleteOrder={onDeleteOrder ?? (() => {})}
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
 
             {/* 배송순서 설정 모달 */}
@@ -704,11 +741,13 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
                                 <span className={`font-black text-[9px] ${
                                   order.status === OrderStatus.PENDING ? 'text-amber-500' :
                                   order.status === OrderStatus.PROCESSING ? 'text-indigo-500' :
+                                  order.status === OrderStatus.ON_HOLD ? 'text-orange-500' :
                                   'text-emerald-500'
                                 }`}>
                                   {order.status === OrderStatus.PENDING ? '대기중' :
                                    order.status === OrderStatus.PROCESSING ? '작업중' :
                                    order.status === OrderStatus.DISPATCHED ? '작업완료' :
+                                   order.status === OrderStatus.ON_HOLD ? '보류' :
                                    order.status === OrderStatus.SHIPPED ? '출고' : '완료'}
                                 </span>
                               </div>
