@@ -81,7 +81,7 @@ const RAW_MATERIALS_EN: Record<string, string> = {
 };
 
 type MainTab = 'requests' | 'history' | 'master';
-type TopTab = 'product' | 'rawmaterial';
+type TopTab = 'finished' | 'specialty' | 'product' | 'rawmaterial';
 
 const ProductList: React.FC<ProductListProps> = ({
   products,
@@ -116,8 +116,9 @@ const ProductList: React.FC<ProductListProps> = ({
     return next;
   });
   const t = (ko: string, en: string) => isEn ? en : ko;
+  const fmt1 = (v: number) => { const s = Number(v).toFixed(1); return s.endsWith('.0') ? s.slice(0, -2) : s; };
 
-  const [topTab, setTopTab] = useState<TopTab>('product');
+  const [topTab, setTopTab] = useState<TopTab>('finished');
   const [activeTab, setActiveTab] = useState<MainTab>('master');
   const [rmMaterial, setRmMaterial] = useState(RAW_MATERIALS[0]);
   const [rmDate, setRmDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -126,14 +127,24 @@ const ProductList: React.FC<ProductListProps> = ({
   const [rmNote, setRmNote] = useState('');
   const [rmFilter, setRmFilter] = useState(RAW_MATERIALS[0]);
   const [rmMonth, setRmMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [rmViewType, setRmViewType] = useState<'all' | 'received' | 'used'>('all');
   const [rmOpenBalance, setRmOpenBalance] = useState('');
   const [rmOpenDate, setRmOpenDate] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`; });
   const [rmOpenMaterial, setRmOpenMaterial] = useState(RAW_MATERIALS[0]);
-  const [activeSubCategory, setActiveSubCategory] = useState<InventoryCategory | '전체' | string>('전체');
-  const [filterMode, setFilterMode] = useState<null | 'supplier' | 'category'>(null);
+  const [activeCategory, setActiveCategory] = useState<string>('전체');
+  const [activeSupplierId, setActiveSupplierId] = useState<string>('전체');
+  const [showCategoryFilter, setShowCategoryFilter] = useState(false);
+  const [showSupplierFilter, setShowSupplierFilter] = useState(false);
 
+  // legacy alias used in a few places
+  const activeSubCategory = activeCategory !== '전체' ? activeCategory : activeSupplierId;
+  const setActiveSubCategory = (v: string) => {
+    setActiveCategory('전체'); setActiveSupplierId('전체');
+  };
+  const filterMode = showCategoryFilter ? 'category' : showSupplierFilter ? 'supplier' : null;
   const toggleFilterMode = (mode: 'supplier' | 'category') => {
-    setFilterMode(prev => prev === mode ? null : mode);
+    if (mode === 'category') setShowCategoryFilter(p => !p);
+    else setShowSupplierFilter(p => !p);
     setActiveSubCategory('전체');
   };
   const [searchTerm, setSearchTerm] = useState('');
@@ -221,18 +232,28 @@ const ProductList: React.FC<ProductListProps> = ({
     } else {
       result = products;
     }
-    const isSupplierFilter = suppliers.some(s => s.id === activeSubCategory);
-    if (activeSubCategory !== '전체') {
-      if (isSupplierFilter) {
-        result = result.filter(p => (p as any).supplierId === activeSubCategory);
-      } else if (activeSubCategory === '박스') {
-        result = result.filter(p => p.category === '박스' || p.id.startsWith('GS-'));
-      } else {
-        result = result.filter(p => p.category === activeSubCategory);
-      }
+    // 탭별 분리
+    if (topTab === 'finished') {
+      result = result.filter(p => p.category === '완제품');
+    } else if (topTab === 'specialty') {
+      result = result.filter(p => p.category === '향미유' || p.category === '고춧가루');
+    } else if (topTab === 'product') {
+      result = result.filter(p => p.category !== '완제품' && p.category !== '향미유' && p.category !== '고춧가루');
+    }
+    if (activeCategory !== '전체') {
+      if (activeCategory === '박스') result = result.filter(p => p.category === '박스' || p.id.startsWith('GS-'));
+      else result = result.filter(p => p.category === activeCategory);
+    }
+    if (activeSupplierId !== '전체') {
+      result = result.filter(p => (p as any).supplierId === activeSupplierId);
     }
     if (searchTerm.trim()) {
-      result = result.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
+      const q = searchTerm.toLowerCase();
+      result = result.filter(p => {
+        if (p.name.toLowerCase().includes(q)) return true;
+        const supplierName = suppliers.find(s => s.id === (p as any).supplierId)?.name || '';
+        return supplierName.toLowerCase().includes(q);
+      });
     }
     
     const CATEGORY_ORDER = ['완제품', '향미유', '고춧가루', '용기', '마개', '테이프', '박스', '라벨'];
@@ -246,7 +267,7 @@ const ProductList: React.FC<ProductListProps> = ({
       const bIdx = bCatIdx === -1 ? 99 : bCatIdx;
       return aIdx - bIdx;
     });
-  }, [products, activeTab, activeSubCategory, searchTerm, orderRequests, confirmedOrders, suppliers]);
+  }, [products, activeTab, activeCategory, activeSupplierId, searchTerm, orderRequests, confirmedOrders, suppliers, topTab]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -254,25 +275,31 @@ const ProductList: React.FC<ProductListProps> = ({
 
 
 
-  // 원료별 현재 잔량 계산 (오래된 순으로 순방향 누적)
+  // 원료별 현재 잔량 — display와 동일한 머지 로직으로 계산
   const rawMaterialBalances = useMemo(() => {
     const result: Record<string, number> = {};
     for (const material of RAW_MATERIALS) {
-      const entries = [
-        ...rawMaterialLedger.filter(e => e.material === material),
-        ...autoUsageEntries.filter(e => e.material === material).map(e => ({
-          id: '', material: e.material, date: e.date,
-          received: 0, used: e.used, note: e.note, createdAt: e.date,
-        })),
+      const ledger = rawMaterialLedger.filter(e => e.material === material);
+      const manualRows = ledger.filter(e => e.type === 'manual');
+      const toMerge = [
+        ...ledger.filter(e => e.type !== 'manual').map(e => ({ date: e.date, received: e.received, used: e.used, note: e.note })),
+        ...autoUsageEntries.filter(e => e.material === material).map(e => ({ date: e.date, received: 0, used: e.used, note: e.note })),
+      ];
+      const mergedMap: Record<string, { date: string; received: number; used: number; note: string }> = {};
+      for (const e of toMerge) {
+        if (!mergedMap[e.date]) mergedMap[e.date] = { date: e.date, received: 0, used: 0, note: e.note };
+        mergedMap[e.date].received = Math.round((mergedMap[e.date].received + e.received) * 1000) / 1000;
+        mergedMap[e.date].used = Math.round((mergedMap[e.date].used + e.used) * 1000) / 1000;
+      }
+      const all = [
+        ...manualRows.map(e => ({ date: e.date, received: e.received, used: e.used, note: e.note })),
+        ...Object.values(mergedMap),
       ].sort((a, b) => a.date.localeCompare(b.date));
 
       let balance = 0;
-      for (const entry of entries) {
-        if (entry.note === '전월이월') {
-          balance = entry.received;
-        } else {
-          balance += entry.received - entry.used;
-        }
+      for (const e of all) {
+        if (e.note === '전월이월') balance = e.received;
+        else balance += e.received - e.used;
       }
       result[material] = Math.round(balance * 1000) / 1000;
     }
@@ -314,11 +341,25 @@ const ProductList: React.FC<ProductListProps> = ({
         {/* 상위 탭 */}
         <div className="bg-slate-200/50 p-1.5 rounded-3xl flex items-center shadow-inner self-start border border-slate-200 shrink-0">
           <button
-            onClick={() => setTopTab('product')}
+            onClick={() => { setTopTab('finished'); setActiveCategory('전체'); setActiveSupplierId('전체'); }}
+            className={`px-5 py-2.5 rounded-2xl flex items-center space-x-2 transition-all text-xs font-black ${topTab === 'finished' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+          >
+            <Package size={16} />
+            <span>완제품</span>
+          </button>
+          <button
+            onClick={() => { setTopTab('specialty'); setActiveCategory('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); }}
+            className={`px-5 py-2.5 rounded-2xl flex items-center space-x-2 transition-all text-xs font-black ${topTab === 'specialty' ? 'bg-white text-orange-500 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+          >
+            <Box size={16} />
+            <span>상품</span>
+          </button>
+          <button
+            onClick={() => { setTopTab('product'); setActiveCategory('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); }}
             className={`px-5 py-2.5 rounded-2xl flex items-center space-x-2 transition-all text-xs font-black ${topTab === 'product' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
           >
             <Box size={16} />
-            <span>상품·부자재</span>
+            <span>부자재</span>
           </button>
           <button
             onClick={() => setTopTab('rawmaterial')}
@@ -334,7 +375,7 @@ const ProductList: React.FC<ProductListProps> = ({
       <div className="flex flex-col space-y-4">
 
         {/* 하위 탭 + 검색 */}
-        {topTab === 'product' && (
+        {(topTab === 'product' || topTab === 'finished' || topTab === 'specialty') && (
           <div className="flex items-center gap-3 flex-wrap">
             <div className="bg-slate-100/50 p-1 rounded-2xl flex items-center self-start border border-slate-200">
               <button
@@ -366,50 +407,50 @@ const ProductList: React.FC<ProductListProps> = ({
           </div>
         )}
 
-        {topTab === 'product' && <div className="flex flex-col gap-2">
-          {/* 품목별 필터 */}
-          <div className="flex items-center gap-2 flex-wrap">
+        {(topTab === 'product' || topTab === 'finished' || topTab === 'specialty') && <div className="flex flex-col gap-2">
+          {/* 품목별 필터 - 상품·부자재 탭 */}
+          {(topTab === 'specialty' || topTab === 'product') && <div className="flex items-center gap-2 flex-wrap">
             <button
-              onClick={() => toggleFilterMode('category')}
-              className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl border text-[11px] font-black transition-all ${filterMode === 'category' ? 'bg-indigo-50 border-indigo-200 text-indigo-600 ring-2 ring-indigo-50' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
+              onClick={() => setShowCategoryFilter(p => !p)}
+              className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl border text-[11px] font-black transition-all ${showCategoryFilter ? 'bg-indigo-50 border-indigo-200 text-indigo-600 ring-2 ring-indigo-50' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
             >
               <LayoutGrid size={14} />
               <span>품목별</span>
             </button>
-            {filterMode === 'category' && subCategories.map((sub) => {
-              const Icon = sub.icon;
-              const isActive = activeSubCategory === sub.id;
-              const count = categoryCounts[sub.id] || 0;
-              return (
-                <button
-                  key={sub.id}
-                  onClick={() => setActiveSubCategory(isActive ? '전체' : sub.id)}
-                  className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl transition-all whitespace-nowrap border text-[11px] font-black uppercase relative ${isActive ? 'bg-white border-indigo-200 text-indigo-600 shadow-sm ring-2 ring-indigo-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
-                >
-                  <Icon size={14} />
-                  <span>{sub.label}</span>
-                  {count > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-rose-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow-lg border border-white">{count}</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-          {/* 거래처별 필터 */}
-          <div className="flex items-center gap-2 flex-wrap">
+            {showCategoryFilter && subCategories
+              .filter(s => topTab === 'specialty'
+                ? (s.id === '향미유' || s.id === '고춧가루')
+                : (s.id !== '완제품' && s.id !== '향미유' && s.id !== '고춧가루'))
+              .map(sub => {
+                const Icon = sub.icon;
+                const isActive = activeCategory === sub.id;
+                const count = categoryCounts[sub.id] || 0;
+                return (
+                  <button key={sub.id}
+                    onClick={() => setActiveCategory(isActive ? '전체' : sub.id)}
+                    className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl transition-all whitespace-nowrap border text-[11px] font-black uppercase relative ${isActive ? 'bg-white border-indigo-200 text-indigo-600 shadow-sm ring-2 ring-indigo-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
+                  >
+                    <Icon size={14} />
+                    <span>{sub.label}</span>
+                    {count > 0 && <span className="absolute -top-1 -right-1 bg-rose-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow-lg border border-white">{count}</span>}
+                  </button>
+                );
+              })}
+          </div>}
+          {/* 거래처별 필터 - 완제품 탭 제외 */}
+          {topTab !== 'finished' && <div className="flex items-center gap-2 flex-wrap">
             <button
-              onClick={() => toggleFilterMode('supplier')}
-              className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl border text-[11px] font-black transition-all ${filterMode === 'supplier' ? 'bg-orange-50 border-orange-200 text-orange-500 ring-2 ring-orange-50' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
+              onClick={() => setShowSupplierFilter(p => !p)}
+              className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl border text-[11px] font-black transition-all ${showSupplierFilter ? 'bg-orange-50 border-orange-200 text-orange-500 ring-2 ring-orange-50' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
             >
               <Building2 size={14} />
               <span>거래처별</span>
             </button>
-            {filterMode === 'supplier' && suppliers.map((supplier) => {
-              const isActive = activeSubCategory === supplier.id;
+            {showSupplierFilter && suppliers.map(supplier => {
+              const isActive = activeSupplierId === supplier.id;
               return (
-                <button
-                  key={supplier.id}
-                  onClick={() => setActiveSubCategory(isActive ? '전체' : supplier.id)}
+                <button key={supplier.id}
+                  onClick={() => setActiveSupplierId(isActive ? '전체' : supplier.id)}
                   className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl transition-all whitespace-nowrap border text-[11px] font-black relative ${isActive ? 'bg-white border-orange-200 text-orange-500 shadow-sm ring-2 ring-orange-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
                 >
                   <Building2 size={14} />
@@ -417,11 +458,11 @@ const ProductList: React.FC<ProductListProps> = ({
                 </button>
               );
             })}
-          </div>
+          </div>}
         </div>}
       </div>
 
-      {topTab === 'product' && <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+      {(topTab === 'product' || topTab === 'finished' || topTab === 'specialty') && <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
         {activeTab === 'requests' && draftOrders.length > 0 && (
           <div className="mb-8 bg-indigo-50/50 border border-indigo-100 rounded-[32px] p-6">
             <div className="flex items-center justify-between mb-6 px-2">
@@ -811,9 +852,9 @@ const ProductList: React.FC<ProductListProps> = ({
                   <div className="divide-y divide-slate-50">
                     {cart
                       .filter(item => {
-                        if (filterMode !== 'supplier' || activeSubCategory === '전체') return true;
+                        if (activeSupplierId === '전체') return true;
                         const product = products.find(p => p.id === item.id);
-                        return product?.supplierId === activeSubCategory;
+                        return product?.supplierId === activeSupplierId;
                       })
                       .map(item => {
                       const product = products.find(p => p.id === item.id);
@@ -871,9 +912,9 @@ const ProductList: React.FC<ProductListProps> = ({
                 <div className="divide-y divide-slate-50">
                   {confirmedOrders
                     .filter(conf => {
-                      if (filterMode !== 'supplier' || activeSubCategory === '전체') return true;
+                      if (activeSupplierId === '전체') return true;
                       const product = products.find(p => p.id === conf.id);
-                      return product?.supplierId === activeSubCategory;
+                      return product?.supplierId === activeSupplierId;
                     })
                     .map(conf => {
                     const product = products.find(p => p.id === conf.id);
@@ -978,8 +1019,8 @@ const ProductList: React.FC<ProductListProps> = ({
                   <div className="divide-y divide-slate-50">
                     {pending
                       .filter(stmt => {
-                        if (filterMode !== 'supplier' || activeSubCategory === '전체') return true;
-                        return stmt.clientId === activeSubCategory;
+                        if (activeSupplierId === '전체') return true;
+                        return stmt.clientId === activeSupplierId;
                       })
                       .map(stmt => (
                       <div key={stmt.id} className="px-5 py-3">
@@ -1109,6 +1150,7 @@ const ProductList: React.FC<ProductListProps> = ({
                           note: rmNote,
                           createdAt: new Date().toISOString(),
                           addedBy: currentUser?.name,
+                          type: 'manual',
                         });
                         setRmReceived(''); setRmUsed(''); setRmNote('');
                         setShowRmSheet(false);
@@ -1176,6 +1218,27 @@ const ProductList: React.FC<ProductListProps> = ({
                 onClick={toggleLang}
                 className="px-2.5 py-1 rounded-lg text-[10px] font-black border transition-all border-slate-200 text-slate-400 hover:border-indigo-300 hover:text-indigo-500"
               >{isEn ? 'KO' : 'EN'}</button>
+              <button
+                onClick={() => {
+                  const today = new Date().toISOString().slice(0, 10);
+                  for (const mat of RAW_MATERIALS) {
+                    const bal = rawMaterialBalances[mat] ?? 0;
+                    if (bal === 0) continue;
+                    onAddRawMaterialEntry({
+                      id: `rm-zero-${mat}-${Date.now()}`,
+                      material: mat,
+                      date: today,
+                      received: bal < 0 ? Math.round(-bal * 1000) / 1000 : 0,
+                      used: bal > 0 ? Math.round(bal * 1000) / 1000 : 0,
+                      note: '재고정정',
+                      createdAt: new Date().toISOString(),
+                      addedBy: currentUser?.name,
+                      type: 'manual',
+                    });
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-500 rounded-xl text-xs font-black hover:bg-slate-200 active:scale-95 transition-all"
+              >전체 0 맞춤</button>
               <button
                 onClick={() => { setRmSheetTab('new'); setShowRmSheet(true); }}
                 className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black hover:bg-emerald-700 active:scale-95 transition-all shadow-sm"
@@ -1268,6 +1331,22 @@ const ProductList: React.FC<ProductListProps> = ({
             ) : null;
           })()}
 
+          {/* 입고/사용 필터 */}
+          <div className="flex gap-1.5">
+            {(['all', 'received', 'used'] as const).map(v => (
+              <button key={v} onClick={() => setRmViewType(v)}
+                className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all border whitespace-nowrap ${
+                  rmViewType === v
+                    ? v === 'received' ? 'bg-indigo-600 text-white border-indigo-600'
+                      : v === 'used' ? 'bg-rose-500 text-white border-rose-500'
+                      : 'bg-slate-700 text-white border-slate-700'
+                    : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
+                }`}>
+                {v === 'all' ? '전체' : v === 'received' ? '입고만' : '사용만'}
+              </button>
+            ))}
+          </div>
+
           {/* 테이블: 전재고+입고-사용=현재고 */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <table className="w-full text-left">
@@ -1288,18 +1367,86 @@ const ProductList: React.FC<ProductListProps> = ({
                 {(() => {
                   // auto 사용량 항목 (isAuto: true, id 없음)
                   type DisplayEntry = { id?: string; material: string; date: string; received: number; used: number; note: string; isAuto: boolean; addedBy?: string };
-                  const manualEntries: DisplayEntry[] = (rmFilter === '전체' ? rawMaterialLedger : rawMaterialLedger.filter(e => e.material === rmFilter))
+                  const ledger = rmFilter === '전체' ? rawMaterialLedger : rawMaterialLedger.filter(e => e.material === rmFilter);
+                  const ledgerFiltered = ledger.filter(e => e.date.startsWith(rmMonth));
+                  // type==='manual'인 항목만 개별 행, 나머지(기존 포함)는 자동처럼 합침
+                  const manualEntries: DisplayEntry[] = ledgerFiltered
+                    .filter(e => e.type === 'manual')
                     .map(e => ({ id: e.id, material: e.material, date: e.date, received: e.received, used: e.used, note: e.note, isAuto: false, addedBy: e.addedBy }));
-                  const autoEntries: DisplayEntry[] = (rmFilter === '전체' ? autoUsageEntries : autoUsageEntries.filter(e => e.material === rmFilter))
-                    .map(e => ({ material: e.material, date: e.date, received: 0, used: e.used, note: e.note, isAuto: true }));
-                  const sorted = [...manualEntries, ...autoEntries].sort((a, b) => b.date.localeCompare(a.date) || (a.isAuto ? 1 : -1));
+                  const toMergeEntries: DisplayEntry[] = [
+                    ...ledgerFiltered
+                      .filter(e => e.type !== 'manual')
+                      .map(e => ({ id: e.id, material: e.material, date: e.date, received: e.received, used: e.used, note: e.note, isAuto: false, addedBy: e.addedBy })),
+                    ...(rmFilter === '전체' ? autoUsageEntries : autoUsageEntries.filter(e => e.material === rmFilter))
+                      .filter(e => e.date.startsWith(rmMonth))
+                      .map(e => ({ material: e.material, date: e.date, received: 0, used: e.used, note: e.note, isAuto: true })),
+                  ];
+
+                  // 날짜·원료 기준으로 합치고 비고를 "거래처 외 N개"로
+                  const mergedEntries = Object.values(
+                    toMergeEntries.reduce<Record<string, DisplayEntry & { _notes: string[] }>>((acc, e) => {
+                      const key = `${e.date}__${e.material}`;
+                      if (!acc[key]) acc[key] = { ...e, received: 0, used: 0, _notes: [] };
+                      acc[key].received = Math.round((acc[key].received + e.received) * 1000) / 1000;
+                      acc[key].used = Math.round((acc[key].used + e.used) * 1000) / 1000;
+                      const name = (e.note || '').replace(/^자동:\s*/, '').trim();
+                      if (name && !acc[key]._notes.includes(name)) acc[key]._notes.push(name);
+                      return acc;
+                    }, {})
+                  ).map(e => {
+                    const names = e._notes;
+                    const note = names.length === 0 ? '' : names.length === 1 ? names[0] : `${names[0]} 외 ${names.length - 1}개`;
+                    return { ...e, note };
+                  });
+
+                  // 이전 달까지의 잔액을 시작값으로 사용 (전월이월 자동 계산)
+                  const prevMonthEnd = (() => {
+                    if (rmFilter === '전체') return 0;
+                    const mat = rmFilter;
+                    const prevLedger = rawMaterialLedger.filter(e => e.material === mat && e.date < rmMonth);
+                    const prevAuto = autoUsageEntries.filter(e => e.material === mat && e.date < rmMonth);
+                    const prevToMerge = [
+                      ...prevLedger.filter(e => e.type !== 'manual').map(e => ({ date: e.date, received: e.received, used: e.used, note: e.note })),
+                      ...prevAuto.map(e => ({ date: e.date, received: 0, used: e.used, note: e.note })),
+                    ];
+                    const prevMerged = Object.values(prevToMerge.reduce<Record<string, { date: string; received: number; used: number; note: string }>>((acc, e) => {
+                      if (!acc[e.date]) acc[e.date] = { ...e, received: 0, used: 0 };
+                      acc[e.date].received = Math.round((acc[e.date].received + e.received) * 1000) / 1000;
+                      acc[e.date].used = Math.round((acc[e.date].used + e.used) * 1000) / 1000;
+                      return acc;
+                    }, {}));
+                    const prevAll = [
+                      ...prevLedger.filter(e => e.type === 'manual').map(e => ({ date: e.date, received: e.received, used: e.used, note: e.note })),
+                      ...prevMerged,
+                    ].sort((a, b) => a.date.localeCompare(b.date));
+                    let b = 0;
+                    for (const e of prevAll) {
+                      if (e.note === '전월이월') b = e.received;
+                      else b += e.received - e.used;
+                    }
+                    return Math.round(b * 1000) / 1000;
+                  })();
+
+                  // 오래된 순으로 잔액 계산 후 최신순으로 표시
+                  const sortedAsc = [...manualEntries, ...mergedEntries].sort((a, b) => a.date.localeCompare(b.date) || (a.isAuto ? 1 : -1));
+                  let bal = prevMonthEnd;
+                  const withBalance = sortedAsc.map(entry => {
+                    const isOpen = entry.note === '전월이월';
+                    if (isOpen) { bal = entry.received; return { ...entry, prev: entry.received, curr: entry.received, isOpen: true }; }
+                    const prev = Math.round(bal * 1000) / 1000;
+                    bal += entry.received - entry.used;
+                    const curr = Math.round(bal * 1000) / 1000;
+                    return { ...entry, prev, curr, isOpen: false };
+                  });
+                  const sorted = withBalance
+                    .filter(e => rmViewType === 'all' || (rmViewType === 'received' ? e.received > 0 : e.used > 0))
+                    .sort((a, b) => b.date.localeCompare(a.date) || (a.isAuto ? 1 : -1));
 
                   {
-                    let balance = 0;
                     return sorted.map((entry, idx) => {
-                      const isOpen = !entry.isAuto && entry.note === '전월이월';
+                      const isOpen = entry.isOpen;
                       if (isOpen) {
-                        balance = entry.received;
+                        const balance = entry.received;
                         return (
                           <tr key={entry.id || `auto-${idx}`} className="hover:bg-amber-50 bg-amber-50/50 transition-colors">
                             <td className="px-4 py-2.5 text-[11px] font-bold text-slate-500">{entry.date}</td>
@@ -1324,16 +1471,14 @@ const ProductList: React.FC<ProductListProps> = ({
                           </tr>
                         );
                       }
-                      const prev = Math.round(balance * 1000) / 1000;
-                      balance += entry.received - entry.used;
-                      const curr = Math.round(balance * 1000) / 1000;
+                      const { prev, curr } = entry as any;
                       return (
                         <tr key={entry.id || `auto-${idx}`} className={`transition-colors ${entry.isAuto ? 'hover:bg-indigo-50/30 bg-indigo-50/10' : 'hover:bg-slate-50'}`}>
                           <td className="px-4 py-2.5 text-[11px] font-bold text-slate-500 whitespace-nowrap">{entry.date}</td>
-                          <td className="px-4 py-2.5 text-[11px] text-slate-400 text-right whitespace-nowrap">{prev}</td>
-                          <td className="px-4 py-2.5 text-[11px] font-black text-indigo-600 text-right whitespace-nowrap">{entry.received > 0 ? `+${entry.received}` : '-'}</td>
-                          <td className="px-4 py-2.5 text-[11px] font-black text-rose-500 text-right whitespace-nowrap">{entry.used > 0 ? `-${entry.used}` : '-'}</td>
-                          <td className="px-4 py-2.5 text-[11px] font-black text-slate-800 text-right whitespace-nowrap">{curr}</td>
+                          <td className="px-4 py-2.5 text-[11px] text-slate-400 text-right whitespace-nowrap">{fmt1(prev)}</td>
+                          <td className="px-4 py-2.5 text-[11px] font-black text-indigo-600 text-right whitespace-nowrap">{entry.received > 0 ? `+${fmt1(entry.received)}` : '-'}</td>
+                          <td className="px-4 py-2.5 text-[11px] font-black text-rose-500 text-right whitespace-nowrap">{entry.used > 0 ? `-${fmt1(entry.used)}` : '-'}</td>
+                          <td className="px-4 py-2.5 text-[11px] font-black text-slate-800 text-right whitespace-nowrap">{fmt1(curr)}</td>
                           <td className="px-4 py-2.5 text-[11px] text-slate-500 max-w-[160px]">
                             {entry.isAuto
                               ? <span className="text-indigo-400 truncate block" title={entry.note}>{entry.note}</span>

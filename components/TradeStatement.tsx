@@ -929,7 +929,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 {activeOrders.length === 0 ? (
                   <p className="text-xs text-slate-400 py-2">진행 중인 주문이 없습니다.</p>
                 ) : (
-                  <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto">
+                  <div className="flex flex-col gap-1.5">
                     {activeOrders.map(o => {
                       const cl = clients.find(c => c.id === o.clientId);
                       return (
@@ -989,56 +989,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                         </div>
                       </div>
                     ))}
-                  </div>
-                )}
-                {/* 품목으로 공급처 선택 아코디언 */}
-                <button
-                  onClick={() => setShowPurchasePicker(v => !v)}
-                  className="mt-2 flex items-center gap-1 text-[10px] font-black text-slate-400 hover:text-slate-600 transition-all">
-                  <ChevronDown size={12} className={`transition-transform ${showPurchasePicker ? 'rotate-180' : ''}`}/>
-                  품목으로 공급처 직접 선택
-                </button>
-                {showPurchasePicker && (
-                  <div className="mt-2">
-                    <div className="relative mb-2">
-                      <Search size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
-                      <input type="text" placeholder="품목 검색..." value={purchaseSearch} onChange={e => setPurchaseSearch(e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-lg pl-6 pr-2 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-slate-300"/>
-                    </div>
-                    {purchasableBySupplier.length === 0 ? (
-                      <p className="text-xs text-slate-400 py-2">연결된 품목이 없습니다.</p>
-                    ) : (
-                      <div className="flex flex-col gap-2 max-h-48 overflow-y-auto">
-                        {purchasableBySupplier.map(({ supplierId, supplierName, items }) => (
-                          <div key={supplierId}>
-                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 px-1">{supplierName}</p>
-                            <div className="flex flex-col gap-1">
-                              {items.map(p => {
-                                const co = confirmedOrders.find(c => c.id === p.id);
-                                return (
-                                  <button key={p.id}
-                                    onClick={() => {
-                                      setSelectedClientId(supplierId);
-                                      const row = { name: p.name, spec: p.용량 || p.unit || '', qty: co ? String(co.quantity) : '1', price: '', isTaxExempt: false };
-                                      setManualItems(prev => {
-                                        const filled = prev.filter(r => r.name.trim());
-                                        return [...filled, row, { name: '', spec: '', qty: '', price: '', isTaxExempt: false }];
-                                      });
-                                    }}
-                                    className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2 text-left hover:border-slate-400 transition-all">
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-xs font-black text-slate-800 truncate">{p.name}</p>
-                                      {p.용량 && <p className="text-[10px] text-slate-400">{p.용량}</p>}
-                                    </div>
-                                    {co && <span className="text-[10px] font-black text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded shrink-0">확정 {co.quantity}</span>}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 )}
               </div>

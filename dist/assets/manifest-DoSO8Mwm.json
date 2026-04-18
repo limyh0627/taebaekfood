@@ -1,0 +1,17 @@
+
+{
+  "short_name": "TAEBAEKFOOD",
+  "name": "TAEBAEKFOOD 스마트 주문관리",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3081/3081986.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#4f46e5",
+  "background_color": "#f8fafc"
+}
