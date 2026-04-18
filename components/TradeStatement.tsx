@@ -666,8 +666,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             <button key={t} onClick={()=>setHistTypeFilter(t)}
               className={`px-3.5 py-1.5 rounded-lg text-[11px] font-black border transition-all ${
                 histTypeFilter===t
-                  ? t==='매출' ? 'bg-rose-600 text-white border-rose-600'
-                    : t==='매입' ? 'bg-blue-600 text-white border-blue-600'
+                  ? t==='매출' ? 'bg-blue-600 text-white border-blue-600'
+                    : t==='매입' ? 'bg-rose-600 text-white border-rose-600'
                     : 'bg-slate-700 text-white border-slate-700'
                   : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400 hover:text-slate-600'
               }`}>{t}</button>
@@ -714,7 +714,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     <td className="px-4 py-3 text-[11px] font-mono text-slate-600 whitespace-nowrap">{dateLabel}</td>
                     <td className="px-4 py-3">
                       <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                        stmt.type === '매출' ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'
+                        stmt.type === '매출' ? 'bg-blue-100 text-blue-700' : 'bg-rose-100 text-rose-700'
                       }`}>{stmt.type}</span>
                     </td>
                     <td className="px-4 py-3 text-xs font-bold text-slate-800">{stmt.clientName}</td>
@@ -744,7 +744,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             onClick={e=>e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <span className={`text-xs font-black px-2.5 py-1 rounded-full ${detailStmt.type==='매출'?'bg-rose-100 text-rose-700':'bg-blue-100 text-blue-700'}`}>{detailStmt.type}</span>
+                <span className={`text-xs font-black px-2.5 py-1 rounded-full ${detailStmt.type==='매출'?'bg-blue-100 text-blue-700':'bg-rose-100 text-rose-700'}`}>{detailStmt.type}</span>
                 <span className="font-black text-slate-900">{detailStmt.clientName}</span>
                 <span className="text-xs text-slate-400">{detailStmt.tradeDate}</span>
                 <span className="text-[10px] text-slate-300 font-mono">{detailStmt.docNo}</span>

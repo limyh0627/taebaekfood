@@ -48,6 +48,8 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
   const [showDeliveryPicker, setShowDeliveryPicker] = useState(false);
   const [pickerDeliveryOrdering, setPickerDeliveryOrdering] = useState<string[]>([]);
   const [dragDeliveryIdx, setDragDeliveryIdx] = useState<number | null>(null);
+  const [dragDeliveryId, setDragDeliveryId] = useState<string | null>(null);
+  const [previewDeliveryOrderId, setPreviewDeliveryOrderId] = useState<string | null>(null);
   const [deliveryTab, setDeliveryTab] = useState<'배송일정관리' | '배송캘린더'>('배송일정관리');
   const [mobileCollapsed, setMobileCollapsed] = useState<Set<string>>(new Set());
   const toggleMobileCollapse = (id: string) => setMobileCollapsed(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
@@ -171,7 +173,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
     const getStatusColor = (status: OrderStatus) => {
       switch (status) {
         case OrderStatus.PENDING: return 'bg-amber-100 text-amber-700 border-amber-200';
-        case OrderStatus.PROCESSING: return 'bg-sky-100 text-sky-700 border-sky-200';
+        case OrderStatus.PROCESSING: return 'bg-sky-100 text-pink-700 border-sky-200';
         case OrderStatus.SHIPPED: return 'bg-indigo-100 text-indigo-700 border-indigo-200';
         case OrderStatus.DISPATCHED: return 'bg-emerald-100 text-emerald-700 border-emerald-200';
         case OrderStatus.DELIVERED: return 'bg-slate-100 text-slate-500 border-slate-200';
@@ -331,90 +333,133 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
             <div className="flex flex-col md:flex-row md:min-w-max gap-4 pb-1 md:items-start">
 
               {/* 금일 배송순서 패널 */}
-              <div className="w-full md:w-56 md:shrink-0 flex flex-col rounded-3xl border border-teal-100 bg-teal-50/50 shadow-sm">
+              <div className="w-full md:w-56 md:shrink-0 flex flex-col rounded-3xl border border-pink-100 bg-pink-50/50 shadow-sm">
                 <div className="p-4 border-b border-white/50 flex items-center justify-between">
                   <button className="flex items-center gap-2 md:cursor-default" onClick={() => { if (window.innerWidth < 768) toggleMobileCollapse('delivery-order'); }}>
-                    <div className="p-1.5 rounded-xl bg-teal-600 text-white"><ListOrdered size={16} /></div>
-                    <h3 className="font-black text-sm text-teal-700">금일 배송순서</h3>
-                    <ChevronDown size={14} className={`md:hidden text-teal-400 transition-transform ${mobileCollapsed.has('delivery-order') ? '' : 'rotate-180'}`} />
+                    <div className="p-1.5 rounded-xl bg-pink-500 text-white"><ListOrdered size={16} /></div>
+                    <h3 className="font-black text-sm text-pink-700">금일 배송순서</h3>
+                    <ChevronDown size={14} className={`md:hidden text-pink-400 transition-transform ${mobileCollapsed.has('delivery-order') ? '' : 'rotate-180'}`} />
                   </button>
                   <button
                     onClick={() => { setPickerDeliveryOrdering(validDelivery); setShowDeliveryPicker(true); }}
-                    className="flex items-center gap-1 text-[10px] font-black text-teal-600 bg-teal-100 hover:bg-teal-200 px-2.5 py-1.5 rounded-lg transition-all"
+                    className="flex items-center gap-1 text-[10px] font-black text-pink-600 bg-pink-100 hover:bg-pink-200 px-2.5 py-1.5 rounded-lg transition-all"
                   >
                     <Plus size={11} /> 추가
                   </button>
                 </div>
                 <div className={`p-3 flex flex-col gap-1 min-h-[80px] ${mobileCollapsed.has('delivery-order') ? 'hidden md:flex' : ''}`}>
                   {validDelivery.length === 0 ? (
-                    <p className="text-center text-[11px] text-teal-300 py-6 font-bold">추가 버튼으로<br/>순서를 설정하세요</p>
+                    <p className="text-center text-[11px] text-pink-300 py-6 font-bold">추가 버튼으로<br/>순서를 설정하세요</p>
                   ) : (
                     <>
                       {/* 오전 섹션 */}
-                      <div className="text-[9px] font-black text-amber-500 px-1 pt-1">오전</div>
+                      <div
+                        className="text-[9px] font-black text-amber-500 px-1 pt-1"
+                        onDragOver={e => e.preventDefault()}
+                        onDrop={() => {
+                          if (dragDeliveryId === null) return;
+                          const next: Record<string, '오전' | '오후'> = { ...deliveryTimeSlots, [dragDeliveryId]: '오전' };
+                          setDeliveryTimeSlots(next);
+                          localStorage.setItem('deliveryTimeSlots', JSON.stringify(next));
+                          setDragDeliveryId(null);
+                        }}
+                      >오전</div>
                       {morningIds.length === 0 && (
                         <p className="text-[10px] text-slate-300 text-center py-1 font-bold">없음</p>
                       )}
-                      {morningIds.map((id, idx) => {
+                      {morningIds.map((id) => {
                         const o = dispatchedOrders.find(x => x.id === id);
                         if (!o) return null;
                         const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '';
                         const globalIdx = validDelivery.indexOf(id);
+                        const globalNum = globalIdx + 1;
                         return (
                           <div
                             key={id}
                             draggable
-                            onDragStart={() => setDragDeliveryIdx(globalIdx)}
+                            onDragStart={() => { setDragDeliveryIdx(globalIdx); setDragDeliveryId(id); }}
                             onDragOver={e => e.preventDefault()}
                             onDrop={() => {
                               if (dragDeliveryIdx === null || dragDeliveryIdx === globalIdx) return;
                               const next = [...validDelivery];
                               const [moved] = next.splice(dragDeliveryIdx, 1);
-                              next.splice(globalIdx, 0, moved);
-                              setDragDeliveryIdx(null);
+                              next.splice(next.indexOf(id), 0, moved);
+                              if (dragDeliveryId && dragDeliveryId !== id) {
+                                const slots: Record<string, '오전' | '오후'> = { ...deliveryTimeSlots, [dragDeliveryId]: '오전' };
+                                setDeliveryTimeSlots(slots);
+                                localStorage.setItem('deliveryTimeSlots', JSON.stringify(slots));
+                              }
+                              setDragDeliveryIdx(null); setDragDeliveryId(null);
                               saveDeliveryOrdering(next);
                             }}
-                            className="flex items-center gap-2 bg-white border border-amber-100 rounded-xl px-2 py-1.5 cursor-grab active:cursor-grabbing"
+                            className="flex items-center gap-2 bg-white rounded-xl px-2.5 py-2 shadow-sm border border-amber-100 cursor-grab active:cursor-grabbing"
                           >
-                            <GripVertical size={12} className="text-amber-300 shrink-0" />
-                            <span className="text-[10px] font-black text-amber-600 bg-amber-50 w-4 h-4 rounded-full flex items-center justify-center shrink-0">{idx + 1}</span>
-                            <span className="text-[11px] font-bold text-slate-700 truncate flex-1">{clientName}</span>
-                            <button onClick={() => toggleTimeSlot(id)} className="text-[8px] font-black text-amber-400 hover:text-indigo-500 shrink-0 px-1">→오후</button>
-                            <button onClick={() => saveDeliveryOrdering(validDelivery.filter(x => x !== id))} className="text-slate-300 hover:text-rose-400 shrink-0"><X size={10} /></button>
+                            <span className="text-[10px] font-black text-amber-500 w-4 shrink-0">{globalNum}</span>
+                            <button
+                              onClick={e => { e.stopPropagation(); setPreviewDeliveryOrderId(id); }}
+                              className="flex-1 min-w-0 text-left hover:opacity-70 transition-opacity"
+                            >
+                              <p className="text-[11px] font-bold text-slate-700 truncate">{clientName}</p>
+                              <p className="text-[9px] text-slate-400 truncate">{(() => { const d = new Date(o.deliveryDate); return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; })()} · {o.items.length}품목</p>
+                            </button>
+                            <button onClick={e => { e.stopPropagation(); toggleTimeSlot(id); }} className="text-[8px] font-black text-amber-300 hover:text-amber-500 shrink-0">오전</button>
+                            <button onClick={e => { e.stopPropagation(); saveDeliveryOrdering(validDelivery.filter(x => x !== id)); }} className="text-slate-200 hover:text-rose-400 shrink-0"><X size={10} /></button>
                           </div>
                         );
                       })}
                       {/* 오후 섹션 */}
-                      <div className="text-[9px] font-black text-indigo-500 px-1 pt-2">오후</div>
+                      <div
+                        className="text-[9px] font-black text-indigo-500 px-1 pt-2"
+                        onDragOver={e => e.preventDefault()}
+                        onDrop={() => {
+                          if (dragDeliveryId === null) return;
+                          const next: Record<string, '오전' | '오후'> = { ...deliveryTimeSlots, [dragDeliveryId]: '오후' };
+                          setDeliveryTimeSlots(next);
+                          localStorage.setItem('deliveryTimeSlots', JSON.stringify(next));
+                          setDragDeliveryId(null);
+                        }}
+                      >오후</div>
                       {afternoonIds.length === 0 && (
                         <p className="text-[10px] text-slate-300 text-center py-1 font-bold">없음</p>
                       )}
-                      {afternoonIds.map((id, idx) => {
+                      {afternoonIds.map((id) => {
                         const o = dispatchedOrders.find(x => x.id === id);
                         if (!o) return null;
                         const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '';
                         const globalIdx = validDelivery.indexOf(id);
+                        const globalNum = globalIdx + 1;
                         return (
                           <div
                             key={id}
                             draggable
-                            onDragStart={() => setDragDeliveryIdx(globalIdx)}
+                            onDragStart={() => { setDragDeliveryIdx(globalIdx); setDragDeliveryId(id); }}
                             onDragOver={e => e.preventDefault()}
                             onDrop={() => {
                               if (dragDeliveryIdx === null || dragDeliveryIdx === globalIdx) return;
                               const next = [...validDelivery];
                               const [moved] = next.splice(dragDeliveryIdx, 1);
-                              next.splice(globalIdx, 0, moved);
-                              setDragDeliveryIdx(null);
+                              next.splice(next.indexOf(id), 0, moved);
+                              // 드래그한 항목을 오후로
+                              if (dragDeliveryId && dragDeliveryId !== id) {
+                                const slots: Record<string, '오전' | '오후'> = { ...deliveryTimeSlots, [dragDeliveryId]: '오후' };
+                                setDeliveryTimeSlots(slots);
+                                localStorage.setItem('deliveryTimeSlots', JSON.stringify(slots));
+                              }
+                              setDragDeliveryIdx(null); setDragDeliveryId(null);
                               saveDeliveryOrdering(next);
                             }}
-                            className="flex items-center gap-2 bg-white border border-indigo-100 rounded-xl px-2 py-1.5 cursor-grab active:cursor-grabbing"
+                            className="flex items-center gap-2 bg-white rounded-xl px-2.5 py-2 shadow-sm border border-indigo-100 cursor-grab active:cursor-grabbing"
                           >
-                            <GripVertical size={12} className="text-indigo-300 shrink-0" />
-                            <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 w-4 h-4 rounded-full flex items-center justify-center shrink-0">{idx + 1}</span>
-                            <span className="text-[11px] font-bold text-slate-700 truncate flex-1">{clientName}</span>
-                            <button onClick={() => toggleTimeSlot(id)} className="text-[8px] font-black text-indigo-400 hover:text-amber-500 shrink-0 px-1">→오전</button>
-                            <button onClick={() => saveDeliveryOrdering(validDelivery.filter(x => x !== id))} className="text-slate-300 hover:text-rose-400 shrink-0"><X size={10} /></button>
+                            <span className="text-[10px] font-black text-indigo-500 w-4 shrink-0">{globalNum}</span>
+                            <button
+                              onClick={e => { e.stopPropagation(); setPreviewDeliveryOrderId(id); }}
+                              className="flex-1 min-w-0 text-left hover:opacity-70 transition-opacity"
+                            >
+                              <p className="text-[11px] font-bold text-slate-700 truncate">{clientName}</p>
+                              <p className="text-[9px] text-slate-400 truncate">{(() => { const d = new Date(o.deliveryDate); return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; })()} · {o.items.length}품목</p>
+                            </button>
+                            <button onClick={e => { e.stopPropagation(); toggleTimeSlot(id); }} className="text-[8px] font-black text-indigo-300 hover:text-indigo-500 shrink-0">오후</button>
+                            <button onClick={e => { e.stopPropagation(); saveDeliveryOrdering(validDelivery.filter(x => x !== id)); }} className="text-slate-200 hover:text-rose-400 shrink-0"><X size={10} /></button>
                           </div>
                         );
                       })}
@@ -521,7 +566,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
                           }}
                           className={`w-full flex items-center gap-3 px-5 py-3 border-b border-slate-50 hover:bg-slate-50 transition-colors text-left ${isSelected ? 'bg-teal-50' : ''}`}
                         >
-                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 ${isSelected ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 ${isSelected ? 'bg-pink-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
                             {isSelected ? idx + 1 : ''}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -535,7 +580,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
                   <div className="p-4 border-t border-slate-100">
                     <button
                       onClick={() => { saveDeliveryOrdering(pickerDeliveryOrdering); setShowDeliveryPicker(false); }}
-                      className="w-full bg-teal-600 text-white font-black py-3 rounded-2xl hover:bg-teal-700 transition-all"
+                      className="w-full bg-pink-500 text-white font-black py-3 rounded-2xl hover:bg-teal-700 transition-all"
                     >확인</button>
                   </div>
                 </div>
@@ -751,6 +796,50 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
           </div>
         </div>
       )}
+
+      {/* 배송순서 클릭 → 주문카드 팝업 */}
+      {previewDeliveryOrderId && (() => {
+        const order = orders.find(o => o.id === previewDeliveryOrderId);
+        if (!order) return null;
+        const clientName = order.customerName || clients.find(c => c.id === order.clientId)?.name || '이름없음';
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            onClick={() => setPreviewDeliveryOrderId(null)}
+          >
+            <div
+              className="bg-slate-50 rounded-3xl shadow-2xl w-full max-w-sm mx-4 animate-in fade-in zoom-in-95 duration-200 flex flex-col overflow-hidden"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-white rounded-t-3xl">
+                <div>
+                  <h3 className="font-black text-slate-900">{clientName}</h3>
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-600">작업완료</span>
+                </div>
+                <button onClick={() => setPreviewDeliveryOrderId(null)} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400">
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="p-4 overflow-y-auto max-h-[70vh]">
+                <OrderCard
+                  order={order}
+                  clients={clients}
+                  products={products}
+                  editingOrderId={editingOrderId}
+                  setEditingOrderId={setEditingOrderId}
+                  showAddProductSelect={showAddProductSelect}
+                  setShowAddProductSelect={setShowAddProductSelect}
+                  onUpdateItems={onUpdateItems}
+                  onUpdateDeliveryDate={onUpdateDeliveryDate ?? (() => {})}
+                  onUpdateStatus={onUpdateStatus ?? (() => {})}
+                  onToggleItemChecked={onToggleItemChecked}
+                  onDeleteOrder={onDeleteOrder ?? (() => {})}
+                />
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
