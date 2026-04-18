@@ -33,6 +33,8 @@ interface OfficeTalkProps {
   employees: Employee[];
   chatRooms: ChatRoom[];
   chatMessages: ChatMessage[];
+  initialRoomId?: string | null;
+  onRoomOpened?: () => void;
   onAddRoom: (_room: ChatRoom) => void;
   onUpdateRoom: (_id: string, _data: Partial<ChatRoom>) => void;
   onDeleteRoom: (_id: string) => void;
@@ -44,12 +46,21 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   currentUser,
   employees,
   chatRooms,
+  initialRoomId,
+  onRoomOpened,
   onAddRoom,
   onUpdateRoom,
   onDeleteRoom,
   onSendMessage
 }) => {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialRoomId) {
+      setActiveRoomId(initialRoomId);
+      onRoomOpened?.();
+    }
+  }, [initialRoomId]);
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
   const [messageText, setMessageText] = useState('');
@@ -70,6 +81,81 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const prevRoomTimestamps = useRef<Record<string, string>>({});
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>(
+    'Notification' in window ? Notification.permission : 'denied'
+  );
+  const [notifMode, setNotifMode] = useState<'sound' | 'vibration' | 'both'>(() => {
+    return (localStorage.getItem('officetalk_notif_mode') as 'sound' | 'vibration' | 'both') ?? 'both';
+  });
+  const [showNotifSettings, setShowNotifSettings] = useState(false);
+
+  const saveNotifMode = (mode: 'sound' | 'vibration' | 'both') => {
+    setNotifMode(mode);
+    localStorage.setItem('officetalk_notif_mode', mode);
+  };
+
+  // 알림 권한 요청
+  const requestNotifPermission = async () => {
+    if (!('Notification' in window)) return;
+    const result = await Notification.requestPermission();
+    setNotifPermission(result);
+  };
+
+  // Web Audio API로 알림음 생성
+  const playNotificationSound = () => {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.08);
+      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.16);
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.4);
+    } catch {}
+  };
+
+  // 알림 권한 요청 (마운트 시)
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().then(p => setNotifPermission(p));
+    }
+  }, []);
+
+  // 새 메시지 감지 → 알림
+  useEffect(() => {
+    chatRooms.forEach(room => {
+      if (!room.participantIds.includes(currentUser.id)) return;
+      const prev = prevRoomTimestamps.current[room.id];
+      const isNew = prev !== undefined && room.lastUpdatedAt > prev;
+      const isUnread = room.lastUpdatedAt > (room.lastReadBy?.[currentUser.id] ?? '');
+      const isOtherRoom = room.id !== activeRoomId || !document.hasFocus();
+
+      if (isNew && isUnread && isOtherRoom) {
+        // 소리
+        if (notifMode === 'sound' || notifMode === 'both') playNotificationSound();
+        // 진동 (Android)
+        if ((notifMode === 'vibration' || notifMode === 'both') && 'vibrate' in navigator) navigator.vibrate([150, 80, 150]);
+        // 브라우저 알림
+        if (notifPermission === 'granted' && !document.hasFocus()) {
+          const roomName = room.name || '오피스톡';
+          const notif = new Notification(`💬 ${roomName}`, {
+            body: room.lastMessage || '새 메시지가 도착했습니다.',
+            icon: '/pwa-192x192.png',
+            tag: room.id,
+          } as NotificationOptions);
+          notif.onclick = () => { window.focus(); };
+        }
+      }
+      prevRoomTimestamps.current[room.id] = room.lastUpdatedAt;
+    });
+  }, [chatRooms]);
 
   const markRoomAsRead = (roomId: string) => {
     const room = chatRooms.find(r => r.id === roomId);
@@ -271,15 +357,62 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
       {/* Sidebar: Room List */}
       <div className={`w-full lg:w-80 border-r border-slate-100 flex flex-col bg-slate-50/30 ${activeRoomId ? 'hidden lg:flex' : 'flex'}`}>
         <div className="p-6 border-b border-slate-100">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-black text-slate-900">오피스톡</h2>
-            <button 
-              onClick={() => setIsNewChatModalOpen(true)}
-              className="p-2 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all"
-            >
-              <Plus size={20} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowNotifSettings(p => !p)}
+                className={`p-2 rounded-xl transition-all ${showNotifSettings ? 'bg-indigo-100 text-indigo-600' : 'text-slate-400 hover:bg-slate-100'}`}
+                title="알림 설정"
+              >
+                🔔
+              </button>
+              <button
+                onClick={() => setIsNewChatModalOpen(true)}
+                className="p-2 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all"
+              >
+                <Plus size={20} />
+              </button>
+            </div>
           </div>
+
+          {/* 알림 설정 패널 */}
+          {showNotifSettings && (
+            <div className="mb-4 p-3 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col gap-2">
+              <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest">알림 방식</p>
+              <div className="flex gap-2">
+                {([
+                  { value: 'sound',     label: '🔊 소리' },
+                  { value: 'vibration', label: '📳 진동' },
+                  { value: 'both',      label: '🔊+📳 둘 다' },
+                ] as const).map(({ value, label }) => (
+                  <button
+                    key={value}
+                    onClick={() => saveNotifMode(value)}
+                    className={`flex-1 py-2 rounded-xl text-[11px] font-black transition-all border ${
+                      notifMode === value
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow'
+                        : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {notifPermission !== 'granted' && (
+                <button
+                  onClick={requestNotifPermission}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-[11px] font-bold hover:bg-amber-100 transition-all"
+                >
+                  <span>🔔</span>
+                  <span>{notifPermission === 'denied' ? '알림 차단됨 — 브라우저 설정에서 허용' : '알림 허용하기'}</span>
+                </button>
+              )}
+              {notifPermission === 'granted' && (
+                <p className="text-[10px] text-emerald-600 font-bold px-1">✅ 알림 허용됨</p>
+              )}
+            </div>
+          )}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
             <input 

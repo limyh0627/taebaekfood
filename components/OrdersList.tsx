@@ -70,6 +70,10 @@ interface OrdersListProps {
   onDeleteOrder: (id: string) => void;
   onAddClick: () => void;
   currentUserName?: string;
+  highlightOrderId?: string | null;
+  onHighlightClear?: () => void;
+  newOrderId?: string | null;
+  onNewOrderIdClear?: () => void;
   workOrderItems?: { key: string; orderId: string; productId: string; itemName: string; clientName: string; qty: number; category: string }[];
   onSetWorkOrderItems?: (items: { key: string; orderId: string; productId: string; itemName: string; clientName: string; qty: number; category: string }[]) => void;
 }
@@ -89,6 +93,8 @@ interface OrderCardProps {
   onDeleteOrder: (id: string) => void;
   currentUserName?: string;
   gridCols?: number;
+  isHighlighted?: boolean;
+  highlightOrderId?: string | null;
 }
 
 interface OrderSourceGroupProps {
@@ -110,6 +116,7 @@ interface OrderSourceGroupProps {
   onToggleItemChecked?: (orderId: string, itemIdx: number, checkedBy?: string) => void;
   onDeleteOrder: (id: string) => void;
   currentUserName?: string;
+  highlightOrderId?: string | null;
 }
 
 interface DeliveryRowProps {
@@ -129,8 +136,9 @@ export const OrderCard = memo<OrderCardProps>(({
   editingOrderId, setEditingOrderId,
   showAddProductSelect, setShowAddProductSelect,
   onUpdateItems, onUpdateDeliveryDate, onUpdateStatus,
-  onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1,
+  onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1, isHighlighted = false, highlightOrderId,
 }) => {
+  const highlighted = isHighlighted || highlightOrderId === order.id;
   const isEditing = editingOrderId === order.id;
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
 
@@ -148,8 +156,22 @@ export const OrderCard = memo<OrderCardProps>(({
 
   // 접힘 상태: DISPATCHED/SHIPPED 카드는 초기에 접힘
   const [isCollapsed, setIsCollapsed] = useState(
-    order.status === OrderStatus.DISPATCHED || order.status === OrderStatus.SHIPPED
+    order.status === OrderStatus.DISPATCHED || order.status === OrderStatus.SHIPPED || order.status === OrderStatus.ON_HOLD
   );
+  const [isCompact, setIsCompact] = useState(() => {
+    try {
+      const stored: string[] = JSON.parse(localStorage.getItem('compactOrders') || '[]');
+      return stored.includes(order.id);
+    } catch { return false; }
+  });
+  const toggleCompact = (value: boolean) => {
+    setIsCompact(value);
+    try {
+      const stored: string[] = JSON.parse(localStorage.getItem('compactOrders') || '[]');
+      const next = value ? [...stored.filter(id => id !== order.id), order.id] : stored.filter(id => id !== order.id);
+      localStorage.setItem('compactOrders', JSON.stringify(next));
+    } catch {}
+  };
 
   // 완제품 모두 체크 시 → 작업완료(DISPATCHED)로 자동 이동 + 접힘
   useEffect(() => {
@@ -157,7 +179,8 @@ export const OrderCard = memo<OrderCardProps>(({
       allNonHyangmiyuDone &&
       order.status !== OrderStatus.DISPATCHED &&
       order.status !== OrderStatus.SHIPPED &&
-      order.status !== OrderStatus.DELIVERED
+      order.status !== OrderStatus.DELIVERED &&
+      order.status !== OrderStatus.ON_HOLD
     ) {
       onUpdateStatus(order.id, OrderStatus.DISPATCHED);
       setIsCollapsed(true);
@@ -209,44 +232,71 @@ export const OrderCard = memo<OrderCardProps>(({
     setShowAddProductSelect(null);
   };
 
+  if (isCompact) {
+    return (
+      <div
+        id={`order-card-${order.id}`}
+        draggable
+        onDragStart={(e) => { e.dataTransfer.setData('orderId', order.id); e.dataTransfer.effectAllowed = 'move'; }}
+        className={`bg-white rounded-xl border px-3 py-2 flex items-center gap-2 cursor-grab active:cursor-grabbing transition-all hover:shadow-sm ${isFullyDone ? 'border-emerald-100' : 'border-slate-100 hover:border-indigo-100'}`}
+      >
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isFullyDone ? 'bg-emerald-400' : progress > 0 ? 'bg-amber-400' : 'bg-slate-300'}`} />
+        <span className="text-[12px] font-bold text-slate-800 truncate flex-1">{displayName}</span>
+        {progress > 0 && !isFullyDone && (
+          <span className="text-[9px] font-black text-amber-500 shrink-0">{progress}%</span>
+        )}
+        {isFullyDone && (
+          <span className="text-[9px] font-black text-emerald-500 shrink-0">완료</span>
+        )}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); toggleCompact(false); }}
+          className="shrink-0 text-slate-300 hover:text-indigo-400 transition-all"
+          title="펼치기"
+        >
+          <ChevronDown size={13} />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div
+      id={`order-card-${order.id}`}
       draggable={!isEditing}
       onDragStart={(e) => { e.dataTransfer.setData('orderId', order.id); e.dataTransfer.effectAllowed = 'move'; }}
-      className={`bg-white rounded-2xl shadow-sm border transition-all group relative animate-in zoom-in-95 duration-200 ${isEditing ? 'ring-2 ring-indigo-500 border-indigo-200 shadow-xl z-20' : 'border-slate-100 hover:shadow-md hover:border-indigo-100 cursor-grab active:cursor-grabbing'} ${isCollapsed ? 'p-2.5' : 'p-4'} flex flex-col`}
+      className={`bg-white rounded-2xl shadow-sm border transition-all group relative animate-in zoom-in-95 duration-200 ${isEditing ? 'ring-2 ring-indigo-500 border-indigo-200 shadow-xl z-20' : highlighted ? 'ring-2 ring-amber-400 border-amber-300 shadow-lg shadow-amber-100' : 'border-slate-100 hover:shadow-md hover:border-indigo-100 cursor-grab active:cursor-grabbing'} ${isCollapsed ? 'p-2.5' : 'p-4'} flex flex-col`}
     >
       <div className={`flex justify-between items-start ${isCollapsed ? 'mb-1.5' : 'mb-3'}`}>
-        <h4 className="flex-1 font-bold text-slate-800 leading-tight whitespace-nowrap text-sm">{displayName}</h4>
-        <div className="flex items-center gap-1 shrink-0 ml-1.5">
+        <div className="flex-1 min-w-0 flex items-center gap-1.5">
+          <h4 className="font-bold text-slate-800 leading-tight truncate text-sm">{displayName}</h4>
           {nonHyangmiyuItems.length > 0 && (
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setIsCollapsed(prev => !prev); }}
-              className={`text-[9px] font-black px-1.5 py-0.5 rounded transition-all ${isFullyDone ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-600'}`}
+              className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 transition-all ${isFullyDone ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-600'}`}
             >
               {completedItems}/{totalItems}
             </button>
           )}
-          <select
-            value={order.status}
-            onClick={e => e.stopPropagation()}
-            onChange={(e) => onUpdateStatus(order.id, e.target.value as OrderStatus)}
-            className={`py-0.5 px-1 rounded text-[8px] font-black cursor-pointer outline-none border-0 appearance-none w-10 text-center ${
-              order.status === OrderStatus.PENDING
-                ? 'bg-amber-100 text-amber-700'
-                : order.status === OrderStatus.PROCESSING
-                ? 'bg-sky-100 text-sky-700'
-                : order.status === OrderStatus.DISPATCHED
-                ? 'bg-emerald-100 text-emerald-700'
-                : 'bg-indigo-100 text-indigo-700'
-            }`}
-          >
-            <option value={OrderStatus.PENDING}>대기중</option>
-            <option value={OrderStatus.PROCESSING}>작업중</option>
-            <option value={OrderStatus.DISPATCHED}>작업완료</option>
-            <option value={OrderStatus.SHIPPED}>출고</option>
-          </select>
         </div>
+        {!isEditing && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); toggleCompact(true); }}
+            className="p-1.5 rounded-lg text-slate-300 hover:bg-slate-50 hover:text-slate-500 transition-all"
+            title="간소화"
+          >
+            <ChevronUp size={14} />
+          </button>
+        )}
+        <button
+          onClick={(e) => { e.stopPropagation(); setEditingOrderId(isEditing ? null : order.id); setShowAddProductSelect(null); }}
+          className={`p-1.5 rounded-lg transition-all ${isEditing ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-indigo-50 hover:text-indigo-600'}`}
+          title={isEditing ? '저장' : '주문 편집'}
+        >
+          {isEditing ? <Check size={14} /> : <Edit2 size={14} />}
+        </button>
       </div>
 
       <div className={isCollapsed ? '' : 'mb-3 flex-1'}>
@@ -423,9 +473,16 @@ export const OrderCard = memo<OrderCardProps>(({
               >
                 <option value="" disabled>추가할 품목 선택...</option>
                 <optgroup label="완제품">
-                  {products.filter(p => p.category === '완제품' && p.clientId === order.clientId).map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
+                  {products
+                    .filter(p => p.category === '완제품' && p.clientId === order.clientId)
+                    .sort((a, b) => {
+                      const order = (name: string) => /가루/.test(name) ? 3 : /참기름|참진|참고소|참향/.test(name) ? 0 : /들기름|들향|들진|들고소/.test(name) ? 1 : /깨/.test(name) ? 2 : 4;
+                      const diff = order(a.name) - order(b.name);
+                      return diff !== 0 ? diff : a.name.localeCompare(b.name, 'ko');
+                    })
+                    .map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
                 </optgroup>
                 <optgroup label="향미유">
                   {products.filter(p => p.category === '향미유').map(p => (
@@ -450,6 +507,29 @@ export const OrderCard = memo<OrderCardProps>(({
         </div>
       )}
 
+      {/* 상태 변경 버튼 */}
+      {!isEditing && (
+        <div className="flex gap-1 mt-2">
+          {([
+            [OrderStatus.PENDING,    '대기중'],
+            [OrderStatus.PROCESSING, '작업중'],
+            [OrderStatus.DISPATCHED, '작업완료'],
+          ] as [OrderStatus, string][]).map(([st, label]) => (
+            <button
+              key={st}
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onUpdateStatus(order.id, st); }}
+              className={`flex-1 py-1 rounded-lg text-[9px] font-black transition-all ${
+                order.status === st
+                  ? 'bg-slate-700 text-white'
+                  : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="flex items-center justify-between pt-2 border-t border-slate-50 mt-2">
         {isEditing ? (
@@ -465,34 +545,34 @@ export const OrderCard = memo<OrderCardProps>(({
             <div className="flex flex-col">
               <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">주문일자</span>
               <span className="text-[9px] font-bold text-slate-400">
-                {(() => { const d = new Date(order.createdAt); return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; })()}
+                {new Date(order.createdAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}
               </span>
             </div>
             <div className="flex flex-col items-center">
               <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">배송기한</span>
-              <span className="text-[9px] font-bold text-slate-500">
-                {(() => { const d = new Date(order.deliveryDate); return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; })()}
-              </span>
+              <span className="text-[9px] font-bold text-slate-500">{new Date(order.deliveryDate).toLocaleDateString().slice(2)}</span>
             </div>
-            <button
-              onClick={(e) => { e.stopPropagation(); setEditingOrderId(order.id); setShowAddProductSelect(null); }}
-              className="p-1.5 rounded-lg text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition-all"
-              title="주문 편집"
-            >
-              <Edit2 size={14} />
-            </button>
+            <div className="text-[9px] font-black text-slate-400 uppercase">{order.source}</div>
           </>
         )}
       </div>
 
       {isEditing && (
         <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between gap-2">
-          <button
-            onClick={(e) => { e.stopPropagation(); setEditingOrderId(null); setShowAddProductSelect(null); }}
-            className="flex-1 bg-indigo-600 text-white rounded-lg py-1.5 px-2 text-[10px] font-black transition-all hover:bg-indigo-700"
+          <select value={order.status}
+            onChange={(e) => { onUpdateStatus(order.id, e.target.value as OrderStatus); setEditingOrderId(null); }}
+            className="flex-1 bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-2 text-[10px] font-black outline-none"
           >
-            수정완료
-          </button>
+            {([
+              [OrderStatus.PENDING, '대기중'],
+              [OrderStatus.PROCESSING, '작업중'],
+              [OrderStatus.DISPATCHED, '작업완료'],
+              [OrderStatus.ON_HOLD, '보류'],
+              [OrderStatus.SHIPPED, '출고'],
+            ] as [OrderStatus, string][]).map(([val, label]) => (
+              <option key={val} value={val}>{label}</option>
+            ))}
+          </select>
           <button onClick={() => setConfirmModal({
               message: '주문을 삭제하시겠습니까?',
               subMessage: `${clients.find(c => c.id === order.clientId)?.name ?? ''} · 삭제 후 복구할 수 없습니다.`,
@@ -696,6 +776,10 @@ const OrdersList: React.FC<OrdersListProps> = ({
   workOrderItems: workOrderItemsProp = [],
   onSetWorkOrderItems,
   currentUserName,
+  highlightOrderId,
+  onHighlightClear,
+  newOrderId,
+  onNewOrderIdClear,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('active');
   const [searchTerm, setSearchTerm] = useState('');
@@ -720,6 +804,35 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [pickerOrdering, setPickerOrdering] = useState<string[]>([]); // 선택 순서 배열
   const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
+
+  // 신규 주문 생성 시 자동으로 편집 모드 열기
+  useEffect(() => {
+    if (!newOrderId) return;
+    setActiveTab('active');
+    const timer = setTimeout(() => {
+      setEditingOrderId(newOrderId);
+      const el = document.getElementById(`order-card-${newOrderId}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      onNewOrderIdClear?.();
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [newOrderId]);
+
+  // 알림에서 넘어온 주문 하이라이트 + 스크롤
+  useEffect(() => {
+    if (!highlightOrderId) return;
+    // 히스토리 탭에 있을 경우 active 탭으로 전환
+    setActiveTab('active');
+    const timer = setTimeout(() => {
+      const el = document.getElementById(`order-card-${highlightOrderId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      const clearTimer = setTimeout(() => onHighlightClear?.(), 3000);
+      return () => clearTimeout(clearTimer);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [highlightOrderId]);
 
   const expandColumn = (colId: string) =>
     setColumnUnits(prev => ({ ...prev, [colId]: Math.min((prev[colId] ?? defaultUnits[colId] ?? 1) + 1, maxUnits[colId] ?? 2) }));
@@ -775,6 +888,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
     showAddProductSelect, setShowAddProductSelect,
     onUpdateItems, onUpdateDeliveryDate, onUpdateStatus,
     onToggleItemChecked, onDeleteOrder, currentUserName,
+    highlightOrderId,
   };
 
   return (
@@ -937,6 +1051,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
               }}
               className={`flex items-center gap-2 bg-white rounded-xl px-2.5 py-2 shadow-sm border cursor-grab active:cursor-grabbing ${isPowder(wi.itemName) ? 'border-orange-100' : 'border-pink-100'}`}
             >
+              <GripVertical size={11} className="text-slate-200 shrink-0" />
               <span className={`text-[10px] font-black w-4 shrink-0 ${isPowder(wi.itemName) ? 'text-orange-400' : 'text-pink-500'}`}>{sectionIdx + 1}</span>
               <button
                 onClick={e => { e.stopPropagation(); setPreviewOrderId(wi.orderId); }}

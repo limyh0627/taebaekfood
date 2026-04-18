@@ -65,6 +65,12 @@ async function startServer() {
 
   httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    // Auto-open browser
+    const url = `http://localhost:${PORT}`;
+    import("child_process").then(({ exec }) => {
+      const open = process.platform === "win32" ? `start ${url}` : process.platform === "darwin" ? `open ${url}` : `xdg-open ${url}`;
+      exec(open);
+    });
   });
 }
 

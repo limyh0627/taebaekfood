@@ -21,10 +21,37 @@ const normCat = (c?: string) => c ? (CAT_NORM[c] || c) : '';
 const PRESET_PUMOK = [
   '시골향참기름1', '시골향참기름2', '시골향참기름3', '시골향참기름4',
   '시골향들기름1', '시골향들기름2',
+  '하남댁참기름', '하남댁들기름', '하남댁맑음들기름',
+  '가득찬순참기름',
+  '해달참기름', '해달들기름',
+  '시골집참기름(해내음)',
   '토마토참기름',
   '새싹참기름', '새싹들기름',
   '시골향볶음참깨', '시골향들깨가루', '시골향탈피들깨가루', '시골향볶음검정참깨',
 ];
+
+const PUMOK_VOLUMES: Record<string, string[]> = {
+  '시골향참기름1': ['180ml','300ml','350ml','1500ml','1750ml','1800ml','16.5kg'],
+  '시골향참기름2': ['300ml','350ml','1500ml','1750ml','1800ml'],
+  '시골향참기름3': ['300ml','350ml','1500ml','1750ml','1800ml','16.5kg'],
+  '시골향참기름4': ['300ml','350ml','1500ml','1750ml','1800ml'],
+  '시골향들기름1': ['270ml','350ml','1800ml','16.5kg'],
+  '시골향들기름2': ['180ml','300ml','350ml','1500ml','1750ml','1800ml'],
+  '하남댁참기름':  ['300ml'],
+  '하남댁들기름':  ['300ml'],
+  '하남댁맑음들기름': ['300ml'],
+  '가득찬순참기름': ['1800ml'],
+  '해달참기름':    ['350ml'],
+  '해달들기름':    ['350ml'],
+  '시골집참기름(해내음)': ['1800ml'],
+  '토마토참기름':  ['300ml','500ml','1800ml'],
+  '새싹참기름':   ['300ml'],
+  '새싹들기름':   ['300ml'],
+  '시골향볶음참깨': ['200g','350g','500g','1kg','20kg','25kg'],
+  '시골향들깨가루': ['1kg','4kg','20kg','25kg'],
+  '시골향탈피들깨가루': ['400g','1kg','20kg','25kg'],
+  '시골향볶음검정참깨': ['1kg','20kg','25kg'],
+};
 
 const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], products = [], clients = [], onClose, onSave, onAddSubmaterial }) => {
   const [formData, setFormData] = useState(() => ({
@@ -60,6 +87,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const [clientSearch, setClientSearch] = useState('');
   const [categorySearch, setCategorySearch] = useState('');
   const [supplierSearch, setSupplierSearch] = useState('');
+  const [subSearch, setSubSearch] = useState<Record<string, string>>({});
   const [showPumokDrop, setShowPumokDrop] = useState(false);
   const [pumokWarn, setPumokWarn] = useState(false);
   const [expandedBoxClient, setExpandedBoxClient] = useState<string | null>(null);
@@ -343,7 +371,15 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
 
                       {isOpen && (
                         <div className="p-4 bg-white border-t border-slate-100 animate-in slide-in-from-top-2 duration-200">
-                          <div className="grid grid-cols-1 gap-2 mb-4">
+                          {/* 검색 입력 */}
+                          <input
+                            type="text"
+                            value={subSearch[cat] || ''}
+                            onChange={e => setSubSearch(prev => ({ ...prev, [cat]: e.target.value }))}
+                            placeholder={`${cat} 검색...`}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400 mb-3"
+                          />
+                          <div className="grid grid-cols-1 gap-2 mb-4 max-h-48 overflow-y-auto custom-scrollbar pr-1">
                             <button
                               type="button"
                               onClick={() => {
@@ -356,7 +392,23 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                               {!selectedSub && <div className="w-2 h-2 bg-indigo-600 rounded-full" />}
                             </button>
 
-                            {allSubmaterials.filter(s => s.category === cat).map(sub => {
+                            {allSubmaterials
+                              .filter(s => s.category === cat)
+                              .filter(s => !subSearch[cat] || s.name.toLowerCase().includes(subSearch[cat].toLowerCase()))
+                              .sort((a, b) => {
+                                const sikolA = a.name.startsWith('시골향');
+                                const sikolB = b.name.startsWith('시골향');
+                                if (sikolA && !sikolB) return -1;
+                                if (!sikolA && sikolB) return 1;
+                                if (sikolA && sikolB) {
+                                  const order = (n: string) =>
+                                    n.includes('참기름') ? 0 : n.includes('들기름') ? 1 : n.includes('가루') ? 2 : 3;
+                                  const diff = order(a.name) - order(b.name);
+                                  if (diff !== 0) return diff;
+                                }
+                                return a.name.localeCompare(b.name, 'ko');
+                              })
+                              .map(sub => {
                               const isSelected = selectedSub?.id === sub.id;
                               return (
                                 <button
@@ -698,25 +750,6 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             </div>
           )}
 
-          {/* 용량 (완제품) */}
-          {formData.category === '완제품' && (
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Box size={14} className="mr-2" /> 용량 (서류용)
-                {formData.category === '완제품' && (
-                  <span className="ml-2 text-[10px] font-normal text-slate-400 normal-case tracking-normal">용기 선택 시 자동 입력, 직접 수정 가능</span>
-                )}
-              </label>
-              <input
-                type="text"
-                value={formData.용량}
-                onChange={(e) => setFormData({...formData, 용량: e.target.value})}
-                placeholder="예: 200g, 500g, 1kg, 300ml"
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-              />
-            </div>
-          )}
-
           {/* 서류용 품목명 (완제품) — 커스텀 드롭다운 */}
           {formData.category === '완제품' && (
             <div className="space-y-2" ref={pumokRef}>
@@ -728,7 +761,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                 <input
                   type="text"
                   value={formData.품목}
-                  onChange={(e) => { setFormData({...formData, 품목: e.target.value}); setShowPumokDrop(true); setPumokWarn(false); }}
+                  onChange={(e) => { setFormData({...formData, 품목: e.target.value, 용량: ''}); setShowPumokDrop(true); setPumokWarn(false); }}
                   onFocus={() => setShowPumokDrop(true)}
                   placeholder="예: 시골향참기름1"
                   className={`w-full bg-slate-50 border rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 transition-all ${pumokWarn ? 'border-red-400 focus:ring-red-400' : 'border-slate-200 focus:ring-indigo-500'}`}
@@ -739,7 +772,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                       <button
                         key={v}
                         type="button"
-                        onMouseDown={(e) => { e.preventDefault(); setFormData({...formData, 품목: v}); setShowPumokDrop(false); }}
+                        onMouseDown={(e) => { e.preventDefault(); setFormData({...formData, 품목: v, 용량: ''}); setShowPumokDrop(false); }}
                         className={`w-full text-left px-5 py-2.5 text-sm font-bold hover:bg-indigo-50 hover:text-indigo-700 transition-all ${formData.품목 === v ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700'}`}
                       >
                         {v}
@@ -748,6 +781,41 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* 용량 (완제품) — 품목 선택 시 버튼으로 표시, 없으면 직접 입력 */}
+          {formData.category === '완제품' && (
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
+                <Box size={14} className="mr-2" /> 용량 (서류용)
+              </label>
+              {formData.품목 && PUMOK_VOLUMES[formData.품목] ? (
+                <div className="flex flex-wrap gap-2">
+                  {PUMOK_VOLUMES[formData.품목].map(vol => (
+                    <button
+                      key={vol}
+                      type="button"
+                      onClick={() => setFormData({...formData, 용량: vol})}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
+                        formData.용량 === vol
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
+                          : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'
+                      }`}
+                    >
+                      {vol}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  value={formData.용량}
+                  onChange={(e) => setFormData({...formData, 용량: e.target.value})}
+                  placeholder="예: 200g, 500g, 1kg, 300ml"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                />
+              )}
             </div>
           )}
 

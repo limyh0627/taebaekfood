@@ -65,6 +65,20 @@ interface ProductListProps {
 }
 
 const RAW_MATERIALS = ['참깨','들깨','검정깨','탈피들깨가루','깨분','볶음참깨','볶음들깨','볶음검정참깨','통깨참기름','깨분참기름','통들깨들기름','수입들기름'];
+const RAW_MATERIALS_EN: Record<string, string> = {
+  '참깨': 'Sesame',
+  '들깨': 'Perilla',
+  '검정깨': 'Black Sesame',
+  '탈피들깨가루': 'Hulled Perilla Powder',
+  '깨분': 'Sesame Powder',
+  '볶음참깨': 'Roasted Sesame',
+  '볶음들깨': 'Roasted Perilla',
+  '볶음검정참깨': 'Roasted Black Sesame',
+  '통깨참기름': 'Sesame Oil (Whole)',
+  '깨분참기름': 'Sesame Oil (Powder)',
+  '통들깨들기름': 'Perilla Oil (Whole)',
+  '수입들기름': 'Imported Perilla Oil',
+};
 
 type MainTab = 'requests' | 'history' | 'master';
 type TopTab = 'product' | 'rawmaterial';
@@ -95,6 +109,14 @@ const ProductList: React.FC<ProductListProps> = ({
   onDeleteRawMaterialEntry,
   currentUser,
 }) => {
+  const [isEn, setIsEn] = useState(() => localStorage.getItem('inventoryLang') === 'en');
+  const toggleLang = () => setIsEn(prev => {
+    const next = !prev;
+    localStorage.setItem('inventoryLang', next ? 'en' : 'ko');
+    return next;
+  });
+  const t = (ko: string, en: string) => isEn ? en : ko;
+
   const [topTab, setTopTab] = useState<TopTab>('product');
   const [activeTab, setActiveTab] = useState<MainTab>('master');
   const [rmMaterial, setRmMaterial] = useState(RAW_MATERIALS[0]);
@@ -1024,11 +1046,11 @@ const ProductList: React.FC<ProductListProps> = ({
                     <button
                       onClick={() => setRmSheetTab('new')}
                       className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${rmSheetTab === 'new' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                    >새 기록</button>
+                    >{t('새 기록', 'New Record')}</button>
                     <button
                       onClick={() => setRmSheetTab('carryover')}
                       className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${rmSheetTab === 'carryover' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                    >전월이월</button>
+                    >{t('전월이월', 'Carry Over')}</button>
                   </div>
                   <button onClick={() => setShowRmSheet(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl transition-all">
                     <X size={18} />
@@ -1040,38 +1062,38 @@ const ProductList: React.FC<ProductListProps> = ({
                   <div className="px-5 pt-4 pb-6 space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">원료명</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t('원료명', 'Material')}</label>
                         <select value={rmMaterial} onChange={e => setRmMaterial(e.target.value)}
                           className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-emerald-400">
-                          {RAW_MATERIALS.map(m => <option key={m} value={m}>{m}</option>)}
+                          {RAW_MATERIALS.map(m => <option key={m} value={m}>{isEn ? RAW_MATERIALS_EN[m] ?? m : m}</option>)}
                         </select>
                       </div>
                       <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">날짜</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t('날짜', 'Date')}</label>
                         <input type="date" value={rmDate} onChange={e => setRmDate(e.target.value)}
                           className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-emerald-400 cursor-pointer" />
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">입고량 (kg)</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t('입고량 (kg)', 'Received (kg)')}</label>
                         <input type="number" placeholder="0" value={rmReceived} onChange={e => setRmReceived(e.target.value)}
                           className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-emerald-400" />
                       </div>
                       <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">사용량 (kg)</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t('사용량 (kg)', 'Used (kg)')}</label>
                         <input type="number" placeholder="0" value={rmUsed} onChange={e => setRmUsed(e.target.value)}
                           className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-emerald-400" />
                       </div>
                     </div>
                     <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">비고</label>
-                      <input type="text" placeholder="거래처명, 메모 등" value={rmNote} onChange={e => setRmNote(e.target.value)}
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t('비고', 'Note')}</label>
+                      <input type="text" placeholder={t('거래처명, 메모 등', 'Supplier, memo, etc.')} value={rmNote} onChange={e => setRmNote(e.target.value)}
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-emerald-400" />
                     </div>
                     {currentUser && (
                       <div className="flex items-center gap-2 px-1">
-                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">작성자</span>
+                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{t('작성자', 'Author')}</span>
                         <span className="text-xs font-bold text-slate-500">{currentUser.name}</span>
                       </div>
                     )}
@@ -1093,7 +1115,7 @@ const ProductList: React.FC<ProductListProps> = ({
                       }}
                       className="w-full py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 active:scale-[0.99] transition-all"
                     >
-                      추가
+                      {t('추가', 'Add')}
                     </button>
                   </div>
                 )}
@@ -1101,23 +1123,23 @@ const ProductList: React.FC<ProductListProps> = ({
                 {/* 전월이월 탭 */}
                 {rmSheetTab === 'carryover' && (
                   <div className="px-5 pt-4 pb-6 space-y-3">
-                    <p className="text-xs text-slate-400 font-bold">매월 1일 기준 전월 마감 잔량을 입력하세요.</p>
+                    <p className="text-xs text-slate-400 font-bold">{t('매월 1일 기준 전월 마감 잔량을 입력하세요.', 'Enter the closing balance from the previous month (as of the 1st).')}</p>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">원료명</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t('원료명', 'Material')}</label>
                         <select value={rmOpenMaterial} onChange={e => setRmOpenMaterial(e.target.value)}
                           className="w-full bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-amber-400">
-                          {RAW_MATERIALS.map(m => <option key={m} value={m}>{m}</option>)}
+                          {RAW_MATERIALS.map(m => <option key={m} value={m}>{isEn ? RAW_MATERIALS_EN[m] ?? m : m}</option>)}
                         </select>
                       </div>
                       <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">기준일</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t('기준일', 'Date')}</label>
                         <input type="date" value={rmOpenDate} onChange={e => setRmOpenDate(e.target.value)}
                           className="w-full bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-amber-400 cursor-pointer" />
                       </div>
                     </div>
                     <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">전월 마감 잔량 (kg)</label>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t('전월 마감 잔량 (kg)', 'Closing Balance (kg)')}</label>
                       <input type="number" placeholder="0" value={rmOpenBalance} onChange={e => setRmOpenBalance(e.target.value)}
                         className="w-full bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-amber-400" />
                     </div>
@@ -1138,7 +1160,7 @@ const ProductList: React.FC<ProductListProps> = ({
                       }}
                       className="w-full py-3 bg-amber-500 text-white rounded-2xl text-sm font-black hover:bg-amber-600 active:scale-[0.99] transition-all"
                     >
-                      전월이월 저장
+                      {t('전월이월 저장', 'Save Carry Over')}
                     </button>
                   </div>
                 )}
@@ -1148,13 +1170,19 @@ const ProductList: React.FC<ProductListProps> = ({
 
           {/* 헤더: 기록 추가 버튼 */}
           <div className="flex items-center justify-between">
-            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">원료별 현재고</p>
-            <button
-              onClick={() => { setRmSheetTab('new'); setShowRmSheet(true); }}
-              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black hover:bg-emerald-700 active:scale-95 transition-all shadow-sm"
-            >
-              <span className="text-base leading-none">+</span> 기록 추가
-            </button>
+            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">{t('원료별 현재고', 'Current Stock')}</p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleLang}
+                className="px-2.5 py-1 rounded-lg text-[10px] font-black border transition-all border-slate-200 text-slate-400 hover:border-indigo-300 hover:text-indigo-500"
+              >{isEn ? 'KO' : 'EN'}</button>
+              <button
+                onClick={() => { setRmSheetTab('new'); setShowRmSheet(true); }}
+                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black hover:bg-emerald-700 active:scale-95 transition-all shadow-sm"
+              >
+                <span className="text-base leading-none">+</span> {t('기록 추가', 'Add Record')}
+              </button>
+            </div>
           </div>
 
           {/* 원료별 잔량 요약 카드 */}
@@ -1178,7 +1206,7 @@ const ProductList: React.FC<ProductListProps> = ({
                     }`}
                   >
                     <span className={`text-[10px] font-black uppercase tracking-wide truncate w-full text-left ${rmFilter === m ? 'text-emerald-100' : isLow ? 'text-rose-400' : 'text-slate-400'}`}>
-                      {m}
+                      {isEn ? RAW_MATERIALS_EN[m] ?? m : m}
                     </span>
                     <span className={`text-lg font-black mt-0.5 leading-tight ${rmFilter === m ? 'text-white' : isLow ? 'text-rose-600' : 'text-slate-800'}`}>
                       {bal.toLocaleString('ko-KR')}
@@ -1201,7 +1229,7 @@ const ProductList: React.FC<ProductListProps> = ({
                         ? 'bg-emerald-600 text-white border-emerald-600'
                         : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
                     }`}>
-                    {m}
+                    {isEn ? RAW_MATERIALS_EN[m] ?? m : m}
                   </button>
                 ))}
               </div>
@@ -1212,7 +1240,7 @@ const ProductList: React.FC<ProductListProps> = ({
               onChange={e => setRmFilter(e.target.value)}
               className="shrink-0 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-[11px] font-black outline-none focus:border-emerald-400 sm:hidden"
             >
-              {RAW_MATERIALS.map(m => <option key={m} value={m}>{m}</option>)}
+              {RAW_MATERIALS.map(m => <option key={m} value={m}>{isEn ? RAW_MATERIALS_EN[m] ?? m : m}</option>)}
             </select>
           </div>
 

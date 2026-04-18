@@ -159,6 +159,8 @@ const App: React.FC = () => {
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [notifPanelPos, setNotifPanelPos] = useState({ top: 0, left: 0 });
   const notifBtnRef = useRef<HTMLButtonElement>(null);
+  const [highlightOrderId, setHighlightOrderId] = useState<string | null>(null);
+  const [openChatRoomId, setOpenChatRoomId] = useState<string | null>(null);
   const [rmActiveMaterial, setRmActiveMaterial] = useState('참깨');
   const [rmCorrectionTargetId, setRmCorrectionTargetId] = useState<string | null>(null);
   const [rmCorrectionForm, setRmCorrectionForm] = useState({ date: new Date().toISOString().slice(0, 10), amount: '', isNegative: true, note: '' });
@@ -253,6 +255,7 @@ const App: React.FC = () => {
   const [pendingAdminView, setPendingAdminView] = useState<ViewType | null>(null);
   const [isAdminAuthModalOpen, setIsAdminAuthModalOpen] = useState(false);
   const [isAddOrderOpen, setIsAddOrderOpen] = useState(false);
+  const [newOrderId, setNewOrderId] = useState<string | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -268,6 +271,32 @@ const App: React.FC = () => {
       }
     });
   }, [adjustmentRequests]);
+
+  // 날짜가 바뀐 뒤 첫 접속 시 작업순서 자동 초기화 (주문 데이터는 유지)
+  // Firestore에 초기화 날짜를 저장해 모든 기기에서 하루 1회만 실행
+  useEffect(() => {
+    const today = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' }).replace(/\. /g, '-').replace('.', '');
+    const resetRef = doc(db, 'appMeta', 'workOrderReset');
+    getDoc(resetRef).then(snap => {
+      const lastReset = snap.exists() ? snap.data().date : null;
+      if (lastReset !== today) {
+        getDocs(collection(db, 'workOrderItems')).then(snap => {
+          Promise.all(snap.docs.map(d => deleteItem('workOrderItems', d.id)));
+        });
+        setDoc(resetRef, { date: today });
+      }
+    });
+  }, []);
+
+  // 2주 지난 알림 자동 삭제
+  useEffect(() => {
+    const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    appNotifications.forEach(n => {
+      if (n.createdAt < twoWeeksAgo) {
+        deleteItem('notifications', n.id);
+      }
+    });
+  }, [appNotifications]);
 
   // 신규 주문 등록 시 부자재 부족 여부 체크 후 확인사항 등록
   const checkAndAlertShortage = async (orderItems: Order['items']) => {
@@ -556,7 +585,7 @@ const App: React.FC = () => {
       ? { ...baseItem, checked: true, ...(checkedBy ? { checkedBy } : {}) }
       : { ...baseItem, checked: false };
     const allChecked = newItems.every(i => i.checked);
-    const wasNotDispatched = order.status !== OrderStatus.DISPATCHED && order.status !== OrderStatus.SHIPPED;
+    const wasNotDispatched = order.status !== OrderStatus.DISPATCHED && order.status !== OrderStatus.SHIPPED && order.status !== OrderStatus.ON_HOLD;
     if (allChecked && wasNotDispatched) {
       updateItem('orders', orderId, { items: newItems, status: OrderStatus.DISPATCHED });
     } else {
@@ -850,6 +879,10 @@ const App: React.FC = () => {
               onUpdateDeliveryBoxes={(id, boxes) => updateItem('orders', id, { deliveryBoxes: boxes })}
               onToggleInvoicePrinted={(id, value) => updateItem('orders', id, { invoicePrinted: value })}
               currentUserName={currentUser?.name}
+              highlightOrderId={highlightOrderId}
+              onHighlightClear={() => setHighlightOrderId(null)}
+              newOrderId={newOrderId}
+              onNewOrderIdClear={() => setNewOrderId(null)}
               workOrderItems={workOrderItems}
               onSetWorkOrderItems={async (items) => {
                 // 기존 항목 전체 삭제 후 새 항목 저장
@@ -1046,18 +1079,6 @@ const App: React.FC = () => {
               if (r.상호 && !agg[key].clients.includes(r.상호)) agg[key].clients.push(r.상호);
             });
 
-            // 좌측 상단 템플릿 (참기름/들기름 계열)
-            const topTemplate: { label: string; key: string; volumes: string[] }[] = [
-              { label: '시골향참기름①', key: '시골향참기름1', volumes: ['180ml','300ml','350ml','1500ml','1750ml','1800ml','16.5kg'] },
-              { label: '시골향참기름②', key: '시골향참기름2', volumes: ['300ml','350ml','1500ml','1750ml','1800ml'] },
-              { label: '시골향참기름③', key: '시골향참기름3', volumes: ['300ml','350ml','1500ml','1750ml','1800ml','16.5kg'] },
-              { label: '시골향참기름④', key: '시골향참기름4', volumes: ['300ml','350ml','1500ml','1750ml','1800ml'] },
-              { label: '시골향들기름①', key: '시골향들기름1', volumes: ['270ml','350ml','1800ml','16.5kg'] },
-              { label: '시골향들기름②', key: '시골향들기름2', volumes: ['180ml','300ml','350ml','1500ml','1750ml','1800ml'] },
-              { label: '하남댁참기름', key: '하남댁참기름', volumes: ['300ml'] },
-              { label: '하남댁들기름', key: '하남댁들기름', volumes: ['300ml'] },
-            ];
-
             // 좌측 하단 템플릿 (참깨/들깨 계열)
             const bottomTemplate: { 품목: string; 용량: string }[] = [
               { 품목: '시골향볶음참깨',    용량: '500g' },
@@ -1068,6 +1089,69 @@ const App: React.FC = () => {
               { 품목: '시골향탈피들깨가루', 용량: '1kg' },
               { 품목: '시골향볶음검정참깨', 용량: '1kg' },
             ];
+
+            // 좌측 상단 템플릿 — 기본값 유지 + 등록된 완제품에서 추가 자동 반영
+            const labelMap: Record<string, string> = {
+              '시골향참기름1': '시골향참기름①',
+              '시골향참기름2': '시골향참기름②',
+              '시골향참기름3': '시골향참기름③',
+              '시골향참기름4': '시골향참기름④',
+              '시골향들기름1': '시골향들기름①',
+              '시골향들기름2': '시골향들기름②',
+            };
+            const pumokOrder = [
+              '시골향참기름1','시골향참기름2','시골향참기름3','시골향참기름4',
+              '시골향들기름1','시골향들기름2',
+              '하남댁참기름','하남댁들기름','하남댁맑음들기름',
+              '가득찬순참기름',
+              '해달참기름','해달들기름',
+              '시골집참기름(해내음)',
+            ];
+            // 기본 템플릿 (품목이 미등록이어도 항상 표시)
+            const defaultTopTemplate: { key: string; volumes: string[] }[] = [
+              { key: '시골향참기름1', volumes: ['180ml','300ml','350ml','1500ml','1750ml','1800ml','16.5kg'] },
+              { key: '시골향참기름2', volumes: ['300ml','350ml','1500ml','1750ml','1800ml'] },
+              { key: '시골향참기름3', volumes: ['300ml','350ml','1500ml','1750ml','1800ml','16.5kg'] },
+              { key: '시골향참기름4', volumes: ['300ml','350ml','1500ml','1750ml','1800ml'] },
+              { key: '시골향들기름1', volumes: ['270ml','350ml','1800ml','16.5kg'] },
+              { key: '시골향들기름2', volumes: ['180ml','300ml','350ml','1500ml','1750ml','1800ml'] },
+              { key: '하남댁참기름', volumes: ['300ml'] },
+              { key: '하남댁들기름', volumes: ['300ml'] },
+              { key: '하남댁맑음들기름', volumes: ['300ml'] },
+              { key: '가득찬순참기름', volumes: ['1800ml'] },
+              { key: '해달참기름', volumes: ['350ml'] },
+              { key: '해달들기름', volumes: ['350ml'] },
+              { key: '시골집참기름(해내음)', volumes: ['1800ml'] },
+            ];
+            const bottomPumokSet = new Set(bottomTemplate.map(t => t.품목));
+            const volumeOrder = ['180ml','270ml','300ml','350ml','500ml','1kg','1500ml','1750ml','1800ml','4kg','16.5kg','20kg','25kg'];
+            const sortVolumes = (vols: string[]) => [...vols].sort((a, b) => {
+              const ia = volumeOrder.indexOf(a), ib = volumeOrder.indexOf(b);
+              if (ia !== -1 && ib !== -1) return ia - ib;
+              if (ia !== -1) return -1;
+              if (ib !== -1) return 1;
+              return a.localeCompare(b);
+            });
+            // 등록된 완제품에서 기본값에 없는 품목/용량 추가 반영
+            const topTemplateMap = new Map<string, Set<string>>(
+              defaultTopTemplate.map(t => [t.key, new Set(t.volumes)])
+            );
+            allProducts
+              .filter(p => p.category === '완제품' && p.품목 && p.용량 && !bottomPumokSet.has(p.품목))
+              .forEach(p => {
+                if (!topTemplateMap.has(p.품목!)) topTemplateMap.set(p.품목!, new Set());
+                topTemplateMap.get(p.품목!)!.add(p.용량!);
+              });
+            const topTemplate: { label: string; key: string; volumes: string[] }[] = Array.from(topTemplateMap.entries())
+              .map(([key, volSet]) => ({ label: labelMap[key] || key, key, volumes: sortVolumes(Array.from(volSet)) }))
+              .sort((a, b) => {
+                const ia = pumokOrder.indexOf(a.key);
+                const ib = pumokOrder.indexOf(b.key);
+                if (ia !== -1 && ib !== -1) return ia - ib;
+                if (ia !== -1) return -1;
+                if (ib !== -1) return 1;
+                return 0;
+              });
 
             // 소용량 → 1kg 환산 합산 규칙 (서류 표시용)
             // 예: 시골향볶음참깨 200g 40개 → 8kg → 1kg 행에 8개 추가
@@ -2397,11 +2481,13 @@ const App: React.FC = () => {
             />
           )}
           {currentView === 'officetalk' && (
-            <OfficeTalk 
+            <OfficeTalk
               currentUser={currentUser}
               employees={employees}
               chatRooms={chatRooms}
               chatMessages={chatMessages}
+              initialRoomId={openChatRoomId}
+              onRoomOpened={() => setOpenChatRoomId(null)}
               onAddRoom={(room) => addItem('chatRooms', room)}
               onUpdateRoom={(id, data) => updateItem('chatRooms', id, data)}
               onDeleteRoom={(id) => deleteItem('chatRooms', id)}
@@ -2463,10 +2549,12 @@ const App: React.FC = () => {
 
       {isAdminAuthModalOpen && <AdminAuthModal onClose={() => setIsAdminAuthModalOpen(false)} onSuccess={onAdminAuthSuccess} />}
       {isAddOrderOpen && <AddOrderModal products={allProducts} clients={clients} onClose={() => setIsAddOrderOpen(false)} onSave={async (o) => {
-        await addItem('orders', {...o, id: `ORD-${Date.now()}`, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
+        const orderId = `ORD-${Date.now()}`;
+        await addItem('orders', {...o, id: orderId, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
         await checkAndAlertShortage(o.items);
         const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '거래처';
-        await addItem('notifications', { type: 'new_order', title: '신규 주문', body: `${currentUser.name}님이 ${clientName} 주문을 등록했습니다.`, readBy: [], createdAt: new Date().toISOString(), senderId: currentUser.id } as Omit<AppNotification,'id'>);
+        await addItem('notifications', { type: 'new_order', title: '신규 주문', body: `${clientName} 주문이 등록되었습니다.`, readBy: [], createdAt: new Date().toISOString(), senderId: currentUser.id, linkedId: orderId } as Omit<AppNotification,'id'>);
+        setNewOrderId(orderId);
         setIsAddOrderOpen(false);
       }} />}
       {isProductModalOpen && (
@@ -2515,6 +2603,68 @@ const App: React.FC = () => {
             await Promise.all(unread.map(n => updateItem('notifications', n.id, { readBy: [...n.readBy, currentUser.id] })));
           };
           const sorted = [...appNotifications].filter(n => !n.targetId || n.targetId === currentUser.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+          const handleNotifClick = async (n: AppNotification) => {
+            await markRead(n.id);
+            setShowNotifPanel(false);
+            if (n.type === 'new_order' && n.linkedId) {
+              setCurrentView('orders');
+              setHighlightOrderId(n.linkedId);
+            } else if (n.type === 'mention' && n.linkedId) {
+              setCurrentView('officetalk');
+              setOpenChatRoomId(n.linkedId);
+            }
+          };
+
+          const notifList = sorted.length === 0 ? (
+            <p className="text-center text-slate-400 text-xs py-8">알림이 없습니다</p>
+          ) : sorted.map(n => {
+            const isUnread = !n.readBy.includes(currentUser.id);
+            return (
+              <div
+                key={n.id}
+                onClick={() => handleNotifClick(n)}
+                className={`flex items-start gap-3 px-4 py-3 border-b border-slate-50 cursor-pointer hover:bg-slate-50 transition-colors ${isUnread ? 'bg-indigo-50/60' : ''}`}
+              >
+                <div className={`mt-0.5 shrink-0 w-2 h-2 rounded-full ${isUnread ? 'bg-indigo-500' : 'bg-transparent'}`} />
+                <div className="flex-1 min-w-0">
+                  <p className={`text-[11px] font-bold ${isUnread ? 'text-slate-800' : 'text-slate-500'}`}>{n.title}</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">
+                    {n.type === 'new_order' && n.body.includes(' 주문이') ? (
+                      <><span className="font-black text-slate-800 text-[11px]">{n.body.split(' 주문이')[0]}</span>{' '}주문이 등록되었습니다.</>
+                    ) : n.body}
+                  </p>
+                  <p className="text-[9px] text-slate-300 mt-1">{new Date(n.createdAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                </div>
+                {(n.type === 'new_order' || n.type === 'mention') && (
+                  <span className="text-[9px] text-indigo-400 font-bold shrink-0 mt-0.5">바로가기 →</span>
+                )}
+              </div>
+            );
+          });
+
+          if (isMobile) {
+            return (
+              <div className="fixed inset-0 z-[1000] bg-white flex flex-col">
+                <div className="flex items-center px-4 py-3 border-b border-slate-100 bg-white">
+                  <button
+                    onClick={() => setShowNotifPanel(false)}
+                    className="p-1 rounded-xl hover:bg-slate-100 transition-colors mr-2"
+                  >
+                    <ChevronLeft size={20} className="text-slate-600" />
+                  </button>
+                  <span className="flex-1 text-sm font-black text-slate-700">알림</span>
+                  {unread.length > 0 && (
+                    <button onClick={markAll} className="text-xs font-bold text-indigo-500 hover:text-indigo-700 transition-colors px-2 py-1">전부 읽음</button>
+                  )}
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                  {notifList}
+                </div>
+              </div>
+            );
+          }
+
           return (
             <>
               <div className="fixed inset-0 z-[999]" onClick={() => setShowNotifPanel(false)} />
@@ -2525,29 +2675,11 @@ const App: React.FC = () => {
                 <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
                   <span className="text-xs font-black text-slate-700">알림</span>
                   {unread.length > 0 && (
-                    <button onClick={markAll} className="text-[10px] font-bold text-indigo-500 hover:text-indigo-700 transition-colors">일괄 확인</button>
+                    <button onClick={markAll} className="text-[10px] font-bold text-indigo-500 hover:text-indigo-700 transition-colors">전부 읽음</button>
                   )}
                 </div>
                 <div className="max-h-80 overflow-y-auto">
-                  {sorted.length === 0 ? (
-                    <p className="text-center text-slate-400 text-xs py-8">알림이 없습니다</p>
-                  ) : sorted.map(n => {
-                    const isUnread = !n.readBy.includes(currentUser.id);
-                    return (
-                      <div
-                        key={n.id}
-                        onClick={() => markRead(n.id)}
-                        className={`flex items-start gap-3 px-4 py-3 border-b border-slate-50 cursor-pointer hover:bg-slate-50 transition-colors ${isUnread ? 'bg-indigo-50/60' : ''}`}
-                      >
-                        <div className={`mt-0.5 shrink-0 w-2 h-2 rounded-full ${isUnread ? 'bg-indigo-500' : 'bg-transparent'}`} />
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-[11px] font-bold ${isUnread ? 'text-slate-800' : 'text-slate-500'}`}>{n.title}</p>
-                          <p className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">{n.body}</p>
-                          <p className="text-[9px] text-slate-300 mt-1">{new Date(n.createdAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {notifList}
                 </div>
               </div>
             </>

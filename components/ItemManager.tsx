@@ -42,7 +42,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
   const TYPE_ORDER: Record<string, number> = { '일반': 0, '택배': 1, '스마트스토어': 2 };
   const salesClients = useMemo(() =>
     clients
-      .filter(c => !c.partnerType || c.partnerType === '매출처')
+      .filter(c => !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처')
       .sort((a, b) => {
         const tDiff = (TYPE_ORDER[a.type] ?? 0) - (TYPE_ORDER[b.type] ?? 0);
         return tDiff !== 0 ? tDiff : a.name.localeCompare(b.name, 'ko');

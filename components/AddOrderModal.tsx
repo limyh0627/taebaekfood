@@ -74,18 +74,31 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, onClos
     );
   }, [searchTerm, clients]);
 
+  const getProductTypeOrder = (name: string): number => {
+    if (/가루/.test(name)) return 3;
+    if (/참기름|참진|참고소|참향/.test(name)) return 0;
+    if (/들기름|들향|들진|들고소/.test(name)) return 1;
+    if (/깨/.test(name)) return 2;
+    return 4;
+  };
+
   // 거래처 전용 품목 필터링 적용
   const displayProducts = useMemo(() => {
     if (!selectedClient) return [];
-    return products.filter(p => {
-      if (p.category !== '완제품') return false;
-      if (p.clientIds?.includes(selectedClient.id)) return true;
-      // 스마트스토어 타입 거래처 선택 시 SMARTSTORE 태그 제품도 표시
-      if (selectedClient.type === '스마트스토어' && p.clientIds?.includes('SMARTSTORE')) return true;
-      // 스마트스토어 전용 체크된 품목도 스마트스토어 거래처에 표시
-      if (selectedClient.type === '스마트스토어' && p.isSmartStore) return true;
-      return false;
-    });
+    return products
+      .filter(p => {
+        if (p.category !== '완제품') return false;
+        if (p.clientIds?.includes(selectedClient.id)) return true;
+        // 스마트스토어 타입 거래처 선택 시 SMARTSTORE 태그 제품도 표시
+        if (selectedClient.type === '스마트스토어' && p.clientIds?.includes('SMARTSTORE')) return true;
+        // 스마트스토어 전용 체크된 품목도 스마트스토어 거래처에 표시
+        if (selectedClient.type === '스마트스토어' && p.isSmartStore) return true;
+        return false;
+      })
+      .sort((a, b) => {
+        const diff = getProductTypeOrder(a.name) - getProductTypeOrder(b.name);
+        return diff !== 0 ? diff : a.name.localeCompare(b.name, 'ko');
+      });
   }, [products, selectedClient]);
 
   // 스마트스토어 제외 거래처 → 향미유 목록
