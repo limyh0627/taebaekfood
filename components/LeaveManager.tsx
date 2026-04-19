@@ -12,6 +12,7 @@ import {
   Info
 } from 'lucide-react';
 import { Employee, LeaveRequest, LeaveType, LeaveStatus } from '../types';
+import PageHeader from './PageHeader';
 
 interface LeaveManagerProps {
   currentUser: Employee;
@@ -161,36 +162,33 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 flex flex-col pb-20">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h2 className="text-2xl md:text-3xl font-black text-slate-900">연차 신청 및 확인</h2>
-          <p className="text-sm md:text-base text-slate-500 mt-1">임직원 본인의 연차 사용 내역을 확인하고 신규 휴가를 신청하세요.</p>
-        </div>
-        <div className="flex items-center space-x-2 md:space-x-3">
+      <PageHeader
+        title="연차 신청 및 확인"
+        subtitle="임직원 본인의 연차 사용 내역을 확인하고 신규 휴가를 신청하세요."
+        right={<div className="flex items-center space-x-2 md:space-x-3">
           <div className="bg-white p-1 md:p-1.5 rounded-2xl border border-slate-100 shadow-sm flex overflow-x-auto no-scrollbar">
-            <button 
+            <button
               onClick={() => setActiveTab('my')}
               className={`px-4 md:px-6 py-2 md:py-2.5 rounded-xl text-xs font-black transition-all whitespace-nowrap ${activeTab === 'my' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
             >
               내 휴가
             </button>
-            <button 
+            <button
               onClick={() => setActiveTab('calendar')}
               className={`px-4 md:px-6 py-2 md:py-2.5 rounded-xl text-xs font-black transition-all whitespace-nowrap ${activeTab === 'calendar' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
             >
               임직원 캘린더
             </button>
           </div>
-          <button 
+          <button
             onClick={() => setIsModalOpen(true)}
-            className="bg-indigo-600 text-white px-4 md:px-8 py-3 md:py-4 rounded-2xl font-black shadow-xl shadow-indigo-100 hover:bg-indigo-700 hover:scale-105 active:scale-95 transition-all flex items-center space-x-2"
+            className="bg-indigo-600 text-white px-4 md:px-6 py-2.5 rounded-xl font-black shadow-sm hover:bg-indigo-700 transition-all flex items-center space-x-2"
           >
-            <Plus size={20} className="md:w-[22px] md:h-[22px]" />
+            <Plus size={16} />
             <span className="hidden sm:inline">신규 연차 신청</span>
           </button>
-        </div>
-      </div>
+        </div>}
+      />
 
       {activeTab === 'calendar' ? (
         /* Calendar Section */

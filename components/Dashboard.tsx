@@ -16,6 +16,7 @@ import {
   Truck
 } from 'lucide-react';
 import { Order, Product, OrderStatus, ViewType } from '../types';
+import PageHeader from './PageHeader';
 
 interface DashboardProps {
   orders: Order[];
@@ -133,14 +134,10 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, products, onNavigate }) =
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-black text-slate-900">비즈니스 현황</h2>
-          <p className="text-sm text-slate-400 mt-0.5">
-            {today.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })} 기준
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="비즈니스 현황"
+        subtitle={`${today.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })} 기준`}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard

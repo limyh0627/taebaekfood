@@ -14,6 +14,7 @@ import {
   ChevronUp
 } from 'lucide-react';
 import { AdjustmentRequest } from '../types';
+import PageHeader from './PageHeader';
 
 interface ConfirmationItemsProps {
   requests: AdjustmentRequest[];
@@ -50,18 +51,16 @@ const ConfirmationItems: React.FC<ConfirmationItemsProps> = ({
 
   return (
     <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h2 className="text-3xl font-black text-slate-900 uppercase">확인사항 관리</h2>
-          <p className="text-slate-500 text-sm font-medium">재고 변동 및 입고 취소 요청을 검토하고 처리하세요.</p>
-        </div>
-        {pendingCount > 0 && (
+      <PageHeader
+        title="확인사항 관리"
+        subtitle="재고 변동 및 입고 취소 요청을 검토하고 처리하세요."
+        right={pendingCount > 0 ? (
           <div className="bg-amber-50 border border-amber-100 px-4 py-2 rounded-xl flex items-center space-x-2">
             <AlertCircle size={18} className="text-amber-500" />
             <span className="text-sm font-bold text-amber-700">대기 중인 요청 {pendingCount}건</span>
           </div>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">

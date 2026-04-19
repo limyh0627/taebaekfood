@@ -12,6 +12,7 @@ import {
   Settings
 } from 'lucide-react';
 import { Client, Product } from '../types';
+import PageHeader from './PageHeader';
 
 interface DatabaseViewProps {
   onSync: (data: { clients: Client[], products: Product[] }) => void;
@@ -312,16 +313,14 @@ function doPost(e) {
 
   return (
     <div className="space-y-6 animate-in slide-in-from-right-4 duration-500 h-full flex flex-col">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h2 className="text-3xl font-black text-slate-900">데이터 동기화 센터</h2>
-          <p className="text-slate-500 mt-1 font-medium">시트와 앱의 연결 상태를 진단하고 복구하세요.</p>
-        </div>
-        <div className="flex bg-slate-200/50 p-1.5 rounded-2xl border border-slate-200">
-           <button onClick={() => setActiveTab('sync')} className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center space-x-2 ${activeTab === 'sync' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}><RefreshCw size={14} /><span>동기화 제어</span></button>
-           <button onClick={() => setActiveTab('script')} className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center space-x-2 ${activeTab === 'script' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500'}`}><Terminal size={14} /><span>스크립트 설정</span></button>
-        </div>
-      </div>
+      <PageHeader
+        title="데이터 동기화 센터"
+        subtitle="시트와 앱의 연결 상태를 진단하고 복구하세요."
+        right={<div className="flex bg-slate-200/50 p-1.5 rounded-2xl border border-slate-200">
+          <button onClick={() => setActiveTab('sync')} className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center space-x-2 ${activeTab === 'sync' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}><RefreshCw size={14} /><span>동기화 제어</span></button>
+          <button onClick={() => setActiveTab('script')} className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center space-x-2 ${activeTab === 'script' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500'}`}><Terminal size={14} /><span>스크립트 설정</span></button>
+        </div>}
+      />
 
       <div className="flex-1 bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden flex flex-col min-h-0">
         {activeTab === 'sync' ? (

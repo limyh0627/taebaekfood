@@ -20,6 +20,7 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { Employee, EmployeeStatus, LeaveRequest, LeaveStatus } from '../types';
+import PageHeader from './PageHeader';
 
 interface HRManagerProps {
   employees: Employee[];
@@ -132,13 +133,10 @@ const HRManager: React.FC<HRManagerProps> = ({
 
   return (
     <div className="space-y-5 animate-in fade-in duration-300 h-full flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-black text-slate-900">인사 관리</h2>
-          <p className="text-sm text-slate-400 mt-0.5">임직원 정보 관리부터 연차 승인, 잔여 일수 조정까지 통합 관리합니다.</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeader
+        title="인사 관리"
+        subtitle="임직원 정보 관리부터 연차 승인, 잔여 일수 조정까지 통합 관리합니다."
+        right={<div className="flex items-center gap-2">
           <div className="flex bg-slate-100 p-1 rounded-2xl items-center">
             <button
               onClick={() => setActiveTab('employees')}
@@ -189,8 +187,8 @@ const HRManager: React.FC<HRManagerProps> = ({
               <span>{isEditMode ? '편집 종료' : '연차 편집'}</span>
             </button>
           )}
-        </div>
-      </div>
+        </div>}
+      />
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-hidden flex flex-col min-h-0 bg-white rounded-3xl border border-slate-100 shadow-sm">
