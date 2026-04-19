@@ -282,6 +282,26 @@ export interface RawMaterialEntry {
   orderId?: string;  // auto 타입일 때 출처 주문 ID
 }
 
+// ── 품목 구조 (item / item_bom / item_customer) ──────────────────────────
+export type ItemType = 'RAW' | 'SUB' | 'WIP' | 'FINISHED';
+
+export interface ItemBom {
+  id: string;
+  parent_key: string;   // prod.품목 또는 prod.name
+  child_name: string;   // 원료명 (RAW_MATERIALS 기준)
+  ratio: number;        // 배합 비율
+  yield_rate: number;   // 수율 (기본 1.0)
+}
+
+export interface ItemCustomer {
+  id: string;
+  item_id: string;      // FINISHED 품목의 Firestore product ID
+  customer_id: string;
+  box_type_id: string;  // 박스 종류
+  qty_per_box: number;  // 박스당 입수
+}
+// ────────────────────────────────────────────────────────────────────────
+
 export type AdjustmentType = 'quantity_change' | 'cancel_receipt' | 'chat_mention' | 'reorder_alert';
 export type AdjustmentStatus = 'pending' | 'processed' | 'rejected';
 

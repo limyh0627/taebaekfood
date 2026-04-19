@@ -191,6 +191,8 @@ const App: React.FC = () => {
     appNotifications,
     workOrderItems,
     issuedStatements,
+    itemBoms,
+    itemCustomers,
     isDataLoading,
   } = useAppData();
 
@@ -219,6 +221,7 @@ const App: React.FC = () => {
     ['완제품', '향미유', '고춧가루'].includes(category) ? 'products' : 'submaterials';
 
   // 원료 자동 사용량 (DELIVERED 주문 → 원료별·날짜별 집계)
+  // itemBoms가 있으면 Firestore BOM 사용, 없으면 PRODUCT_FORMULA fallback
   const autoRawMaterialUsage = useMemo<Array<{material: string; date: string; used: number; note: string}>>(() => {
     const dayMap: Record<string, Record<string, { used: number; clients: string[] }>> = {};
     for (const o of orders.filter(o => o.status === OrderStatus.DELIVERED && o.deliveredAt)) {
@@ -227,7 +230,12 @@ const App: React.FC = () => {
       for (const item of o.items) {
         const prod = allProducts.find(p => p.id === item.productId);
         if (!prod || prod.category !== '완제품') continue;
-        const formula = PRODUCT_FORMULA[prod.품목 || prod.name];
+        const prodKey = prod.품목 || prod.name;
+        // Firestore BOM 우선, 없으면 하드코딩 fallback
+        const bomRows = itemBoms.filter(b => b.parent_key === prodKey);
+        const formula = bomRows.length > 0
+          ? bomRows.map(b => ({ raw: b.child_name, ratio: b.ratio * (b.yield_rate || 1) }))
+          : PRODUCT_FORMULA[prodKey];
         if (!formula) continue;
         for (const f of formula) {
           const usedKg = toKg(prod.용량 || '', f.raw, item.quantity) * f.ratio;
@@ -247,7 +255,7 @@ const App: React.FC = () => {
       }
     }
     return result;
-  }, [orders, allProducts, clients]);
+  }, [orders, allProducts, clients, itemBoms]);
 
   // 재고 발주 관련 상태 (orderRequests는 useAppData에서 Firebase로 관리)
 
@@ -609,6 +617,30 @@ const App: React.FC = () => {
 
   const isAdmin = currentUser?.id === 'admin';
 
+  // PRODUCT_FORMULA → Firestore item_bom 시딩 (최초 1회)
+  const seedItemBoms = async () => {
+    if (itemBoms.length > 0) {
+      alert(`이미 item_bom에 ${itemBoms.length}개 항목이 있습니다.`);
+      return;
+    }
+    const batch = writeBatch(db);
+    let count = 0;
+    for (const [parentKey, rows] of Object.entries(PRODUCT_FORMULA)) {
+      for (const row of rows) {
+        const id = `bom-${parentKey}-${row.raw}`.replace(/\s/g, '_');
+        batch.set(doc(db, 'item_bom', id), {
+          parent_key: parentKey,
+          child_name: row.raw,
+          ratio: row.ratio,
+          yield_rate: 1.0,
+        });
+        count++;
+      }
+    }
+    await batch.commit();
+    alert(`item_bom 시딩 완료: ${count}개 항목`);
+  };
+
   const handleNavClick = (view: ViewType) => {
     const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant'];
     if (adminOnlyViews.includes(view) && !isAdminAuthenticated && !isAdmin) {
@@ -824,7 +856,25 @@ const App: React.FC = () => {
             </div>
           ) : (
           <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'clients', 'notice', 'pallets', 'confirmation-items', 'shipping'].includes(currentView)) ? '' : 'min-w-[720px] md:min-w-0 h-full'}>
-          {currentView === 'dashboard' && <Dashboard orders={orders} products={allProducts} onNavigate={handleNavClick} />}
+          {currentView === 'dashboard' && <div className="h-full overflow-y-auto">
+            <Dashboard orders={orders} products={allProducts} onNavigate={handleNavClick} />
+            {isAdmin && (
+              <div className="p-6 border-t border-slate-100">
+                <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">BOM 관리</p>
+                <div className="flex gap-3 flex-wrap">
+                  <div className="bg-slate-50 rounded-xl p-4 text-sm">
+                    <p className="font-bold text-slate-600 mb-1">item_bom 현황</p>
+                    <p className="text-slate-400">Firestore: <span className="font-black text-slate-800">{itemBoms.length}개</span></p>
+                    <p className="text-slate-400">하드코딩: <span className="font-black text-slate-800">{Object.values(PRODUCT_FORMULA).flat().length}개</span></p>
+                  </div>
+                  <button onClick={seedItemBoms}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-black hover:bg-indigo-700 self-start">
+                    PRODUCT_FORMULA → item_bom 시딩
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>}
           {currentView === 'shipping' && (
             <DeliveryManager
               orders={orders}
@@ -923,6 +973,7 @@ const App: React.FC = () => {
               }}
               onAddAdjustmentRequest={(req) => addItem('adjustmentRequests', req)}
               suppliers={clients.filter(c => c.partnerType === '매입처' || c.partnerType === '매출+매입처')}
+              clients={clients}
               currentUser={currentUser}
               issuedStatements={issuedStatements}
               onMarkStatementReceived={(id) => updateItem('issuedStatements', id, { receivedAt: new Date().toISOString() })}

@@ -4,6 +4,7 @@ import {
   PalletStock, PalletTransaction, Employee, LeaveRequest,
   AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry,
   AppNotification, OrderStatus, IssuedStatement,
+  ItemBom, ItemCustomer,
 } from '../../types';
 import { subscribeToCollection } from '../services/firebaseService';
 
@@ -50,6 +51,9 @@ export interface AppData {
   workOrderItems: WorkOrderItem[];
   // 발행된 전표
   issuedStatements: IssuedStatement[];
+  // BOM
+  itemBoms: ItemBom[];
+  itemCustomers: ItemCustomer[];
   // 로딩 상태
   isDataLoading: boolean;
 }
@@ -75,6 +79,8 @@ export function useAppData(): AppData {
   const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
   const [workOrderItems, setWorkOrderItems] = useState<WorkOrderItem[]>([]);
   const [issuedStatements, setIssuedStatements] = useState<IssuedStatement[]>([]);
+  const [itemBoms, setItemBoms] = useState<ItemBom[]>([]);
+  const [itemCustomers, setItemCustomers] = useState<ItemCustomer[]>([]);
   const [isDataLoading, setIsDataLoading] = useState(true);
   const loadedRef = useRef(new Set<string>());
 
@@ -107,6 +113,8 @@ export function useAppData(): AppData {
       subscribeToCollection<AppNotification>('notifications', setAppNotifications),
       subscribeToCollection<WorkOrderItem>('workOrderItems', (data) => setWorkOrderItems([...data].sort((a, b) => a.sortIndex - b.sortIndex))),
       subscribeToCollection<IssuedStatement>('issuedStatements', setIssuedStatements),
+      subscribeToCollection<ItemBom>('item_bom', setItemBoms),
+      subscribeToCollection<ItemCustomer>('item_customer', setItemCustomers),
     ];
     return () => unsubscribes.forEach(u => u());
   }, []);
@@ -121,6 +129,8 @@ export function useAppData(): AppData {
     appNotifications,
     workOrderItems,
     issuedStatements,
+    itemBoms,
+    itemCustomers,
     isDataLoading,
   };
 }

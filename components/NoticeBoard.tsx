@@ -29,29 +29,29 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, onAddPost }) => {
   );
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+    <div className="space-y-5 animate-in fade-in duration-300">
+      <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-black text-slate-900">공지사항</h2>
-          <p className="text-slate-500 mt-1">사내 주요 소식 및 긴급 공지를 확인하세요.</p>
+          <h2 className="text-2xl font-black text-slate-900">공지사항</h2>
+          <p className="text-sm text-slate-400 mt-0.5">사내 주요 소식 및 긴급 공지를 확인하세요.</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative max-w-md w-full">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
             <input
               type="text"
-              placeholder="공지 내용 검색..."
+              placeholder="공지 검색..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-white border border-slate-200 rounded-2xl pl-12 pr-4 py-3.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm transition-all"
+              className="bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-300 shadow-sm transition-all w-40 md:w-56"
             />
           </div>
           {onAddPost && (
             <button
               onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 px-4 py-3.5 bg-indigo-600 text-white rounded-2xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-sm whitespace-nowrap"
+              className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-black hover:bg-indigo-700 transition-all shadow-sm whitespace-nowrap"
             >
-              <Plus size={16} /> 공지 추가
+              <Plus size={15} /> 공지 추가
             </button>
           )}
         </div>

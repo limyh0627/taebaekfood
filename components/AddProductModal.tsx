@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Package, Tag, Box, Layers, Plus, Hash, ShieldAlert, Building2, Check, Trash2 } from 'lucide-react';
-import { Product, InventoryCategory, Client, BoxConfig, ClientBoxConfig } from '../types';
+import { X, Package, Tag, Box, Layers, Plus, Building2, Check, Trash2 } from 'lucide-react';
+import { Product, InventoryCategory, Client, ClientBoxConfig } from '../types';
 
 interface ProductModalProps {
   initialData?: Product;
@@ -83,9 +83,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const [activeSubCategory, setActiveSubCategory] = useState<string | null>(null);
   const [addingSubCat, setAddingSubCat] = useState<string | null>(null);
   const [newSubName, setNewSubName] = useState('');
-  const [localNewSubs, setLocalNewSubs] = useState<{ id: string; name: string; category: string; unit: string; stock: number }[]>([]);
   const [clientSearch, setClientSearch] = useState('');
-  const [categorySearch, setCategorySearch] = useState('');
   const [supplierSearch, setSupplierSearch] = useState('');
   const [subSearch, setSubSearch] = useState<Record<string, string>>({});
   const [showPumokDrop, setShowPumokDrop] = useState(false);
@@ -94,6 +92,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const [boxClientSearch, setBoxClientSearch] = useState('');
   const [showBoxClientDrop, setShowBoxClientDrop] = useState(false);
   const boxClientSearchRef = useRef<HTMLDivElement>(null);
+  const pumokRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -103,27 +102,22 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (boxClientSearchRef.current && !boxClientSearchRef.current.contains(e.target as Node)) {
+      if (boxClientSearchRef.current && !boxClientSearchRef.current.contains(e.target as Node))
         setShowBoxClientDrop(false);
-      }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
-  const pumokRef = useRef<HTMLDivElement>(null);
 
-  // 품목 드롭다운 외부 클릭 닫기
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (pumokRef.current && !pumokRef.current.contains(e.target as Node)) {
+      if (pumokRef.current && !pumokRef.current.contains(e.target as Node))
         setShowPumokDrop(false);
-      }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // 품목 자동완성 옵션 (DB 완제품 기존값 + 프리셋)
   const pumokOptions = [
     ...new Set([
       ...products.map(p => p.품목).filter(Boolean) as string[],
@@ -153,7 +147,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       name: formData.name,
       category: formData.category,
       price: formData.price,
-      stock: formData.stock,
+      stock: initialData?.stock ?? 0,
       minStock: formData.category === '완제품' ? 0 : formData.minStock,
       unit: formData.unit,
       image: initialData?.image || '',
@@ -178,15 +172,13 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose} />
 
       <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300">
+        {/* 헤더 */}
         <div className="p-6 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className={`w-10 h-10 ${initialData ? 'bg-indigo-100 text-indigo-600' : 'bg-indigo-600 text-white'} rounded-xl flex items-center justify-center shadow-lg`}>
               {initialData ? <Package size={20} /> : <Plus size={20} />}
             </div>
-            <div>
-              <h3 className="text-xl font-bold text-slate-900">{initialData ? '품목 정보 수정' : '신규 품목 등록'}</h3>
-              <p className="text-xs text-slate-500">재고가 최소 수량 미만이면 시스템이 감지하여 알려줍니다.</p>
-            </div>
+            <h3 className="text-lg font-black text-slate-900">{initialData ? '품목 정보 수정' : '신규 품목 등록'}</h3>
           </div>
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-full">
             <X size={20} />
@@ -195,11 +187,25 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
 
-          {/* 품목명 */}
+          {/* 품목명 + 스마트스토어 토글 */}
           <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-              <Tag size={14} className="mr-2" /> 품목명
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
+                <Tag size={14} className="mr-2" /> 품목명
+              </label>
+              {formData.category === '완제품' && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-slate-400">스마트스토어 전용</span>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({...formData, isSmartStore: !formData.isSmartStore})}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0 ${formData.isSmartStore ? 'bg-indigo-600' : 'bg-slate-200'}`}
+                  >
+                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${formData.isSmartStore ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
+              )}
+            </div>
             <input
               required
               autoFocus
@@ -216,33 +222,24 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
               <Package size={14} className="mr-2" /> 카테고리
             </label>
-            <input
-              type="text"
-              value={categorySearch}
-              onChange={e => setCategorySearch(e.target.value)}
-              placeholder="카테고리 검색..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-400 transition-all"
-            />
             <div className="grid grid-cols-4 gap-1.5">
-              {categories
-                .filter(cat => !categorySearch.trim() || cat.includes(categorySearch))
-                .map(cat => {
-                  const isSelected = formData.category === cat;
-                  return (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => setFormData({...formData, category: cat as InventoryCategory})}
-                      className={`py-2 rounded-xl text-xs font-black border transition-all ${
-                        isSelected
-                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
-                          : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  );
-                })}
+              {categories.map(cat => {
+                const isSelected = formData.category === cat;
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setFormData({...formData, category: cat as InventoryCategory})}
+                    className={`py-2 rounded-xl text-xs font-black border transition-all ${
+                      isSelected
+                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                        : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -260,7 +257,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             />
           </div>
 
-          {/* 매출거래처 (완제품) — 검색 + 그리드 */}
+          {/* 매출거래처 (완제품) */}
           {formData.category === '완제품' && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
@@ -269,15 +266,13 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                   <span className="ml-2 px-1.5 py-0.5 bg-indigo-600 text-white text-[9px] font-black rounded-full">{formData.clientIds.length}</span>
                 )}
               </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={clientSearch}
-                  onChange={e => setClientSearch(e.target.value)}
-                  placeholder="거래처 검색..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-4 pr-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-400 transition-all"
-                />
-              </div>
+              <input
+                type="text"
+                value={clientSearch}
+                onChange={e => setClientSearch(e.target.value)}
+                placeholder="거래처 검색..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-4 pr-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-400 transition-all"
+              />
               {salesClients.length === 0 ? (
                 <p className="text-xs text-slate-400 px-1">등록된 매출거래처 없음</p>
               ) : (
@@ -317,21 +312,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             </div>
           )}
 
-          {/* 스마트스토어 전용 토글 (완제품) */}
-          {formData.category === '완제품' && (
-            <div className="flex items-center justify-between px-1">
-              <label className="text-xs font-bold text-slate-500">스마트스토어 전용 품목</label>
-              <button
-                type="button"
-                onClick={() => setFormData({...formData, isSmartStore: !formData.isSmartStore})}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${formData.isSmartStore ? 'bg-indigo-600' : 'bg-slate-200'}`}
-              >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${formData.isSmartStore ? 'translate-x-6' : 'translate-x-1'}`} />
-              </button>
-            </div>
-          )}
-
-          {/* BOM 설정 (완제품) — 매출거래처 바로 아래 */}
+          {/* BOM 설정 (완제품) */}
           {formData.category === '완제품' && (
             <div className="space-y-3 pt-2 border-t border-slate-100">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
@@ -360,7 +341,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                           {selectedSub ? (
                             <div className="flex items-center space-x-2">
                               <span className="text-sm font-bold text-slate-700">{selectedSub.name}</span>
-                              <span className="text-[10px] font-black text-indigo-400 bg-indigo-100/50 px-1.5 py-0.5 rounded">{selectedSub.stock}{selectedSub.unit}</span>
+                              {cat === '박스' && formData.defaultBoxConfig.unitsPerBox > 0 && (
+                                <span className="text-[10px] font-black text-indigo-400 bg-indigo-100/50 px-1.5 py-0.5 rounded">{formData.defaultBoxConfig.unitsPerBox}개입</span>
+                              )}
                             </div>
                           ) : (
                             <span className="text-sm font-medium text-slate-400">{cat} 선택 안함</span>
@@ -371,7 +354,6 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
 
                       {isOpen && (
                         <div className="p-4 bg-white border-t border-slate-100 animate-in slide-in-from-top-2 duration-200">
-                          {/* 검색 입력 */}
                           <input
                             type="text"
                             value={subSearch[cat] || ''}
@@ -383,7 +365,10 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                             <button
                               type="button"
                               onClick={() => {
-                                setFormData({ ...formData, submaterials: formData.submaterials.filter(s => getSubCat(s) !== cat) });
+                                const filtered = formData.submaterials.filter(s => getSubCat(s) !== cat);
+                                const newData: typeof formData = { ...formData, submaterials: filtered };
+                                if (cat === '박스') newData.defaultBoxConfig = { boxType: '', unitsPerBox: 0 };
+                                setFormData(newData);
                                 setActiveSubCategory(null);
                               }}
                               className={`flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all border ${!selectedSub ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-slate-50 border-slate-100 text-slate-500 hover:bg-slate-100'}`}
@@ -409,56 +394,57 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                                 return a.name.localeCompare(b.name, 'ko');
                               })
                               .map(sub => {
-                              const isSelected = selectedSub?.id === sub.id;
-                              return (
-                                <button
-                                  key={sub.id}
-                                  type="button"
-                                  onClick={() => {
-                                    const filtered = formData.submaterials.filter(s => getSubCat(s) !== cat);
-                                    const autoCapacity = cat === '용기' ? (allSubmaterials.find(a => a.id === sub.id) as Product | undefined)?.용량 || '' : formData.용량;
-                                    setFormData({
-                                      ...formData,
-                                      submaterials: [...filtered, {
-                                        id: sub.id,
-                                        name: sub.name,
-                                        category: cat,
-                                        stock: selectedSub?.stock || 1,
-                                        unit: sub.unit
-                                      }],
-                                      ...(cat === '용기' && { 용량: autoCapacity }),
-                                    });
-                                    setActiveSubCategory(null);
-                                  }}
-                                  className={`flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all border ${isSelected ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-slate-50 border-slate-100 text-slate-500 hover:bg-slate-100'}`}
-                                >
-                                  <span>{sub.name}</span>
-                                  {isSelected && <div className="w-2 h-2 bg-indigo-600 rounded-full" />}
-                                </button>
-                              );
-                            })}
+                                const isSelected = selectedSub?.id === sub.id;
+                                return (
+                                  <button
+                                    key={sub.id}
+                                    type="button"
+                                    onClick={() => {
+                                      const filtered = formData.submaterials.filter(s => getSubCat(s) !== cat);
+                                      const autoCapacity = cat === '용기'
+                                        ? (allSubmaterials.find(a => a.id === sub.id) as Product | undefined)?.용량 || ''
+                                        : formData.용량;
+                                      const newSub = { id: sub.id, name: sub.name, category: cat, stock: 1, unit: sub.unit };
+                                      const newData: typeof formData = {
+                                        ...formData,
+                                        submaterials: [...filtered, newSub],
+                                        ...(cat === '용기' && { 용량: autoCapacity }),
+                                        ...(cat === '박스' && {
+                                          defaultBoxConfig: {
+                                            boxType: sub.name,
+                                            unitsPerBox: formData.defaultBoxConfig.unitsPerBox,
+                                            boxSubId: sub.id,
+                                          }
+                                        }),
+                                      };
+                                      setFormData(newData);
+                                      setActiveSubCategory(null);
+                                    }}
+                                    className={`flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all border ${isSelected ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-slate-50 border-slate-100 text-slate-500 hover:bg-slate-100'}`}
+                                  >
+                                    <span>{sub.name}</span>
+                                    {isSelected && <div className="w-2 h-2 bg-indigo-600 rounded-full" />}
+                                  </button>
+                                );
+                              })}
                           </div>
 
-                          {selectedSub && (
-                            <div className="flex items-center justify-between bg-slate-50 rounded-xl p-3 border border-slate-100">
-                              <div className="flex items-center space-x-2">
-                                <span className="text-[10px] font-black text-slate-400 uppercase">필요 수량</span>
-                                <div className="flex items-center bg-white border border-slate-200 rounded-lg px-2 py-1">
-                                  <input
-                                    type="number"
-                                    value={selectedSub.stock}
-                                    onChange={(e) => {
-                                      const newQty = Math.max(1, Number(e.target.value));
-                                      setFormData({
-                                        ...formData,
-                                        submaterials: formData.submaterials.map(s => s.id === selectedSub.id ? { ...s, stock: newQty } : s)
-                                      });
-                                    }}
-                                    className="w-12 text-center text-xs font-black outline-none"
-                                  />
-                                  <span className="text-[10px] font-bold text-slate-400 ml-1">{selectedSub.unit}</span>
-                                </div>
-                              </div>
+                          {/* 박스 선택 시: 박스당 개수 입력 */}
+                          {cat === '박스' && selectedSub && (
+                            <div className="flex items-center gap-2 bg-slate-50 rounded-xl p-3 border border-slate-100">
+                              <span className="text-[10px] font-black text-slate-400 uppercase shrink-0">박스당 개수</span>
+                              <input
+                                type="number"
+                                min={1}
+                                placeholder="개수"
+                                value={formData.defaultBoxConfig.unitsPerBox === 0 ? '' : formData.defaultBoxConfig.unitsPerBox}
+                                onChange={e => setFormData({
+                                  ...formData,
+                                  defaultBoxConfig: { ...formData.defaultBoxConfig, unitsPerBox: Number(e.target.value) || 0 }
+                                })}
+                                className="w-16 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-black text-center outline-none focus:ring-1 focus:ring-indigo-400"
+                              />
+                              <span className="text-[10px] text-slate-400">개</span>
                             </div>
                           )}
 
@@ -473,10 +459,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                                   onChange={e => setNewSubName(e.target.value)}
                                   onKeyDown={async e => {
                                     if (e.key === 'Enter' && newSubName.trim()) {
-                                      const unit = cat === '라벨' ? '매' : cat === '박스' ? '개' : cat === '용기' ? '개' : cat === '마개' ? '개' : '개';
+                                      const unit = cat === '라벨' ? '매' : '개';
                                       const newId = await onAddSubmaterial(newSubName.trim(), cat);
                                       const newSub = { id: newId, name: newSubName.trim(), category: cat, unit, stock: 1 };
-                                      setLocalNewSubs(prev => [...prev, newSub]);
                                       const filtered = formData.submaterials.filter(s => getSubCat(s) !== cat);
                                       setFormData({ ...formData, submaterials: [...filtered, newSub] });
                                       setNewSubName('');
@@ -511,94 +496,14 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                   );
                 })}
               </div>
-            </div>
-          )}
-
-          {/* 박스 설정 (완제품) */}
-          {formData.category === '완제품' && (() => {
-            const boxSubs = allSubmaterials.filter(s => s.category === '박스');
-
-            // 박스 선택 + 개수 입력 공통 컴포넌트 (inline)
-            const BoxConfigRow = ({
-              config,
-              onSelect,
-              onChangeQty,
-              onRemove,
-            }: {
-              config: { boxType: string; unitsPerBox: number; boxSubId?: string };
-              onSelect: (sub: typeof boxSubs[0]) => void;
-              onChangeQty: (val: number) => void;
-              onRemove?: () => void;
-            }) => (
-              <div className="space-y-1.5">
-                <div className="flex flex-wrap gap-1.5">
-                  {boxSubs.map(sub => {
-                    const isSel = config.boxSubId === sub.id;
-                    return (
-                      <button
-                        key={sub.id}
-                        type="button"
-                        onClick={() => onSelect(sub)}
-                        className={`flex items-center gap-1 text-[11px] font-black px-2.5 py-1 rounded-lg border transition-all ${
-                          isSel
-                            ? 'bg-indigo-600 text-white border-indigo-600'
-                            : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
-                        }`}
-                      >
-                        {sub.name}
-                        {sub.boxSize ? <span className={`text-[9px] ${isSel ? 'text-indigo-200' : 'text-slate-400'}`}>/{sub.boxSize}개</span> : null}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-slate-400 shrink-0">박스당</span>
-                  <input
-                    type="number"
-                    min={1}
-                    placeholder="개수"
-                    value={config.unitsPerBox === 0 ? '' : config.unitsPerBox}
-                    onChange={(e) => onChangeQty(e.target.value === '' ? 0 : Number(e.target.value))}
-                    className="w-16 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-black text-center outline-none focus:ring-1 focus:ring-indigo-400"
-                  />
-                  <span className="text-[10px] text-slate-400 shrink-0">개</span>
-                  {config.boxType && <span className="text-[10px] font-bold text-indigo-500 truncate">{config.boxType}</span>}
-                  {onRemove && (
-                    <button type="button" onClick={onRemove} className="ml-auto text-rose-400 hover:text-rose-600 shrink-0">
-                      <Trash2 size={11} />
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-
-            return (
-            <div className="space-y-3 pt-2 border-t border-slate-100">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Box size={14} className="mr-2" /> 박스 설정
-              </label>
-
-              {/* 기본 박스 설정 */}
-              <div className="bg-slate-50 rounded-2xl border border-slate-100 p-4 space-y-2">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">기본 박스 설정</p>
-                <BoxConfigRow
-                  config={formData.defaultBoxConfig}
-                  onSelect={(sub) => setFormData({ ...formData, defaultBoxConfig: {
-                    boxType: sub.name,
-                    unitsPerBox: formData.defaultBoxConfig.unitsPerBox || sub.boxSize || 0,
-                    boxSubId: sub.id,
-                  }})}
-                  onChangeQty={(val) => setFormData({ ...formData, defaultBoxConfig: { ...formData.defaultBoxConfig, unitsPerBox: val } })}
-                />
-              </div>
 
               {/* 거래처별 박스 설정 */}
               <div className="bg-slate-50 rounded-2xl border border-slate-100 p-4 space-y-3">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">거래처별 박스 설정</p>
-
                 {formData.clientBoxConfigs.map((cfg) => {
                   const clientName = clients.find(c => c.id === cfg.clientId)?.name || cfg.clientId;
                   const isExpanded = expandedBoxClient === cfg.clientId;
+                  const boxSubs = allSubmaterials.filter(s => s.category === '박스');
                   return (
                     <div key={cfg.clientId} className="bg-white border border-slate-100 rounded-xl overflow-hidden">
                       <div
@@ -624,38 +529,72 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                       {isExpanded && (
                         <div className="border-t border-slate-100 p-3 space-y-3">
                           {cfg.configs.map((box, boxIdx) => (
-                            <BoxConfigRow
-                              key={boxIdx}
-                              config={box}
-                              onSelect={(sub) => {
-                                const next = formData.clientBoxConfigs.map(c =>
-                                  c.clientId !== cfg.clientId ? c : {
-                                    ...c,
-                                    configs: c.configs.map((b, i) => i === boxIdx ? {
-                                      boxType: sub.name,
-                                      unitsPerBox: b.unitsPerBox || sub.boxSize || 0,
-                                      boxSubId: sub.id,
-                                    } : b)
-                                  }
-                                );
-                                setFormData({ ...formData, clientBoxConfigs: next });
-                              }}
-                              onChangeQty={(val) => {
-                                const next = formData.clientBoxConfigs.map(c =>
-                                  c.clientId !== cfg.clientId ? c : {
-                                    ...c,
-                                    configs: c.configs.map((b, i) => i === boxIdx ? { ...b, unitsPerBox: val } : b)
-                                  }
-                                );
-                                setFormData({ ...formData, clientBoxConfigs: next });
-                              }}
-                              onRemove={() => {
-                                const next = formData.clientBoxConfigs.map(c =>
-                                  c.clientId !== cfg.clientId ? c : { ...c, configs: c.configs.filter((_, i) => i !== boxIdx) }
-                                );
-                                setFormData({ ...formData, clientBoxConfigs: next });
-                              }}
-                            />
+                            <div key={boxIdx} className="space-y-1.5">
+                              <div className="flex flex-wrap gap-1.5">
+                                {boxSubs.map(sub => {
+                                  const isSel = box.boxSubId === sub.id;
+                                  return (
+                                    <button
+                                      key={sub.id}
+                                      type="button"
+                                      onClick={() => {
+                                        const next = formData.clientBoxConfigs.map(c =>
+                                          c.clientId !== cfg.clientId ? c : {
+                                            ...c,
+                                            configs: c.configs.map((b, i) => i === boxIdx ? {
+                                              boxType: sub.name,
+                                              unitsPerBox: b.unitsPerBox || 0,
+                                              boxSubId: sub.id,
+                                            } : b)
+                                          }
+                                        );
+                                        setFormData({ ...formData, clientBoxConfigs: next });
+                                      }}
+                                      className={`text-[11px] font-black px-2.5 py-1 rounded-lg border transition-all ${
+                                        isSel
+                                          ? 'bg-indigo-600 text-white border-indigo-600'
+                                          : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
+                                      }`}
+                                    >
+                                      {sub.name}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-slate-400 shrink-0">박스당</span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  placeholder="개수"
+                                  value={box.unitsPerBox === 0 ? '' : box.unitsPerBox}
+                                  onChange={(e) => {
+                                    const next = formData.clientBoxConfigs.map(c =>
+                                      c.clientId !== cfg.clientId ? c : {
+                                        ...c,
+                                        configs: c.configs.map((b, i) => i === boxIdx ? { ...b, unitsPerBox: Number(e.target.value) || 0 } : b)
+                                      }
+                                    );
+                                    setFormData({ ...formData, clientBoxConfigs: next });
+                                  }}
+                                  className="w-16 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-black text-center outline-none focus:ring-1 focus:ring-indigo-400"
+                                />
+                                <span className="text-[10px] text-slate-400 shrink-0">개</span>
+                                {box.boxType && <span className="text-[10px] font-bold text-indigo-500 truncate">{box.boxType}</span>}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const next = formData.clientBoxConfigs.map(c =>
+                                      c.clientId !== cfg.clientId ? c : { ...c, configs: c.configs.filter((_, i) => i !== boxIdx) }
+                                    );
+                                    setFormData({ ...formData, clientBoxConfigs: next });
+                                  }}
+                                  className="ml-auto text-rose-400 hover:text-rose-600 shrink-0"
+                                >
+                                  <Trash2 size={11} />
+                                </button>
+                              </div>
+                            </div>
                           ))}
                           <button
                             type="button"
@@ -678,10 +617,10 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                   );
                 })}
 
-                {/* 거래처 추가 — 검색 + 드롭다운 */}
+                {/* 거래처 추가 */}
                 {(() => {
                   const addedIds = formData.clientBoxConfigs.map(c => c.clientId);
-                  const pool = (formData.category === '완제품' ? salesClients : clients).filter(c => !addedIds.includes(c.id));
+                  const pool = salesClients.filter(c => !addedIds.includes(c.id));
                   if (pool.length === 0) return null;
                   const filtered = boxClientSearch.trim()
                     ? pool.filter(c => c.name.toLowerCase().includes(boxClientSearch.toLowerCase()))
@@ -731,14 +670,13 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                 })()}
               </div>
             </div>
-            );
-          })()}
+          )}
 
           {/* 1박스 당 수량 (박스 부자재) */}
           {formData.category === '박스' && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Hash size={14} className="mr-2" /> 1박스 당 수량 (개)
+                <Box size={14} className="mr-2" /> 1박스 당 수량 (개)
               </label>
               <input
                 type="number"
@@ -750,7 +688,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             </div>
           )}
 
-          {/* 서류용 품목명 (완제품) — 커스텀 드롭다운 */}
+          {/* 서류용 품목명 (완제품) */}
           {formData.category === '완제품' && (
             <div className="space-y-2" ref={pumokRef}>
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
@@ -784,7 +722,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             </div>
           )}
 
-          {/* 용량 (완제품) — 품목 선택 시 버튼으로 표시, 없으면 직접 입력 */}
+          {/* 용량 (완제품) */}
           {formData.category === '완제품' && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
@@ -900,33 +838,6 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
               </div>
             </div>
           )}
-
-          {/* 재고량 + 최소 수량 */}
-          <div className="grid grid-cols-2 gap-4 pt-2">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Hash size={14} className="mr-2" /> 현재 재고량
-              </label>
-              <input
-                type="number"
-                value={formData.stock}
-                onChange={(e) => setFormData({...formData, stock: Number(e.target.value)})}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className={`text-xs font-bold uppercase tracking-widest flex items-center ${formData.category === '완제품' ? 'text-slate-200' : 'text-amber-600'}`}>
-                <ShieldAlert size={14} className="mr-2" /> 최소 수량 알림
-              </label>
-              <input
-                disabled={formData.category === '완제품'}
-                type="number"
-                value={formData.category === '완제품' ? 0 : formData.minStock}
-                onChange={(e) => setFormData({...formData, minStock: Number(e.target.value)})}
-                className="w-full bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3.5 text-sm font-bold text-amber-700 outline-none focus:ring-2 focus:ring-amber-500 transition-all disabled:opacity-30"
-              />
-            </div>
-          </div>
 
         </form>
 

@@ -23,6 +23,7 @@ import {
 import { Product, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement } from '../types';
 import AddProductModal from './AddProductModal';
 import ConfirmModal from './ConfirmModal';
+import PageHeader from './PageHeader';
 
 interface OrderRequest {
   id: string;
@@ -54,6 +55,7 @@ interface ProductListProps {
   onDeleteProduct: (id: string) => void;
   onAddAdjustmentRequest: (req: AdjustmentRequest) => void;
   suppliers: { id: string; name: string }[];
+  clients?: { id: string; name: string; partnerType?: string }[];
   rawMaterialLedger: RawMaterialEntry[];
   onRequestPurchaseInvoice?: (supplierId: string, supplierName: string, items: Array<{ name: string; spec: string; qty: number; price: number }>) => void;
   issuedStatements?: IssuedStatement[];
@@ -64,6 +66,16 @@ interface ProductListProps {
   currentUser?: { name: string; id: string } | null;
 }
 
+const CLIENT_BADGE_COLORS = [
+  'bg-violet-50 text-violet-600',
+  'bg-emerald-50 text-emerald-600',
+  'bg-sky-50 text-sky-600',
+  'bg-amber-50 text-amber-600',
+  'bg-rose-50 text-rose-500',
+  'bg-teal-50 text-teal-600',
+  'bg-orange-50 text-orange-500',
+  'bg-indigo-50 text-indigo-500',
+];
 const RAW_MATERIALS = ['참깨','들깨','검정깨','탈피들깨가루','깨분','볶음참깨','볶음들깨','볶음검정참깨','통깨참기름','깨분참기름','통들깨들기름','수입들기름'];
 const RAW_MATERIALS_EN: Record<string, string> = {
   '참깨': 'Sesame',
@@ -100,6 +112,7 @@ const ProductList: React.FC<ProductListProps> = ({
   onDeleteProduct,
   onAddAdjustmentRequest,
   suppliers,
+  clients = [],
   rawMaterialLedger,
   onRequestPurchaseInvoice,
   issuedStatements = [],
@@ -169,6 +182,13 @@ const ProductList: React.FC<ProductListProps> = ({
   const [inlineCartId, setInlineCartId] = useState<string | null>(null);
   const [inlineCartQty, setInlineCartQty] = useState<number>(0);
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+  const [expandedClientRowId, setExpandedClientRowId] = useState<string | null>(null);
+  const [finishedFilter, setFinishedFilter] = useState<'all' | 'oil' | 'powder'>('all');
+  const [stockOnly, setStockOnly] = useState(false);
+  const [showClientSearch, setShowClientSearch] = useState(false);
+  const [clientSearchTerm, setClientSearchTerm] = useState('');
+  const [selectedSearchClientId, setSelectedSearchClientId] = useState<string | null>(null);
+  const [priorityClientId, setPriorityClientId] = useState<string | null>(null);
   const [showRmSheet, setShowRmSheet] = useState(false);
   const [rmSheetTab, setRmSheetTab] = useState<'new' | 'carryover'>('new');
   const [cart, setCart] = useState<{ id: string; qty: number }[]>([]);
@@ -234,7 +254,14 @@ const ProductList: React.FC<ProductListProps> = ({
     }
     // 탭별 분리
     if (topTab === 'finished') {
-      result = result.filter(p => p.category === '완제품');
+      if (finishedFilter === 'oil') {
+        result = result.filter(p => p.category === '향미유' || p.category === '완제품');
+        result = result.filter(p => p.category === '향미유' || /기름|유/.test(p.name));
+      } else if (finishedFilter === 'powder') {
+        result = result.filter(p => p.category === '고춧가루' || (p.category === '완제품' && /가루/.test(p.name)));
+      } else {
+        result = result.filter(p => p.category === '완제품');
+      }
     } else if (topTab === 'specialty') {
       result = result.filter(p => p.category === '향미유' || p.category === '고춧가루');
     } else if (topTab === 'product') {
@@ -252,10 +279,15 @@ const ProductList: React.FC<ProductListProps> = ({
       result = result.filter(p => {
         if (p.name.toLowerCase().includes(q)) return true;
         const supplierName = suppliers.find(s => s.id === (p as any).supplierId)?.name || '';
-        return supplierName.toLowerCase().includes(q);
+        if (supplierName.toLowerCase().includes(q)) return true;
+        const clientName = (p.clientIds ?? []).some(cid => clients.find(c => c.id === cid)?.name.toLowerCase().includes(q));
+        return clientName;
       });
     }
-    
+    if (stockOnly) {
+      result = result.filter(p => p.stock > 0);
+    }
+
     const CATEGORY_ORDER = ['완제품', '향미유', '고춧가루', '용기', '마개', '테이프', '박스', '라벨'];
     return [...result].sort((a, b) => {
       const aCritical = a.category !== '완제품' && a.stock < a.minStock ? 0 : 1;
@@ -267,7 +299,7 @@ const ProductList: React.FC<ProductListProps> = ({
       const bIdx = bCatIdx === -1 ? 99 : bCatIdx;
       return aIdx - bIdx;
     });
-  }, [products, activeTab, activeCategory, activeSupplierId, searchTerm, orderRequests, confirmedOrders, suppliers, topTab]);
+  }, [products, activeTab, activeCategory, activeSupplierId, searchTerm, orderRequests, confirmedOrders, suppliers, clients, topTab, finishedFilter, stockOnly]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -331,46 +363,26 @@ const ProductList: React.FC<ProductListProps> = ({
 
 
   return (
-    <div className="space-y-6 animate-in slide-in-from-right-4 duration-500 h-full flex flex-col relative">
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-2xl sm:text-3xl font-black text-slate-900 uppercase">재고 및 물류 관리</h2>
-          <p className="text-slate-500 text-sm font-medium">실시간 재고 현황을 파악하고 부족한 자재를 즉시 발주하세요.</p>
-        </div>
-        {/* 상위 탭 */}
-        <div className="bg-slate-200/50 p-1.5 rounded-3xl flex items-center shadow-inner self-start border border-slate-200 shrink-0">
-          <button
-            onClick={() => { setTopTab('finished'); setActiveCategory('전체'); setActiveSupplierId('전체'); }}
-            className={`px-5 py-2.5 rounded-2xl flex items-center space-x-2 transition-all text-xs font-black ${topTab === 'finished' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-          >
-            <Package size={16} />
-            <span>완제품</span>
-          </button>
-          <button
-            onClick={() => { setTopTab('specialty'); setActiveCategory('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); }}
-            className={`px-5 py-2.5 rounded-2xl flex items-center space-x-2 transition-all text-xs font-black ${topTab === 'specialty' ? 'bg-white text-orange-500 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-          >
-            <Box size={16} />
-            <span>상품</span>
-          </button>
-          <button
-            onClick={() => { setTopTab('product'); setActiveCategory('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); }}
-            className={`px-5 py-2.5 rounded-2xl flex items-center space-x-2 transition-all text-xs font-black ${topTab === 'product' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-          >
-            <Box size={16} />
-            <span>부자재</span>
-          </button>
-          <button
-            onClick={() => setTopTab('rawmaterial')}
-            className={`px-5 py-2.5 rounded-2xl flex items-center space-x-2 transition-all text-xs font-black ${topTab === 'rawmaterial' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-          >
-            <Grape size={16} />
-            <span>원료 재고</span>
-          </button>
-        </div>
-        </div>
-      </div>
+    <div className="space-y-5 animate-in fade-in duration-300 h-full flex flex-col relative">
+      <PageHeader
+        title="재고 관리"
+        subtitle="실시간 재고 현황을 파악하고 부족한 자재를 즉시 발주하세요."
+        right={
+          <div className="bg-slate-100 p-1 rounded-2xl flex items-center">
+            {([
+              { id: 'finished', label: '완제품', color: 'text-violet-600', icon: <Package size={13}/>, onClick: () => { setTopTab('finished'); setActiveCategory('전체'); setActiveSupplierId('전체'); } },
+              { id: 'specialty', label: '상품', color: 'text-orange-500', icon: <Box size={13}/>, onClick: () => { setTopTab('specialty'); setActiveCategory('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
+              { id: 'product', label: '부자재', color: 'text-indigo-600', icon: <Box size={13}/>, onClick: () => { setTopTab('product'); setActiveCategory('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
+              { id: 'rawmaterial', label: '원료재고', color: 'text-emerald-600', icon: <Grape size={13}/>, onClick: () => setTopTab('rawmaterial') },
+            ] as const).map(t => (
+              <button key={t.id} onClick={t.onClick}
+                className={`px-4 py-2 rounded-xl flex items-center gap-1.5 transition-all text-xs font-black whitespace-nowrap ${topTab === t.id ? `bg-white ${t.color} shadow-sm` : 'text-slate-400 hover:text-slate-600'}`}>
+                {t.icon}<span>{t.label}</span>
+              </button>
+            ))}
+          </div>
+        }
+      />
 
       <div className="flex flex-col space-y-4">
 
@@ -398,7 +410,7 @@ const ProductList: React.FC<ProductListProps> = ({
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={15} />
               <input
                 type="text"
-                placeholder="품목 검색..."
+                placeholder="품목명 · 거래처 검색..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full bg-white border border-slate-200 rounded-2xl pl-9 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 shadow-sm transition-all"
@@ -437,6 +449,27 @@ const ProductList: React.FC<ProductListProps> = ({
                 );
               })}
           </div>}
+          {/* 완제품 탭 전용 필터 */}
+          {topTab === 'finished' && (
+            <div className="flex items-center gap-2 flex-wrap">
+              {(['all', 'oil', 'powder'] as const).map(f => (
+                <button key={f}
+                  onClick={() => setFinishedFilter(f)}
+                  className={`px-4 py-2 rounded-2xl border text-[11px] font-black transition-all ${finishedFilter === f ? 'bg-white border-indigo-200 text-indigo-600 shadow-sm ring-2 ring-indigo-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
+                >
+                  {f === 'all' ? '전체' : f === 'oil' ? '기름재고' : '가루재고'}
+                </button>
+              ))}
+              <div className="ml-2 h-5 w-px bg-slate-200" />
+              <button
+                onClick={() => setStockOnly(p => !p)}
+                className={`px-4 py-2 rounded-2xl border text-[11px] font-black transition-all flex items-center gap-1.5 ${stockOnly ? 'bg-emerald-50 border-emerald-200 text-emerald-600 ring-2 ring-emerald-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
+              >
+                <span className={`w-3 h-3 rounded-full border-2 transition-colors ${stockOnly ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'}`} />
+                재고있는 것만
+              </button>
+            </div>
+          )}
           {/* 거래처별 필터 - 완제품 탭 제외 */}
           {topTab !== 'finished' && <div className="flex items-center gap-2 flex-wrap">
             <button
@@ -538,10 +571,11 @@ const ProductList: React.FC<ProductListProps> = ({
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
                   <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">카테고리</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hidden sm:table-cell">거래처</th>
                   <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">품목명</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hidden sm:table-cell">라벨</th>
                   <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">현재 재고</th>
                   <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right hidden sm:table-cell">최소 수량</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center hidden sm:table-cell">상태</th>
                   <th className="px-4 py-3 hidden sm:table-cell"></th>
                 </tr>
               </thead>
@@ -579,6 +613,31 @@ const ProductList: React.FC<ProductListProps> = ({
                           'bg-slate-100 text-slate-500'
                         }`}>{product.category}</span>
                       </td>
+                      <td className="px-4 py-3 hidden sm:table-cell" onClick={e => e.stopPropagation()}>
+                        {(product.category === '완제품' || product.category === '향미유') && product.clientIds && product.clientIds.length > 0 ? (() => {
+                          const isExp = expandedClientRowId === product.id;
+                          const sorted = priorityClientId && product.clientIds.includes(priorityClientId)
+                            ? [priorityClientId, ...product.clientIds.filter(id => id !== priorityClientId)]
+                            : product.clientIds;
+                          const shown = isExp ? sorted : sorted.slice(0, 1);
+                          return (
+                            <div className="flex flex-wrap gap-1 items-center">
+                              {shown.map(cid => {
+                                const cIdx = clients.findIndex(c => c.id === cid);
+                                const cname = cIdx >= 0 ? clients[cIdx].name : null;
+                                if (!cname) return null;
+                                return <span key={cid} className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${CLIENT_BADGE_COLORS[cIdx % CLIENT_BADGE_COLORS.length]}`}>{cname}</span>;
+                              })}
+                              {!isExp && product.clientIds.length > 1 && (
+                                <button onClick={() => setExpandedClientRowId(product.id)} className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 transition-colors">+{product.clientIds.length - 1}</button>
+                              )}
+                              {isExp && (
+                                <button onClick={() => setExpandedClientRowId(null)} className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 transition-colors">접기</button>
+                              )}
+                            </div>
+                          );
+                        })() : <span className="text-[10px] text-slate-200">-</span>}
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-bold text-slate-800">{product.name}</span>
@@ -587,6 +646,14 @@ const ProductList: React.FC<ProductListProps> = ({
                             <Edit size={12} />
                           </button>
                         </div>
+                      </td>
+                      <td className="px-4 py-3 hidden sm:table-cell">
+                        {product.품목 ? (
+                          <div className="flex flex-col">
+                            <span className="text-[11px] font-bold text-slate-600">{product.품목}</span>
+                            {product.용량 && <span className="text-[10px] text-slate-400">{product.용량}</span>}
+                          </div>
+                        ) : <span className="text-[10px] text-slate-200">-</span>}
                       </td>
                       <td className="px-4 py-3 text-right">
                         {editingStockId === product.id ? (
@@ -631,9 +698,6 @@ const ProductList: React.FC<ProductListProps> = ({
                         {product.category !== '완제품'
                           ? <span className="text-xs font-bold text-slate-400">{product.minStock} {product.unit}</span>
                           : <span className="text-[10px] text-slate-200">-</span>}
-                      </td>
-                      <td className="px-4 py-3 text-center hidden sm:table-cell">
-                        {statusBadge}
                       </td>
                       <td className="px-3 py-3 text-right hidden sm:table-cell">
                         <div className="flex items-center justify-end gap-1.5">

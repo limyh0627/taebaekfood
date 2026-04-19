@@ -227,27 +227,26 @@ const PalletManager: React.FC<PalletManagerProps> = ({
   };
 
   return (
-    <div className="space-y-8 animate-in slide-in-from-right-4 duration-500 h-full flex flex-col">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+    <div className="space-y-5 animate-in fade-in duration-300 h-full flex flex-col">
+      <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold text-slate-900">파렛트 자산 관리</h2>
-          <p className="text-slate-500">실제 현장 출고 데이터를 기반으로 한 파렛트 순환 현황입니다.</p>
+          <h2 className="text-2xl font-black text-slate-900">파렛트 관리</h2>
+          <p className="text-sm text-slate-400 mt-0.5">실제 현장 출고 데이터를 기반으로 한 파렛트 순환 현황입니다.</p>
         </div>
-        
-        <div className="bg-white p-1 rounded-xl border border-slate-200 flex items-center shadow-sm self-start">
-          <button 
-            onClick={() => setActiveTab('clients')} 
-            className={`px-4 py-2 rounded-lg flex items-center space-x-2 transition-all ${activeTab === 'clients' ? 'bg-amber-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+        <div className="flex bg-slate-100 p-1 rounded-2xl items-center">
+          <button
+            onClick={() => setActiveTab('clients')}
+            className={`px-4 py-2 rounded-xl flex items-center gap-1.5 transition-all ${activeTab === 'clients' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
           >
-            <Users size={16} />
-            <span className="text-xs font-bold">거래처별 현황</span>
+            <Users size={14} />
+            <span className="text-xs font-black">거래처별</span>
           </button>
-          <button 
-            onClick={() => setActiveTab('overview')} 
-            className={`px-4 py-2 rounded-lg flex items-center space-x-2 transition-all ${activeTab === 'overview' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={`px-4 py-2 rounded-xl flex items-center gap-1.5 transition-all ${activeTab === 'overview' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
           >
-            <Layers size={16} />
-            <span className="text-xs font-bold">전체 재고</span>
+            <Layers size={14} />
+            <span className="text-xs font-black">전체 재고</span>
           </button>
         </div>
       </div>

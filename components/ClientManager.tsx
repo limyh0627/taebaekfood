@@ -19,6 +19,7 @@ import RegionSelect from './RegionSelect';
 import { Client, ClientType, PartnerType } from '../types';
 import AddClientModal from './AddClientModal';
 import ConfirmModal from './ConfirmModal';
+import PageHeader from './PageHeader';
 
 interface ClientManagerProps {
   clients: Client[];
@@ -97,20 +98,17 @@ const ClientManager: React.FC<ClientManagerProps> = ({ clients, onUpdateClient, 
   };
 
   return (
-    <div className="space-y-6 animate-in slide-in-from-right-4 duration-500 h-full flex flex-col">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h2 className="text-3xl font-bold text-slate-900">거래처 마스터</h2>
-          <p className="text-slate-500">거래처 정보를 관리하고 성격별로 분류하세요.</p>
-        </div>
-        <button 
-          onClick={() => setIsAddModalOpen(true)}
-          className="flex items-center justify-center space-x-2 bg-indigo-600 text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all"
-        >
-          <Plus size={20} />
-          <span>신규 거래처 등록</span>
-        </button>
-      </div>
+    <div className="space-y-5 animate-in fade-in duration-300 h-full flex flex-col">
+      <PageHeader
+        title="거래처 관리"
+        subtitle="거래처 정보를 관리하고 성격별로 분류하세요."
+        right={
+          <button onClick={() => setIsAddModalOpen(true)}
+            className="flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-sm font-black hover:bg-indigo-700 transition-all shadow-sm">
+            <Plus size={15} /><span>거래처 등록</span>
+          </button>
+        }
+      />
 
       <div className="flex flex-col space-y-4">
         {/* PartnerType Filter Tabs */}

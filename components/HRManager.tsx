@@ -131,68 +131,65 @@ const HRManager: React.FC<HRManagerProps> = ({
   };
 
   return (
-    <div className="space-y-6 animate-in slide-in-from-right-4 duration-500 h-full flex flex-col">
+    <div className="space-y-5 animate-in fade-in duration-300 h-full flex flex-col">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-black text-slate-900">인사 및 연차 통합 관리</h2>
-          <p className="text-slate-500 mt-1">임직원 정보 관리부터 연차 승인, 잔여 일수 조정까지 통합 관리합니다.</p>
+          <h2 className="text-2xl font-black text-slate-900">인사 관리</h2>
+          <p className="text-sm text-slate-400 mt-0.5">임직원 정보 관리부터 연차 승인, 잔여 일수 조정까지 통합 관리합니다.</p>
         </div>
-        {activeTab === 'employees' && (
-          <button 
-            onClick={() => {
-              setEditingEmployee(null);
-              setFormData({
-                name: '', position: '사원', department: '생산팀',
-                joinDate: new Date().toISOString().split('T')[0],
-                birthDate: '',
-                phone: '010-0000-0000', status: 'working',
-                annualLeave: { carryOverLeave: 0, bonusLeave: 0 }, manualAdjustment: 0
-              });
-              setIsModalOpen(true);
-            }}
-            className="flex items-center space-x-2 bg-indigo-600 text-white px-6 py-3.5 rounded-2xl font-bold shadow-lg hover:bg-indigo-700 transition-all"
-          >
-            <Plus size={20} />
-            <span>신규 직원 등록</span>
-          </button>
-        )}
-        {activeTab === 'leave-balance' && (
-          <button 
-            onClick={() => setIsEditMode(!isEditMode)}
-            className={`flex items-center space-x-2 px-6 py-3.5 rounded-2xl font-bold shadow-lg transition-all ${
-              isEditMode 
-              ? 'bg-rose-500 text-white hover:bg-rose-600' 
-              : 'bg-emerald-600 text-white hover:bg-emerald-700'
-            }`}
-          >
-            {isEditMode ? <Lock size={18} /> : <Unlock size={18} />}
-            <span>{isEditMode ? '편집 모드 종료 (잠금)' : '연차 정보 편집하기'}</span>
-          </button>
-        )}
-      </div>
-
-      {/* Admin Sub-Tabs */}
-      <div className="flex bg-slate-200/50 p-1.5 rounded-2xl border border-slate-200 self-start shadow-inner">
-        <button 
-          onClick={() => setActiveTab('employees')}
-          className={`px-6 py-2.5 rounded-xl text-xs font-black transition-all flex items-center space-x-2 ${activeTab === 'employees' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-        >
-          <Users size={16} /><span>임직원 명부</span>
-        </button>
-        <button 
-          onClick={() => setActiveTab('leave-approval')}
-          className={`px-6 py-2.5 rounded-xl text-xs font-black transition-all flex items-center space-x-2 ${activeTab === 'leave-approval' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-        >
-          <ClipboardCheck size={16} /><span>승인 대기함</span>
-          {pendingRequests.length > 0 && <span className="ml-2 bg-amber-500 text-white w-5 h-5 flex items-center justify-center rounded-full text-[10px]">{pendingRequests.length}</span>}
-        </button>
-        <button 
-          onClick={() => setActiveTab('leave-balance')}
-          className={`px-6 py-2.5 rounded-xl text-xs font-black transition-all flex items-center space-x-2 ${activeTab === 'leave-balance' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-        >
-          <Settings2 size={16} /><span>연차 관리</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex bg-slate-100 p-1 rounded-2xl items-center">
+            <button
+              onClick={() => setActiveTab('employees')}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${activeTab === 'employees' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              <Users size={14} /><span>임직원</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('leave-approval')}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 relative ${activeTab === 'leave-approval' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              <ClipboardCheck size={14} /><span>승인 대기</span>
+              {pendingRequests.length > 0 && <span className="absolute -top-1 -right-1 bg-amber-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px]">{pendingRequests.length}</span>}
+            </button>
+            <button
+              onClick={() => setActiveTab('leave-balance')}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${activeTab === 'leave-balance' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              <Settings2 size={14} /><span>연차 관리</span>
+            </button>
+          </div>
+          {activeTab === 'employees' && (
+            <button
+              onClick={() => {
+                setEditingEmployee(null);
+                setFormData({
+                  name: '', position: '사원', department: '생산팀',
+                  joinDate: new Date().toISOString().split('T')[0],
+                  birthDate: '',
+                  phone: '010-0000-0000', status: 'working',
+                  annualLeave: { carryOverLeave: 0, bonusLeave: 0 }, manualAdjustment: 0
+                });
+                setIsModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-sm font-black hover:bg-indigo-700 transition-all shadow-sm"
+            >
+              <Plus size={15} /><span>직원 등록</span>
+            </button>
+          )}
+          {activeTab === 'leave-balance' && (
+            <button
+              onClick={() => setIsEditMode(!isEditMode)}
+              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-black shadow-sm transition-all ${
+                isEditMode ? 'bg-rose-500 text-white hover:bg-rose-600' : 'bg-emerald-600 text-white hover:bg-emerald-700'
+              }`}
+            >
+              {isEditMode ? <Lock size={14} /> : <Unlock size={14} />}
+              <span>{isEditMode ? '편집 종료' : '연차 편집'}</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Main Content Area */}

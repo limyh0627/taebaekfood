@@ -38,6 +38,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
   const [linkCategory, setLinkCategory] = useState('완제품');
   const [clientTypeFilter, setClientTypeFilter] = useState<string | null>(null);
+  const [expandedClientRowId, setExpandedClientRowId] = useState<string | null>(null);
 
   const TYPE_ORDER: Record<string, number> = { '일반': 0, '택배': 1, '스마트스토어': 2 };
   const salesClients = useMemo(() =>
@@ -324,16 +325,22 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
                           const clientList = clients.filter(c => !c.partnerType || c.partnerType === '매출처');
                           const matched = (item.clientIds ?? []).map(id => clientList.find(c => c.id === id)).filter(Boolean) as typeof clientList;
                           if (!matched.length) return <span className="text-slate-200">-</span>;
-                          const MAX = 3;
+                          const isExp = expandedClientRowId === item.id;
+                          const shown = isExp ? matched : matched.slice(0, 1);
                           return (
-                            <div className="flex flex-wrap gap-1">
-                              {matched.slice(0, MAX).map((c) => {
+                            <div className="flex flex-wrap gap-1 items-center" onClick={e => e.stopPropagation()}>
+                              {shown.map((c) => {
                                 const colorIdx = clientList.indexOf(c) % BADGE_COLORS.length;
                                 return (
                                   <span key={c.id} className={`inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-black ${BADGE_COLORS[colorIdx]}`}>{c.name}</span>
                                 );
                               })}
-                              {matched.length > MAX && <span className="text-[10px] text-slate-400 font-bold">+{matched.length - MAX}</span>}
+                              {!isExp && matched.length > 1 && (
+                                <button onClick={() => setExpandedClientRowId(item.id)} className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 transition-colors">+{matched.length - 1}</button>
+                              )}
+                              {isExp && (
+                                <button onClick={() => setExpandedClientRowId(null)} className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 transition-colors">접기</button>
+                              )}
                             </div>
                           );
                         })()}

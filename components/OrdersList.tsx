@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { Order, OrderStatus, Client, OrderSource, OrderItem, Product, OrderPallet, DeliveryBox } from '../types';
 import ConfirmModal from './ConfirmModal';
+import PageHeader from './PageHeader';
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
@@ -279,6 +280,17 @@ export const OrderCard = memo<OrderCardProps>(({
               {completedItems}/{totalItems}
             </button>
           )}
+          <select
+            value={order.status}
+            onClick={e => e.stopPropagation()}
+            onChange={e => { e.stopPropagation(); onUpdateStatus(order.id, e.target.value as OrderStatus); }}
+            className={`py-0.5 px-1 rounded text-[8px] font-black cursor-pointer outline-none border-0 appearance-none w-14 text-center shrink-0 ${STATUS_COLOR[order.status] || 'bg-slate-100 text-slate-500'}`}
+          >
+            <option value={OrderStatus.PENDING}>대기중</option>
+            <option value={OrderStatus.PROCESSING}>작업중</option>
+            <option value={OrderStatus.DISPATCHED}>작업완료</option>
+            <option value={OrderStatus.SHIPPED}>출고</option>
+          </select>
         </div>
         {!isEditing && (
           <button
@@ -507,29 +519,6 @@ export const OrderCard = memo<OrderCardProps>(({
         </div>
       )}
 
-      {/* 상태 변경 버튼 */}
-      {!isEditing && (
-        <div className="flex gap-1 mt-2">
-          {([
-            [OrderStatus.PENDING,    '대기중'],
-            [OrderStatus.PROCESSING, '작업중'],
-            [OrderStatus.DISPATCHED, '작업완료'],
-          ] as [OrderStatus, string][]).map(([st, label]) => (
-            <button
-              key={st}
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onUpdateStatus(order.id, st); }}
-              className={`flex-1 py-1 rounded-lg text-[9px] font-black transition-all ${
-                order.status === st
-                  ? 'bg-slate-700 text-white'
-                  : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
 
       <div className="flex items-center justify-between pt-2 border-t border-slate-50 mt-2">
         {isEditing ? (
@@ -545,7 +534,7 @@ export const OrderCard = memo<OrderCardProps>(({
             <div className="flex flex-col">
               <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">주문일자</span>
               <span className="text-[9px] font-bold text-slate-400">
-                {new Date(order.createdAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}
+                {(() => { const d = new Date(order.createdAt); return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; })()}
               </span>
             </div>
             <div className="flex flex-col items-center">
@@ -628,7 +617,7 @@ const OrderSourceGroup = memo<OrderSourceGroupProps>(({
         {isCollapsed ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronUp size={14} className="text-slate-400" />}
       </button>
       {!isCollapsed && (
-        <div className={`grid gap-3 ${gridCols === 3 ? 'grid-cols-3' : gridCols === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+        <div className={`grid gap-3 items-start ${gridCols === 3 ? 'grid-cols-3' : gridCols === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
           {orders.map(order => <OrderCard key={order.id} order={order} {...cardProps} gridCols={gridCols} />)}
         </div>
       )}
@@ -892,32 +881,26 @@ const OrdersList: React.FC<OrdersListProps> = ({
   };
 
   return (
-    <div className="flex flex-col space-y-4 md:space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-      <div className="flex flex-row items-center justify-between gap-2 md:gap-6">
-        <div className="min-w-0">
-          <h2 className="text-lg md:text-3xl font-bold text-slate-900 truncate">{title}</h2>
-          <p className="text-xs md:text-sm text-slate-500 hidden sm:block">{subtitle}</p>
-        </div>
-        <div className="flex items-center gap-2 md:gap-4 shrink-0">
-          <div className="flex bg-white p-1 rounded-2xl border border-slate-200 shadow-sm">
-            <button onClick={() => setActiveTab('delivery')}
-              className={`px-2.5 md:px-5 py-2 md:py-2.5 rounded-xl text-[10px] md:text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'delivery' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>
-              택배
+    <div className="flex flex-col space-y-4 md:space-y-5 animate-in fade-in duration-300">
+      <PageHeader
+        title={title}
+        subtitle={subtitle}
+        right={
+          <>
+            <div className="flex bg-slate-100 p-1 rounded-2xl items-center">
+              {(['delivery','active','history'] as const).map((tab, i) => (
+                <button key={tab} onClick={() => setActiveTab(tab)}
+                  className={`px-3 md:px-4 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap ${activeTab === tab ? 'bg-white shadow-sm ' + (tab==='delivery'?'text-sky-600':tab==='active'?'text-indigo-600':'text-slate-700') : 'text-slate-400 hover:text-slate-600'}`}>
+                  {['택배','운영','이력'][i]}
+                </button>
+              ))}
+            </div>
+            <button onClick={onAddClick} className="flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-sm font-black hover:bg-indigo-700 transition-all shadow-sm">
+              <Plus size={15} /><span className="hidden sm:inline">주문 생성</span>
             </button>
-            <button onClick={() => setActiveTab('active')}
-              className={`px-2.5 md:px-5 py-2 md:py-2.5 rounded-xl text-[10px] md:text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'active' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>
-              운영
-            </button>
-            <button onClick={() => setActiveTab('history')}
-              className={`px-2.5 md:px-5 py-2 md:py-2.5 rounded-xl text-[10px] md:text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'history' ? 'bg-slate-700 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>
-              이력
-            </button>
-          </div>
-          <button onClick={onAddClick} className="flex items-center justify-center gap-1.5 bg-indigo-600 text-white px-3 md:px-6 py-2.5 md:py-3 rounded-2xl font-bold shadow-lg hover:bg-indigo-700 transition-all">
-            <Plus size={18} /><span className="hidden sm:inline text-sm">주문 생성</span>
-          </button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <div className="relative max-w-full md:max-w-md">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />

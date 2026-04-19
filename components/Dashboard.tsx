@@ -132,11 +132,11 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, products, onNavigate }) =
   );
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="flex items-end justify-between">
+    <div className="space-y-6 animate-in fade-in duration-300">
+      <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold text-slate-900">비즈니스 현황</h2>
-          <p className="text-slate-500 mt-1">
+          <h2 className="text-2xl font-black text-slate-900">비즈니스 현황</h2>
+          <p className="text-sm text-slate-400 mt-0.5">
             {today.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })} 기준
           </p>
         </div>

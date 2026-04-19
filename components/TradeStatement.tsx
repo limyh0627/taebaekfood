@@ -611,26 +611,26 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   };
 
   return (
-    <div className="space-y-4 animate-in slide-in-from-right-4 duration-500">
+    <div className="space-y-5 animate-in fade-in duration-300">
 
       {/* ── 헤더 ── */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-base font-black text-slate-800">거래명세서</h2>
-          <p className="text-[11px] text-slate-400 font-medium mt-0.5">발행된 전표를 조회하거나 새 전표를 생성합니다</p>
+          <h2 className="text-2xl font-black text-slate-900">거래명세서</h2>
+          <p className="text-sm text-slate-400 mt-0.5">발행된 전표를 조회하거나 새 전표를 생성합니다.</p>
         </div>
-        <div className="flex gap-2.5">
+        <div className="flex gap-2">
           <button
             onClick={() => openCreate('매입')}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-black bg-rose-600 text-white hover:bg-rose-700 shadow-sm shadow-rose-200 transition-all"
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-black bg-rose-600 text-white hover:bg-rose-700 shadow-sm transition-all"
           >
-            <Plus size={15} strokeWidth={3}/>매입전표
+            <Plus size={14} strokeWidth={3}/>매입전표
           </button>
           <button
             onClick={() => openCreate('매출')}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-black bg-blue-600 text-white hover:bg-blue-700 shadow-sm shadow-blue-200 transition-all"
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-black bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-all"
           >
-            <Plus size={15} strokeWidth={3}/>매출전표
+            <Plus size={14} strokeWidth={3}/>매출전표
           </button>
         </div>
       </div>

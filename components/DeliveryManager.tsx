@@ -21,6 +21,7 @@ import {
 import { Order, Client, OrderStatus, Product } from '../types';
 import { X, Save } from 'lucide-react';
 import { OrderCard } from './OrdersList';
+import PageHeader from './PageHeader';
 
 import { OrderItem } from '../types';
 
@@ -288,27 +289,20 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
   };
 
   return (
-    <div className="space-y-8 animate-in slide-in-from-right-4 duration-500">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h2 className="text-3xl font-black text-slate-900 tracking-tight flex items-center">
-            <Truck className="mr-3 text-indigo-600" size={32} />
-            배송 관리
-          </h2>
-          <p className="text-slate-500 font-medium mt-1">배송 일정을 확인하고 지역별 주문 현황을 관리합니다.</p>
-        </div>
-      </div>
-
-      {/* 탭 */}
-      <div className="flex bg-white p-1 rounded-2xl border border-slate-200 shadow-sm w-fit">
-        {(['배송일정관리', '배송캘린더'] as const).map(tab => (
-          <button
-            key={tab}
-            onClick={() => setDeliveryTab(tab)}
-            className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${deliveryTab === tab ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
-          >{tab}</button>
-        ))}
-      </div>
+    <div className="space-y-5 animate-in fade-in duration-300">
+      <PageHeader
+        title="배송 관리"
+        subtitle="배송 일정을 확인하고 지역별 주문 현황을 관리합니다."
+        right={
+          <div className="flex bg-slate-100 p-1 rounded-2xl items-center">
+            {(['배송일정관리', '배송캘린더'] as const).map(tab => (
+              <button key={tab} onClick={() => setDeliveryTab(tab)}
+                className={`px-4 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap ${deliveryTab === tab ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+              >{tab}</button>
+            ))}
+          </div>
+        }
+      />
 
       {/* 작업완료 / 보류 / 출고 컬럼 */}
       {deliveryTab === '배송일정관리' && (() => {
