@@ -159,20 +159,6 @@ export const OrderCard = memo<OrderCardProps>(({
   const [isCollapsed, setIsCollapsed] = useState(
     order.status === OrderStatus.DISPATCHED || order.status === OrderStatus.SHIPPED || order.status === OrderStatus.ON_HOLD
   );
-  const [isCompact, setIsCompact] = useState(() => {
-    try {
-      const stored: string[] = JSON.parse(localStorage.getItem('compactOrders') || '[]');
-      return stored.includes(order.id);
-    } catch { return false; }
-  });
-  const toggleCompact = (value: boolean) => {
-    setIsCompact(value);
-    try {
-      const stored: string[] = JSON.parse(localStorage.getItem('compactOrders') || '[]');
-      const next = value ? [...stored.filter(id => id !== order.id), order.id] : stored.filter(id => id !== order.id);
-      localStorage.setItem('compactOrders', JSON.stringify(next));
-    } catch {}
-  };
 
   // 완제품 모두 체크 시 → 작업완료(DISPATCHED)로 자동 이동 + 접힘
   useEffect(() => {
@@ -233,34 +219,6 @@ export const OrderCard = memo<OrderCardProps>(({
     setShowAddProductSelect(null);
   };
 
-  if (isCompact) {
-    return (
-      <div
-        id={`order-card-${order.id}`}
-        draggable
-        onDragStart={(e) => { e.dataTransfer.setData('orderId', order.id); e.dataTransfer.effectAllowed = 'move'; }}
-        className={`bg-white rounded-xl border px-3 py-2 flex items-center gap-2 cursor-grab active:cursor-grabbing transition-all hover:shadow-sm ${isFullyDone ? 'border-emerald-100' : 'border-slate-100 hover:border-indigo-100'}`}
-      >
-        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isFullyDone ? 'bg-emerald-400' : progress > 0 ? 'bg-amber-400' : 'bg-slate-300'}`} />
-        <span className="text-[12px] font-bold text-slate-800 truncate flex-1">{displayName}</span>
-        {progress > 0 && !isFullyDone && (
-          <span className="text-[9px] font-black text-amber-500 shrink-0">{progress}%</span>
-        )}
-        {isFullyDone && (
-          <span className="text-[9px] font-black text-emerald-500 shrink-0">완료</span>
-        )}
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); toggleCompact(false); }}
-          className="shrink-0 text-slate-300 hover:text-indigo-400 transition-all"
-          title="펼치기"
-        >
-          <ChevronDown size={13} />
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div
       id={`order-card-${order.id}`}
@@ -280,28 +238,21 @@ export const OrderCard = memo<OrderCardProps>(({
               {completedItems}/{totalItems}
             </button>
           )}
-          <select
-            value={order.status}
-            onClick={e => e.stopPropagation()}
-            onChange={e => { e.stopPropagation(); onUpdateStatus(order.id, e.target.value as OrderStatus); }}
-            className={`py-0.5 px-1 rounded text-[8px] font-black cursor-pointer outline-none border-0 appearance-none w-14 text-center shrink-0 ${STATUS_COLOR[order.status] || 'bg-slate-100 text-slate-500'}`}
-          >
-            <option value={OrderStatus.PENDING}>대기중</option>
-            <option value={OrderStatus.PROCESSING}>작업중</option>
-            <option value={OrderStatus.DISPATCHED}>작업완료</option>
-            <option value={OrderStatus.SHIPPED}>출고</option>
-          </select>
+          {(() => {
+            const cycle: OrderStatus[] = [OrderStatus.PENDING, OrderStatus.PROCESSING, OrderStatus.DISPATCHED];
+            const curIdx = cycle.indexOf(order.status as OrderStatus);
+            const next = cycle[(curIdx + 1) % cycle.length];
+            return (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onUpdateStatus(order.id, curIdx === -1 ? OrderStatus.PENDING : next); }}
+                className={`text-[8px] font-black px-1.5 py-0.5 rounded shrink-0 transition-all ${STATUS_COLOR[order.status] || 'bg-slate-100 text-slate-500'}`}
+              >
+                {STATUS_LABEL[order.status] ?? order.status}
+              </button>
+            );
+          })()}
         </div>
-        {!isEditing && (
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); toggleCompact(true); }}
-            className="p-1.5 rounded-lg text-slate-300 hover:bg-slate-50 hover:text-slate-500 transition-all"
-            title="간소화"
-          >
-            <ChevronUp size={14} />
-          </button>
-        )}
         <button
           onClick={(e) => { e.stopPropagation(); setEditingOrderId(isEditing ? null : order.id); setShowAddProductSelect(null); }}
           className={`p-1.5 rounded-lg transition-all ${isEditing ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-indigo-50 hover:text-indigo-600'}`}
@@ -539,7 +490,7 @@ export const OrderCard = memo<OrderCardProps>(({
             </div>
             <div className="flex flex-col items-center">
               <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">배송기한</span>
-              <span className="text-[9px] font-bold text-slate-500">{new Date(order.deliveryDate).toLocaleDateString().slice(2)}</span>
+              <span className="text-[9px] font-bold text-slate-500">{(() => { const d = new Date(order.deliveryDate); return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; })()}</span>
             </div>
             <div className="text-[9px] font-black text-slate-400 uppercase">{order.source}</div>
           </>
