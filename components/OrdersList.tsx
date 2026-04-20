@@ -96,6 +96,8 @@ interface OrderCardProps {
   gridCols?: number;
   isHighlighted?: boolean;
   highlightOrderId?: string | null;
+  hideEditButton?: boolean;
+  onCardClick?: () => void;
 }
 
 interface OrderSourceGroupProps {
@@ -118,6 +120,7 @@ interface OrderSourceGroupProps {
   onDeleteOrder: (id: string) => void;
   currentUserName?: string;
   highlightOrderId?: string | null;
+  onCardClick?: (orderId: string) => void;
 }
 
 interface DeliveryRowProps {
@@ -137,7 +140,7 @@ export const OrderCard = memo<OrderCardProps>(({
   editingOrderId, setEditingOrderId,
   showAddProductSelect, setShowAddProductSelect,
   onUpdateItems, onUpdateDeliveryDate, onUpdateStatus,
-  onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1, isHighlighted = false, highlightOrderId,
+  onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1, isHighlighted = false, highlightOrderId, hideEditButton = false, onCardClick,
 }) => {
   const highlighted = isHighlighted || highlightOrderId === order.id;
   const isEditing = editingOrderId === order.id;
@@ -224,7 +227,8 @@ export const OrderCard = memo<OrderCardProps>(({
       id={`order-card-${order.id}`}
       draggable={!isEditing}
       onDragStart={(e) => { e.dataTransfer.setData('orderId', order.id); e.dataTransfer.effectAllowed = 'move'; }}
-      className={`bg-white rounded-2xl shadow-sm border transition-all group relative animate-in zoom-in-95 duration-200 ${isEditing ? 'ring-2 ring-indigo-500 border-indigo-200 shadow-xl z-20' : highlighted ? 'ring-2 ring-amber-400 border-amber-300 shadow-lg shadow-amber-100' : 'border-slate-100 hover:shadow-md hover:border-indigo-100 cursor-grab active:cursor-grabbing'} ${isCollapsed ? 'p-2.5' : 'p-4'} flex flex-col`}
+      onClick={() => { if (!isEditing && onCardClick) onCardClick(); }}
+      className={`bg-white rounded-2xl shadow-sm border transition-all group relative animate-in zoom-in-95 duration-200 ${isEditing ? 'ring-2 ring-indigo-500 border-indigo-200 shadow-xl z-20' : highlighted ? 'ring-2 ring-amber-400 border-amber-300 shadow-lg shadow-amber-100' : `border-slate-100 hover:shadow-md hover:border-indigo-100 ${onCardClick ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'}`} ${isCollapsed ? 'p-2.5' : 'p-4'} flex flex-col`}
     >
       <div className={`flex justify-between items-start ${isCollapsed ? 'mb-1.5' : 'mb-3'}`}>
         <div className="flex-1 min-w-0 flex items-center gap-1.5">
@@ -253,13 +257,15 @@ export const OrderCard = memo<OrderCardProps>(({
             );
           })()}
         </div>
-        <button
-          onClick={(e) => { e.stopPropagation(); setEditingOrderId(isEditing ? null : order.id); setShowAddProductSelect(null); }}
-          className={`p-1.5 rounded-lg transition-all ${isEditing ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-indigo-50 hover:text-indigo-600'}`}
-          title={isEditing ? '저장' : '주문 편집'}
-        >
-          {isEditing ? <Check size={14} /> : <Edit2 size={14} />}
-        </button>
+        {!hideEditButton && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setEditingOrderId(isEditing ? null : order.id); setShowAddProductSelect(null); }}
+            className={`p-1.5 rounded-lg transition-all ${isEditing ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-indigo-50 hover:text-indigo-600'}`}
+            title={isEditing ? '저장' : '주문 편집'}
+          >
+            {isEditing ? <Check size={14} /> : <Edit2 size={14} />}
+          </button>
+        )}
       </div>
 
       <div className={isCollapsed ? '' : 'mb-3 flex-1'}>
@@ -569,7 +575,7 @@ const OrderSourceGroup = memo<OrderSourceGroupProps>(({
       </button>
       {!isCollapsed && (
         <div className={`grid gap-3 items-start ${gridCols === 3 ? 'grid-cols-3' : gridCols === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-          {orders.map(order => <OrderCard key={order.id} order={order} {...cardProps} gridCols={gridCols} />)}
+          {orders.map(order => <OrderCard key={order.id} order={order} {...cardProps} gridCols={gridCols} hideEditButton onCardClick={() => (cardProps as any).onCardClick?.(order.id)} />)}
         </div>
       )}
     </div>
@@ -829,6 +835,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
     onUpdateItems, onUpdateDeliveryDate, onUpdateStatus,
     onToggleItemChecked, onDeleteOrder, currentUserName,
     highlightOrderId,
+    onCardClick: (orderId: string) => setPreviewOrderId(orderId),
   };
 
   return (
