@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { 
-  RefreshCw, 
+import {
+  RefreshCw,
   Link as LinkIcon,
   CheckCircle2,
   Save,
@@ -9,25 +9,73 @@ import {
   Copy,
   Terminal,
   ShieldAlert,
-  Settings
+  Settings,
+  Database,
+  AlertTriangle
 } from 'lucide-react';
+import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { db } from '../src/firebase';
 import { Client, Product } from '../types';
 
 interface DatabaseViewProps {
   onSync: (data: { clients: Client[], products: Product[] }) => void;
 }
 
+type MigrationStatus = 'idle' | 'running' | 'done' | 'error';
+
+interface MigrationResult {
+  total: number;
+  updated: number;
+  skipped: number;
+  errors: string[];
+}
+
 const DatabaseView: React.FC<DatabaseViewProps> = ({ onSync }) => {
-  return (
-    <div className="flex items-center justify-center h-64 text-slate-300 font-bold text-lg">
-      준비 중
-    </div>
-  );
-  const [activeTab, setActiveTab] = useState<'sync' | 'script'>('sync');
+  const [activeTab, setActiveTab] = useState<'migration' | 'sync' | 'script'>('migration');
+  const [migrationStatus, setMigrationStatus] = useState<MigrationStatus>('idle');
+  const [migrationResult, setMigrationResult] = useState<MigrationResult | null>(null);
   const [sheetId, setSheetId] = useState(localStorage.getItem('gsheet_id') || '');
   const [appsScriptUrl, setAppsScriptUrl] = useState(localStorage.getItem('apps_script_url') || '');
   const [syncStatus, setSyncStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
+
+  const runMigration = async () => {
+    if (migrationStatus === 'running') return;
+    setMigrationStatus('running');
+    setMigrationResult(null);
+
+    const result: MigrationResult = { total: 0, updated: 0, skipped: 0, errors: [] };
+
+    try {
+      const snapshot = await getDocs(collection(db, 'products'));
+      result.total = snapshot.size;
+
+      for (const docSnap of snapshot.docs) {
+        const data = docSnap.data() as Product;
+        try {
+          if (data.category === '완제품' && !data.itemType) {
+            await updateDoc(doc(db, 'products', docSnap.id), {
+              itemType: 'FINISHED',
+              finishedStock: data.stock ?? 0,
+            });
+            result.updated++;
+          } else {
+            // 향미유, 고춧가루, 부자재 등은 모두 건드리지 않음
+            result.skipped++;
+          }
+        } catch (e: any) {
+          result.errors.push(`${data.name ?? docSnap.id}: ${e.message}`);
+        }
+      }
+
+      setMigrationResult(result);
+      setMigrationStatus('done');
+    } catch (e: any) {
+      result.errors.push(e.message);
+      setMigrationResult(result);
+      setMigrationStatus('error');
+    }
+  };
 
   const appsScriptCode = `
 function doPost(e) {
@@ -318,13 +366,95 @@ function doPost(e) {
           <p className="text-slate-500 mt-1 font-medium">시트와 앱의 연결 상태를 진단하고 복구하세요.</p>
         </div>
         <div className="flex bg-slate-200/50 p-1.5 rounded-2xl border border-slate-200">
+           <button onClick={() => setActiveTab('migration')} className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center space-x-2 ${activeTab === 'migration' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-500'}`}><Database size={14} /><span>DB 마이그레이션</span></button>
            <button onClick={() => setActiveTab('sync')} className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center space-x-2 ${activeTab === 'sync' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}><RefreshCw size={14} /><span>동기화 제어</span></button>
            <button onClick={() => setActiveTab('script')} className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center space-x-2 ${activeTab === 'script' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500'}`}><Terminal size={14} /><span>스크립트 설정</span></button>
         </div>
       </div>
 
       <div className="flex-1 bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden flex flex-col min-h-0">
-        {activeTab === 'sync' ? (
+        {activeTab === 'migration' ? (
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-8 space-y-6">
+            <div className="bg-violet-50 border border-violet-100 p-6 rounded-3xl space-y-3">
+              <div className="flex items-center gap-3">
+                <Database size={20} className="text-violet-600" />
+                <h4 className="text-sm font-black text-violet-900">품목 구조 마이그레이션</h4>
+              </div>
+              <p className="text-xs text-violet-700 font-medium leading-relaxed">
+                Firebase <code className="bg-violet-100 px-1 rounded">products</code> 컬렉션의 기존 품목에 새 필드를 추가합니다.<br />
+                <b>완제품</b> → <code className="bg-violet-100 px-1 rounded">itemType: FINISHED</code> + <code className="bg-violet-100 px-1 rounded">finishedStock</code> 추가<br />
+                향미유·고춧가루·부자재 등 나머지 품목은 <b>변경 없이 그대로 유지</b>됩니다.<br />
+                이미 <code className="bg-violet-100 px-1 rounded">itemType</code>이 있는 항목은 건너뜁니다. <b>productClients(거래처-제품 매핑)는 절대 변경하지 않습니다.</b>
+              </p>
+            </div>
+
+            {migrationStatus === 'idle' && (
+              <button
+                onClick={runMigration}
+                className="w-full py-4 bg-violet-600 hover:bg-violet-700 text-white font-black rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-2"
+              >
+                <Database size={18} /> 마이그레이션 실행
+              </button>
+            )}
+
+            {migrationStatus === 'running' && (
+              <div className="flex items-center justify-center gap-3 py-8 text-violet-600 font-black">
+                <RefreshCw size={20} className="animate-spin" /> Firebase 업데이트 중...
+              </div>
+            )}
+
+            {migrationResult && migrationStatus === 'done' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="bg-slate-50 rounded-2xl p-4 text-center">
+                    <p className="text-2xl font-black text-slate-800">{migrationResult.total}</p>
+                    <p className="text-xs text-slate-400 font-bold mt-1">전체 품목</p>
+                  </div>
+                  <div className="bg-emerald-50 rounded-2xl p-4 text-center">
+                    <p className="text-2xl font-black text-emerald-700">{migrationResult.updated}</p>
+                    <p className="text-xs text-emerald-500 font-bold mt-1">업데이트 완료</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-2xl p-4 text-center">
+                    <p className="text-2xl font-black text-slate-500">{migrationResult.skipped}</p>
+                    <p className="text-xs text-slate-400 font-bold mt-1">건너뜀 (기존 유지)</p>
+                  </div>
+                </div>
+                {migrationResult.errors.length > 0 && (
+                  <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl space-y-1">
+                    <div className="flex items-center gap-2 text-rose-700 font-black text-sm"><AlertTriangle size={14} /> 오류 발생 항목</div>
+                    {migrationResult.errors.map((e, i) => (
+                      <p key={i} className="text-xs text-rose-600 font-medium pl-4">{e}</p>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-2 text-emerald-600 font-black text-sm">
+                  <CheckCircle2 size={16} /> 마이그레이션 완료 — productClients는 변경 없이 보존됨
+                </div>
+                <button
+                  onClick={() => { setMigrationStatus('idle'); setMigrationResult(null); }}
+                  className="text-xs text-slate-400 hover:text-slate-600 font-bold underline"
+                >
+                  다시 실행
+                </button>
+              </div>
+            )}
+
+            {migrationStatus === 'error' && (
+              <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl">
+                <div className="flex items-center gap-2 text-rose-700 font-black text-sm mb-2"><AlertTriangle size={14} /> 마이그레이션 실패</div>
+                {migrationResult?.errors.map((e, i) => (
+                  <p key={i} className="text-xs text-rose-600 font-medium">{e}</p>
+                ))}
+                <button
+                  onClick={() => { setMigrationStatus('idle'); setMigrationResult(null); }}
+                  className="mt-3 text-xs text-slate-400 hover:text-slate-600 font-bold underline"
+                >
+                  다시 시도
+                </button>
+              </div>
+            )}
+          </div>
+        ) : activeTab === 'sync' ? (
           <div className="flex-1 overflow-y-auto custom-scrollbar p-8 space-y-10">
             {/* 연결 진단 영역 */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -416,7 +546,7 @@ function doPost(e) {
                </div>
             </div>
           </div>
-        )}
+        ) }
       </div>
     </div>
   );

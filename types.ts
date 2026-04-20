@@ -48,8 +48,14 @@ export interface ProductClient {
   id: string;       // `${productId}_${clientId}`
   productId: string;
   clientId: string;
+  sku?: string;            // 거래처별 SKU (포장 단위 기준)
   price?: number;
-  taxType?: '과세' | '면세'; // 과세: 입력단가는 부가세 포함, 면세: 세금 없음
+  taxType?: '과세' | '면세';
+  // SHIPPING (박스단위) BOM — 거래처별 포장 설정
+  shippingStock?: number;  // SHIPPING 재고수량
+  boxTypeId?: string;      // 박스 부자재 ID
+  qtyPerBox?: number;      // 박스당 낱개 수
+  tapeTypeId?: string;     // 테이프 부자재 ID
 }
 
 export interface Client {
@@ -106,26 +112,33 @@ export interface SubmaterialComponent {
 
 export type InventoryCategory = '완제품' | '향미유' | '고춧가루' | '용기' | '마개' | '테이프' | '박스' | '라벨';
 
+export type ProductStage = 'WIP' | 'FINISHED';
+
 export interface Product {
   id: string;
   name: string;
+  sku?: string;                  // SKU 코드
   category: InventoryCategory | string;
+  itemType?: ProductStage;       // WIP(반제품) | FINISHED(완제품) — 없으면 부자재/원료
   price: number;
-  stock: number;
+  stock: number;                 // 부자재/원료 재고 (또는 미분류)
+  wipStock?: number;             // WIP 반제품 재고수량
+  finishedStock?: number;        // FINISHED 완제품 재고수량
+  manufacturingCost?: number;    // 제조원가 (WIP/FINISHED 공통)
   minStock: number;
   unit: string;
   image: string;
-  oil?: string; // 완제품에 포함되는 원유 정보 추가
+  oil?: string;
   clientId?: string; // @deprecated — clientIds 사용
-  clientIds?: string[]; // 소속 거래처 ID 목록
-  supplierId?: string; // 매입 거래처 ID
-  freightType?: 's' | 'a' | 'b' | 'c' | 'd' | 'e'; // 박스 운임타입
+  clientIds?: string[];
+  supplierId?: string;
+  freightType?: 's' | 'a' | 'b' | 'c' | 'd' | 'e';
   boxSize?: number; // @deprecated — defaultBoxConfig.unitsPerBox 사용
-  defaultBoxConfig?: BoxConfig;       // 기본 박스 설정
-  clientBoxConfigs?: ClientBoxConfig[]; // 거래처별 박스 설정
-  품목?: string; // 서류용 품목명 (예: 시골향참기름1)
-  용량?: string; // 서류용 용량 (예: 1800ml, 1kg)
-  isSmartStore?: boolean; // 스마트스토어 전용 품목 여부
+  defaultBoxConfig?: BoxConfig;       // @deprecated — ProductClient.boxTypeId/qtyPerBox 사용
+  clientBoxConfigs?: ClientBoxConfig[]; // @deprecated — ProductClient 사용
+  품목?: string;
+  용량?: string;
+  isSmartStore?: boolean;
   submaterials?: SubmaterialComponent[];
 }
 
