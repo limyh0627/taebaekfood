@@ -16,6 +16,7 @@ import {
 import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../src/firebase';
 import { Client, Product } from '../types';
+import PageHeader from './PageHeader';
 
 interface DatabaseViewProps {
   onSync: (data: { clients: Client[], products: Product[] }) => void;

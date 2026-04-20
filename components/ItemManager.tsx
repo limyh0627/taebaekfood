@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X } from 'lucide-react';
 import { Product, InventoryCategory, Client } from '../types';
 import ConfirmModal from './ConfirmModal';
+import PageHeader from './PageHeader';
 
 interface ItemManagerProps {
   products: Product[];
@@ -428,21 +429,17 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
 
   return (
     <div className="space-y-4 animate-in slide-in-from-right-4 duration-500">
-      {/* 헤더 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-black text-slate-900 uppercase">품목 정보 관리</h2>
-          <p className="text-slate-500 text-sm font-medium">거래처를 선택하거나 전체 품목을 조회하세요.</p>
-        </div>
-        {/* 데스크탑 신규 등록은 productPanel에서 */}
-        <button
+      <PageHeader
+        title="품목 정보 관리"
+        subtitle="거래처를 선택하거나 전체 품목을 조회하세요."
+        right={<button
           onClick={onAddProduct}
           className="lg:hidden flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-black text-sm shadow-md"
         >
           <Plus size={16} />
           신규 품목 등록
-        </button>
-      </div>
+        </button>}
+      />
 
       {/* 모바일: 거래처 목록 그리드 */}
       {showMobileClientList && (

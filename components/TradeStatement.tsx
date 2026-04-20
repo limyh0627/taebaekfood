@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
 import { Order, Product, Client, ProductClient, OrderStatus, IssuedStatement } from '../types';
+import PageHeader from './PageHeader';
 
 interface TradeStatementProps {
   orders: Order[];
@@ -613,13 +614,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   return (
     <div className="space-y-5 animate-in fade-in duration-300">
 
-      {/* ── 헤더 ── */}
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-black text-slate-900">거래명세서</h2>
-          <p className="text-sm text-slate-400 mt-0.5">발행된 전표를 조회하거나 새 전표를 생성합니다.</p>
-        </div>
-        <div className="flex gap-2">
+      <PageHeader
+        title="거래명세서"
+        subtitle="발행된 전표를 조회하거나 새 전표를 생성합니다."
+        right={<div className="flex gap-2">
           <button
             onClick={() => openCreate('매입')}
             className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-black bg-rose-600 text-white hover:bg-rose-700 shadow-sm transition-all"
@@ -632,8 +630,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           >
             <Plus size={14} strokeWidth={3}/>매출전표
           </button>
-        </div>
-      </div>
+        </div>}
+      />
 
       {/* ── 필터 바 ── */}
       <div className="bg-white rounded-2xl border border-slate-200 px-4 py-3 space-y-2.5">

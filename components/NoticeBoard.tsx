@@ -11,6 +11,7 @@ import {
   Plus
 } from 'lucide-react';
 import { Post } from '../types';
+import PageHeader from './PageHeader';
 
 interface NoticeBoardProps {
   posts: Post[];
@@ -30,12 +31,10 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, onAddPost }) => {
 
   return (
     <div className="space-y-5 animate-in fade-in duration-300">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-black text-slate-900">공지사항</h2>
-          <p className="text-sm text-slate-400 mt-0.5">사내 주요 소식 및 긴급 공지를 확인하세요.</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeader
+        title="공지사항"
+        subtitle="사내 주요 소식 및 긴급 공지를 확인하세요."
+        right={<div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
             <input
@@ -54,8 +53,8 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, onAddPost }) => {
               <Plus size={15} /> 공지 추가
             </button>
           )}
-        </div>
-      </div>
+        </div>}
+      />
 
       <div className="grid grid-cols-1 gap-4">
         {filteredPosts.map((post) => (

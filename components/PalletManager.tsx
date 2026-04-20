@@ -15,6 +15,7 @@ import {
   Search
 } from 'lucide-react';
 import { PalletStock, Order, Client, OrderStatus, PalletTransaction } from '../types';
+import PageHeader from './PageHeader';
 
 interface PalletManagerProps {
   pallets: PalletStock[];
@@ -228,12 +229,10 @@ const PalletManager: React.FC<PalletManagerProps> = ({
 
   return (
     <div className="space-y-5 animate-in fade-in duration-300 h-full flex flex-col">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-black text-slate-900">파렛트 관리</h2>
-          <p className="text-sm text-slate-400 mt-0.5">실제 현장 출고 데이터를 기반으로 한 파렛트 순환 현황입니다.</p>
-        </div>
-        <div className="flex bg-slate-100 p-1 rounded-2xl items-center">
+      <PageHeader
+        title="파렛트 관리"
+        subtitle="실제 현장 출고 데이터를 기반으로 한 파렛트 순환 현황입니다."
+        right={<div className="flex bg-slate-100 p-1 rounded-2xl items-center">
           <button
             onClick={() => setActiveTab('clients')}
             className={`px-4 py-2 rounded-xl flex items-center gap-1.5 transition-all ${activeTab === 'clients' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
@@ -248,8 +247,8 @@ const PalletManager: React.FC<PalletManagerProps> = ({
             <Layers size={14} />
             <span className="text-xs font-black">전체 재고</span>
           </button>
-        </div>
-      </div>
+        </div>}
+      />
 
       {activeTab === 'overview' ? (
         <>
