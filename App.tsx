@@ -900,10 +900,11 @@ const App: React.FC = () => {
             />
           )}
           {currentView === 'orders' && (
-            <OrdersList 
-              orders={orders} 
-              clients={clients} 
-              products={allProducts} 
+            <OrdersList
+              orders={orders}
+              clients={clients}
+              products={allProducts}
+              productClients={productClients}
               onDeleteOrder={(id) => {
                 const o = orders.find(x => x.id === id);
                 if (o?.status === OrderStatus.DELIVERED) { alert('예전 주문은 삭제할 수 없습니다.'); return; }
@@ -2529,6 +2530,7 @@ const App: React.FC = () => {
                 const current = productClients.filter(pc => pc.productId === productId).map(pc => pc.clientId);
                 await setProductClients(productId, current.filter(id => id !== clientId));
               }}
+              productClients={productClients}
             />
           )}
           {currentView === 'officetalk' && (

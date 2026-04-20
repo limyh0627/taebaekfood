@@ -27,7 +27,7 @@ import {
   ListOrdered,
   GripVertical
 } from 'lucide-react';
-import { Order, OrderStatus, Client, OrderSource, OrderItem, Product, OrderPallet, DeliveryBox } from '../types';
+import { Order, OrderStatus, Client, OrderSource, OrderItem, Product, OrderPallet, DeliveryBox, ProductClient } from '../types';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 
@@ -60,6 +60,7 @@ interface OrdersListProps {
   orders: Order[];
   clients: Client[];
   products: Product[];
+  productClients?: ProductClient[];
   onUpdateStatus: (id: string, status: OrderStatus) => void;
   onUpdateDeliveryDate: (id: string, date: string) => void;
   onUpdateReceivedDate?: (id: string, date: string) => void;
@@ -83,6 +84,7 @@ interface OrderCardProps {
   order: Order;
   clients: Client[];
   products: Product[];
+  productClients?: ProductClient[];
   editingOrderId: string | null;
   setEditingOrderId: (id: string | null) => void;
   showAddProductSelect: string | null;
@@ -96,8 +98,6 @@ interface OrderCardProps {
   gridCols?: number;
   isHighlighted?: boolean;
   highlightOrderId?: string | null;
-  hideEditButton?: boolean;
-  onCardClick?: () => void;
 }
 
 interface OrderSourceGroupProps {
@@ -140,7 +140,7 @@ export const OrderCard = memo<OrderCardProps>(({
   editingOrderId, setEditingOrderId,
   showAddProductSelect, setShowAddProductSelect,
   onUpdateItems, onUpdateDeliveryDate, onUpdateStatus,
-  onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1, isHighlighted = false, highlightOrderId, hideEditButton = false, onCardClick,
+  onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1, isHighlighted = false, highlightOrderId, productClients,
 }) => {
   const highlighted = isHighlighted || highlightOrderId === order.id;
   const isEditing = editingOrderId === order.id;
@@ -162,6 +162,14 @@ export const OrderCard = memo<OrderCardProps>(({
   const [isCollapsed, setIsCollapsed] = useState(
     order.status === OrderStatus.DISPATCHED || order.status === OrderStatus.SHIPPED || order.status === OrderStatus.ON_HOLD
   );
+  const [showStatusPicker, setShowStatusPicker] = useState(false);
+
+  useEffect(() => {
+    if (!showStatusPicker) return;
+    const close = () => setShowStatusPicker(false);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [showStatusPicker]);
 
   // 완제품 모두 체크 시 → 작업완료(DISPATCHED)로 자동 이동 + 접힘
   useEffect(() => {
@@ -227,8 +235,8 @@ export const OrderCard = memo<OrderCardProps>(({
       id={`order-card-${order.id}`}
       draggable={!isEditing}
       onDragStart={(e) => { e.dataTransfer.setData('orderId', order.id); e.dataTransfer.effectAllowed = 'move'; }}
-      onClick={() => { if (!isEditing && onCardClick) onCardClick(); }}
-      className={`bg-white rounded-2xl shadow-sm border transition-all group relative animate-in zoom-in-95 duration-200 ${isEditing ? 'ring-2 ring-indigo-500 border-indigo-200 shadow-xl z-20' : highlighted ? 'ring-2 ring-amber-400 border-amber-300 shadow-lg shadow-amber-100' : `border-slate-100 hover:shadow-md hover:border-indigo-100 ${onCardClick ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'}`} ${isCollapsed ? 'p-2.5' : 'p-4'} flex flex-col`}
+      onClick={() => { if (!isEditing) { setEditingOrderId(order.id); setShowAddProductSelect(null); } }}
+      className={`bg-white rounded-2xl shadow-sm border transition-all group relative animate-in zoom-in-95 duration-200 ${isEditing ? 'ring-2 ring-indigo-500 border-indigo-200 shadow-xl z-20' : highlighted ? 'ring-2 ring-amber-400 border-amber-300 shadow-lg shadow-amber-100' : 'border-slate-100 hover:shadow-md hover:border-indigo-100 cursor-pointer'} ${isCollapsed ? 'p-2.5' : 'p-4'} flex flex-col`}
     >
       <div className={`flex justify-between items-start ${isCollapsed ? 'mb-1.5' : 'mb-3'}`}>
         <div className="flex-1 min-w-0 flex items-center gap-1.5">
@@ -242,28 +250,48 @@ export const OrderCard = memo<OrderCardProps>(({
               {completedItems}/{totalItems}
             </button>
           )}
-          {(() => {
-            const cycle: OrderStatus[] = [OrderStatus.PENDING, OrderStatus.PROCESSING, OrderStatus.DISPATCHED];
-            const curIdx = cycle.indexOf(order.status as OrderStatus);
-            const next = cycle[(curIdx + 1) % cycle.length];
-            return (
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onUpdateStatus(order.id, curIdx === -1 ? OrderStatus.PENDING : next); }}
-                className={`text-[8px] font-black px-1.5 py-0.5 rounded shrink-0 transition-all ${STATUS_COLOR[order.status] || 'bg-slate-100 text-slate-500'}`}
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setShowStatusPicker(p => !p); }}
+              className={`text-[8px] font-black px-1.5 py-0.5 rounded transition-all ${STATUS_COLOR[order.status] || 'bg-slate-100 text-slate-500'}`}
+            >
+              {STATUS_LABEL[order.status] ?? order.status}
+            </button>
+            {showStatusPicker && (
+              <div
+                className="absolute top-full left-0 mt-1 z-50 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden flex flex-col min-w-[72px]"
+                onClick={(e) => e.stopPropagation()}
               >
-                {STATUS_LABEL[order.status] ?? order.status}
-              </button>
-            );
-          })()}
+                {([
+                  [OrderStatus.PENDING,    '대기중',   'hover:bg-amber-50 text-amber-700'],
+                  [OrderStatus.PROCESSING, '작업중',   'hover:bg-sky-50 text-sky-700'],
+                  [OrderStatus.DISPATCHED, '작업완료', 'hover:bg-emerald-50 text-emerald-700'],
+                ] as [OrderStatus, string, string][]).map(([st, label, cls]) => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onUpdateStatus(order.id, st);
+                      setShowStatusPicker(false);
+                    }}
+                    className={`px-3 py-2 text-[10px] font-black text-left transition-all ${cls} ${order.status === st ? 'opacity-40 cursor-default' : ''}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-        {!hideEditButton && (
+        {isEditing && (
           <button
-            onClick={(e) => { e.stopPropagation(); setEditingOrderId(isEditing ? null : order.id); setShowAddProductSelect(null); }}
-            className={`p-1.5 rounded-lg transition-all ${isEditing ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-indigo-50 hover:text-indigo-600'}`}
-            title={isEditing ? '저장' : '주문 편집'}
+            onClick={(e) => { e.stopPropagation(); setEditingOrderId(null); setShowAddProductSelect(null); }}
+            className="p-1.5 rounded-lg transition-all bg-indigo-600 text-white shrink-0"
+            title="편집 완료"
           >
-            {isEditing ? <Check size={14} /> : <Edit2 size={14} />}
+            <Check size={14} />
           </button>
         )}
       </div>
@@ -344,19 +372,29 @@ export const OrderCard = memo<OrderCardProps>(({
                         : `${item.quantity}${productInfo?.unit || '개'}`}
                     </span>
                   </div>
-                  {productInfo?.submaterials && productInfo.submaterials.filter(sm => {
-                    const fullSub = products.find(p => p.id === sm.id);
-                    return ['마개', '테이프', '박스'].includes(normalizeCategory(fullSub?.category || sm.category || ''));
-                  }).length > 0 && (
-                    <div className={`mt-0.5 ${gridCols >= 2 ? 'grid grid-cols-2 md:flex md:flex-wrap md:items-center gap-x-1 gap-y-0.5 md:gap-1 md:pl-[20px]' : 'flex flex-wrap items-center gap-x-1 gap-y-0.5 pl-[20px]'}`}>
-                      {productInfo.submaterials.filter(sm => {
-                        const fullSub = products.find(p => p.id === sm.id);
-                        return ['마개', '테이프', '박스'].includes(normalizeCategory(fullSub?.category || sm.category || ''));
-                      }).map(sm => (
-                        <span key={sm.id} className="text-[8px] font-bold text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">{sm.name}</span>
-                      ))}
-                    </div>
-                  )}
+                  {(() => {
+                    // ProductClient 기반 부자재 (boxTypeId, tapeTypeId)
+                    const pc = productClients?.find(c => c.productId === item.productId && c.clientId === order.clientId);
+                    const pcSubs: { id: string; name: string }[] = [];
+                    if (pc?.boxTypeId) { const b = products.find(p => p.id === pc.boxTypeId); if (b) pcSubs.push({ id: b.id, name: b.name }); }
+                    if (pc?.tapeTypeId) { const t = products.find(p => p.id === pc.tapeTypeId); if (t) pcSubs.push({ id: t.id, name: t.name }); }
+                    // 기존 product.submaterials 폴백 (pcSubs에 없는 것만)
+                    const pcSubIds = new Set(pcSubs.map(s => s.id));
+                    const legacySubs = (productInfo?.submaterials ?? []).filter(sm => {
+                      if (pcSubIds.has(sm.id)) return false;
+                      const fullSub = products.find(p => p.id === sm.id);
+                      return ['마개', '테이프', '박스', '용기', '라벨'].includes(normalizeCategory(fullSub?.category || sm.category || ''));
+                    }).map(sm => ({ id: sm.id, name: sm.name }));
+                    const allSubs = [...pcSubs, ...legacySubs];
+                    if (allSubs.length === 0) return null;
+                    return (
+                      <div className={`mt-0.5 ${gridCols >= 2 ? 'grid grid-cols-2 md:flex md:flex-wrap md:items-center gap-x-1 gap-y-0.5 md:gap-1 md:pl-[20px]' : 'flex flex-wrap items-center gap-x-1 gap-y-0.5 pl-[20px]'}`}>
+                        {allSubs.map(sm => (
+                          <span key={sm.id} className="text-[8px] font-bold text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">{sm.name}</span>
+                        ))}
+                      </div>
+                    );
+                  })()}
                   <div className="flex flex-wrap items-center gap-1 mt-0.5 pl-[20px]">
                     <button type="button" onClick={(e) => { e.stopPropagation(); const ni = [...order.items]; ni[idx] = { ...ni[idx], labelType: next }; onUpdateItems?.(order.id, ni); }}
                       className={`text-[8px] font-black px-1 py-0.5 rounded border transition-all shrink-0 ${colorMap[current]}`}>{current}</button>
@@ -575,7 +613,7 @@ const OrderSourceGroup = memo<OrderSourceGroupProps>(({
       </button>
       {!isCollapsed && (
         <div className={`grid gap-3 items-start ${gridCols === 3 ? 'grid-cols-3' : gridCols === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-          {orders.map(order => <OrderCard key={order.id} order={order} {...cardProps} gridCols={gridCols} hideEditButton onCardClick={() => (cardProps as any).onCardClick?.(order.id)} />)}
+          {orders.map(order => <OrderCard key={order.id} order={order} {...cardProps} gridCols={gridCols} />)}
         </div>
       )}
     </div>
@@ -714,7 +752,7 @@ const deliveryExtraConfigs = [
 const historyConfig = { id: 'history_col', label: '예전 주문 이력', icon: History, color: 'bg-slate-700', bgColor: 'bg-slate-50/80', borderColor: 'border-slate-200', textColor: 'text-slate-700', statusFilter: [OrderStatus.DELIVERED], targetStatus: undefined };
 
 const OrdersList: React.FC<OrdersListProps> = ({
-  title, subtitle, orders, clients, products,
+  title, subtitle, orders, clients, products, productClients,
   onUpdateStatus, onUpdateDeliveryDate,
   onUpdateItems, onUpdateDeliveryBoxes,
   onToggleInvoicePrinted, onToggleItemChecked,
@@ -829,13 +867,12 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
   // OrderCard/OrderSourceGroup에 공통으로 넘길 props
   const cardSharedProps = {
-    clients, products,
+    clients, products, productClients,
     editingOrderId, setEditingOrderId,
     showAddProductSelect, setShowAddProductSelect,
     onUpdateItems, onUpdateDeliveryDate, onUpdateStatus,
     onToggleItemChecked, onDeleteOrder, currentUserName,
     highlightOrderId,
-    onCardClick: (orderId: string) => setPreviewOrderId(orderId),
   };
 
   return (

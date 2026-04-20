@@ -393,9 +393,16 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
                               const label = product.submaterials?.find(s => s.category === '라벨')?.name;
                               const vol = product.용량;
                               const parts = [label, vol].filter(Boolean);
-                              return parts.length > 0 ? (
-                                <p className="text-[9px] text-slate-400 font-bold truncate leading-tight">{parts.join(' · ')}</p>
-                              ) : null;
+                              const pc = selectedClient ? productClients.find(p => p.productId === product.id && p.clientId === selectedClient.id) : null;
+                              const boxName = pc?.boxTypeId ? products.find(p => p.id === pc.boxTypeId)?.name : null;
+                              const tapeName = pc?.tapeTypeId ? products.find(p => p.id === pc.tapeTypeId)?.name : null;
+                              const subParts = [boxName, tapeName].filter(Boolean);
+                              return (
+                                <>
+                                  {parts.length > 0 && <p className="text-[9px] text-slate-400 font-bold truncate leading-tight">{parts.join(' · ')}</p>}
+                                  {subParts.length > 0 && <p className="text-[9px] text-indigo-400 font-bold truncate leading-tight">{subParts.join(' · ')}</p>}
+                                </>
+                              );
                             })()}
                           </div>
                         </div>

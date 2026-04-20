@@ -1,13 +1,14 @@
 
 import React, { useState, useMemo } from 'react';
 import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X } from 'lucide-react';
-import { Product, InventoryCategory, Client } from '../types';
+import { Product, InventoryCategory, Client, ProductClient } from '../types';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 
 interface ItemManagerProps {
   products: Product[];
   clients: Client[];
+  productClients?: ProductClient[];
   onEditProduct: (_product: Product) => void;
   onAddProduct: () => void;
   onDeleteProduct: (_id: string, _category: string) => void;
@@ -26,7 +27,7 @@ const SUB_ORDER: Record<string, number> = { '라벨': 0, '용기': 1, '마개': 
 const sortSubs = (subs: { name: string; category: string }[]) =>
   [...subs].sort((a, b) => (SUB_ORDER[normalizeCategory(a.category)] ?? 9) - (SUB_ORDER[normalizeCategory(b.category)] ?? 9));
 
-const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct }) => {
+const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productClients = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct }) => {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [activeCategory, setActiveCategory] = useState<InventoryCategory>('완제품');
@@ -356,17 +357,25 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, onEditProd
                     )}
                     {['용기', '마개', '라벨', '테이프', '박스'].map(cat => (
                       <td key={cat} className="px-2 py-3">
-                        {item.category === '완제품' && item.submaterials ? (
-                          (() => {
-                            const subs = item.submaterials.filter(s => {
-                              const full = products.find(p => p.id === s.id);
-                              return normalizeCategory(full?.category || '') === cat;
-                            });
-                            return subs.length > 0
-                              ? <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">{subs.map(s => s.name).join(', ')}</span>
-                              : <span className="text-[10px] text-slate-200">-</span>;
-                          })()
-                        ) : (
+                        {item.category === '완제품' ? (() => {
+                          // productClients 기반 (테이프/박스, 거래처 선택 시)
+                          if (selectedClientId && (cat === '테이프' || cat === '박스')) {
+                            const pc = productClients.find(p => p.productId === item.id && p.clientId === selectedClientId);
+                            const subId = cat === '테이프' ? pc?.tapeTypeId : pc?.boxTypeId;
+                            if (subId) {
+                              const sub = products.find(p => p.id === subId);
+                              if (sub) return <span className="text-[11px] font-bold text-indigo-600 whitespace-nowrap">{sub.name}</span>;
+                            }
+                          }
+                          // 폴백: submaterials 배열
+                          const subs = (item.submaterials ?? []).filter(s => {
+                            const full = products.find(p => p.id === s.id);
+                            return normalizeCategory(full?.category || s.category || '') === cat;
+                          });
+                          return subs.length > 0
+                            ? <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">{subs.map(s => s.name).join(', ')}</span>
+                            : <span className="text-[10px] text-slate-200">-</span>;
+                        })() : (
                           <span className="text-[10px] text-slate-200">-</span>
                         )}
                       </td>
