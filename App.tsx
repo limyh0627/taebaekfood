@@ -509,23 +509,23 @@ const App: React.FC = () => {
           ? Math.ceil(item.quantity / item.unitsPerBox)
           : null;
 
-      // 박스 차감: boxSubId 직접 참조 → BOM 박스 순으로 폴백
-      const boxSubToDeduct = (() => {
-        if (item.boxSubId) {
-          const byId = submaterials.find(sm => sm.id === item.boxSubId);
-          if (byId) return byId;
-        }
-        for (const s of product.submaterials!) {
-          const sub = submaterials.find(sm => sm.id === s.id && sm.category === '박스');
-          if (sub) return sub;
-        }
-        return null;
-      })();
+      // 박스 차감: productClients에서 boxTypeId 참조 (주문 시점 boxSubId 폴백)
+      const pc = productClients.find(p => p.productId === product.id && p.clientId === order.clientId);
+      const boxSubId = item.boxSubId || pc?.boxTypeId;
+      const boxSubToDeduct = boxSubId ? submaterials.find(sm => sm.id === boxSubId) : null;
 
       if (boxSubToDeduct) {
         const deductQty = boxesUsed ?? Math.ceil(item.quantity / (boxSubToDeduct.boxSize || 1));
         if (deductQty > 0) {
           await updateItem('submaterials', boxSubToDeduct.id, { stock: boxSubToDeduct.stock - deductQty });
+        }
+      }
+
+      // 테이프 차감: productClients에서 tapeTypeId 참조
+      if (pc?.tapeTypeId && boxesUsed && boxesUsed > 0) {
+        const tapeSub = submaterials.find(sm => sm.id === pc.tapeTypeId);
+        if (tapeSub) {
+          await updateItem('submaterials', tapeSub.id, { stock: tapeSub.stock - boxesUsed });
         }
       }
 
@@ -2599,7 +2599,7 @@ const App: React.FC = () => {
       </main>
 
       {isAdminAuthModalOpen && <AdminAuthModal onClose={() => setIsAdminAuthModalOpen(false)} onSuccess={onAdminAuthSuccess} />}
-      {isAddOrderOpen && <AddOrderModal products={allProducts} clients={clients} onClose={() => setIsAddOrderOpen(false)} onSave={async (o) => {
+      {isAddOrderOpen && <AddOrderModal products={allProducts} clients={clients} productClients={productClients} onClose={() => setIsAddOrderOpen(false)} onSave={async (o) => {
         const orderId = `ORD-${Date.now()}`;
         await addItem('orders', {...o, id: orderId, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
         await checkAndAlertShortage(o.items);

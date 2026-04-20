@@ -1,11 +1,12 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Phone, Mail, Truck, Store, LayoutGrid, CalendarDays } from 'lucide-react';
-import { Product, OrderItem, Order, Client, OrderSource, OrderPallet } from '../types';
+import { Product, ProductClient, OrderItem, Order, Client, OrderSource, OrderPallet } from '../types';
 
 interface AddOrderModalProps {
   products: Product[];
   clients: Client[];
+  productClients: ProductClient[];
   onClose: () => void;
   onSave: (_order: Omit<Order, 'id' | 'createdAt' | 'status'>) => void;
 }
@@ -34,7 +35,7 @@ const matchClient = (name: string, query: string): boolean => {
   return name.toLowerCase().includes(q.toLowerCase());
 };
 
-const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, onClose, onSave }) => {
+const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, productClients, onClose, onSave }) => {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handler);
@@ -113,20 +114,18 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, onClos
     return products.filter(p => p.category === '고춧가루');
   }, [products, selectedClient]);
 
-  // 거래처별 박스 설정 목록 조회
+  // 거래처별 박스 설정 조회 — productClients 기반
   const getClientBoxConfigs = (productId: string, clientId?: string): { unitsPerBox: number; boxType: string; boxSubId?: string }[] => {
-    const p = products.find(pr => pr.id === productId);
-    if (!p) return [];
-    if (clientId && p.clientBoxConfigs) {
-      const cfg = p.clientBoxConfigs.find(c => c.clientId === clientId);
-      if (cfg?.configs.length) return cfg.configs.filter(c => c.unitsPerBox > 0);
+    if (clientId) {
+      const pc = productClients.find(p => p.productId === productId && p.clientId === clientId);
+      if (pc?.boxTypeId) {
+        return [{ unitsPerBox: pc.qtyPerBox ?? 0, boxType: pc.boxTypeId, boxSubId: pc.boxTypeId }];
+      }
     }
-    if (p.defaultBoxConfig?.unitsPerBox) return [p.defaultBoxConfig];
-    const legacy = p.boxSize ?? p.submaterials?.reduce((acc: number, s) => {
-      const sub = products.find(pr => pr.id === s.id);
-      return sub?.category === '박스' && (sub.boxSize ?? 0) > 0 ? sub.boxSize! : acc;
-    }, 0) ?? 0;
-    return legacy > 0 ? [{ unitsPerBox: legacy, boxType: '' }] : [];
+    // 폴백: 기존 defaultBoxConfig
+    const p = products.find(pr => pr.id === productId);
+    if (p?.defaultBoxConfig?.unitsPerBox) return [p.defaultBoxConfig];
+    return [];
   };
 
   const toggleProduct = (productId: string) => {

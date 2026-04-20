@@ -107,7 +107,8 @@ export interface SubmaterialComponent {
   category: InventoryCategory | string;
   stock: number;
   unit: string;
-  boxSize?: number; // 박스 카테고리: 한 박스에 들어가는 낱개 수
+  cost?: number;   // 부자재 원가
+  boxSize?: number;
 }
 
 export type InventoryCategory = '완제품' | '향미유' | '고춧가루' | '용기' | '마개' | '테이프' | '박스' | '라벨';
@@ -120,11 +121,11 @@ export interface Product {
   sku?: string;                  // SKU 코드
   category: InventoryCategory | string;
   itemType?: ProductStage;       // WIP(반제품) | FINISHED(완제품) — 없으면 부자재/원료
+  cost?: number;                 // 원가 (부자재: 매입원가, WIP/FINISHED: 제조원가)
   price: number;
   stock: number;                 // 부자재/원료 재고 (또는 미분류)
   wipStock?: number;             // WIP 반제품 재고수량
   finishedStock?: number;        // FINISHED 완제품 재고수량
-  manufacturingCost?: number;    // 제조원가 (WIP/FINISHED 공통)
   minStock: number;
   unit: string;
   image: string;
