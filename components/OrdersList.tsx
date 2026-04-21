@@ -25,7 +25,8 @@ import {
   Package as PackageBox,
   X,
   ListOrdered,
-  GripVertical
+  GripVertical,
+  ClipboardPaste
 } from 'lucide-react';
 import { Order, OrderStatus, Client, OrderSource, OrderItem, Product, OrderPallet, DeliveryBox, ProductClient } from '../types';
 import ConfirmModal from './ConfirmModal';
@@ -71,6 +72,7 @@ interface OrdersListProps {
   onToggleItemChecked?: (orderId: string, itemIdx: number, checkedBy?: string) => void;
   onDeleteOrder: (id: string) => void;
   onAddClick: () => void;
+  onPasteClick?: () => void;
   currentUserName?: string;
   highlightOrderId?: string | null;
   onHighlightClear?: () => void;
@@ -756,7 +758,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   onUpdateStatus, onUpdateDeliveryDate,
   onUpdateItems, onUpdateDeliveryBoxes,
   onToggleInvoicePrinted, onToggleItemChecked,
-  onDeleteOrder, onAddClick,
+  onDeleteOrder, onAddClick, onPasteClick,
   workOrderItems: workOrderItemsProp = [],
   onSetWorkOrderItems,
   currentUserName,
@@ -890,6 +892,11 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 </button>
               ))}
             </div>
+            {onPasteClick && (
+              <button onClick={onPasteClick} className="flex items-center gap-1.5 bg-violet-600 text-white px-4 py-2.5 rounded-xl text-sm font-black hover:bg-violet-700 transition-all shadow-sm">
+                <ClipboardPaste size={15} /><span className="hidden sm:inline">복사주문</span>
+              </button>
+            )}
             <button onClick={onAddClick} className="flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-sm font-black hover:bg-indigo-700 transition-all shadow-sm">
               <Plus size={15} /><span className="hidden sm:inline">주문 생성</span>
             </button>

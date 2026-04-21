@@ -34,6 +34,7 @@ import OrdersList from './components/OrdersList';
 import ProductList from './components/ProductList';
 import AIConsultant from './components/AIConsultant';
 import AddOrderModal from './components/AddOrderModal';
+import PasteOrderModal from './components/PasteOrderModal';
 import ClientManager from './components/ClientManager';
 import DeliveryManager from './components/DeliveryManager';
 import PalletManager from './components/PalletManager';
@@ -263,6 +264,7 @@ const App: React.FC = () => {
   const [pendingAdminView, setPendingAdminView] = useState<ViewType | null>(null);
   const [isAdminAuthModalOpen, setIsAdminAuthModalOpen] = useState(false);
   const [isAddOrderOpen, setIsAddOrderOpen] = useState(false);
+  const [isPasteOrderOpen, setIsPasteOrderOpen] = useState(false);
   const [newOrderId, setNewOrderId] = useState<string | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -910,9 +912,10 @@ const App: React.FC = () => {
                 if (o?.status === OrderStatus.DELIVERED) { alert('예전 주문은 삭제할 수 없습니다.'); return; }
                 deleteItem('orders', id);
               }}
-              onAddClick={() => setIsAddOrderOpen(true)} 
-              title="주문 관리" 
-              subtitle="전체 주문 현황" 
+              onAddClick={() => setIsAddOrderOpen(true)}
+              onPasteClick={() => setIsPasteOrderOpen(true)}
+              title="주문 관리"
+              subtitle="전체 주문 현황"
               groupBy="status" 
               allowedStatuses={Object.values(OrderStatus)} 
               onUpdateStatus={async (id, status) => {
@@ -2609,6 +2612,15 @@ const App: React.FC = () => {
         await addItem('notifications', { type: 'new_order', title: '신규 주문', body: `${clientName} 주문이 등록되었습니다.`, readBy: [], createdAt: new Date().toISOString(), senderId: currentUser.id, linkedId: orderId } as Omit<AppNotification,'id'>);
         setNewOrderId(orderId);
         setIsAddOrderOpen(false);
+      }} />}
+      {isPasteOrderOpen && <PasteOrderModal products={allProducts} clients={clients} productClients={productClients} onClose={() => setIsPasteOrderOpen(false)} onSave={async (o) => {
+        const orderId = `ORD-${Date.now()}`;
+        await addItem('orders', {...o, id: orderId, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
+        await checkAndAlertShortage(o.items);
+        const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '거래처';
+        await addItem('notifications', { type: 'new_order', title: '신규 주문', body: `${clientName} 주문이 등록되었습니다.`, readBy: [], createdAt: new Date().toISOString(), senderId: currentUser.id, linkedId: orderId } as Omit<AppNotification,'id'>);
+        setNewOrderId(orderId);
+        setIsPasteOrderOpen(false);
       }} />}
       {isProductModalOpen && (
         <ProductModal
