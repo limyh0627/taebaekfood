@@ -242,7 +242,20 @@ export interface ChatRoom {
 }
 
 
-export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'clients' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'client-portal' | 'item-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement';
+export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'clients' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'client-portal' | 'item-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'cost-management';
+
+// ── 비용관리 ──────────────────────────────────────────────────────────────────
+export type FixedCostCategory = '임차료' | '보험료' | '감가상각비' | '대출이자' | '공과금' | '인건비' | '기타';
+
+export interface FixedCostEntry {
+  id: string;
+  yearMonth: string;           // 'YYYY-MM'
+  category: FixedCostCategory;
+  label: string;               // 세부 항목명 (예: '공장 임대료', '화재보험')
+  amount: number;
+  note?: string;
+  createdAt: string;
+}
 
 export interface IssuedStatementItem {
   name: string;

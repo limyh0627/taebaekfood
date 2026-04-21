@@ -26,7 +26,8 @@ import {
   MessageSquare,
   ChevronLeft,
   ChevronRight,
-  FileText
+  FileText,
+  Wallet
 } from 'lucide-react';
 import { Order, Product, ProductClient, ViewType, OrderStatus, Client, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification } from './types';
 import Dashboard from './components/Dashboard';
@@ -50,6 +51,7 @@ import ClientPortal from './components/ClientPortal';
 import ItemManager from './components/ItemManager';
 import TradeStatement from './components/TradeStatement';
 import OfficeTalk from './components/OfficeTalk';
+import CostManager from './components/CostManager';
 import ExcelJS from 'exceljs';
 
 import { db } from './src/firebase';
@@ -194,6 +196,7 @@ const App: React.FC = () => {
     issuedStatements,
     itemBoms,
     itemCustomers,
+    fixedCosts,
     isDataLoading,
   } = useAppData();
 
@@ -644,7 +647,7 @@ const App: React.FC = () => {
   };
 
   const handleNavClick = (view: ViewType) => {
-    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant'];
+    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant', 'cost-management'];
     if (adminOnlyViews.includes(view) && !isAdminAuthenticated && !isAdmin) {
       setPendingAdminView(view);
       setIsAdminAuthModalOpen(true);
@@ -786,6 +789,7 @@ const App: React.FC = () => {
                   <NavItem icon={UserCheck} label="인사/연차 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} />
                   <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
                   <NavItem icon={FileText} label="거래명세서" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} />
+                  <NavItem icon={Wallet} label="비용 관리" active={currentView === 'cost-management'} onClick={() => handleNavClick('cost-management')} collapsed={isSidebarCollapsed} />
                 </nav>
               </div>
             )}
@@ -2477,6 +2481,22 @@ const App: React.FC = () => {
               confirmedOrders={confirmedOrders}
               onAddConfirmedOrder={(item) => addItem('confirmedOrders', item)}
             />
+          )}
+          {currentView === 'cost-management' && (
+            <div className="h-full overflow-y-auto">
+              <CostManager
+                fixedCosts={fixedCosts}
+                issuedStatements={issuedStatements}
+                onAdd={async (entry) => {
+                  await addItem('fixedCosts', {
+                    ...entry,
+                    id: `fc-${Date.now()}`,
+                    createdAt: new Date().toISOString(),
+                  });
+                }}
+                onDelete={(id) => deleteItem('fixedCosts', id)}
+              />
+            </div>
           )}
           {currentView === 'confirmation-items' && (
             <ConfirmationItems 

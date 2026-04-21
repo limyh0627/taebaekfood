@@ -4,7 +4,7 @@ import {
   PalletStock, PalletTransaction, Employee, LeaveRequest,
   AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry,
   AppNotification, OrderStatus, IssuedStatement,
-  ItemBom, ItemCustomer,
+  ItemBom, ItemCustomer, FixedCostEntry,
 } from '../../types';
 import { subscribeToCollection } from '../services/firebaseService';
 
@@ -54,6 +54,8 @@ export interface AppData {
   // BOM
   itemBoms: ItemBom[];
   itemCustomers: ItemCustomer[];
+  // 비용관리
+  fixedCosts: FixedCostEntry[];
   // 로딩 상태
   isDataLoading: boolean;
 }
@@ -81,6 +83,7 @@ export function useAppData(): AppData {
   const [issuedStatements, setIssuedStatements] = useState<IssuedStatement[]>([]);
   const [itemBoms, setItemBoms] = useState<ItemBom[]>([]);
   const [itemCustomers, setItemCustomers] = useState<ItemCustomer[]>([]);
+  const [fixedCosts, setFixedCosts] = useState<FixedCostEntry[]>([]);
   const [isDataLoading, setIsDataLoading] = useState(true);
   const loadedRef = useRef(new Set<string>());
 
@@ -115,6 +118,7 @@ export function useAppData(): AppData {
       subscribeToCollection<IssuedStatement>('issuedStatements', setIssuedStatements),
       subscribeToCollection<ItemBom>('item_bom', setItemBoms),
       subscribeToCollection<ItemCustomer>('item_customer', setItemCustomers),
+      subscribeToCollection<FixedCostEntry>('fixedCosts', setFixedCosts),
     ];
     return () => unsubscribes.forEach(u => u());
   }, []);
@@ -131,6 +135,7 @@ export function useAppData(): AppData {
     issuedStatements,
     itemBoms,
     itemCustomers,
+    fixedCosts,
     isDataLoading,
   };
 }
