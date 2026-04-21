@@ -139,6 +139,7 @@ const ProductList: React.FC<ProductListProps> = ({
   const [rmUsed, setRmUsed] = useState('');
   const [rmNote, setRmNote] = useState('');
   const [rmCanQty, setRmCanQty] = useState('');
+  const [rmCanSize, setRmCanSize] = useState<number | null>(null);
   const [rmFilter, setRmFilter] = useState(RAW_MATERIALS[0]);
   const [rmMonth, setRmMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [rmViewType, setRmViewType] = useState<'all' | 'received' | 'used'>('all');
@@ -1165,12 +1166,23 @@ const ProductList: React.FC<ProductListProps> = ({
 
                 {/* 새 기록 탭 */}
                 {rmSheetTab === 'new' && (() => {
-                  // 캔 단위 입고 지원 원료 (1캔 = 16.5 kg)
-                  const CAN_MATERIALS: Record<string, number> = {
-                    '깨분참기름': 16.5,
-                    '수입들기름': 16.5,
+                  // 캔 단위 입고 지원 원료 (sizes: kg per can options)
+                  const CAN_MATERIALS: Record<string, number[]> = {
+                    '깨분참기름': [16.5],
+                    '수입들기름': [16.5],
+                    '들깨': [25],
+                    '검정깨': [10, 20],
+                    '탈피들깨가루': [20],
+                    '깨분': [16.5],
+                    '볶음참깨': [10, 20],
+                    '볶음들깨': [25],
+                    '통깨참기름': [16.5],
+                    '통들깨들기름': [16.5],
                   };
-                  const kgPerCan = CAN_MATERIALS[rmMaterial];
+                  const canSizes = CAN_MATERIALS[rmMaterial];
+                  const kgPerCan = canSizes
+                    ? (rmCanSize !== null && canSizes.includes(rmCanSize) ? rmCanSize : (canSizes.length === 1 ? canSizes[0] : null))
+                    : null;
                   const canCount = Number(rmCanQty) || 0;
                   const calcKg = kgPerCan && canCount > 0
                     ? Math.round(canCount * kgPerCan * 10) / 10
@@ -1180,7 +1192,7 @@ const ProductList: React.FC<ProductListProps> = ({
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t('원료명', 'Material')}</label>
-                        <select value={rmMaterial} onChange={e => { setRmMaterial(e.target.value); setRmCanQty(''); setRmReceived(''); }}
+                        <select value={rmMaterial} onChange={e => { setRmMaterial(e.target.value); setRmCanQty(''); setRmReceived(''); setRmCanSize(null); }}
                           className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-emerald-400">
                           {RAW_MATERIALS.map(m => <option key={m} value={m}>{isEn ? RAW_MATERIALS_EN[m] ?? m : m}</option>)}
                         </select>
@@ -1192,33 +1204,55 @@ const ProductList: React.FC<ProductListProps> = ({
                       </div>
                     </div>
 
-                    {/* 캔 단위 입력 — 깨분참기름·수입들기름 선택 시 표시 */}
-                    {kgPerCan && (
+                    {/* 캔 단위 입력 — 캔 지원 원료 선택 시 표시 */}
+                    {canSizes && (
                       <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <label className="text-[10px] font-black text-amber-600 uppercase tracking-widest">캔 수량 입력 (1캔 = {kgPerCan} kg)</label>
-                          {calcKg !== null && (
-                            <span className="text-xs font-black text-amber-700">
-                              {canCount}캔 × {kgPerCan}kg = <span className="text-emerald-700">{calcKg} kg</span>
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            placeholder="캔 수"
-                            value={rmCanQty}
-                            onChange={e => {
-                              setRmCanQty(e.target.value);
-                              const n = Number(e.target.value);
-                              if (n > 0) setRmReceived(String(Math.round(n * kgPerCan * 10) / 10));
-                              else setRmReceived('');
-                            }}
-                            className="w-28 bg-white border border-amber-300 rounded-xl px-3 py-2 text-sm font-black outline-none focus:border-amber-500 text-center"
-                          />
-                          <span className="text-sm font-bold text-amber-600">캔</span>
-                        </div>
+                        {canSizes.length > 1 && (
+                          <div>
+                            <label className="text-[10px] font-black text-amber-600 uppercase tracking-widest block mb-1.5">캔 용량 선택</label>
+                            <div className="flex gap-2">
+                              {canSizes.map(sz => (
+                                <button
+                                  key={sz}
+                                  type="button"
+                                  onClick={() => { setRmCanSize(sz); setRmCanQty(''); setRmReceived(''); }}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all border ${rmCanSize === sz ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-amber-600 border-amber-300 hover:border-amber-500'}`}
+                                >{sz} kg</button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {kgPerCan && (
+                          <>
+                            <div className="flex items-center justify-between">
+                              <label className="text-[10px] font-black text-amber-600 uppercase tracking-widest">캔 수량 입력 (1캔 = {kgPerCan} kg)</label>
+                              {calcKg !== null && (
+                                <span className="text-xs font-black text-amber-700">
+                                  {canCount}캔 × {kgPerCan}kg = <span className="text-emerald-700">{calcKg} kg</span>
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                inputMode="numeric"
+                                placeholder="캔 수"
+                                value={rmCanQty}
+                                onChange={e => {
+                                  setRmCanQty(e.target.value);
+                                  const n = Number(e.target.value);
+                                  if (n > 0) setRmReceived(String(Math.round(n * kgPerCan * 10) / 10));
+                                  else setRmReceived('');
+                                }}
+                                className="w-28 bg-white border border-amber-300 rounded-xl px-3 py-2 text-sm font-black outline-none focus:border-amber-500 text-center"
+                              />
+                              <span className="text-sm font-bold text-amber-600">캔</span>
+                            </div>
+                          </>
+                        )}
+                        {canSizes.length > 1 && !kgPerCan && (
+                          <p className="text-xs text-amber-500 font-bold">위에서 캔 용량을 선택하세요.</p>
+                        )}
                       </div>
                     )}
 
@@ -1260,7 +1294,7 @@ const ProductList: React.FC<ProductListProps> = ({
                           addedBy: currentUser?.name,
                           type: 'manual',
                         });
-                        setRmReceived(''); setRmUsed(''); setRmNote(''); setRmCanQty('');
+                        setRmReceived(''); setRmUsed(''); setRmNote(''); setRmCanQty(''); setRmCanSize(null);
                         setShowRmSheet(false);
                       }}
                       className="w-full py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 active:scale-[0.99] transition-all"
