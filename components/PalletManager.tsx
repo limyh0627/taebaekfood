@@ -40,7 +40,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
   const [editForm, setEditForm] = useState<PalletStock | null>(null);
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
   const [selectedClientForTrans, setSelectedClientForTrans] = useState<Client | null>(null);
-  const [transType, setTransType] = useState<'in' | 'out'>('in');
+  const [transType, setTransType] = useState<'in' | 'out' | 'exchange'>('in');
   const [selectedClientIdForDetail, setSelectedClientIdForDetail] = useState<string | null>(null);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyDateFilter, setHistoryDateFilter] = useState('');
@@ -175,33 +175,29 @@ const PalletManager: React.FC<PalletManagerProps> = ({
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const palletId = formData.get('palletId') as string;
-    const quantity = parseInt(formData.get('quantity') as string) || 0;
-    const note = formData.get('note') as string;
+    const note = (formData.get('note') as string) || '';
+    if (!selectedClientForTrans || !palletId) return;
 
-    if (!selectedClientForTrans || !palletId || quantity <= 0) return;
+    const date = new Date().toISOString().split('T')[0];
 
-    const newTransaction: PalletTransaction = {
-      id: `ptrans-${Date.now()}`,
-      clientId: selectedClientForTrans.id,
-      palletId,
-      type: transType,
-      quantity,
-      date: new Date().toISOString().split('T')[0],
-      note
-    };
-
-    onAddPalletTransaction(newTransaction);
-    
-    // Update PalletStock inUse
-    const pallet = pallets.find(p => p.id === palletId);
-    if (pallet) {
-      const updatedPallet = { ...pallet };
-      if (transType === 'in') {
-        updatedPallet.inUse = Math.max(0, pallet.inUse - quantity);
-      } else {
-        updatedPallet.inUse = pallet.inUse + quantity;
+    if (transType === 'exchange') {
+      const returnQty = parseInt(formData.get('returnQty') as string) || 0;
+      const newQty = parseInt(formData.get('newQty') as string) || 0;
+      if (returnQty <= 0 && newQty <= 0) return;
+      if (returnQty > 0) {
+        onAddPalletTransaction({ id: `ptrans-${Date.now()}-in`, clientId: selectedClientForTrans.id, palletId, type: 'in', quantity: returnQty, date, note: `교체 반납${note ? ' — ' + note : ''}` });
       }
-      onUpdatePallet(updatedPallet);
+      if (newQty > 0) {
+        onAddPalletTransaction({ id: `ptrans-${Date.now() + 1}-out`, clientId: selectedClientForTrans.id, palletId, type: 'out', quantity: newQty, date, note: `교체 지급${note ? ' — ' + note : ''}` });
+      }
+      const pallet = pallets.find(p => p.id === palletId);
+      if (pallet) onUpdatePallet({ ...pallet, inUse: Math.max(0, pallet.inUse + newQty - returnQty) });
+    } else {
+      const quantity = parseInt(formData.get('quantity') as string) || 0;
+      if (quantity <= 0) return;
+      onAddPalletTransaction({ id: `ptrans-${Date.now()}`, clientId: selectedClientForTrans.id, palletId, type: transType as 'in' | 'out', quantity, date, note });
+      const pallet = pallets.find(p => p.id === palletId);
+      if (pallet) onUpdatePallet({ ...pallet, inUse: transType === 'in' ? Math.max(0, pallet.inUse - quantity) : pallet.inUse + quantity });
     }
 
     setIsTransactionModalOpen(false);
@@ -425,8 +421,10 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                         <div className="flex flex-wrap gap-1.5">
                           {Object.entries(status.pallets).map(([type, qty]) => (
                             qty !== 0 && (
-                              <div key={type} className={`flex items-center space-x-1 px-2 py-1 rounded-lg border ${qty > 0 ? 'bg-amber-50 border-amber-100' : 'bg-emerald-50 border-emerald-100'}`}>
-                                <span className={`text-[11px] font-bold whitespace-nowrap ${qty > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{type}: {qty > 0 ? `+${qty}` : qty}개</span>
+                              <div key={type} className={`flex items-center space-x-1 px-2 py-1 rounded-lg border ${qty < 0 ? 'bg-amber-50 border-amber-100' : 'bg-emerald-50 border-emerald-100'}`}>
+                                <span className={`text-[11px] font-bold whitespace-nowrap ${qty < 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                  {qty < 0 ? `미반납 ${Math.abs(qty)}개` : `반납완료 +${qty}개`}
+                                </span>
                               </div>
                             )
                           ))}
@@ -525,34 +523,27 @@ const PalletManager: React.FC<PalletManagerProps> = ({
               </div>
 
               {/* Action Buttons */}
-              <div className="flex space-x-4">
-                <button 
-                  onClick={() => {
-                    const client = clients.find(c => c.id === selectedClientIdForDetail);
-                    if (client) {
-                      setSelectedClientForTrans(client);
-                      setTransType('in');
-                      setIsTransactionModalOpen(true);
-                    }
-                  }}
-                  className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-black shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all flex items-center justify-center space-x-2"
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { const client = clients.find(c => c.id === selectedClientIdForDetail); if (client) { setSelectedClientForTrans(client); setTransType('in'); setIsTransactionModalOpen(true); } }}
+                  className="flex-1 py-3.5 bg-emerald-600 text-white rounded-2xl font-black shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all flex items-center justify-center gap-1.5 text-sm"
                 >
-                  <RefreshCw size={18} />
-                  <span>파렛트 회수 (입고)</span>
+                  <RefreshCw size={16} />
+                  <span>회수</span>
                 </button>
-                <button 
-                  onClick={() => {
-                    const client = clients.find(c => c.id === selectedClientIdForDetail);
-                    if (client) {
-                      setSelectedClientForTrans(client);
-                      setTransType('out');
-                      setIsTransactionModalOpen(true);
-                    }
-                  }}
-                  className="flex-1 py-4 bg-rose-600 text-white rounded-2xl font-black shadow-lg shadow-rose-100 hover:bg-rose-700 transition-all flex items-center justify-center space-x-2"
+                <button
+                  onClick={() => { const client = clients.find(c => c.id === selectedClientIdForDetail); if (client) { setSelectedClientForTrans(client); setTransType('exchange'); setIsTransactionModalOpen(true); } }}
+                  className="flex-1 py-3.5 bg-amber-500 text-white rounded-2xl font-black shadow-lg shadow-amber-100 hover:bg-amber-600 transition-all flex items-center justify-center gap-1.5 text-sm"
                 >
-                  <Plus size={18} />
-                  <span>파렛트 지급 (출고)</span>
+                  <RefreshCw size={16} />
+                  <span>교체</span>
+                </button>
+                <button
+                  onClick={() => { const client = clients.find(c => c.id === selectedClientIdForDetail); if (client) { setSelectedClientForTrans(client); setTransType('out'); setIsTransactionModalOpen(true); } }}
+                  className="flex-1 py-3.5 bg-rose-600 text-white rounded-2xl font-black shadow-lg shadow-rose-100 hover:bg-rose-700 transition-all flex items-center justify-center gap-1.5 text-sm"
+                >
+                  <Plus size={16} />
+                  <span>지급</span>
                 </button>
               </div>
 
@@ -648,13 +639,15 @@ const PalletManager: React.FC<PalletManagerProps> = ({
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsTransactionModalOpen(false)} />
           <div className="relative bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-            <div className={`p-6 border-b border-slate-100 flex items-center justify-between ${transType === 'in' ? 'bg-emerald-50' : 'bg-rose-50'}`}>
+            <div className={`p-6 border-b border-slate-100 flex items-center justify-between ${transType === 'in' ? 'bg-emerald-50' : transType === 'exchange' ? 'bg-amber-50' : 'bg-rose-50'}`}>
               <div className="flex items-center space-x-3">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg ${transType === 'in' ? 'bg-emerald-600' : 'bg-rose-600'}`}>
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg ${transType === 'in' ? 'bg-emerald-600' : transType === 'exchange' ? 'bg-amber-500' : 'bg-rose-600'}`}>
                   <RefreshCw size={20} />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900">파렛트 {transType === 'in' ? '입고 (회수)' : '출고 (추가)'}</h3>
+                  <h3 className="text-lg font-bold text-slate-900">
+                    {transType === 'in' ? '파렛트 회수' : transType === 'exchange' ? '파렛트 교체' : '파렛트 지급'}
+                  </h3>
                   <p className="text-xs text-slate-500">{selectedClientForTrans.name}</p>
                 </div>
               </div>
@@ -674,41 +667,33 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                 </select>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">수량</label>
-                <input 
-                  name="quantity" 
-                  type="number" 
-                  required 
-                  min="1"
-                  placeholder="수량 입력"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
+              {transType === 'exchange' ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">반납 수량</label>
+                    <input name="returnQty" type="number" min="0" defaultValue={0} placeholder="반납" className="w-full bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-400" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-rose-600 uppercase tracking-widest">지급 수량</label>
+                    <input name="newQty" type="number" min="0" defaultValue={0} placeholder="지급" className="w-full bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-rose-400" />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">수량</label>
+                  <input name="quantity" type="number" required min="1" placeholder="수량 입력" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+              )}
 
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">비고 (선택)</label>
-                <input 
-                  name="note" 
-                  type="text" 
-                  placeholder="사유 등 입력"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
-                />
+                <input name="note" type="text" placeholder="사유 등 입력" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
 
               <div className="pt-4 flex space-x-3">
-                <button 
-                  type="button" 
-                  onClick={() => setIsTransactionModalOpen(false)}
-                  className="flex-1 py-3 rounded-xl font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 transition-all"
-                >
-                  취소
-                </button>
-                <button 
-                  type="submit"
-                  className={`flex-1 py-3 rounded-xl font-bold text-white shadow-lg transition-all ${transType === 'in' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100' : 'bg-rose-600 hover:bg-rose-700 shadow-rose-100'}`}
-                >
-                  {transType === 'in' ? '입고 완료' : '출고 완료'}
+                <button type="button" onClick={() => setIsTransactionModalOpen(false)} className="flex-1 py-3 rounded-xl font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 transition-all">취소</button>
+                <button type="submit" className={`flex-1 py-3 rounded-xl font-bold text-white shadow-lg transition-all ${transType === 'in' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100' : transType === 'exchange' ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-100' : 'bg-rose-600 hover:bg-rose-700 shadow-rose-100'}`}>
+                  {transType === 'in' ? '회수 완료' : transType === 'exchange' ? '교체 완료' : '지급 완료'}
                 </button>
               </div>
             </form>
