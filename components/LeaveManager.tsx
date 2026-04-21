@@ -14,29 +14,36 @@ import {
 import { Employee, LeaveRequest, LeaveType, LeaveStatus } from '../types';
 import PageHeader from './PageHeader';
 
+const NON_DEDUCTIBLE_TYPES: LeaveType[] = ['경조사', '기타'];
+
 interface LeaveManagerProps {
   currentUser: Employee;
   employees: Employee[];
   leaveRequests: LeaveRequest[];
   onAddLeaveRequest: (_req: LeaveRequest) => void;
   onUpdateLeaveStatus: (_id: string, _status: LeaveStatus) => void;
+  onUpdateLeave: (_id: string, _updates: Partial<LeaveRequest>) => void;
 }
 
 type LeaveTab = 'my' | 'calendar';
 
 const generateLeaveId = () => `lv-${Math.random().toString(36).substring(2, 11)}`;
 
-const LeaveManager: React.FC<LeaveManagerProps> = ({ 
+const LeaveManager: React.FC<LeaveManagerProps> = ({
   currentUser,
   employees,
   leaveRequests,
   onAddLeaveRequest,
+  onUpdateLeaveStatus,
+  onUpdateLeave,
 }) => {
   const [activeTab, setActiveTab] = useState<LeaveTab>('my');
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(currentUser.id);
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [modifyTarget, setModifyTarget] = useState<LeaveRequest | null>(null);
+  const [modifyForm, setModifyForm] = useState({ startDate: '', endDate: '', reason: '' });
 
   const daysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
   const firstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
@@ -97,7 +104,12 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
   const calculateUsedPersonalLeave = (empId: string) => {
     const today = new Date();
     return leaveRequests
-      .filter(r => r.employeeId === empId && r.status === 'approved' && new Date(r.endDate) < today)
+      .filter(r =>
+        r.employeeId === empId &&
+        r.status === 'approved' &&
+        !NON_DEDUCTIBLE_TYPES.includes(r.type) &&
+        new Date(r.endDate) < today
+      )
       .reduce((sum, r) => sum + r.daysUsed, 0);
   };
 
@@ -343,11 +355,12 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
                           <th className="px-3 md:px-5 py-2 md:py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">항목</th>
                           <th className="px-3 md:px-5 py-2 md:py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">기간</th>
                           <th className="px-3 md:px-5 py-2 md:py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">상태</th>
+                          <th className="px-3 md:px-5 py-2 md:py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">관리</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
                         {filteredRequests.length === 0 ? (
-                          <tr><td colSpan={3} className="px-3 md:px-5 py-12 md:py-16 text-center text-slate-400 font-bold text-sm">신청 내역이 없습니다.</td></tr>
+                          <tr><td colSpan={4} className="px-3 md:px-5 py-12 md:py-16 text-center text-slate-400 font-bold text-sm">신청 내역이 없습니다.</td></tr>
                         ) : filteredRequests.map(req => (
                           <tr key={req.id} className="hover:bg-slate-50 transition-colors">
                             <td className="px-3 md:px-5 py-2.5 md:py-3.5">
@@ -356,9 +369,26 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
                             </td>
                             <td className="px-3 md:px-5 py-2.5 md:py-3.5 text-xs font-bold text-slate-600 whitespace-nowrap">{req.startDate} ~ {req.endDate}</td>
                             <td className="px-3 md:px-5 py-2.5 md:py-3.5 text-center">
-                              {req.status === 'pending' && <span className="bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full text-[10px] font-black uppercase">대기</span>}
-                              {req.status === 'approved' && <span className="bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full text-[10px] font-black uppercase">승인</span>}
-                              {req.status === 'rejected' && <span className="bg-rose-100 text-rose-700 px-2.5 py-1 rounded-full text-[10px] font-black uppercase">반려</span>}
+                              {req.status === 'pending' && <span className="bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full text-[10px] font-black">대기</span>}
+                              {req.status === 'approved' && <span className="bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full text-[10px] font-black">승인</span>}
+                              {req.status === 'cancel_pending' && <span className="bg-rose-100 text-rose-600 px-2.5 py-1 rounded-full text-[10px] font-black">취소 대기</span>}
+                              {req.status === 'cancelled' && <span className="bg-slate-100 text-slate-500 px-2.5 py-1 rounded-full text-[10px] font-black">취소됨</span>}
+                              {req.status === 'rejected' && <span className="bg-rose-100 text-rose-700 px-2.5 py-1 rounded-full text-[10px] font-black">반려</span>}
+                              {req.modifyRequest?.status === 'pending' && <p className="text-[9px] text-violet-500 font-bold mt-0.5">변경 대기중</p>}
+                            </td>
+                            <td className="px-3 md:px-5 py-2.5 md:py-3.5 text-center">
+                              {req.status === 'approved' && (
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <button
+                                    onClick={() => { setModifyTarget(req); setModifyForm({ startDate: req.startDate, endDate: req.endDate, reason: req.reason }); }}
+                                    className="text-[9px] font-black px-2 py-1 rounded-lg bg-violet-100 text-violet-700 hover:bg-violet-200 transition-all"
+                                  >변경</button>
+                                  <button
+                                    onClick={() => onUpdateLeaveStatus(req.id, 'cancel_pending')}
+                                    className="text-[9px] font-black px-2 py-1 rounded-lg bg-rose-100 text-rose-600 hover:bg-rose-200 transition-all"
+                                  >취소</button>
+                                </div>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -369,6 +399,53 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* 변경 신청 모달 */}
+      {modifyTarget && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setModifyTarget(null)} />
+          <div className="relative bg-white w-full max-w-md rounded-[32px] shadow-2xl flex flex-col">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-black text-slate-900">변경 신청</h3>
+                <p className="text-[10px] text-slate-400 font-bold">{modifyTarget.type} · 기존: {modifyTarget.startDate} ~ {modifyTarget.endDate}</p>
+              </div>
+              <button onClick={() => setModifyTarget(null)} className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-full"><X size={20} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">변경 시작일</label>
+                  <input type="date" value={modifyForm.startDate} onChange={(e) => setModifyForm(f => ({ ...f, startDate: e.target.value }))} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-500" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">변경 종료일</label>
+                  <input type="date" value={modifyForm.endDate} onChange={(e) => setModifyForm(f => ({ ...f, endDate: e.target.value }))} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-500" />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">변경 사유</label>
+                <textarea rows={3} value={modifyForm.reason} onChange={(e) => setModifyForm(f => ({ ...f, reason: e.target.value }))} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-500 resize-none" placeholder="변경 사유를 입력하세요." />
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-100 flex gap-3">
+              <button onClick={() => setModifyTarget(null)} className="flex-1 py-3 rounded-2xl font-black text-slate-500 bg-slate-100 hover:bg-slate-200 transition-all">취소</button>
+              <button
+                onClick={() => {
+                  if (!modifyForm.startDate || !modifyForm.endDate || !modifyForm.reason.trim()) return;
+                  const newDays = calculateRequestDays(modifyForm.startDate, modifyForm.endDate, modifyTarget.type);
+                  const modifyRequest = { startDate: modifyForm.startDate, endDate: modifyForm.endDate, reason: modifyForm.reason, daysUsed: newDays, status: 'pending' as const };
+                  onUpdateLeave(modifyTarget.id, { modifyRequest });
+                  setModifyTarget(null);
+                }}
+                className="flex-[2] py-3 rounded-2xl font-black text-white bg-violet-600 hover:bg-violet-700 transition-all flex items-center justify-center gap-2"
+              >
+                <Check size={18} />변경 신청
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -1065,13 +1065,14 @@ const App: React.FC = () => {
             />
           )}
           {currentView === 'hr' && (
-            <HRManager 
-              employees={employees} 
+            <HRManager
+              employees={employees}
               leaveRequests={leaveRequests}
-              onUpdateEmployee={(emp) => updateItem('employees', emp.id, emp)} 
-              onAddEmployee={(emp) => addItem('employees', emp)} 
+              onUpdateEmployee={(emp) => updateItem('employees', emp.id, emp)}
+              onAddEmployee={(emp) => addItem('employees', emp)}
               onDeleteEmployee={(id) => deleteItem('employees', id)}
               onUpdateLeaveStatus={(id, status) => updateItem('leaveRequests', id, { status })}
+              onUpdateLeave={(id, updates) => updateItem('leaveRequests', id, updates)}
               onDeleteLeaveRequest={(id) => deleteItem('leaveRequests', id)}
             />
           )}
@@ -2490,8 +2491,10 @@ const App: React.FC = () => {
                 fixedCosts={fixedCosts}
                 issuedStatements={issuedStatements}
                 onAdd={async (entry) => {
+                  const { note, ...rest } = entry;
                   await addItem('fixedCosts', {
-                    ...entry,
+                    ...rest,
+                    ...(note ? { note } : {}),
                     id: `fc-${Date.now()}`,
                     createdAt: new Date().toISOString(),
                   });
@@ -2533,6 +2536,7 @@ const App: React.FC = () => {
               leaveRequests={leaveRequests}
               onAddLeaveRequest={(req) => addItem('leaveRequests', req)}
               onUpdateLeaveStatus={(id, status) => updateItem('leaveRequests', id, { status })}
+              onUpdateLeave={(id, updates) => updateItem('leaveRequests', id, updates)}
             />
           )}
           {currentView === 'item-management' && (

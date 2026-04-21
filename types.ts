@@ -206,7 +206,15 @@ export interface Employee {
 
 // Leave related interfaces
 export type LeaveType = '연차' | '오전반차' | '오후반차' | '병가' | '경조사' | '기타';
-export type LeaveStatus = 'pending' | 'approved' | 'rejected';
+export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancel_pending' | 'cancelled';
+
+export interface LeaveModifyRequest {
+  startDate: string;
+  endDate: string;
+  reason: string;
+  daysUsed: number;
+  status: 'pending' | 'approved' | 'rejected';
+}
 
 export interface LeaveRequest {
   id: string;
@@ -219,6 +227,7 @@ export interface LeaveRequest {
   status: LeaveStatus;
   requestedAt: string;
   daysUsed: number;
+  modifyRequest?: LeaveModifyRequest;
 }
 
 export interface ChatMessage {
