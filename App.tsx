@@ -931,7 +931,9 @@ const App: React.FC = () => {
                   await updateItem('orders', id, { status });
                 }
               }}
-              onUpdateDeliveryDate={(id, date) => updateItem('orders', id, { deliveryDate: date })} 
+              onUpdateDeliveryDate={(id, date) => updateItem('orders', id, { deliveryDate: date })}
+              onUpdatePallets={(id, p) => updateItem('orders', id, { pallets: p })}
+              palletStocks={pallets}
               onToggleItemChecked={handleToggleItemChecked}
               onUpdateItems={handleUpdateItems}
               onUpdateDeliveryBoxes={(id, boxes) => updateItem('orders', id, { deliveryBoxes: boxes })}
@@ -2624,7 +2626,7 @@ const App: React.FC = () => {
       </main>
 
       {isAdminAuthModalOpen && <AdminAuthModal onClose={() => setIsAdminAuthModalOpen(false)} onSuccess={onAdminAuthSuccess} />}
-      {isAddOrderOpen && <AddOrderModal products={allProducts} clients={clients} productClients={productClients} onClose={() => setIsAddOrderOpen(false)} onSave={async (o) => {
+      {isAddOrderOpen && <AddOrderModal products={allProducts} clients={clients} productClients={productClients} palletStocks={pallets} onClose={() => setIsAddOrderOpen(false)} onSave={async (o) => {
         const orderId = `ORD-${Date.now()}`;
         await addItem('orders', {...o, id: orderId, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
         await checkAndAlertShortage(o.items);

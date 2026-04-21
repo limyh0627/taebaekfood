@@ -57,12 +57,12 @@ const PalletManager: React.FC<PalletManagerProps> = ({
 
     // Add from orders
     orders
-      .filter(o => o.pallets && o.pallets.length > 0 && (o.status === OrderStatus.SHIPPED || o.status === OrderStatus.DISPATCHED))
+      .filter(o => o.pallets && o.pallets.length > 0 && o.status === OrderStatus.SHIPPED)
       .forEach(order => {
         const clientId = order.clientId || 'unknown';
         if (!stats[clientId]) stats[clientId] = { name: order.customerName, pallets: {} };
         
-        order.pallets?.forEach(p => {
+        order.pallets?.filter(p => !p.isExchange).forEach(p => {
           const pType = p.type || '기타';
           const qty = p.quantity || 0;
           if (!stats[clientId].pallets[pType]) stats[clientId].pallets[pType] = 0;

@@ -27,6 +27,7 @@ export interface OrderItem {
 export interface OrderPallet {
   type: string;
   quantity: number;
+  isExchange?: boolean; // 교환 팔레트 — PalletManager 재고 차감 제외
 }
 
 export interface DeliveryBox {

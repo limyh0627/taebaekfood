@@ -1,12 +1,13 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Phone, Mail, Truck, Store, LayoutGrid, CalendarDays } from 'lucide-react';
-import { Product, ProductClient, OrderItem, Order, Client, OrderSource, OrderPallet } from '../types';
+import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, LayoutGrid, Layers } from 'lucide-react';
+import { Product, ProductClient, OrderItem, Order, Client, OrderSource, OrderPallet, PalletStock } from '../types';
 
 interface AddOrderModalProps {
   products: Product[];
   clients: Client[];
   productClients: ProductClient[];
+  palletStocks: PalletStock[];
   onClose: () => void;
   onSave: (_order: Omit<Order, 'id' | 'createdAt' | 'status'>) => void;
 }
@@ -35,7 +36,7 @@ const matchClient = (name: string, query: string): boolean => {
   return name.toLowerCase().includes(q.toLowerCase());
 };
 
-const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, productClients, onClose, onSave }) => {
+const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, productClients, palletStocks, onClose, onSave }) => {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handler);
@@ -55,7 +56,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
     return d.toISOString().split('T')[0];
   });
   const [source, setSource] = useState<OrderSource>('일반');
-  const [pallets] = useState<OrderPallet[]>([]);
+  const [pallets, setPallets] = useState<OrderPallet[]>([]);
   const [isDelivery, setIsDelivery] = useState(false);
 
   const quickClients = useMemo(() => {
@@ -470,6 +471,40 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
                   );
                 })}
               </div>}
+            </section>
+          )}
+
+          {selectedClient && palletStocks.length > 0 && (
+            <section className="space-y-3 animate-in fade-in slide-in-from-top-4 duration-500">
+              <div className="flex items-center space-x-2 text-slate-400">
+                <Layers size={16} />
+                <span className="text-xs font-bold uppercase tracking-widest">팔레트</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {palletStocks.map(ps => {
+                  const current = pallets.find(p => p.type === ps.id)?.quantity ?? 0;
+                  const update = (qty: number) => {
+                    const next = Math.max(0, qty);
+                    setPallets(prev => {
+                      const filtered = prev.filter(p => p.type !== ps.id);
+                      return next > 0 ? [...filtered, { type: ps.id, quantity: next }] : filtered;
+                    });
+                  };
+                  return (
+                    <div key={ps.id} className={`p-3 rounded-2xl border transition-all flex items-center justify-between gap-2 ${current > 0 ? 'bg-white border-indigo-400 shadow-sm ring-1 ring-indigo-400' : 'bg-white border-slate-100'}`}>
+                      <div className="flex flex-col min-w-0">
+                        <p className="text-xs font-bold text-slate-800 truncate">{ps.name}</p>
+                        {current > 0 && <p className="text-[9px] text-indigo-500 font-bold">{current}개 선택</p>}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button type="button" onClick={() => update(current - 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 font-black text-sm">−</button>
+                        <span className="w-6 text-center text-xs font-black text-slate-800">{current}</span>
+                        <button type="button" onClick={() => update(current + 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-indigo-100 text-indigo-600 hover:bg-indigo-200 font-black text-sm">+</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </section>
           )}
         </div>

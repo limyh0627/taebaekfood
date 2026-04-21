@@ -26,9 +26,10 @@ import {
   X,
   ListOrdered,
   GripVertical,
-  ClipboardPaste
+  ClipboardPaste,
+  Layers
 } from 'lucide-react';
-import { Order, OrderStatus, Client, OrderSource, OrderItem, Product, OrderPallet, DeliveryBox, ProductClient } from '../types';
+import { Order, OrderStatus, Client, OrderSource, OrderItem, Product, OrderPallet, DeliveryBox, ProductClient, PalletStock } from '../types';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 
@@ -62,6 +63,7 @@ interface OrdersListProps {
   clients: Client[];
   products: Product[];
   productClients?: ProductClient[];
+  palletStocks?: PalletStock[];
   onUpdateStatus: (id: string, status: OrderStatus) => void;
   onUpdateDeliveryDate: (id: string, date: string) => void;
   onUpdateReceivedDate?: (id: string, date: string) => void;
@@ -87,6 +89,7 @@ interface OrderCardProps {
   clients: Client[];
   products: Product[];
   productClients?: ProductClient[];
+  palletStocks?: PalletStock[];
   editingOrderId: string | null;
   setEditingOrderId: (id: string | null) => void;
   showAddProductSelect: string | null;
@@ -94,6 +97,7 @@ interface OrderCardProps {
   onUpdateItems?: (id: string, items: OrderItem[]) => void;
   onUpdateDeliveryDate: (id: string, date: string) => void;
   onUpdateStatus: (id: string, status: OrderStatus) => void;
+  onUpdatePallets?: (id: string, pallets: OrderPallet[]) => void;
   onToggleItemChecked?: (orderId: string, itemIdx: number, checkedBy?: string) => void;
   onDeleteOrder: (id: string) => void;
   currentUserName?: string;
@@ -141,8 +145,8 @@ export const OrderCard = memo<OrderCardProps>(({
   order, clients, products,
   editingOrderId, setEditingOrderId,
   showAddProductSelect, setShowAddProductSelect,
-  onUpdateItems, onUpdateDeliveryDate, onUpdateStatus,
-  onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1, isHighlighted = false, highlightOrderId, productClients,
+  onUpdateItems, onUpdateDeliveryDate, onUpdateStatus, onUpdatePallets,
+  onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1, isHighlighted = false, highlightOrderId, productClients, palletStocks = [],
 }) => {
   const highlighted = isHighlighted || highlightOrderId === order.id;
   const isEditing = editingOrderId === order.id;
@@ -165,6 +169,7 @@ export const OrderCard = memo<OrderCardProps>(({
     order.status === OrderStatus.DISPATCHED || order.status === OrderStatus.SHIPPED || order.status === OrderStatus.ON_HOLD
   );
   const [showStatusPicker, setShowStatusPicker] = useState(false);
+  const [showPalletPicker, setShowPalletPicker] = useState(false);
 
   useEffect(() => {
     if (!showStatusPicker) return;
@@ -172,6 +177,13 @@ export const OrderCard = memo<OrderCardProps>(({
     document.addEventListener('click', close);
     return () => document.removeEventListener('click', close);
   }, [showStatusPicker]);
+
+  useEffect(() => {
+    if (!showPalletPicker) return;
+    const close = () => setShowPalletPicker(false);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [showPalletPicker]);
 
   // 완제품 모두 체크 시 → 작업완료(DISPATCHED)로 자동 이동 + 접힘
   useEffect(() => {
@@ -543,7 +555,60 @@ export const OrderCard = memo<OrderCardProps>(({
               <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">배송기한</span>
               <span className="text-[9px] font-bold text-slate-500">{(() => { const d = new Date(order.deliveryDate); return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; })()}</span>
             </div>
-            <div className="text-[9px] font-black text-slate-400 uppercase">{order.source}</div>
+            <div className="flex flex-col items-center gap-0.5">
+              {palletStocks.length > 0 && onUpdatePallets && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setShowPalletPicker(p => !p); }}
+                    className="flex items-center gap-0.5 text-[8px] font-black px-1.5 py-0.5 rounded transition-all bg-violet-500 text-white hover:bg-violet-600"
+                  >
+                    <Layers size={8} />
+                    <span>{(order.pallets?.reduce((s, p) => s + p.quantity, 0) ?? 0) > 0 ? order.pallets!.reduce((s, p) => s + p.quantity, 0) + '개' : '팔레트'}</span>
+                  </button>
+                  {showPalletPicker && (
+                    <div
+                      className="absolute bottom-full right-0 mb-1 z-50 bg-white rounded-xl shadow-xl border border-slate-100 flex flex-col min-w-[160px] p-2 gap-1.5"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <p className="text-[9px] font-black text-slate-400 px-1 uppercase tracking-widest">팔레트</p>
+                      {palletStocks.map(ps => {
+                        const entry = order.pallets?.find(p => p.type === ps.id);
+                        const qty = entry?.quantity ?? 0;
+                        const isEx = entry?.isExchange ?? false;
+                        const updatePallet = (newQty: number, exchange: boolean) => {
+                          const filtered = (order.pallets ?? []).filter(p => p.type !== ps.id);
+                          const next = newQty > 0 ? [...filtered, { type: ps.id, quantity: newQty, ...(exchange ? { isExchange: true } : {}) }] : filtered;
+                          onUpdatePallets(order.id, next);
+                        };
+                        return (
+                          <div key={ps.id} className="flex flex-col gap-1 border-b border-slate-50 pb-1.5 last:border-0 last:pb-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[10px] font-bold text-slate-700 truncate">{ps.name}</span>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button type="button" onClick={() => updatePallet(Math.max(0, qty - 1), isEx)} className="w-5 h-5 flex items-center justify-center rounded bg-slate-100 text-slate-500 hover:bg-slate-200 font-black text-xs">−</button>
+                                <span className="w-5 text-center text-[10px] font-black text-slate-800">{qty}</span>
+                                <button type="button" onClick={() => updatePallet(qty + 1, isEx)} className="w-5 h-5 flex items-center justify-center rounded bg-violet-100 text-violet-600 hover:bg-violet-200 font-black text-xs">+</button>
+                              </div>
+                            </div>
+                            {qty > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => updatePallet(qty, !isEx)}
+                                className={`text-[9px] font-black px-2 py-0.5 rounded self-start transition-all ${isEx ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-400 hover:bg-amber-50 hover:text-amber-600'}`}
+                              >
+                                {isEx ? '교환 (차감안함)' : '교환'}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+              <span className="text-[9px] font-black text-slate-400 uppercase text-center">{order.source}</span>
+            </div>
           </>
         )}
       </div>
@@ -759,8 +824,8 @@ const deliveryExtraConfigs = [
 const historyConfig = { id: 'history_col', label: '예전 주문 이력', icon: History, color: 'bg-slate-700', bgColor: 'bg-slate-50/80', borderColor: 'border-slate-200', textColor: 'text-slate-700', statusFilter: [OrderStatus.DELIVERED], targetStatus: undefined };
 
 const OrdersList: React.FC<OrdersListProps> = ({
-  title, subtitle, orders, clients, products, productClients,
-  onUpdateStatus, onUpdateDeliveryDate,
+  title, subtitle, orders, clients, products, productClients, palletStocks,
+  onUpdateStatus, onUpdateDeliveryDate, onUpdatePallets,
   onUpdateItems, onUpdateDeliveryBoxes,
   onToggleInvoicePrinted, onToggleItemChecked,
   onDeleteOrder, onAddClick, onPasteClick,
@@ -874,10 +939,10 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
   // OrderCard/OrderSourceGroup에 공통으로 넘길 props
   const cardSharedProps = {
-    clients, products, productClients,
+    clients, products, productClients, palletStocks,
     editingOrderId, setEditingOrderId,
     showAddProductSelect, setShowAddProductSelect,
-    onUpdateItems, onUpdateDeliveryDate, onUpdateStatus,
+    onUpdateItems, onUpdateDeliveryDate, onUpdateStatus, onUpdatePallets,
     onToggleItemChecked, onDeleteOrder, currentUserName,
     highlightOrderId,
   };
