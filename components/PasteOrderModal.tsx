@@ -34,14 +34,15 @@ type ParsedLine = {
 
 const parseLine = (line: string, pool: Product[]): ParsedLine => {
   // "3박스", "5개", "1kg" 형태에서 마지막 수량+단위 추출
-  const re = /(\d+(?:\.\d+)?)\s*(박스|box|개|kg|g|L|ml|l)\b/gi;
+  // ※ \b 는 한글(非ASCII) 뒤에서 동작하지 않으므로 (?:\s|$) 로 대체
+  const re = /(\d+(?:\.\d+)?)\s*(박스|box|개|kg|g|L|ml|l)(?=\s|$)/gi;
   let qty = 1, isBox = true, m: RegExpExecArray | null, last: RegExpExecArray | null = null;
   while ((m = re.exec(line)) !== null) last = m;
   if (last) {
     qty = parseFloat(last[1]);
     isBox = /박스|box/i.test(last[2]);
   }
-  const rawName = line.replace(/\d+(?:\.\d+)?\s*(?:박스|box|개|kg|g|L|ml|l)\b/gi, '').trim();
+  const rawName = line.replace(/\d+(?:\.\d+)?\s*(?:박스|box|개|kg|g|L|ml|l)(?=\s|$)/gi, '').trim();
   const scored = pool
     .map(p => ({ product: p, score: scoreProduct(p.name, rawName) }))
     .sort((a, b) => b.score - a.score);
@@ -360,12 +361,28 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                         </div>
                       </div>
                     </div>
-                    {matched && (
-                      <div className="flex items-center gap-1">
-                        <CheckCircle2 size={11} className="text-emerald-500 shrink-0" />
-                        <span className="text-[10px] font-bold text-emerald-700">{matched.name} · {line.qty}{line.isBox ? '박스' : '개'}</span>
-                      </div>
-                    )}
+                    {matched && (() => {
+                      const pc = productClients.find(p => p.productId === matched.id && p.clientId === selectedClient?.id);
+                      const subs: string[] = [];
+                      if (pc?.boxTypeId) { const b = products.find(p => p.id === pc.boxTypeId); if (b) subs.push(b.name); }
+                      if (pc?.tapeTypeId) { const t = products.find(p => p.id === pc.tapeTypeId); if (t) subs.push(t.name); }
+                      if (!subs.length) {
+                        (matched.submaterials ?? []).forEach(sm => {
+                          const fullSub = products.find(p => p.id === sm.id);
+                          const cat = fullSub?.category || sm.category || '';
+                          if (['마개', '테이프', '박스', '용기', '라벨', 'Cap', 'Tape'].includes(cat)) subs.push(sm.name);
+                        });
+                      }
+                      return (
+                        <div className="flex flex-wrap items-center gap-1">
+                          <CheckCircle2 size={11} className="text-emerald-500 shrink-0" />
+                          <span className="text-[10px] font-bold text-emerald-700">{matched.name} · {line.qty}{line.isBox ? '박스' : '개'}</span>
+                          {subs.map((name, i) => (
+                            <span key={i} className="text-[8px] font-bold text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">{name}</span>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}
