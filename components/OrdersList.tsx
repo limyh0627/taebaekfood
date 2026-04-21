@@ -316,12 +316,12 @@ export const OrderCard = memo<OrderCardProps>(({
                 <div key={idx} className="flex flex-col gap-0.5 text-[10px] font-bold border-b border-slate-50 pb-1.5 last:border-0">
                   <div className="flex items-center gap-1.5">
                     <span className="truncate text-slate-700 flex-1">{item.name}</span>
-                    {item.isBoxUnit && item.unitsPerBox ? (
+                    {item.isBoxUnit && item.boxQuantity ? (
                       <div className="flex items-center gap-0.5 shrink-0">
-                        <input type="number" value={item.boxQuantity ?? Math.round(item.quantity / item.unitsPerBox)} onChange={(e) => handleDirectQtyChange(idx, e.target.value)}
+                        <input type="number" value={item.boxQuantity ?? (item.unitsPerBox ? Math.round(item.quantity / item.unitsPerBox) : item.quantity)} onChange={(e) => handleDirectQtyChange(idx, e.target.value)}
                           className="w-8 text-center bg-slate-50 border border-indigo-200 rounded outline-none font-bold py-0.5" />
                         <span className="text-[8px] font-bold text-slate-400">박스</span>
-                        <span className="text-[8px] font-bold text-indigo-400">={item.quantity}개</span>
+                        {item.unitsPerBox ? <span className="text-[8px] font-bold text-indigo-400">={item.quantity}개</span> : null}
                       </div>
                     ) : (
                       <input type="number" value={item.quantity} onChange={(e) => handleDirectQtyChange(idx, e.target.value)}
@@ -369,8 +369,10 @@ export const OrderCard = memo<OrderCardProps>(({
                     </div>
                     <span className={`truncate ${isItemChecked ? 'text-emerald-800 line-through opacity-50' : 'text-slate-700'}`}>{abbrev(item.name)}</span>
                     <span className={`ml-1.5 px-1 py-0.5 rounded text-[8px] font-black shrink-0 ${isItemChecked ? 'text-emerald-700 bg-emerald-100' : 'text-indigo-600 bg-indigo-50'}`}>
-                      {item.isBoxUnit && item.boxQuantity && item.unitsPerBox
-                        ? `${item.boxType ? item.boxType + ' ' : ''}${item.boxQuantity}박스(${item.quantity}개)`
+                      {item.isBoxUnit && item.boxQuantity
+                        ? item.unitsPerBox
+                          ? `${item.boxType ? item.boxType + ' ' : ''}${item.boxQuantity}박스(${item.quantity}개)`
+                          : `${item.boxQuantity}박스`
                         : `${item.quantity}${productInfo?.unit || '개'}`}
                     </span>
                   </div>

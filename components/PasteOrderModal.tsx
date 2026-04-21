@@ -168,8 +168,10 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
         name: product.name,
         quantity: actualQty,
         price: product.price || 0,
-        ...(line.isBox && uPerBox > 0 ? {
-          isBoxUnit: true, boxQuantity: line.qty, unitsPerBox: uPerBox, boxType: cfg.boxType,
+        ...(line.isBox ? {
+          isBoxUnit: true,
+          boxQuantity: line.qty,
+          ...(uPerBox > 0 ? { unitsPerBox: uPerBox, boxType: cfg.boxType } : {}),
         } : {}),
       }];
     });
