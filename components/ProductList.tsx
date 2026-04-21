@@ -138,6 +138,7 @@ const ProductList: React.FC<ProductListProps> = ({
   const [rmReceived, setRmReceived] = useState('');
   const [rmUsed, setRmUsed] = useState('');
   const [rmNote, setRmNote] = useState('');
+  const [rmCanQty, setRmCanQty] = useState('');
   const [rmFilter, setRmFilter] = useState(RAW_MATERIALS[0]);
   const [rmMonth, setRmMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [rmViewType, setRmViewType] = useState<'all' | 'received' | 'used'>('all');
@@ -1163,12 +1164,23 @@ const ProductList: React.FC<ProductListProps> = ({
                 </div>
 
                 {/* 새 기록 탭 */}
-                {rmSheetTab === 'new' && (
+                {rmSheetTab === 'new' && (() => {
+                  // 캔 단위 입고 지원 원료 (1캔 = 16.5 kg)
+                  const CAN_MATERIALS: Record<string, number> = {
+                    '깨분참기름': 16.5,
+                    '수입들기름': 16.5,
+                  };
+                  const kgPerCan = CAN_MATERIALS[rmMaterial];
+                  const canCount = Number(rmCanQty) || 0;
+                  const calcKg = kgPerCan && canCount > 0
+                    ? Math.round(canCount * kgPerCan * 10) / 10
+                    : null;
+                  return (
                   <div className="px-5 pt-4 pb-6 space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t('원료명', 'Material')}</label>
-                        <select value={rmMaterial} onChange={e => setRmMaterial(e.target.value)}
+                        <select value={rmMaterial} onChange={e => { setRmMaterial(e.target.value); setRmCanQty(''); setRmReceived(''); }}
                           className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-emerald-400">
                           {RAW_MATERIALS.map(m => <option key={m} value={m}>{isEn ? RAW_MATERIALS_EN[m] ?? m : m}</option>)}
                         </select>
@@ -1179,10 +1191,42 @@ const ProductList: React.FC<ProductListProps> = ({
                           className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-emerald-400 cursor-pointer" />
                       </div>
                     </div>
+
+                    {/* 캔 단위 입력 — 깨분참기름·수입들기름 선택 시 표시 */}
+                    {kgPerCan && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10px] font-black text-amber-600 uppercase tracking-widest">캔 수량 입력 (1캔 = {kgPerCan} kg)</label>
+                          {calcKg !== null && (
+                            <span className="text-xs font-black text-amber-700">
+                              {canCount}캔 × {kgPerCan}kg = <span className="text-emerald-700">{calcKg} kg</span>
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            placeholder="캔 수"
+                            value={rmCanQty}
+                            onChange={e => {
+                              setRmCanQty(e.target.value);
+                              const n = Number(e.target.value);
+                              if (n > 0) setRmReceived(String(Math.round(n * kgPerCan * 10) / 10));
+                              else setRmReceived('');
+                            }}
+                            className="w-28 bg-white border border-amber-300 rounded-xl px-3 py-2 text-sm font-black outline-none focus:border-amber-500 text-center"
+                          />
+                          <span className="text-sm font-bold text-amber-600">캔</span>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t('입고량 (kg)', 'Received (kg)')}</label>
-                        <input type="number" placeholder="0" value={rmReceived} onChange={e => setRmReceived(e.target.value)}
+                        <input type="number" placeholder="0" value={rmReceived}
+                          onChange={e => { setRmReceived(e.target.value); if (kgPerCan) setRmCanQty(''); }}
                           className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-emerald-400" />
                       </div>
                       <div>
@@ -1216,7 +1260,7 @@ const ProductList: React.FC<ProductListProps> = ({
                           addedBy: currentUser?.name,
                           type: 'manual',
                         });
-                        setRmReceived(''); setRmUsed(''); setRmNote('');
+                        setRmReceived(''); setRmUsed(''); setRmNote(''); setRmCanQty('');
                         setShowRmSheet(false);
                       }}
                       className="w-full py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 active:scale-[0.99] transition-all"
@@ -1224,7 +1268,8 @@ const ProductList: React.FC<ProductListProps> = ({
                       {t('추가', 'Add')}
                     </button>
                   </div>
-                )}
+                  );
+                })()}
 
                 {/* 전월이월 탭 */}
                 {rmSheetTab === 'carryover' && (
