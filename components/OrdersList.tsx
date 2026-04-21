@@ -198,6 +198,9 @@ export const OrderCard = memo<OrderCardProps>(({
     if (item.isBoxUnit && item.unitsPerBox) {
       // 박스 수 입력 → 낱개 수 자동 계산
       newItems[idx] = { ...item, boxQuantity: qty, quantity: qty * item.unitsPerBox };
+    } else if (item.isBoxUnit) {
+      // 박스 단위이지만 unitsPerBox 미설정 — 박스 수 = quantity
+      newItems[idx] = { ...item, boxQuantity: qty, quantity: qty };
     } else {
       newItems[idx] = { ...item, quantity: qty };
     }
