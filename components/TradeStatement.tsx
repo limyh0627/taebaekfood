@@ -2,7 +2,8 @@
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import {
   FileText, Printer, Search, ChevronDown, CalendarDays,
-  Package, ClipboardList, ChevronRight, CheckCircle2, Edit2, Plus, X, ArrowLeft
+  Package, ClipboardList, ChevronRight, CheckCircle2, Edit2, Plus, X, ArrowLeft,
+  Tag, Save, AlertCircle
 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
 import { Order, Product, Client, ProductClient, OrderStatus, IssuedStatement } from '../types';
@@ -95,6 +96,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   ]);
   // ── 품목명 드롭다운 검색 ──
   const [activeSearchRow, setActiveSearchRow] = useState<number | null>(null);
+
+  // ── 메인 탭 ──
+  const [mainTab, setMainTab] = useState<'history' | 'prices'>('history');
+
+  // ── 단가관리 탭 ──
+  const [priceClientId, setPriceClientId] = useState('');
+  const [priceClientSearch, setPriceClientSearch] = useState('');
+  const [priceEdits, setPriceEdits] = useState<Record<string, string>>({});
+  const [priceTaxEdits, setPriceTaxEdits] = useState<Record<string, '과세' | '면세'>>({});
+  const [priceSaving, setPriceSaving] = useState(false);
+  const [priceSaved, setPriceSaved] = useState(false);
 
   // ── 발행내역 필터 ──
   const [histFrom, setHistFrom] = useState(monthStart);
@@ -618,20 +630,224 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         title="거래명세서"
         subtitle="발행된 전표를 조회하거나 새 전표를 생성합니다."
         right={<div className="flex gap-2">
-          <button
-            onClick={() => openCreate('매입')}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-black bg-rose-600 text-white hover:bg-rose-700 shadow-sm transition-all"
-          >
-            <Plus size={14} strokeWidth={3}/>매입전표
-          </button>
-          <button
-            onClick={() => openCreate('매출')}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-black bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-all"
-          >
-            <Plus size={14} strokeWidth={3}/>매출전표
-          </button>
+          {mainTab === 'history' ? (
+            <>
+              <button
+                onClick={() => openCreate('매입')}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-black bg-rose-600 text-white hover:bg-rose-700 shadow-sm transition-all"
+              >
+                <Plus size={14} strokeWidth={3}/>매입전표
+              </button>
+              <button
+                onClick={() => openCreate('매출')}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-black bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-all"
+              >
+                <Plus size={14} strokeWidth={3}/>매출전표
+              </button>
+            </>
+          ) : null}
+          <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+            <button
+              onClick={() => setMainTab('history')}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'history' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              <ClipboardList size={13}/>전표내역
+            </button>
+            <button
+              onClick={() => setMainTab('prices')}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'prices' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              <Tag size={13}/>단가관리
+            </button>
+          </div>
         </div>}
       />
+
+      {/* ── 단가관리 탭 ── */}
+      {mainTab === 'prices' && (() => {
+        // 거래처별로 묶인 productClients
+        const filteredClients = clients
+          .filter(c => !priceClientSearch || c.name.includes(priceClientSearch))
+          .sort((a, b) => a.name.localeCompare(b.name));
+
+        const selectedPcRows = priceClientId
+          ? productClients
+              .filter(pc => pc.clientId === priceClientId)
+              .map(pc => ({ pc, product: allProducts.find(p => p.id === pc.productId) }))
+              .filter(r => r.product)
+              .sort((a, b) => a.product!.name.localeCompare(b.product!.name))
+          : [];
+
+        const hasMissingPrice = selectedPcRows.some(r => !r.pc.price);
+
+        const saveAll = async () => {
+          setPriceSaving(true);
+          for (const [pcId, val] of Object.entries(priceEdits)) {
+            const n = parseFloat(val);
+            if (!isNaN(n) && n >= 0) onUpdateProductClientPrice?.(pcId, n);
+          }
+          for (const [pcId, tax] of Object.entries(priceTaxEdits)) {
+            onUpdateProductClientTaxType?.(pcId, tax);
+          }
+          setPriceEdits({});
+          setPriceTaxEdits({});
+          setPriceSaving(false);
+          setPriceSaved(true);
+          setTimeout(() => setPriceSaved(false), 2000);
+        };
+
+        const hasEdits = Object.keys(priceEdits).length > 0 || Object.keys(priceTaxEdits).length > 0;
+
+        return (
+          <div className="flex gap-4 min-h-[600px]">
+            {/* 좌측: 거래처 목록 */}
+            <div className="w-56 shrink-0 bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden">
+              <div className="px-3 pt-3 pb-2 border-b border-slate-100">
+                <div className="relative">
+                  <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
+                  <input
+                    type="text"
+                    placeholder="거래처 검색..."
+                    value={priceClientSearch}
+                    onChange={e => setPriceClientSearch(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-7 pr-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-violet-300"
+                  />
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
+                {filteredClients.map(c => {
+                  const pcCount = productClients.filter(pc => pc.clientId === c.id).length;
+                  const missingCount = productClients.filter(pc => pc.clientId === c.id && !pc.price).length;
+                  if (pcCount === 0) return null;
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => { setPriceClientId(c.id); setPriceEdits({}); setPriceTaxEdits({}); }}
+                      className={`w-full text-left px-3 py-2.5 transition-all hover:bg-violet-50 ${priceClientId === c.id ? 'bg-violet-50 border-r-2 border-violet-500' : ''}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className={`text-xs font-black truncate ${priceClientId === c.id ? 'text-violet-700' : 'text-slate-700'}`}>{c.name}</span>
+                        {missingCount > 0 && (
+                          <span className="text-[9px] font-black bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full ml-1 shrink-0">{missingCount}</span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-400">{pcCount}품목</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 우측: 단가 테이블 */}
+            <div className="flex-1 bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden">
+              {!priceClientId ? (
+                <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-300">
+                  <Tag size={40} strokeWidth={1.5}/>
+                  <span className="text-sm font-bold">좌측에서 거래처를 선택하세요</span>
+                </div>
+              ) : (
+                <>
+                  {/* 헤더 */}
+                  <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <span className="font-black text-slate-900 text-sm">{clients.find(c => c.id === priceClientId)?.name}</span>
+                      <span className="text-xs text-slate-400">{selectedPcRows.length}품목</span>
+                      {hasMissingPrice && (
+                        <div className="flex items-center gap-1 text-[10px] font-black text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">
+                          <AlertCircle size={10}/>단가 미입력 품목 있음
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={saveAll}
+                      disabled={!hasEdits || priceSaving}
+                      className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black transition-all ${
+                        priceSaved ? 'bg-emerald-500 text-white' :
+                        hasEdits ? 'bg-violet-600 text-white hover:bg-violet-700' :
+                        'bg-slate-100 text-slate-300 cursor-not-allowed'
+                      }`}
+                    >
+                      <Save size={12}/>{priceSaved ? '저장완료!' : '전체 저장'}
+                    </button>
+                  </div>
+
+                  {/* 테이블 */}
+                  <div className="flex-1 overflow-y-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead className="sticky top-0 bg-slate-50 z-10">
+                        <tr>
+                          <th className="px-5 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest">품목명</th>
+                          <th className="px-4 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest">용량/규격</th>
+                          <th className="px-4 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">현재 단가</th>
+                          <th className="px-4 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">수정 단가</th>
+                          <th className="px-4 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">과세</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {selectedPcRows.map(({ pc, product }) => {
+                          const edited = priceEdits[pc.id] !== undefined;
+                          const taxEdited = priceTaxEdits[pc.id] !== undefined;
+                          const currentTax = priceTaxEdits[pc.id] ?? pc.taxType ?? '과세';
+                          const inputVal = priceEdits[pc.id] ?? '';
+                          const hasNoPrice = !pc.price;
+                          return (
+                            <tr key={pc.id} className={`hover:bg-slate-50 transition-colors ${hasNoPrice ? 'bg-amber-50/40' : ''}`}>
+                              <td className="px-5 py-3">
+                                <span className="text-xs font-black text-slate-800">{product!.name}</span>
+                                {hasNoPrice && <span className="ml-1.5 text-[9px] font-black text-amber-500 bg-amber-100 px-1.5 py-0.5 rounded-full">미입력</span>}
+                              </td>
+                              <td className="px-4 py-3 text-[11px] text-slate-400">{product!.용량 || '-'}</td>
+                              <td className="px-4 py-3 text-right">
+                                <span className={`text-xs font-bold ${hasNoPrice ? 'text-slate-300' : 'text-slate-700'}`}>
+                                  {pc.price ? `${fmt(pc.price)}원` : '—'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex justify-end">
+                                  <input
+                                    type="number"
+                                    placeholder={pc.price ? String(pc.price) : '단가 입력'}
+                                    value={inputVal}
+                                    onChange={e => setPriceEdits(prev => ({ ...prev, [pc.id]: e.target.value }))}
+                                    className={`w-28 text-right bg-white border rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-violet-300 transition-all ${
+                                      edited ? 'border-violet-400 bg-violet-50' : 'border-slate-200'
+                                    }`}
+                                  />
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <button
+                                  onClick={() => setPriceTaxEdits(prev => ({
+                                    ...prev,
+                                    [pc.id]: (priceTaxEdits[pc.id] ?? pc.taxType ?? '과세') === '과세' ? '면세' : '과세'
+                                  }))}
+                                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black border transition-all ${
+                                    taxEdited
+                                      ? currentTax === '면세'
+                                        ? 'bg-indigo-500 text-white border-indigo-500'
+                                        : 'bg-slate-500 text-white border-slate-500'
+                                      : currentTax === '면세'
+                                        ? 'bg-indigo-100 text-indigo-700 border-indigo-200'
+                                        : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                                  }`}
+                                >
+                                  {currentTax}
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {mainTab === 'history' && <>
 
       {/* ── 필터 바 ── */}
       <div className="bg-white rounded-2xl border border-slate-200 px-4 py-3 space-y-2.5">
@@ -1351,6 +1567,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           </div>
         </div>
       )}
+
+      </>}
 
     </div>
   );
