@@ -187,6 +187,7 @@ const ProductList: React.FC<ProductListProps> = ({
   const [expandedClientRowId, setExpandedClientRowId] = useState<string | null>(null);
   const [finishedFilter, setFinishedFilter] = useState<'all' | 'oil' | 'powder'>('all');
   const [stockOnly, setStockOnly] = useState(false);
+  const [zeroStockOnly, setZeroStockOnly] = useState(false);
   const [showClientSearch, setShowClientSearch] = useState(false);
   const [clientSearchTerm, setClientSearchTerm] = useState('');
   const [selectedSearchClientId, setSelectedSearchClientId] = useState<string | null>(null);
@@ -289,6 +290,9 @@ const ProductList: React.FC<ProductListProps> = ({
     if (stockOnly) {
       result = result.filter(p => p.stock > 0);
     }
+    if (zeroStockOnly) {
+      result = result.filter(p => p.stock <= 0);
+    }
 
     const CATEGORY_ORDER = ['완제품', '향미유', '고춧가루', '용기', '마개', '테이프', '박스', '라벨'];
     return [...result].sort((a, b) => {
@@ -301,7 +305,7 @@ const ProductList: React.FC<ProductListProps> = ({
       const bIdx = bCatIdx === -1 ? 99 : bCatIdx;
       return aIdx - bIdx;
     });
-  }, [products, activeTab, activeCategory, activeSupplierId, searchTerm, orderRequests, confirmedOrders, suppliers, clients, topTab, finishedFilter, stockOnly]);
+  }, [products, activeTab, activeCategory, activeSupplierId, searchTerm, orderRequests, confirmedOrders, suppliers, clients, topTab, finishedFilter, stockOnly, zeroStockOnly]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -464,11 +468,18 @@ const ProductList: React.FC<ProductListProps> = ({
               ))}
               <div className="ml-2 h-5 w-px bg-slate-200" />
               <button
-                onClick={() => setStockOnly(p => !p)}
+                onClick={() => { setStockOnly(p => !p); setZeroStockOnly(false); }}
                 className={`px-4 py-2 rounded-2xl border text-[11px] font-black transition-all flex items-center gap-1.5 ${stockOnly ? 'bg-emerald-50 border-emerald-200 text-emerald-600 ring-2 ring-emerald-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
               >
                 <span className={`w-3 h-3 rounded-full border-2 transition-colors ${stockOnly ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'}`} />
                 재고있는 것만
+              </button>
+              <button
+                onClick={() => { setZeroStockOnly(p => !p); setStockOnly(false); }}
+                className={`px-4 py-2 rounded-2xl border text-[11px] font-black transition-all flex items-center gap-1.5 ${zeroStockOnly ? 'bg-rose-50 border-rose-200 text-rose-600 ring-2 ring-rose-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
+              >
+                <span className={`w-3 h-3 rounded-full border-2 transition-colors ${zeroStockOnly ? 'bg-rose-500 border-rose-500' : 'border-slate-300'}`} />
+                재고없는 것만
               </button>
             </div>
           )}
