@@ -11,6 +11,20 @@ import {
   DocumentData,
   QuerySnapshot
 } from "firebase/firestore";
+
+export const subscribeToDocument = <T>(
+  collectionName: string,
+  docId: string,
+  callback: (data: T | null) => void
+) => {
+  return onSnapshot(doc(db, collectionName, docId), (snap) => {
+    callback(snap.exists() ? (snap.data() as T) : null);
+  });
+};
+
+export const setDocument = async (collectionName: string, docId: string, data: any) => {
+  await setDoc(doc(db, collectionName, docId), data, { merge: true });
+};
 import { db } from "../firebase";
 
 export const subscribeToCollection = <T extends { id: string }>(

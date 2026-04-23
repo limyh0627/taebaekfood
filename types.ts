@@ -294,6 +294,18 @@ export interface IssuedStatement {
   receivedAt?: string;    // 입고 확인 일시 (매입 전표)
 }
 
+export interface CompanyInfo {
+  name: string;           // 상호
+  ceoName: string;        // 대표자명
+  bizNo: string;          // 사업자등록번호 (000-00-00000)
+  bizType: string;        // 업태
+  bizItem: string;        // 종목
+  address: string;        // 사업장 주소
+  phone?: string;         // 전화번호
+  fax?: string;           // 팩스번호
+  email?: string;         // 이메일
+}
+
 export interface AppNotification {
   id: string;
   type: 'new_order' | 'confirmation' | 'mention';

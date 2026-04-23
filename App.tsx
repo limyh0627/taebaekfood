@@ -60,7 +60,8 @@ import {
   addItem,
   updateItem,
   deleteItem,
-  setProductClients
+  setProductClients,
+  setDocument,
 } from './src/services/firebaseService';
 import { useAppData } from './src/hooks/useAppData';
 import { collection, getDocs, writeBatch, doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
@@ -197,6 +198,7 @@ const App: React.FC = () => {
     itemBoms,
     itemCustomers,
     fixedCosts,
+    companyInfo,
     isDataLoading,
   } = useAppData();
 
@@ -2483,6 +2485,8 @@ const App: React.FC = () => {
               onClearPendingInvoice={() => setPendingInvoice(null)}
               confirmedOrders={confirmedOrders}
               onAddConfirmedOrder={(item) => addItem('confirmedOrders', item)}
+              companyInfo={companyInfo}
+              onSaveCompanyInfo={(info) => setDocument('settings', 'company', info)}
             />
           )}
           {currentView === 'cost-management' && (

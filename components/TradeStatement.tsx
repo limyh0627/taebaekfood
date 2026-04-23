@@ -6,7 +6,7 @@ import {
   Tag, Save, AlertCircle
 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
-import { Order, Product, Client, ProductClient, OrderStatus, IssuedStatement } from '../types';
+import { Order, Product, Client, ProductClient, OrderStatus, IssuedStatement, CompanyInfo } from '../types';
 import PageHeader from './PageHeader';
 
 interface TradeStatementProps {
@@ -25,6 +25,8 @@ interface TradeStatementProps {
   onClearPendingInvoice?: () => void;
   confirmedOrders?: { id: string; quantity: number }[];
   onAddConfirmedOrder?: (item: { id: string; quantity: number }) => void;
+  companyInfo?: CompanyInfo | null;
+  onSaveCompanyInfo?: (info: CompanyInfo) => void;
 }
 
 type StatementType = '매출' | '매입';
@@ -57,6 +59,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   onClearPendingInvoice,
   confirmedOrders = [],
   onAddConfirmedOrder,
+  companyInfo,
+  onSaveCompanyInfo,
 }) => {
 
   // ── 전표 생성 오버레이 ──
@@ -98,7 +102,20 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [activeSearchRow, setActiveSearchRow] = useState<number | null>(null);
 
   // ── 메인 탭 ──
-  const [mainTab, setMainTab] = useState<'history' | 'prices'>('history');
+  const [mainTab, setMainTab] = useState<'history' | 'prices' | 'taxinvoice'>('history');
+
+  // ── 회사 설정 모달 ──
+  const [showCompanyModal, setShowCompanyModal] = useState(false);
+  const [companyForm, setCompanyForm] = useState<CompanyInfo>({
+    name: '', ceoName: '', bizNo: '', bizType: '', bizItem: '', address: '', phone: '', fax: '', email: '',
+  });
+
+  // ── 세금계산서 탭 ──
+  const [taxClientId, setTaxClientId] = useState('');
+  const [taxClientSearch, setTaxClientSearch] = useState('');
+  const [taxStmtId, setTaxStmtId] = useState('');
+  const [taxBuyerInfo, setTaxBuyerInfo] = useState({ bizNo: '', ceoName: '', bizType: '', bizItem: '', address: '' });
+  const taxPrintRef = useRef<HTMLDivElement>(null);
 
   // ── 단가관리 탭 ──
   const [priceClientId, setPriceClientId] = useState('');
@@ -646,6 +663,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               </button>
             </>
           ) : null}
+          <button
+            onClick={() => { setShowCompanyModal(true); setCompanyForm(companyInfo ?? { name:'',ceoName:'',bizNo:'',bizType:'',bizItem:'',address:'',phone:'',fax:'',email:'' }); }}
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-black bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all"
+            title="회사 정보 설정"
+          >
+            <Save size={13}/>회사정보
+          </button>
           <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
             <button
               onClick={() => setMainTab('history')}
@@ -658,6 +682,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'prices' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
             >
               <Tag size={13}/>단가관리
+            </button>
+            <button
+              onClick={() => setMainTab('taxinvoice')}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'taxinvoice' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              <FileText size={13}/>세금계산서
             </button>
           </div>
         </div>}
@@ -846,6 +876,308 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           </div>
         );
       })()}
+
+      {/* ── 세금계산서 탭 ── */}
+      {mainTab === 'taxinvoice' && (() => {
+        const taxClients = clients
+          .filter(c => !taxClientSearch || c.name.includes(taxClientSearch))
+          .sort((a, b) => a.name.localeCompare(b.name));
+
+        const clientStmts = issuedStatements
+          .filter(s => s.clientId === taxClientId && s.type === '매출')
+          .sort((a, b) => b.tradeDate.localeCompare(a.tradeDate));
+
+        const selectedStmt = clientStmts.find(s => s.id === taxStmtId) ?? null;
+
+        const handleTaxPrint = () => {
+          if (!selectedStmt) return;
+          const el = taxPrintRef.current;
+          if (!el) return;
+          const win = window.open('', '_blank', 'width=900,height=700');
+          if (!win) return;
+          win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>세금계산서</title>
+            <style>
+              *{box-sizing:border-box;margin:0;padding:0;}
+              body{font-family:'Malgun Gothic','맑은 고딕',sans-serif;font-size:10px;background:#fff;padding:12px;}
+              .wrap{border:2px solid #000;width:100%;}
+              .title-row{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #000;padding:6px 10px;}
+              .title-row h1{font-size:18px;font-weight:900;letter-spacing:6px;}
+              .title-row .doc-no{font-size:10px;color:#555;}
+              .info-grid{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #000;}
+              .info-box{padding:6px 8px;border-right:1px solid #000;}
+              .info-box:last-child{border-right:none;}
+              .info-box h3{font-size:9px;font-weight:900;color:#333;margin-bottom:4px;border-bottom:1px solid #eee;padding-bottom:2px;}
+              .info-row{display:flex;gap:4px;margin-bottom:2px;font-size:9px;}
+              .info-row label{color:#666;width:64px;shrink:0;}
+              .info-row span{font-weight:700;}
+              .items-table{width:100%;border-collapse:collapse;font-size:9px;}
+              .items-table th{background:#f5f5f5;border:1px solid #ccc;padding:4px 6px;font-weight:900;text-align:center;}
+              .items-table td{border:1px solid #ccc;padding:4px 6px;text-align:right;}
+              .items-table td.left{text-align:left;}
+              .items-table td.center{text-align:center;}
+              .total-row{display:flex;justify-content:flex-end;gap:16px;padding:8px 10px;border-top:2px solid #000;font-size:11px;font-weight:900;}
+              .supply{color:#1a56db;} .tax{color:#e3a008;} .total{color:#111;}
+              @media print{body{padding:0;} @page{margin:8mm;}}
+            </style></head><body>`);
+          win.document.write(el.innerHTML);
+          win.document.write('</body></html>');
+          win.document.close();
+          win.focus();
+          setTimeout(() => win.print(), 500);
+        };
+
+        const sup = companyInfo;
+        const buyer = clients.find(c => c.id === taxClientId);
+
+        return (
+          <div className="flex gap-4 min-h-[600px]">
+            {/* 좌측: 거래처 + 발행내역 선택 */}
+            <div className="w-64 shrink-0 flex flex-col gap-3">
+              {/* 거래처 목록 */}
+              <div className="bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden" style={{maxHeight:280}}>
+                <div className="px-3 pt-3 pb-2 border-b border-slate-100">
+                  <div className="relative">
+                    <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
+                    <input type="text" placeholder="거래처 검색..." value={taxClientSearch}
+                      onChange={e => setTaxClientSearch(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-7 pr-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
+                  </div>
+                </div>
+                <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
+                  {taxClients.map(c => (
+                    <button key={c.id} onClick={() => { setTaxClientId(c.id); setTaxStmtId(''); }}
+                      className={`w-full text-left px-3 py-2.5 transition-all hover:bg-emerald-50 ${taxClientId === c.id ? 'bg-emerald-50 border-r-2 border-emerald-500' : ''}`}>
+                      <span className={`text-xs font-black ${taxClientId === c.id ? 'text-emerald-700' : 'text-slate-700'}`}>{c.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* 발행된 매출 전표 목록 */}
+              {taxClientId && (
+                <div className="bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden flex-1">
+                  <div className="px-3 py-2 border-b border-slate-100">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">발행 전표 선택</span>
+                  </div>
+                  <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
+                    {clientStmts.length === 0 ? (
+                      <div className="px-3 py-4 text-xs text-slate-300 text-center">발행 내역 없음</div>
+                    ) : clientStmts.map(s => (
+                      <button key={s.id} onClick={() => {
+                        setTaxStmtId(s.id);
+                        setTaxBuyerInfo({ bizNo:'', ceoName:'', bizType:'', bizItem:'', address:'' });
+                      }}
+                        className={`w-full text-left px-3 py-2.5 transition-all hover:bg-emerald-50 ${taxStmtId === s.id ? 'bg-emerald-50 border-r-2 border-emerald-500' : ''}`}>
+                        <div className="text-xs font-black text-slate-700">{s.tradeDate}</div>
+                        <div className="text-[10px] text-slate-400">{fmt(s.totalAmount)}원 · {s.items.length}품목</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 우측: 세금계산서 양식 */}
+            <div className="flex-1 bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden">
+              {!selectedStmt ? (
+                <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-300">
+                  <FileText size={40} strokeWidth={1.5}/>
+                  <span className="text-sm font-bold">거래처와 전표를 선택하세요</span>
+                  {!sup && <span className="text-xs text-amber-400 font-bold">⚠ 회사정보 미설정 — 상단 회사정보 버튼에서 입력하세요</span>}
+                </div>
+              ) : (
+                <>
+                  {/* 공급받는자 추가 정보 입력 */}
+                  <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">공급받는자 정보 입력 (선택)</span>
+                      <button onClick={handleTaxPrint}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black hover:bg-emerald-700 transition-all">
+                        <Printer size={12}/>세금계산서 인쇄
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { key: 'bizNo', label: '사업자번호', placeholder: '000-00-00000' },
+                        { key: 'ceoName', label: '대표자명', placeholder: '홍길동' },
+                        { key: 'bizType', label: '업태', placeholder: '제조업' },
+                        { key: 'bizItem', label: '종목', placeholder: '식품' },
+                        { key: 'address', label: '주소', placeholder: '사업장 주소' },
+                      ].map(f => (
+                        <div key={f.key}>
+                          <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">{f.label}</label>
+                          <input type="text" placeholder={f.placeholder}
+                            value={(taxBuyerInfo as any)[f.key]}
+                            onChange={e => setTaxBuyerInfo(prev => ({ ...prev, [f.key]: e.target.value }))}
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 세금계산서 미리보기 */}
+                  <div className="flex-1 overflow-y-auto p-4">
+                    <div ref={taxPrintRef}>
+                      <div className="wrap border-2 border-black text-[10px]" style={{fontFamily:"'Malgun Gothic','맑은 고딕',sans-serif"}}>
+                        {/* 제목행 */}
+                        <div className="flex items-center justify-between border-b-2 border-black px-3 py-2">
+                          <h1 className="text-xl font-black tracking-[6px]">세 금 계 산 서</h1>
+                          <div className="text-right">
+                            <div className="text-[9px] text-slate-500">전표번호: {selectedStmt.docNo}</div>
+                            <div className="text-[9px] text-slate-500">작성일자: {selectedStmt.tradeDate}</div>
+                          </div>
+                        </div>
+                        {/* 공급자 / 공급받는자 */}
+                        <div className="grid grid-cols-2 border-b border-black">
+                          {/* 공급자 */}
+                          <div className="p-3 border-r border-black">
+                            <h3 className="text-[9px] font-black text-slate-600 mb-2 pb-1 border-b border-slate-200">공 급 자</h3>
+                            {[
+                              ['등록번호', sup?.bizNo || '미입력'],
+                              ['상    호', sup?.name || '미입력'],
+                              ['대 표 자', sup?.ceoName || '미입력'],
+                              ['사업장주소', sup?.address || '미입력'],
+                              ['업    태', sup?.bizType || '미입력'],
+                              ['종    목', sup?.bizItem || '미입력'],
+                              ['전    화', sup?.phone || '-'],
+                            ].map(([label, value]) => (
+                              <div key={label} className="flex gap-2 mb-1 text-[9px]">
+                                <span className="text-slate-500 w-16 shrink-0">{label}</span>
+                                <span className="font-bold">{value}</span>
+                              </div>
+                            ))}
+                          </div>
+                          {/* 공급받는자 */}
+                          <div className="p-3">
+                            <h3 className="text-[9px] font-black text-slate-600 mb-2 pb-1 border-b border-slate-200">공급받는자</h3>
+                            {[
+                              ['등록번호', taxBuyerInfo.bizNo || '-'],
+                              ['상    호', buyer?.name || selectedStmt.clientName],
+                              ['대 표 자', taxBuyerInfo.ceoName || '-'],
+                              ['사업장주소', taxBuyerInfo.address || '-'],
+                              ['업    태', taxBuyerInfo.bizType || '-'],
+                              ['종    목', taxBuyerInfo.bizItem || '-'],
+                              ['전    화', buyer?.phone || '-'],
+                            ].map(([label, value]) => (
+                              <div key={label} className="flex gap-2 mb-1 text-[9px]">
+                                <span className="text-slate-500 w-16 shrink-0">{label}</span>
+                                <span className="font-bold">{value}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        {/* 합계 금액 요약 */}
+                        <div className="flex border-b border-black">
+                          {[
+                            { label: '합계금액', value: fmt(selectedStmt.totalAmount) + '원', color: 'text-slate-900' },
+                            { label: '공급가액', value: fmt(selectedStmt.totalSupply) + '원', color: 'text-blue-700' },
+                            { label: '세    액', value: fmt(selectedStmt.totalTax) + '원', color: 'text-amber-700' },
+                          ].map(({ label, value, color }) => (
+                            <div key={label} className="flex-1 text-center py-2 border-r last:border-r-0 border-black">
+                              <div className="text-[9px] text-slate-500">{label}</div>
+                              <div className={`font-black text-sm ${color}`}>{value}</div>
+                            </div>
+                          ))}
+                        </div>
+                        {/* 품목 테이블 */}
+                        <div className="overflow-x-auto">
+                          <table className="w-full border-collapse text-[9px]">
+                            <thead>
+                              <tr className="bg-slate-50">
+                                {['월','일','품목','규격','수량','단가','공급가액','세액','비고'].map(h => (
+                                  <th key={h} className="border border-slate-300 px-2 py-1.5 font-black text-slate-600 text-center whitespace-nowrap">{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {selectedStmt.items.map((item, i) => {
+                                const d = new Date(selectedStmt.tradeDate);
+                                return (
+                                  <tr key={i} className="hover:bg-slate-50">
+                                    <td className="border border-slate-200 px-2 py-1.5 text-center">{String(d.getMonth()+1).padStart(2,'0')}</td>
+                                    <td className="border border-slate-200 px-2 py-1.5 text-center">{String(d.getDate()).padStart(2,'0')}</td>
+                                    <td className="border border-slate-200 px-2 py-1.5">{item.name}</td>
+                                    <td className="border border-slate-200 px-2 py-1.5 text-center">{item.spec}</td>
+                                    <td className="border border-slate-200 px-2 py-1.5 text-right">{item.qty}</td>
+                                    <td className="border border-slate-200 px-2 py-1.5 text-right">{fmt(item.price)}</td>
+                                    <td className="border border-slate-200 px-2 py-1.5 text-right">{fmt(item.supply)}</td>
+                                    <td className="border border-slate-200 px-2 py-1.5 text-right">{item.isTaxExempt ? '면세' : fmt(item.tax)}</td>
+                                    <td className="border border-slate-200 px-2 py-1.5"></td>
+                                  </tr>
+                                );
+                              })}
+                              {/* 빈 행 채우기 */}
+                              {Array.from({length: Math.max(0, 8 - selectedStmt.items.length)}).map((_, i) => (
+                                <tr key={`empty-${i}`}>
+                                  {Array.from({length:9}).map((_,j) => (
+                                    <td key={j} className="border border-slate-200 px-2 py-1.5">&nbsp;</td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        {/* 하단 서명란 */}
+                        <div className="flex border-t border-black">
+                          <div className="flex-1 p-3 border-r border-black text-center">
+                            <div className="text-[9px] text-slate-500 mb-4">공급자 (인)</div>
+                            <div className="font-black">{sup?.name || ''}</div>
+                          </div>
+                          <div className="flex-1 p-3 text-center">
+                            <div className="text-[9px] text-slate-500 mb-4">공급받는자 (인)</div>
+                            <div className="font-black">{buyer?.name || selectedStmt.clientName}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── 회사 정보 설정 모달 ── */}
+      {showCompanyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+          onClick={() => setShowCompanyModal(false)}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <span className="font-black text-slate-900">회사 정보 설정</span>
+              <button onClick={() => setShowCompanyModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl"><X size={18}/></button>
+            </div>
+            <div className="px-6 py-5 space-y-3">
+              {([
+                { key: 'name', label: '상호 (회사명)', placeholder: '태백식품' },
+                { key: 'bizNo', label: '사업자등록번호', placeholder: '000-00-00000' },
+                { key: 'ceoName', label: '대표자명', placeholder: '홍길동' },
+                { key: 'address', label: '사업장 주소', placeholder: '경기도 ...' },
+                { key: 'bizType', label: '업태', placeholder: '제조업' },
+                { key: 'bizItem', label: '종목', placeholder: '참기름, 들기름' },
+                { key: 'phone', label: '전화번호', placeholder: '031-000-0000' },
+                { key: 'fax', label: '팩스번호', placeholder: '031-000-0000' },
+                { key: 'email', label: '이메일', placeholder: 'info@company.com' },
+              ] as { key: keyof CompanyInfo; label: string; placeholder: string }[]).map(f => (
+                <div key={f.key} className="grid grid-cols-3 items-center gap-3">
+                  <label className="text-xs font-black text-slate-500 text-right">{f.label}</label>
+                  <input type="text" placeholder={f.placeholder}
+                    value={companyForm[f.key] ?? ''}
+                    onChange={e => setCompanyForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                    className="col-span-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 px-6 pb-5">
+              <button onClick={() => setShowCompanyModal(false)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
+              <button onClick={() => { onSaveCompanyInfo?.(companyForm); setShowCompanyModal(false); }}
+                className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-black hover:bg-emerald-700 flex items-center justify-center gap-1.5">
+                <Save size={13}/>저장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {mainTab === 'history' && <>
 
