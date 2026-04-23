@@ -255,27 +255,29 @@ const ProductList: React.FC<ProductListProps> = ({
     } else {
       result = products;
     }
-    // 탭별 분리
-    if (topTab === 'finished') {
-      if (finishedFilter === 'oil') {
-        result = result.filter(p => p.category === '향미유' || p.category === '완제품');
-        result = result.filter(p => p.category === '향미유' || /기름|유/.test(p.name));
-      } else if (finishedFilter === 'powder') {
-        result = result.filter(p => p.category === '고춧가루' || (p.category === '완제품' && /가루/.test(p.name)));
-      } else {
-        result = result.filter(p => p.category === '완제품');
+    // 탭별 분리 — 최소수량 미만 필터 활성화 시 전체 품목 대상
+    if (!zeroStockOnly) {
+      if (topTab === 'finished') {
+        if (finishedFilter === 'oil') {
+          result = result.filter(p => p.category === '향미유' || p.category === '완제품');
+          result = result.filter(p => p.category === '향미유' || /기름|유/.test(p.name));
+        } else if (finishedFilter === 'powder') {
+          result = result.filter(p => p.category === '고춧가루' || (p.category === '완제품' && /가루/.test(p.name)));
+        } else {
+          result = result.filter(p => p.category === '완제품');
+        }
+      } else if (topTab === 'specialty') {
+        result = result.filter(p => p.category === '향미유' || p.category === '고춧가루');
+      } else if (topTab === 'product') {
+        result = result.filter(p => p.category !== '완제품' && p.category !== '향미유' && p.category !== '고춧가루');
       }
-    } else if (topTab === 'specialty') {
-      result = result.filter(p => p.category === '향미유' || p.category === '고춧가루');
-    } else if (topTab === 'product') {
-      result = result.filter(p => p.category !== '완제품' && p.category !== '향미유' && p.category !== '고춧가루');
-    }
-    if (activeCategory !== '전체') {
-      if (activeCategory === '박스') result = result.filter(p => p.category === '박스' || p.id.startsWith('GS-'));
-      else result = result.filter(p => p.category === activeCategory);
-    }
-    if (activeSupplierId !== '전체') {
-      result = result.filter(p => (p as any).supplierId === activeSupplierId);
+      if (activeCategory !== '전체') {
+        if (activeCategory === '박스') result = result.filter(p => p.category === '박스' || p.id.startsWith('GS-'));
+        else result = result.filter(p => p.category === activeCategory);
+      }
+      if (activeSupplierId !== '전체') {
+        result = result.filter(p => (p as any).supplierId === activeSupplierId);
+      }
     }
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase();
@@ -392,8 +394,22 @@ const ProductList: React.FC<ProductListProps> = ({
 
       <div className="flex flex-col space-y-4">
 
+        {/* 전역 필터 — 최소수량 미만 */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setZeroStockOnly(p => !p); setStockOnly(false); }}
+            className={`px-4 py-2 rounded-2xl border text-[11px] font-black transition-all flex items-center gap-1.5 ${zeroStockOnly ? 'bg-rose-50 border-rose-200 text-rose-600 ring-2 ring-rose-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
+          >
+            <span className={`w-3 h-3 rounded-full border-2 transition-colors ${zeroStockOnly ? 'bg-rose-500 border-rose-500' : 'border-slate-300'}`} />
+            최소수량 미만만 보기
+          </button>
+          {zeroStockOnly && (
+            <span className="text-[11px] font-bold text-rose-500">전체 탭 기준 {filteredProducts.length}개 부족</span>
+          )}
+        </div>
+
         {/* 하위 탭 + 검색 */}
-        {(topTab === 'product' || topTab === 'finished' || topTab === 'specialty') && (
+        {!zeroStockOnly && (topTab === 'product' || topTab === 'finished' || topTab === 'specialty') && (
           <div className="flex items-center gap-3 flex-wrap">
             <div className="bg-slate-100/50 p-1 rounded-2xl flex items-center self-start border border-slate-200">
               <button
@@ -425,7 +441,7 @@ const ProductList: React.FC<ProductListProps> = ({
           </div>
         )}
 
-        {(topTab === 'product' || topTab === 'finished' || topTab === 'specialty') && <div className="flex flex-col gap-2">
+        {!zeroStockOnly && (topTab === 'product' || topTab === 'finished' || topTab === 'specialty') && <div className="flex flex-col gap-2">
           {/* 품목별 필터 - 상품·부자재 탭 */}
           {(topTab === 'specialty' || topTab === 'product') && <div className="flex items-center gap-2 flex-wrap">
             <button
@@ -474,13 +490,6 @@ const ProductList: React.FC<ProductListProps> = ({
                 <span className={`w-3 h-3 rounded-full border-2 transition-colors ${stockOnly ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'}`} />
                 재고있는 것만
               </button>
-              <button
-                onClick={() => { setZeroStockOnly(p => !p); setStockOnly(false); }}
-                className={`px-4 py-2 rounded-2xl border text-[11px] font-black transition-all flex items-center gap-1.5 ${zeroStockOnly ? 'bg-rose-50 border-rose-200 text-rose-600 ring-2 ring-rose-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
-              >
-                <span className={`w-3 h-3 rounded-full border-2 transition-colors ${zeroStockOnly ? 'bg-rose-500 border-rose-500' : 'border-slate-300'}`} />
-                최소수량 미만
-              </button>
             </div>
           )}
           {/* 거래처별 필터 - 완제품 탭 제외 */}
@@ -508,7 +517,7 @@ const ProductList: React.FC<ProductListProps> = ({
         </div>}
       </div>
 
-      {(topTab === 'product' || topTab === 'finished' || topTab === 'specialty') && <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+      {(zeroStockOnly || topTab === 'product' || topTab === 'finished' || topTab === 'specialty') && <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
         {activeTab === 'requests' && draftOrders.length > 0 && (
           <div className="mb-8 bg-indigo-50/50 border border-indigo-100 rounded-[32px] p-6">
             <div className="flex items-center justify-between mb-6 px-2">
