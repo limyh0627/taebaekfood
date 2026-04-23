@@ -194,6 +194,9 @@ const ProductList: React.FC<ProductListProps> = ({
   const [priorityClientId, setPriorityClientId] = useState<string | null>(null);
   const [showRmSheet, setShowRmSheet] = useState(false);
   const [rmSheetTab, setRmSheetTab] = useState<'new' | 'carryover'>('new');
+  const [showStocktake, setShowStocktake] = useState(false);
+  const [stocktakeValues, setStocktakeValues] = useState<Record<string, string>>({});
+  const [stocktakeDate, setStocktakeDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [cart, setCart] = useState<{ id: string; qty: number }[]>([]);
   const [showCartPanel, setShowCartPanel] = useState(false);
   const [showCartModal, setShowCartModal] = useState(false);
@@ -735,7 +738,7 @@ const ProductList: React.FC<ProductListProps> = ({
                                   autoFocus
                                   type="number"
                                   value={inlineCartQty}
-                                  onChange={e => setInlineCartQty(parseInt(e.target.value) || 1)}
+                                  onChange={e => setInlineCartQty(parseInt(e.target.value) || 0)}
                                   onKeyDown={e => {
                                     if (e.key === 'Enter') { addToCart(product.id, inlineCartQty); setInlineCartId(null); }
                                     if (e.key === 'Escape') setInlineCartId(null);
@@ -791,7 +794,7 @@ const ProductList: React.FC<ProductListProps> = ({
                                       autoFocus
                                       type="number"
                                       value={inlineCartQty}
-                                      onChange={e => setInlineCartQty(parseInt(e.target.value) || 1)}
+                                      onChange={e => setInlineCartQty(parseInt(e.target.value) || 0)}
                                       onKeyDown={e => {
                                         if (e.key === 'Enter') { addToCart(product.id, inlineCartQty); setInlineCartId(null); setExpandedRowId(null); }
                                         if (e.key === 'Escape') setInlineCartId(null);
@@ -962,7 +965,7 @@ const ProductList: React.FC<ProductListProps> = ({
                             <input
                               type="number"
                               value={item.qty}
-                              onChange={e => updateCartQty(item.id, parseInt(e.target.value) || 1)}
+                              onChange={e => updateCartQty(item.id, parseInt(e.target.value) || 0)}
                               className="w-14 text-center text-sm font-black border border-slate-200 rounded-xl py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                             />
                             <button onClick={() => updateCartQty(item.id, item.qty + 1)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black transition-all">+</button>
@@ -1403,6 +1406,10 @@ const ProductList: React.FC<ProductListProps> = ({
                 className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-500 rounded-xl text-xs font-black hover:bg-slate-200 active:scale-95 transition-all"
               >전체 0 맞춤</button>
               <button
+                onClick={() => { setStocktakeValues({}); setStocktakeDate(new Date().toISOString().slice(0, 10)); setShowStocktake(true); }}
+                className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-xl text-xs font-black hover:bg-indigo-100 active:scale-95 transition-all"
+              >재고 실사</button>
+              <button
                 onClick={() => { setRmSheetTab('new'); setShowRmSheet(true); }}
                 className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black hover:bg-emerald-700 active:scale-95 transition-all shadow-sm"
               >
@@ -1410,6 +1417,112 @@ const ProductList: React.FC<ProductListProps> = ({
               </button>
             </div>
           </div>
+
+          {/* 재고 실사 모달 */}
+          {showStocktake && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center">
+              <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowStocktake(false)} />
+              <div className="relative bg-white rounded-3xl w-full max-w-lg mx-4 shadow-2xl animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+                <div className="px-6 pt-5 pb-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+                  <div>
+                    <h2 className="text-sm font-black text-slate-800">재고 실사</h2>
+                    <p className="text-[11px] text-slate-400 font-medium mt-0.5">실제 수량을 입력하면 차이를 계산해 정정 처리합니다</p>
+                  </div>
+                  <button onClick={() => setShowStocktake(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl transition-all"><X size={18} /></button>
+                </div>
+                <div className="px-6 py-4 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">실사 기준일</label>
+                    <input type="date" value={stocktakeDate} onChange={e => setStocktakeDate(e.target.value)}
+                      className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-bold outline-none focus:border-indigo-400 cursor-pointer" />
+                  </div>
+                </div>
+                <div className="overflow-y-auto flex-1 px-6">
+                  <table className="w-full text-left">
+                    <thead className="sticky top-0 bg-white">
+                      <tr className="border-b border-slate-100">
+                        <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">원료명</th>
+                        <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">장부 현재고</th>
+                        <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">실사 수량(kg)</th>
+                        <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">차이</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {RAW_MATERIALS.filter(m => rawMaterialLedger.some(e => e.material === m)).map(m => {
+                        const book = Math.round((rawMaterialBalances[m] ?? 0) * 1000) / 1000;
+                        const actualStr = stocktakeValues[m] ?? '';
+                        const actual = actualStr === '' ? null : Number(actualStr);
+                        const diff = actual !== null ? Math.round((actual - book) * 1000) / 1000 : null;
+                        return (
+                          <tr key={m} className="hover:bg-slate-50/50">
+                            <td className="py-2.5 text-sm font-bold text-slate-700">{m}</td>
+                            <td className="py-2.5 text-sm font-black text-slate-800 text-right">{book.toLocaleString('ko-KR')} kg</td>
+                            <td className="py-2.5 text-right">
+                              <input
+                                type="number"
+                                placeholder={String(book)}
+                                value={actualStr}
+                                onChange={e => setStocktakeValues(prev => ({ ...prev, [m]: e.target.value }))}
+                                className="w-24 text-right bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-sm font-bold outline-none focus:border-indigo-400"
+                              />
+                            </td>
+                            <td className="py-2.5 text-right">
+                              {diff !== null && diff !== 0 && (
+                                <span className={`text-sm font-black ${diff > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                  {diff > 0 ? '+' : ''}{diff.toLocaleString('ko-KR')} kg
+                                </span>
+                              )}
+                              {diff === 0 && <span className="text-sm font-black text-slate-400">일치</span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="px-6 py-4 border-t border-slate-100 shrink-0">
+                  {(() => {
+                    const hasDiff = RAW_MATERIALS.some(m => {
+                      const book = rawMaterialBalances[m] ?? 0;
+                      const actual = stocktakeValues[m] !== undefined && stocktakeValues[m] !== '' ? Number(stocktakeValues[m]) : null;
+                      return actual !== null && Math.round((actual - book) * 1000) / 1000 !== 0;
+                    });
+                    return (
+                      <button
+                        disabled={!hasDiff}
+                        onClick={() => {
+                          for (const m of RAW_MATERIALS) {
+                            const book = rawMaterialBalances[m] ?? 0;
+                            const actualStr = stocktakeValues[m];
+                            if (actualStr === undefined || actualStr === '') continue;
+                            const actual = Number(actualStr);
+                            const diff = Math.round((actual - book) * 1000) / 1000;
+                            if (diff === 0) continue;
+                            onAddRawMaterialEntry({
+                              id: `rm-stocktake-${m}-${Date.now()}`,
+                              material: m,
+                              date: stocktakeDate,
+                              received: diff > 0 ? diff : 0,
+                              used: diff < 0 ? -diff : 0,
+                              note: '재고실사정정',
+                              createdAt: new Date().toISOString(),
+                              addedBy: currentUser?.name,
+                              type: 'manual',
+                            });
+                          }
+                          setShowStocktake(false);
+                          setStocktakeValues({});
+                        }}
+                        className="w-full py-3 bg-indigo-600 text-white rounded-2xl text-sm font-black hover:bg-indigo-700 active:scale-[0.99] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        정정 항목 저장
+                      </button>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* 원료별 잔량 요약 카드 */}
           <div className="overflow-x-auto pb-1 no-scrollbar">
@@ -1759,7 +1872,7 @@ const ProductList: React.FC<ProductListProps> = ({
                       <input
                         type="number"
                         value={item.qty}
-                        onChange={e => updateCartQty(item.id, parseInt(e.target.value) || 1)}
+                        onChange={e => updateCartQty(item.id, parseInt(e.target.value) || 0)}
                         className="w-12 text-center text-sm font-black border border-slate-200 rounded-lg py-1 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                       />
                       <button onClick={() => updateCartQty(item.id, item.qty + 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 text-sm font-black transition-all">+</button>
