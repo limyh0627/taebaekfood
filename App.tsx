@@ -27,7 +27,8 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
-  Wallet
+  Wallet,
+  BarChart2
 } from 'lucide-react';
 import { Order, Product, ProductClient, ViewType, OrderStatus, Client, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification } from './types';
 import Dashboard from './components/Dashboard';
@@ -52,6 +53,7 @@ import ItemManager from './components/ItemManager';
 import TradeStatement from './components/TradeStatement';
 import OfficeTalk from './components/OfficeTalk';
 import CostManager from './components/CostManager';
+import ProfitAnalysis from './components/ProfitAnalysis';
 import ExcelJS from 'exceljs';
 
 import { db } from './src/firebase';
@@ -649,7 +651,7 @@ const App: React.FC = () => {
   };
 
   const handleNavClick = (view: ViewType) => {
-    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant', 'cost-management'];
+    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant', 'cost-management', 'profit-analysis'];
     if (adminOnlyViews.includes(view) && !isAdminAuthenticated && !isAdmin) {
       setPendingAdminView(view);
       setIsAdminAuthModalOpen(true);
@@ -792,6 +794,7 @@ const App: React.FC = () => {
                   <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
                   <NavItem icon={FileText} label="거래명세서" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} />
                   <NavItem icon={Wallet} label="비용 관리" active={currentView === 'cost-management'} onClick={() => handleNavClick('cost-management')} collapsed={isSidebarCollapsed} />
+                  <NavItem icon={BarChart2} label="손익 분석" active={currentView === 'profit-analysis'} onClick={() => handleNavClick('profit-analysis')} collapsed={isSidebarCollapsed} />
                 </nav>
               </div>
             )}
@@ -2504,6 +2507,14 @@ const App: React.FC = () => {
                   });
                 }}
                 onDelete={(id) => deleteItem('fixedCosts', id)}
+              />
+            </div>
+          )}
+          {currentView === 'profit-analysis' && (
+            <div className="h-full overflow-y-auto p-6">
+              <ProfitAnalysis
+                issuedStatements={issuedStatements}
+                fixedCosts={fixedCosts}
               />
             </div>
           )}
