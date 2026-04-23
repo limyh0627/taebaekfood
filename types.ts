@@ -292,6 +292,16 @@ export interface IssuedStatement {
   totalAmount: number;
   items: IssuedStatementItem[];
   receivedAt?: string;    // 입고 확인 일시 (매입 전표)
+  // 수금/결제 추적
+  payments?: PaymentRecord[];
+}
+
+export interface PaymentRecord {
+  id: string;
+  amount: number;
+  date: string;       // YYYY-MM-DD
+  method?: '현금' | '계좌이체' | '어음' | '카드' | '기타';
+  note?: string;
 }
 
 export interface CompanyInfo {

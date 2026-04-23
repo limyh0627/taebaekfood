@@ -3,10 +3,10 @@ import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react'
 import {
   FileText, Printer, Search, ChevronDown, CalendarDays,
   Package, ClipboardList, ChevronRight, CheckCircle2, Edit2, Plus, X, ArrowLeft,
-  Tag, Save, AlertCircle, Download
+  Tag, Save, AlertCircle, Download, Wallet, TrendingDown, CheckSquare
 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
-import { Order, Product, Client, ProductClient, OrderStatus, IssuedStatement, CompanyInfo } from '../types';
+import { Order, Product, Client, ProductClient, OrderStatus, IssuedStatement, CompanyInfo, PaymentRecord } from '../types';
 import PageHeader from './PageHeader';
 
 interface TradeStatementProps {
@@ -102,7 +102,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [activeSearchRow, setActiveSearchRow] = useState<number | null>(null);
 
   // ── 메인 탭 ──
-  const [mainTab, setMainTab] = useState<'history' | 'prices' | 'taxinvoice'>('history');
+  const [mainTab, setMainTab] = useState<'history' | 'prices' | 'taxinvoice' | 'receivables'>('history');
+
+  // ── 미수금 탭 ──
+  const [recClientId, setRecClientId] = useState('');
+  const [recClientSearch, setRecClientSearch] = useState('');
+  const [showPayModal, setShowPayModal] = useState(false);
+  const [payTarget, setPayTarget] = useState<IssuedStatement | null>(null);
+  const [payForm, setPayForm] = useState({ amount: '', date: new Date().toISOString().slice(0,10), method: '계좌이체' as PaymentRecord['method'], note: '' });
 
   // ── 회사 설정 모달 ──
   const [showCompanyModal, setShowCompanyModal] = useState(false);
@@ -689,6 +696,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             >
               <FileText size={13}/>세금계산서
             </button>
+            <button
+              onClick={() => setMainTab('receivables')}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'receivables' ? 'bg-white text-rose-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              <Wallet size={13}/>미수금
+            </button>
           </div>
         </div>}
       />
@@ -874,6 +887,251 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               )}
             </div>
           </div>
+        );
+      })()}
+
+      {/* ── 미수금 탭 ── */}
+      {mainTab === 'receivables' && (() => {
+        // 매출 전표만 대상
+        const salesStmts = issuedStatements.filter(s => s.type === '매출');
+
+        // 전표별 잔액 계산
+        const getPaid = (s: IssuedStatement) => (s.payments ?? []).reduce((a, p) => a + p.amount, 0);
+        const getBalance = (s: IssuedStatement) => s.totalAmount - getPaid(s);
+        const isFullyPaid = (s: IssuedStatement) => getBalance(s) <= 0;
+
+        // 거래처별 집계
+        type ClientSummary = { clientId: string; clientName: string; total: number; paid: number; balance: number; count: number; unpaidCount: number };
+        const summaryMap = new Map<string, ClientSummary>();
+        salesStmts.forEach(s => {
+          const existing = summaryMap.get(s.clientId) ?? { clientId: s.clientId, clientName: s.clientName, total: 0, paid: 0, balance: 0, count: 0, unpaidCount: 0 };
+          const paid = getPaid(s);
+          const balance = s.totalAmount - paid;
+          existing.total += s.totalAmount;
+          existing.paid += paid;
+          existing.balance += balance;
+          existing.count++;
+          if (balance > 0) existing.unpaidCount++;
+          summaryMap.set(s.clientId, existing);
+        });
+        const summaries = [...summaryMap.values()]
+          .filter(s => !recClientSearch || s.clientName.includes(recClientSearch))
+          .sort((a, b) => b.balance - a.balance);
+
+        const totalOutstanding = summaries.reduce((a, s) => a + s.balance, 0);
+
+        // 선택 거래처의 전표 목록
+        const clientStmts = recClientId
+          ? salesStmts.filter(s => s.clientId === recClientId).sort((a, b) => b.tradeDate.localeCompare(a.tradeDate))
+          : [];
+
+        const openPayModal = (stmt: IssuedStatement) => {
+          setPayTarget(stmt);
+          const balance = getBalance(stmt);
+          setPayForm({ amount: String(balance), date: new Date().toISOString().slice(0,10), method: '계좌이체', note: '' });
+          setShowPayModal(true);
+        };
+
+        const savePayment = () => {
+          if (!payTarget || !payForm.amount) return;
+          const newPayment: PaymentRecord = {
+            id: Date.now().toString(),
+            amount: Number(payForm.amount),
+            date: payForm.date,
+            method: payForm.method,
+            ...(payForm.note.trim() ? { note: payForm.note.trim() } : {}),
+          };
+          const existing = payTarget.payments ?? [];
+          onUpdateIssuedStatement?.(payTarget.id, { payments: [...existing, newPayment] });
+          setShowPayModal(false);
+          setPayTarget(null);
+        };
+
+        return (
+          <>
+            <div className="flex gap-4 min-h-[600px]">
+              {/* 좌측: 거래처별 미수금 요약 */}
+              <div className="w-72 shrink-0 flex flex-col gap-3">
+                {/* 전체 미수금 요약 카드 */}
+                <div className="bg-rose-50 border border-rose-200 rounded-2xl px-4 py-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <TrendingDown size={14} className="text-rose-500"/>
+                    <span className="text-[10px] font-black text-rose-500 uppercase tracking-widest">전체 미수금</span>
+                  </div>
+                  <div className="text-2xl font-black text-rose-700">{fmt(totalOutstanding)}<span className="text-sm ml-1">원</span></div>
+                  <div className="text-[10px] text-rose-400 mt-0.5">{summaries.filter(s => s.balance > 0).length}개 거래처 미결</div>
+                </div>
+
+                {/* 거래처 검색 */}
+                <div className="relative">
+                  <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
+                  <input type="text" placeholder="거래처 검색..." value={recClientSearch}
+                    onChange={e => setRecClientSearch(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl pl-7 pr-2 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-rose-300"/>
+                </div>
+
+                {/* 거래처 목록 */}
+                <div className="bg-white rounded-2xl border border-slate-200 flex-1 overflow-y-auto divide-y divide-slate-50">
+                  {summaries.map(s => (
+                    <button key={s.clientId}
+                      onClick={() => setRecClientId(s.clientId === recClientId ? '' : s.clientId)}
+                      className={`w-full text-left px-4 py-3 transition-all hover:bg-rose-50 ${recClientId === s.clientId ? 'bg-rose-50 border-r-2 border-rose-500' : ''}`}>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className={`text-xs font-black ${recClientId === s.clientId ? 'text-rose-700' : 'text-slate-700'}`}>{s.clientName}</span>
+                        {s.balance > 0
+                          ? <span className="text-[10px] font-black text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded-full">{s.unpaidCount}건 미결</span>
+                          : <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">완납</span>
+                        }
+                      </div>
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="text-slate-400">발행 {fmt(s.total)}원</span>
+                        <span className={`font-black ${s.balance > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                          미수 {fmt(s.balance)}원
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 우측: 선택 거래처 전표별 수금 현황 */}
+              <div className="flex-1 bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden">
+                {!recClientId ? (
+                  <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-300">
+                    <Wallet size={40} strokeWidth={1.5}/>
+                    <span className="text-sm font-bold">좌측에서 거래처를 선택하세요</span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="px-5 py-3 border-b border-slate-100">
+                      <span className="font-black text-slate-900">{summaryMap.get(recClientId)?.clientName}</span>
+                      <span className="text-xs text-slate-400 ml-2">{clientStmts.length}건 전표</span>
+                    </div>
+                    <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
+                      {clientStmts.map(stmt => {
+                        const paid = getPaid(stmt);
+                        const balance = getBalance(stmt);
+                        const fully = isFullyPaid(stmt);
+                        const pct = stmt.totalAmount > 0 ? Math.min(100, Math.round(paid / stmt.totalAmount * 100)) : 0;
+                        return (
+                          <div key={stmt.id} className={`px-5 py-4 ${fully ? 'bg-emerald-50/30' : ''}`}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  {fully
+                                    ? <CheckSquare size={13} className="text-emerald-500 shrink-0"/>
+                                    : <div className="w-3.5 h-3.5 rounded-sm border-2 border-rose-400 shrink-0"/>
+                                  }
+                                  <span className="text-xs font-black text-slate-700">{stmt.tradeDate}</span>
+                                  <span className="text-[10px] font-mono text-slate-400">{stmt.docNo}</span>
+                                  {fully && <span className="text-[9px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">완납</span>}
+                                </div>
+                                <div className="flex items-center gap-4 text-[11px] mb-2">
+                                  <span className="text-slate-500">청구 <b className="text-slate-800">{fmt(stmt.totalAmount)}</b>원</span>
+                                  <span className="text-emerald-600">수금 <b>{fmt(paid)}</b>원</span>
+                                  {balance > 0 && <span className="text-rose-600 font-black">잔액 {fmt(balance)}원</span>}
+                                </div>
+                                {/* 진행바 */}
+                                <div className="w-full bg-slate-100 rounded-full h-1.5 mb-2">
+                                  <div className={`h-1.5 rounded-full transition-all ${fully ? 'bg-emerald-400' : 'bg-rose-400'}`} style={{width: `${pct}%`}}/>
+                                </div>
+                                {/* 수금 내역 */}
+                                {(stmt.payments ?? []).length > 0 && (
+                                  <div className="space-y-1">
+                                    {(stmt.payments ?? []).map(p => (
+                                      <div key={p.id} className="flex items-center gap-2 text-[10px] bg-slate-50 rounded-lg px-2.5 py-1">
+                                        <span className="text-slate-400">{p.date}</span>
+                                        <span className="font-black text-emerald-700">{fmt(p.amount)}원</span>
+                                        {p.method && <span className="text-slate-400 bg-white border border-slate-200 px-1.5 py-0.5 rounded-md">{p.method}</span>}
+                                        {p.note && <span className="text-slate-400 truncate">{p.note}</span>}
+                                        <button
+                                          onClick={() => {
+                                            const newPayments = (stmt.payments ?? []).filter(x => x.id !== p.id);
+                                            onUpdateIssuedStatement?.(stmt.id, { payments: newPayments });
+                                          }}
+                                          className="ml-auto text-slate-300 hover:text-rose-400 transition-colors"
+                                        ><X size={10}/></button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              {!fully && (
+                                <button onClick={() => openPayModal(stmt)}
+                                  className="shrink-0 flex items-center gap-1 px-3 py-1.5 bg-rose-600 text-white rounded-xl text-[11px] font-black hover:bg-rose-700 transition-all">
+                                  <Plus size={11}/>수금 등록
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* 수금 등록 모달 */}
+            {showPayModal && payTarget && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+                onClick={() => setShowPayModal(false)}>
+                <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                    <div>
+                      <div className="font-black text-slate-900">수금 등록</div>
+                      <div className="text-xs text-slate-400">{payTarget.clientName} · {payTarget.tradeDate}</div>
+                    </div>
+                    <button onClick={() => setShowPayModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl"><X size={18}/></button>
+                  </div>
+                  <div className="px-6 py-5 space-y-4">
+                    <div className="bg-slate-50 rounded-xl px-4 py-3 text-xs text-center">
+                      <span className="text-slate-500">잔여 미수금 </span>
+                      <span className="font-black text-rose-600 text-base">{fmt(getBalance(payTarget))}원</span>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">수금 금액</label>
+                      <input type="number" value={payForm.amount}
+                        onChange={e => setPayForm(p => ({ ...p, amount: e.target.value }))}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-rose-300 text-right"/>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">수금 일자</label>
+                      <input type="date" value={payForm.date}
+                        onChange={e => setPayForm(p => ({ ...p, date: e.target.value }))}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-rose-300 cursor-pointer"/>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">결제 수단</label>
+                      <div className="flex gap-2 flex-wrap">
+                        {(['현금','계좌이체','어음','카드','기타'] as PaymentRecord['method'][]).map(m => (
+                          <button key={m as string} onClick={() => setPayForm(p => ({ ...p, method: m }))}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-black border transition-all ${payForm.method === m ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>
+                            {m}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">메모 (선택)</label>
+                      <input type="text" placeholder="예: 1차 분할 납부" value={payForm.note}
+                        onChange={e => setPayForm(p => ({ ...p, note: e.target.value }))}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-rose-300"/>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 px-6 pb-5">
+                    <button onClick={() => setShowPayModal(false)}
+                      className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
+                    <button onClick={savePayment}
+                      disabled={!payForm.amount || Number(payForm.amount) <= 0}
+                      className="flex-1 py-2.5 rounded-xl bg-rose-600 text-white text-xs font-black hover:bg-rose-700 disabled:opacity-40 flex items-center justify-center gap-1.5">
+                      <Save size={12}/>수금 저장
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         );
       })()}
 
