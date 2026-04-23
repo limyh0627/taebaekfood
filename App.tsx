@@ -2490,6 +2490,7 @@ const App: React.FC = () => {
               onAddConfirmedOrder={(item) => addItem('confirmedOrders', item)}
               companyInfo={companyInfo}
               onSaveCompanyInfo={(info) => setDocument('settings', 'company', info)}
+              onUpdateProductCost={(productId, cost) => updateItem('products', productId, { cost })}
             />
           )}
           {currentView === 'cost-management' && (

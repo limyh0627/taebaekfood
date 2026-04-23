@@ -27,6 +27,7 @@ interface TradeStatementProps {
   onAddConfirmedOrder?: (item: { id: string; quantity: number }) => void;
   companyInfo?: CompanyInfo | null;
   onSaveCompanyInfo?: (info: CompanyInfo) => void;
+  onUpdateProductCost?: (productId: string, cost: number) => void;
 }
 
 type StatementType = '매출' | '매입';
@@ -61,6 +62,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   onAddConfirmedOrder,
   companyInfo,
   onSaveCompanyInfo,
+  onUpdateProductCost,
 }) => {
 
   // ── 전표 생성 오버레이 ──
@@ -129,6 +131,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [priceClientSearch, setPriceClientSearch] = useState('');
   const [priceEdits, setPriceEdits] = useState<Record<string, string>>({});
   const [priceTaxEdits, setPriceTaxEdits] = useState<Record<string, '과세' | '면세'>>({});
+  const [costEdits, setCostEdits] = useState<Record<string, string>>({});   // productId → cost
   const [priceSaving, setPriceSaving] = useState(false);
   const [priceSaved, setPriceSaved] = useState(false);
 
@@ -732,14 +735,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           for (const [pcId, tax] of Object.entries(priceTaxEdits)) {
             onUpdateProductClientTaxType?.(pcId, tax);
           }
+          for (const [productId, val] of Object.entries(costEdits)) {
+            const n = parseFloat(val);
+            if (!isNaN(n) && n >= 0) onUpdateProductCost?.(productId, n);
+          }
           setPriceEdits({});
           setPriceTaxEdits({});
+          setCostEdits({});
           setPriceSaving(false);
           setPriceSaved(true);
           setTimeout(() => setPriceSaved(false), 2000);
         };
 
-        const hasEdits = Object.keys(priceEdits).length > 0 || Object.keys(priceTaxEdits).length > 0;
+        const hasEdits = Object.keys(priceEdits).length > 0 || Object.keys(priceTaxEdits).length > 0 || Object.keys(costEdits).length > 0;
 
         return (
           <div className="flex gap-4 min-h-[600px]">
@@ -821,43 +829,80 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                         <tr>
                           <th className="px-5 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest">품목명</th>
                           <th className="px-4 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest">용량/규격</th>
-                          <th className="px-4 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">현재 단가</th>
-                          <th className="px-4 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">수정 단가</th>
+                          <th className="px-4 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">원가</th>
+                          <th className="px-4 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">단가</th>
+                          <th className="px-4 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">마진율</th>
                           <th className="px-4 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">과세</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
                         {selectedPcRows.map(({ pc, product }) => {
-                          const edited = priceEdits[pc.id] !== undefined;
+                          const priceEdited = priceEdits[pc.id] !== undefined;
+                          const costEdited = costEdits[product!.id] !== undefined;
                           const taxEdited = priceTaxEdits[pc.id] !== undefined;
                           const currentTax = priceTaxEdits[pc.id] ?? pc.taxType ?? '과세';
-                          const inputVal = priceEdits[pc.id] ?? '';
+                          const priceInputVal = priceEdits[pc.id] ?? '';
+                          const costInputVal = costEdits[product!.id] ?? '';
                           const hasNoPrice = !pc.price;
+
+                          // 마진율 계산 — 편집 중인 값 우선 반영
+                          const effectivePrice = priceEdits[pc.id] ? parseFloat(priceEdits[pc.id]) : (pc.price ?? 0);
+                          const effectiveCost = costEdits[product!.id] ? parseFloat(costEdits[product!.id]) : (product!.cost ?? 0);
+                          const margin = effectivePrice > 0 && effectiveCost > 0
+                            ? Math.round((effectivePrice - effectiveCost) / effectivePrice * 100)
+                            : null;
+
                           return (
                             <tr key={pc.id} className={`hover:bg-slate-50 transition-colors ${hasNoPrice ? 'bg-amber-50/40' : ''}`}>
                               <td className="px-5 py-3">
                                 <span className="text-xs font-black text-slate-800">{product!.name}</span>
-                                {hasNoPrice && <span className="ml-1.5 text-[9px] font-black text-amber-500 bg-amber-100 px-1.5 py-0.5 rounded-full">미입력</span>}
+                                {hasNoPrice && <span className="ml-1.5 text-[9px] font-black text-amber-500 bg-amber-100 px-1.5 py-0.5 rounded-full">단가 미입력</span>}
                               </td>
                               <td className="px-4 py-3 text-[11px] text-slate-400">{product!.용량 || '-'}</td>
-                              <td className="px-4 py-3 text-right">
-                                <span className={`text-xs font-bold ${hasNoPrice ? 'text-slate-300' : 'text-slate-700'}`}>
-                                  {pc.price ? `${fmt(pc.price)}원` : '—'}
-                                </span>
+                              {/* 원가 입력 */}
+                              <td className="px-4 py-3">
+                                <div className="flex justify-end">
+                                  <input
+                                    type="number"
+                                    placeholder={product!.cost ? String(product!.cost) : '원가'}
+                                    value={costInputVal}
+                                    onChange={e => setCostEdits(prev => ({ ...prev, [product!.id]: e.target.value }))}
+                                    className={`w-24 text-right bg-white border rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-orange-300 transition-all ${
+                                      costEdited ? 'border-orange-400 bg-orange-50' : 'border-slate-200'
+                                    }`}
+                                  />
+                                </div>
                               </td>
+                              {/* 단가 입력 */}
                               <td className="px-4 py-3">
                                 <div className="flex justify-end">
                                   <input
                                     type="number"
                                     placeholder={pc.price ? String(pc.price) : '단가 입력'}
-                                    value={inputVal}
+                                    value={priceInputVal}
                                     onChange={e => setPriceEdits(prev => ({ ...prev, [pc.id]: e.target.value }))}
-                                    className={`w-28 text-right bg-white border rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-violet-300 transition-all ${
-                                      edited ? 'border-violet-400 bg-violet-50' : 'border-slate-200'
+                                    className={`w-24 text-right bg-white border rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-violet-300 transition-all ${
+                                      priceEdited ? 'border-violet-400 bg-violet-50' : 'border-slate-200'
                                     }`}
                                   />
                                 </div>
                               </td>
+                              {/* 마진율 */}
+                              <td className="px-4 py-3 text-center">
+                                {margin !== null ? (
+                                  <span className={`text-[11px] font-black px-2 py-1 rounded-lg ${
+                                    margin >= 30 ? 'bg-emerald-100 text-emerald-700' :
+                                    margin >= 10 ? 'bg-amber-100 text-amber-700' :
+                                    margin >= 0  ? 'bg-slate-100 text-slate-600' :
+                                    'bg-rose-100 text-rose-700'
+                                  }`}>
+                                    {margin}%
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-slate-300">—</span>
+                                )}
+                              </td>
+                              {/* 과세 토글 */}
                               <td className="px-4 py-3 text-center">
                                 <button
                                   onClick={() => setPriceTaxEdits(prev => ({
