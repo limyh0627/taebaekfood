@@ -293,7 +293,7 @@ const ProductList: React.FC<ProductListProps> = ({
       result = result.filter(p => p.stock > 0);
     }
     if (zeroStockOnly) {
-      result = result.filter(p => p.minStock > 0 && p.stock < p.minStock);
+      result = result.filter(p => p.category !== '완제품' && p.stock < p.minStock);
     }
 
     const CATEGORY_ORDER = ['완제품', '향미유', '고춧가루', '용기', '마개', '테이프', '박스', '라벨'];
