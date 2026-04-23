@@ -3,7 +3,7 @@ import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react'
 import {
   FileText, Printer, Search, ChevronDown, CalendarDays,
   Package, ClipboardList, ChevronRight, CheckCircle2, Edit2, Plus, X, ArrowLeft,
-  Tag, Save, AlertCircle
+  Tag, Save, AlertCircle, Download
 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
 import { Order, Product, Client, ProductClient, OrderStatus, IssuedStatement, CompanyInfo } from '../types';
@@ -889,6 +889,25 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
         const selectedStmt = clientStmts.find(s => s.id === taxStmtId) ?? null;
 
+        const handleTaxPdf = async () => {
+          if (!selectedStmt || !taxPrintRef.current) return;
+          const { default: jsPDF } = await import('jspdf');
+          const { default: html2canvas } = await import('html2canvas');
+          const el = taxPrintRef.current;
+          const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+          const imgData = canvas.toDataURL('image/png');
+          const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+          const pageW = pdf.internal.pageSize.getWidth();
+          const pageH = pdf.internal.pageSize.getHeight();
+          const ratio = canvas.width / canvas.height;
+          const imgW = pageW - 20;
+          const imgH = imgW / ratio;
+          const yOffset = imgH < pageH ? (pageH - imgH) / 2 : 10;
+          pdf.addImage(imgData, 'PNG', 10, yOffset, imgW, imgH);
+          const fileName = `세금계산서_${selectedStmt.clientName}_${selectedStmt.tradeDate}.pdf`;
+          pdf.save(fileName);
+        };
+
         const handleTaxPrint = () => {
           if (!selectedStmt) return;
           const el = taxPrintRef.current;
@@ -990,9 +1009,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">공급받는자 정보 입력 (선택)</span>
+                      <button onClick={handleTaxPdf}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-black hover:bg-blue-700 transition-all">
+                        <Download size={12}/>PDF 저장
+                      </button>
                       <button onClick={handleTaxPrint}
                         className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black hover:bg-emerald-700 transition-all">
-                        <Printer size={12}/>세금계산서 인쇄
+                        <Printer size={12}/>인쇄
                       </button>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
