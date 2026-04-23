@@ -224,6 +224,10 @@ const App: React.FC = () => {
     [products, submaterials, productClientMap]
   );
 
+  const lowStockCount = allProducts.filter(p =>
+    p.category !== '완제품' && p.minStock > 0 && p.stock < p.minStock
+  ).length;
+
   // 판매 상품(완제품/향미유/고춧가루)은 products, 부자재는 submaterials
   const getProductCollection = (category: string) =>
     ['완제품', '향미유', '고춧가루'].includes(category) ? 'products' : 'submaterials';
@@ -773,7 +777,7 @@ const App: React.FC = () => {
                 <NavItem icon={MessageSquare} label="오피스톡" active={currentView === 'officetalk'} onClick={() => handleNavClick('officetalk')} collapsed={isSidebarCollapsed} badge={chatRooms.filter(r => r.participantIds.includes(currentUser.id) && r.lastUpdatedAt > (r.lastReadBy?.[currentUser.id] ?? '')).length || undefined} />
                 <NavItem icon={Truck} label="배송 관리" active={currentView === 'shipping'} onClick={() => handleNavClick('shipping')} collapsed={isSidebarCollapsed} />
                 <NavItem icon={ShoppingCart} label="주문 관리" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} />
-                <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} />
+                <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={lowStockCount > 0 ? lowStockCount : undefined} />
                 <NavItem icon={Settings} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} />
                 <NavItem icon={Layers} label="파렛트 관리" active={currentView === 'pallets'} onClick={() => handleNavClick('pallets')} collapsed={isSidebarCollapsed} />
                 <NavItem icon={CalendarCheck} label="연차 신청" active={currentView === 'leave-portal'} onClick={() => handleNavClick('leave-portal')} collapsed={isSidebarCollapsed} />
@@ -867,7 +871,16 @@ const App: React.FC = () => {
           ) : (
           <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'clients', 'notice', 'pallets', 'confirmation-items', 'shipping'].includes(currentView)) ? '' : 'min-w-[720px] md:min-w-0 h-full'}>
           {currentView === 'dashboard' && <div className="h-full overflow-y-auto">
-            <Dashboard orders={orders} products={allProducts} onNavigate={handleNavClick} />
+            <Dashboard
+              orders={orders}
+              products={allProducts}
+              clients={clients}
+              onNavigate={handleNavClick}
+              onCreatePurchaseOrder={(supplierId, supplierName, items) => {
+                setPendingInvoice({ supplierId, supplierName, items });
+                handleNavClick('trade-statement');
+              }}
+            />
             {isAdmin && (
               <div className="p-6 border-t border-slate-100">
                 <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">BOM 관리</p>

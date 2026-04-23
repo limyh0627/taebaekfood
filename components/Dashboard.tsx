@@ -1,5 +1,5 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   XAxis,
   YAxis,
@@ -13,15 +13,20 @@ import {
   ShoppingBag,
   AlertCircle,
   PackageCheck,
-  Truck
+  Truck,
+  ChevronDown,
+  ChevronUp,
+  ShoppingCart
 } from 'lucide-react';
-import { Order, Product, OrderStatus, ViewType } from '../types';
+import { Order, Product, OrderStatus, ViewType, Client } from '../types';
 import PageHeader from './PageHeader';
 
 interface DashboardProps {
   orders: Order[];
   products: Product[];
+  clients?: Client[];
   onNavigate?: (view: ViewType) => void;
+  onCreatePurchaseOrder?: (supplierId: string, supplierName: string, items: Array<{ name: string; spec: string; qty: number; price: number }>) => void;
 }
 
 interface StatCardProps {
@@ -58,7 +63,10 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon: Icon, trend, co
   </div>
 );
 
-const Dashboard: React.FC<DashboardProps> = ({ orders, products, onNavigate }) => {
+const Dashboard: React.FC<DashboardProps> = ({ orders, products, clients = [], onNavigate, onCreatePurchaseOrder }) => {
+  const [showLowStock, setShowLowStock] = useState(false);
+  const [selectedLowStock, setSelectedLowStock] = useState<Set<string>>(new Set());
+  const [orderQtys, setOrderQtys] = useState<Record<string, string>>({});
   const today = useMemo(() => new Date(), []);
   const todayStr = today.toISOString().slice(0, 10);
 
@@ -115,9 +123,10 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, products, onNavigate }) =
 
   const activeClients = new Set(orders.map(o => o.clientId)).size;
 
-  const lowStockItems = products.filter(p =>
+  const lowStockList = products.filter(p =>
     p.category !== '완제품' && p.minStock > 0 && p.stock < p.minStock
-  ).length;
+  ).sort((a, b) => (a.stock - a.minStock) - (b.stock - b.minStock)); // 부족량 큰 순
+  const lowStockItems = lowStockList.length;
 
   // 오늘 출고 예정
   const todayDispatch = orders.filter(
@@ -171,10 +180,128 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, products, onNavigate }) =
           value={`${lowStockItems}개`}
           icon={AlertCircle}
           color="bg-rose-500"
-          sub={lowStockItems > 0 ? '최소 재고 이하 항목' : '재고 정상'}
-          onClick={onNavigate ? () => onNavigate('inventory') : undefined}
+          sub={lowStockItems > 0 ? '클릭하여 발주 관리' : '재고 정상'}
+          onClick={lowStockItems > 0 ? () => setShowLowStock(v => !v) : undefined}
         />
       </div>
+
+      {/* ── 재고 부족 알림 패널 ── */}
+      {showLowStock && lowStockList.length > 0 && (() => {
+        const toggleItem = (id: string) => setSelectedLowStock(prev => {
+          const next = new Set(prev);
+          next.has(id) ? next.delete(id) : next.add(id);
+          return next;
+        });
+        const allSelected = lowStockList.every(p => selectedLowStock.has(p.id));
+        const toggleAll = () => setSelectedLowStock(allSelected ? new Set() : new Set(lowStockList.map(p => p.id)));
+
+        const handleCreateOrder = () => {
+          const selected = lowStockList.filter(p => selectedLowStock.has(p.id));
+          if (selected.length === 0) return;
+          // 공급업체별로 그룹화
+          const grouped = new Map<string, { name: string; items: typeof selected }>();
+          selected.forEach(p => {
+            const supplierId = p.supplierId ?? '__none__';
+            const supplier = clients.find(c => c.id === supplierId);
+            const supplierName = supplier?.name ?? '공급처 미지정';
+            const existing = grouped.get(supplierId) ?? { name: supplierName, items: [] };
+            existing.items.push(p);
+            grouped.set(supplierId, existing);
+          });
+          // 첫 번째 그룹으로 발주서 생성 (공급처 여러 개면 첫 번째만)
+          const [firstSupplierId, firstGroup] = [...grouped.entries()][0];
+          onCreatePurchaseOrder?.(
+            firstSupplierId === '__none__' ? '' : firstSupplierId,
+            firstGroup.name,
+            firstGroup.items.map(p => ({
+              name: p.name,
+              spec: p.용량 ?? '',
+              qty: Number(orderQtys[p.id]) || Math.max(1, p.minStock - p.stock),
+              price: p.cost ?? 0,
+            }))
+          );
+        };
+
+        return (
+          <div className="bg-white rounded-2xl border border-rose-200 shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 bg-rose-50 border-b border-rose-100">
+              <div className="flex items-center gap-2">
+                <AlertCircle size={16} className="text-rose-500"/>
+                <span className="font-black text-rose-700 text-sm">재고 부족 품목 — {lowStockList.length}개</span>
+                <span className="text-[10px] text-rose-400">최소 재고 이하 항목입니다</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {selectedLowStock.size > 0 && (
+                  <button
+                    onClick={handleCreateOrder}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-black hover:bg-rose-700 transition-all"
+                  >
+                    <ShoppingCart size={13}/>선택 품목 발주서 생성 ({selectedLowStock.size})
+                  </button>
+                )}
+                <button onClick={() => setShowLowStock(false)} className="p-1.5 text-rose-400 hover:bg-rose-100 rounded-lg transition-all">
+                  <ChevronUp size={16}/>
+                </button>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-4 py-2.5 text-center">
+                      <input type="checkbox" checked={allSelected} onChange={toggleAll}
+                        className="w-3.5 h-3.5 rounded accent-rose-500 cursor-pointer"/>
+                    </th>
+                    {['품목명', '단위', '현재 재고', '최소 재고', '부족량', '발주 수량', '공급처'].map(h => (
+                      <th key={h} className="px-4 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {lowStockList.map(p => {
+                    const shortage = p.minStock - p.stock;
+                    const supplier = clients.find(c => c.id === p.supplierId);
+                    const isChecked = selectedLowStock.has(p.id);
+                    return (
+                      <tr key={p.id} className={`transition-colors ${isChecked ? 'bg-rose-50/50' : 'hover:bg-slate-50'}`}>
+                        <td className="px-4 py-3 text-center">
+                          <input type="checkbox" checked={isChecked} onChange={() => toggleItem(p.id)}
+                            className="w-3.5 h-3.5 rounded accent-rose-500 cursor-pointer"/>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-xs font-black text-slate-800">{p.name}</span>
+                          {p.용량 && <span className="ml-1.5 text-[10px] text-slate-400">{p.용량}</span>}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-500">{p.unit}</td>
+                        <td className="px-4 py-3">
+                          <span className="text-xs font-black text-rose-600">{p.stock}{p.unit}</span>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-500">{p.minStock}{p.unit}</td>
+                        <td className="px-4 py-3">
+                          <span className="text-xs font-black text-amber-600 bg-amber-50 px-2 py-0.5 rounded-lg">
+                            -{shortage}{p.unit}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="number"
+                            value={orderQtys[p.id] ?? shortage}
+                            onChange={e => setOrderQtys(prev => ({ ...prev, [p.id]: e.target.value }))}
+                            className="w-20 text-right bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-rose-300"
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-500">
+                          {supplier?.name ?? <span className="text-slate-300">미지정</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
