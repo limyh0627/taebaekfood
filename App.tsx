@@ -793,8 +793,7 @@ const App: React.FC = () => {
                   <NavItem icon={UserCheck} label="인사/연차 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} />
                   <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
                   <NavItem icon={FileText} label="거래명세서" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} />
-                  <NavItem icon={Wallet} label="비용 관리" active={currentView === 'cost-management'} onClick={() => handleNavClick('cost-management')} collapsed={isSidebarCollapsed} />
-                  <NavItem icon={BarChart2} label="손익 분석" active={currentView === 'profit-analysis'} onClick={() => handleNavClick('profit-analysis')} collapsed={isSidebarCollapsed} />
+                  <NavItem icon={BarChart2} label="손익/비용 관리" active={currentView === 'profit-analysis' || currentView === 'cost-management'} onClick={() => handleNavClick('profit-analysis')} collapsed={isSidebarCollapsed} />
                 </nav>
               </div>
             )}
@@ -2493,12 +2492,12 @@ const App: React.FC = () => {
               onUpdateProductCost={(productId, cost) => updateItem('products', productId, { cost })}
             />
           )}
-          {currentView === 'cost-management' && (
-            <div className="h-full overflow-y-auto">
-              <CostManager
-                fixedCosts={fixedCosts}
+          {(currentView === 'profit-analysis' || currentView === 'cost-management') && (
+            <div className="h-full overflow-y-auto p-6">
+              <ProfitAnalysis
                 issuedStatements={issuedStatements}
-                onAdd={async (entry) => {
+                fixedCosts={fixedCosts}
+                onAddCost={async (entry) => {
                   const { note, ...rest } = entry;
                   await addItem('fixedCosts', {
                     ...rest,
@@ -2507,15 +2506,7 @@ const App: React.FC = () => {
                     createdAt: new Date().toISOString(),
                   });
                 }}
-                onDelete={(id) => deleteItem('fixedCosts', id)}
-              />
-            </div>
-          )}
-          {currentView === 'profit-analysis' && (
-            <div className="h-full overflow-y-auto p-6">
-              <ProfitAnalysis
-                issuedStatements={issuedStatements}
-                fixedCosts={fixedCosts}
+                onDeleteCost={(id) => deleteItem('fixedCosts', id)}
               />
             </div>
           )}

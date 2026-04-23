@@ -4,13 +4,16 @@ import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, Cell
 } from 'recharts';
-import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, BarChart2, DollarSign } from 'lucide-react';
 import { IssuedStatement, FixedCostEntry } from '../types';
 import PageHeader from './PageHeader';
+import CostManager from './CostManager';
 
 interface ProfitAnalysisProps {
   issuedStatements: IssuedStatement[];
   fixedCosts: FixedCostEntry[];
+  onAddCost: (entry: Omit<FixedCostEntry, 'id' | 'createdAt'>) => Promise<void>;
+  onDeleteCost: (id: string) => Promise<void>;
 }
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
@@ -22,7 +25,8 @@ const fmtM = (n: number) => {
 
 const MONTHS = 12;
 
-const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts }) => {
+const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, onAddCost, onDeleteCost }) => {
+  const [mainTab, setMainTab] = useState<'analysis' | 'costs'>('analysis');
   const now = new Date();
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
@@ -129,15 +133,41 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   return (
     <div className="space-y-5 animate-in fade-in duration-300">
       <PageHeader
-        title="손익 분석"
-        subtitle="매출 · 매입 · 고정비 기반 영업이익을 월별로 분석합니다."
+        title="손익 / 비용 관리"
+        subtitle="매출 · 매입 · 고정비 기반 영업이익을 분석하고 비용을 관리합니다."
         right={
-          <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))}
-            className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-black outline-none focus:ring-2 focus:ring-blue-300 cursor-pointer">
-            {years.map(y => <option key={y} value={y}>{y}년</option>)}
-          </select>
+          <div className="flex items-center gap-2">
+            {mainTab === 'analysis' && (
+              <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))}
+                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-black outline-none focus:ring-2 focus:ring-blue-300 cursor-pointer">
+                {years.map(y => <option key={y} value={y}>{y}년</option>)}
+              </select>
+            )}
+            <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+              <button onClick={() => setMainTab('analysis')}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'analysis' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                <BarChart2 size={13}/>손익분석
+              </button>
+              <button onClick={() => setMainTab('costs')}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'costs' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                <DollarSign size={13}/>고정비 입력
+              </button>
+            </div>
+          </div>
         }
       />
+
+      {mainTab === 'costs' && (
+        <CostManager
+          fixedCosts={fixedCosts}
+          issuedStatements={issuedStatements}
+          onAdd={onAddCost}
+          onDelete={onDeleteCost}
+        />
+      )}
+
+      {mainTab === 'analysis' && <>
+
 
       {/* 연간 요약 카드 */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
@@ -324,6 +354,8 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           </table>
         </div>
       </div>
+
+      </>}
     </div>
   );
 };
