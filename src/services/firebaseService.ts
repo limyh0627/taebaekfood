@@ -101,20 +101,27 @@ export const deleteSubItem = async (
   await deleteDoc(docRef);
 };
 
-// productClients 컬렉션에 품목-거래처 매핑 저장 (기존 전체 교체)
+// productClients 컬렉션에 품목-거래처 매핑 저장 — 기존 box/tape 설정 보존
 export const setProductClients = async (productId: string, clientIds: string[]) => {
+  const { getDocs, query: q, collection: col, where } = await import('firebase/firestore');
+
+  // 기존 레코드 조회
+  const existing = await getDocs(q(col(db, 'productClients'), where('productId', '==', productId)));
+  const existingMap = new Map(existing.docs.map(d => [d.data().clientId as string, d.ref]));
+
   const batch = writeBatch(db);
 
-  // 기존 매핑 삭제
-  const existing = await import('firebase/firestore').then(m =>
-    m.getDocs(m.query(m.collection(db, 'productClients'), m.where('productId', '==', productId)))
-  );
-  existing.docs.forEach(d => batch.delete(d.ref));
+  // 연결 해제된 거래처 삭제
+  existingMap.forEach((ref, clientId) => {
+    if (!clientIds.includes(clientId)) batch.delete(ref);
+  });
 
-  // 새 매핑 추가
+  // 새로 연결된 거래처만 추가 (기존 레코드는 건드리지 않아 박스/테이프 설정 보존)
   for (const clientId of clientIds) {
-    const ref = doc(db, 'productClients', `${productId}_${clientId}`);
-    batch.set(ref, { productId, clientId });
+    if (!existingMap.has(clientId)) {
+      const ref = doc(db, 'productClients', `${productId}_${clientId}`);
+      batch.set(ref, { productId, clientId });
+    }
   }
 
   await batch.commit();

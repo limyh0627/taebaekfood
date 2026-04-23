@@ -2654,7 +2654,11 @@ const App: React.FC = () => {
           allSubmaterials={submaterials}
           products={products}
           clients={clients}
+          productClients={productClients}
           onClose={() => {setIsProductModalOpen(false); setEditingProduct(null);}}
+          onSaveProductClientConfig={async (id, config) => {
+            try { await updateItem('productClients', id, config); } catch { /* 문서 없으면 무시 */ }
+          }}
           onAddSubmaterial={async (name, category) => {
             const unit = category === '라벨' ? '매' : '개';
             const id = await addItem('submaterials', { name, category, stock: 0, minStock: 0, unit, price: 0, image: '' });

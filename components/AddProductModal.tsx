@@ -1,15 +1,17 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Package, Tag, Box, Layers, Plus, Building2, Check, Trash2 } from 'lucide-react';
-import { Product, InventoryCategory, Client, ClientBoxConfig } from '../types';
+import { Product, InventoryCategory, Client, ClientBoxConfig, ProductClient } from '../types';
 
 interface ProductModalProps {
   initialData?: Product;
   allSubmaterials?: Product[];
   products?: Product[];
   clients?: Client[];
+  productClients?: ProductClient[];
   onClose: () => void;
   onSave: (_product: Product) => void;
+  onSaveProductClientConfig?: (id: string, config: Partial<ProductClient>) => Promise<void>;
   onAddSubmaterial?: (name: string, category: string) => Promise<string>;
 }
 
@@ -53,7 +55,7 @@ const PUMOK_VOLUMES: Record<string, string[]> = {
   '시골향볶음검정참깨': ['1kg','20kg','25kg'],
 };
 
-const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], products = [], clients = [], onClose, onSave, onAddSubmaterial }) => {
+const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], products = [], clients = [], productClients = [], onClose, onSave, onSaveProductClientConfig, onAddSubmaterial }) => {
   const [formData, setFormData] = useState(() => ({
     name: initialData?.name || '',
     category: (initialData?.category as InventoryCategory) || '완제품',
@@ -91,6 +93,17 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const [expandedBoxClient, setExpandedBoxClient] = useState<string | null>(null);
   const [boxClientSearch, setBoxClientSearch] = useState('');
   const [showBoxClientDrop, setShowBoxClientDrop] = useState(false);
+
+  // 거래처별 포장 설정 (ProductClient 기반)
+  const [clientPackagingConfigs, setClientPackagingConfigs] = useState<Record<string, { boxTypeId?: string; qtyPerBox?: number; tapeTypeId?: string }>>(() => {
+    const map: Record<string, { boxTypeId?: string; qtyPerBox?: number; tapeTypeId?: string }> = {};
+    if (initialData) {
+      productClients.filter(pc => pc.productId === initialData.id).forEach(pc => {
+        map[pc.clientId] = { boxTypeId: pc.boxTypeId, qtyPerBox: pc.qtyPerBox, tapeTypeId: pc.tapeTypeId };
+      });
+    }
+    return map;
+  });
   const boxClientSearchRef = useRef<HTMLDivElement>(null);
   const pumokRef = useRef<HTMLDivElement>(null);
 
@@ -134,7 +147,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
 
   const categories: InventoryCategory[] = ['완제품', '향미유', '고춧가루', '용기', '마개', '테이프', '박스', '라벨'];
 
-  const handleSubmit = (e?: React.SyntheticEvent) => {
+  const handleSubmit = async (e?: React.SyntheticEvent) => {
     e?.preventDefault();
     if (!formData.name) return;
     if (formData.category === '완제품' && !formData.품목) { setPumokWarn(true); return; }
@@ -165,6 +178,15 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     };
 
     onSave(finalProduct);
+
+    // ProductClient에 박스/테이프 설정 저장
+    if (onSaveProductClientConfig && finalProduct.clientIds?.length) {
+      const pid = finalProduct.id;
+      for (const clientId of finalProduct.clientIds) {
+        const cfg = clientPackagingConfigs[clientId] ?? {};
+        await onSaveProductClientConfig(`${pid}_${clientId}`, { boxTypeId: cfg.boxTypeId, qtyPerBox: cfg.qtyPerBox, tapeTypeId: cfg.tapeTypeId });
+      }
+    }
   };
 
   return (
@@ -497,178 +519,75 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                 })}
               </div>
 
-              {/* 거래처별 박스 설정 */}
-              <div className="bg-slate-50 rounded-2xl border border-slate-100 p-4 space-y-3">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">거래처별 박스 설정</p>
-                {formData.clientBoxConfigs.map((cfg) => {
-                  const clientName = clients.find(c => c.id === cfg.clientId)?.name || cfg.clientId;
-                  const isExpanded = expandedBoxClient === cfg.clientId;
-                  const boxSubs = allSubmaterials.filter(s => s.category === '박스');
-                  return (
-                    <div key={cfg.clientId} className="bg-white border border-slate-100 rounded-xl overflow-hidden">
-                      <div
-                        className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-slate-50 transition-colors"
-                        onClick={() => setExpandedBoxClient(isExpanded ? null : cfg.clientId)}
-                      >
-                        <span className="text-xs font-bold text-slate-700 flex-1 truncate">{clientName}</span>
-                        <span className="text-[10px] font-bold text-slate-400 shrink-0">{cfg.configs.length}개 설정</span>
-                        <span className="text-[10px] text-slate-400">{isExpanded ? '▲' : '▼'}</span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setFormData({ ...formData, clientBoxConfigs: formData.clientBoxConfigs.filter(c => c.clientId !== cfg.clientId) });
-                            if (expandedBoxClient === cfg.clientId) setExpandedBoxClient(null);
-                          }}
-                          className="text-rose-400 hover:text-rose-600 shrink-0"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-
-                      {isExpanded && (
-                        <div className="border-t border-slate-100 p-3 space-y-3">
-                          {cfg.configs.map((box, boxIdx) => (
-                            <div key={boxIdx} className="space-y-1.5">
-                              <div className="flex flex-wrap gap-1.5">
-                                {boxSubs.map(sub => {
-                                  const isSel = box.boxSubId === sub.id;
-                                  return (
-                                    <button
-                                      key={sub.id}
-                                      type="button"
-                                      onClick={() => {
-                                        const next = formData.clientBoxConfigs.map(c =>
-                                          c.clientId !== cfg.clientId ? c : {
-                                            ...c,
-                                            configs: c.configs.map((b, i) => i === boxIdx ? {
-                                              boxType: sub.name,
-                                              unitsPerBox: b.unitsPerBox || 0,
-                                              boxSubId: sub.id,
-                                            } : b)
-                                          }
-                                        );
-                                        setFormData({ ...formData, clientBoxConfigs: next });
-                                      }}
-                                      className={`text-[11px] font-black px-2.5 py-1 rounded-lg border transition-all ${
-                                        isSel
-                                          ? 'bg-indigo-600 text-white border-indigo-600'
-                                          : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
-                                      }`}
-                                    >
+              {/* 거래처별 포장 설정 (박스 + 테이프) */}
+              {formData.clientIds.length > 0 && (
+                <div className="bg-slate-50 rounded-2xl border border-slate-100 p-4 space-y-3">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">거래처별 포장 설정</p>
+                  {formData.clientIds.map((clientId) => {
+                    const clientName = clients.find(c => c.id === clientId)?.name || clientId;
+                    const isExpanded = expandedBoxClient === clientId;
+                    const cfg = clientPackagingConfigs[clientId] ?? {};
+                    const boxSubs = allSubmaterials.filter(s => s.category === '박스');
+                    const tapeSubs = allSubmaterials.filter(s => s.category === '테이프' || s.category === 'Tape');
+                    const selectedBox = allSubmaterials.find(s => s.id === cfg.boxTypeId);
+                    const selectedTape = allSubmaterials.find(s => s.id === cfg.tapeTypeId);
+                    const summary = [selectedBox?.name, cfg.qtyPerBox ? `${cfg.qtyPerBox}개/박스` : null, selectedTape?.name].filter(Boolean).join(' · ');
+                    return (
+                      <div key={clientId} className="bg-white border border-slate-100 rounded-xl overflow-hidden">
+                        <div className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => setExpandedBoxClient(isExpanded ? null : clientId)}>
+                          <span className="text-xs font-bold text-slate-700 flex-1 truncate">{clientName}</span>
+                          {summary ? <span className="text-[10px] font-bold text-indigo-500 truncate max-w-[120px]">{summary}</span> : <span className="text-[10px] text-slate-300">미설정</span>}
+                          <span className="text-[10px] text-slate-400">{isExpanded ? '▲' : '▼'}</span>
+                        </div>
+                        {isExpanded && (
+                          <div className="border-t border-slate-100 p-3 space-y-3">
+                            {/* 박스 종류 */}
+                            {boxSubs.length > 0 && (
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">박스 종류</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {boxSubs.map(sub => (
+                                    <button key={sub.id} type="button"
+                                      onClick={() => setClientPackagingConfigs(prev => ({ ...prev, [clientId]: { ...prev[clientId], boxTypeId: prev[clientId]?.boxTypeId === sub.id ? undefined : sub.id } }))}
+                                      className={`text-[11px] font-black px-2.5 py-1 rounded-lg border transition-all ${cfg.boxTypeId === sub.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}>
                                       {sub.name}
                                     </button>
-                                  );
-                                })}
+                                  ))}
+                                </div>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-[10px] text-slate-400 shrink-0">박스당</span>
-                                <input
-                                  type="number"
-                                  min={1}
-                                  placeholder="개수"
-                                  value={box.unitsPerBox === 0 ? '' : box.unitsPerBox}
-                                  onChange={(e) => {
-                                    const next = formData.clientBoxConfigs.map(c =>
-                                      c.clientId !== cfg.clientId ? c : {
-                                        ...c,
-                                        configs: c.configs.map((b, i) => i === boxIdx ? { ...b, unitsPerBox: Number(e.target.value) || 0 } : b)
-                                      }
-                                    );
-                                    setFormData({ ...formData, clientBoxConfigs: next });
-                                  }}
-                                  className="w-16 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-black text-center outline-none focus:ring-1 focus:ring-indigo-400"
-                                />
-                                <span className="text-[10px] text-slate-400 shrink-0">개</span>
-                                {box.boxType && <span className="text-[10px] font-bold text-indigo-500 truncate">{box.boxType}</span>}
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const next = formData.clientBoxConfigs.map(c =>
-                                      c.clientId !== cfg.clientId ? c : { ...c, configs: c.configs.filter((_, i) => i !== boxIdx) }
-                                    );
-                                    setFormData({ ...formData, clientBoxConfigs: next });
-                                  }}
-                                  className="ml-auto text-rose-400 hover:text-rose-600 shrink-0"
-                                >
-                                  <Trash2 size={11} />
-                                </button>
-                              </div>
+                            )}
+                            {/* 박스당 수량 */}
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-slate-400 shrink-0">박스당</span>
+                              <input type="number" min={1} placeholder="개수"
+                                value={cfg.qtyPerBox ?? ''}
+                                onChange={e => setClientPackagingConfigs(prev => ({ ...prev, [clientId]: { ...prev[clientId], qtyPerBox: Number(e.target.value) || undefined } }))}
+                                className="w-16 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-black text-center outline-none focus:ring-1 focus:ring-indigo-400"
+                              />
+                              <span className="text-[10px] text-slate-400 shrink-0">개</span>
                             </div>
-                          ))}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const next = formData.clientBoxConfigs.map(c =>
-                                c.clientId !== cfg.clientId ? c : {
-                                  ...c,
-                                  configs: [...c.configs, { boxType: '', unitsPerBox: 0 }]
-                                }
-                              );
-                              setFormData({ ...formData, clientBoxConfigs: next });
-                            }}
-                            className="w-full py-1.5 text-[10px] font-bold text-indigo-500 border border-dashed border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors"
-                          >
-                            + 박스 설정 추가
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-
-                {/* 거래처 추가 */}
-                {(() => {
-                  const addedIds = formData.clientBoxConfigs.map(c => c.clientId);
-                  const pool = salesClients.filter(c => !addedIds.includes(c.id));
-                  if (pool.length === 0) return null;
-                  const filtered = boxClientSearch.trim()
-                    ? pool.filter(c => c.name.toLowerCase().includes(boxClientSearch.toLowerCase()))
-                    : pool;
-                  const addClient = (id: string) => {
-                    const newCfg: ClientBoxConfig = {
-                      clientId: id,
-                      configs: formData.defaultBoxConfig.unitsPerBox > 0
-                        ? [{ boxType: formData.defaultBoxConfig.boxType, unitsPerBox: formData.defaultBoxConfig.unitsPerBox }]
-                        : [{ boxType: '', unitsPerBox: 0 }],
-                    };
-                    setFormData({ ...formData, clientBoxConfigs: [...formData.clientBoxConfigs, newCfg] });
-                    setExpandedBoxClient(id);
-                    setBoxClientSearch('');
-                    setShowBoxClientDrop(false);
-                  };
-                  return (
-                    <div ref={boxClientSearchRef} className="relative">
-                      <div className="relative">
-                        <Plus size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-indigo-400 pointer-events-none" />
-                        <input
-                          type="text"
-                          placeholder="거래처 검색 후 추가..."
-                          value={boxClientSearch}
-                          onFocus={() => setShowBoxClientDrop(true)}
-                          onChange={(e) => { setBoxClientSearch(e.target.value); setShowBoxClientDrop(true); }}
-                          className="w-full bg-white border border-dashed border-indigo-200 rounded-xl pl-8 pr-3 py-2 text-xs font-bold text-slate-700 placeholder:text-indigo-400 outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-300 transition-all"
-                        />
+                            {/* 테이프 종류 */}
+                            {tapeSubs.length > 0 && (
+                              <div className="space-y-1">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">테이프 종류</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {tapeSubs.map(sub => (
+                                    <button key={sub.id} type="button"
+                                      onClick={() => setClientPackagingConfigs(prev => ({ ...prev, [clientId]: { ...prev[clientId], tapeTypeId: prev[clientId]?.tapeTypeId === sub.id ? undefined : sub.id } }))}
+                                      className={`text-[11px] font-black px-2.5 py-1 rounded-lg border transition-all ${cfg.tapeTypeId === sub.id ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-slate-600 border-slate-200 hover:border-sky-300'}`}>
+                                      {sub.name}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      {showBoxClientDrop && filtered.length > 0 && (
-                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-20 overflow-hidden max-h-48 overflow-y-auto custom-scrollbar">
-                          {filtered.map(c => (
-                            <button
-                              key={c.id}
-                              type="button"
-                              onMouseDown={() => addClient(c.id)}
-                              className="w-full px-4 py-2.5 text-left text-xs font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center justify-between transition-colors"
-                            >
-                              <span>{c.name}</span>
-                              {c.type && <span className="text-[9px] font-black text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{c.type}</span>}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
