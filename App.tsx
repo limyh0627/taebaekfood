@@ -2580,6 +2580,36 @@ const App: React.FC = () => {
                 await setProductClients(productId, current.filter(id => id !== clientId));
               }}
               productClients={productClients}
+              onMergeProducts={async (keepId, deleteIds) => {
+                const { getDocs, query: q, collection: col, where, writeBatch: wb, doc: d } = await import('firebase/firestore');
+                const { db: fireDb } = await import('./src/firebase');
+                const batch = wb(fireDb);
+
+                // 삭제할 품목들의 productClients를 keepId로 이전
+                for (const delId of deleteIds) {
+                  const snap = await getDocs(q(col(fireDb, 'productClients'), where('productId', '==', delId)));
+                  for (const docSnap of snap.docs) {
+                    const data = docSnap.data();
+                    const newRef = d(fireDb, 'productClients', `${keepId}_${data.clientId}`);
+                    // 이미 keepId에 해당 거래처가 없을 때만 이전
+                    const existing = productClients.find(pc => pc.productId === keepId && pc.clientId === data.clientId);
+                    if (!existing) {
+                      batch.set(newRef, { ...data, productId: keepId, id: `${keepId}_${data.clientId}` });
+                    }
+                    batch.delete(docSnap.ref);
+                  }
+                  // 삭제할 품목의 clientIds를 keepId에 병합
+                  const delProduct = allProducts.find(p => p.id === delId);
+                  if (delProduct?.clientIds?.length) {
+                    const keepProduct = allProducts.find(p => p.id === keepId);
+                    const mergedIds = [...new Set([...(keepProduct?.clientIds ?? []), ...delProduct.clientIds])];
+                    batch.update(d(fireDb, 'products', keepId), { clientIds: mergedIds });
+                  }
+                  // 삭제할 품목 제거
+                  batch.delete(d(fireDb, 'products', delId));
+                }
+                await batch.commit();
+              }}
             />
           )}
           {currentView === 'officetalk' && (

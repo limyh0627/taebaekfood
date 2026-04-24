@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X } from 'lucide-react';
+import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X, Copy, ChevronDown, ChevronUp, GitMerge } from 'lucide-react';
 import { Product, InventoryCategory, Client, ProductClient } from '../types';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
@@ -14,6 +14,7 @@ interface ItemManagerProps {
   onDeleteProduct: (_id: string, _category: string) => void;
   onLinkProduct: (_productId: string, _clientId: string) => void;
   onUnlinkProduct: (_productId: string, _clientId: string) => void;
+  onMergeProducts?: (_keepId: string, _deleteIds: string[]) => Promise<void>;
 }
 
 const CATEGORY_MAP: Record<string, string> = {
@@ -27,7 +28,7 @@ const SUB_ORDER: Record<string, number> = { '라벨': 0, '용기': 1, '마개': 
 const sortSubs = (subs: { name: string; category: string }[]) =>
   [...subs].sort((a, b) => (SUB_ORDER[normalizeCategory(a.category)] ?? 9) - (SUB_ORDER[normalizeCategory(b.category)] ?? 9));
 
-const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productClients = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct }) => {
+const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productClients = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct, onMergeProducts }) => {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [activeCategory, setActiveCategory] = useState<InventoryCategory>('완제품');
@@ -41,6 +42,10 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
   const [linkCategory, setLinkCategory] = useState('완제품');
   const [clientTypeFilter, setClientTypeFilter] = useState<string | null>(null);
   const [expandedClientRowId, setExpandedClientRowId] = useState<string | null>(null);
+  const [showDuplicates, setShowDuplicates] = useState(false);
+  const [dupExpandedKeys, setDupExpandedKeys] = useState<Set<string>>(new Set());
+  const [merging, setMerging] = useState(false);
+  const [selectedKeepId, setSelectedKeepId] = useState<Record<string, string>>({});
 
   const TYPE_ORDER: Record<string, number> = { '일반': 0, '택배': 1, '스마트스토어': 2 };
   const salesClients = useMemo(() =>
@@ -52,6 +57,43 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
       }),
     [clients]
   );
+
+  const duplicateGroups = useMemo(() => {
+    const finished = products.filter(p => p.category === '완제품');
+    const pcByProduct: Record<string, ProductClient[]> = {};
+    for (const pc of productClients) {
+      if (!pcByProduct[pc.productId]) pcByProduct[pc.productId] = [];
+      pcByProduct[pc.productId].push(pc);
+    }
+    const subMap = Object.fromEntries(products.map(p => [p.id, p.name]));
+
+    const groups: Record<string, typeof finished> = {};
+    for (const p of finished) {
+      const subs = p.submaterials || [];
+      const 용기 = subs.filter(s => normalizeCategory(s.category) === '용기').map(s => s.name).sort().join(',');
+      const 마개 = subs.filter(s => normalizeCategory(s.category) === '마개').map(s => s.name).sort().join(',');
+      const key = `${p.name}||용기:${용기}|마개:${마개}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(p);
+    }
+
+    return Object.entries(groups)
+      .filter(([, prods]) => prods.length > 1)
+      .map(([key, prods]) => {
+        const [namePart, containerPart] = key.split('||');
+        const items = prods.map(p => {
+          const subs = p.submaterials || [];
+          const 라벨 = subs.filter(s => normalizeCategory(s.category) === '라벨').map(s => s.name).join(', ');
+          const pcs = pcByProduct[p.id] || [];
+          const directClients = [...new Set([...(p.clientIds || [])])];
+          return { product: p, 라벨, pcs, directClients, subMap };
+        });
+        const labels = [...new Set(items.map(i => i.라벨).filter(Boolean))];
+        const canMerge = labels.length <= 1;
+        return { key, name: namePart, container: containerPart, items, canMerge };
+      })
+      .sort((a, b) => (a.canMerge ? 0 : 1) - (b.canMerge ? 0 : 1));
+  }, [products, productClients]);
 
   const clientProductCount = useMemo(() => {
     const map = new Map<string, number>();
@@ -324,7 +366,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                             'bg-rose-100 text-rose-700','bg-sky-100 text-sky-700','bg-violet-100 text-violet-700',
                             'bg-teal-100 text-teal-700','bg-orange-100 text-orange-700','bg-pink-100 text-pink-700',
                           ];
-                          const clientList = clients.filter(c => !c.partnerType || c.partnerType === '매출처');
+                          const clientList = clients.filter(c => !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처');
                           const matched = (item.clientIds ?? []).map(id => clientList.find(c => c.id === id)).filter(Boolean) as typeof clientList;
                           if (!matched.length) return <span className="text-slate-200">-</span>;
                           const isExp = expandedClientRowId === item.id;
@@ -441,14 +483,159 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
       <PageHeader
         title="품목 정보 관리"
         subtitle="거래처를 선택하거나 전체 품목을 조회하세요."
-        right={<button
-          onClick={onAddProduct}
-          className="lg:hidden flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-black text-sm shadow-md"
-        >
-          <Plus size={16} />
-          신규 품목 등록
-        </button>}
+        right={
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowDuplicates(p => !p)}
+              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-black text-sm shadow-sm transition-all ${showDuplicates ? 'bg-amber-50 text-amber-600 border border-amber-300' : 'bg-white text-slate-500 border border-slate-200 hover:border-slate-300'}`}
+            >
+              <Copy size={14} />
+              중복 품목
+              {duplicateGroups.length > 0 && (
+                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${showDuplicates ? 'bg-amber-200 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{duplicateGroups.length}</span>
+              )}
+            </button>
+            <button
+              onClick={onAddProduct}
+              className="lg:hidden flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-black text-sm shadow-md"
+            >
+              <Plus size={16} />
+              신규 품목 등록
+            </button>
+          </div>
+        }
       />
+
+      {/* 중복 품목 패널 */}
+      {showDuplicates && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl overflow-hidden">
+          <div className="px-5 py-3 border-b border-amber-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Copy size={15} className="text-amber-600" />
+              <span className="text-sm font-black text-amber-800">중복 품목 목록</span>
+              <span className="text-[10px] font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">이름+용기/마개 기준 {duplicateGroups.length}그룹</span>
+            </div>
+            <button onClick={() => setShowDuplicates(false)} className="p-1 hover:bg-amber-100 rounded-lg transition-colors">
+              <X size={14} className="text-amber-500" />
+            </button>
+          </div>
+          <div className="divide-y divide-amber-100 max-h-[60vh] overflow-y-auto">
+            {duplicateGroups.map(group => {
+              const isExpanded = dupExpandedKeys.has(group.key);
+              return (
+                <div key={group.key} className="px-5 py-3">
+                  <button
+                    className="w-full flex items-start justify-between gap-3 text-left"
+                    onClick={() => setDupExpandedKeys(prev => { const next = new Set(prev); next.has(group.key) ? next.delete(group.key) : next.add(group.key); return next; })}
+                  >
+                    <div className="flex items-center gap-2 flex-wrap min-w-0">
+                      <span className="text-sm font-black text-slate-800">{group.name}</span>
+                      <span className="text-[10px] font-bold text-slate-400">{group.container}</span>
+                      <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${group.canMerge ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-600'}`}>
+                        {group.canMerge ? '통합 가능' : '라벨 다름'}
+                      </span>
+                      <span className="text-[10px] font-bold text-amber-600">{group.items.length}개</span>
+                    </div>
+                    {isExpanded ? <ChevronUp size={14} className="text-amber-500 shrink-0 mt-0.5" /> : <ChevronDown size={14} className="text-amber-500 shrink-0 mt-0.5" />}
+                  </button>
+
+                  {isExpanded && (
+                    <div className="mt-3 space-y-2">
+                      {group.items.map(({ product, 라벨, pcs, directClients, subMap }) => {
+                        const subs = product.submaterials || [];
+                        const 용기목록 = subs.filter(s => normalizeCategory(s.category) === '용기').map(s => s.name).join(', ');
+                        const 마개목록 = subs.filter(s => normalizeCategory(s.category) === '마개').map(s => s.name).join(', ');
+                        return (
+                        <div key={product.id} className="bg-white rounded-xl border border-amber-100 px-4 py-3">
+                          <div className="flex items-center gap-2 mb-2 flex-wrap">
+                            <span className="text-[10px] font-black text-slate-400 font-mono">{product.id}</span>
+                            {라벨 ? (
+                              <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">라벨: {라벨}</span>
+                            ) : (
+                              <span className="text-[10px] font-bold text-slate-300">라벨 없음</span>
+                            )}
+                            {용기목록 && <span className="text-[10px] font-bold text-sky-600 bg-sky-50 px-2 py-0.5 rounded-full">용기: {용기목록}</span>}
+                            {마개목록 && <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">마개: {마개목록}</span>}
+                          </div>
+                          {pcs.length > 0 ? (
+                            <div className="space-y-1">
+                              {pcs.map(pc => {
+                                const cname = clients.find(c => c.id === pc.clientId)?.name || pc.clientId;
+                                const boxName = pc.boxTypeId ? (subMap[pc.boxTypeId] || pc.boxTypeId) : null;
+                                const tapeName = pc.tapeTypeId ? (subMap[pc.tapeTypeId] || pc.tapeTypeId) : null;
+                                return (
+                                  <div key={pc.id} className="flex flex-wrap items-center gap-3 text-[11px]">
+                                    <span className="font-bold text-slate-700 min-w-[80px]">{cname}</span>
+                                    <span className="text-slate-400">{boxName ? `박스: ${boxName}` : '박스 없음'}</span>
+                                    <span className="text-slate-400">{tapeName ? `테이프: ${tapeName}` : '테이프 없음'}</span>
+                                    {pc.qtyPerBox && <span className="text-slate-400">{pc.qtyPerBox}개/박스</span>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-slate-400">
+                              거래처: {directClients.map(id => clients.find(c => c.id === id)?.name || id).join(', ') || '없음'} — 포장 설정 없음
+                            </div>
+                          )}
+                        </div>
+                        );
+                      })}
+
+                      {onMergeProducts && (
+                        <div className={`border rounded-xl px-4 py-3 ${group.canMerge ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}>
+                          <p className={`text-[11px] font-black mb-2 ${group.canMerge ? 'text-emerald-700' : 'text-rose-600'}`}>
+                            {group.canMerge ? '통합 가능 — 남길 품목을 선택하세요' : '⚠ 라벨이 달라 통합 시 주의 필요 — 남길 품목을 선택하세요'}
+                          </p>
+                          <div className="flex flex-wrap gap-2 mb-3">
+                            {group.items.map(({ product, 라벨 }) => {
+                              const keepId = selectedKeepId[group.key] ?? group.items[0].product.id;
+                              const isKeep = keepId === product.id;
+                              return (
+                                <button
+                                  key={product.id}
+                                  onClick={() => setSelectedKeepId(prev => ({ ...prev, [group.key]: product.id }))}
+                                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black border transition-all ${isKeep ? 'bg-indigo-600 border-indigo-600 text-white shadow' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}
+                                >
+                                  {product.id} {라벨 ? `(${라벨})` : ''}
+                                  {isKeep && ' ← 남김'}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {(() => {
+                            const keepId = selectedKeepId[group.key] ?? group.items[0].product.id;
+                            const deleteIds = group.items.map(i => i.product.id).filter(id => id !== keepId);
+                            return (
+                              <button
+                                disabled={merging}
+                                onClick={async () => {
+                                  if (!window.confirm(`"${group.name}" 통합하시겠습니까?\n\n남기는 품목: ${keepId}\n삭제할 품목: ${deleteIds.join(', ')}\n\n삭제 품목의 거래처/포장설정이 남기는 품목으로 이전됩니다.`)) return;
+                                  setMerging(true);
+                                  try {
+                                    await onMergeProducts(keepId, deleteIds);
+                                    setDupExpandedKeys(prev => { const n = new Set(prev); n.delete(group.key); return n; });
+                                  } finally {
+                                    setMerging(false);
+                                  }
+                                }}
+                                className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-[11px] font-black rounded-lg hover:bg-indigo-700 transition-all disabled:opacity-50"
+                              >
+                                <GitMerge size={13} />
+                                {merging ? '통합 중...' : '지금 통합하기'}
+                              </button>
+                            );
+                          })()}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* 모바일: 거래처 목록 그리드 */}
       {showMobileClientList && (
