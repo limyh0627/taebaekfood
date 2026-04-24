@@ -1094,12 +1094,15 @@ const App: React.FC = () => {
             />
           )}
           {currentView === 'documents' && (() => {
+            const SUB_ONLY_CATS = new Set(['용기', '마개', '테이프', '박스', '라벨', '향미유', '고춧가루']);
             const shippedOrders = orders.filter(o =>
               o.status === OrderStatus.SHIPPED &&
               o.customerName !== '생산기록' &&
               o.items.some(item => {
                 const p = allProducts.find(pr => pr.id === item.productId);
-                return p?.category === '완제품';
+                // 제품 ID가 DB에 없으면(삭제 후 재등록 등) 완제품으로 간주
+                // 명확히 부자재/향미유/고춧가루인 경우만 제외
+                return !p || !SUB_ONLY_CATS.has(p.category);
               })
             );
 
@@ -1111,14 +1114,14 @@ const App: React.FC = () => {
               return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
             };
 
-            // 우측: 완제품만, (상호, 품목, 용량) 기준 그룹화
+            // 우측: 완제품, (상호, 품목, 용량) 기준 그룹화
             type RightRow = { 상호: string; 품목: string; 용량: string; 수량: number; 소비기한: string; 제조일자: string; orderItems: Array<{orderId: string; itemIdx: number}>; };
             const rightRowsRaw = shippedOrders.flatMap(order => {
               const client = clients.find(c => c.id === order.clientId);
               const clientName = client?.name || order.customerName || '';
               return order.items.flatMap((item, itemIdx) => {
                 const product = allProducts.find(p => p.id === item.productId);
-                if (product?.category !== '완제품') return [];
+                if (product && SUB_ONLY_CATS.has(product.category)) return [];
                 return [{ 상호: clientName, 품목: product?.품목 || item.name, 용량: product?.용량 || '', 수량: item.quantity, 소비기한: calcExpiry(item.mfgDate || ''), 제조일자: item.mfgDate || '', orderId: order.id, itemIdx }];
               });
             });
