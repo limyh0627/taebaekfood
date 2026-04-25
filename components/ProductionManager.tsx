@@ -131,45 +131,49 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
 
   // 기존 DELIVERED 주문에서 생산 실적 동기화
   const handleSyncFromOrders = async () => {
-    const existingOrderIds = new Set(
-      records
-        .filter(r => r.note?.startsWith('주문 자동 연동'))
-        .map(r => r.id.split('-')[1]) // pr-{orderId}-{productId}-{ts}
-    );
+    try {
+      const deliveredOrders = orders.filter(
+        o => o.status === OrderStatus.DELIVERED && o.customerName !== '생산기록'
+      );
 
-    const deliveredOrders = orders.filter(
-      o => o.status === OrderStatus.DELIVERED && o.customerName !== '생산기록'
-    );
-    let count = 0;
-
-    for (const order of deliveredOrders) {
-      for (const item of order.items) {
-        const product = products.find(p => p.id === item.productId);
-        // 부자재 카테고리 제외, 나머지(완제품 계열)는 모두 포함
-        if (product && SUB_ONLY_CATS.has(product.category)) continue;
-
-        // 이미 이 주문+품목 조합으로 기록이 있으면 스킵
-        const alreadyExists = records.some(
-          r => r.id === `pr-${order.id}-${item.productId}`
-        );
-        if (alreadyExists) continue;
-
-        const record: ProductionRecord = {
-          id: `pr-${order.id}-${item.productId}`,
-          date: order.deliveredAt ? order.deliveredAt.slice(0, 10) : order.createdAt.slice(0, 10),
-          productId: item.productId,
-          productName: product?.name ?? item.name,
-          finishedQty: item.quantity,
-          cost: product?.cost,
-          note: `주문 자동 연동 (${order.customerName})`,
-          createdAt: new Date().toISOString(),
-        };
-        await onAdd(record);
-        count++;
+      if (deliveredOrders.length === 0) {
+        alert('이력에 완료된 주문이 없습니다.');
+        setSyncing(false);
+        return;
       }
-    }
 
-    alert(count === 0 ? '동기화할 새 기록이 없습니다.' : `${count}건 동기화 완료`);
+      const existingIds = new Set(records.map(r => r.id));
+      let count = 0;
+
+      for (const order of deliveredOrders) {
+        for (const item of order.items) {
+          const product = products.find(p => p.id === item.productId);
+          if (product && SUB_ONLY_CATS.has(product.category)) continue;
+
+          const recordId = `pr-${order.id}-${item.productId}`;
+          if (existingIds.has(recordId)) continue;
+
+          const record: ProductionRecord = {
+            id: recordId,
+            date: order.deliveredAt ? order.deliveredAt.slice(0, 10) : order.createdAt.slice(0, 10),
+            productId: item.productId,
+            productName: product?.name ?? item.name,
+            finishedQty: item.quantity,
+            cost: product?.cost,
+            note: `주문 자동 연동 (${order.customerName})`,
+            createdAt: new Date().toISOString(),
+          };
+          await onAdd(record);
+          existingIds.add(recordId);
+          count++;
+        }
+      }
+
+      alert(count === 0 ? '동기화할 새 기록이 없습니다.' : `${count}건 동기화 완료`);
+    } catch (e) {
+      console.error('동기화 오류:', e);
+      alert(`동기화 중 오류가 발생했습니다: ${e}`);
+    }
     setSyncing(false);
   };
 
@@ -193,7 +197,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => { setSyncing(true); handleSyncFromOrders(); }}
+            onClick={() => { setSyncing(true); handleSyncFromOrders().catch(e => { alert(`오류: ${e}`); setSyncing(false); }); }}
             disabled={syncing}
             className="flex items-center gap-2 px-3 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all disabled:opacity-50"
           >
