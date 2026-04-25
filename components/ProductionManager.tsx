@@ -115,12 +115,11 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
       productId: form.productId,
       productName: product?.name ?? '',
       finishedQty: Number(form.finishedQty),
-      wipProductId: wipProduct?.id,
-      wipProductName: wipProduct?.name,
-      wipUsed: form.wipUsed ? Number(form.wipUsed) : undefined,
-      cost: product?.cost,
-      note: form.note || undefined,
-      createdBy: currentUserName,
+      ...(wipProduct?.id ? { wipProductId: wipProduct.id, wipProductName: wipProduct.name } : {}),
+      ...(form.wipUsed ? { wipUsed: Number(form.wipUsed) } : {}),
+      ...(product?.cost != null ? { cost: product.cost } : {}),
+      ...(form.note ? { note: form.note } : {}),
+      ...(currentUserName ? { createdBy: currentUserName } : {}),
       createdAt: new Date().toISOString(),
     };
 
@@ -159,7 +158,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
             productId: item.productId,
             productName: product?.name ?? item.name,
             finishedQty: item.quantity,
-            cost: product?.cost,
+            ...(product?.cost != null ? { cost: product.cost } : {}),
             note: `주문 자동 연동 (${order.customerName})`,
             createdAt: new Date().toISOString(),
           };
