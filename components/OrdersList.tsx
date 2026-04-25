@@ -327,16 +327,38 @@ export const OrderCard = memo<OrderCardProps>(({
                 '부착': 'bg-emerald-50 border-emerald-300 text-emerald-600',
               };
               const editProductInfo = products.find(p => p.id === item.productId);
+              const isOil = isSecondary(editProductInfo?.category);
+              const pc = productClients?.find(c => c.productId === item.productId && c.clientId === order.clientId);
+              const qtyPerBox = item.unitsPerBox ?? pc?.qtyPerBox;
+              const toggleBoxUnit = () => {
+                const newItems = [...order.items];
+                if (item.isBoxUnit) {
+                  newItems[idx] = { ...item, isBoxUnit: false, boxQuantity: undefined };
+                } else {
+                  const bq = qtyPerBox ? Math.max(1, Math.round(item.quantity / qtyPerBox)) : item.quantity;
+                  newItems[idx] = { ...item, isBoxUnit: true, boxQuantity: bq, unitsPerBox: qtyPerBox, quantity: qtyPerBox ? bq * qtyPerBox : bq };
+                }
+                onUpdateItems?.(order.id, newItems);
+              };
               return (
                 <div key={idx} className="flex flex-col gap-0.5 text-[10px] font-bold border-b border-slate-50 pb-1.5 last:border-0">
                   <div className="flex items-center gap-1.5">
                     <span className="truncate text-slate-700 flex-1">{item.name}</span>
-                    {item.isBoxUnit && item.boxQuantity ? (
+                    {/* 향미유·고춧가루: 낱개/박스 토글 */}
+                    {isOil && (
+                      <button
+                        onClick={() => toggleBoxUnit()}
+                        className={`text-[8px] font-black px-1.5 py-0.5 rounded border transition-all shrink-0 ${item.isBoxUnit ? 'bg-indigo-100 border-indigo-300 text-indigo-700' : 'bg-slate-100 border-slate-200 text-slate-500'}`}
+                      >
+                        {item.isBoxUnit ? '박스' : '낱개'}
+                      </button>
+                    )}
+                    {item.isBoxUnit ? (
                       <div className="flex items-center gap-0.5 shrink-0">
-                        <input type="number" value={item.boxQuantity ?? (item.unitsPerBox ? Math.round(item.quantity / item.unitsPerBox) : item.quantity)} onChange={(e) => handleDirectQtyChange(idx, e.target.value)}
+                        <input type="number" value={item.boxQuantity ?? 1} onChange={(e) => handleDirectQtyChange(idx, e.target.value)}
                           className="w-8 text-center bg-slate-50 border border-indigo-200 rounded outline-none font-bold py-0.5" />
                         <span className="text-[8px] font-bold text-slate-400">박스</span>
-                        {item.unitsPerBox ? <span className="text-[8px] font-bold text-indigo-400">={item.quantity}개</span> : null}
+                        {qtyPerBox ? <span className="text-[8px] font-bold text-indigo-400">={item.quantity}개</span> : null}
                       </div>
                     ) : (
                       <input type="number" value={item.quantity} onChange={(e) => handleDirectQtyChange(idx, e.target.value)}
@@ -344,7 +366,7 @@ export const OrderCard = memo<OrderCardProps>(({
                     )}
                     <button onClick={() => handleRemoveItem(idx)} className="p-1 text-rose-400 hover:bg-rose-50 rounded shrink-0"><Trash2 size={10} /></button>
                   </div>
-                  {!isSecondary(editProductInfo?.category) && (
+                  {!isOil && (
                     <input type="date" value={item.mfgDate || ''} onChange={(e) => handleExpirationDateChange(idx, e.target.value)}
                       className="text-[9px] bg-slate-50 border border-indigo-200 rounded font-bold py-0.5 px-1 w-full text-center text-slate-600 cursor-pointer" />
                   )}

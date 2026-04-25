@@ -31,6 +31,7 @@ const sortSubs = (subs: { name: string; category: string }[]) =>
 const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productClients = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct, onMergeProducts }) => {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [showNoClient, setShowNoClient] = useState(false);
   const [activeCategory, setActiveCategory] = useState<InventoryCategory>('완제품');
   const [searchTerm, setSearchTerm] = useState('');
   const [clientSearch, setClientSearch] = useState('');
@@ -46,6 +47,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
   const [dupExpandedKeys, setDupExpandedKeys] = useState<Set<string>>(new Set());
   const [merging, setMerging] = useState(false);
   const [selectedKeepId, setSelectedKeepId] = useState<Record<string, string>>({});
+  const [selectedMergeIds, setSelectedMergeIds] = useState<Record<string, Set<string>>>({});
 
   const TYPE_ORDER: Record<string, number> = { '일반': 0, '택배': 1, '스마트스토어': 2 };
   const salesClients = useMemo(() =>
@@ -59,7 +61,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
   );
 
   const duplicateGroups = useMemo(() => {
-    const finished = products.filter(p => p.category === '완제품');
+    const finished = products.filter(p => p.itemType === 'FINISHED' || p.category === '완제품' || p.category === '향미유' || p.category === '고춧가루');
     const pcByProduct: Record<string, ProductClient[]> = {};
     for (const pc of productClients) {
       if (!pcByProduct[pc.productId]) pcByProduct[pc.productId] = [];
@@ -128,11 +130,15 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
   const selectedClient = selectedClientId ? clients.find(c => c.id === selectedClientId) : null;
 
   const filteredItems = useMemo(() => {
-    let result = showAll
+    let result = (showAll || showNoClient)
       ? products.filter(p => p.category === activeCategory)
       : selectedClientId
         ? products.filter(p => p.category === activeCategory && (p.clientIds ?? []).includes(selectedClientId))
         : [];
+
+    if (showNoClient) {
+      result = result.filter(p => (p.clientIds ?? []).length === 0);
+    }
 
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
@@ -141,7 +147,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
       );
     }
     return [...result].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-  }, [products, activeCategory, selectedClientId, showAll, searchTerm]);
+  }, [products, activeCategory, selectedClientId, showAll, showNoClient, searchTerm]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -150,6 +156,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
   const handleSelectClient = (id: string) => {
     setSelectedClientId(id);
     setShowAll(false);
+    setShowNoClient(false);
     setPage(1);
     setSearchTerm('');
   };
@@ -157,6 +164,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
   const handleShowAll = () => {
     setSelectedClientId(null);
     setShowAll(true);
+    setShowNoClient(false);
     setPage(1);
     setSearchTerm('');
   };
@@ -287,13 +295,23 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
             <button
               onClick={() => { handleShowAll(); setPage(1); }}
               className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border whitespace-nowrap flex items-center gap-1 ${
-                showAll
+                showAll && !showNoClient
                   ? 'bg-indigo-600 border-indigo-600 text-white shadow'
                   : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
               }`}
             >
               <LayoutGrid size={11} />
               전체 품목
+            </button>
+            <button
+              onClick={() => { setShowNoClient(p => !p); setShowAll(true); setSelectedClientId(null); setPage(1); }}
+              className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border whitespace-nowrap flex items-center gap-1 ${
+                showNoClient
+                  ? 'bg-rose-500 border-rose-500 text-white shadow'
+                  : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+              }`}
+            >
+              거래처 없는 것만
             </button>
             {CATEGORIES.map(cat => (
               <button
@@ -582,52 +600,91 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                         );
                       })}
 
-                      {onMergeProducts && (
-                        <div className={`border rounded-xl px-4 py-3 ${group.canMerge ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}>
-                          <p className={`text-[11px] font-black mb-2 ${group.canMerge ? 'text-emerald-700' : 'text-rose-600'}`}>
-                            {group.canMerge ? '통합 가능 — 남길 품목을 선택하세요' : '⚠ 라벨이 달라 통합 시 주의 필요 — 남길 품목을 선택하세요'}
-                          </p>
-                          <div className="flex flex-wrap gap-2 mb-3">
-                            {group.items.map(({ product, 라벨 }) => {
-                              const keepId = selectedKeepId[group.key] ?? group.items[0].product.id;
-                              const isKeep = keepId === product.id;
-                              return (
-                                <button
-                                  key={product.id}
-                                  onClick={() => setSelectedKeepId(prev => ({ ...prev, [group.key]: product.id }))}
-                                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black border transition-all ${isKeep ? 'bg-indigo-600 border-indigo-600 text-white shadow' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}
-                                >
-                                  {product.id} {라벨 ? `(${라벨})` : ''}
-                                  {isKeep && ' ← 남김'}
-                                </button>
-                              );
-                            })}
+                      {onMergeProducts && (() => {
+                        const allIds = group.items.map(i => i.product.id);
+                        const mergeSet = selectedMergeIds[group.key] ?? new Set(allIds);
+                        const keepId = (() => {
+                          const k = selectedKeepId[group.key] ?? allIds[0];
+                          return mergeSet.has(k) ? k : (Array.from(mergeSet)[0] ?? allIds[0]);
+                        })();
+                        const selectedList = allIds.filter(id => mergeSet.has(id));
+                        const deleteIds = selectedList.filter(id => id !== keepId);
+                        const canMerge = selectedList.length >= 2;
+
+                        const toggleMerge = (id: string) => {
+                          setSelectedMergeIds(prev => {
+                            const cur = new Set(prev[group.key] ?? allIds);
+                            if (cur.has(id)) {
+                              if (cur.size <= 1) return prev; // 최소 1개 유지
+                              cur.delete(id);
+                            } else {
+                              cur.add(id);
+                            }
+                            return { ...prev, [group.key]: cur };
+                          });
+                        };
+
+                        return (
+                          <div className={`border rounded-xl px-4 py-3 ${group.canMerge ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}>
+                            <p className={`text-[11px] font-black mb-3 ${group.canMerge ? 'text-emerald-700' : 'text-rose-600'}`}>
+                              {group.canMerge ? '합칠 품목을 선택하고, 남길 품목을 지정하세요' : '⚠ 라벨이 달라 통합 시 주의 필요'}
+                            </p>
+
+                            <div className="space-y-2 mb-3">
+                              {group.items.map(({ product, 라벨 }) => {
+                                const isSelected = mergeSet.has(product.id);
+                                const isKeep = keepId === product.id && isSelected;
+                                return (
+                                  <div key={product.id} className={`flex items-center gap-2 p-2 rounded-lg border transition-all ${isSelected ? 'bg-white border-slate-200' : 'bg-slate-50 border-slate-100 opacity-50'}`}>
+                                    {/* 선택 체크박스 */}
+                                    <button
+                                      onClick={() => toggleMerge(product.id)}
+                                      className={`w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center transition-all ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'}`}
+                                    >
+                                      {isSelected && <span className="text-white text-[9px] font-black">✓</span>}
+                                    </button>
+                                    {/* 품목 ID + 라벨 */}
+                                    <span className="text-[10px] font-bold text-slate-600 font-mono flex-1 truncate">
+                                      {product.id}{라벨 ? ` (${라벨})` : ''}
+                                    </span>
+                                    {/* 남길 품목 선택 */}
+                                    {isSelected && (
+                                      <button
+                                        onClick={() => setSelectedKeepId(prev => ({ ...prev, [group.key]: product.id }))}
+                                        className={`px-2 py-0.5 rounded text-[9px] font-black border transition-all shrink-0 ${isKeep ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-400 border-slate-200 hover:border-indigo-300'}`}
+                                      >
+                                        {isKeep ? '남김 ✓' : '남기기'}
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {!canMerge && (
+                              <p className="text-[10px] text-slate-400 mb-2">합칠 품목을 2개 이상 선택하세요</p>
+                            )}
+
+                            <button
+                              disabled={merging || !canMerge}
+                              onClick={async () => {
+                                if (!window.confirm(`"${group.name}" 통합하시겠습니까?\n\n남기는 품목: ${keepId}\n삭제할 품목: ${deleteIds.join(', ')}\n\n삭제 품목의 거래처/포장설정이 남기는 품목으로 이전됩니다.`)) return;
+                                setMerging(true);
+                                try {
+                                  await onMergeProducts(keepId, deleteIds);
+                                  setDupExpandedKeys(prev => { const n = new Set(prev); n.delete(group.key); return n; });
+                                } finally {
+                                  setMerging(false);
+                                }
+                              }}
+                              className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-[11px] font-black rounded-lg hover:bg-indigo-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              <GitMerge size={13} />
+                              {merging ? '통합 중...' : `선택 품목 통합 (${selectedList.length}개)`}
+                            </button>
                           </div>
-                          {(() => {
-                            const keepId = selectedKeepId[group.key] ?? group.items[0].product.id;
-                            const deleteIds = group.items.map(i => i.product.id).filter(id => id !== keepId);
-                            return (
-                              <button
-                                disabled={merging}
-                                onClick={async () => {
-                                  if (!window.confirm(`"${group.name}" 통합하시겠습니까?\n\n남기는 품목: ${keepId}\n삭제할 품목: ${deleteIds.join(', ')}\n\n삭제 품목의 거래처/포장설정이 남기는 품목으로 이전됩니다.`)) return;
-                                  setMerging(true);
-                                  try {
-                                    await onMergeProducts(keepId, deleteIds);
-                                    setDupExpandedKeys(prev => { const n = new Set(prev); n.delete(group.key); return n; });
-                                  } finally {
-                                    setMerging(false);
-                                  }
-                                }}
-                                className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-[11px] font-black rounded-lg hover:bg-indigo-700 transition-all disabled:opacity-50"
-                              >
-                                <GitMerge size={13} />
-                                {merging ? '통합 중...' : '지금 통합하기'}
-                              </button>
-                            );
-                          })()}
-                        </div>
-                      )}
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
