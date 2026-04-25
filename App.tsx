@@ -498,6 +498,29 @@ const App: React.FC = () => {
     }
   };
 
+  // 출고 완료 시 완제품 품목별로 생산 실적 자동 기록
+  const createProductionRecordsForOrder = async (order: Order) => {
+    const finishedItems = order.items.filter(item => {
+      const p = allProducts.find(pr => pr.id === item.productId);
+      return p && (p.itemType === 'FINISHED' || p.category === '완제품');
+    });
+    for (const item of finishedItems) {
+      const product = allProducts.find(p => p.id === item.productId);
+      if (!product) continue;
+      const record: ProductionRecord = {
+        id: `pr-${order.id}-${item.productId}-${Date.now()}`,
+        date: (order.deliveredAt ?? new Date().toISOString()).slice(0, 10),
+        productId: item.productId,
+        productName: product.name,
+        finishedQty: item.quantity,
+        cost: product.cost,
+        note: `주문 자동 연동 (${order.customerName})`,
+        createdAt: new Date().toISOString(),
+      };
+      await addItem('productionRecords', record);
+    }
+  };
+
   // 주문이 이력으로 이동할 때 부자재 차감 (완제품 재고는 변동 없음)
   const deductSubmaterialsForOrder = async (order: Order) => {
     for (const item of order.items) {
@@ -911,7 +934,10 @@ const App: React.FC = () => {
               onUpdateStatus={async (id, status) => {
                 if (status === OrderStatus.DELIVERED) {
                   const order = orders.find(o => o.id === id);
-                  if (order) await deductSubmaterialsForOrder(order);
+                  if (order) {
+                    await deductSubmaterialsForOrder(order);
+                    await createProductionRecordsForOrder(order);
+                  }
                   await updateItem('orders', id, { status, deliveredAt: new Date().toISOString() });
                 } else {
                   await updateItem('orders', id, { status });
@@ -946,7 +972,10 @@ const App: React.FC = () => {
               onUpdateStatus={async (id, status) => {
                 if (status === OrderStatus.DELIVERED) {
                   const order = orders.find(o => o.id === id);
-                  if (order) await deductSubmaterialsForOrder(order);
+                  if (order) {
+                    await deductSubmaterialsForOrder(order);
+                    await createProductionRecordsForOrder(order);
+                  }
                   await updateItem('orders', id, { status, deliveredAt: new Date().toISOString() });
                 } else {
                   await updateItem('orders', id, { status });
@@ -1404,6 +1433,7 @@ const App: React.FC = () => {
               // 출고(SHIPPED) 주문을 예전 주문이력(DELIVERED)으로 이동 + 부자재 차감
               for (const o of shippedOrders) {
                 await deductSubmaterialsForOrder(o);
+                await createProductionRecordsForOrder(o);
                 await updateItem('orders', o.id, { status: OrderStatus.DELIVERED, deliveredAt: new Date().toISOString() });
               }
               // 향미유만 있는 출고 주문도 이력으로 이동
@@ -2492,7 +2522,10 @@ const App: React.FC = () => {
               onUpdateStatus={async (id, status) => {
                 if (status === OrderStatus.DELIVERED) {
                   const order = orders.find(o => o.id === id);
-                  if (order) await deductSubmaterialsForOrder(order);
+                  if (order) {
+                    await deductSubmaterialsForOrder(order);
+                    await createProductionRecordsForOrder(order);
+                  }
                   await updateItem('orders', id, { status, deliveredAt: new Date().toISOString() });
                 } else {
                   await updateItem('orders', id, { status });
@@ -2534,8 +2567,10 @@ const App: React.FC = () => {
             <ProductionManager
               records={productionRecords}
               products={allProducts}
+              orders={orders}
               onAdd={(record) => addItem('productionRecords', record)}
               onDelete={(id) => deleteItem('productionRecords', id)}
+              onUpdate={(id, updates) => updateItem('productionRecords', id, updates)}
               currentUserName={currentUser?.name}
             />
           )}

@@ -1,29 +1,42 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Trash2, Factory, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
-import { ProductionRecord, Product } from '../types';
+import { Plus, Trash2, Factory, ChevronLeft, ChevronRight, Search, X, RefreshCw, Pencil, Check } from 'lucide-react';
+import { ProductionRecord, Product, Order, OrderStatus } from '../types';
+
+const SUB_ONLY_CATS = new Set(['용기', '마개', '테이프', '박스', '라벨', '향미유', '고춧가루']);
 
 interface ProductionManagerProps {
   records: ProductionRecord[];
   products: Product[];
-  onAdd: (record: ProductionRecord) => void;
+  orders: Order[];
+  onAdd: (record: ProductionRecord) => Promise<void>;
   onDelete: (id: string) => void;
+  onUpdate: (id: string, updates: Partial<ProductionRecord>) => void;
   currentUserName?: string;
 }
+
+const toLocalYMD = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 const ProductionManager: React.FC<ProductionManagerProps> = ({
   records,
   products,
+  orders,
   onAdd,
   onDelete,
+  onUpdate,
   currentUserName,
 }) => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toLocalYMD(new Date());
   const thisMonth = today.slice(0, 7);
 
   const [filterMonth, setFilterMonth] = useState(thisMonth);
+  const [showAll, setShowAll] = useState(false);
   const [filterProductId, setFilterProductId] = useState('');
   const [searchText, setSearchText] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [editingDateId, setEditingDateId] = useState<string | null>(null);
+  const [editingDateVal, setEditingDateVal] = useState('');
+  const [syncing, setSyncing] = useState(false);
 
   const [form, setForm] = useState({
     date: today,
@@ -47,7 +60,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   const filteredRecords = useMemo(() => {
     return records
       .filter(r => {
-        const matchMonth = r.date.startsWith(filterMonth);
+        const matchMonth = showAll || r.date.startsWith(filterMonth);
         const matchProduct = !filterProductId || r.productId === filterProductId;
         const matchSearch =
           !searchText ||
@@ -57,7 +70,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
         return matchMonth && matchProduct && matchSearch;
       })
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [records, filterMonth, filterProductId, searchText]);
+  }, [records, filterMonth, showAll, filterProductId, searchText]);
 
   const monthlySummary = useMemo(() => {
     const map: Record<string, { productName: string; qty: number; count: number }> = {};
@@ -71,16 +84,21 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
     return Object.values(map).sort((a, b) => b.qty - a.qty);
   }, [filteredRecords]);
 
+  const fmtMonth = (ym: string) => {
+    const [y, m] = ym.split('-');
+    return `${y}년 ${parseInt(m)}월`;
+  };
+
   const prevMonth = () => {
     const [y, m] = filterMonth.split('-').map(Number);
     const d = new Date(y, m - 2, 1);
-    setFilterMonth(d.toISOString().slice(0, 7));
+    setFilterMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
   };
 
   const nextMonth = () => {
     const [y, m] = filterMonth.split('-').map(Number);
     const d = new Date(y, m, 1);
-    setFilterMonth(d.toISOString().slice(0, 7));
+    setFilterMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
   };
 
   const handleSubmit = () => {
@@ -111,15 +129,59 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
     setShowForm(false);
   };
 
+  // 기존 DELIVERED 주문에서 생산 실적 동기화
+  const handleSyncFromOrders = async () => {
+    const existingOrderIds = new Set(
+      records
+        .filter(r => r.note?.startsWith('주문 자동 연동'))
+        .map(r => r.id.split('-')[1]) // pr-{orderId}-{productId}-{ts}
+    );
+
+    const deliveredOrders = orders.filter(
+      o => o.status === OrderStatus.DELIVERED && o.customerName !== '생산기록'
+    );
+    let count = 0;
+
+    for (const order of deliveredOrders) {
+      for (const item of order.items) {
+        const product = products.find(p => p.id === item.productId);
+        // 부자재 카테고리 제외, 나머지(완제품 계열)는 모두 포함
+        if (product && SUB_ONLY_CATS.has(product.category)) continue;
+
+        // 이미 이 주문+품목 조합으로 기록이 있으면 스킵
+        const alreadyExists = records.some(
+          r => r.id === `pr-${order.id}-${item.productId}`
+        );
+        if (alreadyExists) continue;
+
+        const record: ProductionRecord = {
+          id: `pr-${order.id}-${item.productId}`,
+          date: order.deliveredAt ? order.deliveredAt.slice(0, 10) : order.createdAt.slice(0, 10),
+          productId: item.productId,
+          productName: product?.name ?? item.name,
+          finishedQty: item.quantity,
+          cost: product?.cost,
+          note: `주문 자동 연동 (${order.customerName})`,
+          createdAt: new Date().toISOString(),
+        };
+        await onAdd(record);
+        count++;
+      }
+    }
+
+    alert(count === 0 ? '동기화할 새 기록이 없습니다.' : `${count}건 동기화 완료`);
+    setSyncing(false);
+  };
+
   const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr + 'T00:00:00');
-    return `${d.getMonth() + 1}/${d.getDate()}`;
+    const [, m, d] = dateStr.split('-');
+    return `${parseInt(m)}/${parseInt(d)}`;
   };
 
   return (
     <div className="space-y-4 pb-10">
       {/* 헤더 */}
-      <div className="bg-white rounded-2xl border border-slate-100 p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+      <div className="bg-white rounded-2xl border border-slate-100 p-5 flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="flex items-center gap-3 flex-1">
           <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
             <Factory size={20} className="text-emerald-600" />
@@ -129,13 +191,23 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
             <p className="text-xs text-slate-400">WIP → FINISHED 전환 이력 관리</p>
           </div>
         </div>
-        <button
-          onClick={() => setShowForm(v => !v)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-all"
-        >
-          <Plus size={16} />
-          생산 실적 입력
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => { setSyncing(true); handleSyncFromOrders(); }}
+            disabled={syncing}
+            className="flex items-center gap-2 px-3 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+            주문 이력 동기화
+          </button>
+          <button
+            onClick={() => setShowForm(v => !v)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-all"
+          >
+            <Plus size={16} />
+            직접 입력
+          </button>
+        </div>
       </div>
 
       {/* 입력 폼 */}
@@ -251,18 +323,24 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
 
       {/* 필터 */}
       <div className="bg-white rounded-2xl border border-slate-100 p-4 flex flex-wrap gap-3 items-center">
-        {/* 월 이동 */}
         <div className="flex items-center gap-1">
-          <button onClick={prevMonth} className="w-7 h-7 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50">
-            <ChevronLeft size={14} />
+          <button
+            onClick={() => setShowAll(v => !v)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${showAll ? 'bg-emerald-600 text-white border-emerald-600' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+          >
+            전체 보기
           </button>
-          <span className="text-sm font-bold text-slate-700 w-20 text-center">{filterMonth}</span>
-          <button onClick={nextMonth} className="w-7 h-7 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50">
-            <ChevronRight size={14} />
-          </button>
+          {!showAll && <>
+            <button onClick={prevMonth} className="w-7 h-7 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50">
+              <ChevronLeft size={14} />
+            </button>
+            <span className="text-sm font-bold text-slate-700 w-24 text-center">{fmtMonth(filterMonth)}</span>
+            <button onClick={nextMonth} className="w-7 h-7 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50">
+              <ChevronRight size={14} />
+            </button>
+          </>}
         </div>
 
-        {/* 품목 필터 */}
         <select
           value={filterProductId}
           onChange={e => setFilterProductId(e.target.value)}
@@ -274,7 +352,6 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
           ))}
         </select>
 
-        {/* 검색 */}
         <div className="relative flex-1 min-w-[160px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
@@ -295,7 +372,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
       {/* 월별 요약 */}
       {monthlySummary.length > 0 && (
         <div className="bg-white rounded-2xl border border-slate-100 p-5">
-          <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">{filterMonth} 생산 요약</p>
+          <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">{fmtMonth(filterMonth)} 생산 요약</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {monthlySummary.map(s => (
               <div key={s.productName} className="bg-emerald-50 rounded-xl p-3">
@@ -314,6 +391,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
           <div className="py-16 text-center text-slate-400 text-sm">
             <Factory size={32} className="mx-auto mb-2 opacity-30" />
             <p>생산 실적이 없습니다.</p>
+            <p className="text-xs mt-1 text-slate-300">상단 "주문 이력 동기화"로 기존 출고 이력을 불러오세요.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -326,14 +404,44 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
                   <th className="text-left px-4 py-3 text-xs font-black text-slate-400 hidden sm:table-cell">투입 WIP</th>
                   <th className="text-right px-4 py-3 text-xs font-black text-slate-400 hidden sm:table-cell">WIP 수량</th>
                   <th className="text-left px-4 py-3 text-xs font-black text-slate-400 hidden md:table-cell">비고</th>
-                  <th className="text-left px-4 py-3 text-xs font-black text-slate-400 hidden md:table-cell">담당자</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {filteredRecords.map(r => (
                   <tr key={r.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 font-bold text-slate-600 whitespace-nowrap">{formatDate(r.date)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {editingDateId === r.id ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="date"
+                            value={editingDateVal}
+                            onChange={e => setEditingDateVal(e.target.value)}
+                            className="border border-emerald-300 rounded-lg px-2 py-1 text-xs focus:outline-none w-32"
+                          />
+                          <button
+                            onClick={() => {
+                              if (editingDateVal) onUpdate(r.id, { date: editingDateVal });
+                              setEditingDateId(null);
+                            }}
+                            className="text-emerald-500 hover:text-emerald-700"
+                          >
+                            <Check size={14} />
+                          </button>
+                          <button onClick={() => setEditingDateId(null)} className="text-slate-400">
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setEditingDateId(r.id); setEditingDateVal(r.date); }}
+                          className="flex items-center gap-1 group font-bold text-slate-600"
+                        >
+                          {formatDate(r.date)}
+                          <Pencil size={11} className="opacity-0 group-hover:opacity-40 transition-opacity" />
+                        </button>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <span className="font-bold text-slate-800">{r.productName}</span>
                     </td>
@@ -349,11 +457,8 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
                     <td className="px-4 py-3 text-right text-slate-500 hidden sm:table-cell">
                       {r.wipUsed != null ? r.wipUsed.toLocaleString() : <span className="text-slate-300">—</span>}
                     </td>
-                    <td className="px-4 py-3 text-slate-400 text-xs hidden md:table-cell max-w-[160px] truncate">
+                    <td className="px-4 py-3 text-slate-400 text-xs hidden md:table-cell max-w-[180px] truncate">
                       {r.note ?? '—'}
-                    </td>
-                    <td className="px-4 py-3 text-slate-400 text-xs hidden md:table-cell">
-                      {r.createdBy ?? '—'}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button
