@@ -252,7 +252,23 @@ export interface ChatRoom {
 }
 
 
-export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'clients' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'client-portal' | 'item-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'cost-management' | 'profit-analysis';
+export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'clients' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'client-portal' | 'item-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'cost-management' | 'profit-analysis' | 'production';
+
+// ── 생산 실적 ──────────────────────────────────────────────────────────────────
+export interface ProductionRecord {
+  id: string;
+  date: string;               // YYYY-MM-DD
+  productId: string;
+  productName: string;
+  finishedQty: number;        // FINISHED 생산 수량
+  wipUsed?: number;           // WIP 투입 수량 (옵션)
+  wipProductId?: string;      // 투입한 WIP 품목 ID (옵션)
+  wipProductName?: string;    // 투입한 WIP 품목명 (옵션)
+  cost?: number;              // 건당 원가 (자동 계산 또는 수동 입력)
+  note?: string;
+  createdBy?: string;
+  createdAt: string;
+}
 
 // ── 비용관리 ──────────────────────────────────────────────────────────────────
 export type FixedCostCategory = '임차료' | '보험료' | '감가상각비' | '대출이자' | '공과금' | '인건비' | '기타';

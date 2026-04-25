@@ -28,9 +28,10 @@ import {
   ChevronRight,
   FileText,
   Wallet,
-  BarChart2
+  BarChart2,
+  Factory
 } from 'lucide-react';
-import { Order, Product, ProductClient, ViewType, OrderStatus, Client, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification } from './types';
+import { Order, Product, ProductClient, ViewType, OrderStatus, Client, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord } from './types';
 import Dashboard from './components/Dashboard';
 import OrdersList from './components/OrdersList';
 import ProductList from './components/ProductList';
@@ -54,6 +55,7 @@ import TradeStatement from './components/TradeStatement';
 import OfficeTalk from './components/OfficeTalk';
 import CostManager from './components/CostManager';
 import ProfitAnalysis from './components/ProfitAnalysis';
+import ProductionManager from './components/ProductionManager';
 import ExcelJS from 'exceljs';
 
 import { db } from './src/firebase';
@@ -201,6 +203,7 @@ const App: React.FC = () => {
     itemCustomers,
     fixedCosts,
     companyInfo,
+    productionRecords,
     isDataLoading,
   } = useAppData();
 
@@ -655,7 +658,7 @@ const App: React.FC = () => {
   };
 
   const handleNavClick = (view: ViewType) => {
-    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant', 'cost-management', 'profit-analysis'];
+    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant', 'cost-management', 'profit-analysis', 'production'];
     if (adminOnlyViews.includes(view) && !isAdminAuthenticated && !isAdmin) {
       setPendingAdminView(view);
       setIsAdminAuthModalOpen(true);
@@ -798,6 +801,7 @@ const App: React.FC = () => {
                   <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
                   <NavItem icon={FileText} label="거래명세서" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} />
                   <NavItem icon={BarChart2} label="손익/비용 관리" active={currentView === 'profit-analysis' || currentView === 'cost-management'} onClick={() => handleNavClick('profit-analysis')} collapsed={isSidebarCollapsed} />
+                  <NavItem icon={Factory} label="생산 실적" active={currentView === 'production'} onClick={() => handleNavClick('production')} collapsed={isSidebarCollapsed} />
                 </nav>
               </div>
             )}
@@ -869,7 +873,7 @@ const App: React.FC = () => {
               </div>
             </div>
           ) : (
-          <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'clients', 'notice', 'pallets', 'confirmation-items', 'shipping'].includes(currentView)) ? '' : 'min-w-[720px] md:min-w-0 h-full'}>
+          <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'clients', 'notice', 'pallets', 'confirmation-items', 'shipping', 'production'].includes(currentView)) ? '' : 'min-w-[720px] md:min-w-0 h-full'}>
           {currentView === 'dashboard' && <div className="h-full overflow-y-auto">
             <Dashboard
               orders={orders}
@@ -2526,8 +2530,17 @@ const App: React.FC = () => {
               />
             </div>
           )}
+          {currentView === 'production' && (
+            <ProductionManager
+              records={productionRecords}
+              products={allProducts}
+              onAdd={(record) => addItem('productionRecords', record)}
+              onDelete={(id) => deleteItem('productionRecords', id)}
+              currentUserName={currentUser?.name}
+            />
+          )}
           {currentView === 'confirmation-items' && (
-            <ConfirmationItems 
+            <ConfirmationItems
               requests={adjustmentRequests}
               onUpdateStatus={(id, status) => updateItem('adjustmentRequests', id, { status, processedAt: new Date().toISOString() })}
               onProcessAdjustment={async (req) => {
