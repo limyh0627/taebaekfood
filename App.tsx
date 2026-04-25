@@ -1039,7 +1039,7 @@ const App: React.FC = () => {
             />
           )}
           {currentView === 'ai-consultant' && <AIConsultant orders={orders} products={allProducts} />}
-          {currentView === 'clients' && <ClientManager clients={clients} onUpdateClient={(c) => updateItem('clients', c.id, c)} onAddClient={(c) => addItem('clients', c)} onDeleteClient={(id) => deleteItem('clients', id)} issuedStatements={issuedStatements} />}
+          {currentView === 'clients' && <ClientManager clients={clients} onUpdateClient={(c) => updateItem('clients', c.id, c)} onAddClient={(c) => addItem('clients', c)} onDeleteClient={(id) => deleteItem('clients', id)} />}
           {currentView === 'database' && (
             <div className="space-y-6">
               <div className="bg-indigo-50 p-6 rounded-3xl border border-indigo-100 flex items-center justify-between">

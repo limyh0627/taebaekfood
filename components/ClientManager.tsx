@@ -14,12 +14,9 @@ import {
   LayoutGrid,
   Search,
   Trash2,
-  BarChart2,
-  ChevronLeft,
-  ChevronRight,
 } from 'lucide-react';
 import RegionSelect from './RegionSelect';
-import { Client, ClientType, PartnerType, IssuedStatement } from '../types';
+import { Client, ClientType, PartnerType } from '../types';
 import AddClientModal from './AddClientModal';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
@@ -29,10 +26,9 @@ interface ClientManagerProps {
   onUpdateClient: (_client: Client) => void;
   onAddClient: (_client: Client) => void;
   onDeleteClient: (_id: string) => void;
-  issuedStatements?: IssuedStatement[];
 }
 
-const ClientManager: React.FC<ClientManagerProps> = ({ clients, onUpdateClient, onAddClient, onDeleteClient, issuedStatements = [] }) => {
+const ClientManager: React.FC<ClientManagerProps> = ({ clients, onUpdateClient, onAddClient, onDeleteClient }) => {
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
   const [editForm, setEditForm] = useState<Client | null>(null);
@@ -42,8 +38,6 @@ const ClientManager: React.FC<ClientManagerProps> = ({ clients, onUpdateClient, 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 15;
-  const [statsClientId, setStatsClientId] = useState<string | null>(null);
-  const [statsYear, setStatsYear] = useState(() => new Date().getFullYear());
 
   const partnerTabs: { id: PartnerType | '전체', label: string, color: string }[] = [
     { id: '전체', label: '전체', color: 'bg-slate-100 text-slate-600' },
@@ -125,7 +119,7 @@ const ClientManager: React.FC<ClientManagerProps> = ({ clients, onUpdateClient, 
               <button
                 key={tab.id}
                 onClick={() => { setActiveTab(tab.id); setActiveTypeTab('전체'); setPage(1); }}
-                className={`flex items-center space-x-2.5 px-5 py-3 rounded-2xl transition-all whitespace-nowrap border ${
+                className={`flex items-center space-x-2 px-4 py-2 rounded-xl transition-all whitespace-nowrap border text-sm ${
                   isActive
                     ? 'bg-white border-indigo-200 text-indigo-600 shadow-sm ring-1 ring-indigo-50'
                     : 'bg-white border-slate-100 text-slate-500 hover:border-slate-200'
@@ -267,14 +261,9 @@ const ClientManager: React.FC<ClientManagerProps> = ({ clients, onUpdateClient, 
                     </div>
                   </div>
                   {!isEditing ? (
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <button onClick={() => { setStatsClientId(client.id); setStatsYear(new Date().getFullYear()); }} className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all">
-                        <BarChart2 size={15} />
-                      </button>
-                      <button onClick={() => startEditing(client)} className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all">
-                        <Edit size={15} />
-                      </button>
-                    </div>
+                    <button onClick={() => startEditing(client)} className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all flex-shrink-0">
+                      <Edit size={15} />
+                    </button>
                   ) : (
                     <div className="flex items-center space-x-1.5 flex-shrink-0">
                       <button onClick={saveEditing} className="p-1.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700">
@@ -323,109 +312,6 @@ const ClientManager: React.FC<ClientManagerProps> = ({ clients, onUpdateClient, 
           </div>
         )}
       </div>
-
-      {/* 거래처 매출 통계 모달 */}
-      {statsClientId && (() => {
-        const client = clients.find(c => c.id === statsClientId);
-        if (!client) return null;
-        const stmts = issuedStatements.filter(s => s.clientId === statsClientId && s.type === '매출');
-        const yearStmts = stmts.filter(s => s.tradeDate.startsWith(String(statsYear)));
-        const yearTotal = yearStmts.reduce((s, r) => s + r.totalAmount, 0);
-        const yearCount = yearStmts.length;
-        const months = Array.from({ length: 12 }, (_, i) => {
-          const m = String(i + 1).padStart(2, '0');
-          const key = `${statsYear}-${m}`;
-          const rows = yearStmts.filter(s => s.tradeDate.startsWith(key));
-          return { m: `${i + 1}월`, amount: rows.reduce((s, r) => s + r.totalAmount, 0), count: rows.length };
-        });
-        const maxAmt = Math.max(...months.map(m => m.amount), 1);
-        const availableYears = Array.from(new Set(stmts.map(s => Number(s.tradeDate.slice(0, 4))))).sort((a, b) => b - a);
-        const recentStmts = [...yearStmts].sort((a, b) => b.tradeDate.localeCompare(a.tradeDate)).slice(0, 8);
-        const fmt = (n: number) => n >= 100000000 ? `${(n / 100000000).toFixed(1)}억` : n >= 10000 ? `${Math.round(n / 10000).toLocaleString()}만` : n.toLocaleString();
-        return (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center">
-            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setStatsClientId(null)} />
-            <div className="relative bg-white rounded-3xl w-full max-w-lg mx-4 shadow-2xl animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
-              {/* 헤더 */}
-              <div className="px-6 pt-5 pb-4 border-b border-slate-100 flex items-center justify-between shrink-0">
-                <div>
-                  <h2 className="text-sm font-black text-slate-800">{client.name} 매출 통계</h2>
-                  <p className="text-[11px] text-slate-400 font-medium mt-0.5">발행된 명세서 기준</p>
-                </div>
-                <button onClick={() => setStatsClientId(null)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl transition-all"><X size={18} /></button>
-              </div>
-
-              <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
-                {/* 연도 선택 */}
-                <div className="flex items-center gap-2">
-                  <button onClick={() => setStatsYear(y => y - 1)} className="p-1.5 hover:bg-slate-100 rounded-lg transition-all"><ChevronLeft size={16} /></button>
-                  <span className="text-sm font-black text-slate-800 min-w-[52px] text-center">{statsYear}년</span>
-                  <button onClick={() => setStatsYear(y => y + 1)} disabled={statsYear >= new Date().getFullYear()} className="p-1.5 hover:bg-slate-100 rounded-lg transition-all disabled:opacity-30"><ChevronRight size={16} /></button>
-                  {availableYears.length > 1 && availableYears.map(y => (
-                    <button key={y} onClick={() => setStatsYear(y)}
-                      className={`px-3 py-1 rounded-lg text-[11px] font-black transition-all ${statsYear === y ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
-                      {y}
-                    </button>
-                  ))}
-                </div>
-
-                {/* KPI 카드 */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-indigo-50 rounded-2xl p-4">
-                    <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">연간 매출</p>
-                    <p className="text-xl font-black text-indigo-700 mt-1">{fmt(yearTotal)}원</p>
-                  </div>
-                  <div className="bg-slate-50 rounded-2xl p-4">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">주문 횟수</p>
-                    <p className="text-xl font-black text-slate-700 mt-1">{yearCount}회</p>
-                    {yearCount > 0 && <p className="text-[10px] text-slate-400 mt-0.5">평균 {fmt(Math.round(yearTotal / yearCount))}원/건</p>}
-                  </div>
-                </div>
-
-                {/* 월별 바 차트 */}
-                <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">월별 매출</p>
-                  <div className="flex items-end gap-1 h-28">
-                    {months.map(({ m, amount, count }) => (
-                      <div key={m} className="flex-1 flex flex-col items-center gap-1 group relative">
-                        <div className="w-full bg-indigo-100 rounded-t-md transition-all hover:bg-indigo-200" style={{ height: `${Math.round((amount / maxAmt) * 88)}px`, minHeight: amount > 0 ? 4 : 0 }} />
-                        {amount > 0 && (
-                          <div className="absolute bottom-full mb-1 bg-slate-800 text-white text-[9px] font-black px-2 py-1 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                            {fmt(amount)}원 ({count}건)
-                          </div>
-                        )}
-                        <span className="text-[8px] font-bold text-slate-400 whitespace-nowrap">{m}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 최근 거래 내역 */}
-                {recentStmts.length > 0 && (
-                  <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{statsYear}년 거래 내역</p>
-                    <div className="space-y-1.5">
-                      {recentStmts.map(s => (
-                        <div key={s.id} className="flex items-center justify-between py-2 px-3 bg-slate-50 rounded-xl">
-                          <div>
-                            <span className="text-xs font-bold text-slate-700">{s.tradeDate}</span>
-                            <span className="ml-2 text-[10px] text-slate-400">전표 {s.docNo}</span>
-                          </div>
-                          <span className="text-xs font-black text-indigo-700">{s.totalAmount.toLocaleString()}원</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {yearStmts.length === 0 && (
-                  <div className="text-center py-8 text-slate-400 text-sm font-bold">{statsYear}년 매출 데이터가 없습니다.</div>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
 
       {isAddModalOpen && (
         <AddClientModal

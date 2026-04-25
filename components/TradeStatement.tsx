@@ -3,7 +3,8 @@ import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react'
 import {
   FileText, Printer, Search, ChevronDown, CalendarDays,
   Package, ClipboardList, ChevronRight, CheckCircle2, Edit2, Plus, X, ArrowLeft,
-  Tag, Save, AlertCircle, Download, Wallet, TrendingDown, CheckSquare
+  Tag, Save, AlertCircle, Download, Wallet, TrendingDown, CheckSquare,
+  BarChart2, ChevronLeft, Users
 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
 import { Order, Product, Client, ProductClient, OrderStatus, IssuedStatement, CompanyInfo, PaymentRecord } from '../types';
@@ -104,7 +105,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [activeSearchRow, setActiveSearchRow] = useState<number | null>(null);
 
   // ── 메인 탭 ──
-  const [mainTab, setMainTab] = useState<'history' | 'prices' | 'taxinvoice' | 'receivables'>('history');
+  const [mainTab, setMainTab] = useState<'history' | 'prices' | 'taxinvoice' | 'receivables' | 'stats'>('history');
+  const [statsClientId, setStatsClientId] = useState('');
+  const [statsYear, setStatsYear] = useState(() => new Date().getFullYear());
 
   // ── 미수금 탭 ──
   const [recClientId, setRecClientId] = useState('');
@@ -656,58 +659,48 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       <PageHeader
         title="거래명세서"
         subtitle="발행된 전표를 조회하거나 새 전표를 생성합니다."
-        right={<div className="flex gap-2">
-          {mainTab === 'history' ? (
-            <>
-              <button
-                onClick={() => openCreate('매입')}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-black bg-rose-600 text-white hover:bg-rose-700 shadow-sm transition-all"
-              >
-                <Plus size={14} strokeWidth={3}/>매입전표
-              </button>
-              <button
-                onClick={() => openCreate('매출')}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-black bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-all"
-              >
-                <Plus size={14} strokeWidth={3}/>매출전표
-              </button>
-            </>
-          ) : null}
+        right={<div className="flex items-center gap-2">
+          {mainTab === 'history' && <>
+            <button
+              onClick={() => openCreate('매입')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-rose-600 text-white hover:bg-rose-700 shadow-sm transition-all"
+            >
+              <Plus size={13} strokeWidth={3}/>매입전표
+            </button>
+            <button
+              onClick={() => openCreate('매출')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-all"
+            >
+              <Plus size={13} strokeWidth={3}/>매출전표
+            </button>
+          </>}
           <button
             onClick={() => { setShowCompanyModal(true); setCompanyForm(companyInfo ?? { name:'',ceoName:'',bizNo:'',bizType:'',bizItem:'',address:'',phone:'',fax:'',email:'' }); }}
-            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-black bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all"
             title="회사 정보 설정"
           >
             <Save size={13}/>회사정보
           </button>
-          <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
-            <button
-              onClick={() => setMainTab('history')}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'history' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              <ClipboardList size={13}/>전표내역
-            </button>
-            <button
-              onClick={() => setMainTab('prices')}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'prices' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              <Tag size={13}/>단가관리
-            </button>
-            <button
-              onClick={() => setMainTab('taxinvoice')}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'taxinvoice' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              <FileText size={13}/>세금계산서
-            </button>
-            <button
-              onClick={() => setMainTab('receivables')}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'receivables' ? 'bg-white text-rose-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              <Wallet size={13}/>미수금
-            </button>
-          </div>
         </div>}
       />
+
+      {/* 탭 네비게이션 */}
+      <div className="flex bg-slate-100 rounded-xl p-1 gap-1 self-start overflow-x-auto no-scrollbar">
+        {([
+          { id: 'history',     icon: ClipboardList, label: '전표내역'   },
+          { id: 'prices',      icon: Tag,           label: '단가관리'   },
+          { id: 'taxinvoice',  icon: FileText,      label: '세금계산서' },
+          { id: 'receivables', icon: Wallet,        label: '미수금'     },
+          { id: 'stats',       icon: BarChart2,     label: '거래처통계' },
+        ] as const).map(t => (
+          <button key={t.id}
+            onClick={() => setMainTab(t.id)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all whitespace-nowrap ${mainTab === t.id ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+          >
+            <t.icon size={13}/>{t.label}
+          </button>
+        ))}
+      </div>
 
       {/* ── 단가관리 탭 ── */}
       {mainTab === 'prices' && (() => {
@@ -2227,6 +2220,141 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       )}
 
       </>}
+
+      {/* ── 거래처통계 탭 ── */}
+      {mainTab === 'stats' && (() => {
+        const salesClients = clients.filter(c => issuedStatements.some(s => s.clientId === c.id && s.type === '매출'));
+        const selectedClient = salesClients.find(c => c.id === statsClientId);
+        const stmts = issuedStatements.filter(s => s.clientId === statsClientId && s.type === '매출');
+        const yearStmts = stmts.filter(s => s.tradeDate.startsWith(String(statsYear)));
+        const yearTotal = yearStmts.reduce((s, r) => s + r.totalAmount, 0);
+        const yearCount = yearStmts.length;
+        const months = Array.from({ length: 12 }, (_, i) => {
+          const m = String(i + 1).padStart(2, '0');
+          const rows = yearStmts.filter(s => s.tradeDate.startsWith(`${statsYear}-${m}`));
+          return { label: `${i + 1}월`, amount: rows.reduce((s, r) => s + r.totalAmount, 0), count: rows.length };
+        });
+        const maxAmt = Math.max(...months.map(m => m.amount), 1);
+        const availableYears = Array.from(new Set(stmts.map(s => Number(s.tradeDate.slice(0, 4))))).sort((a, b) => b - a);
+        const fmtS = (n: number) => n >= 100000000 ? `${(n / 100000000).toFixed(1)}억` : n >= 10000 ? `${Math.round(n / 10000).toLocaleString()}만` : n.toLocaleString();
+        const currentYear = new Date().getFullYear();
+
+        return (
+          <div className="flex gap-4 min-h-[600px]">
+            {/* 왼쪽: 거래처 목록 */}
+            <div className="w-52 shrink-0 bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col">
+              <div className="px-4 py-3 border-b border-slate-100">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">매출처</p>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                {salesClients.length === 0 && (
+                  <div className="py-8 text-center text-slate-300 text-xs font-bold">발행 내역 없음</div>
+                )}
+                {salesClients.map(c => {
+                  const total = issuedStatements.filter(s => s.clientId === c.id && s.type === '매출' && s.tradeDate.startsWith(String(currentYear))).reduce((s, r) => s + r.totalAmount, 0);
+                  const isActive = statsClientId === c.id;
+                  return (
+                    <button key={c.id} onClick={() => { setStatsClientId(c.id); setStatsYear(currentYear); }}
+                      className={`w-full text-left px-4 py-3 border-b border-slate-50 transition-all ${isActive ? 'bg-indigo-50 border-l-2 border-l-indigo-500' : 'hover:bg-slate-50'}`}>
+                      <p className={`text-xs font-black truncate ${isActive ? 'text-indigo-700' : 'text-slate-700'}`}>{c.name}</p>
+                      {total > 0 && <p className="text-[10px] text-slate-400 font-bold mt-0.5">{fmtS(total)}원</p>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 오른쪽: 통계 */}
+            <div className="flex-1 space-y-4">
+              {!statsClientId ? (
+                <div className="flex flex-col items-center justify-center h-full bg-white rounded-2xl border border-dashed border-slate-200 py-20">
+                  <Users size={36} className="text-slate-200 mb-3" />
+                  <p className="text-slate-400 text-sm font-bold">거래처를 선택하세요</p>
+                </div>
+              ) : (
+                <>
+                  {/* 헤더 */}
+                  <div className="bg-white rounded-2xl border border-slate-200 px-5 py-4 flex items-center justify-between flex-wrap gap-3">
+                    <div>
+                      <h3 className="text-sm font-black text-slate-800">{selectedClient?.name}</h3>
+                      <p className="text-[11px] text-slate-400 mt-0.5">발행 명세서 기준 매출 통계</p>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button onClick={() => setStatsYear(y => y - 1)} className="p-1.5 hover:bg-slate-100 rounded-lg transition-all"><ChevronLeft size={16} /></button>
+                      <span className="text-sm font-black text-slate-800 min-w-[52px] text-center">{statsYear}년</span>
+                      <button onClick={() => setStatsYear(y => y + 1)} disabled={statsYear >= currentYear} className="p-1.5 hover:bg-slate-100 rounded-lg transition-all disabled:opacity-30"><ChevronRight size={16} /></button>
+                      {availableYears.filter(y => y !== statsYear).map(y => (
+                        <button key={y} onClick={() => setStatsYear(y)}
+                          className="px-2.5 py-1 rounded-lg text-xs font-black bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all">{y}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* KPI 카드 */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-white rounded-2xl border border-slate-200 p-4">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">연간 매출</p>
+                      <p className="text-xl font-black text-indigo-700 mt-1">{fmtS(yearTotal)}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">{yearTotal.toLocaleString()}원</p>
+                    </div>
+                    <div className="bg-white rounded-2xl border border-slate-200 p-4">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">주문 횟수</p>
+                      <p className="text-xl font-black text-slate-800 mt-1">{yearCount}건</p>
+                    </div>
+                    <div className="bg-white rounded-2xl border border-slate-200 p-4">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">건당 평균</p>
+                      <p className="text-xl font-black text-slate-800 mt-1">{yearCount > 0 ? fmtS(Math.round(yearTotal / yearCount)) : '—'}</p>
+                    </div>
+                  </div>
+
+                  {/* 월별 바 차트 */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-5">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">월별 매출</p>
+                    <div className="flex items-end gap-1 h-32">
+                      {months.map(({ label, amount, count }) => (
+                        <div key={label} className="flex-1 flex flex-col items-center gap-1 group relative">
+                          <div className="w-full bg-indigo-100 rounded-t-md transition-all hover:bg-indigo-300" style={{ height: `${Math.round((amount / maxAmt) * 100)}px`, minHeight: amount > 0 ? 4 : 0 }} />
+                          {amount > 0 && (
+                            <div className="absolute bottom-full mb-1.5 bg-slate-800 text-white text-[9px] font-black px-2 py-1 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 left-1/2 -translate-x-1/2">
+                              {fmtS(amount)}원<br/>{count}건
+                            </div>
+                          )}
+                          <span className="text-[8px] font-bold text-slate-400">{label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 거래 내역 */}
+                  {yearStmts.length > 0 && (
+                    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                      <div className="px-5 py-3 border-b border-slate-100">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{statsYear}년 거래 내역 ({yearCount}건)</p>
+                      </div>
+                      <div className="divide-y divide-slate-50">
+                        {[...yearStmts].sort((a, b) => b.tradeDate.localeCompare(a.tradeDate)).map(s => (
+                          <div key={s.id} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 transition-colors">
+                            <div>
+                              <span className="text-xs font-black text-slate-700">{s.tradeDate}</span>
+                              <span className="ml-2 text-[10px] text-slate-400 font-mono">{s.docNo}</span>
+                              <p className="text-[10px] text-slate-400 mt-0.5">{s.items.slice(0,2).map(i=>i.name).join(', ')}{s.items.length>2?` 외 ${s.items.length-2}건`:''}</p>
+                            </div>
+                            <span className="text-sm font-black text-indigo-700">{fmt(s.totalAmount)}원</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {yearStmts.length === 0 && (
+                    <div className="bg-white rounded-2xl border border-dashed border-slate-200 py-12 text-center text-slate-400 text-sm font-bold">{statsYear}년 매출 데이터가 없습니다.</div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
     </div>
   );
