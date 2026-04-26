@@ -337,6 +337,36 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
                       <div style={{ width: `${total > 0 ? (usedPersonal / total) * 100 : 0}%` }} className="h-full bg-rose-400 transition-all duration-700" />
                     </div>
                   </div>
+
+                  {/* 보건증 */}
+                  {(() => {
+                    if (!emp.healthCertDate) return (
+                      <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><CalendarCheck size={11} />보건증</p>
+                        <span className="text-[10px] font-bold text-slate-300">미등록</span>
+                      </div>
+                    );
+                    const issuedDate = new Date(emp.healthCertDate);
+                    const expiry = new Date(issuedDate);
+                    expiry.setFullYear(expiry.getFullYear() + 1);
+                    const daysLeft = Math.ceil((expiry.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+                    const isExpired = daysLeft <= 0;
+                    const isWarning = daysLeft > 0 && daysLeft <= 30;
+                    return (
+                      <div className="mt-3 pt-3 border-t border-slate-100">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-2"><CalendarCheck size={11} />보건증</p>
+                        <div className={`rounded-xl p-3 flex items-center justify-between border ${isExpired ? 'bg-rose-50 border-rose-100' : isWarning ? 'bg-amber-50 border-amber-100' : 'bg-emerald-50 border-emerald-100'}`}>
+                          <div>
+                            <p className="text-[10px] font-bold text-slate-500">발급 {emp.healthCertDate}</p>
+                            <p className="text-[10px] font-bold text-slate-400">만료 {expiry.toISOString().slice(0, 10)}</p>
+                          </div>
+                          <span className={`text-sm font-black ${isExpired ? 'text-rose-600' : isWarning ? 'text-amber-600' : 'text-emerald-600'}`}>
+                            {isExpired ? '만료됨' : `D-${daysLeft}`}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* 오른쪽: 신청 내역 */}

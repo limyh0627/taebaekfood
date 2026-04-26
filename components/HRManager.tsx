@@ -60,7 +60,8 @@ const HRManager: React.FC<HRManagerProps> = ({
     phone: '010-0000-0000',
     status: 'working' as EmployeeStatus,
     annualLeave: { carryOverLeave: 0, bonusLeave: 0 },
-    manualAdjustment: 0
+    manualAdjustment: 0,
+    healthCertDate: '',
   });
 
   const today = new Date();
@@ -106,6 +107,15 @@ const HRManager: React.FC<HRManagerProps> = ({
     const today = new Date();
     const diffTime = Math.abs(today.getTime() - start.getTime());
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  };
+
+  // 보건증 만료일 = 발급일 + 1년, 남은 일수 계산
+  const getHealthCertStatus = (issued: string) => {
+    const issuedDate = new Date(issued);
+    const expiry = new Date(issuedDate);
+    expiry.setFullYear(expiry.getFullYear() + 1);
+    const daysLeft = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    return { expiry: expiry.toISOString().slice(0, 10), daysLeft };
   };
 
   const filteredEmployees = employees.filter(emp => 
@@ -173,7 +183,8 @@ const HRManager: React.FC<HRManagerProps> = ({
                   joinDate: new Date().toISOString().split('T')[0],
                   birthDate: '',
                   phone: '010-0000-0000', status: 'working',
-                  annualLeave: { carryOverLeave: 0, bonusLeave: 0 }, manualAdjustment: 0
+                  annualLeave: { carryOverLeave: 0, bonusLeave: 0 }, manualAdjustment: 0,
+                  healthCertDate: '',
                 });
                 setIsModalOpen(true);
               }}
@@ -219,6 +230,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                     <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">임직원 정보</th>
                     <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">부서 / 직급</th>
                     <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">입사일 / 근속</th>
+                    <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">보건증</th>
                     <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">관리</th>
                   </tr>
                 </thead>
@@ -241,9 +253,31 @@ const HRManager: React.FC<HRManagerProps> = ({
                           <span className="text-[10px] font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-100">{calculateWorkDays(emp.joinDate)}일째</span>
                         </div>
                       </td>
+                      <td className="px-8 py-6 text-center">
+                        {emp.healthCertDate ? (() => {
+                          const { expiry, daysLeft } = getHealthCertStatus(emp.healthCertDate);
+                          const isExpired = daysLeft <= 0;
+                          const isWarning = daysLeft > 0 && daysLeft <= 30;
+                          return (
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className="text-[10px] font-bold text-slate-500">발급 {emp.healthCertDate}</span>
+                              <span className="text-[10px] font-bold text-slate-400">만료 {expiry}</span>
+                              <span className={`text-[10px] font-black px-2 py-0.5 rounded-lg ${
+                                isExpired ? 'bg-rose-100 text-rose-600' :
+                                isWarning ? 'bg-amber-100 text-amber-600' :
+                                'bg-emerald-50 text-emerald-600'
+                              }`}>
+                                {isExpired ? '만료됨' : `D-${daysLeft}`}
+                              </span>
+                            </div>
+                          );
+                        })() : (
+                          <span className="text-[10px] text-slate-300 font-bold">미등록</span>
+                        )}
+                      </td>
                       <td className="px-8 py-6 text-right">
                         <div className="flex justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-all">
-                          <button onClick={() => { setEditingEmployee(emp); setFormData({ name: emp.name, position: emp.position, department: emp.department, joinDate: emp.joinDate, birthDate: emp.birthDate || '', phone: emp.phone, status: emp.status, annualLeave: { carryOverLeave: emp.annualLeave?.carryOverLeave || 0, bonusLeave: emp.annualLeave?.bonusLeave || 0 }, manualAdjustment: emp.manualAdjustment || 0 }); setIsModalOpen(true); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><Edit2 size={18} /></button>
+                          <button onClick={() => { setEditingEmployee(emp); setFormData({ name: emp.name, position: emp.position, department: emp.department, joinDate: emp.joinDate, birthDate: emp.birthDate || '', phone: emp.phone, status: emp.status, annualLeave: { carryOverLeave: emp.annualLeave?.carryOverLeave || 0, bonusLeave: emp.annualLeave?.bonusLeave || 0 }, manualAdjustment: emp.manualAdjustment || 0, healthCertDate: emp.healthCertDate || '' }); setIsModalOpen(true); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><Edit2 size={18} /></button>
                           <button onClick={() => setConfirmModal({
                               message: `'${emp.name}' 직원 정보를 삭제하시겠습니까?`,
                               subMessage: '휴가 기록 등 관련 데이터도 함께 삭제됩니다.',
@@ -536,6 +570,32 @@ const HRManager: React.FC<HRManagerProps> = ({
                     <p className="text-[10px] text-slate-300">승인 절차 없이 직접 차감 — 시스템 도입 전 사용분, 수동 보정 등</p>
                     <input type="number" step="0.5" value={formData.manualAdjustment} onChange={(e) => setFormData({...formData, manualAdjustment: parseFloat(e.target.value) || 0})} className="w-full bg-rose-50 border border-rose-100 rounded-xl px-4 py-3 text-sm font-bold outline-none text-rose-700 focus:border-rose-400" />
                   </div>
+                </div>
+              </div>
+              {/* 보건증 섹션 */}
+              <div className="pt-4 border-t border-slate-100 space-y-3">
+                <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest flex items-center space-x-1">
+                  <CalendarCheck size={12} />
+                  <span>보건증</span>
+                </p>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">발급일</label>
+                  <input
+                    type="date"
+                    value={formData.healthCertDate}
+                    onChange={(e) => setFormData({...formData, healthCertDate: e.target.value})}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  {formData.healthCertDate && (() => {
+                    const { expiry, daysLeft } = getHealthCertStatus(formData.healthCertDate);
+                    const isExpired = daysLeft <= 0;
+                    const isWarning = daysLeft > 0 && daysLeft <= 30;
+                    return (
+                      <p className={`text-xs font-bold px-3 py-1.5 rounded-xl ${isExpired ? 'bg-rose-50 text-rose-600' : isWarning ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                        만료일: {expiry} &nbsp;·&nbsp; {isExpired ? '만료됨' : `D-${daysLeft}`}
+                      </p>
+                    );
+                  })()}
                 </div>
               </div>
               <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex space-x-3 mt-4">
