@@ -31,7 +31,7 @@ import {
   BarChart2,
   Factory
 } from 'lucide-react';
-import { Order, Product, ProductClient, ViewType, OrderStatus, Client, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord } from './types';
+import { Order, Product, ProductClient, ProductSupplier, ViewType, OrderStatus, Client, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord } from './types';
 import Dashboard from './components/Dashboard';
 import OrdersList from './components/OrdersList';
 import ProductList from './components/ProductList';
@@ -191,7 +191,7 @@ const App: React.FC = () => {
   
   const {
     orders, confirmedOrders, orderRequests,
-    products, submaterials, productClients,
+    products, submaterials, productClients, productSuppliers,
     clients, employees, leaveRequests,
     pallets, palletTransactions, adjustmentRequests,
     noticePosts, chatRooms, chatMessages,
@@ -2518,6 +2518,7 @@ const App: React.FC = () => {
               allProducts={allProducts}
               clients={clients}
               productClients={productClients}
+              productSuppliers={productSuppliers}
               issuedStatements={issuedStatements}
               onUpdateStatus={async (id, status) => {
                 if (status === OrderStatus.DELIVERED) {
@@ -2533,7 +2534,10 @@ const App: React.FC = () => {
               }}
               onUpdateProductClientPrice={(id, price) => updateItem('productClients', id, { price })}
               onUpdateProductClientTaxType={(id, taxType) => updateItem('productClients', id, { taxType })}
+              onUpsertProductSupplier={(ps) => addItem('productSuppliers', ps)}
+              onUpdateProductSupplierTaxType={(id, taxType) => updateItem('productSuppliers', id, { taxType })}
               onMarkInvoicePrinted={(id, value) => updateItem('orders', id, { invoicePrinted: value })}
+              onUpdateOrder={(id, data) => updateItem('orders', id, data)}
               onAddIssuedStatement={(stmt) => addItem('issuedStatements', stmt)}
               onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
               onDeleteIssuedStatement={(id) => deleteItem('issuedStatements', id)}
@@ -2561,6 +2565,8 @@ const App: React.FC = () => {
                   });
                 }}
                 onDeleteCost={(id) => deleteItem('fixedCosts', id)}
+                clients={clients}
+                onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
               />
             </div>
           )}

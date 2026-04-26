@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import {
-  Order, Product, Client, ProductClient, Post,
+  Order, Product, Client, ProductClient, ProductSupplier, Post,
   PalletStock, PalletTransaction, Employee, LeaveRequest,
   AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry,
   AppNotification, OrderStatus, IssuedStatement,
@@ -30,6 +30,7 @@ export interface AppData {
   products: Product[];
   submaterials: Product[];
   productClients: ProductClient[];
+  productSuppliers: ProductSupplier[];
   // 거래처 / 직원
   clients: Client[];
   employees: Employee[];
@@ -71,6 +72,7 @@ export function useAppData(): AppData {
   const [products, setProducts] = useState<Product[]>([]);
   const [submaterials, setSubmaterials] = useState<Product[]>([]);
   const [productClients, setProductClients] = useState<ProductClient[]>([]);
+  const [productSuppliers, setProductSuppliers] = useState<ProductSupplier[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
@@ -115,6 +117,7 @@ export function useAppData(): AppData {
       subscribeToCollection<Product>('submaterials', setSubmaterials),
       subscribeToCollection<Client>('clients', setClients),
       subscribeToCollection<ProductClient>('productClients', setProductClients),
+      subscribeToCollection<ProductSupplier>('productSuppliers', setProductSuppliers),
       subscribeToCollection<ChatRoom>('chatRooms', setChatRooms),
       subscribeToCollection<ChatMessage>('chatMessages', setChatMessages),
       subscribeToCollection<RawMaterialEntry>('rawMaterialLedger', setRawMaterialLedger),
@@ -133,7 +136,7 @@ export function useAppData(): AppData {
 
   return {
     orders, confirmedOrders, orderRequests,
-    products, submaterials, productClients,
+    products, submaterials, productClients, productSuppliers,
     clients, employees, leaveRequests,
     pallets, palletTransactions, adjustmentRequests,
     noticePosts, chatRooms, chatMessages,

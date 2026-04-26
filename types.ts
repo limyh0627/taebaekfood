@@ -59,6 +59,14 @@ export interface ProductClient {
   tapeTypeId?: string;     // 테이프 부자재 ID
 }
 
+export interface ProductSupplier {
+  id: string;        // `${productId}_${supplierId}`
+  productId: string;
+  supplierId: string;
+  price?: number;    // 매입단가 (= 원가)
+  taxType?: '과세' | '면세';
+}
+
 export interface Client {
   id: string;
   name: string;
