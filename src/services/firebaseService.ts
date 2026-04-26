@@ -41,8 +41,12 @@ export const subscribeToCollection = <T extends { id: string }>(
   });
 };
 
+const stripUndefined = (obj: any): any =>
+  Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
+
 export const addItem = async (collectionName: string, item: any) => {
-  const { id, ...data } = item;
+  const { id, ...raw } = item;
+  const data = stripUndefined(raw);
   if (id) {
     await setDoc(doc(db, collectionName, id), data);
     return id;

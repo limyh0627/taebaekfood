@@ -513,7 +513,7 @@ const App: React.FC = () => {
         productId: item.productId,
         productName: product.name,
         finishedQty: item.quantity,
-        cost: product.cost,
+        ...(product.cost !== undefined ? { cost: product.cost } : {}),
         note: `주문 자동 연동 (${order.customerName})`,
         createdAt: new Date().toISOString(),
       };
@@ -2536,6 +2536,7 @@ const App: React.FC = () => {
               onMarkInvoicePrinted={(id, value) => updateItem('orders', id, { invoicePrinted: value })}
               onAddIssuedStatement={(stmt) => addItem('issuedStatements', stmt)}
               onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
+              onDeleteIssuedStatement={(id) => deleteItem('issuedStatements', id)}
               pendingInvoice={pendingInvoice}
               onClearPendingInvoice={() => setPendingInvoice(null)}
               confirmedOrders={confirmedOrders}
