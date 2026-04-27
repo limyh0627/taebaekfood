@@ -2544,7 +2544,9 @@ const App: React.FC = () => {
               pendingInvoice={pendingInvoice}
               onClearPendingInvoice={() => setPendingInvoice(null)}
               confirmedOrders={confirmedOrders}
+              orderRequests={orderRequests}
               onAddConfirmedOrder={(item) => addItem('confirmedOrders', item)}
+              onRemoveConfirmedOrder={(id) => deleteItem('confirmedOrders', id)}
               companyInfo={companyInfo}
               onSaveCompanyInfo={(info) => setDocument('settings', 'company', info)}
               onUpdateProductCost={(productId, cost) => updateItem('products', productId, { cost })}

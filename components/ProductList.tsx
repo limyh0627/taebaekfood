@@ -197,7 +197,17 @@ const ProductList: React.FC<ProductListProps> = ({
   const [showStocktake, setShowStocktake] = useState(false);
   const [stocktakeValues, setStocktakeValues] = useState<Record<string, string>>({});
   const [stocktakeDate, setStocktakeDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [cart, setCart] = useState<{ id: string; qty: number }[]>([]);
+  const CART_KEY = 'inventory_cart';
+  const [cart, setCartRaw] = useState<{ id: string; qty: number }[]>(() => {
+    try { return JSON.parse(localStorage.getItem(CART_KEY) || '[]'); } catch { return []; }
+  });
+  const setCart = (updater: { id: string; qty: number }[] | ((prev: { id: string; qty: number }[]) => { id: string; qty: number }[])) => {
+    setCartRaw(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      localStorage.setItem(CART_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
   const [showCartPanel, setShowCartPanel] = useState(false);
   const [showCartModal, setShowCartModal] = useState(false);
 
@@ -397,20 +407,6 @@ const ProductList: React.FC<ProductListProps> = ({
 
       <div className="flex flex-col space-y-4">
 
-        {/* 전역 필터 — 최소수량 미만 */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => { setZeroStockOnly(p => !p); setStockOnly(false); }}
-            className={`px-4 py-2 rounded-2xl border text-[11px] font-black transition-all flex items-center gap-1.5 ${zeroStockOnly ? 'bg-rose-50 border-rose-200 text-rose-600 ring-2 ring-rose-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
-          >
-            <span className={`w-3 h-3 rounded-full border-2 transition-colors ${zeroStockOnly ? 'bg-rose-500 border-rose-500' : 'border-slate-300'}`} />
-            최소수량 미만만 보기
-          </button>
-          {zeroStockOnly && (
-            <span className="text-[11px] font-bold text-rose-500">전체 탭 기준 {filteredProducts.length}개 부족</span>
-          )}
-        </div>
-
         {/* 하위 탭 + 검색 */}
         {!zeroStockOnly && (topTab === 'product' || topTab === 'finished' || topTab === 'specialty') && (
           <div className="flex items-center gap-3 flex-wrap">
@@ -444,9 +440,9 @@ const ProductList: React.FC<ProductListProps> = ({
           </div>
         )}
 
-        {!zeroStockOnly && (topTab === 'product' || topTab === 'finished' || topTab === 'specialty') && <div className="flex flex-col gap-2">
+        {(topTab === 'product' || topTab === 'finished' || topTab === 'specialty') && <div className="flex flex-col gap-2">
           {/* 품목별 필터 - 상품·부자재 탭 */}
-          {(topTab === 'specialty' || topTab === 'product') && <div className="flex items-center gap-2 flex-wrap">
+          {!zeroStockOnly && (topTab === 'specialty' || topTab === 'product') && <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => setShowCategoryFilter(p => !p)}
               className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl border text-[11px] font-black transition-all ${showCategoryFilter ? 'bg-indigo-50 border-indigo-200 text-indigo-600 ring-2 ring-indigo-50' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
@@ -477,7 +473,7 @@ const ProductList: React.FC<ProductListProps> = ({
           {/* 완제품 탭 전용 필터 */}
           {topTab === 'finished' && (
             <div className="flex items-center gap-2 flex-wrap">
-              {(['all', 'oil', 'powder'] as const).map(f => (
+              {!zeroStockOnly && (['all', 'oil', 'powder'] as const).map(f => (
                 <button key={f}
                   onClick={() => setFinishedFilter(f)}
                   className={`px-4 py-2 rounded-2xl border text-[11px] font-black transition-all ${finishedFilter === f ? 'bg-white border-indigo-200 text-indigo-600 shadow-sm ring-2 ring-indigo-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
@@ -485,18 +481,31 @@ const ProductList: React.FC<ProductListProps> = ({
                   {f === 'all' ? '전체' : f === 'oil' ? '기름재고' : '가루재고'}
                 </button>
               ))}
+              {!zeroStockOnly && <div className="ml-2 h-5 w-px bg-slate-200" />}
+              {!zeroStockOnly && (
+                <button
+                  onClick={() => { setStockOnly(p => !p); setZeroStockOnly(false); }}
+                  className={`px-4 py-2 rounded-2xl border text-[11px] font-black transition-all flex items-center gap-1.5 ${stockOnly ? 'bg-emerald-50 border-emerald-200 text-emerald-600 ring-2 ring-emerald-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
+                >
+                  <span className={`w-3 h-3 rounded-full border-2 transition-colors ${stockOnly ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'}`} />
+                  재고있는 것만
+                </button>
+              )}
               <div className="ml-2 h-5 w-px bg-slate-200" />
               <button
-                onClick={() => { setStockOnly(p => !p); setZeroStockOnly(false); }}
-                className={`px-4 py-2 rounded-2xl border text-[11px] font-black transition-all flex items-center gap-1.5 ${stockOnly ? 'bg-emerald-50 border-emerald-200 text-emerald-600 ring-2 ring-emerald-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
+                onClick={() => { setZeroStockOnly(p => !p); setStockOnly(false); }}
+                className={`px-4 py-2 rounded-2xl border text-[11px] font-black transition-all flex items-center gap-1.5 ${zeroStockOnly ? 'bg-rose-50 border-rose-200 text-rose-600 ring-2 ring-rose-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
               >
-                <span className={`w-3 h-3 rounded-full border-2 transition-colors ${stockOnly ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'}`} />
-                재고있는 것만
+                <span className={`w-3 h-3 rounded-full border-2 transition-colors ${zeroStockOnly ? 'bg-rose-500 border-rose-500' : 'border-slate-300'}`} />
+                최소수량 미만만 보기
               </button>
+              {zeroStockOnly && (
+                <span className="text-[11px] font-bold text-rose-500">{filteredProducts.length}개 부족</span>
+              )}
             </div>
           )}
           {/* 거래처별 필터 - 완제품 탭 제외 */}
-          {topTab !== 'finished' && <div className="flex items-center gap-2 flex-wrap">
+          {!zeroStockOnly && topTab !== 'finished' && <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => setShowSupplierFilter(p => !p)}
               className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl border text-[11px] font-black transition-all ${showSupplierFilter ? 'bg-orange-50 border-orange-200 text-orange-500 ring-2 ring-orange-50' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
@@ -982,139 +991,51 @@ const ProductList: React.FC<ProductListProps> = ({
                   className="w-full py-4 bg-indigo-600 text-white rounded-2xl text-sm font-black shadow-lg hover:bg-indigo-700 active:scale-[0.99] transition-all flex items-center justify-center gap-2"
                 >
                   <ShoppingCart size={16} />
-                  발주 확정 ({cart.length}건)
+                  전표 작성 ({cart.length}건)
                 </button>
               </>
             )}
 
-            {/* 발주 내역 — 입고대기 목록 */}
-            {confirmedOrders.length > 0 ? (
-              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                <div className="px-5 py-3 border-b border-slate-50 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <ClipboardCheck size={16} className="text-emerald-500" />
-                    <span className="font-black text-sm text-slate-800">입고 대기</span>
-                    <span className="text-[10px] font-black bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">{confirmedOrders.length}건</span>
-                  </div>
-                  <button onClick={onClearAllConfirmedOrders} className="text-[10px] font-bold text-slate-400 hover:text-rose-500 transition-all">전체 비우기</button>
-                </div>
-                <div className="divide-y divide-slate-50">
-                  {confirmedOrders
-                    .filter(conf => {
-                      if (activeSupplierId === '전체') return true;
-                      const product = products.find(p => p.id === conf.id);
-                      return product?.supplierId === activeSupplierId;
-                    })
-                    .map(conf => {
-                    const product = products.find(p => p.id === conf.id);
-                    if (!product) return null;
-                    const supplierName = suppliers.find(s => s.id === product.supplierId)?.name;
-                    const isExpanded = expandedReqId === conf.id;
-                    return (
-                      <div key={conf.id}>
-                        <div className="px-5 py-3 flex items-center gap-3">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <p className="text-[10px] text-slate-400">{product.category}</p>
-                              {supplierName && (
-                                <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-md">{supplierName}</span>
-                              )}
-                            </div>
-                          </div>
-                          <span className="text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-xl shrink-0">입고대기 {conf.quantity}{product.unit}</span>
-                          <button
-                            onClick={() => {
-                              if (isExpanded) { setExpandedReqId(null); }
-                              else { setExpandedReqId(conf.id); setReqEditQty(conf.quantity); setReqNote(''); }
-                            }}
-                            className={`text-[10px] font-black px-2.5 py-1.5 rounded-xl transition-all shrink-0 border ${isExpanded ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'}`}
-                          >{isExpanded ? '닫기' : '수정'}</button>
-                          <button
-                            onClick={() => onFinishConfirmedOrder(product.id)}
-                            className="text-[10px] font-black px-2.5 py-1.5 rounded-xl bg-slate-800 text-white hover:bg-slate-900 transition-all shrink-0"
-                          >입고확인</button>
-                        </div>
-                        {isExpanded && (
-                          <div className="px-5 py-4 bg-slate-50/60 space-y-3 animate-in slide-in-from-top-1 duration-150">
-                            <div className="flex items-center gap-3">
-                              <span className="text-[10px] font-black text-slate-500 w-16 shrink-0">수량 변경</span>
-                              <div className="flex items-center gap-1.5">
-                                <button onClick={() => setReqEditQty(q => Math.max(1, q - 1))} className="w-7 h-7 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-600 font-black hover:bg-slate-100 transition-all">-</button>
-                                <input
-                                  type="number"
-                                  value={reqEditQty}
-                                  onChange={e => setReqEditQty(parseInt(e.target.value) || 1)}
-                                  className="w-16 text-center text-sm font-black border border-slate-200 rounded-xl py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-                                />
-                                <button onClick={() => setReqEditQty(q => q + 1)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-600 font-black hover:bg-slate-100 transition-all">+</button>
-                                <span className="text-[11px] text-slate-400">{product.unit}</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <span className="text-[10px] font-black text-slate-500 w-16 shrink-0">사유</span>
-                              <input
-                                type="text"
-                                value={reqNote}
-                                onChange={e => setReqNote(e.target.value)}
-                                placeholder="수량 수정 사유 (선택)"
-                                className="flex-1 text-xs border border-slate-200 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-                              />
-                            </div>
-                            <div className="flex gap-2 pt-1">
-                              <button
-                                onClick={() => { onRemoveConfirmedOrder(conf.id); setExpandedReqId(null); }}
-                                className="py-2 px-3 bg-rose-50 border border-rose-100 text-rose-500 rounded-xl text-xs font-black hover:bg-rose-100 transition-all"
-                              >발주 취소</button>
-                              <button
-                                onClick={() => {
-                                  onUpdateConfirmedQty(conf.id, reqEditQty);
-                                  setExpandedReqId(null);
-                                }}
-                                className="flex-1 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-xl text-xs font-black hover:bg-indigo-50 transition-all"
-                              >수량 저장</button>
-                              <button
-                                onClick={() => { onFinishConfirmedOrder(conf.id); setExpandedReqId(null); }}
-                                className="flex-1 py-2 bg-slate-800 text-white rounded-xl text-xs font-black hover:bg-slate-900 transition-all"
-                              >입고 확인</button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : cart.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-slate-100 py-20 flex flex-col items-center justify-center gap-3 opacity-30">
-                <ClipboardCheck size={40} />
-                <p className="text-sm font-bold">발주 내역이 없습니다</p>
-              </div>
-            ) : null}
-
-            {/* ── 전표 기반 입고대기 ── */}
+            {/* 발주 내역 — 입고 대기 (통합: 수동 발주 + 전표 기반) */}
             {(() => {
-              const pending = issuedStatements.filter(s => s.type === '매입' && !s.receivedAt);
-              if (pending.length === 0) return null;
+              const pendingStatements = issuedStatements.filter(s => s.type === '매입' && !s.receivedAt);
+              // 전표에 이미 포함된 품목명 집합 (수동 발주 중복 방지)
+              const statementItemNames = new Set(pendingStatements.flatMap(s => s.items.map(i => i.name)));
+              const confirmedWithoutStatement = confirmedOrders.filter(conf => {
+                const product = products.find(p => p.id === conf.id);
+                return product && !statementItemNames.has(product.name);
+              });
+              const totalCount = confirmedWithoutStatement.length + pendingStatements.length;
+
+              if (totalCount === 0 && cart.length === 0) return (
+                <div className="bg-white rounded-2xl border border-slate-100 py-20 flex flex-col items-center justify-center gap-3 opacity-30">
+                  <ClipboardCheck size={40} />
+                  <p className="text-sm font-bold">발주 내역이 없습니다</p>
+                </div>
+              );
+              if (totalCount === 0) return null;
+
               return (
-                <div className="bg-white rounded-2xl border border-emerald-100 shadow-sm overflow-hidden">
+                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                   <div className="px-5 py-3 border-b border-slate-50 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <ClipboardCheck size={16} className="text-emerald-500" />
-                      <span className="font-black text-sm text-slate-800">전표 기반 입고대기</span>
-                      <span className="text-[10px] font-black bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">{pending.length}건</span>
+                      <span className="font-black text-sm text-slate-800">입고 대기</span>
+                      <span className="text-[10px] font-black bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">{totalCount}건</span>
                     </div>
+                    {confirmedOrders.length > 0 && (
+                      <button onClick={onClearAllConfirmedOrders} className="text-[10px] font-bold text-slate-400 hover:text-rose-500 transition-all">전체 비우기</button>
+                    )}
                   </div>
                   <div className="divide-y divide-slate-50">
-                    {pending
-                      .filter(stmt => {
-                        if (activeSupplierId === '전체') return true;
-                        return stmt.clientId === activeSupplierId;
-                      })
+                    {/* 전표 기반 입고 대기 */}
+                    {pendingStatements
+                      .filter(stmt => activeSupplierId === '전체' || stmt.clientId === activeSupplierId)
                       .map(stmt => (
                       <div key={stmt.id} className="px-5 py-3">
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
+                            <span className="text-[9px] font-black text-sky-600 bg-sky-50 border border-sky-100 px-1.5 py-0.5 rounded-md">전표</span>
                             <span className="text-xs font-black text-orange-500 bg-orange-50 px-2 py-0.5 rounded-md">{stmt.clientName}</span>
                             <span className="text-[10px] text-slate-400">{stmt.tradeDate} · {stmt.docNo}</span>
                           </div>
@@ -1133,6 +1054,92 @@ const ProductList: React.FC<ProductListProps> = ({
                         </div>
                       </div>
                     ))}
+                    {/* 전표 없는 수동 입고 대기 */}
+                    {confirmedWithoutStatement
+                      .filter(conf => {
+                        if (activeSupplierId === '전체') return true;
+                        const product = products.find(p => p.id === conf.id);
+                        return product?.supplierId === activeSupplierId;
+                      })
+                      .map(conf => {
+                        const product = products.find(p => p.id === conf.id);
+                        if (!product) return null;
+                        const supplierName = suppliers.find(s => s.id === product.supplierId)?.name;
+                        const isExpanded = expandedReqId === conf.id;
+                        return (
+                          <div key={conf.id}>
+                            <div className="px-5 py-3 flex items-center gap-3">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <p className="text-[10px] text-slate-400">{product.category}</p>
+                                  {supplierName && (
+                                    <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-md">{supplierName}</span>
+                                  )}
+                                  <span className="text-[9px] font-black text-amber-600 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded-md">전표없음</span>
+                                </div>
+                              </div>
+                              <span className="text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-xl shrink-0">입고대기 {conf.quantity}{product.unit}</span>
+                              <button
+                                onClick={() => {
+                                  if (isExpanded) { setExpandedReqId(null); }
+                                  else { setExpandedReqId(conf.id); setReqEditQty(conf.quantity); setReqNote(''); }
+                                }}
+                                className={`text-[10px] font-black px-2.5 py-1.5 rounded-xl transition-all shrink-0 border ${isExpanded ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'}`}
+                              >{isExpanded ? '닫기' : '수정'}</button>
+                              <button
+                                onClick={() => onFinishConfirmedOrder(product.id)}
+                                className="text-[10px] font-black px-2.5 py-1.5 rounded-xl bg-slate-800 text-white hover:bg-slate-900 transition-all shrink-0"
+                              >입고확인</button>
+                            </div>
+                            {isExpanded && (
+                              <div className="px-5 py-4 bg-slate-50/60 space-y-3 animate-in slide-in-from-top-1 duration-150">
+                                <div className="flex items-center gap-3">
+                                  <span className="text-[10px] font-black text-slate-500 w-16 shrink-0">수량 변경</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <button onClick={() => setReqEditQty(q => Math.max(1, q - 1))} className="w-7 h-7 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-600 font-black hover:bg-slate-100 transition-all">-</button>
+                                    <input
+                                      type="number"
+                                      value={reqEditQty}
+                                      onChange={e => setReqEditQty(parseInt(e.target.value) || 1)}
+                                      className="w-16 text-center text-sm font-black border border-slate-200 rounded-xl py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                                    />
+                                    <button onClick={() => setReqEditQty(q => q + 1)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-600 font-black hover:bg-slate-100 transition-all">+</button>
+                                    <span className="text-[11px] text-slate-400">{product.unit}</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-[10px] font-black text-slate-500 w-16 shrink-0">사유</span>
+                                  <input
+                                    type="text"
+                                    value={reqNote}
+                                    onChange={e => setReqNote(e.target.value)}
+                                    placeholder="수량 수정 사유 (선택)"
+                                    className="flex-1 text-xs border border-slate-200 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                                  />
+                                </div>
+                                <div className="flex gap-2 pt-1">
+                                  <button
+                                    onClick={() => { onRemoveConfirmedOrder(conf.id); setExpandedReqId(null); }}
+                                    className="py-2 px-3 bg-rose-50 border border-rose-100 text-rose-500 rounded-xl text-xs font-black hover:bg-rose-100 transition-all"
+                                  >발주 취소</button>
+                                  <button
+                                    onClick={() => {
+                                      onUpdateConfirmedQty(conf.id, reqEditQty);
+                                      setExpandedReqId(null);
+                                    }}
+                                    className="flex-1 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-xl text-xs font-black hover:bg-indigo-50 transition-all"
+                                  >수량 저장</button>
+                                  <button
+                                    onClick={() => { onFinishConfirmedOrder(conf.id); setExpandedReqId(null); }}
+                                    className="flex-1 py-2 bg-slate-800 text-white rounded-xl text-xs font-black hover:bg-slate-900 transition-all"
+                                  >입고 확인</button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                   </div>
                 </div>
               );
@@ -1889,11 +1896,11 @@ const ProductList: React.FC<ProductListProps> = ({
             <div className="p-4 border-t border-slate-100 space-y-2">
               <button
                 disabled={cart.length === 0}
-                onClick={submitCart}
+                onClick={() => setShowCartModal(true)}
                 className="w-full py-3.5 bg-indigo-600 text-white rounded-2xl text-sm font-black shadow-lg hover:bg-indigo-700 active:scale-[0.98] transition-all disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center gap-2"
               >
                 <ShoppingCart size={16} />
-                발주 확정 ({cart.length}건)
+                전표 작성 ({cart.length}건)
               </button>
               <button
                 onClick={() => setCart([])}
@@ -1926,7 +1933,7 @@ const ProductList: React.FC<ProductListProps> = ({
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <ShoppingCart size={16} className="text-indigo-500" />
-                <span className="font-black text-slate-800">발주 확정</span>
+                <span className="font-black text-slate-800">전표 작성</span>
                 <span className="text-[10px] font-black bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">{cart.length}건</span>
               </div>
               <button onClick={() => setShowCartModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl">✕</button>
@@ -1953,17 +1960,19 @@ const ProductList: React.FC<ProductListProps> = ({
                   <div key={group.supplierId} className="border border-slate-200 rounded-2xl overflow-hidden">
                     <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50">
                       <span className="font-black text-sm text-slate-700">{group.supplierName}</span>
-                      {group.supplierId !== '__none__' && onRequestPurchaseInvoice && (
+                      {group.supplierId !== '__none__' && onRequestPurchaseInvoice ? (
                         <button
                           onClick={() => {
                             onRequestPurchaseInvoice(group.supplierId, group.supplierName, group.items);
                             setShowCartModal(false);
                           }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 text-white rounded-xl text-[11px] font-black hover:bg-rose-700 transition-all"
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-[11px] font-black hover:bg-indigo-700 transition-all"
                         >
-                          매입전표 작성
+                          전표 작성
                         </button>
-                      )}
+                      ) : group.supplierId === '__none__' ? (
+                        <span className="text-[10px] text-amber-500 font-bold">거래처 미지정 — 전표 작성 불가</span>
+                      ) : null}
                     </div>
                     <div className="divide-y divide-slate-50">
                       {group.items.map((item, i) => (
@@ -1977,16 +1986,10 @@ const ProductList: React.FC<ProductListProps> = ({
                 ));
               })()}
             </div>
-            <div className="px-5 py-4 border-t border-slate-100 flex gap-2">
+            <div className="px-5 py-4 border-t border-slate-100">
               <button onClick={() => setShowCartModal(false)}
-                className="flex-1 py-3 rounded-2xl border border-slate-200 text-sm font-black text-slate-500 hover:bg-slate-50 transition-all">
-                취소
-              </button>
-              <button
-                onClick={() => { submitCart(); setShowCartModal(false); }}
-                className="flex-1 py-3 bg-indigo-600 text-white rounded-2xl text-sm font-black hover:bg-indigo-700 transition-all flex items-center justify-center gap-2"
-              >
-                <ShoppingCart size={14} />발주 확정
+                className="w-full py-3 rounded-2xl border border-slate-200 text-sm font-black text-slate-500 hover:bg-slate-50 transition-all">
+                닫기
               </button>
             </div>
           </div>

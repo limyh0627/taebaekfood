@@ -29,7 +29,9 @@ interface TradeStatementProps {
   pendingInvoice?: { supplierId: string; supplierName: string; items: Array<{ name: string; spec: string; qty: number; price: number }> } | null;
   onClearPendingInvoice?: () => void;
   confirmedOrders?: { id: string; quantity: number }[];
+  orderRequests?: { id: string; quantity: number; confirmedByUser?: boolean }[];
   onAddConfirmedOrder?: (item: { id: string; quantity: number }) => void;
+  onRemoveConfirmedOrder?: (id: string) => void;
   companyInfo?: CompanyInfo | null;
   onSaveCompanyInfo?: (info: CompanyInfo) => void;
   onUpdateProductCost?: (productId: string, cost: number) => void;
@@ -69,7 +71,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   pendingInvoice,
   onClearPendingInvoice,
   confirmedOrders = [],
+  orderRequests = [],
   onAddConfirmedOrder,
+  onRemoveConfirmedOrder,
   companyInfo,
   onSaveCompanyInfo,
   onUpdateProductCost,
@@ -279,6 +283,20 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     }
     return Array.from(map.entries()).map(([sid, v]) => ({ supplierId: sid, ...v }));
   }, [confirmedOrders, allProducts, clients]);
+
+  // ── 발주예정 공급처별 그룹 (orderRequests) ──
+  const orderRequestsBySupplier = useMemo(() => {
+    const map = new Map<string, { supplierName: string; items: { product: (typeof allProducts)[0]; req: { id: string; quantity: number; confirmedByUser?: boolean } }[] }>();
+    for (const req of orderRequests) {
+      const product = allProducts.find(p => p.id === req.id);
+      if (!product?.supplierId) continue;
+      const supplier = clients.find(c => c.id === product.supplierId);
+      const sName = supplier?.name ?? product.supplierId;
+      if (!map.has(product.supplierId)) map.set(product.supplierId, { supplierName: sName, items: [] });
+      map.get(product.supplierId)!.items.push({ product, req });
+    }
+    return Array.from(map.entries()).map(([sid, v]) => ({ supplierId: sid, ...v }));
+  }, [orderRequests, allProducts, clients]);
 
   // ── 매입 품목 선택 패널용: supplierId 연결된 품목 전체 (공급처별 그룹) ──
   const purchasableBySupplier = useMemo(() => {
@@ -524,16 +542,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         }
       }
     }
-    // 매입전표 발행 시 발주확정이 없는 품목 자동 확정
-    if (stmtType === '매입' && onAddConfirmedOrder) {
+    // 매입전표 발행 시 발주예정(confirmedOrders)에 있는 품목 자동 제거 (전표가 입고 추적 담당)
+    if (stmtType === '매입' && onRemoveConfirmedOrder) {
       for (const item of lineItems) {
         const product = allProducts.find(p => p.name === item.name);
-        if (product && !confirmedOrders.find(c => c.id === product.id)) {
-          onAddConfirmedOrder({ id: product.id, quantity: item.qty });
+        if (product) {
+          const existing = confirmedOrders.find(c => c.id === product.id);
+          if (existing) {
+            onRemoveConfirmedOrder(existing.id);
+          }
         }
       }
     }
-  }, [manualMode, selectedOrderId, selectedClientId, tradeDate, stmtType, selectedClient, docNo, totalSupply, totalTax, totalAmount, lineItems, onMarkInvoicePrinted, onAddIssuedStatement, onAddConfirmedOrder, allProducts, confirmedOrders, productClients, productSuppliers, onUpdateProductClientPrice, onUpsertProductSupplier, onUpdateProductCost, onUpdateOrder, selectedOrder, manualItems]);
+  }, [manualMode, selectedOrderId, selectedClientId, tradeDate, stmtType, selectedClient, docNo, totalSupply, totalTax, totalAmount, lineItems, onMarkInvoicePrinted, onAddIssuedStatement, onAddConfirmedOrder, onRemoveConfirmedOrder, allProducts, confirmedOrders, productClients, productSuppliers, onUpdateProductClientPrice, onUpsertProductSupplier, onUpdateProductCost, onUpdateOrder, selectedOrder, manualItems]);
 
   const handleIssue = () => {
     markIssued();
@@ -2216,39 +2237,74 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
                 {createMode==='매입' && (()=>{
                   const supplierItems=confirmedBySupplier.find(s=>s.supplierId===selectedClientId);
-                  if(!supplierItems||supplierItems.items.length===0) return (
+                  const reqItems=orderRequestsBySupplier.find(s=>s.supplierId===selectedClientId);
+                  const hasConfirmed=supplierItems&&supplierItems.items.length>0;
+                  const hasRequests=reqItems&&reqItems.items.length>0;
+                  if(!hasConfirmed&&!hasRequests) return (
                     <div className="flex flex-col items-center justify-center flex-1 py-12 text-slate-300">
                       <ClipboardList size={36} strokeWidth={1.5} className="mb-2"/>
-                      <p className="text-xs font-bold text-slate-400">발주확정 항목이 없습니다</p>
+                      <p className="text-xs font-bold text-slate-400">발주 항목이 없습니다</p>
                       <p className="text-xs text-slate-300 mt-1">직접 입력으로 전표를 작성하세요</p>
                     </div>
                   );
                   return (
                     <div className="divide-y divide-slate-100">
-                      <div className="px-5 py-2 bg-slate-50">
-                        <span className="text-[11px] font-black text-slate-500">발주확정 ({supplierItems.items.length}품목)</span>
-                      </div>
-                      {supplierItems.items.map(({product,co})=>{
-                        const issued=issuedPurchaseNames.has(product.name);
-                        return (
-                          <button key={product.id}
-                            onClick={()=>{
-                              setManualItems([{name:product.name,spec:product.용량||product.unit||'',qty:String(co.quantity),price:'',isTaxExempt:false,note:''},{name:'',spec:'',qty:'',price:'',isTaxExempt:false,note:''}]);
-                              setManualMode(true);
-                            }}
-                            className="w-full flex items-center gap-3 text-left px-5 py-3 text-xs hover:bg-blue-50 transition-colors">
-                            <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                              <span className="font-black text-slate-800">{product.name}</span>
-                              {product.용량&&<span className="text-slate-400">{product.용량}</span>}
-                            </div>
-                            <span className="text-slate-600 font-bold">{co.quantity}{product.unit||'개'}</span>
-                            {issued
-                              ? <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">발행완료</span>
-                              : <span className="text-[10px] font-black text-pink-500 bg-pink-100 px-1.5 py-0.5 rounded-full">미발행</span>}
-                            <ChevronRight size={14} className="text-slate-300 shrink-0"/>
-                          </button>
-                        );
-                      })}
+                      {hasConfirmed && <>
+                        <div className="px-5 py-2 bg-emerald-50">
+                          <span className="text-[11px] font-black text-emerald-700">발주확정 ({supplierItems!.items.length}품목)</span>
+                        </div>
+                        {supplierItems!.items.map(({product,co})=>{
+                          const issued=issuedPurchaseNames.has(product.name);
+                          return (
+                            <button key={product.id}
+                              onClick={()=>{
+                                setManualItems([{name:product.name,spec:product.용량||product.unit||'',qty:String(co.quantity),price:'',isTaxExempt:false,note:''},{name:'',spec:'',qty:'',price:'',isTaxExempt:false,note:''}]);
+                                setManualMode(true);
+                              }}
+                              className="w-full flex items-center gap-3 text-left px-5 py-3 text-xs hover:bg-emerald-50 transition-colors">
+                              <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                                <span className="font-black text-slate-800">{product.name}</span>
+                                {product.용량&&<span className="text-slate-400">{product.용량}</span>}
+                              </div>
+                              <span className="text-slate-600 font-bold">{co.quantity}{product.unit||'개'}</span>
+                              {issued
+                                ? <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">발행완료</span>
+                                : <span className="text-[10px] font-black text-pink-500 bg-pink-100 px-1.5 py-0.5 rounded-full">미발행</span>}
+                              <ChevronRight size={14} className="text-slate-300 shrink-0"/>
+                            </button>
+                          );
+                        })}
+                      </>}
+                      {hasRequests && <>
+                        <div className="px-5 py-2 bg-indigo-50">
+                          <span className="text-[11px] font-black text-indigo-600">발주예정 ({reqItems!.items.length}품목)</span>
+                        </div>
+                        {reqItems!.items.map(({product,req})=>{
+                          const issued=issuedPurchaseNames.has(product.name);
+                          const ps=productSuppliers.find(s=>s.productId===product.id&&s.supplierId===selectedClientId);
+                          return (
+                            <button key={product.id}
+                              onClick={()=>{
+                                setManualItems([{name:product.name,spec:product.용량||product.unit||'',qty:String(req.quantity),price:ps?.price?String(ps.price):'',isTaxExempt:ps?.taxType==='면세',note:''},{name:'',spec:'',qty:'',price:'',isTaxExempt:false,note:''}]);
+                                setManualMode(true);
+                              }}
+                              className="w-full flex items-center gap-3 text-left px-5 py-3 text-xs hover:bg-indigo-50 transition-colors">
+                              <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                                <span className="font-black text-slate-800">{product.name}</span>
+                                {product.용량&&<span className="text-slate-400">{product.용량}</span>}
+                              </div>
+                              <div className="flex flex-col items-end gap-0.5 shrink-0">
+                                <span className="text-slate-600 font-bold">{req.quantity}{product.unit||'개'}</span>
+                                {ps?.price ? <span className="text-[10px] text-slate-400">{ps.price.toLocaleString()}원</span> : <span className="text-[10px] text-amber-400">단가미등록</span>}
+                              </div>
+                              {issued
+                                ? <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">발행완료</span>
+                                : <span className="text-[10px] font-black text-indigo-400 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded-full">예정</span>}
+                              <ChevronRight size={14} className="text-slate-300 shrink-0"/>
+                            </button>
+                          );
+                        })}
+                      </>}
                     </div>
                   );
                 })()}
@@ -2285,32 +2341,60 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               </div>
             )}
 
-            {/* ── 발주확정 목록 (매입·거래처 미선택) ── */}
-            {createMode==='매입' && !selectedClientId && confirmedBySupplier.length > 0 && (
-              <div className="flex-shrink-0 px-5 py-3 border-b border-slate-100 bg-slate-50">
-                <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">발주확정 목록 ({confirmedOrders.length})</div>
-                <div className="flex flex-wrap gap-2">
-                  {confirmedBySupplier.map(({supplierId,supplierName,items})=>{
-                    const issuedCount = items.filter(({product}) => issuedPurchaseNames.has(product.name)).length;
-                    return (
-                      <button key={supplierId}
-                        onClick={()=>{
-                          setSelectedClientId(supplierId);
-                          const rows = items.map(({product,co})=>({name:product.name,spec:product.용량||product.unit||'',qty:String(co.quantity),price:'',isTaxExempt:false}));
-                          setManualItems([...rows,{name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);
-                          setManualMode(true);
-                        }}
-                        className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-black text-slate-700 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-700 transition-all">
-                        <span>{supplierName}</span>
-                        <span className="text-slate-400">{items.length}품목</span>
-                        {issuedCount > 0 && (
-                          <span className="text-[10px] font-black text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">{issuedCount}발행</span>
-                        )}
-                        <ChevronRight size={11}/>
-                      </button>
-                    );
-                  })}
-                </div>
+            {/* ── 발주확정 + 발주예정 목록 (매입·거래처 미선택) ── */}
+            {createMode==='매입' && !selectedClientId && (confirmedBySupplier.length > 0 || orderRequestsBySupplier.length > 0) && (
+              <div className="flex-shrink-0 px-5 py-3 border-b border-slate-100 bg-slate-50 space-y-3">
+                {confirmedBySupplier.length > 0 && (
+                  <>
+                    <div className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">발주확정 ({confirmedOrders.length})</div>
+                    <div className="flex flex-wrap gap-2">
+                      {confirmedBySupplier.map(({supplierId,supplierName,items})=>{
+                        const issuedCount = items.filter(({product}) => issuedPurchaseNames.has(product.name)).length;
+                        return (
+                          <button key={supplierId}
+                            onClick={()=>{
+                              setSelectedClientId(supplierId);
+                              const rows = items.map(({product,co})=>({name:product.name,spec:product.용량||product.unit||'',qty:String(co.quantity),price:'',isTaxExempt:false}));
+                              setManualItems([...rows,{name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);
+                              setManualMode(true);
+                            }}
+                            className="flex items-center gap-2 px-3 py-2 bg-white border border-emerald-200 rounded-xl text-xs font-black text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition-all">
+                            <span>{supplierName}</span>
+                            <span className="text-slate-400">{items.length}품목</span>
+                            {issuedCount > 0 && (
+                              <span className="text-[10px] font-black text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">{issuedCount}발행</span>
+                            )}
+                            <ChevronRight size={11}/>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+                {orderRequestsBySupplier.length > 0 && (
+                  <>
+                    <div className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">발주예정 ({orderRequests.length})</div>
+                    <div className="flex flex-wrap gap-2">
+                      {orderRequestsBySupplier.map(({supplierId,supplierName,items})=>(
+                        <button key={supplierId}
+                          onClick={()=>{
+                            setSelectedClientId(supplierId);
+                            const rows = items.map(({product,req})=>{
+                              const ps = productSuppliers.find(s=>s.productId===product.id&&s.supplierId===supplierId);
+                              return {name:product.name,spec:product.용량||product.unit||'',qty:String(req.quantity),price:ps?.price?String(ps.price):'',isTaxExempt:ps?.taxType==='면세'};
+                            });
+                            setManualItems([...rows,{name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);
+                            setManualMode(true);
+                          }}
+                          className="flex items-center gap-2 px-3 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-black text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-all">
+                          <span>{supplierName}</span>
+                          <span className="text-indigo-400">{items.length}품목</span>
+                          <ChevronRight size={11}/>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
