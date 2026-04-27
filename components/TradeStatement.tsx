@@ -32,6 +32,7 @@ interface TradeStatementProps {
   orderRequests?: { id: string; quantity: number; confirmedByUser?: boolean }[];
   onAddConfirmedOrder?: (item: { id: string; quantity: number }) => void;
   onRemoveConfirmedOrder?: (id: string) => void;
+  onRemoveOrderRequest?: (id: string) => void;
   companyInfo?: CompanyInfo | null;
   onSaveCompanyInfo?: (info: CompanyInfo) => void;
   onUpdateProductCost?: (productId: string, cost: number) => void;
