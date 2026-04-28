@@ -132,6 +132,11 @@ const ProductList: React.FC<ProductListProps> = ({
   });
   const t = (ko: string, en: string) => isEn ? en : ko;
   const fmt1 = (v: number) => { const s = Number(v).toFixed(1); return s.endsWith('.0') ? s.slice(0, -2) : s; };
+  const fmtHamiyou = (stock: number) => {
+    const boxes = Math.floor(stock / 12);
+    const rem = stock % 12;
+    return rem === 0 ? `${boxes}B` : `${boxes}B+${rem}개`;
+  };
 
   const [topTab, setTopTab] = useState<TopTab>('finished');
   const [activeTab, setActiveTab] = useState<MainTab>('master');
@@ -566,7 +571,7 @@ const ProductList: React.FC<ProductListProps> = ({
                       <div className="text-left sm:text-center">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter mb-0.5">현재 재고</p>
                         <p className="text-sm font-black text-slate-900">
-                          {product.category === '향미유' ? `${product.stock}B` : `${product.stock}${product.unit}`}
+                          {product.category === '향미유' ? fmtHamiyou(product.stock) : `${product.stock}${product.unit}`}
                         </p>
                       </div>
 
@@ -699,14 +704,14 @@ const ProductList: React.FC<ProductListProps> = ({
                               onKeyDown={e => {
                                 if (e.key === 'Enter') {
                                   const val = parseInt(editingStockVal);
-                                  if (!isNaN(val) && val >= 0) onUpdateProduct({ ...product, stock: val });
+                                  if (!isNaN(val) && val >= 0) onUpdateProduct({ ...product, stock: product.category === '향미유' ? val * 12 : val });
                                   setEditingStockId(null);
                                 }
                                 if (e.key === 'Escape') setEditingStockId(null);
                               }}
                               onBlur={() => {
                                 const val = parseInt(editingStockVal);
-                                if (!isNaN(val) && val >= 0) onUpdateProduct({ ...product, stock: val });
+                                if (!isNaN(val) && val >= 0) onUpdateProduct({ ...product, stock: product.category === '향미유' ? val * 12 : val });
                                 setEditingStockId(null);
                               }}
                               onClick={e => e.stopPropagation()}
@@ -716,15 +721,17 @@ const ProductList: React.FC<ProductListProps> = ({
                           </div>
                         ) : (
                           <button
-                            onClick={e => { e.stopPropagation(); setEditingStockId(product.id); setEditingStockVal(String(product.stock)); }}
+                            onClick={e => { e.stopPropagation(); setEditingStockId(product.id); setEditingStockVal(String(product.category === '향미유' ? Math.floor(product.stock / 12) : product.stock)); }}
                             className={`text-base font-black hover:underline hover:text-indigo-600 transition-colors cursor-pointer ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}
                             title="클릭하여 수량 수정"
                           >
-                            {product.stock}
+                            {product.category === '향미유' ? fmtHamiyou(product.stock) : product.stock}
                           </button>
                         )}
                         {editingStockId !== product.id && (
-                          <span className="text-[10px] text-slate-400 ml-1">{product.category === '향미유' ? 'B' : product.unit}</span>
+                          <span className="text-[10px] text-slate-400 ml-1">
+                            {product.category !== '향미유' && product.unit}
+                          </span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right hidden sm:table-cell">
@@ -961,7 +968,9 @@ const ProductList: React.FC<ProductListProps> = ({
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
                             <div className="flex items-center gap-2 mt-0.5">
-                              <p className="text-[10px] text-slate-400">현재 재고 {product.stock} {product.unit}</p>
+                              <p className="text-[10px] text-slate-400">
+                                현재 재고 {product.category === '향미유' ? fmtHamiyou(product.stock) : `${product.stock} ${product.unit}`}
+                              </p>
                               {supplierName && (
                                 <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-md">{supplierName}</span>
                               )}
