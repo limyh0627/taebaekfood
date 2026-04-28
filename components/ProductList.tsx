@@ -203,13 +203,8 @@ const ProductList: React.FC<ProductListProps> = ({
   const cart = orderRequests.map(r => ({ id: r.id, qty: r.quantity }));
   const [showCartPanel, setShowCartPanel] = useState(false);
   const [showCartModal, setShowCartModal] = useState(false);
-  const [cartChecked, setCartChecked] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (showCartModal) {
-      setCartChecked(new Set(cart.map(c => c.id)));
-    }
-  }, [showCartModal]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [confirmedChecked, setConfirmedChecked] = useState<Set<string>>(new Set());
+  const [showConfirmedModal, setShowConfirmedModal] = useState(false);
 
   const addToCart = (productId: string, defaultQty: number) => {
     if (!orderRequests.some(r => r.id === productId)) {
@@ -1026,9 +1021,19 @@ const ProductList: React.FC<ProductListProps> = ({
                       <span className="font-black text-sm text-slate-800">입고 대기</span>
                       <span className="text-[10px] font-black bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">{totalCount}건</span>
                     </div>
-                    {confirmedOrders.length > 0 && (
-                      <button onClick={onClearAllConfirmedOrders} className="text-[10px] font-bold text-slate-400 hover:text-rose-500 transition-all">전체 비우기</button>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {confirmedChecked.size > 0 && onRequestPurchaseInvoice && (
+                        <button
+                          onClick={() => setShowConfirmedModal(true)}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-[11px] font-black hover:bg-indigo-700 transition-all"
+                        >
+                          전표 작성 ({confirmedChecked.size})
+                        </button>
+                      )}
+                      {confirmedOrders.length > 0 && (
+                        <button onClick={onClearAllConfirmedOrders} className="text-[10px] font-bold text-slate-400 hover:text-rose-500 transition-all">전체 비우기</button>
+                      )}
+                    </div>
                   </div>
                   <div className="divide-y divide-slate-50">
                     {/* 전표 기반 입고 대기 */}
@@ -1071,6 +1076,18 @@ const ProductList: React.FC<ProductListProps> = ({
                         return (
                           <div key={conf.id}>
                             <div className="px-5 py-3 flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                checked={confirmedChecked.has(conf.id)}
+                                onChange={e => {
+                                  setConfirmedChecked(prev => {
+                                    const next = new Set(prev);
+                                    e.target.checked ? next.add(conf.id) : next.delete(conf.id);
+                                    return next;
+                                  });
+                                }}
+                                className="w-4 h-4 accent-indigo-600 cursor-pointer shrink-0"
+                              />
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
                                 <div className="flex items-center gap-2 mt-0.5">
@@ -1082,6 +1099,18 @@ const ProductList: React.FC<ProductListProps> = ({
                                 </div>
                               </div>
                               <span className="text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-xl shrink-0">입고대기 {conf.quantity}{product.unit}</span>
+                              {product.supplierId && onRequestPurchaseInvoice && (
+                                <button
+                                  onClick={() => {
+                                    onRequestPurchaseInvoice(
+                                      product.supplierId!,
+                                      supplierName || '',
+                                      [{ name: product.name, spec: product.용량 || '', qty: conf.quantity, price: product.price ?? 0 }]
+                                    );
+                                  }}
+                                  className="text-[10px] font-black px-2.5 py-1.5 rounded-xl transition-all shrink-0 border bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                                >전표</button>
+                              )}
                               <button
                                 onClick={() => {
                                   if (isExpanded) { setExpandedReqId(null); }
@@ -1958,41 +1987,22 @@ const ProductList: React.FC<ProductListProps> = ({
                     productId: product.id,
                   });
                 });
-                return Array.from(groups.values()).map(group => {
-                  const checkedCount = group.items.filter(i => cartChecked.has(i.productId)).length;
-                  const allChecked = checkedCount === group.items.length;
-                  const someChecked = checkedCount > 0 && !allChecked;
-                  const selectedItems = group.items.filter(i => cartChecked.has(i.productId));
-                  return (
+                return Array.from(groups.values()).map(group => (
                   <div key={group.supplierId} className="border border-slate-200 rounded-2xl overflow-hidden">
                     <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50">
                       <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={allChecked}
-                          ref={el => { if (el) el.indeterminate = someChecked; }}
-                          onChange={e => {
-                            setCartChecked(prev => {
-                              const next = new Set(prev);
-                              group.items.forEach(i => e.target.checked ? next.add(i.productId) : next.delete(i.productId));
-                              return next;
-                            });
-                          }}
-                          className="w-4 h-4 accent-indigo-600 cursor-pointer"
-                        />
                         <span className="font-black text-sm text-slate-700">{group.supplierName}</span>
-                        <span className="text-[10px] text-slate-400">{checkedCount}/{group.items.length}</span>
+                        <span className="text-[10px] text-slate-400">{group.items.length}품목</span>
                       </div>
                       {group.supplierId !== '__none__' && onRequestPurchaseInvoice ? (
                         <button
-                          disabled={checkedCount === 0}
                           onClick={() => {
-                            onRequestPurchaseInvoice(group.supplierId, group.supplierName, selectedItems);
+                            onRequestPurchaseInvoice(group.supplierId, group.supplierName, group.items);
                             setShowCartModal(false);
                           }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-[11px] font-black hover:bg-indigo-700 transition-all disabled:opacity-30 disabled:pointer-events-none"
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-[11px] font-black hover:bg-indigo-700 transition-all"
                         >
-                          전표 작성 ({checkedCount})
+                          전표 작성
                         </button>
                       ) : group.supplierId === '__none__' ? (
                         <span className="text-[10px] text-amber-500 font-bold">거래처 미지정 — 전표 작성 불가</span>
@@ -2000,31 +2010,98 @@ const ProductList: React.FC<ProductListProps> = ({
                     </div>
                     <div className="divide-y divide-slate-50">
                       {group.items.map((item, i) => (
-                        <label key={i} className="px-4 py-2 flex items-center gap-3 cursor-pointer hover:bg-slate-50 transition-colors">
-                          <input
-                            type="checkbox"
-                            checked={cartChecked.has(item.productId)}
-                            onChange={e => {
-                              setCartChecked(prev => {
-                                const next = new Set(prev);
-                                e.target.checked ? next.add(item.productId) : next.delete(item.productId);
-                                return next;
-                              });
-                            }}
-                            className="w-4 h-4 accent-indigo-600 shrink-0"
-                          />
+                        <div key={i} className="px-4 py-2 flex items-center gap-3">
                           <span className="text-xs font-bold text-slate-700 flex-1">{item.name}{item.spec ? ` (${item.spec})` : ''}</span>
                           <span className="text-xs font-black text-slate-500">{item.qty}개</span>
-                        </label>
+                        </div>
                       ))}
                     </div>
                   </div>
-                  );
-                });
+                ));
               })()}
             </div>
             <div className="px-5 py-4 border-t border-slate-100">
               <button onClick={() => setShowCartModal(false)}
+                className="w-full py-3 rounded-2xl border border-slate-200 text-sm font-black text-slate-500 hover:bg-slate-50 transition-all">
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 입고 대기 일괄 전표 작성 모달 ── */}
+      {showConfirmedModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={() => setShowConfirmedModal(false)}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <ClipboardCheck size={16} className="text-indigo-500" />
+                <span className="font-black text-slate-800">전표 작성</span>
+                <span className="text-[10px] font-black bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">{confirmedChecked.size}건 선택</span>
+              </div>
+              <button onClick={() => setShowConfirmedModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+              {(() => {
+                // 선택된 confirmedWithoutStatement 아이템을 거래처별로 그룹화
+                const groups = new Map<string, { supplierId: string; supplierName: string; items: Array<{ name: string; spec: string; qty: number; price: number; productId: string }> }>();
+                confirmedOrders.forEach(conf => {
+                  if (!confirmedChecked.has(conf.id)) return;
+                  const product = productMap.get(conf.id);
+                  if (!product) return;
+                  const sid = product.supplierId || '__none__';
+                  const sname = supplierMap.get(product.supplierId ?? '')?.name || '거래처 미지정';
+                  if (!groups.has(sid)) groups.set(sid, { supplierId: sid, supplierName: sname, items: [] });
+                  groups.get(sid)!.items.push({
+                    name: product.name,
+                    spec: product.용량 || '',
+                    qty: conf.quantity,
+                    price: product.price ?? 0,
+                    productId: product.id,
+                  });
+                });
+                if (groups.size === 0) return (
+                  <p className="text-sm text-slate-400 text-center py-10">선택된 항목이 없습니다</p>
+                );
+                return Array.from(groups.values()).map(group => (
+                  <div key={group.supplierId} className="border border-slate-200 rounded-2xl overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50">
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-sm text-slate-700">{group.supplierName}</span>
+                        <span className="text-[10px] text-slate-400">{group.items.length}건</span>
+                      </div>
+                      {group.supplierId !== '__none__' && onRequestPurchaseInvoice ? (
+                        <button
+                          onClick={() => {
+                            onRequestPurchaseInvoice(group.supplierId, group.supplierName, group.items);
+                            setShowConfirmedModal(false);
+                            setConfirmedChecked(new Set());
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-[11px] font-black hover:bg-indigo-700 transition-all"
+                        >
+                          전표 작성 ({group.items.length})
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-amber-500 font-bold">거래처 미지정 — 전표 작성 불가</span>
+                      )}
+                    </div>
+                    <div className="divide-y divide-slate-50">
+                      {group.items.map((item, i) => (
+                        <div key={i} className="px-4 py-2 flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-700">{item.name}{item.spec ? ` (${item.spec})` : ''}</span>
+                          <span className="text-xs font-black text-slate-500">{item.qty.toLocaleString()}개</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+            <div className="px-5 py-4 border-t border-slate-100">
+              <button onClick={() => setShowConfirmedModal(false)}
                 className="w-full py-3 rounded-2xl border border-slate-200 text-sm font-black text-slate-500 hover:bg-slate-50 transition-all">
                 닫기
               </button>

@@ -330,19 +330,27 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     [orders]
   );
 
-  // ── 발주확정 항목 불러오기 (매입전표용) ──
-  const loadConfirmedToManual = () => {
-    const rows = selectedConfirmedIds
-      .map(id => {
-        const co = confirmedOrders.find(c => c.id === id);
-        const product = allProducts.find(p => p.id === id);
-        if (!co || !product) return null;
-        return { name: product.name, spec: product.용량 || product.unit || '', qty: String(co.quantity), price: '', isTaxExempt: false };
-      })
-      .filter(Boolean) as ManualRow[];
+  // ── 선택된 발주항목(확정+예정) → 매입전표 직접 입력 모드 ──
+  const loadSelectedToManual = () => {
+    const rows: ManualRow[] = [];
+    selectedConfirmedIds.forEach(id => {
+      const product = allProducts.find(p => p.id === id);
+      if (!product) return;
+      const co = confirmedOrders.find(c => c.id === id);
+      if (co) {
+        rows.push({ name: product.name, spec: product.용량 || product.unit || '', qty: String(co.quantity), price: '', isTaxExempt: false });
+        return;
+      }
+      const req = orderRequests?.find((r: { id: string; quantity: number }) => r.id === id);
+      if (req) {
+        const ps = productSuppliers.find(s => s.productId === id && s.supplierId === selectedClientId);
+        rows.push({ name: product.name, spec: product.용량 || product.unit || '', qty: String(req.quantity), price: ps?.price ? String(ps.price) : '', isTaxExempt: ps?.taxType === '면세' });
+      }
+    });
     if (rows.length === 0) return;
     setManualItems([...rows, { name: '', spec: '', qty: '', price: '', isTaxExempt: false }]);
     setSelectedConfirmedIds([]);
+    setManualMode(true);
   };
 
   // ── 거래처 목록 ──
@@ -2102,7 +2110,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     className="bg-white border border-slate-200 rounded-lg pl-7 pr-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300 w-40"/>
                 </div>
                 <select value={selectedClientId}
-                  onChange={e=>{setSelectedClientId(e.target.value);setSelectedOrderId('');setEditablePrices({});setTaxExemptOverrides({});}}
+                  onChange={e=>{setSelectedClientId(e.target.value);setSelectedOrderId('');setEditablePrices({});setTaxExemptOverrides({});setSelectedConfirmedIds([]);}}
                   className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300 min-w-[180px]">
                   <option value="">— 거래처 선택 —</option>
                   {availableClients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
@@ -2114,7 +2122,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   </button>
                 )}
               </>) : (<>
-                <button onClick={()=>{setSelectedClientId('');setSelectedOrderId('');setEditablePrices({});setTaxExemptOverrides({});setShowPricePanel(false);setManualItems([{name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);}}
+                <button onClick={()=>{setSelectedClientId('');setSelectedOrderId('');setEditablePrices({});setTaxExemptOverrides({});setShowPricePanel(false);setManualItems([{name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);setSelectedConfirmedIds([]);}}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-black text-slate-600 hover:bg-slate-100 transition-all shrink-0">
                   <ChevronLeft size={12}/>거래처 변경
                 </button>
@@ -2196,10 +2204,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     </div>
                   )}
                   {createMode==='매입' && (
-                    <button onClick={()=>setManualMode(true)}
-                      className="ml-auto px-3 py-1.5 rounded-lg text-xs font-black bg-slate-700 text-white hover:bg-slate-800 transition-all">
-                      직접 입력
-                    </button>
+                    <div className="ml-auto flex items-center gap-2">
+                      {selectedConfirmedIds.length > 0 && (
+                        <button
+                          onClick={loadSelectedToManual}
+                          className="px-3 py-1.5 rounded-lg text-xs font-black bg-indigo-600 text-white hover:bg-indigo-700 transition-all">
+                          전표 작성 ({selectedConfirmedIds.length}건)
+                        </button>
+                      )}
+                      <button onClick={()=>setManualMode(true)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-black bg-slate-700 text-white hover:bg-slate-800 transition-all">
+                        직접 입력
+                      </button>
+                    </div>
                   )}
                 </div>
 
@@ -2265,18 +2282,35 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   return (
                     <div className="divide-y divide-slate-100">
                       {hasConfirmed && <>
-                        <div className="px-5 py-2 bg-emerald-50">
-                          <span className="text-[11px] font-black text-emerald-700">발주확정 ({supplierItems!.items.length}품목)</span>
+                        <div className="px-5 py-2 bg-emerald-50 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={supplierItems!.items.every(({product})=>selectedConfirmedIds.includes(product.id))}
+                              ref={el=>{if(el){const some=supplierItems!.items.some(({product})=>selectedConfirmedIds.includes(product.id));el.indeterminate=some&&!supplierItems!.items.every(({product})=>selectedConfirmedIds.includes(product.id));}}}
+                              onChange={e=>{
+                                const ids=supplierItems!.items.map(({product})=>product.id);
+                                setSelectedConfirmedIds(prev=>e.target.checked?[...new Set([...prev,...ids])]:prev.filter(id=>!ids.includes(id)));
+                              }}
+                              className="w-3.5 h-3.5 accent-emerald-600 cursor-pointer"
+                            />
+                            <span className="text-[11px] font-black text-emerald-700">발주확정 ({supplierItems!.items.length}품목)</span>
+                          </div>
                         </div>
                         {supplierItems!.items.map(({product,co})=>{
                           const issued=issuedPurchaseNames.has(product.name);
+                          const checked=selectedConfirmedIds.includes(product.id);
                           return (
-                            <button key={product.id}
-                              onClick={()=>{
-                                setManualItems([{name:product.name,spec:product.용량||product.unit||'',qty:String(co.quantity),price:'',isTaxExempt:false,note:''},{name:'',spec:'',qty:'',price:'',isTaxExempt:false,note:''}]);
-                                setManualMode(true);
-                              }}
-                              className="w-full flex items-center gap-3 text-left px-5 py-3 text-xs hover:bg-emerald-50 transition-colors">
+                            <label key={product.id}
+                              className={`w-full flex items-center gap-3 px-5 py-3 text-xs cursor-pointer transition-colors ${checked?'bg-emerald-50/60':'hover:bg-slate-50'}`}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={e=>{
+                                  setSelectedConfirmedIds(prev=>e.target.checked?[...prev,product.id]:prev.filter(id=>id!==product.id));
+                                }}
+                                className="w-4 h-4 accent-indigo-600 shrink-0"
+                              />
                               <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                                 <span className="font-black text-slate-800">{product.name}</span>
                                 {product.용량&&<span className="text-slate-400">{product.용량}</span>}
@@ -2285,25 +2319,41 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                               {issued
                                 ? <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">발행완료</span>
                                 : <span className="text-[10px] font-black text-pink-500 bg-pink-100 px-1.5 py-0.5 rounded-full">미발행</span>}
-                              <ChevronRight size={14} className="text-slate-300 shrink-0"/>
-                            </button>
+                            </label>
                           );
                         })}
                       </>}
                       {hasRequests && <>
-                        <div className="px-5 py-2 bg-indigo-50">
-                          <span className="text-[11px] font-black text-indigo-600">발주예정 ({reqItems!.items.length}품목)</span>
+                        <div className="px-5 py-2 bg-indigo-50 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={reqItems!.items.every(({product})=>selectedConfirmedIds.includes(product.id))}
+                              ref={el=>{if(el){const some=reqItems!.items.some(({product})=>selectedConfirmedIds.includes(product.id));el.indeterminate=some&&!reqItems!.items.every(({product})=>selectedConfirmedIds.includes(product.id));}}}
+                              onChange={e=>{
+                                const ids=reqItems!.items.map(({product})=>product.id);
+                                setSelectedConfirmedIds(prev=>e.target.checked?[...new Set([...prev,...ids])]:prev.filter(id=>!ids.includes(id)));
+                              }}
+                              className="w-3.5 h-3.5 accent-indigo-600 cursor-pointer"
+                            />
+                            <span className="text-[11px] font-black text-indigo-600">발주예정 ({reqItems!.items.length}품목)</span>
+                          </div>
                         </div>
                         {reqItems!.items.map(({product,req})=>{
                           const issued=issuedPurchaseNames.has(product.name);
                           const ps=productSuppliers.find(s=>s.productId===product.id&&s.supplierId===selectedClientId);
+                          const checked=selectedConfirmedIds.includes(product.id);
                           return (
-                            <button key={product.id}
-                              onClick={()=>{
-                                setManualItems([{name:product.name,spec:product.용량||product.unit||'',qty:String(req.quantity),price:ps?.price?String(ps.price):'',isTaxExempt:ps?.taxType==='면세',note:''},{name:'',spec:'',qty:'',price:'',isTaxExempt:false,note:''}]);
-                                setManualMode(true);
-                              }}
-                              className="w-full flex items-center gap-3 text-left px-5 py-3 text-xs hover:bg-indigo-50 transition-colors">
+                            <label key={product.id}
+                              className={`w-full flex items-center gap-3 px-5 py-3 text-xs cursor-pointer transition-colors ${checked?'bg-indigo-50/60':'hover:bg-slate-50'}`}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={e=>{
+                                  setSelectedConfirmedIds(prev=>e.target.checked?[...prev,product.id]:prev.filter(id=>id!==product.id));
+                                }}
+                                className="w-4 h-4 accent-indigo-600 shrink-0"
+                              />
                               <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                                 <span className="font-black text-slate-800">{product.name}</span>
                                 {product.용량&&<span className="text-slate-400">{product.용량}</span>}
@@ -2315,8 +2365,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                               {issued
                                 ? <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">발행완료</span>
                                 : <span className="text-[10px] font-black text-indigo-400 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded-full">예정</span>}
-                              <ChevronRight size={14} className="text-slate-300 shrink-0"/>
-                            </button>
+                            </label>
                           );
                         })}
                       </>}
