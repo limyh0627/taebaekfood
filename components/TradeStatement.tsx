@@ -57,6 +57,21 @@ const STATUS_COLOR: Record<string, string> = {
 const ACTIVE_STATUSES = new Set([OrderStatus.PENDING, OrderStatus.PROCESSING, OrderStatus.DISPATCHED, OrderStatus.SHIPPED]);
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
+
+function buildSupplierGroups<T extends { id: string }>(
+  orders: T[], allProducts: Product[], clients: Client[]
+): { supplierId: string; supplierName: string; items: { product: Product; item: T }[] }[] {
+  const map = new Map<string, { supplierName: string; items: { product: Product; item: T }[] }>();
+  for (const item of orders) {
+    const product = allProducts.find(p => p.id === item.id);
+    if (!product?.supplierId) continue;
+    const sName = clients.find(c => c.id === product.supplierId)?.name ?? product.supplierId;
+    if (!map.has(product.supplierId)) map.set(product.supplierId, { supplierName: sName, items: [] });
+    map.get(product.supplierId)!.items.push({ product, item });
+  }
+  return Array.from(map.entries()).map(([sid, v]) => ({ supplierId: sid, ...v }));
+}
+
 const today = () => new Date().toISOString().slice(0, 10);
 const weekStart = () => { const d = new Date(); d.setDate(d.getDate() - d.getDay()); return d.toISOString().slice(0, 10); };
 const monthStart = () => new Date().toISOString().slice(0, 7) + '-01';
@@ -75,6 +90,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   orderRequests = [],
   onAddConfirmedOrder,
   onRemoveConfirmedOrder,
+  onRemoveOrderRequest,
   companyInfo,
   onSaveCompanyInfo,
   onUpdateProductCost,
@@ -272,32 +288,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   }, [issuedStatements]);
 
   // ── 발주확정 공급처별 그룹 ──
-  const confirmedBySupplier = useMemo(() => {
-    const map = new Map<string, { supplierName: string; items: { product: (typeof allProducts)[0]; co: { id: string; quantity: number } }[] }>();
-    for (const co of confirmedOrders) {
-      const product = allProducts.find(p => p.id === co.id);
-      if (!product?.supplierId) continue;
-      const supplier = clients.find(c => c.id === product.supplierId);
-      const sName = supplier?.name ?? product.supplierId;
-      if (!map.has(product.supplierId)) map.set(product.supplierId, { supplierName: sName, items: [] });
-      map.get(product.supplierId)!.items.push({ product, co });
-    }
-    return Array.from(map.entries()).map(([sid, v]) => ({ supplierId: sid, ...v }));
-  }, [confirmedOrders, allProducts, clients]);
+  const confirmedBySupplier = useMemo(
+    () => buildSupplierGroups(confirmedOrders, allProducts, clients)
+      .map(g => ({ ...g, items: g.items.map(({ product, item }) => ({ product, co: item as { id: string; quantity: number } })) })),
+    [confirmedOrders, allProducts, clients]
+  );
 
-  // ── 발주예정 공급처별 그룹 (orderRequests) ──
-  const orderRequestsBySupplier = useMemo(() => {
-    const map = new Map<string, { supplierName: string; items: { product: (typeof allProducts)[0]; req: { id: string; quantity: number; confirmedByUser?: boolean } }[] }>();
-    for (const req of orderRequests) {
-      const product = allProducts.find(p => p.id === req.id);
-      if (!product?.supplierId) continue;
-      const supplier = clients.find(c => c.id === product.supplierId);
-      const sName = supplier?.name ?? product.supplierId;
-      if (!map.has(product.supplierId)) map.set(product.supplierId, { supplierName: sName, items: [] });
-      map.get(product.supplierId)!.items.push({ product, req });
-    }
-    return Array.from(map.entries()).map(([sid, v]) => ({ supplierId: sid, ...v }));
-  }, [orderRequests, allProducts, clients]);
+  // ── 발주예정 공급처별 그룹 ──
+  const orderRequestsBySupplier = useMemo(
+    () => buildSupplierGroups(orderRequests, allProducts, clients)
+      .map(g => ({ ...g, items: g.items.map(({ product, item }) => ({ product, req: item as { id: string; quantity: number; confirmedByUser?: boolean } })) })),
+    [orderRequests, allProducts, clients]
+  );
 
   // ── 매입 품목 선택 패널용: supplierId 연결된 품목 전체 (공급처별 그룹) ──
   const purchasableBySupplier = useMemo(() => {
@@ -543,7 +545,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         }
       }
     }
-    // 매입전표 발행 시 발주예정(confirmedOrders)에 있는 품목 자동 제거 (전표가 입고 추적 담당)
+    // 매입전표 발행 시 입고대기(confirmedOrders)에 있는 품목 자동 제거 (전표가 입고 추적 담당)
     if (stmtType === '매입' && onRemoveConfirmedOrder) {
       for (const item of lineItems) {
         const product = allProducts.find(p => p.name === item.name);
@@ -555,7 +557,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         }
       }
     }
-  }, [manualMode, selectedOrderId, selectedClientId, tradeDate, stmtType, selectedClient, docNo, totalSupply, totalTax, totalAmount, lineItems, onMarkInvoicePrinted, onAddIssuedStatement, onAddConfirmedOrder, onRemoveConfirmedOrder, allProducts, confirmedOrders, productClients, productSuppliers, onUpdateProductClientPrice, onUpsertProductSupplier, onUpdateProductCost, onUpdateOrder, selectedOrder, manualItems]);
+    // 매입전표 발행 시 발주예정(orderRequests)에 있는 품목 자동 제거
+    if (stmtType === '매입' && onRemoveOrderRequest) {
+      for (const item of lineItems) {
+        const product = allProducts.find(p => p.name === item.name);
+        if (product) {
+          const existing = orderRequests.find(r => r.id === product.id);
+          if (existing) {
+            onRemoveOrderRequest(existing.id);
+          }
+        }
+      }
+    }
+  }, [manualMode, selectedOrderId, selectedClientId, tradeDate, stmtType, selectedClient, docNo, totalSupply, totalTax, totalAmount, lineItems, onMarkInvoicePrinted, onAddIssuedStatement, onAddConfirmedOrder, onRemoveConfirmedOrder, onRemoveOrderRequest, allProducts, confirmedOrders, orderRequests, productClients, productSuppliers, onUpdateProductClientPrice, onUpsertProductSupplier, onUpdateProductCost, onUpdateOrder, selectedOrder, manualItems]);
 
   const handleIssue = () => {
     markIssued();

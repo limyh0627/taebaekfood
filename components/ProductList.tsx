@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Package,
   Edit,
@@ -66,6 +66,7 @@ interface ProductListProps {
   currentUser?: { name: string; id: string } | null;
 }
 
+
 const CLIENT_BADGE_COLORS = [
   'bg-violet-50 text-violet-600',
   'bg-emerald-50 text-emerald-600',
@@ -103,6 +104,7 @@ const ProductList: React.FC<ProductListProps> = ({
   onUpdateProduct,
   onAddOrderRequest,
   onRemoveOrderRequest,
+  onUpdateOrderRequestQty,
   onBulkAddConfirmedOrders,
   onFinishConfirmedOrder,
   onUpdateConfirmedQty,
@@ -197,28 +199,27 @@ const ProductList: React.FC<ProductListProps> = ({
   const [showStocktake, setShowStocktake] = useState(false);
   const [stocktakeValues, setStocktakeValues] = useState<Record<string, string>>({});
   const [stocktakeDate, setStocktakeDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const CART_KEY = 'inventory_cart';
-  const [cart, setCartRaw] = useState<{ id: string; qty: number }[]>(() => {
-    try { return JSON.parse(localStorage.getItem(CART_KEY) || '[]'); } catch { return []; }
-  });
-  const setCart = (updater: { id: string; qty: number }[] | ((prev: { id: string; qty: number }[]) => { id: string; qty: number }[])) => {
-    setCartRaw(prev => {
-      const next = typeof updater === 'function' ? updater(prev) : updater;
-      localStorage.setItem(CART_KEY, JSON.stringify(next));
-      return next;
-    });
-  };
+  // cart는 Firebase orderRequests를 그대로 사용 (localStorage 제거)
+  const cart = orderRequests.map(r => ({ id: r.id, qty: r.quantity }));
   const [showCartPanel, setShowCartPanel] = useState(false);
   const [showCartModal, setShowCartModal] = useState(false);
+  const [cartChecked, setCartChecked] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (showCartModal) {
+      setCartChecked(new Set(cart.map(c => c.id)));
+    }
+  }, [showCartModal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addToCart = (productId: string, defaultQty: number) => {
-    setCart(prev => prev.some(c => c.id === productId) ? prev : [...prev, { id: productId, qty: defaultQty }]);
+    if (!orderRequests.some(r => r.id === productId)) {
+      onAddOrderRequest(productId, defaultQty);
+    }
   };
-  const removeFromCart = (id: string) => setCart(prev => prev.filter(c => c.id !== id));
-  const updateCartQty = (id: string, qty: number) => setCart(prev => prev.map(c => c.id === id ? { ...c, qty: Math.max(1, qty) } : c));
+  const removeFromCart = (id: string) => onRemoveOrderRequest(id);
+  const updateCartQty = (id: string, qty: number) => onUpdateOrderRequestQty(id, Math.max(1, qty));
   const submitCart = () => {
-    onBulkAddConfirmedOrders(cart.map(item => ({ id: item.id, quantity: item.qty })));
-    setCart([]);
+    onBulkAddConfirmedOrders(orderRequests.map(r => ({ id: r.id, quantity: r.quantity })));
     setShowCartPanel(false);
   };
 
@@ -226,6 +227,9 @@ const ProductList: React.FC<ProductListProps> = ({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 24;
+
+  const productMap = useMemo(() => new Map(products.map(p => [p.id, p])), [products]);
+  const supplierMap = useMemo(() => new Map(suppliers.map(s => [s.id, s])), [suppliers]);
 
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -945,19 +949,18 @@ const ProductList: React.FC<ProductListProps> = ({
                       <span className="font-black text-sm text-slate-800">발주 예정 목록</span>
                       <span className="text-[10px] font-black bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">{cart.length}건</span>
                     </div>
-                    <button onClick={() => setCart([])} className="text-[10px] font-bold text-slate-400 hover:text-rose-500 transition-all">전체 비우기</button>
+                    <button onClick={() => orderRequests.forEach(r => onRemoveOrderRequest(r.id))} className="text-[10px] font-bold text-slate-400 hover:text-rose-500 transition-all">전체 비우기</button>
                   </div>
                   <div className="divide-y divide-slate-50">
                     {cart
                       .filter(item => {
                         if (activeSupplierId === '전체') return true;
-                        const product = products.find(p => p.id === item.id);
-                        return product?.supplierId === activeSupplierId;
+                        return productMap.get(item.id)?.supplierId === activeSupplierId;
                       })
                       .map(item => {
-                      const product = products.find(p => p.id === item.id);
+                      const product = productMap.get(item.id);
                       if (!product) return null;
-                      const supplierName = suppliers.find(s => s.id === product.supplierId)?.name;
+                      const supplierName = supplierMap.get(product.supplierId ?? '')?.name;
                       return (
                         <div key={item.id} className="px-5 py-3 flex items-center gap-4">
                           <div className="flex-1 min-w-0">
@@ -1002,7 +1005,7 @@ const ProductList: React.FC<ProductListProps> = ({
               // 전표에 이미 포함된 품목명 집합 (수동 발주 중복 방지)
               const statementItemNames = new Set(pendingStatements.flatMap(s => s.items.map(i => i.name)));
               const confirmedWithoutStatement = confirmedOrders.filter(conf => {
-                const product = products.find(p => p.id === conf.id);
+                const product = productMap.get(conf.id);
                 return product && !statementItemNames.has(product.name);
               });
               const totalCount = confirmedWithoutStatement.length + pendingStatements.length;
@@ -1058,13 +1061,12 @@ const ProductList: React.FC<ProductListProps> = ({
                     {confirmedWithoutStatement
                       .filter(conf => {
                         if (activeSupplierId === '전체') return true;
-                        const product = products.find(p => p.id === conf.id);
-                        return product?.supplierId === activeSupplierId;
+                        return productMap.get(conf.id)?.supplierId === activeSupplierId;
                       })
                       .map(conf => {
-                        const product = products.find(p => p.id === conf.id);
+                        const product = productMap.get(conf.id);
                         if (!product) return null;
-                        const supplierName = suppliers.find(s => s.id === product.supplierId)?.name;
+                        const supplierName = supplierMap.get(product.supplierId ?? '')?.name;
                         const isExpanded = expandedReqId === conf.id;
                         return (
                           <div key={conf.id}>
@@ -1903,7 +1905,7 @@ const ProductList: React.FC<ProductListProps> = ({
                 전표 작성 ({cart.length}건)
               </button>
               <button
-                onClick={() => setCart([])}
+                onClick={() => orderRequests.forEach(r => onRemoveOrderRequest(r.id))}
                 className="w-full py-2.5 text-xs font-bold text-slate-400 hover:text-slate-600 transition-all"
               >전체 비우기</button>
             </div>
@@ -1956,19 +1958,41 @@ const ProductList: React.FC<ProductListProps> = ({
                     productId: product.id,
                   });
                 });
-                return Array.from(groups.values()).map(group => (
+                return Array.from(groups.values()).map(group => {
+                  const checkedCount = group.items.filter(i => cartChecked.has(i.productId)).length;
+                  const allChecked = checkedCount === group.items.length;
+                  const someChecked = checkedCount > 0 && !allChecked;
+                  const selectedItems = group.items.filter(i => cartChecked.has(i.productId));
+                  return (
                   <div key={group.supplierId} className="border border-slate-200 rounded-2xl overflow-hidden">
                     <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50">
-                      <span className="font-black text-sm text-slate-700">{group.supplierName}</span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={allChecked}
+                          ref={el => { if (el) el.indeterminate = someChecked; }}
+                          onChange={e => {
+                            setCartChecked(prev => {
+                              const next = new Set(prev);
+                              group.items.forEach(i => e.target.checked ? next.add(i.productId) : next.delete(i.productId));
+                              return next;
+                            });
+                          }}
+                          className="w-4 h-4 accent-indigo-600 cursor-pointer"
+                        />
+                        <span className="font-black text-sm text-slate-700">{group.supplierName}</span>
+                        <span className="text-[10px] text-slate-400">{checkedCount}/{group.items.length}</span>
+                      </div>
                       {group.supplierId !== '__none__' && onRequestPurchaseInvoice ? (
                         <button
+                          disabled={checkedCount === 0}
                           onClick={() => {
-                            onRequestPurchaseInvoice(group.supplierId, group.supplierName, group.items);
+                            onRequestPurchaseInvoice(group.supplierId, group.supplierName, selectedItems);
                             setShowCartModal(false);
                           }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-[11px] font-black hover:bg-indigo-700 transition-all"
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-[11px] font-black hover:bg-indigo-700 transition-all disabled:opacity-30 disabled:pointer-events-none"
                         >
-                          전표 작성
+                          전표 작성 ({checkedCount})
                         </button>
                       ) : group.supplierId === '__none__' ? (
                         <span className="text-[10px] text-amber-500 font-bold">거래처 미지정 — 전표 작성 불가</span>
@@ -1976,14 +2000,27 @@ const ProductList: React.FC<ProductListProps> = ({
                     </div>
                     <div className="divide-y divide-slate-50">
                       {group.items.map((item, i) => (
-                        <div key={i} className="px-4 py-2 flex items-center justify-between">
-                          <span className="text-xs font-bold text-slate-700">{item.name}{item.spec ? ` (${item.spec})` : ''}</span>
+                        <label key={i} className="px-4 py-2 flex items-center gap-3 cursor-pointer hover:bg-slate-50 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={cartChecked.has(item.productId)}
+                            onChange={e => {
+                              setCartChecked(prev => {
+                                const next = new Set(prev);
+                                e.target.checked ? next.add(item.productId) : next.delete(item.productId);
+                                return next;
+                              });
+                            }}
+                            className="w-4 h-4 accent-indigo-600 shrink-0"
+                          />
+                          <span className="text-xs font-bold text-slate-700 flex-1">{item.name}{item.spec ? ` (${item.spec})` : ''}</span>
                           <span className="text-xs font-black text-slate-500">{item.qty}개</span>
-                        </div>
+                        </label>
                       ))}
                     </div>
                   </div>
-                ));
+                  );
+                });
               })()}
             </div>
             <div className="px-5 py-4 border-t border-slate-100">

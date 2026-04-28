@@ -2547,6 +2547,7 @@ const App: React.FC = () => {
               orderRequests={orderRequests}
               onAddConfirmedOrder={(item) => addItem('confirmedOrders', item)}
               onRemoveConfirmedOrder={(id) => deleteItem('confirmedOrders', id)}
+              onRemoveOrderRequest={handleRemoveOrderRequest}
               companyInfo={companyInfo}
               onSaveCompanyInfo={(info) => setDocument('settings', 'company', info)}
               onUpdateProductCost={(productId, cost) => updateItem('products', productId, { cost })}
