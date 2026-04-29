@@ -157,7 +157,7 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
   const [currentView, setCurrentView] = useState<ViewType>('orders');
-  const [pendingInvoice, setPendingInvoice] = useState<{ supplierId: string; supplierName: string; items: Array<{ name: string; spec: string; qty: number; price: number }> } | null>(null);
+  const [pendingInvoice, setPendingInvoice] = useState<{ supplierId: string; supplierName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }> } | null>(null);
   const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부' | '거래명세서' | '생산작업기록부' | '생산작업기록부2'>('생산판매기록부');
   const [docYearMonth, setDocYearMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [bulkMfgDate, setBulkMfgDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -491,11 +491,15 @@ const App: React.FC = () => {
     if (req) await updateItem('orderRequests', id, { confirmedByUser: !req.confirmedByUser });
   };
 
-  const handleBulkAddConfirmedOrders = async (items: { id: string, quantity: number }[]) => {
+  const handleBulkAddConfirmedOrders = async (items: { id: string, quantity: number, isBox?: boolean }[]) => {
     for (const item of items) {
       await addItem('confirmedOrders', item);
       await deleteItem('orderRequests', item.id);
     }
+  };
+
+  const handleUpdateOrderRequestIsBox = async (id: string, isBox: boolean) => {
+    await updateItem('orderRequests', id, { isBox });
   };
 
   // 출고 완료 시 완제품 품목별로 생산 실적 자동 기록
@@ -617,7 +621,8 @@ const App: React.FC = () => {
     const product = allProducts.find(p => p.id === id);
     if (product) {
       const collectionName = getProductCollection(product.category);
-      await updateItem(collectionName, id, { stock: product.stock + conf.quantity });
+      const addQty = product.category === '향미유' && (conf as any).isBox ? conf.quantity * 12 : conf.quantity;
+      await updateItem(collectionName, id, { stock: product.stock + addQty });
     }
     await deleteItem('confirmedOrders', id);
   };
@@ -1014,12 +1019,13 @@ const App: React.FC = () => {
               confirmedOrders={confirmedOrders} 
               onAddOrderRequest={handleAddOrderRequest} 
               onRemoveOrderRequest={handleRemoveOrderRequest} 
-              onUpdateOrderRequestQty={handleUpdateOrderRequestQty} 
-              onToggleConfirmRequestQty={handleToggleConfirmRequestQty} 
-              onConfirmRequest={(id: string) => handleBulkAddConfirmedOrders([{ id, quantity: orderRequests.find(r => r.id === id)?.quantity || 0 }])} 
-              onConfirmRequests={(ids: string[]) => handleBulkAddConfirmedOrders(orderRequests.filter(r => ids.includes(r.id)).map(r => ({id: r.id, quantity: r.quantity})))} 
-              onBulkAddConfirmedOrders={handleBulkAddConfirmedOrders} 
-              onConfirmAllRequests={() => handleBulkAddConfirmedOrders(orderRequests.map(r => ({id: r.id, quantity: r.quantity})))} 
+              onUpdateOrderRequestQty={handleUpdateOrderRequestQty}
+              onUpdateOrderRequestIsBox={handleUpdateOrderRequestIsBox}
+              onToggleConfirmRequestQty={handleToggleConfirmRequestQty}
+              onConfirmRequest={(id: string) => { const r = orderRequests.find(r => r.id === id); handleBulkAddConfirmedOrders([{ id, quantity: r?.quantity || 0, isBox: (r as any)?.isBox }]); }}
+              onConfirmRequests={(ids: string[]) => handleBulkAddConfirmedOrders(orderRequests.filter(r => ids.includes(r.id)).map(r => ({id: r.id, quantity: r.quantity, isBox: (r as any).isBox})))}
+              onBulkAddConfirmedOrders={handleBulkAddConfirmedOrders}
+              onConfirmAllRequests={() => handleBulkAddConfirmedOrders(orderRequests.map(r => ({id: r.id, quantity: r.quantity, isBox: (r as any).isBox})))} 
               onFinishConfirmedOrder={handleFinishConfirmedOrder}
               onFinishConfirmedOrders={(ids: string[]) => ids.forEach(handleFinishConfirmedOrder)}
               onFinishAllConfirmedOrders={() => confirmedOrders.forEach(c => handleFinishConfirmedOrder(c.id))}

@@ -29,21 +29,23 @@ interface OrderRequest {
   id: string;
   quantity: number;
   confirmedByUser?: boolean;
+  isBox?: boolean;
 }
 
 interface ProductListProps {
   products: Product[];
   orderRequests: OrderRequest[];
-  confirmedOrders: { id: string; quantity: number }[];
+  confirmedOrders: { id: string; quantity: number; isBox?: boolean }[];
   onUpdateProduct: (product: Product) => void;
   onAddProduct: (product: Product) => void;
   onAddOrderRequest: (id: string, qty: number) => void;
   onRemoveOrderRequest: (id: string) => void;
   onUpdateOrderRequestQty: (id: string, qty: number) => void;
+  onUpdateOrderRequestIsBox?: (id: string, isBox: boolean) => void;
   onToggleConfirmRequestQty: (id: string) => void;
   onConfirmRequest: (id: string) => void;
   onConfirmRequests: (ids: string[]) => void;
-  onBulkAddConfirmedOrders: (items: { id: string, quantity: number }[]) => void;
+  onBulkAddConfirmedOrders: (items: { id: string, quantity: number, isBox?: boolean }[]) => void;
   onConfirmAllRequests: () => void;
   onFinishConfirmedOrder: (id: string) => void;
   onFinishConfirmedOrders: (ids: string[]) => void;
@@ -57,7 +59,7 @@ interface ProductListProps {
   suppliers: { id: string; name: string }[];
   clients?: { id: string; name: string; partnerType?: string }[];
   rawMaterialLedger: RawMaterialEntry[];
-  onRequestPurchaseInvoice?: (supplierId: string, supplierName: string, items: Array<{ name: string; spec: string; qty: number; price: number }>) => void;
+  onRequestPurchaseInvoice?: (supplierId: string, supplierName: string, items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }>) => void;
   issuedStatements?: IssuedStatement[];
   onMarkStatementReceived?: (id: string) => void;
   autoUsageEntries?: Array<{ material: string; date: string; used: number; note: string }>;
@@ -105,6 +107,7 @@ const ProductList: React.FC<ProductListProps> = ({
   onAddOrderRequest,
   onRemoveOrderRequest,
   onUpdateOrderRequestQty,
+  onUpdateOrderRequestIsBox,
   onBulkAddConfirmedOrders,
   onFinishConfirmedOrder,
   onUpdateConfirmedQty,
@@ -135,7 +138,8 @@ const ProductList: React.FC<ProductListProps> = ({
   const fmtHamiyou = (stock: number) => {
     const boxes = Math.floor(stock / 12);
     const rem = stock % 12;
-    return rem === 0 ? `${boxes}B` : `${boxes}B+${rem}개`;
+    if (rem === 0) return `${boxes}B(${stock}개)`;
+    return `${boxes}B+${rem}개(${stock}개)`;
   };
 
   const [topTab, setTopTab] = useState<TopTab>('finished');
@@ -205,7 +209,7 @@ const ProductList: React.FC<ProductListProps> = ({
   const [stocktakeValues, setStocktakeValues] = useState<Record<string, string>>({});
   const [stocktakeDate, setStocktakeDate] = useState(() => new Date().toISOString().slice(0, 10));
   // cart는 Firebase orderRequests를 그대로 사용 (localStorage 제거)
-  const cart = orderRequests.map(r => ({ id: r.id, qty: r.quantity }));
+  const cart = orderRequests.map(r => ({ id: r.id, qty: r.quantity, isBox: r.isBox ?? false }));
   const [showCartPanel, setShowCartPanel] = useState(false);
   const [showCartModal, setShowCartModal] = useState(false);
   const [confirmedChecked, setConfirmedChecked] = useState<Set<string>>(new Set());
@@ -219,7 +223,7 @@ const ProductList: React.FC<ProductListProps> = ({
   const removeFromCart = (id: string) => onRemoveOrderRequest(id);
   const updateCartQty = (id: string, qty: number) => onUpdateOrderRequestQty(id, Math.max(1, qty));
   const submitCart = () => {
-    onBulkAddConfirmedOrders(orderRequests.map(r => ({ id: r.id, quantity: r.quantity })));
+    onBulkAddConfirmedOrders(orderRequests.map(r => ({ id: r.id, quantity: r.quantity, isBox: r.isBox })));
     setShowCartPanel(false);
   };
 
@@ -976,6 +980,12 @@ const ProductList: React.FC<ProductListProps> = ({
                               )}
                             </div>
                           </div>
+                          {product.category === '향미유' && (
+                            <button
+                              onClick={() => onUpdateOrderRequestIsBox?.(item.id, !item.isBox)}
+                              className={`text-[10px] font-black px-2 py-1 rounded-lg border transition-all shrink-0 ${item.isBox ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-500 border-slate-200 hover:border-purple-300'}`}
+                            >{item.isBox ? 'BOX' : '낱개'}</button>
+                          )}
                           <div className="flex items-center gap-1.5 shrink-0">
                             <button onClick={() => updateCartQty(item.id, item.qty - 1)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black transition-all">-</button>
                             <input
@@ -985,7 +995,9 @@ const ProductList: React.FC<ProductListProps> = ({
                               className="w-14 text-center text-sm font-black border border-slate-200 rounded-xl py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                             />
                             <button onClick={() => updateCartQty(item.id, item.qty + 1)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black transition-all">+</button>
-                            <span className="text-[11px] text-slate-400 w-6 shrink-0">{product.unit}</span>
+                            <span className="text-[11px] text-slate-400 shrink-0">
+                              {product.category === '향미유' ? (item.isBox ? `B(${item.qty * 12}개)` : '개') : product.unit}
+                            </span>
                           </div>
                           <button onClick={() => removeFromCart(item.id)} className="text-slate-300 hover:text-rose-400 transition-all shrink-0 ml-1"><X size={15} /></button>
                         </div>
@@ -1981,7 +1993,7 @@ const ProductList: React.FC<ProductListProps> = ({
             <div className="flex-1 overflow-y-auto p-5 space-y-3">
               {(() => {
                 // 거래처별 그룹화
-                const groups = new Map<string, { supplierId: string; supplierName: string; items: Array<{ name: string; spec: string; qty: number; price: number; productId: string }> }>();
+                const groups = new Map<string, { supplierId: string; supplierName: string; items: Array<{ name: string; spec: string; qty: number; price: number; productId: string; isBox?: boolean }> }>();
                 cart.forEach(item => {
                   const product = products.find(p => p.id === item.id);
                   if (!product) return;
@@ -1994,6 +2006,7 @@ const ProductList: React.FC<ProductListProps> = ({
                     qty: item.qty,
                     price: product.price ?? 0,
                     productId: product.id,
+                    isBox: item.isBox,
                   });
                 });
                 return Array.from(groups.values()).map(group => (
@@ -2021,7 +2034,9 @@ const ProductList: React.FC<ProductListProps> = ({
                       {group.items.map((item, i) => (
                         <div key={i} className="px-4 py-2 flex items-center gap-3">
                           <span className="text-xs font-bold text-slate-700 flex-1">{item.name}{item.spec ? ` (${item.spec})` : ''}</span>
-                          <span className="text-xs font-black text-slate-500">{item.qty}개</span>
+                          <span className="text-xs font-black text-slate-500">
+                            {item.isBox ? `${item.qty}B(${item.qty * 12}개)` : `${item.qty}개`}
+                          </span>
                         </div>
                       ))}
                     </div>

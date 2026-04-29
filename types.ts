@@ -301,6 +301,8 @@ export interface IssuedStatementItem {
   tax: number;
   total: number;
   isTaxExempt: boolean;
+  isBoxUnit?: boolean;
+  boxSize?: number;
 }
 
 export interface IssuedStatement {

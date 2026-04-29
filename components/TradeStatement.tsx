@@ -26,7 +26,7 @@ interface TradeStatementProps {
   onAddIssuedStatement?: (stmt: IssuedStatement) => void;
   onUpdateIssuedStatement?: (id: string, data: Partial<IssuedStatement>) => void;
   onDeleteIssuedStatement?: (id: string) => void;
-  pendingInvoice?: { supplierId: string; supplierName: string; items: Array<{ name: string; spec: string; qty: number; price: number }> } | null;
+  pendingInvoice?: { supplierId: string; supplierName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }> } | null;
   onClearPendingInvoice?: () => void;
   confirmedOrders?: { id: string; quantity: number }[];
   orderRequests?: { id: string; quantity: number; confirmedByUser?: boolean }[];
@@ -129,7 +129,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // ── 직접 입력 모드 ──
   const [manualMode, setManualMode] = useState(false);
-  type ManualRow = { name: string; spec: string; qty: string; price: string; isTaxExempt: boolean; note?: string };
+  type ManualRow = { name: string; spec: string; qty: string; price: string; isTaxExempt: boolean; note?: string; isBoxUnit?: boolean; boxSize?: number };
   const [manualItems, setManualItems] = useState<ManualRow[]>([
     { name: '', spec: '', qty: '', price: '', isTaxExempt: false, note: '' },
   ]);
@@ -248,6 +248,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         qty: String(item.qty),
         price: String(item.price || ''),
         isTaxExempt: false,
+        isBoxUnit: item.isBox ?? false,
+        boxSize: item.isBox ? 12 : undefined,
       })),
       { name: '', spec: '', qty: '', price: '', isTaxExempt: false },
     ]);
@@ -338,13 +340,15 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       if (!product) return;
       const co = confirmedOrders.find(c => c.id === id);
       if (co) {
-        rows.push({ name: product.name, spec: product.용량 || product.unit || '', qty: String(co.quantity), price: '', isTaxExempt: false });
+        const isBox = product.category === '향미유' && (co as any).isBox;
+        rows.push({ name: product.name, spec: product.용량 || product.unit || '', qty: String(co.quantity), price: '', isTaxExempt: false, isBoxUnit: isBox, boxSize: isBox ? 12 : undefined });
         return;
       }
-      const req = orderRequests?.find((r: { id: string; quantity: number }) => r.id === id);
+      const req = orderRequests?.find((r: { id: string; quantity: number; isBox?: boolean }) => r.id === id);
       if (req) {
         const ps = productSuppliers.find(s => s.productId === id && s.supplierId === selectedClientId);
-        rows.push({ name: product.name, spec: product.용량 || product.unit || '', qty: String(req.quantity), price: ps?.price ? String(ps.price) : '', isTaxExempt: ps?.taxType === '면세' });
+        const isBox = product.category === '향미유' && (req as any).isBox;
+        rows.push({ name: product.name, spec: product.용량 || product.unit || '', qty: String(req.quantity), price: ps?.price ? String(ps.price) : '', isTaxExempt: ps?.taxType === '면세', isBoxUnit: isBox, boxSize: isBox ? 12 : undefined });
       }
     });
     if (rows.length === 0) return;
@@ -398,7 +402,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   type LineItem = {
     key: string; no: number; name: string; spec: string;
     qty: number; price: number; supply: number; tax: number; total: number;
-    isTaxExempt: boolean;
+    isTaxExempt: boolean; isBoxUnit?: boolean; boxSize?: number;
   };
 
   const lineItems = useMemo((): LineItem[] => {
@@ -410,7 +414,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           const price = parseFloat(item.price) || 0;
           const supply = qty * price;
           const tax = item.isTaxExempt ? 0 : Math.round(supply * 0.1);
-          return { key: `manual-${idx}`, no: idx + 1, name: item.name, spec: item.spec, qty, price, supply, tax, total: supply + tax, isTaxExempt: item.isTaxExempt };
+          return { key: `manual-${idx}`, no: idx + 1, name: item.name, spec: item.spec, qty, price, supply, tax, total: supply + tax, isTaxExempt: item.isTaxExempt, isBoxUnit: item.isBoxUnit, boxSize: item.boxSize };
         });
     }
     if (!selectedOrder) return [];
@@ -492,6 +496,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       items: lineItems.map(i => ({
         name: i.name, spec: i.spec, qty: i.qty, price: i.price,
         supply: i.supply, tax: i.tax, total: i.total, isTaxExempt: i.isTaxExempt,
+        isBoxUnit: i.isBoxUnit, boxSize: i.boxSize,
       })),
     };
     onAddIssuedStatement?.(stmt);
@@ -596,6 +601,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       items: lineItems.map(i => ({
         name: i.name, spec: i.spec, qty: i.qty, price: i.price,
         supply: i.supply, tax: i.tax, total: i.total, isTaxExempt: i.isTaxExempt,
+        isBoxUnit: i.isBoxUnit, boxSize: i.boxSize,
       })),
     });
     setIsEditMode(false);
@@ -703,7 +709,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           <td style="border:1px solid ${BC};font-size:8px;padding:0 3px;overflow:hidden;white-space:nowrap;">${item.name||''}</td>
           <td style="border:1px solid ${BC};text-align:center;font-size:7.5px;padding:0 2px;">${item.spec||''}</td>
           <td style="border:1px solid ${BC};text-align:center;font-size:8px;padding:0 2px;">${(item as any).unit||'개'}</td>
-          <td style="border:1px solid ${BC};text-align:right;font-size:8px;padding:0 3px;">${fmt(item.qty)}</td>
+          <td style="border:1px solid ${BC};text-align:right;font-size:8px;padding:0 3px;">${(item as any).isBoxUnit ? `${item.qty}BOX(${item.qty*12}개)` : fmt(item.qty)}</td>
           <td style="border:1px solid ${BC};text-align:right;font-size:8px;padding:0 3px;">${fmt(item.price)}</td>
           <td style="border:1px solid ${BC};text-align:right;font-size:8px;padding:0 3px;">${fmt(item.total)}</td>
         </tr>`;
@@ -916,7 +922,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   <td style="border:1px solid #000;padding:1px 3px;text-align:center;">${dd}</td>
   <td style="border:1px solid #000;padding:1px 3px;">${item.name}</td>
   <td style="border:1px solid #000;padding:1px 3px;text-align:center;">${item.spec||''}</td>
-  <td style="border:1px solid #000;padding:1px 3px;text-align:right;">${fmt2(item.qty)}</td>
+  <td style="border:1px solid #000;padding:1px 3px;text-align:right;">${item.isBoxUnit ? `${item.qty}BOX(${item.qty*12}개)` : fmt2(item.qty)}</td>
   <td style="border:1px solid #000;padding:1px 3px;text-align:right;">${fmt2(item.price)}</td>
   <td style="border:1px solid #000;padding:1px 3px;text-align:right;">${fmt2(item.supply)}</td>
   <td style="border:1px solid #000;padding:1px 3px;text-align:right;">${item.isTaxExempt?'면세':fmt2(item.tax)}</td>
@@ -2740,10 +2746,16 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                       className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300"/>}
                               </td>
                               <td className="px-3 py-2 w-16">
-                                {ro ? <span className="block text-right font-bold">{row.qty}</span>
-                                  : <input type="number" placeholder="0" value={row.qty}
-                                      onChange={e=>setManualItems(prev=>prev.map((r,i)=>i===idx?{...r,qty:e.target.value}:r))}
-                                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-right outline-none focus:ring-2 focus:ring-blue-300"/>}
+                                {ro
+                                  ? <span className="block text-right font-bold">
+                                      {row.isBoxUnit ? `${row.qty}BOX(${parseFloat(row.qty as string)*12}개)` : row.qty}
+                                    </span>
+                                  : <div className="flex items-center gap-1">
+                                      <input type="number" placeholder="0" value={row.qty}
+                                        onChange={e=>setManualItems(prev=>prev.map((r,i)=>i===idx?{...r,qty:e.target.value}:r))}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-right outline-none focus:ring-2 focus:ring-blue-300"/>
+                                      {row.isBoxUnit && <span className="text-[10px] text-blue-600 font-bold whitespace-nowrap">BOX</span>}
+                                    </div>}
                               </td>
                               <td className="px-3 py-2 w-24">
                                 {ro ? <span className="block text-right font-bold">{fmt(p)}</span>
