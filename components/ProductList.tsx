@@ -66,6 +66,7 @@ interface ProductListProps {
   onAddRawMaterialEntry: (entry: RawMaterialEntry) => void;
   onDeleteRawMaterialEntry: (id: string) => void;
   currentUser?: { name: string; id: string } | null;
+  isAdmin?: boolean;
 }
 
 
@@ -126,6 +127,7 @@ const ProductList: React.FC<ProductListProps> = ({
   onAddRawMaterialEntry,
   onDeleteRawMaterialEntry,
   currentUser,
+  isAdmin = false,
 }) => {
   const [isEn, setIsEn] = useState(() => localStorage.getItem('inventoryLang') === 'en');
   const toggleLang = () => setIsEn(prev => {
@@ -194,6 +196,7 @@ const ProductList: React.FC<ProductListProps> = ({
   const [reqNote, setReqNote] = useState<string>('');
   const [inlineCartId, setInlineCartId] = useState<string | null>(null);
   const [inlineCartQty, setInlineCartQty] = useState<number>(0);
+  const [inlineCartIsBox, setInlineCartIsBox] = useState<boolean>(false);
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
   const [expandedClientRowId, setExpandedClientRowId] = useState<string | null>(null);
   const [finishedFilter, setFinishedFilter] = useState<'all' | 'oil' | 'powder'>('all');
@@ -215,9 +218,10 @@ const ProductList: React.FC<ProductListProps> = ({
   const [confirmedChecked, setConfirmedChecked] = useState<Set<string>>(new Set());
   const [showConfirmedModal, setShowConfirmedModal] = useState(false);
 
-  const addToCart = (productId: string, defaultQty: number) => {
+  const addToCart = (productId: string, defaultQty: number, isBox?: boolean) => {
     if (!orderRequests.some(r => r.id === productId)) {
       onAddOrderRequest(productId, defaultQty);
+      if (isBox) onUpdateOrderRequestIsBox?.(productId, true);
     }
   };
   const removeFromCart = (id: string) => onRemoveOrderRequest(id);
@@ -753,27 +757,33 @@ const ProductList: React.FC<ProductListProps> = ({
                               >담김 ✓</button>
                             ) : inlineCartId === product.id ? (
                               <div className="flex items-center gap-1 justify-end" onClick={e => e.stopPropagation()}>
+                                {product.category === '향미유' && (
+                                  <div className="flex rounded-lg border border-indigo-200 overflow-hidden text-[9px] font-black">
+                                    <button onClick={() => setInlineCartIsBox(false)} className={`px-1.5 py-1 transition-all ${!inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>낱개</button>
+                                    <button onClick={() => setInlineCartIsBox(true)} className={`px-1.5 py-1 transition-all ${inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>BOX</button>
+                                  </div>
+                                )}
                                 <input
                                   autoFocus
                                   type="number"
                                   value={inlineCartQty}
                                   onChange={e => setInlineCartQty(parseInt(e.target.value) || 0)}
                                   onKeyDown={e => {
-                                    if (e.key === 'Enter') { addToCart(product.id, inlineCartQty); setInlineCartId(null); }
+                                    if (e.key === 'Enter') { addToCart(product.id, inlineCartQty, product.category === '향미유' ? inlineCartIsBox : undefined); setInlineCartId(null); }
                                     if (e.key === 'Escape') setInlineCartId(null);
                                   }}
                                   className="w-14 text-center text-xs font-black border border-indigo-300 rounded-lg py-1 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                                 />
-                                <span className="text-[10px] text-slate-400">{product.unit}</span>
+                                <span className="text-[10px] text-slate-400">{product.category === '향미유' && inlineCartIsBox ? 'BOX' : product.unit}</span>
                                 <button
-                                  onClick={() => { addToCart(product.id, inlineCartQty); setInlineCartId(null); }}
+                                  onClick={() => { addToCart(product.id, inlineCartQty, product.category === '향미유' ? inlineCartIsBox : undefined); setInlineCartId(null); }}
                                   className="text-[10px] font-black px-2 py-1 rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 transition-all"
                                 >담기</button>
                                 <button onClick={() => setInlineCartId(null)} className="text-slate-300 hover:text-slate-500"><X size={12} /></button>
                               </div>
                             ) : (
                               <button
-                                onClick={e => { e.stopPropagation(); setInlineCartId(product.id); setInlineCartQty(product.minStock * 2 || 20); }}
+                                onClick={e => { e.stopPropagation(); setInlineCartId(product.id); setInlineCartQty(product.minStock * 2 || 20); setInlineCartIsBox(false); }}
                                 className="text-[10px] font-black px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-all border border-slate-200"
                               >+ 담기</button>
                             )
@@ -808,28 +818,36 @@ const ProductList: React.FC<ProductListProps> = ({
                                     className="flex-1 text-[11px] font-black py-2 rounded-xl bg-indigo-500 text-white"
                                   >담김 ✓</button>
                                 ) : inlineCartId === product.id ? (
-                                  <div className="flex-1 flex items-center gap-1">
-                                    <input
-                                      autoFocus
-                                      type="number"
-                                      value={inlineCartQty}
-                                      onChange={e => setInlineCartQty(parseInt(e.target.value) || 0)}
-                                      onKeyDown={e => {
-                                        if (e.key === 'Enter') { addToCart(product.id, inlineCartQty); setInlineCartId(null); setExpandedRowId(null); }
-                                        if (e.key === 'Escape') setInlineCartId(null);
-                                      }}
-                                      className="flex-1 text-center text-xs font-black border border-indigo-300 rounded-lg py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-                                    />
-                                    <span className="text-[10px] text-slate-400">{product.unit}</span>
-                                    <button
-                                      onClick={() => { addToCart(product.id, inlineCartQty); setInlineCartId(null); setExpandedRowId(null); }}
-                                      className="text-[11px] font-black px-3 py-1.5 rounded-xl bg-indigo-500 text-white"
-                                    >담기</button>
-                                    <button onClick={() => setInlineCartId(null)} className="text-slate-300"><X size={14} /></button>
+                                  <div className="flex-1 flex flex-col gap-1">
+                                    {product.category === '향미유' && (
+                                      <div className="flex rounded-lg border border-indigo-200 overflow-hidden text-[10px] font-black self-start">
+                                        <button onClick={() => setInlineCartIsBox(false)} className={`px-2 py-1 transition-all ${!inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>낱개</button>
+                                        <button onClick={() => setInlineCartIsBox(true)} className={`px-2 py-1 transition-all ${inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>BOX</button>
+                                      </div>
+                                    )}
+                                    <div className="flex items-center gap-1">
+                                      <input
+                                        autoFocus
+                                        type="number"
+                                        value={inlineCartQty}
+                                        onChange={e => setInlineCartQty(parseInt(e.target.value) || 0)}
+                                        onKeyDown={e => {
+                                          if (e.key === 'Enter') { addToCart(product.id, inlineCartQty, product.category === '향미유' ? inlineCartIsBox : undefined); setInlineCartId(null); setExpandedRowId(null); }
+                                          if (e.key === 'Escape') setInlineCartId(null);
+                                        }}
+                                        className="flex-1 text-center text-xs font-black border border-indigo-300 rounded-lg py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                                      />
+                                      <span className="text-[10px] text-slate-400">{product.category === '향미유' && inlineCartIsBox ? 'BOX' : product.unit}</span>
+                                      <button
+                                        onClick={() => { addToCart(product.id, inlineCartQty, product.category === '향미유' ? inlineCartIsBox : undefined); setInlineCartId(null); setExpandedRowId(null); }}
+                                        className="text-[11px] font-black px-3 py-1.5 rounded-xl bg-indigo-500 text-white"
+                                      >담기</button>
+                                      <button onClick={() => setInlineCartId(null)} className="text-slate-300"><X size={14} /></button>
+                                    </div>
                                   </div>
                                 ) : (
                                   <button
-                                    onClick={() => { setInlineCartId(product.id); setInlineCartQty(product.minStock * 2 || 20); }}
+                                    onClick={() => { setInlineCartId(product.id); setInlineCartQty(product.minStock * 2 || 20); setInlineCartIsBox(false); }}
                                     className="flex-1 text-[11px] font-black py-2 rounded-xl bg-slate-100 text-slate-500 border border-slate-200"
                                   >+ 발주담기</button>
                                 )
@@ -1005,13 +1023,15 @@ const ProductList: React.FC<ProductListProps> = ({
                     })}
                   </div>
                 </div>
-                <button
-                  onClick={() => setShowCartModal(true)}
-                  className="w-full py-4 bg-indigo-600 text-white rounded-2xl text-sm font-black shadow-lg hover:bg-indigo-700 active:scale-[0.99] transition-all flex items-center justify-center gap-2"
-                >
-                  <ShoppingCart size={16} />
-                  전표 작성 ({cart.length}건)
-                </button>
+                {isAdmin && (
+                  <button
+                    onClick={() => setShowCartModal(true)}
+                    className="w-full py-4 bg-indigo-600 text-white rounded-2xl text-sm font-black shadow-lg hover:bg-indigo-700 active:scale-[0.99] transition-all flex items-center justify-center gap-2"
+                  >
+                    <ShoppingCart size={16} />
+                    전표 작성 ({cart.length}건)
+                  </button>
+                )}
               </>
             )}
 
@@ -1043,7 +1063,7 @@ const ProductList: React.FC<ProductListProps> = ({
                       <span className="text-[10px] font-black bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">{totalCount}건</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      {confirmedChecked.size > 0 && onRequestPurchaseInvoice && (
+                      {isAdmin && confirmedChecked.size > 0 && onRequestPurchaseInvoice && (
                         <button
                           onClick={() => setShowConfirmedModal(true)}
                           className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-[11px] font-black hover:bg-indigo-700 transition-all"
@@ -1120,7 +1140,7 @@ const ProductList: React.FC<ProductListProps> = ({
                                 </div>
                               </div>
                               <span className="text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-xl shrink-0">입고대기 {conf.quantity}{product.unit}</span>
-                              {product.supplierId && onRequestPurchaseInvoice && (
+                              {isAdmin && product.supplierId && onRequestPurchaseInvoice && (
                                 <button
                                   onClick={() => {
                                     onRequestPurchaseInvoice(
@@ -1924,7 +1944,13 @@ const ProductList: React.FC<ProductListProps> = ({
                   <div key={item.id} className="bg-slate-50 rounded-2xl border border-slate-100 p-3 flex items-center gap-3">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
-                      <p className="text-[10px] text-slate-400 font-medium">현재 재고 {product.stock}{product.unit}</p>
+                      <p className="text-[10px] text-slate-400 font-medium">현재 재고 {product.category === '향미유' ? fmtHamiyou(product.stock) : `${product.stock}${product.unit}`}</p>
+                      {product.category === '향미유' && (
+                        <div className="flex rounded-lg border border-indigo-200 overflow-hidden text-[9px] font-black mt-1 w-fit">
+                          <button onClick={() => onUpdateOrderRequestIsBox?.(item.id, false)} className={`px-2 py-0.5 transition-all ${!item.isBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>낱개</button>
+                          <button onClick={() => onUpdateOrderRequestIsBox?.(item.id, true)} className={`px-2 py-0.5 transition-all ${item.isBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>BOX</button>
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button onClick={() => updateCartQty(item.id, item.qty - 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 text-sm font-black transition-all">-</button>
@@ -1935,7 +1961,7 @@ const ProductList: React.FC<ProductListProps> = ({
                         className="w-12 text-center text-sm font-black border border-slate-200 rounded-lg py-1 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                       />
                       <button onClick={() => updateCartQty(item.id, item.qty + 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 text-sm font-black transition-all">+</button>
-                      <span className="text-[10px] text-slate-400 w-6">{product.unit}</span>
+                      <span className="text-[10px] text-slate-400 w-6">{product.category === '향미유' && item.isBox ? 'BOX' : product.unit}</span>
                     </div>
                     <button onClick={() => removeFromCart(item.id)} className="text-slate-300 hover:text-rose-400 transition-all shrink-0">
                       <X size={14} />

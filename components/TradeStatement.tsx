@@ -2321,7 +2321,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                 <span className="font-black text-slate-800">{product.name}</span>
                                 {product.용량&&<span className="text-slate-400">{product.용량}</span>}
                               </div>
-                              <span className="text-slate-600 font-bold">{co.quantity}{product.unit||'개'}</span>
+                              <span className="text-slate-600 font-bold">
+                                {product.category === '향미유' && (co as any).isBox
+                                  ? `${co.quantity}BOX(${co.quantity*12}개)`
+                                  : `${co.quantity}${product.unit||'개'}`}
+                              </span>
                               {issued
                                 ? <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">발행완료</span>
                                 : <span className="text-[10px] font-black text-pink-500 bg-pink-100 px-1.5 py-0.5 rounded-full">미발행</span>}
@@ -2365,7 +2369,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                 {product.용량&&<span className="text-slate-400">{product.용량}</span>}
                               </div>
                               <div className="flex flex-col items-end gap-0.5 shrink-0">
-                                <span className="text-slate-600 font-bold">{req.quantity}{product.unit||'개'}</span>
+                                <span className="text-slate-600 font-bold">
+                                  {product.category === '향미유' && (req as any).isBox
+                                    ? `${req.quantity}BOX(${req.quantity*12}개)`
+                                    : `${req.quantity}${product.unit||'개'}`}
+                                </span>
                                 {ps?.price ? <span className="text-[10px] text-slate-400">{ps.price.toLocaleString()}원</span> : <span className="text-[10px] text-amber-400">단가미등록</span>}
                               </div>
                               {issued
@@ -2424,7 +2432,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                           <button key={supplierId}
                             onClick={()=>{
                               setSelectedClientId(supplierId);
-                              const rows = items.map(({product,co})=>({name:product.name,spec:product.용량||product.unit||'',qty:String(co.quantity),price:'',isTaxExempt:false}));
+                              const rows = items.map(({product,co})=>{
+                                const isBox = product.category==='향미유'&&(co as any).isBox;
+                                return {name:product.name,spec:product.용량||product.unit||'',qty:String(co.quantity),price:'',isTaxExempt:false,isBoxUnit:isBox,boxSize:isBox?12:undefined};
+                              });
                               setManualItems([...rows,{name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);
                               setManualMode(true);
                             }}
@@ -2451,7 +2462,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                             setSelectedClientId(supplierId);
                             const rows = items.map(({product,req})=>{
                               const ps = productSuppliers.find(s=>s.productId===product.id&&s.supplierId===supplierId);
-                              return {name:product.name,spec:product.용량||product.unit||'',qty:String(req.quantity),price:ps?.price?String(ps.price):'',isTaxExempt:ps?.taxType==='면세'};
+                              const isBox = product.category==='향미유'&&(req as any).isBox;
+                              return {name:product.name,spec:product.용량||product.unit||'',qty:String(req.quantity),price:ps?.price?String(ps.price):'',isTaxExempt:ps?.taxType==='면세',isBoxUnit:isBox,boxSize:isBox?12:undefined};
                             });
                             setManualItems([...rows,{name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);
                             setManualMode(true);

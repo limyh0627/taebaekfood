@@ -1041,6 +1041,7 @@ const App: React.FC = () => {
               suppliers={clients.filter(c => c.partnerType === '매입처' || c.partnerType === '매출+매입처')}
               clients={clients}
               currentUser={currentUser}
+              isAdmin={isAdmin}
               issuedStatements={issuedStatements}
               onMarkStatementReceived={(id) => updateItem('issuedStatements', id, { receivedAt: new Date().toISOString() })}
               onRequestPurchaseInvoice={(supplierId, supplierName, items) => {
