@@ -469,12 +469,12 @@ const App: React.FC = () => {
   }, [allProducts]);
 
   // --- 재고 관리 핸들러 (Firebase 기반) ---
-  const handleAddOrderRequest = async (id: string, quantity: number) => {
+  const handleAddOrderRequest = async (id: string, quantity: number, isBox?: boolean) => {
     const exists = orderRequests.find(r => r.id === id);
     if (exists) {
-      await updateItem('orderRequests', id, { quantity, confirmedByUser: true });
+      await updateItem('orderRequests', id, { quantity, confirmedByUser: true, isBox: isBox ?? false });
     } else {
-      await addItem('orderRequests', { id, quantity, confirmedByUser: true });
+      await addItem('orderRequests', { id, quantity, confirmedByUser: true, isBox: isBox ?? false });
     }
   };
 
@@ -659,7 +659,7 @@ const App: React.FC = () => {
     localStorage.removeItem('tb_user');
   };
 
-  const isAdmin = currentUser?.id === 'admin';
+  const isAdmin = currentUser?.id === 'admin' || isAdminAuthenticated;
 
   // PRODUCT_FORMULA → Firestore item_bom 시딩 (최초 1회)
   const seedItemBoms = async () => {

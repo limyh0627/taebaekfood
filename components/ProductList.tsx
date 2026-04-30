@@ -38,7 +38,7 @@ interface ProductListProps {
   confirmedOrders: { id: string; quantity: number; isBox?: boolean }[];
   onUpdateProduct: (product: Product) => void;
   onAddProduct: (product: Product) => void;
-  onAddOrderRequest: (id: string, qty: number) => void;
+  onAddOrderRequest: (id: string, qty: number, isBox?: boolean) => void;
   onRemoveOrderRequest: (id: string) => void;
   onUpdateOrderRequestQty: (id: string, qty: number) => void;
   onUpdateOrderRequestIsBox?: (id: string, isBox: boolean) => void;
@@ -220,8 +220,7 @@ const ProductList: React.FC<ProductListProps> = ({
 
   const addToCart = (productId: string, defaultQty: number, isBox?: boolean) => {
     if (!orderRequests.some(r => r.id === productId)) {
-      onAddOrderRequest(productId, defaultQty);
-      if (isBox) onUpdateOrderRequestIsBox?.(productId, true);
+      onAddOrderRequest(productId, defaultQty, isBox ?? false);
     }
   };
   const removeFromCart = (id: string) => onRemoveOrderRequest(id);
