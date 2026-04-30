@@ -237,6 +237,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   useEffect(() => {
     if (!pendingInvoice) return;
     openCreate('매입');
+    setManualMode(true);
     // 거래처 설정 (supplierId로 매입처 찾기)
     const matchedClient = clients.find(c => c.id === pendingInvoice.supplierId);
     if (matchedClient) setSelectedClientId(matchedClient.id);

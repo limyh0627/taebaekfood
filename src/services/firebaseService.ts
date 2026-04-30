@@ -41,8 +41,17 @@ export const subscribeToCollection = <T extends { id: string }>(
   });
 };
 
-const stripUndefined = (obj: any): any =>
-  Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
+const stripUndefined = (obj: any): any => {
+  if (Array.isArray(obj)) return obj.map(v => stripUndefined(v));
+  if (obj !== null && typeof obj === 'object') {
+    return Object.fromEntries(
+      Object.entries(obj)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => [k, stripUndefined(v)])
+    );
+  }
+  return obj;
+};
 
 export const addItem = async (collectionName: string, item: any) => {
   const { id, ...raw } = item;

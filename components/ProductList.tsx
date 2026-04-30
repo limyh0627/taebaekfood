@@ -152,7 +152,8 @@ const ProductList: React.FC<ProductListProps> = ({
   const [rmUsed, setRmUsed] = useState('');
   const [rmNote, setRmNote] = useState('');
   const [rmCanQty, setRmCanQty] = useState('');
-  const [rmCanSize, setRmCanSize] = useState<number | null>(null);
+  const [rmCanSize, setRmCanSize] = useState<{ size: number; tag?: string } | null>(null);
+  const [rmCanMode, setRmCanMode] = useState<'received' | 'used'>('received');
   const [rmFilter, setRmFilter] = useState(RAW_MATERIALS[0]);
   const [rmMonth, setRmMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [rmViewType, setRmViewType] = useState<'all' | 'received' | 'used'>('all');
@@ -210,6 +211,7 @@ const ProductList: React.FC<ProductListProps> = ({
   const [rmSheetTab, setRmSheetTab] = useState<'new' | 'carryover'>('new');
   const [showStocktake, setShowStocktake] = useState(false);
   const [stocktakeValues, setStocktakeValues] = useState<Record<string, string>>({});
+  const [stocktakeUnitQtys, setStocktakeUnitQtys] = useState<Record<string, string>>({}); // key: `${material}_${size}_${tag}`
   const [stocktakeDate, setStocktakeDate] = useState(() => new Date().toISOString().slice(0, 10));
   // cart는 Firebase orderRequests를 그대로 사용 (localStorage 제거)
   const cart = orderRequests.map(r => ({ id: r.id, qty: r.quantity, isBox: r.isBox ?? false }));
@@ -1269,23 +1271,32 @@ const ProductList: React.FC<ProductListProps> = ({
 
                 {/* 새 기록 탭 */}
                 {rmSheetTab === 'new' && (() => {
-                  // 캔 단위 입고 지원 원료 (sizes: kg per can options)
-                  const CAN_MATERIALS: Record<string, number[]> = {
-                    '깨분참기름': [16.5],
-                    '수입들기름': [16.5],
-                    '들깨': [25],
-                    '검정깨': [10, 20],
-                    '탈피들깨가루': [20],
-                    '깨분': [16.5],
-                    '볶음참깨': [10, 20],
-                    '볶음들깨': [25],
-                    '통깨참기름': [16.5],
-                    '통들깨들기름': [16.5],
+                  // 캔 단위 입고 지원 원료 (sizes: kg or L per can options)
+                  type CanOption = { size: number; tag?: string };
+                  const CAN_MATERIALS: Record<string, CanOption[]> = {
+                    '참깨': [{ size: 25 }, { size: 500, tag: '톤백' }],
+                    '깨분참기름': [{ size: 16.5 }, { size: 18 }],
+                    '수입들기름': [{ size: 16.5 }, { size: 18 }],
+                    '들깨': [{ size: 25 }],
+                    '검정깨': [{ size: 10 }, { size: 20 }],
+                    '탈피들깨가루': [{ size: 20 }],
+                    '깨분': [{ size: 16.5 }],
+                    '볶음참깨': [{ size: 10 }, { size: 20 }, { size: 20, tag: '자루' }],
+                    '볶음검정참깨': [{ size: 10 }, { size: 20 }, { size: 20, tag: '자루' }],
+                    '볶음들깨': [{ size: 25 }],
+                    '통깨참기름': [{ size: 16.5 }, { size: 18 }],
+                    '통들깨들기름': [{ size: 16.5 }, { size: 18 }],
                   };
-                  const canSizes = CAN_MATERIALS[rmMaterial];
-                  const kgPerCan = canSizes
-                    ? (rmCanSize !== null && canSizes.includes(rmCanSize) ? rmCanSize : (canSizes.length === 1 ? canSizes[0] : null))
+                  const OIL_MATERIALS = new Set(['통깨참기름', '깨분참기름', '통들깨들기름', '수입들기름']);
+                  const canUnit = OIL_MATERIALS.has(rmMaterial) ? 'L' : 'kg';
+                  const canOptions = CAN_MATERIALS[rmMaterial];
+                  const matchedOpt = rmCanSize !== null
+                    ? canOptions?.find(o => o.size === rmCanSize.size && (o.tag ?? '') === (rmCanSize.tag ?? ''))
                     : null;
+                  const kgPerCan = matchedOpt
+                    ? matchedOpt.size
+                    : (canOptions?.length === 1 ? canOptions[0].size : null);
+                  const canSizes = canOptions; // alias for template compatibility
                   const canCount = Number(rmCanQty) || 0;
                   const calcKg = kgPerCan && canCount > 0
                     ? Math.round(canCount * kgPerCan * 10) / 10
@@ -1295,7 +1306,7 @@ const ProductList: React.FC<ProductListProps> = ({
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t('원료명', 'Material')}</label>
-                        <select value={rmMaterial} onChange={e => { setRmMaterial(e.target.value); setRmCanQty(''); setRmReceived(''); setRmCanSize(null); }}
+                        <select value={rmMaterial} onChange={e => { setRmMaterial(e.target.value); setRmCanQty(''); setRmReceived(''); setRmUsed(''); setRmCanSize(null); setRmCanMode('received'); }}
                           className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-emerald-400">
                           {RAW_MATERIALS.map(m => <option key={m} value={m}>{isEn ? RAW_MATERIALS_EN[m] ?? m : m}</option>)}
                         </select>
@@ -1307,31 +1318,56 @@ const ProductList: React.FC<ProductListProps> = ({
                       </div>
                     </div>
 
-                    {/* 캔 단위 입력 — 캔 지원 원료 선택 시 표시 */}
+                    {/* 단위 입력 — 단위 지원 원료 선택 시 표시 */}
                     {canSizes && (
-                      <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-2">
+                      <div className={`border rounded-xl px-4 py-3 space-y-2 ${rmCanMode === 'used' ? 'bg-rose-50 border-rose-200' : 'bg-amber-50 border-amber-200'}`}>
+                        {/* 입고/사용 토글 */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">단위 기록</span>
+                          <div className="flex rounded-lg overflow-hidden border border-slate-200 ml-auto">
+                            <button
+                              type="button"
+                              onClick={() => { setRmCanMode('received'); setRmCanQty(''); setRmUsed(''); }}
+                              className={`px-3 py-1 text-xs font-black transition-all ${rmCanMode === 'received' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-400 hover:bg-slate-50'}`}
+                            >입고</button>
+                            <button
+                              type="button"
+                              onClick={() => { setRmCanMode('used'); setRmCanQty(''); setRmReceived(''); }}
+                              className={`px-3 py-1 text-xs font-black transition-all ${rmCanMode === 'used' ? 'bg-rose-500 text-white' : 'bg-white text-slate-400 hover:bg-slate-50'}`}
+                            >사용</button>
+                          </div>
+                        </div>
                         {canSizes.length > 1 && (
                           <div>
-                            <label className="text-[10px] font-black text-amber-600 uppercase tracking-widest block mb-1.5">캔 용량 선택</label>
-                            <div className="flex gap-2">
-                              {canSizes.map(sz => (
-                                <button
-                                  key={sz}
-                                  type="button"
-                                  onClick={() => { setRmCanSize(sz); setRmCanQty(''); setRmReceived(''); }}
-                                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all border ${rmCanSize === sz ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-amber-600 border-amber-300 hover:border-amber-500'}`}
-                                >{sz} kg</button>
-                              ))}
+                            <label className={`text-[10px] font-black uppercase tracking-widest block mb-1.5 ${rmCanMode === 'used' ? 'text-rose-500' : 'text-amber-600'}`}>단위 선택</label>
+                            <div className="flex flex-wrap gap-2">
+                              {canSizes.map(opt => {
+                                const isSelected = rmCanSize !== null && rmCanSize.size === opt.size && (rmCanSize.tag ?? '') === (opt.tag ?? '');
+                                const optLabel = `${opt.size}${canUnit}${opt.tag ? ` (${opt.tag})` : ''}`;
+                                const selColor = rmCanMode === 'used'
+                                  ? (isSelected ? 'bg-rose-500 text-white border-rose-500' : 'bg-white text-rose-500 border-rose-300 hover:border-rose-500')
+                                  : (isSelected ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-amber-600 border-amber-300 hover:border-amber-500');
+                                return (
+                                  <button
+                                    key={`${opt.size}_${opt.tag ?? ''}`}
+                                    type="button"
+                                    onClick={() => { setRmCanSize(opt); setRmCanQty(''); setRmReceived(''); setRmUsed(''); }}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all border ${selColor}`}
+                                  >{optLabel}</button>
+                                );
+                              })}
                             </div>
                           </div>
                         )}
                         {kgPerCan && (
                           <>
                             <div className="flex items-center justify-between">
-                              <label className="text-[10px] font-black text-amber-600 uppercase tracking-widest">캔 수량 입력 (1캔 = {kgPerCan} kg)</label>
+                              <label className={`text-[10px] font-black uppercase tracking-widest ${rmCanMode === 'used' ? 'text-rose-500' : 'text-amber-600'}`}>
+                                {rmCanMode === 'used' ? '사용' : '입고'} 수량 (1개 = {kgPerCan} {canUnit})
+                              </label>
                               {calcKg !== null && (
-                                <span className="text-xs font-black text-amber-700">
-                                  {canCount}캔 × {kgPerCan}kg = <span className="text-emerald-700">{calcKg} kg</span>
+                                <span className={`text-xs font-black ${rmCanMode === 'used' ? 'text-rose-700' : 'text-amber-700'}`}>
+                                  {canCount}개 × {kgPerCan}{canUnit} = <span className={rmCanMode === 'used' ? 'text-rose-600' : 'text-emerald-700'}>{calcKg} {canUnit}</span>
                                 </span>
                               )}
                             </div>
@@ -1339,22 +1375,23 @@ const ProductList: React.FC<ProductListProps> = ({
                               <input
                                 type="number"
                                 inputMode="numeric"
-                                placeholder="캔 수"
+                                placeholder="개수"
                                 value={rmCanQty}
                                 onChange={e => {
                                   setRmCanQty(e.target.value);
                                   const n = Number(e.target.value);
-                                  if (n > 0) setRmReceived(String(Math.round(n * kgPerCan * 10) / 10));
-                                  else setRmReceived('');
+                                  const kg = n > 0 ? String(Math.round(n * kgPerCan * 10) / 10) : '';
+                                  if (rmCanMode === 'received') { setRmReceived(kg); setRmUsed(''); }
+                                  else { setRmUsed(kg); setRmReceived(''); }
                                 }}
-                                className="w-28 bg-white border border-amber-300 rounded-xl px-3 py-2 text-sm font-black outline-none focus:border-amber-500 text-center"
+                                className={`w-28 bg-white rounded-xl px-3 py-2 text-sm font-black outline-none text-center border ${rmCanMode === 'used' ? 'border-rose-300 focus:border-rose-500' : 'border-amber-300 focus:border-amber-500'}`}
                               />
-                              <span className="text-sm font-bold text-amber-600">캔</span>
+                              <span className={`text-sm font-bold ${rmCanMode === 'used' ? 'text-rose-500' : 'text-amber-600'}`}>개</span>
                             </div>
                           </>
                         )}
                         {canSizes.length > 1 && !kgPerCan && (
-                          <p className="text-xs text-amber-500 font-bold">위에서 캔 용량을 선택하세요.</p>
+                          <p className={`text-xs font-bold ${rmCanMode === 'used' ? 'text-rose-400' : 'text-amber-500'}`}>위에서 단위를 선택하세요.</p>
                         )}
                       </div>
                     )}
@@ -1396,8 +1433,13 @@ const ProductList: React.FC<ProductListProps> = ({
                           createdAt: new Date().toISOString(),
                           addedBy: currentUser?.name,
                           type: 'manual',
+                          ...(kgPerCan && canCount > 0 ? {
+                            canSize: kgPerCan,
+                            canSizeTag: rmCanSize?.tag,
+                            canCount,
+                          } : {}),
                         });
-                        setRmReceived(''); setRmUsed(''); setRmNote(''); setRmCanQty(''); setRmCanSize(null);
+                        setRmReceived(''); setRmUsed(''); setRmNote(''); setRmCanQty(''); setRmCanSize(null); setRmCanMode('received');
                         setShowRmSheet(false);
                       }}
                       className="w-full py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 active:scale-[0.99] transition-all"
@@ -1486,7 +1528,7 @@ const ProductList: React.FC<ProductListProps> = ({
                 className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-500 rounded-xl text-xs font-black hover:bg-slate-200 active:scale-95 transition-all"
               >전체 0 맞춤</button>
               <button
-                onClick={() => { setStocktakeValues({}); setStocktakeDate(new Date().toISOString().slice(0, 10)); setShowStocktake(true); }}
+                onClick={() => { setStocktakeValues({}); setStocktakeUnitQtys({}); setStocktakeDate(new Date().toISOString().slice(0, 10)); setShowStocktake(true); }}
                 className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-xl text-xs font-black hover:bg-indigo-100 active:scale-95 transition-all"
               >재고 실사</button>
               <button
@@ -1518,12 +1560,30 @@ const ProductList: React.FC<ProductListProps> = ({
                   </div>
                 </div>
                 <div className="overflow-y-auto flex-1 px-6">
+                  {(() => {
+                    type CanOpt = { size: number; tag?: string };
+                    const ST_CAN: Record<string, CanOpt[]> = {
+                      '참깨': [{ size: 25 }, { size: 500, tag: '톤백' }],
+                      '깨분참기름': [{ size: 16.5 }, { size: 18 }],
+                      '수입들기름': [{ size: 16.5 }, { size: 18 }],
+                      '들깨': [{ size: 25 }],
+                      '검정깨': [{ size: 10 }, { size: 20 }],
+                      '탈피들깨가루': [{ size: 20 }],
+                      '깨분': [{ size: 16.5 }],
+                      '볶음참깨': [{ size: 10 }, { size: 20 }, { size: 20, tag: '자루' }],
+                      '볶음검정참깨': [{ size: 10 }, { size: 20 }, { size: 20, tag: '자루' }],
+                      '볶음들깨': [{ size: 25 }],
+                      '통깨참기름': [{ size: 16.5 }, { size: 18 }],
+                      '통들깨들기름': [{ size: 16.5 }, { size: 18 }],
+                    };
+                    const OIL_SET2 = new Set(['통깨참기름', '깨분참기름', '통들깨들기름', '수입들기름']);
+                    return (
                   <table className="w-full text-left">
                     <thead className="sticky top-0 bg-white">
                       <tr className="border-b border-slate-100">
                         <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">원료명</th>
                         <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">장부 현재고</th>
-                        <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">실사 수량(kg)</th>
+                        <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">실사 수량</th>
                         <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">차이</th>
                       </tr>
                     </thead>
@@ -1533,32 +1593,77 @@ const ProductList: React.FC<ProductListProps> = ({
                         const actualStr = stocktakeValues[m] ?? '';
                         const actual = actualStr === '' ? null : Number(actualStr);
                         const diff = actual !== null ? Math.round((actual - book) * 1000) / 1000 : null;
+                        const opts = ST_CAN[m];
+                        const unit = OIL_SET2.has(m) ? 'L' : 'kg';
                         return (
-                          <tr key={m} className="hover:bg-slate-50/50">
-                            <td className="py-2.5 text-sm font-bold text-slate-700">{m}</td>
-                            <td className="py-2.5 text-sm font-black text-slate-800 text-right">{book.toLocaleString('ko-KR')} kg</td>
-                            <td className="py-2.5 text-right">
-                              <input
-                                type="number"
-                                placeholder={String(book)}
-                                value={actualStr}
-                                onChange={e => setStocktakeValues(prev => ({ ...prev, [m]: e.target.value }))}
-                                className="w-24 text-right bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-sm font-bold outline-none focus:border-indigo-400"
-                              />
-                            </td>
-                            <td className="py-2.5 text-right">
-                              {diff !== null && diff !== 0 && (
-                                <span className={`text-sm font-black ${diff > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                  {diff > 0 ? '+' : ''}{diff.toLocaleString('ko-KR')} kg
-                                </span>
-                              )}
-                              {diff === 0 && <span className="text-sm font-black text-slate-400">일치</span>}
-                            </td>
-                          </tr>
+                          <React.Fragment key={m}>
+                            <tr className="hover:bg-slate-50/50">
+                              <td className="py-2.5 text-sm font-bold text-slate-700">{m}</td>
+                              <td className="py-2.5 text-sm font-black text-slate-800 text-right">{book.toLocaleString('ko-KR')} {unit}</td>
+                              <td className="py-2.5 text-right">
+                                <input
+                                  type="number"
+                                  placeholder={String(book)}
+                                  value={actualStr}
+                                  onChange={e => setStocktakeValues(prev => ({ ...prev, [m]: e.target.value }))}
+                                  className="w-24 text-right bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-sm font-bold outline-none focus:border-indigo-400"
+                                />
+                              </td>
+                              <td className="py-2.5 text-right">
+                                {diff !== null && diff !== 0 && (
+                                  <span className={`text-sm font-black ${diff > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                    {diff > 0 ? '+' : ''}{diff.toLocaleString('ko-KR')} {unit}
+                                  </span>
+                                )}
+                                {diff === 0 && <span className="text-sm font-black text-slate-400">일치</span>}
+                              </td>
+                            </tr>
+                            {opts && (
+                              <tr className="bg-amber-50/60">
+                                <td colSpan={4} className="px-1 pb-2 pt-0">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-[9px] font-black text-amber-500 uppercase tracking-widest whitespace-nowrap">단위입력 →</span>
+                                    {opts.map(opt => {
+                                      const key = `${m}_${opt.size}_${opt.tag ?? ''}`;
+                                      const optLabel = `${opt.size}${unit}${opt.tag ? `(${opt.tag})` : ''}`;
+                                      return (
+                                        <div key={key} className="flex items-center gap-1">
+                                          <span className="text-[10px] font-black text-amber-600 whitespace-nowrap">{optLabel}</span>
+                                          <input
+                                            type="number"
+                                            inputMode="numeric"
+                                            placeholder="0"
+                                            value={stocktakeUnitQtys[key] ?? ''}
+                                            onChange={e => {
+                                              const val = e.target.value;
+                                              setStocktakeUnitQtys(prev => ({ ...prev, [key]: val }));
+                                              // 이 원료의 모든 단위 합산 → kg 자동 계산
+                                              const updated = { ...stocktakeUnitQtys, [key]: val };
+                                              const total = opts.reduce((sum, o) => {
+                                                const k = `${m}_${o.size}_${o.tag ?? ''}`;
+                                                const n = Number(updated[k] ?? 0);
+                                                return sum + n * o.size;
+                                              }, 0);
+                                              const rounded = Math.round(total * 10) / 10;
+                                              setStocktakeValues(prev => ({ ...prev, [m]: rounded > 0 ? String(rounded) : '' }));
+                                            }}
+                                            className="w-14 text-center bg-white border border-amber-300 rounded-lg px-1.5 py-1 text-xs font-black outline-none focus:border-amber-500"
+                                          />
+                                          <span className="text-[10px] text-amber-500">개</span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
                         );
                       })}
                     </tbody>
                   </table>
+                    );
+                  })()}
                 </div>
                 <div className="px-6 py-4 border-t border-slate-100 shrink-0">
                   {(() => {
@@ -1592,6 +1697,7 @@ const ProductList: React.FC<ProductListProps> = ({
                           }
                           setShowStocktake(false);
                           setStocktakeValues({});
+                          setStocktakeUnitQtys({});
                         }}
                         className="w-full py-3 bg-indigo-600 text-white rounded-2xl text-sm font-black hover:bg-indigo-700 active:scale-[0.99] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                       >
@@ -1636,6 +1742,41 @@ const ProductList: React.FC<ProductListProps> = ({
               })}
             </div>
           </div>
+
+          {/* 단위별 현황 — 특정 원료 선택 시 표시 */}
+          {rmFilter !== '전체' && (() => {
+            const OIL_SET = new Set(['통깨참기름', '깨분참기름', '통들깨들기름', '수입들기름']);
+            const unitMap = new Map<string, { size: number; tag?: string; netCount: number; netKg: number }>();
+            rawMaterialLedger
+              .filter(e => e.material === rmFilter && e.canSize && e.canCount)
+              .forEach(e => {
+                const key = `${e.canSize}_${e.canSizeTag ?? ''}`;
+                if (!unitMap.has(key)) unitMap.set(key, { size: e.canSize!, tag: e.canSizeTag, netCount: 0, netKg: 0 });
+                const u = unitMap.get(key)!;
+                if (e.received > 0) { u.netCount += e.canCount!; u.netKg += e.received; }
+                if (e.used > 0)     { u.netCount -= e.canCount!; u.netKg -= e.used; }
+              });
+            const visible = Array.from(unitMap.values()).filter(u => u.netCount !== 0).sort((a, b) => a.size - b.size || (a.tag ?? '').localeCompare(b.tag ?? ''));
+            if (visible.length === 0) return null;
+            const unit = OIL_SET.has(rmFilter) ? 'L' : 'kg';
+            return (
+              <div className="bg-indigo-50 border border-indigo-200 rounded-2xl px-4 py-3">
+                <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-2">단위별 현재고</p>
+                <div className="flex flex-wrap gap-2">
+                  {visible.map(u => {
+                    const label = `${u.size}${unit}${u.tag ? ` (${u.tag})` : ''}`;
+                    return (
+                      <div key={`${u.size}_${u.tag ?? ''}`} className="bg-white border border-indigo-200 rounded-xl px-3 py-2.5 min-w-[80px] text-center">
+                        <p className="text-[10px] font-black text-indigo-400 mb-1">{label}</p>
+                        <p className="text-xl font-black text-slate-800 leading-tight">{u.netCount}<span className="text-xs font-bold text-slate-400 ml-0.5">개</span></p>
+                        <p className="text-[9px] text-slate-400 mt-0.5">{Math.round(u.netKg * 10) / 10}{unit}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* 필터 — 가로 스크롤 chip */}
           <div className="flex items-center gap-2">
