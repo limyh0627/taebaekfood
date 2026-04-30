@@ -80,7 +80,7 @@ const CLIENT_BADGE_COLORS = [
   'bg-orange-50 text-orange-500',
   'bg-indigo-50 text-indigo-500',
 ];
-const RAW_MATERIALS = ['참깨','들깨','검정깨','탈피들깨가루','깨분','볶음참깨','볶음들깨','볶음검정참깨','통깨참기름','깨분참기름','통들깨들기름','수입들기름'];
+const RAW_MATERIALS = ['참깨','들깨','검정깨','탈피들깨가루','깨분','볶음참깨','볶음들깨','볶음검정참깨','통깨참기름','깨분참기름','통들깨들기름','수입들기름','생들기름'];
 const RAW_MATERIALS_EN: Record<string, string> = {
   '참깨': 'Sesame',
   '들깨': 'Perilla',
@@ -94,6 +94,7 @@ const RAW_MATERIALS_EN: Record<string, string> = {
   '깨분참기름': 'Sesame Oil (Powder)',
   '통들깨들기름': 'Perilla Oil (Whole)',
   '수입들기름': 'Imported Perilla Oil',
+  '생들기름': 'Raw Perilla Oil',
 };
 
 type MainTab = 'requests' | 'history' | 'master';
@@ -348,7 +349,7 @@ const ProductList: React.FC<ProductListProps> = ({
       const ledger = rawMaterialLedger.filter(e => e.material === material);
       const manualRows = ledger.filter(e => e.type === 'manual');
       const toMerge = [
-        ...ledger.filter(e => e.type !== 'manual').map(e => ({ date: e.date, received: e.received, used: e.used, note: e.note })),
+        ...ledger.filter(e => e.type !== 'manual' && e.type !== 'stocktake_unit').map(e => ({ date: e.date, received: e.received, used: e.used, note: e.note })),
         ...autoUsageEntries.filter(e => e.material === material).map(e => ({ date: e.date, received: 0, used: e.used, note: e.note })),
       ];
       const mergedMap: Record<string, { date: string; received: number; used: number; note: string }> = {};
@@ -1272,11 +1273,12 @@ const ProductList: React.FC<ProductListProps> = ({
                 {/* 새 기록 탭 */}
                 {rmSheetTab === 'new' && (() => {
                   // 캔 단위 입고 지원 원료 (sizes: kg or L per can options)
-                  type CanOption = { size: number; tag?: string };
+                  type CanOption = { size: number; tag?: string; usedByKg?: boolean };
                   const CAN_MATERIALS: Record<string, CanOption[]> = {
-                    '참깨': [{ size: 25 }, { size: 500, tag: '톤백' }],
+                    '참깨': [{ size: 25 }, { size: 1000, tag: '톤백', usedByKg: true }],
                     '깨분참기름': [{ size: 16.5 }, { size: 18 }],
                     '수입들기름': [{ size: 16.5 }, { size: 18 }],
+                    '생들기름': [{ size: 16.5 }, { size: 18 }],
                     '들깨': [{ size: 25 }],
                     '검정깨': [{ size: 10 }, { size: 20 }],
                     '탈피들깨가루': [{ size: 20 }],
@@ -1287,7 +1289,7 @@ const ProductList: React.FC<ProductListProps> = ({
                     '통깨참기름': [{ size: 16.5 }, { size: 18 }],
                     '통들깨들기름': [{ size: 16.5 }, { size: 18 }],
                   };
-                  const OIL_MATERIALS = new Set(['통깨참기름', '깨분참기름', '통들깨들기름', '수입들기름']);
+                  const OIL_MATERIALS = new Set(['통깨참기름', '깨분참기름', '통들깨들기름', '수입들기름', '생들기름']);
                   const canUnit = OIL_MATERIALS.has(rmMaterial) ? 'L' : 'kg';
                   const canOptions = CAN_MATERIALS[rmMaterial];
                   const matchedOpt = rmCanSize !== null
@@ -1301,6 +1303,8 @@ const ProductList: React.FC<ProductListProps> = ({
                   const calcKg = kgPerCan && canCount > 0
                     ? Math.round(canCount * kgPerCan * 10) / 10
                     : null;
+                  // 사용 모드에서 kg 직접 입력 (톤백처럼 부분 사용하는 단위)
+                  const isUsedByKg = rmCanMode === 'used' && (matchedOpt?.usedByKg ?? (canOptions?.length === 1 && canOptions[0].usedByKg));
                   return (
                   <div className="px-5 pt-4 pb-6 space-y-3">
                     <div className="grid grid-cols-2 gap-3">
@@ -1359,7 +1363,19 @@ const ProductList: React.FC<ProductListProps> = ({
                             </div>
                           </div>
                         )}
-                        {kgPerCan && (
+                        {kgPerCan && (isUsedByKg ? (
+                          /* 톤백 등 사용 시 kg 직접 입력 */
+                          <div>
+                            <label className="text-[10px] font-black text-rose-500 uppercase tracking-widest block mb-1.5">사용량 ({canUnit}) — {kgPerCan}{canUnit} 단위에서 직접 입력</label>
+                            <input
+                              type="number" inputMode="decimal" placeholder="0"
+                              value={rmUsed}
+                              onChange={e => { setRmUsed(e.target.value); setRmReceived(''); setRmCanQty(''); }}
+                              className="w-36 bg-white border border-rose-300 rounded-xl px-3 py-2 text-sm font-black outline-none focus:border-rose-500 text-center"
+                            />
+                            <span className="ml-2 text-sm font-bold text-rose-500">{canUnit}</span>
+                          </div>
+                        ) : (
                           <>
                             <div className="flex items-center justify-between">
                               <label className={`text-[10px] font-black uppercase tracking-widest ${rmCanMode === 'used' ? 'text-rose-500' : 'text-amber-600'}`}>
@@ -1373,9 +1389,7 @@ const ProductList: React.FC<ProductListProps> = ({
                             </div>
                             <div className="flex items-center gap-2">
                               <input
-                                type="number"
-                                inputMode="numeric"
-                                placeholder="개수"
+                                type="number" inputMode="numeric" placeholder="개수"
                                 value={rmCanQty}
                                 onChange={e => {
                                   setRmCanQty(e.target.value);
@@ -1389,7 +1403,7 @@ const ProductList: React.FC<ProductListProps> = ({
                               <span className={`text-sm font-bold ${rmCanMode === 'used' ? 'text-rose-500' : 'text-amber-600'}`}>개</span>
                             </div>
                           </>
-                        )}
+                        ))}
                         {canSizes.length > 1 && !kgPerCan && (
                           <p className={`text-xs font-bold ${rmCanMode === 'used' ? 'text-rose-400' : 'text-amber-500'}`}>위에서 단위를 선택하세요.</p>
                         )}
@@ -1563,9 +1577,10 @@ const ProductList: React.FC<ProductListProps> = ({
                   {(() => {
                     type CanOpt = { size: number; tag?: string };
                     const ST_CAN: Record<string, CanOpt[]> = {
-                      '참깨': [{ size: 25 }, { size: 500, tag: '톤백' }],
+                      '참깨': [{ size: 25 }, { size: 1000, tag: '톤백' }],
                       '깨분참기름': [{ size: 16.5 }, { size: 18 }],
                       '수입들기름': [{ size: 16.5 }, { size: 18 }],
+                      '생들기름': [{ size: 16.5 }, { size: 18 }],
                       '들깨': [{ size: 25 }],
                       '검정깨': [{ size: 10 }, { size: 20 }],
                       '탈피들깨가루': [{ size: 20 }],
@@ -1576,7 +1591,7 @@ const ProductList: React.FC<ProductListProps> = ({
                       '통깨참기름': [{ size: 16.5 }, { size: 18 }],
                       '통들깨들기름': [{ size: 16.5 }, { size: 18 }],
                     };
-                    const OIL_SET2 = new Set(['통깨참기름', '깨분참기름', '통들깨들기름', '수입들기름']);
+                    const OIL_SET2 = new Set(['통깨참기름', '깨분참기름', '통들깨들기름', '수입들기름', '생들기름']);
                     return (
                   <table className="w-full text-left">
                     <thead className="sticky top-0 bg-white">
@@ -1667,10 +1682,23 @@ const ProductList: React.FC<ProductListProps> = ({
                 </div>
                 <div className="px-6 py-4 border-t border-slate-100 shrink-0">
                   {(() => {
+                    const ST_CAN2: Record<string, { size: number; tag?: string }[]> = {
+                      '참깨': [{ size: 25 }, { size: 1000, tag: '톤백' }],
+                      '깨분참기름': [{ size: 16.5 }, { size: 18 }], '수입들기름': [{ size: 16.5 }, { size: 18 }],
+                      '생들기름': [{ size: 16.5 }, { size: 18 }], '들깨': [{ size: 25 }],
+                      '검정깨': [{ size: 10 }, { size: 20 }], '탈피들깨가루': [{ size: 20 }],
+                      '깨분': [{ size: 16.5 }], '볶음참깨': [{ size: 10 }, { size: 20 }, { size: 20, tag: '자루' }],
+                      '볶음검정참깨': [{ size: 10 }, { size: 20 }, { size: 20, tag: '자루' }],
+                      '볶음들깨': [{ size: 25 }], '통깨참기름': [{ size: 16.5 }, { size: 18 }],
+                      '통들깨들기름': [{ size: 16.5 }, { size: 18 }],
+                    };
                     const hasDiff = RAW_MATERIALS.some(m => {
                       const book = rawMaterialBalances[m] ?? 0;
                       const actual = stocktakeValues[m] !== undefined && stocktakeValues[m] !== '' ? Number(stocktakeValues[m]) : null;
-                      return actual !== null && Math.round((actual - book) * 1000) / 1000 !== 0;
+                      if (actual !== null && Math.round((actual - book) * 1000) / 1000 !== 0) return true;
+                      const opts = ST_CAN2[m];
+                      if (opts) return opts.some(opt => stocktakeUnitQtys[`${m}_${opt.size}_${opt.tag ?? ''}`] !== undefined);
+                      return false;
                     });
                     return (
                       <button
@@ -1679,21 +1707,48 @@ const ProductList: React.FC<ProductListProps> = ({
                           for (const m of RAW_MATERIALS) {
                             const book = rawMaterialBalances[m] ?? 0;
                             const actualStr = stocktakeValues[m];
-                            if (actualStr === undefined || actualStr === '') continue;
-                            const actual = Number(actualStr);
-                            const diff = Math.round((actual - book) * 1000) / 1000;
-                            if (diff === 0) continue;
-                            onAddRawMaterialEntry({
-                              id: `rm-stocktake-${m}-${Date.now()}`,
-                              material: m,
-                              date: stocktakeDate,
-                              received: diff > 0 ? diff : 0,
-                              used: diff < 0 ? -diff : 0,
-                              note: '재고실사정정',
-                              createdAt: new Date().toISOString(),
-                              addedBy: currentUser?.name,
-                              type: 'manual',
-                            });
+                            // 차이가 있으면 정정 항목 저장
+                            if (actualStr !== undefined && actualStr !== '') {
+                              const actual = Number(actualStr);
+                              const diff = Math.round((actual - book) * 1000) / 1000;
+                              if (diff !== 0) {
+                                onAddRawMaterialEntry({
+                                  id: `rm-stocktake-${m}-${Date.now()}`,
+                                  material: m,
+                                  date: stocktakeDate,
+                                  received: diff > 0 ? diff : 0,
+                                  used: diff < 0 ? -diff : 0,
+                                  note: '재고실사정정',
+                                  createdAt: new Date().toISOString(),
+                                  addedBy: currentUser?.name,
+                                  type: 'manual',
+                                });
+                              }
+                            }
+                            // 단위 수량 입력이 있으면 stocktake_unit 스냅샷 저장
+                            const opts = ST_CAN2[m];
+                            if (!opts) continue;
+                            const hasUnitEntry = opts.some(opt => stocktakeUnitQtys[`${m}_${opt.size}_${opt.tag ?? ''}`] !== undefined);
+                            if (!hasUnitEntry) continue;
+                            const ts = Date.now();
+                            for (const opt of opts) {
+                              const key = `${m}_${opt.size}_${opt.tag ?? ''}`;
+                              const qty = Number(stocktakeUnitQtys[key] ?? 0);
+                              onAddRawMaterialEntry({
+                                id: `rm-stku-${ts}-${m}-${opt.size}-${opt.tag ?? ''}`,
+                                material: m,
+                                date: stocktakeDate,
+                                received: 0,
+                                used: 0,
+                                note: '재고실사단위현황',
+                                createdAt: new Date().toISOString(),
+                                addedBy: currentUser?.name,
+                                type: 'stocktake_unit',
+                                canSize: opt.size,
+                                canSizeTag: opt.tag,
+                                canCount: qty,
+                              });
+                            }
                           }
                           setShowStocktake(false);
                           setStocktakeValues({});
@@ -1745,17 +1800,23 @@ const ProductList: React.FC<ProductListProps> = ({
 
           {/* 단위별 현황 — 특정 원료 선택 시 표시 */}
           {rmFilter !== '전체' && (() => {
-            const OIL_SET = new Set(['통깨참기름', '깨분참기름', '통들깨들기름', '수입들기름']);
+            const OIL_SET = new Set(['통깨참기름', '깨분참기름', '통들깨들기름', '수입들기름', '생들기름']);
             const unitMap = new Map<string, { size: number; tag?: string; netCount: number; netKg: number }>();
-            rawMaterialLedger
-              .filter(e => e.material === rmFilter && e.canSize && e.canCount)
-              .forEach(e => {
-                const key = `${e.canSize}_${e.canSizeTag ?? ''}`;
-                if (!unitMap.has(key)) unitMap.set(key, { size: e.canSize!, tag: e.canSizeTag, netCount: 0, netKg: 0 });
-                const u = unitMap.get(key)!;
+            const sortedForUnit = rawMaterialLedger
+              .filter(e => e.material === rmFilter && e.canSize != null && e.canCount != null)
+              .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt));
+            for (const e of sortedForUnit) {
+              const key = `${e.canSize}_${e.canSizeTag ?? ''}`;
+              if (!unitMap.has(key)) unitMap.set(key, { size: e.canSize!, tag: e.canSizeTag, netCount: 0, netKg: 0 });
+              const u = unitMap.get(key)!;
+              if (e.type === 'stocktake_unit') {
+                u.netCount = e.canCount!;
+                u.netKg = Math.round(e.canCount! * e.canSize! * 10) / 10;
+              } else {
                 if (e.received > 0) { u.netCount += e.canCount!; u.netKg += e.received; }
                 if (e.used > 0)     { u.netCount -= e.canCount!; u.netKg -= e.used; }
-              });
+              }
+            }
             const visible = Array.from(unitMap.values()).filter(u => u.netCount !== 0).sort((a, b) => a.size - b.size || (a.tag ?? '').localeCompare(b.tag ?? ''));
             if (visible.length === 0) return null;
             const unit = OIL_SET.has(rmFilter) ? 'L' : 'kg';
@@ -1872,7 +1933,7 @@ const ProductList: React.FC<ProductListProps> = ({
                     .map(e => ({ id: e.id, material: e.material, date: e.date, received: e.received, used: e.used, note: e.note, isAuto: false, addedBy: e.addedBy }));
                   const toMergeEntries: DisplayEntry[] = [
                     ...ledgerFiltered
-                      .filter(e => e.type !== 'manual')
+                      .filter(e => e.type !== 'manual' && e.type !== 'stocktake_unit')
                       .map(e => ({ id: e.id, material: e.material, date: e.date, received: e.received, used: e.used, note: e.note, isAuto: false, addedBy: e.addedBy })),
                     ...(rmFilter === '전체' ? autoUsageEntries : autoUsageEntries.filter(e => e.material === rmFilter))
                       .filter(e => e.date.startsWith(rmMonth))
@@ -1903,7 +1964,7 @@ const ProductList: React.FC<ProductListProps> = ({
                     const prevLedger = rawMaterialLedger.filter(e => e.material === mat && e.date < rmMonth);
                     const prevAuto = autoUsageEntries.filter(e => e.material === mat && e.date < rmMonth);
                     const prevToMerge = [
-                      ...prevLedger.filter(e => e.type !== 'manual').map(e => ({ date: e.date, received: e.received, used: e.used, note: e.note })),
+                      ...prevLedger.filter(e => e.type !== 'manual' && e.type !== 'stocktake_unit').map(e => ({ date: e.date, received: e.received, used: e.used, note: e.note })),
                       ...prevAuto.map(e => ({ date: e.date, received: 0, used: e.used, note: e.note })),
                     ];
                     const prevMerged = Object.values(prevToMerge.reduce<Record<string, { date: string; received: number; used: number; note: string }>>((acc, e) => {

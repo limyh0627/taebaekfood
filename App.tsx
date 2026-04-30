@@ -1077,7 +1077,7 @@ const App: React.FC = () => {
                   '검정깨': { product: '볶음검정참깨', rate: 0.95 },
                   // 참깨→볶음참깨(0.95), 들깨→볶음들깨(0.95): 직접 볶는 경우 수동 입력
                 };
-                if (entry.used > 0 && YIELD_AUTO[entry.material]) {
+                if (entry.used > 0 && YIELD_AUTO[entry.material] && entry.note !== '재고실사정정') {
                   const { product, rate } = YIELD_AUTO[entry.material];
                   await addItem('rawMaterialLedger', {
                     id: `rm-yield-${Date.now()}`,

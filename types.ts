@@ -364,7 +364,7 @@ export interface RawMaterialEntry {
   note: string;      // 비고
   createdAt: string;
   addedBy?: string;  // 작성자
-  type?: 'auto' | 'manual' | 'correction'; // auto: 주문 자동생성, manual: 직접입력, correction: 정정
+  type?: 'auto' | 'manual' | 'correction' | 'stocktake_unit'; // auto: 주문 자동생성, manual: 직접입력, correction: 정정, stocktake_unit: 재고실사 단위현황 스냅샷
   orderId?: string;  // auto 타입일 때 출처 주문 ID
   canSize?: number;     // 단위당 kg/L (입고 시 단위 선택한 경우)
   canSizeTag?: string;  // 단위 추가 레이블 (예: '자루', '톤백')
