@@ -7,7 +7,7 @@ import {
   ChevronLeft
 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
-import { Order, Product, Client, ProductClient, ProductSupplier, OrderStatus, IssuedStatement, CompanyInfo } from '../types';
+import { Order, Product, Client, ProductClient, ProductSupplier, OrderStatus, IssuedStatement, CompanyInfo, PaymentRecord } from '../types';
 import PageHeader from './PageHeader';
 
 interface TradeStatementProps {
@@ -156,6 +156,33 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // 현재 전표 세션에서 이미 issuedStatement에 저장했는지 추적 (인쇄 중복 방지)
   const hasIssuedRef = useRef(false);
+
+  // ── 지불/수불 처리 모달 ──
+  const [payTarget, setPayTarget] = useState<IssuedStatement | null>(null);
+  const [payForm, setPayForm] = useState<{ amount: string; date: string; method: PaymentRecord['method']; note: string }>({
+    amount: '', date: new Date().toISOString().slice(0, 10), method: '계좌이체', note: '',
+  });
+
+  const getPaid = (s: IssuedStatement) => (s.payments ?? []).reduce((a, p) => a + p.amount, 0);
+  const getBalance = (s: IssuedStatement) => s.totalAmount - getPaid(s);
+
+  const openPayModal = (stmt: IssuedStatement) => {
+    setPayTarget(stmt);
+    setPayForm({ amount: String(getBalance(stmt)), date: new Date().toISOString().slice(0, 10), method: '계좌이체', note: '' });
+  };
+
+  const savePayment = () => {
+    if (!payTarget || !payForm.amount) return;
+    const newPayment: PaymentRecord = {
+      id: Date.now().toString(),
+      amount: Number(payForm.amount),
+      date: payForm.date,
+      method: payForm.method,
+      ...(payForm.note.trim() ? { note: payForm.note.trim() } : {}),
+    };
+    onUpdateIssuedStatement?.(payTarget.id, { payments: [...(payTarget.payments ?? []), newPayment] });
+    setPayTarget(null);
+  };
 
   // ── 메인 탭 ──
   const [mainTab, setMainTab] = useState<'history' | 'prices' | 'taxinvoice'>('history');
@@ -1961,9 +1988,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 <th className="px-4 py-3 text-[10px] font-black text-slate-400 whitespace-nowrap">전표일자</th>
                 <th className="px-4 py-3 text-[10px] font-black text-slate-400 whitespace-nowrap">구분</th>
                 <th className="px-4 py-3 text-[10px] font-black text-slate-400">업체명</th>
-                <th className="px-4 py-3 text-[10px] font-black text-slate-400 text-right whitespace-nowrap">공급가액</th>
-                <th className="px-4 py-3 text-[10px] font-black text-slate-400 text-right whitespace-nowrap">세액</th>
                 <th className="px-4 py-3 text-[10px] font-black text-slate-400 text-right whitespace-nowrap">합계</th>
+                <th className="px-4 py-3 text-[10px] font-black text-slate-400 text-right whitespace-nowrap">잔액</th>
                 <th className="px-4 py-3 text-[10px] font-black text-slate-400">거래내역</th>
                 <th className="px-4 py-3"/>
               </tr>
@@ -1987,12 +2013,28 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       </div>
                     </td>
                     <td className="px-4 py-3 text-xs font-bold text-slate-800">{stmt.clientName}</td>
-                    <td className="px-4 py-3 text-xs text-right text-slate-600">{fmt(stmt.totalSupply)}</td>
-                    <td className="px-4 py-3 text-xs text-right text-slate-600">{fmt(stmt.totalTax)}</td>
                     <td className={`px-4 py-3 text-xs text-right font-black ${isReturn ? 'text-rose-600' : 'text-slate-800'}`}>{fmt(stmt.totalAmount)}</td>
+                    <td className="px-4 py-3 text-xs text-right">
+                      {(() => {
+                        const bal = getBalance(stmt);
+                        return bal > 0
+                          ? <span className="font-black text-rose-600">{fmt(bal)}</span>
+                          : <span className="text-emerald-500 font-black">완납</span>;
+                      })()}
+                    </td>
                     <td className="px-4 py-3 text-[11px] text-slate-400 max-w-[180px] truncate">{summary}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
+                        {getBalance(stmt) > 0 && (
+                          <button onClick={e=>{e.stopPropagation();openPayModal(stmt);}}
+                            className={`text-[10px] font-black px-2 py-1 rounded-lg transition-all flex items-center gap-1 ${
+                              stmt.type === '매입'
+                                ? 'bg-rose-50 text-rose-600 hover:bg-rose-100'
+                                : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                            }`}>
+                            <Save size={10}/>{stmt.type === '매입' ? '지불처리' : '수불처리'}
+                          </button>
+                        )}
                         <button onClick={e=>{e.stopPropagation();handleDetailPrint(stmt);}}
                           className="text-[10px] font-black px-2 py-1 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg transition-all flex items-center gap-1">
                           <Printer size={10}/>인쇄
@@ -2010,6 +2052,64 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           </table>
         )}
       </div>
+
+      {/* ── 지불/수불 처리 모달 ── */}
+      {payTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+          onClick={() => setPayTarget(null)}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4"
+            onClick={e => e.stopPropagation()}>
+            <h3 className="text-sm font-black text-slate-800">
+              {payTarget.type === '매입' ? '지불처리 — 미지급금 감소' : '수불처리 — 미수금 감소'}
+            </h3>
+            <div className="text-xs text-slate-400">{payTarget.clientName} · {payTarget.tradeDate}</div>
+            <div className="bg-slate-50 rounded-xl px-4 py-3 text-xs text-center">
+              <span className="text-slate-500">잔여 {payTarget.type === '매입' ? '미지급금' : '미수금'} </span>
+              <span className="font-black text-rose-600 text-base">{fmt(getBalance(payTarget))}원</span>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">금액</label>
+                <input type="number" value={payForm.amount}
+                  onChange={e => setPayForm(p => ({ ...p, amount: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">일자</label>
+                <input type="date" value={payForm.date}
+                  onChange={e => setPayForm(p => ({ ...p, date: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">결제 방법</label>
+                <div className="flex gap-1.5 flex-wrap">
+                  {(['현금', '계좌이체', '어음', '카드', '기타'] as PaymentRecord['method'][]).map(m => (
+                    <button key={String(m)} onClick={() => setPayForm(p => ({ ...p, method: m }))}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black border transition-all ${payForm.method === m ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">비고</label>
+                <input type="text" placeholder="예: 1차 분할" value={payForm.note}
+                  onChange={e => setPayForm(p => ({ ...p, note: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setPayTarget(null)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
+              <button onClick={savePayment}
+                disabled={!payForm.amount || Number(payForm.amount) <= 0}
+                className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center gap-1.5">
+                <Save size={12}/>저장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 발행내역 상세 모달 ── */}
       {detailStmt && (

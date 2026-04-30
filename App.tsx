@@ -823,12 +823,11 @@ const App: React.FC = () => {
               <div>
                 {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">분석 및 관리자</p>}
                 <nav className="space-y-1">
-                  <NavItem icon={LayoutDashboard} label="비즈니스 대시보드" active={currentView === 'dashboard'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} />
-                  <NavItem icon={Sparkles} label="AI 인사이트" active={currentView === 'ai-consultant'} onClick={() => handleNavClick('ai-consultant')} collapsed={isSidebarCollapsed} />
-                  <NavItem icon={UserCheck} label="인사/연차 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} />
-                  <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
+                  <NavItem icon={LayoutDashboard} label="비즈니스 대시보드" active={currentView === 'dashboard' || currentView === 'ai-consultant'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} />
                   <NavItem icon={FileText} label="거래명세서" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} />
                   <NavItem icon={BarChart2} label="손익/비용 관리" active={currentView === 'profit-analysis' || currentView === 'cost-management'} onClick={() => handleNavClick('profit-analysis')} collapsed={isSidebarCollapsed} />
+                  <NavItem icon={UserCheck} label="인사관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} />
+                  <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
                   <NavItem icon={Factory} label="생산 실적" active={currentView === 'production'} onClick={() => handleNavClick('production')} collapsed={isSidebarCollapsed} />
                 </nav>
               </div>
@@ -902,34 +901,37 @@ const App: React.FC = () => {
             </div>
           ) : (
           <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'clients', 'notice', 'pallets', 'confirmation-items', 'shipping', 'production'].includes(currentView)) ? '' : 'min-w-[720px] md:min-w-0 h-full'}>
-          {currentView === 'dashboard' && <div className="h-full overflow-y-auto">
-            <Dashboard
-              orders={orders}
-              products={allProducts}
-              clients={clients}
-              onNavigate={handleNavClick}
-              onCreatePurchaseOrder={(supplierId, supplierName, items) => {
-                setPendingInvoice({ supplierId, supplierName, items });
-                handleNavClick('trade-statement');
-              }}
-            />
-            {isAdmin && (
-              <div className="p-6 border-t border-slate-100">
-                <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">BOM 관리</p>
-                <div className="flex gap-3 flex-wrap">
-                  <div className="bg-slate-50 rounded-xl p-4 text-sm">
-                    <p className="font-bold text-slate-600 mb-1">item_bom 현황</p>
-                    <p className="text-slate-400">Firestore: <span className="font-black text-slate-800">{itemBoms.length}개</span></p>
-                    <p className="text-slate-400">하드코딩: <span className="font-black text-slate-800">{Object.values(PRODUCT_FORMULA).flat().length}개</span></p>
-                  </div>
-                  <button onClick={seedItemBoms}
-                    className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-black hover:bg-indigo-700 self-start">
-                    PRODUCT_FORMULA → item_bom 시딩
+          {(currentView === 'dashboard' || currentView === 'ai-consultant') && (
+            <div className="h-full flex flex-col overflow-hidden">
+              <div className="flex items-center gap-1 px-6 pt-5 pb-0 shrink-0">
+                <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+                  <button
+                    onClick={() => handleNavClick('dashboard')}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${currentView === 'dashboard' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    <LayoutDashboard size={13} />비즈니스 현황
+                  </button>
+                  <button
+                    onClick={() => handleNavClick('ai-consultant')}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${currentView === 'ai-consultant' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    <Sparkles size={13} />AI 인사이트
                   </button>
                 </div>
               </div>
-            )}
-          </div>}
+              <div className="flex-1 overflow-y-auto">
+                {currentView === 'dashboard' && (
+                  <div className="flex flex-col items-center justify-center h-full text-slate-300">
+                    <LayoutDashboard size={48} className="mb-4 opacity-30" />
+                    <p className="text-sm font-black">준비 중입니다</p>
+                  </div>
+                )}
+                {currentView === 'ai-consultant' && (
+                  <AIConsultant orders={orders} products={allProducts} />
+                )}
+              </div>
+            </div>
+          )}
           {currentView === 'shipping' && (
             <DeliveryManager
               orders={orders}
@@ -1091,7 +1093,6 @@ const App: React.FC = () => {
               onDeleteRawMaterialEntry={(id) => deleteItem('rawMaterialLedger', id)}
             />
           )}
-          {currentView === 'ai-consultant' && <AIConsultant orders={orders} products={allProducts} />}
           {currentView === 'clients' && <ClientManager clients={clients} onUpdateClient={(c) => updateItem('clients', c.id, c)} onAddClient={(c) => addItem('clients', c)} onDeleteClient={(id) => deleteItem('clients', id)} />}
           {currentView === 'database' && (
             <div className="space-y-6">
@@ -2589,6 +2590,7 @@ const App: React.FC = () => {
                 }}
                 onDeleteCost={(id) => deleteItem('fixedCosts', id)}
                 clients={clients}
+                products={allProducts}
                 onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
               />
             </div>
