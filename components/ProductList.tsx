@@ -1096,7 +1096,9 @@ const ProductList: React.FC<ProductListProps> = ({
                           {stmt.items.map((item, i) => (
                             <div key={i} className="flex items-center justify-between text-xs px-1">
                               <span className="font-bold text-slate-700">{item.name}{item.spec ? ` (${item.spec})` : ''}</span>
-                              <span className="text-slate-500 font-black">{item.qty.toLocaleString()}개</span>
+                              <span className="text-slate-500 font-black">
+                                {(item as any).isBoxUnit ? `${item.qty}BOX(${item.qty*(item as any).boxSize||item.qty*12}개)` : `${item.qty.toLocaleString()}개`}
+                              </span>
                             </div>
                           ))}
                         </div>

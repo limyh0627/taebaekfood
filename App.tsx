@@ -1043,7 +1043,20 @@ const App: React.FC = () => {
               currentUser={currentUser}
               isAdmin={isAdmin}
               issuedStatements={issuedStatements}
-              onMarkStatementReceived={(id) => updateItem('issuedStatements', id, { receivedAt: new Date().toISOString() })}
+              onMarkStatementReceived={async (id) => {
+                const stmt = issuedStatements.find(s => s.id === id);
+                if (stmt && stmt.type === '매입') {
+                  for (const item of stmt.items) {
+                    const product = allProducts.find(p => p.name === item.name);
+                    if (product) {
+                      const col = getProductCollection(product.category);
+                      const addQty = item.isBoxUnit ? item.qty * (item.boxSize || 12) : item.qty;
+                      await updateItem(col, product.id, { stock: product.stock + addQty });
+                    }
+                  }
+                }
+                await updateItem('issuedStatements', id, { receivedAt: new Date().toISOString() });
+              }}
               onRequestPurchaseInvoice={(supplierId, supplierName, items) => {
                 setPendingInvoice({ supplierId, supplierName, items });
                 setCurrentView('trade-statement');
