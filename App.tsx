@@ -2,11 +2,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { 
-  LayoutDashboard, 
-  ShoppingCart, 
-  Package, 
-  Sparkles, 
-  Menu, 
+  LayoutDashboard,
+  ShoppingCart,
+  Package,
+  Sparkles,
+  Menu,
   Search,
   Truck,
   Users,
@@ -29,7 +29,8 @@ import {
   FileText,
   Wallet,
   BarChart2,
-  Factory
+  Factory,
+  ClipboardList,
 } from 'lucide-react';
 import { Order, Product, ProductClient, ProductSupplier, ViewType, OrderStatus, Client, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord } from './types';
 import Dashboard from './components/Dashboard';
@@ -56,6 +57,7 @@ import OfficeTalk from './components/OfficeTalk';
 import CostManager from './components/CostManager';
 import ProfitAnalysis from './components/ProfitAnalysis';
 import ProductionManager from './components/ProductionManager';
+import AdminChecklist from './components/AdminChecklist';
 import ExcelJS from 'exceljs';
 
 import { db } from './src/firebase';
@@ -686,7 +688,7 @@ const App: React.FC = () => {
   };
 
   const handleNavClick = (view: ViewType) => {
-    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant', 'cost-management', 'profit-analysis', 'production'];
+    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant', 'cost-management', 'profit-analysis', 'production', 'admin-checklist'];
     if (adminOnlyViews.includes(view) && !isAdminAuthenticated && !isAdmin) {
       setPendingAdminView(view);
       setIsAdminAuthModalOpen(true);
@@ -819,19 +821,25 @@ const App: React.FC = () => {
               </nav>
             </div>
 
-            {isAdmin && (
-              <div>
-                {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">분석 및 관리자</p>}
-                <nav className="space-y-1">
-                  <NavItem icon={LayoutDashboard} label="비즈니스 대시보드" active={currentView === 'dashboard' || currentView === 'ai-consultant'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} />
-                  <NavItem icon={FileText} label="거래명세서" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} />
-                  <NavItem icon={BarChart2} label="손익/비용 관리" active={currentView === 'profit-analysis' || currentView === 'cost-management'} onClick={() => handleNavClick('profit-analysis')} collapsed={isSidebarCollapsed} />
-                  <NavItem icon={UserCheck} label="인사관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} />
-                  <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
-                  <NavItem icon={Factory} label="생산 실적" active={currentView === 'production'} onClick={() => handleNavClick('production')} collapsed={isSidebarCollapsed} />
-                </nav>
-              </div>
-            )}
+            {isAdmin && (() => {
+              const adminPendingCount =
+                leaveRequests.filter(r => r.status === 'pending' || r.status === 'cancel_pending' || r.modifyRequest?.status === 'pending').length +
+                adjustmentRequests.filter(r => r.status === 'pending').length;
+              return (
+                <div>
+                  {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">분석 및 관리자</p>}
+                  <nav className="space-y-1">
+                    <NavItem icon={ClipboardList} label="확인사항" active={currentView === 'admin-checklist'} onClick={() => handleNavClick('admin-checklist')} collapsed={isSidebarCollapsed} badge={adminPendingCount > 0 ? adminPendingCount : undefined} />
+                    <NavItem icon={LayoutDashboard} label="비즈니스 대시보드" active={currentView === 'dashboard' || currentView === 'ai-consultant'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} />
+                    <NavItem icon={FileText} label="거래명세서" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} />
+                    <NavItem icon={BarChart2} label="손익/비용 관리" active={currentView === 'profit-analysis' || currentView === 'cost-management'} onClick={() => handleNavClick('profit-analysis')} collapsed={isSidebarCollapsed} />
+                    <NavItem icon={UserCheck} label="인사관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} />
+                    <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
+                    <NavItem icon={Factory} label="생산 실적" active={currentView === 'production'} onClick={() => handleNavClick('production')} collapsed={isSidebarCollapsed} />
+                  </nav>
+                </div>
+              );
+            })()}
 
             <div>
               {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">외부 서비스</p>}
@@ -1145,6 +1153,34 @@ const App: React.FC = () => {
               onUpdateLeaveStatus={(id, status) => updateItem('leaveRequests', id, { status })}
               onUpdateLeave={(id, updates) => updateItem('leaveRequests', id, updates)}
               onDeleteLeaveRequest={(id) => deleteItem('leaveRequests', id)}
+            />
+          )}
+          {currentView === 'admin-checklist' && (
+            <AdminChecklist
+              leaveRequests={leaveRequests}
+              adjustmentRequests={adjustmentRequests}
+              employees={employees}
+              onUpdateLeaveStatus={(id, status) => {
+                if (status === 'approved') {
+                  const req = leaveRequests.find(r => r.id === id);
+                  if (req?.status === 'cancel_pending') {
+                    updateItem('leaveRequests', id, { status: 'cancelled' });
+                  } else {
+                    updateItem('leaveRequests', id, { status: 'approved' });
+                  }
+                } else {
+                  updateItem('leaveRequests', id, { status: 'rejected' });
+                }
+              }}
+              onUpdateAdjustmentStatus={(id, status) => updateItem('adjustmentRequests', id, { status, processedAt: new Date().toISOString() })}
+              onProcessAdjustment={async (req) => {
+                const product = allProducts.find(p => p.id === req.productId);
+                if (req.type === 'quantity_change' && product && req.requestedQuantity !== undefined) {
+                  const collectionName = product.category === '향미유' || product.category === '고춧가루' || product.category === '용기' || product.category === '마개' || product.category === '테이프' || product.category === '박스' || product.category === '라벨' ? 'submaterials' : 'products';
+                  await updateItem(collectionName, req.productId, { stock: req.requestedQuantity });
+                }
+                await updateItem('adjustmentRequests', req.id, { status: 'processed', processedAt: new Date().toISOString() });
+              }}
             />
           )}
           {currentView === 'documents' && (() => {
@@ -2637,7 +2673,20 @@ const App: React.FC = () => {
               currentUser={currentUser}
               employees={employees}
               leaveRequests={leaveRequests}
-              onAddLeaveRequest={(req) => addItem('leaveRequests', req)}
+              onAddLeaveRequest={async (req) => {
+                await addItem('leaveRequests', req);
+                const admin = employees.find(e => e.id === 'admin');
+                await addItem('notifications', {
+                  type: 'leave_request',
+                  title: '신규 연차 신청',
+                  body: `${req.employeeName}님이 ${req.type} (${req.startDate}${req.startDate !== req.endDate ? ` ~ ${req.endDate}` : ''}, ${req.daysUsed}일)을 신청했습니다.`,
+                  readBy: [],
+                  createdAt: new Date().toISOString(),
+                  senderId: req.employeeId,
+                  targetId: admin?.id ?? 'admin',
+                  linkedId: req.id,
+                } as Omit<AppNotification, 'id'>);
+              }}
               onUpdateLeaveStatus={(id, status) => updateItem('leaveRequests', id, { status })}
               onUpdateLeave={(id, updates) => updateItem('leaveRequests', id, updates)}
             />
@@ -2841,6 +2890,8 @@ const App: React.FC = () => {
             } else if (n.type === 'mention' && n.linkedId) {
               setCurrentView('officetalk');
               setOpenChatRoomId(n.linkedId);
+            } else if (n.type === 'leave_request' || n.type === 'confirmation') {
+              if (isAdmin || isAdminAuthenticated) setCurrentView('admin-checklist');
             }
           };
 
@@ -2864,7 +2915,7 @@ const App: React.FC = () => {
                   </p>
                   <p className="text-[9px] text-slate-300 mt-1">{new Date(n.createdAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
                 </div>
-                {(n.type === 'new_order' || n.type === 'mention') && (
+                {(n.type === 'new_order' || n.type === 'mention' || n.type === 'leave_request' || n.type === 'confirmation') && (
                   <span className="text-[9px] text-indigo-400 font-bold shrink-0 mt-0.5">바로가기 →</span>
                 )}
               </div>
