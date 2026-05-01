@@ -341,6 +341,7 @@ export interface CompanyInfo {
   phone?: string;         // 전화번호
   fax?: string;           // 팩스번호
   email?: string;         // 이메일
+  adminPassword?: string; // 관리자 인증 비밀번호 (기본값: '0000')
 }
 
 export interface AppNotification {

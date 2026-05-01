@@ -5,15 +5,16 @@ import { Lock, ShieldCheck, AlertCircle } from 'lucide-react';
 interface AdminAuthModalProps {
   onClose: () => void;
   onSuccess: () => void;
+  correctPassword?: string; // Firestore settings/company.adminPassword 에서 전달. 없으면 기본값 '0000'
 }
 
-const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ onClose, onSuccess }) => {
+const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ onClose, onSuccess, correctPassword = '0000' }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === '0000') {
+    if (password === correctPassword) {
       onSuccess();
     } else {
       setError(true);

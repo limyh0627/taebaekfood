@@ -4,7 +4,7 @@ import {
   PalletStock, PalletTransaction, Employee, LeaveRequest,
   AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry,
   AppNotification, OrderStatus, IssuedStatement,
-  ItemBom, ItemCustomer, FixedCostEntry, CompanyInfo, ProductionRecord,
+  ItemBom, ItemCustomer, CompanyInfo,
 } from '../../types';
 import { subscribeToCollection, subscribeToDocument } from '../services/firebaseService';
 
@@ -55,14 +55,11 @@ export interface AppData {
   // BOM
   itemBoms: ItemBom[];
   itemCustomers: ItemCustomer[];
-  // 비용관리
-  fixedCosts: FixedCostEntry[];
   // 회사 정보
   companyInfo: CompanyInfo | null;
-  // 생산 실적
-  productionRecords: ProductionRecord[];
   // 로딩 상태
   isDataLoading: boolean;
+  // ※ fixedCosts, productionRecords 는 useAdminData 훅에서 별도 관리
 }
 
 export function useAppData(): AppData {
@@ -89,9 +86,7 @@ export function useAppData(): AppData {
   const [issuedStatements, setIssuedStatements] = useState<IssuedStatement[]>([]);
   const [itemBoms, setItemBoms] = useState<ItemBom[]>([]);
   const [itemCustomers, setItemCustomers] = useState<ItemCustomer[]>([]);
-  const [fixedCosts, setFixedCosts] = useState<FixedCostEntry[]>([]);
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
-  const [productionRecords, setProductionRecords] = useState<ProductionRecord[]>([]);
   const [isDataLoading, setIsDataLoading] = useState(true);
   const loadedRef = useRef(new Set<string>());
 
@@ -127,8 +122,6 @@ export function useAppData(): AppData {
       subscribeToCollection<IssuedStatement>('issuedStatements', setIssuedStatements),
       subscribeToCollection<ItemBom>('item_bom', setItemBoms),
       subscribeToCollection<ItemCustomer>('item_customer', setItemCustomers),
-      subscribeToCollection<FixedCostEntry>('fixedCosts', setFixedCosts),
-      subscribeToCollection<ProductionRecord>('productionRecords', setProductionRecords),
       subscribeToDocument<CompanyInfo>('settings', 'company', setCompanyInfo),
     ];
     return () => unsubscribes.forEach(u => u());
@@ -146,9 +139,7 @@ export function useAppData(): AppData {
     issuedStatements,
     itemBoms,
     itemCustomers,
-    fixedCosts,
     companyInfo,
-    productionRecords,
     isDataLoading,
   };
 }

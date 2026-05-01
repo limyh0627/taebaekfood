@@ -1894,12 +1894,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             </div>
             <div className="px-6 py-5 space-y-3">
               {([
-                { key: 'name', label: '상호 (회사명)', placeholder: '태백식품' },
+                { key: 'name', label: '상호 (회사명)', placeholder: '(주)회사명' },
                 { key: 'bizNo', label: '사업자등록번호', placeholder: '000-00-00000' },
                 { key: 'ceoName', label: '대표자명', placeholder: '홍길동' },
                 { key: 'address', label: '사업장 주소', placeholder: '경기도 ...' },
                 { key: 'bizType', label: '업태', placeholder: '제조업' },
-                { key: 'bizItem', label: '종목', placeholder: '참기름, 들기름' },
+                { key: 'bizItem', label: '종목', placeholder: '식품 제조·판매' },
                 { key: 'phone', label: '전화번호', placeholder: '031-000-0000' },
                 { key: 'fax', label: '팩스번호', placeholder: '031-000-0000' },
                 { key: 'email', label: '이메일', placeholder: 'info@company.com' },
