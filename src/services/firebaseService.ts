@@ -1,3 +1,8 @@
+/**
+ * @shared-move  shared/src/services/firebaseService.ts
+ * Firebase CRUD 공통 서비스 — 직원 앱·관리자 앱 양쪽에서 동일하게 사용합니다.
+ * Phase 2 분리 시 shared/ 로 이동하고 각 앱에서 import합니다.
+ */
 import {
   collection,
   onSnapshot,

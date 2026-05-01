@@ -1,3 +1,9 @@
+/**
+ * @shared-move  shared/src/hooks/useAppData.ts  (직원 공통 데이터)
+ * 직원 앱에서 필요한 Firebase 실시간 구독 훅입니다.
+ * Phase 2 분리 시 직원 앱 전용으로 이동합니다.
+ * 관리자 전용 데이터는 useAdminData 훅을 참고하세요.
+ */
 import { useState, useEffect, useRef } from 'react';
 import {
   Order, Product, Client, ProductClient, ProductSupplier, Post,

@@ -1,4 +1,7 @@
-
+/**
+ * @shared-move  shared/components/ConfirmModal.tsx
+ * 직원 앱·관리자 앱 모두 사용하는 공통 확인 다이얼로그 컴포넌트
+ */
 import React from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 

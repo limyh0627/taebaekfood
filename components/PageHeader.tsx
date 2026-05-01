@@ -1,3 +1,7 @@
+/**
+ * @shared-move  shared/components/PageHeader.tsx
+ * 직원 앱·관리자 앱 모두 사용하는 공통 페이지 헤더 컴포넌트
+ */
 import React from 'react';
 
 interface PageHeaderProps {

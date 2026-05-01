@@ -869,10 +869,12 @@ const App: React.FC = () => {
               </div>
               <div className="flex-1 overflow-y-auto">
                 {currentView === 'dashboard' && (
-                  <div className="flex flex-col items-center justify-center h-full text-slate-300">
-                    <LayoutDashboard size={48} className="mb-4 opacity-30" />
-                    <p className="text-sm font-black">준비 중입니다</p>
-                  </div>
+                  <Dashboard
+                    orders={orders}
+                    products={allProducts}
+                    clients={clients}
+                    onNavigate={(view) => setCurrentView(view)}
+                  />
                 )}
                 {currentView === 'ai-consultant' && (
                   <AIConsultant orders={orders} products={allProducts} />

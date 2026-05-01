@@ -1,3 +1,10 @@
+/**
+ * @shared-move  shared/types.ts
+ * 앱 전체 공통 TypeScript 타입 정의
+ * Phase 2 분리 시 shared/ 로 이동하고 양쪽 앱에서 import합니다.
+ * 단, 관리자 전용 인터페이스(CompanyInfo, FixedCostEntry 등)는
+ * shared/types/admin.ts 로 별도 분리를 권장합니다.
+ */
 
 export enum OrderStatus {
   PENDING = 'PENDING',
