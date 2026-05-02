@@ -19,51 +19,9 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // ── 인증된 사용자(익명 포함)만 접근 가능한 공통 조건 ──────────────
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-
-    // ── 일반 직원 + 관리자 모두 접근 가능한 컬렉션 ───────────────────
-    match /orders/{id}              { allow read, write: if isAuthenticated(); }
-    match /products/{id}            { allow read, write: if isAuthenticated(); }
-    match /submaterials/{id}        { allow read, write: if isAuthenticated(); }
-    match /clients/{id}             { allow read, write: if isAuthenticated(); }
-    match /employees/{id}           { allow read, write: if isAuthenticated(); }
-    match /leaveRequests/{id}       { allow read, write: if isAuthenticated(); }
-    match /pallets/{id}             { allow read, write: if isAuthenticated(); }
-    match /palletTransactions/{id}  { allow read, write: if isAuthenticated(); }
-    match /adjustmentRequests/{id}  { allow read, write: if isAuthenticated(); }
-    match /notices/{id}             { allow read, write: if isAuthenticated(); }
-    match /chatRooms/{id}           { allow read, write: if isAuthenticated(); }
-    match /chatMessages/{id}        { allow read, write: if isAuthenticated(); }
-    match /rawMaterialLedger/{id}   { allow read, write: if isAuthenticated(); }
-    match /sesameInputLedger/{id}   { allow read, write: if isAuthenticated(); }
-    match /notifications/{id}       { allow read, write: if isAuthenticated(); }
-    match /workOrderItems/{id}      { allow read, write: if isAuthenticated(); }
-    match /issuedStatements/{id}    { allow read, write: if isAuthenticated(); }
-    match /productClients/{id}      { allow read, write: if isAuthenticated(); }
-    match /productSuppliers/{id}    { allow read, write: if isAuthenticated(); }
-    match /item_bom/{id}            { allow read, write: if isAuthenticated(); }
-    match /item_customer/{id}       { allow read, write: if isAuthenticated(); }
-    match /confirmedOrders/{id}     { allow read, write: if isAuthenticated(); }
-    match /orderRequests/{id}       { allow read, write: if isAuthenticated(); }
-    match /appMeta/{id}             { allow read, write: if isAuthenticated(); }
-    match /settings/{id}            { allow read, write: if isAuthenticated(); }
-
-    // ── 관리자 전용 컬렉션 ────────────────────────────────────────────
-    // TODO (Phase 3): Custom Claims 도입 후 아래 조건으로 교체
-    //   request.auth.token.isAdmin == true
-    //
-    // 현재: 인증된 사용자라면 접근 가능 (프론트엔드에서 2차 차단)
-    // 실질 보안은 useAdminData(isAdmin) 훅의 enabled 플래그에 의존
-    match /fixedCosts/{id}          { allow read, write: if isAuthenticated(); }
-    match /productionRecords/{id}   { allow read, write: if isAuthenticated(); }
-
-    // ── 그 외 미등록 컬렉션은 전부 차단 ─────────────────────────────
+    // NOTE: Firebase Anonymous Auth 설정 완료 후 isAuthenticated() 조건으로 강화 가능
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if true;
     }
   }
 }

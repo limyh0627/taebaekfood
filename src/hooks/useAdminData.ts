@@ -15,6 +15,7 @@
 import { useState, useEffect } from 'react';
 import { FixedCostEntry, ProductionRecord } from '../../types';
 import { subscribeToCollection } from '../services/firebaseService';
+import { authReady } from '../shared/firebase';
 
 export interface AdminData {
   fixedCosts: FixedCostEntry[];
@@ -32,12 +33,21 @@ export function useAdminData(enabled: boolean): AdminData {
   useEffect(() => {
     if (!enabled) return;
 
-    const unsubscribes = [
-      subscribeToCollection<FixedCostEntry>('fixedCosts', setFixedCosts),
-      subscribeToCollection<ProductionRecord>('productionRecords', setProductionRecords),
-    ];
+    let unsubscribes: (() => void)[] = [];
+    let cancelled = false;
 
-    return () => unsubscribes.forEach(u => u());
+    authReady.then(() => {
+      if (cancelled) return;
+      unsubscribes = [
+        subscribeToCollection<FixedCostEntry>('fixedCosts', setFixedCosts),
+        subscribeToCollection<ProductionRecord>('productionRecords', setProductionRecords),
+      ];
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribes.forEach(u => u());
+    };
   }, [enabled]);
 
   return { fixedCosts, productionRecords };

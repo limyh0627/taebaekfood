@@ -14,6 +14,7 @@ const AdminAuthModal: React.FC<AdminAuthModalProps> = ({ onClose, onSuccess, cor
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('[AdminAuth] 입력값:', password, '| DB 비밀번호:', correctPassword, '| 일치:', password === correctPassword);
     if (password === correctPassword) {
       onSuccess();
     } else {
