@@ -738,59 +738,90 @@ const AdminApp: React.FC<AdminAppProps> = ({
           </div>
           
           <div className="flex-1 space-y-8 overflow-y-auto no-scrollbar">
-            <div>
-              {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">운영 관리</p>}
-              <nav className="space-y-1">
-                <NavItem icon={MessageSquare} label="오피스톡" active={currentView === 'officetalk'} onClick={() => handleNavClick('officetalk')} collapsed={isSidebarCollapsed} badge={chatRooms.filter(r => r.participantIds.includes(currentUser.id) && r.lastUpdatedAt > (r.lastReadBy?.[currentUser.id] ?? '')).length || undefined} />
-                <NavItem icon={Truck} label="배송 관리" active={currentView === 'shipping'} onClick={() => handleNavClick('shipping')} collapsed={isSidebarCollapsed} />
-                <NavItem icon={ShoppingCart} label="주문 관리" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} />
-                <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={lowStockCount > 0 ? lowStockCount : undefined} />
-                <NavItem icon={Settings} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} />
-                <NavItem icon={Layers} label="파렛트 관리" active={currentView === 'pallets'} onClick={() => handleNavClick('pallets')} collapsed={isSidebarCollapsed} />
-                <NavItem icon={CalendarCheck} label="연차 신청" active={currentView === 'leave-portal'} onClick={() => handleNavClick('leave-portal')} collapsed={isSidebarCollapsed} />
-                <NavItem icon={Users} label="거래처 관리" active={currentView === 'clients'} onClick={() => handleNavClick('clients')} collapsed={isSidebarCollapsed} />
-                <NavItem icon={ShieldCheck} label="확인사항" active={currentView === 'confirmation-items'} onClick={() => handleNavClick('confirmation-items')} collapsed={isSidebarCollapsed} />
-                <NavItem icon={DatabaseIcon} label="데이터베이스" active={currentView === 'database'} onClick={() => handleNavClick('database')} collapsed={isSidebarCollapsed} />
-                <NavItem icon={BellRing} label="공지사항" active={currentView === 'notice'} onClick={() => handleNavClick('notice')} collapsed={isSidebarCollapsed} />
-              </nav>
-            </div>
 
+            {/* ── 사장님(Admin) 전용: 경영 현황 ── */}
             {isAdmin && (() => {
               const adminPendingCount =
                 leaveRequests.filter(r => r.status === 'pending' || r.status === 'cancel_pending' || r.modifyRequest?.status === 'pending').length +
                 adjustmentRequests.filter(r => r.status === 'pending').length;
               return (
-                <div>
-                  {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">분석 및 관리자</p>}
-                  <nav className="space-y-1">
-                    <NavItem icon={ClipboardList} label="확인사항" active={currentView === 'admin-checklist'} onClick={() => handleNavClick('admin-checklist')} collapsed={isSidebarCollapsed} badge={adminPendingCount > 0 ? adminPendingCount : undefined} />
-                    <NavItem icon={LayoutDashboard} label="비즈니스 대시보드" active={currentView === 'dashboard' || currentView === 'ai-consultant'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} />
-                    <NavItem icon={FileText} label="거래명세서" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} />
-                    <NavItem icon={BarChart2} label="손익/비용 관리" active={currentView === 'profit-analysis' || currentView === 'cost-management'} onClick={() => handleNavClick('profit-analysis')} collapsed={isSidebarCollapsed} />
-                    <NavItem icon={UserCheck} label="인사관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} />
-                    <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
-                    <NavItem icon={Factory} label="생산 실적" active={currentView === 'production'} onClick={() => handleNavClick('production')} collapsed={isSidebarCollapsed} />
-                  </nav>
-                </div>
+                <>
+                  <div>
+                    {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">경영 현황</p>}
+                    <nav className="space-y-1">
+                      <NavItem icon={LayoutDashboard} label="대시보드" active={currentView === 'dashboard' || currentView === 'ai-consultant'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} />
+                      <NavItem icon={BarChart2} label="손익 / 비용 분석" active={currentView === 'profit-analysis' || currentView === 'cost-management'} onClick={() => handleNavClick('profit-analysis')} collapsed={isSidebarCollapsed} />
+                      <NavItem icon={Factory} label="생산 실적" active={currentView === 'production'} onClick={() => handleNavClick('production')} collapsed={isSidebarCollapsed} />
+                    </nav>
+                  </div>
+                  <div>
+                    {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">업무 관리</p>}
+                    <nav className="space-y-1">
+                      <NavItem icon={FileText} label="거래명세서" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} />
+                      <NavItem icon={UserCheck} label="인사 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} />
+                      <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
+                      <NavItem icon={Users} label="거래처 관리" active={currentView === 'clients'} onClick={() => handleNavClick('clients')} collapsed={isSidebarCollapsed} />
+                      <NavItem icon={ClipboardList} label="확인사항" active={currentView === 'admin-checklist'} onClick={() => handleNavClick('admin-checklist')} collapsed={isSidebarCollapsed} badge={adminPendingCount > 0 ? adminPendingCount : undefined} />
+                    </nav>
+                  </div>
+                  <div>
+                    {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">외부 서비스</p>}
+                    <nav className="space-y-1">
+                      <button
+                        onClick={() => setCurrentView('client-portal')}
+                        title={isSidebarCollapsed ? "거래처 주문 포털" : undefined}
+                        className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between px-4'} py-3 rounded-xl text-slate-500 hover:bg-cyan-50 hover:text-cyan-600 transition-all group`}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <Globe size={18} />
+                          {!isSidebarCollapsed && <span className="text-sm font-medium">거래처 주문 포털</span>}
+                        </div>
+                        {!isSidebarCollapsed && <ExternalLink size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />}
+                      </button>
+                    </nav>
+                  </div>
+                </>
               );
             })()}
 
-            <div>
-              {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">외부 서비스</p>}
-              <nav className="space-y-1">
-                <button 
-                  onClick={() => setCurrentView('client-portal')}
-                  title={isSidebarCollapsed ? "거래처 주문 포털" : undefined}
-                  className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between px-4'} py-3 rounded-xl text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 transition-all group`}
-                >
-                  <div className="flex items-center space-x-3">
-                    <Globe size={18} />
-                    {!isSidebarCollapsed && <span className="text-sm font-medium">거래처 주문 포털</span>}
-                  </div>
-                  {!isSidebarCollapsed && <ExternalLink size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />}
-                </button>
-              </nav>
-            </div>
+            {/* ── 일반 직원: 현장 운영 메뉴 ── */}
+            {!isAdmin && (
+              <>
+                <div>
+                  {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">운영 관리</p>}
+                  <nav className="space-y-1">
+                    <NavItem icon={MessageSquare} label="오피스톡" active={currentView === 'officetalk'} onClick={() => handleNavClick('officetalk')} collapsed={isSidebarCollapsed} badge={chatRooms.filter(r => r.participantIds.includes(currentUser.id) && r.lastUpdatedAt > (r.lastReadBy?.[currentUser.id] ?? '')).length || undefined} />
+                    <NavItem icon={Truck} label="배송 관리" active={currentView === 'shipping'} onClick={() => handleNavClick('shipping')} collapsed={isSidebarCollapsed} />
+                    <NavItem icon={ShoppingCart} label="주문 관리" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} />
+                    <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={lowStockCount > 0 ? lowStockCount : undefined} />
+                    <NavItem icon={Settings} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} />
+                    <NavItem icon={Layers} label="파렛트 관리" active={currentView === 'pallets'} onClick={() => handleNavClick('pallets')} collapsed={isSidebarCollapsed} />
+                    <NavItem icon={CalendarCheck} label="연차 신청" active={currentView === 'leave-portal'} onClick={() => handleNavClick('leave-portal')} collapsed={isSidebarCollapsed} />
+                    <NavItem icon={Users} label="거래처 관리" active={currentView === 'clients'} onClick={() => handleNavClick('clients')} collapsed={isSidebarCollapsed} />
+                    <NavItem icon={ShieldCheck} label="확인사항" active={currentView === 'confirmation-items'} onClick={() => handleNavClick('confirmation-items')} collapsed={isSidebarCollapsed} />
+                    <NavItem icon={DatabaseIcon} label="데이터베이스" active={currentView === 'database'} onClick={() => handleNavClick('database')} collapsed={isSidebarCollapsed} />
+                    <NavItem icon={BellRing} label="공지사항" active={currentView === 'notice'} onClick={() => handleNavClick('notice')} collapsed={isSidebarCollapsed} />
+                  </nav>
+                </div>
+                <div>
+                  {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">외부 서비스</p>}
+                  <nav className="space-y-1">
+                    <button
+                      onClick={() => setCurrentView('client-portal')}
+                      title={isSidebarCollapsed ? "거래처 주문 포털" : undefined}
+                      className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between px-4'} py-3 rounded-xl text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 transition-all group`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <Globe size={18} />
+                        {!isSidebarCollapsed && <span className="text-sm font-medium">거래처 주문 포털</span>}
+                      </div>
+                      {!isSidebarCollapsed && <ExternalLink size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />}
+                    </button>
+                  </nav>
+                </div>
+              </>
+            )}
+
           </div>
 
         </div>

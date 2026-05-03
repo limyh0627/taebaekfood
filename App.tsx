@@ -18,7 +18,11 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('tb_user');
     return saved ? JSON.parse(saved) : null;
   });
-  const [currentView, setCurrentView] = useState<ViewType>('orders');
+  const [currentView, setCurrentView] = useState<ViewType>(() => {
+    const saved = localStorage.getItem('tb_user');
+    const user = saved ? JSON.parse(saved) : null;
+    return user?.id === 'admin' ? 'dashboard' : 'orders';
+  });
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
 
   const appData = useAppData();
