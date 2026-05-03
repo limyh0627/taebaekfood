@@ -17,5 +17,5 @@
     "jsx": "react-jsx",
     "types": ["vite/client"]
   },
-  "include": ["src", "App.tsx", "index.tsx", "geminiService.ts", "types.ts", "components"]
+  "include": ["src", "apps", "App.tsx", "index.tsx", "geminiService.ts", "types.ts", "components", "vite.admin.config.ts", "vite.staff.config.ts"]
 }

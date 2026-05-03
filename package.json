@@ -6,6 +6,14 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "tsc && vite build",
+    "dev:admin": "vite --config vite.admin.config.ts",
+    "dev:staff": "vite --config vite.staff.config.ts",
+    "build:admin": "vite build --config vite.admin.config.ts",
+    "build:staff": "vite build --config vite.staff.config.ts",
+    "build:all": "npm run build:admin && npm run build:staff",
+    "deploy:admin": "npm run build:admin && firebase deploy --only hosting:admin",
+    "deploy:staff": "npm run build:staff && firebase deploy --only hosting:staff",
+    "deploy:all": "npm run build:all && firebase deploy --only hosting",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
