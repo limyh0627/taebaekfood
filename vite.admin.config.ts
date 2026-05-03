@@ -4,6 +4,8 @@ import { VitePWA } from 'vite-plugin-pwa';
 import { resolve } from 'path';
 
 export default defineConfig({
+  root: resolve(__dirname, 'apps/admin'),
+  publicDir: resolve(__dirname, 'public'),
   plugins: [
     react(),
     VitePWA({
@@ -29,11 +31,8 @@ export default defineConfig({
     }),
   ],
   build: {
-    outDir: 'dist/admin',
+    outDir: resolve(__dirname, 'dist/admin'),
     emptyOutDir: true,
-    rollupOptions: {
-      input: resolve(__dirname, 'apps/admin/index.html'),
-    },
   },
   server: { port: 3001, open: true },
 });
