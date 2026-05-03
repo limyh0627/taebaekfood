@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, Component, ErrorInfo, ReactNode } from 'react';
 import ReactDOM from 'react-dom/client';
 import { Employee, ViewType } from '../../src/shared/types';
 import { useAppData } from '../../src/shared/hooks/useAppData';
@@ -8,6 +8,25 @@ import { DEFAULT_COMPANY_INFO } from '../../src/config';
 import AuthPage from '../../src/shared/components/AuthPage';
 import AdminApp from '../../src/features/admin/AdminApp';
 import '../../src/index.css';
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.error('App crashed:', error, info); }
+  render() {
+    if (this.state.error) {
+      const msg = (this.state.error as Error).message;
+      return (
+        <div style={{ padding: 32, fontFamily: 'monospace', background: '#fff1f2', minHeight: '100vh' }}>
+          <h2 style={{ color: '#e11d48' }}>앱 오류</h2>
+          <pre style={{ whiteSpace: 'pre-wrap', color: '#374151', fontSize: 13 }}>{msg}</pre>
+          <p style={{ color: '#6b7280', fontSize: 12 }}>위 오류 내용을 캡처해서 전달해주세요.</p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const AdminRoot: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<Employee | null>(() => {
@@ -42,7 +61,6 @@ const AdminRoot: React.FC = () => {
     );
   }
 
-  // 관리자가 아닌 계정으로 접근 시 차단
   if (currentUser.id !== 'admin' && !isAdminAuthenticated) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
@@ -54,10 +72,7 @@ const AdminRoot: React.FC = () => {
           </div>
           <h2 className="text-lg font-black text-slate-800">관리자 전용 페이지</h2>
           <p className="text-sm text-slate-500">이 페이지는 관리자 계정만 접근할 수 있습니다.<br/>현장 직원은 현장 앱을 이용해 주세요.</p>
-          <button
-            onClick={handleLogout}
-            className="w-full py-3 rounded-2xl bg-rose-500 text-white font-bold hover:bg-rose-600 transition-all"
-          >
+          <button onClick={handleLogout} className="w-full py-3 rounded-2xl bg-rose-500 text-white font-bold hover:bg-rose-600 transition-all">
             로그아웃
           </button>
         </div>
@@ -82,6 +97,8 @@ const AdminRoot: React.FC = () => {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <AdminRoot />
+    <ErrorBoundary>
+      <AdminRoot />
+    </ErrorBoundary>
   </React.StrictMode>
 );

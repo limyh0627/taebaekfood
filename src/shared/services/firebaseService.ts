@@ -16,6 +16,7 @@ import {
   DocumentData,
   QuerySnapshot
 } from "firebase/firestore";
+import { db } from "../firebase";
 
 export const subscribeToDocument = <T>(
   collectionName: string,
@@ -30,7 +31,6 @@ export const subscribeToDocument = <T>(
 export const setDocument = async (collectionName: string, docId: string, data: any) => {
   await setDoc(doc(db, collectionName, docId), data, { merge: true });
 };
-import { db } from "../firebase";
 
 export const subscribeToCollection = <T extends { id: string }>(
   collectionName: string,
