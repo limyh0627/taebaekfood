@@ -7,6 +7,7 @@ import { Employee, ViewType } from './types';
 import { useAppData } from './src/hooks/useAppData';
 import { useAdminData } from './src/hooks/useAdminData';
 import { addItem, updateItem } from './src/services/firebaseService';
+import { DEFAULT_COMPANY_INFO } from './src/config';
 import AuthPage from './components/AuthPage';
 import ClientPortal from './components/ClientPortal';
 import AdminApp from './src/features/admin/AdminApp';
@@ -63,7 +64,10 @@ const App: React.FC = () => {
     currentView,
     setCurrentView,
     onLogout: handleLogout,
-    appData,
+    appData: {
+      ...appData,
+      companyInfo: appData.companyInfo ?? DEFAULT_COMPANY_INFO,
+    },
     adminData,
   };
 
