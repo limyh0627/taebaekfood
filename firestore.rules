@@ -19,9 +19,12 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // NOTE: Firebase Anonymous Auth 설정 완료 후 isAuthenticated() 조건으로 강화 가능
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if isAuthenticated();
     }
   }
 }
