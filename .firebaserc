@@ -1,5 +1,18 @@
 {
   "projects": {
     "default": "taebaek-3abe4"
-  }
+  },
+  "targets": {
+    "taebaek-3abe4": {
+      "hosting": {
+        "admin": [
+          "taebaek-staff"
+        ],
+        "staff": [
+          "taebaek-3abe4"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }
