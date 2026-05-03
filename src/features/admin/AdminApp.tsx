@@ -668,11 +668,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
       }`}>
         <div className={`flex flex-col h-full ${isSidebarCollapsed ? 'p-4' : 'p-6'}`} style={{ paddingTop: `max(${isSidebarCollapsed ? '1rem' : '1.5rem'}, env(safe-area-inset-top))`, paddingBottom: `max(${isSidebarCollapsed ? '1rem' : '1.5rem'}, env(safe-area-inset-bottom))` }}>
           <div className={`flex items-center ${isSidebarCollapsed ? 'flex-col gap-2' : 'px-2 justify-between'} mb-10`}>
-            <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setCurrentView('orders')}>
+            <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setCurrentView(isAdmin ? 'dashboard' : 'orders')}>
               <div className="w-10 h-10 bg-cyan-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-cyan-200 flex-shrink-0">
                 <svg width="22" height="22" viewBox="0 0 32 32" fill="none"><path d="M4 16C4 16 8 8 16 8C24 8 28 16 28 16" stroke="white" strokeWidth="3" strokeLinecap="round"/><path d="M22 12L28 16L22 20" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/><circle cx="16" cy="22" r="3" fill="white"/></svg>
               </div>
-              <h1 className={`text-xl font-bold uppercase tracking-tight text-cyan-600 leading-tight whitespace-nowrap overflow-hidden transition-all duration-200 ${isSidebarCollapsed ? 'opacity-0 w-0' : 'opacity-100'}`}>Flow-It</h1>
+              <div className={`overflow-hidden transition-all duration-200 ${isSidebarCollapsed ? 'opacity-0 w-0' : 'opacity-100'}`}>
+                <p className="text-xs font-black uppercase tracking-widest text-cyan-600 leading-none">Flow-It</p>
+                <p className="text-sm font-bold text-slate-700 leading-tight mt-0.5 whitespace-nowrap">{companyInfo?.name ?? '태백식품'} {isAdmin ? '관리자 센터' : ''}</p>
+              </div>
             </div>
             {!isMobile && (
               <button
@@ -837,10 +840,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <Menu size={24} />
           </button>
           <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-cyan-600 rounded-lg flex items-center justify-center text-white shadow-sm">
+            <div className="w-8 h-8 bg-cyan-600 rounded-lg flex items-center justify-center text-white shadow-sm flex-shrink-0">
               <svg width="16" height="16" viewBox="0 0 32 32" fill="none"><path d="M4 16C4 16 8 8 16 8C24 8 28 16 28 16" stroke="white" strokeWidth="3.5" strokeLinecap="round"/><path d="M22 12L28 16L22 20" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/><circle cx="16" cy="22" r="3" fill="white"/></svg>
             </div>
-            <h1 className="text-sm font-bold text-cyan-600">Flow-It</h1>
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest text-cyan-600 leading-none">Flow-It</p>
+              <p className="text-xs font-bold text-slate-700 leading-tight">{companyInfo?.name ?? '태백식품'}{isAdmin ? ' 관리자' : ''}</p>
+            </div>
           </div>
           <div className="w-10" /> {/* Spacer for centering */}
         </header>
