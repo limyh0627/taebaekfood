@@ -669,8 +669,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
         <div className={`flex flex-col h-full ${isSidebarCollapsed ? 'p-4' : 'p-6'}`} style={{ paddingTop: `max(${isSidebarCollapsed ? '1rem' : '1.5rem'}, env(safe-area-inset-top))`, paddingBottom: `max(${isSidebarCollapsed ? '1rem' : '1.5rem'}, env(safe-area-inset-bottom))` }}>
           <div className={`flex items-center ${isSidebarCollapsed ? 'flex-col gap-2' : 'px-2 justify-between'} mb-10`}>
             <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setCurrentView('orders')}>
-              <div className="w-10 h-10 bg-pink-500 rounded-xl flex items-center justify-center text-white shadow-lg flex-shrink-0 font-black text-sm tracking-tight leading-none">태백</div>
-              <h1 className={`text-xl font-bold uppercase tracking-tight text-indigo-600 leading-tight whitespace-nowrap overflow-hidden transition-all duration-200 ${isSidebarCollapsed ? 'opacity-0 w-0' : 'opacity-100'}`}>스마트오더</h1>
+              <div className="w-10 h-10 bg-cyan-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-cyan-200 flex-shrink-0">
+                <svg width="22" height="22" viewBox="0 0 32 32" fill="none"><path d="M4 16C4 16 8 8 16 8C24 8 28 16 28 16" stroke="white" strokeWidth="3" strokeLinecap="round"/><path d="M22 12L28 16L22 20" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/><circle cx="16" cy="22" r="3" fill="white"/></svg>
+              </div>
+              <h1 className={`text-xl font-bold uppercase tracking-tight text-cyan-600 leading-tight whitespace-nowrap overflow-hidden transition-all duration-200 ${isSidebarCollapsed ? 'opacity-0 w-0' : 'opacity-100'}`}>Flow-It</h1>
             </div>
             {!isMobile && (
               <button
@@ -804,8 +806,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <Menu size={24} />
           </button>
           <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-pink-500 rounded-lg flex items-center justify-center text-white font-black text-xs tracking-tight leading-none">태백</div>
-            <h1 className="text-sm font-bold text-indigo-600">스마트오더</h1>
+            <div className="w-8 h-8 bg-cyan-600 rounded-lg flex items-center justify-center text-white shadow-sm">
+              <svg width="16" height="16" viewBox="0 0 32 32" fill="none"><path d="M4 16C4 16 8 8 16 8C24 8 28 16 28 16" stroke="white" strokeWidth="3.5" strokeLinecap="round"/><path d="M22 12L28 16L22 20" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/><circle cx="16" cy="22" r="3" fill="white"/></svg>
+            </div>
+            <h1 className="text-sm font-bold text-cyan-600">Flow-It</h1>
           </div>
           <div className="w-10" /> {/* Spacer for centering */}
         </header>
@@ -2753,22 +2757,38 @@ const AdminApp: React.FC<AdminAppProps> = ({
         />
       )}
       {isAddOrderOpen && <AddOrderModal products={allProducts} clients={clients} productClients={productClients} palletStocks={pallets} onClose={() => setIsAddOrderOpen(false)} onSave={async (o) => {
-        const orderId = `ORD-${Date.now()}`;
-        await addItem('orders', {...o, id: orderId, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
-        await checkAndAlertShortage(o.items);
-        const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '거래처';
-        await addItem('notifications', { type: 'new_order', title: '신규 주문', body: `${clientName} 주문이 등록되었습니다.`, readBy: [], createdAt: new Date().toISOString(), senderId: currentUser.id, linkedId: orderId } as Omit<AppNotification,'id'>);
-        setNewOrderId(orderId);
-        setIsAddOrderOpen(false);
+        try {
+          console.log('[AddOrder] 저장 시작', o);
+          const orderId = `ORD-${Date.now()}`;
+          await addItem('orders', {...o, id: orderId, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
+          console.log('[AddOrder] orders 저장 완료', orderId);
+          await checkAndAlertShortage(o.items);
+          const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '거래처';
+          await addItem('notifications', { type: 'new_order', title: '신규 주문', body: `${clientName} 주문이 등록되었습니다.`, readBy: [], createdAt: new Date().toISOString(), senderId: currentUser.id, linkedId: orderId } as Omit<AppNotification,'id'>);
+          setNewOrderId(orderId);
+          setIsAddOrderOpen(false);
+          console.log('[AddOrder] 완료');
+        } catch (err) {
+          console.error('[AddOrder] 저장 실패:', err);
+          alert(`주문 저장 실패: ${err instanceof Error ? err.message : String(err)}`);
+        }
       }} />}
       {isPasteOrderOpen && <PasteOrderModal products={allProducts} clients={clients} productClients={productClients} onClose={() => setIsPasteOrderOpen(false)} onSave={async (o) => {
-        const orderId = `ORD-${Date.now()}`;
-        await addItem('orders', {...o, id: orderId, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
-        await checkAndAlertShortage(o.items);
-        const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '거래처';
-        await addItem('notifications', { type: 'new_order', title: '신규 주문', body: `${clientName} 주문이 등록되었습니다.`, readBy: [], createdAt: new Date().toISOString(), senderId: currentUser.id, linkedId: orderId } as Omit<AppNotification,'id'>);
-        setNewOrderId(orderId);
-        setIsPasteOrderOpen(false);
+        try {
+          console.log('[PasteOrder] 저장 시작', o);
+          const orderId = `ORD-${Date.now()}`;
+          await addItem('orders', {...o, id: orderId, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
+          console.log('[PasteOrder] orders 저장 완료', orderId);
+          await checkAndAlertShortage(o.items);
+          const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '거래처';
+          await addItem('notifications', { type: 'new_order', title: '신규 주문', body: `${clientName} 주문이 등록되었습니다.`, readBy: [], createdAt: new Date().toISOString(), senderId: currentUser.id, linkedId: orderId } as Omit<AppNotification,'id'>);
+          setNewOrderId(orderId);
+          setIsPasteOrderOpen(false);
+          console.log('[PasteOrder] 완료');
+        } catch (err) {
+          console.error('[PasteOrder] 저장 실패:', err);
+          alert(`주문 저장 실패: ${err instanceof Error ? err.message : String(err)}`);
+        }
       }} />}
       {isProductModalOpen && (
         <ProductModal

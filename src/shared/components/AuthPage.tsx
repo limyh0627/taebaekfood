@@ -135,11 +135,15 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin, registeredEmployees, onReg
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-indigo-100 via-slate-50 to-white">
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center mb-10">
-          <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-2xl shadow-indigo-200 mb-4 animate-bounce">
-            <Package size={32} />
+          <div className="w-16 h-16 bg-cyan-600 rounded-2xl flex items-center justify-center text-white shadow-2xl shadow-cyan-200 mb-4">
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+              <path d="M4 16C4 16 8 8 16 8C24 8 28 16 28 16" stroke="white" strokeWidth="3" strokeLinecap="round"/>
+              <path d="M22 12L28 16L22 20" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+              <circle cx="16" cy="22" r="3" fill="white"/>
+            </svg>
           </div>
-          <h1 className="text-3xl font-black bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-violet-600 uppercase">스마트오더</h1>
-          <p className="text-slate-400 font-bold text-[10px] mt-2 uppercase tracking-[0.3em]">물류 주문 관리 시스템</p>
+          <h1 className="text-3xl font-black bg-clip-text text-transparent bg-gradient-to-r from-cyan-600 to-teal-500 uppercase tracking-wide">Flow-It</h1>
+          <p className="text-slate-400 font-bold text-[10px] mt-2 uppercase tracking-[0.3em]">Smart ERP Platform</p>
         </div>
 
         <div className="bg-white rounded-[40px] shadow-2xl shadow-slate-200/60 border border-slate-100 p-10 relative overflow-hidden transition-all duration-500">

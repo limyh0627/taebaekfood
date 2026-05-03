@@ -13,12 +13,13 @@ export default defineConfig({
         clientsClaim: true
       },
 manifest: {
-  name: '태백푸드',
-  short_name: '태백푸드',
+  name: 'Flow-It ERP',
+  short_name: '플로우잇',
+  description: '스마트 업무 관리 플랫폼',
   start_url: '/',
   display: 'standalone',
   background_color: '#ffffff',
-  theme_color: '#000000',
+  theme_color: '#0891B2',
   icons: [
     {
       src: '/icon-192x192.png',
