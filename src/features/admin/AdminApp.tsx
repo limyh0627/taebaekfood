@@ -486,14 +486,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const product = allProducts.find(p => p.id === item.productId);
       if (!product) continue;
 
-      // 향미유/고춧가루: 박스 단위로 재고 차감
+      // 향미유/고춧가루: 재고는 낱개 단위로 저장, 낱개 기준으로 차감
       if (product.category === '향미유' || product.category === '고춧가루') {
-        const uPerBox = item.unitsPerBox || product.defaultBoxConfig?.unitsPerBox || product.boxSize || 1;
-        const boxesUsed = item.isBoxUnit && item.boxQuantity
-          ? item.boxQuantity
-          : Math.ceil(item.quantity / uPerBox);
+        const uPerBox = item.unitsPerBox || product.defaultBoxConfig?.unitsPerBox || product.boxSize || 12;
+        const deductQty = item.isBoxUnit && item.boxQuantity
+          ? item.boxQuantity * uPerBox  // BOX → 낱개 변환
+          : item.quantity;
         const collection = products.find(p => p.id === product.id) ? 'products' : 'submaterials';
-        await updateItem(collection, product.id, { stock: product.stock - boxesUsed });
+        await updateItem(collection, product.id, { stock: product.stock - deductQty });
         continue;
       }
 
@@ -1468,7 +1468,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 await createProductionRecordsForOrder(o);
                 await updateItem('orders', o.id, { status: OrderStatus.DELIVERED, deliveredAt: new Date().toISOString() });
               }
-              // 향미유만 있는 출고 주문도 이력으로 이동
+              // 향미유만 있는 출고 주문도 이력으로 이동 + 재고 차감
               const hyangmiyuOnlyOrders = orders.filter(o =>
                 o.status === OrderStatus.SHIPPED &&
                 o.customerName !== '생산기록' &&
@@ -1476,6 +1476,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 o.items.every(item => allProducts.find(pr => pr.id === item.productId)?.category === '향미유')
               );
               for (const o of hyangmiyuOnlyOrders) {
+                await deductSubmaterialsForOrder(o);
                 await updateItem('orders', o.id, { status: OrderStatus.DELIVERED, deliveredAt: new Date().toISOString() });
               }
             };
