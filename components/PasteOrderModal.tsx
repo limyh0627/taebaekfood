@@ -108,19 +108,15 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   });
   const [pallets] = useState<OrderPallet[]>([]);
 
-  // 거래처별 품목 풀
-  // 완제품은 거래처 연결 여부와 관계없이 전체 포함 (미연결 제품도 매칭 가능하도록)
-  // 단, 해당 거래처에 연결된 제품을 앞쪽에 정렬해 우선 매칭
+  // 거래처별 품목 풀 — 거래처에 연결된 품목만 포함
   const productPool = useMemo(() => {
     if (!selectedClient) return [];
-    const isLinked = (p: Product) => {
+    const finished = products.filter(p => {
+      if (p.category !== '완제품') return false;
       if (p.clientIds?.includes(selectedClient.id)) return true;
       if (selectedClient.type === '스마트스토어' && (p.clientIds?.includes('SMARTSTORE') || p.isSmartStore)) return true;
       return false;
-    };
-    const finished = products
-      .filter(p => p.category === '완제품')
-      .sort((a, b) => (isLinked(b) ? 1 : 0) - (isLinked(a) ? 1 : 0));
+    });
     const hyangmiyu = selectedClient.type !== '스마트스토어'
       ? products.filter(p => p.category === '향미유') : [];
     const gochu = selectedClient.type !== '스마트스토어'
