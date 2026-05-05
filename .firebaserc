@@ -5,7 +5,8 @@
   "targets": {
     "taebaek-3abe4": {
       "hosting": {
-        "admin": ["taebaek-staff"]
+        "admin": ["taebaek-staff"],
+        "staff": ["taebaek-3abe4"]
       }
     }
   },

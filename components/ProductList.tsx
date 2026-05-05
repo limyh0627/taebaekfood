@@ -23,6 +23,7 @@ import {
 import { Product, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement } from '../types';
 import AddProductModal from './AddProductModal';
 import ConfirmModal from './ConfirmModal';
+import InboundManager from './InboundManager';
 import PageHeader from './PageHeader';
 
 interface OrderRequest {
@@ -67,6 +68,8 @@ interface ProductListProps {
   onDeleteRawMaterialEntry: (id: string) => void;
   currentUser?: { name: string; id: string } | null;
   isAdmin?: boolean;
+  onUpdateSubmaterial?: (id: string, data: Partial<Product>) => void;
+  pendingReceipts?: import('../src/shared/types').PendingReceipt[];
 }
 
 
@@ -129,6 +132,8 @@ const ProductList: React.FC<ProductListProps> = ({
   onDeleteRawMaterialEntry,
   currentUser,
   isAdmin = false,
+  onUpdateSubmaterial,
+  pendingReceipts = [],
 }) => {
   const [isEn, setIsEn] = useState(() => localStorage.getItem('inventoryLang') === 'en');
   const toggleLang = () => setIsEn(prev => {
@@ -1036,6 +1041,58 @@ const ProductList: React.FC<ProductListProps> = ({
                 )}
               </>
             )}
+
+            {/* 선입고 섹션 — 발주 없이 스캔된 입고 (전표 작성 전) */}
+            {activeTab === 'requests' && (() => {
+              const unlinked = pendingReceipts.filter(r => r.status === 'pending_voucher');
+              if (unlinked.length === 0) return null;
+              return (
+                <div className="bg-white rounded-2xl border border-amber-100 shadow-sm overflow-hidden mb-4">
+                  <div className="px-5 py-3 border-b border-amber-50 flex items-center justify-between bg-amber-50/50">
+                    <div className="flex items-center gap-2">
+                      <Inbox size={15} className="text-amber-500" />
+                      <span className="font-black text-sm text-slate-800">선입고</span>
+                      <span className="text-[10px] font-black bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{unlinked.length}건</span>
+                      <span className="text-[10px] text-slate-400">전표 작성 전 · 재고 반영 완료</span>
+                    </div>
+                  </div>
+                  <div className="divide-y divide-slate-50">
+                    {unlinked.sort((a, b) => b.registeredAt.localeCompare(a.registeredAt)).map(r => (
+                      <div key={r.id} className="px-5 py-3 flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-bold text-xs text-slate-700">{r.supplierName || '거래처 미확인'}</span>
+                            <span className="text-[10px] text-slate-400">{r.registeredAt.slice(0, 10)}</span>
+                          </div>
+                          {r.items.map((item, i) => (
+                            <div key={i} className="flex items-center gap-1 text-xs text-slate-600">
+                              <span>{item.name}</span>
+                              <span className="text-slate-400">·</span>
+                              <span className="font-bold">{item.quantity.toLocaleString()} {item.unit}</span>
+                            </div>
+                          ))}
+                          {r.note && <p className="text-[11px] text-slate-400 mt-0.5">{r.note}</p>}
+                        </div>
+                        {isAdmin && onRequestPurchaseInvoice && (
+                          <button
+                            onClick={() => {
+                              onRequestPurchaseInvoice(
+                                '',
+                                r.supplierName,
+                                r.items.map(i => ({ name: i.name, spec: '', qty: i.quantity, price: i.unitPrice ?? 0 }))
+                              );
+                            }}
+                            className="shrink-0 flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-[11px] font-black hover:bg-indigo-700 transition-all"
+                          >
+                            전표 작성
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* 발주 내역 — 입고 대기 (통합: 수동 발주 + 전표 기반) */}
             {(() => {

@@ -47,6 +47,8 @@ import {
   BarChart2,
   Factory,
   ClipboardList,
+  PackageCheck,
+  ScanLine,
 } from 'lucide-react';
 import { Order, Product, ProductClient, ProductSupplier, ViewType, OrderStatus, Client, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord } from '../../shared/types';
 import Dashboard from '../../../components/Dashboard';
@@ -71,6 +73,8 @@ import OfficeTalk from '../../../components/OfficeTalk';
 import ProfitAnalysis from '../../../components/ProfitAnalysis';
 import ProductionManager from '../../../components/ProductionManager';
 import AdminChecklist from '../../../components/AdminChecklist';
+import InboundManager from '../../../components/InboundManager';
+import InboundScan from '../../../components/InboundScan';
 import ExcelJS from 'exceljs';
 
 import { db } from '../../shared/firebase';
@@ -797,6 +801,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     <NavItem icon={Truck} label="배송 관리" active={currentView === 'shipping'} onClick={() => handleNavClick('shipping')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={ShoppingCart} label="주문 관리" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={lowStockCount > 0 ? lowStockCount : undefined} />
+                    <NavItem icon={ScanLine} label="입고 스캔" active={currentView === 'inbound-scan'} onClick={() => handleNavClick('inbound-scan')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={Settings} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={Layers} label="파렛트 관리" active={currentView === 'pallets'} onClick={() => handleNavClick('pallets')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={CalendarCheck} label="연차 신청" active={currentView === 'leave-portal'} onClick={() => handleNavClick('leave-portal')} collapsed={isSidebarCollapsed} />
@@ -881,7 +886,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               </div>
             </div>
           ) : (
-          <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'clients', 'notice', 'pallets', 'confirmation-items', 'shipping', 'production'].includes(currentView)) ? '' : 'min-w-[720px] md:min-w-0 h-full'}>
+          <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'clients', 'notice', 'pallets', 'confirmation-items', 'shipping', 'production', 'inbound-scan'].includes(currentView)) ? '' : 'min-w-[720px] md:min-w-0 h-full'}>
           {(currentView === 'dashboard' || currentView === 'ai-consultant') && (
             <div className="h-full flex flex-col overflow-hidden">
               <div className="flex items-center gap-1 px-6 pt-5 pb-0 shrink-0">
@@ -1074,6 +1079,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 }
               }}
               onDeleteRawMaterialEntry={(id) => deleteItem('rawMaterialLedger', id)}
+              onUpdateSubmaterial={(id, data) => updateItem('submaterials', id, data)}
+            />
+          )}
+          {currentView === 'inbound-scan' && (
+            <InboundScan
+              submaterials={submaterials}
+              confirmedOrders={confirmedOrders}
+              qrMappings={appData.qrMappings}
+              currentUser={{ id: currentUser.id, name: currentUser.name }}
+              onUpdateSubmaterial={(id, data) => updateItem('submaterials', id, data)}
+              onFinishConfirmedOrder={handleFinishConfirmedOrder}
             />
           )}
           {currentView === 'clients' && <ClientManager clients={clients} onUpdateClient={(c) => updateItem('clients', c.id, c)} onAddClient={(c) => addItem('clients', c)} onDeleteClient={(id) => deleteItem('clients', id)} />}
@@ -2720,6 +2736,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               }}
             />
           )}
+
           {currentView === 'officetalk' && (
             <OfficeTalk
               currentUser={currentUser}

@@ -125,6 +125,7 @@ export interface SubmaterialComponent {
   unit: string;
   cost?: number;   // 부자재 원가
   boxSize?: number;
+  qrCode?: string; // 납품업체 QR/바코드 값
 }
 
 export type InventoryCategory = '완제품' | '향미유' | '고춧가루' | '용기' | '마개' | '테이프' | '박스' | '라벨';
@@ -268,7 +269,7 @@ export interface ChatRoom {
 }
 
 
-export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'clients' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'client-portal' | 'item-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist';
+export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'clients' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'client-portal' | 'item-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'inbound-scan';
 
 // ── 생산 실적 ──────────────────────────────────────────────────────────────────
 export interface ProductionRecord {
@@ -377,6 +378,37 @@ export interface RawMaterialEntry {
   canSize?: number;     // 단위당 kg/L (입고 시 단위 선택한 경우)
   canSizeTag?: string;  // 단위 추가 레이블 (예: '자루', '톤백')
   canCount?: number;    // 단위 수량 (몇 개)
+}
+
+// ── 입고 관리 ────────────────────────────────────────────────────────────
+
+export interface PendingReceiptItem {
+  submaterialId: string;
+  name: string;
+  quantity: number;
+  unit: string;
+  unitPrice?: number;
+}
+
+export interface PendingReceipt {
+  id: string;
+  supplierName: string;
+  items: PendingReceiptItem[];
+  totalAmount?: number;
+  photoUrl?: string;       // Firebase Storage URL
+  registeredBy: string;    // 등록자 이름
+  registeredAt: string;    // ISO timestamp
+  status: 'pending_voucher' | 'voucher_linked';
+  linkedStatementId?: string; // 연결된 전표 ID
+  note?: string;
+}
+
+export interface QrMapping {
+  id: string;
+  qrValue: string;         // 스캔된 QR/바코드 값
+  submaterialId: string;   // 매핑된 품목 ID
+  submaterialName: string;
+  createdAt: string;
 }
 
 // ── 품목 구조 (item / item_bom / item_customer) ──────────────────────────

@@ -10,7 +10,7 @@ import {
   PalletStock, PalletTransaction, Employee, LeaveRequest,
   AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry,
   AppNotification, OrderStatus, IssuedStatement,
-  ItemBom, ItemCustomer, CompanyInfo,
+  ItemBom, ItemCustomer, CompanyInfo, PendingReceipt, QrMapping,
 } from '../types';
 import { subscribeToCollection, subscribeToDocument } from '../services/firebaseService';
 import { authReady } from '../firebase';
@@ -29,6 +29,8 @@ export interface WorkOrderItem {
 }
 
 export interface AppData {
+  pendingReceipts: PendingReceipt[];
+  qrMappings: QrMapping[];
   // 주문
   orders: Order[];
   confirmedOrders: { id: string; quantity: number }[];
@@ -91,6 +93,8 @@ export function useAppData(): AppData {
   const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
   const [workOrderItems, setWorkOrderItems] = useState<WorkOrderItem[]>([]);
   const [issuedStatements, setIssuedStatements] = useState<IssuedStatement[]>([]);
+  const [pendingReceipts, setPendingReceipts] = useState<PendingReceipt[]>([]);
+  const [qrMappings, setQrMappings] = useState<QrMapping[]>([]);
   const [itemBoms, setItemBoms] = useState<ItemBom[]>([]);
   const [itemCustomers, setItemCustomers] = useState<ItemCustomer[]>([]);
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
@@ -132,6 +136,8 @@ export function useAppData(): AppData {
         subscribeToCollection<AppNotification>('notifications', setAppNotifications),
         subscribeToCollection<WorkOrderItem>('workOrderItems', (data) => setWorkOrderItems([...data].sort((a, b) => a.sortIndex - b.sortIndex))),
         subscribeToCollection<IssuedStatement>('issuedStatements', setIssuedStatements),
+        subscribeToCollection<PendingReceipt>('pendingReceipts', setPendingReceipts),
+        subscribeToCollection<QrMapping>('qrMappings', setQrMappings),
         subscribeToCollection<ItemBom>('item_bom', setItemBoms),
         subscribeToCollection<ItemCustomer>('item_customer', setItemCustomers),
         subscribeToDocument<CompanyInfo>('settings', 'company', setCompanyInfo),
@@ -154,6 +160,8 @@ export function useAppData(): AppData {
     appNotifications,
     workOrderItems,
     issuedStatements,
+    pendingReceipts,
+    qrMappings,
     itemBoms,
     itemCustomers,
     companyInfo,

@@ -6,6 +6,7 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth, signInAnonymously } from "firebase/auth";
+import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -19,8 +20,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+export const storage = getStorage(app);
 
-signInAnonymously(auth).catch(console.error);
-
-// authReady: 이미 구독이 즉시 시작되므로 항상 즉시 resolve
-export const authReady: Promise<void> = Promise.resolve();
+// authReady: 익명 로그인 완료 후 Firestore 구독 시작
+export const authReady: Promise<void> = signInAnonymously(auth).then(() => {}).catch(console.error) as Promise<void>;

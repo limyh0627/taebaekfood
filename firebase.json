@@ -8,6 +8,12 @@
       "public": "dist/admin",
       "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
       "rewrites": [{ "source": "**", "destination": "/index.html" }]
+    },
+    {
+      "target": "staff",
+      "public": "dist/staff",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [{ "source": "**", "destination": "/index.html" }]
     }
   ]
 }
