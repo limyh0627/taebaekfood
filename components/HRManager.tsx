@@ -148,11 +148,11 @@ const HRManager: React.FC<HRManagerProps> = ({
   };
 
   return (
-    <div className="space-y-5 animate-in fade-in duration-300 h-full flex flex-col">
+    <div className="space-y-4 animate-in fade-in duration-300 h-full flex flex-col">
       <PageHeader
         title="인사 관리"
         subtitle="임직원 정보 관리부터 연차 승인, 잔여 일수 조정까지 통합 관리합니다."
-        right={<div className="flex items-center gap-2">
+        right={<div className="flex flex-wrap items-center gap-2">
           <div className="flex bg-slate-100 p-1 rounded-2xl items-center">
             <button
               onClick={() => setActiveTab('employees')}
@@ -223,37 +223,37 @@ const HRManager: React.FC<HRManagerProps> = ({
                 />
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto custom-scrollbar">
-              <table className="w-full text-left">
+            <div className="flex-1 overflow-auto custom-scrollbar">
+              <table className="w-full text-left min-w-[640px]">
                 <thead className="bg-slate-50/50 border-b border-slate-100 sticky top-0 z-10">
                   <tr>
-                    <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">임직원 정보</th>
-                    <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">부서 / 직급</th>
-                    <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">입사일 / 근속</th>
-                    <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">보건증</th>
-                    <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">관리</th>
+                    <th className="px-4 sm:px-8 py-4 sm:py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">임직원 정보</th>
+                    <th className="px-4 sm:px-8 py-4 sm:py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">부서 / 직급</th>
+                    <th className="px-4 sm:px-8 py-4 sm:py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">입사일 / 근속</th>
+                    <th className="px-4 sm:px-8 py-4 sm:py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">보건증</th>
+                    <th className="px-4 sm:px-8 py-4 sm:py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">관리</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {filteredEmployees.map(emp => (
                     <tr key={emp.id} className="hover:bg-slate-50 transition-colors group">
-                      <td className="px-8 py-6">
-                        <div className="flex items-center space-x-4">
-                          <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center font-black">{emp.name[0]}</div>
-                          <div><p className="font-black text-slate-800">{emp.name}</p><p className="text-xs text-slate-400">{emp.phone}</p></div>
+                      <td className="px-4 sm:px-8 py-4 sm:py-6">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-9 h-9 sm:w-12 sm:h-12 bg-indigo-50 text-indigo-600 rounded-xl sm:rounded-2xl flex items-center justify-center font-black shrink-0">{emp.name[0]}</div>
+                          <div><p className="font-black text-slate-800 text-sm">{emp.name}</p><p className="text-xs text-slate-400">{emp.phone}</p></div>
                         </div>
                       </td>
-                      <td className="px-8 py-6">
+                      <td className="px-4 sm:px-8 py-4 sm:py-6">
                         <p className="text-sm font-bold text-slate-700">{emp.department}</p>
                         <p className="text-[10px] text-slate-400 font-black uppercase">{emp.position}</p>
                       </td>
-                      <td className="px-8 py-6">
+                      <td className="px-4 sm:px-8 py-4 sm:py-6">
                         <div className="space-y-1">
                           <p className="text-xs font-bold text-slate-600 flex items-center"><Calendar size={12} className="mr-1.5" />{emp.joinDate}</p>
                           <span className="text-[10px] font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-100">{calculateWorkDays(emp.joinDate)}일째</span>
                         </div>
                       </td>
-                      <td className="px-8 py-6 text-center">
+                      <td className="px-4 sm:px-8 py-4 sm:py-6 text-center">
                         {emp.healthCertDate ? (() => {
                           const { expiry, daysLeft } = getHealthCertStatus(emp.healthCertDate);
                           const isExpired = daysLeft <= 0;
@@ -275,8 +275,8 @@ const HRManager: React.FC<HRManagerProps> = ({
                           <span className="text-[10px] text-slate-300 font-bold">미등록</span>
                         )}
                       </td>
-                      <td className="px-8 py-6 text-right">
-                        <div className="flex justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-all">
+                      <td className="px-4 sm:px-8 py-4 sm:py-6 text-right">
+                        <div className="flex justify-end space-x-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-all">
                           <button onClick={() => { setEditingEmployee(emp); setFormData({ name: emp.name, position: emp.position, department: emp.department, joinDate: emp.joinDate, birthDate: emp.birthDate || '', phone: emp.phone, status: emp.status, annualLeave: { carryOverLeave: emp.annualLeave?.carryOverLeave || 0, bonusLeave: emp.annualLeave?.bonusLeave || 0 }, manualAdjustment: emp.manualAdjustment || 0, healthCertDate: emp.healthCertDate || '' }); setIsModalOpen(true); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><Edit2 size={18} /></button>
                           <button onClick={() => setConfirmModal({
                               message: `'${emp.name}' 직원 정보를 삭제하시겠습니까?`,
@@ -294,14 +294,14 @@ const HRManager: React.FC<HRManagerProps> = ({
         )}
 
         {activeTab === 'leave-approval' && (
-          <div className="flex-1 overflow-y-auto custom-scrollbar">
-            <table className="w-full text-left">
+          <div className="flex-1 overflow-auto custom-scrollbar">
+            <table className="w-full text-left min-w-[580px]">
               <thead className="bg-slate-50 border-b border-slate-100">
                 <tr>
-                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">신청 직원</th>
-                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">항목 / 사유</th>
-                  <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">신청 기간 / 일수</th>
-                  <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">결재 처리</th>
+                  <th className="px-4 sm:px-8 py-4 sm:py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">신청 직원</th>
+                  <th className="px-4 sm:px-8 py-4 sm:py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">항목 / 사유</th>
+                  <th className="px-4 sm:px-10 py-4 sm:py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">신청 기간 / 일수</th>
+                  <th className="px-4 sm:px-10 py-4 sm:py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">결재 처리</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -310,12 +310,12 @@ const HRManager: React.FC<HRManagerProps> = ({
                   const isModify = req.modifyRequest?.status === 'pending';
                   return (
                   <tr key={req.id} className={`transition-colors ${isCancel ? 'hover:bg-rose-50/20' : isModify ? 'hover:bg-violet-50/20' : 'hover:bg-amber-50/20'}`}>
-                    <td className="px-8 py-6">
-                      <p className="font-black text-slate-800">{req.employeeName}</p>
+                    <td className="px-4 sm:px-8 py-4 sm:py-6">
+                      <p className="font-black text-slate-800 text-sm">{req.employeeName}</p>
                       {isCancel && <span className="text-[9px] font-black px-1.5 py-0.5 bg-rose-100 text-rose-600 rounded mt-0.5 inline-block">취소 신청</span>}
                       {isModify && <span className="text-[9px] font-black px-1.5 py-0.5 bg-violet-100 text-violet-600 rounded mt-0.5 inline-block">변경 신청</span>}
                     </td>
-                    <td className="px-8 py-6">
+                    <td className="px-4 sm:px-8 py-4 sm:py-6">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase mb-1 inline-block ${req.type === '연차' ? 'bg-indigo-500 text-white' : 'bg-emerald-500 text-white'}`}>{req.type}</span>
                       {isModify ? (
                         <div className="mt-1 space-y-0.5">
@@ -327,13 +327,13 @@ const HRManager: React.FC<HRManagerProps> = ({
                         <p className="text-xs text-slate-500 font-medium italic">&quot;{req.reason}&quot;</p>
                       )}
                     </td>
-                    <td className="px-10 py-6">
+                    <td className="px-4 sm:px-10 py-4 sm:py-6">
                       <p className="text-xs font-bold text-slate-700">{req.startDate} ~ {req.endDate}</p>
                       <p className="text-[10px] font-black text-indigo-600 bg-indigo-50 w-fit px-1.5 py-0.5 rounded-md mt-1">
                         {isModify ? `${req.modifyRequest!.daysUsed}일 (변경)` : `${req.daysUsed}일 사용`}
                       </p>
                     </td>
-                    <td className="px-10 py-6 text-right">
+                    <td className="px-4 sm:px-10 py-4 sm:py-6 text-right">
                       <div className="flex justify-end space-x-3">
                         {isCancel && <>
                           <button onClick={() => onUpdateLeaveStatus(req.id, 'cancelled')} className="flex items-center space-x-2 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-black hover:bg-rose-700 transition-all"><Check size={14} /><span>취소 승인</span></button>
@@ -372,18 +372,18 @@ const HRManager: React.FC<HRManagerProps> = ({
         )}
 
         {activeTab === 'leave-balance' && (
-          <div className="flex-1 overflow-y-auto custom-scrollbar">
-            <div className="p-8 bg-indigo-50 border-b border-indigo-100 flex items-center space-x-4">
-              <AlertCircle className="text-indigo-500" size={24} />
+          <div className="flex-1 overflow-auto custom-scrollbar">
+            <div className="p-4 sm:p-8 bg-indigo-50 border-b border-indigo-100 flex items-start sm:items-center space-x-3">
+              <AlertCircle className="text-indigo-500 shrink-0 mt-0.5 sm:mt-0" size={20} />
               <div className="text-xs font-bold text-indigo-700 leading-relaxed">
                 <p>연차 정보는 인사팀에 의해 안전하게 관리됩니다. 우측 상단의 <b>&apos;편집 모드&apos;</b>를 활성화해야 수정이 가능합니다.</p>
                 <p>1년 미만 직원은 올해 발생한 월차만 표시됩니다. 총 부여 = [월차/연차 + 보너스 + 이월], 실 잔여 = [총 부여 - (사용 + 수동 차감)]</p>
               </div>
             </div>
-            <table className="w-full text-left">
+            <table className="w-full text-left min-w-[640px]">
               <thead className="bg-slate-50 border-b border-slate-100 sticky top-0 z-10">
                 <tr>
-                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">임직원</th>
+                  <th className="px-4 sm:px-8 py-4 sm:py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">임직원</th>
                   <th className="px-4 py-5 text-[10px] font-black text-emerald-400 uppercase tracking-widest text-center">월차</th>
                   <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">
                     <span className="block">연차</span>

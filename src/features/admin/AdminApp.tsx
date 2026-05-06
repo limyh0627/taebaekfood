@@ -286,7 +286,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   }, [appNotifications]);
 
   // 신규 주문 등록 시 부자재 부족 여부 체크 후 확인사항 등록
-  const checkAndAlertShortage = async (orderItems: Order['items']) => {
+  const checkAndAlertShortage = async (orderItems: Order['items'], clientId?: string) => {
     const usage: Record<string, { name: string; needed: number; unit: string }> = {};
     for (const item of orderItems) {
       const product = allProducts.find(p => p.id === item.productId);
@@ -304,19 +304,36 @@ const AdminApp: React.FC<AdminAppProps> = ({
         continue;
       }
 
-      if (product.category !== '완제품' || !product.submaterials) continue;
+      if (product.category !== '완제품') continue;
 
-      let boxSize = 0;
-      for (const s of product.submaterials) {
-        const sub = submaterials.find(sm => sm.id === s.id);
-        if (sub?.category === '박스' && (sub.boxSize ?? 0) > 0) { boxSize = sub.boxSize!; break; }
+      // 거래처별 포장 설정에서 박스/테이프 조회
+      const pc = clientId ? productClients.find(p => p.productId === product.id && p.clientId === clientId) : null;
+      const unitsPerBox = pc?.qtyPerBox || item.unitsPerBox || 1;
+      const boxesNeeded = item.isBoxUnit && item.boxQuantity
+        ? item.boxQuantity
+        : Math.ceil(item.quantity / unitsPerBox);
+
+      // 박스 부족 체크 (productClients 기반)
+      if (pc?.boxTypeId) {
+        const boxSub = submaterials.find(sm => sm.id === pc.boxTypeId);
+        if (boxSub) {
+          usage[boxSub.id] = { name: boxSub.name, needed: (usage[boxSub.id]?.needed ?? 0) + boxesNeeded, unit: '개' };
+        }
       }
 
-      for (const s of product.submaterials) {
+      // 테이프 부족 체크 (productClients 기반)
+      if (pc?.tapeTypeId && boxesNeeded > 0) {
+        const tapeSub = submaterials.find(sm => sm.id === pc.tapeTypeId);
+        if (tapeSub) {
+          usage[tapeSub.id] = { name: tapeSub.name, needed: (usage[tapeSub.id]?.needed ?? 0) + boxesNeeded, unit: '개' };
+        }
+      }
+
+      // 박스·테이프 외 부자재 (BOM 기반)
+      for (const s of (product.submaterials || [])) {
         const sub = submaterials.find(sm => sm.id === s.id);
-        if (!sub || sub.category === '테이프') continue;
-        const needed = sub.category === '박스' ? Math.ceil(item.quantity / (boxSize || 1)) : item.quantity;
-        usage[sub.id] = { name: sub.name, needed: (usage[sub.id]?.needed ?? 0) + needed, unit: '개' };
+        if (!sub || sub.category === '박스' || sub.category === '테이프') continue;
+        usage[sub.id] = { name: sub.name, needed: (usage[sub.id]?.needed ?? 0) + item.quantity, unit: '개' };
       }
     }
 
@@ -877,23 +894,43 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
       <main className={`flex-1 flex flex-col min-w-0 overflow-hidden transition-all duration-300 ${isMobile ? '' : (isSidebarCollapsed ? 'ml-20' : 'ml-64')}`} style={{ height: '100dvh' }}>
         {/* 모바일 헤더 */}
-        <header className="md:hidden bg-white border-b border-slate-200 px-4 flex items-center justify-between" style={{ paddingTop: `max(0.75rem, env(safe-area-inset-top))`, paddingBottom: '0.75rem' }}>
+        <header className="md:hidden bg-white border-b border-slate-200 px-3 flex items-center gap-2" style={{ paddingTop: `max(0.75rem, env(safe-area-inset-top))`, paddingBottom: '0.75rem' }}>
           <button
             onClick={() => setIsSidebarCollapsed(false)}
-            className="p-2 rounded-lg hover:bg-slate-100 text-slate-600"
+            className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 shrink-0"
           >
-            <Menu size={24} />
+            <Menu size={22} />
           </button>
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-cyan-600 rounded-lg flex items-center justify-center text-white shadow-sm flex-shrink-0">
-              <svg width="16" height="16" viewBox="0 0 32 32" fill="none"><path d="M4 16C4 16 8 8 16 8C24 8 28 16 28 16" stroke="white" strokeWidth="3.5" strokeLinecap="round"/><path d="M22 12L28 16L22 20" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/><circle cx="16" cy="22" r="3" fill="white"/></svg>
-            </div>
-            <div>
-              <p className="text-[9px] font-black uppercase tracking-widest text-cyan-600 leading-none">Flow-It</p>
-              <p className="text-xs font-bold text-slate-700 leading-tight">{companyInfo?.name ?? '태백식품'}{isAdmin ? ' 관리자' : ''}</p>
-            </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-black text-slate-800 truncate">
+              {(({
+                'dashboard': '비즈니스 현황', 'ai-consultant': 'AI 인사이트',
+                'orders': '주문 관리', 'shipping': '배송 관리', 'inventory': '재고 관리',
+                'pallets': '파렛트 관리', 'hr': '인사 관리', 'clients': '거래처 관리',
+                'notice': '공지사항', 'documents': '서류 관리', 'trade-statement': '거래명세서',
+                'profit-analysis': '손익 / 비용 분석', 'cost-management': '비용 관리',
+                'production': '생산 실적', 'admin-checklist': '확인사항',
+                'leave-portal': '연차 신청', 'confirmation-items': '확인사항',
+                'database': '데이터베이스', 'item-management': '품목 관리',
+                'inbound-scan': '입고 스캔', 'client-portal': '거래처 포털',
+                'officetalk': '오피스톡',
+              } as Record<string, string>)[currentView]) ?? ''}
+            </p>
           </div>
-          <div className="w-10" /> {/* Spacer for centering */}
+          {(() => {
+            const mobileUnread = appNotifications.filter(n => !n.readBy.includes(currentUser.id) && (!n.targetId || n.targetId === currentUser.id)).length;
+            return (
+              <button
+                onClick={() => setShowNotifPanel(p => !p)}
+                className="relative p-2 rounded-lg hover:bg-slate-100 text-slate-500 shrink-0"
+              >
+                {mobileUnread > 0 ? <BellRing size={20} className="text-amber-500" /> : <Bell size={20} />}
+                {mobileUnread > 0 && (
+                  <span className="absolute top-1 right-1 min-w-[14px] h-[14px] bg-red-500 text-white text-[8px] font-black rounded-full flex items-center justify-center px-0.5">{mobileUnread > 99 ? '99+' : mobileUnread}</span>
+                )}
+              </button>
+            );
+          })()}
         </header>
         
         <div className="flex-1 overflow-auto p-3 md:p-4 lg:p-6 custom-scrollbar">
@@ -926,7 +963,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               </div>
             </div>
           ) : (
-          <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'clients', 'notice', 'pallets', 'confirmation-items', 'shipping', 'production', 'inbound-scan'].includes(currentView)) ? '' : 'min-w-[720px] md:min-w-0 h-full'}>
+          <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'clients', 'notice', 'pallets', 'confirmation-items', 'shipping', 'production', 'inbound-scan'].includes(currentView)) ? '' : 'h-full'}>
           {(currentView === 'dashboard' || currentView === 'ai-consultant') && (
             <div className="h-full flex flex-col overflow-hidden">
               <div className="flex items-center gap-1 px-6 pt-5 pb-0 shrink-0">
@@ -1539,31 +1576,29 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
             return (
               <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-3xl font-black text-slate-900 uppercase">서류 관리</h2>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="flex bg-white p-1 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex flex-col gap-3">
+                  <h2 className="text-2xl sm:text-3xl font-black text-slate-900 uppercase">서류 관리</h2>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap gap-1 bg-white p-1 rounded-2xl border border-slate-200 shadow-sm">
                       <button
                         onClick={() => setDocTab('생산판매기록부')}
-                        className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '생산판매기록부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                        className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '생산판매기록부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
                       >생산판매기록부</button>
                       <button
                         onClick={() => setDocTab('원료수불부')}
-                        className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '원료수불부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                        className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '원료수불부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
                       >원료수불부</button>
                       <button
                         onClick={() => setDocTab('생산작업기록부')}
-                        className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '생산작업기록부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                        className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '생산작업기록부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
                       >생산작업기록부</button>
                       <button
                         onClick={() => setDocTab('생산작업기록부2')}
-                        className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '생산작업기록부2' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                        className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '생산작업기록부2' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
                       >생산작업기록부2</button>
                     </div>
                     {docTab === '생산판매기록부' && (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-3 py-1.5 shadow-sm">
                           <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">서류 날짜</span>
                           <input
@@ -1638,7 +1673,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       </div>
                     )}
                     {docTab === '생산작업기록부' && (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-3 py-1.5 shadow-sm">
                           <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">년월</span>
                           <input
@@ -1786,7 +1821,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       </div>
                     )}
                     {docTab === '생산작업기록부2' && (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-3 py-1.5 shadow-sm">
                           <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">년월</span>
                           <input
@@ -2851,13 +2886,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
           correctPassword={companyInfo?.adminPassword || '0000'}
         />
       )}
-      {isAddOrderOpen && <AddOrderModal products={allProducts} clients={clients} productClients={productClients} palletStocks={pallets} onClose={() => setIsAddOrderOpen(false)} onSave={async (o) => {
+      {isAddOrderOpen && <AddOrderModal products={allProducts} clients={clients} productClients={productClients} palletStocks={pallets} submaterials={submaterials} onClose={() => setIsAddOrderOpen(false)} onSave={async (o) => {
         try {
           console.log('[AddOrder] 저장 시작', o);
           const orderId = `ORD-${Date.now()}`;
           await addItem('orders', {...o, id: orderId, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
           console.log('[AddOrder] orders 저장 완료', orderId);
-          await checkAndAlertShortage(o.items);
+          await checkAndAlertShortage(o.items, o.clientId);
           const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '거래처';
           await addItem('notifications', { type: 'new_order', title: '신규 주문', body: `${clientName} 주문이 등록되었습니다.`, readBy: [], createdAt: new Date().toISOString(), senderId: currentUser.id, linkedId: orderId } as Omit<AppNotification,'id'>);
           setNewOrderId(orderId);
@@ -2874,7 +2909,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           const orderId = `ORD-${Date.now()}`;
           await addItem('orders', {...o, id: orderId, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
           console.log('[PasteOrder] orders 저장 완료', orderId);
-          await checkAndAlertShortage(o.items);
+          await checkAndAlertShortage(o.items, o.clientId);
           const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '거래처';
           await addItem('notifications', { type: 'new_order', title: '신규 주문', body: `${clientName} 주문이 등록되었습니다.`, readBy: [], createdAt: new Date().toISOString(), senderId: currentUser.id, linkedId: orderId } as Omit<AppNotification,'id'>);
           setNewOrderId(orderId);

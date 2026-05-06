@@ -161,51 +161,49 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   };
 
   return (
-    <div className="space-y-5 animate-in fade-in duration-300">
+    <div className="space-y-4 animate-in fade-in duration-300">
       <PageHeader
         title="손익 / 비용 관리"
         subtitle="매출 · 매입 · 고정비 기반 영업이익을 분석하고 비용을 관리합니다."
-        right={
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+          <button onClick={() => setMainTab('analysis')}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'analysis' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+            <BarChart2 size={13}/>손익분석
+          </button>
+          <button onClick={() => setMainTab('costs')}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'costs' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+            <DollarSign size={13}/>고정비 입력
+          </button>
+          <button onClick={() => setMainTab('clients')}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'clients' ? 'bg-white text-rose-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+            <Users size={13}/>거래처통계
+          </button>
+          <button onClick={() => setMainTab('inventory-value')}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'inventory-value' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+            <Package size={13}/>재고액
+          </button>
+        </div>
+        {mainTab === 'analysis' && (
           <div className="flex items-center gap-2">
-            {mainTab === 'analysis' && (
-              <div className="flex items-center gap-2">
-                {period === '1Y' && (
-                  <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))}
-                    className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-black outline-none focus:ring-2 focus:ring-blue-300 cursor-pointer">
-                    {years.map(y => <option key={y} value={y}>{y}년</option>)}
-                  </select>
-                )}
-                <div className="flex bg-slate-100 rounded-xl p-1 gap-0.5">
-                  {([['3M', '분기'], ['6M', '반기'], ['1Y', '연간']] as const).map(([val, label]) => (
-                    <button key={val} onClick={() => setPeriod(val)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${period === val ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            {period === '1Y' && (
+              <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))}
+                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-black outline-none focus:ring-2 focus:ring-blue-300 cursor-pointer">
+                {years.map(y => <option key={y} value={y}>{y}년</option>)}
+              </select>
             )}
-            <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
-              <button onClick={() => setMainTab('analysis')}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'analysis' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-                <BarChart2 size={13}/>손익분석
-              </button>
-              <button onClick={() => setMainTab('costs')}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'costs' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-                <DollarSign size={13}/>고정비 입력
-              </button>
-              <button onClick={() => setMainTab('clients')}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'clients' ? 'bg-white text-rose-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-                <Users size={13}/>거래처통계
-              </button>
-              <button onClick={() => setMainTab('inventory-value')}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'inventory-value' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-                <Package size={13}/>재고액
-              </button>
+            <div className="flex bg-slate-100 rounded-xl p-1 gap-0.5">
+              {([['3M', '분기'], ['6M', '반기'], ['1Y', '연간']] as const).map(([val, label]) => (
+                <button key={val} onClick={() => setPeriod(val)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${period === val ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
-        }
-      />
+        )}
+      </div>
 
       {mainTab === 'costs' && (
         <CostManager

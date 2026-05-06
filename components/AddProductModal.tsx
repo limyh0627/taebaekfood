@@ -341,7 +341,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                 <Layers size={14} className="mr-2" /> 구성 부자재 (BOM)
               </label>
               <div className="space-y-2">
-                {(['용기', '마개', '라벨', '박스', '테이프'] as const).map(cat => {
+                {(['용기', '마개', '라벨'] as const).map(cat => {
                   const getSubCat = (s: typeof formData.submaterials[0]) => {
                     if (s.category) return normCat(s.category);
                     return normCat(allSubmaterials.find(a => a.id === s.id)?.category || '');
@@ -363,9 +363,6 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                           {selectedSub ? (
                             <div className="flex items-center space-x-2">
                               <span className="text-sm font-bold text-slate-700">{selectedSub.name}</span>
-                              {cat === '박스' && formData.defaultBoxConfig.unitsPerBox > 0 && (
-                                <span className="text-[10px] font-black text-indigo-400 bg-indigo-100/50 px-1.5 py-0.5 rounded">{formData.defaultBoxConfig.unitsPerBox}개입</span>
-                              )}
                             </div>
                           ) : (
                             <span className="text-sm font-medium text-slate-400">{cat} 선택 안함</span>
@@ -388,9 +385,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                               type="button"
                               onClick={() => {
                                 const filtered = formData.submaterials.filter(s => getSubCat(s) !== cat);
-                                const newData: typeof formData = { ...formData, submaterials: filtered };
-                                if (cat === '박스') newData.defaultBoxConfig = { boxType: '', unitsPerBox: 0 };
-                                setFormData(newData);
+                                setFormData({ ...formData, submaterials: filtered });
                                 setActiveSubCategory(null);
                               }}
                               className={`flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all border ${!selectedSub ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-slate-50 border-slate-100 text-slate-500 hover:bg-slate-100'}`}
@@ -431,13 +426,6 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                                         ...formData,
                                         submaterials: [...filtered, newSub],
                                         ...(cat === '용기' && { 용량: autoCapacity }),
-                                        ...(cat === '박스' && {
-                                          defaultBoxConfig: {
-                                            boxType: sub.name,
-                                            unitsPerBox: formData.defaultBoxConfig.unitsPerBox,
-                                            boxSubId: sub.id,
-                                          }
-                                        }),
                                       };
                                       setFormData(newData);
                                       setActiveSubCategory(null);
@@ -450,25 +438,6 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                                 );
                               })}
                           </div>
-
-                          {/* 박스 선택 시: 박스당 개수 입력 */}
-                          {cat === '박스' && selectedSub && (
-                            <div className="flex items-center gap-2 bg-slate-50 rounded-xl p-3 border border-slate-100">
-                              <span className="text-[10px] font-black text-slate-400 uppercase shrink-0">박스당 개수</span>
-                              <input
-                                type="number"
-                                min={1}
-                                placeholder="개수"
-                                value={formData.defaultBoxConfig.unitsPerBox === 0 ? '' : formData.defaultBoxConfig.unitsPerBox}
-                                onChange={e => setFormData({
-                                  ...formData,
-                                  defaultBoxConfig: { ...formData.defaultBoxConfig, unitsPerBox: Number(e.target.value) || 0 }
-                                })}
-                                className="w-16 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-black text-center outline-none focus:ring-1 focus:ring-indigo-400"
-                              />
-                              <span className="text-[10px] text-slate-400">개</span>
-                            </div>
-                          )}
 
                           {/* 새 항목 추가 */}
                           {onAddSubmaterial && (
