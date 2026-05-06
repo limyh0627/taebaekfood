@@ -35,6 +35,7 @@ const AdminRoot: React.FC = () => {
   });
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [previewAsStaff, setPreviewAsStaff] = useState(false);
 
   const appData = useAppData();
   const adminData = useAdminData(true);
@@ -83,7 +84,7 @@ const AdminRoot: React.FC = () => {
   return (
     <AdminApp
       currentUser={currentUser}
-      isAdmin={true}
+      isAdmin={!previewAsStaff}
       isAdminAuthenticated={isAdminAuthenticated}
       onAdminAuth={setIsAdminAuthenticated}
       currentView={currentView}
@@ -91,6 +92,8 @@ const AdminRoot: React.FC = () => {
       onLogout={handleLogout}
       appData={{ ...appData, companyInfo: appData.companyInfo ?? DEFAULT_COMPANY_INFO }}
       adminData={adminData}
+      onPreviewStaff={!previewAsStaff ? () => setPreviewAsStaff(true) : undefined}
+      onExitPreview={previewAsStaff ? () => setPreviewAsStaff(false) : undefined}
     />
   );
 };

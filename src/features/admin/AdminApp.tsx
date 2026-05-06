@@ -50,6 +50,7 @@ import {
   PackageCheck,
   ScanLine,
   QrCode,
+  ShoppingBag,
 } from 'lucide-react';
 import { Order, Product, ProductClient, ProductSupplier, ViewType, OrderStatus, Client, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord } from '../../shared/types';
 import Dashboard from '../../../components/Dashboard';
@@ -77,6 +78,7 @@ import AdminChecklist from '../../../components/AdminChecklist';
 import InboundManager from '../../../components/InboundManager';
 import InboundScan from '../../../components/InboundScan';
 import QrLabelPrint from '../../../components/QrLabelPrint';
+import SmartStoreAnalytics from '../../../components/SmartStoreAnalytics';
 import ExcelJS from 'exceljs';
 
 import { db } from '../../shared/firebase';
@@ -657,7 +659,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   const handleNavClick = (view: ViewType) => {
-    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant', 'cost-management', 'profit-analysis', 'production', 'admin-checklist'];
+    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant', 'cost-management', 'profit-analysis', 'production', 'admin-checklist', 'smartstore-analytics'];
     if (adminOnlyViews.includes(view) && !isAdminAuthenticated && !isAdmin) {
       setPendingAdminView(view);
       setIsAdminAuthModalOpen(true);
@@ -819,6 +821,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       <NavItem icon={LayoutDashboard} label="대시보드" active={currentView === 'dashboard' || currentView === 'ai-consultant'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={BarChart2} label="손익 / 비용 분석" active={currentView === 'profit-analysis' || currentView === 'cost-management'} onClick={() => handleNavClick('profit-analysis')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={Factory} label="생산 실적" active={currentView === 'production'} onClick={() => handleNavClick('production')} collapsed={isSidebarCollapsed} />
+                      <NavItem icon={ShoppingBag} label="스마트스토어 분석" active={currentView === 'smartstore-analytics'} onClick={() => handleNavClick('smartstore-analytics')} collapsed={isSidebarCollapsed} />
                     </nav>
                   </div>
                   <div>
@@ -917,7 +920,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 'leave-portal': '연차 신청', 'confirmation-items': '확인사항',
                 'database': '데이터베이스', 'item-management': '품목 관리',
                 'inbound-scan': '입고 스캔', 'client-portal': '거래처 포털',
-                'officetalk': '오피스톡',
+                'officetalk': '오피스톡', 'smartstore-analytics': '스마트스토어 분석',
               } as Record<string, string>)[currentView]) ?? ''}
             </p>
           </div>
@@ -2708,6 +2711,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
               />
             </div>
+          )}
+          {currentView === 'smartstore-analytics' && (
+            <SmartStoreAnalytics
+              orders={orders}
+              clients={clients}
+              products={allProducts}
+              onUpdateProduct={(id, data) => updateItem('products', id, data)}
+            />
           )}
           {currentView === 'production' && (
             <ProductionManager
