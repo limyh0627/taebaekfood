@@ -79,6 +79,7 @@ import InboundManager from '../../../components/InboundManager';
 import InboundScan from '../../../components/InboundScan';
 import QrLabelPrint from '../../../components/QrLabelPrint';
 import SmartStoreAnalytics from '../../../components/SmartStoreAnalytics';
+import HaccpChecklist from '../../../components/HaccpChecklist';
 import ExcelJS from 'exceljs';
 
 import { db } from '../../shared/firebase';
@@ -659,7 +660,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   const handleNavClick = (view: ViewType) => {
-    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant', 'cost-management', 'profit-analysis', 'production', 'admin-checklist', 'smartstore-analytics'];
+    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant', 'cost-management', 'profit-analysis', 'production', 'admin-checklist', 'smartstore-analytics', 'haccp-checklist'];
     if (adminOnlyViews.includes(view) && !isAdminAuthenticated && !isAdmin) {
       setPendingAdminView(view);
       setIsAdminAuthModalOpen(true);
@@ -822,6 +823,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       <NavItem icon={BarChart2} label="손익 / 비용 분석" active={currentView === 'profit-analysis' || currentView === 'cost-management'} onClick={() => handleNavClick('profit-analysis')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={Factory} label="생산 실적" active={currentView === 'production'} onClick={() => handleNavClick('production')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={ShoppingBag} label="스마트스토어 분석" active={currentView === 'smartstore-analytics'} onClick={() => handleNavClick('smartstore-analytics')} collapsed={isSidebarCollapsed} />
+                      <NavItem icon={ClipboardList} label="HACCP 체크리스트" active={currentView === 'haccp-checklist'} onClick={() => handleNavClick('haccp-checklist')} collapsed={isSidebarCollapsed} />
                     </nav>
                   </div>
                   <div>
@@ -921,6 +923,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 'database': '데이터베이스', 'item-management': '품목 관리',
                 'inbound-scan': '입고 스캔', 'client-portal': '거래처 포털',
                 'officetalk': '오피스톡', 'smartstore-analytics': '스마트스토어 분석',
+                'haccp-checklist': 'HACCP 체크리스트',
               } as Record<string, string>)[currentView]) ?? ''}
             </p>
           </div>
@@ -2719,6 +2722,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
               products={allProducts}
               onUpdateProduct={(id, data) => updateItem('products', id, data)}
             />
+          )}
+          {currentView === 'haccp-checklist' && (
+            <HaccpChecklist />
           )}
           {currentView === 'production' && (
             <ProductionManager
