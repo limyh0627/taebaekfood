@@ -4,7 +4,7 @@ import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, Cell
 } from 'recharts';
-import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, BarChart2, DollarSign, Wallet, Users, ChevronLeft, ChevronRight, Save, Search, Package } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, BarChart2, DollarSign, Wallet, Users, ChevronLeft, ChevronRight, Save, Search, Package, X, CreditCard, Download } from 'lucide-react';
 import { IssuedStatement, FixedCostEntry, Client, PaymentRecord, Product } from '../types';
 import PageHeader from './PageHeader';
 import CostManager from './CostManager';
@@ -42,6 +42,9 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   const [showPayModal, setShowPayModal] = useState(false);
   const [payTarget, setPayTarget] = useState<IssuedStatement | null>(null);
   const [payForm, setPayForm] = useState({ amount: '', date: new Date().toISOString().slice(0, 10), method: '계좌이체' as PaymentRecord['method'], note: '' });
+
+  // ── 미수금 상세 팝업 ──
+  const [receivableDetailClient, setReceivableDetailClient] = useState<{ id: string; name: string } | null>(null);
 
   // ── 거래처 탭 서브탭 ──
   const [clientsSubTab, setClientsSubTab] = useState<'receivables' | 'stats'>('receivables');
@@ -519,11 +522,63 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           );
         };
 
+        const generateMonthlySummaryPdf = async () => {
+          const month = new Date().toISOString().slice(0, 7);
+          const [y, m] = month.split('-');
+          const monthStmts = issuedStatements.filter(s => s.tradeDate.startsWith(month));
+          const salesTotal = monthStmts.filter(s => s.type === '매출').reduce((a, s) => a + s.totalAmount, 0);
+          const purchaseTotal = monthStmts.filter(s => s.type === '매입').reduce((a, s) => a + s.totalAmount, 0);
+          const allReceivable = allClientList.filter(c => c.receivable > 0);
+          const totalReceivableAll = allReceivable.reduce((a, c) => a + c.receivable, 0);
+          const paidThisMonth = allClientList.filter(c => {
+            const stmts = issuedStatements.filter(s => s.clientId === c.id && s.type === '매출');
+            return stmts.some(s => (s.payments ?? []).some(p => p.date.startsWith(month)));
+          });
+          const jsPDF = (await import('jspdf')).default;
+          const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+          const fmtNum = (n: number) => n.toLocaleString('ko-KR');
+          let y2 = 20;
+          const line = (text: string, x = 15, size = 10, bold = false) => {
+            pdf.setFontSize(size); pdf.setFont('helvetica', bold ? 'bold' : 'normal');
+            pdf.text(text, x, y2); y2 += size * 0.5 + 2;
+          };
+          const rule = () => { pdf.setDrawColor(200); pdf.line(15, y2, 195, y2); y2 += 4; };
+          line(`${y}년 ${m}월 정산 요약`, 15, 18, true);
+          line(`발행일: ${new Date().toLocaleDateString('ko-KR')}`, 15, 9);
+          y2 += 4; rule();
+          line('▶ 이번 달 거래 현황', 15, 12, true); y2 += 2;
+          line(`  매출 합계:  ${fmtNum(salesTotal)}원`, 15, 10);
+          line(`  매입 합계:  ${fmtNum(purchaseTotal)}원`, 15, 10);
+          line(`  거래 건수:  ${monthStmts.length}건`, 15, 10);
+          y2 += 4; rule();
+          line('▶ 미수금 현황 (전체)', 15, 12, true); y2 += 2;
+          line(`  총 미수금:  ${fmtNum(totalReceivableAll)}원  (${allReceivable.length}개 거래처)`, 15, 10);
+          y2 += 2;
+          allReceivable.slice(0, 20).forEach(c => {
+            line(`  • ${c.name}:  ${fmtNum(c.receivable)}원`, 18, 9);
+          });
+          if (allReceivable.length > 20) line(`  ... 외 ${allReceivable.length - 20}개 거래처`, 18, 9);
+          y2 += 4; rule();
+          line('▶ 이번 달 수금 처리 거래처', 15, 12, true); y2 += 2;
+          if (paidThisMonth.length === 0) {
+            line('  이번 달 수금 기록 없음', 18, 9);
+          } else {
+            paidThisMonth.forEach(c => line(`  • ${c.name}`, 18, 9));
+          }
+          pdf.save(`정산요약_${y}년${m}월.pdf`);
+        };
+
         return (
           <>
             <div className="flex gap-4 min-h-[600px]">
               {/* 좌측: 거래처 목록 */}
               <div className="w-64 shrink-0 flex flex-col gap-3">
+                <button
+                  onClick={generateMonthlySummaryPdf}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-black rounded-xl transition-colors"
+                >
+                  <Download size={13} /> 이번 달 정산 요약 PDF
+                </button>
                 <div className="relative">
                   <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
                   <input type="text" placeholder="거래처 검색..." value={recClientSearch}
@@ -539,7 +594,12 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                         className={`w-full text-left px-4 py-3 border-b border-slate-50 transition-all ${isActive ? 'bg-indigo-50 border-l-2 border-l-indigo-500' : 'hover:bg-slate-50'}`}>
                         <p className={`text-xs font-black truncate ${isActive ? 'text-indigo-700' : 'text-slate-700'}`}>{c.name}</p>
                         <div className="flex gap-2 mt-0.5">
-                          {c.receivable > 0 && <span className="text-[9px] font-black text-blue-500">미수 {fmtS(c.receivable)}</span>}
+                          {c.receivable > 0 && (
+                            <span
+                              onClick={e => { e.stopPropagation(); setReceivableDetailClient({ id: c.id, name: c.name }); }}
+                              className="text-[9px] font-black text-blue-500 underline underline-offset-2 cursor-pointer hover:text-blue-700"
+                            >미수 {fmtS(c.receivable)}</span>
+                          )}
                           {c.payable > 0 && <span className="text-[9px] font-black text-rose-500">미지급 {fmtS(c.payable)}</span>}
                         </div>
                       </button>
@@ -580,9 +640,13 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                         <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest">거래 횟수</p>
                         <p className="text-xl font-black text-amber-700 mt-1">{yearSalesStmts.length}건</p>
                       </div>
-                      <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4">
+                      <div
+                        className={`bg-indigo-50 border border-indigo-100 rounded-2xl p-4 ${totalReceivable > 0 ? 'cursor-pointer hover:bg-indigo-100 transition-colors' : ''}`}
+                        onClick={() => totalReceivable > 0 && setReceivableDetailClient({ id: selId, name: selName })}
+                      >
                         <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">미수금</p>
                         <p className={`text-xl font-black mt-1 ${totalReceivable > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{totalReceivable > 0 ? fmtS(totalReceivable) : '없음'}</p>
+                        {totalReceivable > 0 && <p className="text-[9px] text-indigo-400 mt-0.5">클릭하여 상세 보기</p>}
                       </div>
                       <div className="bg-rose-50 border border-rose-100 rounded-2xl p-4">
                         <p className="text-[10px] font-black text-rose-400 uppercase tracking-widest">미지급금</p>
@@ -639,6 +703,71 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                 )}
               </div>
             </div>
+
+            {/* 미수금 상세 팝업 */}
+            {receivableDetailClient && (() => {
+              const unpaidStmts = issuedStatements
+                .filter(s => s.clientId === receivableDetailClient.id && s.type === '매출' && getBalance(s) > 0)
+                .sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
+              const detailTotal = unpaidStmts.reduce((a, s) => a + getBalance(s), 0);
+              return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+                  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[85vh]">
+                    <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+                      <div>
+                        <h3 className="font-black text-slate-800">{receivableDetailClient.name} · 미수금 상세</h3>
+                        <p className="text-sm font-black text-rose-600 mt-0.5">총 {fmt(detailTotal)}원 미수</p>
+                      </div>
+                      <button onClick={() => setReceivableDetailClient(null)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400">
+                        <X size={18} />
+                      </button>
+                    </div>
+                    <div className="overflow-y-auto flex-1 divide-y divide-slate-50">
+                      {unpaidStmts.length === 0 && (
+                        <p className="py-12 text-center text-slate-300 text-sm font-bold">미수금 없음</p>
+                      )}
+                      {unpaidStmts.map(s => {
+                        const bal = getBalance(s);
+                        const paid = getPaid(s);
+                        return (
+                          <div key={s.id} className="px-5 py-3.5 flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-black text-slate-700">{s.tradeDate}</span>
+                                <span className="text-[10px] font-mono text-slate-400">{s.docNo}</span>
+                              </div>
+                              <p className="text-[10px] text-slate-400 mt-0.5 truncate">
+                                {s.items.slice(0, 2).map(i => i.name).join(', ')}{s.items.length > 2 ? ` 외 ${s.items.length - 2}건` : ''}
+                              </p>
+                              <p className="text-[10px] text-slate-500 mt-0.5">
+                                청구 {fmt(s.totalAmount)}원{paid > 0 && ` · 수금 ${fmt(paid)}원`}
+                                {' · '}잔액 <span className="text-rose-600 font-black">{fmt(bal)}원</span>
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => { setReceivableDetailClient(null); openPayModal(s); }}
+                              className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black rounded-xl transition-colors"
+                            >
+                              <CreditCard size={12} /> 입금 처리
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {unpaidStmts.length > 1 && (
+                      <div className="px-5 py-3 border-t border-slate-100 shrink-0">
+                        <button
+                          onClick={() => { setReceivableDetailClient(null); openPayModal(unpaidStmts[0]); }}
+                          className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black rounded-xl transition-colors flex items-center justify-center gap-2"
+                        >
+                          <CreditCard size={14} /> 가장 오래된 전표부터 입금 처리
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* 수금/지불 등록 모달 */}
             {showPayModal && payTarget && (

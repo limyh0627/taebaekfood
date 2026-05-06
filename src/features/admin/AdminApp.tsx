@@ -49,6 +49,7 @@ import {
   ClipboardList,
   PackageCheck,
   ScanLine,
+  QrCode,
 } from 'lucide-react';
 import { Order, Product, ProductClient, ProductSupplier, ViewType, OrderStatus, Client, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord } from '../../shared/types';
 import Dashboard from '../../../components/Dashboard';
@@ -75,6 +76,7 @@ import ProductionManager from '../../../components/ProductionManager';
 import AdminChecklist from '../../../components/AdminChecklist';
 import InboundManager from '../../../components/InboundManager';
 import InboundScan from '../../../components/InboundScan';
+import QrLabelPrint from '../../../components/QrLabelPrint';
 import ExcelJS from 'exceljs';
 
 import { db } from '../../shared/firebase';
@@ -156,6 +158,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [rmCorrectionTargetId, setRmCorrectionTargetId] = useState<string | null>(null);
   const [rmCorrectionForm, setRmCorrectionForm] = useState({ date: new Date().toISOString().slice(0, 10), amount: '', isNegative: true, note: '' });
   const [isMobile, setIsMobile] = useState(false);
+  const [showQrLabel, setShowQrLabel] = useState(false);
 
   // 모바일 감지
   useEffect(() => {
@@ -826,6 +829,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={Users} label="거래처 관리" active={currentView === 'clients'} onClick={() => handleNavClick('clients')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={ClipboardList} label="확인사항" active={currentView === 'admin-checklist'} onClick={() => handleNavClick('admin-checklist')} collapsed={isSidebarCollapsed} badge={adminPendingCount > 0 ? adminPendingCount : undefined} />
+                      <NavItem icon={QrCode} label="QR 라벨 인쇄" active={false} onClick={() => setShowQrLabel(true)} collapsed={isSidebarCollapsed} />
                     </nav>
                   </div>
                   <div>
@@ -1167,6 +1171,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
               currentUser={{ id: currentUser.id, name: currentUser.name }}
               onUpdateSubmaterial={(id, data) => updateItem('submaterials', id, data)}
               onFinishConfirmedOrder={handleFinishConfirmedOrder}
+              onClose={() => setCurrentView('inventory')}
+            />
+          )}
+          {showQrLabel && (
+            <QrLabelPrint
+              submaterials={submaterials}
+              onClose={() => setShowQrLabel(false)}
             />
           )}
           {currentView === 'clients' && <ClientManager clients={clients} onUpdateClient={(c) => updateItem('clients', c.id, c)} onAddClient={(c) => addItem('clients', c)} onDeleteClient={(id) => deleteItem('clients', id)} />}

@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Order, Client, OrderStatus, Product } from '../types';
 import { X, Save } from 'lucide-react';
+import { subscribeToDocument, setDocument } from '../src/shared/services/firebaseService';
 import { OrderCard } from './OrdersList';
 import PageHeader from './PageHeader';
 
@@ -42,12 +43,18 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
   const [newDate, setNewDate] = useState('');
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [showAddProductSelect, setShowAddProductSelect] = useState<string | null>(null);
-  const [deliveryOrdering, setDeliveryOrdering] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem('deliveryOrdering') || '[]'); } catch { return []; }
-  });
-  const [deliveryTimeSlots, setDeliveryTimeSlots] = useState<Record<string, '오전' | '오후'>>(() => {
-    try { return JSON.parse(localStorage.getItem('deliveryTimeSlots') || '{}'); } catch { return {}; }
-  });
+  const [deliveryOrdering, setDeliveryOrdering] = useState<string[]>([]);
+  const [deliveryTimeSlots, setDeliveryTimeSlots] = useState<Record<string, '오전' | '오후'>>({});
+
+  useEffect(() => {
+    return subscribeToDocument<{ ordering: string[]; timeSlots: Record<string, '오전' | '오후'> }>(
+      'settings', 'deliveryOrdering',
+      (data) => {
+        setDeliveryOrdering(data?.ordering ?? []);
+        setDeliveryTimeSlots(data?.timeSlots ?? {});
+      }
+    );
+  }, []);
   const [showDeliveryPicker, setShowDeliveryPicker] = useState(false);
   const [pickerDeliveryOrdering, setPickerDeliveryOrdering] = useState<string[]>([]);
   const [dragDeliveryIdx, setDragDeliveryIdx] = useState<number | null>(null);
@@ -314,15 +321,19 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
         // 배송순서 유효 주문 (작업완료 중 deliveryOrdering에 있는 것)
         const validDelivery = deliveryOrdering.filter(id => dispatchedOrders.some(o => o.id === id));
 
-        const saveDeliveryOrdering = (next: string[]) => {
+        const saveDeliveryOrdering = (next: string[], slots?: Record<string, '오전' | '오후'>) => {
           setDeliveryOrdering(next);
-          localStorage.setItem('deliveryOrdering', JSON.stringify(next));
+          setDocument('settings', 'deliveryOrdering', { ordering: next, timeSlots: slots ?? deliveryTimeSlots });
+        };
+
+        const saveTimeSlots = (next: Record<string, '오전' | '오후'>) => {
+          setDeliveryTimeSlots(next);
+          setDocument('settings', 'deliveryOrdering', { ordering: deliveryOrdering, timeSlots: next });
         };
 
         const toggleTimeSlot = (id: string) => {
           const next: Record<string, '오전' | '오후'> = { ...deliveryTimeSlots, [id]: deliveryTimeSlots[id] === '오후' ? '오전' : '오후' };
-          setDeliveryTimeSlots(next);
-          localStorage.setItem('deliveryTimeSlots', JSON.stringify(next));
+          saveTimeSlots(next);
         };
 
         const morningIds = validDelivery.filter(id => (deliveryTimeSlots[id] || '오전') === '오전');
@@ -359,8 +370,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
                         onDrop={() => {
                           if (dragDeliveryId === null) return;
                           const next: Record<string, '오전' | '오후'> = { ...deliveryTimeSlots, [dragDeliveryId]: '오전' };
-                          setDeliveryTimeSlots(next);
-                          localStorage.setItem('deliveryTimeSlots', JSON.stringify(next));
+                          saveTimeSlots(next);
                           setDragDeliveryId(null);
                         }}
                       >오전</div>
@@ -386,11 +396,11 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
                               next.splice(next.indexOf(id), 0, moved);
                               if (dragDeliveryId && dragDeliveryId !== id) {
                                 const slots: Record<string, '오전' | '오후'> = { ...deliveryTimeSlots, [dragDeliveryId]: '오전' };
-                                setDeliveryTimeSlots(slots);
-                                localStorage.setItem('deliveryTimeSlots', JSON.stringify(slots));
+                                saveDeliveryOrdering(next, slots);
+                              } else {
+                                saveDeliveryOrdering(next);
                               }
                               setDragDeliveryIdx(null); setDragDeliveryId(null);
-                              saveDeliveryOrdering(next);
                             }}
                             className="flex items-center gap-2 bg-white rounded-xl px-2.5 py-2 shadow-sm border border-amber-100 cursor-grab active:cursor-grabbing"
                           >
@@ -414,8 +424,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
                         onDrop={() => {
                           if (dragDeliveryId === null) return;
                           const next: Record<string, '오전' | '오후'> = { ...deliveryTimeSlots, [dragDeliveryId]: '오후' };
-                          setDeliveryTimeSlots(next);
-                          localStorage.setItem('deliveryTimeSlots', JSON.stringify(next));
+                          saveTimeSlots(next);
                           setDragDeliveryId(null);
                         }}
                       >오후</div>
@@ -442,11 +451,11 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
                               // 드래그한 항목을 오후로
                               if (dragDeliveryId && dragDeliveryId !== id) {
                                 const slots: Record<string, '오전' | '오후'> = { ...deliveryTimeSlots, [dragDeliveryId]: '오후' };
-                                setDeliveryTimeSlots(slots);
-                                localStorage.setItem('deliveryTimeSlots', JSON.stringify(slots));
+                                saveDeliveryOrdering(next, slots);
+                              } else {
+                                saveDeliveryOrdering(next);
                               }
                               setDragDeliveryIdx(null); setDragDeliveryId(null);
-                              saveDeliveryOrdering(next);
                             }}
                             className="flex items-center gap-2 bg-white rounded-xl px-2.5 py-2 shadow-sm border border-indigo-100 cursor-grab active:cursor-grabbing"
                           >

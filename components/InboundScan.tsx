@@ -19,6 +19,7 @@ interface InboundScanProps {
   currentUser: { id: string; name: string };
   onUpdateSubmaterial: (id: string, data: Partial<Product>) => void;
   onFinishConfirmedOrder: (id: string) => void;
+  onClose: () => void;
 }
 
 type ScanState = 'scanning' | 'captured' | 'gemini_loading' | 'confirming' | 'done';
@@ -44,6 +45,7 @@ const InboundScan: React.FC<InboundScanProps> = ({
   currentUser,
   onUpdateSubmaterial,
   onFinishConfirmedOrder,
+  onClose,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -309,6 +311,9 @@ const InboundScan: React.FC<InboundScanProps> = ({
       {/* 상단 바 */}
       <div className="flex items-center justify-between px-4 py-3 shrink-0" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
         <div className="flex items-center gap-2">
+          <button onClick={onClose} className="p-1.5 text-white/60 hover:text-white">
+            <X size={20} />
+          </button>
           <Zap size={18} className="text-teal-400" />
           <span className="text-white font-black text-sm">입고 스캔</span>
         </div>

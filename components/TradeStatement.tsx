@@ -4,7 +4,7 @@ import {
   FileText, Printer, Search, ChevronDown, CalendarDays,
   Package, ClipboardList, ChevronRight, CheckCircle2, Edit2, Plus, X, ArrowLeft,
   Tag, Save, AlertCircle, Download, CheckSquare,
-  ChevronLeft
+  ChevronLeft, Share2
 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
 import { Order, Product, Client, ProductClient, ProductSupplier, OrderStatus, IssuedStatement, CompanyInfo, PaymentRecord } from '../types';
@@ -1609,6 +1609,29 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           selectedStmts.forEach(s => onUpdateIssuedStatement?.(s.id, { receivedAt: new Date().toISOString() } as any));
         };
 
+        const handleTaxShare = async () => {
+          if (!taxPrintRef.current || selectedStmts.length === 0) return;
+          const html2canvas = (await import('html2canvas')).default;
+          const jsPDF = (await import('jspdf')).default;
+          const canvas = await html2canvas(taxPrintRef.current, { scale: 2, useCORS: true });
+          const imgData = canvas.toDataURL('image/png');
+          const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+          const pageW = pdf.internal.pageSize.getWidth(), pageH = pdf.internal.pageSize.getHeight();
+          const imgW = pageW - 20, imgH = canvas.height * imgW / canvas.width;
+          pdf.addImage(imgData, 'PNG', 10, imgH < pageH ? (pageH - imgH) / 2 : 10, imgW, imgH);
+          const filename = `거래명세서_${selectedClient?.name}_${tradeMonth}.pdf`;
+          const blob = pdf.output('blob');
+          const file = new File([blob], filename, { type: 'application/pdf' });
+          if (navigator.share && navigator.canShare?.({ files: [file] })) {
+            await navigator.share({ files: [file], title: `거래명세서 - ${selectedClient?.name}` });
+          } else {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = filename; a.click();
+            URL.revokeObjectURL(url);
+          }
+        };
+
         const handleTaxPrint = () => {
           if (!taxPrintRef.current || selectedStmts.length === 0) return;
           const win = window.open('', '_blank', 'width=900,height=700');
@@ -1672,6 +1695,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     <button onClick={handleTaxPdf}
                       className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-blue-600 text-white rounded-lg text-[11px] font-black hover:bg-blue-700">
                       <Download size={10}/>PDF
+                    </button>
+                    <button onClick={handleTaxShare}
+                      className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-violet-600 text-white rounded-lg text-[11px] font-black hover:bg-violet-700">
+                      <Share2 size={10}/>공유
                     </button>
                     <button onClick={handleTaxPrint}
                       className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-emerald-600 text-white rounded-lg text-[11px] font-black hover:bg-emerald-700">
