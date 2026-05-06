@@ -29,6 +29,7 @@ interface StaffAppProps {
   onLogout: () => void;
   appData: AppData;
   adminData: AdminData;
+  onExitPreview?: () => void;
 }
 
 const StaffApp: React.FC<StaffAppProps> = (props) => (

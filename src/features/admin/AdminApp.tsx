@@ -110,6 +110,8 @@ interface AdminAppProps {
   onLogout: () => void;
   appData: AppData;
   adminData: AdminData;
+  onPreviewStaff?: () => void;
+  onExitPreview?: () => void;
 }
 
 const AdminApp: React.FC<AdminAppProps> = ({
@@ -122,6 +124,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
   onLogout,
   appData,
   adminData,
+  onPreviewStaff,
+  onExitPreview,
 }) => {
   const {
     orders, confirmedOrders, orderRequests,
@@ -719,6 +723,42 @@ const AdminApp: React.FC<AdminAppProps> = ({
               </div>
             );
           })()}
+
+          {/* 직원 뷰 전환 버튼 (관리자 전용) */}
+          {isAdmin && onPreviewStaff && (
+            <div className={`mb-2 ${isSidebarCollapsed ? 'flex justify-center' : ''}`}>
+              {isSidebarCollapsed ? (
+                <button onClick={onPreviewStaff} title="직원 뷰로 보기"
+                  className="w-9 h-9 rounded-xl bg-cyan-50 hover:bg-cyan-100 flex items-center justify-center transition-colors">
+                  <ExternalLink size={15} className="text-cyan-600" />
+                </button>
+              ) : (
+                <button onClick={onPreviewStaff}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 text-cyan-700 text-xs font-bold transition-colors">
+                  <ExternalLink size={13} />
+                  직원 뷰로 보기
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* 직원 뷰 미리보기 종료 배너 */}
+          {!isAdmin && onExitPreview && (
+            <div className={`mb-2 ${isSidebarCollapsed ? 'flex justify-center' : ''}`}>
+              {isSidebarCollapsed ? (
+                <button onClick={onExitPreview} title="관리자로 돌아가기"
+                  className="w-9 h-9 rounded-xl bg-amber-50 hover:bg-amber-100 flex items-center justify-center transition-colors">
+                  <ShieldCheck size={15} className="text-amber-600" />
+                </button>
+              ) : (
+                <button onClick={onExitPreview}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 text-xs font-bold transition-colors">
+                  <ShieldCheck size={13} />
+                  관리자로 돌아가기
+                </button>
+              )}
+            </div>
+          )}
 
           {/* 계정 정보 (클릭 → 로그아웃) */}
           <div

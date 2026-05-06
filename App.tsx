@@ -24,6 +24,7 @@ const App: React.FC = () => {
     return user?.id === 'admin' ? 'dashboard' : 'orders';
   });
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [previewAsStaff, setPreviewAsStaff] = useState(false);
 
   const appData = useAppData();
   const isAdmin = currentUser?.id === 'admin' || isAdminAuthenticated;
@@ -75,11 +76,11 @@ const App: React.FC = () => {
     adminData,
   };
 
-  if (isAdmin) {
-    return <AdminApp {...sharedProps} isAdmin={true} />;
+  if (isAdmin && !previewAsStaff) {
+    return <AdminApp {...sharedProps} isAdmin={true} onPreviewStaff={() => setPreviewAsStaff(true)} />;
   }
 
-  return <StaffApp {...sharedProps} />;
+  return <StaffApp {...sharedProps} onExitPreview={previewAsStaff ? () => setPreviewAsStaff(false) : undefined} />;
 };
 
 export default App;
