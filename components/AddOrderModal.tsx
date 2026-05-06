@@ -8,6 +8,7 @@ interface AddOrderModalProps {
   clients: Client[];
   productClients: ProductClient[];
   palletStocks: PalletStock[];
+  submaterials: Product[];
   onClose: () => void;
   onSave: (_order: Omit<Order, 'id' | 'createdAt' | 'status'>) => void;
 }
@@ -36,7 +37,7 @@ const matchClient = (name: string, query: string): boolean => {
   return name.toLowerCase().includes(q.toLowerCase());
 };
 
-const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, productClients, palletStocks, onClose, onSave }) => {
+const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, productClients, palletStocks, submaterials, onClose, onSave }) => {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handler);
@@ -115,6 +116,57 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
     return products.filter(p => p.category === '고춧가루');
   }, [products, selectedClient]);
 
+  // 현재 선택된 품목 기준 부자재 재고 부족 계산
+  const shortages = useMemo(() => {
+    const usage: Record<string, { name: string; needed: number; stock: number }> = {};
+    for (const item of selectedItems) {
+      const qty = typeof item.quantity === 'number' ? item.quantity : 0;
+      if (qty <= 0) continue;
+      const product = products.find(p => p.id === item.productId);
+      if (!product) continue;
+
+      if (product.category === '향미유') {
+        const sub = submaterials.find(s => s.id === product.id);
+        if (sub) {
+          const actualQty = item.isBoxUnit && item.unitsPerBox > 0 ? qty * item.unitsPerBox : qty;
+          const needed = Math.ceil(actualQty / (product.boxSize || 1));
+          if (!usage[sub.id]) usage[sub.id] = { name: sub.name, needed: 0, stock: sub.stock };
+          usage[sub.id].needed += needed;
+        }
+        continue;
+      }
+
+      if (product.category !== '완제품' || !selectedClient) continue;
+      const actualQty = item.isBoxUnit && item.unitsPerBox > 0 ? qty * item.unitsPerBox : qty;
+      const pc = productClients.find(p => p.productId === product.id && p.clientId === selectedClient.id);
+      const boxSize = pc?.qtyPerBox || item.unitsPerBox || 1;
+      const boxesNeeded = Math.ceil(actualQty / boxSize);
+
+      if (pc?.boxTypeId) {
+        const sub = submaterials.find(sm => sm.id === pc.boxTypeId);
+        if (sub) {
+          if (!usage[sub.id]) usage[sub.id] = { name: sub.name, needed: 0, stock: sub.stock };
+          usage[sub.id].needed += boxesNeeded;
+        }
+      }
+      if (pc?.tapeTypeId) {
+        const sub = submaterials.find(sm => sm.id === pc.tapeTypeId);
+        if (sub) {
+          if (!usage[sub.id]) usage[sub.id] = { name: sub.name, needed: 0, stock: sub.stock };
+          usage[sub.id].needed += boxesNeeded;
+        }
+      }
+      for (const s of (product.submaterials || [])) {
+        if (s.category === '박스' || s.category === '테이프') continue;
+        const sub = submaterials.find(sm => sm.id === s.id);
+        if (!sub) continue;
+        if (!usage[sub.id]) usage[sub.id] = { name: sub.name, needed: 0, stock: sub.stock };
+        usage[sub.id].needed += actualQty;
+      }
+    }
+    return Object.values(usage).filter(v => v.needed > v.stock);
+  }, [selectedItems, selectedClient, products, productClients, submaterials]);
+
   // 거래처별 박스 설정 조회 — productClients 기반
   const getClientBoxConfigs = (productId: string, clientId?: string): { unitsPerBox: number; boxType: string; boxSubId?: string }[] => {
     if (clientId) {
@@ -134,8 +186,10 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
       const exists = prev.find(i => i.productId === productId);
       if (exists) return prev.filter(i => i.productId !== productId);
       const configs = getClientBoxConfigs(productId, selectedClient?.id);
-      const first = configs[0] ?? { unitsPerBox: 0, boxType: '', boxSubId: undefined };
-      return [...prev, { productId, quantity: 1, isBoxUnit: first.unitsPerBox > 0, unitsPerBox: first.unitsPerBox, boxType: first.boxType, boxSubId: first.boxSubId }];
+      const product = products.find(p => p.id === productId);
+      const isHyangmiyu = product?.category === '향미유';
+      const first = configs[0] ?? { unitsPerBox: isHyangmiyu ? 12 : 0, boxType: '', boxSubId: undefined };
+      return [...prev, { productId, quantity: 1, isBoxUnit: false, unitsPerBox: first.unitsPerBox, boxType: first.boxType, boxSubId: first.boxSubId }];
     });
   };
 
@@ -158,18 +212,58 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
     setSelectedItems(prev => prev.map(i => i.productId === productId ? { ...i, ...patch } : i));
   };
 
-  const renderItemControls = (product: { id: string; unit?: string; price: number }) => {
+  const renderItemControls = (product: { id: string; unit?: string; price: number; category?: string }) => {
     const selection = selectedItems.find(i => i.productId === product.id);
     if (!selection) return null;
     const uPerBox = selection.unitsPerBox ?? 0;
     const boxQty = typeof selection.quantity === 'number' ? selection.quantity : 0;
     const totalUnits = selection.isBoxUnit && uPerBox > 0 ? boxQty * uPerBox : boxQty;
     const availableConfigs = getClientBoxConfigs(product.id, selectedClient?.id);
+    const isHyangmiyu = product.category === '향미유';
+    const isBoxMode = selection.isBoxUnit && uPerBox > 0;
     return (
-      <div className="flex flex-col gap-1.5 bg-slate-50 p-1.5 rounded-xl border border-slate-100" onClick={(e) => e.stopPropagation()}>
+      <div
+        className={`flex flex-col gap-1.5 p-1.5 rounded-xl border transition-colors ${
+          isBoxMode ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-100'
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* 박스 모드 배지 */}
+        {isHyangmiyu && (
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                const qty = typeof selection.quantity === 'number' && selection.quantity > 0 ? selection.quantity : 1;
+                if (selection.isBoxUnit) {
+                  updateItem(product.id, { isBoxUnit: false, quantity: 1 });
+                } else {
+                  updateItem(product.id, { isBoxUnit: true, quantity: Math.ceil(qty / (uPerBox || 12)) });
+                }
+              }}
+              className={`text-[10px] font-black px-2.5 py-0.5 rounded-lg border transition-all shrink-0 ${
+                isBoxMode
+                  ? 'bg-indigo-600 text-white border-indigo-600'
+                  : 'bg-white text-slate-400 border-slate-200 hover:border-indigo-300'
+              }`}
+            >
+              BOX
+            </button>
+            {isBoxMode && (
+              <span className="text-[9px] font-black text-indigo-500 bg-indigo-100 px-1.5 py-0.5 rounded">
+                박스 단위
+              </span>
+            )}
+            {!isBoxMode && (
+              <span className="text-[9px] font-black text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                낱개 단위
+              </span>
+            )}
+          </div>
+        )}
 
         {/* 박스 종류 선택 (박스 모드 + 여러 configs) */}
-        {selection.isBoxUnit && availableConfigs.length > 1 && (
+        {isBoxMode && availableConfigs.length > 1 && (
           <div className="flex flex-wrap gap-1">
             {availableConfigs.map((cfg, i) => (
               <button
@@ -190,28 +284,23 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
 
         {/* 수량 입력 */}
         <div className="flex items-center gap-1.5">
-          {uPerBox > 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                const qty = typeof selection.quantity === 'number' && selection.quantity > 0 ? selection.quantity : 1;
-                if (selection.isBoxUnit) {
-                  updateItem(product.id, { isBoxUnit: false, quantity: 1 });
-                } else {
-                  updateItem(product.id, { isBoxUnit: true, quantity: Math.ceil(qty / uPerBox) });
-                }
-              }}
-              className={`text-[10px] font-black px-2 py-0.5 rounded-lg border transition-all shrink-0 ${selection.isBoxUnit ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-400 border-slate-200'}`}
-            >B</button>
-          )}
           <button type="button" onClick={() => handleQuantityStep(product.id, -1)} className="text-sm font-black w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 shrink-0">−</button>
-          <input type="number" value={selection.quantity === '' ? '' : selection.quantity} onChange={(e) => handleQuantityInput(product.id, e.target.value)} className="text-xs font-black w-full text-center text-slate-800 bg-white border border-slate-200 rounded-lg outline-none py-0.5" />
+          <input
+            type="number"
+            value={selection.quantity === '' ? '' : selection.quantity}
+            onChange={(e) => handleQuantityInput(product.id, e.target.value)}
+            className={`text-xs font-black w-full text-center text-slate-800 bg-white border rounded-lg outline-none py-0.5 ${
+              isBoxMode ? 'border-indigo-200' : 'border-slate-200'
+            }`}
+          />
           <button type="button" onClick={() => handleQuantityStep(product.id, 1)} className="text-sm font-black w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 shrink-0">+</button>
-          <span className="text-[10px] font-bold text-slate-400 shrink-0">{selection.isBoxUnit && uPerBox > 0 ? '박스' : (product.unit || '개')}</span>
+          <span className={`text-[10px] font-bold shrink-0 ${isBoxMode ? 'text-indigo-500' : 'text-slate-400'}`}>
+            {isBoxMode ? '박스' : (product.unit || '개')}
+          </span>
         </div>
 
         {/* 합계 */}
-        {selection.isBoxUnit && uPerBox > 0 && boxQty > 0 && (
+        {isBoxMode && boxQty > 0 && (
           <div className="flex items-center justify-end px-1">
             <span className="text-[9px] font-black text-indigo-500">× {uPerBox}개 = {totalUnits}개</span>
           </div>
@@ -509,8 +598,23 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
           )}
         </div>
 
-        <div className="p-6 border-t border-slate-100 bg-slate-50/50 rounded-b-3xl">
-          <div className="grid grid-cols-2 gap-4">
+        <div className="border-t border-slate-100 bg-slate-50/50 rounded-b-3xl">
+          {shortages.length > 0 && (
+            <div className="mx-6 mt-4 p-3 bg-amber-50 border border-amber-200 rounded-2xl">
+              <div className="flex items-center gap-1.5 text-amber-700 font-bold text-[11px] mb-1.5">
+                <AlertCircle size={13} />
+                부자재 재고 부족 — 주문 전 확인 필요
+              </div>
+              <ul className="space-y-0.5">
+                {shortages.map(s => (
+                  <li key={s.name} className="text-[10px] text-amber-600 font-medium">
+                    {s.name}: 필요 {s.needed}개 · 재고 {s.stock}개 → <span className="font-black">{s.needed - s.stock}개 부족</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="p-6 grid grid-cols-2 gap-4">
             <button onClick={onClose} className="py-4 rounded-2xl font-bold text-slate-500 bg-white border border-slate-200">취소</button>
             <button disabled={!selectedClient || selectedItems.length === 0} onClick={handleSubmit} className="py-4 rounded-2xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50">주문 완료</button>
           </div>
