@@ -171,8 +171,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
   const getClientBoxConfigs = (productId: string, clientId?: string): { unitsPerBox: number; boxType: string; boxSubId?: string }[] => {
     if (clientId) {
       const pc = productClients.find(p => p.productId === productId && p.clientId === clientId);
-      if (pc?.boxTypeId) {
-        return [{ unitsPerBox: pc.qtyPerBox ?? 0, boxType: pc.boxTypeId, boxSubId: pc.boxTypeId }];
+      if (pc?.qtyPerBox) {
+        return [{ unitsPerBox: pc.qtyPerBox, boxType: pc.boxTypeId ?? '', boxSubId: pc.boxTypeId }];
       }
     }
     // 폴백: 기존 defaultBoxConfig
@@ -229,7 +229,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
         onClick={(e) => e.stopPropagation()}
       >
         {/* 박스 모드 배지 */}
-        {isHyangmiyu && (
+        {(uPerBox > 0 || isHyangmiyu) && (
           <div className="flex items-center gap-1.5">
             <button
               type="button"
