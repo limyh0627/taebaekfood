@@ -10,7 +10,7 @@ import {
   PalletStock, PalletTransaction, Employee, LeaveRequest,
   AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry,
   AppNotification, OrderStatus, IssuedStatement,
-  ItemBom, ItemCustomer, CompanyInfo, PendingReceipt, QrMapping,
+  ItemBom, ItemCustomer, CompanyInfo, PendingReceipt, QrMapping, ReturnRequest,
 } from '../types';
 import { subscribeToCollection, subscribeToDocument } from '../services/firebaseService';
 import { authReady } from '../firebase';
@@ -64,6 +64,8 @@ export interface AppData {
   // BOM
   itemBoms: ItemBom[];
   itemCustomers: ItemCustomer[];
+  // 반품
+  returnRequests: ReturnRequest[];
   // 회사 정보
   companyInfo: CompanyInfo | null;
   // 로딩 상태
@@ -97,6 +99,7 @@ export function useAppData(): AppData {
   const [qrMappings, setQrMappings] = useState<QrMapping[]>([]);
   const [itemBoms, setItemBoms] = useState<ItemBom[]>([]);
   const [itemCustomers, setItemCustomers] = useState<ItemCustomer[]>([]);
+  const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([]);
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
   const [isDataLoading, setIsDataLoading] = useState(true);
   const loadedRef = useRef(new Set<string>());
@@ -140,6 +143,7 @@ export function useAppData(): AppData {
         subscribeToCollection<QrMapping>('qrMappings', setQrMappings),
         subscribeToCollection<ItemBom>('item_bom', setItemBoms),
         subscribeToCollection<ItemCustomer>('item_customer', setItemCustomers),
+        subscribeToCollection<ReturnRequest>('returnRequests', setReturnRequests),
         subscribeToDocument<CompanyInfo>('settings', 'company', setCompanyInfo),
       ];
     });
@@ -164,6 +168,7 @@ export function useAppData(): AppData {
     qrMappings,
     itemBoms,
     itemCustomers,
+    returnRequests,
     companyInfo,
     isDataLoading,
   };

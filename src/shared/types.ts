@@ -270,7 +270,7 @@ export interface ChatRoom {
 }
 
 
-export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'clients' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'client-portal' | 'item-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'inbound-scan' | 'smartstore-analytics' | 'haccp-checklist';
+export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'clients' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'client-portal' | 'item-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'inbound-scan' | 'smartstore-analytics' | 'haccp-checklist' | 'return-management';
 
 // ── 생산 실적 ──────────────────────────────────────────────────────────────────
 export interface ProductionRecord {
@@ -431,6 +431,33 @@ export interface ItemCustomer {
   qty_per_box: number;  // 박스당 입수
 }
 // ────────────────────────────────────────────────────────────────────────
+
+// ── 반품 관리 ──────────────────────────────────────────────────────────────────
+export type ReturnReason = '품질불량' | '오배송' | '과잉재고' | '기타';
+
+export interface ReturnItem {
+  productId: string;
+  name: string;
+  quantity: number;
+  price: number;
+  reason: ReturnReason;
+  isResellable: boolean;
+}
+
+export interface ReturnRequest {
+  id: string;
+  orderId?: string;
+  clientId: string;
+  clientName: string;
+  items: ReturnItem[];
+  totalAmount: number;
+  status: 'pending' | 'processed';
+  createdAt: string;
+  processedAt?: string;
+  processedBy?: string;
+  linkedStatementId?: string;
+  note?: string;
+}
 
 export type AdjustmentType = 'quantity_change' | 'cancel_receipt' | 'chat_mention' | 'reorder_alert';
 export type AdjustmentStatus = 'pending' | 'processed' | 'rejected';

@@ -51,8 +51,9 @@ import {
   ScanLine,
   QrCode,
   ShoppingBag,
+  RotateCcw,
 } from 'lucide-react';
-import { Order, Product, ProductClient, ProductSupplier, ViewType, OrderStatus, Client, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord } from '../../shared/types';
+import { Order, Product, ProductClient, ProductSupplier, ViewType, OrderStatus, Client, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, PaymentRecord } from '../../shared/types';
 import Dashboard from '../../../components/Dashboard';
 import OrdersList from '../../../components/OrdersList';
 import ProductList from '../../../components/ProductList';
@@ -80,6 +81,7 @@ import InboundScan from '../../../components/InboundScan';
 import QrLabelPrint from '../../../components/QrLabelPrint';
 import SmartStoreAnalytics from '../../../components/SmartStoreAnalytics';
 import HaccpChecklist from '../../../components/HaccpChecklist';
+import ReturnManager from '../../../components/ReturnManager';
 import ExcelJS from 'exceljs';
 
 import { db } from '../../shared/firebase';
@@ -140,7 +142,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     noticePosts, chatRooms, chatMessages,
     rawMaterialLedger, sesameInputLedger,
     appNotifications, workOrderItems, issuedStatements,
-    itemBoms, itemCustomers, companyInfo, isDataLoading,
+    itemBoms, itemCustomers, returnRequests, companyInfo, isDataLoading,
   } = appData;
 
   const { fixedCosts, productionRecords } = adminData;
@@ -511,6 +513,43 @@ const AdminApp: React.FC<AdminAppProps> = ({
     }
   };
 
+  // 반품 처리: 재판매 가능 품목 재고 복귀 + 전표 미수금 차감
+  const handleProcessReturn = async (req: ReturnRequest) => {
+    for (const item of req.items) {
+      if (!item.isResellable) continue;
+      const product = allProducts.find(p => p.id === item.productId);
+      if (!product) continue;
+      const col = getProductCollection(product.category as string);
+      if (product.category === '완제품') {
+        await updateItem(col, product.id, { finishedStock: (product.finishedStock ?? 0) + item.quantity });
+      } else {
+        await updateItem(col, product.id, { stock: product.stock + item.quantity });
+      }
+    }
+
+    if (req.linkedStatementId && req.totalAmount > 0) {
+      const stmt = issuedStatements.find(s => s.id === req.linkedStatementId);
+      if (stmt) {
+        const newPayment: PaymentRecord = {
+          id: `return-${req.id}-${Date.now()}`,
+          amount: -req.totalAmount,
+          date: new Date().toISOString().slice(0, 10),
+          method: '기타',
+          note: `반품 처리 (${req.items.map(i => i.name).join(', ')})`,
+        };
+        await updateItem('issuedStatements', stmt.id, {
+          payments: [...(stmt.payments ?? []), newPayment],
+        });
+      }
+    }
+
+    await updateItem('returnRequests', req.id, {
+      status: 'processed',
+      processedAt: new Date().toISOString(),
+      processedBy: currentUser.name,
+    });
+  };
+
   // 주문이 이력으로 이동할 때 부자재 차감 (완제품 재고는 변동 없음)
   const deductSubmaterialsForOrder = async (order: Order) => {
     for (const item of order.items) {
@@ -868,6 +907,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     <NavItem icon={ShoppingCart} label="주문 관리" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={lowStockCount > 0 ? lowStockCount : undefined} />
                     <NavItem icon={ScanLine} label="입고 스캔" active={currentView === 'inbound-scan'} onClick={() => handleNavClick('inbound-scan')} collapsed={isSidebarCollapsed} />
+                    <NavItem icon={RotateCcw} label="반품 관리" active={currentView === 'return-management'} onClick={() => handleNavClick('return-management')} collapsed={isSidebarCollapsed} badge={returnRequests.filter(r => r.status === 'pending').length || undefined} />
                     <NavItem icon={Settings} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={Layers} label="파렛트 관리" active={currentView === 'pallets'} onClick={() => handleNavClick('pallets')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={CalendarCheck} label="연차 신청" active={currentView === 'leave-portal'} onClick={() => handleNavClick('leave-portal')} collapsed={isSidebarCollapsed} />
@@ -923,7 +963,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 'database': '데이터베이스', 'item-management': '품목 관리',
                 'inbound-scan': '입고 스캔', 'client-portal': '거래처 포털',
                 'officetalk': '오피스톡', 'smartstore-analytics': '스마트스토어 분석',
-                'haccp-checklist': 'HACCP 체크리스트',
+                'haccp-checklist': 'HACCP 체크리스트', 'return-management': '반품 관리',
               } as Record<string, string>)[currentView]) ?? ''}
             </p>
           </div>
@@ -973,7 +1013,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               </div>
             </div>
           ) : (
-          <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'clients', 'notice', 'pallets', 'confirmation-items', 'shipping', 'production', 'inbound-scan'].includes(currentView)) ? '' : 'h-full'}>
+          <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'clients', 'notice', 'pallets', 'confirmation-items', 'shipping', 'production', 'inbound-scan', 'return-management'].includes(currentView)) ? '' : 'h-full'}>
           {(currentView === 'dashboard' || currentView === 'ai-consultant') && (
             <div className="h-full flex flex-col overflow-hidden">
               <div className="flex items-center gap-1 px-6 pt-5 pb-0 shrink-0">
@@ -2725,6 +2765,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'haccp-checklist' && (
             <HaccpChecklist />
+          )}
+          {currentView === 'return-management' && (
+            <ReturnManager
+              products={allProducts}
+              clients={clients}
+              orders={orders}
+              issuedStatements={issuedStatements}
+              currentUser={{ id: currentUser.id, name: currentUser.name }}
+              isAdmin={isAdmin}
+              onProcessReturn={handleProcessReturn}
+            />
           )}
           {currentView === 'production' && (
             <ProductionManager
