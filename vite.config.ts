@@ -41,6 +41,20 @@ manifest: {
   server: {
     port: 3000,
     open: true
-  }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage'],
+          'vendor-pdf': ['jspdf', 'html2canvas'],
+          'vendor-excel': ['exceljs'],
+          'vendor-ai': ['@google/generative-ai'],
+          'vendor-qr': ['jsqr', 'qrcode'],
+        },
+      },
+    },
+  },
 });
 

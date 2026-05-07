@@ -408,7 +408,7 @@ const ProductList: React.FC<ProductListProps> = ({
         title="재고 관리"
         subtitle="실시간 재고 현황을 파악하고 부족한 자재를 즉시 발주하세요."
         right={
-          <div className="bg-slate-100 p-1 rounded-2xl flex items-center">
+          <div className="bg-slate-100 p-1 rounded-2xl flex items-center shrink-0">
             {([
               { id: 'finished', label: '완제품', color: 'text-violet-600', icon: <Package size={13}/>, onClick: () => { setTopTab('finished'); setActiveCategory('전체'); setActiveSupplierId('전체'); } },
               { id: 'specialty', label: '상품', color: 'text-orange-500', icon: <Box size={13}/>, onClick: () => { setTopTab('specialty'); setActiveCategory('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
@@ -416,7 +416,7 @@ const ProductList: React.FC<ProductListProps> = ({
               { id: 'rawmaterial', label: '원료재고', color: 'text-emerald-600', icon: <Grape size={13}/>, onClick: () => setTopTab('rawmaterial') },
             ] as const).map(t => (
               <button key={t.id} onClick={t.onClick}
-                className={`px-4 py-2 rounded-xl flex items-center gap-1.5 transition-all text-xs font-black whitespace-nowrap ${topTab === t.id ? `bg-white ${t.color} shadow-sm` : 'text-slate-400 hover:text-slate-600'}`}>
+                className={`px-3 py-2 rounded-xl flex items-center gap-1 transition-all text-xs font-black whitespace-nowrap ${topTab === t.id ? `bg-white ${t.color} shadow-sm` : 'text-slate-400 hover:text-slate-600'}`}>
                 {t.icon}<span>{t.label}</span>
               </button>
             ))}

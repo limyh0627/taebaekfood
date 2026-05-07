@@ -71,18 +71,18 @@ import ProductModal from '../../../components/AddProductModal';
 import NoticeBoard from '../../../components/NoticeBoard';
 import DatabaseView from '../../../components/DatabaseView';
 import ItemManager from '../../../components/ItemManager';
-import TradeStatement from '../../../components/TradeStatement';
 import OfficeTalk from '../../../components/OfficeTalk';
-import ProfitAnalysis from '../../../components/ProfitAnalysis';
-import ProductionManager from '../../../components/ProductionManager';
 import AdminChecklist from '../../../components/AdminChecklist';
-import InboundManager from '../../../components/InboundManager';
-import InboundScan from '../../../components/InboundScan';
-import QrLabelPrint from '../../../components/QrLabelPrint';
-import SmartStoreAnalytics from '../../../components/SmartStoreAnalytics';
-import HaccpChecklist from '../../../components/HaccpChecklist';
-import ReturnManager from '../../../components/ReturnManager';
-import ExcelJS from 'exceljs';
+import type * as ExcelJSType from 'exceljs';
+
+const InboundScan = React.lazy(() => import('../../../components/InboundScan'));
+const QrLabelPrint = React.lazy(() => import('../../../components/QrLabelPrint'));
+const SmartStoreAnalytics = React.lazy(() => import('../../../components/SmartStoreAnalytics'));
+const HaccpChecklist = React.lazy(() => import('../../../components/HaccpChecklist'));
+const ReturnManager = React.lazy(() => import('../../../components/ReturnManager'));
+const ProductionManager = React.lazy(() => import('../../../components/ProductionManager'));
+const TradeStatement = React.lazy(() => import('../../../components/TradeStatement'));
+const ProfitAnalysis = React.lazy(() => import('../../../components/ProfitAnalysis'));
 
 import { db } from '../../shared/firebase';
 import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg } from '../../constants/formula';
@@ -1210,21 +1210,25 @@ const AdminApp: React.FC<AdminAppProps> = ({
             />
           )}
           {currentView === 'inbound-scan' && (
-            <InboundScan
-              submaterials={submaterials}
-              confirmedOrders={confirmedOrders}
-              qrMappings={appData.qrMappings}
-              currentUser={{ id: currentUser.id, name: currentUser.name }}
-              onUpdateSubmaterial={(id, data) => updateItem('submaterials', id, data)}
-              onFinishConfirmedOrder={handleFinishConfirmedOrder}
-              onClose={() => setCurrentView('inventory')}
-            />
+            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+              <InboundScan
+                submaterials={submaterials}
+                confirmedOrders={confirmedOrders}
+                qrMappings={appData.qrMappings}
+                currentUser={{ id: currentUser.id, name: currentUser.name }}
+                onUpdateSubmaterial={(id, data) => updateItem('submaterials', id, data)}
+                onFinishConfirmedOrder={handleFinishConfirmedOrder}
+                onClose={() => setCurrentView('inventory')}
+              />
+            </React.Suspense>
           )}
           {showQrLabel && (
-            <QrLabelPrint
-              submaterials={submaterials}
-              onClose={() => setShowQrLabel(false)}
-            />
+            <React.Suspense fallback={null}>
+              <QrLabelPrint
+                submaterials={submaterials}
+                onClose={() => setShowQrLabel(false)}
+              />
+            </React.Suspense>
           )}
           {currentView === 'clients' && <ClientManager clients={clients} onUpdateClient={(c) => updateItem('clients', c.id, c)} onAddClient={(c) => addItem('clients', c)} onDeleteClient={(id) => deleteItem('clients', id)} />}
           {currentView === 'database' && (
@@ -1500,6 +1504,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 );
                 if (!proceed) return;
               }
+              const ExcelJS = (await import('exceljs')).default;
               const wb = new ExcelJS.Workbook();
               const ws = wb.addWorksheet('생산작업판매일지');
 
@@ -1510,14 +1515,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 { width: 18 }, { width: 16 }, { width: 8 }, { width: 6 }, { width: 18 },
               ];
 
-              const thinBorder: Partial<ExcelJS.Borders> = {
+              const thinBorder: Partial<ExcelJSType.Borders> = {
                 top: { style: 'thin' }, bottom: { style: 'thin' },
                 left: { style: 'thin' }, right: { style: 'thin' },
               };
-              const headerFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
-              const groupFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
+              const headerFill: ExcelJSType.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+              const groupFill: ExcelJSType.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
 
-              const applyHeader = (row: ExcelJS.Row, cols: number[]) => {
+              const applyHeader = (row: ExcelJSType.Row, cols: number[]) => {
                 cols.forEach(c => {
                   const cell = row.getCell(c);
                   cell.font = { bold: true, size: 9 };
@@ -1766,10 +1771,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
                             };
                             const [wy, wm] = productionWorkMonth.split('-').map(Number);
                             const daysInMonth = new Date(wy, wm, 0).getDate();
-                            const thin: Partial<ExcelJS.Borders> = {
+                            const thin: Partial<ExcelJSType.Borders> = {
                               top:{style:'thin'}, bottom:{style:'thin'}, left:{style:'thin'}, right:{style:'thin'}
                             };
-                            const hFill: ExcelJS.Fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFD9E1F2'} };
+                            const hFill: ExcelJSType.Fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFD9E1F2'} };
                             const center = { horizontal: 'center' as const, vertical: 'middle' as const };
                             const left = { horizontal: 'left' as const, vertical: 'middle' as const };
 
@@ -1958,10 +1963,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
                               fitToPage: true, fitToWidth: 1, fitToHeight: 1,
                               margins: { left: 0.5, right: 0.5, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 },
                             };
-                            const thin2: Partial<ExcelJS.Borders> = {
+                            const thin2: Partial<ExcelJSType.Borders> = {
                               top:{style:'thin'}, bottom:{style:'thin'}, left:{style:'thin'}, right:{style:'thin'}
                             };
-                            const hFill2: ExcelJS.Fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFD9E1F2'} };
+                            const hFill2: ExcelJSType.Fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFD9E1F2'} };
                             const center2 = { horizontal: 'center' as const, vertical: 'middle' as const };
                             // 제목 (행1)
                             const titleRow = ws2.addRow([`참기름 원료 수불부  ${xl2Year}년 ${xl2Month}월`, '', '', '', '', '', '', '', '', '']);
@@ -2195,6 +2200,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
                   // 원료수불부 Excel 저장
                   const exportRmExcel = async () => {
+                    const ExcelJS = (await import('exceljs')).default;
                     const wb = new ExcelJS.Workbook();
                     for (const mat of RM_LIST) {
                       const ws = wb.addWorksheet(mat);
@@ -2694,99 +2700,111 @@ const AdminApp: React.FC<AdminAppProps> = ({
             );
           })()}
           {currentView === 'trade-statement' && (
-            <TradeStatement
-              orders={orders}
-              allProducts={allProducts}
-              clients={clients}
-              productClients={productClients}
-              productSuppliers={productSuppliers}
-              issuedStatements={issuedStatements}
-              onUpdateStatus={async (id, status) => {
-                if (status === OrderStatus.DELIVERED) {
-                  const order = orders.find(o => o.id === id);
-                  if (order) {
-                    await deductSubmaterialsForOrder(order);
-                    await createProductionRecordsForOrder(order);
+            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+              <TradeStatement
+                orders={orders}
+                allProducts={allProducts}
+                clients={clients}
+                productClients={productClients}
+                productSuppliers={productSuppliers}
+                issuedStatements={issuedStatements}
+                onUpdateStatus={async (id, status) => {
+                  if (status === OrderStatus.DELIVERED) {
+                    const order = orders.find(o => o.id === id);
+                    if (order) {
+                      await deductSubmaterialsForOrder(order);
+                      await createProductionRecordsForOrder(order);
+                    }
+                    await updateItem('orders', id, { status, deliveredAt: new Date().toISOString() });
+                  } else {
+                    await updateItem('orders', id, { status });
                   }
-                  await updateItem('orders', id, { status, deliveredAt: new Date().toISOString() });
-                } else {
-                  await updateItem('orders', id, { status });
-                }
-              }}
-              onUpdateProductClientPrice={(id, price) => updateItem('productClients', id, { price })}
-              onUpdateProductClientTaxType={(id, taxType) => updateItem('productClients', id, { taxType })}
-              onUpsertProductSupplier={(ps) => addItem('productSuppliers', ps)}
-              onUpdateProductSupplierTaxType={(id, taxType) => updateItem('productSuppliers', id, { taxType })}
-              onMarkInvoicePrinted={(id, value) => updateItem('orders', id, { invoicePrinted: value })}
-              onUpdateOrder={(id, data) => updateItem('orders', id, data)}
-              onAddIssuedStatement={(stmt) => addItem('issuedStatements', stmt)}
-              onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
-              onDeleteIssuedStatement={(id) => deleteItem('issuedStatements', id)}
-              pendingInvoice={pendingInvoice}
-              onClearPendingInvoice={() => setPendingInvoice(null)}
-              confirmedOrders={confirmedOrders}
-              orderRequests={orderRequests}
-              onAddConfirmedOrder={(item) => addItem('confirmedOrders', item)}
-              onRemoveConfirmedOrder={(id) => deleteItem('confirmedOrders', id)}
-              onRemoveOrderRequest={handleRemoveOrderRequest}
-              companyInfo={companyInfo}
-              onSaveCompanyInfo={(info) => setDocument('settings', 'company', info)}
-              onUpdateProductCost={(productId, cost) => updateItem('products', productId, { cost })}
-            />
+                }}
+                onUpdateProductClientPrice={(id, price) => updateItem('productClients', id, { price })}
+                onUpdateProductClientTaxType={(id, taxType) => updateItem('productClients', id, { taxType })}
+                onUpsertProductSupplier={(ps) => addItem('productSuppliers', ps)}
+                onUpdateProductSupplierTaxType={(id, taxType) => updateItem('productSuppliers', id, { taxType })}
+                onMarkInvoicePrinted={(id, value) => updateItem('orders', id, { invoicePrinted: value })}
+                onUpdateOrder={(id, data) => updateItem('orders', id, data)}
+                onAddIssuedStatement={(stmt) => addItem('issuedStatements', stmt)}
+                onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
+                onDeleteIssuedStatement={(id) => deleteItem('issuedStatements', id)}
+                pendingInvoice={pendingInvoice}
+                onClearPendingInvoice={() => setPendingInvoice(null)}
+                confirmedOrders={confirmedOrders}
+                orderRequests={orderRequests}
+                onAddConfirmedOrder={(item) => addItem('confirmedOrders', item)}
+                onRemoveConfirmedOrder={(id) => deleteItem('confirmedOrders', id)}
+                onRemoveOrderRequest={handleRemoveOrderRequest}
+                companyInfo={companyInfo}
+                onSaveCompanyInfo={(info) => setDocument('settings', 'company', info)}
+                onUpdateProductCost={(productId, cost) => updateItem('products', productId, { cost })}
+              />
+            </React.Suspense>
           )}
           {(currentView === 'profit-analysis' || currentView === 'cost-management') && (
             <div className="h-full overflow-y-auto p-6">
-              <ProfitAnalysis
-                issuedStatements={issuedStatements}
-                fixedCosts={fixedCosts}
-                onAddCost={async (entry) => {
-                  const { note, ...rest } = entry;
-                  await addItem('fixedCosts', {
-                    ...rest,
-                    ...(note ? { note } : {}),
-                    id: `fc-${Date.now()}`,
-                    createdAt: new Date().toISOString(),
-                  });
-                }}
-                onDeleteCost={(id) => deleteItem('fixedCosts', id)}
-                clients={clients}
-                products={allProducts}
-                onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
-              />
+              <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+                <ProfitAnalysis
+                  issuedStatements={issuedStatements}
+                  fixedCosts={fixedCosts}
+                  onAddCost={async (entry) => {
+                    const { note, ...rest } = entry;
+                    await addItem('fixedCosts', {
+                      ...rest,
+                      ...(note ? { note } : {}),
+                      id: `fc-${Date.now()}`,
+                      createdAt: new Date().toISOString(),
+                    });
+                  }}
+                  onDeleteCost={(id) => deleteItem('fixedCosts', id)}
+                  clients={clients}
+                  products={allProducts}
+                  onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
+                />
+              </React.Suspense>
             </div>
           )}
           {currentView === 'smartstore-analytics' && (
-            <SmartStoreAnalytics
-              orders={orders}
-              clients={clients}
-              products={allProducts}
-              onUpdateProduct={(id, data) => updateItem('products', id, data)}
-            />
+            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+              <SmartStoreAnalytics
+                orders={orders}
+                clients={clients}
+                products={allProducts}
+                onUpdateProduct={(id, data) => updateItem('products', id, data)}
+              />
+            </React.Suspense>
           )}
           {currentView === 'haccp-checklist' && (
-            <HaccpChecklist />
+            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+              <HaccpChecklist />
+            </React.Suspense>
           )}
           {currentView === 'return-management' && (
-            <ReturnManager
-              products={allProducts}
-              clients={clients}
-              orders={orders}
-              issuedStatements={issuedStatements}
-              currentUser={{ id: currentUser.id, name: currentUser.name }}
-              isAdmin={isAdmin}
-              onProcessReturn={handleProcessReturn}
-            />
+            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+              <ReturnManager
+                products={allProducts}
+                clients={clients}
+                orders={orders}
+                issuedStatements={issuedStatements}
+                currentUser={{ id: currentUser.id, name: currentUser.name }}
+                isAdmin={isAdmin}
+                onProcessReturn={handleProcessReturn}
+              />
+            </React.Suspense>
           )}
           {currentView === 'production' && (
-            <ProductionManager
-              records={productionRecords}
-              products={allProducts}
-              orders={orders}
-              onAdd={(record) => addItem('productionRecords', record)}
-              onDelete={(id) => deleteItem('productionRecords', id)}
-              onUpdate={(id, updates) => updateItem('productionRecords', id, updates)}
-              currentUserName={currentUser?.name}
-            />
+            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+              <ProductionManager
+                records={productionRecords}
+                products={allProducts}
+                orders={orders}
+                onAdd={(record) => addItem('productionRecords', record)}
+                onDelete={(id) => deleteItem('productionRecords', id)}
+                onUpdate={(id, updates) => updateItem('productionRecords', id, updates)}
+                currentUserName={currentUser?.name}
+              />
+            </React.Suspense>
           )}
           {currentView === 'confirmation-items' && (
             <ConfirmationItems

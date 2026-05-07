@@ -505,9 +505,9 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowDuplicates(p => !p)}
-              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-black text-sm shadow-sm transition-all ${showDuplicates ? 'bg-amber-50 text-amber-600 border border-amber-300' : 'bg-white text-slate-500 border border-slate-200 hover:border-slate-300'}`}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-black text-xs shadow-sm transition-all whitespace-nowrap ${showDuplicates ? 'bg-amber-50 text-amber-600 border border-amber-300' : 'bg-white text-slate-500 border border-slate-200 hover:border-slate-300'}`}
             >
-              <Copy size={14} />
+              <Copy size={13} />
               중복 품목
               {duplicateGroups.length > 0 && (
                 <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${showDuplicates ? 'bg-amber-200 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{duplicateGroups.length}</span>
@@ -515,10 +515,10 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
             </button>
             <button
               onClick={onAddProduct}
-              className="lg:hidden flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-black text-sm shadow-md"
+              className="lg:hidden flex items-center gap-2 bg-indigo-600 text-white px-3 py-2 rounded-xl font-black text-xs shadow-md whitespace-nowrap"
             >
-              <Plus size={16} />
-              신규 품목 등록
+              <Plus size={14} />
+              신규 등록
             </button>
           </div>
         }
