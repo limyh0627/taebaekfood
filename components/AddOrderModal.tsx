@@ -189,7 +189,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
       const product = products.find(p => p.id === productId);
       const isHyangmiyu = product?.category === '향미유';
       const first = configs[0] ?? { unitsPerBox: isHyangmiyu ? 12 : 0, boxType: '', boxSubId: undefined };
-      return [...prev, { productId, quantity: 1, isBoxUnit: false, unitsPerBox: first.unitsPerBox, boxType: first.boxType, boxSubId: first.boxSubId }];
+      const defaultBoxUnit = first.unitsPerBox > 0;
+      return [...prev, { productId, quantity: 1, isBoxUnit: defaultBoxUnit, unitsPerBox: first.unitsPerBox, boxType: first.boxType, boxSubId: first.boxSubId }];
     });
   };
 
@@ -236,7 +237,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
               onClick={() => {
                 const qty = typeof selection.quantity === 'number' && selection.quantity > 0 ? selection.quantity : 1;
                 if (selection.isBoxUnit) {
-                  updateItem(product.id, { isBoxUnit: false, quantity: 1 });
+                  updateItem(product.id, { isBoxUnit: false, quantity: qty * (uPerBox || 12) });
                 } else {
                   updateItem(product.id, { isBoxUnit: true, quantity: Math.ceil(qty / (uPerBox || 12)) });
                 }

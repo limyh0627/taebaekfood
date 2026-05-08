@@ -80,6 +80,7 @@ const QrLabelPrint = React.lazy(() => import('../../../components/QrLabelPrint')
 const SmartStoreAnalytics = React.lazy(() => import('../../../components/SmartStoreAnalytics'));
 const HaccpChecklist = React.lazy(() => import('../../../components/HaccpChecklist'));
 const ReturnManager = React.lazy(() => import('../../../components/ReturnManager'));
+const ReceivingReturnsManager = React.lazy(() => import('../../../components/ReceivingReturnsManager'));
 const ProductionManager = React.lazy(() => import('../../../components/ProductionManager'));
 const TradeStatement = React.lazy(() => import('../../../components/TradeStatement'));
 const ProfitAnalysis = React.lazy(() => import('../../../components/ProfitAnalysis'));
@@ -872,6 +873,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       <NavItem icon={UserCheck} label="인사 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={Users} label="거래처 관리" active={currentView === 'clients'} onClick={() => handleNavClick('clients')} collapsed={isSidebarCollapsed} />
+                      <NavItem icon={ScanLine} label="입고/반품" active={currentView === 'inbound-returns'} onClick={() => handleNavClick('inbound-returns')} collapsed={isSidebarCollapsed} badge={returnRequests.filter(r => r.status === 'pending').length || undefined} />
                       <NavItem icon={ClipboardList} label="확인사항" active={currentView === 'admin-checklist'} onClick={() => handleNavClick('admin-checklist')} collapsed={isSidebarCollapsed} badge={adminPendingCount > 0 ? adminPendingCount : undefined} />
                       <NavItem icon={QrCode} label="QR 라벨 인쇄" active={false} onClick={() => setShowQrLabel(true)} collapsed={isSidebarCollapsed} />
                     </nav>
@@ -906,8 +908,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     <NavItem icon={Truck} label="배송 관리" active={currentView === 'shipping'} onClick={() => handleNavClick('shipping')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={ShoppingCart} label="주문 관리" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={lowStockCount > 0 ? lowStockCount : undefined} />
-                    <NavItem icon={ScanLine} label="입고 스캔" active={currentView === 'inbound-scan'} onClick={() => handleNavClick('inbound-scan')} collapsed={isSidebarCollapsed} />
-                    <NavItem icon={RotateCcw} label="반품 관리" active={currentView === 'return-management'} onClick={() => handleNavClick('return-management')} collapsed={isSidebarCollapsed} badge={returnRequests.filter(r => r.status === 'pending').length || undefined} />
+                    <NavItem icon={ScanLine} label="입고/반품" active={currentView === 'inbound-returns'} onClick={() => handleNavClick('inbound-returns')} collapsed={isSidebarCollapsed} badge={returnRequests.filter(r => r.status === 'pending').length || undefined} />
                     <NavItem icon={Settings} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={Layers} label="파렛트 관리" active={currentView === 'pallets'} onClick={() => handleNavClick('pallets')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={CalendarCheck} label="연차 신청" active={currentView === 'leave-portal'} onClick={() => handleNavClick('leave-portal')} collapsed={isSidebarCollapsed} />
@@ -964,6 +965,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 'inbound-scan': '입고 스캔', 'client-portal': '거래처 포털',
                 'officetalk': '오피스톡', 'smartstore-analytics': '스마트스토어 분석',
                 'haccp-checklist': 'HACCP 체크리스트', 'return-management': '반품 관리',
+                'inbound-returns': '입고 / 반품',
               } as Record<string, string>)[currentView]) ?? ''}
             </p>
           </div>
@@ -1013,7 +1015,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               </div>
             </div>
           ) : (
-          <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'clients', 'notice', 'pallets', 'confirmation-items', 'shipping', 'production', 'inbound-scan', 'return-management'].includes(currentView)) ? '' : 'h-full'}>
+          <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'clients', 'notice', 'pallets', 'confirmation-items', 'shipping', 'production', 'inbound-scan', 'return-management', 'inbound-returns'].includes(currentView)) ? '' : 'h-full'}>
           {(currentView === 'dashboard' || currentView === 'ai-consultant') && (
             <div className="h-full flex flex-col overflow-hidden">
               <div className="flex items-center gap-1 px-6 pt-5 pb-0 shrink-0">
@@ -2789,6 +2791,21 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 issuedStatements={issuedStatements}
                 currentUser={{ id: currentUser.id, name: currentUser.name }}
                 isAdmin={isAdmin}
+                onProcessReturn={handleProcessReturn}
+              />
+            </React.Suspense>
+          )}
+          {currentView === 'inbound-returns' && (
+            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+              <ReceivingReturnsManager
+                submaterials={submaterials}
+                products={allProducts}
+                clients={clients}
+                orders={orders}
+                issuedStatements={issuedStatements}
+                currentUser={{ id: currentUser.id, name: currentUser.name }}
+                isAdmin={isAdmin}
+                onUpdateSubmaterial={(id, data) => updateItem('submaterials', id, data)}
                 onProcessReturn={handleProcessReturn}
               />
             </React.Suspense>
