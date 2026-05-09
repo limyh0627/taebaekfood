@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
-import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X, Copy, ChevronDown, ChevronUp, GitMerge } from 'lucide-react';
-import { Product, InventoryCategory, Client, ProductClient } from '../types';
+import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X, Copy, ChevronDown, ChevronUp, GitMerge, ChevronRight, Save } from 'lucide-react';
+import { Product, InventoryCategory, Client, ProductClient, ItemCustomer } from '../types';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 
@@ -9,12 +9,14 @@ interface ItemManagerProps {
   products: Product[];
   clients: Client[];
   productClients?: ProductClient[];
+  itemCustomers?: ItemCustomer[];
   onEditProduct: (_product: Product) => void;
   onAddProduct: () => void;
   onDeleteProduct: (_id: string, _category: string) => void;
   onLinkProduct: (_productId: string, _clientId: string) => void;
   onUnlinkProduct: (_productId: string, _clientId: string) => void;
   onMergeProducts?: (_keepId: string, _deleteIds: string[]) => Promise<void>;
+  onSaveItemCustomer?: (_ic: Partial<ItemCustomer> & { id: string }) => Promise<void>;
 }
 
 const CATEGORY_MAP: Record<string, string> = {
@@ -28,7 +30,7 @@ const SUB_ORDER: Record<string, number> = { '라벨': 0, '용기': 1, '마개': 
 const sortSubs = (subs: { name: string; category: string }[]) =>
   [...subs].sort((a, b) => (SUB_ORDER[normalizeCategory(a.category)] ?? 9) - (SUB_ORDER[normalizeCategory(b.category)] ?? 9));
 
-const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productClients = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct, onMergeProducts }) => {
+const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productClients = [], itemCustomers = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct, onMergeProducts, onSaveItemCustomer }) => {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [showNoClient, setShowNoClient] = useState(false);
@@ -48,6 +50,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
   const [merging, setMerging] = useState(false);
   const [selectedKeepId, setSelectedKeepId] = useState<Record<string, string>>({});
   const [selectedMergeIds, setSelectedMergeIds] = useState<Record<string, Set<string>>>({});
+  const [expandedPackagingId, setExpandedPackagingId] = useState<string | null>(null);
+  const [editingIc, setEditingIc] = useState<Record<string, Partial<ItemCustomer>>>({});
 
   const TYPE_ORDER: Record<string, number> = { '일반': 0, '택배': 1, '스마트스토어': 2 };
   const salesClients = useMemo(() =>
@@ -61,7 +65,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
   );
 
   const duplicateGroups = useMemo(() => {
-    const finished = products.filter(p => p.itemType === 'FINISHED' || p.category === '완제품' || p.category === '향미유' || p.category === '고춧가루');
+    const finished = products.filter(p => !p.archived && (p.itemType === 'FINISHED' || p.category === '완제품' || p.category === '향미유' || p.category === '고춧가루'));
     const pcByProduct: Record<string, ProductClient[]> = {};
     for (const pc of productClients) {
       if (!pcByProduct[pc.productId]) pcByProduct[pc.productId] = [];
@@ -131,9 +135,9 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
 
   const filteredItems = useMemo(() => {
     let result = (showAll || showNoClient)
-      ? products.filter(p => p.category === activeCategory)
+      ? products.filter(p => !p.archived && p.category === activeCategory)
       : selectedClientId
-        ? products.filter(p => p.category === activeCategory && (p.clientIds ?? []).includes(selectedClientId))
+        ? products.filter(p => !p.archived && p.category === activeCategory && (p.clientIds ?? []).includes(selectedClientId))
         : [];
 
     if (showNoClient) {
@@ -369,7 +373,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                 </tr>
               ) : (
                 pagedItems.map(item => (
-                  <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
+                  <React.Fragment key={item.id}>
+                  <tr className="hover:bg-slate-50/50 transition-colors group">
                     <td className="px-3 py-3">
                       <div className="flex items-center space-x-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-slate-300 shrink-0" />
@@ -442,6 +447,15 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                     ))}
                     <td className="px-3 py-3">
                       <div className="flex items-center justify-center space-x-2">
+                        {item.isRawMaterial && (
+                          <button
+                            onClick={() => setExpandedPackagingId(expandedPackagingId === item.id ? null : item.id)}
+                            className={`p-2 rounded-xl transition-all ${expandedPackagingId === item.id ? 'bg-emerald-100 text-emerald-700' : 'text-emerald-400 hover:bg-emerald-50 hover:text-emerald-600'}`}
+                            title="거래처별 포장 설정"
+                          >
+                            <ChevronRight size={18} className={`transition-transform ${expandedPackagingId === item.id ? 'rotate-90' : ''}`} />
+                          </button>
+                        )}
                         <button onClick={() => onEditProduct(item)} className="p-2 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl transition-all" title="수정">
                           <Edit size={18} />
                         </button>
@@ -472,6 +486,119 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                       </div>
                     </td>
                   </tr>
+                  {item.isRawMaterial && expandedPackagingId === item.id && (() => {
+                    const ics = itemCustomers.filter(ic => ic.item_id === item.id && ic.customer_id);
+                    const colCount = activeCategory === '완제품' ? 10 : 9;
+                    return (
+                      <tr>
+                        <td colSpan={colCount} className="px-4 pb-4 pt-0 bg-emerald-50/60">
+                          <div className="rounded-2xl border border-emerald-100 overflow-hidden">
+                            <table className="w-full text-xs">
+                              <thead className="bg-emerald-100">
+                                <tr>
+                                  <th className="text-left px-3 py-2 font-black text-emerald-800">거래처</th>
+                                  <th className="text-center px-3 py-2 font-black text-emerald-800">용량</th>
+                                  <th className="text-center px-3 py-2 font-black text-emerald-800">포장</th>
+                                  <th className="text-center px-3 py-2 font-black text-emerald-800">박스당수량</th>
+                                  <th className="text-left px-3 py-2 font-black text-emerald-800">용기</th>
+                                  <th className="text-left px-3 py-2 font-black text-emerald-800">라벨</th>
+                                  <th className="text-left px-3 py-2 font-black text-emerald-800">테이프</th>
+                                  <th className="text-center px-3 py-2 font-black text-emerald-800">단가</th>
+                                  {onSaveItemCustomer && <th className="px-3 py-2" />}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {ics.length === 0 ? (
+                                  <tr><td colSpan={9} className="px-3 py-3 text-center text-slate-400 font-medium">포장 설정 없음</td></tr>
+                                ) : ics.map(ic => {
+                                  const clientName    = clients.find(c => c.id === ic.customer_id)?.name ?? ic.customer_id;
+                                  const labelName     = products.find(p => p.id === ic.labelId)?.name;
+                                  const containerName = products.find(p => p.id === ic.containerTypeId)?.name;
+                                  const tapeName      = products.find(p => p.id === ic.tapeTypeId)?.name;
+                                  const editing = editingIc[ic.id];
+                                  return (
+                                    <tr key={ic.id} className="border-t border-emerald-100">
+                                      <td className="px-3 py-2 font-bold text-slate-700">{clientName}</td>
+                                      <td className="px-3 py-2 text-center">
+                                        {editing ? (
+                                          <input className="w-16 border border-emerald-300 rounded px-1 text-center text-xs"
+                                            value={editing.displaySize ?? ic.displaySize}
+                                            onChange={e => setEditingIc(prev => ({ ...prev, [ic.id]: { ...prev[ic.id], displaySize: e.target.value } }))} />
+                                        ) : <span className="font-black text-emerald-700">{ic.displaySize}</span>}
+                                      </td>
+                                      <td className="px-3 py-2 text-center">
+                                        {editing ? (
+                                          <input className="w-16 border border-emerald-300 rounded px-1 text-center text-xs"
+                                            value={editing.packageType ?? ic.packageType}
+                                            onChange={e => setEditingIc(prev => ({ ...prev, [ic.id]: { ...prev[ic.id], packageType: e.target.value } }))} />
+                                        ) : <span className="text-slate-600">{ic.packageType}</span>}
+                                      </td>
+                                      <td className="px-3 py-2 text-center">
+                                        {editing ? (
+                                          <input type="number" className="w-14 border border-emerald-300 rounded px-1 text-center text-xs"
+                                            value={editing.qty_per_box ?? ic.qty_per_box}
+                                            onChange={e => setEditingIc(prev => ({ ...prev, [ic.id]: { ...prev[ic.id], qty_per_box: Number(e.target.value) } }))} />
+                                        ) : <span className="text-slate-600">{ic.qty_per_box}개</span>}
+                                      </td>
+                                      <td className="px-3 py-2 text-slate-500">
+                                        {editing ? (
+                                          <select className="border border-emerald-300 rounded px-1 text-xs w-full"
+                                            value={editing.containerTypeId ?? ic.containerTypeId ?? ''}
+                                            onChange={e => setEditingIc(prev => ({ ...prev, [ic.id]: { ...prev[ic.id], containerTypeId: e.target.value } }))}>
+                                            <option value="">없음</option>
+                                            {products.filter(p => p.category === '용기').map(p => (
+                                              <option key={p.id} value={p.id}>{p.name}</option>
+                                            ))}
+                                          </select>
+                                        ) : <span>{containerName ?? (ic.containerTypeId ? ic.containerTypeId : '없음')}</span>}
+                                      </td>
+                                      <td className="px-3 py-2 text-slate-500">
+                                        {editing ? (
+                                          <select className="border border-emerald-300 rounded px-1 text-xs w-full"
+                                            value={editing.labelId ?? ic.labelId ?? ''}
+                                            onChange={e => setEditingIc(prev => ({ ...prev, [ic.id]: { ...prev[ic.id], labelId: e.target.value } }))}>
+                                            <option value="">무라벨</option>
+                                            {products.filter(p => p.category === '라벨').map(p => (
+                                              <option key={p.id} value={p.id}>{p.name}</option>
+                                            ))}
+                                          </select>
+                                        ) : <span>{labelName ?? (ic.labelId ? ic.labelId : '무라벨')}</span>}
+                                      </td>
+                                      <td className="px-3 py-2 text-slate-500">
+                                        {editing ? (
+                                          <select className="border border-emerald-300 rounded px-1 text-xs w-full"
+                                            value={editing.tapeTypeId ?? ic.tapeTypeId ?? ''}
+                                            onChange={e => setEditingIc(prev => ({ ...prev, [ic.id]: { ...prev[ic.id], tapeTypeId: e.target.value } }))}>
+                                            <option value="">없음</option>
+                                            {products.filter(p => p.category === '테이프').map(p => (
+                                              <option key={p.id} value={p.id}>{p.name}</option>
+                                            ))}
+                                          </select>
+                                        ) : <span>{tapeName ?? (ic.tapeTypeId ? '(ID)' : '없음')}</span>}
+                                      </td>
+                                      <td className="px-3 py-2 text-center text-slate-500">{ic.price ? `${ic.price.toLocaleString()}원` : '-'}</td>
+                                      {onSaveItemCustomer && (
+                                        <td className="px-3 py-2 text-center">
+                                          {editing ? (
+                                            <button onClick={async () => { await onSaveItemCustomer({ ...ic, ...editing, id: ic.id }); setEditingIc(prev => { const n = { ...prev }; delete n[ic.id]; return n; }); }}
+                                              className="p-1 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-all"><Save size={12} /></button>
+                                          ) : (
+                                            <button onClick={() => setEditingIc(prev => ({ ...prev, [ic.id]: {} }))}
+                                              className="p-1 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-all"><Edit size={12} /></button>
+                                          )}
+                                        </td>
+                                      )}
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })()}
+                  </React.Fragment>
                 ))
               )}
             </tbody>

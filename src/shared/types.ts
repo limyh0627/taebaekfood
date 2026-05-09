@@ -29,6 +29,7 @@ export interface OrderItem {
   unitsPerBox?: number;   // 박스당 낱개 수 (주문 시점 기준)
   boxType?: string;       // 박스 종류 표시명 (예: "2번박스")
   boxSubId?: string;      // 부자재 박스 ID (재고 차감 대상)
+  displaySize?: string;   // 서류 규격란 표기 (통합 품목용, 예: "1kg", "20kg")
 }
 
 export interface OrderPallet {
@@ -159,6 +160,10 @@ export interface Product {
   isSmartStore?: boolean;
   smartStorePrice?: number;
   submaterials?: SubmaterialComponent[];
+  isRawMaterial?: boolean;    // 원료로도 관리되는 품목 (수불부 자동 연동)
+  rawMaterialName?: string;   // 원료 수불부 키 이름 (예: "볶음참깨")
+  variantStocks?: Record<string, number>; // 규격별 재고 { "1kg||labelId": 50, "20kg||": 100 }
+  archived?: boolean;         // 통합 마이그레이션으로 대체된 구 품목
 }
 
 export interface PalletStock {
@@ -425,10 +430,18 @@ export interface ItemBom {
 
 export interface ItemCustomer {
   id: string;
-  item_id: string;      // FINISHED 품목의 Firestore product ID
+  item_id: string;       // 통합 품목 Firestore product ID
   customer_id: string;
-  box_type_id: string;  // 박스 종류
-  qty_per_box: number;  // 박스당 입수
+  box_type_id?: string;       // 박스 부자재 ID
+  qty_per_box: number;        // 박스당 입수 (자루=1)
+  displaySize: string;        // 서류 표기용 용량 "1kg", "200g", "20kg"
+  weightInKg: number;         // 수불부 차감 계산용 중량 (1.0, 0.2, 20.0)
+  packageType: string;        // 포장 형태 "박스", "자루", "병", "벌크"
+  containerTypeId?: string;   // 용기 부자재 ID (없으면 자루/벌크)
+  labelId?: string;           // 라벨 부자재 ID (없으면 무라벨)
+  tapeTypeId?: string;        // 테이프 부자재 ID
+  price?: number;             // 거래처별 단가
+  isSmartStore?: boolean;
 }
 // ────────────────────────────────────────────────────────────────────────
 

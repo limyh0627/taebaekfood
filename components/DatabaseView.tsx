@@ -11,18 +11,37 @@ import {
   ShieldAlert,
   Settings,
   Database,
-  AlertTriangle
+  AlertTriangle,
+  Download,
+  Eye,
+  Play,
+  Package
 } from 'lucide-react';
-import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, addDoc } from 'firebase/firestore';
 import { db } from '../src/firebase';
 import { Client, Product } from '../types';
-import PageHeader from './PageHeader';
 
 interface DatabaseViewProps {
   onSync: (data: { clients: Client[], products: Product[] }) => void;
 }
 
 type MigrationStatus = 'idle' | 'running' | 'done' | 'error';
+
+interface ConsolidationPreviewItem {
+  productId: string;
+  productName: string;
+  currentStock: number;
+  displaySize: string;
+  weightInKg: number;
+  packageType: string;
+  totalKg: number;
+  labelId?: string;
+  labelName?: string;
+  containerTypeId?: string;
+  containerName?: string;
+  clients: Array<{ clientId: string; clientName: string; boxTypeId?: string; qtyPerBox?: number; price?: number }>;
+  warning?: string;
+}
 
 interface MigrationResult {
   total: number;
@@ -31,14 +50,48 @@ interface MigrationResult {
   errors: string[];
 }
 
+// 볶음참깨 통합 대상 필터
+const isConsolidationTarget = (name: string) =>
+  name.includes('볶음참깨') &&
+  !name.includes('가루') &&
+  !name.startsWith('참+') &&
+  !name.startsWith('참2+') &&
+  !name.startsWith('참기름+');
+
+// 품목명에서 포장 규격 자동 감지
+const detectSizeFromName = (name: string): { displaySize: string; weightInKg: number; packageType: string; warning?: string } => {
+  if (name.includes('하남대') || name.includes('140g') || name.includes('140G'))
+    return { displaySize: '140g', weightInKg: 0.14, packageType: '병' };
+  if (name.includes('500g') || name.includes('500G'))
+    return { displaySize: '500g', weightInKg: 0.5, packageType: '실링' };
+  if (name.includes('400G') || name.includes('400g'))
+    return { displaySize: '400g', weightInKg: 0.4, packageType: '박스' };
+  if (name.includes('200G') || name.includes('200g'))
+    return { displaySize: '200g', weightInKg: 0.2, packageType: '박스' };
+  if (name.includes('벌크'))
+    return { displaySize: '20kg', weightInKg: 20, packageType: '벌크' };
+  if (name.includes('스마트'))
+    return { displaySize: '1kg', weightInKg: 1.0, packageType: '박스' };
+  // 낱개, /모란, /반석 등 → 기본 1kg
+  return { displaySize: '1kg', weightInKg: 1.0, packageType: '박스' };
+};
+
 const DatabaseView: React.FC<DatabaseViewProps> = ({ onSync }) => {
-  const [activeTab, setActiveTab] = useState<'migration' | 'sync' | 'script'>('migration');
+  const [activeTab, setActiveTab] = useState<'migration' | 'sync' | 'script' | 'consolidate'>('migration');
   const [migrationStatus, setMigrationStatus] = useState<MigrationStatus>('idle');
   const [migrationResult, setMigrationResult] = useState<MigrationResult | null>(null);
   const [sheetId, setSheetId] = useState(localStorage.getItem('gsheet_id') || '');
   const [appsScriptUrl, setAppsScriptUrl] = useState(localStorage.getItem('apps_script_url') || '');
   const [syncStatus, setSyncStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
+
+  // 볶음참깨 통합 상태
+  const [backupStatus, setBackupStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
+  const [backupCount, setBackupCount] = useState(0);
+  const [previewStatus, setPreviewStatus] = useState<'idle' | 'loading' | 'done'>('idle');
+  const [previewData, setPreviewData] = useState<ConsolidationPreviewItem[] | null>(null);
+  const [execStatus, setExecStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
+  const [execLog, setExecLog] = useState<string[]>([]);
 
   const runMigration = async () => {
     if (migrationStatus === 'running') return;
@@ -75,6 +128,328 @@ const DatabaseView: React.FC<DatabaseViewProps> = ({ onSync }) => {
       result.errors.push(e.message);
       setMigrationResult(result);
       setMigrationStatus('error');
+    }
+  };
+
+  // ── 볶음참깨 통합: 1단계 백업 ───────────────────────────────────────────
+  const downloadBackup = async () => {
+    setBackupStatus('running');
+    try {
+      const allProductsSnap = await getDocs(collection(db, 'products'));
+      const allProducts = allProductsSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+      const targets = allProducts.filter(p => isConsolidationTarget(p.name || ''));
+
+      const allPCSnap = await getDocs(collection(db, 'productClients'));
+      const targetIds = new Set(targets.map(p => p.id));
+      const relatedPCs = allPCSnap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter((pc: any) => targetIds.has(pc.productId));
+
+      const backup = {
+        timestamp: new Date().toISOString(),
+        description: '볶음참깨 통합 마이그레이션 전 백업',
+        products: targets,
+        productClients: relatedPCs,
+      };
+
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `볶음참깨_백업_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setBackupCount(targets.length);
+      setBackupStatus('done');
+    } catch (e: any) {
+      console.error(e);
+      setBackupStatus('error');
+    }
+  };
+
+  // ── 볶음참깨 통합: 2단계 미리보기 ──────────────────────────────────────
+  const loadPreview = async () => {
+    setPreviewStatus('loading');
+    try {
+      const allProductsSnap = await getDocs(collection(db, 'products'));
+      const allProducts = allProductsSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+      const targets = allProducts.filter(p => isConsolidationTarget(p.name || '') && !p.archived);
+
+      const allPCSnap = await getDocs(collection(db, 'productClients'));
+      const allPCs = allPCSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+
+      const allClientsSnap = await getDocs(collection(db, 'clients'));
+      const clientMap = new Map(allClientsSnap.docs.map(d => [d.id, (d.data() as any).name || d.id]));
+
+      const items: ConsolidationPreviewItem[] = targets.map(p => {
+        const sizeInfo = detectSizeFromName(p.name);
+        const currentStock = p.finishedStock ?? p.stock ?? 0;
+        const pcs = allPCs.filter(pc => pc.productId === p.id);
+        const labelSub     = (p.submaterials || []).find((s: any) => s.category === '라벨');
+        const containerSub = (p.submaterials || []).find((s: any) => s.category === '용기');
+
+        return {
+          productId: p.id,
+          productName: p.name,
+          currentStock,
+          displaySize: sizeInfo.displaySize,
+          weightInKg: sizeInfo.weightInKg,
+          packageType: sizeInfo.packageType,
+          totalKg: currentStock * sizeInfo.weightInKg,
+          labelId: labelSub?.id,
+          labelName: labelSub?.name,
+          containerTypeId: containerSub?.id,
+          containerName: containerSub?.name,
+          clients: pcs.map(pc => ({
+            clientId: pc.clientId,
+            clientName: clientMap.get(pc.clientId) || pc.clientId,
+            boxTypeId: pc.boxTypeId,
+            qtyPerBox: pc.qtyPerBox,
+            price: pc.price,
+          })),
+          warning: sizeInfo.warning,
+        };
+      });
+
+      setPreviewData(items);
+      setPreviewStatus('done');
+    } catch (e: any) {
+      console.error(e);
+      setPreviewStatus('idle');
+    }
+  };
+
+  // ── 볶음참깨 통합: 3단계 실행 ───────────────────────────────────────────
+  const executeConsolidation = async () => {
+    if (!previewData || previewData.length === 0) return;
+    setExecStatus('running');
+    const log: string[] = [];
+
+    try {
+      const totalKg = previewData.reduce((sum, item) => sum + item.totalKg, 0);
+      log.push(`총 재고 합산: ${totalKg.toFixed(2)}kg`);
+
+      // 투명 테이프 부자재 ID 조회
+      const subSnap = await getDocs(collection(db, 'submaterials'));
+      const allSubs = subSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+      const transparentTapeId = allSubs.find((s: any) => s.category === '테이프' && s.name?.includes('투명'))?.id ?? '';
+
+      // 1. 통합 품목 생성
+      const newProductRef = await addDoc(collection(db, 'products'), {
+        name: '볶음참깨',
+        품목: '시골향볶음참깨',
+        category: '완제품',
+        itemType: 'FINISHED',
+        isRawMaterial: true,
+        rawMaterialName: '볶음참깨',
+        unit: 'kg',
+        stock: 0,
+        finishedStock: totalKg,
+        minStock: 0,
+        price: 0,
+        image: '',
+        createdAt: new Date().toISOString(),
+      });
+      log.push(`통합 품목 생성 완료 (ID: ${newProductRef.id})`);
+
+      // 2. item_customer 레코드 생성
+      let icCount = 0;
+      for (const item of previewData) {
+        for (const client of item.clients) {
+          await addDoc(collection(db, 'item_customer'), {
+            item_id: newProductRef.id,
+            customer_id: client.clientId,
+            displaySize: item.displaySize,
+            weightInKg: item.weightInKg,
+            packageType: item.packageType,
+            qty_per_box: client.qtyPerBox ?? 1,
+            box_type_id: client.boxTypeId ?? '',
+            labelId: item.labelId ?? '',
+            containerTypeId: item.containerTypeId ?? '',
+            tapeTypeId: transparentTapeId,
+            price: client.price ?? 0,
+            isSmartStore: item.productName.includes('스마트'),
+            createdAt: new Date().toISOString(),
+            migratedFrom: item.productId,
+          });
+          icCount++;
+        }
+        // 거래처 없는 품목도 item_customer 1건 생성 (규격 정보 보존)
+        if (item.clients.length === 0) {
+          await addDoc(collection(db, 'item_customer'), {
+            item_id: newProductRef.id,
+            customer_id: '',
+            displaySize: item.displaySize,
+            weightInKg: item.weightInKg,
+            packageType: item.packageType,
+            qty_per_box: 1,
+            box_type_id: '',
+            labelId: item.labelId ?? '',
+            containerTypeId: item.containerTypeId ?? '',
+            tapeTypeId: transparentTapeId,
+            price: 0,
+            isSmartStore: item.productName.includes('스마트'),
+            createdAt: new Date().toISOString(),
+            migratedFrom: item.productId,
+          });
+          icCount++;
+        }
+      }
+      log.push(`거래처 포장 설정 생성: ${icCount}건`);
+
+      // 3. 새 품목에 productClients + clientIds 복사 (기존 주문 흐름 유지)
+      const allClientIds = Array.from(new Set(previewData.flatMap(item => item.clients.map(c => c.clientId)).filter(Boolean)));
+      for (const item of previewData) {
+        for (const client of item.clients) {
+          const pcId = `${newProductRef.id}_${client.clientId}`;
+          await import('firebase/firestore').then(({ setDoc, doc: fDoc }) =>
+            setDoc(fDoc(db, 'productClients', pcId), {
+              productId: newProductRef.id,
+              clientId: client.clientId,
+              qtyPerBox: client.qtyPerBox ?? 1,
+              boxTypeId: client.boxTypeId ?? '',
+              price: client.price ?? 0,
+            }, { merge: true })
+          );
+        }
+      }
+      await updateDoc(doc(db, 'products', newProductRef.id), { clientIds: allClientIds });
+      log.push(`거래처 연결 복사: ${allClientIds.length}개 거래처`);
+
+      // 4. 구 품목 아카이브 (삭제하지 않고 숨김 처리)
+      for (const item of previewData) {
+        await updateDoc(doc(db, 'products', item.productId), {
+          archived: true,
+          archivedAt: new Date().toISOString(),
+          archivedReason: `볶음참깨 통합 → ${newProductRef.id}`,
+        });
+      }
+      log.push(`구 품목 아카이브 처리: ${previewData.length}건 (삭제 아님, 백업 JSON으로 복구 가능)`);
+
+      setExecLog(log);
+      setExecStatus('done');
+    } catch (e: any) {
+      log.push(`오류: ${e.message}`);
+      setExecLog(log);
+      setExecStatus('error');
+    }
+  };
+
+  // ── 거래처 연결 복구 (이미 실행된 통합 품목용) ─────────────────────────
+  const repairClientLinks = async () => {
+    try {
+      const allProductsSnap = await getDocs(collection(db, 'products'));
+      const allProducts = allProductsSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+
+      // 통합된 새 품목
+      const target = allProducts.find((p: any) => p.name === '볶음참깨' && p.isRawMaterial && !p.archived);
+      if (!target) { alert('통합된 볶음참깨 품목을 찾을 수 없습니다.'); return; }
+
+      // 아카이브된 구 품목들
+      const archivedProducts = allProducts.filter((p: any) =>
+        p.archived && (p.archivedReason ?? '').includes(target.id)
+      );
+
+      // 1. 구 품목 clientIds 전부 수집
+      const fromClientIds = new Set<string>(
+        archivedProducts.flatMap((p: any) => p.clientIds ?? [])
+      );
+
+      // 2. item_customer에서 거래처 + 포장 설정 수집
+      const icSnap = await getDocs(collection(db, 'item_customer'));
+      const ics = icSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+      const linkedIcs = ics.filter((ic: any) => ic.item_id === target.id && ic.customer_id);
+      const icClientIds = new Set(linkedIcs.map((ic: any) => ic.customer_id));
+
+      // 3. 합산 (포장 설정 있는 것 + clientIds에만 있던 것)
+      const allClientIds = Array.from(new Set([...fromClientIds, ...icClientIds])).filter(Boolean);
+
+      const { setDoc, doc: fDoc } = await import('firebase/firestore');
+
+      // 포장 설정 있는 거래처 → productClients (설정 포함)
+      for (const ic of linkedIcs) {
+        const pcId = `${target.id}_${ic.customer_id}`;
+        await setDoc(fDoc(db, 'productClients', pcId), {
+          productId: target.id,
+          clientId: ic.customer_id,
+          qtyPerBox: ic.qty_per_box ?? 1,
+          boxTypeId: ic.box_type_id ?? '',
+          price: ic.price ?? 0,
+        }, { merge: true });
+      }
+
+      // clientIds에만 있던 거래처 → productClients (기본값으로 생성)
+      for (const clientId of fromClientIds) {
+        if (!icClientIds.has(clientId)) {
+          const pcId = `${target.id}_${clientId}`;
+          await setDoc(fDoc(db, 'productClients', pcId), {
+            productId: target.id,
+            clientId,
+          }, { merge: true });
+        }
+      }
+
+      // clientIds + 품목 필드 업데이트 (생산판매기록부 연동용)
+      await updateDoc(doc(db, 'products', target.id), {
+        clientIds: allClientIds,
+        품목: '시골향볶음참깨',
+      });
+
+      alert(`거래처 연결 복구 완료!\n${allClientIds.length}개 거래처 연결 (포장설정 ${linkedIcs.length}개 + 연결만 ${fromClientIds.size - linkedIcs.filter((ic:any) => fromClientIds.has(ic.customer_id)).length}개)\n앱을 새로고침하세요.`);
+    } catch (e: any) {
+      alert(`복구 실패: ${e.message}`);
+    }
+  };
+
+  // ── 용기/라벨/테이프 데이터 복구 (기존 item_customer에 containerTypeId, labelId, tapeTypeId 채우기) ──
+  const repairContainerData = async () => {
+    try {
+      const allProductsSnap = await getDocs(collection(db, 'products'));
+      const allProducts = allProductsSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+
+      const archivedMap = new Map<string, any>(
+        allProducts.filter((p: any) => p.archived).map((p: any) => [p.id, p])
+      );
+
+      // 투명 테이프 부자재 찾기
+      const subSnap = await getDocs(collection(db, 'submaterials'));
+      const allSubs = subSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+      const transparentTape = allSubs.find((s: any) => s.category === '테이프' && s.name?.includes('투명'));
+
+      const icSnap = await getDocs(collection(db, 'item_customer'));
+      const ics = icSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+
+      const { updateDoc, doc: fDoc } = await import('firebase/firestore');
+      let updated = 0;
+
+      for (const ic of ics) {
+        const patch: Record<string, string> = {};
+
+        if (ic.migratedFrom) {
+          const archived = archivedMap.get(ic.migratedFrom);
+          if (archived) {
+            const containerSub = (archived.submaterials || []).find((s: any) => s.category === '용기');
+            const labelSub     = (archived.submaterials || []).find((s: any) => s.category === '라벨');
+            if (containerSub?.id && !ic.containerTypeId) patch.containerTypeId = containerSub.id;
+            if (labelSub?.id && !ic.labelId)             patch.labelId = labelSub.id;
+          }
+        }
+
+        // 모든 item_customer 레코드에 투명 테이프 적용
+        if (transparentTape?.id && !ic.tapeTypeId) patch.tapeTypeId = transparentTape.id;
+
+        if (Object.keys(patch).length > 0) {
+          await updateDoc(fDoc(db, 'item_customer', ic.id), patch);
+          updated++;
+        }
+      }
+
+      alert(`용기/라벨/테이프 복구 완료: ${updated}건 업데이트\n앱을 새로고침하세요.`);
+    } catch (e: any) {
+      alert(`복구 실패: ${e.message}`);
     }
   };
 
@@ -370,6 +745,7 @@ function doPost(e) {
            <button onClick={() => setActiveTab('migration')} className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center space-x-2 ${activeTab === 'migration' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-500'}`}><Database size={14} /><span>DB 마이그레이션</span></button>
            <button onClick={() => setActiveTab('sync')} className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center space-x-2 ${activeTab === 'sync' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}><RefreshCw size={14} /><span>동기화 제어</span></button>
            <button onClick={() => setActiveTab('script')} className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center space-x-2 ${activeTab === 'script' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500'}`}><Terminal size={14} /><span>스크립트 설정</span></button>
+           <button onClick={() => setActiveTab('consolidate')} className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center space-x-2 ${activeTab === 'consolidate' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500'}`}><Package size={14} /><span>품목 통합</span></button>
         </div>
       </div>
 
@@ -525,6 +901,191 @@ function doPost(e) {
                   <p className="text-xs font-black text-slate-800 mb-1">스크립트 배포</p>
                   <p className="text-[10px] text-slate-400 font-bold">쓰기 기능을 위해선 Apps Script를 &apos;웹 앱&apos;으로 새 배포해야 합니다.</p>
                </div>
+            </div>
+          </div>
+        ) : activeTab === 'consolidate' ? (
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-8 space-y-6">
+            {/* 긴급 복구 */}
+            <div className="bg-rose-50 border border-rose-200 p-5 rounded-3xl flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-black text-rose-800">거래처 연결 복구</p>
+                <p className="text-xs text-rose-600 font-medium mt-0.5">이미 통합을 실행했는데 거래처 연결이 빠졌을 때 사용하세요.</p>
+              </div>
+              <button
+                onClick={repairClientLinks}
+                className="shrink-0 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-xs transition-all active:scale-95"
+              >
+                지금 복구
+              </button>
+            </div>
+
+            {/* 용기/라벨 데이터 복구 */}
+            <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-2xl p-4 gap-4">
+              <div>
+                <p className="text-sm font-black text-amber-800">용기/라벨 데이터 복구</p>
+                <p className="text-xs text-amber-600 font-medium mt-0.5">거래처별 포장 설정에 용기·라벨 정보가 없을 때 아카이브에서 자동 복원합니다.</p>
+              </div>
+              <button
+                onClick={repairContainerData}
+                className="shrink-0 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-xl text-xs transition-all active:scale-95"
+              >
+                지금 복구
+              </button>
+            </div>
+
+            {/* 안내 */}
+            <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-3xl space-y-2">
+              <div className="flex items-center gap-3">
+                <Package size={20} className="text-emerald-600" />
+                <h4 className="text-sm font-black text-emerald-900">볶음참깨 품목 통합 (1단계)</h4>
+              </div>
+              <p className="text-xs text-emerald-700 font-medium leading-relaxed">
+                분산된 볶음참깨 품목들을 하나로 통합하고 거래처별 포장 설정을 <code className="bg-emerald-100 px-1 rounded">item_customer</code>로 이동합니다.<br />
+                <b>순서: ① 백업 다운로드 → ② 미리보기 확인 → ③ 통합 실행</b>
+              </p>
+            </div>
+
+            {/* 1단계: 백업 */}
+            <div className="border border-slate-200 rounded-3xl p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-black text-slate-800">① 백업 다운로드</p>
+                  <p className="text-xs text-slate-400 font-medium mt-0.5">통합 대상 품목과 거래처 설정을 JSON으로 저장합니다.</p>
+                </div>
+                {backupStatus === 'done' && (
+                  <span className="flex items-center gap-1 text-xs text-emerald-600 font-black"><CheckCircle2 size={14} /> {backupCount}개 품목 백업 완료</span>
+                )}
+              </div>
+              <button
+                onClick={downloadBackup}
+                disabled={backupStatus === 'running'}
+                className="w-full py-3 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white font-black rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-2 text-sm"
+              >
+                {backupStatus === 'running' ? <RefreshCw size={16} className="animate-spin" /> : <Download size={16} />}
+                {backupStatus === 'running' ? '백업 중...' : backupStatus === 'done' ? '다시 다운로드' : '백업 JSON 다운로드'}
+              </button>
+              {backupStatus === 'error' && <p className="text-xs text-rose-500 font-bold">백업 실패 — 콘솔 확인</p>}
+            </div>
+
+            {/* 2단계: 미리보기 */}
+            <div className="border border-slate-200 rounded-3xl p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-black text-slate-800">② 통합 미리보기</p>
+                  <p className="text-xs text-slate-400 font-medium mt-0.5">감지된 품목과 자동 분류된 포장 규격을 확인하세요.</p>
+                </div>
+                <button
+                  onClick={loadPreview}
+                  disabled={previewStatus === 'loading'}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black rounded-xl text-xs flex items-center gap-1.5 transition-all"
+                >
+                  {previewStatus === 'loading' ? <RefreshCw size={12} className="animate-spin" /> : <Eye size={12} />}
+                  {previewStatus === 'loading' ? '조회 중...' : '미리보기'}
+                </button>
+              </div>
+
+              {previewData && previewData.length > 0 && (
+                <div className="space-y-3">
+                  {/* 경고 항목 */}
+                  {previewData.some(i => i.warning) && (
+                    <div className="bg-amber-50 border border-amber-100 p-3 rounded-2xl space-y-1">
+                      <div className="flex items-center gap-1.5 text-amber-700 font-black text-xs"><AlertTriangle size={12} /> 확인 필요 항목</div>
+                      {previewData.filter(i => i.warning).map(i => (
+                        <p key={i.productId} className="text-xs text-amber-600 font-medium pl-4">
+                          {i.productName}: {i.warning}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 미리보기 테이블 */}
+                  <div className="overflow-x-auto rounded-2xl border border-slate-100">
+                    <table className="w-full text-xs">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="text-left px-4 py-3 font-black text-slate-500">품목명</th>
+                          <th className="text-right px-4 py-3 font-black text-slate-500">현재재고</th>
+                          <th className="text-center px-4 py-3 font-black text-slate-500">용량</th>
+                          <th className="text-center px-4 py-3 font-black text-slate-500">포장</th>
+                          <th className="text-right px-4 py-3 font-black text-slate-500">환산(kg)</th>
+                          <th className="text-left px-4 py-3 font-black text-slate-500">라벨</th>
+                          <th className="text-left px-4 py-3 font-black text-slate-500">거래처</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previewData.map(item => (
+                          <tr key={item.productId} className={`border-t border-slate-100 ${item.warning ? 'bg-amber-50/50' : ''}`}>
+                            <td className="px-4 py-3 font-bold text-slate-700">{item.productName}</td>
+                            <td className="px-4 py-3 text-right text-slate-500">{item.currentStock}</td>
+                            <td className="px-4 py-3 text-center font-black text-emerald-700">{item.displaySize}</td>
+                            <td className="px-4 py-3 text-center text-slate-500">{item.packageType}</td>
+                            <td className="px-4 py-3 text-right font-bold text-slate-700">{item.totalKg.toFixed(2)}</td>
+                            <td className="px-4 py-3 text-slate-400">{item.labelName || '무라벨'}</td>
+                            <td className="px-4 py-3 text-slate-500">
+                              {item.clients.length > 0
+                                ? item.clients.map(c => c.clientName).join(', ')
+                                : <span className="text-slate-300">없음</span>}
+                            </td>
+                          </tr>
+                        ))}
+                        <tr className="border-t-2 border-emerald-200 bg-emerald-50">
+                          <td className="px-4 py-3 font-black text-emerald-800" colSpan={4}>합계 (통합 품목 초기 재고)</td>
+                          <td className="px-4 py-3 text-right font-black text-emerald-800">
+                            {previewData.reduce((s, i) => s + i.totalKg, 0).toFixed(2)} kg
+                          </td>
+                          <td colSpan={2} />
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 3단계: 실행 */}
+            <div className="border border-slate-200 rounded-3xl p-6 space-y-4">
+              <div>
+                <p className="text-sm font-black text-slate-800">③ 통합 실행</p>
+                <p className="text-xs text-slate-400 font-medium mt-0.5">
+                  백업 완료 + 미리보기 확인 후 실행하세요. 구 품목은 삭제되지 않고 아카이브 처리됩니다.
+                </p>
+              </div>
+
+              {execStatus === 'idle' && (
+                <button
+                  onClick={executeConsolidation}
+                  disabled={backupStatus !== 'done' || !previewData || previewData.length === 0}
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-2 text-sm"
+                >
+                  <Play size={16} /> 볶음참깨 통합 실행
+                </button>
+              )}
+              {backupStatus !== 'done' && execStatus === 'idle' && (
+                <p className="text-xs text-amber-600 font-bold text-center">① 백업을 먼저 완료해야 실행 버튼이 활성화됩니다.</p>
+              )}
+
+              {execStatus === 'running' && (
+                <div className="flex items-center justify-center gap-3 py-6 text-emerald-600 font-black text-sm">
+                  <RefreshCw size={18} className="animate-spin" /> Firestore 업데이트 중...
+                </div>
+              )}
+
+              {(execStatus === 'done' || execStatus === 'error') && execLog.length > 0 && (
+                <div className={`p-4 rounded-2xl space-y-1.5 ${execStatus === 'done' ? 'bg-emerald-50 border border-emerald-100' : 'bg-rose-50 border border-rose-100'}`}>
+                  <div className={`flex items-center gap-2 font-black text-sm ${execStatus === 'done' ? 'text-emerald-700' : 'text-rose-700'}`}>
+                    {execStatus === 'done' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                    {execStatus === 'done' ? '통합 완료' : '오류 발생'}
+                  </div>
+                  {execLog.map((line, i) => (
+                    <p key={i} className={`text-xs font-medium pl-5 ${execStatus === 'done' ? 'text-emerald-600' : 'text-rose-600'}`}>{line}</p>
+                  ))}
+                  {execStatus === 'done' && (
+                    <p className="text-xs text-slate-400 font-medium pl-5 pt-1">
+                      ※ 품목 목록에서 아카이브된 구 품목이 보이면 새로고침하세요.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         ) : (

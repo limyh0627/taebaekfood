@@ -1209,6 +1209,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               }}
               onDeleteRawMaterialEntry={(id) => deleteItem('rawMaterialLedger', id)}
               onUpdateSubmaterial={(id, data) => updateItem('submaterials', id, data)}
+              itemCustomers={itemCustomers}
             />
           )}
           {currentView === 'inbound-scan' && (
@@ -1343,7 +1344,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               return order.items.flatMap((item, itemIdx) => {
                 const product = allProducts.find(p => p.id === item.productId);
                 if (product && SUB_ONLY_CATS.has(product.category)) return [];
-                return [{ 상호: clientName, 품목: product?.품목 || item.name, 용량: product?.용량 || '', 수량: item.quantity, 소비기한: calcExpiry(item.mfgDate || ''), 제조일자: item.mfgDate || '', orderId: order.id, itemIdx }];
+                return [{ 상호: clientName, 품목: product?.품목 || item.name, 용량: item.displaySize || product?.용량 || '', 수량: item.quantity, 소비기한: calcExpiry(item.mfgDate || ''), 제조일자: item.mfgDate || '', orderId: order.id, itemIdx }];
               });
             });
             const rightRows: RightRow[] = Object.values(
@@ -2923,6 +2924,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 }
                 await batch.commit();
               }}
+              itemCustomers={itemCustomers}
+              onSaveItemCustomer={async (ic) => {
+                const { doc: fDoc, updateDoc: fUpdate } = await import('firebase/firestore');
+                const { db: fireDb } = await import('../../shared/firebase');
+                const { id, ...data } = ic;
+                await fUpdate(fDoc(fireDb, 'item_customer', id), data);
+              }}
             />
           )}
 
@@ -3000,7 +3008,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           correctPassword={companyInfo?.adminPassword || '0000'}
         />
       )}
-      {isAddOrderOpen && <AddOrderModal products={allProducts} clients={clients} productClients={productClients} palletStocks={pallets} submaterials={submaterials} onClose={() => setIsAddOrderOpen(false)} onSave={async (o) => {
+      {isAddOrderOpen && <AddOrderModal products={allProducts} clients={clients} productClients={productClients} itemCustomers={itemCustomers} palletStocks={pallets} submaterials={submaterials} onClose={() => setIsAddOrderOpen(false)} onSave={async (o) => {
         try {
           console.log('[AddOrder] 저장 시작', o);
           const orderId = `ORD-${Date.now()}`;
