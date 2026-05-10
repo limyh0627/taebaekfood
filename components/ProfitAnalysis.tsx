@@ -5,18 +5,29 @@ import {
   ResponsiveContainer, Legend, Cell
 } from 'recharts';
 import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, BarChart2, DollarSign, Wallet, Users, ChevronLeft, ChevronRight, Save, Search, Package, X, CreditCard, Download } from 'lucide-react';
-import { IssuedStatement, FixedCostEntry, Client, PaymentRecord, Product } from '../types';
+import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Client, PaymentRecord, Product, AccountCode, AccountGroup, AccountGroupPlLine } from '../types';
 import PageHeader from './PageHeader';
 import CostManager from './CostManager';
 
 interface ProfitAnalysisProps {
   issuedStatements: IssuedStatement[];
   fixedCosts: FixedCostEntry[];
+  fixedCostTemplates?: FixedCostTemplate[];
   onAddCost: (entry: Omit<FixedCostEntry, 'id' | 'createdAt'>) => Promise<void>;
   onDeleteCost: (id: string) => Promise<void>;
+  onAddTemplate?: (data: Omit<FixedCostTemplate, 'id'>) => Promise<void>;
+  onUpdateTemplate?: (id: string, data: Partial<FixedCostTemplate>) => Promise<void>;
+  onDeleteTemplate?: (id: string) => Promise<void>;
   clients?: Client[];
   products?: Product[];
   onUpdateIssuedStatement?: (id: string, data: Partial<IssuedStatement>) => void;
+  accountGroups?: AccountGroup[];
+  accountCodes?: AccountCode[];
+  onUpdateAccountCode?: (id: string, data: Partial<AccountCode>) => void;
+  onAddAccountCode?: (data: Omit<AccountCode, 'id'>) => Promise<string>;
+  onDeleteAccountCode?: (id: string) => void;
+  onAddAccountGroup?: (data: Omit<AccountGroup, 'id'>) => Promise<string>;
+  onDeleteAccountGroup?: (id: string) => void;
 }
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
@@ -28,9 +39,24 @@ const fmtM = (n: number) => {
 
 const MONTHS = 12;
 
-const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, onAddCost, onDeleteCost, clients = [], products = [], onUpdateIssuedStatement }) => {
-  const [mainTab, setMainTab] = useState<'analysis' | 'costs' | 'clients' | 'inventory-value'>('analysis');
-  const [period, setPeriod] = useState<'3M' | '6M' | '1Y'>('1Y');
+const COMPUTED_GROUP_IDS = new Set(['ag-gross-profit', 'ag-op-profit']);
+const SGNA_LEGACY_IDS = new Set(['ag-selling', 'ag-admin']);
+
+const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, fixedCostTemplates = [], onAddCost, onDeleteCost, onAddTemplate, onUpdateTemplate, onDeleteTemplate, clients = [], products = [], onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onDeleteAccountGroup }) => {
+  // 계산결과 그룹 숨김 + 구 판매비/관리비 → 판관비로 통합 표시
+  const accountGroups = rawAccountGroups
+    .filter(g => !COMPUTED_GROUP_IDS.has(g.id))
+    .map(g => SGNA_LEGACY_IDS.has(g.id) ? { ...g, id: 'ag-sgna', name: '판관비' } : g)
+    .filter((g, idx, arr) => arr.findIndex(x => x.id === g.id) === idx);
+  const [mainTab, setMainTab] = useState<'analysis' | 'costs' | 'clients' | 'inventory-value' | 'account-settings'>('analysis');
+  const [period, setPeriod] = useState<'3M' | '6M' | '1Y' | 'custom'>('1Y');
+  const [selectedQuarter, setSelectedQuarter] = useState<1|2|3|4>(() => Math.ceil((new Date().getMonth() + 1) / 3) as 1|2|3|4);
+  const [selectedHalf, setSelectedHalf] = useState<1|2>(() => new Date().getMonth() < 6 ? 1 : 2);
+  const [customStart, setCustomStart] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; });
+  const [customEnd, setCustomEnd] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; });
+  const [newCodeForm, setNewCodeForm] = useState({ code: '', name: '', groupId: '' });
+  const [newGroupForm, setNewGroupForm] = useState({ name: '', type: '수익' as AccountGroup['type'] });
+  const GROUP_TYPES: AccountGroup['type'][] = ['수익', '비용', '자산', '부채', '자본'];
 
   // ── 거래처통계 탭 상태 ──
   const [statsClientId, setStatsClientId] = useState('');
@@ -52,6 +78,20 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
 
+  // 계정코드 → AccountGroup 조회 (구 판매비/관리비 ID도 판관비로 매핑)
+  const codeToGroup = useMemo(() => {
+    const codeMap = new Map(accountCodes.map(ac => [ac.code, ac]));
+    const groupMap = new Map(accountGroups.map(g => [g.id, g]));
+    const sgnaGroup = groupMap.get('ag-sgna') ?? rawAccountGroups.find(g => SGNA_LEGACY_IDS.has(g.id));
+    return (code: string | undefined): AccountGroup | undefined => {
+      if (!code) return undefined;
+      const ac = codeMap.get(code);
+      if (!ac?.groupId) return undefined;
+      if (SGNA_LEGACY_IDS.has(ac.groupId)) return sgnaGroup ? { ...sgnaGroup, id: 'ag-sgna', name: '판관비' } : undefined;
+      return groupMap.get(ac.groupId);
+    };
+  }, [accountCodes, accountGroups, rawAccountGroups]);
+
   // 연도 목록 (전표 기준)
   const years = useMemo(() => {
     const ys = new Set<number>();
@@ -61,83 +101,144 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
     return [...ys].sort((a, b) => b - a);
   }, [issuedStatements, fixedCosts]);
 
+  // 오늘 연월 (미래 달 제외 기준)
+  const todayYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
   // 기간별 월 목록 계산
   const periodMonths = useMemo(() => {
     if (period === '1Y') {
-      return Array.from({ length: 12 }, (_, i) => `${selectedYear}-${String(i + 1).padStart(2, '0')}`);
+      const all = Array.from({ length: 12 }, (_, i) => `${selectedYear}-${String(i + 1).padStart(2, '0')}`);
+      return selectedYear === now.getFullYear() ? all.filter(ym => ym <= todayYm) : all;
     }
-    const count = period === '3M' ? 3 : 6;
-    return Array.from({ length: count }, (_, i) => {
-      const d = new Date(now.getFullYear(), now.getMonth() - (count - 1 - i), 1);
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    });
-  }, [period, selectedYear]);
+    if (period === '3M') {
+      const startMonth = (selectedQuarter - 1) * 3 + 1;
+      return Array.from({ length: 3 }, (_, i) => `${selectedYear}-${String(startMonth + i).padStart(2, '0')}`);
+    }
+    if (period === '6M') {
+      const startMonth = selectedHalf === 1 ? 1 : 7;
+      return Array.from({ length: 6 }, (_, i) => `${selectedYear}-${String(startMonth + i).padStart(2, '0')}`);
+    }
+    // 'custom'
+    const [sy, sm] = customStart.split('-').map(Number);
+    const [ey, em] = customEnd.split('-').map(Number);
+    const months: string[] = [];
+    let y = sy, m = sm;
+    while ((y < ey || (y === ey && m <= em)) && months.length <= 36) {
+      months.push(`${y}-${String(m).padStart(2, '0')}`);
+      m++; if (m > 12) { m = 1; y++; }
+    }
+    return months;
+  }, [period, selectedYear, selectedQuarter, selectedHalf, customStart, customEnd, todayYm]);
 
   // 월별 집계
   const monthlyData = useMemo(() => {
     return periodMonths.map(ym => {
-      const [y, m] = ym.split('-');
-      const sales = issuedStatements
-        .filter(s => s.type === '매출' && s.tradeDate.startsWith(ym))
-        .reduce((a, s) => a + s.totalAmount, 0);
-      const purchase = issuedStatements
-        .filter(s => s.type === '매입' && s.tradeDate.startsWith(ym))
-        .reduce((a, s) => a + s.totalAmount, 0);
-      const fixed = fixedCosts
-        .filter(c => c.yearMonth === ym)
-        .reduce((a, c) => a + c.amount, 0);
-      const grossProfit = sales - purchase;
-      const operatingProfit = grossProfit - fixed;
-      return { month: `${Number(m)}월`, ym, sales, purchase, fixed, grossProfit, operatingProfit };
+      const [, m] = ym.split('-');
+      let sales = 0, cogs = 0, sgna = 0, otherIncome = 0, otherExpense = 0;
+      issuedStatements
+        .filter(s => s.tradeDate.startsWith(ym))
+        .forEach(s => {
+          s.items.forEach(item => {
+            const group = codeToGroup(item.accountCode);
+            const pl = group?.plLine;
+            if (pl === 'revenue') sales += item.total;
+            else if (pl === 'cogs') cogs += item.total;
+            else if (pl === 'sgna') sgna += item.total;
+            else if (pl === 'other-income') otherIncome += item.total;
+            else if (pl === 'other-expense') otherExpense += item.total;
+            else if (!pl && group?.type === '수익') sales += item.total;
+            else if (!pl && group?.type === '비용') cogs += item.total;
+            else if (!group) {
+              if (s.type === '매출') sales += item.total;
+              else if (s.type === '매입') cogs += item.total;
+            }
+          });
+        });
+      const templateTotal = fixedCostTemplates.filter(t => t.active).reduce((a, t) => a + t.amount, 0);
+      const fixed = fixedCosts.filter(c => c.yearMonth === ym).reduce((a, c) => a + c.amount, 0) + templateTotal;
+      const grossProfit = sales - cogs;
+      const operatingProfit = grossProfit - sgna - fixed;
+      const netIncome = operatingProfit + otherIncome - otherExpense;
+      return { month: `${Number(m)}월`, ym, sales, cogs, sgna, fixed, grossProfit, operatingProfit, otherIncome, otherExpense, netIncome };
     });
-  }, [issuedStatements, fixedCosts, periodMonths]);
+  }, [issuedStatements, fixedCosts, periodMonths, codeToGroup]);
 
   // 기간 합계
   const summary = useMemo(() => monthlyData.reduce(
     (a, m) => ({
       sales: a.sales + m.sales,
-      purchase: a.purchase + m.purchase,
+      cogs: a.cogs + m.cogs,
+      sgna: a.sgna + m.sgna,
       fixed: a.fixed + m.fixed,
       grossProfit: a.grossProfit + m.grossProfit,
       operatingProfit: a.operatingProfit + m.operatingProfit,
+      otherIncome: a.otherIncome + m.otherIncome,
+      otherExpense: a.otherExpense + m.otherExpense,
+      netIncome: a.netIncome + m.netIncome,
     }),
-    { sales: 0, purchase: 0, fixed: 0, grossProfit: 0, operatingProfit: 0 }
+    { sales: 0, cogs: 0, sgna: 0, fixed: 0, grossProfit: 0, operatingProfit: 0, otherIncome: 0, otherExpense: 0, netIncome: 0 }
   ), [monthlyData]);
 
-  // 연간 합계 (거래처통계용, 항상 selectedYear 기준)
+  // 연간 합계 (월별 상세 테이블 합계행용, 항상 selectedYear 기준)
   const annual = useMemo(() => {
-    return Array.from({ length: 12 }, (_, i) => {
-      const ym = `${selectedYear}-${String(i + 1).padStart(2, '0')}`;
-      return {
-        sales: issuedStatements.filter(s => s.type === '매출' && s.tradeDate.startsWith(ym)).reduce((a, s) => a + s.totalAmount, 0),
-        purchase: issuedStatements.filter(s => s.type === '매입' && s.tradeDate.startsWith(ym)).reduce((a, s) => a + s.totalAmount, 0),
-        fixed: fixedCosts.filter(c => c.yearMonth === ym).reduce((a, c) => a + c.amount, 0),
-      };
-    }).reduce((a, m) => ({
-      sales: a.sales + m.sales, purchase: a.purchase + m.purchase, fixed: a.fixed + m.fixed,
-      grossProfit: a.sales + m.sales - (a.purchase + m.purchase),
-      operatingProfit: a.sales + m.sales - (a.purchase + m.purchase) - (a.fixed + m.fixed),
-    }), { sales: 0, purchase: 0, fixed: 0, grossProfit: 0, operatingProfit: 0 });
-  }, [issuedStatements, fixedCosts, selectedYear]);
+    let sales = 0, cogs = 0, sgna = 0, fixed = 0, otherIncome = 0, otherExpense = 0;
+    issuedStatements
+      .filter(s => s.tradeDate.startsWith(String(selectedYear)))
+      .forEach(s => {
+        s.items.forEach(item => {
+          const group = codeToGroup(item.accountCode);
+          const pl = group?.plLine;
+          if (pl === 'revenue') sales += item.total;
+          else if (pl === 'cogs') cogs += item.total;
+          else if (pl === 'sgna') sgna += item.total;
+          else if (pl === 'other-income') otherIncome += item.total;
+          else if (pl === 'other-expense') otherExpense += item.total;
+          else if (!pl && group?.type === '수익') sales += item.total;
+          else if (!pl && group?.type === '비용') cogs += item.total;
+          else if (!group) {
+            if (s.type === '매출') sales += item.total;
+            else if (s.type === '매입') cogs += item.total;
+          }
+        });
+      });
+    fixedCosts
+      .filter(c => c.yearMonth.startsWith(String(selectedYear)))
+      .forEach(c => { fixed += c.amount; });
+    const templateTotal = fixedCostTemplates.filter(t => t.active).reduce((a, t) => a + t.amount, 0);
+    const monthsApplied = selectedYear < now.getFullYear() ? 12 : selectedYear === now.getFullYear() ? now.getMonth() + 1 : 0;
+    fixed += templateTotal * monthsApplied;
+    const grossProfit = sales - cogs;
+    const operatingProfit = grossProfit - sgna - fixed;
+    const netIncome = operatingProfit + otherIncome - otherExpense;
+    return { sales, cogs, sgna, fixed, grossProfit, operatingProfit, otherIncome, otherExpense, netIncome };
+  }, [issuedStatements, fixedCosts, selectedYear, codeToGroup]);
 
   const pct = (curr: number, prev: number | undefined) => {
     if (!prev || prev === 0) return null;
     return Math.round((curr - prev) / Math.abs(prev) * 100);
   };
 
-  // 거래처별 매출 Top5 (기간 기준)
-  const clientSales = useMemo(() => {
-    const map = new Map<string, number>();
-    issuedStatements
-      .filter(s => s.type === '매출' && periodMonths.some(ym => s.tradeDate.startsWith(ym)))
-      .forEach(s => map.set(s.clientName, (map.get(s.clientName) ?? 0) + s.totalAmount));
-    return [...map.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([name, amount]) => ({ name, amount }));
-  }, [issuedStatements, periodMonths]);
 
-  const COLORS = ['#3b82f6', '#f59e0b', '#ef4444', '#10b981', '#8b5cf6'];
+  // COGS 계정코드별 집계
+  const cogsByCode = useMemo(() => {
+    const map = new Map<string, { code: string; name: string; total: number }>();
+    issuedStatements
+      .filter(s => periodMonths.some(ym => s.tradeDate.startsWith(ym)))
+      .forEach(s => {
+        s.items.forEach(item => {
+          if (!item.accountCode) return;
+          const group = codeToGroup(item.accountCode);
+          if (!group) return;
+          const isCogs = group.plLine === 'cogs' || (!group.plLine && group.type === '비용');
+          if (!isCogs) return;
+          const ac = accountCodes.find(c => c.code === item.accountCode);
+          const key = item.accountCode;
+          if (!map.has(key)) map.set(key, { code: key, name: ac?.name ?? key, total: 0 });
+          map.get(key)!.total += item.total;
+        });
+      });
+    return [...map.values()].sort((a, b) => a.code.localeCompare(b.code));
+  }, [issuedStatements, periodMonths, codeToGroup, accountCodes]);
 
   const TrendBadge = ({ curr, prev }: { curr: number; prev: number | undefined }) => {
     const p = pct(curr, prev);
@@ -187,128 +288,221 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'inventory-value' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
             <Package size={13}/>재고액
           </button>
+          <button onClick={() => setMainTab('account-settings')}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'account-settings' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+            <Wallet size={13}/>계정설정
+          </button>
         </div>
-        {mainTab === 'analysis' && (
-          <div className="flex items-center gap-2">
-            {period === '1Y' && (
-              <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))}
-                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-black outline-none focus:ring-2 focus:ring-blue-300 cursor-pointer">
-                {years.map(y => <option key={y} value={y}>{y}년</option>)}
-              </select>
-            )}
-            <div className="flex bg-slate-100 rounded-xl p-1 gap-0.5">
-              {([['3M', '분기'], ['6M', '반기'], ['1Y', '연간']] as const).map(([val, label]) => (
-                <button key={val} onClick={() => setPeriod(val)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${period === val ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       {mainTab === 'costs' && (
         <CostManager
           fixedCosts={fixedCosts}
+          fixedCostTemplates={fixedCostTemplates}
           issuedStatements={issuedStatements}
           onAdd={onAddCost}
           onDelete={onDeleteCost}
+          onAddTemplate={onAddTemplate}
+          onUpdateTemplate={onUpdateTemplate}
+          onDeleteTemplate={onDeleteTemplate}
         />
       )}
 
       {mainTab === 'analysis' && <>
 
-
-      {/* 요약 카드 — 상단: 투입, 하단: 이익 */}
-      <div className="space-y-2">
-        {/* 투입 지표 */}
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { label: '총매출', value: summary.sales, color: 'bg-blue-50 border-blue-100', text: 'text-blue-700', sub: 'text-blue-400' },
-            { label: '총매입', value: summary.purchase, color: 'bg-amber-50 border-amber-100', text: 'text-amber-700', sub: 'text-amber-400' },
-            { label: '고정비', value: summary.fixed, color: 'bg-slate-50 border-slate-200', text: 'text-slate-700', sub: 'text-slate-400' },
-          ].map(card => (
-            <div key={card.label} className={`rounded-2xl border px-4 py-3.5 ${card.color}`}>
-              <div className={`text-[10px] font-black uppercase tracking-widest mb-1 ${card.sub}`}>{card.label}</div>
-              <div className={`text-xl font-black ${card.text}`}>{fmtM(card.value)}</div>
-              <div className={`text-[10px] mt-0.5 ${card.sub}`}>{fmt(card.value)}원</div>
-            </div>
-          ))}
+      {/* ── 제목 + 기간 컨트롤 ── */}
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <div className="text-base font-black text-slate-800">
+            {period !== 'custom'
+              ? `${selectedYear}년 ${period === '1Y' ? '연간' : period === '3M' ? `${selectedQuarter}분기` : selectedHalf === 1 ? '상반기' : '하반기'} 손익분석`
+              : `${customStart} ~ ${customEnd} 손익분석`}
+          </div>
+          <div className="text-[11px] text-slate-400 mt-0.5">매출 · 매입 · 고정비 기반 손익구조 분석</div>
         </div>
-        {/* 이익 지표 */}
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { label: '매출총이익', value: summary.grossProfit, desc: '총매출 − 총매입', color: 'bg-emerald-50 border-emerald-100', text: 'text-emerald-700', sub: 'text-emerald-400' },
-            { label: '영업이익', value: summary.operatingProfit, desc: '매출총이익 − 고정비', color: summary.operatingProfit >= 0 ? 'bg-violet-50 border-violet-100' : 'bg-rose-50 border-rose-100', text: summary.operatingProfit >= 0 ? 'text-violet-700' : 'text-rose-700', sub: summary.operatingProfit >= 0 ? 'text-violet-400' : 'text-rose-400' },
-            { label: '당기순이익', value: summary.operatingProfit, desc: '영업외 손익 미반영', color: summary.operatingProfit >= 0 ? 'bg-indigo-50 border-indigo-100' : 'bg-rose-50 border-rose-100', text: summary.operatingProfit >= 0 ? 'text-indigo-700' : 'text-rose-700', sub: summary.operatingProfit >= 0 ? 'text-indigo-400' : 'text-rose-400' },
-          ].map(card => (
-            <div key={card.label} className={`rounded-2xl border px-4 py-3.5 ${card.color}`}>
-              <div className={`text-[10px] font-black uppercase tracking-widest mb-1 ${card.sub}`}>{card.label}</div>
-              <div className={`text-xl font-black ${card.text}`}>{fmtM(card.value)}</div>
-              <div className={`text-[10px] mt-0.5 ${card.sub}`}>{fmt(card.value)}원</div>
-              <div className={`text-[10px] mt-1 ${card.sub} opacity-70`}>{card.desc}</div>
-              {card.label === '영업이익' && summary.sales > 0 && (
-                <div className={`text-[10px] font-black mt-0.5 ${card.sub}`}>
-                  이익률 {Math.round(summary.operatingProfit / summary.sales * 100)}%
-                </div>
-              )}
+        <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+          {period !== 'custom' && (
+            <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))}
+              className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer">
+              {years.map(y => <option key={y} value={y}>{y}년</option>)}
+            </select>
+          )}
+          {period === '3M' && (
+            <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
+              {([1,2,3,4] as const).map(q => (
+                <button key={q} onClick={() => setSelectedQuarter(q)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all ${selectedQuarter === q ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400'}`}>
+                  {q}분기
+                </button>
+              ))}
             </div>
-          ))}
+          )}
+          {period === '6M' && (
+            <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
+              {([1,2] as const).map(h => (
+                <button key={h} onClick={() => setSelectedHalf(h)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all ${selectedHalf === h ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400'}`}>
+                  {h === 1 ? '상반기' : '하반기'}
+                </button>
+              ))}
+            </div>
+          )}
+          {period === 'custom' && (
+            <div className="flex items-center gap-1">
+              <input type="month" value={customStart} onChange={e => setCustomStart(e.target.value)}
+                className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer"/>
+              <span className="text-slate-400 text-xs">~</span>
+              <input type="month" value={customEnd} min={customStart} onChange={e => setCustomEnd(e.target.value)}
+                className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer"/>
+            </div>
+          )}
+          <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
+            {([['3M','분기'],['6M','반기'],['1Y','연간'],['custom','기간']] as const).map(([val,label]) => (
+              <button key={val} onClick={() => setPeriod(val)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all ${period === val ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── KPI 핵심 손익 요약 ── */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-4">
+        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">핵심 손익 요약 (KPI)</div>
+        <div className="flex items-stretch gap-2">
+          <div className="flex-1 bg-blue-600 rounded-xl px-4 py-3">
+            <div className="text-[10px] font-black text-blue-200 mb-1">총매출</div>
+            <div className="text-xl font-black text-white leading-tight">{fmtM(summary.sales)}</div>
+            <div className="text-[10px] text-blue-200 mt-0.5">{fmt(summary.sales)}원</div>
+          </div>
+          <div className="flex items-center text-slate-200"><ChevronRight size={16}/></div>
+          <div className="flex-1 bg-amber-500 rounded-xl px-4 py-3">
+            <div className="text-[10px] font-black text-amber-100 mb-1">총매출원가</div>
+            <div className="text-xl font-black text-white leading-tight">{fmtM(summary.cogs)}</div>
+            <div className="text-[10px] text-amber-100 mt-0.5">{fmt(summary.cogs)}원</div>
+          </div>
+          <div className="flex items-center text-slate-200"><ChevronRight size={16}/></div>
+          <div className={`flex-1 rounded-xl px-4 py-3 ${summary.operatingProfit >= 0 ? 'bg-violet-600' : 'bg-rose-600'}`}>
+            <div className="text-[10px] font-black text-violet-200 mb-1">영업이익</div>
+            <div className="text-xl font-black text-white leading-tight">{fmtM(summary.operatingProfit)}</div>
+            <div className="text-[10px] text-violet-200 mt-0.5">
+              {fmt(summary.operatingProfit)}원{summary.sales > 0 && `, 이익률 ${Math.round(summary.operatingProfit / summary.sales * 100)}%`}
+            </div>
+          </div>
+          <div className="flex items-center text-slate-200"><ChevronRight size={16}/></div>
+          <div className={`flex-1 rounded-xl px-4 py-3 ${summary.netIncome >= 0 ? 'bg-slate-800' : 'bg-rose-800'}`}>
+            <div className="text-[10px] font-black text-slate-400 mb-1">당기순이익</div>
+            <div className="text-xl font-black text-white leading-tight">{fmtM(summary.netIncome)}</div>
+            <div className="text-[10px] text-slate-400 mt-0.5">{fmt(summary.netIncome)}원</div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── COGS 상세 + SG&A 상세 ── */}
+      <div className="grid grid-cols-5 gap-3">
+        {/* 매출원가 및 재고 상세 */}
+        <div className="col-span-3 bg-white rounded-2xl border border-slate-200 p-4">
+          <div className="text-xs font-black text-slate-700 mb-3">매출원가 및 재고 상세</div>
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between font-black text-slate-800">
+              <span>총매출원가 (COGS)</span>
+              <span>{fmtM(summary.cogs)}</span>
+            </div>
+            <div className="flex items-center justify-between pl-4 text-slate-400">
+              <span><span className="mr-1.5 text-slate-200">├</span>기초상품재고액 (+)</span>
+              <span className="text-[10px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-lg">시스템 연동</span>
+            </div>
+            <div className="flex items-center justify-between pl-4 text-slate-600 font-bold">
+              <span><span className="mr-1.5 text-slate-200">├</span>당기상품매입액 (+)</span>
+              <span>{fmtM(summary.cogs)}</span>
+            </div>
+            {cogsByCode.map((item, idx) => (
+              <div key={item.code} className="flex items-center justify-between pl-10 text-slate-500">
+                <span>
+                  <span className="mr-1.5 text-slate-200">{idx === cogsByCode.length - 1 ? '└' : '├'}</span>
+                  {item.code} {item.name}
+                </span>
+                <span>{fmtM(item.total)}</span>
+              </div>
+            ))}
+            <div className="flex items-center justify-between pl-4 text-slate-400">
+              <span><span className="mr-1.5 text-slate-200">└</span>기말상품재고액 (-)</span>
+              <span className="text-[10px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-lg">재고관리 탭 연동</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 판매비와관리비 상세 */}
+        <div className="col-span-2 bg-white rounded-2xl border border-slate-200 p-4">
+          <div className="text-xs font-black text-slate-700 mb-3">판매비와관리비 상세 (SG&A)</div>
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between font-black text-slate-800">
+              <span>판관비 합계</span>
+              <span>{fmtM(summary.sgna + summary.fixed)}</span>
+            </div>
+            <div className="flex items-center justify-between pl-4 text-slate-500">
+              <span><span className="mr-1.5 text-slate-200">├</span>고정비 (임대료, 인건비 등)</span>
+              <span>{fmtM(summary.fixed)}</span>
+            </div>
+            <div className="flex items-center justify-between pl-4 text-slate-500">
+              <span><span className="mr-1.5 text-slate-200">└</span>변동비 (광고비, 포장비 등)</span>
+              <span>{summary.sgna ? fmtM(summary.sgna) : '0원'}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 매출총이익 바 ── */}
+      <div className="grid grid-cols-5 gap-3 items-center">
+        <div className="col-span-3 bg-emerald-600 rounded-xl px-4 py-3 flex items-center justify-between">
+          <span className="text-sm font-black text-white">매출총이익 (Gross Profit)</span>
+          <span className="text-sm font-black text-emerald-100">{fmt(summary.grossProfit)}원</span>
+        </div>
+        <div className="col-span-2 flex items-center justify-end pr-2">
+          <span className="text-2xl font-black text-slate-700">{fmtM(summary.grossProfit)}</span>
+        </div>
+      </div>
+
+      {/* ── 기타 손익 ── */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2">
+        <div className="text-xs font-black text-slate-700 mb-1">기타 손익</div>
+        <div className="flex items-center justify-between text-xs text-slate-600">
+          <span>영업외수익</span>
+          <span className="font-bold">{fmt(summary.otherIncome)}원</span>
+        </div>
+        <div className="flex items-center justify-between text-xs text-slate-600">
+          <span>영업외비용</span>
+          <span className="font-bold">{fmt(summary.otherExpense)}원</span>
+        </div>
+        <div className="border-t border-slate-100 pt-2 text-xs text-slate-500 flex items-center gap-1.5 flex-wrap">
+          <span className="font-black text-slate-700">당기순이익 산출</span>
+          <span>
+            영업이익({fmtM(summary.operatingProfit)}) + 영업외수익({summary.otherIncome ? fmtM(summary.otherIncome) : '0'}) - 영업외비용({summary.otherExpense ? fmtM(summary.otherExpense) : '0'}) ={' '}
+            <span className={`font-black ${summary.netIncome >= 0 ? 'text-slate-800' : 'text-rose-600'}`}>{fmtM(summary.netIncome)}</span>
+          </span>
         </div>
       </div>
 
       {/* 차트 영역 */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* 월별 매출/매입/이익 바차트 */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-5">
-          <div className="text-xs font-black text-slate-600 mb-4">월별 매출 · 매입 · 영업이익</div>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={monthlyData} barGap={2} barCategoryGap="25%">
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false}/>
-              <XAxis dataKey="month" tick={{ fontSize: 10, fontWeight: 700 }} axisLine={false} tickLine={false}/>
-              <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtM} width={45}/>
-              <Tooltip content={customTooltip}/>
-              <Legend wrapperStyle={{ fontSize: 10, fontWeight: 700 }} iconSize={8}/>
-              <Bar dataKey="sales" name="매출" fill="#3b82f6" radius={[3,3,0,0]}/>
-              <Bar dataKey="purchase" name="매입" fill="#f59e0b" radius={[3,3,0,0]}/>
-              <Bar dataKey="operatingProfit" name="영업이익" radius={[3,3,0,0]}>
-                {monthlyData.map((m, i) => (
-                  <Cell key={i} fill={m.operatingProfit >= 0 ? '#10b981' : '#ef4444'}/>
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* 거래처별 매출 Top5 */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-5">
-          <div className="text-xs font-black text-slate-600 mb-4">거래처별 매출 Top 5</div>
-          {clientSales.length === 0 ? (
-            <div className="flex items-center justify-center h-40 text-slate-300 text-sm">데이터 없음</div>
-          ) : (
-            <div className="space-y-3">
-              {clientSales.map((c, i) => {
-                const maxAmt = clientSales[0].amount;
-                const barPct = maxAmt > 0 ? Math.round(c.amount / maxAmt * 100) : 0;
-                return (
-                  <div key={c.name}>
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-black w-4 text-center" style={{ color: COLORS[i] }}>{i + 1}</span>
-                        <span className="text-xs font-black text-slate-700 truncate max-w-[100px]">{c.name}</span>
-                      </div>
-                      <span className="text-[11px] font-black text-slate-600">{fmtM(c.amount)}원</span>
-                    </div>
-                    <div className="w-full bg-slate-100 rounded-full h-1.5">
-                      <div className="h-1.5 rounded-full transition-all" style={{ width: `${barPct}%`, background: COLORS[i] }}/>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+      <div className="bg-white rounded-2xl border border-slate-200 p-5">
+        <div className="text-xs font-black text-slate-600 mb-4">월별 매출 · 매입 · 영업이익</div>
+        <ResponsiveContainer width="100%" height={240}>
+          <BarChart data={monthlyData} barGap={2} barCategoryGap="25%">
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false}/>
+            <XAxis dataKey="month" tick={{ fontSize: 10, fontWeight: 700 }} axisLine={false} tickLine={false}/>
+            <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={fmtM} width={45}/>
+            <Tooltip content={customTooltip}/>
+            <Legend wrapperStyle={{ fontSize: 10, fontWeight: 700 }} iconSize={8}/>
+            <Bar dataKey="sales" name="매출" fill="#3b82f6" radius={[3,3,0,0]}/>
+            <Bar dataKey="cogs" name="매출원가" fill="#f59e0b" radius={[3,3,0,0]}/>
+            <Bar dataKey="operatingProfit" name="영업이익" radius={[3,3,0,0]}>
+              {monthlyData.map((m, i) => (
+                <Cell key={i} fill={m.operatingProfit >= 0 ? '#10b981' : '#ef4444'}/>
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
       </div>
 
       {/* 영업이익률 추이 라인 차트 */}
@@ -341,7 +535,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           <table className="w-full text-left border-collapse">
             <thead className="bg-slate-50">
               <tr>
-                {['월', '매출', '매입', '매출총이익', '고정비', '영업이익', '이익률', ''].map(h => (
+                {['월', '매출', '매출원가', '매출총이익', '판관비', '영업이익', '이익률', ''].map(h => (
                   <th key={h} className="px-4 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right first:text-left last:text-center">{h}</th>
                 ))}
               </tr>
@@ -349,7 +543,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             <tbody className="divide-y divide-slate-50">
               {monthlyData.map(m => {
                 const margin = m.sales > 0 ? Math.round(m.operatingProfit / m.sales * 100) : 0;
-                const isEmpty = m.sales === 0 && m.purchase === 0 && m.fixed === 0;
+                const isEmpty = m.sales === 0 && m.cogs === 0 && m.sgna === 0 && m.fixed === 0;
                 const isExpanded = expandedMonth === m.ym;
 
                 // 해당 월 전표 목록
@@ -363,9 +557,9 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                     >
                       <td className="px-4 py-3 text-xs font-black text-slate-700">{m.month}</td>
                       <td className="px-4 py-3 text-xs text-right text-blue-700 font-bold">{m.sales ? fmt(m.sales) : '-'}</td>
-                      <td className="px-4 py-3 text-xs text-right text-amber-700 font-bold">{m.purchase ? fmt(m.purchase) : '-'}</td>
+                      <td className="px-4 py-3 text-xs text-right text-amber-700 font-bold">{m.cogs ? fmt(m.cogs) : '-'}</td>
                       <td className="px-4 py-3 text-xs text-right font-bold text-slate-700">{m.grossProfit ? fmt(m.grossProfit) : '-'}</td>
-                      <td className="px-4 py-3 text-xs text-right text-slate-500">{m.fixed ? fmt(m.fixed) : '-'}</td>
+                      <td className="px-4 py-3 text-xs text-right text-slate-500">{(m.sgna + m.fixed) ? fmt(m.sgna + m.fixed) : '-'}</td>
                       <td className={`px-4 py-3 text-xs text-right font-black ${m.operatingProfit > 0 ? 'text-emerald-600' : m.operatingProfit < 0 ? 'text-rose-600' : 'text-slate-400'}`}>
                         {m.operatingProfit ? fmt(m.operatingProfit) : '-'}
                       </td>
@@ -408,9 +602,9 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
               <tr>
                 <td className="px-4 py-3 text-xs font-black text-slate-700">합계</td>
                 <td className="px-4 py-3 text-xs text-right font-black text-blue-700">{fmt(annual.sales)}</td>
-                <td className="px-4 py-3 text-xs text-right font-black text-amber-700">{fmt(annual.purchase)}</td>
+                <td className="px-4 py-3 text-xs text-right font-black text-amber-700">{fmt(annual.cogs)}</td>
                 <td className="px-4 py-3 text-xs text-right font-black text-slate-700">{fmt(annual.grossProfit)}</td>
-                <td className="px-4 py-3 text-xs text-right font-black text-slate-500">{fmt(annual.fixed)}</td>
+                <td className="px-4 py-3 text-xs text-right font-black text-slate-500">{fmt(annual.sgna + annual.fixed)}</td>
                 <td className={`px-4 py-3 text-xs text-right font-black ${annual.operatingProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{fmt(annual.operatingProfit)}</td>
                 <td className="px-4 py-3 text-xs text-right font-black text-slate-500">
                   {annual.sales > 0 ? `${Math.round(annual.operatingProfit / annual.sales * 100)}%` : '-'}
@@ -904,6 +1098,148 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           </div>
         );
       })()}
+
+      {/* ── 계정설정 탭 ── */}
+      {mainTab === 'account-settings' && (
+          <div className="space-y-6">
+            {/* 계정그룹별 코드 목록 */}
+            <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+                <span className="text-sm font-black text-slate-800">계정그룹 · 계정과목</span>
+                <span className="text-[10px] text-slate-400">전표 라인별 계정코드가 여기 기준으로 집계됩니다</span>
+              </div>
+              <div className="divide-y divide-slate-50">
+                {accountGroups.map(group => {
+                  const codes = accountCodes.filter(c => c.groupId === group.id);
+                  const typeColor: Record<string, string> = {
+                    '수익': 'bg-blue-100 text-blue-700',
+                    '비용': 'bg-rose-100 text-rose-700',
+                    '자산': 'bg-teal-100 text-teal-700',
+                    '부채': 'bg-amber-100 text-amber-700',
+                    '자본': 'bg-violet-100 text-violet-700',
+                  };
+                  return (
+                    <div key={group.id} className="px-5 py-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${typeColor[group.type] ?? 'bg-slate-100 text-slate-600'}`}>{group.type}</span>
+                        <span className="font-black text-slate-800">{group.name}</span>
+                        {onDeleteAccountGroup && (
+                          <button onClick={() => onDeleteAccountGroup(group.id)}
+                            className="ml-auto text-slate-200 hover:text-rose-400 transition-colors">
+                            <X size={14}/>
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {codes.map(ac => (
+                          <div key={ac.id} className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
+                            <span className="text-[11px] font-black text-slate-700">{ac.code}</span>
+                            <span className="text-[11px] text-slate-500">{ac.name}</span>
+                            {onUpdateAccountCode && (
+                              <select
+                                value={ac.groupId ?? ''}
+                                onChange={e => onUpdateAccountCode(ac.id, { groupId: e.target.value })}
+                                className="ml-1 text-[10px] bg-white border border-slate-200 rounded px-1 outline-none focus:ring-1 focus:ring-blue-300">
+                                <option value="">그룹 없음</option>
+                                {accountGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                              </select>
+                            )}
+                            {onDeleteAccountCode && (
+                              <button onClick={() => onDeleteAccountCode(ac.id)}
+                                className="text-slate-200 hover:text-rose-400 transition-colors">
+                                <X size={12}/>
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        {codes.length === 0 && <span className="text-[11px] text-slate-300">배정된 코드 없음</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 그룹에 배정 안 된 코드 */}
+            {(() => {
+              const ungrouped = accountCodes.filter(c => !c.groupId || !accountGroups.find(g => g.id === c.groupId));
+              if (ungrouped.length === 0) return null;
+              return (
+                <div className="bg-white rounded-2xl border border-dashed border-slate-200 px-5 py-4">
+                  <p className="text-xs font-black text-slate-400 mb-3">미분류 계정과목</p>
+                  <div className="flex flex-wrap gap-2">
+                    {ungrouped.map(ac => (
+                      <div key={ac.id} className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
+                        <span className="text-[11px] font-black text-slate-700">{ac.code}</span>
+                        <span className="text-[11px] text-slate-500">{ac.name}</span>
+                        {onUpdateAccountCode && (
+                          <select value={ac.groupId ?? ''}
+                            onChange={e => onUpdateAccountCode(ac.id, { groupId: e.target.value })}
+                            className="ml-1 text-[10px] bg-white border border-slate-200 rounded px-1 outline-none focus:ring-1 focus:ring-blue-300">
+                            <option value="">그룹 선택</option>
+                            {accountGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                          </select>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* 계정과목 추가 */}
+            <div className="bg-white rounded-2xl border border-slate-100 px-5 py-4">
+              <p className="text-xs font-black text-slate-500 mb-3">계정과목 추가</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <input type="text" placeholder="코드 (예: 501)" value={newCodeForm.code}
+                  onChange={e => setNewCodeForm(p => ({...p, code: e.target.value}))}
+                  className="w-28 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-300"/>
+                <input type="text" placeholder="계정명 (예: 부재료매입)" value={newCodeForm.name}
+                  onChange={e => setNewCodeForm(p => ({...p, name: e.target.value}))}
+                  className="w-40 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-300"/>
+                <select value={newCodeForm.groupId}
+                  onChange={e => setNewCodeForm(p => ({...p, groupId: e.target.value}))}
+                  className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-300">
+                  <option value="">그룹 선택</option>
+                  {accountGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </select>
+                <button
+                  onClick={async () => {
+                    if (!newCodeForm.code.trim() || !newCodeForm.name.trim()) return;
+                    await onAddAccountCode?.({ code: newCodeForm.code.trim(), name: newCodeForm.name.trim(), groupId: newCodeForm.groupId || undefined });
+                    setNewCodeForm({ code: '', name: '', groupId: '' });
+                  }}
+                  className="px-4 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-black hover:bg-amber-600 transition-all flex items-center gap-1">
+                  <Save size={12}/>추가
+                </button>
+              </div>
+            </div>
+
+            {/* 계정그룹 추가 */}
+            <div className="bg-white rounded-2xl border border-slate-100 px-5 py-4">
+              <p className="text-xs font-black text-slate-500 mb-3">계정그룹 추가</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <input type="text" placeholder="그룹명 (예: 영업외수익)" value={newGroupForm.name}
+                  onChange={e => setNewGroupForm(p => ({...p, name: e.target.value}))}
+                  className="w-44 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-300"/>
+                <select value={newGroupForm.type}
+                  onChange={e => setNewGroupForm(p => ({...p, type: e.target.value as AccountGroup['type']}))}
+                  className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-300">
+                  {GROUP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <button
+                  onClick={async () => {
+                    if (!newGroupForm.name.trim()) return;
+                    await onAddAccountGroup?.({ name: newGroupForm.name.trim(), type: newGroupForm.type });
+                    setNewGroupForm({ name: '', type: '수익' });
+                  }}
+                  className="px-4 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-black hover:bg-amber-600 transition-all flex items-center gap-1">
+                  <Save size={12}/>추가
+                </button>
+              </div>
+            </div>
+          </div>
+      )}
     </div>
   );
 };

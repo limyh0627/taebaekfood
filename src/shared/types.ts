@@ -52,29 +52,37 @@ export interface PurchaseItem {
   name: string;
 }
 
-export interface ProductClient {
-  id: string;       // `${productId}_${clientId}`
-  productId: string;
-  clientId: string;
-  sku?: string;            // 거래처별 SKU (포장 단위 기준)
-  price?: number;
+// ── 파트너-품목 매핑 (partner_item 컬렉션) ────────────────────────────────
+// Direction: 'in' = 매입(공급), 'out' = 매출(판매)
+export interface PartnerItem {
+  id: string;                    // `${Item_ID}_${Partner_ID}_${Direction}`
+  // canonical fields
+  Partner_ID: string;
+  Item_ID: string;
+  Direction: 'in' | 'out';
+  Standard_Price?: number;
+  Account_Code?: string;
   taxType?: '과세' | '면세';
-  // SHIPPING (박스단위) BOM — 거래처별 포장 설정
-  shippingStock?: number;  // SHIPPING 재고수량
-  boxTypeId?: string;      // 박스 부자재 ID
-  qtyPerBox?: number;      // 박스당 낱개 수
-  tapeTypeId?: string;     // 테이프 부자재 ID
+  // Direction='out' 전용 (포장 설정)
+  sku?: string;
+  shippingStock?: number;
+  boxTypeId?: string;
+  qtyPerBox?: number;
+  tapeTypeId?: string;
+  // @deprecated backward compat — useAppData에서 자동 주입
+  productId?: string;    // = Item_ID
+  clientId?: string;     // = Partner_ID (Direction='out')
+  supplierId?: string;   // = Partner_ID (Direction='in')
+  price?: number;        // = Standard_Price
 }
 
-export interface ProductSupplier {
-  id: string;        // `${productId}_${supplierId}`
-  productId: string;
-  supplierId: string;
-  price?: number;    // 매입단가 (= 원가)
-  taxType?: '과세' | '면세';
-}
+// @deprecated — PartnerItem 사용
+export type ProductClient = PartnerItem;
+// @deprecated — PartnerItem 사용
+export type ProductSupplier = PartnerItem;
 
-export interface Client {
+// ── 파트너 (partners 컬렉션) ──────────────────────────────────────────────
+export interface Partner {
   id: string;
   name: string;
   email?: string;
@@ -84,6 +92,9 @@ export interface Client {
   partnerType?: PartnerType; // undefined = '매출처' (하위 호환)
   purchaseItems?: PurchaseItem[];
 }
+
+// @deprecated — Partner 사용
+export type Client = Partner;
 
 export type OrderSource = '스마트스토어' | '택배' | '일반';
 
@@ -132,34 +143,37 @@ export type InventoryCategory = '완제품' | '향미유' | '고춧가루' | '�
 
 export type ProductStage = 'WIP' | 'FINISHED';
 
-export interface Product {
+// ── 품목 (items 컬렉션 — 완제품 + 부자재 통합) ───────────────────────────
+export interface Item {
   id: string;
   name: string;
-  sku?: string;                  // SKU 코드
+  sku?: string;
   category: InventoryCategory | string;
-  itemType?: ProductStage;       // WIP(반제품) | FINISHED(완제품) — 없으면 부자재/원료
-  cost?: number;                 // 원가 (부자재: 매입원가, WIP/FINISHED: 제조원가)
+  itemType?: ProductStage;       // WIP | FINISHED — 없으면 부자재/원료
+  cost?: number;
   price: number;
-  stock: number;                 // 부자재/원료 재고 (또는 미분류)
-  wipStock?: number;             // WIP 반제품 재고수량
-  finishedStock?: number;        // FINISHED 완제품 재고수량
+  stock: number;
+  wipStock?: number;
+  finishedStock?: number;
   minStock: number;
   unit: string;
   image: string;
   oil?: string;
-  clientId?: string; // @deprecated — clientIds 사용
+  clientId?: string;   // @deprecated — clientIds 사용
   clientIds?: string[];
-  supplierId?: string;
   freightType?: 's' | 'a' | 'b' | 'c' | 'd' | 'e';
-  boxSize?: number; // @deprecated — defaultBoxConfig.unitsPerBox 사용
-  defaultBoxConfig?: BoxConfig;       // @deprecated — ProductClient.boxTypeId/qtyPerBox 사용
-  clientBoxConfigs?: ClientBoxConfig[]; // @deprecated — ProductClient 사용
+  boxSize?: number;    // @deprecated
+  defaultBoxConfig?: BoxConfig;       // @deprecated
+  clientBoxConfigs?: ClientBoxConfig[]; // @deprecated
   품목?: string;
   용량?: string;
   isSmartStore?: boolean;
   smartStorePrice?: number;
   submaterials?: SubmaterialComponent[];
 }
+
+// @deprecated — Item 사용
+export type Product = Item;
 
 export interface PalletStock {
   id: string;
@@ -270,7 +284,7 @@ export interface ChatRoom {
 }
 
 
-export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'clients' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'client-portal' | 'item-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'inbound-scan' | 'smartstore-analytics' | 'haccp-checklist' | 'return-management';
+export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'clients' | 'partners' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'client-portal' | 'item-management' | 'item-price-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'tax-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'inbound-scan' | 'smartstore-analytics' | 'haccp-checklist' | 'return-management';
 
 // ── 생산 실적 ──────────────────────────────────────────────────────────────────
 export interface ProductionRecord {
@@ -301,6 +315,15 @@ export interface FixedCostEntry {
   createdAt: string;
 }
 
+export interface FixedCostTemplate {
+  id: string;
+  name: string;                // 항목명 (예: 공장 임대료)
+  amount: number;
+  category: FixedCostCategory;
+  active: boolean;             // false면 집계 제외
+  note?: string;
+}
+
 export interface IssuedStatementItem {
   name: string;
   spec: string;
@@ -312,6 +335,7 @@ export interface IssuedStatementItem {
   isTaxExempt: boolean;
   isBoxUnit?: boolean;
   boxSize?: number;
+  accountCode?: string;  // 라인별 계정과목 코드
 }
 
 export interface IssuedStatement {
@@ -328,6 +352,7 @@ export interface IssuedStatement {
   totalAmount: number;
   items: IssuedStatementItem[];
   receivedAt?: string;    // 입고 확인 일시 (매입 전표)
+  taxIssuedAt?: string;   // 세금계산서 발행 일시
   // 수금/결제 추적
   payments?: PaymentRecord[];
 }
@@ -412,23 +437,15 @@ export interface QrMapping {
   createdAt: string;
 }
 
-// ── 품목 구조 (item / item_bom / item_customer) ──────────────────────────
+// ── 품목 구조 (item_bom) ─────────────────────────────────────────────────
 export type ItemType = 'RAW' | 'SUB' | 'WIP' | 'FINISHED';
 
 export interface ItemBom {
   id: string;
-  parent_key: string;   // prod.품목 또는 prod.name
-  child_name: string;   // 원료명 (RAW_MATERIALS 기준)
-  ratio: number;        // 배합 비율
-  yield_rate: number;   // 수율 (기본 1.0)
-}
-
-export interface ItemCustomer {
-  id: string;
-  item_id: string;      // FINISHED 품목의 Firestore product ID
-  customer_id: string;
-  box_type_id: string;  // 박스 종류
-  qty_per_box: number;  // 박스당 입수
+  parent_key: string;
+  child_name: string;
+  ratio: number;
+  yield_rate: number;
 }
 // ────────────────────────────────────────────────────────────────────────
 
@@ -458,6 +475,26 @@ export interface ReturnRequest {
   linkedStatementId?: string;
   note?: string;
 }
+
+// ── 계정과목 ──────────────────────────────────────────────────────────────────
+export interface AccountCode {
+  id: string;          // 계정코드 (예: '500')
+  code: string;        // 계정코드 문자열
+  name: string;        // 계정명 (예: '원료매입')
+  groupId?: string;    // 소속 AccountGroup ID
+  note?: string;
+}
+
+export type AccountGroupPlLine = 'revenue' | 'cogs' | 'sgna' | 'other-income' | 'other-expense';
+
+export interface AccountGroup {
+  id: string;
+  name: string;        // 그룹명 (예: '총매출', '총매출원가')
+  type: '수익' | '비용' | '자산' | '부채' | '자본';
+  plLine?: AccountGroupPlLine; // 손익계산서 위치
+  note?: string;
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 export type AdjustmentType = 'quantity_change' | 'cancel_receipt' | 'chat_mention' | 'reorder_alert';
 export type AdjustmentStatus = 'pending' | 'processed' | 'rejected';

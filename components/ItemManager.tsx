@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X, Copy, ChevronDown, ChevronUp, GitMerge } from 'lucide-react';
-import { Product, InventoryCategory, Client, ProductClient } from '../types';
+import { Product, InventoryCategory, Client, ProductClient, ProductSupplier } from '../types';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 
@@ -9,6 +9,7 @@ interface ItemManagerProps {
   products: Product[];
   clients: Client[];
   productClients?: ProductClient[];
+  productSuppliers?: ProductSupplier[];
   onEditProduct: (_product: Product) => void;
   onAddProduct: () => void;
   onDeleteProduct: (_id: string, _category: string) => void;
@@ -28,7 +29,7 @@ const SUB_ORDER: Record<string, number> = { '라벨': 0, '용기': 1, '마개': 
 const sortSubs = (subs: { name: string; category: string }[]) =>
   [...subs].sort((a, b) => (SUB_ORDER[normalizeCategory(a.category)] ?? 9) - (SUB_ORDER[normalizeCategory(b.category)] ?? 9));
 
-const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productClients = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct, onMergeProducts }) => {
+const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productClients = [], productSuppliers = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct, onMergeProducts }) => {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [showNoClient, setShowNoClient] = useState(false);
@@ -64,8 +65,10 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
     const finished = products.filter(p => p.itemType === 'FINISHED' || p.category === '완제품' || p.category === '향미유' || p.category === '고춧가루');
     const pcByProduct: Record<string, ProductClient[]> = {};
     for (const pc of productClients) {
-      if (!pcByProduct[pc.productId]) pcByProduct[pc.productId] = [];
-      pcByProduct[pc.productId].push(pc);
+      const key = pc.Item_ID;
+      if (!key) continue;
+      if (!pcByProduct[key]) pcByProduct[key] = [];
+      pcByProduct[key].push(pc);
     }
     const subMap = Object.fromEntries(products.map(p => [p.id, p.name]));
 
@@ -351,7 +354,6 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">라벨</th>
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">테이프</th>
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">박스</th>
-                <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center whitespace-nowrap">관리</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -411,7 +413,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                     {activeCategory !== '완제품' && (
                       <td className="px-2 py-3">
                         <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
-                          {clients.find(c => c.id === item.supplierId)?.name ?? <span className="text-slate-200">-</span>}
+                          {clients.find(c => c.id === productSuppliers.find(ps => ps.productId === item.id)?.supplierId)?.name ?? <span className="text-slate-200">-</span>}
                         </span>
                       </td>
                     )}
@@ -440,37 +442,6 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                         )}
                       </td>
                     ))}
-                    <td className="px-3 py-3">
-                      <div className="flex items-center justify-center space-x-2">
-                        <button onClick={() => onEditProduct(item)} className="p-2 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl transition-all" title="수정">
-                          <Edit size={18} />
-                        </button>
-                        {selectedClientId && !showAll && (
-                          <button
-                            onClick={() => setConfirmModal({
-                              message: `'${item.name}' 연결을 해제하시겠습니까?`,
-                              subMessage: `${selectedClient?.name}에서 이 품목이 제거됩니다. 품목 자체는 삭제되지 않습니다.`,
-                              onConfirm: () => { onUnlinkProduct(item.id, selectedClientId); setConfirmModal(null); },
-                            })}
-                            className="p-2 text-amber-300 hover:bg-amber-50 hover:text-amber-500 rounded-xl transition-all"
-                            title="연결 해제"
-                          >
-                            <X size={18} />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => setConfirmModal({
-                            message: `'${item.name}'을(를) 삭제하시겠습니까?`,
-                            subMessage: '삭제 후 복구할 수 없습니다.',
-                            onConfirm: () => { onDeleteProduct(item.id, item.category); setConfirmModal(null); },
-                          })}
-                          className="p-2 text-rose-300 hover:bg-rose-50 hover:text-rose-500 rounded-xl transition-all"
-                          title="삭제"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    </td>
                   </tr>
                 ))
               )}

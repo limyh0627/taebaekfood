@@ -43,6 +43,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
+  Receipt,
   Wallet,
   BarChart2,
   Factory,
@@ -71,7 +72,9 @@ import ProductModal from '../../../components/AddProductModal';
 import NoticeBoard from '../../../components/NoticeBoard';
 import DatabaseView from '../../../components/DatabaseView';
 import ItemManager from '../../../components/ItemManager';
+import ItemPriceManager from '../../../components/ItemPriceManager';
 import TradeStatement from '../../../components/TradeStatement';
+import TaxStatement from '../../../components/TaxStatement';
 import OfficeTalk from '../../../components/OfficeTalk';
 import ProfitAnalysis from '../../../components/ProfitAnalysis';
 import ProductionManager from '../../../components/ProductionManager';
@@ -95,6 +98,8 @@ import {
   INITIAL_PRODUCTS,
   INITIAL_CLIENTS,
   INITIAL_SUPPLIERS,
+  INITIAL_ACCOUNT_GROUPS,
+  INITIAL_ACCOUNT_CODES,
 } from '../../config/company';
 import {
   addItem,
@@ -142,7 +147,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     noticePosts, chatRooms, chatMessages,
     rawMaterialLedger, sesameInputLedger,
     appNotifications, workOrderItems, issuedStatements,
-    itemBoms, itemCustomers, returnRequests, companyInfo, isDataLoading,
+    itemBoms, returnRequests, companyInfo, isDataLoading,
   } = appData;
 
   const { fixedCosts, productionRecords } = adminData;
@@ -183,9 +188,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const productClientMap = useMemo(() => {
     const map = new Map<string, string[]>();
     for (const pc of productClients) {
-      const arr = map.get(pc.productId) ?? [];
-      arr.push(pc.clientId);
-      map.set(pc.productId, arr);
+      if (!pc.Item_ID || !pc.Partner_ID) continue;
+      const arr = map.get(pc.Item_ID) ?? [];
+      arr.push(pc.Partner_ID);
+      map.set(pc.Item_ID, arr);
     }
     return map;
   }, [productClients]);
@@ -204,8 +210,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   ).length;
 
   // 판매 상품(완제품/향미유/고춧가루)은 products, 부자재는 submaterials
-  const getProductCollection = (category: string) =>
-    ['완제품', '향미유', '고춧가루'].includes(category) ? 'products' : 'submaterials';
+  const getProductCollection = (_category: string) => 'items';
 
   // 원료 자동 사용량 (DELIVERED 주문 → 원료별·날짜별 집계)
   // itemBoms가 있으면 Firestore BOM 사용, 없으면 PRODUCT_FORMULA fallback
@@ -385,7 +390,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         { id: 'f2-1', name: '참고소(연한)', category: '향미유', supplierId: 'C001', stock: 0, minStock: 0,  price: 0, unit: '개', image: '' },
       ];
       for (const item of items) {
-        const ref = doc(db, 'products', item.id);  // 향미유는 products에 저장
+        const ref = doc(db, 'items', item.id);  // 향미유는 products에 저장
         const snap = await getDoc(ref);
         if (!snap.exists()) {
           const { id, ...rest } = item;
@@ -399,10 +404,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // s-auto 접두사 중복 문서 정리
   useEffect(() => {
     const cleanupDuplicates = async () => {
-      const snap = await getDocs(collection(db, 'submaterials'));
+      const snap = await getDocs(collection(db, 'items'));
       for (const d of snap.docs) {
         if (d.id.startsWith('s-auto')) {
-          await deleteDoc(doc(db, 'submaterials', d.id));
+          await deleteDoc(doc(db, 'items', d.id));
           console.log('삭제됨:', d.id);
         }
       }
@@ -418,10 +423,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
       { name: 'files', data: INITIAL_FILES },
       { name: 'pallets', data: INITIAL_PALLETS },
       { name: 'employees', data: INITIAL_EMPLOYEES },
-      { name: 'products', data: INITIAL_PRODUCTS.filter((p: Product) => p.category === '완제품') },
-      { name: 'submaterials', data: INITIAL_PRODUCTS.filter((p: Product) => p.category !== '완제품') },
-      { name: 'clients', data: INITIAL_CLIENTS },
+      { name: 'items', data: INITIAL_PRODUCTS.filter((p: Product) => p.category === '완제품') },
+      { name: 'items', data: INITIAL_PRODUCTS.filter((p: Product) => p.category !== '완제품') },
+      { name: 'partners', data: INITIAL_CLIENTS },
       { name: 'suppliers', data: INITIAL_SUPPLIERS },
+      { name: 'accountGroups', data: INITIAL_ACCOUNT_GROUPS },
+      { name: 'accountCodes', data: INITIAL_ACCOUNT_CODES },
     ];
 
     for (const col of collections) {
@@ -562,7 +569,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         const deductQty = item.isBoxUnit && item.boxQuantity
           ? item.boxQuantity * uPerBox  // BOX → 낱개 변환
           : item.quantity;
-        const collection = products.find(p => p.id === product.id) ? 'products' : 'submaterials';
+        const collection = products.find(p => p.id === product.id) ? 'items' : 'items';
         await updateItem(collection, product.id, { stock: product.stock - deductQty });
         continue;
       }
@@ -585,7 +592,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       if (boxSubToDeduct) {
         const deductQty = boxesUsed ?? Math.ceil(item.quantity / (boxSubToDeduct.boxSize || 1));
         if (deductQty > 0) {
-          await updateItem('submaterials', boxSubToDeduct.id, { stock: boxSubToDeduct.stock - deductQty });
+          await updateItem('items', boxSubToDeduct.id, { stock: boxSubToDeduct.stock - deductQty });
         }
       }
 
@@ -593,7 +600,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       if (pc?.tapeTypeId && boxesUsed && boxesUsed > 0) {
         const tapeSub = submaterials.find(sm => sm.id === pc.tapeTypeId);
         if (tapeSub) {
-          await updateItem('submaterials', tapeSub.id, { stock: tapeSub.stock - boxesUsed });
+          await updateItem('items', tapeSub.id, { stock: tapeSub.stock - boxesUsed });
         }
       }
 
@@ -602,7 +609,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         const actualSub = submaterials.find(sm => sm.id === s.id);
         if (!actualSub) continue;
         if (actualSub.category === '박스' || actualSub.category === '테이프') continue;
-        await updateItem('submaterials', actualSub.id, { stock: actualSub.stock - item.quantity });
+        await updateItem('items', actualSub.id, { stock: actualSub.stock - item.quantity });
       }
 
       // 원료 사용량 → rawMaterialLedger 기록 (완제품 한정)
@@ -846,7 +853,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             )}
           </div>
           
-          <div className="flex-1 space-y-8 overflow-y-auto no-scrollbar">
+          <div className="flex-1 min-h-0 space-y-8 overflow-y-auto no-scrollbar">
 
             {/* ── 사장님(Admin) 전용: 경영 현황 ── */}
             {isAdmin && (() => {
@@ -869,9 +876,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">업무 관리</p>}
                     <nav className="space-y-1">
                       <NavItem icon={FileText} label="거래명세서" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} />
+                      <NavItem icon={Receipt} label="세금계산서" active={currentView === 'tax-statement'} onClick={() => handleNavClick('tax-statement')} collapsed={isSidebarCollapsed} />
+                      <NavItem icon={Package} label="품목 관리" active={currentView === 'item-price-management'} onClick={() => handleNavClick('item-price-management')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={UserCheck} label="인사 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
-                      <NavItem icon={Users} label="거래처 관리" active={currentView === 'clients'} onClick={() => handleNavClick('clients')} collapsed={isSidebarCollapsed} />
+                      <NavItem icon={Users} label="거래처 관리" active={currentView === 'partners'} onClick={() => handleNavClick('partners')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={ClipboardList} label="확인사항" active={currentView === 'admin-checklist'} onClick={() => handleNavClick('admin-checklist')} collapsed={isSidebarCollapsed} badge={adminPendingCount > 0 ? adminPendingCount : undefined} />
                       <NavItem icon={QrCode} label="QR 라벨 인쇄" active={false} onClick={() => setShowQrLabel(true)} collapsed={isSidebarCollapsed} />
                     </nav>
@@ -911,7 +920,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     <NavItem icon={Settings} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={Layers} label="파렛트 관리" active={currentView === 'pallets'} onClick={() => handleNavClick('pallets')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={CalendarCheck} label="연차 신청" active={currentView === 'leave-portal'} onClick={() => handleNavClick('leave-portal')} collapsed={isSidebarCollapsed} />
-                    <NavItem icon={Users} label="거래처 관리" active={currentView === 'clients'} onClick={() => handleNavClick('clients')} collapsed={isSidebarCollapsed} />
+                    <NavItem icon={Users} label="거래처 관리" active={currentView === 'partners'} onClick={() => handleNavClick('partners')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={ShieldCheck} label="확인사항" active={currentView === 'confirmation-items'} onClick={() => handleNavClick('confirmation-items')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={DatabaseIcon} label="데이터베이스" active={currentView === 'database'} onClick={() => handleNavClick('database')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={BellRing} label="공지사항" active={currentView === 'notice'} onClick={() => handleNavClick('notice')} collapsed={isSidebarCollapsed} />
@@ -955,12 +964,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
               {(({
                 'dashboard': '비즈니스 현황', 'ai-consultant': 'AI 인사이트',
                 'orders': '주문 관리', 'shipping': '배송 관리', 'inventory': '재고 관리',
-                'pallets': '파렛트 관리', 'hr': '인사 관리', 'clients': '거래처 관리',
-                'notice': '공지사항', 'documents': '서류 관리', 'trade-statement': '거래명세서',
+                'pallets': '파렛트 관리', 'hr': '인사 관리', 'partners': '거래처 관리',
+                'notice': '공지사항', 'documents': '서류 관리', 'trade-statement': '거래명세서', 'tax-statement': '세금계산서',
                 'profit-analysis': '손익 / 비용 분석', 'cost-management': '비용 관리',
                 'production': '생산 실적', 'admin-checklist': '확인사항',
                 'leave-portal': '연차 신청', 'confirmation-items': '확인사항',
-                'database': '데이터베이스', 'item-management': '품목 관리',
+                'database': '데이터베이스', 'item-management': '품목 관리', 'item-price-management': '품목 관리',
                 'inbound-scan': '입고 스캔', 'client-portal': '거래처 포털',
                 'officetalk': '오피스톡', 'smartstore-analytics': '스마트스토어 분석',
                 'haccp-checklist': 'HACCP 체크리스트', 'return-management': '반품 관리',
@@ -1013,7 +1022,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               </div>
             </div>
           ) : (
-          <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'clients', 'notice', 'pallets', 'confirmation-items', 'shipping', 'production', 'inbound-scan', 'return-management'].includes(currentView)) ? '' : 'h-full'}>
+          <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'partners', 'notice', 'pallets', 'confirmation-items', 'shipping', 'production', 'inbound-scan', 'return-management'].includes(currentView)) ? '' : 'h-full'}>
           {(currentView === 'dashboard' || currentView === 'ai-consultant') && (
             <div className="h-full flex flex-col overflow-hidden">
               <div className="flex items-center gap-1 px-6 pt-5 pb-0 shrink-0">
@@ -1152,7 +1161,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
               onDeleteProduct={(id) => {
                 const inProducts = products.some(p => p.id === id);
-                deleteItem(inProducts ? 'products' : 'submaterials', id);
+                deleteItem(inProducts ? 'items' : 'items', id);
               }}
               onAddAdjustmentRequest={(req) => addItem('adjustmentRequests', req)}
               suppliers={clients.filter(c => c.partnerType === '매입처' || c.partnerType === '매출+매입처')}
@@ -1206,7 +1215,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 }
               }}
               onDeleteRawMaterialEntry={(id) => deleteItem('rawMaterialLedger', id)}
-              onUpdateSubmaterial={(id, data) => updateItem('submaterials', id, data)}
+              onUpdateSubmaterial={(id, data) => updateItem('items', id, data)}
             />
           )}
           {currentView === 'inbound-scan' && (
@@ -1215,7 +1224,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               confirmedOrders={confirmedOrders}
               qrMappings={appData.qrMappings}
               currentUser={{ id: currentUser.id, name: currentUser.name }}
-              onUpdateSubmaterial={(id, data) => updateItem('submaterials', id, data)}
+              onUpdateSubmaterial={(id, data) => updateItem('items', id, data)}
               onFinishConfirmedOrder={handleFinishConfirmedOrder}
               onClose={() => setCurrentView('inventory')}
             />
@@ -1226,7 +1235,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onClose={() => setShowQrLabel(false)}
             />
           )}
-          {currentView === 'clients' && <ClientManager clients={clients} onUpdateClient={(c) => updateItem('clients', c.id, c)} onAddClient={(c) => addItem('clients', c)} onDeleteClient={(id) => deleteItem('clients', id)} />}
+          {currentView === 'partners' && <ClientManager clients={clients} onUpdateClient={(c) => updateItem('partners', c.id, c)} onAddClient={(c) => addItem('partners', c)} onDeleteClient={(id) => deleteItem('partners', id)} />}
           {currentView === 'database' && (
             <div className="space-y-6">
               <div className="bg-indigo-50 p-6 rounded-3xl border border-indigo-100 flex items-center justify-between">
@@ -1245,7 +1254,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               <DatabaseView onSync={async (data) => { 
                 // Clients sync
                 for (const c of data.clients) {
-                  await addItem('clients', c);
+                  await addItem('partners', c);
                 }
                 
                 // Products sync
@@ -1301,7 +1310,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onProcessAdjustment={async (req) => {
                 const product = allProducts.find(p => p.id === req.productId);
                 if (req.type === 'quantity_change' && product && req.requestedQuantity !== undefined) {
-                  const collectionName = product.category === '향미유' || product.category === '고춧가루' || product.category === '용기' || product.category === '마개' || product.category === '테이프' || product.category === '박스' || product.category === '라벨' ? 'submaterials' : 'products';
+                  const collectionName = product.category === '향미유' || product.category === '고춧가루' || product.category === '용기' || product.category === '마개' || product.category === '테이프' || product.category === '박스' || product.category === '라벨' ? 'items' : 'items';
                   await updateItem(collectionName, req.productId, { stock: req.requestedQuantity });
                 }
                 await updateItem('adjustmentRequests', req.id, { status: 'processed', processedAt: new Date().toISOString() });
@@ -2700,6 +2709,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               clients={clients}
               productClients={productClients}
               productSuppliers={productSuppliers}
+              accountCodes={appData.accountCodes}
               issuedStatements={issuedStatements}
               onUpdateStatus={async (id, status) => {
                 if (status === OrderStatus.DELIVERED) {
@@ -2713,10 +2723,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   await updateItem('orders', id, { status });
                 }
               }}
-              onUpdateProductClientPrice={(id, price) => updateItem('productClients', id, { price })}
-              onUpdateProductClientTaxType={(id, taxType) => updateItem('productClients', id, { taxType })}
-              onUpsertProductSupplier={(ps) => addItem('productSuppliers', ps)}
-              onUpdateProductSupplierTaxType={(id, taxType) => updateItem('productSuppliers', id, { taxType })}
+              onUpdateProductClientPrice={(id, price) => updateItem('partner_item', id, { Standard_Price: price, price })}
+              onUpdateProductClientTaxType={(id, taxType) => updateItem('partner_item', id, { taxType })}
+              onUpsertProductSupplier={(ps) => addItem('partner_item', { ...ps, Partner_ID: ps.supplierId ?? ps.Partner_ID, Item_ID: ps.productId ?? ps.Item_ID, Direction: 'in' as const, Standard_Price: ps.price ?? ps.Standard_Price })}
+              onUpdateProductSupplierTaxType={(id, taxType) => updateItem('partner_item', id, { taxType })}
               onMarkInvoicePrinted={(id, value) => updateItem('orders', id, { invoicePrinted: value })}
               onUpdateOrder={(id, data) => updateItem('orders', id, data)}
               onAddIssuedStatement={(stmt) => addItem('issuedStatements', stmt)}
@@ -2731,7 +2741,24 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onRemoveOrderRequest={handleRemoveOrderRequest}
               companyInfo={companyInfo}
               onSaveCompanyInfo={(info) => setDocument('settings', 'company', info)}
-              onUpdateProductCost={(productId, cost) => updateItem('products', productId, { cost })}
+              onUpdateProductCost={(productId, cost) => updateItem('items', productId, { cost })}
+              onAddProductClient={(productId, clientId, price, taxType) =>
+                addItem('partner_item', {
+                  id: `${productId}_${clientId}_out`,
+                  Item_ID: productId, Partner_ID: clientId,
+                  Direction: 'out' as const,
+                  Standard_Price: price, price, taxType,
+                  productId, clientId,
+                })
+              }
+            />
+          )}
+          {currentView === 'tax-statement' && (
+            <TaxStatement
+              issuedStatements={issuedStatements}
+              clients={clients}
+              companyInfo={companyInfo}
+              onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
             />
           )}
           {(currentView === 'profit-analysis' || currentView === 'cost-management') && (
@@ -2739,6 +2766,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               <ProfitAnalysis
                 issuedStatements={issuedStatements}
                 fixedCosts={fixedCosts}
+                fixedCostTemplates={appData.fixedCostTemplates}
                 onAddCost={async (entry) => {
                   const { note, ...rest } = entry;
                   await addItem('fixedCosts', {
@@ -2749,9 +2777,19 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   });
                 }}
                 onDeleteCost={(id) => deleteItem('fixedCosts', id)}
+                onAddTemplate={async (data) => { await addItem('fixedCostTemplates', { ...data, id: `fct-${Date.now()}` }); }}
+                onUpdateTemplate={(id, data) => updateItem('fixedCostTemplates', id, data)}
+                onDeleteTemplate={(id) => deleteItem('fixedCostTemplates', id)}
                 clients={clients}
                 products={allProducts}
                 onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
+                accountGroups={appData.accountGroups}
+                accountCodes={appData.accountCodes}
+                onUpdateAccountCode={(id, data) => updateItem('accountCodes', id, data)}
+                onAddAccountCode={async (data) => addItem('accountCodes', { ...data, id: `ac-${Date.now()}` }) as Promise<string>}
+                onDeleteAccountCode={(id) => deleteItem('accountCodes', id)}
+                onAddAccountGroup={async (data) => addItem('accountGroups', { ...data, id: `ag-${Date.now()}` }) as Promise<string>}
+                onDeleteAccountGroup={(id) => deleteItem('accountGroups', id)}
               />
             </div>
           )}
@@ -2760,7 +2798,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               orders={orders}
               clients={clients}
               products={allProducts}
-              onUpdateProduct={(id, data) => updateItem('products', id, data)}
+              onUpdateProduct={(id, data) => updateItem('items', id, data)}
             />
           )}
           {currentView === 'haccp-checklist' && (
@@ -2845,16 +2883,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onAddProduct={() => { setEditingProduct(null); setIsProductModalOpen(true); }}
               onDeleteProduct={(id) => {
                 const inProducts = products.some(p => p.id === id);
-                deleteItem(inProducts ? 'products' : 'submaterials', id);
+                deleteItem(inProducts ? 'items' : 'items', id);
               }}
               onLinkProduct={async (productId, clientId) => {
-                const current = productClients.filter(pc => pc.productId === productId).map(pc => pc.clientId);
+                const current = productClients.filter(pc => pc.Item_ID === productId).map(pc => pc.Partner_ID);
                 if (!current.includes(clientId)) {
                   await setProductClients(productId, [...current, clientId]);
                 }
               }}
               onUnlinkProduct={async (productId, clientId) => {
-                const current = productClients.filter(pc => pc.productId === productId).map(pc => pc.clientId);
+                const current = productClients.filter(pc => pc.Item_ID === productId).map(pc => pc.Partner_ID);
                 await setProductClients(productId, current.filter(id => id !== clientId));
               }}
               productClients={productClients}
@@ -2865,10 +2903,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
                 // 삭제할 품목들의 productClients를 keepId로 이전
                 for (const delId of deleteIds) {
-                  const snap = await getDocs(q(col(fireDb, 'productClients'), where('productId', '==', delId)));
+                  const snap = await getDocs(q(col(fireDb, 'partner_item'), where('productId', '==', delId)));
                   for (const docSnap of snap.docs) {
                     const data = docSnap.data();
-                    const newRef = d(fireDb, 'productClients', `${keepId}_${data.clientId}`);
+                    const newRef = d(fireDb, 'partner_item', `${keepId}_${data.clientId}`);
                     // 이미 keepId에 해당 거래처가 없을 때만 이전
                     const existing = productClients.find(pc => pc.productId === keepId && pc.clientId === data.clientId);
                     if (!existing) {
@@ -2881,13 +2919,24 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   if (delProduct?.clientIds?.length) {
                     const keepProduct = allProducts.find(p => p.id === keepId);
                     const mergedIds = [...new Set([...(keepProduct?.clientIds ?? []), ...delProduct.clientIds])];
-                    batch.update(d(fireDb, 'products', keepId), { clientIds: mergedIds });
+                    batch.update(d(fireDb, 'items', keepId), { clientIds: mergedIds });
                   }
                   // 삭제할 품목 제거
-                  batch.delete(d(fireDb, 'products', delId));
+                  batch.delete(d(fireDb, 'items', delId));
                 }
                 await batch.commit();
               }}
+            />
+          )}
+
+          {currentView === 'item-price-management' && (
+            <ItemPriceManager
+              products={allProducts}
+              onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
+              onAddProduct={() => { setEditingProduct(null); setIsProductModalOpen(true); }}
+              onDeleteProduct={(id) => deleteItem('items', id)}
+              onUpdateCost={(productId, cost) => updateItem('items', productId, { cost })}
+              onUpdatePrice={(productId, price) => updateItem('items', productId, { price })}
             />
           )}
 
@@ -3008,11 +3057,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
           productClients={productClients}
           onClose={() => {setIsProductModalOpen(false); setEditingProduct(null);}}
           onSaveProductClientConfig={async (id, config) => {
-            try { await updateItem('productClients', id, config); } catch { /* 문서 없으면 무시 */ }
+            try { await updateItem('partner_item', id, config); } catch { /* 문서 없으면 무시 */ }
           }}
           onAddSubmaterial={async (name, category) => {
             const unit = category === '라벨' ? '매' : '개';
-            const id = await addItem('submaterials', { name, category, stock: 0, minStock: 0, unit, price: 0, image: '' });
+            const id = await addItem('items', { name, category, stock: 0, minStock: 0, unit, price: 0, image: '' });
             return id as string;
           }}
           onSave={async (p) => {

@@ -10,7 +10,7 @@
  * 이후에는 Firestore DB에 저장된 데이터를 사용하므로 이 파일은 참조되지 않습니다.
  */
 
-import { Post, PalletStock, Employee, Product, Client, FileItem } from '../../types';
+import { Post, PalletStock, Employee, Product, Client, FileItem, AccountCode, AccountGroup } from '../../types';
 
 // ── 공지사항 초기 데이터 ──────────────────────────────────────────────────────
 export const INITIAL_NOTICES: Post[] = [
@@ -147,3 +147,17 @@ export const INITIAL_CLIENTS: Client[] = [
 ];
 
 export const INITIAL_SUPPLIERS: Client[] = [];
+
+// ── 계정과목 그룹 초기 데이터 ──────────────────────────────────────────────────
+export const INITIAL_ACCOUNT_GROUPS: AccountGroup[] = [
+  { id: 'ag-revenue', name: '총매출',     type: '수익' },
+  { id: 'ag-cogs',    name: '총매출원가', type: '비용' },
+  { id: 'ag-sgna',    name: '판관비',     type: '비용' },
+];
+
+// ── 계정과목 초기 데이터 ──────────────────────────────────────────────────────
+export const INITIAL_ACCOUNT_CODES: AccountCode[] = [
+  { id: '500', code: '500', name: '원료매입',   groupId: 'ag-cogs' },
+  { id: '505', code: '505', name: '부자재매입', groupId: 'ag-cogs' },
+  { id: '800', code: '800', name: '일반매출',   groupId: 'ag-revenue' },
+];
