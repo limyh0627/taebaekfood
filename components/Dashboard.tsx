@@ -25,6 +25,7 @@ interface DashboardProps {
   orders: Order[];
   products: Product[];
   clients?: Client[];
+  productSuppliers?: import('../src/shared/types').ProductSupplier[];
   onNavigate?: (view: ViewType) => void;
   onCreatePurchaseOrder?: (supplierId: string, supplierName: string, items: Array<{ name: string; spec: string; qty: number; price: number }>) => void;
 }
@@ -63,7 +64,7 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon: Icon, trend, co
   </div>
 );
 
-const Dashboard: React.FC<DashboardProps> = ({ orders, products, clients = [], onNavigate, onCreatePurchaseOrder }) => {
+const Dashboard: React.FC<DashboardProps> = ({ orders, products, clients = [], productSuppliers = [], onNavigate, onCreatePurchaseOrder }) => {
   const [showLowStock, setShowLowStock] = useState(false);
   const [selectedLowStock, setSelectedLowStock] = useState<Set<string>>(new Set());
   const [orderQtys, setOrderQtys] = useState<Record<string, string>>({});
@@ -201,7 +202,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, products, clients = [], o
           // 공급업체별로 그룹화
           const grouped = new Map<string, { name: string; items: typeof selected }>();
           selected.forEach(p => {
-            const supplierId = p.supplierId ?? '__none__';
+            const supplierId = productSuppliers.find(ps => ps.productId === p.id)?.supplierId ?? '__none__';
             const supplier = clients.find(c => c.id === supplierId);
             const supplierName = supplier?.name ?? '공급처 미지정';
             const existing = grouped.get(supplierId) ?? { name: supplierName, items: [] };
@@ -260,7 +261,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, products, clients = [], o
                 <tbody className="divide-y divide-slate-50">
                   {lowStockList.map(p => {
                     const shortage = p.minStock - p.stock;
-                    const supplier = clients.find(c => c.id === p.supplierId);
+                    const supplier = clients.find(c => c.id === productSuppliers.find(ps => ps.productId === p.id)?.supplierId);
                     const isChecked = selectedLowStock.has(p.id);
                     return (
                       <tr key={p.id} className={`transition-colors ${isChecked ? 'bg-rose-50/50' : 'hover:bg-slate-50'}`}>

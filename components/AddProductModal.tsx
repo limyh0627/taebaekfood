@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Package, Tag, Box, Layers, Plus, Building2, Check, Trash2 } from 'lucide-react';
-import { Product, InventoryCategory, Client, ClientBoxConfig, ProductClient } from '../types';
+import { Product, InventoryCategory, Client, ClientBoxConfig, ProductClient, ProductSupplier } from '../types';
 
 interface ProductModalProps {
   initialData?: Product;
@@ -9,9 +9,11 @@ interface ProductModalProps {
   products?: Product[];
   clients?: Client[];
   productClients?: ProductClient[];
+  productSuppliers?: ProductSupplier[];
   onClose: () => void;
   onSave: (_product: Product) => void;
   onSaveProductClientConfig?: (id: string, config: Partial<ProductClient>) => Promise<void>;
+  onUpsertProductSupplier?: (ps: ProductSupplier) => void;
   onAddSubmaterial?: (name: string, category: string) => Promise<string>;
 }
 
@@ -55,7 +57,7 @@ const PUMOK_VOLUMES: Record<string, string[]> = {
   '시골향볶음검정참깨': ['1kg','20kg','25kg'],
 };
 
-const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], products = [], clients = [], productClients = [], onClose, onSave, onSaveProductClientConfig, onAddSubmaterial }) => {
+const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], products = [], clients = [], productClients = [], productSuppliers = [], onClose, onSave, onSaveProductClientConfig, onUpsertProductSupplier, onAddSubmaterial }) => {
   const [formData, setFormData] = useState(() => ({
     name: initialData?.name || '',
     category: (initialData?.category as InventoryCategory) || '완제품',
@@ -75,7 +77,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     품목: initialData?.품목 || '',
     isSmartStore: initialData?.isSmartStore ?? false,
     clientIds: initialData?.clientIds ?? (initialData?.clientId ? [initialData.clientId] : []),
-    supplierId: initialData?.supplierId || '',
+    supplierId: productSuppliers.find(ps => ps.Item_ID === initialData?.id)?.Partner_ID ?? '',
     submaterials: (initialData?.submaterials || []).map(s => ({
       ...s,
       category: normCat(s.category)
@@ -98,8 +100,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const [clientPackagingConfigs, setClientPackagingConfigs] = useState<Record<string, { boxTypeId?: string; qtyPerBox?: number; tapeTypeId?: string }>>(() => {
     const map: Record<string, { boxTypeId?: string; qtyPerBox?: number; tapeTypeId?: string }> = {};
     if (initialData) {
-      productClients.filter(pc => pc.productId === initialData.id).forEach(pc => {
-        map[pc.clientId] = { boxTypeId: pc.boxTypeId, qtyPerBox: pc.qtyPerBox, tapeTypeId: pc.tapeTypeId };
+      productClients.filter(pc => pc.Item_ID === initialData.id).forEach(pc => {
+        map[pc.Partner_ID] = { boxTypeId: pc.boxTypeId, qtyPerBox: pc.qtyPerBox, tapeTypeId: pc.tapeTypeId };
       });
     }
     return map;
@@ -173,11 +175,19 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       ...(formData.용량 && { 용량: formData.용량 }),
       ...(formData.품목 && { 품목: formData.품목 }),
       ...(formData.category === '완제품' && formData.clientIds.length > 0 && { clientIds: formData.clientIds }),
-      ...(formData.category !== '완제품' && formData.supplierId && { supplierId: formData.supplierId }),
       ...(formData.category === '완제품' && { isSmartStore: formData.isSmartStore }),
     };
 
     onSave(finalProduct);
+
+    // ProductSupplier upsert — partner_item Direction='in'으로 저장
+    if (formData.category !== '완제품' && formData.supplierId && onUpsertProductSupplier) {
+      const supplierId = formData.supplierId;
+      const itemId = finalProduct.id;
+      const psId = `${itemId}_${supplierId}_in`;
+      const existing = productSuppliers.find(ps => ps.Item_ID === itemId);
+      onUpsertProductSupplier({ id: psId, Partner_ID: supplierId, Item_ID: itemId, Direction: 'in', Standard_Price: existing?.Standard_Price, taxType: existing?.taxType });
+    }
 
     // ProductClient에 박스/테이프 설정 저장
     if (onSaveProductClientConfig && finalProduct.clientIds?.length) {

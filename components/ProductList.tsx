@@ -20,7 +20,7 @@ import {
   Tag,
   Building2
 } from 'lucide-react';
-import { Product, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement } from '../types';
+import { Product, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, ProductSupplier } from '../types';
 import AddProductModal from './AddProductModal';
 import ConfirmModal from './ConfirmModal';
 import InboundManager from './InboundManager';
@@ -59,6 +59,7 @@ interface ProductListProps {
   onAddAdjustmentRequest: (req: AdjustmentRequest) => void;
   suppliers: { id: string; name: string }[];
   clients?: { id: string; name: string; partnerType?: string }[];
+  productSuppliers?: ProductSupplier[];
   rawMaterialLedger: RawMaterialEntry[];
   onRequestPurchaseInvoice?: (supplierId: string, supplierName: string, items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }>) => void;
   issuedStatements?: IssuedStatement[];
@@ -134,6 +135,7 @@ const ProductList: React.FC<ProductListProps> = ({
   isAdmin = false,
   onUpdateSubmaterial,
   pendingReceipts = [],
+  productSuppliers = [],
 }) => {
   const [isEn, setIsEn] = useState(() => localStorage.getItem('inventoryLang') === 'en');
   const toggleLang = () => setIsEn(prev => {
@@ -142,6 +144,7 @@ const ProductList: React.FC<ProductListProps> = ({
     return next;
   });
   const t = (ko: string, en: string) => isEn ? en : ko;
+  const psMap = useMemo(() => new Map(productSuppliers.map(ps => [ps.productId, ps.supplierId])), [productSuppliers]);
   const fmt1 = (v: number) => { const s = Number(v).toFixed(1); return s.endsWith('.0') ? s.slice(0, -2) : s; };
   const fmtHamiyou = (stock: number) => {
     const boxes = Math.floor(stock / 12);
@@ -308,14 +311,14 @@ const ProductList: React.FC<ProductListProps> = ({
         else result = result.filter(p => p.category === activeCategory);
       }
       if (activeSupplierId !== '전체') {
-        result = result.filter(p => (p as any).supplierId === activeSupplierId);
+        result = result.filter(p => psMap.get(p.id) === activeSupplierId);
       }
     }
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase();
       result = result.filter(p => {
         if (p.name.toLowerCase().includes(q)) return true;
-        const supplierName = suppliers.find(s => s.id === (p as any).supplierId)?.name || '';
+        const supplierName = suppliers.find(s => s.id === psMap.get(p.id))?.name || '';
         if (supplierName.toLowerCase().includes(q)) return true;
         const clientName = (p.clientIds ?? []).some(cid => clients.find(c => c.id === cid)?.name.toLowerCase().includes(q));
         return clientName;
@@ -986,12 +989,12 @@ const ProductList: React.FC<ProductListProps> = ({
                     {cart
                       .filter(item => {
                         if (activeSupplierId === '전체') return true;
-                        return productMap.get(item.id)?.supplierId === activeSupplierId;
+                        return psMap.get(item.id) === activeSupplierId;
                       })
                       .map(item => {
                       const product = productMap.get(item.id);
                       if (!product) return null;
-                      const supplierName = supplierMap.get(product.supplierId ?? '')?.name;
+                      const supplierName = supplierMap.get(psMap.get(product.id) ?? '')?.name;
                       return (
                         <div key={item.id} className="px-5 py-3 flex items-center gap-4">
                           <div className="flex-1 min-w-0">
@@ -1168,12 +1171,12 @@ const ProductList: React.FC<ProductListProps> = ({
                     {confirmedWithoutStatement
                       .filter(conf => {
                         if (activeSupplierId === '전체') return true;
-                        return productMap.get(conf.id)?.supplierId === activeSupplierId;
+                        return psMap.get(conf.id) === activeSupplierId;
                       })
                       .map(conf => {
                         const product = productMap.get(conf.id);
                         if (!product) return null;
-                        const supplierName = supplierMap.get(product.supplierId ?? '')?.name;
+                        const supplierName = supplierMap.get(psMap.get(product.id) ?? '')?.name;
                         const isExpanded = expandedReqId === conf.id;
                         return (
                           <div key={conf.id}>
@@ -1201,11 +1204,11 @@ const ProductList: React.FC<ProductListProps> = ({
                                 </div>
                               </div>
                               <span className="text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-xl shrink-0">입고대기 {conf.quantity}{product.unit}</span>
-                              {isAdmin && product.supplierId && onRequestPurchaseInvoice && (
+                              {isAdmin && psMap.get(product.id) && onRequestPurchaseInvoice && (
                                 <button
                                   onClick={() => {
                                     onRequestPurchaseInvoice(
-                                      product.supplierId!,
+                                      psMap.get(product.id)!,
                                       supplierName || '',
                                       [{ name: product.name, spec: product.용량 || '', qty: conf.quantity, price: product.price ?? 0 }]
                                     );
@@ -2283,8 +2286,8 @@ const ProductList: React.FC<ProductListProps> = ({
                 cart.forEach(item => {
                   const product = products.find(p => p.id === item.id);
                   if (!product) return;
-                  const sid = product.supplierId || '__none__';
-                  const sname = suppliers.find(s => s.id === product.supplierId)?.name || '거래처 미지정';
+                  const sid = psMap.get(product.id) || '__none__';
+                  const sname = suppliers.find(s => s.id === sid)?.name || '거래처 미지정';
                   if (!groups.has(sid)) groups.set(sid, { supplierId: sid, supplierName: sname, items: [] });
                   groups.get(sid)!.items.push({
                     name: product.name,
@@ -2362,8 +2365,8 @@ const ProductList: React.FC<ProductListProps> = ({
                   if (!confirmedChecked.has(conf.id)) return;
                   const product = productMap.get(conf.id);
                   if (!product) return;
-                  const sid = product.supplierId || '__none__';
-                  const sname = supplierMap.get(product.supplierId ?? '')?.name || '거래처 미지정';
+                  const sid = psMap.get(product.id) || '__none__';
+                  const sname = supplierMap.get(sid)?.name || '거래처 미지정';
                   if (!groups.has(sid)) groups.set(sid, { supplierId: sid, supplierName: sname, items: [] });
                   groups.get(sid)!.items.push({
                     name: product.name,

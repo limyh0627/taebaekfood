@@ -10,6 +10,8 @@ node_modules
 
 # 빌드 결과물
 /build
+/dist
 
 # 기타
 .DS_Stored
+scripts/serviceAccountKey.json
