@@ -1,12 +1,13 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, LayoutGrid, Layers } from 'lucide-react';
-import { Product, ProductClient, OrderItem, Order, Client, OrderSource, OrderPallet, PalletStock } from '../types';
+import { Product, ProductClient, OrderItem, Order, Client, OrderSource, OrderPallet, PalletStock, ItemCustomer } from '../types';
 
 interface AddOrderModalProps {
   products: Product[];
   clients: Client[];
   productClients: ProductClient[];
+  itemCustomers?: ItemCustomer[];
   palletStocks: PalletStock[];
   submaterials: Product[];
   onClose: () => void;
@@ -37,7 +38,7 @@ const matchClient = (name: string, query: string): boolean => {
   return name.toLowerCase().includes(q.toLowerCase());
 };
 
-const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, productClients, palletStocks, submaterials, onClose, onSave }) => {
+const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, productClients, itemCustomers = [], palletStocks, submaterials, onClose, onSave }) => {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handler);
@@ -46,7 +47,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [selectedItems, setSelectedItems] = useState<{ productId: string, quantity: number | '', isBoxUnit: boolean, unitsPerBox: number, boxType: string, boxSubId?: string }[]>([]);
+  const [selectedItems, setSelectedItems] = useState<{ productId: string, quantity: number | '', isBoxUnit: boolean, unitsPerBox: number, boxType: string, boxSubId?: string, displaySize?: string }[]>([]);
   const [showHyangmiyu, setShowHyangmiyu] = useState(false);
   const [showGochutgaru, setShowGochutgaru] = useState(false);
   const [deadline, setDeadline] = useState(() => {
@@ -90,19 +91,22 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
     if (!selectedClient) return [];
     return products
       .filter(p => {
+        if (p.archived) return false;
         if (p.category !== '완제품') return false;
         if (p.clientIds?.includes(selectedClient.id)) return true;
         // 스마트스토어 타입 거래처 선택 시 SMARTSTORE 태그 제품도 표시
         if (selectedClient.type === '스마트스토어' && p.clientIds?.includes('SMARTSTORE')) return true;
         // 스마트스토어 전용 체크된 품목도 스마트스토어 거래처에 표시
         if (selectedClient.type === '스마트스토어' && p.isSmartStore) return true;
+        // 통합 품목(isRawMaterial): item_customer 등록 기반으로 표시
+        if (p.isRawMaterial && itemCustomers.some(ic => ic.item_id === p.id && ic.customer_id === selectedClient.id)) return true;
         return false;
       })
       .sort((a, b) => {
         const diff = getProductTypeOrder(a.name) - getProductTypeOrder(b.name);
         return diff !== 0 ? diff : a.name.localeCompare(b.name, 'ko');
       });
-  }, [products, selectedClient]);
+  }, [products, selectedClient, itemCustomers]);
 
   // 스마트스토어 제외 거래처 → 향미유 목록
   const displayHyangmiyu = useMemo(() => {
@@ -138,6 +142,31 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
 
       if (product.category !== '완제품' || !selectedClient) continue;
       const actualQty = item.isBoxUnit && item.unitsPerBox > 0 ? qty * item.unitsPerBox : qty;
+
+      // 통합 품목(isRawMaterial): item_customer 기반으로 박스/테이프 부자재 조회
+      if (product.isRawMaterial) {
+        const ic = itemCustomers.find(c => c.item_id === product.id && c.customer_id === selectedClient.id);
+        if (ic) {
+          const boxSize = ic.qty_per_box || 1;
+          const boxesNeeded = Math.ceil(actualQty / boxSize);
+          if (ic.box_type_id) {
+            const sub = submaterials.find(sm => sm.id === ic.box_type_id);
+            if (sub) {
+              if (!usage[sub.id]) usage[sub.id] = { name: sub.name, needed: 0, stock: sub.stock };
+              usage[sub.id].needed += boxesNeeded;
+            }
+          }
+          if (ic.tapeTypeId) {
+            const sub = submaterials.find(sm => sm.id === ic.tapeTypeId);
+            if (sub) {
+              if (!usage[sub.id]) usage[sub.id] = { name: sub.name, needed: 0, stock: sub.stock };
+              usage[sub.id].needed += boxesNeeded;
+            }
+          }
+        }
+        continue;
+      }
+
       const pc = productClients.find(p => p.productId === product.id && p.clientId === selectedClient.id);
       const boxSize = pc?.qtyPerBox || item.unitsPerBox || 1;
       const boxesNeeded = Math.ceil(actualQty / boxSize);
@@ -165,31 +194,69 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
       }
     }
     return Object.values(usage).filter(v => v.needed > v.stock);
-  }, [selectedItems, selectedClient, products, productClients, submaterials]);
+  }, [selectedItems, selectedClient, products, productClients, submaterials, itemCustomers]);
 
   // 거래처별 박스 설정 조회 — productClients 기반
   const getClientBoxConfigs = (productId: string, clientId?: string): { unitsPerBox: number; boxType: string; boxSubId?: string }[] => {
     if (clientId) {
       const pc = productClients.find(p => p.productId === productId && p.clientId === clientId);
-      if (pc?.boxTypeId) {
-        return [{ unitsPerBox: pc.qtyPerBox ?? 0, boxType: pc.boxTypeId, boxSubId: pc.boxTypeId }];
+      if (pc?.qtyPerBox) {
+        return [{ unitsPerBox: pc.qtyPerBox, boxType: pc.boxTypeId ?? '', boxSubId: pc.boxTypeId }];
       }
     }
-    // 폴백: 기존 defaultBoxConfig
     const p = products.find(pr => pr.id === productId);
     if (p?.defaultBoxConfig?.unitsPerBox) return [p.defaultBoxConfig];
     return [];
+  };
+
+  // 통합 품목(isRawMaterial)의 거래처별 포장 규격 목록
+  const getItemCustomerConfigs = (productId: string, clientId?: string) => {
+    if (!clientId) return [];
+    return itemCustomers.filter(ic => ic.item_id === productId && ic.customer_id === clientId);
   };
 
   const toggleProduct = (productId: string) => {
     setSelectedItems(prev => {
       const exists = prev.find(i => i.productId === productId);
       if (exists) return prev.filter(i => i.productId !== productId);
-      const configs = getClientBoxConfigs(productId, selectedClient?.id);
+
       const product = products.find(p => p.id === productId);
       const isHyangmiyu = product?.category === '향미유';
+
+      // 통합 품목이면 item_customer 우선 참조
+      if (product?.isRawMaterial && selectedClient) {
+        const ics = getItemCustomerConfigs(productId, selectedClient.id);
+        if (ics.length === 1) {
+          // 규격 1개 → 자동 세팅
+          const ic = ics[0];
+          return [...prev, {
+            productId, quantity: 1,
+            isBoxUnit: ic.qty_per_box > 1,
+            unitsPerBox: ic.qty_per_box,
+            boxType: ic.box_type_id ?? '',
+            boxSubId: ic.box_type_id || undefined,
+            displaySize: ic.displaySize,
+          }];
+        }
+        if (ics.length > 1) {
+          // 규격 여러 개 → 첫 번째로 초기화 (UI에서 선택 가능)
+          const ic = ics[0];
+          return [...prev, {
+            productId, quantity: 1,
+            isBoxUnit: ic.qty_per_box > 1,
+            unitsPerBox: ic.qty_per_box,
+            boxType: ic.box_type_id ?? '',
+            boxSubId: ic.box_type_id || undefined,
+            displaySize: ic.displaySize,
+          }];
+        }
+      }
+
+      // 기존 로직 (일반 품목)
+      const configs = getClientBoxConfigs(productId, selectedClient?.id);
       const first = configs[0] ?? { unitsPerBox: isHyangmiyu ? 12 : 0, boxType: '', boxSubId: undefined };
-      return [...prev, { productId, quantity: 1, isBoxUnit: false, unitsPerBox: first.unitsPerBox, boxType: first.boxType, boxSubId: first.boxSubId }];
+      const defaultBoxUnit = first.unitsPerBox > 0;
+      return [...prev, { productId, quantity: 1, isBoxUnit: defaultBoxUnit, unitsPerBox: first.unitsPerBox, boxType: first.boxType, boxSubId: first.boxSubId }];
     });
   };
 
@@ -221,6 +288,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
     const availableConfigs = getClientBoxConfigs(product.id, selectedClient?.id);
     const isHyangmiyu = product.category === '향미유';
     const isBoxMode = selection.isBoxUnit && uPerBox > 0;
+    const icConfigs = getItemCustomerConfigs(product.id, selectedClient?.id);
     return (
       <div
         className={`flex flex-col gap-1.5 p-1.5 rounded-xl border transition-colors ${
@@ -228,15 +296,49 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
         }`}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* 통합 품목 규격 선택 (isRawMaterial + 여러 포장 규격) */}
+        {icConfigs.length > 1 && (
+          <div className="flex flex-wrap gap-1">
+            {icConfigs.map(ic => (
+              <button
+                key={ic.id}
+                type="button"
+                onClick={() => updateItem(product.id, {
+                  displaySize: ic.displaySize,
+                  unitsPerBox: ic.qty_per_box,
+                  isBoxUnit: ic.qty_per_box > 1,
+                  boxType: ic.box_type_id ?? '',
+                  boxSubId: ic.box_type_id || undefined,
+                })}
+                className={`text-[10px] font-black px-2.5 py-1 rounded-lg border transition-all ${
+                  selection.displaySize === ic.displaySize
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-white text-slate-500 border-slate-200 hover:border-emerald-300'
+                }`}
+              >
+                {ic.displaySize} {ic.packageType}
+              </button>
+            ))}
+          </div>
+        )}
+        {/* 자동 선택된 규격 표시 (1개만 있을 때) */}
+        {icConfigs.length === 1 && selection.displaySize && (
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg">
+              {selection.displaySize} {icConfigs[0].packageType}
+            </span>
+          </div>
+        )}
+
         {/* 박스 모드 배지 */}
-        {isHyangmiyu && (
+        {(uPerBox > 0 || isHyangmiyu) && (
           <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={() => {
                 const qty = typeof selection.quantity === 'number' && selection.quantity > 0 ? selection.quantity : 1;
                 if (selection.isBoxUnit) {
-                  updateItem(product.id, { isBoxUnit: false, quantity: 1 });
+                  updateItem(product.id, { isBoxUnit: false, quantity: qty * (uPerBox || 12) });
                 } else {
                   updateItem(product.id, { isBoxUnit: true, quantity: Math.ceil(qty / (uPerBox || 12)) });
                 }
@@ -327,6 +429,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
         quantity: actualQty,
         price: product.price || 0,
         ...(item.isBoxUnit && uPerBox > 0 ? { isBoxUnit: true, boxQuantity: item.quantity, unitsPerBox: uPerBox, boxType: item.boxType, ...(item.boxSubId ? { boxSubId: item.boxSubId } : {}) } : {}),
+        ...(item.displaySize ? { displaySize: item.displaySize } : {}),
       }];
     });
 

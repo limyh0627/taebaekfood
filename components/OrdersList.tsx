@@ -257,7 +257,7 @@ export const OrderCard = memo<OrderCardProps>(({
     >
       <div className={`flex justify-between items-start ${isCollapsed ? 'mb-1.5' : 'mb-3'}`}>
         <div className="flex-1 min-w-0 flex items-center gap-1.5">
-          <h4 className="font-bold text-slate-800 leading-tight truncate text-sm">{displayName}</h4>
+          <h4 className="font-bold text-slate-800 leading-tight text-sm break-words">{displayName}</h4>
           {nonHyangmiyuItems.length > 0 && (
             <button
               type="button"
@@ -341,9 +341,9 @@ export const OrderCard = memo<OrderCardProps>(({
                 onUpdateItems?.(order.id, newItems);
               };
               return (
-                <div key={idx} className="flex flex-col gap-0.5 text-[10px] font-bold border-b border-slate-50 pb-1.5 last:border-0">
+                <div key={idx} className="flex flex-col gap-1 text-[10px] font-bold border-b border-slate-50 pb-2 last:border-0">
+                  <span className="text-slate-800 text-[11px] leading-snug break-words">{item.name}</span>
                   <div className="flex items-center gap-1.5">
-                    <span className="truncate text-slate-700 flex-1">{item.name}</span>
                     {/* 향미유·고춧가루: 낱개/박스 토글 */}
                     {isOil && (
                       <button
@@ -364,7 +364,7 @@ export const OrderCard = memo<OrderCardProps>(({
                       <input type="number" value={item.quantity} onChange={(e) => handleDirectQtyChange(idx, e.target.value)}
                         className="w-10 text-center bg-slate-50 border border-indigo-200 rounded outline-none font-bold py-0.5 shrink-0" />
                     )}
-                    <button onClick={() => handleRemoveItem(idx)} className="p-1 text-rose-400 hover:bg-rose-50 rounded shrink-0"><Trash2 size={10} /></button>
+                    <button onClick={() => handleRemoveItem(idx)} className="ml-auto p-1 text-rose-400 hover:bg-rose-50 rounded shrink-0"><Trash2 size={10} /></button>
                   </div>
                   {!isOil && (
                     <input type="date" value={item.mfgDate || ''} onChange={(e) => handleExpirationDateChange(idx, e.target.value)}
@@ -404,7 +404,7 @@ export const OrderCard = memo<OrderCardProps>(({
                     <div className={`mr-1.5 shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`} onClick={(e) => { e.stopPropagation(); onToggleItemChecked?.(order.id, idx, currentUserName); }} style={{cursor:'pointer'}}>
                       {isItemChecked ? <CheckSquare size={14} /> : <Square size={14} />}
                     </div>
-                    <span className={`truncate ${isItemChecked ? 'text-emerald-800 line-through opacity-50' : 'text-slate-700'}`}>{abbrev(item.name)}</span>
+                    <span className={`break-words min-w-0 ${isItemChecked ? 'text-emerald-800 line-through opacity-50' : 'text-slate-700'}`}>{abbrev(item.name)}</span>
                     <span className={`ml-1.5 px-1 py-0.5 rounded text-[8px] font-black shrink-0 ${isItemChecked ? 'text-emerald-700 bg-emerald-100' : 'text-indigo-600 bg-indigo-50'}`}>
                       {item.isBoxUnit && item.boxQuantity
                         ? item.unitsPerBox
@@ -706,7 +706,7 @@ const OrderSourceGroup = memo<OrderSourceGroupProps>(({
         {isCollapsed ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronUp size={14} className="text-slate-400" />}
       </button>
       {!isCollapsed && (
-        <div className={`grid gap-3 items-start ${gridCols === 3 ? 'grid-cols-3' : gridCols === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+        <div className={`grid gap-3 items-start ${gridCols === 3 ? 'grid-cols-1 sm:grid-cols-3' : gridCols === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
           {orders.map(order => <OrderCard key={order.id} order={order} {...cardProps} gridCols={gridCols} />)}
         </div>
       )}
@@ -751,7 +751,7 @@ const DeliveryRow = memo<DeliveryRowProps>(({ order, clientName, products, onTog
         </button>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={`text-sm font-bold truncate ${order.invoicePrinted ? 'line-through text-slate-400' : 'text-slate-800'}`}>{clientName}</span>
+            <span className={`text-sm font-bold ${order.invoicePrinted ? 'line-through text-slate-400' : 'text-slate-800'}`}>{clientName}</span>
             <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${STATUS_COLOR[order.status] || 'bg-slate-100 text-slate-500'}`}>
               {STATUS_LABEL[order.status] || order.status}
             </span>

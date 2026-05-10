@@ -76,16 +76,18 @@ import ItemPriceManager from '../../../components/ItemPriceManager';
 import TradeStatement from '../../../components/TradeStatement';
 import TaxStatement from '../../../components/TaxStatement';
 import OfficeTalk from '../../../components/OfficeTalk';
-import ProfitAnalysis from '../../../components/ProfitAnalysis';
-import ProductionManager from '../../../components/ProductionManager';
 import AdminChecklist from '../../../components/AdminChecklist';
-import InboundManager from '../../../components/InboundManager';
-import InboundScan from '../../../components/InboundScan';
-import QrLabelPrint from '../../../components/QrLabelPrint';
-import SmartStoreAnalytics from '../../../components/SmartStoreAnalytics';
-import HaccpChecklist from '../../../components/HaccpChecklist';
-import ReturnManager from '../../../components/ReturnManager';
-import ExcelJS from 'exceljs';
+import type * as ExcelJSType from 'exceljs';
+
+const InboundScan = React.lazy(() => import('../../../components/InboundScan'));
+const QrLabelPrint = React.lazy(() => import('../../../components/QrLabelPrint'));
+const SmartStoreAnalytics = React.lazy(() => import('../../../components/SmartStoreAnalytics'));
+const HaccpChecklist = React.lazy(() => import('../../../components/HaccpChecklist'));
+const ReturnManager = React.lazy(() => import('../../../components/ReturnManager'));
+const ReceivingReturnsManager = React.lazy(() => import('../../../components/ReceivingReturnsManager'));
+const ProductionManager = React.lazy(() => import('../../../components/ProductionManager'));
+const TradeStatement = React.lazy(() => import('../../../components/TradeStatement'));
+const ProfitAnalysis = React.lazy(() => import('../../../components/ProfitAnalysis'));
 
 import { db } from '../../shared/firebase';
 import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg } from '../../constants/formula';
@@ -915,8 +917,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     <NavItem icon={Truck} label="배송 관리" active={currentView === 'shipping'} onClick={() => handleNavClick('shipping')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={ShoppingCart} label="주문 관리" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={lowStockCount > 0 ? lowStockCount : undefined} />
-                    <NavItem icon={ScanLine} label="입고 스캔" active={currentView === 'inbound-scan'} onClick={() => handleNavClick('inbound-scan')} collapsed={isSidebarCollapsed} />
-                    <NavItem icon={RotateCcw} label="반품 관리" active={currentView === 'return-management'} onClick={() => handleNavClick('return-management')} collapsed={isSidebarCollapsed} badge={returnRequests.filter(r => r.status === 'pending').length || undefined} />
+                    <NavItem icon={ScanLine} label="입고/반품" active={currentView === 'inbound-returns'} onClick={() => handleNavClick('inbound-returns')} collapsed={isSidebarCollapsed} badge={returnRequests.filter(r => r.status === 'pending').length || undefined} />
                     <NavItem icon={Settings} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={Layers} label="파렛트 관리" active={currentView === 'pallets'} onClick={() => handleNavClick('pallets')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={CalendarCheck} label="연차 신청" active={currentView === 'leave-portal'} onClick={() => handleNavClick('leave-portal')} collapsed={isSidebarCollapsed} />
@@ -973,6 +974,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 'inbound-scan': '입고 스캔', 'client-portal': '거래처 포털',
                 'officetalk': '오피스톡', 'smartstore-analytics': '스마트스토어 분석',
                 'haccp-checklist': 'HACCP 체크리스트', 'return-management': '반품 관리',
+                'inbound-returns': '입고 / 반품',
               } as Record<string, string>)[currentView]) ?? ''}
             </p>
           </div>
@@ -1230,10 +1232,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
             />
           )}
           {showQrLabel && (
-            <QrLabelPrint
-              submaterials={submaterials}
-              onClose={() => setShowQrLabel(false)}
-            />
+            <React.Suspense fallback={null}>
+              <QrLabelPrint
+                submaterials={submaterials}
+                onClose={() => setShowQrLabel(false)}
+              />
+            </React.Suspense>
           )}
           {currentView === 'partners' && <ClientManager clients={clients} onUpdateClient={(c) => updateItem('partners', c.id, c)} onAddClient={(c) => addItem('partners', c)} onDeleteClient={(id) => deleteItem('partners', id)} />}
           {currentView === 'database' && (
@@ -1346,7 +1350,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               return order.items.flatMap((item, itemIdx) => {
                 const product = allProducts.find(p => p.id === item.productId);
                 if (product && SUB_ONLY_CATS.has(product.category)) return [];
-                return [{ 상호: clientName, 품목: product?.품목 || item.name, 용량: product?.용량 || '', 수량: item.quantity, 소비기한: calcExpiry(item.mfgDate || ''), 제조일자: item.mfgDate || '', orderId: order.id, itemIdx }];
+                return [{ 상호: clientName, 품목: product?.품목 || item.name, 용량: item.displaySize || product?.용량 || '', 수량: item.quantity, 소비기한: calcExpiry(item.mfgDate || ''), 제조일자: item.mfgDate || '', orderId: order.id, itemIdx }];
               });
             });
             const rightRows: RightRow[] = Object.values(
@@ -1509,6 +1513,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 );
                 if (!proceed) return;
               }
+              const ExcelJS = (await import('exceljs')).default;
               const wb = new ExcelJS.Workbook();
               const ws = wb.addWorksheet('생산작업판매일지');
 
@@ -1519,14 +1524,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 { width: 18 }, { width: 16 }, { width: 8 }, { width: 6 }, { width: 18 },
               ];
 
-              const thinBorder: Partial<ExcelJS.Borders> = {
+              const thinBorder: Partial<ExcelJSType.Borders> = {
                 top: { style: 'thin' }, bottom: { style: 'thin' },
                 left: { style: 'thin' }, right: { style: 'thin' },
               };
-              const headerFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
-              const groupFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
+              const headerFill: ExcelJSType.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+              const groupFill: ExcelJSType.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
 
-              const applyHeader = (row: ExcelJS.Row, cols: number[]) => {
+              const applyHeader = (row: ExcelJSType.Row, cols: number[]) => {
                 cols.forEach(c => {
                   const cell = row.getCell(c);
                   cell.font = { bold: true, size: 9 };
@@ -1775,10 +1780,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
                             };
                             const [wy, wm] = productionWorkMonth.split('-').map(Number);
                             const daysInMonth = new Date(wy, wm, 0).getDate();
-                            const thin: Partial<ExcelJS.Borders> = {
+                            const thin: Partial<ExcelJSType.Borders> = {
                               top:{style:'thin'}, bottom:{style:'thin'}, left:{style:'thin'}, right:{style:'thin'}
                             };
-                            const hFill: ExcelJS.Fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFD9E1F2'} };
+                            const hFill: ExcelJSType.Fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFD9E1F2'} };
                             const center = { horizontal: 'center' as const, vertical: 'middle' as const };
                             const left = { horizontal: 'left' as const, vertical: 'middle' as const };
 
@@ -1967,10 +1972,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
                               fitToPage: true, fitToWidth: 1, fitToHeight: 1,
                               margins: { left: 0.5, right: 0.5, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 },
                             };
-                            const thin2: Partial<ExcelJS.Borders> = {
+                            const thin2: Partial<ExcelJSType.Borders> = {
                               top:{style:'thin'}, bottom:{style:'thin'}, left:{style:'thin'}, right:{style:'thin'}
                             };
-                            const hFill2: ExcelJS.Fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFD9E1F2'} };
+                            const hFill2: ExcelJSType.Fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFD9E1F2'} };
                             const center2 = { horizontal: 'center' as const, vertical: 'middle' as const };
                             // 제목 (행1)
                             const titleRow = ws2.addRow([`참기름 원료 수불부  ${xl2Year}년 ${xl2Month}월`, '', '', '', '', '', '', '', '', '']);
@@ -2204,6 +2209,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
                   // 원료수불부 Excel 저장
                   const exportRmExcel = async () => {
+                    const ExcelJS = (await import('exceljs')).default;
                     const wb = new ExcelJS.Workbook();
                     for (const mat of RM_LIST) {
                       const ws = wb.addWorksheet(mat);
@@ -2802,29 +2808,50 @@ const AdminApp: React.FC<AdminAppProps> = ({
             />
           )}
           {currentView === 'haccp-checklist' && (
-            <HaccpChecklist />
+            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+              <HaccpChecklist />
+            </React.Suspense>
           )}
           {currentView === 'return-management' && (
-            <ReturnManager
-              products={allProducts}
-              clients={clients}
-              orders={orders}
-              issuedStatements={issuedStatements}
-              currentUser={{ id: currentUser.id, name: currentUser.name }}
-              isAdmin={isAdmin}
-              onProcessReturn={handleProcessReturn}
-            />
+            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+              <ReturnManager
+                products={allProducts}
+                clients={clients}
+                orders={orders}
+                issuedStatements={issuedStatements}
+                currentUser={{ id: currentUser.id, name: currentUser.name }}
+                isAdmin={isAdmin}
+                onProcessReturn={handleProcessReturn}
+              />
+            </React.Suspense>
+          )}
+          {currentView === 'inbound-returns' && (
+            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+              <ReceivingReturnsManager
+                submaterials={submaterials}
+                products={allProducts}
+                clients={clients}
+                orders={orders}
+                issuedStatements={issuedStatements}
+                currentUser={{ id: currentUser.id, name: currentUser.name }}
+                isAdmin={isAdmin}
+                onUpdateSubmaterial={(id, data) => updateItem('submaterials', id, data)}
+                onProcessReturn={handleProcessReturn}
+              />
+            </React.Suspense>
           )}
           {currentView === 'production' && (
-            <ProductionManager
-              records={productionRecords}
-              products={allProducts}
-              orders={orders}
-              onAdd={(record) => addItem('productionRecords', record)}
-              onDelete={(id) => deleteItem('productionRecords', id)}
-              onUpdate={(id, updates) => updateItem('productionRecords', id, updates)}
-              currentUserName={currentUser?.name}
-            />
+            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+              <ProductionManager
+                records={productionRecords}
+                products={allProducts}
+                orders={orders}
+                onAdd={(record) => addItem('productionRecords', record)}
+                onDelete={(id) => deleteItem('productionRecords', id)}
+                onUpdate={(id, updates) => updateItem('productionRecords', id, updates)}
+                currentUserName={currentUser?.name}
+              />
+            </React.Suspense>
           )}
           {currentView === 'confirmation-items' && (
             <ConfirmationItems
@@ -2926,6 +2953,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 }
                 await batch.commit();
               }}
+              itemCustomers={itemCustomers}
+              onSaveItemCustomer={async (ic) => {
+                const { doc: fDoc, updateDoc: fUpdate } = await import('firebase/firestore');
+                const { db: fireDb } = await import('../../shared/firebase');
+                const { id, ...data } = ic;
+                await fUpdate(fDoc(fireDb, 'item_customer', id), data);
+              }}
             />
           )}
 
@@ -3014,7 +3048,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           correctPassword={companyInfo?.adminPassword || '0000'}
         />
       )}
-      {isAddOrderOpen && <AddOrderModal products={allProducts} clients={clients} productClients={productClients} palletStocks={pallets} submaterials={submaterials} onClose={() => setIsAddOrderOpen(false)} onSave={async (o) => {
+      {isAddOrderOpen && <AddOrderModal products={allProducts} clients={clients} productClients={productClients} itemCustomers={itemCustomers} palletStocks={pallets} submaterials={submaterials} onClose={() => setIsAddOrderOpen(false)} onSave={async (o) => {
         try {
           console.log('[AddOrder] 저장 시작', o);
           const orderId = `ORD-${Date.now()}`;

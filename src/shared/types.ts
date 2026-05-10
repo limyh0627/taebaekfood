@@ -29,6 +29,7 @@ export interface OrderItem {
   unitsPerBox?: number;   // 박스당 낱개 수 (주문 시점 기준)
   boxType?: string;       // 박스 종류 표시명 (예: "2번박스")
   boxSubId?: string;      // 부자재 박스 ID (재고 차감 대상)
+  displaySize?: string;   // 서류 규격란 표기 (통합 품목용, 예: "1kg", "20kg")
 }
 
 export interface OrderPallet {
@@ -170,6 +171,10 @@ export interface Item {
   isSmartStore?: boolean;
   smartStorePrice?: number;
   submaterials?: SubmaterialComponent[];
+  isRawMaterial?: boolean;    // 원료로도 관리되는 품목 (수불부 자동 연동)
+  rawMaterialName?: string;   // 원료 수불부 키 이름 (예: "볶음참깨")
+  variantStocks?: Record<string, number>; // 규격별 재고 { "1kg||labelId": 50, "20kg||": 100 }
+  archived?: boolean;         // 통합 마이그레이션으로 대체된 구 품목
 }
 
 // @deprecated — Item 사용
@@ -470,6 +475,7 @@ export interface ReturnRequest {
   totalAmount: number;
   status: 'pending' | 'processed';
   createdAt: string;
+  createdBy?: string;
   processedAt?: string;
   processedBy?: string;
   linkedStatementId?: string;

@@ -71,6 +71,7 @@ interface ProductListProps {
   isAdmin?: boolean;
   onUpdateSubmaterial?: (id: string, data: Partial<Product>) => void;
   pendingReceipts?: import('../src/shared/types').PendingReceipt[];
+  itemCustomers?: ItemCustomer[];
 }
 
 
@@ -173,6 +174,9 @@ const ProductList: React.FC<ProductListProps> = ({
   const [activeSupplierId, setActiveSupplierId] = useState<string>('전체');
   const [showCategoryFilter, setShowCategoryFilter] = useState(false);
   const [showSupplierFilter, setShowSupplierFilter] = useState(false);
+
+  // 볶음참깨 규격별 재고 편집 상태: { [productId]: { [variantKey]: number } }
+  const [editingVariantStocks, setEditingVariantStocks] = useState<Record<string, Record<string, number>>>({});
 
   // legacy alias used in a few places
   const activeSubCategory = activeCategory !== '전체' ? activeCategory : activeSupplierId;
@@ -284,11 +288,11 @@ const ProductList: React.FC<ProductListProps> = ({
   const filteredProducts = useMemo(() => {
     let result: Product[] = [];
     if (activeTab === 'requests') {
-      result = products.filter(p => orderRequests.some(r => r.id === p.id));
+      result = products.filter(p => !p.archived && orderRequests.some(r => r.id === p.id));
     } else if (activeTab === 'history') {
-      result = products.filter(p => confirmedOrders.some(c => c.id === p.id));
+      result = products.filter(p => !p.archived && confirmedOrders.some(c => c.id === p.id));
     } else {
-      result = products;
+      result = products.filter(p => !p.archived);
     }
     // 탭별 분리 — 최소수량 미만 필터 활성화 시 전체 품목 대상
     if (!zeroStockOnly) {
@@ -411,7 +415,7 @@ const ProductList: React.FC<ProductListProps> = ({
         title="재고 관리"
         subtitle="실시간 재고 현황을 파악하고 부족한 자재를 즉시 발주하세요."
         right={
-          <div className="bg-slate-100 p-1 rounded-2xl flex items-center">
+          <div className="bg-slate-100 p-1 rounded-2xl flex items-center shrink-0">
             {([
               { id: 'finished', label: '완제품', color: 'text-violet-600', icon: <Package size={13}/>, onClick: () => { setTopTab('finished'); setActiveCategory('전체'); setActiveSupplierId('전체'); } },
               { id: 'specialty', label: '상품', color: 'text-orange-500', icon: <Box size={13}/>, onClick: () => { setTopTab('specialty'); setActiveCategory('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
@@ -419,7 +423,7 @@ const ProductList: React.FC<ProductListProps> = ({
               { id: 'rawmaterial', label: '원료재고', color: 'text-emerald-600', icon: <Grape size={13}/>, onClick: () => setTopTab('rawmaterial') },
             ] as const).map(t => (
               <button key={t.id} onClick={t.onClick}
-                className={`px-4 py-2 rounded-xl flex items-center gap-1.5 transition-all text-xs font-black whitespace-nowrap ${topTab === t.id ? `bg-white ${t.color} shadow-sm` : 'text-slate-400 hover:text-slate-600'}`}>
+                className={`px-3 py-2 rounded-xl flex items-center gap-1 transition-all text-xs font-black whitespace-nowrap ${topTab === t.id ? `bg-white ${t.color} shadow-sm` : 'text-slate-400 hover:text-slate-600'}`}>
                 {t.icon}<span>{t.label}</span>
               </button>
             ))}
@@ -805,6 +809,84 @@ const ProductList: React.FC<ProductListProps> = ({
                         </div>
                       </td>
                     </tr>
+                    {/* 볶음참깨 규격별 재고 패널 */}
+                    {isExpanded && product.isRawMaterial && (() => {
+                      const ics = itemCustomers.filter(ic => ic.item_id === product.id);
+                      // 고유 (displaySize, labelId) 조합
+                      const variantMap = new Map<string, { displaySize: string; labelId: string; labelName: string; weightInKg: number }>();
+                      for (const ic of ics) {
+                        const key = `${ic.displaySize}||${ic.labelId ?? ''}`;
+                        if (!variantMap.has(key)) {
+                          const labelName = products.find(p => p.id === ic.labelId)?.name ?? (ic.labelId ? ic.labelId : '무라벨');
+                          variantMap.set(key, { displaySize: ic.displaySize, labelId: ic.labelId ?? '', labelName, weightInKg: ic.weightInKg });
+                        }
+                      }
+                      const variants = Array.from(variantMap.entries()).sort((a, b) => a[1].weightInKg - b[1].weightInKg);
+                      const editing = editingVariantStocks[product.id] ?? {};
+                      const currentStocks = product.variantStocks ?? {};
+                      const totalKg = variants.reduce((sum, [key, v]) => {
+                        const qty = editing[key] !== undefined ? editing[key] : (currentStocks[key] ?? 0);
+                        return sum + qty * v.weightInKg;
+                      }, 0);
+                      const isDirty = variants.some(([key]) => editing[key] !== undefined);
+                      return (
+                        <tr className="bg-emerald-50/40">
+                          <td colSpan={7} className="px-4 py-3">
+                            <div className="flex flex-col gap-3">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-black text-emerald-700 uppercase tracking-wide">규격별 재고</span>
+                                <span className="text-sm font-black text-emerald-800">합계 {totalKg.toFixed(1)} kg</span>
+                              </div>
+                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                {variants.map(([key, v]) => {
+                                  const val = editing[key] !== undefined ? editing[key] : (currentStocks[key] ?? 0);
+                                  return (
+                                    <div key={key} className="flex flex-col gap-1 bg-white rounded-xl border border-emerald-100 px-3 py-2">
+                                      <div className="flex items-center justify-between gap-1">
+                                        <span className="text-[10px] font-black text-emerald-700">{v.displaySize}</span>
+                                        <span className="text-[9px] font-bold text-slate-400 truncate max-w-[70px]">{v.labelName}</span>
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          value={val === 0 && editing[key] === undefined ? '' : val}
+                                          placeholder="0"
+                                          onClick={e => e.stopPropagation()}
+                                          onChange={e => {
+                                            const n = e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value) || 0);
+                                            setEditingVariantStocks(prev => ({ ...prev, [product.id]: { ...(prev[product.id] ?? {}), [key]: n } }));
+                                          }}
+                                          className="w-full text-right text-sm font-black border border-emerald-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-emerald-400 bg-white"
+                                        />
+                                        <span className="text-[10px] text-slate-400 shrink-0">개</span>
+                                      </div>
+                                      <span className="text-[9px] text-slate-400 text-right">{(val * v.weightInKg).toFixed(1)} kg</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              {isDirty && (
+                                <div className="flex justify-end gap-2" onClick={e => e.stopPropagation()}>
+                                  <button
+                                    onClick={() => setEditingVariantStocks(prev => { const n = { ...prev }; delete n[product.id]; return n; })}
+                                    className="text-[11px] font-black px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200 transition-all"
+                                  >취소</button>
+                                  <button
+                                    onClick={async () => {
+                                      const newStocks = { ...currentStocks, ...editing };
+                                      await onUpdateProduct({ ...product, variantStocks: newStocks });
+                                      setEditingVariantStocks(prev => { const n = { ...prev }; delete n[product.id]; return n; });
+                                    }}
+                                    className="text-[11px] font-black px-3 py-1.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition-all shadow-sm"
+                                  >저장</button>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })()}
                     {/* 모바일 펼침 행 */}
                     {isExpanded && (
                       <tr className="sm:hidden bg-slate-50/80">
