@@ -18,6 +18,7 @@ interface ItemManagerProps {
   onUnlinkProduct: (_productId: string, _clientId: string) => void;
   onMergeProducts?: (_keepId: string, _deleteIds: string[]) => Promise<void>;
   onSaveItemCustomer?: (_ic: Partial<PartnerItem> & { id: string }) => Promise<void>;
+  isAdmin?: boolean;
 }
 
 const CATEGORY_MAP: Record<string, string> = {
@@ -31,7 +32,7 @@ const SUB_ORDER: Record<string, number> = { '라벨': 0, '용기': 1, '마개': 
 const sortSubs = (subs: { name: string; category: string }[]) =>
   [...subs].sort((a, b) => (SUB_ORDER[normalizeCategory(a.category)] ?? 9) - (SUB_ORDER[normalizeCategory(b.category)] ?? 9));
 
-const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productClients = [], productSuppliers = [], itemCustomers = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct, onMergeProducts, onSaveItemCustomer }) => {
+const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productClients = [], productSuppliers = [], itemCustomers = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct, onMergeProducts, onSaveItemCustomer, isAdmin = true }) => {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [showNoClient, setShowNoClient] = useState(false);
@@ -258,13 +259,15 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
         >
           ← 거래처 목록
         </button>
-        <button
-          onClick={onAddProduct}
-          className="flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-2 rounded-xl font-black text-xs shadow-md"
-        >
-          <Plus size={14} />
-          신규 등록
-        </button>
+        {isAdmin && (
+          <button
+            onClick={onAddProduct}
+            className="flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-2 rounded-xl font-black text-xs shadow-md"
+          >
+            <Plus size={14} />
+            신규 등록
+          </button>
+        )}
       </div>
 
       <div className="hidden lg:flex items-center justify-between">
@@ -277,7 +280,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {selectedClientId && (
+          {selectedClientId && isAdmin && (
             <button
               onClick={() => { setShowLinkPanel(true); setLinkSearch(''); setLinkCategory('완제품'); }}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-sm shadow-sm transition-all active:scale-95 bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
@@ -286,13 +289,15 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
               품목 연결
             </button>
           )}
-          <button
-            onClick={onAddProduct}
-            className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-black text-sm shadow-md hover:bg-indigo-700 transition-all active:scale-95"
-          >
-            <Plus size={15} />
-            신규 품목 등록
-          </button>
+          {isAdmin && (
+            <button
+              onClick={onAddProduct}
+              className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-black text-sm shadow-md hover:bg-indigo-700 transition-all active:scale-95"
+            >
+              <Plus size={15} />
+              신규 품목 등록
+            </button>
+          )}
         </div>
       </div>
 
@@ -603,13 +608,15 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                 <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${showDuplicates ? 'bg-amber-200 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{duplicateGroups.length}</span>
               )}
             </button>
-            <button
-              onClick={onAddProduct}
-              className="lg:hidden flex items-center gap-2 bg-indigo-600 text-white px-3 py-2 rounded-xl font-black text-xs shadow-md whitespace-nowrap"
-            >
-              <Plus size={14} />
-              신규 등록
-            </button>
+            {isAdmin && (
+              <button
+                onClick={onAddProduct}
+                className="lg:hidden flex items-center gap-2 bg-indigo-600 text-white px-3 py-2 rounded-xl font-black text-xs shadow-md whitespace-nowrap"
+              >
+                <Plus size={14} />
+                신규 등록
+              </button>
+            )}
           </div>
         }
       />

@@ -2956,6 +2956,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'item-management' && (
             <ItemManager
+              isAdmin={isAdmin}
               products={allProducts}
               clients={clients}
               onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
