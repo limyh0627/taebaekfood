@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
-import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X, Copy, ChevronDown, ChevronUp, GitMerge } from 'lucide-react';
-import { Product, InventoryCategory, Client, ProductClient, ProductSupplier } from '../types';
+import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X, Copy, ChevronDown, ChevronUp, GitMerge, Save } from 'lucide-react';
+import { Product, InventoryCategory, Client, ProductClient, ProductSupplier, PartnerItem } from '../types';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 
@@ -10,13 +10,14 @@ interface ItemManagerProps {
   clients: Client[];
   productClients?: ProductClient[];
   productSuppliers?: ProductSupplier[];
+  itemCustomers?: PartnerItem[];
   onEditProduct: (_product: Product) => void;
   onAddProduct: () => void;
   onDeleteProduct: (_id: string, _category: string) => void;
   onLinkProduct: (_productId: string, _clientId: string) => void;
   onUnlinkProduct: (_productId: string, _clientId: string) => void;
   onMergeProducts?: (_keepId: string, _deleteIds: string[]) => Promise<void>;
-  onSaveItemCustomer?: (_ic: Partial<ItemCustomer> & { id: string }) => Promise<void>;
+  onSaveItemCustomer?: (_ic: Partial<PartnerItem> & { id: string }) => Promise<void>;
 }
 
 const CATEGORY_MAP: Record<string, string> = {
@@ -30,7 +31,7 @@ const SUB_ORDER: Record<string, number> = { '라벨': 0, '용기': 1, '마개': 
 const sortSubs = (subs: { name: string; category: string }[]) =>
   [...subs].sort((a, b) => (SUB_ORDER[normalizeCategory(a.category)] ?? 9) - (SUB_ORDER[normalizeCategory(b.category)] ?? 9));
 
-const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productClients = [], productSuppliers = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct, onMergeProducts }) => {
+const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productClients = [], productSuppliers = [], itemCustomers = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct, onMergeProducts, onSaveItemCustomer }) => {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [showNoClient, setShowNoClient] = useState(false);
@@ -51,7 +52,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
   const [selectedKeepId, setSelectedKeepId] = useState<Record<string, string>>({});
   const [selectedMergeIds, setSelectedMergeIds] = useState<Record<string, Set<string>>>({});
   const [expandedPackagingId, setExpandedPackagingId] = useState<string | null>(null);
-  const [editingIc, setEditingIc] = useState<Record<string, Partial<ItemCustomer>>>({});
+  const [editingIc, setEditingIc] = useState<Record<string, Partial<PartnerItem>>>({});
 
   const TYPE_ORDER: Record<string, number> = { '일반': 0, '택배': 1, '스마트스토어': 2 };
   const salesClients = useMemo(() =>
@@ -448,7 +449,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                     ))}
                   </tr>
                   {item.isRawMaterial && expandedPackagingId === item.id && (() => {
-                    const ics = itemCustomers.filter(ic => ic.item_id === item.id && ic.customer_id);
+                    const ics = itemCustomers.filter(ic => (ic.item_id ?? ic.Item_ID) === item.id && (ic.customer_id ?? ic.Partner_ID));
                     const colCount = activeCategory === '완제품' ? 10 : 9;
                     return (
                       <tr>
@@ -472,7 +473,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                                 {ics.length === 0 ? (
                                   <tr><td colSpan={9} className="px-3 py-3 text-center text-slate-400 font-medium">포장 설정 없음</td></tr>
                                 ) : ics.map(ic => {
-                                  const clientName    = clients.find(c => c.id === ic.customer_id)?.name ?? ic.customer_id;
+                                  const icCustomerId = ic.customer_id ?? ic.Partner_ID;
+                                  const clientName    = clients.find(c => c.id === icCustomerId)?.name ?? icCustomerId;
                                   const labelName     = products.find(p => p.id === ic.labelId)?.name;
                                   const containerName = products.find(p => p.id === ic.containerTypeId)?.name;
                                   const tapeName      = products.find(p => p.id === ic.tapeTypeId)?.name;

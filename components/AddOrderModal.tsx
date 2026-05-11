@@ -1,13 +1,13 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, LayoutGrid, Layers } from 'lucide-react';
-import { Product, ProductClient, OrderItem, Order, Client, OrderSource, OrderPallet, PalletStock, ItemCustomer } from '../types';
+import { Product, ProductClient, OrderItem, Order, Client, OrderSource, OrderPallet, PalletStock, PartnerItem } from '../types';
 
 interface AddOrderModalProps {
   products: Product[];
   clients: Client[];
   productClients: ProductClient[];
-  itemCustomers?: ItemCustomer[];
+  itemCustomers?: PartnerItem[];
   palletStocks: PalletStock[];
   submaterials: Product[];
   onClose: () => void;
@@ -99,7 +99,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
         // 스마트스토어 전용 체크된 품목도 스마트스토어 거래처에 표시
         if (selectedClient.type === '스마트스토어' && p.isSmartStore) return true;
         // 통합 품목(isRawMaterial): item_customer 등록 기반으로 표시
-        if (p.isRawMaterial && itemCustomers.some(ic => ic.item_id === p.id && ic.customer_id === selectedClient.id)) return true;
+        if (p.isRawMaterial && itemCustomers.some(ic => (ic.item_id ?? ic.Item_ID) === p.id && (ic.customer_id ?? ic.Partner_ID) === selectedClient.id)) return true;
         return false;
       })
       .sort((a, b) => {
@@ -145,12 +145,12 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
 
       // 통합 품목(isRawMaterial): item_customer 기반으로 박스/테이프 부자재 조회
       if (product.isRawMaterial) {
-        const ic = itemCustomers.find(c => c.item_id === product.id && c.customer_id === selectedClient.id);
+        const ic = itemCustomers.find(c => (c.item_id ?? c.Item_ID) === product.id && (c.customer_id ?? c.Partner_ID) === selectedClient.id);
         if (ic) {
-          const boxSize = ic.qty_per_box || 1;
+          const boxSize = (ic.qty_per_box ?? ic.qtyPerBox) || 1;
           const boxesNeeded = Math.ceil(actualQty / boxSize);
-          if (ic.box_type_id) {
-            const sub = submaterials.find(sm => sm.id === ic.box_type_id);
+          if (ic.boxTypeId) {
+            const sub = submaterials.find(sm => sm.id === ic.boxTypeId);
             if (sub) {
               if (!usage[sub.id]) usage[sub.id] = { name: sub.name, needed: 0, stock: sub.stock };
               usage[sub.id].needed += boxesNeeded;
@@ -212,7 +212,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
   // 통합 품목(isRawMaterial)의 거래처별 포장 규격 목록
   const getItemCustomerConfigs = (productId: string, clientId?: string) => {
     if (!clientId) return [];
-    return itemCustomers.filter(ic => ic.item_id === productId && ic.customer_id === clientId);
+    return itemCustomers.filter(ic => (ic.item_id ?? ic.Item_ID) === productId && (ic.customer_id ?? ic.Partner_ID) === clientId);
   };
 
   const toggleProduct = (productId: string) => {
@@ -226,27 +226,15 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
       // 통합 품목이면 item_customer 우선 참조
       if (product?.isRawMaterial && selectedClient) {
         const ics = getItemCustomerConfigs(productId, selectedClient.id);
-        if (ics.length === 1) {
-          // 규격 1개 → 자동 세팅
+        if (ics.length >= 1) {
           const ic = ics[0];
+          const qpb = ic.qty_per_box ?? ic.qtyPerBox ?? 0;
           return [...prev, {
             productId, quantity: 1,
-            isBoxUnit: ic.qty_per_box > 1,
-            unitsPerBox: ic.qty_per_box,
-            boxType: ic.box_type_id ?? '',
-            boxSubId: ic.box_type_id || undefined,
-            displaySize: ic.displaySize,
-          }];
-        }
-        if (ics.length > 1) {
-          // 규격 여러 개 → 첫 번째로 초기화 (UI에서 선택 가능)
-          const ic = ics[0];
-          return [...prev, {
-            productId, quantity: 1,
-            isBoxUnit: ic.qty_per_box > 1,
-            unitsPerBox: ic.qty_per_box,
-            boxType: ic.box_type_id ?? '',
-            boxSubId: ic.box_type_id || undefined,
+            isBoxUnit: qpb > 1,
+            unitsPerBox: qpb,
+            boxType: ic.boxTypeId ?? '',
+            boxSubId: ic.boxTypeId || undefined,
             displaySize: ic.displaySize,
           }];
         }
@@ -303,13 +291,13 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
               <button
                 key={ic.id}
                 type="button"
-                onClick={() => updateItem(product.id, {
+                onClick={() => { const qpb = ic.qty_per_box ?? ic.qtyPerBox ?? 0; updateItem(product.id, {
                   displaySize: ic.displaySize,
-                  unitsPerBox: ic.qty_per_box,
-                  isBoxUnit: ic.qty_per_box > 1,
-                  boxType: ic.box_type_id ?? '',
-                  boxSubId: ic.box_type_id || undefined,
-                })}
+                  unitsPerBox: qpb,
+                  isBoxUnit: qpb > 1,
+                  boxType: ic.boxTypeId ?? '',
+                  boxSubId: ic.boxTypeId || undefined,
+                }); }}
                 className={`text-[10px] font-black px-2.5 py-1 rounded-lg border transition-all ${
                   selection.displaySize === ic.displaySize
                     ? 'bg-emerald-600 text-white border-emerald-600'

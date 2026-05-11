@@ -53,6 +53,8 @@ import {
   QrCode,
   ShoppingBag,
   RotateCcw,
+  TrendingUp,
+  Activity,
 } from 'lucide-react';
 import { Order, Product, ProductClient, ProductSupplier, ViewType, OrderStatus, Client, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, PaymentRecord } from '../../shared/types';
 import Dashboard from '../../../components/Dashboard';
@@ -73,7 +75,6 @@ import NoticeBoard from '../../../components/NoticeBoard';
 import DatabaseView from '../../../components/DatabaseView';
 import ItemManager from '../../../components/ItemManager';
 import ItemPriceManager from '../../../components/ItemPriceManager';
-import TradeStatement from '../../../components/TradeStatement';
 import TaxStatement from '../../../components/TaxStatement';
 import OfficeTalk from '../../../components/OfficeTalk';
 import AdminChecklist from '../../../components/AdminChecklist';
@@ -149,7 +150,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     noticePosts, chatRooms, chatMessages,
     rawMaterialLedger, sesameInputLedger,
     appNotifications, workOrderItems, issuedStatements,
-    itemBoms, returnRequests, companyInfo, isDataLoading,
+    itemBoms, returnRequests, companyInfo, itemCustomers, isDataLoading,
   } = appData;
 
   const { fixedCosts, productionRecords } = adminData;
@@ -708,7 +709,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   const handleNavClick = (view: ViewType) => {
-    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant', 'cost-management', 'profit-analysis', 'production', 'admin-checklist', 'smartstore-analytics', 'haccp-checklist'];
+    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant', 'cost-management', 'profit-analysis', 'production', 'admin-checklist', 'smartstore-analytics', 'haccp-checklist', 'client-stats', 'cash-flow'];
     if (adminOnlyViews.includes(view) && !isAdminAuthenticated && !isAdmin) {
       setPendingAdminView(view);
       setIsAdminAuthModalOpen(true);
@@ -869,6 +870,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     <nav className="space-y-1">
                       <NavItem icon={LayoutDashboard} label="대시보드" active={currentView === 'dashboard' || currentView === 'ai-consultant'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={BarChart2} label="손익 / 비용 분석" active={currentView === 'profit-analysis' || currentView === 'cost-management'} onClick={() => handleNavClick('profit-analysis')} collapsed={isSidebarCollapsed} />
+                      <NavItem icon={TrendingUp} label="거래처통계" active={currentView === 'client-stats'} onClick={() => handleNavClick('client-stats')} collapsed={isSidebarCollapsed} />
+                      <NavItem icon={Activity} label="현금흐름 분석" active={currentView === 'cash-flow'} onClick={() => handleNavClick('cash-flow')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={Factory} label="생산 실적" active={currentView === 'production'} onClick={() => handleNavClick('production')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={ShoppingBag} label="스마트스토어 분석" active={currentView === 'smartstore-analytics'} onClick={() => handleNavClick('smartstore-analytics')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={ClipboardList} label="HACCP 체크리스트" active={currentView === 'haccp-checklist'} onClick={() => handleNavClick('haccp-checklist')} collapsed={isSidebarCollapsed} />
@@ -924,6 +927,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     <NavItem icon={Users} label="거래처 관리" active={currentView === 'partners'} onClick={() => handleNavClick('partners')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={ShieldCheck} label="확인사항" active={currentView === 'confirmation-items'} onClick={() => handleNavClick('confirmation-items')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={DatabaseIcon} label="데이터베이스" active={currentView === 'database'} onClick={() => handleNavClick('database')} collapsed={isSidebarCollapsed} />
+                    <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={BellRing} label="공지사항" active={currentView === 'notice'} onClick={() => handleNavClick('notice')} collapsed={isSidebarCollapsed} />
                   </nav>
                 </div>
@@ -967,7 +971,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 'orders': '주문 관리', 'shipping': '배송 관리', 'inventory': '재고 관리',
                 'pallets': '파렛트 관리', 'hr': '인사 관리', 'partners': '거래처 관리',
                 'notice': '공지사항', 'documents': '서류 관리', 'trade-statement': '거래명세서', 'tax-statement': '세금계산서',
-                'profit-analysis': '손익 / 비용 분석', 'cost-management': '비용 관리',
+                'profit-analysis': '손익 / 비용 분석', 'cost-management': '비용 관리', 'client-stats': '거래처통계', 'cash-flow': '현금흐름 분석',
                 'production': '생산 실적', 'admin-checklist': '확인사항',
                 'leave-portal': '연차 신청', 'confirmation-items': '확인사항',
                 'database': '데이터베이스', 'item-management': '품목 관리', 'item-price-management': '품목 관리',
@@ -2799,6 +2803,50 @@ const AdminApp: React.FC<AdminAppProps> = ({
               />
             </div>
           )}
+          {currentView === 'client-stats' && (
+            <div className="h-full overflow-y-auto p-6">
+              <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+                <ProfitAnalysis
+                  initialTab="clients"
+                  issuedStatements={issuedStatements}
+                  fixedCosts={fixedCosts}
+                  fixedCostTemplates={appData.fixedCostTemplates}
+                  onAddCost={async (entry) => {
+                    const { note, ...rest } = entry;
+                    await addItem('fixedCosts', { ...rest, ...(note ? { note } : {}), id: `fc-${Date.now()}`, createdAt: new Date().toISOString() });
+                  }}
+                  onDeleteCost={(id) => deleteItem('fixedCosts', id)}
+                  clients={clients}
+                  products={allProducts}
+                  onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
+                  accountGroups={appData.accountGroups}
+                  accountCodes={appData.accountCodes}
+                />
+              </React.Suspense>
+            </div>
+          )}
+          {currentView === 'cash-flow' && (
+            <div className="h-full overflow-y-auto p-6">
+              <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+                <ProfitAnalysis
+                  initialTab="cash-flow"
+                  issuedStatements={issuedStatements}
+                  fixedCosts={fixedCosts}
+                  fixedCostTemplates={appData.fixedCostTemplates}
+                  onAddCost={async (entry) => {
+                    const { note, ...rest } = entry;
+                    await addItem('fixedCosts', { ...rest, ...(note ? { note } : {}), id: `fc-${Date.now()}`, createdAt: new Date().toISOString() });
+                  }}
+                  onDeleteCost={(id) => deleteItem('fixedCosts', id)}
+                  clients={clients}
+                  products={allProducts}
+                  onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
+                  accountGroups={appData.accountGroups}
+                  accountCodes={appData.accountCodes}
+                />
+              </React.Suspense>
+            </div>
+          )}
           {currentView === 'smartstore-analytics' && (
             <SmartStoreAnalytics
               orders={orders}
@@ -2954,11 +3002,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 await batch.commit();
               }}
               itemCustomers={itemCustomers}
-              onSaveItemCustomer={async (ic) => {
+              onSaveItemCustomer={async (ic: Partial<import('../../shared/types').PartnerItem> & { id: string }) => {
                 const { doc: fDoc, updateDoc: fUpdate } = await import('firebase/firestore');
                 const { db: fireDb } = await import('../../shared/firebase');
                 const { id, ...data } = ic;
-                await fUpdate(fDoc(fireDb, 'item_customer', id), data);
+                await fUpdate(fDoc(fireDb, 'partner_item', id), data);
               }}
             />
           )}

@@ -6,6 +6,8 @@
 - PWA (vite-plugin-pwa)
 
 ## 배포
-- `npm run build` 후 `firebase deploy`
-- 호스팅 프로젝트: `taebaekappdb` (taebaekappdb.web.app)
-- Firebase DB: `taebaek-3abe4` (.env 참고)
+- Firebase 프로젝트: `taebaek-3abe4`
+- 직원(staff) 앱: `npm run deploy:staff` → https://taebaek-3abe4.web.app
+- 관리자(admin) 앱: `npm run deploy:admin` → https://taebaek-staff.web.app
+- 전체 배포: `npm run deploy:all`
+- ~~taebaekappdb.web.app 사용 안 함~~

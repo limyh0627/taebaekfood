@@ -70,11 +70,20 @@ export interface PartnerItem {
   boxTypeId?: string;
   qtyPerBox?: number;
   tapeTypeId?: string;
+  // 거래처별 포장 상세 (item_customer 통합)
+  displaySize?: string;
+  packageType?: string;
+  qty_per_box?: number;
+  containerTypeId?: string;
+  labelId?: string;
+  weightInKg?: number;
   // @deprecated backward compat — useAppData에서 자동 주입
   productId?: string;    // = Item_ID
   clientId?: string;     // = Partner_ID (Direction='out')
   supplierId?: string;   // = Partner_ID (Direction='in')
   price?: number;        // = Standard_Price
+  item_id?: string;      // = Item_ID (ItemCustomer backward compat)
+  customer_id?: string;  // = Partner_ID (ItemCustomer backward compat)
 }
 
 // @deprecated — PartnerItem 사용
@@ -175,6 +184,7 @@ export interface Item {
   rawMaterialName?: string;   // 원료 수불부 키 이름 (예: "볶음참깨")
   variantStocks?: Record<string, number>; // 규격별 재고 { "1kg||labelId": 50, "20kg||": 100 }
   archived?: boolean;         // 통합 마이그레이션으로 대체된 구 품목
+  supplierId?: string;        // @deprecated — productSuppliers 사용
 }
 
 // @deprecated — Item 사용
@@ -289,7 +299,7 @@ export interface ChatRoom {
 }
 
 
-export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'clients' | 'partners' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'client-portal' | 'item-management' | 'item-price-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'tax-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'inbound-scan' | 'smartstore-analytics' | 'haccp-checklist' | 'return-management';
+export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'clients' | 'partners' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'client-portal' | 'item-management' | 'item-price-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'tax-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'inbound-scan' | 'smartstore-analytics' | 'haccp-checklist' | 'return-management' | 'inbound-returns' | 'client-stats' | 'cash-flow';
 
 // ── 생산 실적 ──────────────────────────────────────────────────────────────────
 export interface ProductionRecord {

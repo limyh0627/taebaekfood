@@ -20,7 +20,7 @@ import {
   Tag,
   Building2
 } from 'lucide-react';
-import { Product, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, ProductSupplier } from '../types';
+import { Product, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, ProductSupplier, PartnerItem } from '../types';
 import AddProductModal from './AddProductModal';
 import ConfirmModal from './ConfirmModal';
 import InboundManager from './InboundManager';
@@ -71,7 +71,7 @@ interface ProductListProps {
   isAdmin?: boolean;
   onUpdateSubmaterial?: (id: string, data: Partial<Product>) => void;
   pendingReceipts?: import('../src/shared/types').PendingReceipt[];
-  itemCustomers?: ItemCustomer[];
+  itemCustomers?: PartnerItem[];
 }
 
 
@@ -137,6 +137,7 @@ const ProductList: React.FC<ProductListProps> = ({
   onUpdateSubmaterial,
   pendingReceipts = [],
   productSuppliers = [],
+  itemCustomers = [],
 }) => {
   const [isEn, setIsEn] = useState(() => localStorage.getItem('inventoryLang') === 'en');
   const toggleLang = () => setIsEn(prev => {
@@ -811,14 +812,14 @@ const ProductList: React.FC<ProductListProps> = ({
                     </tr>
                     {/* 볶음참깨 규격별 재고 패널 */}
                     {isExpanded && product.isRawMaterial && (() => {
-                      const ics = itemCustomers.filter(ic => ic.item_id === product.id);
+                      const ics = itemCustomers.filter(ic => (ic.item_id ?? ic.Item_ID) === product.id);
                       // 고유 (displaySize, labelId) 조합
                       const variantMap = new Map<string, { displaySize: string; labelId: string; labelName: string; weightInKg: number }>();
                       for (const ic of ics) {
                         const key = `${ic.displaySize}||${ic.labelId ?? ''}`;
                         if (!variantMap.has(key)) {
                           const labelName = products.find(p => p.id === ic.labelId)?.name ?? (ic.labelId ? ic.labelId : '무라벨');
-                          variantMap.set(key, { displaySize: ic.displaySize, labelId: ic.labelId ?? '', labelName, weightInKg: ic.weightInKg });
+                          variantMap.set(key, { displaySize: ic.displaySize ?? '', labelId: ic.labelId ?? '', labelName, weightInKg: ic.weightInKg ?? 0 });
                         }
                       }
                       const variants = Array.from(variantMap.entries()).sort((a, b) => a[1].weightInKg - b[1].weightInKg);

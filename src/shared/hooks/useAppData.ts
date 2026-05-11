@@ -64,6 +64,7 @@ export interface AppData {
   accountGroups: AccountGroup[];
   accountCodes: AccountCode[];
   fixedCostTemplates: FixedCostTemplate[];
+  itemCustomers: PartnerItem[];
   isDataLoading: boolean;
 }
 
@@ -161,6 +162,11 @@ export function useAppData(): AppData {
   const submaterials = useMemo(() => items.filter(i => i.category !== '완제품'), [items]);
   const productClients   = useMemo(() => partnerItems.filter(pi => pi.Direction === 'out'), [partnerItems]);
   const productSuppliers = useMemo(() => partnerItems.filter(pi => pi.Direction === 'in'),  [partnerItems]);
+  // itemCustomers: Direction='out' PartnerItem에 item_id/customer_id 별칭 주입
+  const itemCustomers = useMemo(() =>
+    productClients.map(pc => ({ ...pc, item_id: pc.Item_ID, customer_id: pc.Partner_ID })),
+    [productClients]
+  );
 
   return {
     orders, confirmedOrders, orderRequests,
@@ -173,6 +179,7 @@ export function useAppData(): AppData {
     rawMaterialLedger, sesameInputLedger,
     appNotifications, workOrderItems, issuedStatements,
     pendingReceipts, qrMappings, itemBoms, returnRequests,
-    companyInfo, accountGroups, accountCodes, fixedCostTemplates, isDataLoading,
+    companyInfo, accountGroups, accountCodes, fixedCostTemplates,
+    itemCustomers, isDataLoading,
   };
 }

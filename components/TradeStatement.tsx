@@ -2915,7 +2915,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               const qPrc = parseFloat(quickPrice)||0;
               const qAmt = quickIsTaxExempt ? qQty*qPrc : Math.round(qQty*qPrc/1.1);
               const qTax = quickIsTaxExempt ? 0 : qQty*qPrc-qAmt;
-              const quickResults: typeof searchableRows = quickSearchOpen ? (() => {
+              const quickResults = quickSearchOpen ? (() => {
                 if (!quickName.trim()) return [];
                 const q = quickName.toLowerCase();
                 const clientMatches = searchableRows.filter(r => {

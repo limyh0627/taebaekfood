@@ -107,6 +107,20 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
                     {/* 품목명 */}
                     <td className="px-4 py-3">
                       <div className="font-black text-slate-800 text-sm">{p.name}</div>
+                      {(() => {
+                        const subs = p.submaterials ?? [];
+                        const 용기 = subs.find(s => s.category === '용기')?.name;
+                        const 마개 = subs.find(s => s.category === '마개')?.name;
+                        const 정보 = p.oil || p.용량 || '';
+                        const tags = [용기 && `용기: ${용기}`, 마개 && `마개: ${마개}`, 정보 && `정보: ${정보}`].filter(Boolean);
+                        return tags.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {tags.map((tag, i) => (
+                              <span key={i} className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-400">{tag}</span>
+                            ))}
+                          </div>
+                        ) : null;
+                      })()}
                       {p.sku && <div className="text-[10px] text-slate-300 mt-0.5">{p.sku}</div>}
                     </td>
                     {/* 카테고리 */}

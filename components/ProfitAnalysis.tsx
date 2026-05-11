@@ -9,6 +9,8 @@ import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Client, PaymentReco
 import PageHeader from './PageHeader';
 import CostManager from './CostManager';
 
+type MainTab = 'analysis' | 'costs' | 'clients' | 'inventory-value' | 'account-settings' | 'cash-flow';
+
 interface ProfitAnalysisProps {
   issuedStatements: IssuedStatement[];
   fixedCosts: FixedCostEntry[];
@@ -28,6 +30,7 @@ interface ProfitAnalysisProps {
   onDeleteAccountCode?: (id: string) => void;
   onAddAccountGroup?: (data: Omit<AccountGroup, 'id'>) => Promise<string>;
   onDeleteAccountGroup?: (id: string) => void;
+  initialTab?: MainTab;
 }
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
@@ -42,13 +45,14 @@ const MONTHS = 12;
 const COMPUTED_GROUP_IDS = new Set(['ag-gross-profit', 'ag-op-profit']);
 const SGNA_LEGACY_IDS = new Set(['ag-selling', 'ag-admin']);
 
-const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, fixedCostTemplates = [], onAddCost, onDeleteCost, onAddTemplate, onUpdateTemplate, onDeleteTemplate, clients = [], products = [], onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onDeleteAccountGroup }) => {
+const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, fixedCostTemplates = [], onAddCost, onDeleteCost, onAddTemplate, onUpdateTemplate, onDeleteTemplate, clients = [], products = [], onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onDeleteAccountGroup, initialTab }) => {
   // 계산결과 그룹 숨김 + 구 판매비/관리비 → 판관비로 통합 표시
   const accountGroups = rawAccountGroups
     .filter(g => !COMPUTED_GROUP_IDS.has(g.id))
     .map(g => SGNA_LEGACY_IDS.has(g.id) ? { ...g, id: 'ag-sgna', name: '판관비' } : g)
     .filter((g, idx, arr) => arr.findIndex(x => x.id === g.id) === idx);
-  const [mainTab, setMainTab] = useState<'analysis' | 'costs' | 'clients' | 'inventory-value' | 'account-settings'>('analysis');
+  const [mainTab, setMainTab] = useState<MainTab>(initialTab ?? 'analysis');
+  const isStandalone = initialTab === 'clients' || initialTab === 'cash-flow';
   const [period, setPeriod] = useState<'3M' | '6M' | '1Y' | 'custom'>('1Y');
   const [selectedQuarter, setSelectedQuarter] = useState<1|2|3|4>(() => Math.ceil((new Date().getMonth() + 1) / 3) as 1|2|3|4);
   const [selectedHalf, setSelectedHalf] = useState<1|2>(() => new Date().getMonth() < 6 ? 1 : 2);
@@ -266,46 +270,35 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
 
   return (
     <div className="space-y-4 animate-in fade-in duration-300">
-      <PageHeader
-        title="손익 / 비용 관리"
-        subtitle="매출 · 매입 · 고정비 기반 영업이익을 분석하고 비용을 관리합니다."
-      />
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
-          <button onClick={() => setMainTab('analysis')}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'analysis' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-            <BarChart2 size={13}/>손익분석
-          </button>
-          <button onClick={() => setMainTab('costs')}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'costs' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-            <DollarSign size={13}/>고정비 입력
-          </button>
-          <button onClick={() => setMainTab('clients')}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'clients' ? 'bg-white text-rose-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-            <Users size={13}/>거래처통계
-          </button>
-          <button onClick={() => setMainTab('inventory-value')}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'inventory-value' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-            <Package size={13}/>재고액
-          </button>
-          <button onClick={() => setMainTab('account-settings')}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'account-settings' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-            <Wallet size={13}/>계정설정
-          </button>
-        </div>
-      </div>
-
-      {mainTab === 'costs' && (
-        <CostManager
-          fixedCosts={fixedCosts}
-          fixedCostTemplates={fixedCostTemplates}
-          issuedStatements={issuedStatements}
-          onAdd={onAddCost}
-          onDelete={onDeleteCost}
-          onAddTemplate={onAddTemplate}
-          onUpdateTemplate={onUpdateTemplate}
-          onDeleteTemplate={onDeleteTemplate}
-        />
+      {!isStandalone && (
+        <>
+          <PageHeader
+            title="손익 / 비용 관리"
+            subtitle="매출 · 매입 · 고정비 기반 영업이익을 분석하고 비용을 관리합니다."
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+              <button onClick={() => setMainTab('analysis')}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'analysis' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                <BarChart2 size={13}/>손익분석
+              </button>
+              <button onClick={() => setMainTab('inventory-value')}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'inventory-value' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                <Package size={13}/>재고액
+              </button>
+              <button onClick={() => setMainTab('account-settings')}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'account-settings' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                <Wallet size={13}/>계정설정
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+      {isStandalone && mainTab === 'clients' && (
+        <PageHeader title="거래처 현황" subtitle="거래처별 매출 통계, 미수금 · 미지급금 조회" />
+      )}
+      {isStandalone && mainTab === 'cash-flow' && (
+        <PageHeader title="현금흐름 분석" subtitle="실제 수금 · 지출 기반 현금흐름을 분석합니다." />
       )}
 
       {mainTab === 'analysis' && <>
@@ -616,7 +609,138 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         </div>
       </div>
 
+      {/* ── 계정 설정 바로가기 ── */}
+      <div className="flex justify-end">
+        <button
+          onClick={() => setMainTab('account-settings')}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-black transition-all border border-amber-200"
+        >
+          <Wallet size={13}/>계정 설정 열기
+        </button>
+      </div>
+
       </>}
+
+      {/* ── 현금흐름 분석 ── */}
+      {mainTab === 'cash-flow' && (() => {
+        const cashYear = selectedYear;
+        const allMonths = Array.from({ length: 12 }, (_, i) => {
+          const ym = `${cashYear}-${String(i + 1).padStart(2, '0')}`;
+          const cashIn = issuedStatements
+            .filter(s => s.type === '매출')
+            .flatMap(s => (s.payments ?? []))
+            .filter(p => p.date.startsWith(ym))
+            .reduce((a, p) => a + p.amount, 0);
+          const paymentOut = issuedStatements
+            .filter(s => s.type === '매입')
+            .flatMap(s => (s.payments ?? []))
+            .filter(p => p.date.startsWith(ym))
+            .reduce((a, p) => a + p.amount, 0);
+          const fixedOut = fixedCosts.filter(c => c.yearMonth === ym).reduce((a, c) => a + c.amount, 0);
+          const templateOut = fixedCostTemplates.filter(t => t.active).reduce((a, t) => a + t.amount, 0);
+          return { label: `${i + 1}월`, ym, cashIn, cashOut: paymentOut + fixedOut + templateOut };
+        });
+        let running = 0;
+        const rows = allMonths.map(m => {
+          const net = m.cashIn - m.cashOut;
+          running += net;
+          return { ...m, net, cumulative: running };
+        });
+        const totalIn = rows.reduce((a, r) => a + r.cashIn, 0);
+        const totalOut = rows.reduce((a, r) => a + r.cashOut, 0);
+        const netTotal = totalIn - totalOut;
+        const maxBar = Math.max(...rows.map(r => Math.max(r.cashIn, r.cashOut)), 1);
+
+        return (
+          <div className="space-y-4">
+            {/* 연도 선택 */}
+            <div className="flex items-center gap-2">
+              <button onClick={() => setSelectedYear(y => y - 1)} className="p-1.5 hover:bg-slate-100 rounded-lg"><ChevronLeft size={16}/></button>
+              <span className="text-sm font-black text-slate-800 min-w-[52px] text-center">{cashYear}년</span>
+              <button onClick={() => setSelectedYear(y => y + 1)} disabled={cashYear >= now.getFullYear()} className="p-1.5 hover:bg-slate-100 rounded-lg disabled:opacity-30"><ChevronRight size={16}/></button>
+            </div>
+
+            {/* KPI 카드 */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-emerald-50 border border-emerald-100 rounded-2xl px-5 py-4">
+                <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">총 수금</p>
+                <p className="text-xl font-black text-emerald-700 mt-1">{fmtM(totalIn)}</p>
+                <p className="text-[10px] text-emerald-400 mt-0.5">{fmt(totalIn)}원</p>
+              </div>
+              <div className="bg-rose-50 border border-rose-100 rounded-2xl px-5 py-4">
+                <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest">총 지출</p>
+                <p className="text-xl font-black text-rose-700 mt-1">{fmtM(totalOut)}</p>
+                <p className="text-[10px] text-rose-400 mt-0.5">{fmt(totalOut)}원</p>
+              </div>
+              <div className={`border rounded-2xl px-5 py-4 ${netTotal >= 0 ? 'bg-blue-50 border-blue-100' : 'bg-amber-50 border-amber-100'}`}>
+                <p className={`text-[10px] font-black uppercase tracking-widest ${netTotal >= 0 ? 'text-blue-500' : 'text-amber-500'}`}>순현금흐름</p>
+                <p className={`text-xl font-black mt-1 ${netTotal >= 0 ? 'text-blue-700' : 'text-amber-700'}`}>{fmtM(netTotal)}</p>
+                <p className={`text-[10px] mt-0.5 ${netTotal >= 0 ? 'text-blue-400' : 'text-amber-400'}`}>{fmt(netTotal)}원</p>
+              </div>
+            </div>
+
+            {/* 월별 차트 */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-5">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">월별 현금흐름</p>
+              <div className="flex items-end gap-1.5 h-32">
+                {rows.map(r => (
+                  <div key={r.ym} className="flex-1 flex flex-col items-center gap-0.5 group relative">
+                    <div className="absolute bottom-full mb-2 bg-slate-800 text-white text-[9px] font-black px-2 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-10 left-1/2 -translate-x-1/2 text-center space-y-0.5">
+                      <div>수금 {fmtM(r.cashIn)}</div>
+                      <div>지출 {fmtM(r.cashOut)}</div>
+                      <div className={r.net >= 0 ? 'text-emerald-400' : 'text-rose-400'}>순 {fmtM(r.net)}</div>
+                    </div>
+                    <div className="w-full flex gap-0.5">
+                      <div className="flex-1 bg-emerald-400 rounded-t-sm" style={{ height: `${Math.round((r.cashIn / maxBar) * 112)}px`, minHeight: r.cashIn > 0 ? 2 : 0 }}/>
+                      <div className="flex-1 bg-rose-400 rounded-t-sm" style={{ height: `${Math.round((r.cashOut / maxBar) * 112)}px`, minHeight: r.cashOut > 0 ? 2 : 0 }}/>
+                    </div>
+                    <span className="text-[8px] font-bold text-slate-400">{r.label}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-4 mt-3">
+                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-emerald-400"/><span className="text-[10px] text-slate-500">수금</span></div>
+                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-rose-400"/><span className="text-[10px] text-slate-500">지출</span></div>
+              </div>
+            </div>
+
+            {/* 월별 상세 테이블 */}
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      {['월', '수금', '지출', '순현금흐름', '누적'].map((h, i) => (
+                        <th key={h} className={`px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest ${i === 0 ? '' : 'text-right'}`}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {rows.map(r => (
+                      <tr key={r.ym} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3 text-xs font-bold text-slate-700">{r.label}</td>
+                        <td className="px-4 py-3 text-xs text-right font-bold text-emerald-700">{r.cashIn > 0 ? fmt(r.cashIn) : '-'}</td>
+                        <td className="px-4 py-3 text-xs text-right font-bold text-rose-700">{r.cashOut > 0 ? fmt(r.cashOut) : '-'}</td>
+                        <td className={`px-4 py-3 text-xs text-right font-black ${r.net >= 0 ? 'text-blue-700' : 'text-amber-700'}`}>{r.net !== 0 ? fmt(r.net) : '-'}</td>
+                        <td className={`px-4 py-3 text-xs text-right font-black ${r.cumulative >= 0 ? 'text-slate-700' : 'text-rose-700'}`}>{fmt(r.cumulative)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-slate-100 border-t-2 border-slate-200">
+                    <tr>
+                      <td className="px-4 py-3 text-xs font-black text-slate-700">합계</td>
+                      <td className="px-4 py-3 text-xs text-right font-black text-emerald-700">{fmt(totalIn)}</td>
+                      <td className="px-4 py-3 text-xs text-right font-black text-rose-700">{fmt(totalOut)}</td>
+                      <td className={`px-4 py-3 text-xs text-right font-black ${netTotal >= 0 ? 'text-blue-700' : 'text-amber-700'}`}>{fmt(netTotal)}</td>
+                      <td className="px-4 py-3 text-xs text-right font-black text-slate-500">-</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── 거래처 통계 탭 (미수금 + 미지급금 + 통계 통합) ── */}
       {mainTab === 'clients' && (() => {
@@ -1102,6 +1226,17 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
       {/* ── 계정설정 탭 ── */}
       {mainTab === 'account-settings' && (
           <div className="space-y-6">
+            {/* 고정비 입력 */}
+            <CostManager
+              fixedCosts={fixedCosts}
+              fixedCostTemplates={fixedCostTemplates}
+              issuedStatements={issuedStatements}
+              onAdd={onAddCost}
+              onDelete={onDeleteCost}
+              onAddTemplate={onAddTemplate}
+              onUpdateTemplate={onUpdateTemplate}
+              onDeleteTemplate={onDeleteTemplate}
+            />
             {/* 계정그룹별 코드 목록 */}
             <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
               <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">

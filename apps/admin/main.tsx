@@ -1,4 +1,14 @@
 import React, { useState, Component, ErrorInfo, ReactNode } from 'react';
+
+// 청크 로드 실패(배포 후 구버전 캐시) 시 자동 새로고침
+window.addEventListener('vite:preloadError', () => { window.location.reload(); });
+window.__chunkErrorHandled = false;
+window.addEventListener('unhandledrejection', (e) => {
+  if (!window.__chunkErrorHandled && e.reason?.message?.includes('dynamically imported module')) {
+    window.__chunkErrorHandled = true;
+    window.location.reload();
+  }
+});
 import ReactDOM from 'react-dom/client';
 import { Employee, ViewType } from '../../src/shared/types';
 import { useAppData } from '../../src/shared/hooks/useAppData';

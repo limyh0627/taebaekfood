@@ -131,6 +131,78 @@ const DatabaseView: React.FC<DatabaseViewProps> = ({ onSync }) => {
     }
   };
 
+  // ── item_customer → partner_item 포장설정 마이그레이션 ──────────────────
+  const [icMigStatus, setIcMigStatus] = useState<'idle'|'running'|'done'|'error'>('idle');
+  const [icMigLog, setIcMigLog] = useState<string[]>([]);
+
+  const migrateItemCustomerToPartnerItem = async () => {
+    if (icMigStatus === 'running') return;
+    setIcMigStatus('running');
+    setIcMigLog(['시작...']);
+    const log = (msg: string) => setIcMigLog(prev => [...prev, msg]);
+
+    try {
+      const { getDocs: gd, collection: col, writeBatch: wb, doc: d, setDoc: sd, getDoc: gdoc } = await import('firebase/firestore');
+
+      // 1. item_customer 전체 읽기
+      const icSnap = await gd(col(db, 'item_customer'));
+      const ics = icSnap.docs.map(dd => ({ id: dd.id, ...dd.data() })) as any[];
+      log(`item_customer: ${ics.length}건`);
+
+      // 2. partner_item 전체 읽기 (Direction='out')
+      const piSnap = await gd(col(db, 'partner_item'));
+      const partnerItems = piSnap.docs.map(dd => ({ id: dd.id, ...dd.data() })) as any[];
+      log(`partner_item: ${partnerItems.length}건`);
+
+      const batch = wb(db);
+      let updated = 0;
+      let created = 0;
+
+      for (const ic of ics) {
+        const itemId = ic.item_id;
+        const customerId = ic.customer_id;
+        if (!itemId || !customerId) { log(`skip: item_id/customer_id 없음 (${ic.id})`); continue; }
+
+        const packFields: Record<string, any> = {};
+        if (ic.qty_per_box !== undefined)    packFields.qty_per_box     = ic.qty_per_box;
+        if (ic.displaySize !== undefined)    packFields.displaySize     = ic.displaySize;
+        if (ic.packageType !== undefined)    packFields.packageType     = ic.packageType;
+        if (ic.containerTypeId !== undefined) packFields.containerTypeId = ic.containerTypeId;
+        if (ic.labelId !== undefined)        packFields.labelId         = ic.labelId;
+        if (ic.tapeTypeId !== undefined)     packFields.tapeTypeId      = ic.tapeTypeId;
+        if (ic.weightInKg !== undefined)     packFields.weightInKg      = ic.weightInKg;
+        if (ic.price !== undefined)          packFields.Standard_Price  = ic.price;
+
+        // 기존 partner_item 찾기
+        const existing = partnerItems.find(
+          (pi: any) => pi.Item_ID === itemId && pi.Partner_ID === customerId && pi.Direction === 'out'
+        );
+
+        if (existing) {
+          batch.update(d(db, 'partner_item', existing.id), packFields);
+          updated++;
+          log(`update: ${itemId} ↔ ${customerId}`);
+        } else {
+          const newId = `${itemId}_${customerId}_out`;
+          batch.set(d(db, 'partner_item', newId), {
+            id: newId, Item_ID: itemId, Partner_ID: customerId, Direction: 'out',
+            item_id: itemId, customer_id: customerId,
+            ...packFields,
+          });
+          created++;
+          log(`create: ${itemId} ↔ ${customerId}`);
+        }
+      }
+
+      await batch.commit();
+      log(`완료 — 업데이트 ${updated}건, 신규 ${created}건`);
+      setIcMigStatus('done');
+    } catch (e: any) {
+      log(`오류: ${e.message}`);
+      setIcMigStatus('error');
+    }
+  };
+
   // ── 볶음참깨 통합: 1단계 백업 ───────────────────────────────────────────
   const downloadBackup = async () => {
     setBackupStatus('running');
@@ -830,6 +902,30 @@ function doPost(e) {
                 </button>
               </div>
             )}
+
+            {/* ── item_customer → partner_item 포장설정 마이그레이션 ── */}
+            <div className="border-t border-slate-100 pt-6">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-sm font-black text-slate-700">포장설정 마이그레이션</p>
+                  <p className="text-xs text-slate-400 mt-0.5">item_customer의 포장 데이터(qty_per_box, displaySize, 용기/라벨/테이프 등)를 partner_item으로 복사합니다.</p>
+                </div>
+                <button
+                  onClick={migrateItemCustomerToPartnerItem}
+                  disabled={icMigStatus === 'running'}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600 text-white text-xs font-black hover:bg-amber-700 disabled:opacity-50 transition-all"
+                >
+                  {icMigStatus === 'running' ? '실행 중...' : '실행'}
+                </button>
+              </div>
+              {icMigLog.length > 0 && (
+                <div className="bg-slate-900 rounded-xl p-3 max-h-40 overflow-y-auto">
+                  {icMigLog.map((line, i) => (
+                    <p key={i} className={`text-[11px] font-mono ${icMigStatus === 'error' && i === icMigLog.length - 1 ? 'text-rose-400' : icMigStatus === 'done' && i === icMigLog.length - 1 ? 'text-emerald-400' : 'text-slate-300'}`}>{line}</p>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         ) : activeTab === 'sync' ? (
           <div className="flex-1 overflow-y-auto custom-scrollbar p-8 space-y-10">
