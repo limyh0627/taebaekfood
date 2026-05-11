@@ -329,6 +329,12 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           <div className="text-[11px] text-slate-400 mt-0.5">매출 · 매입 · 고정비 기반 손익구조 분석</div>
         </div>
         <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+          <button
+            onClick={() => setShowAccountSettings(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-black transition-all border border-amber-200"
+          >
+            <Wallet size={13}/>계정 설정
+          </button>
           {period !== 'custom' && (
             <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))}
               className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer">
@@ -634,16 +640,6 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             </tfoot>
           </table>
         </div>
-      </div>
-
-      {/* ── 계정 설정 바로가기 ── */}
-      <div className="flex justify-end">
-        <button
-          onClick={() => setShowAccountSettings(true)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-black transition-all border border-amber-200"
-        >
-          <Wallet size={13}/>계정 설정 열기
-        </button>
       </div>
 
       </>}
