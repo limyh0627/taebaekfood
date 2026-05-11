@@ -173,6 +173,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     amount: '', date: new Date().toISOString().slice(0, 10), method: '계좌이체', note: '',
   });
 
+  // ── 수금/지불 내역 수정 모달 ──
+  const [editPayInfo, setEditPayInfo] = useState<{ stmt: IssuedStatement; payment: PaymentRecord } | null>(null);
+  const [editPayForm, setEditPayForm] = useState<{ amount: string; date: string; method: PaymentRecord['method']; note: string }>({
+    amount: '', date: '', method: '계좌이체', note: '',
+  });
+
   // ── 빠른 수금/지불 모달 ──
   const [showQuickPay, setShowQuickPay] = useState(false);
   const [quickPayType, setQuickPayType] = useState<'수금' | '지불'>('수금');
@@ -189,7 +195,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   const openPayModal = (stmt: IssuedStatement) => {
     setPayTarget(stmt);
-    setPayForm({ amount: String(getBalance(stmt)), date: new Date().toISOString().slice(0, 10), method: '계좌이체', note: '' });
+    const bal = getBalance(stmt);
+    setPayForm({ amount: bal > 0 ? String(bal) : '', date: new Date().toISOString().slice(0, 10), method: '계좌이체', note: '' });
   };
 
   const savePayment = () => {
@@ -203,6 +210,30 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     };
     onUpdateIssuedStatement?.(payTarget.id, { payments: [...(payTarget.payments ?? []), newPayment] });
     setPayTarget(null);
+  };
+
+  const openEditPay = (stmt: IssuedStatement, payment: PaymentRecord) => {
+    setEditPayInfo({ stmt, payment });
+    setEditPayForm({ amount: String(payment.amount), date: payment.date, method: payment.method ?? '계좌이체', note: payment.note ?? '' });
+  };
+
+  const saveEditPay = () => {
+    if (!editPayInfo || !editPayForm.amount || Number(editPayForm.amount) <= 0) return;
+    const updated = (editPayInfo.stmt.payments ?? []).map(p =>
+      p.id === editPayInfo.payment.id
+        ? { ...p, amount: Number(editPayForm.amount), date: editPayForm.date, method: editPayForm.method, note: editPayForm.note.trim() || undefined }
+        : p
+    );
+    onUpdateIssuedStatement?.(editPayInfo.stmt.id, { payments: updated });
+    setEditPayInfo(null);
+  };
+
+  const deleteEditPay = () => {
+    if (!editPayInfo) return;
+    if (!window.confirm('이 수금/지불 내역을 삭제하시겠습니까?')) return;
+    const updated = (editPayInfo.stmt.payments ?? []).filter(p => p.id !== editPayInfo.payment.id);
+    onUpdateIssuedStatement?.(editPayInfo.stmt.id, { payments: updated });
+    setEditPayInfo(null);
   };
 
   // ── 메인 탭 ──
@@ -1195,7 +1226,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   type StmtRow = { kind: 'stmt'; data: IssuedStatement; cumul: number; dateKey: string };
   type PayRow  = { kind: 'pay';  clientId: string; clientName: string; stmtType: '매출'|'매입';
                    date: string; amount: number; method?: string; note?: string;
-                   paymentId: string; cumul: number; dateKey: string };
+                   paymentId: string; cumul: number; dateKey: string; src: IssuedStatement };
   type TimelineRow = StmtRow | PayRow;
 
   const allTimelineRows = useMemo((): TimelineRow[] => {
@@ -1234,7 +1265,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           running -= e.amount;
           rows.push({ kind: 'pay', clientId: e.src.clientId, clientName: e.src.clientName,
             stmtType: e.src.type, date: e.date, amount: e.amount, method: e.method, note: e.note,
-            paymentId: e.paymentId, cumul: running, dateKey: `${e.date}__${e.tieKey}` });
+            paymentId: e.paymentId, cumul: running, dateKey: `${e.date}__${e.tieKey}`, src: e.src });
         }
       });
     });
@@ -2149,7 +2180,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   const label = row.stmtType === '매출' ? '수금' : '지불';
                   const cumul = row.cumul;
                   return (
-                    <tr key={`pay__${row.paymentId}`} className={row.stmtType === '매출' ? 'bg-lime-50/80 hover:bg-lime-100/70' : 'bg-orange-50/80 hover:bg-orange-100/70'}>
+                    <tr key={`pay__${row.paymentId}`}
+                      className={`cursor-pointer ${row.stmtType === '매출' ? 'bg-lime-50/80 hover:bg-lime-100/70' : 'bg-orange-50/80 hover:bg-orange-100/70'}`}
+                      onClick={() => openEditPay(row.src, { id: row.paymentId, amount: row.amount, date: row.date, method: row.method as PaymentRecord['method'], note: row.note ?? '' })}>
                       <td className="px-4 py-2 text-[11px] font-mono text-slate-500 whitespace-nowrap">{row.date}</td>
                       <td className="px-4 py-2">
                         <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.stmtType === '매출' ? 'bg-lime-100 text-lime-700' : 'bg-orange-100 text-orange-700'}`}>{label}</span>
@@ -2160,14 +2193,16 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                         {cumul === 0
                           ? <span className="font-black text-slate-400">0</span>
                           : cumul < 0
-                            ? <span className="font-black text-emerald-600">선불 {fmt(Math.abs(cumul))}</span>
+                            ? row.stmtType === '매출'
+                              ? <span className="font-black text-rose-600">줄돈 {fmt(Math.abs(cumul))}</span>
+                              : <span className="font-black text-blue-600">받을돈 {fmt(Math.abs(cumul))}</span>
                             : <span className={`font-black ${row.stmtType === '매출' ? 'text-blue-600' : 'text-rose-600'}`}>{fmt(cumul)}</span>
                         }
                       </td>
                       <td className="px-4 py-2 text-[11px] text-slate-400 max-w-[180px] truncate">
                         {[row.method, row.note].filter(Boolean).join(' · ')}
                       </td>
-                      <td className="px-4 py-2"/>
+                      <td className="px-4 py-2 text-[10px] text-slate-300 text-center">수정</td>
                     </tr>
                   );
                 }
@@ -2196,7 +2231,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       {cumul === 0
                         ? <span className="font-black text-slate-400">0</span>
                         : cumul < 0
-                          ? <span className="font-black text-emerald-600">선불 {fmt(Math.abs(cumul))}</span>
+                          ? stmt.type === '매출'
+                            ? <span className="font-black text-rose-600">줄돈 {fmt(Math.abs(cumul))}</span>
+                            : <span className="font-black text-blue-600">받을돈 {fmt(Math.abs(cumul))}</span>
                           : <span className={`font-black ${stmt.type === '매출' ? 'text-blue-600' : 'text-rose-600'}`}>{fmt(cumul)}</span>
                       }
                     </td>
@@ -2230,12 +2267,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4"
             onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-black text-slate-800">
-              {payTarget.type === '매입' ? '지불처리 — 미지급금 감소' : '수불처리 — 미수금 감소'}
+              {payTarget.type === '매입' ? '지불 처리' : '수금 처리'}
             </h3>
             <div className="text-xs text-slate-400">{payTarget.clientName} · {payTarget.tradeDate}</div>
             <div className="bg-slate-50 rounded-xl px-4 py-3 text-xs text-center">
-              <span className="text-slate-500">잔여 {payTarget.type === '매입' ? '미지급금' : '미수금'} </span>
-              <span className="font-black text-rose-600 text-base">{fmt(getBalance(payTarget))}원</span>
+              <span className="text-slate-500">현재 잔액 </span>
+              <span className={`font-black text-base ${getBalance(payTarget) < 0 ? (payTarget.type === '매출' ? 'text-rose-600' : 'text-blue-600') : 'text-slate-800'}`}>
+                {getBalance(payTarget) < 0
+                  ? `${payTarget.type === '매출' ? '줄돈' : '받을돈'} ${fmt(Math.abs(getBalance(payTarget)))}원`
+                  : `${fmt(getBalance(payTarget))}원`}
+              </span>
+              <p className="text-[10px] text-slate-400 mt-1">잔액 초과 금액 입력 시 {payTarget.type === '매출' ? '줄돈(빨간색)' : '받을돈(파란색)'}으로 표시됩니다</p>
             </div>
             <div className="space-y-3">
               <div>
@@ -2273,6 +2315,69 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
               <button onClick={savePayment}
                 disabled={!payForm.amount || Number(payForm.amount) <= 0}
+                className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center gap-1.5">
+                <Save size={12}/>저장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 수금/지불 내역 수정 모달 ── */}
+      {editPayInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+          onClick={() => setEditPayInfo(null)}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-black text-slate-800">
+                {editPayInfo.stmt.type === '매입' ? '지불' : '수금'} 내역 수정
+              </h3>
+              <button onClick={() => setEditPayInfo(null)} className="p-1 text-slate-400 hover:bg-slate-100 rounded-lg">
+                <X size={16}/>
+              </button>
+            </div>
+            <div className="text-xs text-slate-400">{editPayInfo.stmt.clientName} · {editPayInfo.stmt.tradeDate}</div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">금액</label>
+                <input type="number" value={editPayForm.amount}
+                  onChange={e => setEditPayForm(p => ({ ...p, amount: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">일자</label>
+                <input type="date" value={editPayForm.date}
+                  onChange={e => setEditPayForm(p => ({ ...p, date: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">결제 방법</label>
+                <div className="flex gap-1.5 flex-wrap">
+                  {(['현금', '계좌이체', '어음', '카드', '기타'] as PaymentRecord['method'][]).map(m => (
+                    <button key={String(m)} onClick={() => setEditPayForm(p => ({ ...p, method: m }))}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black border transition-all ${editPayForm.method === m ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">비고</label>
+                <input type="text" placeholder="예: 1차 분할" value={editPayForm.note}
+                  onChange={e => setEditPayForm(p => ({ ...p, note: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button onClick={deleteEditPay}
+                className="flex items-center gap-1 px-3 py-2.5 rounded-xl bg-red-50 text-red-600 text-xs font-black hover:bg-red-100 border border-red-200">
+                <X size={12}/>삭제
+              </button>
+              <button onClick={() => setEditPayInfo(null)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
+              <button onClick={saveEditPay}
+                disabled={!editPayForm.amount || Number(editPayForm.amount) <= 0}
                 className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center gap-1.5">
                 <Save size={12}/>저장
               </button>
@@ -3350,6 +3455,52 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               </div>
             ) : null}
 
+            {/* ── 수금/지불 내역 (전표 조회 시) ── */}
+            {editingStmt && !isEditMode && (() => {
+              const payments = editingStmt.payments ?? [];
+              const paid = payments.reduce((s, p) => s + p.amount, 0);
+              const bal = editingStmt.totalAmount - paid;
+              const label = editingStmt.type === '매출' ? '수금' : '지불';
+              return (
+                <div className="flex-shrink-0 border-t border-slate-100 bg-slate-50 px-5 py-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label} 내역</span>
+                    <div className="flex items-center gap-3 text-xs">
+                      <span className="text-slate-500">합계 <b className="text-slate-800">{fmt(editingStmt.totalAmount)}</b></span>
+                      <span className="text-slate-500">{label} <b className="text-emerald-700">{fmt(paid)}</b></span>
+                      <span className={`font-black ${bal < 0 ? (editingStmt.type === '매출' ? 'text-rose-600' : 'text-blue-600') : bal === 0 ? 'text-slate-400' : (editingStmt.type === '매출' ? 'text-blue-600' : 'text-rose-600')}`}>
+                        {bal < 0
+                          ? `${editingStmt.type === '매출' ? '줄돈' : '받을돈'} ${fmt(Math.abs(bal))}`
+                          : `잔액 ${fmt(bal)}`}
+                      </span>
+                    </div>
+                  </div>
+                  {payments.length === 0 ? (
+                    <p className="text-[11px] text-slate-400 py-1">{label} 내역 없음</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {payments.map(p => (
+                        <div key={p.id}
+                          onClick={() => openEditPay(editingStmt, p)}
+                          className="flex items-center gap-2 px-3 py-2 bg-white rounded-xl border border-slate-200 cursor-pointer hover:bg-blue-50 hover:border-blue-200 transition-all">
+                          <span className="text-[10px] font-mono text-slate-400 w-20 shrink-0">{p.date}</span>
+                          <span className="text-xs font-black text-slate-800 flex-1">{fmt(p.amount)}원</span>
+                          <span className="text-[10px] text-slate-400">{[p.method, p.note].filter(Boolean).join(' · ')}</span>
+                          <span className="text-[10px] text-blue-400 shrink-0">수정</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {bal > 0 && (
+                    <button onClick={() => { setCreateMode(null); openPayModal(editingStmt); }}
+                      className={`text-[10px] font-black px-3 py-1.5 rounded-lg transition-all flex items-center gap-1 ${editingStmt.type === '매입' ? 'bg-rose-50 text-rose-600 hover:bg-rose-100' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}>
+                      <Save size={10}/>{label} 처리
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+
             {/* ── 하단 액션 바 ── */}
             {(selectedOrderId || manualMode || editingStmt) && (
             <div className="flex items-center gap-4 px-5 py-3 border-t border-slate-100 bg-white flex-shrink-0 flex-wrap">
@@ -3365,6 +3516,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       <Printer size={13}/>거래명세서
                     </button>
                   </>) : (<>
+                    <button onClick={()=>{if(window.confirm('이 전표를 삭제하시겠습니까?')){onDeleteIssuedStatement?.(editingStmt!.id);closeCreate();}}}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-500 text-white text-xs font-black hover:bg-red-600 transition-all">
+                      <X size={13}/>삭제
+                    </button>
                     <button onClick={()=>setIsEditMode(true)}
                       className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 text-white text-xs font-black hover:bg-amber-600 transition-all">
                       <Edit2 size={13}/>수정
