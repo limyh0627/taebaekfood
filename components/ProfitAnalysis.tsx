@@ -53,6 +53,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
     .filter((g, idx, arr) => arr.findIndex(x => x.id === g.id) === idx);
   const [mainTab, setMainTab] = useState<MainTab>(initialTab ?? 'analysis');
   const isStandalone = initialTab === 'clients' || initialTab === 'cash-flow';
+  const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [period, setPeriod] = useState<'3M' | '6M' | '1Y' | 'custom'>('1Y');
   const [selectedQuarter, setSelectedQuarter] = useState<1|2|3|4>(() => Math.ceil((new Date().getMonth() + 1) / 3) as 1|2|3|4);
   const [selectedHalf, setSelectedHalf] = useState<1|2>(() => new Date().getMonth() < 6 ? 1 : 2);
@@ -285,10 +286,6 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
               <button onClick={() => setMainTab('inventory-value')}
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'inventory-value' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
                 <Package size={13}/>재고액
-              </button>
-              <button onClick={() => setMainTab('account-settings')}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'account-settings' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-                <Wallet size={13}/>계정설정
               </button>
             </div>
           </div>
@@ -612,7 +609,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
       {/* ── 계정 설정 바로가기 ── */}
       <div className="flex justify-end">
         <button
-          onClick={() => setMainTab('account-settings')}
+          onClick={() => setShowAccountSettings(true)}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-black transition-all border border-amber-200"
         >
           <Wallet size={13}/>계정 설정 열기
@@ -1223,20 +1220,24 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         );
       })()}
 
-      {/* ── 계정설정 탭 ── */}
-      {mainTab === 'account-settings' && (
-          <div className="space-y-6">
-            {/* 고정비 입력 */}
-            <CostManager
-              fixedCosts={fixedCosts}
-              fixedCostTemplates={fixedCostTemplates}
-              issuedStatements={issuedStatements}
-              onAdd={onAddCost}
-              onDelete={onDeleteCost}
-              onAddTemplate={onAddTemplate}
-              onUpdateTemplate={onUpdateTemplate}
-              onDeleteTemplate={onDeleteTemplate}
-            />
+      {/* ── 계정설정 오버레이 ── */}
+      {showAccountSettings && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-slate-50 overflow-hidden">
+          {/* 헤더 */}
+          <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-3">
+              <Wallet size={18} className="text-amber-600"/>
+              <span className="text-base font-black text-slate-800">계정 설정</span>
+              <span className="text-[11px] text-slate-400">전표 라인별 계정코드 및 고정비 관리</span>
+            </div>
+            <button onClick={() => setShowAccountSettings(false)}
+              className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-all">
+              <X size={18}/>
+            </button>
+          </div>
+          {/* 내용 (스크롤) */}
+          <div className="flex-1 overflow-y-auto p-6">
+          <div className="space-y-6 max-w-4xl mx-auto">
             {/* 계정그룹별 코드 목록 */}
             <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
               <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
@@ -1373,7 +1374,20 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                 </button>
               </div>
             </div>
+            {/* 고정비 입력 */}
+            <CostManager
+              fixedCosts={fixedCosts}
+              fixedCostTemplates={fixedCostTemplates}
+              issuedStatements={issuedStatements}
+              onAdd={onAddCost}
+              onDelete={onDeleteCost}
+              onAddTemplate={onAddTemplate}
+              onUpdateTemplate={onUpdateTemplate}
+              onDeleteTemplate={onDeleteTemplate}
+            />
           </div>
+          </div>
+        </div>
       )}
     </div>
   );
