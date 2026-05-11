@@ -4,8 +4,8 @@ import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, Cell
 } from 'recharts';
-import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, BarChart2, DollarSign, Wallet, Users, ChevronLeft, ChevronRight, Save, Search, Package, X, CreditCard, Download } from 'lucide-react';
-import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Client, PaymentRecord, Product, AccountCode, AccountGroup, AccountGroupPlLine } from '../types';
+import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, BarChart2, DollarSign, Wallet, Users, ChevronLeft, ChevronRight, Save, Search, Package, X, CreditCard, Download, Archive, Clock } from 'lucide-react';
+import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Client, PaymentRecord, Product, AccountCode, AccountGroup, AccountGroupPlLine, InventorySnapshot } from '../types';
 import PageHeader from './PageHeader';
 import CostManager from './CostManager';
 
@@ -30,6 +30,8 @@ interface ProfitAnalysisProps {
   onDeleteAccountCode?: (id: string) => void;
   onAddAccountGroup?: (data: Omit<AccountGroup, 'id'>) => Promise<string>;
   onDeleteAccountGroup?: (id: string) => void;
+  inventorySnapshots?: InventorySnapshot[];
+  onSaveInventorySnapshot?: (data: Omit<InventorySnapshot, 'id'>) => Promise<void>;
   initialTab?: MainTab;
 }
 
@@ -45,7 +47,7 @@ const MONTHS = 12;
 const COMPUTED_GROUP_IDS = new Set(['ag-gross-profit', 'ag-op-profit']);
 const SGNA_LEGACY_IDS = new Set(['ag-selling', 'ag-admin']);
 
-const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, fixedCostTemplates = [], onAddCost, onDeleteCost, onAddTemplate, onUpdateTemplate, onDeleteTemplate, clients = [], products = [], onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onDeleteAccountGroup, initialTab }) => {
+const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, fixedCostTemplates = [], onAddCost, onDeleteCost, onAddTemplate, onUpdateTemplate, onDeleteTemplate, clients = [], products = [], onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, initialTab }) => {
   // 계산결과 그룹 숨김 + 구 판매비/관리비 → 판관비로 통합 표시
   const accountGroups = rawAccountGroups
     .filter(g => !COMPUTED_GROUP_IDS.has(g.id))
@@ -134,6 +136,22 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
     }
     return months;
   }, [period, selectedYear, selectedQuarter, selectedHalf, customStart, customEnd, todayYm]);
+
+  // ── 재고 스냅샷 → 기초/기말재고 (손익분석 COGS 패널용) ──
+  const openingSnapshot = useMemo(() => {
+    if (periodMonths.length === 0) return null;
+    const [sy, sm] = periodMonths[0].split('-').map(Number);
+    let py = sy, pm = sm - 1;
+    if (pm === 0) { pm = 12; py -= 1; }
+    const prevYm = `${py}-${String(pm).padStart(2, '0')}`;
+    return inventorySnapshots.find(s => s.yearMonth === prevYm) ?? null;
+  }, [periodMonths, inventorySnapshots]);
+
+  const closingSnapshot = useMemo(() => {
+    if (periodMonths.length === 0) return null;
+    const lastYm = periodMonths[periodMonths.length - 1];
+    return inventorySnapshots.find(s => s.yearMonth === lastYm) ?? null;
+  }, [periodMonths, inventorySnapshots]);
 
   // 월별 집계
   const monthlyData = useMemo(() => {
@@ -399,9 +417,11 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
               <span>총매출원가 (COGS)</span>
               <span>{fmtM(summary.cogs)}</span>
             </div>
-            <div className="flex items-center justify-between pl-4 text-slate-400">
+            <div className="flex items-center justify-between pl-4 text-slate-600">
               <span><span className="mr-1.5 text-slate-200">├</span>기초상품재고액 (+)</span>
-              <span className="text-[10px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-lg">시스템 연동</span>
+              {openingSnapshot
+                ? <span className="font-bold text-teal-600">{fmtM(openingSnapshot.value)}</span>
+                : <span className="text-[10px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-lg">스냅샷 없음</span>}
             </div>
             <div className="flex items-center justify-between pl-4 text-slate-600 font-bold">
               <span><span className="mr-1.5 text-slate-200">├</span>당기상품매입액 (+)</span>
@@ -416,10 +436,20 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                 <span>{fmtM(item.total)}</span>
               </div>
             ))}
-            <div className="flex items-center justify-between pl-4 text-slate-400">
+            <div className="flex items-center justify-between pl-4 text-slate-600">
               <span><span className="mr-1.5 text-slate-200">└</span>기말상품재고액 (-)</span>
-              <span className="text-[10px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-lg">재고관리 탭 연동</span>
+              {closingSnapshot
+                ? <span className="font-bold text-teal-600">{fmtM(closingSnapshot.value)}</span>
+                : <span className="text-[10px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-lg">스냅샷 없음</span>}
             </div>
+            {(openingSnapshot || closingSnapshot) && (
+              <div className="flex items-center justify-between mt-1 pt-1 border-t border-slate-100 font-black text-slate-700">
+                <span className="text-[11px]">조정 매출원가</span>
+                <span className="text-[11px] text-slate-900">
+                  {fmtM((openingSnapshot?.value ?? 0) + summary.cogs - (closingSnapshot?.value ?? 0))}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1161,16 +1191,81 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         const otherItems = rows.filter(p => !categoryOrder.includes(p.category));
         if (otherItems.length > 0) grouped.push({ cat: '기타', items: otherItems });
 
+        const currentYm = todayYm;
+        const existingSnap = inventorySnapshots.find(s => s.yearMonth === currentYm);
+        const sortedSnapshots = [...inventorySnapshots].sort((a, b) => b.yearMonth.localeCompare(a.yearMonth));
+
         return (
           <div className="space-y-4">
-            {/* 재고총액 요약 */}
-            <div className="bg-teal-50 border border-teal-200 rounded-2xl px-6 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Package size={18} className="text-teal-600" />
-                <span className="text-sm font-black text-teal-700">재고총액</span>
+            {/* 재고총액 + 기말재고 기록 */}
+            <div className="flex gap-3 flex-wrap">
+              <div className="flex-1 bg-teal-50 border border-teal-200 rounded-2xl px-6 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Package size={18} className="text-teal-600" />
+                  <span className="text-sm font-black text-teal-700">현재 재고총액 (기말재고액)</span>
+                </div>
+                <span className="text-2xl font-black text-teal-700">{fmt(totalValue)}원</span>
               </div>
-              <span className="text-2xl font-black text-teal-700">{fmt(totalValue)}원</span>
+              {onSaveInventorySnapshot && (
+                <div className="bg-white border border-slate-200 rounded-2xl px-5 py-4 flex flex-col gap-2 min-w-[220px]">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{currentYm} 기말재고 기록</p>
+                  {existingSnap ? (
+                    <div className="flex items-center gap-2">
+                      <Archive size={14} className="text-teal-500 shrink-0"/>
+                      <span className="text-sm font-black text-teal-700">{fmt(existingSnap.value)}원 기록됨</span>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-slate-400">현재 재고총액으로 기록합니다</span>
+                  )}
+                  <button
+                    onClick={() => onSaveInventorySnapshot({ yearMonth: currentYm, value: totalValue, recordedAt: new Date().toISOString() })}
+                    className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black transition-all ${existingSnap ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' : 'bg-teal-600 text-white hover:bg-teal-700'}`}>
+                    <Archive size={12}/>{existingSnap ? '덮어쓰기' : '기말재고 기록'}
+                  </button>
+                </div>
+              )}
             </div>
+
+            {/* 스냅샷 이력 */}
+            {sortedSnapshots.length > 0 && (
+              <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
+                  <Clock size={14} className="text-slate-400"/>
+                  <span className="text-xs font-black text-slate-600">기말재고 기록 이력</span>
+                  <span className="text-[10px] text-slate-400 ml-1">— 전월 기말재고 = 당월 기초재고</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        {['연월', '기말재고액 (= 다음달 기초재고)', '기록일시'].map((h, i) => (
+                          <th key={h} className={`px-4 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest ${i === 0 ? '' : 'text-right'}`}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {sortedSnapshots.map(snap => {
+                        const [sy, sm] = snap.yearMonth.split('-').map(Number);
+                        let ny = sy, nm = sm + 1;
+                        if (nm > 12) { nm = 1; ny += 1; }
+                        const nextYm = `${ny}-${String(nm).padStart(2, '0')}`;
+                        const isNextMonthOpening = inventorySnapshots.some(s => s.yearMonth === nextYm);
+                        return (
+                          <tr key={snap.id} className={`hover:bg-slate-50 transition-colors ${snap.yearMonth === currentYm ? 'bg-teal-50/50' : ''}`}>
+                            <td className="px-4 py-3 text-xs font-black text-slate-700">
+                              {snap.yearMonth}
+                              {snap.yearMonth === currentYm && <span className="ml-2 text-[9px] bg-teal-100 text-teal-600 px-1.5 py-0.5 rounded-full">이번달</span>}
+                            </td>
+                            <td className="px-4 py-3 text-xs text-right font-black text-teal-700">{fmt(snap.value)}원</td>
+                            <td className="px-4 py-3 text-[10px] text-right text-slate-400">{snap.recordedAt.slice(0, 16).replace('T', ' ')}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             {/* 카테고리별 테이블 */}
             {grouped.map(({ cat, items }) => {

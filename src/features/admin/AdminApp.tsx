@@ -150,7 +150,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     noticePosts, chatRooms, chatMessages,
     rawMaterialLedger, sesameInputLedger,
     appNotifications, workOrderItems, issuedStatements,
-    itemBoms, returnRequests, companyInfo, itemCustomers, isDataLoading,
+    itemBoms, returnRequests, companyInfo, itemCustomers, inventorySnapshots, isDataLoading,
   } = appData;
 
   const { fixedCosts, productionRecords } = adminData;
@@ -2800,6 +2800,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 onDeleteAccountCode={(id) => deleteItem('accountCodes', id)}
                 onAddAccountGroup={async (data) => addItem('accountGroups', { ...data, id: `ag-${Date.now()}` }) as Promise<string>}
                 onDeleteAccountGroup={(id) => deleteItem('accountGroups', id)}
+                inventorySnapshots={inventorySnapshots}
+                onSaveInventorySnapshot={async (data) => { await addItem('inventorySnapshots', { ...data, id: `inv-snap-${data.yearMonth}` }); }}
               />
             </div>
           )}
@@ -2821,6 +2823,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
                   accountGroups={appData.accountGroups}
                   accountCodes={appData.accountCodes}
+                  inventorySnapshots={inventorySnapshots}
                 />
               </React.Suspense>
             </div>
@@ -2843,6 +2846,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
                   accountGroups={appData.accountGroups}
                   accountCodes={appData.accountCodes}
+                  inventorySnapshots={inventorySnapshots}
                 />
               </React.Suspense>
             </div>

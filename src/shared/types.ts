@@ -510,6 +510,13 @@ export interface AccountGroup {
   plLine?: AccountGroupPlLine; // 손익계산서 위치
   note?: string;
 }
+// ── 재고액 스냅샷 (월말 기말재고액 기록) ───────────────────────────────────────
+export interface InventorySnapshot {
+  id: string;
+  yearMonth: string;    // 'YYYY-MM'
+  value: number;        // 재고총액 (기말재고액, 원)
+  recordedAt: string;   // ISO timestamp
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type AdjustmentType = 'quantity_change' | 'cancel_receipt' | 'chat_mention' | 'reorder_alert';
