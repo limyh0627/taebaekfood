@@ -363,18 +363,21 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">라벨</th>
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">테이프</th>
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">박스</th>
+                <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">원가</th>
+                <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">판매단가</th>
+                {isAdmin && <th className="px-2 py-3" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {!selectedClientId && !showAll ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-16 text-center text-slate-300 font-medium text-sm">
+                  <td colSpan={isAdmin ? 12 : 11} className="px-6 py-16 text-center text-slate-300 font-medium text-sm">
                     거래처를 선택하세요.
                   </td>
                 </tr>
               ) : pagedItems.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-16 text-center text-slate-400 font-medium text-sm">
+                  <td colSpan={isAdmin ? 12 : 11} className="px-6 py-16 text-center text-slate-400 font-medium text-sm">
                     {showAll ? '등록된 품목이 없습니다.' : '이 거래처에 연결된 품목이 없습니다.'}
                   </td>
                 </tr>
@@ -452,6 +455,26 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                         )}
                       </td>
                     ))}
+                    <td className="px-2 py-3 text-right">
+                      {item.cost != null
+                        ? <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">{item.cost.toLocaleString()}원</span>
+                        : <span className="text-[10px] text-slate-200">-</span>}
+                    </td>
+                    <td className="px-2 py-3 text-right">
+                      {item.price > 0
+                        ? <span className="text-[11px] font-black text-indigo-600 whitespace-nowrap">{item.price.toLocaleString()}원</span>
+                        : <span className="text-[10px] text-slate-200">-</span>}
+                    </td>
+                    {isAdmin && (
+                      <td className="px-2 py-3 text-center">
+                        <button
+                          onClick={() => onEditProduct(item)}
+                          className="p-1.5 rounded-lg text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all opacity-0 group-hover:opacity-100"
+                        >
+                          <Edit size={13} />
+                        </button>
+                      </td>
+                    )}
                   </tr>
                   {item.isRawMaterial && expandedPackagingId === item.id && (() => {
                     const ics = itemCustomers.filter(ic => (ic.item_id ?? ic.Item_ID) === item.id && (ic.customer_id ?? ic.Partner_ID));
