@@ -24,6 +24,8 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   const [activeTab, setActiveTab] = useState<'issue' | 'history'>('issue');
 
   // ── 발행 탭 상태 ──
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [onlyUnissued, setOnlyUnissued] = useState(false);
   const [taxClientId, setTaxClientId] = useState('');
   const [taxClientSearch, setTaxClientSearch] = useState('');
   const [taxStmtIds, setTaxStmtIds] = useState<string[]>([]);
@@ -40,32 +42,47 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   // ── 발행 탭 로직 ──
-  const taxClients = useMemo(() =>
-    clients
-      .filter(c => issuedStatements.some(s => s.clientId === c.id && s.type === '매출'))
+  const allMonths = useMemo(() => {
+    const s = new Set<string>();
+    issuedStatements.filter(stmt => stmt.type === '매출').forEach(stmt => s.add(stmt.tradeDate.slice(0, 7)));
+    return [...s].sort((a, b) => b.localeCompare(a));
+  }, [issuedStatements]);
+
+  const clientIssuedCount = useMemo(() => {
+    const map = new Map<string, number>();
+    issuedStatements
+      .filter(s => s.type === '매출' && s.tradeDate.slice(0, 7) === selectedMonth && !!s.taxIssuedAt)
+      .forEach(s => { map.set(s.clientId, (map.get(s.clientId) ?? 0) + 1); });
+    return map;
+  }, [issuedStatements, selectedMonth]);
+
+  const clientUnissuedCount = useMemo(() => {
+    const map = new Map<string, number>();
+    issuedStatements
+      .filter(s => s.type === '매출' && s.tradeDate.slice(0, 7) === selectedMonth && !s.taxIssuedAt)
+      .forEach(s => { map.set(s.clientId, (map.get(s.clientId) ?? 0) + 1); });
+    return map;
+  }, [issuedStatements, selectedMonth]);
+
+  const taxClients = useMemo(() => {
+    const inMonth = new Set(
+      issuedStatements.filter(s => s.type === '매출' && s.tradeDate.slice(0, 7) === selectedMonth).map(s => s.clientId)
+    );
+    return clients
+      .filter(c => inMonth.has(c.id))
       .filter(c => !taxClientSearch || c.name.includes(taxClientSearch))
-      .sort((a, b) => a.name.localeCompare(b.name)),
-    [clients, issuedStatements, taxClientSearch]
-  );
+      .filter(c => !onlyUnissued || (clientUnissuedCount.get(c.id) ?? 0) > 0)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [clients, issuedStatements, selectedMonth, taxClientSearch, onlyUnissued, clientUnissuedCount]);
 
   const clientStmts = useMemo(() =>
     taxClientId
-      ? issuedStatements.filter(s => s.clientId === taxClientId && s.type === '매출')
+      ? issuedStatements
+          .filter(s => s.clientId === taxClientId && s.type === '매출' && s.tradeDate.slice(0, 7) === selectedMonth)
           .sort((a, b) => b.tradeDate.localeCompare(a.tradeDate))
       : [],
-    [issuedStatements, taxClientId]
+    [issuedStatements, taxClientId, selectedMonth]
   );
-
-  const byMonth = useMemo(() => {
-    const m = new Map<string, IssuedStatement[]>();
-    clientStmts.forEach(s => {
-      const ym = s.tradeDate.slice(0, 7);
-      if (!m.has(ym)) m.set(ym, []);
-      m.get(ym)!.push(s);
-    });
-    return m;
-  }, [clientStmts]);
-  const months = useMemo(() => [...byMonth.keys()].sort((a, b) => b.localeCompare(a)), [byMonth]);
 
   const selectedStmts = useMemo(() => clientStmts.filter(s => taxStmtIds.includes(s.id)), [clientStmts, taxStmtIds]);
 
@@ -82,6 +99,16 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
     });
     return [...mergedMap.values()];
   }, [selectedStmts]);
+
+  // 데이터 로드 후 현재 월에 전표가 없으면 가장 최근 데이터 있는 월로 자동 이동
+  useEffect(() => {
+    if (allMonths.length > 0 && !allMonths.includes(selectedMonth)) {
+      setSelectedMonth(allMonths[0]);
+      setTaxClientId('');
+      setTaxStmtIds([]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allMonths]);
 
   // 선택 전표가 바뀌면 편집 초기화
   useEffect(() => {
@@ -116,10 +143,10 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   const toggleStmt = (id: string) =>
     setTaxStmtIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
-  const toggleMonth = (ym: string) => {
-    const ids = (byMonth.get(ym) || []).map(s => s.id);
+  const toggleAll = () => {
+    const ids = clientStmts.map(s => s.id);
     const allSel = ids.every(id => taxStmtIds.includes(id));
-    setTaxStmtIds(prev => allSel ? prev.filter(id => !ids.includes(id)) : [...new Set([...prev, ...ids])]);
+    setTaxStmtIds(allSel ? [] : ids);
   };
 
   const selectedClient = clients.find(c => c.id === taxClientId);
@@ -368,27 +395,66 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
       {/* ── 발행 탭 ── */}
       {activeTab === 'issue' && (
         <div className="flex gap-4 items-start">
-          {/* 좌측: 거래처 + 선택 요약 */}
+          {/* 좌측: 월 선택 + 거래처 */}
           <div className="w-64 shrink-0 flex flex-col gap-3">
-            <div className="bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden" style={{maxHeight:280}}>
-              <div className="px-3 pt-3 pb-2 border-b border-slate-100">
+            {/* 월 선택 */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-3">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">발행 월</p>
+              <select
+                value={selectedMonth}
+                onChange={e => { setSelectedMonth(e.target.value); setTaxClientId(''); setTaxStmtIds([]); }}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-black outline-none focus:ring-2 focus:ring-emerald-300"
+              >
+                {(() => {
+                  const currentYm = new Date().toISOString().slice(0, 7);
+                  const opts = allMonths.includes(currentYm) ? allMonths : [currentYm, ...allMonths];
+                  return opts.map(ym => (
+                    <option key={ym} value={ym}>{ym.replace('-', '년 ')}월</option>
+                  ));
+                })()}
+              </select>
+            </div>
+
+            {/* 거래처 목록 */}
+            <div className="bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden" style={{maxHeight:400}}>
+              <div className="px-3 pt-3 pb-2 border-b border-slate-100 space-y-2">
                 <div className="relative">
                   <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
                   <input type="text" placeholder="거래처 검색..." value={taxClientSearch}
                     onChange={e => setTaxClientSearch(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-7 pr-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
                 </div>
+                <button
+                  onClick={() => setOnlyUnissued(p => !p)}
+                  className={`w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-black transition-all ${onlyUnissued ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                >
+                  미발행 거래처만 보기
+                </button>
               </div>
               <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
-                {taxClients.map(c => (
-                  <button key={c.id} onClick={() => { setTaxClientId(c.id); setTaxStmtIds([]); }}
-                    className={`w-full text-left px-3 py-2.5 transition-all hover:bg-emerald-50 ${taxClientId === c.id ? 'bg-emerald-50 border-r-2 border-emerald-500' : ''}`}>
-                    <span className={`text-xs font-black ${taxClientId === c.id ? 'text-emerald-700' : 'text-slate-700'}`}>{c.name}</span>
-                  </button>
-                ))}
+                {taxClients.map(c => {
+                  const issued = clientIssuedCount.get(c.id) ?? 0;
+                  const unissued = clientUnissuedCount.get(c.id) ?? 0;
+                  return (
+                    <button key={c.id} onClick={() => { setTaxClientId(c.id); setTaxStmtIds([]); }}
+                      className={`w-full text-left px-3 py-2.5 transition-all hover:bg-emerald-50 ${taxClientId === c.id ? 'bg-emerald-50 border-r-2 border-emerald-500' : ''}`}>
+                      <span className={`text-xs font-black block ${taxClientId === c.id ? 'text-emerald-700' : 'text-slate-700'}`}>{c.name}</span>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {issued > 0 && (
+                          <span className="text-[10px] font-black text-amber-500">발행 {issued}건</span>
+                        )}
+                        {unissued > 0 && (
+                          <span className="text-[10px] font-black text-rose-500">미발행 {unissued}건</span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+                {taxClients.length === 0 && (
+                  <p className="px-3 py-6 text-center text-xs text-slate-400">해당 월 거래처 없음</p>
+                )}
               </div>
             </div>
-
           </div>
 
           {/* 우측: 전표 목록 + 미리보기 */}
@@ -398,8 +464,6 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                 <FileText size={36} className="text-slate-200 mb-3"/>
                 <p className="text-slate-400 text-sm font-bold">거래처를 선택하세요</p>
               </div>
-            ) : clientStmts.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-dashed border-slate-200 py-12 text-center text-slate-400 text-sm font-bold">발행된 전표가 없습니다</div>
             ) : (<>
               {/* 공급받는자 정보 */}
               <div className="bg-white rounded-2xl border border-slate-200 px-4 py-3">
@@ -423,45 +487,48 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                 </div>
               </div>
 
-              {/* 월별 전표 선택 */}
+              {/* 전표 선택 */}
               <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-                {months.map(ym => {
-                  const stmts = byMonth.get(ym)!;
-                  const allSel = stmts.every(s => taxStmtIds.includes(s.id));
-                  const someSel = stmts.some(s => taxStmtIds.includes(s.id));
+                <div className="flex items-center gap-3 px-4 py-2 bg-slate-50 border-b border-slate-100">
+                  <button onClick={toggleAll}
+                    className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all shrink-0 ${
+                      clientStmts.length > 0 && clientStmts.every(s => taxStmtIds.includes(s.id))
+                        ? 'bg-emerald-600 border-emerald-600'
+                        : clientStmts.some(s => taxStmtIds.includes(s.id))
+                          ? 'bg-emerald-200 border-emerald-400'
+                          : 'border-slate-300'
+                    }`}>
+                    {clientStmts.some(s => taxStmtIds.includes(s.id)) && <CheckSquare size={10} className="text-white"/>}
+                  </button>
+                  <span className="text-[11px] font-black text-slate-700">{selectedMonth.replace('-', '년 ')}월</span>
+                  <span className="text-[10px] text-slate-400">{clientStmts.length}건</span>
+                  <span className="ml-auto text-[11px] font-black text-slate-600">{fmt(clientStmts.reduce((s, r) => s + r.totalAmount, 0))}원</span>
+                </div>
+                {clientStmts.map(s => {
+                  const isSel = taxStmtIds.includes(s.id);
+                  const isIssued = !!s.taxIssuedAt;
                   return (
-                    <div key={ym}>
-                      <div className="flex items-center gap-3 px-4 py-2 bg-slate-50 border-b border-slate-100 sticky top-0">
-                        <button onClick={() => toggleMonth(ym)}
-                          className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${allSel ? 'bg-emerald-600 border-emerald-600' : someSel ? 'bg-emerald-200 border-emerald-400' : 'border-slate-300'}`}>
-                          {(allSel || someSel) && <CheckSquare size={10} className="text-white"/>}
-                        </button>
-                        <span className="text-[11px] font-black text-slate-700">{ym.replace('-', '년 ')}월</span>
-                        <span className="text-[10px] text-slate-400">{stmts.length}건</span>
-                        <span className="ml-auto text-[11px] font-black text-slate-600">{fmt(stmts.reduce((s, r) => s + r.totalAmount, 0))}원</span>
+                    <button key={s.id} onClick={() => toggleStmt(s.id)}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 border-b border-slate-50 text-left transition-all ${isSel ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}>
+                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${isSel ? 'bg-emerald-600 border-emerald-600' : 'border-slate-300'}`}>
+                        {isSel && <CheckSquare size={10} className="text-white"/>}
                       </div>
-                      {stmts.map(s => {
-                        const isSel = taxStmtIds.includes(s.id);
-                        const isIssued = !!s.taxIssuedAt;
-                        return (
-                          <button key={s.id} onClick={() => toggleStmt(s.id)}
-                            className={`w-full flex items-center gap-3 px-4 py-2.5 border-b border-slate-50 text-left transition-all ${isSel ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}>
-                            <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${isSel ? 'bg-emerald-600 border-emerald-600' : 'border-slate-300'}`}>
-                              {isSel && <CheckSquare size={10} className="text-white"/>}
-                            </div>
-                            <span className="text-xs font-black text-slate-700">{s.tradeDate}</span>
-                            <span className="text-[10px] text-slate-400 font-mono">{s.docNo}</span>
-                            <span className="text-[10px] text-slate-400 flex-1 truncate">
-                              {s.items.slice(0,2).map(i=>i.name).join(', ')}{s.items.length>2?` 외 ${s.items.length-2}건`:''}
-                            </span>
-                            {isIssued && <span className="text-[9px] font-black bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full shrink-0">발행</span>}
-                            <span className={`text-xs font-black shrink-0 ${isSel ? 'text-emerald-700' : 'text-slate-700'}`}>{fmt(s.totalAmount)}원</span>
-                          </button>
-                        );
-                      })}
-                    </div>
+                      <span className="text-xs font-black text-slate-700">{s.tradeDate}</span>
+                      <span className="text-[10px] text-slate-400 font-mono">{s.docNo}</span>
+                      <span className="text-[10px] text-slate-400 flex-1 truncate">
+                        {s.items.slice(0,2).map(i=>i.name).join(', ')}{s.items.length>2?` 외 ${s.items.length-2}건`:''}
+                      </span>
+                      {isIssued
+                        ? <span className="text-[9px] font-black bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full shrink-0">발행</span>
+                        : <span className="text-[9px] font-black bg-rose-100 text-rose-500 px-1.5 py-0.5 rounded-full shrink-0">미발행</span>
+                      }
+                      <span className={`text-xs font-black shrink-0 ${isSel ? 'text-emerald-700' : 'text-slate-700'}`}>{fmt(s.totalAmount)}원</span>
+                    </button>
                   );
                 })}
+                {clientStmts.length === 0 && (
+                  <div className="py-10 text-center text-slate-400 text-sm">해당 월 전표 없음</div>
+                )}
               </div>
 
               {/* 미리보기 */}
@@ -771,36 +838,45 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
               )}
             </div>
 
-            {/* 상세 미리보기 */}
-            {previewGroup && (
-              <div className="w-[500px] shrink-0 flex flex-col gap-3">
-                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-                  <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">세금계산서 미리보기</span>
-                      {previewGroup.isBundle && (
-                        <span className="text-[9px] font-black bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
-                          <Package size={8}/>묶음 {previewGroup.stmts.length}건
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex gap-1.5">
-                      <button onClick={handleHistPdf}
-                        className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 text-white rounded-lg text-[11px] font-black hover:bg-blue-700">
-                        <Download size={10}/>PDF
-                      </button>
-                      <button onClick={handleHistPrint}
-                        className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-600 text-white rounded-lg text-[11px] font-black hover:bg-slate-700">
-                        <Printer size={10}/>인쇄
-                      </button>
-                      <button onClick={() => setHistPreviewGroupKey(null)}
-                        className="p-1.5 bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-200">
-                        <X size={13}/>
-                      </button>
-                    </div>
-                  </div>
-                  <div className="p-4 overflow-x-auto">
-                    <div ref={previewPrintRef}>
+          </div>
+        </div>
+      )}
+
+      {/* ── 조회 탭 미리보기 오버레이 ── */}
+      {previewGroup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={() => setHistPreviewGroupKey(null)}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden"
+            onClick={e => e.stopPropagation()}>
+            {/* 오버레이 헤더 */}
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-black text-slate-800">세금계산서 미리보기</span>
+                <span className="text-xs text-slate-400">— {previewClient?.name}</span>
+                {previewGroup.isBundle && (
+                  <span className="text-[9px] font-black bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                    <Package size={8}/>묶음 {previewGroup.stmts.length}건
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-1.5 items-center">
+                <button onClick={handleHistPdf}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-black hover:bg-blue-700">
+                  <Download size={11}/>PDF
+                </button>
+                <button onClick={handleHistPrint}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-slate-600 text-white rounded-lg text-xs font-black hover:bg-slate-700">
+                  <Printer size={11}/>인쇄
+                </button>
+                <button onClick={() => setHistPreviewGroupKey(null)}
+                  className="p-2 bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-200 ml-1">
+                  <X size={16}/>
+                </button>
+              </div>
+            </div>
+            {/* 오버레이 내용 */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <div ref={previewPrintRef}>
                       {/* 묶음 세금계산서 미리보기 (merged items) */}
                       <div className="border-2 border-black" style={{fontFamily:"'Malgun Gothic','맑은 고딕',sans-serif",minWidth:420,fontSize:'11px'}}>
                         <div className="flex items-center justify-between border-b-2 border-black px-4 py-3">
@@ -885,11 +961,8 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                           </tbody>
                         </table>
                       </div>
-                    </div>
-                  </div>
-                </div>
               </div>
-            )}
+            </div>
           </div>
         </div>
       )}

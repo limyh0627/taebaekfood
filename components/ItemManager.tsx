@@ -33,8 +33,9 @@ const sortSubs = (subs: { name: string; category: string }[]) =>
   [...subs].sort((a, b) => (SUB_ORDER[normalizeCategory(a.category)] ?? 9) - (SUB_ORDER[normalizeCategory(b.category)] ?? 9));
 
 const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productClients = [], productSuppliers = [], itemCustomers = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct, onMergeProducts, onSaveItemCustomer, isAdmin = true }) => {
+  const [mainView, setMainView] = useState<'flat' | 'by-client'>('flat');
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
-  const [showAll, setShowAll] = useState(false);
+  const [showAll, setShowAll] = useState(true);
   const [showNoClient, setShowNoClient] = useState(false);
   const [activeCategory, setActiveCategory] = useState<InventoryCategory>('완제품');
   const [searchTerm, setSearchTerm] = useState('');
@@ -138,7 +139,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
   const selectedClient = selectedClientId ? clients.find(c => c.id === selectedClientId) : null;
 
   const filteredItems = useMemo(() => {
-    let result = (showAll || showNoClient)
+    let result = mainView === 'flat' || showAll || showNoClient
       ? products.filter(p => !p.archived && p.category === activeCategory)
       : selectedClientId
         ? products.filter(p => !p.archived && p.category === activeCategory && (p.clientIds ?? []).includes(selectedClientId))
@@ -150,12 +151,17 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
 
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
-      result = result.filter(p =>
-        p.name.toLowerCase().includes(term) || p.id.toLowerCase().includes(term)
-      );
+      if (mainView === 'flat') {
+        result = result.filter(p =>
+          p.name.toLowerCase().includes(term) ||
+          clients.some(c => (p.clientIds ?? []).includes(c.id) && c.name.toLowerCase().includes(term))
+        );
+      } else {
+        result = result.filter(p => p.name.toLowerCase().includes(term) || p.id.toLowerCase().includes(term));
+      }
     }
     return [...result].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-  }, [products, activeCategory, selectedClientId, showAll, showNoClient, searchTerm]);
+  }, [products, activeCategory, selectedClientId, showAll, showNoClient, searchTerm, mainView, clients]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -176,9 +182,6 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
     setPage(1);
     setSearchTerm('');
   };
-
-  // 모바일: 거래처 선택 전 목록 화면
-  const showMobileClientList = !selectedClientId && !showAll;
 
   // 클라이언트 목록 패널 (공통)
   const clientListPanel = (
@@ -251,15 +254,9 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
   // 품목 테이블 패널 (공통)
   const productPanel = (
     <div className="flex flex-col gap-3 min-w-0">
-      {/* 모바일 뒤로가기 */}
-      <div className="flex items-center justify-between lg:hidden">
-        <button
-          onClick={() => { setSelectedClientId(null); setShowAll(false); setSearchTerm(''); setPage(1); }}
-          className="flex items-center gap-1 text-xs text-indigo-600 font-bold"
-        >
-          ← 거래처 목록
-        </button>
-        {isAdmin && (
+      {/* 모바일 신규 등록 버튼 */}
+      {isAdmin && (
+        <div className="flex items-center justify-end lg:hidden">
           <button
             onClick={onAddProduct}
             className="flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-2 rounded-xl font-black text-xs shadow-md"
@@ -267,8 +264,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
             <Plus size={14} />
             신규 등록
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="hidden lg:flex items-center justify-between">
         <div>
@@ -814,69 +811,69 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
         </div>
       )}
 
-      {/* 모바일: 거래처 목록 그리드 */}
-      {showMobileClientList && (
-        <div className="lg:hidden space-y-3">
-          <div className="relative max-w-sm">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
-            <input
-              type="text"
-              placeholder="거래처 검색..."
-              value={clientSearch}
-              onChange={e => setClientSearch(e.target.value)}
-              className="w-full bg-white border border-slate-200 rounded-2xl pl-10 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all shadow-sm"
-            />
-          </div>
-          <button
-            onClick={handleShowAll}
-            className="flex items-center gap-2 bg-slate-100 text-slate-600 px-4 py-2.5 rounded-xl font-bold text-xs hover:bg-slate-200 transition-all"
-          >
-            <LayoutGrid size={13} />
-            전체 품목 보기
+      {/* 뷰 탭 */}
+      <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5 w-fit">
+        {([['flat', '품목 목록'], ['by-client', '거래처별 품목']] as const).map(([v, label]) => (
+          <button key={v} onClick={() => { setMainView(v); setSelectedClientId(null); setShowAll(true); setPage(1); setSearchTerm(''); }}
+            className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${mainView === v ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+            {label}
           </button>
-          {filteredClients.length === 0 ? (
-            <p className="py-12 text-center text-slate-400 text-sm">거래처가 없습니다.</p>
+        ))}
+      </div>
+
+      {/* 품목 목록 뷰: 거래처 패널 없이 전체 테이블 */}
+      {mainView === 'flat' && productPanel}
+
+      {/* 거래처별 품목 뷰 */}
+      {mainView === 'by-client' && (
+        <>
+          {!selectedClientId ? (
+            /* 거래처 그리드 */
+            <div className="space-y-3">
+              <div className="relative max-w-sm">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+                <input
+                  type="text"
+                  placeholder="거래처 검색..."
+                  value={clientSearch}
+                  onChange={e => setClientSearch(e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-2xl pl-10 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all shadow-sm"
+                />
+              </div>
+              {filteredClients.length === 0 ? (
+                <p className="py-12 text-center text-slate-400 text-sm">거래처가 없습니다.</p>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {filteredClients.map(c => {
+                    const count = clientProductCount.get(c.id) ?? 0;
+                    return (
+                      <button key={c.id} onClick={() => handleSelectClient(c.id)}
+                        className="bg-white border border-slate-200 rounded-2xl px-4 py-4 text-left hover:border-indigo-300 hover:shadow-md hover:shadow-indigo-50 transition-all group active:scale-95">
+                        <p className="text-sm font-bold text-slate-700 group-hover:text-indigo-600 transition-colors truncate">{c.name}</p>
+                        <p className="text-[11px] text-slate-400 mt-1 font-medium">
+                          {count > 0 ? <span className="text-indigo-500 font-black">{count}</span> : <span>0</span>}
+                          <span className="ml-0.5">개 품목</span>
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {filteredClients.map(c => {
-                const count = clientProductCount.get(c.id) ?? 0;
-                return (
-                  <button
-                    key={c.id}
-                    onClick={() => handleSelectClient(c.id)}
-                    className="bg-white border border-slate-200 rounded-2xl px-4 py-4 text-left hover:border-indigo-300 hover:shadow-md hover:shadow-indigo-50 transition-all group active:scale-95"
-                  >
-                    <p className="text-sm font-bold text-slate-700 group-hover:text-indigo-600 transition-colors truncate">{c.name}</p>
-                    <p className="text-[11px] text-slate-400 mt-1 font-medium">
-                      {count > 0 ? <span className="text-indigo-500 font-black">{count}</span> : <span>0</span>}
-                      <span className="ml-0.5">개 품목</span>
-                    </p>
-                  </button>
-                );
-              })}
+            /* 선택된 거래처 품목 테이블 */
+            <div className="space-y-3">
+              <button
+                onClick={() => { setSelectedClientId(null); setPage(1); setSearchTerm(''); }}
+                className="flex items-center gap-1.5 text-xs text-indigo-600 font-bold hover:underline"
+              >
+                ← 거래처 목록으로
+              </button>
+              {productPanel}
             </div>
           )}
-        </div>
+        </>
       )}
-
-      {/* 모바일: 품목 테이블 (거래처 선택 후) */}
-      {!showMobileClientList && (
-        <div className="lg:hidden">
-          {productPanel}
-        </div>
-      )}
-
-      {/* 데스크탑: 좌우 분할 */}
-      <div className="hidden lg:flex gap-4 items-start">
-        {/* 왼쪽 거래처 패널 */}
-        <div className="w-52 shrink-0 bg-white rounded-2xl border border-slate-200 shadow-sm p-3">
-          {clientListPanel}
-        </div>
-        {/* 오른쪽 품목 패널 */}
-        <div className="flex-1 min-w-0">
-          {productPanel}
-        </div>
-      </div>
 
       {/* 품목 연결 모달 */}
       {showLinkPanel && selectedClientId && (

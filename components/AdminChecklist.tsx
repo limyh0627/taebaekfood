@@ -14,20 +14,23 @@ import {
   ChevronDown,
   ChevronUp,
   ClipboardList,
+  RotateCcw,
 } from 'lucide-react';
-import { LeaveRequest, AdjustmentRequest, Employee } from '../types';
+import { LeaveRequest, AdjustmentRequest, Employee, ReturnRequest } from '../types';
 import PageHeader from './PageHeader';
 
 interface AdminChecklistProps {
   leaveRequests: LeaveRequest[];
   adjustmentRequests: AdjustmentRequest[];
   employees: Employee[];
+  returnRequests?: ReturnRequest[];
   onUpdateLeaveStatus: (_id: string, _status: 'approved' | 'rejected') => void;
   onUpdateAdjustmentStatus: (_id: string, _status: 'processed' | 'rejected') => void;
   onProcessAdjustment: (_req: AdjustmentRequest) => void;
+  onProcessReturn?: (_req: ReturnRequest) => void;
 }
 
-type TabType = 'leave' | 'adjustment';
+type TabType = 'leave' | 'adjustment' | 'return';
 
 const LEAVE_TYPE_LABEL: Record<string, string> = {
   '연차': '연차',
@@ -42,9 +45,11 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
   leaveRequests,
   adjustmentRequests,
   employees,
+  returnRequests = [],
   onUpdateLeaveStatus,
   onUpdateAdjustmentStatus,
   onProcessAdjustment,
+  onProcessReturn,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('leave');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -61,7 +66,13 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
     [adjustmentRequests]
   );
 
-  const totalPending = pendingLeaves.length + pendingAdjustments.length;
+  const pendingReturns = useMemo(() =>
+    returnRequests.filter(r => r.status === 'pending')
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    [returnRequests]
+  );
+
+  const totalPending = pendingLeaves.length + pendingAdjustments.length + pendingReturns.length;
 
   const getAdjTypeLabel = (type: string) => {
     if (type === 'quantity_change') return '수량 변동';
@@ -95,7 +106,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
     <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
       <PageHeader
         title="관리자 확인사항"
-        subtitle="연차 신청, 재고 변동 등 처리가 필요한 항목을 확인하세요."
+        subtitle="연차 신청, 재고 변동, 입고/반품 처리가 필요한 항목을 확인하세요."
         right={totalPending > 0 ? (
           <div className="bg-amber-50 border border-amber-100 px-4 py-2 rounded-xl flex items-center space-x-2">
             <AlertCircle size={18} className="text-amber-500" />
@@ -131,10 +142,26 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
           }`}
         >
           <Package size={15} />
-          재고 확인사항
+          재고
           {pendingAdjustments.length > 0 && (
             <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center ${activeTab === 'adjustment' ? 'bg-white/30 text-white' : 'bg-amber-100 text-amber-700'}`}>
               {pendingAdjustments.length}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('return')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${
+            activeTab === 'return'
+              ? 'bg-indigo-600 text-white shadow-sm'
+              : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <RotateCcw size={15} />
+          입고/반품
+          {pendingReturns.length > 0 && (
+            <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center ${activeTab === 'return' ? 'bg-white/30 text-white' : 'bg-amber-100 text-amber-700'}`}>
+              {pendingReturns.length}
             </span>
           )}
         </button>
@@ -270,7 +297,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
         </div>
       )}
 
-      {/* 재고 확인사항 탭 */}
+      {/* 재고 탭 */}
       {activeTab === 'adjustment' && (
         <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
@@ -291,7 +318,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                     <td colSpan={6} className="px-6 py-20 text-center">
                       <div className="flex flex-col items-center gap-2 text-slate-400">
                         <Package size={32} className="text-slate-200" />
-                        <span className="text-sm font-medium">대기 중인 재고 확인사항이 없습니다</span>
+                        <span className="text-sm font-medium">대기 중인 재고 요청이 없습니다</span>
                       </div>
                     </td>
                   </tr>
@@ -383,6 +410,76 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                       </tr>
                     )}
                   </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 입고/반품 탭 */}
+      {activeTab === 'return' && (
+        <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50/50 border-b border-slate-100">
+                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">요청 일시</th>
+                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">거래처</th>
+                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">품목</th>
+                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap">금액</th>
+                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center whitespace-nowrap">관리</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {pendingReturns.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-20 text-center">
+                      <div className="flex flex-col items-center gap-2 text-slate-400">
+                        <RotateCcw size={32} className="text-slate-200" />
+                        <span className="text-sm font-medium">대기 중인 반품 요청이 없습니다</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : pendingReturns.map(req => (
+                  <tr key={req.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-3 py-3">
+                      <div className="flex items-center space-x-1 text-slate-500">
+                        <Clock size={12} className="shrink-0" />
+                        <span className="text-[10px] font-bold whitespace-nowrap">
+                          {new Date(req.createdAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className="text-[11px] font-black text-slate-800">{req.clientName}</span>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="space-y-0.5">
+                        {req.items.slice(0, 2).map((item, i) => (
+                          <div key={i} className="text-[10px] text-slate-600 whitespace-nowrap">
+                            {item.name} × {item.quantity}
+                          </div>
+                        ))}
+                        {req.items.length > 2 && (
+                          <div className="text-[10px] text-slate-400">+{req.items.length - 2}건</div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      <span className="text-[11px] font-black text-rose-600">{req.totalAmount.toLocaleString()}원</span>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          onClick={() => onProcessReturn?.(req)}
+                          className="px-2 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-black transition-all shadow-sm whitespace-nowrap"
+                        >
+                          처리
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
                 ))}
               </tbody>
             </table>

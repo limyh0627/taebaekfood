@@ -75,6 +75,7 @@ import NoticeBoard from '../../../components/NoticeBoard';
 import DatabaseView from '../../../components/DatabaseView';
 import ItemManager from '../../../components/ItemManager';
 import ItemPriceManager from '../../../components/ItemPriceManager';
+import PriceManager from '../../../components/PriceManager';
 import TaxStatement from '../../../components/TaxStatement';
 import OfficeTalk from '../../../components/OfficeTalk';
 import AdminChecklist from '../../../components/AdminChecklist';
@@ -173,6 +174,25 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [isMobile, setIsMobile] = useState(false);
   const [showQrLabel, setShowQrLabel] = useState(false);
   const [selectedLog, setSelectedLog] = useState<import('../../shared/types').ProductionSalesLog | null>(null);
+  const [itemMgmtTab, setItemMgmtTab] = useState<'items' | 'prices'>('items');
+
+  // 지난달 기말재고 스냅샷 자동 저장 (없을 때만)
+  useEffect(() => {
+    if (isDataLoading || !isAdmin) return;
+    const now = new Date();
+    let py = now.getFullYear(), pm = now.getMonth(); // getMonth()는 0-indexed → 이전 달
+    if (pm === 0) { pm = 12; py -= 1; }
+    const prevYm = `${py}-${String(pm).padStart(2, '0')}`;
+    const already = inventorySnapshots.some(s => s.yearMonth === prevYm);
+    if (already) return;
+    const totalValue = allProducts.reduce((sum, p) => sum + (p.stock ?? 0) * (p.cost ?? 0), 0);
+    addItem('inventorySnapshots', {
+      id: `inv-snap-${prevYm}`,
+      yearMonth: prevYm,
+      value: totalValue,
+      recordedAt: new Date().toISOString(),
+    });
+  }, [isDataLoading]);
 
   // 모바일 감지
   useEffect(() => {
@@ -1303,6 +1323,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               leaveRequests={leaveRequests}
               adjustmentRequests={adjustmentRequests}
               employees={employees}
+              returnRequests={returnRequests}
               onUpdateLeaveStatus={(id, status) => {
                 if (status === 'approved') {
                   const req = leaveRequests.find(r => r.id === id);
@@ -1319,11 +1340,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onProcessAdjustment={async (req) => {
                 const product = allProducts.find(p => p.id === req.productId);
                 if (req.type === 'quantity_change' && product && req.requestedQuantity !== undefined) {
-                  const collectionName = product.category === '향미유' || product.category === '고춧가루' || product.category === '용기' || product.category === '마개' || product.category === '테이프' || product.category === '박스' || product.category === '라벨' ? 'items' : 'items';
-                  await updateItem(collectionName, req.productId, { stock: req.requestedQuantity });
+                  await updateItem('items', req.productId, { stock: req.requestedQuantity });
                 }
                 await updateItem('adjustmentRequests', req.id, { status: 'processed', processedAt: new Date().toISOString() });
               }}
+              onProcessReturn={handleProcessReturn}
             />
           )}
           {currentView === 'documents' && (() => {
@@ -3057,65 +3078,89 @@ const AdminApp: React.FC<AdminAppProps> = ({
             />
           )}
           {currentView === 'item-management' && (
-            <ItemManager
-              isAdmin={isAdmin}
-              products={allProducts}
-              clients={clients}
-              onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
-              onAddProduct={() => { setEditingProduct(null); setIsProductModalOpen(true); }}
-              onDeleteProduct={(id) => {
-                const inProducts = products.some(p => p.id === id);
-                deleteItem(inProducts ? 'items' : 'items', id);
-              }}
-              onLinkProduct={async (productId, clientId) => {
-                const current = productClients.filter(pc => pc.Item_ID === productId).map(pc => pc.Partner_ID);
-                if (!current.includes(clientId)) {
-                  await setProductClients(productId, [...current, clientId]);
-                }
-              }}
-              onUnlinkProduct={async (productId, clientId) => {
-                const current = productClients.filter(pc => pc.Item_ID === productId).map(pc => pc.Partner_ID);
-                await setProductClients(productId, current.filter(id => id !== clientId));
-              }}
-              productClients={productClients}
-              onMergeProducts={async (keepId, deleteIds) => {
-                const { getDocs, query: q, collection: col, where, writeBatch: wb, doc: d } = await import('firebase/firestore');
-                const { db: fireDb } = await import('../../shared/firebase');
-                const batch = wb(fireDb);
-
-                // 삭제할 품목들의 productClients를 keepId로 이전
-                for (const delId of deleteIds) {
-                  const snap = await getDocs(q(col(fireDb, 'partner_item'), where('productId', '==', delId)));
-                  for (const docSnap of snap.docs) {
-                    const data = docSnap.data();
-                    const newRef = d(fireDb, 'partner_item', `${keepId}_${data.clientId}`);
-                    // 이미 keepId에 해당 거래처가 없을 때만 이전
-                    const existing = productClients.find(pc => pc.productId === keepId && pc.clientId === data.clientId);
-                    if (!existing) {
-                      batch.set(newRef, { ...data, productId: keepId, id: `${keepId}_${data.clientId}` });
+            <div className="flex flex-col h-full overflow-hidden">
+              <div className="flex border-b border-slate-100 bg-white px-4 shrink-0">
+                {(['items', 'prices'] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setItemMgmtTab(tab)}
+                    className={`px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${itemMgmtTab === tab ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                  >
+                    {tab === 'items' ? '품목 정보' : '단가 관리'}
+                  </button>
+                ))}
+              </div>
+              {itemMgmtTab === 'items' && (
+                <ItemManager
+                  isAdmin={isAdmin}
+                  products={allProducts}
+                  clients={clients}
+                  onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
+                  onAddProduct={() => { setEditingProduct(null); setIsProductModalOpen(true); }}
+                  onDeleteProduct={(id) => {
+                    const inProducts = products.some(p => p.id === id);
+                    deleteItem(inProducts ? 'items' : 'items', id);
+                  }}
+                  onLinkProduct={async (productId, clientId) => {
+                    const current = productClients.filter(pc => pc.Item_ID === productId).map(pc => pc.Partner_ID);
+                    if (!current.includes(clientId)) {
+                      await setProductClients(productId, [...current, clientId]);
                     }
-                    batch.delete(docSnap.ref);
-                  }
-                  // 삭제할 품목의 clientIds를 keepId에 병합
-                  const delProduct = allProducts.find(p => p.id === delId);
-                  if (delProduct?.clientIds?.length) {
-                    const keepProduct = allProducts.find(p => p.id === keepId);
-                    const mergedIds = [...new Set([...(keepProduct?.clientIds ?? []), ...delProduct.clientIds])];
-                    batch.update(d(fireDb, 'items', keepId), { clientIds: mergedIds });
-                  }
-                  // 삭제할 품목 제거
-                  batch.delete(d(fireDb, 'items', delId));
-                }
-                await batch.commit();
-              }}
-              itemCustomers={itemCustomers}
-              onSaveItemCustomer={async (ic: Partial<import('../../shared/types').PartnerItem> & { id: string }) => {
-                const { doc: fDoc, updateDoc: fUpdate } = await import('firebase/firestore');
-                const { db: fireDb } = await import('../../shared/firebase');
-                const { id, ...data } = ic;
-                await fUpdate(fDoc(fireDb, 'partner_item', id), data);
-              }}
-            />
+                  }}
+                  onUnlinkProduct={async (productId, clientId) => {
+                    const current = productClients.filter(pc => pc.Item_ID === productId).map(pc => pc.Partner_ID);
+                    await setProductClients(productId, current.filter(id => id !== clientId));
+                  }}
+                  productClients={productClients}
+                  onMergeProducts={async (keepId, deleteIds) => {
+                    const { getDocs, query: q, collection: col, where, writeBatch: wb, doc: d } = await import('firebase/firestore');
+                    const { db: fireDb } = await import('../../shared/firebase');
+                    const batch = wb(fireDb);
+
+                    for (const delId of deleteIds) {
+                      const snap = await getDocs(q(col(fireDb, 'partner_item'), where('productId', '==', delId)));
+                      for (const docSnap of snap.docs) {
+                        const data = docSnap.data();
+                        const newRef = d(fireDb, 'partner_item', `${keepId}_${data.clientId}`);
+                        const existing = productClients.find(pc => pc.productId === keepId && pc.clientId === data.clientId);
+                        if (!existing) {
+                          batch.set(newRef, { ...data, productId: keepId, id: `${keepId}_${data.clientId}` });
+                        }
+                        batch.delete(docSnap.ref);
+                      }
+                      const delProduct = allProducts.find(p => p.id === delId);
+                      if (delProduct?.clientIds?.length) {
+                        const keepProduct = allProducts.find(p => p.id === keepId);
+                        const mergedIds = [...new Set([...(keepProduct?.clientIds ?? []), ...delProduct.clientIds])];
+                        batch.update(d(fireDb, 'items', keepId), { clientIds: mergedIds });
+                      }
+                      batch.delete(d(fireDb, 'items', delId));
+                    }
+                    await batch.commit();
+                  }}
+                  itemCustomers={itemCustomers}
+                  onSaveItemCustomer={async (ic: Partial<import('../../shared/types').PartnerItem> & { id: string }) => {
+                    const { doc: fDoc, updateDoc: fUpdate } = await import('firebase/firestore');
+                    const { db: fireDb } = await import('../../shared/firebase');
+                    const { id, ...data } = ic;
+                    await fUpdate(fDoc(fireDb, 'partner_item', id), data);
+                  }}
+                />
+              )}
+              {itemMgmtTab === 'prices' && (
+                <PriceManager
+                  products={allProducts}
+                  clients={clients}
+                  productClients={productClients}
+                  productSuppliers={productSuppliers}
+                  onUpdateProductClientPrice={(id, price) => updateItem('partner_item', id, { Standard_Price: price, price })}
+                  onUpdateProductClientTaxType={(id, taxType) => updateItem('partner_item', id, { taxType })}
+                  onUpsertProductSupplier={(ps) => addItem('partner_item', { ...ps, Partner_ID: ps.supplierId ?? ps.Partner_ID, Item_ID: ps.productId ?? ps.Item_ID, Direction: 'in' as const, Standard_Price: ps.price ?? ps.Standard_Price })}
+                  onUpdateProductSupplierTaxType={(id, taxType) => updateItem('partner_item', id, { taxType })}
+                  onUpdateProductCost={(productId, cost) => updateItem('items', productId, { cost })}
+                />
+              )}
+            </div>
           )}
 
           {currentView === 'item-price-management' && (

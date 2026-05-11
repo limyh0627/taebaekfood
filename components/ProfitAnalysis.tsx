@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, Cell
@@ -56,11 +56,15 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   const [mainTab, setMainTab] = useState<MainTab>(initialTab ?? 'analysis');
   const isStandalone = initialTab === 'clients' || initialTab === 'cash-flow';
   const [showAccountSettings, setShowAccountSettings] = useState(false);
-  const [period, setPeriod] = useState<'3M' | '6M' | '1Y' | 'custom'>('1Y');
-  const [selectedQuarter, setSelectedQuarter] = useState<1|2|3|4>(() => Math.ceil((new Date().getMonth() + 1) / 3) as 1|2|3|4);
-  const [selectedHalf, setSelectedHalf] = useState<1|2>(() => new Date().getMonth() < 6 ? 1 : 2);
+  const [period, setPeriod] = useState<'3M' | '6M' | '1Y' | 'custom'>('custom');
+  const [selectedQuarter, setSelectedQuarter] = useState<1|2|3|4>(() => {
+    const cm = new Date().getMonth() + 1;
+    const avail = ([1,2,3,4] as const).find(q => cm > q * 3);
+    return avail ?? 1;
+  });
+  const [selectedHalf, setSelectedHalf] = useState<1|2>(1);
   const [customStartMonth, setCustomStartMonth] = useState(1);
-  const [customEndMonth, setCustomEndMonth] = useState(() => new Date().getMonth() + 1);
+  const [customEndMonth, setCustomEndMonth] = useState(() => Math.max(1, new Date().getMonth()));
   const [newCodeForm, setNewCodeForm] = useState({ code: '', name: '', groupId: '' });
   const [newGroupForm, setNewGroupForm] = useState({ name: '', type: '수익' as AccountGroup['type'] });
   const GROUP_TYPES: AccountGroup['type'][] = ['수익', '비용', '자산', '부채', '자본'];
@@ -110,6 +114,27 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
 
   // 오늘 연월 (미래 달 제외 기준)
   const todayYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const currentMonth = now.getMonth() + 1;
+  const isCurrentYear = selectedYear === now.getFullYear();
+  const quarterAvailable = (q: 1|2|3|4) => !isCurrentYear || currentMonth > q * 3;
+  const halfAvailable = (h: 1|2) => !isCurrentYear || (h === 1 && currentMonth > 6);
+  const yearlyAvailable = !isCurrentYear;
+
+  // 연도 변경 시 유효하지 않은 기간 자동 초기화
+  useEffect(() => {
+    if (selectedYear !== now.getFullYear()) return;
+    if (period === '1Y') { setPeriod('custom'); return; }
+    if (period === '3M') {
+      const avail = ([1,2,3,4] as const).find(q => currentMonth > q * 3);
+      if (!avail) { setPeriod('custom'); return; }
+      if (!(currentMonth > selectedQuarter * 3)) setSelectedQuarter(avail);
+    }
+    if (period === '6M') {
+      if (currentMonth <= 6) { setPeriod('custom'); return; }
+      if (selectedHalf === 2) setSelectedHalf(1);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedYear]);
 
   // 기간별 월 목록 계산
   const periodMonths = useMemo(() => {
@@ -347,7 +372,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           )}
           {period === '3M' && (
             <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
-              {([1,2,3,4] as const).map(q => (
+              {([1,2,3,4] as const).filter(q => quarterAvailable(q)).map(q => (
                 <button key={q} onClick={() => setSelectedQuarter(q)}
                   className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all ${selectedQuarter === q ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400'}`}>
                   {q}분기
@@ -357,7 +382,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           )}
           {period === '6M' && (
             <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
-              {([1,2] as const).map(h => (
+              {([1,2] as const).filter(h => halfAvailable(h)).map(h => (
                 <button key={h} onClick={() => setSelectedHalf(h)}
                   className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all ${selectedHalf === h ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400'}`}>
                   {h === 1 ? '상반기' : '하반기'}
@@ -386,141 +411,148 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             );
           })()}
           <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
-            {([['3M','분기'],['6M','반기'],['1Y','연간'],['custom','기간']] as const).map(([val,label]) => (
-              <button key={val} onClick={() => setPeriod(val)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all ${period === val ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400'}`}>
-                {label}
-              </button>
-            ))}
+            {([['3M','분기'],['6M','반기'],['1Y','연간'],['custom','기간']] as const).map(([val,label]) => {
+              const disabled =
+                (val === '1Y' && !yearlyAvailable) ||
+                (val === '6M' && !halfAvailable(1) && !halfAvailable(2)) ||
+                (val === '3M' && !([1,2,3,4] as const).some(q => quarterAvailable(q)));
+              return (
+                <button key={val}
+                  disabled={disabled}
+                  onClick={() => !disabled && setPeriod(val)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all ${
+                    disabled ? 'text-slate-300 cursor-not-allowed' :
+                    period === val ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'
+                  }`}>
+                  {label}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
 
-      {/* ── KPI 핵심 손익 요약 ── */}
+      {/* ① 총매출 · 총매출원가 · 매출총이익 */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-white rounded-2xl border border-slate-200 px-5 py-4">
+          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">총매출</div>
+          <div className="text-2xl font-black text-slate-800 leading-tight">{fmtM(summary.sales)}</div>
+          <div className="text-[10px] text-slate-400 mt-1">{fmt(summary.sales)}원</div>
+        </div>
+        <div className="bg-white rounded-2xl border border-slate-200 px-5 py-4">
+          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">총매출원가</div>
+          <div className="text-2xl font-black text-slate-800 leading-tight">{fmtM(summary.cogs)}</div>
+          <div className="text-[10px] text-slate-400 mt-1">{fmt(summary.cogs)}원</div>
+        </div>
+        <div className="bg-white rounded-2xl border border-slate-200 px-5 py-4">
+          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">매출총이익</div>
+          <div className={`text-2xl font-black leading-tight ${summary.grossProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{fmtM(summary.grossProfit)}</div>
+          <div className="text-[10px] text-slate-400 mt-1">
+            {fmt(summary.grossProfit)}원
+            {summary.sales > 0 && ` · ${Math.round(summary.grossProfit / summary.sales * 100)}%`}
+          </div>
+        </div>
+      </div>
+
+      {/* ② 매출원가 및 재고 상세 */}
       <div className="bg-white rounded-2xl border border-slate-200 p-4">
-        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">핵심 손익 요약 (KPI)</div>
-        <div className="flex items-stretch gap-2">
-          <div className="flex-1 bg-blue-600 rounded-xl px-4 py-3">
-            <div className="text-[10px] font-black text-blue-200 mb-1">총매출</div>
-            <div className="text-xl font-black text-white leading-tight">{fmtM(summary.sales)}</div>
-            <div className="text-[10px] text-blue-200 mt-0.5">{fmt(summary.sales)}원</div>
+        <div className="text-xs font-black text-slate-700 mb-3">매출원가 및 재고 상세</div>
+        <div className="space-y-2 text-xs">
+          <div className="flex items-center justify-between font-black text-slate-800">
+            <span>총매출원가 (COGS)</span>
+            <span>{fmtM(summary.cogs)}</span>
           </div>
-          <div className="flex items-center text-slate-200"><ChevronRight size={16}/></div>
-          <div className="flex-1 bg-amber-500 rounded-xl px-4 py-3">
-            <div className="text-[10px] font-black text-amber-100 mb-1">총매출원가</div>
-            <div className="text-xl font-black text-white leading-tight">{fmtM(summary.cogs)}</div>
-            <div className="text-[10px] text-amber-100 mt-0.5">{fmt(summary.cogs)}원</div>
+          <div className="flex items-center justify-between pl-4 text-slate-600">
+            <span><span className="mr-1.5 text-slate-200">├</span>기초상품재고액 (+)</span>
+            {openingSnapshot
+              ? <span className="font-bold text-teal-600">{fmtM(openingSnapshot.value)}</span>
+              : <span className="text-[10px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-lg">스냅샷 없음</span>}
           </div>
-          <div className="flex items-center text-slate-200"><ChevronRight size={16}/></div>
-          <div className={`flex-1 rounded-xl px-4 py-3 ${summary.operatingProfit >= 0 ? 'bg-violet-600' : 'bg-rose-600'}`}>
-            <div className="text-[10px] font-black text-violet-200 mb-1">영업이익</div>
-            <div className="text-xl font-black text-white leading-tight">{fmtM(summary.operatingProfit)}</div>
-            <div className="text-[10px] text-violet-200 mt-0.5">
-              {fmt(summary.operatingProfit)}원{summary.sales > 0 && `, 이익률 ${Math.round(summary.operatingProfit / summary.sales * 100)}%`}
+          <div className="flex items-center justify-between pl-4 text-slate-600 font-bold">
+            <span><span className="mr-1.5 text-slate-200">├</span>당기상품매입액 (+)</span>
+            <span>{fmtM(summary.cogs)}</span>
+          </div>
+          {cogsByCode.map((item, idx) => (
+            <div key={item.code} className="flex items-center justify-between pl-10 text-slate-500">
+              <span>
+                <span className="mr-1.5 text-slate-200">{idx === cogsByCode.length - 1 ? '└' : '├'}</span>
+                {item.code} {item.name}
+              </span>
+              <span>{fmtM(item.total)}</span>
+            </div>
+          ))}
+          <div className="flex items-center justify-between pl-4 text-slate-600">
+            <span><span className="mr-1.5 text-slate-200">└</span>기말상품재고액 (-)</span>
+            {closingSnapshot
+              ? <span className="font-bold text-teal-600">{fmtM(closingSnapshot.value)}</span>
+              : <span className="text-[10px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-lg">스냅샷 없음</span>}
+          </div>
+          {(openingSnapshot || closingSnapshot) && (
+            <div className="flex items-center justify-between mt-1 pt-1 border-t border-slate-100 font-black text-slate-700">
+              <span className="text-[11px]">조정 매출원가</span>
+              <span className="text-[11px] text-slate-900">
+                {fmtM((openingSnapshot?.value ?? 0) + summary.cogs - (closingSnapshot?.value ?? 0))}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ④ 판관비 상세 */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-4">
+        <div className="text-xs font-black text-slate-700 mb-3">판매비와관리비 상세 (SG&A)</div>
+        <div className="space-y-2 text-xs">
+          <div className="flex items-center justify-between font-black text-slate-800">
+            <span>판관비 합계</span>
+            <span>{fmtM(summary.sgna + summary.fixed)}</span>
+          </div>
+          <div className="flex items-center justify-between pl-4 text-slate-500">
+            <span><span className="mr-1.5 text-slate-200">├</span>고정비 (임대료, 인건비 등)</span>
+            <span>{fmtM(summary.fixed)}</span>
+          </div>
+          <div className="flex items-center justify-between pl-4 text-slate-500">
+            <span><span className="mr-1.5 text-slate-200">└</span>변동비 (광고비, 포장비 등)</span>
+            <span>{summary.sgna ? fmtM(summary.sgna) : '0원'}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ③⑤ 영업이익 · 당기순이익 — 같은 행 */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-white rounded-2xl border-2 border-slate-200 px-5 py-4 flex flex-col justify-between">
+          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">영업이익</div>
+          <div>
+            <div className={`text-2xl font-black ${summary.operatingProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{fmtM(summary.operatingProfit)}</div>
+            <div className="text-[10px] text-slate-400 mt-0.5">
+              {fmt(summary.operatingProfit)}원
+              {summary.sales > 0 && ` · ${Math.round(summary.operatingProfit / summary.sales * 100)}%`}
             </div>
           </div>
-          <div className="flex items-center text-slate-200"><ChevronRight size={16}/></div>
-          <div className={`flex-1 rounded-xl px-4 py-3 ${summary.netIncome >= 0 ? 'bg-slate-800' : 'bg-rose-800'}`}>
-            <div className="text-[10px] font-black text-slate-400 mb-1">당기순이익</div>
-            <div className="text-xl font-black text-white leading-tight">{fmtM(summary.netIncome)}</div>
+        </div>
+        <div className="bg-white rounded-2xl border-2 border-slate-200 px-5 py-4 flex flex-col justify-between">
+          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">당기순이익</div>
+          <div>
+            <div className={`text-2xl font-black ${summary.netIncome >= 0 ? 'text-slate-800' : 'text-rose-600'}`}>{fmtM(summary.netIncome)}</div>
             <div className="text-[10px] text-slate-400 mt-0.5">{fmt(summary.netIncome)}원</div>
           </div>
         </div>
       </div>
 
-      {/* ── COGS 상세 + SG&A 상세 ── */}
-      <div className="grid grid-cols-5 gap-3">
-        {/* 매출원가 및 재고 상세 */}
-        <div className="col-span-3 bg-white rounded-2xl border border-slate-200 p-4">
-          <div className="text-xs font-black text-slate-700 mb-3">매출원가 및 재고 상세</div>
-          <div className="space-y-2 text-xs">
-            <div className="flex items-center justify-between font-black text-slate-800">
-              <span>총매출원가 (COGS)</span>
-              <span>{fmtM(summary.cogs)}</span>
-            </div>
-            <div className="flex items-center justify-between pl-4 text-slate-600">
-              <span><span className="mr-1.5 text-slate-200">├</span>기초상품재고액 (+)</span>
-              {openingSnapshot
-                ? <span className="font-bold text-teal-600">{fmtM(openingSnapshot.value)}</span>
-                : <span className="text-[10px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-lg">스냅샷 없음</span>}
-            </div>
-            <div className="flex items-center justify-between pl-4 text-slate-600 font-bold">
-              <span><span className="mr-1.5 text-slate-200">├</span>당기상품매입액 (+)</span>
-              <span>{fmtM(summary.cogs)}</span>
-            </div>
-            {cogsByCode.map((item, idx) => (
-              <div key={item.code} className="flex items-center justify-between pl-10 text-slate-500">
-                <span>
-                  <span className="mr-1.5 text-slate-200">{idx === cogsByCode.length - 1 ? '└' : '├'}</span>
-                  {item.code} {item.name}
-                </span>
-                <span>{fmtM(item.total)}</span>
-              </div>
-            ))}
-            <div className="flex items-center justify-between pl-4 text-slate-600">
-              <span><span className="mr-1.5 text-slate-200">└</span>기말상품재고액 (-)</span>
-              {closingSnapshot
-                ? <span className="font-bold text-teal-600">{fmtM(closingSnapshot.value)}</span>
-                : <span className="text-[10px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-lg">스냅샷 없음</span>}
-            </div>
-            {(openingSnapshot || closingSnapshot) && (
-              <div className="flex items-center justify-between mt-1 pt-1 border-t border-slate-100 font-black text-slate-700">
-                <span className="text-[11px]">조정 매출원가</span>
-                <span className="text-[11px] text-slate-900">
-                  {fmtM((openingSnapshot?.value ?? 0) + summary.cogs - (closingSnapshot?.value ?? 0))}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* 판매비와관리비 상세 */}
-        <div className="col-span-2 bg-white rounded-2xl border border-slate-200 p-4">
-          <div className="text-xs font-black text-slate-700 mb-3">판매비와관리비 상세 (SG&A)</div>
-          <div className="space-y-2 text-xs">
-            <div className="flex items-center justify-between font-black text-slate-800">
-              <span>판관비 합계</span>
-              <span>{fmtM(summary.sgna + summary.fixed)}</span>
-            </div>
-            <div className="flex items-center justify-between pl-4 text-slate-500">
-              <span><span className="mr-1.5 text-slate-200">├</span>고정비 (임대료, 인건비 등)</span>
-              <span>{fmtM(summary.fixed)}</span>
-            </div>
-            <div className="flex items-center justify-between pl-4 text-slate-500">
-              <span><span className="mr-1.5 text-slate-200">└</span>변동비 (광고비, 포장비 등)</span>
-              <span>{summary.sgna ? fmtM(summary.sgna) : '0원'}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── 매출총이익 바 ── */}
-      <div className="grid grid-cols-5 gap-3 items-center">
-        <div className="col-span-3 bg-emerald-600 rounded-xl px-4 py-3 flex items-center justify-between">
-          <span className="text-sm font-black text-white">매출총이익 (Gross Profit)</span>
-          <span className="text-sm font-black text-emerald-100">{fmt(summary.grossProfit)}원</span>
-        </div>
-        <div className="col-span-2 flex items-center justify-end pr-2">
-          <span className="text-2xl font-black text-slate-700">{fmtM(summary.grossProfit)}</span>
-        </div>
-      </div>
-
-      {/* ── 기타 손익 ── */}
+      {/* ⑥ 기타 손익 */}
       <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2">
-        <div className="text-xs font-black text-slate-700 mb-1">기타 손익</div>
+        <div className="text-xs font-black text-slate-700 mb-1">기타 손익 (영업외)</div>
         <div className="flex items-center justify-between text-xs text-slate-600">
-          <span>영업외수익</span>
-          <span className="font-bold">{fmt(summary.otherIncome)}원</span>
+          <span><span className="mr-1.5 text-slate-200">├</span>영업외수익</span>
+          <span className="font-bold text-emerald-600">{summary.otherIncome ? `+${fmt(summary.otherIncome)}원` : '—'}</span>
         </div>
         <div className="flex items-center justify-between text-xs text-slate-600">
-          <span>영업외비용</span>
-          <span className="font-bold">{fmt(summary.otherExpense)}원</span>
+          <span><span className="mr-1.5 text-slate-200">└</span>영업외비용</span>
+          <span className="font-bold text-rose-600">{summary.otherExpense ? `-${fmt(summary.otherExpense)}원` : '—'}</span>
         </div>
-        <div className="border-t border-slate-100 pt-2 text-xs text-slate-500 flex items-center gap-1.5 flex-wrap">
-          <span className="font-black text-slate-700">당기순이익 산출</span>
-          <span>
-            영업이익({fmtM(summary.operatingProfit)}) + 영업외수익({summary.otherIncome ? fmtM(summary.otherIncome) : '0'}) - 영업외비용({summary.otherExpense ? fmtM(summary.otherExpense) : '0'}) ={' '}
-            <span className={`font-black ${summary.netIncome >= 0 ? 'text-slate-800' : 'text-rose-600'}`}>{fmtM(summary.netIncome)}</span>
+        <div className="border-t border-slate-100 pt-2 flex items-center justify-between text-xs">
+          <span className="text-slate-400">기타 손익 합계</span>
+          <span className={`font-black ${(summary.otherIncome - summary.otherExpense) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+            {summary.otherIncome - summary.otherExpense >= 0 ? '+' : ''}{fmt(summary.otherIncome - summary.otherExpense)}원
           </span>
         </div>
       </div>
@@ -659,123 +691,201 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
 
       </>}
 
-      {/* ── 현금흐름 분석 ── */}
+      {/* ── 현금흐름표 ── */}
       {mainTab === 'cash-flow' && (() => {
-        const cashYear = selectedYear;
-        const allMonths = Array.from({ length: 12 }, (_, i) => {
-          const ym = `${cashYear}-${String(i + 1).padStart(2, '0')}`;
-          const cashIn = issuedStatements
-            .filter(s => s.type === '매출')
-            .flatMap(s => (s.payments ?? []))
-            .filter(p => p.date.startsWith(ym))
+        // periodMonths 재사용 (analysis 탭과 동일한 기간 상태 공유)
+        const cfMonths = periodMonths; // 'YYYY-MM' 배열
+
+        const sumPayments = (type: '매출' | '매입') =>
+          issuedStatements
+            .filter(s => s.type === type)
+            .flatMap(s => s.payments ?? [])
+            .filter(p => cfMonths.includes(p.date.slice(0, 7)))
             .reduce((a, p) => a + p.amount, 0);
-          const paymentOut = issuedStatements
-            .filter(s => s.type === '매입')
-            .flatMap(s => (s.payments ?? []))
-            .filter(p => p.date.startsWith(ym))
-            .reduce((a, p) => a + p.amount, 0);
-          const fixedOut = fixedCosts.filter(c => c.yearMonth === ym).reduce((a, c) => a + c.amount, 0);
-          const templateOut = fixedCostTemplates.filter(t => t.active).reduce((a, t) => a + t.amount, 0);
-          return { label: `${i + 1}월`, ym, cashIn, cashOut: paymentOut + fixedOut + templateOut };
-        });
-        let running = 0;
-        const rows = allMonths.map(m => {
-          const net = m.cashIn - m.cashOut;
-          running += net;
-          return { ...m, net, cumulative: running };
-        });
-        const totalIn = rows.reduce((a, r) => a + r.cashIn, 0);
-        const totalOut = rows.reduce((a, r) => a + r.cashOut, 0);
-        const netTotal = totalIn - totalOut;
-        const maxBar = Math.max(...rows.map(r => Math.max(r.cashIn, r.cashOut)), 1);
+
+        const opCashIn      = sumPayments('매출');
+        const opPurchaseOut = sumPayments('매입');
+        const opFixedOut    = fixedCosts
+          .filter(c => cfMonths.includes(c.yearMonth ?? ''))
+          .reduce((a, c) => a + c.amount, 0);
+        const opTotal  = opCashIn - opPurchaseOut - opFixedOut;
+        const invTotal = 0;
+        const finTotal = 0;
+        const grandTotal = opTotal + invTotal + finTotal;
+
+        // 기간 라벨
+        const periodLabel = period === '1Y' ? `${selectedYear}년 연간`
+          : period === '3M' ? `${selectedYear}년 ${selectedQuarter}분기`
+          : period === '6M' ? `${selectedYear}년 ${selectedHalf === 1 ? '상반기' : '하반기'}`
+          : `${selectedYear}년 ${customStartMonth}월~${Math.min(customEndMonth, selectedYear === now.getFullYear() ? now.getMonth() + 1 : 12)}월`;
+
+        // 기간별 차트 데이터
+        const maxBar = Math.max(opCashIn, opPurchaseOut + opFixedOut, 1);
 
         return (
           <div className="space-y-4">
-            {/* 연도 선택 */}
-            <div className="flex items-center gap-2">
-              <button onClick={() => setSelectedYear(y => y - 1)} className="p-1.5 hover:bg-slate-100 rounded-lg"><ChevronLeft size={16}/></button>
-              <span className="text-sm font-black text-slate-800 min-w-[52px] text-center">{cashYear}년</span>
-              <button onClick={() => setSelectedYear(y => y + 1)} disabled={cashYear >= now.getFullYear()} className="p-1.5 hover:bg-slate-100 rounded-lg disabled:opacity-30"><ChevronRight size={16}/></button>
+            {/* 기간 컨트롤 — 손익분석과 동일 */}
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <div className="text-base font-black text-slate-800">{periodLabel} 현금흐름</div>
+                <div className="text-[11px] text-slate-400 mt-0.5">실제 수금·지출 기반 현금흐름 분석</div>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+                {period !== 'custom' && (
+                  <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))}
+                    className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer">
+                    {years.map(y => <option key={y} value={y}>{y}년</option>)}
+                  </select>
+                )}
+                {period === '3M' && (
+                  <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
+                    {([1,2,3,4] as const).filter(q => quarterAvailable(q)).map(q => (
+                      <button key={q} onClick={() => setSelectedQuarter(q)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all ${selectedQuarter === q ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400'}`}>
+                        {q}분기
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {period === '6M' && (
+                  <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
+                    {([1,2] as const).filter(h => halfAvailable(h)).map(h => (
+                      <button key={h} onClick={() => setSelectedHalf(h)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all ${selectedHalf === h ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400'}`}>
+                        {h === 1 ? '상반기' : '하반기'}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {period === 'custom' && (() => {
+                  const maxM = selectedYear === now.getFullYear() ? now.getMonth() + 1 : 12;
+                  return (
+                    <div className="flex items-center gap-1">
+                      <select value={customStartMonth} onChange={e => { const v = Number(e.target.value); setCustomStartMonth(v); if (v > customEndMonth) setCustomEndMonth(v); }}
+                        className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer">
+                        {Array.from({ length: maxM }, (_, i) => i + 1).map(m => <option key={m} value={m}>{m}월</option>)}
+                      </select>
+                      <span className="text-slate-400 text-xs font-black">~</span>
+                      <select value={Math.min(customEndMonth, maxM)} onChange={e => setCustomEndMonth(Number(e.target.value))}
+                        className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer">
+                        {Array.from({ length: maxM - customStartMonth + 1 }, (_, i) => customStartMonth + i).map(m => <option key={m} value={m}>{m}월</option>)}
+                      </select>
+                    </div>
+                  );
+                })()}
+                <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
+                  {([['3M','분기'],['6M','반기'],['1Y','연간'],['custom','기간']] as const).map(([val, label]) => {
+                    const disabled =
+                      (val === '1Y' && !yearlyAvailable) ||
+                      (val === '6M' && !halfAvailable(1) && !halfAvailable(2)) ||
+                      (val === '3M' && !([1,2,3,4] as const).some(q => quarterAvailable(q)));
+                    return (
+                      <button key={val} disabled={disabled} onClick={() => !disabled && setPeriod(val)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all ${
+                          period === val ? 'bg-white text-blue-700 shadow-sm' :
+                          disabled ? 'text-slate-200 cursor-not-allowed' : 'text-slate-400 hover:text-slate-600'
+                        }`}>
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
-            {/* KPI 카드 */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="bg-emerald-50 border border-emerald-100 rounded-2xl px-5 py-4">
-                <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">총 수금</p>
-                <p className="text-xl font-black text-emerald-700 mt-1">{fmtM(totalIn)}</p>
-                <p className="text-[10px] text-emerald-400 mt-0.5">{fmt(totalIn)}원</p>
+            {/* 현금흐름표 */}
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              {/* 영업활동 */}
+              <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                <span className="text-sm font-black text-slate-700">영업활동 현금흐름</span>
+                <span className={`text-sm font-black tabular-nums ${opTotal >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  {opTotal >= 0 ? '+' : ''}{fmt(opTotal)}원
+                </span>
               </div>
-              <div className="bg-rose-50 border border-rose-100 rounded-2xl px-5 py-4">
-                <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest">총 지출</p>
-                <p className="text-xl font-black text-rose-700 mt-1">{fmtM(totalOut)}</p>
-                <p className="text-[10px] text-rose-400 mt-0.5">{fmt(totalOut)}원</p>
-              </div>
-              <div className={`border rounded-2xl px-5 py-4 ${netTotal >= 0 ? 'bg-blue-50 border-blue-100' : 'bg-amber-50 border-amber-100'}`}>
-                <p className={`text-[10px] font-black uppercase tracking-widest ${netTotal >= 0 ? 'text-blue-500' : 'text-amber-500'}`}>순현금흐름</p>
-                <p className={`text-xl font-black mt-1 ${netTotal >= 0 ? 'text-blue-700' : 'text-amber-700'}`}>{fmtM(netTotal)}</p>
-                <p className={`text-[10px] mt-0.5 ${netTotal >= 0 ? 'text-blue-400' : 'text-amber-400'}`}>{fmt(netTotal)}원</p>
-              </div>
-            </div>
-
-            {/* 월별 차트 */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-5">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">월별 현금흐름</p>
-              <div className="flex items-end gap-1.5 h-32">
-                {rows.map(r => (
-                  <div key={r.ym} className="flex-1 flex flex-col items-center gap-0.5 group relative">
-                    <div className="absolute bottom-full mb-2 bg-slate-800 text-white text-[9px] font-black px-2 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-10 left-1/2 -translate-x-1/2 text-center space-y-0.5">
-                      <div>수금 {fmtM(r.cashIn)}</div>
-                      <div>지출 {fmtM(r.cashOut)}</div>
-                      <div className={r.net >= 0 ? 'text-emerald-400' : 'text-rose-400'}>순 {fmtM(r.net)}</div>
-                    </div>
-                    <div className="w-full flex gap-0.5">
-                      <div className="flex-1 bg-emerald-400 rounded-t-sm" style={{ height: `${Math.round((r.cashIn / maxBar) * 112)}px`, minHeight: r.cashIn > 0 ? 2 : 0 }}/>
-                      <div className="flex-1 bg-rose-400 rounded-t-sm" style={{ height: `${Math.round((r.cashOut / maxBar) * 112)}px`, minHeight: r.cashOut > 0 ? 2 : 0 }}/>
-                    </div>
-                    <span className="text-[8px] font-bold text-slate-400">{r.label}</span>
+              <div className="divide-y divide-slate-50">
+                {[
+                  { label: '매출 수금',         sign: 1,  value: opCashIn      },
+                  { label: '매입 지급',          sign: -1, value: opPurchaseOut },
+                  { label: '판관비·고정비 지급', sign: -1, value: opFixedOut    },
+                ].map((item, i) => (
+                  <div key={i} className="flex items-center justify-between px-6 py-2.5">
+                    <span className="text-xs text-slate-600">
+                      <span className={`mr-2 text-[10px] font-black ${item.sign > 0 ? 'text-emerald-500' : 'text-rose-400'}`}>{item.sign > 0 ? '(+)' : '(-)'}</span>
+                      {item.label}
+                    </span>
+                    <span className={`text-xs font-black tabular-nums ${item.value === 0 ? 'text-slate-300' : item.sign > 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      {item.value === 0 ? '—' : fmt(item.value)}원
+                    </span>
                   </div>
                 ))}
               </div>
-              <div className="flex items-center gap-4 mt-3">
-                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-emerald-400"/><span className="text-[10px] text-slate-500">수금</span></div>
-                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-rose-400"/><span className="text-[10px] text-slate-500">지출</span></div>
+
+              {/* 투자활동 */}
+              <div className="px-5 py-3 bg-slate-50 border-t border-b border-slate-100 flex items-center justify-between">
+                <span className="text-sm font-black text-slate-700">투자활동 현금흐름</span>
+                <span className="text-sm font-black text-slate-400 tabular-nums">—</span>
+              </div>
+              <div className="px-6 py-3 flex items-center justify-between">
+                <span className="text-xs text-slate-400 italic">설비·보증금 등 — 추후 연동 예정</span>
+                <span className="text-xs font-black text-slate-300">—</span>
+              </div>
+
+              {/* 재무활동 */}
+              <div className="px-5 py-3 bg-slate-50 border-t border-b border-slate-100 flex items-center justify-between">
+                <span className="text-sm font-black text-slate-700">재무활동 현금흐름</span>
+                <span className="text-sm font-black text-slate-400 tabular-nums">—</span>
+              </div>
+              <div className="px-6 py-3 flex items-center justify-between">
+                <span className="text-xs text-slate-400 italic">차입·상환·자본 등 — 추후 연동 예정</span>
+                <span className="text-xs font-black text-slate-300">—</span>
+              </div>
+
+              {/* 총 현금흐름 */}
+              <div className="px-5 py-4 flex items-center justify-between border-t-2 border-slate-200 bg-slate-50">
+                <span className="text-sm font-black text-slate-700">총 현금흐름</span>
+                <span className={`text-xl font-black ${grandTotal >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  {grandTotal >= 0 ? '+' : ''}{fmt(grandTotal)}원
+                </span>
               </div>
             </div>
 
-            {/* 월별 상세 테이블 */}
-            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      {['월', '수금', '지출', '순현금흐름', '누적'].map((h, i) => (
-                        <th key={h} className={`px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest ${i === 0 ? '' : 'text-right'}`}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {rows.map(r => (
-                      <tr key={r.ym} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3 text-xs font-bold text-slate-700">{r.label}</td>
-                        <td className="px-4 py-3 text-xs text-right font-bold text-emerald-700">{r.cashIn > 0 ? fmt(r.cashIn) : '-'}</td>
-                        <td className="px-4 py-3 text-xs text-right font-bold text-rose-700">{r.cashOut > 0 ? fmt(r.cashOut) : '-'}</td>
-                        <td className={`px-4 py-3 text-xs text-right font-black ${r.net >= 0 ? 'text-blue-700' : 'text-amber-700'}`}>{r.net !== 0 ? fmt(r.net) : '-'}</td>
-                        <td className={`px-4 py-3 text-xs text-right font-black ${r.cumulative >= 0 ? 'text-slate-700' : 'text-rose-700'}`}>{fmt(r.cumulative)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-slate-100 border-t-2 border-slate-200">
-                    <tr>
-                      <td className="px-4 py-3 text-xs font-black text-slate-700">합계</td>
-                      <td className="px-4 py-3 text-xs text-right font-black text-emerald-700">{fmt(totalIn)}</td>
-                      <td className="px-4 py-3 text-xs text-right font-black text-rose-700">{fmt(totalOut)}</td>
-                      <td className={`px-4 py-3 text-xs text-right font-black ${netTotal >= 0 ? 'text-blue-700' : 'text-amber-700'}`}>{fmt(netTotal)}</td>
-                      <td className="px-4 py-3 text-xs text-right font-black text-slate-500">-</td>
-                    </tr>
-                  </tfoot>
-                </table>
+            {/* 기간별 월 차트 */}
+            {cfMonths.length > 1 && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-5">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">기간별 수금 · 지출</p>
+                <div className="flex items-end gap-1 h-28">
+                  {cfMonths.map(ym => {
+                    const inc = issuedStatements.filter(s => s.type === '매출').flatMap(s => s.payments ?? []).filter(p => p.date.startsWith(ym)).reduce((a, p) => a + p.amount, 0);
+                    const out = issuedStatements.filter(s => s.type === '매입').flatMap(s => s.payments ?? []).filter(p => p.date.startsWith(ym)).reduce((a, p) => a + p.amount, 0)
+                              + fixedCosts.filter(c => c.yearMonth === ym).reduce((a, c) => a + c.amount, 0);
+                    const barMax = Math.max(...cfMonths.map(m => {
+                      const i2 = issuedStatements.filter(s => s.type === '매출').flatMap(s => s.payments ?? []).filter(p => p.date.startsWith(m)).reduce((a, p) => a + p.amount, 0);
+                      const o2 = issuedStatements.filter(s => s.type === '매입').flatMap(s => s.payments ?? []).filter(p => p.date.startsWith(m)).reduce((a, p) => a + p.amount, 0) + fixedCosts.filter(c => c.yearMonth === m).reduce((a, c) => a + c.amount, 0);
+                      return Math.max(i2, o2);
+                    }), 1);
+                    const label = `${Number(ym.slice(5))}월`;
+                    return (
+                      <div key={ym} className="flex-1 flex flex-col items-center gap-0.5 group relative">
+                        <div className="absolute bottom-full mb-2 bg-slate-800 text-white text-[9px] font-black px-2 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-10 left-1/2 -translate-x-1/2 text-center space-y-0.5">
+                          <div className="text-emerald-400">수금 {fmtM(inc)}</div>
+                          <div className="text-rose-400">지출 {fmtM(out)}</div>
+                          <div className={(inc - out) >= 0 ? 'text-teal-300' : 'text-amber-300'}>순 {fmtM(inc - out)}</div>
+                        </div>
+                        <div className="w-full flex gap-0.5">
+                          <div className="flex-1 bg-emerald-400 rounded-t-sm" style={{ height: `${Math.round((inc / barMax) * 96)}px`, minHeight: inc > 0 ? 2 : 0 }}/>
+                          <div className="flex-1 bg-rose-400 rounded-t-sm" style={{ height: `${Math.round((out / barMax) * 96)}px`, minHeight: out > 0 ? 2 : 0 }}/>
+                        </div>
+                        <span className="text-[8px] font-bold text-slate-400">{label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center gap-4 mt-3">
+                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-emerald-400"/><span className="text-[10px] text-slate-500">수금</span></div>
+                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-rose-400"/><span className="text-[10px] text-slate-500">지출</span></div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         );
       })()}

@@ -3,7 +3,7 @@ import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react'
 import {
   FileText, Printer, Search, ChevronDown, CalendarDays,
   Package, ClipboardList, ChevronRight, CheckCircle2, Edit2, Plus, X, ArrowLeft,
-  Tag, Save, AlertCircle, Download, CheckSquare,
+  Save, Download, CheckSquare,
   ChevronLeft, Share2, Check, Wallet
 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
@@ -38,7 +38,7 @@ interface TradeStatementProps {
   onSaveCompanyInfo?: (info: CompanyInfo) => void;
   onUpdateProductCost?: (productId: string, cost: number) => void;
   onUpdateOrder?: (id: string, data: Partial<import('../types').Order>) => void;
-  defaultTab?: 'history' | 'prices' | 'taxinvoice';
+  defaultTab?: 'history' | 'taxinvoice';
   onAddProductClient?: (productId: string, clientId: string, price: number, taxType: '과세' | '면세') => void;
 }
 
@@ -172,6 +172,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [payForm, setPayForm] = useState<{ amount: string; date: string; method: PaymentRecord['method']; note: string }>({
     amount: '', date: new Date().toISOString().slice(0, 10), method: '계좌이체', note: '',
   });
+  const [payOverWarn, setPayOverWarn] = useState(false);
 
   // ── 수금/지불 내역 수정 모달 ──
   const [editPayInfo, setEditPayInfo] = useState<{ stmt: IssuedStatement; payment: PaymentRecord } | null>(null);
@@ -189,26 +190,39 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [quickPayMethod, setQuickPayMethod] = useState<PaymentRecord['method']>('계좌이체');
   const [quickPayNote, setQuickPayNote] = useState('');
   const [quickPayDropOpen, setQuickPayDropOpen] = useState(false);
+  const [quickPayOverWarn, setQuickPayOverWarn] = useState(false);
 
   const getPaid = (s: IssuedStatement) => (s.payments ?? []).reduce((a, p) => a + p.amount, 0);
   const getBalance = (s: IssuedStatement) => s.totalAmount - getPaid(s);
 
   const openPayModal = (stmt: IssuedStatement) => {
+    setPayOverWarn(false);
     setPayTarget(stmt);
-    const bal = getBalance(stmt);
+    const liveStmt = issuedStatements.find(s => s.id === stmt.id) ?? stmt;
+    const bal = getBalance(liveStmt);
     setPayForm({ amount: bal > 0 ? String(bal) : '', date: new Date().toISOString().slice(0, 10), method: '계좌이체', note: '' });
   };
 
-  const savePayment = () => {
+  const savePayment = (forceOver = false) => {
     if (!payTarget || !payForm.amount) return;
+    const amount = Number(payForm.amount);
+    if (amount <= 0) return;
+    // live 데이터로 잔액 계산 (stale payTarget 방지)
+    const liveStmt = issuedStatements.find(s => s.id === payTarget.id) ?? payTarget;
+    const bal = getBalance(liveStmt);
+    if (amount > bal && !forceOver) {
+      setPayOverWarn(true);
+      return;
+    }
+    setPayOverWarn(false);
     const newPayment: PaymentRecord = {
       id: Date.now().toString(),
-      amount: Number(payForm.amount),
+      amount,
       date: payForm.date,
       method: payForm.method,
       ...(payForm.note.trim() ? { note: payForm.note.trim() } : {}),
     };
-    onUpdateIssuedStatement?.(payTarget.id, { payments: [...(payTarget.payments ?? []), newPayment] });
+    onUpdateIssuedStatement?.(payTarget.id, { payments: [...(liveStmt.payments ?? []), newPayment] });
     setPayTarget(null);
   };
 
@@ -237,7 +251,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   };
 
   // ── 메인 탭 ──
-  const [mainTab, setMainTab] = useState<'history' | 'prices' | 'taxinvoice'>(defaultTab);
+  const [mainTab, setMainTab] = useState<'history' | 'taxinvoice'>(defaultTab ?? 'history');
 
   // ── 회사 설정 모달 ──
   const [showCompanyModal, setShowCompanyModal] = useState(false);
@@ -251,16 +265,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [taxStmtIds, setTaxStmtIds] = useState<string[]>([]);
   const [taxBuyerInfo, setTaxBuyerInfo] = useState({ bizNo: '', ceoName: '', bizType: '', bizItem: '', address: '' });
   const taxPrintRef = useRef<HTMLDivElement>(null);
-
-  // ── 단가관리 탭 ──
-  const [priceTabMode, setPriceTabMode] = useState<'매출' | '매입'>('매출');
-  const [priceClientId, setPriceClientId] = useState('');
-  const [priceClientSearch, setPriceClientSearch] = useState('');
-  const [priceEdits, setPriceEdits] = useState<Record<string, string>>({});
-  const [priceTaxEdits, setPriceTaxEdits] = useState<Record<string, '과세' | '면세'>>({});
-  const [costEdits, setCostEdits] = useState<Record<string, string>>({});   // productId → cost
-  const [priceSaving, setPriceSaving] = useState(false);
-  const [priceSaved, setPriceSaved] = useState(false);
 
   // ── 발행내역 필터 ──
   const [histFrom, setHistFrom] = useState(monthStart);
@@ -1402,7 +1406,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       <div className="flex bg-slate-100 rounded-xl p-1 gap-1 self-start overflow-x-auto no-scrollbar">
         {([
           { id: 'history',     icon: ClipboardList, label: '전표내역'   },
-          { id: 'prices',      icon: Tag,           label: '단가관리'   },
         ] as const).map(t => (
           <button key={t.id}
             onClick={() => setMainTab(t.id)}
@@ -1413,276 +1416,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         ))}
       </div>
 
-      {/* ── 단가관리 탭 ── */}
-      {mainTab === 'prices' && (() => {
-        const filteredClients = clients
-          .filter(c => !priceClientSearch || c.name.includes(priceClientSearch))
-          .sort((a, b) => a.name.localeCompare(b.name));
-
-        // ── 매출단가용 ──
-        const selectedPcRows = priceClientId
-          ? productClients
-              .filter(pc => pc.clientId === priceClientId)
-              .map(pc => ({ pc, product: allProducts.find(p => p.id === pc.productId) }))
-              .filter(r => r.product)
-              .sort((a, b) => a.product!.name.localeCompare(b.product!.name))
-          : [];
-
-        // ── 매입단가용 ──
-        const selectedPsRows = priceClientId
-          ? allProducts
-              .filter(p => psMap.get(p.id) === priceClientId)
-              .map(p => {
-                const ps = productSuppliers.find(s => s.productId === p.id && s.supplierId === priceClientId)
-                  ?? { id: `${p.id}_${priceClientId}`, productId: p.id, supplierId: priceClientId } as ProductSupplier;
-                return { ps, product: p };
-              })
-              .sort((a, b) => a.product.name.localeCompare(b.product.name))
-          : [];
-
-        const hasMissingPrice = priceTabMode === '매출'
-          ? selectedPcRows.some(r => !r.pc.price)
-          : selectedPsRows.some(r => !r.ps.price);
-
-        const saveAll = async () => {
-          setPriceSaving(true);
-          if (priceTabMode === '매출') {
-            for (const [pcId, val] of Object.entries(priceEdits)) {
-              const n = parseFloat(val);
-              if (!isNaN(n) && n >= 0) onUpdateProductClientPrice?.(pcId, n);
-            }
-            for (const [pcId, tax] of Object.entries(priceTaxEdits)) {
-              onUpdateProductClientTaxType?.(pcId, tax);
-            }
-            for (const [productId, val] of Object.entries(costEdits)) {
-              const n = parseFloat(val);
-              if (!isNaN(n) && n >= 0) onUpdateProductCost?.(productId, n);
-            }
-          } else {
-            // 매입단가 저장: ProductSupplier upsert + Product.cost 동기화
-            for (const [psId, val] of Object.entries(priceEdits)) {
-              const n = parseFloat(val);
-              if (isNaN(n) || n < 0) continue;
-              const row = selectedPsRows.find(r => r.ps.id === psId);
-              if (!row) continue;
-              onUpsertProductSupplier?.({ ...row.ps, Standard_Price: n });
-              const itemId = row.ps.Item_ID;
-              if (itemId) onUpdateProductCost?.(itemId, n);
-            }
-            for (const [psId, tax] of Object.entries(priceTaxEdits)) {
-              const row = selectedPsRows.find(r => r.ps.id === psId);
-              if (!row) continue;
-              onUpsertProductSupplier?.({ ...row.ps, taxType: tax });
-              onUpdateProductSupplierTaxType?.(psId, tax);
-            }
-          }
-          setPriceEdits({});
-          setPriceTaxEdits({});
-          setCostEdits({});
-          setPriceSaving(false);
-          setPriceSaved(true);
-          setTimeout(() => setPriceSaved(false), 2000);
-        };
-
-        const hasEdits = Object.keys(priceEdits).length > 0 || Object.keys(priceTaxEdits).length > 0 || Object.keys(costEdits).length > 0;
-
-        return (
-          <div className="flex gap-4 min-h-[600px]">
-            {/* 좌측: 거래처 목록 */}
-            <div className="w-56 shrink-0 bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden">
-              <div className="px-3 pt-3 pb-2 border-b border-slate-100">
-                <div className="relative">
-                  <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
-                  <input
-                    type="text"
-                    placeholder="거래처 검색..."
-                    value={priceClientSearch}
-                    onChange={e => setPriceClientSearch(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-7 pr-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-violet-300"
-                  />
-                </div>
-              </div>
-              <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
-                {filteredClients.map(c => {
-                  const pcCount = priceTabMode === '매출'
-                    ? productClients.filter(pc => pc.clientId === c.id).length
-                    : productSuppliers.filter(ps => ps.supplierId === c.id).length;
-                  const missingCount = priceTabMode === '매출'
-                    ? productClients.filter(pc => pc.clientId === c.id && !pc.price).length
-                    : productSuppliers.filter(ps => ps.supplierId === c.id && !ps.price).length;
-                  if (pcCount === 0) return null;
-                  return (
-                    <button
-                      key={c.id}
-                      onClick={() => { setPriceClientId(c.id); setPriceEdits({}); setPriceTaxEdits({}); }}
-                      className={`w-full text-left px-3 py-2.5 transition-all hover:bg-violet-50 ${priceClientId === c.id ? 'bg-violet-50 border-r-2 border-violet-500' : ''}`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className={`text-xs font-black truncate ${priceClientId === c.id ? 'text-violet-700' : 'text-slate-700'}`}>{c.name}</span>
-                        {missingCount > 0 && (
-                          <span className="text-[9px] font-black bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full ml-1 shrink-0">{missingCount}</span>
-                        )}
-                      </div>
-                      <span className="text-[10px] text-slate-400">{pcCount}품목</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* 우측: 단가 테이블 */}
-            <div className="flex-1 bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden">
-              {/* 매출/매입 토글 */}
-              <div className="flex items-center gap-2 px-5 pt-3 pb-2 border-b border-slate-100">
-                <div className="flex bg-slate-100 rounded-lg p-0.5 gap-0.5">
-                  {(['매출', '매입'] as const).map(m => (
-                    <button key={m} onClick={() => { setPriceTabMode(m); setPriceClientId(''); setPriceEdits({}); setPriceTaxEdits({}); setCostEdits({}); }}
-                      className={`px-3 py-1 rounded-md text-xs font-black transition-all ${priceTabMode === m ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-                      {m}단가
-                    </button>
-                  ))}
-                </div>
-                <span className="text-[10px] text-slate-400">{priceTabMode === '매출' ? '거래처별 판매단가' : '매입처별 매입단가 (= 원가)'}</span>
-              </div>
-              {!priceClientId ? (
-                <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-300">
-                  <Tag size={40} strokeWidth={1.5}/>
-                  <span className="text-sm font-bold">좌측에서 거래처를 선택하세요</span>
-                </div>
-              ) : (
-                <>
-                  {/* 헤더 */}
-                  <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <span className="font-black text-slate-900 text-sm">{clients.find(c => c.id === priceClientId)?.name}</span>
-                      <span className="text-xs text-slate-400">{selectedPcRows.length}품목</span>
-                      {hasMissingPrice && (
-                        <div className="flex items-center gap-1 text-[10px] font-black text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">
-                          <AlertCircle size={10}/>단가 미입력 품목 있음
-                        </div>
-                      )}
-                    </div>
-                    <button
-                      onClick={saveAll}
-                      disabled={!hasEdits || priceSaving}
-                      className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black transition-all ${
-                        priceSaved ? 'bg-emerald-500 text-white' :
-                        hasEdits ? 'bg-violet-600 text-white hover:bg-violet-700' :
-                        'bg-slate-100 text-slate-300 cursor-not-allowed'
-                      }`}
-                    >
-                      <Save size={12}/>{priceSaved ? '저장완료!' : '전체 저장'}
-                    </button>
-                  </div>
-
-                  {/* 테이블 */}
-                  <div className="flex-1 overflow-y-auto">
-                    {priceTabMode === '매출' ? (
-                    <table className="w-full text-left border-collapse">
-                      <thead className="sticky top-0 bg-slate-50 z-10">
-                        <tr>
-                          <th className="px-5 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest">품목명</th>
-                          <th className="px-4 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest">용량/규격</th>
-                          <th className="px-4 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">원가</th>
-                          <th className="px-4 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">매출단가</th>
-                          <th className="px-4 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">마진율</th>
-                          <th className="px-4 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">과세</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-50">
-                        {selectedPcRows.map(({ pc, product }) => {
-                          const priceEdited = priceEdits[pc.id] !== undefined;
-                          const costEdited = costEdits[product!.id] !== undefined;
-                          const taxEdited = priceTaxEdits[pc.id] !== undefined;
-                          const currentTax = priceTaxEdits[pc.id] ?? pc.taxType ?? '과세';
-                          const priceInputVal = priceEdits[pc.id] ?? '';
-                          const costInputVal = costEdits[product!.id] ?? '';
-                          const hasNoPrice = !pc.price;
-                          const effectivePrice = priceEdits[pc.id] ? parseFloat(priceEdits[pc.id]) : (pc.price ?? 0);
-                          const effectiveCost = costEdits[product!.id] ? parseFloat(costEdits[product!.id]) : (product!.cost ?? 0);
-                          const margin = effectivePrice > 0 && effectiveCost > 0
-                            ? Math.round((effectivePrice - effectiveCost) / effectivePrice * 100) : null;
-                          return (
-                            <tr key={pc.id} className={`hover:bg-slate-50 transition-colors ${hasNoPrice ? 'bg-amber-50/40' : ''}`}>
-                              <td className="px-5 py-3">
-                                <span className="text-xs font-black text-slate-800">{product!.name}</span>
-                                {hasNoPrice && <span className="ml-1.5 text-[9px] font-black text-amber-500 bg-amber-100 px-1.5 py-0.5 rounded-full">단가 미입력</span>}
-                              </td>
-                              <td className="px-4 py-3 text-[11px] text-slate-400">{product!.용량 || '-'}</td>
-                              <td className="px-4 py-3"><div className="flex justify-end">
-                                <input type="number" placeholder={product!.cost ? String(product!.cost) : '원가'} value={costInputVal}
-                                  onChange={e => setCostEdits(prev => ({ ...prev, [product!.id]: e.target.value }))}
-                                  className={`w-24 text-right bg-white border rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-orange-300 transition-all ${costEdited ? 'border-orange-400 bg-orange-50' : 'border-slate-200'}`}/>
-                              </div></td>
-                              <td className="px-4 py-3"><div className="flex justify-end">
-                                <input type="number" placeholder={pc.price ? String(pc.price) : '단가 입력'} value={priceInputVal}
-                                  onChange={e => setPriceEdits(prev => ({ ...prev, [pc.id]: e.target.value }))}
-                                  className={`w-24 text-right bg-white border rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-violet-300 transition-all ${priceEdited ? 'border-violet-400 bg-violet-50' : 'border-slate-200'}`}/>
-                              </div></td>
-                              <td className="px-4 py-3 text-center">
-                                {margin !== null ? (
-                                  <span className={`text-[11px] font-black px-2 py-1 rounded-lg ${margin >= 30 ? 'bg-emerald-100 text-emerald-700' : margin >= 10 ? 'bg-amber-100 text-amber-700' : margin >= 0 ? 'bg-slate-100 text-slate-600' : 'bg-rose-100 text-rose-700'}`}>{margin}%</span>
-                                ) : <span className="text-[10px] text-slate-300">—</span>}
-                              </td>
-                              <td className="px-4 py-3 text-center">
-                                <button onClick={() => setPriceTaxEdits(prev => ({ ...prev, [pc.id]: (priceTaxEdits[pc.id] ?? pc.taxType ?? '과세') === '과세' ? '면세' : '과세' }))}
-                                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black border transition-all ${taxEdited ? currentTax === '면세' ? 'bg-indigo-500 text-white border-indigo-500' : 'bg-slate-500 text-white border-slate-500' : currentTax === '면세' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}>
-                                  {currentTax}
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                    ) : (
-                    /* ── 매입단가 테이블 ── */
-                    <table className="w-full text-left border-collapse">
-                      <thead className="sticky top-0 bg-slate-50 z-10">
-                        <tr>
-                          <th className="px-5 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest">품목명</th>
-                          <th className="px-4 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest">용량/규격</th>
-                          <th className="px-4 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">매입단가(원가)</th>
-                          <th className="px-4 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">과세</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-50">
-                        {selectedPsRows.map(({ ps, product }) => {
-                          const edited = priceEdits[ps.id] !== undefined;
-                          const taxEdited = priceTaxEdits[ps.id] !== undefined;
-                          const currentTax = priceTaxEdits[ps.id] ?? ps.taxType ?? '과세';
-                          const hasNoPrice = !ps.price;
-                          return (
-                            <tr key={ps.id} className={`hover:bg-slate-50 transition-colors ${hasNoPrice ? 'bg-amber-50/40' : ''}`}>
-                              <td className="px-5 py-3">
-                                <span className="text-xs font-black text-slate-800">{product.name}</span>
-                                {hasNoPrice && <span className="ml-1.5 text-[9px] font-black text-amber-500 bg-amber-100 px-1.5 py-0.5 rounded-full">미입력</span>}
-                              </td>
-                              <td className="px-4 py-3 text-[11px] text-slate-400">{product.용량 || '-'}</td>
-                              <td className="px-4 py-3"><div className="flex justify-end">
-                                <input type="number" placeholder={ps.price ? String(ps.price) : '매입단가'} value={priceEdits[ps.id] ?? ''}
-                                  onChange={e => setPriceEdits(prev => ({ ...prev, [ps.id]: e.target.value }))}
-                                  className={`w-28 text-right bg-white border rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-rose-300 transition-all ${edited ? 'border-rose-400 bg-rose-50' : 'border-slate-200'}`}/>
-                              </div></td>
-                              <td className="px-4 py-3 text-center">
-                                <button onClick={() => setPriceTaxEdits(prev => ({ ...prev, [ps.id]: (priceTaxEdits[ps.id] ?? ps.taxType ?? '과세') === '과세' ? '면세' : '과세' }))}
-                                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black border transition-all ${taxEdited ? currentTax === '면세' ? 'bg-indigo-500 text-white border-indigo-500' : 'bg-slate-500 text-white border-slate-500' : currentTax === '면세' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}>
-                                  {currentTax}
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        );
-      })()}
 
       {/* ── 세금계산서 탭 (TaxStatement 컴포넌트로 이동) ── */}
       {false && (() => {
@@ -2181,8 +1914,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   const cumul = row.cumul;
                   return (
                     <tr key={`pay__${row.paymentId}`}
-                      className={`cursor-pointer ${row.stmtType === '매출' ? 'bg-lime-50/80 hover:bg-lime-100/70' : 'bg-orange-50/80 hover:bg-orange-100/70'}`}
-                      onClick={() => openEditPay(row.src, { id: row.paymentId, amount: row.amount, date: row.date, method: row.method as PaymentRecord['method'], note: row.note ?? '' })}>
+                      className={`${row.stmtType === '매출' ? 'bg-lime-50/80' : 'bg-orange-50/80'}`}>
                       <td className="px-4 py-2 text-[11px] font-mono text-slate-500 whitespace-nowrap">{row.date}</td>
                       <td className="px-4 py-2">
                         <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.stmtType === '매출' ? 'bg-lime-100 text-lime-700' : 'bg-orange-100 text-orange-700'}`}>{label}</span>
@@ -2202,7 +1934,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       <td className="px-4 py-2 text-[11px] text-slate-400 max-w-[180px] truncate">
                         {[row.method, row.note].filter(Boolean).join(' · ')}
                       </td>
-                      <td className="px-4 py-2 text-[10px] text-slate-300 text-center">수정</td>
+                      <td className="px-4 py-2 text-center">
+                        <button
+                          onClick={() => openEditPay(row.src, { id: row.paymentId, amount: row.amount, date: row.date, method: row.method as PaymentRecord['method'], note: row.note ?? '' })}
+                          className="text-[10px] font-black text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded-lg transition-all">
+                          수정
+                        </button>
+                      </td>
                     </tr>
                   );
                 }
@@ -2263,21 +2001,27 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       {/* ── 지불/수불 처리 모달 ── */}
       {payTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
-          onClick={() => setPayTarget(null)}>
+          onClick={() => { setPayTarget(null); setPayOverWarn(false); }}>
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4"
             onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-black text-slate-800">
               {payTarget.type === '매입' ? '지불 처리' : '수금 처리'}
             </h3>
             <div className="text-xs text-slate-400">{payTarget.clientName} · {payTarget.tradeDate}</div>
-            <div className="bg-slate-50 rounded-xl px-4 py-3 text-xs text-center">
-              <span className="text-slate-500">현재 잔액 </span>
-              <span className={`font-black text-base ${getBalance(payTarget) < 0 ? (payTarget.type === '매출' ? 'text-rose-600' : 'text-blue-600') : 'text-slate-800'}`}>
-                {getBalance(payTarget) < 0
-                  ? `${payTarget.type === '매출' ? '줄돈' : '받을돈'} ${fmt(Math.abs(getBalance(payTarget)))}원`
-                  : `${fmt(getBalance(payTarget))}원`}
-              </span>
-              <p className="text-[10px] text-slate-400 mt-1">잔액 초과 금액 입력 시 {payTarget.type === '매출' ? '줄돈(빨간색)' : '받을돈(파란색)'}으로 표시됩니다</p>
+            <div className="bg-slate-50 rounded-xl px-4 py-3 text-xs flex items-center justify-between gap-3">
+              <div>
+                <span className="text-slate-500">잔액 </span>
+                <span className={`font-black text-base ${getBalance(payTarget) <= 0 ? 'text-emerald-600' : 'text-slate-800'}`}>
+                  {getBalance(payTarget) <= 0 ? '완납' : `${fmt(getBalance(payTarget))}원`}
+                </span>
+              </div>
+              {getBalance(payTarget) > 0 && (
+                <button
+                  onClick={() => setPayForm(p => ({ ...p, amount: String(getBalance(payTarget)) }))}
+                  className="text-[10px] font-black px-2 py-1 rounded-lg bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition-all shrink-0">
+                  전액
+                </button>
+              )}
             </div>
             <div className="space-y-3">
               <div>
@@ -2310,10 +2054,28 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
               </div>
             </div>
+            {payOverWarn && (() => {
+              const liveStmt = issuedStatements.find(s => s.id === payTarget?.id) ?? payTarget;
+              const bal = liveStmt ? getBalance(liveStmt) : 0;
+              const overLabel = payTarget?.type === '매출' ? '줄돈' : '받을돈';
+              return (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs space-y-2">
+                  <p className="font-black text-amber-700">
+                    입력금액이 잔액({fmt(bal)}원)을 초과합니다. 초과분은 {overLabel}으로 전환됩니다.
+                  </p>
+                  <div className="flex gap-2">
+                    <button onClick={() => setPayOverWarn(false)}
+                      className="flex-1 py-1.5 rounded-lg bg-slate-200 text-slate-600 font-black">취소</button>
+                    <button onClick={() => savePayment(true)}
+                      className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white font-black">계속 진행</button>
+                  </div>
+                </div>
+              );
+            })()}
             <div className="flex gap-2 pt-1">
-              <button onClick={() => setPayTarget(null)}
+              <button onClick={() => { setPayTarget(null); setPayOverWarn(false); }}
                 className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
-              <button onClick={savePayment}
+              <button onClick={() => savePayment(false)}
                 disabled={!payForm.amount || Number(payForm.amount) <= 0}
                 className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center gap-1.5">
                 <Save size={12}/>저장
@@ -2399,19 +2161,20 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           ? clients.filter(c => c.name.includes(quickPayClientSearch.trim())).slice(0, 8)
           : [];
 
-        const handleQuickPaySave = () => {
+        const doQuickPaySave = () => {
           const amt = Number(quickPayAmount);
           if (!quickPayClientId || amt <= 0) return;
           const unpaid = issuedStatements
             .filter(s => s.clientId === quickPayClientId && s.type === stmtTypeForPay && getBalance(s) > 0)
             .sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
           let remaining = amt;
-          for (const s of unpaid) {
+          for (let i = 0; i < unpaid.length; i++) {
             if (remaining <= 0) break;
-            const bal = getBalance(s);
-            const apply = Math.min(remaining, bal);
+            const s = unpaid[i];
+            const isLast = i === unpaid.length - 1;
+            const apply = isLast ? remaining : Math.min(remaining, getBalance(s));
             const newPayment: PaymentRecord = {
-              id: `pay-${Date.now()}-${s.id}`,
+              id: `pay-${Date.now()}-${i}-${s.id}`,
               amount: apply,
               date: quickPayDate,
               method: quickPayMethod,
@@ -2421,11 +2184,21 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             remaining -= apply;
           }
           setShowQuickPay(false);
+          setQuickPayOverWarn(false);
+        };
+        const handleQuickPaySave = () => {
+          const amt = Number(quickPayAmount);
+          if (!quickPayClientId || amt <= 0) return;
+          if (amt > clientTotal && clientTotal > 0 && !quickPayOverWarn) {
+            setQuickPayOverWarn(true);
+            return;
+          }
+          doQuickPaySave();
         };
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
-            onClick={() => { setShowQuickPay(false); setQuickPayDropOpen(false); }}>
+            onClick={() => { setShowQuickPay(false); setQuickPayDropOpen(false); setQuickPayOverWarn(false); }}>
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4" onClick={e => e.stopPropagation()}>
               <h3 className="text-sm font-black text-slate-800">수금 / 지불 처리</h3>
 
@@ -2474,9 +2247,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 {quickPayClientId && (
                   <div className="mt-2 px-3 py-2 bg-slate-50 rounded-xl flex items-center justify-between">
                     <span className="text-[11px] text-slate-500">누적잔액</span>
-                    <span className={`text-sm font-black ${clientTotal > 0 ? (quickPayType === '수금' ? 'text-blue-600' : 'text-rose-600') : 'text-emerald-600'}`}>
-                      {clientTotal > 0 ? `${fmt(clientTotal)}원` : '없음'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-sm font-black ${clientTotal > 0 ? (quickPayType === '수금' ? 'text-blue-600' : 'text-rose-600') : 'text-emerald-600'}`}>
+                        {clientTotal > 0 ? `${fmt(clientTotal)}원` : '없음'}
+                      </span>
+                      {clientTotal > 0 && (
+                        <button
+                          onClick={() => setQuickPayAmount(String(clientTotal))}
+                          className="text-[10px] font-black px-2 py-1 rounded-lg bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition-all">
+                          완불처리
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -2518,8 +2300,22 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
               </div>
 
+              {quickPayOverWarn && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs space-y-2">
+                  <p className="font-black text-amber-700">
+                    입력금액이 누적잔액({fmt(clientTotal)}원)을 초과합니다.
+                    초과분은 {quickPayType === '수금' ? '줄돈' : '받을돈'}으로 전환됩니다.
+                  </p>
+                  <div className="flex gap-2">
+                    <button onClick={() => setQuickPayOverWarn(false)}
+                      className="flex-1 py-1.5 rounded-lg bg-slate-200 text-slate-600 font-black">취소</button>
+                    <button onClick={doQuickPaySave}
+                      className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white font-black">계속 진행</button>
+                  </div>
+                </div>
+              )}
               <div className="flex gap-2 pt-1">
-                <button onClick={() => setShowQuickPay(false)}
+                <button onClick={() => { setShowQuickPay(false); setQuickPayOverWarn(false); }}
                   className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
                 <button onClick={handleQuickPaySave}
                   disabled={!quickPayClientId || Number(quickPayAmount) <= 0}
