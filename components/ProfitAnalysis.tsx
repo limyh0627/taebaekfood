@@ -59,8 +59,8 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   const [period, setPeriod] = useState<'3M' | '6M' | '1Y' | 'custom'>('1Y');
   const [selectedQuarter, setSelectedQuarter] = useState<1|2|3|4>(() => Math.ceil((new Date().getMonth() + 1) / 3) as 1|2|3|4);
   const [selectedHalf, setSelectedHalf] = useState<1|2>(() => new Date().getMonth() < 6 ? 1 : 2);
-  const [customStart, setCustomStart] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; });
-  const [customEnd, setCustomEnd] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; });
+  const [customStartMonth, setCustomStartMonth] = useState(1);
+  const [customEndMonth, setCustomEndMonth] = useState(() => new Date().getMonth() + 1);
   const [newCodeForm, setNewCodeForm] = useState({ code: '', name: '', groupId: '' });
   const [newGroupForm, setNewGroupForm] = useState({ name: '', type: '수익' as AccountGroup['type'] });
   const GROUP_TYPES: AccountGroup['type'][] = ['수익', '비용', '자산', '부채', '자본'];
@@ -118,24 +118,24 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
       return selectedYear === now.getFullYear() ? all.filter(ym => ym <= todayYm) : all;
     }
     if (period === '3M') {
-      const startMonth = (selectedQuarter - 1) * 3 + 1;
-      return Array.from({ length: 3 }, (_, i) => `${selectedYear}-${String(startMonth + i).padStart(2, '0')}`);
+      const sm = (selectedQuarter - 1) * 3 + 1;
+      const all = Array.from({ length: 3 }, (_, i) => `${selectedYear}-${String(sm + i).padStart(2, '0')}`);
+      return selectedYear === now.getFullYear() ? all.filter(ym => ym <= todayYm) : all;
     }
     if (period === '6M') {
-      const startMonth = selectedHalf === 1 ? 1 : 7;
-      return Array.from({ length: 6 }, (_, i) => `${selectedYear}-${String(startMonth + i).padStart(2, '0')}`);
+      const sm = selectedHalf === 1 ? 1 : 7;
+      const all = Array.from({ length: 6 }, (_, i) => `${selectedYear}-${String(sm + i).padStart(2, '0')}`);
+      return selectedYear === now.getFullYear() ? all.filter(ym => ym <= todayYm) : all;
     }
-    // 'custom'
-    const [sy, sm] = customStart.split('-').map(Number);
-    const [ey, em] = customEnd.split('-').map(Number);
+    // custom: 같은 연도 내 월 범위
+    const maxMonth = selectedYear === now.getFullYear() ? now.getMonth() + 1 : 12;
+    const end = Math.min(customEndMonth, maxMonth);
     const months: string[] = [];
-    let y = sy, m = sm;
-    while ((y < ey || (y === ey && m <= em)) && months.length <= 36) {
-      months.push(`${y}-${String(m).padStart(2, '0')}`);
-      m++; if (m > 12) { m = 1; y++; }
+    for (let m = customStartMonth; m <= end; m++) {
+      months.push(`${selectedYear}-${String(m).padStart(2, '0')}`);
     }
     return months;
-  }, [period, selectedYear, selectedQuarter, selectedHalf, customStart, customEnd, todayYm]);
+  }, [period, selectedYear, selectedQuarter, selectedHalf, customStartMonth, customEndMonth, todayYm]);
 
   // ── 재고 스냅샷 → 기초/기말재고 (손익분석 COGS 패널용) ──
   const openingSnapshot = useMemo(() => {
@@ -322,9 +322,13 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <div className="text-base font-black text-slate-800">
-            {period !== 'custom'
-              ? `${selectedYear}년 ${period === '1Y' ? '연간' : period === '3M' ? `${selectedQuarter}분기` : selectedHalf === 1 ? '상반기' : '하반기'} 손익분석`
-              : `${customStart} ~ ${customEnd} 손익분석`}
+            {selectedYear}년{' '}
+            {period === '1Y'
+              ? `연간 (1월~${periodMonths.length > 0 ? Number(periodMonths[periodMonths.length - 1].split('-')[1]) : 12}월)`
+              : period === '3M' ? `${selectedQuarter}분기`
+              : period === '6M' ? (selectedHalf === 1 ? '상반기' : '하반기')
+              : `${customStartMonth}월~${Math.min(customEndMonth, selectedYear === now.getFullYear() ? now.getMonth() + 1 : 12)}월`}{' '}
+            손익분석
           </div>
           <div className="text-[11px] text-slate-400 mt-0.5">매출 · 매입 · 고정비 기반 손익구조 분석</div>
         </div>
@@ -361,15 +365,26 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
               ))}
             </div>
           )}
-          {period === 'custom' && (
-            <div className="flex items-center gap-1">
-              <input type="month" value={customStart} onChange={e => setCustomStart(e.target.value)}
-                className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer"/>
-              <span className="text-slate-400 text-xs">~</span>
-              <input type="month" value={customEnd} min={customStart} onChange={e => setCustomEnd(e.target.value)}
-                className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer"/>
-            </div>
-          )}
+          {period === 'custom' && (() => {
+            const maxM = selectedYear === now.getFullYear() ? now.getMonth() + 1 : 12;
+            return (
+              <div className="flex items-center gap-1">
+                <select value={customStartMonth} onChange={e => { const v = Number(e.target.value); setCustomStartMonth(v); if (v > customEndMonth) setCustomEndMonth(v); }}
+                  className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer">
+                  {Array.from({ length: maxM }, (_, i) => i + 1).map(m => (
+                    <option key={m} value={m}>{m}월</option>
+                  ))}
+                </select>
+                <span className="text-slate-400 text-xs font-black">~</span>
+                <select value={Math.min(customEndMonth, maxM)} onChange={e => setCustomEndMonth(Number(e.target.value))}
+                  className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer">
+                  {Array.from({ length: maxM - customStartMonth + 1 }, (_, i) => customStartMonth + i).map(m => (
+                    <option key={m} value={m}>{m}월</option>
+                  ))}
+                </select>
+              </div>
+            );
+          })()}
           <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
             {([['3M','분기'],['6M','반기'],['1Y','연간'],['custom','기간']] as const).map(([val,label]) => (
               <button key={val} onClick={() => setPeriod(val)}
