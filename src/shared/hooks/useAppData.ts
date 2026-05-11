@@ -5,7 +5,7 @@ import {
   AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry,
   AppNotification, IssuedStatement,
   ItemBom, CompanyInfo, PendingReceipt, QrMapping, ReturnRequest,
-  AccountCode, AccountGroup, FixedCostTemplate, InventorySnapshot,
+  AccountCode, AccountGroup, FixedCostTemplate, InventorySnapshot, ProductionSalesLog,
 } from '../types';
 import { subscribeToCollection, subscribeToDocument } from '../services/firebaseService';
 import { authReady } from '../firebase';
@@ -65,6 +65,7 @@ export interface AppData {
   accountCodes: AccountCode[];
   fixedCostTemplates: FixedCostTemplate[];
   inventorySnapshots: InventorySnapshot[];
+  productionSalesLogs: ProductionSalesLog[];
   itemCustomers: PartnerItem[];
   isDataLoading: boolean;
 }
@@ -98,6 +99,7 @@ export function useAppData(): AppData {
   const [accountCodes, setAccountCodes] = useState<AccountCode[]>([]);
   const [fixedCostTemplates, setFixedCostTemplates] = useState<FixedCostTemplate[]>([]);
   const [inventorySnapshots, setInventorySnapshots] = useState<InventorySnapshot[]>([]);
+  const [productionSalesLogs, setProductionSalesLogs] = useState<ProductionSalesLog[]>([]);
   const [isDataLoading, setIsDataLoading] = useState(true);
   const loadedRef = useRef(new Set<string>());
 
@@ -151,6 +153,7 @@ export function useAppData(): AppData {
         subscribeToCollection<AccountCode>('accountCodes', setAccountCodes),
         subscribeToCollection<FixedCostTemplate>('fixedCostTemplates', setFixedCostTemplates),
         subscribeToCollection<InventorySnapshot>('inventorySnapshots', setInventorySnapshots),
+        subscribeToCollection<ProductionSalesLog>('productionSalesLogs', setProductionSalesLogs),
       ];
     });
 
@@ -183,6 +186,7 @@ export function useAppData(): AppData {
     appNotifications, workOrderItems, issuedStatements,
     pendingReceipts, qrMappings, itemBoms, returnRequests,
     companyInfo, accountGroups, accountCodes, fixedCostTemplates, inventorySnapshots,
+    productionSalesLogs,
     itemCustomers, isDataLoading,
   };
 }

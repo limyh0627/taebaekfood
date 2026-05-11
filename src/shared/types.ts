@@ -517,6 +517,16 @@ export interface InventorySnapshot {
   value: number;        // 재고총액 (기말재고액, 원)
   recordedAt: string;   // ISO timestamp
 }
+
+export interface ProductionSalesLog {
+  id: string;
+  date: string;         // 서류 날짜
+  createdAt: string;    // ISO timestamp
+  createdBy: string;    // 작성자
+  orderCount: number;   // 처리 주문 수
+  productionRows: { groupLabel: string; 용량: string; 수량: number; 소비기한: string; 비고: string }[];
+  orderSummaries: { customerName: string; items: { name: string; qty: number }[] }[];
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type AdjustmentType = 'quantity_change' | 'cancel_receipt' | 'chat_mention' | 'reorder_alert';

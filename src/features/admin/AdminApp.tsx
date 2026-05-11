@@ -150,7 +150,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     noticePosts, chatRooms, chatMessages,
     rawMaterialLedger, sesameInputLedger,
     appNotifications, workOrderItems, issuedStatements,
-    itemBoms, returnRequests, companyInfo, itemCustomers, inventorySnapshots, isDataLoading,
+    itemBoms, returnRequests, companyInfo, itemCustomers, inventorySnapshots, productionSalesLogs, isDataLoading,
   } = appData;
 
   const { fixedCosts, productionRecords } = adminData;
@@ -172,6 +172,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [rmCorrectionForm, setRmCorrectionForm] = useState({ date: new Date().toISOString().slice(0, 10), amount: '', isNegative: true, note: '' });
   const [isMobile, setIsMobile] = useState(false);
   const [showQrLabel, setShowQrLabel] = useState(false);
+  const [selectedLog, setSelectedLog] = useState<import('../../shared/types').ProductionSalesLog | null>(null);
 
   // 모바일 감지
   useEffect(() => {
@@ -882,7 +883,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     <nav className="space-y-1">
                       <NavItem icon={FileText} label="거래명세서" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={Receipt} label="세금계산서" active={currentView === 'tax-statement'} onClick={() => handleNavClick('tax-statement')} collapsed={isSidebarCollapsed} />
-                      <NavItem icon={Package} label="품목 관리" active={currentView === 'item-price-management'} onClick={() => handleNavClick('item-price-management')} collapsed={isSidebarCollapsed} />
+                      <NavItem icon={Package} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={UserCheck} label="인사 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={Users} label="거래처 관리" active={currentView === 'partners'} onClick={() => handleNavClick('partners')} collapsed={isSidebarCollapsed} />
@@ -1626,9 +1627,25 @@ const AdminApp: React.FC<AdminAppProps> = ({
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
               a.href = url;
-              a.download = `생산작업판매일지_${bulkMfgDate || new Date().toISOString().slice(0, 10)}.xlsx`;
+              const docDate = bulkMfgDate || new Date().toISOString().slice(0, 10);
+              a.download = `생산작업판매일지_${docDate}.xlsx`;
               a.click();
               URL.revokeObjectURL(url);
+
+              // 생산판매기록 로그 저장 (관리자 서류 조회용)
+              const logId = `psl-${Date.now()}`;
+              await addItem('productionSalesLogs', {
+                id: logId,
+                date: docDate,
+                createdAt: new Date().toISOString(),
+                createdBy: currentUser.name,
+                orderCount: shippedOrders.length,
+                productionRows: leftRows,
+                orderSummaries: shippedOrders.map(o => ({
+                  customerName: o.customerName,
+                  items: o.items.map(i => ({ name: i.name, qty: i.quantity ?? 1 })),
+                })),
+              });
 
               // 출고(SHIPPED) 주문을 예전 주문이력(DELIVERED)으로 이동 + 부자재 차감
               for (const o of shippedOrders) {
@@ -2065,7 +2082,78 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   </div>
                 </div>
 
-                {docTab === '생산판매기록부' && (
+                {docTab === '생산판매기록부' && isAdmin && (() => {
+                  const logs = [...productionSalesLogs].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+                  return (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black text-slate-500 uppercase tracking-widest">생산판매기록부 이력 ({logs.length}건)</span>
+                      </div>
+                      {logs.length === 0 ? (
+                        <div className="py-16 text-center text-slate-300 text-sm">저장된 기록이 없습니다</div>
+                      ) : (
+                        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                          <table className="w-full text-xs">
+                            <thead className="bg-slate-50">
+                              <tr>
+                                {['날짜', '작성자', '주문 수', '저장 일시', ''].map(h => (
+                                  <th key={h} className="px-4 py-3 text-left font-black text-slate-500">{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50">
+                              {logs.map(log => (
+                                <tr key={log.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => setSelectedLog(selectedLog?.id === log.id ? null : log)}>
+                                  <td className="px-4 py-3 font-black text-slate-800">{log.date}</td>
+                                  <td className="px-4 py-3 text-slate-600">{log.createdBy}</td>
+                                  <td className="px-4 py-3 text-slate-600">{log.orderCount}건</td>
+                                  <td className="px-4 py-3 text-slate-400 font-mono text-[11px]">{new Date(log.createdAt).toLocaleString('ko-KR')}</td>
+                                  <td className="px-4 py-3 text-blue-500 text-[10px] font-black">{selectedLog?.id === log.id ? '닫기 ▲' : '보기 ▼'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          {selectedLog && (
+                            <div className="border-t border-slate-200 p-4 bg-slate-50 space-y-3">
+                              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">생산 내역</div>
+                              <table className="w-full text-xs border-collapse">
+                                <thead>
+                                  <tr className="bg-white">
+                                    {['품목', '용량', '수량', '소비기한', '비고'].map(h => (
+                                      <th key={h} className="border border-slate-200 px-3 py-2 font-black text-slate-500 text-center">{h}</th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {selectedLog.productionRows.map((r, i) => (
+                                    <tr key={i} className="hover:bg-blue-50">
+                                      <td className="border border-slate-200 px-3 py-1.5 font-bold text-slate-800">{r.groupLabel}</td>
+                                      <td className="border border-slate-200 px-3 py-1.5 text-center text-slate-600">{r.용량}</td>
+                                      <td className="border border-slate-200 px-3 py-1.5 text-right font-black text-blue-700">{r.수량}</td>
+                                      <td className="border border-slate-200 px-3 py-1.5 text-center text-slate-500">{r.소비기한}</td>
+                                      <td className="border border-slate-200 px-3 py-1.5 text-slate-400 text-[11px]">{r.비고}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">판매 내역</div>
+                              <div className="space-y-1">
+                                {selectedLog.orderSummaries.map((s, i) => (
+                                  <div key={i} className="flex items-center gap-3 px-3 py-2 bg-white rounded-xl border border-slate-100 text-xs">
+                                    <span className="font-black text-slate-800 w-28 shrink-0">{s.customerName}</span>
+                                    <span className="text-slate-500">{s.items.map(it => `${it.name} ${it.qty}개`).join(', ')}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {docTab === '생산판매기록부' && !isAdmin && (
                   <div className="space-y-4">
 
                     {/* 상단: 생산 내역(좌) + 판매 내역(우) */}
