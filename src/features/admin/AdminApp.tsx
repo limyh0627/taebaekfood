@@ -156,7 +156,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const { fixedCosts, productionRecords } = adminData;
 
   const [pendingInvoice, setPendingInvoice] = useState<{ supplierId: string; supplierName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }> } | null>(null);
-  const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부' | '거래명세서' | '생산작업기록부' | '생산작업기록부2'>('생산판매기록부');
+  const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부' | '거래명세서' | '생산작업기록부' | '생산작업기록부2' | 'haccp'>('생산판매기록부');
   const [docYearMonth, setDocYearMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [bulkMfgDate, setBulkMfgDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [productionWorkCat, setProductionWorkCat] = useState('시골향참기름1');
@@ -1659,18 +1659,26 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         onClick={() => setDocTab('생산판매기록부')}
                         className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '생산판매기록부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
                       >생산판매기록부</button>
-                      <button
-                        onClick={() => setDocTab('원료수불부')}
-                        className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '원료수불부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
-                      >원료수불부</button>
-                      <button
-                        onClick={() => setDocTab('생산작업기록부')}
-                        className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '생산작업기록부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
-                      >생산작업기록부</button>
-                      <button
-                        onClick={() => setDocTab('생산작업기록부2')}
-                        className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '생산작업기록부2' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
-                      >생산작업기록부2</button>
+                      {!isAdmin && (
+                        <button
+                          onClick={() => setDocTab('haccp')}
+                          className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === 'haccp' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                        >HACCP 체크리스트</button>
+                      )}
+                      {isAdmin && (<>
+                        <button
+                          onClick={() => setDocTab('원료수불부')}
+                          className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '원료수불부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                        >원료수불부</button>
+                        <button
+                          onClick={() => setDocTab('생산작업기록부')}
+                          className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '생산작업기록부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                        >생산작업기록부</button>
+                        <button
+                          onClick={() => setDocTab('생산작업기록부2')}
+                          className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '생산작업기록부2' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                        >생산작업기록부2</button>
+                      </>)}
                     </div>
                     {docTab === '생산판매기록부' && (
                       <div className="flex flex-wrap items-center gap-2">
@@ -2163,6 +2171,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       </table>
                     </div>
                   </div>
+                )}
+
+                {docTab === 'haccp' && (
+                  <React.Suspense fallback={<div className="py-20 text-center text-slate-400">로딩 중...</div>}>
+                    <HaccpChecklist />
+                  </React.Suspense>
                 )}
 
                 {docTab === '원료수불부' && (() => {
