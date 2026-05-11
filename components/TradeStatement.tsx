@@ -1288,7 +1288,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         }
         return true;
       })
-      .sort((a, b) => -a.dateKey.localeCompare(b.dateKey)); // 최신→과거
+      .sort((a, b) => a.dateKey.localeCompare(b.dateKey)); // 오래된→최신
   }, [allTimelineRows, histFrom, histTo, histTypeFilter, histSearch]);
 
   // 거래처별 미수금/미지급금 총합 맵 (전체 전표 기준)
