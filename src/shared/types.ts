@@ -99,6 +99,7 @@ export interface Partner {
   phone?: string;
   type: ClientType;
   region?: string;
+  address?: string;
   partnerType?: PartnerType; // undefined = '매출처' (하위 호환)
   purchaseItems?: PurchaseItem[];
 }

@@ -14,9 +14,16 @@ import {
   LayoutGrid,
   Search,
   Trash2,
+  MapPin,
 } from 'lucide-react';
 import RegionSelect from './RegionSelect';
 import { Client, ClientType, PartnerType } from '../types';
+
+declare global {
+  interface Window {
+    daum: { Postcode: new (config: { oncomplete: (data: { address: string }) => void }) => { open: () => void } };
+  }
+}
 import AddClientModal from './AddClientModal';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
@@ -239,6 +246,29 @@ const ClientManager: React.FC<ClientManagerProps> = ({ clients, onUpdateClient, 
                             />
                           ) : (
                             <span className="font-bold text-slate-600">{client.region || '미지정'}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center text-[11px] w-full mt-1">
+                          <MapPin size={11} className="mr-1 flex-shrink-0" />
+                          {isEditing ? (
+                            <div className="flex items-center gap-1 flex-1">
+                              <input
+                                type="text"
+                                readOnly
+                                value={editForm?.address || ''}
+                                placeholder="주소 검색"
+                                className="border-b border-slate-200 outline-none bg-transparent text-[11px] flex-1 cursor-default"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => new window.daum.Postcode({ oncomplete: (data) => setEditForm(prev => prev ? { ...prev, address: data.address } : null) }).open()}
+                                className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded hover:bg-indigo-100 whitespace-nowrap"
+                              >
+                                검색
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-slate-500 truncate">{client.address || '-'}</span>
                           )}
                         </div>
                         {isEditing && (

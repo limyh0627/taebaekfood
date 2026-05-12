@@ -1,8 +1,14 @@
 
 import React, { useState } from 'react';
-import { X, Users, Phone, Mail, LayoutGrid, Check, Store, Truck, User } from 'lucide-react';
+import { X, Users, Phone, Mail, LayoutGrid, Check, Store, Truck, User, MapPin } from 'lucide-react';
 import RegionSelect from './RegionSelect';
 import { Client, ClientType, PartnerType } from '../types';
+
+declare global {
+  interface Window {
+    daum: { Postcode: new (config: { oncomplete: (data: { address: string }) => void }) => { open: () => void } };
+  }
+}
 
 interface AddClientModalProps {
   onClose: () => void;
@@ -16,8 +22,15 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ onClose, onSave }) => {
     phone: '',
     type: '일반' as ClientType,
     region: '',
+    address: '',
     partnerType: '매출처' as PartnerType
   });
+
+  const openAddressSearch = () => {
+    new window.daum.Postcode({
+      oncomplete: (data) => setFormData(prev => ({ ...prev, address: data.address })),
+    }).open();
+  };
 
   const clientTypes: { id: ClientType, label: string, icon: any, color: string }[] = [
     { id: '일반', label: '일반 거래처', icon: User, color: 'bg-indigo-100 text-indigo-600' },
@@ -36,6 +49,7 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ onClose, onSave }) => {
       phone: formData.phone,
       type: formData.type,
       region: formData.region,
+      address: formData.address,
       partnerType: formData.partnerType
     };
 
@@ -99,6 +113,28 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ onClose, onSave }) => {
                 value={formData.region}
                 onChange={(v) => setFormData({...formData, region: v})}
               />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
+              <MapPin size={14} className="mr-2" /> 주소
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                readOnly
+                value={formData.address}
+                placeholder="주소 검색 버튼을 눌러주세요"
+                className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none text-slate-600 cursor-default"
+              />
+              <button
+                type="button"
+                onClick={openAddressSearch}
+                className="px-4 py-3.5 bg-indigo-600 text-white text-sm font-bold rounded-2xl hover:bg-indigo-700 transition-all whitespace-nowrap"
+              >
+                주소 검색
+              </button>
             </div>
           </div>
 
