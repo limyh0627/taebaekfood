@@ -6,7 +6,7 @@ import {
   ClipboardList, RotateCcw, Building2, FileText, History, Link2,
   X, Loader2, Check, Plus,
 } from 'lucide-react';
-import { LeaveRequest, AdjustmentRequest, Employee, ReturnRequest, PendingReceipt, IssuedStatement, IssuedStatementItem, Client } from '../types';
+import { LeaveRequest, AdjustmentRequest, Employee, ReturnRequest, ReturnItem, PendingReceipt, IssuedStatement, IssuedStatementItem, Client } from '../types';
 import { addItem, updateItem } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 
@@ -29,6 +29,12 @@ type TabType = 'leave' | 'adjustment' | 'return' | 'inbound';
 interface StatementDraftItem { name: string; qty: string; price: string; unit: string; isTaxExempt: boolean; }
 interface StatementDraft {
   receipt: PendingReceipt;
+  clientId: string;
+  tradeDate: string;
+  items: StatementDraftItem[];
+}
+interface ReturnStatementDraft {
+  returnReq: ReturnRequest;
   clientId: string;
   tradeDate: string;
   items: StatementDraftItem[];
@@ -58,6 +64,8 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
 
   const [statementDraft, setStatementDraft] = useState<StatementDraft | null>(null);
   const [statementSaving, setStatementSaving] = useState(false);
+  const [returnStmtDraft, setReturnStmtDraft] = useState<ReturnStatementDraft | null>(null);
+  const [returnStmtSaving, setReturnStmtSaving] = useState(false);
 
   const pendingLeaves = useMemo(() =>
     leaveRequests.filter(r => r.status === 'pending' || r.status === 'cancel_pending' || r.modifyRequest?.status === 'pending')
@@ -104,6 +112,64 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
     return <span className="flex items-center gap-1 text-amber-500 font-black text-[10px]"><Clock size={11} />승인 대기</span>;
   };
   const getEmployeeName = (empId: string) => employees.find(e => e.id === empId)?.name ?? empId;
+
+  const openReturnStmtModal = (req: ReturnRequest) => {
+    const matchedClient = clients.find(c => c.id === req.clientId);
+    setReturnStmtDraft({
+      returnReq: req,
+      clientId: matchedClient?.id ?? '',
+      tradeDate: req.createdAt.slice(0, 10),
+      items: (req.items as ReturnItem[]).map(item => ({
+        name: item.name,
+        qty: item.quantity.toString(),
+        price: (item.price ?? 0).toString(),
+        unit: '',
+        isTaxExempt: false,
+      })),
+    });
+  };
+
+  const saveReturnStatement = async () => {
+    if (!returnStmtDraft) return;
+    const client = clients.find(c => c.id === returnStmtDraft.clientId);
+    if (!client) { alert('거래처를 선택해주세요.'); return; }
+    const validItems = returnStmtDraft.items.filter(i => Number(i.qty) > 0);
+    if (validItems.length === 0) { alert('수량을 1개 이상 입력해주세요.'); return; }
+    setReturnStmtSaving(true);
+    try {
+      const stmtItems: IssuedStatementItem[] = validItems.map(i => {
+        const qty = Number(i.qty);
+        const price = Number(i.price);
+        const supply = qty * price;
+        const tax = i.isTaxExempt ? 0 : Math.round(supply * 0.1);
+        return { name: i.name, spec: i.unit, qty, price, supply, tax, total: supply + tax, isTaxExempt: i.isTaxExempt };
+      });
+      const totalSupply = stmtItems.reduce((s, i) => s + i.supply, 0);
+      const totalTax = stmtItems.reduce((s, i) => s + i.tax, 0);
+      const docNo = `반품-${returnStmtDraft.tradeDate.slice(0, 7)}-${String(issuedStatements.length + 1).padStart(4, '0')}`;
+      const stmtId = await addItem('issuedStatements', {
+        issuedAt: new Date().toISOString(),
+        tradeDate: returnStmtDraft.tradeDate,
+        type: '매출' as const,
+        clientId: client.id,
+        clientName: client.name,
+        orderId: returnStmtDraft.returnReq.id,
+        docNo,
+        totalSupply,
+        totalTax,
+        totalAmount: totalSupply + totalTax,
+        items: stmtItems,
+      } as Omit<IssuedStatement, 'id'>);
+      await updateItem('returnRequests', returnStmtDraft.returnReq.id, {
+        status: 'processed',
+        processedAt: new Date().toISOString(),
+        linkedStatementId: stmtId,
+      });
+      setReturnStmtDraft(null);
+    } finally {
+      setReturnStmtSaving(false);
+    }
+  };
 
   const openStatementModal = (receipt: PendingReceipt) => {
     const matchedClient = clients.find(c =>
@@ -408,8 +474,8 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                   <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">요청 일시</th>
                   <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">거래처</th>
                   <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">품목</th>
-                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap">금액</th>
-                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center whitespace-nowrap">관리</th>
+                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap">품목 수</th>
+                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center whitespace-nowrap">전표</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -437,10 +503,20 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                         {req.items.length > 2 && <div className="text-[10px] text-slate-400">+{req.items.length - 2}건</div>}
                       </div>
                     </td>
-                    <td className="px-3 py-3 text-right"><span className="text-[11px] font-black text-rose-600">{req.totalAmount.toLocaleString()}원</span></td>
+                    <td className="px-3 py-3 text-right">
+                      <span className="text-[11px] font-black text-slate-400">{req.items.length}품목</span>
+                    </td>
                     <td className="px-3 py-3">
                       <div className="flex items-center justify-center gap-1">
-                        <button onClick={() => onProcessReturn?.(req)} className="px-2 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-black transition-all shadow-sm whitespace-nowrap">처리</button>
+                        {req.status === 'pending' ? (
+                          <button onClick={() => openReturnStmtModal(req)} className="flex items-center gap-1 px-2 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-black transition-all shadow-sm whitespace-nowrap">
+                            <FileText size={11} /> 반품 전표 발행
+                          </button>
+                        ) : (
+                          <span className="flex items-center gap-1 text-emerald-600 text-[10px] font-black whitespace-nowrap">
+                            <Check size={11} /> 전표 발행됨
+                          </span>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -533,6 +609,124 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
           <ClipboardList size={40} className="text-slate-200" />
           <p className="text-sm font-bold">처리할 항목이 없습니다</p>
           <p className="text-xs text-slate-300">신규 연차 신청이나 재고 변동이 발생하면 여기에 표시됩니다.</p>
+        </div>
+      )}
+
+      {/* 반품 전표 발행 모달 */}
+      {returnStmtDraft && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-end md:items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <div>
+                <p className="font-black text-slate-800">반품 전표 발행</p>
+                <p className="text-xs text-slate-400 mt-0.5">{returnStmtDraft.returnReq.clientName} · {returnStmtDraft.returnReq.createdAt.slice(0, 10)} 반품</p>
+              </div>
+              <button onClick={() => setReturnStmtDraft(null)} className="p-2 text-slate-400 hover:text-slate-600"><X size={18} /></button>
+            </div>
+
+            <div className="overflow-auto flex-1 px-5 py-4 space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-500 uppercase tracking-wider">거래처 (매출처) *</label>
+                <select
+                  value={returnStmtDraft.clientId}
+                  onChange={e => setReturnStmtDraft(d => d ? { ...d, clientId: e.target.value } : null)}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-rose-400"
+                >
+                  <option value="">거래처 선택</option>
+                  {clients
+                    .filter(c => !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처')
+                    .map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-500 uppercase tracking-wider">거래일자 *</label>
+                <input
+                  type="date"
+                  value={returnStmtDraft.tradeDate}
+                  onChange={e => setReturnStmtDraft(d => d ? { ...d, tradeDate: e.target.value } : null)}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-slate-500 uppercase tracking-wider">품목</label>
+                  <button
+                    onClick={() => setReturnStmtDraft(d => d ? { ...d, items: [...d.items, { name: '', qty: '', price: '', unit: '', isTaxExempt: false }] } : null)}
+                    className="flex items-center gap-1 px-2 py-1 text-xs text-rose-600 border border-rose-200 rounded-lg hover:bg-rose-50"
+                  >
+                    <Plus size={11} /> 품목 추가
+                  </button>
+                </div>
+                <div className="grid grid-cols-12 gap-1 px-1 text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                  <div className="col-span-4">품목명</div>
+                  <div className="col-span-2 text-center">수량</div>
+                  <div className="col-span-1 text-center">단위</div>
+                  <div className="col-span-3 text-center">단가(원)</div>
+                  <div className="col-span-1 text-center">세금</div>
+                  <div className="col-span-1" />
+                </div>
+                {returnStmtDraft.items.map((item, idx) => (
+                  <div key={idx} className="grid grid-cols-12 gap-1 items-center bg-slate-50 rounded-xl p-2">
+                    <div className="col-span-4">
+                      <input value={item.name} onChange={e => setReturnStmtDraft(d => d ? { ...d, items: d.items.map((it, i) => i === idx ? { ...it, name: e.target.value } : it) } : null)}
+                        placeholder="품목명" className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-rose-400" />
+                    </div>
+                    <div className="col-span-2">
+                      <input type="number" min={0} value={item.qty} onChange={e => setReturnStmtDraft(d => d ? { ...d, items: d.items.map((it, i) => i === idx ? { ...it, qty: e.target.value } : it) } : null)}
+                        placeholder="0" className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs text-center focus:outline-none focus:ring-1 focus:ring-rose-400" />
+                    </div>
+                    <div className="col-span-1">
+                      <input value={item.unit} onChange={e => setReturnStmtDraft(d => d ? { ...d, items: d.items.map((it, i) => i === idx ? { ...it, unit: e.target.value } : it) } : null)}
+                        placeholder="개" className="w-full px-1 py-1.5 border border-slate-200 rounded-lg text-xs text-center focus:outline-none focus:ring-1 focus:ring-rose-400" />
+                    </div>
+                    <div className="col-span-3">
+                      <input type="number" min={0} value={item.price} onChange={e => setReturnStmtDraft(d => d ? { ...d, items: d.items.map((it, i) => i === idx ? { ...it, price: e.target.value } : it) } : null)}
+                        placeholder="0" className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs text-right focus:outline-none focus:ring-1 focus:ring-rose-400" />
+                    </div>
+                    <div className="col-span-1 flex justify-center">
+                      <button onClick={() => setReturnStmtDraft(d => d ? { ...d, items: d.items.map((it, i) => i === idx ? { ...it, isTaxExempt: !it.isTaxExempt } : it) } : null)}
+                        className={`px-1 py-1 rounded text-[10px] font-black transition-colors ${item.isTaxExempt ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-400'}`}>
+                        {item.isTaxExempt ? '면세' : '과세'}
+                      </button>
+                    </div>
+                    <div className="col-span-1 flex justify-center">
+                      <button onClick={() => setReturnStmtDraft(d => d ? { ...d, items: d.items.filter((_, i) => i !== idx) } : null)} className="p-1 text-slate-300 hover:text-rose-500">
+                        <X size={13} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {(() => {
+                const supply = returnStmtDraft.items.reduce((s, i) => s + Number(i.qty || 0) * Number(i.price || 0), 0);
+                const tax = returnStmtDraft.items.reduce((s, i) => {
+                  const amt = Number(i.qty || 0) * Number(i.price || 0);
+                  return s + (i.isTaxExempt ? 0 : Math.round(amt * 0.1));
+                }, 0);
+                return (
+                  <div className="bg-rose-50 rounded-xl px-4 py-3 space-y-1">
+                    <div className="flex justify-between text-xs text-slate-500"><span>공급가액</span><span className="font-bold">{supply.toLocaleString()}원</span></div>
+                    <div className="flex justify-between text-xs text-slate-500"><span>세액</span><span className="font-bold">{tax.toLocaleString()}원</span></div>
+                    <div className="flex justify-between text-sm font-black text-slate-800 border-t border-rose-200 pt-1"><span>합계</span><span>{(supply + tax).toLocaleString()}원</span></div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="px-5 py-4 border-t border-slate-100">
+              <button
+                onClick={saveReturnStatement}
+                disabled={returnStmtSaving || !returnStmtDraft.clientId}
+                className="w-full flex items-center justify-center gap-2 py-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white rounded-xl font-black text-sm transition-all"
+              >
+                {returnStmtSaving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+                {returnStmtSaving ? '발행 중...' : '반품 전표 발행'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

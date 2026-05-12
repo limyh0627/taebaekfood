@@ -3,7 +3,7 @@ import {
   RotateCcw, ScanLine, Building2, History,
   Camera, QrCode, X, Check, Plus, Trash2, ChevronDown,
   Loader2, AlertCircle, Link2, Image as ImageIcon,
-  RefreshCw, Settings2,
+  RefreshCw, Settings2, FileText,
 } from 'lucide-react';
 import jsQR from 'jsqr';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -12,7 +12,7 @@ import { storage } from '../src/shared/firebase';
 import { addItem, updateItem, subscribeToCollection } from '../src/shared/services/firebaseService';
 import {
   SubmaterialComponent, PendingReceipt, PendingReceiptItem, QrMapping,
-  IssuedStatement, ReturnRequest, ReturnItem, ReturnReason,
+  IssuedStatement, IssuedStatementItem, ReturnRequest, ReturnItem, ReturnReason,
   Product, Client, Order,
 } from '../src/shared/types';
 import PageHeader from './PageHeader';
@@ -119,17 +119,24 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   // ── History filter ──
   const [historyMonth, setHistoryMonth] = useState(() => new Date().toISOString().slice(0, 7));
 
+  // ── 전표 발행 모달 ──
+  interface StatementDraftItem { name: string; qty: string; price: string; unit: string; isTaxExempt: boolean; }
+  interface StatementDraft {
+    receipt: PendingReceipt;
+    clientId: string;
+    tradeDate: string;
+    items: StatementDraftItem[];
+  }
+  const [statementDraft, setStatementDraft] = useState<StatementDraft | null>(null);
+  const [statementSaving, setStatementSaving] = useState(false);
+
   // ── Returns form ──
-  const [selectedClientId, setSelectedClientId] = useState('');
-  const [selectedOrderId, setSelectedOrderId] = useState('');
-  const [selectedStatementId, setSelectedStatementId] = useState('');
-  const [returnItems, setReturnItems] = useState<Partial<ReturnItem>[]>([]);
+  const [returnClientId, setReturnClientId] = useState('');
+  const [returnQtys, setReturnQtys] = useState<Record<string, string>>({});
   const [returnNote, setReturnNote] = useState('');
   const [returnSaving, setReturnSaving] = useState(false);
   const [returnFilterMonth, setReturnFilterMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [processingId, setProcessingId] = useState<string | null>(null);
-  const [clientSearch, setClientSearch] = useState('');
-  const [showClientDropdown, setShowClientDropdown] = useState(false);
 
   // ══════════════════════════════════════════
   // Camera helpers
@@ -543,6 +550,74 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   };
 
   // ══════════════════════════════════════════
+  // 전표 발행 helpers
+  // ══════════════════════════════════════════
+
+  const openStatementModal = (receipt: PendingReceipt) => {
+    const matchedClient = clients.find(c =>
+      c.name === receipt.supplierName ||
+      c.name.includes(receipt.supplierName) ||
+      receipt.supplierName.includes(c.name)
+    );
+    setStatementDraft({
+      receipt,
+      clientId: matchedClient?.id ?? '',
+      tradeDate: receipt.registeredAt.slice(0, 10),
+      items: receipt.items.map(item => ({
+        name: item.name,
+        qty: item.quantity.toString(),
+        price: (item.unitPrice ?? 0).toString(),
+        unit: item.unit,
+        isTaxExempt: false,
+      })),
+    });
+  };
+
+  const saveStatement = async () => {
+    if (!statementDraft) return;
+    const client = clients.find(c => c.id === statementDraft.clientId);
+    if (!client) { alert('거래처를 선택해주세요.'); return; }
+    const validItems = statementDraft.items.filter(i => Number(i.qty) > 0);
+    if (validItems.length === 0) { alert('수량을 1개 이상 입력해주세요.'); return; }
+
+    setStatementSaving(true);
+    try {
+      const stmtItems: IssuedStatementItem[] = validItems.map(i => {
+        const qty = Number(i.qty);
+        const price = Number(i.price);
+        const supply = qty * price;
+        const tax = i.isTaxExempt ? 0 : Math.round(supply * 0.1);
+        return { name: i.name, spec: i.unit, qty, price, supply, tax, total: supply + tax, isTaxExempt: i.isTaxExempt };
+      });
+      const totalSupply = stmtItems.reduce((s, i) => s + i.supply, 0);
+      const totalTax = stmtItems.reduce((s, i) => s + i.tax, 0);
+      const docNo = `${statementDraft.tradeDate.slice(0, 7)}-${String(issuedStatements.length + 1).padStart(4, '0')}`;
+
+      const stmtId = await addItem('issuedStatements', {
+        issuedAt: new Date().toISOString(),
+        tradeDate: statementDraft.tradeDate,
+        type: '매입' as const,
+        clientId: client.id,
+        clientName: client.name,
+        orderId: statementDraft.receipt.id,
+        docNo,
+        totalSupply,
+        totalTax,
+        totalAmount: totalSupply + totalTax,
+        items: stmtItems,
+      } as Omit<IssuedStatement, 'id'>);
+
+      await updateItem('pendingReceipts', statementDraft.receipt.id, {
+        status: 'voucher_linked',
+        linkedStatementId: stmtId,
+      });
+      setStatementDraft(null);
+    } finally {
+      setStatementSaving(false);
+    }
+  };
+
+  // ══════════════════════════════════════════
   // Returns helpers
   // ══════════════════════════════════════════
 
@@ -550,84 +625,38 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     ['완제품', '향미유', '고춧가루'].includes(p.category as string)
   );
 
-  const clientOrders = orders
-    .filter(o => o.clientId === selectedClientId && o.status === 'DELIVERED')
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .slice(0, 30);
-
-  const clientStatements = issuedStatements
-    .filter(s => s.clientId === selectedClientId && s.type === '매출')
-    .sort((a, b) => b.tradeDate.localeCompare(a.tradeDate))
-    .slice(0, 30);
-
   useEffect(() => {
-    setSelectedOrderId('');
-    setSelectedStatementId('');
-    setReturnItems([]);
-  }, [selectedClientId]);
-
-  const handleSelectOrder = (orderId: string) => {
-    setSelectedOrderId(orderId);
-    if (!orderId) { setReturnItems([]); return; }
-    const order = orders.find(o => o.id === orderId);
-    if (!order) return;
-    setReturnItems(order.items.map(i => ({
-      productId: i.productId,
-      name: i.name,
-      quantity: 0,
-      price: i.price,
-      reason: '기타' as ReturnReason,
-      isResellable: true,
-    })));
-  };
-
-  const updateReturnItemField = <K extends keyof ReturnItem>(idx: number, key: K, val: ReturnItem[K]) => {
-    setReturnItems(prev => prev.map((it, i) => (i === idx ? { ...it, [key]: val } : it)));
-  };
-
-  const handleReturnProductSelect = (idx: number, productId: string) => {
-    const p = products.find(x => x.id === productId);
-    setReturnItems(prev => prev.map((it, i) => i === idx ? { ...it, productId, name: p?.name ?? '', price: p?.price ?? 0 } : it));
-  };
-
-  const validReturnItems = returnItems.filter(
-    (it): it is ReturnItem => !!it.productId && !!it.name && (it.quantity ?? 0) > 0
-  );
-  const returnTotalAmount = validReturnItems.reduce((sum, it) => sum + it.quantity * it.price, 0);
-
-  const handleSelectReturnClient = (clientId: string, clientName: string) => {
-    setSelectedClientId(clientId);
-    setClientSearch(clientName);
-    setShowClientDropdown(false);
-  };
-
-  const handleClientSearchChange = (text: string) => {
-    setClientSearch(text);
-    setShowClientDropdown(true);
-    if (!text) setSelectedClientId('');
-  };
+    setReturnQtys({});
+  }, [returnClientId]);
 
   const handleReturnSubmit = async () => {
-    const client = clients.find(c => c.id === selectedClientId);
+    const client = clients.find(c => c.id === returnClientId);
     if (!client) { alert('거래처를 선택해주세요.'); return; }
-    if (validReturnItems.length === 0) { alert('반품 품목을 1개 이상 입력해주세요.'); return; }
+    const items: ReturnItem[] = sellableProducts
+      .filter(p => Number(returnQtys[p.id] || 0) > 0)
+      .map(p => ({
+        productId: p.id,
+        name: p.name,
+        quantity: Number(returnQtys[p.id]),
+        price: 0,
+        reason: '기타' as ReturnReason,
+        isResellable: true,
+      }));
+    if (items.length === 0) { alert('반품 수량을 1개 이상 입력해주세요.'); return; }
     setReturnSaving(true);
     try {
       await addItem('returnRequests', {
-        clientId: selectedClientId,
+        clientId: returnClientId,
         clientName: client.name,
-        ...(selectedOrderId && { orderId: selectedOrderId }),
-        ...(selectedStatementId && { linkedStatementId: selectedStatementId }),
-        items: validReturnItems,
-        totalAmount: returnTotalAmount,
+        items,
+        totalAmount: 0,
         status: 'pending' as const,
         createdAt: new Date().toISOString(),
         createdBy: currentUser.name,
         ...(returnNote && { note: returnNote }),
       });
-      setSelectedClientId('');
-      setClientSearch('');
-      setReturnItems([]);
+      setReturnClientId('');
+      setReturnQtys({});
       setReturnNote('');
       setReturnTab('이력');
     } finally {
@@ -1026,10 +1055,10 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                   )}
                   {isAdmin && r.status === 'pending_voucher' && (
                     <button
-                      onClick={async () => await updateItem('pendingReceipts', r.id, { status: 'voucher_linked' })}
-                      className="flex items-center gap-1.5 px-3 py-1.5 border border-teal-300 text-teal-700 rounded-lg text-xs font-black hover:bg-teal-50 transition-all"
+                      onClick={() => openStatementModal(r)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-black transition-all"
                     >
-                      <Link2 size={12} /> 전표 연결 완료 처리
+                      <FileText size={12} /> 매입 전표 발행
                     </button>
                   )}
                 </div>
@@ -1063,163 +1092,68 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
 
           {/* ── 반품 접수 ── */}
           {returnTab === '접수' && (
-            <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-5">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1.5 relative">
-                  <label className="text-xs font-black text-slate-500 uppercase tracking-wider">거래처 *</label>
-                  <div className="relative">
-                    <input
-                      value={clientSearch}
-                      onChange={e => handleClientSearchChange(e.target.value)}
-                      onFocus={() => setShowClientDropdown(true)}
-                      onBlur={() => setTimeout(() => setShowClientDropdown(false), 150)}
-                      placeholder="거래처 검색..."
-                      className={`w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${selectedClientId ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-white'}`}
-                    />
-                    {showClientDropdown && (
-                      <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-auto">
-                        {clients.filter(c => !clientSearch || c.name.toLowerCase().includes(clientSearch.toLowerCase())).length === 0 ? (
-                          <p className="px-3 py-2.5 text-xs text-slate-400">검색 결과 없음</p>
-                        ) : clients
-                          .filter(c => !clientSearch || c.name.toLowerCase().includes(clientSearch.toLowerCase()))
-                          .map(c => (
-                            <button
-                              key={c.id}
-                              onMouseDown={() => handleSelectReturnClient(c.id, c.name)}
-                              className={`w-full px-3 py-2.5 text-left text-sm hover:bg-blue-50 transition-colors ${selectedClientId === c.id ? 'bg-blue-50 font-bold text-blue-700' : 'text-slate-700'}`}
-                            >
-                              {c.name}
-                            </button>
-                          ))}
+            <div className="space-y-3">
+              {/* 거래처 선택 */}
+              <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-2">
+                <p className="text-xs font-black text-slate-500 uppercase tracking-widest">거래처 *</p>
+                <select
+                  value={returnClientId}
+                  onChange={e => setReturnClientId(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                >
+                  <option value="">거래처 선택</option>
+                  {clients.filter(c => !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처').map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 품목별 반품 수량 */}
+              {returnClientId && (
+                <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-2">
+                  <p className="text-xs font-black text-slate-500 uppercase tracking-widest">반품 품목 (수량 입력)</p>
+                  <div className="space-y-1.5">
+                    {sellableProducts.map(p => (
+                      <div key={p.id} className="flex items-center gap-3 py-2 border-b border-slate-50 last:border-0">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-slate-700">{p.name}</p>
+                          <p className="text-xs text-slate-400">{p.unit}</p>
+                        </div>
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="0"
+                          value={returnQtys[p.id] ?? ''}
+                          onChange={e => setReturnQtys(prev => ({ ...prev, [p.id]: e.target.value }))}
+                          className="w-24 px-2 py-1.5 border border-slate-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        />
+                        <span className="text-xs text-slate-400 w-8 shrink-0">{p.unit}</span>
                       </div>
-                    )}
+                    ))}
                   </div>
                 </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-black text-slate-500 uppercase tracking-wider">원주문 (선택)</label>
-                  <select
-                    value={selectedOrderId}
-                    onChange={e => handleSelectOrder(e.target.value)}
-                    disabled={!selectedClientId}
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40"
-                  >
-                    <option value="">원주문 선택 (품목 자동 채움)</option>
-                    {clientOrders.map(o => (
-                      <option key={o.id} value={o.id}>
-                        {o.createdAt.slice(0, 10)} — {o.items.map(i => i.name).join(', ').slice(0, 25)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-black text-slate-500 uppercase tracking-wider">연결 전표 (선택)</label>
-                  <select
-                    value={selectedStatementId}
-                    onChange={e => setSelectedStatementId(e.target.value)}
-                    disabled={!selectedClientId}
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40"
-                  >
-                    <option value="">전표 선택 (미수금 차감)</option>
-                    {clientStatements.map(s => (
-                      <option key={s.id} value={s.id}>
-                        {s.tradeDate} — {s.docNo} (₩{s.totalAmount.toLocaleString()})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-black text-slate-500 uppercase tracking-wider">반품 품목 *</label>
-                <button
-                  onClick={() => setReturnItems(prev => [...prev, { reason: '기타' as ReturnReason, isResellable: true, quantity: 0, price: 0 }])}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-black hover:bg-blue-100 transition-colors"
-                >
-                  <Plus size={13} /> 품목 추가
-                </button>
-              </div>
-
-              {returnItems.length > 0 && (
-                <div className="grid grid-cols-12 gap-2 px-2.5 text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                  <div className="col-span-4">품목</div>
-                  <div className="col-span-1 text-center">수량</div>
-                  <div className="col-span-2 text-center">단가</div>
-                  <div className="col-span-3">반품 사유</div>
-                  <div className="col-span-2 text-center">재고 처리</div>
-                </div>
               )}
 
-              {returnItems.length === 0 ? (
-                <p className="text-slate-400 text-sm py-6 text-center border-2 border-dashed border-slate-200 rounded-xl">
-                  원주문을 선택하거나 품목을 직접 추가하세요
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {returnItems.map((it, idx) => (
-                    <div key={idx} className="grid grid-cols-12 gap-2 items-center bg-slate-50 rounded-xl p-2.5">
-                      <div className="col-span-4">
-                        <select
-                          value={it.productId ?? ''}
-                          onChange={e => handleReturnProductSelect(idx, e.target.value)}
-                          className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"
-                        >
-                          <option value="">품목 선택</option>
-                          {sellableProducts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
-                      </div>
-                      <div className="col-span-1">
-                        <input type="number" min={1} placeholder="0" value={it.quantity || ''} onChange={e => updateReturnItemField(idx, 'quantity', Number(e.target.value))} className="w-full border border-slate-200 rounded-lg px-1 py-1.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                      </div>
-                      <div className="col-span-2">
-                        <input type="number" min={0} placeholder="0" value={it.price || ''} onChange={e => updateReturnItemField(idx, 'price', Number(e.target.value))} className="w-full border border-slate-200 rounded-lg px-1 py-1.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                      </div>
-                      <div className="col-span-3">
-                        <select value={it.reason ?? '기타'} onChange={e => updateReturnItemField(idx, 'reason', e.target.value as ReturnReason)} className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-400">
-                          {RETURN_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
-                        </select>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        <button
-                          onClick={() => updateReturnItemField(idx, 'isResellable', !it.isResellable)}
-                          className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-black transition-colors ${it.isResellable ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}
-                        >
-                          {it.isResellable ? <><Check size={10} />재판매</> : <><X size={10} />폐기</>}
-                        </button>
-                      </div>
-                      <div className="col-span-1 flex justify-end">
-                        <button onClick={() => setReturnItems(prev => prev.filter((_, i) => i !== idx))} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-black text-slate-500 uppercase tracking-wider">비고</label>
-                <textarea value={returnNote} onChange={e => setReturnNote(e.target.value)} placeholder="반품 관련 메모 (선택)" rows={2} className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              {/* 비고 */}
+              <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
+                <p className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2">비고</p>
+                <textarea
+                  value={returnNote}
+                  onChange={e => setReturnNote(e.target.value)}
+                  placeholder="반품 관련 메모 (선택)"
+                  rows={2}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
               </div>
 
-              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                <div>
-                  <p className="text-xs text-slate-400">총 반품금액</p>
-                  <p className="text-xl font-black text-slate-800">₩{returnTotalAmount.toLocaleString()}</p>
-                  {selectedStatementId && returnTotalAmount > 0 && (
-                    <p className="text-xs text-emerald-600 mt-0.5">→ 선택된 전표에서 미수금 차감</p>
-                  )}
-                </div>
-                <button
-                  onClick={handleReturnSubmit}
-                  disabled={returnSaving || !selectedClientId || validReturnItems.length === 0}
-                  className="px-6 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-black hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-                >
-                  <RotateCcw size={15} />
-                  {returnSaving ? '저장 중...' : '반품 접수'}
-                </button>
-              </div>
+              <button
+                onClick={handleReturnSubmit}
+                disabled={returnSaving || !returnClientId}
+                className="w-full flex items-center justify-center gap-2 py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl font-black text-sm transition-all shadow-md"
+              >
+                {returnSaving ? <Loader2 size={16} className="animate-spin" /> : <RotateCcw size={16} />}
+                반품 접수 (관리자 확인 후 전표 발행)
+              </button>
             </div>
           )}
 
@@ -1425,6 +1359,156 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
               >
                 {configSaving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
                 저장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 전표 발행 모달 ── */}
+      {statementDraft && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-end md:items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <div>
+                <p className="font-black text-slate-800">매입 전표 발행</p>
+                <p className="text-xs text-slate-400 mt-0.5">{statementDraft.receipt.supplierName} · {statementDraft.receipt.registeredAt.slice(0, 10)} 선입고</p>
+              </div>
+              <button onClick={() => setStatementDraft(null)} className="p-2 text-slate-400 hover:text-slate-600"><X size={18} /></button>
+            </div>
+
+            <div className="overflow-auto flex-1 px-5 py-4 space-y-4">
+              {/* 거래처 선택 */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-500 uppercase tracking-wider">거래처 (매입처) *</label>
+                <select
+                  value={statementDraft.clientId}
+                  onChange={e => setStatementDraft(d => d ? { ...d, clientId: e.target.value } : null)}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-rose-400"
+                >
+                  <option value="">거래처 선택</option>
+                  {clients
+                    .filter(c => c.partnerType === '매입처' || c.partnerType === '매출+매입처' || !c.partnerType)
+                    .map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+
+              {/* 거래일자 */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-500 uppercase tracking-wider">거래일자 *</label>
+                <input
+                  type="date"
+                  value={statementDraft.tradeDate}
+                  onChange={e => setStatementDraft(d => d ? { ...d, tradeDate: e.target.value } : null)}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
+                />
+              </div>
+
+              {/* 품목 목록 */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-slate-500 uppercase tracking-wider">품목</label>
+                  <button
+                    onClick={() => setStatementDraft(d => d ? { ...d, items: [...d.items, { name: '', qty: '', price: '', unit: '', isTaxExempt: false }] } : null)}
+                    className="flex items-center gap-1 px-2 py-1 text-xs text-rose-600 border border-rose-200 rounded-lg hover:bg-rose-50"
+                  >
+                    <Plus size={11} /> 품목 추가
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-12 gap-1 px-1 text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                  <div className="col-span-4">품목명</div>
+                  <div className="col-span-2 text-center">수량</div>
+                  <div className="col-span-1 text-center">단위</div>
+                  <div className="col-span-3 text-center">단가(원)</div>
+                  <div className="col-span-1 text-center">면세</div>
+                  <div className="col-span-1" />
+                </div>
+
+                {statementDraft.items.map((item, idx) => (
+                  <div key={idx} className="grid grid-cols-12 gap-1 items-center bg-slate-50 rounded-xl p-2">
+                    <div className="col-span-4">
+                      <input
+                        value={item.name}
+                        onChange={e => setStatementDraft(d => d ? { ...d, items: d.items.map((it, i) => i === idx ? { ...it, name: e.target.value } : it) } : null)}
+                        placeholder="품목명"
+                        className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-rose-400"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <input
+                        type="number" min={0}
+                        value={item.qty}
+                        onChange={e => setStatementDraft(d => d ? { ...d, items: d.items.map((it, i) => i === idx ? { ...it, qty: e.target.value } : it) } : null)}
+                        placeholder="0"
+                        className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs text-center focus:outline-none focus:ring-1 focus:ring-rose-400"
+                      />
+                    </div>
+                    <div className="col-span-1">
+                      <input
+                        value={item.unit}
+                        onChange={e => setStatementDraft(d => d ? { ...d, items: d.items.map((it, i) => i === idx ? { ...it, unit: e.target.value } : it) } : null)}
+                        placeholder="개"
+                        className="w-full px-1 py-1.5 border border-slate-200 rounded-lg text-xs text-center focus:outline-none focus:ring-1 focus:ring-rose-400"
+                      />
+                    </div>
+                    <div className="col-span-3">
+                      <input
+                        type="number" min={0}
+                        value={item.price}
+                        onChange={e => setStatementDraft(d => d ? { ...d, items: d.items.map((it, i) => i === idx ? { ...it, price: e.target.value } : it) } : null)}
+                        placeholder="0"
+                        className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs text-right focus:outline-none focus:ring-1 focus:ring-rose-400"
+                      />
+                    </div>
+                    <div className="col-span-1 flex justify-center">
+                      <button
+                        onClick={() => setStatementDraft(d => d ? { ...d, items: d.items.map((it, i) => i === idx ? { ...it, isTaxExempt: !it.isTaxExempt } : it) } : null)}
+                        className={`px-1.5 py-1 rounded text-[10px] font-black transition-colors ${item.isTaxExempt ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-400'}`}
+                      >
+                        {item.isTaxExempt ? '면세' : '과세'}
+                      </button>
+                    </div>
+                    <div className="col-span-1 flex justify-center">
+                      <button onClick={() => setStatementDraft(d => d ? { ...d, items: d.items.filter((_, i) => i !== idx) } : null)} className="p-1 text-slate-300 hover:text-rose-500">
+                        <X size={13} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* 합계 미리보기 */}
+              {(() => {
+                const supply = statementDraft.items.reduce((s, i) => s + Number(i.qty || 0) * Number(i.price || 0), 0);
+                const tax = statementDraft.items.reduce((s, i) => {
+                  const amt = Number(i.qty || 0) * Number(i.price || 0);
+                  return s + (i.isTaxExempt ? 0 : Math.round(amt * 0.1));
+                }, 0);
+                return (
+                  <div className="bg-rose-50 rounded-xl px-4 py-3 space-y-1">
+                    <div className="flex justify-between text-xs text-slate-500">
+                      <span>공급가액</span><span className="font-bold">{supply.toLocaleString()}원</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-slate-500">
+                      <span>세액</span><span className="font-bold">{tax.toLocaleString()}원</span>
+                    </div>
+                    <div className="flex justify-between text-sm font-black text-slate-800 border-t border-rose-200 pt-1 mt-1">
+                      <span>합계</span><span>{(supply + tax).toLocaleString()}원</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="px-5 py-4 border-t border-slate-100">
+              <button
+                onClick={saveStatement}
+                disabled={statementSaving || !statementDraft.clientId}
+                className="w-full flex items-center justify-center gap-2 py-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white rounded-xl font-black text-sm transition-all"
+              >
+                {statementSaving ? <Loader2 size={15} className="animate-spin" /> : <FileText size={15} />}
+                {statementSaving ? '발행 중...' : '전표 발행 (재고 반영 완료)'}
               </button>
             </div>
           </div>
