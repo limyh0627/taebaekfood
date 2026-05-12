@@ -75,7 +75,6 @@ import NoticeBoard from '../../../components/NoticeBoard';
 import DatabaseView from '../../../components/DatabaseView';
 import ItemManager from '../../../components/ItemManager';
 import ItemPriceManager from '../../../components/ItemPriceManager';
-import PriceManager from '../../../components/PriceManager';
 import TaxStatement from '../../../components/TaxStatement';
 import OfficeTalk from '../../../components/OfficeTalk';
 import AdminChecklist from '../../../components/AdminChecklist';
@@ -3145,19 +3144,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     const { id, ...data } = ic;
                     await fUpdate(fDoc(fireDb, 'partner_item', id), data);
                   }}
-                />
-              )}
-              {itemMgmtTab === 'prices' && (
-                <PriceManager
-                  products={allProducts}
-                  clients={clients}
-                  productClients={productClients}
-                  productSuppliers={productSuppliers}
-                  onUpdateProductClientPrice={(id, price) => updateItem('partner_item', id, { Standard_Price: price, price })}
-                  onUpdateProductClientTaxType={(id, taxType) => updateItem('partner_item', id, { taxType })}
-                  onUpsertProductSupplier={(ps) => addItem('partner_item', { ...ps, Partner_ID: ps.supplierId ?? ps.Partner_ID, Item_ID: ps.productId ?? ps.Item_ID, Direction: 'in' as const, Standard_Price: ps.price ?? ps.Standard_Price })}
-                  onUpdateProductSupplierTaxType={(id, taxType) => updateItem('partner_item', id, { taxType })}
-                  onUpdateProductCost={(productId, cost) => updateItem('items', productId, { cost })}
                 />
               )}
             </div>
