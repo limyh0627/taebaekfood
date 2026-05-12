@@ -151,6 +151,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     rawMaterialLedger, sesameInputLedger,
     appNotifications, workOrderItems, issuedStatements,
     itemBoms, returnRequests, companyInfo, itemCustomers, inventorySnapshots, productionSalesLogs, isDataLoading,
+    pendingReceipts,
   } = appData;
 
   const { fixedCosts, productionRecords } = adminData;
@@ -882,7 +883,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
             {isAdmin && (() => {
               const adminPendingCount =
                 leaveRequests.filter(r => r.status === 'pending' || r.status === 'cancel_pending' || r.modifyRequest?.status === 'pending').length +
-                adjustmentRequests.filter(r => r.status === 'pending').length;
+                adjustmentRequests.filter(r => r.status === 'pending').length +
+                pendingReceipts.filter(r => r.status === 'pending_voucher').length;
               return (
                 <>
                   <div>
@@ -907,6 +909,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={Users} label="거래처 관리" active={currentView === 'partners'} onClick={() => handleNavClick('partners')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={ClipboardList} label="확인사항" active={currentView === 'admin-checklist'} onClick={() => handleNavClick('admin-checklist')} collapsed={isSidebarCollapsed} badge={adminPendingCount > 0 ? adminPendingCount : undefined} />
+                      <NavItem icon={ScanLine} label="입고/반품" active={currentView === 'inbound-returns'} onClick={() => handleNavClick('inbound-returns')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={QrCode} label="QR 라벨 인쇄" active={false} onClick={() => setShowQrLabel(true)} collapsed={isSidebarCollapsed} />
                     </nav>
                   </div>
@@ -940,7 +943,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     <NavItem icon={Truck} label="배송 관리" active={currentView === 'shipping'} onClick={() => handleNavClick('shipping')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={ShoppingCart} label="주문 관리" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={lowStockCount > 0 ? lowStockCount : undefined} />
-                    <NavItem icon={ScanLine} label="입고/반품" active={currentView === 'inbound-returns'} onClick={() => handleNavClick('inbound-returns')} collapsed={isSidebarCollapsed} badge={returnRequests.filter(r => r.status === 'pending').length || undefined} />
+                    <NavItem icon={ScanLine} label="입고/반품" active={currentView === 'inbound-returns'} onClick={() => handleNavClick('inbound-returns')} collapsed={isSidebarCollapsed} badge={(returnRequests.filter(r => r.status === 'pending').length + pendingReceipts.filter(r => r.status === 'pending_voucher').length) || undefined} />
                     <NavItem icon={Settings} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={Layers} label="파렛트 관리" active={currentView === 'pallets'} onClick={() => handleNavClick('pallets')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={CalendarCheck} label="연차 신청" active={currentView === 'leave-portal'} onClick={() => handleNavClick('leave-portal')} collapsed={isSidebarCollapsed} />
@@ -1323,6 +1326,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
               adjustmentRequests={adjustmentRequests}
               employees={employees}
               returnRequests={returnRequests}
+              pendingReceipts={pendingReceipts}
+              clients={clients}
+              issuedStatements={issuedStatements}
               onUpdateLeaveStatus={(id, status) => {
                 if (status === 'approved') {
                   const req = leaveRequests.find(r => r.id === id);
@@ -3030,6 +3036,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {currentView === 'confirmation-items' && (
             <ConfirmationItems
               requests={adjustmentRequests}
+              isAdmin={isAdmin}
               onUpdateStatus={(id, status) => updateItem('adjustmentRequests', id, { status, processedAt: new Date().toISOString() })}
               onProcessAdjustment={async (req) => {
                 // 실제 재고 반영 로직

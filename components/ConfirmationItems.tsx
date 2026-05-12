@@ -1,23 +1,15 @@
-
 import React, { useMemo, useState } from 'react';
 import {
-  Clock,
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
-  Package,
-  ArrowRight,
-  MessageSquare,
-  AtSign,
-  ShoppingCart,
-  ChevronDown,
-  ChevronUp
+  Clock, CheckCircle2, XCircle, AlertCircle, Package,
+  ArrowRight, MessageSquare, AtSign, ShoppingCart,
+  ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { AdjustmentRequest } from '../types';
 import PageHeader from './PageHeader';
 
 interface ConfirmationItemsProps {
   requests: AdjustmentRequest[];
+  isAdmin: boolean;
   onUpdateStatus: (_id: string, _status: 'processed' | 'rejected') => void;
   onProcessAdjustment: (_req: AdjustmentRequest) => void;
 }
@@ -25,7 +17,7 @@ interface ConfirmationItemsProps {
 const ConfirmationItems: React.FC<ConfirmationItemsProps> = ({
   requests,
   onUpdateStatus,
-  onProcessAdjustment
+  onProcessAdjustment,
 }) => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -50,14 +42,14 @@ const ConfirmationItems: React.FC<ConfirmationItemsProps> = ({
   };
 
   return (
-    <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
+    <div className="space-y-4 animate-in slide-in-from-right-4 duration-500">
       <PageHeader
-        title="확인사항 관리"
-        subtitle="재고 변동 및 입고 취소 요청을 검토하고 처리하세요."
+        title="확인사항"
+        subtitle="재고 변동 요청을 검토하세요."
         right={pendingCount > 0 ? (
           <div className="bg-amber-50 border border-amber-100 px-4 py-2 rounded-xl flex items-center space-x-2">
             <AlertCircle size={18} className="text-amber-500" />
-            <span className="text-sm font-bold text-amber-700">대기 중인 요청 {pendingCount}건</span>
+            <span className="text-sm font-bold text-amber-700">대기 {pendingCount}건</span>
           </div>
         ) : undefined}
       />
@@ -144,20 +136,17 @@ const ConfirmationItems: React.FC<ConfirmationItemsProps> = ({
                         <div className="flex items-center space-x-1 whitespace-nowrap">
                           {req.status === 'pending' && (
                             <span className="flex items-center space-x-1 text-amber-500 font-black text-[10px] uppercase">
-                              <Clock size={11} />
-                              <span>대기중</span>
+                              <Clock size={11} /><span>대기중</span>
                             </span>
                           )}
                           {req.status === 'processed' && (
                             <span className="flex items-center space-x-1 text-emerald-500 font-black text-[10px] uppercase">
-                              <CheckCircle2 size={11} />
-                              <span>완료</span>
+                              <CheckCircle2 size={11} /><span>완료</span>
                             </span>
                           )}
                           {req.status === 'rejected' && (
                             <span className="flex items-center space-x-1 text-rose-500 font-black text-[10px] uppercase">
-                              <XCircle size={11} />
-                              <span>반려</span>
+                              <XCircle size={11} /><span>반려</span>
                             </span>
                           )}
                         </div>
@@ -175,9 +164,7 @@ const ConfirmationItems: React.FC<ConfirmationItemsProps> = ({
                               }}
                               className={`px-2 py-1.5 text-white rounded-lg text-[10px] font-black transition-all shadow-sm whitespace-nowrap ${req.type === 'reorder_alert' ? 'bg-rose-500 hover:bg-rose-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}
                             >
-                              {req.type === 'chat_mention' ? '확인' :
-                               req.type === 'reorder_alert' ? '발주완료' :
-                               '승인'}
+                              {req.type === 'chat_mention' ? '확인' : req.type === 'reorder_alert' ? '발주완료' : '승인'}
                             </button>
                             <button
                               onClick={() => onUpdateStatus(req.id, 'rejected')}
