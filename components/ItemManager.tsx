@@ -466,7 +466,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                       <td className="px-2 py-3 text-center">
                         <button
                           onClick={() => onEditProduct(item)}
-                          className="p-1.5 rounded-lg text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all opacity-0 group-hover:opacity-100"
+                          className="p-1.5 rounded-lg bg-indigo-50 text-indigo-500 hover:bg-indigo-100 hover:text-indigo-700 transition-all"
                         >
                           <Edit size={13} />
                         </button>
