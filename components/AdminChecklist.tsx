@@ -6,7 +6,7 @@ import {
   ClipboardList, RotateCcw, Building2, FileText, History, Link2,
   X, Loader2, Check, Plus,
 } from 'lucide-react';
-import { LeaveRequest, AdjustmentRequest, Employee, ReturnRequest, ReturnItem, PendingReceipt, IssuedStatement, IssuedStatementItem, Client, PendingStatementEdit } from '../types';
+import { LeaveRequest, AdjustmentRequest, Employee, ReturnRequest, ReturnItem, PendingReceipt, IssuedStatement, IssuedStatementItem, Client, PendingStatementEdit, Item, PartnerItem } from '../types';
 import { addItem, updateItem } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 
@@ -24,9 +24,13 @@ interface AdminChecklistProps {
   pendingStatementEdits?: PendingStatementEdit[];
   onApproveStatementEdit?: (_edit: PendingStatementEdit) => void;
   onRejectStatementEdit?: (_id: string) => void;
+  orderRequests?: { id: string; quantity: number; isBox?: boolean }[];
+  items?: Item[];
+  productSuppliers?: PartnerItem[];
+  onCreatePurchaseStatement?: (_data: { supplierId: string; supplierName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }> }) => void;
 }
 
-type TabType = 'leave' | 'adjustment' | 'return' | 'inbound' | 'stmtedit';
+type TabType = 'leave' | 'adjustment' | 'return' | 'inbound' | 'stmtedit' | 'order';
 
 interface StatementDraftItem { name: string; qty: string; price: string; unit: string; isTaxExempt: boolean; }
 interface StatementDraft {
@@ -61,6 +65,10 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
   pendingStatementEdits = [],
   onApproveStatementEdit,
   onRejectStatementEdit,
+  orderRequests = [],
+  items = [],
+  productSuppliers = [],
+  onCreatePurchaseStatement,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('leave');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -100,6 +108,28 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
     [pendingStatementEdits]
   );
   const totalPending = pendingLeaves.length + pendingAdjustments.length + pendingReturns.length + pendingStmtEdits.length;
+
+  // 발주 예정: 거래처(공급처)별 그룹화
+  const orderGroups = useMemo(() => {
+    const map = new Map<string, { supplierId: string; supplierName: string; items: Array<{ productId: string; name: string; spec: string; qty: number; price: number; isBox: boolean }> }>();
+    for (const req of orderRequests) {
+      const product = items.find(p => p.id === req.id);
+      if (!product) continue;
+      const ps = productSuppliers.find(s => (s.Item_ID === req.id || s.productId === req.id) && s.Direction === 'in');
+      const supplierId = ps?.Partner_ID ?? ps?.supplierId ?? 'unknown';
+      const supplierName = ps ? (clients.find(c => c.id === supplierId)?.name ?? supplierId) : '미지정';
+      if (!map.has(supplierId)) map.set(supplierId, { supplierId, supplierName, items: [] });
+      map.get(supplierId)!.items.push({
+        productId: req.id,
+        name: product.name,
+        spec: (product as any).용량 || product.unit || '',
+        qty: req.quantity,
+        price: ps?.Standard_Price ?? ps?.price ?? 0,
+        isBox: req.isBox ?? false,
+      });
+    }
+    return Array.from(map.values());
+  }, [orderRequests, items, productSuppliers, clients]);
 
   const getAdjTypeLabel = (type: string) => {
     if (type === 'quantity_change') return '수량 변동';
@@ -308,6 +338,17 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
           {pendingStmtEdits.length > 0 && (
             <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center ${activeTab === 'stmtedit' ? 'bg-white/30 text-white' : 'bg-amber-100 text-amber-700'}`}>
               {pendingStmtEdits.length}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('order')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'order' ? 'bg-orange-500 text-white shadow-sm' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
+        >
+          <ShoppingCart size={15} />발주 예정
+          {orderRequests.length > 0 && (
+            <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center ${activeTab === 'order' ? 'bg-white/30 text-white' : 'bg-orange-100 text-orange-700'}`}>
+              {orderRequests.length}
             </span>
           )}
         </button>
@@ -697,6 +738,56 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* 발주 예정 탭 */}
+      {activeTab === 'order' && (
+        <div className="space-y-4">
+          {orderGroups.length === 0 ? (
+            <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm px-6 py-20 text-center">
+              <div className="flex flex-col items-center gap-2 text-slate-400">
+                <ShoppingCart size={32} className="text-slate-200" />
+                <span className="text-sm font-medium">발주 예정 품목이 없습니다</span>
+              </div>
+            </div>
+          ) : orderGroups.map(group => (
+            <div key={group.supplierId} className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Building2 size={15} className="text-orange-500" />
+                  <span className="font-black text-sm text-slate-800">{group.supplierName}</span>
+                  <span className="text-[10px] font-black bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full">{group.items.length}품목</span>
+                </div>
+                {onCreatePurchaseStatement && (
+                  <button
+                    onClick={() => onCreatePurchaseStatement({ supplierId: group.supplierId, supplierName: group.supplierName, items: group.items.map(i => ({ name: i.name, spec: i.spec, qty: i.qty, price: i.price, isBox: i.isBox })) })}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-[11px] font-black transition-colors"
+                  >
+                    <FileText size={12} />매입전표 작성
+                  </button>
+                )}
+              </div>
+              <div className="divide-y divide-slate-50">
+                {group.items.map(item => (
+                  <div key={item.productId} className="px-5 py-3 flex items-center gap-4">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-slate-800">{item.name}</p>
+                      {item.spec && <p className="text-xs text-slate-400">{item.spec}</p>}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-black text-slate-700">
+                        {item.isBox ? `${item.qty}BOX` : `${item.qty}${item.spec || ''}`}
+                      </p>
+                      {item.price > 0 && (
+                        <p className="text-xs text-slate-400">{item.price.toLocaleString()}원/{item.spec || '개'}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

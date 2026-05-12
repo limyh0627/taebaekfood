@@ -1357,6 +1357,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onRejectStatementEdit={async (id) => {
                 await updateItem('pendingStatementEdits', id, { status: 'rejected' });
               }}
+              orderRequests={orderRequests}
+              items={allProducts}
+              productSuppliers={appData.productSuppliers}
+              onCreatePurchaseStatement={(data) => {
+                setPendingInvoice(data);
+                setCurrentView('trade-statement' as ViewType);
+              }}
             />
           )}
           {currentView === 'documents' && (() => {

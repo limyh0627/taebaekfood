@@ -309,12 +309,27 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setDateTo(type === '매출' ? today() : '');
     setOrderDateQuick(type === '매출' ? '당월' : '');
     setShowPricePanel(false);
-    setManualMode(false);
-    setManualItems([{ name: '', spec: '', qty: '', price: '', isTaxExempt: false }]);
     setSelectedConfirmedIds([]);
     setPurchaseSearch('');
     setShowPurchasePicker(false);
     setActiveSearchRow(null);
+    // 매입전표: 발주 예정 목록이 있으면 자동 로드
+    if (type === '매입' && orderRequests && orderRequests.length > 0) {
+      const rows = orderRequests
+        .map(req => {
+          const product = allProducts.find(p => p.id === req.id);
+          if (!product) return null;
+          const isBox = product.category === '향미유' && (req as any).isBox;
+          const ps = productSuppliers.find((s: any) => s.productId === req.id || s.Item_ID === req.id);
+          return { name: product.name, spec: (product as any).용량 || product.unit || '', qty: String(req.quantity), price: ps?.price ? String(ps.price) : '', isTaxExempt: ps?.taxType === '면세', isBoxUnit: isBox, boxSize: isBox ? 12 : undefined };
+        })
+        .filter(Boolean) as { name: string; spec: string; qty: string; price: string; isTaxExempt: boolean; isBoxUnit?: boolean; boxSize?: number }[];
+      setManualItems([...rows, { name: '', spec: '', qty: '', price: '', isTaxExempt: false }]);
+      setManualMode(true);
+    } else {
+      setManualMode(false);
+      setManualItems([{ name: '', spec: '', qty: '', price: '', isTaxExempt: false }]);
+    }
   };
   const closeCreate = () => { setCreateMode(null); setEditingStmt(null); setIsEditMode(false); setTradeNote(''); setSelectedItemIdx(null); setQuickName(''); setQuickSpec(''); setQuickQty(''); setQuickPrice(''); setQuickNote(''); setQuickSearchOpen(false); setQuickIsTaxExempt(false); setShowItemPicker(false); setPickerSearch(''); setPickerQtys({}); setAccountCodeOverrides({}); hasIssuedRef.current = false; };
 
