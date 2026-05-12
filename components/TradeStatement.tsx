@@ -480,8 +480,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       });
     }
-    if (dateFrom) list = list.filter(o => (o.deliveryDate || o.createdAt || '').slice(0, 10) >= dateFrom);
-    if (dateTo)   list = list.filter(o => (o.deliveryDate || o.createdAt || '').slice(0, 10) <= dateTo);
+    if (dateFrom) list = list.filter(o => (o.createdAt || '').slice(0, 10) >= dateFrom);
+    if (dateTo)   list = list.filter(o => (o.createdAt || '').slice(0, 10) <= dateTo);
     return list;
   }, [orders, selectedClientId, onlyActive, dateFrom, dateTo]);
 
@@ -513,7 +513,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     selectedOrder.items.forEach(item => {
       const product = allProducts.find(p => p.id === item.productId);
       const displayName = product?.품목 || item.name;
-      const spec = product?.용량 || '';
+      const spec = item.displaySize || product?.용량 || '';
       const key  = `${displayName}||${spec}`;
       const piList = stmtType === '매출' ? productClients : productSuppliers;
       const pcEntry = piList.find(
@@ -1352,7 +1352,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const rows: ManualRow[] = o.items.map(item => {
           const product = allProducts.find(p => p.id === item.productId);
           const displayName = product?.품목 || item.name;
-          const spec = product?.용량 || '';
+          const spec = item.displaySize || product?.용량 || '';
           const pcEntry = productClients.find(pc => pc.productId === item.productId && pc.clientId === o.clientId);
           const price = pcEntry?.price ?? item.price ?? product?.price ?? 0;
           const isTaxExempt = pcEntry?.taxType === '면세';

@@ -48,12 +48,12 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   });
 
   const finishedProducts = useMemo(
-    () => products.filter(p => p.itemType === 'FINISHED' || p.category === '완제품'),
+    () => products.filter(p => !p.archived && (p.itemType === 'FINISHED' || p.category === '완제품')),
     [products]
   );
 
   const wipProducts = useMemo(
-    () => products.filter(p => p.itemType === 'WIP'),
+    () => products.filter(p => !p.archived && p.itemType === 'WIP'),
     [products]
   );
 

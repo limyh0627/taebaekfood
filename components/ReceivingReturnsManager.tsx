@@ -112,7 +112,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   // ── 거래처-품목 설정 모달 ──
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [configClientId, setConfigClientId] = useState('');
-  const [configSelectedSubIds, setConfigSelectedSubIds] = useState<string[]>([]);
+  const [configSelectedIds, setConfigSelectedIds] = useState<string[]>([]);
   const [configSaving, setConfigSaving] = useState(false);
   const [configSearch, setConfigSearch] = useState('');
 
@@ -346,15 +346,16 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   // 거래처별 연결 품목
   // purchaseItems가 존재하면 그게 최종 목록 (X로 수동 관리한 상태)
   // purchaseItems가 없으면 products.supplierId 폴백
-  const getSupplierLinkedItems = (client: Client): { name: string; sub: SubmaterialComponent | null }[] => {
+  // sub가 없으면 Product(향미유/고춧가루 등)에서도 검색
+  const getSupplierLinkedItems = (client: Client): { name: string; sub: SubmaterialComponent | null; product: Product | null }[] => {
     const seen = new Set<string>();
-    const result: { name: string; sub: SubmaterialComponent | null }[] = [];
+    const result: { name: string; sub: SubmaterialComponent | null; product: Product | null }[] = [];
 
-    const push = (name: string, sub: SubmaterialComponent | null) => {
-      const key = sub?.id ?? name;
+    const push = (name: string, sub: SubmaterialComponent | null, product: Product | null) => {
+      const key = sub?.id ?? product?.id ?? name;
       if (seen.has(key)) return;
       seen.add(key);
-      result.push({ name, sub });
+      result.push({ name, sub, product });
     };
 
     if (client.purchaseItems && client.purchaseItems.length > 0) {
@@ -363,7 +364,12 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         const sub = submaterials.find(s => s.id === pi.id)
           ?? submaterials.find(s => s.name === pi.name)
           ?? null;
-        push(sub?.name ?? pi.name, sub);
+        const product = sub ? null : (
+          products.find(p => p.id === pi.id)
+          ?? products.find(p => p.name === pi.name)
+          ?? null
+        );
+        push(sub?.name ?? product?.name ?? pi.name, sub, product);
       });
     } else {
       // purchaseItems 미설정 → supplierId 폴백 (기존 데이터 호환)
@@ -376,7 +382,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
           const sub = submaterials.find(s => s.id === p.id)
             ?? submaterials.find(s => s.name === p.name)
             ?? null;
-          push(p.name, sub);
+          push(p.name, sub, sub ? null : p);
         });
     }
 
@@ -399,13 +405,12 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     setConfigClientId(clientId);
     if (clientId) {
       const client = clients.find(c => c.id === clientId);
-      // 기존 purchaseItems + supplierId 방식 모두 선택된 상태로 초기화
       const existingIds = getSupplierLinkedItems(client!)
-        .map(({ sub }) => sub?.id)
+        .map(({ sub, product }) => sub?.id ?? product?.id)
         .filter((id): id is string => !!id);
-      setConfigSelectedSubIds(existingIds);
+      setConfigSelectedIds(existingIds);
     } else {
-      setConfigSelectedSubIds([]);
+      setConfigSelectedIds([]);
     }
     setConfigSearch('');
     setShowConfigModal(true);
@@ -413,12 +418,15 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
 
   const saveConfig = async () => {
     if (!configClientId) { alert('거래처를 선택해주세요.'); return; }
-    if (configSelectedSubIds.length === 0) { alert('품목을 1개 이상 선택해주세요.'); return; }
+    if (configSelectedIds.length === 0) { alert('품목을 1개 이상 선택해주세요.'); return; }
     setConfigSaving(true);
     try {
-      const purchaseItems = configSelectedSubIds.map(subId => {
-        const sub = submaterials.find(s => s.id === subId)!;
-        return { id: sub.id, name: sub.name };
+      const purchaseItems = configSelectedIds.map(id => {
+        const sub = submaterials.find(s => s.id === id);
+        if (sub) return { id: sub.id, name: sub.name };
+        const product = products.find(p => p.id === id);
+        if (product) return { id: product.id, name: product.name };
+        return { id, name: id };
       });
       await updateItem('clients', configClientId, { purchaseItems });
       setShowConfigModal(false);
@@ -427,9 +435,9 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     }
   };
 
-  const toggleConfigSub = (subId: string) => {
-    setConfigSelectedSubIds(prev =>
-      prev.includes(subId) ? prev.filter(id => id !== subId) : [...prev, subId]
+  const toggleConfigItem = (id: string) => {
+    setConfigSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
     );
   };
 
@@ -442,10 +450,11 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     const items = getSupplierLinkedItems(client);
     const qtys: Record<string, string> = {};
     const prices: Record<string, string> = {};
-    items.forEach(({ sub }) => {
-      if (sub) {
-        qtys[sub.id] = '';
-        prices[sub.id] = sub.cost?.toString() ?? '';
+    items.forEach(({ sub, product }) => {
+      const key = sub?.id ?? product?.id;
+      if (key) {
+        qtys[key] = '';
+        prices[key] = (sub?.cost ?? product?.cost ?? product?.price ?? 0).toString();
       }
     });
     setSupplierQtys(qtys);
@@ -459,16 +468,19 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     const linkedItems = getSupplierLinkedItems(client);
     const receiptItems: PendingReceiptItem[] = [];
 
-    for (const { sub } of linkedItems) {
-      if (!sub) continue;
-      const qty = Number(supplierQtys[sub.id] ?? 0);
+    for (const { sub, product } of linkedItems) {
+      const itemId = sub?.id ?? product?.id;
+      if (!itemId) continue;
+      const qty = Number(supplierQtys[itemId] ?? 0);
       if (qty <= 0) continue;
+      const unit = sub?.unit ?? product?.unit ?? '';
+      const price = supplierPrices[itemId] ? Number(supplierPrices[itemId]) : (sub?.cost ?? product?.cost ?? product?.price);
       receiptItems.push({
-        submaterialId: sub.id,
-        name: sub.name,
+        submaterialId: itemId,
+        name: sub?.name ?? product?.name ?? '',
         quantity: qty,
-        unit: sub.unit,
-        unitPrice: supplierPrices[sub.id] ? Number(supplierPrices[sub.id]) : sub.cost,
+        unit,
+        unitPrice: price,
       });
     }
     for (const extra of supplierExtraItems) {
@@ -499,7 +511,14 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
       for (const item of receiptItems) {
         if (!item.submaterialId) continue;
         const sub = submaterials.find(s => s.id === item.submaterialId);
-        if (sub) onUpdateSubmaterial(sub.id, { stock: (sub.stock ?? 0) + item.quantity });
+        if (sub) {
+          onUpdateSubmaterial(sub.id, { stock: (sub.stock ?? 0) + item.quantity });
+        } else {
+          const product = products.find(p => p.id === item.submaterialId);
+          if (product) {
+            await updateItem('products', product.id, { stock: (product.stock ?? 0) + item.quantity });
+          }
+        }
       }
       setActiveSupplier(null);
       setInboundTab('이력');
@@ -513,10 +532,13 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     setRemovedItemKeys(prev => new Set([...prev, key]));
     // 현재 연결 품목에서 해당 항목 제외 후 purchaseItems 저장
     const remaining = getSupplierLinkedItems(client).filter(
-      ({ name, sub }) => (sub?.id ?? name) !== key
+      ({ name, sub, product }) => (sub?.id ?? product?.id ?? name) !== key
     );
     await updateItem('clients', client.id, {
-      purchaseItems: remaining.map(({ name, sub }) => ({ id: sub?.id ?? name, name: sub?.name ?? name })),
+      purchaseItems: remaining.map(({ name, sub, product }) => ({
+        id: sub?.id ?? product?.id ?? name,
+        name: sub?.name ?? product?.name ?? name,
+      })),
     });
   };
 
@@ -832,29 +854,33 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                           return visibleItems.length > 0 ? (
                             <div className="space-y-2">
                               <p className="text-xs font-black text-slate-500 uppercase tracking-widest">연결 품목</p>
-                              {visibleItems.map(({ name, sub }, i) => {
-                                const key = sub?.id ?? name;
+                              {visibleItems.map(({ name, sub, product }, i) => {
+                                const itemId = sub?.id ?? product?.id;
+                                const key = itemId ?? name;
+                                const unit = sub?.unit ?? product?.unit ?? '';
+                                const stock = sub?.stock ?? product?.stock ?? 0;
+                                const isLinked = !!itemId;
                                 return (
                                   <div key={i} className="flex items-center gap-2 bg-slate-50 rounded-xl p-3">
                                     <div className="flex-1 min-w-0">
                                       <p className="text-sm font-bold text-slate-700">{name}</p>
-                                      {sub ? (
-                                        <p className="text-xs text-slate-400">현재 재고: {(sub.stock ?? 0).toLocaleString()} {sub.unit}</p>
+                                      {isLinked ? (
+                                        <p className="text-xs text-slate-400">현재 재고: {stock.toLocaleString()} {unit}</p>
                                       ) : (
-                                        <p className="text-xs text-amber-500">부자재와 연결되지 않음</p>
+                                        <p className="text-xs text-amber-500">품목과 연결되지 않음</p>
                                       )}
                                     </div>
-                                    {sub && (
+                                    {isLinked && itemId && (
                                       <div className="flex items-center gap-2">
                                         <input
                                           type="number"
                                           min={0}
                                           placeholder="수량"
-                                          value={supplierQtys[sub.id] ?? ''}
-                                          onChange={e => setSupplierQtys(prev => ({ ...prev, [sub.id]: e.target.value }))}
+                                          value={supplierQtys[itemId] ?? ''}
+                                          onChange={e => setSupplierQtys(prev => ({ ...prev, [itemId]: e.target.value }))}
                                           className="w-24 px-2 py-1.5 border border-slate-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-400"
                                         />
-                                        <span className="text-xs text-slate-400 w-6 shrink-0">{sub.unit}</span>
+                                        <span className="text-xs text-slate-400 w-6 shrink-0">{unit}</span>
                                       </div>
                                     )}
                                     <button
@@ -1341,37 +1367,60 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
               <input
                 value={configSearch}
                 onChange={e => setConfigSearch(e.target.value)}
-                placeholder="부자재 검색..."
+                placeholder="품목 검색..."
                 className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
               />
             </div>
 
             <div className="overflow-auto flex-1 px-4 py-3 space-y-1">
+              {/* 부자재 */}
               {submaterials
                 .filter(s => !configSearch || s.name.toLowerCase().includes(configSearch.toLowerCase()))
                 .map(sub => {
-                  const checked = configSelectedSubIds.includes(sub.id);
+                  const checked = configSelectedIds.includes(sub.id);
                   return (
                     <button
                       key={sub.id}
-                      onClick={() => toggleConfigSub(sub.id)}
+                      onClick={() => toggleConfigItem(sub.id)}
                       className={`w-full flex items-center justify-between px-3 py-3 rounded-xl text-left transition-all ${checked ? 'bg-teal-50 border border-teal-200' : 'hover:bg-slate-50'}`}
                     >
                       <div>
                         <p className="text-sm font-bold text-slate-700">{sub.name}</p>
-                        <p className="text-xs text-slate-400">현재 재고: {(sub.stock ?? 0).toLocaleString()} {sub.unit}</p>
+                        <p className="text-xs text-slate-400">부자재 · 재고: {(sub.stock ?? 0).toLocaleString()} {sub.unit}</p>
                       </div>
                       {checked && <Check size={16} className="text-teal-600 shrink-0" />}
+                    </button>
+                  );
+                })}
+              {/* 상품 (향미유/고춧가루 등 완제품 제외) */}
+              {products
+                .filter(p =>
+                  p.category !== '완제품' &&
+                  (!configSearch || p.name.toLowerCase().includes(configSearch.toLowerCase()))
+                )
+                .map(product => {
+                  const checked = configSelectedIds.includes(product.id);
+                  return (
+                    <button
+                      key={product.id}
+                      onClick={() => toggleConfigItem(product.id)}
+                      className={`w-full flex items-center justify-between px-3 py-3 rounded-xl text-left transition-all ${checked ? 'bg-blue-50 border border-blue-200' : 'hover:bg-slate-50'}`}
+                    >
+                      <div>
+                        <p className="text-sm font-bold text-slate-700">{product.name}</p>
+                        <p className="text-xs text-slate-400">{product.category} · 재고: {(product.stock ?? 0).toLocaleString()} {product.unit}</p>
+                      </div>
+                      {checked && <Check size={16} className="text-blue-600 shrink-0" />}
                     </button>
                   );
                 })}
             </div>
 
             <div className="px-5 py-4 border-t border-slate-100 space-y-2">
-              <p className="text-xs text-slate-400 text-center">{configSelectedSubIds.length}개 품목 선택됨</p>
+              <p className="text-xs text-slate-400 text-center">{configSelectedIds.length}개 품목 선택됨</p>
               <button
                 onClick={saveConfig}
-                disabled={configSaving || !configClientId || configSelectedSubIds.length === 0}
+                disabled={configSaving || !configClientId || configSelectedIds.length === 0}
                 className="w-full flex items-center justify-center gap-2 py-3 bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white rounded-xl font-black text-sm transition-all"
               >
                 {configSaving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
