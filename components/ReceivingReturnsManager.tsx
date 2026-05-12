@@ -132,7 +132,9 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
 
   // ── Returns form ──
   const [returnClientId, setReturnClientId] = useState('');
-  const [returnQtys, setReturnQtys] = useState<Record<string, string>>({});
+  const [returnClientSearch, setReturnClientSearch] = useState('');
+  const [showReturnClientDropdown, setShowReturnClientDropdown] = useState(false);
+  const [returnItems, setReturnItems] = useState<{ productId: string; name: string; qty: string; unit: string }[]>([]);
   const [returnNote, setReturnNote] = useState('');
   const [returnSaving, setReturnSaving] = useState(false);
   const [returnFilterMonth, setReturnFilterMonth] = useState(() => new Date().toISOString().slice(0, 7));
@@ -626,18 +628,47 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   );
 
   useEffect(() => {
-    setReturnQtys({});
+    if (!returnClientId) { setReturnItems([]); return; }
+    // 해당 거래처의 최근 주문에서 품목 추출 (중복 제거)
+    const clientOrders = orders
+      .filter(o => o.clientId === returnClientId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const seen = new Set<string>();
+    const preItems: { productId: string; name: string; qty: string; unit: string }[] = [];
+    for (const order of clientOrders) {
+      for (const item of order.items) {
+        if (!item.productId || seen.has(item.productId)) continue;
+        const product = sellableProducts.find(p => p.id === item.productId);
+        if (!product) continue;
+        seen.add(item.productId);
+        preItems.push({ productId: item.productId, name: item.name, qty: '', unit: product.unit });
+      }
+    }
+    setReturnItems(preItems);
   }, [returnClientId]);
+
+  const handleSelectReturnClient = (id: string, name: string) => {
+    setReturnClientId(id);
+    setReturnClientSearch(name);
+    setShowReturnClientDropdown(false);
+  };
+
+  const addReturnItem = (productId: string) => {
+    if (returnItems.some(i => i.productId === productId)) return;
+    const p = sellableProducts.find(x => x.id === productId);
+    if (!p) return;
+    setReturnItems(prev => [...prev, { productId: p.id, name: p.name, qty: '', unit: p.unit }]);
+  };
 
   const handleReturnSubmit = async () => {
     const client = clients.find(c => c.id === returnClientId);
     if (!client) { alert('거래처를 선택해주세요.'); return; }
-    const items: ReturnItem[] = sellableProducts
-      .filter(p => Number(returnQtys[p.id] || 0) > 0)
-      .map(p => ({
-        productId: p.id,
-        name: p.name,
-        quantity: Number(returnQtys[p.id]),
+    const items: ReturnItem[] = returnItems
+      .filter(i => Number(i.qty) > 0)
+      .map(i => ({
+        productId: i.productId,
+        name: i.name,
+        quantity: Number(i.qty),
         price: 0,
         reason: '기타' as ReturnReason,
         isResellable: true,
@@ -656,7 +687,8 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         ...(returnNote && { note: returnNote }),
       });
       setReturnClientId('');
-      setReturnQtys({});
+      setReturnClientSearch('');
+      setReturnItems([]);
       setReturnNote('');
       setReturnTab('이력');
     } finally {
@@ -1093,44 +1125,83 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
           {/* ── 반품 접수 ── */}
           {returnTab === '접수' && (
             <div className="space-y-3">
-              {/* 거래처 선택 */}
+              {/* 거래처 검색 */}
               <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-2">
                 <p className="text-xs font-black text-slate-500 uppercase tracking-widest">거래처 *</p>
-                <select
-                  value={returnClientId}
-                  onChange={e => setReturnClientId(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-                >
-                  <option value="">거래처 선택</option>
-                  {clients.filter(c => !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처').map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <input
+                    value={returnClientSearch}
+                    onChange={e => { setReturnClientSearch(e.target.value); setShowReturnClientDropdown(true); if (!e.target.value) { setReturnClientId(''); } }}
+                    onFocus={() => setShowReturnClientDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowReturnClientDropdown(false), 150)}
+                    placeholder="거래처 검색..."
+                    className={`w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${returnClientId ? 'border-blue-300 bg-blue-50' : 'border-slate-200'}`}
+                  />
+                  {showReturnClientDropdown && (
+                    <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-auto">
+                      {clients
+                        .filter(c => !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처')
+                        .filter(c => !returnClientSearch || c.name.toLowerCase().includes(returnClientSearch.toLowerCase()))
+                        .map(c => (
+                          <button
+                            key={c.id}
+                            onMouseDown={() => handleSelectReturnClient(c.id, c.name)}
+                            className={`w-full px-3 py-2.5 text-left text-sm hover:bg-blue-50 transition-colors ${returnClientId === c.id ? 'bg-blue-50 font-bold text-blue-700' : 'text-slate-700'}`}
+                          >
+                            {c.name}
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* 품목별 반품 수량 */}
+              {/* 품목 목록 */}
               {returnClientId && (
-                <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-2">
-                  <p className="text-xs font-black text-slate-500 uppercase tracking-widest">반품 품목 (수량 입력)</p>
-                  <div className="space-y-1.5">
-                    {sellableProducts.map(p => (
-                      <div key={p.id} className="flex items-center gap-3 py-2 border-b border-slate-50 last:border-0">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-slate-700">{p.name}</p>
-                          <p className="text-xs text-slate-400">{p.unit}</p>
-                        </div>
-                        <input
-                          type="number"
-                          min={0}
-                          placeholder="0"
-                          value={returnQtys[p.id] ?? ''}
-                          onChange={e => setReturnQtys(prev => ({ ...prev, [p.id]: e.target.value }))}
-                          className="w-24 px-2 py-1.5 border border-slate-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-400"
-                        />
-                        <span className="text-xs text-slate-400 w-8 shrink-0">{p.unit}</span>
-                      </div>
-                    ))}
+                <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-black text-slate-500 uppercase tracking-widest">반품 품목</p>
+                    <span className="text-xs text-slate-400">{returnItems.filter(i => Number(i.qty) > 0).length}개 입력됨</span>
                   </div>
+
+                  {returnItems.length === 0 ? (
+                    <p className="text-xs text-slate-400 py-4 text-center">이 거래처의 주문 이력이 없습니다. 아래에서 품목을 추가하세요.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {returnItems.map((item, idx) => (
+                        <div key={item.productId} className="flex items-center gap-3 py-2 border-b border-slate-50 last:border-0">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-slate-700">{item.name}</p>
+                            <p className="text-xs text-slate-400">{item.unit}</p>
+                          </div>
+                          <input
+                            type="number"
+                            min={0}
+                            placeholder="0"
+                            value={item.qty}
+                            onChange={e => setReturnItems(prev => prev.map((it, i) => i === idx ? { ...it, qty: e.target.value } : it))}
+                            className="w-24 px-2 py-1.5 border border-slate-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-400"
+                          />
+                          <span className="text-xs text-slate-400 w-8 shrink-0">{item.unit}</span>
+                          <button onClick={() => setReturnItems(prev => prev.filter((_, i) => i !== idx))} className="p-1 text-slate-300 hover:text-rose-500 transition-colors">
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 품목 추가 */}
+                  <select
+                    value=""
+                    onChange={e => { addReturnItem(e.target.value); e.target.value = ''; }}
+                    className="w-full border border-dashed border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-500 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  >
+                    <option value="">+ 품목 추가</option>
+                    {sellableProducts
+                      .filter(p => !returnItems.some(i => i.productId === p.id))
+                      .map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
                 </div>
               )}
 
