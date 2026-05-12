@@ -6,6 +6,7 @@ import {
   AppNotification, IssuedStatement,
   ItemBom, CompanyInfo, PendingReceipt, QrMapping, ReturnRequest,
   AccountCode, AccountGroup, FixedCostTemplate, InventorySnapshot, ProductionSalesLog,
+  PendingStatementEdit,
 } from '../types';
 import { subscribeToCollection, subscribeToDocument } from '../services/firebaseService';
 import { authReady } from '../firebase';
@@ -67,6 +68,7 @@ export interface AppData {
   inventorySnapshots: InventorySnapshot[];
   productionSalesLogs: ProductionSalesLog[];
   itemCustomers: PartnerItem[];
+  pendingStatementEdits: PendingStatementEdit[];
   isDataLoading: boolean;
 }
 
@@ -100,6 +102,7 @@ export function useAppData(): AppData {
   const [fixedCostTemplates, setFixedCostTemplates] = useState<FixedCostTemplate[]>([]);
   const [inventorySnapshots, setInventorySnapshots] = useState<InventorySnapshot[]>([]);
   const [productionSalesLogs, setProductionSalesLogs] = useState<ProductionSalesLog[]>([]);
+  const [pendingStatementEdits, setPendingStatementEdits] = useState<PendingStatementEdit[]>([]);
   const [isDataLoading, setIsDataLoading] = useState(true);
   const loadedRef = useRef(new Set<string>());
 
@@ -154,6 +157,7 @@ export function useAppData(): AppData {
         subscribeToCollection<FixedCostTemplate>('fixedCostTemplates', setFixedCostTemplates),
         subscribeToCollection<InventorySnapshot>('inventorySnapshots', setInventorySnapshots),
         subscribeToCollection<ProductionSalesLog>('productionSalesLogs', setProductionSalesLogs),
+        subscribeToCollection<PendingStatementEdit>('pendingStatementEdits', setPendingStatementEdits),
       ];
     });
 
@@ -186,7 +190,7 @@ export function useAppData(): AppData {
     appNotifications, workOrderItems, issuedStatements,
     pendingReceipts, qrMappings, itemBoms, returnRequests,
     companyInfo, accountGroups, accountCodes, fixedCostTemplates, inventorySnapshots,
-    productionSalesLogs,
+    productionSalesLogs, pendingStatementEdits,
     itemCustomers, isDataLoading,
   };
 }

@@ -26,6 +26,7 @@ interface TradeStatementProps {
   onMarkInvoicePrinted?: (id: string, value: boolean) => void;
   onAddIssuedStatement?: (stmt: IssuedStatement) => void;
   onUpdateIssuedStatement?: (id: string, data: Partial<IssuedStatement>) => void;
+  onProposeEdit?: (id: string, data: Partial<IssuedStatement>, stmtType: '매출' | '매입', docNo: string, clientName: string) => void;
   onDeleteIssuedStatement?: (id: string) => void;
   pendingInvoice?: { supplierId: string; supplierName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }> } | null;
   onClearPendingInvoice?: () => void;
@@ -88,6 +89,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   onUpdateProductClientTaxType, onUpsertProductSupplier, onUpdateProductSupplierTaxType,
   onMarkInvoicePrinted, onAddIssuedStatement,
   onUpdateIssuedStatement,
+  onProposeEdit,
   onDeleteIssuedStatement,
   pendingInvoice,
   onClearPendingInvoice,
@@ -683,7 +685,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   const handleSaveEdit = useCallback(() => {
     if (!editingStmt || lineItems.length === 0) return;
-    onUpdateIssuedStatement?.(editingStmt.id, {
+    const proposed: Partial<IssuedStatement> = {
       tradeDate,
       clientId: selectedClientId,
       clientName: selectedClient?.name || '',
@@ -695,9 +697,15 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         supply: i.supply, tax: i.tax, total: i.total, isTaxExempt: i.isTaxExempt,
         isBoxUnit: i.isBoxUnit, boxSize: i.boxSize, accountCode: i.accountCode || undefined,
       })),
-    });
+    };
+    if (onProposeEdit) {
+      onProposeEdit(editingStmt.id, proposed, editingStmt.type, editingStmt.docNo, editingStmt.clientName);
+      alert('수정 요청이 관리자에게 전달되었습니다.');
+    } else {
+      onUpdateIssuedStatement?.(editingStmt.id, proposed);
+    }
     setIsEditMode(false);
-  }, [editingStmt, tradeDate, selectedClientId, selectedClient, totalSupply, totalTax, totalAmount, lineItems, onUpdateIssuedStatement]);
+  }, [editingStmt, tradeDate, selectedClientId, selectedClient, totalSupply, totalTax, totalAmount, lineItems, onProposeEdit, onUpdateIssuedStatement]);
 
   const buildPrintHtml = (items: LineItem[] | IssuedStatement['items'], sup: number, tax: number, amt: number, type: StatementType, client: string, docNoStr: string, dateString: string) => {
     const m = dateString.match(/(\d+)년\s*(\d+)월\s*(\d+)일/);

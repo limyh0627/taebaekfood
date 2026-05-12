@@ -151,7 +151,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     rawMaterialLedger, sesameInputLedger,
     appNotifications, workOrderItems, issuedStatements,
     itemBoms, returnRequests, companyInfo, itemCustomers, inventorySnapshots, productionSalesLogs, isDataLoading,
-    pendingReceipts,
+    pendingReceipts, pendingStatementEdits,
   } = appData;
 
   const { fixedCosts, productionRecords } = adminData;
@@ -1349,7 +1349,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 }
                 await updateItem('adjustmentRequests', req.id, { status: 'processed', processedAt: new Date().toISOString() });
               }}
-              onProcessReturn={handleProcessReturn}
+              pendingStatementEdits={pendingStatementEdits}
+              onApproveStatementEdit={async (edit) => {
+                await updateItem('issuedStatements', edit.statementId, edit.proposedData);
+                await updateItem('pendingStatementEdits', edit.id, { status: 'approved' });
+              }}
+              onRejectStatementEdit={async (id) => {
+                await updateItem('pendingStatementEdits', id, { status: 'rejected' });
+              }}
             />
           )}
           {currentView === 'documents' && (() => {
@@ -2869,6 +2876,20 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onUpdateOrder={(id, data) => updateItem('orders', id, data)}
               onAddIssuedStatement={(stmt) => addItem('issuedStatements', stmt)}
               onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
+              onProposeEdit={(id, data, stmtType, docNo, clientName) => {
+                const stmt = issuedStatements.find(s => s.id === id);
+                addItem('pendingStatementEdits', {
+                  id: `pse-${Date.now()}`,
+                  statementId: id,
+                  statementDocNo: docNo,
+                  statementType: stmtType,
+                  clientName,
+                  proposedData: data,
+                  createdAt: new Date().toISOString(),
+                  createdBy: currentUser.name,
+                  status: 'pending',
+                });
+              }}
               onDeleteIssuedStatement={(id) => deleteItem('issuedStatements', id)}
               pendingInvoice={pendingInvoice}
               onClearPendingInvoice={() => setPendingInvoice(null)}

@@ -6,7 +6,7 @@ import {
   ClipboardList, RotateCcw, Building2, FileText, History, Link2,
   X, Loader2, Check, Plus,
 } from 'lucide-react';
-import { LeaveRequest, AdjustmentRequest, Employee, ReturnRequest, ReturnItem, PendingReceipt, IssuedStatement, IssuedStatementItem, Client } from '../types';
+import { LeaveRequest, AdjustmentRequest, Employee, ReturnRequest, ReturnItem, PendingReceipt, IssuedStatement, IssuedStatementItem, Client, PendingStatementEdit } from '../types';
 import { addItem, updateItem } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 
@@ -21,10 +21,12 @@ interface AdminChecklistProps {
   onUpdateLeaveStatus: (_id: string, _status: 'approved' | 'rejected') => void;
   onUpdateAdjustmentStatus: (_id: string, _status: 'processed' | 'rejected') => void;
   onProcessAdjustment: (_req: AdjustmentRequest) => void;
-  onProcessReturn?: (_req: ReturnRequest) => void;
+  pendingStatementEdits?: PendingStatementEdit[];
+  onApproveStatementEdit?: (_edit: PendingStatementEdit) => void;
+  onRejectStatementEdit?: (_id: string) => void;
 }
 
-type TabType = 'leave' | 'adjustment' | 'return' | 'inbound';
+type TabType = 'leave' | 'adjustment' | 'return' | 'inbound' | 'stmtedit';
 
 interface StatementDraftItem { name: string; qty: string; price: string; unit: string; isTaxExempt: boolean; }
 interface StatementDraft {
@@ -56,7 +58,9 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
   onUpdateLeaveStatus,
   onUpdateAdjustmentStatus,
   onProcessAdjustment,
-  onProcessReturn,
+  pendingStatementEdits = [],
+  onApproveStatementEdit,
+  onRejectStatementEdit,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('leave');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -90,7 +94,12 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
     return [...list].sort((a, b) => b.registeredAt.localeCompare(a.registeredAt));
   }, [pendingReceipts, inboundFilter]);
 
-  const totalPending = pendingLeaves.length + pendingAdjustments.length + pendingReturns.length;
+  const pendingStmtEdits = useMemo(() =>
+    pendingStatementEdits.filter(e => e.status === 'pending')
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [pendingStatementEdits]
+  );
+  const totalPending = pendingLeaves.length + pendingAdjustments.length + pendingReturns.length + pendingStmtEdits.length;
 
   const getAdjTypeLabel = (type: string) => {
     if (type === 'quantity_change') return '수량 변동';
@@ -288,6 +297,17 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
           {pendingVoucherCount > 0 && (
             <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center ${activeTab === 'inbound' ? 'bg-white/30 text-white' : 'bg-rose-100 text-rose-700'}`}>
               {pendingVoucherCount}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('stmtedit')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'stmtedit' ? 'bg-violet-600 text-white shadow-sm' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
+        >
+          <FileText size={15} />전표 수정
+          {pendingStmtEdits.length > 0 && (
+            <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center ${activeTab === 'stmtedit' ? 'bg-white/30 text-white' : 'bg-amber-100 text-amber-700'}`}>
+              {pendingStmtEdits.length}
             </span>
           )}
         </button>
@@ -609,6 +629,74 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
           <ClipboardList size={40} className="text-slate-200" />
           <p className="text-sm font-bold">처리할 항목이 없습니다</p>
           <p className="text-xs text-slate-300">신규 연차 신청이나 재고 변동이 발생하면 여기에 표시됩니다.</p>
+        </div>
+      )}
+
+      {/* 전표 수정 요청 탭 */}
+      {activeTab === 'stmtedit' && (
+        <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50/50 border-b border-slate-100">
+                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">요청일</th>
+                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">전표번호</th>
+                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">구분</th>
+                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">거래처</th>
+                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">요청자</th>
+                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">변경 내용</th>
+                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center whitespace-nowrap">처리</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {pendingStmtEdits.length === 0 ? (
+                  <tr><td colSpan={7} className="px-6 py-20 text-center">
+                    <div className="flex flex-col items-center gap-2 text-slate-400">
+                      <FileText size={32} className="text-slate-200" />
+                      <span className="text-sm font-medium">대기 중인 전표 수정 요청이 없습니다</span>
+                    </div>
+                  </td></tr>
+                ) : pendingStmtEdits.map(edit => (
+                  <tr key={edit.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-3 py-3 text-[10px] text-slate-500 whitespace-nowrap">
+                      {new Date(edit.createdAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}
+                    </td>
+                    <td className="px-3 py-3 text-[11px] font-bold text-slate-800">{edit.statementDocNo}</td>
+                    <td className="px-3 py-3">
+                      <span className={`px-2 py-1 rounded-lg text-[10px] font-black whitespace-nowrap ${edit.statementType === '매출' ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'}`}>
+                        {edit.statementType}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-[11px] text-slate-700">{edit.clientName}</td>
+                    <td className="px-3 py-3 text-[11px] text-slate-500">{edit.createdBy}</td>
+                    <td className="px-3 py-3 text-[10px] text-slate-500">
+                      <div className="space-y-0.5">
+                        <div>거래일: <span className="font-bold text-slate-700">{edit.proposedData.tradeDate}</span></div>
+                        <div>합계: <span className="font-bold text-slate-700">{(edit.proposedData.totalAmount ?? 0).toLocaleString()}원</span></div>
+                        <div>품목 {edit.proposedData.items?.length ?? 0}개</div>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => onApproveStatementEdit?.(edit)}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-[10px] font-black transition-colors"
+                        >
+                          <Check size={11} />승인
+                        </button>
+                        <button
+                          onClick={() => onRejectStatementEdit?.(edit.id)}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded-lg text-[10px] font-black transition-colors"
+                        >
+                          <X size={11} />거절
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

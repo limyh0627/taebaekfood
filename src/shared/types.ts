@@ -493,6 +493,26 @@ export interface ReturnRequest {
   note?: string;
 }
 
+export interface PendingStatementEdit {
+  id: string;
+  statementId: string;
+  statementDocNo: string;
+  statementType: '매출' | '매입';
+  clientName: string;
+  proposedData: {
+    tradeDate: string;
+    clientId: string;
+    clientName: string;
+    totalSupply: number;
+    totalTax: number;
+    totalAmount: number;
+    items: IssuedStatementItem[];
+  };
+  createdAt: string;
+  createdBy: string;
+  status: 'pending' | 'approved' | 'rejected';
+}
+
 // ── 계정과목 ──────────────────────────────────────────────────────────────────
 export interface AccountCode {
   id: string;          // 계정코드 (예: '500')
