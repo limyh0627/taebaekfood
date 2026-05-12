@@ -313,23 +313,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setPurchaseSearch('');
     setShowPurchasePicker(false);
     setActiveSearchRow(null);
-    // 매입전표: 발주 예정 목록이 있으면 자동 로드
-    if (type === '매입' && orderRequests && orderRequests.length > 0) {
-      const rows = orderRequests
-        .map(req => {
-          const product = allProducts.find(p => p.id === req.id);
-          if (!product) return null;
-          const isBox = product.category === '향미유' && (req as any).isBox;
-          const ps = productSuppliers.find((s: any) => s.productId === req.id || s.Item_ID === req.id);
-          return { name: product.name, spec: (product as any).용량 || product.unit || '', qty: String(req.quantity), price: ps?.price ? String(ps.price) : '', isTaxExempt: ps?.taxType === '면세', isBoxUnit: isBox, boxSize: isBox ? 12 : undefined };
-        })
-        .filter(Boolean) as { name: string; spec: string; qty: string; price: string; isTaxExempt: boolean; isBoxUnit?: boolean; boxSize?: number }[];
-      setManualItems([...rows, { name: '', spec: '', qty: '', price: '', isTaxExempt: false }]);
-      setManualMode(true);
-    } else {
-      setManualMode(false);
-      setManualItems([{ name: '', spec: '', qty: '', price: '', isTaxExempt: false }]);
-    }
+    setManualMode(false);
+    setManualItems([{ name: '', spec: '', qty: '', price: '', isTaxExempt: false }]);
   };
   const closeCreate = () => { setCreateMode(null); setEditingStmt(null); setIsEditMode(false); setTradeNote(''); setSelectedItemIdx(null); setQuickName(''); setQuickSpec(''); setQuickQty(''); setQuickPrice(''); setQuickNote(''); setQuickSearchOpen(false); setQuickIsTaxExempt(false); setShowItemPicker(false); setPickerSearch(''); setPickerQtys({}); setAccountCodeOverrides({}); hasIssuedRef.current = false; };
 
@@ -409,6 +394,27 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       .map(g => ({ ...g, items: g.items.map(({ product, item }) => ({ product, req: item as { id: string; quantity: number; confirmedByUser?: boolean } })) })),
     [orderRequests, allProducts, clients, psMap]
   );
+
+  // ── 발주예정 전체 그룹 (psMap 의존 없이 productSuppliers 직접 조회, 미지정 포함) ──
+  const orderRequestsAllGroups = useMemo(() => {
+    const map = new Map<string, { supplierId: string; supplierName: string; items: { product: Product; req: { id: string; quantity: number; confirmedByUser?: boolean; isBox?: boolean } }[] }>();
+    for (const req of (orderRequests ?? [])) {
+      const product = allProducts.find(p => p.id === req.id);
+      if (!product) continue;
+      // Item_ID/productId 모두 확인 (필드명 불일치 대응)
+      const ps = productSuppliers.find(s =>
+        (s.Item_ID === req.id || (s as any).productId === req.id) && s.Direction === 'in'
+      );
+      const supplierId = ps ? (ps.Partner_ID || (ps as any).supplierId || '') : '';
+      const supplierName = supplierId
+        ? (clients.find(c => c.id === supplierId)?.name ?? supplierId)
+        : '거래처 미지정';
+      const key = supplierId || '__unmapped__';
+      if (!map.has(key)) map.set(key, { supplierId, supplierName, items: [] });
+      map.get(key)!.items.push({ product, req: req as any });
+    }
+    return Array.from(map.values());
+  }, [orderRequests, allProducts, productSuppliers, clients]);
 
   // ── 매입 품목 선택 패널용: productSuppliers 연결된 품목 전체 (공급처별 그룹) ──
   const purchasableBySupplier = useMemo(() => {
@@ -2761,10 +2767,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             )}
 
             {/* ── 발주확정 + 발주예정 목록 (매입·거래처 미선택) ── */}
-            {createMode==='매입' && !selectedClientId && (confirmedBySupplier.length > 0 || orderRequestsBySupplier.length > 0) && (
-              <div className="flex-shrink-0 px-5 py-3 border-b border-slate-100 bg-slate-50 space-y-3">
+            {createMode==='매입' && !selectedClientId && (confirmedBySupplier.length > 0 || orderRequests.length > 0) && (
+              <div className="flex-shrink-0 px-5 py-3 border-b border-slate-100 bg-slate-50 space-y-4">
+                {/* 발주확정 — 거래처 버튼 방식 유지 */}
                 {confirmedBySupplier.length > 0 && (
-                  <>
+                  <div className="space-y-2">
                     <div className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">발주확정 ({confirmedOrders.length})</div>
                     <div className="flex flex-wrap gap-2">
                       {confirmedBySupplier.map(({supplierId,supplierName,items})=>{
@@ -2783,40 +2790,69 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                             className="flex items-center gap-2 px-3 py-2 bg-white border border-emerald-200 rounded-xl text-xs font-black text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition-all">
                             <span>{supplierName}</span>
                             <span className="text-slate-400">{items.length}품목</span>
-                            {issuedCount > 0 && (
-                              <span className="text-[10px] font-black text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">{issuedCount}발행</span>
-                            )}
+                            {issuedCount > 0 && <span className="text-[10px] font-black text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">{issuedCount}발행</span>}
                             <ChevronRight size={11}/>
                           </button>
                         );
                       })}
                     </div>
-                  </>
+                  </div>
                 )}
-                {orderRequestsBySupplier.length > 0 && (
-                  <>
+                {/* 발주예정 — 거래처별 카드 + 품목 개별 추가 */}
+                {orderRequests.length > 0 && (
+                  <div className="space-y-2">
                     <div className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">발주예정 ({orderRequests.length})</div>
-                    <div className="flex flex-wrap gap-2">
-                      {orderRequestsBySupplier.map(({supplierId,supplierName,items})=>(
-                        <button key={supplierId}
-                          onClick={()=>{
-                            setSelectedClientId(supplierId);
-                            const rows = items.map(({product,req})=>{
-                              const ps = productSuppliers.find(s=>s.productId===product.id&&s.supplierId===supplierId);
-                              const isBox = product.category==='향미유'&&(req as any).isBox;
-                              return {name:product.name,spec:product.용량||product.unit||'',qty:String(req.quantity),price:ps?.price?String(ps.price):'',isTaxExempt:ps?.taxType==='면세',isBoxUnit:isBox,boxSize:isBox?12:undefined};
-                            });
-                            setManualItems([...rows,{name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);
-                            setManualMode(true);
-                          }}
-                          className="flex items-center gap-2 px-3 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-black text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-all">
-                          <span>{supplierName}</span>
-                          <span className="text-indigo-400">{items.length}품목</span>
-                          <ChevronRight size={11}/>
-                        </button>
+                    <div className="space-y-2">
+                      {orderRequestsAllGroups.map(({supplierId,supplierName,items})=>(
+                        <div key={supplierId||'unmapped'} className="bg-white border border-indigo-100 rounded-xl overflow-hidden">
+                          {/* 거래처 헤더 */}
+                          <div className="flex items-center justify-between px-3 py-2 bg-indigo-50/60 border-b border-indigo-100">
+                            <span className="text-[11px] font-black text-indigo-700">{supplierName}</span>
+                            {supplierId && (
+                              <button
+                                onClick={()=>{
+                                  setSelectedClientId(supplierId);
+                                  const rows = items.map(({product,req})=>{
+                                    const ps = productSuppliers.find(s=>(s.productId===product.id||s.Item_ID===product.id)&&(s.supplierId===supplierId||s.Partner_ID===supplierId));
+                                    const isBox = product.category==='향미유'&&(req as any).isBox;
+                                    return {name:product.name,spec:product.용량||product.unit||'',qty:String(req.quantity),price:ps?.price?String(ps.price):'',isTaxExempt:ps?.taxType==='면세',isBoxUnit:isBox,boxSize:isBox?12:undefined};
+                                  });
+                                  setManualItems([...rows,{name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);
+                                  setManualMode(true);
+                                }}
+                                className="flex items-center gap-1 text-[10px] font-black text-indigo-600 hover:text-indigo-800 transition-colors"
+                              >전체 추가<ChevronRight size={10}/></button>
+                            )}
+                          </div>
+                          {/* 품목 목록 */}
+                          <div className="divide-y divide-slate-50">
+                            {items.map(({product,req})=>(
+                              <div key={product.id} className="flex items-center gap-3 px-3 py-2">
+                                <div className="flex-1 min-w-0">
+                                  <span className="text-xs font-bold text-slate-800">{product.name}</span>
+                                  {product.용량 && <span className="ml-1 text-[10px] text-slate-400">{product.용량}</span>}
+                                </div>
+                                <span className="text-xs text-slate-500 shrink-0 font-bold">{(req as any).isBox ? `${req.quantity}BOX` : `${req.quantity}${product.unit||''}`}</span>
+                                <button
+                                  onClick={()=>{
+                                    if (supplierId) setSelectedClientId(supplierId);
+                                    const ps = supplierId ? productSuppliers.find(s=>(s.productId===product.id||s.Item_ID===product.id)&&(s.supplierId===supplierId||s.Partner_ID===supplierId)) : null;
+                                    const isBox = product.category==='향미유'&&(req as any).isBox;
+                                    setManualItems([
+                                      {name:product.name,spec:product.용량||product.unit||'',qty:String(req.quantity),price:ps?.price?String(ps.price):'',isTaxExempt:ps?.taxType==='면세',isBoxUnit:isBox,boxSize:isBox?12:undefined},
+                                      {name:'',spec:'',qty:'',price:'',isTaxExempt:false},
+                                    ]);
+                                    setManualMode(true);
+                                  }}
+                                  className="shrink-0 text-[10px] font-black text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-2 py-0.5 rounded-lg transition-colors"
+                                >추가</button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       ))}
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
             )}

@@ -3310,10 +3310,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
           products={products}
           clients={clients}
           productClients={productClients}
+          productSuppliers={productSuppliers}
           onClose={() => {setIsProductModalOpen(false); setEditingProduct(null);}}
           onSaveProductClientConfig={async (id, config) => {
             try { await updateItem('partner_item', id, config); } catch { /* 문서 없으면 무시 */ }
           }}
+          onUpsertProductSupplier={(ps) => addItem('partner_item', { ...ps, Partner_ID: ps.Partner_ID, Item_ID: ps.Item_ID, Direction: 'in' as const, Standard_Price: ps.Standard_Price })}
           onAddSubmaterial={async (name, category) => {
             const unit = category === '라벨' ? '매' : '개';
             const id = await addItem('items', { name, category, stock: 0, minStock: 0, unit, price: 0, image: '' });
