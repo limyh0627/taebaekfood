@@ -32,6 +32,10 @@ const CATEGORY_MAP: Record<string, string> = {
 const normalizeCategory = (cat: string) => CATEGORY_MAP[cat] || cat;
 
 const CATEGORIES: InventoryCategory[] = ['product', 'wip', 'raw', 'giftset', 'container', 'cap', 'tape', 'box', 'label', 'shipping'];
+const CATEGORY_LABELS: Record<string, string> = {
+  product: '완제품', wip: '반제품', raw: '원료', giftset: '선물세트',
+  container: '용기', cap: '마개', tape: '테이프', box: '박스', label: '라벨', shipping: '배송',
+};
 const LINK_CATEGORIES = ['product', 'wip', 'raw', '참기름', '들기름', '깨', '검정깨', '들깨'];
 const SUB_ORDER: Record<string, number> = { 'label': 0, 'container': 1, 'cap': 2, 'tape': 3, 'box': 4 };
 const sortSubs = (subs: { name: string; category: string }[]) =>
@@ -338,7 +342,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                     : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
                 }`}
               >
-                {cat}
+                {CATEGORY_LABELS[cat] ?? cat}
               </button>
             ))}
           </div>
@@ -364,23 +368,20 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">용기</th>
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">마개</th>
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">라벨</th>
-                <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">테이프</th>
-                <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">박스</th>
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">원가</th>
-                <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">판매단가</th>
                 {isAdmin && <th className="px-2 py-3" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {!selectedClientId && !showAll ? (
                 <tr>
-                  <td colSpan={isAdmin ? 12 : 11} className="px-6 py-16 text-center text-slate-300 font-medium text-sm">
+                  <td colSpan={isAdmin ? 9 : 8} className="px-6 py-16 text-center text-slate-300 font-medium text-sm">
                     거래처를 선택하세요.
                   </td>
                 </tr>
               ) : pagedItems.length === 0 ? (
                 <tr>
-                  <td colSpan={isAdmin ? 12 : 11} className="px-6 py-16 text-center text-slate-400 font-medium text-sm">
+                  <td colSpan={isAdmin ? 9 : 8} className="px-6 py-16 text-center text-slate-400 font-medium text-sm">
                     {showAll ? '등록된 품목이 없습니다.' : '이 거래처에 연결된 품목이 없습니다.'}
                   </td>
                 </tr>
@@ -433,7 +434,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                         </span>
                       </td>
                     )}
-                    {['container', 'cap', 'label', 'tape', 'box'].map(cat => (
+                    {['container', 'cap', 'label'].map(cat => (
                       <td key={cat} className="px-2 py-3">
                         {item.category === 'product' ? (() => {
                           // shippingRules 기반 (테이프/박스, 거래처 선택 시)
@@ -463,11 +464,6 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                         ? <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">{item.cost.toLocaleString()}원</span>
                         : <span className="text-[10px] text-slate-200">-</span>}
                     </td>
-                    <td className="px-2 py-3 text-right">
-                      {item.price > 0
-                        ? <span className="text-[11px] font-black text-indigo-600 whitespace-nowrap">{item.price.toLocaleString()}원</span>
-                        : <span className="text-[10px] text-slate-200">-</span>}
-                    </td>
                     {isAdmin && (
                       <td className="px-2 py-3 text-center">
                         <button
@@ -480,7 +476,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                     )}
                   </tr>
                   {item.isRawMaterial && expandedPackagingId === item.id && (() => {
-                    const colCount = activeCategory === 'product' ? 10 : 9;
+                    const colCount = activeCategory === 'product' ? 7 : 6;
                     // BOM: 이 품목의 구성 부자재 (item_bom)
                     const boms = itemBoms.filter(b => b.parent_id === item.id);
                     const getBomChild = (cat: string) => {

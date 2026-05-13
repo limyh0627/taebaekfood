@@ -175,7 +175,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [isMobile, setIsMobile] = useState(false);
   const [showQrLabel, setShowQrLabel] = useState(false);
   const [selectedLog, setSelectedLog] = useState<import('../../shared/types').ProductionSalesLog | null>(null);
-  const [itemMgmtTab, setItemMgmtTab] = useState<'items' | 'prices'>('items');
 
   // 지난달 기말재고 스냅샷 자동 저장 (없을 때만)
   useEffect(() => {
@@ -3114,18 +3113,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'item-management' && (
             <div className="flex flex-col h-full overflow-hidden">
-              <div className="flex border-b border-slate-100 bg-white px-4 shrink-0">
-                {(['items', 'prices'] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setItemMgmtTab(tab)}
-                    className={`px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${itemMgmtTab === tab ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
-                  >
-                    {tab === 'items' ? '품목 정보' : '단가 관리'}
-                  </button>
-                ))}
-              </div>
-              {itemMgmtTab === 'items' && (
+              {true && (
                 <ItemManager
                   isAdmin={isAdmin}
                   products={allProducts}
@@ -3191,19 +3179,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     const { id, ...data } = rule;
                     await fUpdate(fDoc(fireDb, 'shipping_rule', id), data);
                   }}
-                />
-              )}
-              {itemMgmtTab === 'prices' && (
-                <PriceManager
-                  products={allProducts}
-                  clients={clients}
-                  productClients={productClients}
-                  productSuppliers={productSuppliers}
-                  onUpdateProductClientPrice={(id, price) => updateItem('partner_item', id, { price })}
-                  onUpdateProductClientTaxType={(id, taxType) => updateItem('partner_item', id, { taxType })}
-                  onUpsertProductSupplier={(ps) => addItem('partner_item', { ...ps, Partner_ID: ps.supplierId ?? ps.Partner_ID, Item_ID: ps.productId ?? ps.Item_ID, Direction: 'in' as const, price: ps.price ?? ps.Standard_Price })}
-                  onUpdateProductSupplierTaxType={(id, taxType) => updateItem('partner_item', id, { taxType })}
-                  onUpdateProductCost={(productId, cost) => updateItem('items', productId, { cost })}
                 />
               )}
             </div>
