@@ -71,6 +71,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
   const [packagingAdding, setPackagingAdding] = useState(false);
   const [packagingSaving, setPackagingSaving] = useState(false);
   const [partnerTab, setPartnerTab] = useState<'sales' | 'purchase'>('sales');
+  const [clientScopeTab, setClientScopeTab] = useState<'sales' | 'purchase'>('sales');
 
   const TYPE_ORDER: Record<string, number> = { '일반': 0, '택배': 1, '스마트스토어': 2 };
   const salesClients = useMemo(() =>
@@ -171,7 +172,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
   const selectedClient = selectedClientId ? clients.find(c => c.id === selectedClientId) : null;
 
   const filteredItems = useMemo(() => {
-    const isByClientPurchase = mainView === 'by-client' && partnerTab === 'purchase' && selectedClientId;
+    const isByClientPurchase = mainView === 'by-client' && clientScopeTab === 'purchase' && selectedClientId;
     let result = mainView === 'flat' || showAll || showNoClient
       ? products.filter(p => !p.archived && p.category === activeCategory)
       : selectedClientId
@@ -196,7 +197,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
       }
     }
     return [...result].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-  }, [products, activeCategory, selectedClientId, showAll, showNoClient, searchTerm, mainView, clients, partnerTab, productSuppliers]);
+  }, [products, activeCategory, selectedClientId, showAll, showNoClient, searchTerm, mainView, clients, clientScopeTab, productSuppliers]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -208,6 +209,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
     setShowNoClient(false);
     setPage(1);
     setSearchTerm('');
+    setClientScopeTab(partnerTab);
   };
 
   const handleShowAll = () => {
@@ -397,8 +399,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">용기</th>
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">마개</th>
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">라벨</th>
-                {(mainView === 'by-client' && selectedClientId) && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">박스</th>}
-                {(mainView === 'by-client' && selectedClientId) && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">테이프</th>}
+                {(mainView === 'by-client' && selectedClientId && clientScopeTab === 'sales') && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">박스</th>}
+                {(mainView === 'by-client' && selectedClientId && clientScopeTab === 'sales') && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">테이프</th>}
                 {isAdmin && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">원가</th>}
                 {isAdmin && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">판매단가</th>}
                 {(isAdmin || (mainView === 'by-client' && !!selectedClientId)) && <th className="px-2 py-3" />}
@@ -481,7 +483,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                         )}
                       </td>
                     ))}
-                    {(mainView === 'by-client' && selectedClientId) && (() => {
+                    {(mainView === 'by-client' && selectedClientId && clientScopeTab === 'sales') && (() => {
                       const rule = shippingRules.find(r => r.item_id === item.id && r.partner_id === selectedClientId);
                       const boxName = rule?.box_item_id ? (products.find(p => p.id === rule.box_item_id)?.name ?? '-') : null;
                       const tapeName = rule?.tape_item_id ? (products.find(p => p.id === rule.tape_item_id)?.name ?? '-') : null;
@@ -959,12 +961,38 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
           ) : (
             /* 선택된 거래처 품목 테이블 */
             <div className="space-y-3">
-              <button
-                onClick={() => { setSelectedClientId(null); setPage(1); setSearchTerm(''); }}
-                className="flex items-center gap-1.5 text-xs text-indigo-600 font-bold hover:underline"
-              >
-                ← 거래처 목록으로
-              </button>
+              {/* 거래처 헤더 */}
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => { setSelectedClientId(null); setPage(1); setSearchTerm(''); }}
+                    className="text-[11px] text-slate-400 font-bold hover:text-indigo-500 transition-colors whitespace-nowrap"
+                  >
+                    ← 목록
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xl font-black text-slate-800">{selectedClient?.name}</h2>
+                    {selectedClient?.type && (
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">{selectedClient.type}</span>
+                    )}
+                  </div>
+                </div>
+                {/* 매출/매입 품목 토글 */}
+                <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
+                  <button
+                    onClick={() => { setClientScopeTab('sales'); setPage(1); }}
+                    className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${clientScopeTab === 'sales' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    매출 품목
+                  </button>
+                  <button
+                    onClick={() => { setClientScopeTab('purchase'); setPage(1); }}
+                    className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${clientScopeTab === 'purchase' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    매입 품목
+                  </button>
+                </div>
+              </div>
               {productPanel}
             </div>
           )}
