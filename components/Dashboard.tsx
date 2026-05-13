@@ -125,7 +125,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, products, clients = [], p
   const activeClients = new Set(orders.map(o => o.clientId)).size;
 
   const lowStockList = products.filter(p =>
-    p.category !== '완제품' && p.minStock > 0 && p.stock < p.minStock
+    p.category !== 'product' && p.minStock > 0 && p.stock < p.minStock
   ).sort((a, b) => (a.stock - a.minStock) - (b.stock - b.minStock)); // 부족량 큰 순
   const lowStockItems = lowStockList.length;
 

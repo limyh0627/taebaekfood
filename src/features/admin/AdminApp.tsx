@@ -75,6 +75,7 @@ import NoticeBoard from '../../../components/NoticeBoard';
 import DatabaseView from '../../../components/DatabaseView';
 import ItemManager from '../../../components/ItemManager';
 import ItemPriceManager from '../../../components/ItemPriceManager';
+import PriceManager from '../../../components/PriceManager';
 import TaxStatement from '../../../components/TaxStatement';
 import OfficeTalk from '../../../components/OfficeTalk';
 import AdminChecklist from '../../../components/AdminChecklist';
@@ -150,7 +151,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     noticePosts, chatRooms, chatMessages,
     rawMaterialLedger, sesameInputLedger,
     appNotifications, workOrderItems, issuedStatements,
-    itemBoms, returnRequests, companyInfo, itemCustomers, inventorySnapshots, productionSalesLogs, isDataLoading,
+    itemFormulas, itemBoms, shippingRules, returnRequests, companyInfo, itemCustomers, inventorySnapshots, productionSalesLogs, isDataLoading,
     pendingReceipts, pendingStatementEdits,
   } = appData;
 
@@ -230,14 +231,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
   );
 
   const lowStockCount = allProducts.filter(p =>
-    p.category !== '완제품' && p.minStock > 0 && p.stock < p.minStock
+    p.category !== 'product' && p.minStock > 0 && p.stock < p.minStock
   ).length;
 
   // 판매 상품(완제품/향미유/고춧가루)은 products, 부자재는 submaterials
   const getProductCollection = (_category: string) => 'items';
 
   // 원료 자동 사용량 (DELIVERED 주문 → 원료별·날짜별 집계)
-  // itemBoms가 있으면 Firestore BOM 사용, 없으면 PRODUCT_FORMULA fallback
+  // itemFormulas가 있으면 Firestore item_formula 사용, 없으면 PRODUCT_FORMULA fallback
   const autoRawMaterialUsage = useMemo<Array<{material: string; date: string; used: number; note: string}>>(() => {
     const dayMap: Record<string, Record<string, { used: number; clients: string[] }>> = {};
     for (const o of orders.filter(o => o.status === OrderStatus.DELIVERED && o.deliveredAt)) {
@@ -245,10 +246,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '';
       for (const item of o.items) {
         const prod = allProducts.find(p => p.id === item.productId);
-        if (!prod || prod.category !== '완제품') continue;
+        if (!prod || prod.category !== 'product') continue;
         const prodKey = prod.품목 || prod.name;
         // Firestore BOM 우선, 없으면 하드코딩 fallback
-        const bomRows = itemBoms.filter(b => b.parent_key === prodKey);
+        const bomRows = itemFormulas.filter(b => b.parent_key === prodKey);
         const formula = bomRows.length > 0
           ? bomRows.map(b => ({ raw: b.child_name, ratio: b.ratio * (b.yield_rate || 1) }))
           : PRODUCT_FORMULA[prodKey];
@@ -271,7 +272,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       }
     }
     return result;
-  }, [orders, allProducts, clients, itemBoms]);
+  }, [orders, allProducts, clients, itemFormulas]);
 
   // 재고 발주 관련 상태 (orderRequests는 useAppData에서 Firebase로 관리)
 
@@ -330,7 +331,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       if (!product) continue;
 
       // 향미유: 재고는 박스 단위
-      if (product.category === '향미유') {
+      if (product.subtype === '향미유') {
         const sub = submaterials.find(s => s.id === product.id);
         if (sub) {
           const boxesNeeded = item.isBoxUnit && item.boxQuantity
@@ -341,26 +342,26 @@ const AdminApp: React.FC<AdminAppProps> = ({
         continue;
       }
 
-      if (product.category !== '완제품') continue;
+      if (product.category !== 'product') continue;
 
-      // 거래처별 포장 설정에서 박스/테이프 조회
-      const pc = clientId ? productClients.find(p => p.productId === product.id && p.clientId === clientId) : null;
-      const unitsPerBox = pc?.qtyPerBox || item.unitsPerBox || 1;
+      // 거래처별 포장 설정에서 박스/테이프 조회 (shippingRules 기반)
+      const rule = clientId ? shippingRules.find(r => r.item_id === product.id && r.partner_id === clientId) : null;
+      const unitsPerBox = rule?.qty_per_box || item.unitsPerBox || 1;
       const boxesNeeded = item.isBoxUnit && item.boxQuantity
         ? item.boxQuantity
         : Math.ceil(item.quantity / unitsPerBox);
 
-      // 박스 부족 체크 (productClients 기반)
-      if (pc?.boxTypeId) {
-        const boxSub = submaterials.find(sm => sm.id === pc.boxTypeId);
+      // 박스 부족 체크 (shippingRules 기반)
+      if (rule?.box_item_id) {
+        const boxSub = submaterials.find(sm => sm.id === rule.box_item_id);
         if (boxSub) {
           usage[boxSub.id] = { name: boxSub.name, needed: (usage[boxSub.id]?.needed ?? 0) + boxesNeeded, unit: '개' };
         }
       }
 
-      // 테이프 부족 체크 (productClients 기반)
-      if (pc?.tapeTypeId && boxesNeeded > 0) {
-        const tapeSub = submaterials.find(sm => sm.id === pc.tapeTypeId);
+      // 테이프 부족 체크 (shippingRules 기반)
+      if (rule?.tape_item_id && boxesNeeded > 0) {
+        const tapeSub = submaterials.find(sm => sm.id === rule.tape_item_id);
         if (tapeSub) {
           usage[tapeSub.id] = { name: tapeSub.name, needed: (usage[tapeSub.id]?.needed ?? 0) + boxesNeeded, unit: '개' };
         }
@@ -369,7 +370,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       // 박스·테이프 외 부자재 (BOM 기반)
       for (const s of (product.submaterials || [])) {
         const sub = submaterials.find(sm => sm.id === s.id);
-        if (!sub || sub.category === '박스' || sub.category === '테이프') continue;
+        if (!sub || sub.category === 'box' || sub.category === 'tape') continue;
         usage[sub.id] = { name: sub.name, needed: (usage[sub.id]?.needed ?? 0) + item.quantity, unit: '개' };
       }
     }
@@ -405,13 +406,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
   useEffect(() => {
     const seedFlavoredOil = async () => {
       const items = [
-        { id: 'f1',   name: '참진한기름',   category: '향미유', supplierId: 'C001', stock: 0, minStock: 10, price: 0, unit: '개', image: '' },
-        { id: 'f2',   name: '참고소한기름', category: '향미유', supplierId: 'C001', stock: 0, minStock: 10, price: 0, unit: '개', image: '' },
-        { id: 'f3',   name: '참향기름',     category: '향미유', supplierId: 'C001', stock: 0, minStock: 5,  price: 0, unit: '개', image: '' },
-        { id: 'f4',   name: '맛기름',       category: '향미유', supplierId: 'C001', stock: 0, minStock: 10, price: 0, unit: '개', image: '' },
-        { id: 'f5',   name: '들향기름',     category: '향미유', supplierId: 'C001', stock: 0, minStock: 5,  price: 0, unit: '개', image: '' },
-        { id: 'f6',   name: '들향기름골드', category: '향미유', supplierId: 'C001', stock: 0, minStock: 1,  price: 0, unit: '개', image: '' },
-        { id: 'f2-1', name: '참고소(연한)', category: '향미유', supplierId: 'C001', stock: 0, minStock: 0,  price: 0, unit: '개', image: '' },
+        { id: 'f1',   name: '참진한기름',   category: 'product', subtype: '향미유', supplierId: 'C001', stock: 0, minStock: 10, price: 0, unit: '개', image: '' },
+        { id: 'f2',   name: '참고소한기름', category: 'product', subtype: '향미유', supplierId: 'C001', stock: 0, minStock: 10, price: 0, unit: '개', image: '' },
+        { id: 'f3',   name: '참향기름',     category: 'product', subtype: '향미유', supplierId: 'C001', stock: 0, minStock: 5,  price: 0, unit: '개', image: '' },
+        { id: 'f4',   name: '맛기름',       category: 'product', subtype: '향미유', supplierId: 'C001', stock: 0, minStock: 10, price: 0, unit: '개', image: '' },
+        { id: 'f5',   name: '들향기름',     category: 'product', subtype: '향미유', supplierId: 'C001', stock: 0, minStock: 5,  price: 0, unit: '개', image: '' },
+        { id: 'f6',   name: '들향기름골드', category: 'product', subtype: '향미유', supplierId: 'C001', stock: 0, minStock: 1,  price: 0, unit: '개', image: '' },
+        { id: 'f2-1', name: '참고소(연한)', category: 'product', subtype: '향미유', supplierId: 'C001', stock: 0, minStock: 0,  price: 0, unit: '개', image: '' },
       ];
       for (const item of items) {
         const ref = doc(db, 'items', item.id);  // 향미유는 products에 저장
@@ -447,8 +448,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
       { name: 'files', data: INITIAL_FILES },
       { name: 'pallets', data: INITIAL_PALLETS },
       { name: 'employees', data: INITIAL_EMPLOYEES },
-      { name: 'items', data: INITIAL_PRODUCTS.filter((p: Product) => p.category === '완제품') },
-      { name: 'items', data: INITIAL_PRODUCTS.filter((p: Product) => p.category !== '완제품') },
+      { name: 'items', data: INITIAL_PRODUCTS.filter((p: Product) => p.category === 'product') },
+      { name: 'items', data: INITIAL_PRODUCTS.filter((p: Product) => p.category !== 'product') },
       { name: 'partners', data: INITIAL_CLIENTS },
       { name: 'suppliers', data: INITIAL_SUPPLIERS },
       { name: 'accountGroups', data: INITIAL_ACCOUNT_GROUPS },
@@ -525,7 +526,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const createProductionRecordsForOrder = async (order: Order) => {
     const finishedItems = order.items.filter(item => {
       const p = allProducts.find(pr => pr.id === item.productId);
-      return p && (p.itemType === 'FINISHED' || p.category === '완제품');
+      return p && p.category === 'product';
     });
     for (const item of finishedItems) {
       const product = allProducts.find(p => p.id === item.productId);
@@ -551,7 +552,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const product = allProducts.find(p => p.id === item.productId);
       if (!product) continue;
       const col = getProductCollection(product.category as string);
-      if (product.category === '완제품') {
+      if (product.category === 'product') {
         await updateItem(col, product.id, { finishedStock: (product.finishedStock ?? 0) + item.quantity });
       } else {
         await updateItem(col, product.id, { stock: product.stock + item.quantity });
@@ -588,7 +589,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       if (!product) continue;
 
       // 향미유/고춧가루: 재고는 낱개 단위로 저장, 낱개 기준으로 차감
-      if (product.category === '향미유' || product.category === '고춧가루') {
+      if (product.subtype === '향미유' || product.subtype === '고춧가루') {
         const uPerBox = item.unitsPerBox || product.defaultBoxConfig?.unitsPerBox || product.boxSize || 12;
         const deductQty = item.isBoxUnit && item.boxQuantity
           ? item.boxQuantity * uPerBox  // BOX → 낱개 변환
@@ -599,7 +600,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       }
 
       // 완제품: 부자재만 차감
-      if (product.category !== '완제품' || !product.submaterials) continue;
+      if (product.category !== 'product' || !product.submaterials) continue;
 
       // 사용한 박스 수 계산
       const boxesUsed = item.isBoxUnit && item.boxQuantity
@@ -632,7 +633,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       for (const s of product.submaterials) {
         const actualSub = submaterials.find(sm => sm.id === s.id);
         if (!actualSub) continue;
-        if (actualSub.category === '박스' || actualSub.category === '테이프') continue;
+        if (actualSub.category === 'box' || actualSub.category === 'tape') continue;
         await updateItem('items', actualSub.id, { stock: actualSub.stock - item.quantity });
       }
 
@@ -677,7 +678,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     const product = allProducts.find(p => p.id === id);
     if (product) {
       const collectionName = getProductCollection(product.category);
-      const addQty = product.category === '향미유' && (conf as any).isBox ? conf.quantity * 12 : conf.quantity;
+      const addQty = product.subtype === '향미유' && (conf as any).isBox ? conf.quantity * 12 : conf.quantity;
       await updateItem(collectionName, id, { stock: product.stock + addQty });
     }
     await deleteItem('confirmedOrders', id);
@@ -705,18 +706,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
     updateItem('orders', orderId, { items });
   };
 
-  // PRODUCT_FORMULA → Firestore item_bom 시딩 (최초 1회)
-  const seedItemBoms = async () => {
-    if (itemBoms.length > 0) {
-      alert(`이미 item_bom에 ${itemBoms.length}개 항목이 있습니다.`);
+  // PRODUCT_FORMULA → Firestore item_formula 시딩 (최초 1회)
+  const seedItemFormulas = async () => {
+    if (itemFormulas.length > 0) {
+      alert(`이미 item_formula에 ${itemFormulas.length}개 항목이 있습니다.`);
       return;
     }
     const batch = writeBatch(db);
     let count = 0;
     for (const [parentKey, rows] of Object.entries(PRODUCT_FORMULA)) {
       for (const row of rows) {
-        const id = `bom-${parentKey}-${row.raw}`.replace(/\s/g, '_');
-        batch.set(doc(db, 'item_bom', id), {
+        const id = `formula-${parentKey}-${row.raw}`.replace(/\s/g, '_');
+        batch.set(doc(db, 'item_formula', id), {
           parent_key: parentKey,
           child_name: row.raw,
           ratio: row.ratio,
@@ -726,7 +727,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       }
     }
     await batch.commit();
-    alert(`item_bom 시딩 완료: ${count}개 항목`);
+    alert(`item_formula 시딩 완료: ${count}개 항목`);
   };
 
   const handleNavClick = (view: ViewType) => {
@@ -1367,14 +1368,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
             />
           )}
           {currentView === 'documents' && (() => {
-            const SUB_ONLY_CATS = new Set(['용기', '마개', '테이프', '박스', '라벨', '향미유', '고춧가루']);
+            const SUB_ONLY_CATS = new Set(['container', 'cap', 'tape', 'box', 'label', 'raw']);
             const shippedOrders = orders.filter(o =>
               o.status === OrderStatus.SHIPPED &&
               o.customerName !== '생산기록' &&
               o.items.some(item => {
                 const p = allProducts.find(pr => pr.id === item.productId);
                 // 제품 ID가 DB에 없으면(삭제 후 재등록 등) 완제품으로 간주
-                // 명확히 부자재/향미유/고춧가루인 경우만 제외
+                // 명확히 부자재인 경우만 제외
                 return !p || !SUB_ONLY_CATS.has(p.category);
               })
             );
@@ -2875,9 +2876,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   await updateItem('orders', id, { status });
                 }
               }}
-              onUpdateProductClientPrice={(id, price) => updateItem('partner_item', id, { Standard_Price: price, price })}
+              onUpdateProductClientPrice={(id, price) => updateItem('partner_item', id, { price })}
               onUpdateProductClientTaxType={(id, taxType) => updateItem('partner_item', id, { taxType })}
-              onUpsertProductSupplier={(ps) => addItem('partner_item', { ...ps, Partner_ID: ps.supplierId ?? ps.Partner_ID, Item_ID: ps.productId ?? ps.Item_ID, Direction: 'in' as const, Standard_Price: ps.price ?? ps.Standard_Price })}
+              onUpsertProductSupplier={(ps) => addItem('partner_item', { ...ps, Partner_ID: ps.supplierId ?? ps.Partner_ID, Item_ID: ps.productId ?? ps.Item_ID, Direction: 'in' as const, price: ps.price ?? ps.Standard_Price })}
               onUpdateProductSupplierTaxType={(id, taxType) => updateItem('partner_item', id, { taxType })}
               onMarkInvoicePrinted={(id, value) => updateItem('orders', id, { invoicePrinted: value })}
               onUpdateOrder={(id, data) => updateItem('orders', id, data)}
@@ -2913,7 +2914,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   id: `${productId}_${clientId}_out`,
                   Item_ID: productId, Partner_ID: clientId,
                   Direction: 'out' as const,
-                  Standard_Price: price, price, taxType,
+                  price, taxType,
                   productId, clientId,
                 })
               }
@@ -3185,6 +3186,19 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   }}
                 />
               )}
+              {itemMgmtTab === 'prices' && (
+                <PriceManager
+                  products={allProducts}
+                  clients={clients}
+                  productClients={productClients}
+                  productSuppliers={productSuppliers}
+                  onUpdateProductClientPrice={(id, price) => updateItem('partner_item', id, { price })}
+                  onUpdateProductClientTaxType={(id, taxType) => updateItem('partner_item', id, { taxType })}
+                  onUpsertProductSupplier={(ps) => addItem('partner_item', { ...ps, Partner_ID: ps.supplierId ?? ps.Partner_ID, Item_ID: ps.productId ?? ps.Item_ID, Direction: 'in' as const, price: ps.price ?? ps.Standard_Price })}
+                  onUpdateProductSupplierTaxType={(id, taxType) => updateItem('partner_item', id, { taxType })}
+                  onUpdateProductCost={(productId, cost) => updateItem('items', productId, { cost })}
+                />
+              )}
             </div>
           )}
 
@@ -3273,7 +3287,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           correctPassword={companyInfo?.adminPassword || '0000'}
         />
       )}
-      {isAddOrderOpen && <AddOrderModal products={allProducts} clients={clients} productClients={productClients} itemCustomers={itemCustomers} palletStocks={pallets} submaterials={submaterials} onClose={() => setIsAddOrderOpen(false)} onSave={async (o) => {
+      {isAddOrderOpen && <AddOrderModal products={allProducts} clients={clients} productClients={productClients} shippingRules={shippingRules} palletStocks={pallets} submaterials={submaterials} onClose={() => setIsAddOrderOpen(false)} onSave={async (o) => {
         try {
           console.log('[AddOrder] 저장 시작', o);
           const orderId = `ORD-${Date.now()}`;

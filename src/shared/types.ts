@@ -56,34 +56,43 @@ export interface PurchaseItem {
 // ── 파트너-품목 매핑 (partner_item 컬렉션) ────────────────────────────────
 // Direction: 'in' = 매입(공급), 'out' = 매출(판매)
 export interface PartnerItem {
-  id: string;                    // `${Item_ID}_${Partner_ID}_${Direction}`
-  // canonical fields
+  id: string;
   Partner_ID: string;
   Item_ID: string;
   Direction: 'in' | 'out';
-  Standard_Price?: number;
+  price?: number;              // 거래처별 단가 (canonical)
   Account_Code?: string;
   taxType?: '과세' | '면세';
-  // Direction='out' 전용 (포장 설정)
-  sku?: string;
-  shippingStock?: number;
+  isSmartStore?: boolean;      // 스마트스토어 채널 여부
+  // @deprecated → shipping_rule 컬렉션으로 이관 예정
   boxTypeId?: string;
   qtyPerBox?: number;
+  qty_per_box?: number;
   tapeTypeId?: string;
-  // 거래처별 포장 상세 (item_customer 통합)
   displaySize?: string;
   packageType?: string;
-  qty_per_box?: number;
+  // @deprecated → item_bom 컬렉션으로 이관 예정
   containerTypeId?: string;
   labelId?: string;
+  // @deprecated → items 컬렉션으로 이관 예정
   weightInKg?: number;
   // @deprecated backward compat — useAppData에서 자동 주입
-  productId?: string;    // = Item_ID
-  clientId?: string;     // = Partner_ID (Direction='out')
-  supplierId?: string;   // = Partner_ID (Direction='in')
-  price?: number;        // = Standard_Price
-  item_id?: string;      // = Item_ID (ItemCustomer backward compat)
-  customer_id?: string;  // = Partner_ID (ItemCustomer backward compat)
+  productId?: string;
+  clientId?: string;
+  supplierId?: string;
+  Standard_Price?: number;     // @deprecated → price 사용
+  item_id?: string;
+  customer_id?: string;
+}
+
+// ── 배송 규칙 (shipping_rule 컬렉션) ─────────────────────────────────────
+export interface ShippingRule {
+  id: string;
+  item_id: string;        // 품목 ID (어떤 완제품)
+  box_item_id: string;    // items category='shipping' 인 박스 품목 ID
+  qty_per_box: number;    // 박스당 수량
+  tape_item_id?: string;  // 테이프 품목 ID
+  partner_id?: string;    // 거래처별 오버라이드 (없으면 전체 기본값)
 }
 
 // @deprecated — PartnerItem 사용
@@ -150,7 +159,30 @@ export interface SubmaterialComponent {
   qrCode?: string; // 납품업체 QR/바코드 값
 }
 
-export type InventoryCategory = '완제품' | '향미유' | '고춧가루' | '용기' | '마개' | '테이프' | '박스' | '라벨';
+// 새 영문 체계
+export type InventoryCategory =
+  'raw' | 'wip' | 'product' | 'giftset' |
+  'label' | 'cap' | 'container' | 'box' | 'tape' | 'shipping' |
+  // @deprecated 마이그레이션 완료 전 하위 호환
+  '완제품' | '향미유' | '고춧가루' | '용기' | '마개' | '테이프' | '박스' | '라벨';
+
+export const PRODUCT_LINE = ['raw', 'wip', 'product', 'giftset'] as const;
+export const SUBMATERIALS  = ['label', 'cap', 'container', 'box', 'tape'] as const;
+export const SHIPPING_ITEMS = ['shipping'] as const;
+export const isProductLine = (cat: string): boolean => (PRODUCT_LINE as readonly string[]).includes(cat);
+export const isSubmaterial = (cat: string): boolean => (SUBMATERIALS  as readonly string[]).includes(cat);
+
+// 한국어 → 영문 카테고리 변환 맵 (마이그레이션용)
+export const CATEGORY_MIGRATION_MAP: Record<string, string> = {
+  '완제품': 'product',
+  '향미유': 'product',
+  '고춧가루': 'product',
+  '용기': 'container',
+  '마개': 'cap',
+  '테이프': 'tape',
+  '박스': 'box',
+  '라벨': 'label',
+};
 
 export type ProductStage = 'WIP' | 'FINISHED';
 
@@ -160,8 +192,9 @@ export interface Item {
   name: string;
   sku?: string;
   category: InventoryCategory | string;
-  itemType?: ProductStage;       // WIP | FINISHED — 없으면 부자재/원료
-  cost?: number;
+  subtype?: string;              // category 내 세부분류 (예: '향미유', '고춧가루')
+  itemType?: ProductStage;       // @deprecated → category: 'wip'|'product' 사용
+  cost?: number;                 // 원가 (제조/매입원가)
   price: number;
   stock: number;
   wipStock?: number;
@@ -184,6 +217,8 @@ export interface Item {
   isRawMaterial?: boolean;    // 원료로도 관리되는 품목 (수불부 자동 연동)
   rawMaterialName?: string;   // 원료 수불부 키 이름 (예: "볶음참깨")
   variantStocks?: Record<string, number>; // 규격별 재고 { "1kg||labelId": 50, "20kg||": 100 }
+  netContent?: string;         // 내용량 표시 (예: "200g", "300ml", "1.8L") — product만 해당
+  weightInKg?: number;         // 실중량 (kg) — product만 해당
   archived?: boolean;         // 통합 마이그레이션으로 대체된 구 품목
   supplierId?: string;        // @deprecated — productSuppliers 사용
 }
@@ -453,15 +488,23 @@ export interface QrMapping {
   createdAt: string;
 }
 
-// ── 품목 구조 (item_bom) ─────────────────────────────────────────────────
+// ── 원료 배합비 (item_formula 컬렉션) ────────────────────────────────────
 export type ItemType = 'RAW' | 'SUB' | 'WIP' | 'FINISHED';
 
+export interface ItemFormula {
+  id: string;
+  parent_key: string;   // 완제품 품목명 (key)
+  child_name: string;   // 원료명
+  ratio: number;        // 배합 비율
+  yield_rate: number;   // 수율
+}
+
+// ── 품목 구성 BOM (item_bom 컬렉션) ──────────────────────────────────────
 export interface ItemBom {
   id: string;
-  parent_key: string;
-  child_name: string;
-  ratio: number;
-  yield_rate: number;
+  parent_id: string;   // 상위 품목 ID (items 컬렉션)
+  child_id: string;    // 하위 구성품 ID (items 컬렉션)
+  quantity: number;    // 필요 수량
 }
 // ────────────────────────────────────────────────────────────────────────
 

@@ -22,13 +22,15 @@ interface ItemManagerProps {
 }
 
 const CATEGORY_MAP: Record<string, string> = {
-  'Cap': '마개', 'Tape': '테이프', '박스': '박스', '용기': '용기', '라벨': '라벨',
+  'Cap': 'cap', 'Tape': 'tape',
+  '완제품': 'product', '향미유': 'product', '고춧가루': 'product',
+  '용기': 'container', '마개': 'cap', '테이프': 'tape', '박스': 'box', '라벨': 'label',
 };
 const normalizeCategory = (cat: string) => CATEGORY_MAP[cat] || cat;
 
-const CATEGORIES: InventoryCategory[] = ['완제품', '향미유', '고춧가루', '용기', '마개', '테이프', '박스', '라벨'];
-const LINK_CATEGORIES = ['완제품', '향미유', '고춧가루', '참기름', '들기름', '깨', '검정깨', '들깨'];
-const SUB_ORDER: Record<string, number> = { '라벨': 0, '용기': 1, '마개': 2, '테이프': 3, '박스': 4 };
+const CATEGORIES: InventoryCategory[] = ['product', 'wip', 'raw', 'giftset', 'container', 'cap', 'tape', 'box', 'label', 'shipping'];
+const LINK_CATEGORIES = ['product', 'wip', 'raw', '참기름', '들기름', '깨', '검정깨', '들깨'];
+const SUB_ORDER: Record<string, number> = { 'label': 0, 'container': 1, 'cap': 2, 'tape': 3, 'box': 4 };
 const sortSubs = (subs: { name: string; category: string }[]) =>
   [...subs].sort((a, b) => (SUB_ORDER[normalizeCategory(a.category)] ?? 9) - (SUB_ORDER[normalizeCategory(b.category)] ?? 9));
 
@@ -37,7 +39,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(true);
   const [showNoClient, setShowNoClient] = useState(false);
-  const [activeCategory, setActiveCategory] = useState<InventoryCategory>('완제품');
+  const [activeCategory, setActiveCategory] = useState<InventoryCategory>('product');
   const [searchTerm, setSearchTerm] = useState('');
   const [clientSearch, setClientSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -45,7 +47,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
   const [linkSearch, setLinkSearch] = useState('');
   const [showLinkPanel, setShowLinkPanel] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
-  const [linkCategory, setLinkCategory] = useState('완제품');
+  const [linkCategory, setLinkCategory] = useState('product');
   const [clientTypeFilter, setClientTypeFilter] = useState<string | null>(null);
   const [expandedClientRowId, setExpandedClientRowId] = useState<string | null>(null);
   const [showDuplicates, setShowDuplicates] = useState(false);
@@ -68,7 +70,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
   );
 
   const duplicateGroups = useMemo(() => {
-    const finished = products.filter(p => !p.archived && (p.itemType === 'FINISHED' || p.category === '완제품' || p.category === '향미유' || p.category === '고춧가루'));
+    const finished = products.filter(p => !p.archived && ['product', 'wip', 'giftset'].includes(p.category));
     const pcByProduct: Record<string, ProductClient[]> = {};
     for (const pc of productClients) {
       const key = pc.Item_ID;
@@ -81,8 +83,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
     const groups: Record<string, typeof finished> = {};
     for (const p of finished) {
       const subs = p.submaterials || [];
-      const 용기 = subs.filter(s => normalizeCategory(s.category) === '용기').map(s => s.name).sort().join(',');
-      const 마개 = subs.filter(s => normalizeCategory(s.category) === '마개').map(s => s.name).sort().join(',');
+      const 용기 = subs.filter(s => normalizeCategory(s.category) === 'container').map(s => s.name).sort().join(',');
+      const 마개 = subs.filter(s => normalizeCategory(s.category) === 'cap').map(s => s.name).sort().join(',');
       const key = `${p.name}||용기:${용기}|마개:${마개}`;
       if (!groups[key]) groups[key] = [];
       groups[key].push(p);
@@ -94,7 +96,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
         const [namePart, containerPart] = key.split('||');
         const items = prods.map(p => {
           const subs = p.submaterials || [];
-          const 라벨 = subs.filter(s => normalizeCategory(s.category) === '라벨').map(s => s.name).join(', ');
+          const 라벨 = subs.filter(s => normalizeCategory(s.category) === 'label').map(s => s.name).join(', ');
           const pcs = pcByProduct[p.id] || [];
           const directClients = [...new Set([...(p.clientIds || [])])];
           return { product: p, 라벨, pcs, directClients, subMap };
@@ -279,7 +281,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
         <div className="flex items-center gap-2">
           {selectedClientId && isAdmin && (
             <button
-              onClick={() => { setShowLinkPanel(true); setLinkSearch(''); setLinkCategory('완제품'); }}
+              onClick={() => { setShowLinkPanel(true); setLinkSearch(''); setLinkCategory('product'); }}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-sm shadow-sm transition-all active:scale-95 bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
             >
               <Link size={14} />
@@ -353,8 +355,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
             <thead className="sticky top-0 z-10">
               <tr className="bg-slate-50/50 border-b border-slate-100">
                 <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[100px]">품목 정보</th>
-                {activeCategory === '완제품' && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">거래처</th>}
-                {activeCategory !== '완제품' && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">매입거래처</th>}
+                {activeCategory === 'product' && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">거래처</th>}
+                {activeCategory !== 'product' && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">매입거래처</th>}
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">용기</th>
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">마개</th>
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">라벨</th>
@@ -388,7 +390,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                         <p className="text-[11px] font-bold text-slate-600 whitespace-nowrap">{item.name}</p>
                       </div>
                     </td>
-                    {activeCategory === '완제품' && (
+                    {activeCategory === 'product' && (
                       <td className="px-2 py-3">
                         {(() => {
                           const BADGE_COLORS = [
@@ -420,20 +422,20 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                         })()}
                       </td>
                     )}
-                    {activeCategory !== '완제품' && (
+                    {activeCategory !== 'product' && (
                       <td className="px-2 py-3">
                         <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
                           {clients.find(c => c.id === productSuppliers.find(ps => ps.productId === item.id)?.supplierId)?.name ?? <span className="text-slate-200">-</span>}
                         </span>
                       </td>
                     )}
-                    {['용기', '마개', '라벨', '테이프', '박스'].map(cat => (
+                    {['container', 'cap', 'label', 'tape', 'box'].map(cat => (
                       <td key={cat} className="px-2 py-3">
-                        {item.category === '완제품' ? (() => {
+                        {item.category === 'product' ? (() => {
                           // productClients 기반 (테이프/박스, 거래처 선택 시)
-                          if (selectedClientId && (cat === '테이프' || cat === '박스')) {
+                          if (selectedClientId && (cat === 'tape' || cat === 'box')) {
                             const pc = productClients.find(p => p.productId === item.id && p.clientId === selectedClientId);
-                            const subId = cat === '테이프' ? pc?.tapeTypeId : pc?.boxTypeId;
+                            const subId = cat === 'tape' ? pc?.tapeTypeId : pc?.boxTypeId;
                             if (subId) {
                               const sub = products.find(p => p.id === subId);
                               if (sub) return <span className="text-[11px] font-bold text-indigo-600 whitespace-nowrap">{sub.name}</span>;
@@ -475,7 +477,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                   </tr>
                   {item.isRawMaterial && expandedPackagingId === item.id && (() => {
                     const ics = itemCustomers.filter(ic => (ic.item_id ?? ic.Item_ID) === item.id && (ic.customer_id ?? ic.Partner_ID));
-                    const colCount = activeCategory === '완제품' ? 10 : 9;
+                    const colCount = activeCategory === 'product' ? 10 : 9;
                     return (
                       <tr>
                         <td colSpan={colCount} className="px-4 pb-4 pt-0 bg-emerald-50/60">
@@ -534,7 +536,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                                             value={editing.containerTypeId ?? ic.containerTypeId ?? ''}
                                             onChange={e => setEditingIc(prev => ({ ...prev, [ic.id]: { ...prev[ic.id], containerTypeId: e.target.value } }))}>
                                             <option value="">없음</option>
-                                            {products.filter(p => p.category === '용기').map(p => (
+                                            {products.filter(p => p.category === 'container').map(p => (
                                               <option key={p.id} value={p.id}>{p.name}</option>
                                             ))}
                                           </select>
@@ -546,7 +548,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                                             value={editing.labelId ?? ic.labelId ?? ''}
                                             onChange={e => setEditingIc(prev => ({ ...prev, [ic.id]: { ...prev[ic.id], labelId: e.target.value } }))}>
                                             <option value="">무라벨</option>
-                                            {products.filter(p => p.category === '라벨').map(p => (
+                                            {products.filter(p => p.category === 'label').map(p => (
                                               <option key={p.id} value={p.id}>{p.name}</option>
                                             ))}
                                           </select>
@@ -558,7 +560,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                                             value={editing.tapeTypeId ?? ic.tapeTypeId ?? ''}
                                             onChange={e => setEditingIc(prev => ({ ...prev, [ic.id]: { ...prev[ic.id], tapeTypeId: e.target.value } }))}>
                                             <option value="">없음</option>
-                                            {products.filter(p => p.category === '테이프').map(p => (
+                                            {products.filter(p => p.category === 'tape').map(p => (
                                               <option key={p.id} value={p.id}>{p.name}</option>
                                             ))}
                                           </select>
@@ -683,8 +685,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                     <div className="mt-3 space-y-2">
                       {group.items.map(({ product, 라벨, pcs, directClients, subMap }) => {
                         const subs = product.submaterials || [];
-                        const 용기목록 = subs.filter(s => normalizeCategory(s.category) === '용기').map(s => s.name).join(', ');
-                        const 마개목록 = subs.filter(s => normalizeCategory(s.category) === '마개').map(s => s.name).join(', ');
+                        const 용기목록 = subs.filter(s => normalizeCategory(s.category) === 'container').map(s => s.name).join(', ');
+                        const 마개목록 = subs.filter(s => normalizeCategory(s.category) === 'cap').map(s => s.name).join(', ');
                         return (
                         <div key={product.id} className="bg-white rounded-xl border border-amber-100 px-4 py-3">
                           <div className="flex items-center gap-2 mb-2 flex-wrap">

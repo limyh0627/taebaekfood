@@ -60,7 +60,7 @@ const PUMOK_VOLUMES: Record<string, string[]> = {
 const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], products = [], clients = [], productClients = [], productSuppliers = [], onClose, onSave, onSaveProductClientConfig, onUpsertProductSupplier, onAddSubmaterial }) => {
   const [formData, setFormData] = useState(() => ({
     name: initialData?.name || '',
-    category: (initialData?.category as InventoryCategory) || '완제품',
+    category: (initialData?.category as InventoryCategory) || 'product',
     price: initialData?.price || 0,
     stock: initialData?.stock || 0,
     minStock: initialData?.minStock || 10,
@@ -147,14 +147,14 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처'
   );
 
-  const categories: InventoryCategory[] = ['완제품', '향미유', '고춧가루', '용기', '마개', '테이프', '박스', '라벨'];
+  const categories: InventoryCategory[] = ['product', 'wip', 'raw', 'giftset', 'container', 'cap', 'tape', 'box', 'label', 'shipping'];
 
   const handleSubmit = async (e?: React.SyntheticEvent) => {
     e?.preventDefault();
     if (!formData.name) return;
-    if (formData.category === '완제품' && !formData.품목) { setPumokWarn(true); return; }
+    if (formData.category === 'product' && !formData.품목) { setPumokWarn(true); return; }
 
-    const isProductCategory = formData.category === '완제품' || formData.category === '향미유' || formData.category === '고춧가루';
+    const isProductCategory = ['product', 'wip', 'raw', 'giftset'].includes(formData.category);
     const hasBoxConfig = formData.defaultBoxConfig.unitsPerBox > 0;
 
     const finalProduct: Product = {
@@ -163,25 +163,25 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       category: formData.category,
       price: formData.price,
       stock: initialData?.stock ?? 0,
-      minStock: formData.category === '완제품' ? 0 : formData.minStock,
+      minStock: formData.category === 'product' ? 0 : formData.minStock,
       unit: formData.unit,
       image: initialData?.image || '',
-      submaterials: formData.category === '완제품'
+      submaterials: formData.category === 'product'
         ? formData.submaterials
         : (formData.submaterials.length > 0 ? formData.submaterials : (initialData?.submaterials || [])),
-      ...(formData.category === '박스' && { freightType: formData.freightType, boxSize: formData.boxSize }),
+      ...(formData.category === 'box' && { freightType: formData.freightType, boxSize: formData.boxSize }),
       ...(isProductCategory && hasBoxConfig && { defaultBoxConfig: formData.defaultBoxConfig }),
       ...(isProductCategory && formData.clientBoxConfigs.length > 0 && { clientBoxConfigs: formData.clientBoxConfigs }),
       ...(formData.용량 && { 용량: formData.용량 }),
       ...(formData.품목 && { 품목: formData.품목 }),
-      ...(formData.category === '완제품' && formData.clientIds.length > 0 && { clientIds: formData.clientIds }),
-      ...(formData.category === '완제품' && { isSmartStore: formData.isSmartStore }),
+      ...(formData.category === 'product' && formData.clientIds.length > 0 && { clientIds: formData.clientIds }),
+      ...(formData.category === 'product' && { isSmartStore: formData.isSmartStore }),
     };
 
     onSave(finalProduct);
 
     // ProductSupplier upsert — partner_item Direction='in'으로 저장
-    if (formData.category !== '완제품' && formData.supplierId && onUpsertProductSupplier) {
+    if (formData.category !== 'product' && formData.supplierId && onUpsertProductSupplier) {
       const supplierId = formData.supplierId;
       const itemId = finalProduct.id;
       const psId = `${itemId}_${supplierId}_in`;
@@ -225,7 +225,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Tag size={14} className="mr-2" /> 품목명
               </label>
-              {formData.category === '완제품' && (
+              {formData.category === 'product' && (
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] font-bold text-slate-400">스마트스토어 전용</span>
                   <button
@@ -290,7 +290,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
           </div>
 
           {/* 매출거래처 (완제품) */}
-          {formData.category === '완제품' && (
+          {formData.category === 'product' && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Building2 size={14} className="mr-2" /> 매출거래처
@@ -345,13 +345,13 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
           )}
 
           {/* BOM 설정 (완제품) */}
-          {formData.category === '완제품' && (
+          {formData.category === 'product' && (
             <div className="space-y-3 pt-2 border-t border-slate-100">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Layers size={14} className="mr-2" /> 구성 부자재 (BOM)
               </label>
               <div className="space-y-2">
-                {(['용기', '마개', '라벨'] as const).map(cat => {
+                {(['container', 'cap', 'label'] as const).map(cat => {
                   const getSubCat = (s: typeof formData.submaterials[0]) => {
                     if (s.category) return normCat(s.category);
                     return normCat(allSubmaterials.find(a => a.id === s.id)?.category || '');
@@ -428,14 +428,14 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                                     type="button"
                                     onClick={() => {
                                       const filtered = formData.submaterials.filter(s => getSubCat(s) !== cat);
-                                      const autoCapacity = cat === '용기'
+                                      const autoCapacity = cat === 'container'
                                         ? (allSubmaterials.find(a => a.id === sub.id) as Product | undefined)?.용량 || ''
                                         : formData.용량;
                                       const newSub = { id: sub.id, name: sub.name, category: cat, stock: 1, unit: sub.unit };
                                       const newData: typeof formData = {
                                         ...formData,
                                         submaterials: [...filtered, newSub],
-                                        ...(cat === '용기' && { 용량: autoCapacity }),
+                                        ...(cat === 'container' && { 용량: autoCapacity }),
                                       };
                                       setFormData(newData);
                                       setActiveSubCategory(null);
@@ -460,7 +460,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                                   onChange={e => setNewSubName(e.target.value)}
                                   onKeyDown={async e => {
                                     if (e.key === 'Enter' && newSubName.trim()) {
-                                      const unit = cat === '라벨' ? '매' : '개';
+                                      const unit = cat === 'label' ? '매' : '개';
                                       const newId = await onAddSubmaterial(newSubName.trim(), cat);
                                       const newSub = { id: newId, name: newSubName.trim(), category: cat, unit, stock: 1 };
                                       const filtered = formData.submaterials.filter(s => getSubCat(s) !== cat);
@@ -506,8 +506,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                     const clientName = clients.find(c => c.id === clientId)?.name || clientId;
                     const isExpanded = expandedBoxClient === clientId;
                     const cfg = clientPackagingConfigs[clientId] ?? {};
-                    const boxSubs = allSubmaterials.filter(s => s.category === '박스');
-                    const tapeSubs = allSubmaterials.filter(s => s.category === '테이프' || s.category === 'Tape');
+                    const boxSubs = allSubmaterials.filter(s => s.category === 'box');
+                    const tapeSubs = allSubmaterials.filter(s => s.category === 'tape');
                     const selectedBox = allSubmaterials.find(s => s.id === cfg.boxTypeId);
                     const selectedTape = allSubmaterials.find(s => s.id === cfg.tapeTypeId);
                     const summary = [selectedBox?.name, cfg.qtyPerBox ? `${cfg.qtyPerBox}개/박스` : null, selectedTape?.name].filter(Boolean).join(' · ');
@@ -571,7 +571,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
           )}
 
           {/* 1박스 당 수량 (박스 부자재) */}
-          {formData.category === '박스' && (
+          {formData.category === 'box' && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Box size={14} className="mr-2" /> 1박스 당 수량 (개)
@@ -587,7 +587,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
           )}
 
           {/* 서류용 품목명 (완제품) */}
-          {formData.category === '완제품' && (
+          {formData.category === 'product' && (
             <div className="space-y-2" ref={pumokRef}>
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Tag size={14} className="mr-2" /> 품목 (서류용)
@@ -621,7 +621,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
           )}
 
           {/* 용량 (완제품) */}
-          {formData.category === '완제품' && (
+          {formData.category === 'product' && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Box size={14} className="mr-2" /> 용량 (서류용)
@@ -656,7 +656,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
           )}
 
           {/* 매입거래처 (비완제품) */}
-          {formData.category !== '완제품' && (
+          {formData.category !== 'product' && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Building2 size={14} className="mr-2" /> 매입거래처
@@ -713,7 +713,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
           )}
 
           {/* 운임타입 (박스) */}
-          {formData.category === '박스' && (
+          {formData.category === 'box' && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Tag size={14} className="mr-2" /> 운임타입

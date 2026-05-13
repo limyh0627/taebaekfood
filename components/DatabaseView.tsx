@@ -203,6 +203,87 @@ const DatabaseView: React.FC<DatabaseViewProps> = ({ onSync }) => {
     }
   };
 
+  // ── items category 한국어 → 영문 마이그레이션 ────────────────────────────
+  const [catMigStatus, setCatMigStatus] = useState<'idle'|'running'|'done'|'error'>('idle');
+  const [catMigLog, setCatMigLog] = useState<string[]>([]);
+
+  const migrateCategoryValues = async () => {
+    if (catMigStatus === 'running') return;
+    if (!window.confirm('items 컬렉션의 category 값을 영문으로 변환합니다. 계속하시겠습니까?')) return;
+    setCatMigStatus('running');
+    setCatMigLog(['시작...']);
+    const log = (msg: string) => setCatMigLog(prev => [...prev, msg]);
+
+    const MAP: Record<string, string> = {
+      '완제품': 'product', '향미유': 'product', '고춧가루': 'product',
+      '용기': 'container', '마개': 'cap', '테이프': 'tape', '박스': 'box', '라벨': 'label',
+    };
+    // 향미유/고춧가루는 subtype도 설정
+    const SUBTYPE: Record<string, string> = { '향미유': '향미유', '고춧가루': '고춧가루' };
+
+    try {
+      const { getDocs: gd, collection: col, writeBatch: wb, doc: d } = await import('firebase/firestore');
+      const snap = await gd(col(db, 'items'));
+      log(`items 전체: ${snap.size}건`);
+
+      const batch = wb(db);
+      let updated = 0, skipped = 0;
+
+      for (const docSnap of snap.docs) {
+        const data = docSnap.data() as any;
+        const oldCat = data.category as string;
+        const newCat = MAP[oldCat];
+        if (!newCat) { skipped++; continue; }
+
+        const update: Record<string, any> = { category: newCat };
+        if (SUBTYPE[oldCat]) update.subtype = SUBTYPE[oldCat];
+        batch.update(d(db, 'items', docSnap.id), update);
+        updated++;
+        log(`[${docSnap.id}] ${oldCat} → ${newCat}${SUBTYPE[oldCat] ? ` (subtype: ${SUBTYPE[oldCat]})` : ''}`);
+      }
+
+      await batch.commit();
+      log(`완료 — 변환 ${updated}건, 스킵 ${skipped}건`);
+      setCatMigStatus('done');
+    } catch (e: any) {
+      log(`오류: ${e.message}`);
+      setCatMigStatus('error');
+    }
+  };
+
+  // ── item_bom → item_formula 컬렉션 이관 ─────────────────────────────────
+  const [formulaMigStatus, setFormulaMigStatus] = useState<'idle'|'running'|'done'|'error'>('idle');
+  const [formulaMigLog, setFormulaMigLog] = useState<string[]>([]);
+
+  const migrateItemBomToFormula = async () => {
+    if (formulaMigStatus === 'running') return;
+    if (!window.confirm('item_bom 컬렉션 데이터를 item_formula로 이관합니다. 계속하시겠습니까?')) return;
+    setFormulaMigStatus('running');
+    setFormulaMigLog(['시작...']);
+    const log = (msg: string) => setFormulaMigLog(prev => [...prev, msg]);
+
+    try {
+      const { getDocs: gd, collection: col, writeBatch: wb, doc: d } = await import('firebase/firestore');
+      const srcSnap = await gd(col(db, 'item_bom'));
+      log(`item_bom 전체: ${srcSnap.size}건`);
+
+      const batch = wb(db);
+      for (const docSnap of srcSnap.docs) {
+        const data = docSnap.data();
+        const newId = docSnap.id.replace(/^bom-/, 'formula-');
+        batch.set(d(db, 'item_formula', newId), data);
+        log(`[${newId}] parent_key: ${data.parent_key}`);
+      }
+
+      await batch.commit();
+      log(`완료 — ${srcSnap.size}건 이관`);
+      setFormulaMigStatus('done');
+    } catch (e: any) {
+      log(`오류: ${e.message}`);
+      setFormulaMigStatus('error');
+    }
+  };
+
   // ── 볶음참깨 통합: 1단계 백업 ───────────────────────────────────────────
   const downloadBackup = async () => {
     setBackupStatus('running');
@@ -922,6 +1003,54 @@ function doPost(e) {
                 <div className="bg-slate-900 rounded-xl p-3 max-h-40 overflow-y-auto">
                   {icMigLog.map((line, i) => (
                     <p key={i} className={`text-[11px] font-mono ${icMigStatus === 'error' && i === icMigLog.length - 1 ? 'text-rose-400' : icMigStatus === 'done' && i === icMigLog.length - 1 ? 'text-emerald-400' : 'text-slate-300'}`}>{line}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ── category 한국어 → 영문 마이그레이션 ── */}
+            <div className="border-t border-slate-100 pt-6">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-sm font-black text-slate-700">품목 category 영문화</p>
+                  <p className="text-xs text-slate-400 mt-0.5">완제품→product, 향미유/고춧가루→product(+subtype), 용기→container, 마개→cap, 테이프→tape, 박스→box, 라벨→label</p>
+                </div>
+                <button
+                  onClick={migrateCategoryValues}
+                  disabled={catMigStatus === 'running' || catMigStatus === 'done'}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-violet-600 text-white text-xs font-black hover:bg-violet-700 disabled:opacity-50 transition-all"
+                >
+                  {catMigStatus === 'running' ? '실행 중...' : catMigStatus === 'done' ? '완료' : '실행'}
+                </button>
+              </div>
+              {catMigLog.length > 0 && (
+                <div className="bg-slate-900 rounded-xl p-3 max-h-40 overflow-y-auto">
+                  {catMigLog.map((line, i) => (
+                    <p key={i} className={`text-[11px] font-mono ${catMigStatus === 'error' && i === catMigLog.length - 1 ? 'text-rose-400' : catMigStatus === 'done' && i === catMigLog.length - 1 ? 'text-emerald-400' : 'text-slate-300'}`}>{line}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ── item_bom → item_formula 이관 ── */}
+            <div className="border-t border-slate-100 pt-6">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-sm font-black text-slate-700">item_bom → item_formula 이관</p>
+                  <p className="text-xs text-slate-400 mt-0.5">기존 원료 배합비 컬렉션(item_bom)을 item_formula로 복사합니다</p>
+                </div>
+                <button
+                  onClick={migrateItemBomToFormula}
+                  disabled={formulaMigStatus === 'running' || formulaMigStatus === 'done'}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600 text-white text-xs font-black hover:bg-amber-700 disabled:opacity-50 transition-all"
+                >
+                  {formulaMigStatus === 'running' ? '실행 중...' : formulaMigStatus === 'done' ? '완료' : '실행'}
+                </button>
+              </div>
+              {formulaMigLog.length > 0 && (
+                <div className="bg-slate-900 rounded-xl p-3 max-h-40 overflow-y-auto">
+                  {formulaMigLog.map((line, i) => (
+                    <p key={i} className={`text-[11px] font-mono ${formulaMigStatus === 'error' && i === formulaMigLog.length - 1 ? 'text-rose-400' : formulaMigStatus === 'done' && i === formulaMigLog.length - 1 ? 'text-emerald-400' : 'text-slate-300'}`}>{line}</p>
                   ))}
                 </div>
               )}

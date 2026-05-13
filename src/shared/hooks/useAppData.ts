@@ -4,7 +4,7 @@ import {
   PalletStock, PalletTransaction, Employee, LeaveRequest,
   AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry,
   AppNotification, IssuedStatement,
-  ItemBom, CompanyInfo, PendingReceipt, QrMapping, ReturnRequest,
+  ItemFormula, ItemBom, ShippingRule, CompanyInfo, PendingReceipt, QrMapping, ReturnRequest,
   AccountCode, AccountGroup, FixedCostTemplate, InventorySnapshot, ProductionSalesLog,
   PendingStatementEdit,
 } from '../types';
@@ -59,7 +59,9 @@ export interface AppData {
   appNotifications: AppNotification[];
   workOrderItems: WorkOrderItem[];
   issuedStatements: IssuedStatement[];
+  itemFormulas: ItemFormula[];
   itemBoms: ItemBom[];
+  shippingRules: ShippingRule[];
   returnRequests: ReturnRequest[];
   companyInfo: CompanyInfo | null;
   accountGroups: AccountGroup[];
@@ -94,7 +96,9 @@ export function useAppData(): AppData {
   const [issuedStatements, setIssuedStatements] = useState<IssuedStatement[]>([]);
   const [pendingReceipts, setPendingReceipts] = useState<PendingReceipt[]>([]);
   const [qrMappings, setQrMappings] = useState<QrMapping[]>([]);
+  const [itemFormulas, setItemFormulas] = useState<ItemFormula[]>([]);
   const [itemBoms, setItemBoms] = useState<ItemBom[]>([]);
+  const [shippingRules, setShippingRules] = useState<ShippingRule[]>([]);
   const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([]);
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
   const [accountGroups, setAccountGroups] = useState<AccountGroup[]>([]);
@@ -137,7 +141,7 @@ export function useAppData(): AppData {
             productId: pi.Item_ID,
             clientId:   pi.Direction === 'out' ? pi.Partner_ID : undefined,
             supplierId: pi.Direction === 'in'  ? pi.Partner_ID : undefined,
-            price: pi.Standard_Price,
+            price: pi.price ?? pi.Standard_Price,
           })));
         }),
         subscribeToCollection<ChatRoom>('chatRooms', setChatRooms),
@@ -149,7 +153,9 @@ export function useAppData(): AppData {
         subscribeToCollection<IssuedStatement>('issuedStatements', setIssuedStatements),
         subscribeToCollection<PendingReceipt>('pendingReceipts', setPendingReceipts),
         subscribeToCollection<QrMapping>('qrMappings', setQrMappings),
+        subscribeToCollection<ItemFormula>('item_formula', setItemFormulas),
         subscribeToCollection<ItemBom>('item_bom', setItemBoms),
+        subscribeToCollection<ShippingRule>('shipping_rule', setShippingRules),
         subscribeToCollection<ReturnRequest>('returnRequests', setReturnRequests),
         subscribeToDocument<CompanyInfo>('settings', 'company', setCompanyInfo),
         subscribeToCollection<AccountGroup>('accountGroups', setAccountGroups),
@@ -168,8 +174,8 @@ export function useAppData(): AppData {
   }, []);
 
   // backward compat splits
-  const products    = useMemo(() => items.filter(i => i.category === '완제품'), [items]);
-  const submaterials = useMemo(() => items.filter(i => i.category !== '완제품'), [items]);
+  const products    = useMemo(() => items.filter(i => i.category === 'product'), [items]);
+  const submaterials = useMemo(() => items.filter(i => i.category !== 'product'), [items]);
   const productClients   = useMemo(() => partnerItems.filter(pi => pi.Direction === 'out'), [partnerItems]);
   const productSuppliers = useMemo(() => partnerItems.filter(pi => pi.Direction === 'in'),  [partnerItems]);
   // itemCustomers: Direction='out' PartnerItem에 item_id/customer_id 별칭 주입
@@ -188,7 +194,7 @@ export function useAppData(): AppData {
     noticePosts, chatRooms, chatMessages,
     rawMaterialLedger, sesameInputLedger,
     appNotifications, workOrderItems, issuedStatements,
-    pendingReceipts, qrMappings, itemBoms, returnRequests,
+    pendingReceipts, qrMappings, itemFormulas, itemBoms, shippingRules, returnRequests,
     companyInfo, accountGroups, accountCodes, fixedCostTemplates, inventorySnapshots,
     productionSalesLogs, pendingStatementEdits,
     itemCustomers, isDataLoading,

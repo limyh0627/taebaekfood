@@ -42,7 +42,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clients, products, onOrderS
   const associatedProducts = useMemo(() => {
     if (!selectedClient) return [];
     return products.filter(p => 
-      p.category === '완제품' && 
+      p.category === 'product' &&
       (!p.clientIds?.length || p.clientIds.includes(selectedClient.id))
     );
   }, [products, selectedClient]);
