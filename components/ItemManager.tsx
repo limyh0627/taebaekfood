@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X, Copy, ChevronDown, ChevronUp, GitMerge, Save } from 'lucide-react';
+import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X, Copy, ChevronDown, ChevronUp, GitMerge, Save, Settings } from 'lucide-react';
 import { Product, InventoryCategory, Client, ProductClient, ProductSupplier, PartnerItem, ShippingRule, ItemBom } from '../types';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
@@ -21,6 +21,7 @@ interface ItemManagerProps {
   onMergeProducts?: (_keepId: string, _deleteIds: string[]) => Promise<void>;
   onSaveItemCustomer?: (_ic: Partial<PartnerItem> & { id: string }) => Promise<void>;
   onSaveShippingRule?: (_rule: Partial<ShippingRule> & { id: string }) => Promise<void>;
+  onAddShippingRule?: (_rule: Omit<ShippingRule, 'id'>) => Promise<void>;
   isAdmin?: boolean;
 }
 
@@ -41,7 +42,7 @@ const SUB_ORDER: Record<string, number> = { 'label': 0, 'container': 1, 'cap': 2
 const sortSubs = (subs: { name: string; category: string }[]) =>
   [...subs].sort((a, b) => (SUB_ORDER[normalizeCategory(a.category)] ?? 9) - (SUB_ORDER[normalizeCategory(b.category)] ?? 9));
 
-const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productClients = [], productSuppliers = [], itemCustomers = [], shippingRules = [], itemBoms = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct, onMergeProducts, onSaveItemCustomer, onSaveShippingRule, isAdmin = true }) => {
+const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productClients = [], productSuppliers = [], itemCustomers = [], shippingRules = [], itemBoms = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct, onMergeProducts, onSaveItemCustomer, onSaveShippingRule, onAddShippingRule, isAdmin = true }) => {
   const [mainView, setMainView] = useState<'flat' | 'by-client'>(isAdmin ? 'flat' : 'by-client');
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(true);
@@ -65,6 +66,10 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
   const [expandedPackagingId, setExpandedPackagingId] = useState<string | null>(null);
   const [editingIc, setEditingIc] = useState<Record<string, Partial<PartnerItem>>>({});
   const [editingRule, setEditingRule] = useState<Record<string, Partial<ShippingRule>>>({});
+  const [packagingModal, setPackagingModal] = useState<{ item: Product; clientId: string } | null>(null);
+  const [packagingEdit, setPackagingEdit] = useState<Partial<ShippingRule>>({});
+  const [packagingAdding, setPackagingAdding] = useState(false);
+  const [packagingSaving, setPackagingSaving] = useState(false);
   const [partnerTab, setPartnerTab] = useState<'sales' | 'purchase'>('sales');
 
   const TYPE_ORDER: Record<string, number> = { '일반': 0, '택배': 1, '스마트스토어': 2 };
@@ -393,7 +398,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">마개</th>
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">라벨</th>
                 {isAdmin && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">원가</th>}
-                {isAdmin && <th className="px-2 py-3" />}
+                {(isAdmin || (mainView === 'by-client' && !!selectedClientId)) && <th className="px-2 py-3" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -490,14 +495,31 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                           : <span className="text-[10px] text-slate-200">-</span>}
                       </td>
                     )}
-                    {isAdmin && (
+                    {(isAdmin || (mainView === 'by-client' && !!selectedClientId)) && (
                       <td className="px-2 py-3 text-center">
-                        <button
-                          onClick={() => onEditProduct(item)}
-                          className="p-1.5 rounded-lg bg-indigo-50 text-indigo-500 hover:bg-indigo-100 hover:text-indigo-700 transition-all"
-                        >
-                          <Edit size={13} />
-                        </button>
+                        {isAdmin && mainView === 'by-client' && selectedClientId ? (
+                          // 거래처별 뷰: 포장설정 버튼
+                          <button
+                            onClick={() => {
+                              const existing = shippingRules.find(r => r.item_id === item.id && r.partner_id === selectedClientId);
+                              setPackagingModal({ item, clientId: selectedClientId });
+                              setPackagingEdit(existing ? { ...existing } : {});
+                              setPackagingAdding(!existing);
+                            }}
+                            className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-800 transition-all"
+                            title="포장설정"
+                          >
+                            <Settings size={13} />
+                          </button>
+                        ) : isAdmin ? (
+                          // 품목 목록 뷰: 품목 수정 버튼
+                          <button
+                            onClick={() => onEditProduct(item)}
+                            className="p-1.5 rounded-lg bg-indigo-50 text-indigo-500 hover:bg-indigo-100 hover:text-indigo-700 transition-all"
+                          >
+                            <Edit size={13} />
+                          </button>
+                        ) : null}
                       </td>
                     )}
                   </tr>
@@ -1023,6 +1045,139 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
           onCancel={() => setConfirmModal(null)}
         />
       )}
+
+      {/* 포장설정 모달 */}
+      {packagingModal && (() => {
+        const { item, clientId } = packagingModal;
+        const clientName = clients.find(c => c.id === clientId)?.name ?? clientId;
+        const existingRule = shippingRules.find(r => r.item_id === item.id && r.partner_id === clientId);
+        const boxItems = products.filter(p => p.category === 'box');
+        const tapeItems = products.filter(p => p.category === 'tape');
+
+        const closeModal = () => { setPackagingModal(null); setPackagingEdit({}); setPackagingAdding(false); };
+
+        const handleSave = async () => {
+          setPackagingSaving(true);
+          try {
+            if (existingRule && onSaveShippingRule) {
+              await onSaveShippingRule({ ...existingRule, ...packagingEdit, id: existingRule.id });
+            } else if (!existingRule && onAddShippingRule) {
+              await onAddShippingRule({
+                item_id: item.id,
+                partner_id: clientId,
+                box_item_id: packagingEdit.box_item_id ?? '',
+                qty_per_box: packagingEdit.qty_per_box ?? 1,
+                tape_item_id: packagingEdit.tape_item_id,
+              });
+            }
+            closeModal();
+          } finally {
+            setPackagingSaving(false);
+          }
+        };
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={closeModal}>
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md mx-4 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+              {/* 헤더 */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                <div>
+                  <h3 className="text-base font-black text-slate-900">포장설정</h3>
+                  <p className="text-xs text-slate-400 font-medium mt-0.5">
+                    <span className="text-indigo-600 font-bold">{item.name}</span>
+                    <span className="mx-1">·</span>
+                    <span className="text-emerald-600 font-bold">{clientName}</span>
+                  </p>
+                </div>
+                <button onClick={closeModal} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 transition-all">
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* 본문 */}
+              {!existingRule && !packagingAdding ? (
+                /* 설정 없음 → 추가 여부 확인 */
+                <div className="px-6 py-8 text-center space-y-4">
+                  <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto">
+                    <Settings size={24} className="text-slate-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-700">포장설정이 없습니다</p>
+                    <p className="text-xs text-slate-400 mt-1">이 거래처 전용 포장설정을 추가하시겠습니까?</p>
+                  </div>
+                  <div className="flex gap-2 justify-center">
+                    <button onClick={closeModal} className="px-5 py-2.5 rounded-xl text-sm font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 transition-all">취소</button>
+                    <button onClick={() => setPackagingAdding(true)} className="px-5 py-2.5 rounded-xl text-sm font-black text-white bg-emerald-600 hover:bg-emerald-700 transition-all">추가하기</button>
+                  </div>
+                </div>
+              ) : (
+                /* 편집 폼 */
+                <div className="px-6 py-5 space-y-4">
+                  {existingRule && (
+                    <div className="bg-emerald-50 rounded-xl px-4 py-2.5 flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                      <span className="text-[11px] font-bold text-emerald-700">기존 설정 수정</span>
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">박스</label>
+                      <select
+                        value={packagingEdit.box_item_id ?? existingRule?.box_item_id ?? ''}
+                        onChange={e => setPackagingEdit(prev => ({ ...prev, box_item_id: e.target.value }))}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all bg-white"
+                      >
+                        <option value="">박스 없음</option>
+                        {boxItems.map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">박스당 수량</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={packagingEdit.qty_per_box ?? existingRule?.qty_per_box ?? 1}
+                        onChange={e => setPackagingEdit(prev => ({ ...prev, qty_per_box: Number(e.target.value) }))}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">테이프</label>
+                      <select
+                        value={packagingEdit.tape_item_id ?? existingRule?.tape_item_id ?? ''}
+                        onChange={e => setPackagingEdit(prev => ({ ...prev, tape_item_id: e.target.value || undefined }))}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all bg-white"
+                      >
+                        <option value="">테이프 없음</option>
+                        {tapeItems.map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <button onClick={closeModal} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 transition-all">취소</button>
+                    <button
+                      onClick={handleSave}
+                      disabled={packagingSaving}
+                      className="flex-1 py-2.5 rounded-xl text-sm font-black text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Save size={14} />
+                      {packagingSaving ? '저장 중...' : '저장'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

@@ -3180,6 +3180,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     const { id, ...data } = rule;
                     await fUpdate(fDoc(fireDb, 'shipping_rule', id), data);
                   }}
+                  onAddShippingRule={async (rule: Omit<import('../../shared/types').ShippingRule, 'id'>) => {
+                    const { addDoc, collection: col } = await import('firebase/firestore');
+                    const { db: fireDb } = await import('../../shared/firebase');
+                    await addDoc(col(fireDb, 'shipping_rule'), rule);
+                  }}
                 />
               )}
             </div>
