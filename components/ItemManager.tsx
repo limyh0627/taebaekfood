@@ -916,36 +916,24 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
               {filteredClients.length === 0 ? (
                 <p className="py-12 text-center text-slate-400 text-sm">거래처가 없습니다.</p>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {filteredClients.map((c, idx) => {
-                    const count = partnerTab === 'sales'
-                      ? (clientProductCount.get(c.id) ?? 0)
-                      : (supplierItemCount.get(c.id) ?? 0);
-                    const CARD_COLORS = [
-                      { bg: 'bg-indigo-50', border: 'border-indigo-100', hover: 'hover:border-indigo-300 hover:bg-indigo-100/60', dot: 'bg-indigo-400', name: 'text-indigo-800', count: 'text-indigo-500' },
-                      { bg: 'bg-emerald-50', border: 'border-emerald-100', hover: 'hover:border-emerald-300 hover:bg-emerald-100/60', dot: 'bg-emerald-400', name: 'text-emerald-800', count: 'text-emerald-500' },
-                      { bg: 'bg-violet-50', border: 'border-violet-100', hover: 'hover:border-violet-300 hover:bg-violet-100/60', dot: 'bg-violet-400', name: 'text-violet-800', count: 'text-violet-500' },
-                      { bg: 'bg-amber-50', border: 'border-amber-100', hover: 'hover:border-amber-300 hover:bg-amber-100/60', dot: 'bg-amber-400', name: 'text-amber-800', count: 'text-amber-500' },
-                      { bg: 'bg-sky-50', border: 'border-sky-100', hover: 'hover:border-sky-300 hover:bg-sky-100/60', dot: 'bg-sky-400', name: 'text-sky-800', count: 'text-sky-500' },
-                      { bg: 'bg-rose-50', border: 'border-rose-100', hover: 'hover:border-rose-300 hover:bg-rose-100/60', dot: 'bg-rose-400', name: 'text-rose-800', count: 'text-rose-500' },
-                      { bg: 'bg-teal-50', border: 'border-teal-100', hover: 'hover:border-teal-300 hover:bg-teal-100/60', dot: 'bg-teal-400', name: 'text-teal-800', count: 'text-teal-500' },
-                      { bg: 'bg-orange-50', border: 'border-orange-100', hover: 'hover:border-orange-300 hover:bg-orange-100/60', dot: 'bg-orange-400', name: 'text-orange-800', count: 'text-orange-500' },
-                    ];
-                    const color = CARD_COLORS[idx % CARD_COLORS.length];
-                    return (
-                      <button key={c.id} onClick={() => handleSelectClient(c.id)}
-                        className={`${color.bg} border ${color.border} ${color.hover} rounded-2xl px-4 py-4 text-left transition-all group active:scale-95 shadow-sm`}>
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <span className={`w-2 h-2 rounded-full shrink-0 ${color.dot}`} />
-                          <p className={`text-sm font-bold ${color.name} truncate`}>{c.name}</p>
-                        </div>
-                        <p className="text-[11px] text-slate-400 font-medium pl-4">
-                          {count > 0 ? <span className={`${color.count} font-black`}>{count}</span> : <span>0</span>}
-                          <span className="ml-0.5">개 품목</span>
-                        </p>
-                      </button>
-                    );
-                  })}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {filteredClients
+                    .filter(c => (partnerTab === 'sales' ? clientProductCount.get(c.id) ?? 0 : supplierItemCount.get(c.id) ?? 0) > 0)
+                    .map(c => {
+                      const count = partnerTab === 'sales'
+                        ? (clientProductCount.get(c.id) ?? 0)
+                        : (supplierItemCount.get(c.id) ?? 0);
+                      return (
+                        <button key={c.id} onClick={() => handleSelectClient(c.id)}
+                          className="bg-white border border-slate-200 rounded-2xl px-4 py-3.5 text-left hover:border-indigo-300 hover:shadow-md transition-all active:scale-95 group">
+                          <p className="text-sm font-bold text-slate-700 group-hover:text-indigo-600 transition-colors truncate">{c.name}</p>
+                          <p className="text-[11px] text-slate-400 mt-1">
+                            <span className="text-indigo-500 font-black">{count}</span>
+                            <span className="ml-0.5 font-medium">개 품목</span>
+                          </p>
+                        </button>
+                      );
+                    })}
                 </div>
               )}
             </div>
