@@ -392,12 +392,15 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
             <thead className="sticky top-0 z-10">
               <tr className="bg-slate-50/50 border-b border-slate-100">
                 <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[100px]">품목 정보</th>
-                {activeCategory === 'product' && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">거래처</th>}
-                {activeCategory !== 'product' && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">매입거래처</th>}
+                {!(mainView === 'by-client' && selectedClientId) && activeCategory === 'product' && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">거래처</th>}
+                {!(mainView === 'by-client' && selectedClientId) && activeCategory !== 'product' && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">매입거래처</th>}
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">용기</th>
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">마개</th>
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">라벨</th>
+                {(mainView === 'by-client' && selectedClientId) && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">박스</th>}
+                {(mainView === 'by-client' && selectedClientId) && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">테이프</th>}
                 {isAdmin && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">원가</th>}
+                {isAdmin && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">판매단가</th>}
                 {(isAdmin || (mainView === 'by-client' && !!selectedClientId)) && <th className="px-2 py-3" />}
               </tr>
             </thead>
@@ -424,7 +427,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                         <p className="text-[11px] font-bold text-slate-600 whitespace-nowrap">{item.name}</p>
                       </div>
                     </td>
-                    {activeCategory === 'product' && (
+                    {!(mainView === 'by-client' && selectedClientId) && activeCategory === 'product' && (
                       <td className="px-2 py-3">
                         {(() => {
                           const BADGE_COLORS = [
@@ -456,7 +459,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                         })()}
                       </td>
                     )}
-                    {activeCategory !== 'product' && (
+                    {!(mainView === 'by-client' && selectedClientId) && activeCategory !== 'product' && (
                       <td className="px-2 py-3">
                         <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
                           {clients.find(c => c.id === productSuppliers.find(ps => ps.productId === item.id)?.supplierId)?.name ?? <span className="text-slate-200">-</span>}
@@ -466,16 +469,6 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                     {['container', 'cap', 'label'].map(cat => (
                       <td key={cat} className="px-2 py-3">
                         {item.category === 'product' ? (() => {
-                          // shippingRules 기반 (테이프/박스, 거래처 선택 시)
-                          if (selectedClientId && (cat === 'tape' || cat === 'box')) {
-                            const rule = shippingRules.find(r => r.item_id === item.id && r.partner_id === selectedClientId);
-                            const subId = cat === 'tape' ? rule?.tape_item_id : rule?.box_item_id;
-                            if (subId) {
-                              const sub = products.find(p => p.id === subId);
-                              if (sub) return <span className="text-[11px] font-bold text-indigo-600 whitespace-nowrap">{sub.name}</span>;
-                            }
-                          }
-                          // 폴백: submaterials 배열
                           const subs = (item.submaterials ?? []).filter(s => {
                             const full = products.find(p => p.id === s.id);
                             return normalizeCategory(full?.category || s.category || '') === cat;
@@ -488,10 +481,36 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                         )}
                       </td>
                     ))}
+                    {(mainView === 'by-client' && selectedClientId) && (() => {
+                      const rule = shippingRules.find(r => r.item_id === item.id && r.partner_id === selectedClientId);
+                      const boxName = rule?.box_item_id ? (products.find(p => p.id === rule.box_item_id)?.name ?? '-') : null;
+                      const tapeName = rule?.tape_item_id ? (products.find(p => p.id === rule.tape_item_id)?.name ?? '-') : null;
+                      return (
+                        <>
+                          <td className="px-2 py-3">
+                            {boxName
+                              ? <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">{boxName}</span>
+                              : <span className="text-[10px] text-slate-200">-</span>}
+                          </td>
+                          <td className="px-2 py-3">
+                            {tapeName
+                              ? <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">{tapeName}</span>
+                              : <span className="text-[10px] text-slate-200">-</span>}
+                          </td>
+                        </>
+                      );
+                    })()}
                     {isAdmin && (
                       <td className="px-2 py-3 text-right">
                         {item.cost != null
                           ? <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">{item.cost.toLocaleString()}원</span>
+                          : <span className="text-[10px] text-slate-200">-</span>}
+                      </td>
+                    )}
+                    {isAdmin && (
+                      <td className="px-2 py-3 text-right">
+                        {item.price > 0
+                          ? <span className="text-[11px] font-black text-indigo-600 whitespace-nowrap">{item.price.toLocaleString()}원</span>
                           : <span className="text-[10px] text-slate-200">-</span>}
                       </td>
                     )}
