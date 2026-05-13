@@ -3135,6 +3135,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     await setProductClients(productId, current.filter(id => id !== clientId));
                   }}
                   productClients={productClients}
+                  productSuppliers={productSuppliers}
                   onMergeProducts={async (keepId, deleteIds) => {
                     const { getDocs, query: q, collection: col, where, writeBatch: wb, doc: d } = await import('firebase/firestore');
                     const { db: fireDb } = await import('../../shared/firebase');

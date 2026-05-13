@@ -65,6 +65,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
   const [expandedPackagingId, setExpandedPackagingId] = useState<string | null>(null);
   const [editingIc, setEditingIc] = useState<Record<string, Partial<PartnerItem>>>({});
   const [editingRule, setEditingRule] = useState<Record<string, Partial<ShippingRule>>>({});
+  const [partnerTab, setPartnerTab] = useState<'sales' | 'purchase'>('sales');
 
   const TYPE_ORDER: Record<string, number> = { '일반': 0, '택배': 1, '스마트스토어': 2 };
   const salesClients = useMemo(() =>
@@ -76,6 +77,13 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
       }),
     [clients]
   );
+  const purchaseClients = useMemo(() =>
+    clients
+      .filter(c => c.partnerType === '매입처' || c.partnerType === '매출+매입처')
+      .sort((a, b) => a.name.localeCompare(b.name, 'ko')),
+    [clients]
+  );
+  const activePartnerClients = partnerTab === 'sales' ? salesClients : purchaseClients;
 
   const duplicateGroups = useMemo(() => {
     const finished = products.filter(p => !p.archived && ['product', 'wip', 'giftset'].includes(p.category));
@@ -126,8 +134,17 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
     return map;
   }, [products]);
 
+  const supplierItemCount = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const ps of productSuppliers) {
+      const sid = ps.supplierId ?? ps.Partner_ID;
+      if (sid) map.set(sid, (map.get(sid) ?? 0) + 1);
+    }
+    return map;
+  }, [productSuppliers]);
+
   const filteredClients = useMemo(() =>
-    salesClients.filter(c =>
+    activePartnerClients.filter(c =>
       (!clientSearch.trim() || c.name.includes(clientSearch)) &&
       (!clientTypeFilter || c.type === clientTypeFilter)
     ),
@@ -149,10 +166,13 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
   const selectedClient = selectedClientId ? clients.find(c => c.id === selectedClientId) : null;
 
   const filteredItems = useMemo(() => {
+    const isByClientPurchase = mainView === 'by-client' && partnerTab === 'purchase' && selectedClientId;
     let result = mainView === 'flat' || showAll || showNoClient
       ? products.filter(p => !p.archived && p.category === activeCategory)
       : selectedClientId
-        ? products.filter(p => !p.archived && p.category === activeCategory && (p.clientIds ?? []).includes(selectedClientId))
+        ? isByClientPurchase
+          ? products.filter(p => !p.archived && productSuppliers.some(ps => (ps.productId ?? ps.Item_ID) === p.id && (ps.supplierId ?? ps.Partner_ID) === selectedClientId))
+          : products.filter(p => !p.archived && p.category === activeCategory && (p.clientIds ?? []).includes(selectedClientId))
         : [];
 
     if (showNoClient) {
@@ -171,7 +191,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
       }
     }
     return [...result].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-  }, [products, activeCategory, selectedClientId, showAll, showNoClient, searchTerm, mainView, clients]);
+  }, [products, activeCategory, selectedClientId, showAll, showNoClient, searchTerm, mainView, clients, partnerTab, productSuppliers]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -849,28 +869,56 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
           {!selectedClientId ? (
             /* 거래처 그리드 */
             <div className="space-y-3">
-              <div className="relative max-w-sm">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
-                <input
-                  type="text"
-                  placeholder="거래처 검색..."
-                  value={clientSearch}
-                  onChange={e => setClientSearch(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-2xl pl-10 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all shadow-sm"
-                />
+              {/* 매출/매입 탭 */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
+                  {([['sales', '매출처'], ['purchase', '매입처']] as const).map(([tab, label]) => (
+                    <button key={tab}
+                      onClick={() => { setPartnerTab(tab); setSelectedClientId(null); setClientSearch(''); }}
+                      className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${partnerTab === tab ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div className="relative flex-1 max-w-xs">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+                  <input
+                    type="text"
+                    placeholder="거래처 검색..."
+                    value={clientSearch}
+                    onChange={e => setClientSearch(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-2xl pl-10 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all shadow-sm"
+                  />
+                </div>
               </div>
               {filteredClients.length === 0 ? (
                 <p className="py-12 text-center text-slate-400 text-sm">거래처가 없습니다.</p>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {filteredClients.map(c => {
-                    const count = clientProductCount.get(c.id) ?? 0;
+                  {filteredClients.map((c, idx) => {
+                    const count = partnerTab === 'sales'
+                      ? (clientProductCount.get(c.id) ?? 0)
+                      : (supplierItemCount.get(c.id) ?? 0);
+                    const CARD_COLORS = [
+                      { bg: 'bg-indigo-50', border: 'border-indigo-100', hover: 'hover:border-indigo-300 hover:bg-indigo-100/60', dot: 'bg-indigo-400', name: 'text-indigo-800', count: 'text-indigo-500' },
+                      { bg: 'bg-emerald-50', border: 'border-emerald-100', hover: 'hover:border-emerald-300 hover:bg-emerald-100/60', dot: 'bg-emerald-400', name: 'text-emerald-800', count: 'text-emerald-500' },
+                      { bg: 'bg-violet-50', border: 'border-violet-100', hover: 'hover:border-violet-300 hover:bg-violet-100/60', dot: 'bg-violet-400', name: 'text-violet-800', count: 'text-violet-500' },
+                      { bg: 'bg-amber-50', border: 'border-amber-100', hover: 'hover:border-amber-300 hover:bg-amber-100/60', dot: 'bg-amber-400', name: 'text-amber-800', count: 'text-amber-500' },
+                      { bg: 'bg-sky-50', border: 'border-sky-100', hover: 'hover:border-sky-300 hover:bg-sky-100/60', dot: 'bg-sky-400', name: 'text-sky-800', count: 'text-sky-500' },
+                      { bg: 'bg-rose-50', border: 'border-rose-100', hover: 'hover:border-rose-300 hover:bg-rose-100/60', dot: 'bg-rose-400', name: 'text-rose-800', count: 'text-rose-500' },
+                      { bg: 'bg-teal-50', border: 'border-teal-100', hover: 'hover:border-teal-300 hover:bg-teal-100/60', dot: 'bg-teal-400', name: 'text-teal-800', count: 'text-teal-500' },
+                      { bg: 'bg-orange-50', border: 'border-orange-100', hover: 'hover:border-orange-300 hover:bg-orange-100/60', dot: 'bg-orange-400', name: 'text-orange-800', count: 'text-orange-500' },
+                    ];
+                    const color = CARD_COLORS[idx % CARD_COLORS.length];
                     return (
                       <button key={c.id} onClick={() => handleSelectClient(c.id)}
-                        className="bg-white border border-slate-200 rounded-2xl px-4 py-4 text-left hover:border-indigo-300 hover:shadow-md hover:shadow-indigo-50 transition-all group active:scale-95">
-                        <p className="text-sm font-bold text-slate-700 group-hover:text-indigo-600 transition-colors truncate">{c.name}</p>
-                        <p className="text-[11px] text-slate-400 mt-1 font-medium">
-                          {count > 0 ? <span className="text-indigo-500 font-black">{count}</span> : <span>0</span>}
+                        className={`${color.bg} border ${color.border} ${color.hover} rounded-2xl px-4 py-4 text-left transition-all group active:scale-95 shadow-sm`}>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${color.dot}`} />
+                          <p className={`text-sm font-bold ${color.name} truncate`}>{c.name}</p>
+                        </div>
+                        <p className="text-[11px] text-slate-400 font-medium pl-4">
+                          {count > 0 ? <span className={`${color.count} font-black`}>{count}</span> : <span>0</span>}
                           <span className="ml-0.5">개 품목</span>
                         </p>
                       </button>
