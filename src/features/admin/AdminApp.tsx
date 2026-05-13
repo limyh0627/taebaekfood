@@ -3176,7 +3176,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   onSaveItemCustomer={async (ic: Partial<import('../../shared/types').PartnerItem> & { id: string }) => {
                     const { doc: fDoc, updateDoc: fUpdate } = await import('firebase/firestore');
                     const { db: fireDb } = await import('../../shared/firebase');
-                    const { id, ...data } = ic;
+                    const { id, productId, clientId, supplierId, price, item_id, customer_id, ...rest } = ic;
+                    // undefined 값 제거 후 저장
+                    const data = Object.fromEntries(
+                      Object.entries(rest).filter(([, v]) => v !== undefined)
+                    );
                     await fUpdate(fDoc(fireDb, 'partner_item', id), data);
                   }}
                 />

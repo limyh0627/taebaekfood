@@ -562,6 +562,11 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                           <div key={i} className="text-[10px] text-slate-600 whitespace-nowrap">{item.name} × {item.quantity}</div>
                         ))}
                         {req.items.length > 2 && <div className="text-[10px] text-slate-400">+{req.items.length - 2}건</div>}
+                        {req.note && (
+                          <div className="text-[10px] text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1 mt-1 whitespace-pre-wrap">
+                            {req.note}
+                          </div>
+                        )}
                       </div>
                     </td>
                     <td className="px-3 py-3 text-right">

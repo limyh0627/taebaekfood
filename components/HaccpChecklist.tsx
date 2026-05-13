@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { FileDown, ClipboardList, Thermometer, Bug, CheckSquare, Scan, ShoppingCart } from 'lucide-react';
+import { FileDown, ClipboardList, Thermometer, Bug, CheckSquare, Scan, ShoppingCart, Wrench } from 'lucide-react';
 
 // ── 공통 스타일 ────────────────────────────────────────────────────────────────
 const TH = 'border border-slate-400 bg-slate-100 p-1.5 text-xs font-bold text-center';
@@ -53,7 +53,7 @@ const SignBox: React.FC<{ labels?: string[] }> = ({ labels = ['작성자', '확�
 );
 
 // ── 탭 ID 타입 ─────────────────────────────────────────────────────────────────
-type TabId = 'overview' | 'daily' | 'pest' | 'temp' | 'ccp-heat' | 'ccp-metal' | 'incoming';
+type TabId = 'overview' | 'daily' | 'pest' | 'temp' | 'ccp-heat' | 'ccp-metal' | 'incoming' | 'cleaning';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 1. 소규모 HACCP 사후평가 점검표 (20항목)
@@ -201,26 +201,32 @@ interface DailyCheckItem {
 
 const DAILY_ITEMS: DailyCheckItem[] = [
   // 일일
-  { id: 'd1', cycle: '일일', category: '작업자 위생', item: '위생복·모자·마스크 착용', standard: '전원 착용' },
-  { id: 'd2', cycle: '일일', category: '작업자 위생', item: '작업 전 손세척·소독', standard: '준수' },
-  { id: 'd3', cycle: '일일', category: '작업장 청결', item: '작업장 바닥·벽 청소', standard: '청결 유지' },
-  { id: 'd4', cycle: '일일', category: '작업장 청결', item: '작업대·기구 세척·소독', standard: '이물·오염 없음' },
-  { id: 'd5', cycle: '일일', category: '원료·제품 관리', item: '원료 이상 유무 확인', standard: '이상 없음' },
-  { id: 'd6', cycle: '일일', category: '원료·제품 관리', item: '완제품 외관·라벨 확인', standard: '정상' },
-  { id: 'd7', cycle: '일일', category: '설비·기구', item: '주요 설비 이상 유무 점검', standard: '이상 없음' },
+  { id: 'd1',   cycle: '일일', category: '작업자 위생',   item: '위생복·모자·마스크 착용 상태', standard: '전원 착용' },
+  { id: 'd2',   cycle: '일일', category: '작업자 위생',   item: '작업 전·화장실 후 손세척·소독', standard: '준수' },
+  { id: 'd_h1', cycle: '일일', category: '작업자 위생',   item: '건강이상자(감기·피부병·상처 등) 작업 배제', standard: '이상자 작업 배제' },
+  { id: 'd_h2', cycle: '일일', category: '작업자 위생',   item: '장신구(반지·시계·귀걸이 등) 착용 금지', standard: '착용 금지' },
+  { id: 'd3',   cycle: '일일', category: '작업장 청결',   item: '제조실·포장실 바닥·벽면 청소', standard: '청결 유지' },
+  { id: 'd4',   cycle: '일일', category: '작업장 청결',   item: '작업대·기구 세척·소독', standard: '이물·오염 없음' },
+  { id: 'd_f1', cycle: '일일', category: '이물 관리',     item: '작업 전 이물 혼입 방지 점검(유리·금속·플라스틱 등)', standard: '이물 없음' },
+  { id: 'd5',   cycle: '일일', category: '원료·제품 관리', item: '원료 이상(변색·악취·이물 등) 유무 확인', standard: '이상 없음' },
+  { id: 'd_r1', cycle: '일일', category: '원료·제품 관리', item: '원료 선입선출(FIFO) 확인', standard: '준수' },
+  { id: 'd6',   cycle: '일일', category: '원료·제품 관리', item: '완제품 외관·라벨 확인', standard: '정상' },
+  { id: 'd7',   cycle: '일일', category: '설비·기구',     item: '주요 설비(착유기·볶음기·필터프레스) 이상 유무 점검', standard: '이상 없음' },
   // 주간
-  { id: 'w1', cycle: '주간', category: '위생', item: '배수구·트렌치 청소', standard: '막힘·오염 없음' },
-  { id: 'w2', cycle: '주간', category: '위생', item: '환기시설(후드·덕트) 청소', standard: '이물 없음' },
-  { id: 'w3', cycle: '주간', category: '방충', item: '방충망 파손 여부 확인', standard: '파손 없음' },
-  { id: 'w4', cycle: '주간', category: '보관', item: '냉장·냉동창고 청소 및 정돈', standard: '청결·정돈' },
+  { id: 'w1',   cycle: '주간', category: '위생', item: '배수구·트렌치 청소', standard: '막힘·오염 없음' },
+  { id: 'w2',   cycle: '주간', category: '위생', item: '환기시설(후드·덕트) 청소', standard: '이물 없음' },
+  { id: 'w_t1', cycle: '주간', category: '위생', item: '작업 도구(체·바구니·용기 등) 세척소독', standard: '청결 유지' },
+  { id: 'w3',   cycle: '주간', category: '방충', item: '방충망 파손 여부 확인', standard: '파손 없음' },
+  { id: 'w4',   cycle: '주간', category: '보관', item: '냉장·냉동창고 청소 및 정돈', standard: '청결·정돈' },
   // 월간
-  { id: 'm1', cycle: '월간', category: '위생', item: '벽·천장 곰팡이·이물 점검', standard: '이상 없음' },
-  { id: 'm2', cycle: '월간', category: '소독', item: '소독제 농도 확인 및 교체', standard: '규정 농도 유지' },
-  { id: 'm3', cycle: '월간', category: '보관', item: '세척·소독제 재고 및 유효기간 확인', standard: '유효기간 내' },
-  { id: 'm4', cycle: '월간', category: '방충·방서', item: '쥐덫·끈끈이 트랩 교체·확인', standard: '포획 유무 기록' },
+  { id: 'm1',   cycle: '월간', category: '위생',    item: '벽·천장 곰팡이·이물 점검', standard: '이상 없음' },
+  { id: 'm_l1', cycle: '월간', category: '위생',    item: '조명기구 파손·보호커버 상태 점검', standard: '파손 없음' },
+  { id: 'm2',   cycle: '월간', category: '소독',    item: '소독제 농도 확인 및 교체', standard: '규정 농도 유지' },
+  { id: 'm3',   cycle: '월간', category: '보관',    item: '세척·소독제 재고 및 유효기간 확인', standard: '유효기간 내' },
+  { id: 'm4',   cycle: '월간', category: '방충·방서', item: '쥐덫·끈끈이 트랩 교체·확인', standard: '포획 유무 기록' },
   // 반기
-  { id: 'h1', cycle: '반기', category: '수질', item: '용수 수질검사 실시', standard: '먹는물 기준 적합' },
-  { id: 'h2', cycle: '반기', category: '설비', item: '주요 설비 분해 청소·점검', standard: '이상 없음' },
+  { id: 'h1', cycle: '반기', category: '수질',  item: '용수 수질검사 실시', standard: '먹는물 기준 적합' },
+  { id: 'h2', cycle: '반기', category: '설비',  item: '주요 설비 분해 청소·점검', standard: '이상 없음' },
   { id: 'h3', cycle: '반기', category: '계측기', item: '온도계·타이머 교정', standard: '기준 오차 이내' },
   // 연간
   { id: 'y1', cycle: '연간', category: '교육', item: 'HACCP 교육·훈련 실시', standard: '전 직원 이수' },
@@ -904,16 +910,270 @@ const IncomingForm: React.FC = () => {
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 8. 세척·소독 일지 (기계·설비 + 작업구역)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const MACHINES = [
+  { name: '착유기 1호', method: '분해세척 → 온수헹굼 → 자연건조' },
+  { name: '착유기 2호', method: '분해세척 → 온수헹굼 → 자연건조' },
+  { name: '착유기 3호', method: '분해세척 → 온수헹굼 → 자연건조' },
+  { name: '착유기 4호', method: '분해세척 → 온수헹굼 → 자연건조' },
+  { name: '볶음기 1호', method: '잔재물 제거 → 내·외부 브러시세척 → 건식소독' },
+  { name: '볶음기 2호', method: '잔재물 제거 → 내·외부 브러시세척 → 건식소독' },
+  { name: '볶음기 3호', method: '잔재물 제거 → 내·외부 브러시세척 → 건식소독' },
+  { name: '필터프레스', method: '필터판 분리세척 → 온수헹굼 → 건조' },
+];
+const MACHINE_NAMES = MACHINES.map(m => m.name);
+
+const CLEAN_AREAS = [
+  '제조실(착유·향미유) - 바닥',
+  '제조실(착유·향미유) - 작업대',
+  '제조실(착유·향미유) - 배수구',
+  '제조실(고춧가루) - 바닥',
+  '제조실(고춧가루) - 작업대',
+  '포장실 - 바닥/작업대',
+  '원료창고 - 바닥/선반',
+  '완제품창고 - 바닥/선반',
+  '화장실 - 전체',
+  '탈의실 - 전체',
+  '환기후드·덕트',
+  '배수구·트렌치',
+];
+
+const SANITIZERS = [
+  '알코올 70%',
+  '차아염소산나트륨 100ppm',
+  '차아염소산나트륨 200ppm',
+  '과산화수소 3%',
+  '열탕소독(80℃↑)',
+  '기타',
+];
+
+interface MachineCleanRow {
+  date: string;
+  machine: string;
+  used: '' | 'O' | 'X';
+  cleanMethod: string;
+  sanitizer: string;
+  result: '' | 'O' | 'X';
+  cleaner: string;
+  verifier: string;
+  note: string;
+}
+
+interface AreaCleanRow {
+  date: string;
+  area: string;
+  result: '' | 'O' | 'X';
+  sanitized: '' | 'O' | 'X' | 'N/A';
+  sanitizer: string;
+  cleaner: string;
+  note: string;
+}
+
+const CleaningForm: React.FC = () => {
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [machineRows, setMachineRows] = useState<MachineCleanRow[]>(
+    MACHINES.map(m => ({ date: '', machine: m.name, used: '', cleanMethod: m.method, sanitizer: '', result: '', cleaner: '', verifier: '', note: '' }))
+  );
+  const [areaRows, setAreaRows] = useState<AreaCleanRow[]>(
+    CLEAN_AREAS.map(a => ({ date: '', area: a, result: '', sanitized: '', sanitizer: '', cleaner: '', note: '' }))
+  );
+  const machineRef = useRef<HTMLDivElement>(null);
+  const areaRef = useRef<HTMLDivElement>(null);
+
+  const addMachineRow = () =>
+    setMachineRows(prev => [...prev, { date: '', machine: MACHINE_NAMES[0], used: '', cleanMethod: MACHINES[0].method, sanitizer: '', result: '', cleaner: '', verifier: '', note: '' }]);
+  const updateMachine = (idx: number, field: keyof MachineCleanRow, value: string) =>
+    setMachineRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
+
+  const addAreaRow = () =>
+    setAreaRows(prev => [...prev, { date: '', area: CLEAN_AREAS[0], result: '', sanitized: '', sanitizer: '', cleaner: '', note: '' }]);
+  const updateArea = (idx: number, field: keyof AreaCleanRow, value: string) =>
+    setAreaRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
+
+  return (
+    <div className="space-y-8">
+      {/* 세척소독제 기준 안내 */}
+      <div className="border border-amber-300 bg-amber-50 rounded-lg p-3 text-xs">
+        <div className="font-bold text-amber-800 mb-1">세척·소독제 사용 기준 (식약처 소규모 HACCP 기준)</div>
+        <div className="text-amber-700 space-y-0.5">
+          <div>• 알코올 70% — 작업대·기구 소독 (식품 직접 접촉면)</div>
+          <div>• 차아염소산나트륨 100ppm — 바닥·벽면 소독</div>
+          <div>• 차아염소산나트륨 200ppm — 화장실·배수구</div>
+          <div>• 열탕소독(80℃ 이상) — 착유기 분해 부품, 기구류</div>
+          <div>• 소독 후 식품 접촉면은 반드시 음용수로 헹굼</div>
+        </div>
+      </div>
+
+      {/* ── 기계·설비 세척소독 일지 ── */}
+      <div>
+        <div className="flex gap-3 mb-3 flex-wrap items-center">
+          <span className="text-sm font-bold text-slate-700">기계·설비 세척소독 일지</span>
+          <label className="text-xs text-slate-600 flex items-center gap-1 ml-2">
+            관리월: <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="border border-slate-300 rounded px-1 py-0.5 text-xs" />
+          </label>
+          <button onClick={addMachineRow} className="text-xs px-2 py-1 border border-slate-300 rounded hover:bg-slate-50">+ 행 추가</button>
+          <button
+            onClick={() => machineRef.current && downloadAsPDF(machineRef.current, `HACCP_기계세척소독일지_${month}.pdf`)}
+            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
+          >
+            <FileDown size={13} /> PDF 저장
+          </button>
+        </div>
+        <div ref={machineRef} className="bg-white p-4 font-sans" style={{ fontFamily: 'Malgun Gothic, sans-serif' }}>
+          <FormHeader title="기계·설비 세척소독 일지" date={month} />
+          <div className="border border-slate-300 bg-slate-50 p-2 mb-3 text-xs">
+            <span className="font-bold">세척 주기:</span> 착유기·볶음기·필터프레스 — 사용 후 매회 / O: 적합 / X: 부적합 (부적합 시 비고에 개선조치 기재)
+          </div>
+          <div className="overflow-x-auto">
+            <table className="border-collapse text-xs" style={{ minWidth: 860 }}>
+              <thead>
+                <tr>
+                  <th className={TH}>세척일</th>
+                  <th className={TH}>기계명</th>
+                  <th className={TH}>당일사용</th>
+                  <th className={TH}>세척방법</th>
+                  <th className={TH}>소독제(종류/농도)</th>
+                  <th className={TH}>세척결과</th>
+                  <th className={TH}>세척자</th>
+                  <th className={TH}>확인자</th>
+                  <th className={TH}>비고</th>
+                </tr>
+              </thead>
+              <tbody>
+                {machineRows.map((row, idx) => (
+                  <tr key={idx}>
+                    <td className={TD}>
+                      <input type="date" value={row.date} onChange={e => updateMachine(idx, 'date', e.target.value)} className="text-xs border-none outline-none bg-transparent w-24" />
+                    </td>
+                    <td className={TD}>
+                      <select value={row.machine} onChange={e => updateMachine(idx, 'machine', e.target.value)} className="text-xs border-none outline-none bg-transparent">
+                        {MACHINE_NAMES.map(m => <option key={m}>{m}</option>)}
+                      </select>
+                    </td>
+                    <td className={TD}>
+                      <select value={row.used} onChange={e => updateMachine(idx, 'used', e.target.value)} className={`text-xs border-none outline-none bg-transparent font-bold ${row.used === 'X' ? 'text-slate-400' : row.used === 'O' ? 'text-slate-700' : ''}`}>
+                        <option value="">-</option>
+                        <option value="O">O(사용)</option>
+                        <option value="X">X(미사용)</option>
+                      </select>
+                    </td>
+                    <td className={TDL}>
+                      <input value={row.cleanMethod} onChange={e => updateMachine(idx, 'cleanMethod', e.target.value)} className="w-full text-xs border-none outline-none bg-transparent" placeholder="세척방법 기재" />
+                    </td>
+                    <td className={TD}>
+                      <select value={row.sanitizer} onChange={e => updateMachine(idx, 'sanitizer', e.target.value)} className="text-xs border-none outline-none bg-transparent">
+                        <option value="">선택</option>
+                        {SANITIZERS.map(s => <option key={s}>{s}</option>)}
+                      </select>
+                    </td>
+                    <td className={TD}>
+                      <select value={row.result} onChange={e => updateMachine(idx, 'result', e.target.value)} className={`text-xs border-none outline-none bg-transparent font-bold ${row.result === 'X' ? 'text-rose-600' : row.result === 'O' ? 'text-green-600' : ''}`}>
+                        <option value="">-</option>
+                        <option value="O">O</option>
+                        <option value="X">X</option>
+                      </select>
+                    </td>
+                    <td className={TD}><input value={row.cleaner} onChange={e => updateMachine(idx, 'cleaner', e.target.value)} className="w-12 text-xs border-none outline-none bg-transparent text-center" /></td>
+                    <td className={TD}><input value={row.verifier} onChange={e => updateMachine(idx, 'verifier', e.target.value)} className="w-12 text-xs border-none outline-none bg-transparent text-center" /></td>
+                    <td className={TDL}><input value={row.note} onChange={e => updateMachine(idx, 'note', e.target.value)} className="w-full text-xs border-none outline-none bg-transparent" /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <SignBox />
+        </div>
+      </div>
+
+      {/* ── 작업구역 청소·소독 일지 ── */}
+      <div>
+        <div className="flex gap-3 mb-3 flex-wrap items-center">
+          <span className="text-sm font-bold text-slate-700">작업구역 청소·소독 일지</span>
+          <button onClick={addAreaRow} className="text-xs px-2 py-1 border border-slate-300 rounded hover:bg-slate-50 ml-2">+ 행 추가</button>
+          <button
+            onClick={() => areaRef.current && downloadAsPDF(areaRef.current, `HACCP_구역청소일지_${month}.pdf`)}
+            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
+          >
+            <FileDown size={13} /> PDF 저장
+          </button>
+        </div>
+        <div ref={areaRef} className="bg-white p-4 font-sans" style={{ fontFamily: 'Malgun Gothic, sans-serif' }}>
+          <FormHeader title="작업구역 청소·소독 일지" date={month} />
+          <p className="text-xs text-slate-500 mb-3">
+            제조실·포장실·화장실: 1일 1회 이상 / 창고·탈의실: 주 1회 이상 | O: 적합 / X: 부적합
+          </p>
+          <div className="overflow-x-auto">
+            <table className="border-collapse text-xs" style={{ minWidth: 760 }}>
+              <thead>
+                <tr>
+                  <th className={TH}>점검일</th>
+                  <th className={TH}>구역</th>
+                  <th className={TH}>청소결과</th>
+                  <th className={TH}>소독실시</th>
+                  <th className={TH}>소독제(종류/농도)</th>
+                  <th className={TH}>담당자</th>
+                  <th className={TH}>비고(개선조치)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {areaRows.map((row, idx) => (
+                  <tr key={idx}>
+                    <td className={TD}>
+                      <input type="date" value={row.date} onChange={e => updateArea(idx, 'date', e.target.value)} className="text-xs border-none outline-none bg-transparent w-24" />
+                    </td>
+                    <td className={TD}>
+                      <select value={row.area} onChange={e => updateArea(idx, 'area', e.target.value)} className="text-xs border-none outline-none bg-transparent">
+                        {CLEAN_AREAS.map(a => <option key={a}>{a}</option>)}
+                      </select>
+                    </td>
+                    <td className={TD}>
+                      <select value={row.result} onChange={e => updateArea(idx, 'result', e.target.value)} className={`text-xs border-none outline-none bg-transparent font-bold ${row.result === 'X' ? 'text-rose-600' : row.result === 'O' ? 'text-green-600' : ''}`}>
+                        <option value="">-</option>
+                        <option value="O">O</option>
+                        <option value="X">X</option>
+                      </select>
+                    </td>
+                    <td className={TD}>
+                      <select value={row.sanitized} onChange={e => updateArea(idx, 'sanitized', e.target.value)} className={`text-xs border-none outline-none bg-transparent font-bold ${row.sanitized === 'X' ? 'text-rose-600' : row.sanitized === 'O' ? 'text-green-600' : ''}`}>
+                        <option value="">-</option>
+                        <option value="O">O(실시)</option>
+                        <option value="X">X(미실시)</option>
+                        <option value="N/A">N/A</option>
+                      </select>
+                    </td>
+                    <td className={TD}>
+                      <select value={row.sanitizer} onChange={e => updateArea(idx, 'sanitizer', e.target.value)} className="text-xs border-none outline-none bg-transparent">
+                        <option value="">선택</option>
+                        {SANITIZERS.map(s => <option key={s}>{s}</option>)}
+                      </select>
+                    </td>
+                    <td className={TD}><input value={row.cleaner} onChange={e => updateArea(idx, 'cleaner', e.target.value)} className="w-12 text-xs border-none outline-none bg-transparent text-center" /></td>
+                    <td className={TDL}><input value={row.note} onChange={e => updateArea(idx, 'note', e.target.value)} className="w-full text-xs border-none outline-none bg-transparent" /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <SignBox />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 메인 HaccpChecklist 컴포넌트
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 const TABS: { id: TabId; label: string; icon: React.ReactNode; desc: string }[] = [
-  { id: 'overview', label: '사후평가 점검표', icon: <ClipboardList size={14} />, desc: '소규모 HACCP 20항목 사후평가' },
-  { id: 'daily', label: '일반위생관리', icon: <CheckSquare size={14} />, desc: '일일/주간/월간/반기/연간 위생점검' },
-  { id: 'pest', label: '방충·방서 점검', icon: <Bug size={14} />, desc: '하절기 주 1회 / 동절기 월 1회' },
-  { id: 'temp', label: '온도관리 일지', icon: <Thermometer size={14} />, desc: '냉장·냉동창고 온도 기록' },
-  { id: 'ccp-heat', label: 'CCP-B 가열·살균', icon: <Scan size={14} />, desc: '가열공정 온도·시간 모니터링' },
-  { id: 'ccp-metal', label: 'CCP-P 금속검출', icon: <Scan size={14} />, desc: 'Fe 2.0㎜ / Sus 2.5㎜ 불검출' },
-  { id: 'incoming', label: '입고검사일지', icon: <ShoppingCart size={14} />, desc: '원료·부자재 입고검사' },
+  { id: 'overview',  label: '사후평가 점검표',    icon: <ClipboardList size={14} />, desc: '소규모 HACCP 20항목 사후평가' },
+  { id: 'daily',    label: '일반위생관리',        icon: <CheckSquare size={14} />,   desc: '일일/주간/월간/반기/연간 위생점검' },
+  { id: 'cleaning', label: '세척·소독 일지',      icon: <Wrench size={14} />,        desc: '기계·설비(착유기·볶음기·필터프레스) 및 작업구역 청소소독 기록' },
+  { id: 'pest',     label: '방충·방서 점검',      icon: <Bug size={14} />,           desc: '하절기 주 1회 / 동절기 월 1회' },
+  { id: 'temp',     label: '온도관리 일지',        icon: <Thermometer size={14} />,   desc: '냉장·냉동창고 온도 기록' },
+  { id: 'ccp-heat', label: 'CCP-B 가열·살균',    icon: <Scan size={14} />,          desc: '가열공정 온도·시간 모니터링' },
+  { id: 'ccp-metal',label: 'CCP-P 금속검출',     icon: <Scan size={14} />,          desc: 'Fe 2.0㎜ / Sus 2.5㎜ 불검출' },
+  { id: 'incoming', label: '입고검사일지',         icon: <ShoppingCart size={14} />,  desc: '원료·부자재 입고검사' },
 ];
 
 const HaccpChecklist: React.FC = () => {
@@ -961,13 +1221,14 @@ const HaccpChecklist: React.FC = () => {
 
       {/* 콘텐츠 */}
       <div className="flex-1 overflow-y-auto p-6">
-        {activeTab === 'overview' && <OverviewForm />}
-        {activeTab === 'daily' && <DailyForm />}
-        {activeTab === 'pest' && <PestForm />}
-        {activeTab === 'temp' && <TempForm />}
-        {activeTab === 'ccp-heat' && <CCPHeatForm />}
+        {activeTab === 'overview'  && <OverviewForm />}
+        {activeTab === 'daily'     && <DailyForm />}
+        {activeTab === 'cleaning'  && <CleaningForm />}
+        {activeTab === 'pest'      && <PestForm />}
+        {activeTab === 'temp'      && <TempForm />}
+        {activeTab === 'ccp-heat'  && <CCPHeatForm />}
         {activeTab === 'ccp-metal' && <CCPMetalForm />}
-        {activeTab === 'incoming' && <IncomingForm />}
+        {activeTab === 'incoming'  && <IncomingForm />}
       </div>
     </div>
   );

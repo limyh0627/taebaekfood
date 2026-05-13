@@ -298,7 +298,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col" style={{ height: 'calc(100vh - 240px)' }}>
         <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center gap-2">
           <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar flex-1">
             <button
@@ -348,9 +348,9 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto overflow-y-auto flex-1">
           <table className="w-full text-left border-collapse">
-            <thead>
+            <thead className="sticky top-0 z-10">
               <tr className="bg-slate-50/50 border-b border-slate-100">
                 <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[100px]">품목 정보</th>
                 {activeCategory === '완제품' && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">거래처</th>}
@@ -591,8 +591,10 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
               )}
             </tbody>
           </table>
+        </div>
+        <div className="flex flex-col items-center gap-2 px-4 py-3 border-t border-slate-100">
           {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-1 py-4 border-t border-slate-100">
+            <div className="flex items-center gap-1">
               <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={safePage === 1}
                 className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:bg-slate-100 disabled:opacity-30 transition-all">←</button>
               {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
@@ -605,6 +607,9 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                 className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:bg-slate-100 disabled:opacity-30 transition-all">→</button>
             </div>
           )}
+          <span className="text-[10px] font-bold text-slate-300">
+            총 {filteredItems.length}개 · {safePage}/{totalPages} 페이지
+          </span>
         </div>
       </div>
 

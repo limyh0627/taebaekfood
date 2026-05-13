@@ -115,6 +115,8 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   const [configSelectedIds, setConfigSelectedIds] = useState<string[]>([]);
   const [configSaving, setConfigSaving] = useState(false);
   const [configSearch, setConfigSearch] = useState('');
+  const [configClientSearch, setConfigClientSearch] = useState('');
+  const [showConfigClientDropdown, setShowConfigClientDropdown] = useState(false);
 
   // ── History filter ──
   const [historyMonth, setHistoryMonth] = useState(() => new Date().toISOString().slice(0, 7));
@@ -1352,7 +1354,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
           <div className="bg-white rounded-2xl w-full max-w-sm max-h-[85vh] flex flex-col shadow-2xl">
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
               <p className="font-black text-slate-800">거래처 품목 설정</p>
-              <button onClick={() => setShowConfigModal(false)} className="p-2 text-slate-400 hover:text-slate-600">
+              <button onClick={() => { setShowConfigModal(false); setConfigClientSearch(''); setShowConfigClientDropdown(false); }} className="p-2 text-slate-400 hover:text-slate-600">
                 <X size={18} />
               </button>
             </div>
@@ -1360,14 +1362,35 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
             <div className="px-5 py-4 space-y-3 border-b border-slate-100">
               <div className="space-y-1.5">
                 <label className="text-xs font-black text-slate-500 uppercase tracking-wider">거래처</label>
-                <select
-                  value={configClientId}
-                  onChange={e => openConfigModal(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
-                >
-                  <option value="">거래처 선택</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                <div className="relative">
+                  <input
+                    value={configClientSearch}
+                    onChange={e => { setConfigClientSearch(e.target.value); setShowConfigClientDropdown(true); }}
+                    onFocus={() => setShowConfigClientDropdown(true)}
+                    placeholder="거래처 검색..."
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  />
+                  {configClientId && !showConfigClientDropdown && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full pointer-events-none">선택됨</span>
+                  )}
+                  {showConfigClientDropdown && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                      {clients
+                        .filter(c => !configClientSearch.trim() || c.name.includes(configClientSearch))
+                        .map(c => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => { openConfigModal(c.id); setConfigClientSearch(c.name); setShowConfigClientDropdown(false); }}
+                            className={`w-full text-left px-3 py-2.5 text-sm hover:bg-teal-50 transition-colors ${configClientId === c.id ? 'bg-teal-50 font-black text-teal-700' : 'text-slate-700'}`}
+                          >{c.name}</button>
+                        ))}
+                      {clients.filter(c => !configClientSearch.trim() || c.name.includes(configClientSearch)).length === 0 && (
+                        <p className="px-3 py-3 text-sm text-slate-400 text-center">검색 결과 없음</p>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
               <input
                 value={configSearch}
