@@ -42,7 +42,7 @@ const sortSubs = (subs: { name: string; category: string }[]) =>
   [...subs].sort((a, b) => (SUB_ORDER[normalizeCategory(a.category)] ?? 9) - (SUB_ORDER[normalizeCategory(b.category)] ?? 9));
 
 const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productClients = [], productSuppliers = [], itemCustomers = [], shippingRules = [], itemBoms = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct, onMergeProducts, onSaveItemCustomer, onSaveShippingRule, isAdmin = true }) => {
-  const [mainView, setMainView] = useState<'flat' | 'by-client'>('flat');
+  const [mainView, setMainView] = useState<'flat' | 'by-client'>(isAdmin ? 'flat' : 'by-client');
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(true);
   const [showNoClient, setShowNoClient] = useState(false);
@@ -311,28 +311,32 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col" style={{ height: 'calc(100vh - 240px)' }}>
         <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center gap-2">
           <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar flex-1">
-            <button
-              onClick={() => { handleShowAll(); setPage(1); }}
-              className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border whitespace-nowrap flex items-center gap-1 ${
-                showAll && !showNoClient
-                  ? 'bg-indigo-600 border-indigo-600 text-white shadow'
-                  : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
-              }`}
-            >
-              <LayoutGrid size={11} />
-              전체 품목
-            </button>
-            <button
-              onClick={() => { setShowNoClient(p => !p); setShowAll(true); setSelectedClientId(null); setPage(1); }}
-              className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border whitespace-nowrap flex items-center gap-1 ${
-                showNoClient
-                  ? 'bg-rose-500 border-rose-500 text-white shadow'
-                  : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
-              }`}
-            >
-              거래처 없는 것만
-            </button>
-            {CATEGORIES.map(cat => (
+            {(isAdmin || (!isAdmin && !selectedClientId)) && (
+              <button
+                onClick={() => { handleShowAll(); setPage(1); }}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border whitespace-nowrap flex items-center gap-1 ${
+                  showAll && !showNoClient
+                    ? 'bg-indigo-600 border-indigo-600 text-white shadow'
+                    : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+                }`}
+              >
+                <LayoutGrid size={11} />
+                전체 품목
+              </button>
+            )}
+            {isAdmin && (
+              <button
+                onClick={() => { setShowNoClient(p => !p); setShowAll(true); setSelectedClientId(null); setPage(1); }}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border whitespace-nowrap flex items-center gap-1 ${
+                  showNoClient
+                    ? 'bg-rose-500 border-rose-500 text-white shadow'
+                    : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+                }`}
+              >
+                거래처 없는 것만
+              </button>
+            )}
+            {isAdmin && CATEGORIES.map(cat => (
               <button
                 key={cat}
                 onClick={() => { setActiveCategory(cat); setPage(1); }}
@@ -368,20 +372,20 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">용기</th>
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">마개</th>
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">라벨</th>
-                <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">원가</th>
+                {isAdmin && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">원가</th>}
                 {isAdmin && <th className="px-2 py-3" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {!selectedClientId && !showAll ? (
                 <tr>
-                  <td colSpan={isAdmin ? 9 : 8} className="px-6 py-16 text-center text-slate-300 font-medium text-sm">
+                  <td colSpan={isAdmin ? 7 : 5} className="px-6 py-16 text-center text-slate-300 font-medium text-sm">
                     거래처를 선택하세요.
                   </td>
                 </tr>
               ) : pagedItems.length === 0 ? (
                 <tr>
-                  <td colSpan={isAdmin ? 9 : 8} className="px-6 py-16 text-center text-slate-400 font-medium text-sm">
+                  <td colSpan={isAdmin ? 7 : 5} className="px-6 py-16 text-center text-slate-400 font-medium text-sm">
                     {showAll ? '등록된 품목이 없습니다.' : '이 거래처에 연결된 품목이 없습니다.'}
                   </td>
                 </tr>
@@ -459,11 +463,13 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                         )}
                       </td>
                     ))}
-                    <td className="px-2 py-3 text-right">
-                      {item.cost != null
-                        ? <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">{item.cost.toLocaleString()}원</span>
-                        : <span className="text-[10px] text-slate-200">-</span>}
-                    </td>
+                    {isAdmin && (
+                      <td className="px-2 py-3 text-right">
+                        {item.cost != null
+                          ? <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">{item.cost.toLocaleString()}원</span>
+                          : <span className="text-[10px] text-slate-200">-</span>}
+                      </td>
+                    )}
                     {isAdmin && (
                       <td className="px-2 py-3 text-center">
                         <button
@@ -476,7 +482,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                     )}
                   </tr>
                   {item.isRawMaterial && expandedPackagingId === item.id && (() => {
-                    const colCount = activeCategory === 'product' ? 7 : 6;
+                    const colCount = isAdmin ? 7 : 5;
                     // BOM: 이 품목의 구성 부자재 (item_bom)
                     const boms = itemBoms.filter(b => b.parent_id === item.id);
                     const getBomChild = (cat: string) => {
@@ -822,18 +828,20 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
         </div>
       )}
 
-      {/* 뷰 탭 */}
-      <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5 w-fit">
-        {([['flat', '품목 목록'], ['by-client', '거래처별 품목']] as const).map(([v, label]) => (
-          <button key={v} onClick={() => { setMainView(v); setSelectedClientId(null); setShowAll(true); setPage(1); setSearchTerm(''); }}
-            className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${mainView === v ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* 뷰 탭 — 관리자만 */}
+      {isAdmin && (
+        <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5 w-fit">
+          {([['flat', '품목 목록'], ['by-client', '거래처별 품목']] as const).map(([v, label]) => (
+            <button key={v} onClick={() => { setMainView(v); setSelectedClientId(null); setShowAll(true); setPage(1); setSearchTerm(''); }}
+              className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${mainView === v ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {/* 품목 목록 뷰: 거래처 패널 없이 전체 테이블 */}
-      {mainView === 'flat' && productPanel}
+      {/* 품목 목록 뷰: 관리자만 */}
+      {isAdmin && mainView === 'flat' && productPanel}
 
       {/* 거래처별 품목 뷰 */}
       {mainView === 'by-client' && (
