@@ -160,6 +160,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [pendingInvoice, setPendingInvoice] = useState<{ supplierId: string; supplierName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }> } | null>(null);
   const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부' | '거래명세서' | '생산작업기록부' | '생산작업기록부2' | 'haccp'>('생산판매기록부');
   const [docYearMonth, setDocYearMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [docLogMonth, setDocLogMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [bulkMfgDate, setBulkMfgDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [productionWorkCat, setProductionWorkCat] = useState('시골향참기름1');
   const [productionWorkMonth, setProductionWorkMonth] = useState(() => new Date().toISOString().slice(0, 7));
@@ -948,7 +949,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     <NavItem icon={ScanLine} label="입고/반품" active={currentView === 'inbound-returns'} onClick={() => handleNavClick('inbound-returns')} collapsed={isSidebarCollapsed} badge={(returnRequests.filter(r => r.status === 'pending').length + pendingReceipts.filter(r => r.status === 'pending_voucher').length) || undefined} />
                     <NavItem icon={Layers} label="파렛트 관리" active={currentView === 'pallets'} onClick={() => handleNavClick('pallets')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={CalendarCheck} label="연차 신청" active={currentView === 'leave-portal'} onClick={() => handleNavClick('leave-portal')} collapsed={isSidebarCollapsed} />
-                    <NavItem icon={Users} label="거래처 관리" active={currentView === 'partners'} onClick={() => handleNavClick('partners')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={ShieldCheck} label="확인사항" active={currentView === 'confirmation-items'} onClick={() => handleNavClick('confirmation-items')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
                   </nav>
@@ -1264,6 +1264,56 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 onClose={() => setShowQrLabel(false)}
               />
             </React.Suspense>
+          )}
+          {selectedLog && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setSelectedLog(null)}>
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                  <div>
+                    <span className="text-base font-black text-slate-800">생산판매기록부</span>
+                    <span className="ml-3 text-sm text-slate-500">{selectedLog.date}</span>
+                    <span className="ml-2 text-xs text-slate-400">· {selectedLog.createdBy}</span>
+                  </div>
+                  <button onClick={() => setSelectedLog(null)} className="w-8 h-8 flex items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 text-lg font-black">✕</button>
+                </div>
+                <div className="overflow-y-auto p-6 space-y-5">
+                  <div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">생산 내역</div>
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50">
+                          {['품목', '용량', '수량', '소비기한', '비고'].map(h => (
+                            <th key={h} className="border border-slate-200 px-3 py-2 font-black text-slate-500 text-center">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedLog.productionRows.map((r, i) => (
+                          <tr key={i} className="hover:bg-blue-50">
+                            <td className="border border-slate-200 px-3 py-1.5 font-bold text-slate-800">{r.groupLabel}</td>
+                            <td className="border border-slate-200 px-3 py-1.5 text-center text-slate-600">{r.용량}</td>
+                            <td className="border border-slate-200 px-3 py-1.5 text-right font-black text-blue-700">{r.수량}</td>
+                            <td className="border border-slate-200 px-3 py-1.5 text-center text-slate-500">{r.소비기한}</td>
+                            <td className="border border-slate-200 px-3 py-1.5 text-slate-400">{r.비고}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">판매 내역</div>
+                    <div className="space-y-1">
+                      {selectedLog.orderSummaries.map((s, i) => (
+                        <div key={i} className="flex items-center gap-3 px-3 py-2 bg-slate-50 rounded-xl border border-slate-100 text-xs">
+                          <span className="font-black text-slate-800 w-28 shrink-0">{s.customerName}</span>
+                          <span className="text-slate-500">{s.items.map(it => `${it.name} ${it.qty}개`).join(', ')}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
           {currentView === 'partners' && <ClientManager clients={clients} onUpdateClient={(c) => updateItem('partners', c.id, c)} onAddClient={(c) => addItem('partners', c)} onDeleteClient={(id) => deleteItem('partners', id)} />}
           {currentView === 'database' && (
@@ -2122,11 +2172,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 </div>
 
                 {docTab === '생산판매기록부' && isAdmin && (() => {
-                  const logs = [...productionSalesLogs].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+                  const allLogs = [...productionSalesLogs].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+                  const logs = allLogs.filter(log => (log.date ?? '').slice(0, 7) === docLogMonth);
                   return (
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
                         <span className="text-xs font-black text-slate-500 uppercase tracking-widest">생산판매기록부 이력 ({logs.length}건)</span>
+                        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm">
+                          <button onClick={() => { const d = new Date(docLogMonth + '-01'); d.setMonth(d.getMonth() - 1); setDocLogMonth(d.toISOString().slice(0, 7)); }} className="text-slate-400 hover:text-indigo-500 font-black text-sm px-1">‹</button>
+                          <input type="month" value={docLogMonth} onChange={e => setDocLogMonth(e.target.value)} className="text-xs font-bold text-slate-700 bg-transparent outline-none cursor-pointer" />
+                          <button onClick={() => { const d = new Date(docLogMonth + '-01'); d.setMonth(d.getMonth() + 1); setDocLogMonth(d.toISOString().slice(0, 7)); }} className="text-slate-400 hover:text-indigo-500 font-black text-sm px-1">›</button>
+                        </div>
                       </div>
                       {logs.length === 0 ? (
                         <div className="py-16 text-center text-slate-300 text-sm">저장된 기록이 없습니다</div>
@@ -2142,50 +2198,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
                             </thead>
                             <tbody className="divide-y divide-slate-50">
                               {logs.map(log => (
-                                <tr key={log.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => setSelectedLog(selectedLog?.id === log.id ? null : log)}>
+                                <tr key={log.id} className="hover:bg-slate-50">
                                   <td className="px-4 py-3 font-black text-slate-800">{log.date}</td>
                                   <td className="px-4 py-3 text-slate-600">{log.createdBy}</td>
                                   <td className="px-4 py-3 text-slate-600">{log.orderCount}건</td>
                                   <td className="px-4 py-3 text-slate-400 font-mono text-[11px]">{new Date(log.createdAt).toLocaleString('ko-KR')}</td>
-                                  <td className="px-4 py-3 text-blue-500 text-[10px] font-black">{selectedLog?.id === log.id ? '닫기 ▲' : '보기 ▼'}</td>
+                                  <td className="px-4 py-3"><button onClick={() => setSelectedLog(log)} className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-black hover:bg-indigo-100 transition-colors">보기</button></td>
                                 </tr>
                               ))}
                             </tbody>
                           </table>
-                          {selectedLog && (
-                            <div className="border-t border-slate-200 p-4 bg-slate-50 space-y-3">
-                              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">생산 내역</div>
-                              <table className="w-full text-xs border-collapse">
-                                <thead>
-                                  <tr className="bg-white">
-                                    {['품목', '용량', '수량', '소비기한', '비고'].map(h => (
-                                      <th key={h} className="border border-slate-200 px-3 py-2 font-black text-slate-500 text-center">{h}</th>
-                                    ))}
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {selectedLog.productionRows.map((r, i) => (
-                                    <tr key={i} className="hover:bg-blue-50">
-                                      <td className="border border-slate-200 px-3 py-1.5 font-bold text-slate-800">{r.groupLabel}</td>
-                                      <td className="border border-slate-200 px-3 py-1.5 text-center text-slate-600">{r.용량}</td>
-                                      <td className="border border-slate-200 px-3 py-1.5 text-right font-black text-blue-700">{r.수량}</td>
-                                      <td className="border border-slate-200 px-3 py-1.5 text-center text-slate-500">{r.소비기한}</td>
-                                      <td className="border border-slate-200 px-3 py-1.5 text-slate-400 text-[11px]">{r.비고}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">판매 내역</div>
-                              <div className="space-y-1">
-                                {selectedLog.orderSummaries.map((s, i) => (
-                                  <div key={i} className="flex items-center gap-3 px-3 py-2 bg-white rounded-xl border border-slate-100 text-xs">
-                                    <span className="font-black text-slate-800 w-28 shrink-0">{s.customerName}</span>
-                                    <span className="text-slate-500">{s.items.map(it => `${it.name} ${it.qty}개`).join(', ')}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
                         </div>
                       )}
                     </div>

@@ -42,6 +42,7 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(currentUser.id);
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [filterMonth, setFilterMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [modifyTarget, setModifyTarget] = useState<LeaveRequest | null>(null);
   const [modifyForm, setModifyForm] = useState({ startDate: '', endDate: '', reason: '' });
 
@@ -168,9 +169,10 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
   const filteredRequests = useMemo(() => {
     return leaveRequests
       .filter(r => r.employeeId === currentUser.id)
+      .filter(r => r.startDate.slice(0, 7) === filterMonth || r.endDate.slice(0, 7) === filterMonth)
       .filter(r => r.employeeName.toLowerCase().includes(searchTerm.toLowerCase()))
       .sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime());
-  }, [leaveRequests, searchTerm, currentUser.id]);
+  }, [leaveRequests, searchTerm, currentUser.id, filterMonth]);
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 flex flex-col pb-20">
@@ -373,6 +375,11 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
                 <div className="w-full lg:flex-[6] bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
                   <div className="px-4 md:px-6 py-3 md:py-4 border-b border-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <h3 className="text-sm md:text-base font-black text-slate-800 flex items-center"><FileText className="mr-2 text-indigo-600 w-4 md:w-[18px] h-4 md:h-[18px]" />내 신청 내역</h3>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button onClick={() => setFilterMonth(m => { const d = new Date(m + '-01'); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 7); })} className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 text-sm font-bold">‹</button>
+                      <input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-indigo-500" />
+                      <button onClick={() => setFilterMonth(m => { const d = new Date(m + '-01'); d.setMonth(d.getMonth() + 1); return d.toISOString().slice(0, 7); })} className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 text-sm font-bold">›</button>
+                    </div>
                     <div className="relative w-full sm:w-40">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={13} />
                       <input type="text" placeholder="검색..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500" />
