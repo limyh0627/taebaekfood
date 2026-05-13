@@ -26,6 +26,9 @@ import ConfirmModal from './ConfirmModal';
 import InboundManager from './InboundManager';
 import PageHeader from './PageHeader';
 
+const normCat = (cat: string): string =>
+  ({ product: '완제품', container: '용기', cap: '마개', tape: '테이프', box: '박스', label: '라벨' } as Record<string, string>)[cat] ?? cat;
+
 interface OrderRequest {
   id: string;
   quantity: number;
@@ -259,7 +262,8 @@ const ProductList: React.FC<ProductListProps> = ({
     orderRequests.forEach(req => {
       const product = products.find(p => p.id === req.id);
       if (product) {
-        counts[product.category] = (counts[product.category] || 0) + 1;
+        const nc = normCat(product.category);
+        counts[nc] = (counts[nc] || 0) + 1;
       }
     });
     return counts;
@@ -299,21 +303,21 @@ const ProductList: React.FC<ProductListProps> = ({
     if (!zeroStockOnly) {
       if (topTab === 'finished') {
         if (finishedFilter === 'oil') {
-          result = result.filter(p => p.category === '향미유' || p.category === '완제품');
-          result = result.filter(p => p.category === '향미유' || /기름|유/.test(p.name));
+          result = result.filter(p => normCat(p.category) === '향미유' || normCat(p.category) === '완제품');
+          result = result.filter(p => normCat(p.category) === '향미유' || /기름|유/.test(p.name));
         } else if (finishedFilter === 'powder') {
-          result = result.filter(p => p.category === '고춧가루' || (p.category === '완제품' && /가루/.test(p.name)));
+          result = result.filter(p => normCat(p.category) === '고춧가루' || (normCat(p.category) === '완제품' && /가루/.test(p.name)));
         } else {
-          result = result.filter(p => p.category === '완제품');
+          result = result.filter(p => normCat(p.category) === '완제품');
         }
       } else if (topTab === 'specialty') {
-        result = result.filter(p => p.category === '향미유' || p.category === '고춧가루');
+        result = result.filter(p => normCat(p.category) === '향미유' || normCat(p.category) === '고춧가루');
       } else if (topTab === 'product') {
-        result = result.filter(p => p.category !== '완제품' && p.category !== '향미유' && p.category !== '고춧가루');
+        result = result.filter(p => normCat(p.category) !== '완제품' && normCat(p.category) !== '향미유' && normCat(p.category) !== '고춧가루');
       }
       if (activeCategory !== '전체') {
-        if (activeCategory === '박스') result = result.filter(p => p.category === '박스' || p.id.startsWith('GS-'));
-        else result = result.filter(p => p.category === activeCategory);
+        if (activeCategory === '박스') result = result.filter(p => normCat(p.category) === '박스' || p.id.startsWith('GS-'));
+        else result = result.filter(p => normCat(p.category) === activeCategory);
       }
       if (activeSupplierId !== '전체') {
         result = result.filter(p => psMap.get(p.id) === activeSupplierId);
@@ -333,16 +337,16 @@ const ProductList: React.FC<ProductListProps> = ({
       result = result.filter(p => p.stock > 0);
     }
     if (zeroStockOnly) {
-      result = result.filter(p => p.category !== '완제품' && p.stock < p.minStock);
+      result = result.filter(p => normCat(p.category) !== '완제품' && p.stock < p.minStock);
     }
 
     const CATEGORY_ORDER = ['완제품', '향미유', '고춧가루', '용기', '마개', '테이프', '박스', '라벨'];
     return [...result].sort((a, b) => {
-      const aCritical = a.category !== '완제품' && a.stock < a.minStock ? 0 : 1;
-      const bCritical = b.category !== '완제품' && b.stock < b.minStock ? 0 : 1;
+      const aCritical = normCat(a.category) !== '완제품' && a.stock < a.minStock ? 0 : 1;
+      const bCritical = normCat(b.category) !== '완제품' && b.stock < b.minStock ? 0 : 1;
       if (aCritical !== bCritical) return aCritical - bCritical;
-      const aCatIdx = CATEGORY_ORDER.indexOf(a.category);
-      const bCatIdx = CATEGORY_ORDER.indexOf(b.category);
+      const aCatIdx = CATEGORY_ORDER.indexOf(normCat(a.category));
+      const bCatIdx = CATEGORY_ORDER.indexOf(normCat(b.category));
       const aIdx = aCatIdx === -1 ? 99 : aCatIdx;
       const bIdx = bCatIdx === -1 ? 99 : bCatIdx;
       return aIdx - bIdx;
@@ -642,11 +646,11 @@ const ProductList: React.FC<ProductListProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {pagedProducts.map(product => {
-                  const isCritical = product.category !== '완제품' && product.stock < product.minStock;
+                  const isCritical = normCat(product.category) !== '완제품' && product.stock < product.minStock;
                   const confInfo = confirmedOrders.find(c => c.id === product.id);
                   const inCart = cart.some(c => c.id === product.id);
                   const isExpanded = expandedRowId === product.id;
-                  const statusBadge = product.category === '완제품' ? (
+                  const statusBadge = normCat(product.category) === '완제품' ? (
                     <span className="text-[9px] font-black text-slate-300">자체생산</span>
                   ) : confInfo ? (
                     <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full whitespace-nowrap">입고대기 {confInfo.quantity}{product.unit}</span>
@@ -665,17 +669,17 @@ const ProductList: React.FC<ProductListProps> = ({
                     >
                       <td className="px-4 py-3">
                         <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${
-                          product.category === '완제품' ? 'bg-indigo-50 text-indigo-600' :
-                          product.category === '향미유' ? 'bg-purple-50 text-purple-600' :
-                          product.category === '고춧가루' ? 'bg-red-50 text-red-500' :
-                          product.category === '용기' ? 'bg-sky-50 text-sky-600' :
-                          product.category === '라벨' ? 'bg-amber-50 text-amber-600' :
-                          product.category === '박스' ? 'bg-emerald-50 text-emerald-600' :
+                          normCat(product.category) === '완제품' ? 'bg-indigo-50 text-indigo-600' :
+                          normCat(product.category) === '향미유' ? 'bg-purple-50 text-purple-600' :
+                          normCat(product.category) === '고춧가루' ? 'bg-red-50 text-red-500' :
+                          normCat(product.category) === '용기' ? 'bg-sky-50 text-sky-600' :
+                          normCat(product.category) === '라벨' ? 'bg-amber-50 text-amber-600' :
+                          normCat(product.category) === '박스' ? 'bg-emerald-50 text-emerald-600' :
                           'bg-slate-100 text-slate-500'
-                        }`}>{product.category}</span>
+                        }`}>{normCat(product.category)}</span>
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell" onClick={e => e.stopPropagation()}>
-                        {(product.category === '완제품' || product.category === '향미유') && product.clientIds && product.clientIds.length > 0 ? (() => {
+                        {(normCat(product.category) === '완제품' || normCat(product.category) === '향미유') && product.clientIds && product.clientIds.length > 0 ? (() => {
                           const isExp = expandedClientRowId === product.id;
                           const sorted = priorityClientId && product.clientIds.includes(priorityClientId)
                             ? [priorityClientId, ...product.clientIds.filter(id => id !== priorityClientId)]
