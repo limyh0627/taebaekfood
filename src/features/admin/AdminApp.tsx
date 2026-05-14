@@ -2302,7 +2302,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
                 {docTab === 'haccp' && (
                   <React.Suspense fallback={<div className="py-20 text-center text-slate-400">로딩 중...</div>}>
-                    <HaccpChecklist />
+                    <HaccpChecklist currentUser={{ id: currentUser.id, name: currentUser.name }} isAdmin={isAdmin} />
                   </React.Suspense>
                 )}
 
@@ -3016,7 +3016,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'haccp-checklist' && (
             <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
-              <HaccpChecklist />
+              <HaccpChecklist currentUser={{ id: currentUser.id, name: currentUser.name }} />
             </React.Suspense>
           )}
           {currentView === 'return-management' && (
