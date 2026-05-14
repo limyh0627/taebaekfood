@@ -137,6 +137,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   const [returnClientSearch, setReturnClientSearch] = useState('');
   const [showReturnClientDropdown, setShowReturnClientDropdown] = useState(false);
   const [returnItems, setReturnItems] = useState<{ productId: string; name: string; qty: string; unit: string }[]>([]);
+  const [returnItemSearch, setReturnItemSearch] = useState('');
   const [returnNote, setReturnNote] = useState('');
   const [returnSaving, setReturnSaving] = useState(false);
   const [returnFilterMonth, setReturnFilterMonth] = useState(() => new Date().toISOString().slice(0, 7));
@@ -626,12 +627,20 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   // ══════════════════════════════════════════
 
   const sellableProducts = products.filter(p =>
-    ['완제품', '향미유', '고춧가루'].includes(p.category as string)
+    ['완제품', '향미유', '고춧가루', 'product', 'wip', 'giftset'].includes(p.category as string)
   );
 
   useEffect(() => {
     if (!returnClientId) { setReturnItems([]); return; }
-    // 해당 거래처의 최근 주문에서 품목 추출 (중복 제거)
+    // 거래처에 연결된 품목(clientIds 기반) 우선 표시
+    const linked = sellableProducts
+      .filter(p => p.clientIds?.includes(returnClientId))
+      .map(p => ({ productId: p.id, name: p.name, qty: '', unit: p.unit }));
+    if (linked.length > 0) {
+      setReturnItems(linked);
+      return;
+    }
+    // 연결 품목 없으면 최근 주문 이력으로 fallback
     const clientOrders = orders
       .filter(o => o.clientId === returnClientId)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -653,6 +662,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     setReturnClientId(id);
     setReturnClientSearch(name);
     setShowReturnClientDropdown(false);
+    setReturnItemSearch('');
   };
 
   const addReturnItem = (productId: string) => {
@@ -1193,17 +1203,36 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                     </div>
                   )}
 
-                  {/* 품목 추가 */}
-                  <select
-                    value=""
-                    onChange={e => { addReturnItem(e.target.value); e.target.value = ''; }}
-                    className="w-full border border-dashed border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-500 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  >
-                    <option value="">+ 품목 추가</option>
-                    {sellableProducts
-                      .filter(p => !returnItems.some(i => i.productId === p.id))
-                      .map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
+                  {/* 품목 검색 추가 */}
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={returnItemSearch}
+                      onChange={e => setReturnItemSearch(e.target.value)}
+                      onBlur={() => setTimeout(() => setReturnItemSearch(''), 150)}
+                      placeholder="+ 품목 검색하여 추가..."
+                      className="w-full border border-dashed border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-500 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                    {returnItemSearch && (
+                      <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-auto">
+                        {sellableProducts
+                          .filter(p => !returnItems.some(i => i.productId === p.id))
+                          .filter(p => p.name.toLowerCase().includes(returnItemSearch.toLowerCase()))
+                          .map(p => (
+                            <button
+                              key={p.id}
+                              onMouseDown={() => { addReturnItem(p.id); setReturnItemSearch(''); }}
+                              className="w-full px-3 py-2.5 text-left text-sm hover:bg-blue-50 transition-colors text-slate-700"
+                            >
+                              {p.name}
+                            </button>
+                          ))}
+                        {sellableProducts.filter(p => !returnItems.some(i => i.productId === p.id) && p.name.toLowerCase().includes(returnItemSearch.toLowerCase())).length === 0 && (
+                          <p className="px-3 py-3 text-xs text-slate-400 text-center">검색 결과 없음</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 

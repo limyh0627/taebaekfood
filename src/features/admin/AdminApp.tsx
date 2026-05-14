@@ -911,6 +911,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       <NavItem icon={ClipboardList} label="확인사항" active={currentView === 'admin-checklist'} onClick={() => handleNavClick('admin-checklist')} collapsed={isSidebarCollapsed} badge={adminPendingCount > 0 ? adminPendingCount : undefined} />
                       <NavItem icon={ScanLine} label="입고/반품" active={currentView === 'inbound-returns'} onClick={() => handleNavClick('inbound-returns')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={QrCode} label="QR 라벨 인쇄" active={false} onClick={() => setShowQrLabel(true)} collapsed={isSidebarCollapsed} />
+                      <NavItem icon={DatabaseIcon} label="데이터베이스" active={currentView === 'database'} onClick={() => handleNavClick('database')} collapsed={isSidebarCollapsed} />
                     </nav>
                   </div>
                   <div>
@@ -939,19 +940,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 <div>
                   {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">운영 관리</p>}
                   <nav className="space-y-1">
+                    <NavItem icon={BellRing} label="공지사항" active={currentView === 'notice'} onClick={() => handleNavClick('notice')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={MessageSquare} label="오피스톡" active={currentView === 'officetalk'} onClick={() => handleNavClick('officetalk')} collapsed={isSidebarCollapsed} badge={chatRooms.filter(r => r.participantIds.includes(currentUser.id) && r.lastUpdatedAt > (r.lastReadBy?.[currentUser.id] ?? '')).length || undefined} />
                     <NavItem icon={Truck} label="배송 관리" active={currentView === 'shipping'} onClick={() => handleNavClick('shipping')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={ShoppingCart} label="주문 관리" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={lowStockCount > 0 ? lowStockCount : undefined} />
                     <NavItem icon={ScanLine} label="입고/반품" active={currentView === 'inbound-returns'} onClick={() => handleNavClick('inbound-returns')} collapsed={isSidebarCollapsed} badge={(returnRequests.filter(r => r.status === 'pending').length + pendingReceipts.filter(r => r.status === 'pending_voucher').length) || undefined} />
-                    <NavItem icon={Settings} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={Layers} label="파렛트 관리" active={currentView === 'pallets'} onClick={() => handleNavClick('pallets')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={CalendarCheck} label="연차 신청" active={currentView === 'leave-portal'} onClick={() => handleNavClick('leave-portal')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={Users} label="거래처 관리" active={currentView === 'partners'} onClick={() => handleNavClick('partners')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={ShieldCheck} label="확인사항" active={currentView === 'confirmation-items'} onClick={() => handleNavClick('confirmation-items')} collapsed={isSidebarCollapsed} />
-                    <NavItem icon={DatabaseIcon} label="데이터베이스" active={currentView === 'database'} onClick={() => handleNavClick('database')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
-                    <NavItem icon={BellRing} label="공지사항" active={currentView === 'notice'} onClick={() => handleNavClick('notice')} collapsed={isSidebarCollapsed} />
                   </nav>
                 </div>
                 <div>

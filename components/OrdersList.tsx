@@ -1317,6 +1317,10 @@ const OrdersList: React.FC<OrdersListProps> = ({
           if (historyDateFrom && dateStr < historyDateFrom) return false;
           if (historyDateTo && dateStr > historyDateTo) return false;
           return true;
+        }).sort((a, b) => {
+          const da = a.deliveredAt || a.deliveryDate || a.createdAt || '';
+          const db = b.deliveredAt || b.deliveryDate || b.createdAt || '';
+          return db.localeCompare(da);
         });
         const hasHistoryFilter = !!(historySearch || historyDateFrom || historyDateTo);
         const colOrders = hasHistoryFilter ? filteredHistoryOrders : (showAllHistory ? filteredHistoryOrders : filteredHistoryOrders.slice(0, HISTORY_PREVIEW));
