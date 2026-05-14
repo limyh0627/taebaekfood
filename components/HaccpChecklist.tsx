@@ -1447,8 +1447,8 @@ const SanitationForm: React.FC<{ currentUser?: { id: string; name: string }; isA
       {/* ── 폼 본문 ──────────────────────────────────────────── */}
       {selected && (
         <div className="flex flex-col gap-3">
-          {/* 액션 바 */}
-          <div className="flex items-center gap-2 flex-wrap">
+          {/* 액션 바 — 스크롤해도 상단 고정 */}
+          <div className="sticky top-0 z-20 flex items-center gap-2 flex-wrap bg-slate-50/95 backdrop-blur-sm border-b border-slate-200 py-2 -mx-6 px-6">
             <span className={`text-xs font-bold px-2 py-1 rounded border ${
               isReadOnly
                 ? 'bg-slate-100 text-slate-500 border-slate-300'
