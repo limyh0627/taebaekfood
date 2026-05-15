@@ -303,60 +303,6 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             />
           </div>
 
-          {/* 매출거래처 (완제품) */}
-          {formData.category === 'product' && (
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Building2 size={14} className="mr-2" /> 매출거래처
-                {formData.clientIds.length > 0 && (
-                  <span className="ml-2 px-1.5 py-0.5 bg-indigo-600 text-white text-[9px] font-black rounded-full">{formData.clientIds.length}</span>
-                )}
-              </label>
-              <input
-                type="text"
-                value={clientSearch}
-                onChange={e => setClientSearch(e.target.value)}
-                placeholder="거래처 검색..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-4 pr-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-400 transition-all"
-              />
-              {salesClients.length === 0 ? (
-                <p className="text-xs text-slate-400 px-1">등록된 매출거래처 없음</p>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
-                  {salesClients
-                    .filter(c => !clientSearch.trim() || c.name.toLowerCase().includes(clientSearch.toLowerCase()))
-                    .sort((a, b) => {
-                      const aChecked = formData.clientIds.includes(a.id) ? 0 : 1;
-                      const bChecked = formData.clientIds.includes(b.id) ? 0 : 1;
-                      return aChecked - bChecked;
-                    })
-                    .map(c => {
-                      const checked = formData.clientIds.includes(c.id);
-                      return (
-                        <button
-                          key={c.id}
-                          type="button"
-                          onClick={() => {
-                            const next = checked
-                              ? formData.clientIds.filter(id => id !== c.id)
-                              : [...formData.clientIds, c.id];
-                            setFormData({...formData, clientIds: next});
-                          }}
-                          className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold border transition-all text-left ${
-                            checked
-                              ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
-                              : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'
-                          }`}
-                        >
-                          {checked && <Check size={10} className="shrink-0" />}
-                          <span className="truncate">{c.name}</span>
-                        </button>
-                      );
-                    })}
-                </div>
-              )}
-            </div>
-          )}
 
           {/* BOM 설정 (완제품) */}
           {formData.category === 'product' && (
@@ -512,75 +458,6 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                 })}
               </div>
 
-              {/* 거래처별 포장 설정 (박스 + 테이프) */}
-              {formData.clientIds.length > 0 && (
-                <div className="bg-slate-50 rounded-2xl border border-slate-100 p-4 space-y-3">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">거래처별 포장 설정</p>
-                  {formData.clientIds.map((clientId) => {
-                    const clientName = clients.find(c => c.id === clientId)?.name || clientId;
-                    const isExpanded = expandedBoxClient === clientId;
-                    const cfg = clientPackagingConfigs[clientId] ?? {};
-                    const boxSubs = allSubmaterials.filter(s => s.category === 'box');
-                    const tapeSubs = allSubmaterials.filter(s => s.category === 'tape');
-                    const selectedBox = allSubmaterials.find(s => s.id === cfg.boxTypeId);
-                    const selectedTape = allSubmaterials.find(s => s.id === cfg.tapeTypeId);
-                    const summary = [selectedBox?.name, cfg.qtyPerBox ? `${cfg.qtyPerBox}개/박스` : null, selectedTape?.name].filter(Boolean).join(' · ');
-                    return (
-                      <div key={clientId} className="bg-white border border-slate-100 rounded-xl overflow-hidden">
-                        <div className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => setExpandedBoxClient(isExpanded ? null : clientId)}>
-                          <span className="text-xs font-bold text-slate-700 flex-1 truncate">{clientName}</span>
-                          {summary ? <span className="text-[10px] font-bold text-indigo-500 truncate max-w-[120px]">{summary}</span> : <span className="text-[10px] text-slate-300">미설정</span>}
-                          <span className="text-[10px] text-slate-400">{isExpanded ? '▲' : '▼'}</span>
-                        </div>
-                        {isExpanded && (
-                          <div className="border-t border-slate-100 p-3 space-y-3">
-                            {/* 박스 종류 */}
-                            {boxSubs.length > 0 && (
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">박스 종류</p>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {boxSubs.map(sub => (
-                                    <button key={sub.id} type="button"
-                                      onClick={() => setClientPackagingConfigs(prev => ({ ...prev, [clientId]: { ...prev[clientId], boxTypeId: prev[clientId]?.boxTypeId === sub.id ? undefined : sub.id } }))}
-                                      className={`text-[11px] font-black px-2.5 py-1 rounded-lg border transition-all ${cfg.boxTypeId === sub.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}>
-                                      {sub.name}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            {/* 박스당 수량 */}
-                            <div className="flex items-center gap-2">
-                              <span className="text-[10px] text-slate-400 shrink-0">박스당</span>
-                              <input type="number" min={1} placeholder="개수"
-                                value={cfg.qtyPerBox ?? ''}
-                                onChange={e => setClientPackagingConfigs(prev => ({ ...prev, [clientId]: { ...prev[clientId], qtyPerBox: Number(e.target.value) || undefined } }))}
-                                className="w-16 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-black text-center outline-none focus:ring-1 focus:ring-indigo-400"
-                              />
-                              <span className="text-[10px] text-slate-400 shrink-0">개</span>
-                            </div>
-                            {/* 테이프 종류 */}
-                            {tapeSubs.length > 0 && (
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">테이프 종류</p>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {tapeSubs.map(sub => (
-                                    <button key={sub.id} type="button"
-                                      onClick={() => setClientPackagingConfigs(prev => ({ ...prev, [clientId]: { ...prev[clientId], tapeTypeId: prev[clientId]?.tapeTypeId === sub.id ? undefined : sub.id } }))}
-                                      className={`text-[11px] font-black px-2.5 py-1 rounded-lg border transition-all ${cfg.tapeTypeId === sub.id ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-slate-600 border-slate-200 hover:border-sky-300'}`}>
-                                      {sub.name}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           )}
 
