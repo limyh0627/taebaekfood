@@ -2218,7 +2218,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   <div className="space-y-4">
 
                     {/* 상단: 생산 내역(좌) + 판매 내역(우) */}
-                    <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-x-auto">
+                    <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
                       {(() => {
                         return (
                         <table className="text-xs border-collapse min-w-[900px] w-full">
@@ -2287,7 +2287,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     </div>
 
                     {/* 하단: 참깨/들깨 계열 */}
-                    <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-x-auto">
+                    <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
                       <table className="text-xs border-collapse min-w-[500px] w-full">
                         <thead>
                           <tr>
@@ -2613,7 +2613,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         ))}
                       </div>
                       {/* 문서 헤더 */}
-                      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
+                      <div className="bg-white rounded-2xl border border-slate-200 p-6">
                         <div className="flex justify-between items-start mb-1">
                           <span className="text-sm font-bold text-slate-700">년 월 : {wy}년 {wm}월</span>
                           <span className="text-sm font-bold text-slate-700">관리자 : 임 기 주</span>
@@ -2625,7 +2625,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         </div>
                       </div>
                       {/* 테이블 */}
-                      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-x-auto">
+                      <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
                         <table className="text-xs border-collapse w-full min-w-[640px]">
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-200">
@@ -2763,7 +2763,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
                   return (
                     <div className="space-y-4">
-                      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-x-auto">
+                      <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
                           <span className="text-sm font-bold text-slate-700">참기름 원료 수불부</span>
                           <span className="text-sm font-bold text-slate-500">{lm2Year}년 {lm2Month}월</span>

@@ -206,7 +206,7 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
 
       {activeTab === 'calendar' ? (
         /* Calendar Section */
-        <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden animate-in fade-in zoom-in-95 duration-300">
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-300">
           <div className="p-8 border-b border-slate-50 flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center shadow-sm">
@@ -284,7 +284,7 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
             return (
               <div key={emp.id} className="flex flex-col lg:flex-row gap-4 md:gap-5 items-start">
                 {/* 왼쪽: 연차 요약 카드 */}
-                <div className="w-full lg:flex-[4] bg-white p-4 md:p-6 rounded-3xl border border-slate-100 shadow-sm">
+                <div className="w-full lg:flex-[4] bg-white p-4 md:p-6 rounded-2xl border border-slate-200">
                   {/* 직원 */}
                   <div className="flex items-center space-x-2 md:space-x-3 mb-4 md:mb-5">
                     <div className="w-10 h-10 md:w-11 md:h-11 bg-indigo-600 text-white rounded-xl flex items-center justify-center font-black text-base md:text-lg">{emp.name[0]}</div>
@@ -372,7 +372,7 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
                 </div>
 
                 {/* 오른쪽: 신청 내역 */}
-                <div className="w-full lg:flex-[6] bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                <div className="w-full lg:flex-[6] bg-white rounded-2xl border border-slate-200 overflow-hidden">
                   <div className="px-4 md:px-6 py-3 md:py-4 border-b border-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <h3 className="text-sm md:text-base font-black text-slate-800 flex items-center"><FileText className="mr-2 text-indigo-600 w-4 md:w-[18px] h-4 md:h-[18px]" />내 신청 내역</h3>
                     <div className="flex items-center gap-1 shrink-0">

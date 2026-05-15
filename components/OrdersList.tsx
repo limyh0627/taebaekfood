@@ -1011,7 +1011,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
       {activeTab === 'delivery' && (
         <div>
           {/* 택배 목록 */}
-          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
           <div className="p-5 border-b border-slate-50 flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="p-2 rounded-xl bg-sky-500 text-white"><Truck size={18} /></div>

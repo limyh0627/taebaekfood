@@ -56,7 +56,7 @@ const ConfirmationItems: React.FC<ConfirmationItemsProps> = ({
         ) : undefined}
       />
 
-      <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>

@@ -325,7 +325,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
 
       {/* 연차 신청 탭 */}
       {activeTab === 'leave' && (
-        <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -411,7 +411,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
 
       {/* 재고 탭 */}
       {activeTab === 'adjustment' && (
-        <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -497,7 +497,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
 
       {/* 입고/반품/발주 통합 탭 */}
       {activeTab === 'ops' && (
-        <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>

@@ -685,7 +685,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
       })()}
 
       {/* Calendar Section */}
-      {deliveryTab === '배송캘린더' && <div className="bg-white rounded-[40px] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
+      {deliveryTab === '배송캘린더' && <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         <div className="p-8 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center shadow-inner">
@@ -738,7 +738,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
             if (regionData.length === 0) return null;
 
             return (
-              <div key={region} className="bg-white rounded-[32px] border border-slate-100 shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col">
+              <div key={region} className="bg-white rounded-2xl border border-slate-200 hover:border-slate-300 transition-all overflow-hidden flex flex-col">
                 <div className="p-6 bg-slate-50/50 border-b border-slate-100 flex items-center justify-between">
                   <div className="flex items-center space-x-3">
                     <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-indigo-600 shadow-sm">
