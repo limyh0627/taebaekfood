@@ -706,8 +706,12 @@ const OrderSourceGroup = memo<OrderSourceGroupProps>(({
         {isCollapsed ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronUp size={14} className="text-slate-400" />}
       </button>
       {!isCollapsed && (
-        <div className={`grid gap-3 items-start ${gridCols === 3 ? 'grid-cols-1 sm:grid-cols-3' : gridCols === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
-          {orders.map(order => <OrderCard key={order.id} order={order} {...cardProps} gridCols={gridCols} />)}
+        <div className={`${gridCols === 3 ? 'sm:columns-3' : gridCols === 2 ? 'sm:columns-2' : 'columns-1'} gap-3`}>
+          {orders.map(order => (
+            <div key={order.id} className="break-inside-avoid mb-3">
+              <OrderCard order={order} {...cardProps} gridCols={gridCols} />
+            </div>
+          ))}
         </div>
       )}
     </div>
