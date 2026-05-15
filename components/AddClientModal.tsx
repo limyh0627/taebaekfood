@@ -23,6 +23,7 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ onClose, onSave }) => {
     type: '일반' as ClientType,
     region: '',
     address: '',
+    note: '',
     partnerType: '매출처' as PartnerType
   });
 
@@ -50,6 +51,7 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ onClose, onSave }) => {
       type: formData.type,
       region: formData.region,
       address: formData.address,
+      note: formData.note,
       partnerType: formData.partnerType
     };
 
@@ -142,12 +144,23 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ onClose, onSave }) => {
             <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
               <Mail size={14} className="mr-2" /> 이메일
             </label>
-            <input 
+            <input
               type="email"
               value={formData.email}
               onChange={(e) => setFormData({...formData, email: e.target.value})}
               placeholder="contact@client.com"
               className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">비고</label>
+            <textarea
+              rows={2}
+              value={formData.note}
+              onChange={(e) => setFormData({...formData, note: e.target.value})}
+              placeholder="메모, 특이사항 등"
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none"
             />
           </div>
 

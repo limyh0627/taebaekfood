@@ -186,7 +186,9 @@ const ClientManager: React.FC<ClientManagerProps> = ({ clients, onUpdateClient, 
                           )}
                         </div>
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1 text-slate-400">
-                          {client.phone && <div className="flex items-center text-[11px]"><Phone size={11} className="mr-1" />{client.phone}</div>}
+                          {client.ownerName && <div className="flex items-center text-[11px] font-bold text-slate-500">{client.ownerName}</div>}
+                          {client.bizNo && <div className="text-[11px]">{client.bizNo}</div>}
+                          {(client.tel || client.mobile || client.phone) && <div className="flex items-center text-[11px]"><Phone size={11} className="mr-1" />{client.tel || client.mobile || client.phone}</div>}
                           {client.email && <div className="flex items-center text-[11px]"><Mail size={11} className="mr-1" />{client.email}</div>}
                           {client.region && <div className="flex items-center text-[11px]"><LayoutGrid size={11} className="mr-1" /><span className="font-bold text-slate-600">{client.region}</span></div>}
                           {fullAddress && (
@@ -194,6 +196,9 @@ const ClientManager: React.FC<ClientManagerProps> = ({ clients, onUpdateClient, 
                               <MapPin size={11} className="mr-1 flex-shrink-0" />
                               <span className="text-slate-500 truncate">{fullAddress}</span>
                             </div>
+                          )}
+                          {client.note && (
+                            <div className="text-[11px] w-full mt-0.5 text-slate-400 italic truncate">{client.note}</div>
                           )}
                         </div>
                       </div>
@@ -239,7 +244,7 @@ const ClientManager: React.FC<ClientManagerProps> = ({ clients, onUpdateClient, 
       {/* 수정 오버레이 모달 */}
       {editForm && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setEditForm(null)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
             {/* 헤더 */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <h2 className="text-base font-black text-slate-800">거래처 수정</h2>
@@ -262,28 +267,74 @@ const ClientManager: React.FC<ClientManagerProps> = ({ clients, onUpdateClient, 
                 />
               </div>
 
-              {/* 전화 / 이메일 */}
+              {/* 대표자 / 사업자번호 */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block flex items-center gap-1"><Phone size={11} />전화</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">대표자</label>
                   <input
                     type="text"
-                    value={editForm.phone || ''}
-                    onChange={e => setEditForm(prev => prev ? { ...prev, phone: e.target.value } : null)}
+                    value={editForm.ownerName || ''}
+                    onChange={e => setEditForm(prev => prev ? { ...prev, ownerName: e.target.value } : null)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                    placeholder="전화번호"
+                    placeholder="대표자명"
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block flex items-center gap-1"><Mail size={11} />이메일</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">사업자번호</label>
                   <input
                     type="text"
-                    value={editForm.email || ''}
-                    onChange={e => setEditForm(prev => prev ? { ...prev, email: e.target.value } : null)}
+                    value={editForm.bizNo || ''}
+                    onChange={e => setEditForm(prev => prev ? { ...prev, bizNo: e.target.value } : null)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                    placeholder="이메일"
+                    placeholder="000-00-00000"
                   />
                 </div>
+              </div>
+
+              {/* 대표전화 / 핸드폰 / 팩스 */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">대표전화</label>
+                  <input
+                    type="text"
+                    value={editForm.tel || ''}
+                    onChange={e => setEditForm(prev => prev ? { ...prev, tel: e.target.value } : null)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="02-0000-0000"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">핸드폰</label>
+                  <input
+                    type="text"
+                    value={editForm.mobile || editForm.phone || ''}
+                    onChange={e => setEditForm(prev => prev ? { ...prev, mobile: e.target.value, phone: e.target.value } : null)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="010-0000-0000"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">팩스</label>
+                  <input
+                    type="text"
+                    value={editForm.fax || ''}
+                    onChange={e => setEditForm(prev => prev ? { ...prev, fax: e.target.value } : null)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="02-0000-0000"
+                  />
+                </div>
+              </div>
+
+              {/* 이메일 */}
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block flex items-center gap-1"><Mail size={11} />이메일</label>
+                <input
+                  type="text"
+                  value={editForm.email || ''}
+                  onChange={e => setEditForm(prev => prev ? { ...prev, email: e.target.value } : null)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="이메일"
+                />
               </div>
 
               {/* 구분 / 유형 */}
@@ -316,15 +367,6 @@ const ClientManager: React.FC<ClientManagerProps> = ({ clients, onUpdateClient, 
                 )}
               </div>
 
-              {/* 지역 */}
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">지역</label>
-                <RegionSelect
-                  value={editForm.region || ''}
-                  onChange={v => setEditForm(prev => prev ? { ...prev, region: v } : null)}
-                />
-              </div>
-
               {/* 주소 */}
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-1"><MapPin size={11} />주소</label>
@@ -352,6 +394,18 @@ const ClientManager: React.FC<ClientManagerProps> = ({ clients, onUpdateClient, 
                   onChange={e => setEditForm(prev => prev ? { ...prev, addressDetail: e.target.value } : null)}
                   placeholder="상세 주소 (동/호수 등)"
                   className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* 비고 */}
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">비고</label>
+                <textarea
+                  rows={2}
+                  value={editForm.note || ''}
+                  onChange={e => setEditForm(prev => prev ? { ...prev, note: e.target.value } : null)}
+                  placeholder="메모, 특이사항 등"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
                 />
               </div>
             </div>

@@ -110,6 +110,12 @@ export interface Partner {
   region?: string;
   address?: string;
   addressDetail?: string;
+  ownerName?: string;
+  bizNo?: string;
+  tel?: string;
+  mobile?: string;
+  fax?: string;
+  note?: string;
   partnerType?: PartnerType; // undefined = '매출처' (하위 호환)
   purchaseItems?: PurchaseItem[];
 }
