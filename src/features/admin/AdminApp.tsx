@@ -621,14 +621,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
         }
       }
 
-      // 테이프 차감: productClients에서 tapeTypeId 참조
-      if (pc?.tapeTypeId && boxesUsed && boxesUsed > 0) {
-        const tapeSub = submaterials.find(sm => sm.id === pc.tapeTypeId);
-        if (tapeSub) {
-          await updateItem('items', tapeSub.id, { stock: tapeSub.stock - boxesUsed });
-        }
-      }
-
       // 박스·테이프 외 부자재 차감 (낱개 수량 기준)
       for (const s of product.submaterials) {
         const actualSub = submaterials.find(sm => sm.id === s.id);
