@@ -208,7 +208,7 @@ const HRManager: React.FC<HRManagerProps> = ({
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-hidden flex flex-col min-h-0 bg-white rounded-3xl border border-slate-100 shadow-sm">
+      <div className="flex-1 overflow-hidden flex flex-col min-h-0 bg-white rounded-2xl border border-slate-200">
         {activeTab === 'employees' && (
           <>
             <div className="p-6 border-b border-slate-50">
@@ -227,11 +227,11 @@ const HRManager: React.FC<HRManagerProps> = ({
               <table className="w-full text-left min-w-[640px]">
                 <thead className="bg-slate-50/50 border-b border-slate-100 sticky top-0 z-10">
                   <tr>
-                    <th className="px-4 sm:px-8 py-4 sm:py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">임직원 정보</th>
-                    <th className="px-4 sm:px-8 py-4 sm:py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">부서 / 직급</th>
-                    <th className="px-4 sm:px-8 py-4 sm:py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">입사일 / 근속</th>
-                    <th className="px-4 sm:px-8 py-4 sm:py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">보건증</th>
-                    <th className="px-4 sm:px-8 py-4 sm:py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">관리</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">임직원 정보</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">부서 / 직급</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">입사일 / 근속</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">보건증</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">관리</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
@@ -298,8 +298,8 @@ const HRManager: React.FC<HRManagerProps> = ({
             <table className="w-full text-left min-w-[580px]">
               <thead className="bg-slate-50 border-b border-slate-100">
                 <tr>
-                  <th className="px-4 sm:px-8 py-4 sm:py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">신청 직원</th>
-                  <th className="px-4 sm:px-8 py-4 sm:py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">항목 / 사유</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">신청 직원</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">항목 / 사유</th>
                   <th className="px-4 sm:px-10 py-4 sm:py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">신청 기간 / 일수</th>
                   <th className="px-4 sm:px-10 py-4 sm:py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">결재 처리</th>
                 </tr>
@@ -383,7 +383,7 @@ const HRManager: React.FC<HRManagerProps> = ({
             <table className="w-full text-left min-w-[640px]">
               <thead className="bg-slate-50 border-b border-slate-100 sticky top-0 z-10">
                 <tr>
-                  <th className="px-4 sm:px-8 py-4 sm:py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">임직원</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">임직원</th>
                   <th className="px-4 py-5 text-[10px] font-black text-emerald-400 uppercase tracking-widest text-center">월차</th>
                   <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">
                     <span className="block">연차</span>
