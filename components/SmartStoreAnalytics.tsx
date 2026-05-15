@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Order, Client, Product } from '../src/shared/types';
 import { TrendingUp, Users, RefreshCw, ChevronDown, ChevronUp, Tag, Check, X } from 'lucide-react';
+import PageHeader from './PageHeader';
 
 interface Props {
   orders: Order[];
@@ -227,11 +228,7 @@ export default function SmartStoreAnalytics({ orders, clients, products, onUpdat
   return (
     <div className="h-full overflow-y-auto bg-slate-50">
       <div className="p-6 max-w-5xl mx-auto space-y-6">
-        {/* 헤더 */}
-        <div>
-          <h1 className="text-2xl font-black text-slate-800">스마트스토어 분석</h1>
-          <p className="text-sm text-slate-500 mt-1">총 {ssOrders.length}건 주문 · 거래처 {ssClients.length}개 · 전용 품목 {ssProducts.length}개</p>
-        </div>
+        <PageHeader title="스마트스토어 분석" subtitle={`총 ${ssOrders.length}건 주문 · 거래처 ${ssClients.length}개 · 전용 품목 ${ssProducts.length}개`} />
 
         {/* 요약 카드 */}
         <div className="grid grid-cols-3 gap-4">

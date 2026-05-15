@@ -557,6 +557,45 @@ const DatabaseView: React.FC<DatabaseViewProps> = ({ onSync }) => {
     }
   };
 
+  // ── partner_item boxTypeId/tapeTypeId → shipping_rule 마이그레이션 ──────────
+  const migrateBoxTapeToShippingRule = async () => {
+    if (!window.confirm('partner_item의 boxTypeId/tapeTypeId 데이터를 shipping_rule 컬렉션으로 이관합니다.\n이미 shipping_rule이 있는 항목은 건너뜁니다.\n계속하시겠습니까?')) return;
+    try {
+      const { getDocs: gDocs, collection: col, addDoc, query, where } = await import('firebase/firestore');
+      const piSnap = await gDocs(col(db, 'partner_item'));
+      const srSnap = await gDocs(col(db, 'shipping_rule'));
+      const existingRules = srSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+
+      let created = 0, skipped = 0;
+      for (const piDoc of piSnap.docs) {
+        const pi = { id: piDoc.id, ...piDoc.data() } as any;
+        const itemId   = pi.Item_ID   || pi.productId  || pi.item_id;
+        const partnerId = pi.Partner_ID || pi.clientId;
+        const boxId    = pi.boxTypeId;
+        const tapeId   = pi.tapeTypeId;
+        const qtyPer   = pi.qtyPerBox ?? pi.qty_per_box ?? 0;
+
+        if (!boxId && !tapeId) { skipped++; continue; }
+        if (!itemId || !partnerId) { skipped++; continue; }
+
+        const alreadyExists = existingRules.some(r => r.item_id === itemId && r.partner_id === partnerId);
+        if (alreadyExists) { skipped++; continue; }
+
+        await addDoc(col(db, 'shipping_rule'), {
+          item_id: itemId,
+          partner_id: partnerId,
+          box_item_id: boxId ?? '',
+          qty_per_box: qtyPer,
+          ...(tapeId ? { tape_item_id: tapeId } : {}),
+        });
+        created++;
+      }
+      alert(`shipping_rule 마이그레이션 완료!\n생성: ${created}건 / 건너뜀: ${skipped}건\n앱을 새로고침하세요.`);
+    } catch (e: any) {
+      alert(`마이그레이션 실패: ${e.message}`);
+    }
+  };
+
   // ── 용기/라벨/테이프 데이터 복구 (기존 item_customer에 containerTypeId, labelId, tapeTypeId 채우기) ──
   const repairContainerData = async () => {
     try {
@@ -1141,6 +1180,20 @@ function doPost(e) {
                 className="shrink-0 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-xs transition-all active:scale-95"
               >
                 지금 복구
+              </button>
+            </div>
+
+            {/* 박스/테이프 → shipping_rule 마이그레이션 */}
+            <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-2xl p-4 gap-4">
+              <div>
+                <p className="text-sm font-black text-indigo-800">박스/테이프 → shipping_rule 이관</p>
+                <p className="text-xs text-indigo-600 font-medium mt-0.5">partner_item의 boxTypeId·tapeTypeId 값을 shipping_rule 컬렉션으로 옮깁니다. 이미 있는 항목은 건너뜁니다.</p>
+              </div>
+              <button
+                onClick={migrateBoxTapeToShippingRule}
+                className="shrink-0 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-xs transition-all active:scale-95"
+              >
+                지금 이관
               </button>
             </div>
 

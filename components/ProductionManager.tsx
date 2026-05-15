@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Plus, Trash2, Factory, ChevronLeft, ChevronRight, Search, X, RefreshCw, Pencil, Check } from 'lucide-react';
+import PageHeader from './PageHeader';
 import { ProductionRecord, Product, Order, OrderStatus } from '../types';
 
 const SUB_ONLY_CATS = new Set(['용기', '마개', '테이프', '박스', '라벨', '향미유', '고춧가루']);
@@ -183,34 +184,23 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
 
   return (
     <div className="space-y-4 pb-10">
-      {/* 헤더 */}
-      <div className="bg-white rounded-2xl border border-slate-100 p-5 flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="flex items-center gap-3 flex-1">
-          <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
-            <Factory size={20} className="text-emerald-600" />
-          </div>
-          <div>
-            <h2 className="text-lg font-black text-slate-800">생산 실적</h2>
-            <p className="text-xs text-slate-400">WIP → FINISHED 전환 이력 관리</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => { setSyncing(true); handleSyncFromOrders().catch(e => { alert(`오류: ${e}`); setSyncing(false); }); }}
-            disabled={syncing}
-            className="flex items-center gap-2 px-3 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all disabled:opacity-50"
-          >
-            <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-            주문 이력 동기화
-          </button>
-          <button
-            onClick={() => setShowForm(v => !v)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-all"
-          >
-            <Plus size={16} />
-            직접 입력
-          </button>
-        </div>
+      <PageHeader title="생산 실적" subtitle="WIP → FINISHED 전환 이력 관리" />
+      <div className="flex gap-2 justify-end">
+        <button
+          onClick={() => { setSyncing(true); handleSyncFromOrders().catch(e => { alert(`오류: ${e}`); setSyncing(false); }); }}
+          disabled={syncing}
+          className="flex items-center gap-2 px-3 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all disabled:opacity-50"
+        >
+          <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+          주문 이력 동기화
+        </button>
+        <button
+          onClick={() => setShowForm(v => !v)}
+          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-all"
+        >
+          <Plus size={16} />
+          직접 입력
+        </button>
       </div>
 
       {/* 입력 폼 */}

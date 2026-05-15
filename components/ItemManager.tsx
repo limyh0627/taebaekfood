@@ -485,8 +485,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                     ))}
                     {(mainView === 'by-client' && selectedClientId && clientScopeTab === 'sales') && (() => {
                       const rule = shippingRules.find(r => r.item_id === item.id && r.partner_id === selectedClientId);
-                      const boxName = rule?.box_item_id ? (products.find(p => p.id === rule.box_item_id)?.name ?? '-') : null;
-                      const tapeName = rule?.tape_item_id ? (products.find(p => p.id === rule.tape_item_id)?.name ?? '-') : null;
+                      const boxName = rule?.box_item_id ? (products.find(p => p.id === rule.box_item_id)?.name ?? rule.box_item_id) : null;
+                      const tapeName = rule?.tape_item_id ? (products.find(p => p.id === rule.tape_item_id)?.name ?? rule.tape_item_id) : null;
                       return (
                         <>
                           <td className="px-2 py-3">

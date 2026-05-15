@@ -1748,9 +1748,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
             };
 
             return (
-              <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
-                <div className="flex flex-col gap-3">
-                  <h2 className="text-2xl sm:text-3xl font-black text-slate-900 uppercase">서류 관리</h2>
+              <div className="space-y-5 animate-in slide-in-from-right-4 duration-500">
+                <div className="flex flex-col gap-4 pb-4 border-b border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-lg font-black text-slate-800">서류 관리</h2>
+                      <p className="text-xs text-slate-400 mt-0.5">생산·원료·작업 관련 서류를 조회하세요.</p>
+                    </div>
+                  </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="flex flex-wrap gap-1 bg-white p-1 rounded-2xl border border-slate-200 shadow-sm">
                       <button

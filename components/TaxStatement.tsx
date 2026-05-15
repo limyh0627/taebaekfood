@@ -5,6 +5,7 @@ import {
   Receipt, Eye, Calendar, Building2, ChevronDown, ChevronUp, Edit2, Trash2, Package,
 } from 'lucide-react';
 import { Client, IssuedStatement, CompanyInfo } from '../types';
+import PageHeader from './PageHeader';
 
 interface TaxStatementProps {
   issuedStatements: IssuedStatement[];
@@ -379,6 +380,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
 
   return (
     <div className="flex flex-col gap-4">
+      <PageHeader title="세금계산서" subtitle="발행된 세금계산서를 조회하거나 새로 발행합니다." />
       {/* 탭 헤더 */}
       <div className="flex bg-white rounded-2xl border border-slate-200 p-1 gap-1 self-start shadow-sm">
         {([
