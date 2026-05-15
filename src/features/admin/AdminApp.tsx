@@ -910,7 +910,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={Users} label="거래처 관리" active={currentView === 'partners'} onClick={() => handleNavClick('partners')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={ClipboardList} label="확인사항" active={currentView === 'admin-checklist'} onClick={() => handleNavClick('admin-checklist')} collapsed={isSidebarCollapsed} badge={adminPendingCount > 0 ? adminPendingCount : undefined} />
-                      <NavItem icon={ScanLine} label="입고/반품" active={currentView === 'inbound-returns'} onClick={() => handleNavClick('inbound-returns')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={QrCode} label="QR 라벨 인쇄" active={false} onClick={() => setShowQrLabel(true)} collapsed={isSidebarCollapsed} />
                       <NavItem icon={DatabaseIcon} label="데이터베이스" active={currentView === 'database'} onClick={() => handleNavClick('database')} collapsed={isSidebarCollapsed} />
                     </nav>
@@ -1391,6 +1390,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 }
               }}
               onUpdateAdjustmentStatus={(id, status) => updateItem('adjustmentRequests', id, { status, processedAt: new Date().toISOString() })}
+              onDeleteAdjustmentRequest={(id) => deleteItem('adjustmentRequests', id)}
               onProcessAdjustment={async (req) => {
                 const product = allProducts.find(p => p.id === req.productId);
                 if (req.type === 'quantity_change' && product && req.requestedQuantity !== undefined) {
@@ -3107,6 +3107,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 await updateItem('adjustmentRequests', req.id, { status: 'processed', processedAt: new Date().toISOString() });
                 alert('처리가 완료되었습니다.');
               }}
+              onDelete={(id) => deleteItem('adjustmentRequests', id)}
             />
           )}
           {currentView === 'leave-portal' && (

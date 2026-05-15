@@ -12,12 +12,14 @@ interface ConfirmationItemsProps {
   isAdmin: boolean;
   onUpdateStatus: (_id: string, _status: 'processed' | 'rejected') => void;
   onProcessAdjustment: (_req: AdjustmentRequest) => void;
+  onDelete?: (_id: string) => void;
 }
 
 const ConfirmationItems: React.FC<ConfirmationItemsProps> = ({
   requests,
   onUpdateStatus,
   onProcessAdjustment,
+  onDelete,
 }) => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -172,6 +174,7 @@ const ConfirmationItems: React.FC<ConfirmationItemsProps> = ({
                             >
                               반려
                             </button>
+                            {onDelete && <button onClick={() => onDelete(req.id)} className="px-2 py-1.5 bg-white border border-rose-200 text-rose-400 rounded-lg text-[10px] font-black hover:bg-rose-50 transition-all">삭제</button>}
                           </div>
                         )}
                         {req.status !== 'pending' && (
@@ -182,6 +185,7 @@ const ConfirmationItems: React.FC<ConfirmationItemsProps> = ({
                             <span className="sm:hidden text-slate-300">
                               {expandedId === req.id ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                             </span>
+                            {onDelete && <button onClick={(e) => { e.stopPropagation(); onDelete(req.id); }} className="px-2 py-1.5 bg-white border border-rose-200 text-rose-400 rounded-lg text-[10px] font-black hover:bg-rose-50 transition-all">삭제</button>}
                           </div>
                         )}
                       </td>

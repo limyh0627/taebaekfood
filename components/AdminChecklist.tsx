@@ -20,6 +20,7 @@ interface AdminChecklistProps {
   issuedStatements?: IssuedStatement[];
   onUpdateLeaveStatus: (_id: string, _status: 'approved' | 'rejected') => void;
   onUpdateAdjustmentStatus: (_id: string, _status: 'processed' | 'rejected') => void;
+  onDeleteAdjustmentRequest?: (_id: string) => void;
   onProcessAdjustment: (_req: AdjustmentRequest) => void;
   pendingStatementEdits?: PendingStatementEdit[];
   onApproveStatementEdit?: (_edit: PendingStatementEdit) => void;
@@ -30,7 +31,7 @@ interface AdminChecklistProps {
   onCreatePurchaseStatement?: (_data: { supplierId: string; supplierName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }> }) => void;
 }
 
-type TabType = 'leave' | 'adjustment' | 'return' | 'inbound' | 'stmtedit' | 'order';
+type TabType = 'leave' | 'adjustment' | 'ops';
 
 interface StatementDraftItem { name: string; qty: string; price: string; unit: string; isTaxExempt: boolean; }
 interface StatementDraft {
@@ -61,6 +62,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
   issuedStatements = [],
   onUpdateLeaveStatus,
   onUpdateAdjustmentStatus,
+  onDeleteAdjustmentRequest,
   onProcessAdjustment,
   pendingStatementEdits = [],
   onApproveStatementEdit,
@@ -309,46 +311,13 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
           )}
         </button>
         <button
-          onClick={() => setActiveTab('return')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'return' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
+          onClick={() => setActiveTab('ops')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'ops' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
         >
-          <RotateCcw size={15} />반품
-          {pendingReturns.length > 0 && (
-            <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center ${activeTab === 'return' ? 'bg-white/30 text-white' : 'bg-amber-100 text-amber-700'}`}>
-              {pendingReturns.length}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setActiveTab('inbound')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'inbound' ? 'bg-teal-600 text-white shadow-sm' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
-        >
-          <History size={15} />선입고 이력
-          {pendingVoucherCount > 0 && (
-            <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center ${activeTab === 'inbound' ? 'bg-white/30 text-white' : 'bg-rose-100 text-rose-700'}`}>
-              {pendingVoucherCount}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setActiveTab('stmtedit')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'stmtedit' ? 'bg-violet-600 text-white shadow-sm' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
-        >
-          <FileText size={15} />전표 수정
-          {pendingStmtEdits.length > 0 && (
-            <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center ${activeTab === 'stmtedit' ? 'bg-white/30 text-white' : 'bg-amber-100 text-amber-700'}`}>
-              {pendingStmtEdits.length}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setActiveTab('order')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'order' ? 'bg-orange-500 text-white shadow-sm' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
-        >
-          <ShoppingCart size={15} />발주 예정
-          {orderRequests.length > 0 && (
-            <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center ${activeTab === 'order' ? 'bg-white/30 text-white' : 'bg-orange-100 text-orange-700'}`}>
-              {orderRequests.length}
+          <ClipboardList size={15} />입고/반품/발주
+          {(pendingReturns.length + pendingVoucherCount + pendingStmtEdits.length + orderRequests.length) > 0 && (
+            <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center ${activeTab === 'ops' ? 'bg-white/30 text-white' : 'bg-amber-100 text-amber-700'}`}>
+              {pendingReturns.length + pendingVoucherCount + pendingStmtEdits.length + orderRequests.length}
             </span>
           )}
         </button>
@@ -508,6 +477,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                             {req.type === 'chat_mention' ? '확인' : req.type === 'reorder_alert' ? '발주완료' : '승인'}
                           </button>
                           <button onClick={() => onUpdateAdjustmentStatus(req.id, 'rejected')} className="px-2 py-1.5 bg-white border border-slate-200 text-slate-400 rounded-lg text-[10px] font-black hover:bg-slate-50 transition-all">반려</button>
+                          {onDeleteAdjustmentRequest && <button onClick={() => onDeleteAdjustmentRequest(req.id)} className="px-2 py-1.5 bg-white border border-rose-200 text-rose-400 rounded-lg text-[10px] font-black hover:bg-rose-50 transition-all">삭제</button>}
                         </div>
                       </td>
                     </tr>
@@ -525,217 +495,142 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
         </div>
       )}
 
-      {/* 반품 탭 */}
-      {activeTab === 'return' && (
+      {/* 입고/반품/발주 통합 탭 */}
+      {activeTab === 'ops' && (
         <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50/50 border-b border-slate-100">
-                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">요청 일시</th>
+                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">타입</th>
+                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">날짜</th>
                   <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">거래처</th>
-                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">품목</th>
-                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap">품목 수</th>
-                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center whitespace-nowrap">전표</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {pendingReturns.length === 0 ? (
-                  <tr><td colSpan={5} className="px-6 py-20 text-center">
-                    <div className="flex flex-col items-center gap-2 text-slate-400">
-                      <RotateCcw size={32} className="text-slate-200" />
-                      <span className="text-sm font-medium">대기 중인 반품 요청이 없습니다</span>
-                    </div>
-                  </td></tr>
-                ) : pendingReturns.map(req => (
-                  <tr key={req.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-3 py-3">
-                      <div className="flex items-center space-x-1 text-slate-500">
-                        <Clock size={12} className="shrink-0" />
-                        <span className="text-[10px] font-bold whitespace-nowrap">{new Date(req.createdAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3"><span className="text-[11px] font-black text-slate-800">{req.clientName}</span></td>
-                    <td className="px-3 py-3">
-                      <div className="space-y-0.5">
-                        {req.items.slice(0, 2).map((item, i) => (
-                          <div key={i} className="text-[10px] text-slate-600 whitespace-nowrap">{item.name} × {item.quantity}</div>
-                        ))}
-                        {req.items.length > 2 && <div className="text-[10px] text-slate-400">+{req.items.length - 2}건</div>}
-                        {req.note && (
-                          <div className="text-[10px] text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1 mt-1 whitespace-pre-wrap">
-                            {req.note}
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      <span className="text-[11px] font-black text-slate-400">{req.items.length}품목</span>
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="flex items-center justify-center gap-1">
-                        {req.status === 'pending' ? (
-                          <button onClick={() => openReturnStmtModal(req)} className="flex items-center gap-1 px-2 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-black transition-all shadow-sm whitespace-nowrap">
-                            <FileText size={11} /> 반품 전표 발행
-                          </button>
-                        ) : (
-                          <span className="flex items-center gap-1 text-emerald-600 text-[10px] font-black whitespace-nowrap">
-                            <Check size={11} /> 전표 발행됨
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* 선입고 이력 탭 */}
-      {activeTab === 'inbound' && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setInboundFilter('pending_voucher')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${inboundFilter === 'pending_voucher' ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-            >
-              전표 미발행 {pendingVoucherCount > 0 && `(${pendingVoucherCount})`}
-            </button>
-            <button
-              onClick={() => setInboundFilter('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${inboundFilter === 'all' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-            >
-              전체 이력
-            </button>
-          </div>
-
-          {filteredReceipts.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-100 p-16 text-center text-slate-400">
-              <History size={32} className="mx-auto mb-3 opacity-30" />
-              <p className="text-sm">{inboundFilter === 'pending_voucher' ? '전표 미발행 선입고가 없습니다' : '선입고 이력이 없습니다'}</p>
-              <p className="text-xs mt-1 text-slate-300">입고/반품 메뉴에서 선입고 처리 후 여기서 전표를 발행하세요</p>
-            </div>
-          ) : filteredReceipts.map(r => (
-            <div key={r.id} className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-2">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center shrink-0">
-                    <Building2 size={18} className="text-teal-600" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-black text-slate-800 text-sm">{r.supplierName}</p>
-                    <p className="text-xs text-slate-400">{r.registeredAt.slice(0, 10)} · {r.registeredBy}</p>
-                  </div>
-                </div>
-                <span className={`px-2 py-1 rounded-lg text-[10px] font-black shrink-0 ${r.status === 'voucher_linked' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                  {r.status === 'voucher_linked' ? '✓ 전표 발행됨' : '전표 미발행'}
-                </span>
-              </div>
-
-              <div className="space-y-1">
-                {r.items.map((item, i) => (
-                  <div key={i} className="flex justify-between text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-1.5">
-                    <span>{item.name}</span>
-                    <span className="font-bold">{item.quantity.toLocaleString()} {item.unit}{item.unitPrice ? ` · ${(item.unitPrice * item.quantity).toLocaleString()}원` : ''}</span>
-                  </div>
-                ))}
-              </div>
-
-              {r.totalAmount !== undefined && r.totalAmount > 0 && (
-                <p className="text-xs text-slate-400 pt-1 border-t border-slate-50">
-                  합계 <span className="font-black text-slate-700">{r.totalAmount.toLocaleString()}원</span>
-                </p>
-              )}
-              {r.note && (
-                <p className="text-xs text-slate-500 bg-amber-50 border border-amber-100 rounded-lg px-3 py-1.5">비고: {r.note}</p>
-              )}
-
-              {r.status === 'pending_voucher' && (
-                <button
-                  onClick={() => openStatementModal(r)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-black transition-all"
-                >
-                  <FileText size={12} /> 매입 전표 발행
-                </button>
-              )}
-              {r.status === 'voucher_linked' && (
-                <p className="flex items-center gap-1 text-xs text-emerald-600">
-                  <Link2 size={11} /> 전표 연결됨{r.linkedStatementId ? ` (${r.linkedStatementId.slice(-6)})` : ''}
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {totalPending === 0 && activeTab !== 'inbound' && (
-        <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm p-12 flex flex-col items-center gap-3 text-slate-400">
-          <ClipboardList size={40} className="text-slate-200" />
-          <p className="text-sm font-bold">처리할 항목이 없습니다</p>
-          <p className="text-xs text-slate-300">신규 연차 신청이나 재고 변동이 발생하면 여기에 표시됩니다.</p>
-        </div>
-      )}
-
-      {/* 전표 수정 요청 탭 */}
-      {activeTab === 'stmtedit' && (
-        <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50/50 border-b border-slate-100">
-                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">요청일</th>
-                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">전표번호</th>
-                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">구분</th>
-                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">거래처</th>
-                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">요청자</th>
-                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">변경 내용</th>
+                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">내용</th>
+                  <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">수</th>
                   <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center whitespace-nowrap">처리</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
-                {pendingStmtEdits.length === 0 ? (
-                  <tr><td colSpan={7} className="px-6 py-20 text-center">
-                    <div className="flex flex-col items-center gap-2 text-slate-400">
-                      <FileText size={32} className="text-slate-200" />
-                      <span className="text-sm font-medium">대기 중인 전표 수정 요청이 없습니다</span>
-                    </div>
-                  </td></tr>
-                ) : pendingStmtEdits.map(edit => (
-                  <tr key={edit.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-3 py-3 text-[10px] text-slate-500 whitespace-nowrap">
-                      {new Date(edit.createdAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}
-                    </td>
-                    <td className="px-3 py-3 text-[11px] font-bold text-slate-800">{edit.statementDocNo}</td>
+              <tbody>
+                {/* ── 반품 그룹 ── */}
+                <tr><td colSpan={6} className="px-4 py-2 bg-rose-50 border-y border-rose-100">
+                  <span className="flex items-center gap-1.5 text-[10px] font-black text-rose-600 uppercase tracking-widest">
+                    <RotateCcw size={11} /> 반품 {pendingReturns.length > 0 ? `(${pendingReturns.length}건)` : ''}
+                  </span>
+                </td></tr>
+                {pendingReturns.length === 0 ? (
+                  <tr><td colSpan={6} className="px-6 py-5 text-center text-xs text-slate-300">반품 요청 없음</td></tr>
+                ) : pendingReturns.map(req => (
+                  <tr key={req.id} className="hover:bg-slate-50/50 transition-colors border-b border-slate-50">
+                    <td className="px-3 py-3"><span className="px-2 py-1 rounded-lg text-[10px] font-black bg-rose-50 text-rose-600 whitespace-nowrap">반품</span></td>
+                    <td className="px-3 py-3"><div className="flex items-center space-x-1 text-slate-500"><Clock size={12} className="shrink-0" /><span className="text-[10px] font-bold whitespace-nowrap">{new Date(req.createdAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}</span></div></td>
+                    <td className="px-3 py-3"><span className="text-[11px] font-black text-slate-800">{req.clientName}</span></td>
                     <td className="px-3 py-3">
-                      <span className={`px-2 py-1 rounded-lg text-[10px] font-black whitespace-nowrap ${edit.statementType === '매출' ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'}`}>
-                        {edit.statementType}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 text-[11px] text-slate-700">{edit.clientName}</td>
-                    <td className="px-3 py-3 text-[11px] text-slate-500">{edit.createdBy}</td>
-                    <td className="px-3 py-3 text-[10px] text-slate-500">
                       <div className="space-y-0.5">
-                        <div>거래일: <span className="font-bold text-slate-700">{edit.proposedData.tradeDate}</span></div>
-                        <div>합계: <span className="font-bold text-slate-700">{(edit.proposedData.totalAmount ?? 0).toLocaleString()}원</span></div>
-                        <div>품목 {edit.proposedData.items?.length ?? 0}개</div>
+                        {req.items.slice(0, 2).map((item, i) => (<div key={i} className="text-[10px] text-slate-600 whitespace-nowrap">{item.name} × {item.quantity}</div>))}
+                        {req.items.length > 2 && <div className="text-[10px] text-slate-400">+{req.items.length - 2}건</div>}
+                        {req.note && <div className="text-[10px] text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1 mt-1">{req.note}</div>}
                       </div>
                     </td>
+                    <td className="px-3 py-3 text-right"><span className="text-[11px] font-black text-slate-400">{req.items.length}품목</span></td>
                     <td className="px-3 py-3">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => onApproveStatementEdit?.(edit)}
-                          className="flex items-center gap-1 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-[10px] font-black transition-colors"
-                        >
-                          <Check size={11} />승인
-                        </button>
-                        <button
-                          onClick={() => onRejectStatementEdit?.(edit.id)}
-                          className="flex items-center gap-1 px-3 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded-lg text-[10px] font-black transition-colors"
-                        >
-                          <X size={11} />거절
-                        </button>
+                      <div className="flex items-center justify-center">
+                        {req.status === 'pending' ? (
+                          <button onClick={() => openReturnStmtModal(req)} className="flex items-center gap-1 px-2 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-black transition-all shadow-sm whitespace-nowrap"><FileText size={11} /> 반품 전표 발행</button>
+                        ) : (
+                          <span className="flex items-center gap-1 text-emerald-600 text-[10px] font-black whitespace-nowrap"><Check size={11} /> 전표 발행됨</span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+
+                {/* ── 선입고 이력 그룹 ── */}
+                <tr><td colSpan={6} className="px-4 py-2 bg-teal-50 border-y border-teal-100">
+                  <span className="flex items-center gap-1.5 text-[10px] font-black text-teal-600 uppercase tracking-widest">
+                    <History size={11} /> 선입고 이력 {pendingVoucherCount > 0 ? `(전표 미발행 ${pendingVoucherCount}건)` : `(${filteredReceipts.length}건)`}
+                  </span>
+                </td></tr>
+                {filteredReceipts.length === 0 ? (
+                  <tr><td colSpan={6} className="px-6 py-5 text-center text-xs text-slate-300">선입고 이력 없음</td></tr>
+                ) : filteredReceipts.map(r => (
+                  <tr key={r.id} className="hover:bg-slate-50/50 transition-colors border-b border-slate-50">
+                    <td className="px-3 py-3"><span className={`px-2 py-1 rounded-lg text-[10px] font-black whitespace-nowrap ${r.status === 'voucher_linked' ? 'bg-emerald-50 text-emerald-600' : 'bg-teal-50 text-teal-600'}`}>{r.status === 'voucher_linked' ? '선입고✓' : '선입고'}</span></td>
+                    <td className="px-3 py-3"><div className="flex items-center space-x-1 text-slate-500"><Clock size={12} className="shrink-0" /><span className="text-[10px] font-bold whitespace-nowrap">{r.registeredAt.slice(5, 10).replace('-', '.')}</span></div></td>
+                    <td className="px-3 py-3"><span className="text-[11px] font-black text-slate-800">{r.supplierName}</span></td>
+                    <td className="px-3 py-3">
+                      <div className="space-y-0.5">
+                        {r.items.slice(0, 2).map((item, i) => (<div key={i} className="text-[10px] text-slate-600 whitespace-nowrap">{item.name} × {item.quantity.toLocaleString()} {item.unit}</div>))}
+                        {r.items.length > 2 && <div className="text-[10px] text-slate-400">+{r.items.length - 2}건</div>}
+                        {r.note && <div className="text-[10px] text-slate-500 bg-amber-50 rounded px-2 py-0.5 mt-1">비고: {r.note}</div>}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-right"><span className="text-[11px] font-black text-slate-400">{r.items.length}품목</span></td>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center justify-center">
+                        {r.status === 'pending_voucher' ? (
+                          <button onClick={() => openStatementModal(r)} className="flex items-center gap-1 px-2 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-black transition-all shadow-sm whitespace-nowrap"><FileText size={11} /> 매입전표 발행</button>
+                        ) : (
+                          <span className="flex items-center gap-1 text-emerald-600 text-[10px] font-black whitespace-nowrap"><Check size={11} /> 전표 발행됨</span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+
+                {/* ── 전표 수정 그룹 ── */}
+                <tr><td colSpan={6} className="px-4 py-2 bg-violet-50 border-y border-violet-100">
+                  <span className="flex items-center gap-1.5 text-[10px] font-black text-violet-600 uppercase tracking-widest">
+                    <FileText size={11} /> 전표 수정 {pendingStmtEdits.length > 0 ? `(${pendingStmtEdits.length}건)` : ''}
+                  </span>
+                </td></tr>
+                {pendingStmtEdits.length === 0 ? (
+                  <tr><td colSpan={6} className="px-6 py-5 text-center text-xs text-slate-300">전표 수정 요청 없음</td></tr>
+                ) : pendingStmtEdits.map(edit => (
+                  <tr key={edit.id} className="hover:bg-slate-50/50 transition-colors border-b border-slate-50">
+                    <td className="px-3 py-3"><span className="px-2 py-1 rounded-lg text-[10px] font-black bg-violet-50 text-violet-600 whitespace-nowrap">전표수정</span></td>
+                    <td className="px-3 py-3"><div className="flex items-center space-x-1 text-slate-500"><Clock size={12} className="shrink-0" /><span className="text-[10px] font-bold whitespace-nowrap">{new Date(edit.createdAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}</span></div></td>
+                    <td className="px-3 py-3"><span className="text-[11px] font-black text-slate-800">{edit.clientName}</span></td>
+                    <td className="px-3 py-3">
+                      <div className="space-y-0.5 text-[10px] text-slate-600">
+                        <div>{edit.statementDocNo} <span className={`px-1.5 py-0.5 rounded text-[9px] font-black ${edit.statementType === '매출' ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'}`}>{edit.statementType}</span></div>
+                        <div>거래일: {edit.proposedData.tradeDate} · 합계: {(edit.proposedData.totalAmount ?? 0).toLocaleString()}원 · by {edit.createdBy}</div>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-right"><span className="text-[11px] font-black text-slate-400">{edit.proposedData.items?.length ?? 0}품목</span></td>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center justify-center gap-1">
+                        <button onClick={() => onApproveStatementEdit?.(edit)} className="flex items-center gap-1 px-2 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-[10px] font-black transition-colors whitespace-nowrap"><Check size={10} />승인</button>
+                        <button onClick={() => onRejectStatementEdit?.(edit.id)} className="flex items-center gap-1 px-2 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded-lg text-[10px] font-black transition-colors whitespace-nowrap"><X size={10} />거절</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+
+                {/* ── 발주 예정 그룹 ── */}
+                <tr><td colSpan={6} className="px-4 py-2 bg-orange-50 border-y border-orange-100">
+                  <span className="flex items-center gap-1.5 text-[10px] font-black text-orange-600 uppercase tracking-widest">
+                    <ShoppingCart size={11} /> 발주 예정 {orderRequests.length > 0 ? `(${orderRequests.length}건)` : ''}
+                  </span>
+                </td></tr>
+                {orderGroups.length === 0 ? (
+                  <tr><td colSpan={6} className="px-6 py-5 text-center text-xs text-slate-300">발주 예정 품목 없음</td></tr>
+                ) : orderGroups.map(group => (
+                  <tr key={group.supplierId} className="hover:bg-slate-50/50 transition-colors border-b border-slate-50">
+                    <td className="px-3 py-3"><span className="px-2 py-1 rounded-lg text-[10px] font-black bg-orange-50 text-orange-600 whitespace-nowrap">발주예정</span></td>
+                    <td className="px-3 py-3 text-[10px] text-slate-400">-</td>
+                    <td className="px-3 py-3"><span className="text-[11px] font-black text-slate-800">{group.supplierName}</span></td>
+                    <td className="px-3 py-3">
+                      <div className="space-y-0.5">
+                        {group.items.slice(0, 2).map((item, i) => (<div key={i} className="text-[10px] text-slate-600 whitespace-nowrap">{item.name} · {item.isBox ? `${item.qty}BOX` : `${item.qty}${item.spec || ''}`}{item.price > 0 ? ` · ${item.price.toLocaleString()}원` : ''}</div>))}
+                        {group.items.length > 2 && <div className="text-[10px] text-slate-400">+{group.items.length - 2}건</div>}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-right"><span className="text-[11px] font-black text-slate-400">{group.items.length}품목</span></td>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center justify-center">
+                        {onCreatePurchaseStatement && (
+                          <button onClick={() => onCreatePurchaseStatement({ supplierId: group.supplierId, supplierName: group.supplierName, items: group.items.map(i => ({ name: i.name, spec: i.spec, qty: i.qty, price: i.price, isBox: i.isBox })) })} className="flex items-center gap-1 px-2 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-[10px] font-black transition-colors whitespace-nowrap"><FileText size={11} />매입전표 작성</button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -743,56 +638,6 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
               </tbody>
             </table>
           </div>
-        </div>
-      )}
-
-      {/* 발주 예정 탭 */}
-      {activeTab === 'order' && (
-        <div className="space-y-4">
-          {orderGroups.length === 0 ? (
-            <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm px-6 py-20 text-center">
-              <div className="flex flex-col items-center gap-2 text-slate-400">
-                <ShoppingCart size={32} className="text-slate-200" />
-                <span className="text-sm font-medium">발주 예정 품목이 없습니다</span>
-              </div>
-            </div>
-          ) : orderGroups.map(group => (
-            <div key={group.supplierId} className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Building2 size={15} className="text-orange-500" />
-                  <span className="font-black text-sm text-slate-800">{group.supplierName}</span>
-                  <span className="text-[10px] font-black bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full">{group.items.length}품목</span>
-                </div>
-                {onCreatePurchaseStatement && (
-                  <button
-                    onClick={() => onCreatePurchaseStatement({ supplierId: group.supplierId, supplierName: group.supplierName, items: group.items.map(i => ({ name: i.name, spec: i.spec, qty: i.qty, price: i.price, isBox: i.isBox })) })}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-[11px] font-black transition-colors"
-                  >
-                    <FileText size={12} />매입전표 작성
-                  </button>
-                )}
-              </div>
-              <div className="divide-y divide-slate-50">
-                {group.items.map(item => (
-                  <div key={item.productId} className="px-5 py-3 flex items-center gap-4">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-slate-800">{item.name}</p>
-                      {item.spec && <p className="text-xs text-slate-400">{item.spec}</p>}
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-sm font-black text-slate-700">
-                        {item.isBox ? `${item.qty}BOX` : `${item.qty}${item.spec || ''}`}
-                      </p>
-                      {item.price > 0 && (
-                        <p className="text-xs text-slate-400">{item.price.toLocaleString()}원/{item.spec || '개'}</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
         </div>
       )}
 
