@@ -109,6 +109,7 @@ export interface Partner {
   type: ClientType;
   region?: string;
   address?: string;
+  addressDetail?: string;
   partnerType?: PartnerType; // undefined = '매출처' (하위 호환)
   purchaseItems?: PurchaseItem[];
 }
