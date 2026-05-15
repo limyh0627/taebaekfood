@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Package, Tag, Box, Layers, Plus, Building2, Check, Trash2 } from 'lucide-react';
-import { Product, InventoryCategory, Client, ClientBoxConfig, ProductClient, ProductSupplier } from '../types';
+import { Product, InventoryCategory, Client, ClientBoxConfig, ProductClient, ProductSupplier, ShippingRule } from '../types';
 
 interface ProductModalProps {
   initialData?: Product;
@@ -10,9 +10,12 @@ interface ProductModalProps {
   clients?: Client[];
   productClients?: ProductClient[];
   productSuppliers?: ProductSupplier[];
+  shippingRules?: ShippingRule[];
   onClose: () => void;
   onSave: (_product: Product) => void;
   onSaveProductClientConfig?: (id: string, config: Partial<ProductClient>) => Promise<void>;
+  onSaveShippingRule?: (rule: Partial<ShippingRule> & { id: string }) => Promise<void>;
+  onAddShippingRule?: (rule: Omit<ShippingRule, 'id'>) => Promise<void>;
   onUpsertProductSupplier?: (ps: ProductSupplier) => void;
   onAddSubmaterial?: (name: string, category: string) => Promise<string>;
 }
@@ -57,7 +60,7 @@ const PUMOK_VOLUMES: Record<string, string[]> = {
   '시골향볶음검정참깨': ['1kg','20kg','25kg'],
 };
 
-const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], products = [], clients = [], productClients = [], productSuppliers = [], onClose, onSave, onSaveProductClientConfig, onUpsertProductSupplier, onAddSubmaterial }) => {
+const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], products = [], clients = [], productClients = [], productSuppliers = [], shippingRules = [], onClose, onSave, onSaveProductClientConfig, onSaveShippingRule, onAddShippingRule, onUpsertProductSupplier, onAddSubmaterial }) => {
   const [formData, setFormData] = useState(() => ({
     name: initialData?.name || '',
     category: (initialData?.category as InventoryCategory) || 'product',
@@ -96,12 +99,17 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const [boxClientSearch, setBoxClientSearch] = useState('');
   const [showBoxClientDrop, setShowBoxClientDrop] = useState(false);
 
-  // 거래처별 포장 설정 (ProductClient 기반)
+  // 거래처별 포장 설정 (shipping_rule 기반, partner_item 필드 fallback)
   const [clientPackagingConfigs, setClientPackagingConfigs] = useState<Record<string, { boxTypeId?: string; qtyPerBox?: number; tapeTypeId?: string }>>(() => {
     const map: Record<string, { boxTypeId?: string; qtyPerBox?: number; tapeTypeId?: string }> = {};
     if (initialData) {
       productClients.filter(pc => pc.Item_ID === initialData.id).forEach(pc => {
-        map[pc.Partner_ID] = { boxTypeId: pc.boxTypeId, qtyPerBox: pc.qtyPerBox, tapeTypeId: pc.tapeTypeId };
+        const rule = shippingRules.find(r => r.item_id === initialData.id && r.partner_id === pc.Partner_ID);
+        map[pc.Partner_ID] = {
+          boxTypeId: rule?.box_item_id ?? pc.boxTypeId,
+          qtyPerBox: rule?.qty_per_box ?? pc.qtyPerBox,
+          tapeTypeId: rule?.tape_item_id ?? pc.tapeTypeId,
+        };
       });
     }
     return map;
@@ -189,12 +197,18 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       onUpsertProductSupplier({ id: psId, Partner_ID: supplierId, Item_ID: itemId, Direction: 'in', Standard_Price: existing?.Standard_Price, taxType: existing?.taxType });
     }
 
-    // ProductClient에 박스/테이프 설정 저장
-    if (onSaveProductClientConfig && finalProduct.clientIds?.length) {
+    // 거래처별 포장 설정 → shipping_rule 컬렉션에 저장
+    if ((onSaveShippingRule || onAddShippingRule) && finalProduct.clientIds?.length) {
       const pid = finalProduct.id;
       for (const clientId of finalProduct.clientIds) {
         const cfg = clientPackagingConfigs[clientId] ?? {};
-        await onSaveProductClientConfig(`${pid}_${clientId}`, { boxTypeId: cfg.boxTypeId, qtyPerBox: cfg.qtyPerBox, tapeTypeId: cfg.tapeTypeId });
+        if (!cfg.boxTypeId && !cfg.qtyPerBox && !cfg.tapeTypeId) continue;
+        const existing = shippingRules.find(r => r.item_id === pid && r.partner_id === clientId);
+        if (existing && onSaveShippingRule) {
+          await onSaveShippingRule({ id: existing.id, box_item_id: cfg.boxTypeId ?? '', qty_per_box: cfg.qtyPerBox ?? 0, tape_item_id: cfg.tapeTypeId });
+        } else if (!existing && onAddShippingRule && cfg.boxTypeId) {
+          await onAddShippingRule({ item_id: pid, partner_id: clientId, box_item_id: cfg.boxTypeId, qty_per_box: cfg.qtyPerBox ?? 0, tape_item_id: cfg.tapeTypeId });
+        }
       }
     }
   };

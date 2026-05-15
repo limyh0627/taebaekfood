@@ -3316,9 +3316,21 @@ const AdminApp: React.FC<AdminAppProps> = ({
           clients={clients}
           productClients={productClients}
           productSuppliers={productSuppliers}
+          shippingRules={shippingRules}
           onClose={() => {setIsProductModalOpen(false); setEditingProduct(null);}}
           onSaveProductClientConfig={async (id, config) => {
             try { await updateItem('partner_item', id, config); } catch { /* 문서 없으면 무시 */ }
+          }}
+          onSaveShippingRule={async (rule) => {
+            const { doc: fDoc, updateDoc: fUpdate } = await import('firebase/firestore');
+            const { db: fireDb } = await import('../../shared/firebase');
+            const { id, ...data } = rule;
+            await fUpdate(fDoc(fireDb, 'shipping_rule', id), data);
+          }}
+          onAddShippingRule={async (rule) => {
+            const { addDoc, collection: col } = await import('firebase/firestore');
+            const { db: fireDb } = await import('../../shared/firebase');
+            await addDoc(col(fireDb, 'shipping_rule'), rule);
           }}
           onUpsertProductSupplier={(ps) => addItem('partner_item', { ...ps, Partner_ID: ps.Partner_ID, Item_ID: ps.Item_ID, Direction: 'in' as const, Standard_Price: ps.Standard_Price })}
           onAddSubmaterial={async (name, category) => {
