@@ -88,7 +88,6 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
               <tr className="bg-slate-50 border-b border-slate-100">
                 <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">품목명</th>
                 <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">카테고리</th>
-                <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">판매단가</th>
                 <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">원가</th>
                 <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">재고</th>
                 <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center whitespace-nowrap">관리</th>
@@ -97,7 +96,7 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
             <tbody className="divide-y divide-slate-50">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-300">품목 없음</td>
+                  <td colSpan={5} className="px-4 py-10 text-center text-sm text-slate-300">품목 없음</td>
                 </tr>
               ) : filtered.map(p => {
                 const isEditing = editingId === p.id;
@@ -126,16 +125,6 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
                     {/* 카테고리 */}
                     <td className="px-3 py-3">
                       <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">{p.category}</span>
-                    </td>
-                    {/* 판매단가 */}
-                    <td className="px-3 py-3 text-right">
-                      {isEditing ? (
-                        <input type="number" value={editPrice} onChange={e => setEditPrice(e.target.value)}
-                          className="w-28 text-right border border-indigo-300 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"
-                          placeholder="판매단가"/>
-                      ) : (
-                        <span className="text-sm font-bold text-slate-700">{p.price ? `${fmt(p.price)}원` : '-'}</span>
-                      )}
                     </td>
                     {/* 원가 */}
                     <td className="px-3 py-3 text-right">
