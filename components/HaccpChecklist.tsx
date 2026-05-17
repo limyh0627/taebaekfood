@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileDown, ClipboardList, Thermometer, Bug, CheckSquare, Scan, ShoppingCart, Wrench, ShieldAlert, Save, Trash2, BadgeCheck } from 'lucide-react';
+import { FileDown, ClipboardList, Thermometer, Bug, CheckSquare, Scan, ShoppingCart, Wrench, ShieldAlert, Save, Trash2, BadgeCheck, User, Plus } from 'lucide-react';
 import { db } from '../src/shared/firebase';
 import { collection, addDoc, updateDoc, doc, onSnapshot, query, orderBy, deleteDoc } from 'firebase/firestore';
 
@@ -1220,7 +1220,7 @@ const emptyRecord = (slot: SlotTime): Omit<SanitationRecord, 'id'> => ({
   revisionCount: -1,
 });
 
-const SanitationForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean }> = ({ currentUser, isAdmin }) => {
+export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean }> = ({ currentUser, isAdmin }) => {
   const [records, setRecords] = useState<SanitationRecord[]>([]);
   const [selected, setSelected] = useState<SanitationRecord | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1256,6 +1256,7 @@ const SanitationForm: React.FC<{ currentUser?: { id: string; name: string }; isA
 
   const isToday = selected ? selected.checkDate === today : false;
   const isReadOnly = selected ? !isToday : false;
+  const allChecked = selected ? selected.rows.every(r => r.result === 'pass' || r.result === 'fail') : false;
 
   const setRow = (idx: number, field: keyof SanitationRow, val: string) => {
     if (isReadOnly) return;
@@ -1329,6 +1330,10 @@ const SanitationForm: React.FC<{ currentUser?: { id: string; name: string }; isA
     if (!isAdmin) return;
     if (!selected?.id) {
       alert('점검표를 먼저 저장해주세요.');
+      return;
+    }
+    if (!allChecked) {
+      alert('모든 점검 항목을 확인(적합/부적합) 완료 후 확인할 수 있습니다.');
       return;
     }
     setConfirming(true);
@@ -1472,11 +1477,11 @@ const SanitationForm: React.FC<{ currentUser?: { id: string; name: string }; isA
                     </span>
                   : <button
                       onClick={handleConfirm}
-                      disabled={confirming || !selected.id}
-                      title={!selected.id ? '저장 후 확인할 수 있습니다' : ''}
+                      disabled={confirming || !selected.id || !allChecked}
+                      title={!selected.id ? '저장 후 확인할 수 있습니다' : !allChecked ? '모든 항목 체크 완료 후 확인 가능' : ''}
                       className="flex items-center gap-1 px-3 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                      <BadgeCheck size={13} /> {confirming ? '처리 중...' : !selected.id ? '관리자 확인 (저장 먼저)' : '관리자 확인'}
+                      <BadgeCheck size={13} /> {confirming ? '처리 중...' : !selected.id ? '저장 먼저' : !allChecked ? '항목 미완료' : '관리자 확인'}
                     </button>
               )}
               {!isReadOnly && (
@@ -1653,19 +1658,44 @@ const SanitationForm: React.FC<{ currentUser?: { id: string; name: string }; isA
 
             {/* 서명란 */}
             <div className="grid grid-cols-2 gap-3 mt-4 md:flex md:justify-end md:gap-4 text-xs">
-              {[
-                { label: '작성자', value: selected.createdBy || (isReadOnly ? '-' : currentUser?.name ?? '') },
-                ...(selected.confirmedBy
-                  ? [{ label: '확인자', value: selected.confirmedBy }]
-                  : []),
-                ...(selected.updatedBy && selected.updatedBy !== selected.createdBy
-                  ? [{ label: '수정자', value: selected.updatedBy }] : []),
-              ].map(s => (
-                <div key={s.label} className="border border-slate-400 text-center md:w-28">
-                  <div className="bg-slate-100 text-xs font-bold py-1 border-b border-slate-400">{s.label}</div>
-                  <div className="h-10 flex items-center justify-center text-slate-700 font-semibold">{s.value}</div>
+              {/* 작성자 */}
+              <div className="border border-slate-400 text-center md:w-28">
+                <div className="bg-slate-100 text-xs font-bold py-1 border-b border-slate-400">작성자</div>
+                <div className="h-10 flex items-center justify-center text-slate-700 font-semibold">
+                  {selected.createdBy || (isReadOnly ? '-' : currentUser?.name ?? '')}
                 </div>
-              ))}
+              </div>
+              {/* 수정자 (있을 때만) */}
+              {selected.updatedBy && selected.updatedBy !== selected.createdBy && (
+                <div className="border border-slate-400 text-center md:w-28">
+                  <div className="bg-slate-100 text-xs font-bold py-1 border-b border-slate-400">수정자</div>
+                  <div className="h-10 flex items-center justify-center text-slate-700 font-semibold">
+                    {selected.updatedBy}
+                  </div>
+                </div>
+              )}
+              {/* 확인자 — 항상 표시 */}
+              <div className="border border-slate-400 text-center md:w-28">
+                <div className="bg-slate-100 text-xs font-bold py-1 border-b border-slate-400">확인자</div>
+                <div className="h-10 flex items-center justify-center">
+                  {selected.confirmedBy
+                    ? <span className="text-slate-700 font-semibold">{selected.confirmedBy}</span>
+                    : isAdmin && selected.id && allChecked
+                      ? <button
+                          onClick={handleConfirm}
+                          disabled={confirming}
+                          className="flex items-center gap-1 px-2 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-40"
+                        >
+                          <BadgeCheck size={11} /> {confirming ? '처리 중...' : '확인'}
+                        </button>
+                      : isAdmin && !selected.id
+                        ? <span className="text-slate-300 text-[10px]">저장 후 확인</span>
+                        : isAdmin && !allChecked
+                          ? <span className="text-slate-300 text-[10px]">항목 완료 후</span>
+                          : <span className="text-slate-200 text-xs">-</span>
+                  }
+                </div>
+              </div>
             </div>
 
             {/* 이력 */}
@@ -1680,6 +1710,388 @@ const SanitationForm: React.FC<{ currentUser?: { id: string; name: string }; isA
           </div>
         </div>
       )}
+    </div>
+  );
+};
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 10. 개인위생점검표 (HACCP-PRP-002)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const PERSONAL_HYGIENE_COLS = ['건강', '손세척', '손톱', '악세사리', '위생복', '위생모', '마스크', '장갑'] as const;
+type HygieneColKey = typeof PERSONAL_HYGIENE_COLS[number];
+
+interface PersonalHygieneRow {
+  name: string;
+  checks: Record<HygieneColKey, 'O' | 'X' | ''>;
+  note: string;
+}
+interface PersonalHygieneRecord {
+  id?: string;
+  checkDate: string;
+  rows: PersonalHygieneRow[];
+  inspector: string;
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+  revisionCount: number;
+  confirmedBy?: string;
+  confirmedAt?: string;
+}
+
+const emptyPersonalRecord = (): Omit<PersonalHygieneRecord, 'id'> => ({
+  checkDate: todayStr(),
+  rows: Array.from({ length: 8 }, () => ({
+    name: '',
+    checks: Object.fromEntries(PERSONAL_HYGIENE_COLS.map(k => [k, ''])) as Record<HygieneColKey, 'O' | 'X' | ''>,
+    note: '',
+  })),
+  inspector: '',
+  createdBy: '',
+  createdAt: '',
+  updatedBy: '',
+  updatedAt: '',
+  revisionCount: -1,
+});
+
+export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean }> = ({ currentUser, isAdmin }) => {
+  const [records, setRecords] = useState<PersonalHygieneRecord[]>([]);
+  const [selected, setSelected] = useState<PersonalHygieneRecord | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const printRef = useRef<HTMLDivElement>(null);
+  const today = todayStr();
+
+  useEffect(() => {
+    const q = query(collection(db, 'haccp_personal_hygiene'), orderBy('checkDate', 'desc'));
+    return onSnapshot(q, snap => {
+      setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as PersonalHygieneRecord)));
+    });
+  }, []);
+
+  const todayRecord = records.find(r => r.checkDate === today);
+  const openToday = () => setSelected(todayRecord ?? { ...emptyPersonalRecord() } as PersonalHygieneRecord);
+  const openHistory = (r: PersonalHygieneRecord) => { setSelected(r); setShowHistory(false); };
+  const isReadOnly = selected ? selected.checkDate !== today : false;
+  const filledRows = selected?.rows.filter(r => r.name.trim()) ?? [];
+  const allChecked = filledRows.length > 0 && filledRows.every(r => PERSONAL_HYGIENE_COLS.every(col => r.checks[col] !== ''));
+
+  const toggleCheck = (rowIdx: number, col: HygieneColKey, val: 'O' | 'X') => {
+    if (isReadOnly) return;
+    setSelected(prev => {
+      if (!prev) return prev;
+      const newVal = prev.rows[rowIdx].checks[col] === val ? '' : val;
+      return { ...prev, rows: prev.rows.map((r, i) => i === rowIdx ? { ...r, checks: { ...r.checks, [col]: newVal } } : r) };
+    });
+  };
+
+  const setRowField = (rowIdx: number, field: 'name' | 'note', val: string) => {
+    if (isReadOnly) return;
+    setSelected(prev => prev ? { ...prev, rows: prev.rows.map((r, i) => i === rowIdx ? { ...r, [field]: val } : r) } : prev);
+  };
+
+  const addRow = () => setSelected(prev => prev ? {
+    ...prev,
+    rows: [...prev.rows, { name: '', checks: Object.fromEntries(PERSONAL_HYGIENE_COLS.map(k => [k, ''])) as Record<HygieneColKey, 'O' | 'X' | ''>, note: '' }],
+  } : prev);
+
+  const revLabel = (r: PersonalHygieneRecord) => r.revisionCount < 0 ? '미저장' : `Rev.${r.revisionCount}`;
+
+  const handleSave = async () => {
+    if (!selected || isReadOnly) return;
+    setSaving(true);
+    const now = new Date().toISOString();
+    const userName = currentUser?.name ?? '알 수 없음';
+    try {
+      if (!selected.id) {
+        const data: Omit<PersonalHygieneRecord, 'id'> = { ...selected, inspector: selected.inspector || userName, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now, revisionCount: 0 };
+        const ref = await addDoc(collection(db, 'haccp_personal_hygiene'), data);
+        setSelected({ ...data, id: ref.id });
+      } else {
+        const update = { ...selected, updatedBy: userName, updatedAt: now, revisionCount: (selected.revisionCount ?? 0) + 1 };
+        await updateDoc(doc(db, 'haccp_personal_hygiene', selected.id), update as any);
+        setSelected(prev => prev ? { ...prev, ...update } : prev);
+      }
+    } finally { setSaving(false); }
+  };
+
+  const handleConfirm = async () => {
+    if (!isAdmin || !selected?.id) return;
+    if (!allChecked) { alert('성명이 입력된 모든 작업자의 항목을 완료 후 확인할 수 있습니다.'); return; }
+    setConfirming(true);
+    const now = new Date().toISOString();
+    const userName = currentUser?.name ?? '관리자';
+    try {
+      const update = { confirmedBy: userName, confirmedAt: now };
+      await updateDoc(doc(db, 'haccp_personal_hygiene', selected.id), update);
+      setSelected(prev => prev ? { ...prev, ...update } : prev);
+    } finally { setConfirming(false); }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('이 점검표를 삭제하시겠습니까?')) return;
+    await deleteDoc(doc(db, 'haccp_personal_hygiene', id));
+    if (selected?.id === id) setSelected(null);
+  };
+
+  const pastRecords = records.filter(r => r.checkDate !== today);
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* 오늘 점검 버튼 */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4">
+        <div className="text-xs text-slate-500 mb-3">
+          오늘 점검일 <span className="font-bold text-slate-800 ml-1">{today}</span>
+          <span className="ml-2 text-slate-400">· 1일 1회</span>
+        </div>
+        <button onClick={openToday} className={`w-full flex flex-col items-center justify-center gap-1 py-4 rounded-xl border-2 text-sm font-bold transition-all ${
+          selected?.checkDate === today ? 'border-blue-500 bg-blue-50 text-blue-700'
+          : todayRecord ? 'border-blue-200 bg-blue-50/50 text-blue-600 hover:border-blue-400'
+          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'
+        }`}>
+          <span className="text-base">🧑‍⚕️</span>
+          <span>오늘 개인위생 점검</span>
+          {todayRecord
+            ? <span className="text-xs font-normal text-blue-500">✓ {revLabel(todayRecord)} 저장됨</span>
+            : <span className="text-xs font-normal text-slate-400">미작성</span>}
+        </button>
+      </div>
+
+      {/* 이전 기록 */}
+      <button onClick={() => setShowHistory(v => !v)} className="flex items-center justify-between px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-50">
+        <span>이전 점검 기록 ({pastRecords.length}건)</span>
+        <span>{showHistory ? '▲' : '▼'}</span>
+      </button>
+      {showHistory && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+          {pastRecords.length === 0 && <p className="col-span-full text-xs text-slate-400 py-4 text-center">이전 기록이 없습니다</p>}
+          {pastRecords.map(r => (
+            <div key={r.id} onClick={() => openHistory(r)} className={`p-3 rounded-lg border cursor-pointer text-xs transition-colors ${selected?.id === r.id ? 'bg-slate-100 border-slate-400' : 'bg-white border-slate-200 hover:border-slate-400'}`}>
+              <div className="font-bold text-slate-700">{r.checkDate}</div>
+              <div className="flex items-center justify-between mt-1.5">
+                <span className="text-slate-500">{revLabel(r)}</span>
+                <button onClick={e => { e.stopPropagation(); r.id && handleDelete(r.id); }} className="text-rose-400 hover:text-rose-600"><Trash2 size={11} /></button>
+              </div>
+              {r.inspector && <div className="text-slate-400 mt-1 truncate">점검자: {r.inspector}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!selected && (
+        <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-2">
+          <User size={28} className="text-slate-300" />
+          <p className="text-sm">위에서 오늘 점검을 시작해주세요</p>
+        </div>
+      )}
+
+      {selected && (
+        <div className="flex flex-col gap-3">
+          {/* 액션 바 */}
+          <div className="sticky top-0 z-20 flex items-center gap-2 flex-wrap bg-slate-50/95 backdrop-blur-sm border-b border-slate-200 py-2 -mx-6 px-6">
+            <span className={`text-xs font-bold px-2 py-1 rounded border ${isReadOnly ? 'bg-slate-100 text-slate-500 border-slate-300' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+              {isReadOnly ? '📋 조회 (수정 불가)' : `✏️ ${revLabel(selected)}`}
+            </span>
+            <span className="text-xs text-slate-500">{selected.checkDate}</span>
+            <div className="ml-auto flex gap-2 flex-wrap justify-end">
+              <button onClick={() => printRef.current && downloadAsPDF(printRef.current, `개인위생점검표_${selected.checkDate}.pdf`)} className="flex items-center gap-1 px-3 py-2 bg-slate-600 text-white rounded-lg text-xs font-bold hover:bg-slate-700">
+                <FileDown size={12} /> PDF
+              </button>
+              {isAdmin && (
+                selected.confirmedBy
+                  ? <span className="flex items-center gap-1 px-3 py-2 bg-emerald-50 border border-emerald-300 text-emerald-700 rounded-lg text-xs font-bold"><BadgeCheck size={13} /> {selected.confirmedBy} 확인완료</span>
+                  : <button onClick={handleConfirm} disabled={confirming || !selected.id || !allChecked}
+                      title={!selected.id ? '저장 후 확인' : !allChecked ? '모든 항목 완료 후 확인 가능' : ''}
+                      className="flex items-center gap-1 px-3 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                      <BadgeCheck size={13} /> {confirming ? '처리 중...' : !selected.id ? '저장 먼저' : !allChecked ? '항목 미완료' : '관리자 확인'}
+                    </button>
+              )}
+              {!isReadOnly && (
+                <button onClick={handleSave} disabled={saving} className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 disabled:opacity-50">
+                  <Save size={12} /> {saving ? '저장 중...' : '저장'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* 인쇄 영역 */}
+          <div ref={printRef} className="bg-white border border-slate-200 rounded-xl p-4 md:p-6" style={{ fontFamily: 'Malgun Gothic, sans-serif' }}>
+            <h2 className="text-base md:text-lg font-black text-center mb-4">개인위생점검표</h2>
+            <div className="mb-4 text-xs text-slate-600">
+              점검일자 : <strong>{selected.checkDate.replace('-', '년 ').replace('-', '월 ')}일</strong>
+            </div>
+
+            {/* 모바일 카드 */}
+            <div className="flex flex-col gap-2 md:hidden">
+              {selected.rows.map((row, rowIdx) => (
+                <div key={rowIdx} className="border border-slate-200 rounded-xl p-3 bg-white">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs text-slate-400 font-bold w-5 shrink-0">{rowIdx + 1}</span>
+                    {isReadOnly
+                      ? <span className="text-sm font-bold text-slate-800">{row.name || '-'}</span>
+                      : <input value={row.name} onChange={e => setRowField(rowIdx, 'name', e.target.value)} placeholder="성명" className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-blue-400" />}
+                  </div>
+                  <div className="grid grid-cols-4 gap-1.5 mb-2">
+                    {PERSONAL_HYGIENE_COLS.map(col => (
+                      <div key={col} className="flex flex-col items-center gap-1">
+                        <span className="text-[9px] text-slate-500 font-bold leading-tight text-center">{col}</span>
+                        <div className="flex gap-0.5">
+                          {(['O', 'X'] as const).map(val => (
+                            <button key={val} onClick={() => toggleCheck(rowIdx, col, val)} disabled={isReadOnly}
+                              className={`w-6 h-6 rounded text-[10px] font-black border transition-colors ${row.checks[col] === val ? (val === 'O' ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-rose-500 text-white border-rose-500') : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`}>
+                              {val}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {isReadOnly
+                    ? <span className="text-xs text-slate-600">{row.note}</span>
+                    : <input value={row.note} onChange={e => setRowField(rowIdx, 'note', e.target.value)} placeholder="비고" className="w-full border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none" />}
+                </div>
+              ))}
+              {!isReadOnly && (
+                <button onClick={addRow} className="flex items-center justify-center gap-1 py-2.5 border-2 border-dashed border-slate-300 rounded-xl text-xs text-slate-400 hover:border-blue-400 hover:text-blue-500 transition-colors">
+                  <Plus size={13} /> 행 추가
+                </button>
+              )}
+            </div>
+
+            {/* 데스크탑 테이블 */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full border-collapse text-xs mb-3">
+                <thead>
+                  <tr>
+                    <th className={TH} style={{ width: 28 }}>No</th>
+                    <th className={TH} style={{ width: 72 }}>성명</th>
+                    {PERSONAL_HYGIENE_COLS.map(col => <th key={col} className={TH} style={{ width: 52 }}>{col}</th>)}
+                    <th className={TH}>비고</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selected.rows.map((row, rowIdx) => (
+                    <tr key={rowIdx} className={Object.values(row.checks).some(v => v === 'X') ? 'bg-rose-50' : ''}>
+                      <td className={TD}>{rowIdx + 1}</td>
+                      <td className={TD}>
+                        {isReadOnly ? row.name
+                          : <input value={row.name} onChange={e => setRowField(rowIdx, 'name', e.target.value)} placeholder="성명" className="w-full text-xs border-none outline-none bg-transparent text-center" />}
+                      </td>
+                      {PERSONAL_HYGIENE_COLS.map(col => (
+                        <td key={col} className={TD}>
+                          {isReadOnly
+                            ? <span className={row.checks[col] === 'O' ? 'text-emerald-600 font-black' : row.checks[col] === 'X' ? 'text-rose-600 font-black' : ''}>{row.checks[col] || ''}</span>
+                            : <div className="flex gap-0.5 justify-center">
+                                {(['O', 'X'] as const).map(val => (
+                                  <button key={val} onClick={() => toggleCheck(rowIdx, col, val)}
+                                    className={`w-6 h-6 rounded text-[10px] font-black border transition-colors ${row.checks[col] === val ? (val === 'O' ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-rose-500 text-white border-rose-500') : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`}>
+                                    {val}
+                                  </button>
+                                ))}
+                              </div>
+                          }
+                        </td>
+                      ))}
+                      <td className={TDL}>
+                        {isReadOnly ? row.note
+                          : <input value={row.note} onChange={e => setRowField(rowIdx, 'note', e.target.value)} placeholder="비고" className="w-full text-xs border-none outline-none bg-transparent" />}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!isReadOnly && (
+                <button onClick={addRow} className="flex items-center gap-1 px-3 py-1.5 border border-dashed border-slate-300 rounded-lg text-xs text-slate-400 hover:border-blue-400 hover:text-blue-500 transition-colors">
+                  <Plus size={12} /> 행 추가
+                </button>
+              )}
+            </div>
+
+            <div className="mt-3 text-xs font-bold text-slate-700">※이상 발생 시 즉시 작업 배제 및 보고</div>
+
+            {/* 서명란 */}
+            <div className="grid grid-cols-2 gap-3 mt-4 md:flex md:justify-end md:gap-4 text-xs">
+              <div className="border border-slate-400 text-center md:w-28">
+                <div className="bg-slate-100 text-xs font-bold py-1 border-b border-slate-400">점검자</div>
+                <div className="h-10 flex items-center justify-center">
+                  {isReadOnly
+                    ? <span className="text-slate-700 font-semibold">{selected.inspector || '-'}</span>
+                    : <input value={selected.inspector} onChange={e => setSelected(prev => prev ? { ...prev, inspector: e.target.value } : prev)} placeholder={currentUser?.name ?? '이름'} className="w-full text-xs text-center border-none outline-none bg-transparent font-semibold" />}
+                </div>
+              </div>
+              <div className="border border-slate-400 text-center md:w-28">
+                <div className="bg-slate-100 text-xs font-bold py-1 border-b border-slate-400">확인자</div>
+                <div className="h-10 flex items-center justify-center">
+                  {selected.confirmedBy
+                    ? <span className="text-slate-700 font-semibold">{selected.confirmedBy}</span>
+                    : isAdmin && selected.id && allChecked
+                      ? <button onClick={handleConfirm} disabled={confirming} className="flex items-center gap-1 px-2 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-40">
+                          <BadgeCheck size={11} /> {confirming ? '처리 중...' : '확인'}
+                        </button>
+                      : isAdmin && !selected.id ? <span className="text-slate-300 text-[10px]">저장 후 확인</span>
+                      : isAdmin ? <span className="text-slate-300 text-[10px]">항목 완료 후</span>
+                      : <span className="text-slate-200 text-xs">-</span>}
+                </div>
+              </div>
+            </div>
+
+            {selected.id && (
+              <div className="mt-3 text-xs text-slate-400 text-right">
+                최초 작성: {selected.createdBy} ({selected.createdAt?.slice(0, 16).replace('T', ' ')})
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 직원용 위생점검 탭 뷰 (작업장 위생 + 개인위생)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+export const StaffChecklistView: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean }> = ({ currentUser, isAdmin }) => {
+  const [activeTab, setActiveTab] = useState<'sanitation' | 'personal'>('sanitation');
+  const STAFF_TABS = [
+    { id: 'sanitation' as const, label: '작업장 위생점검표', desc: 'HACCP-PRP-001 · 작업장 위생 8개 항목 점검 (1일 2회)', active: 'emerald' },
+    { id: 'personal' as const,   label: '개인위생점검표',    desc: 'HACCP-PRP-002 · 작업자 개인위생 점검 (1일 1회)',     active: 'blue'    },
+  ];
+  return (
+    <div className="flex flex-col h-full bg-slate-50">
+      <div className="bg-white border-b border-slate-200 px-6 py-4">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center">
+            <ShieldAlert size={18} className="text-emerald-600" />
+          </div>
+          <div>
+            <h1 className="text-base font-black text-slate-800">위생 점검표</h1>
+            <p className="text-xs text-slate-400">HACCP-PRP · 작업장 위생 및 개인위생 점검</p>
+          </div>
+        </div>
+      </div>
+      <div className="bg-white border-b border-slate-200 px-4">
+        <div className="flex gap-0.5 py-2">
+          {STAFF_TABS.map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
+                activeTab === tab.id
+                  ? tab.active === 'emerald' ? 'bg-emerald-50 text-emerald-700 font-bold' : 'bg-blue-50 text-blue-700 font-bold'
+                  : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+              }`}>
+              <ShieldAlert size={13} />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="px-6 py-2 bg-slate-50 border-b border-slate-100">
+        <p className="text-xs text-slate-500">{STAFF_TABS.find(t => t.id === activeTab)?.desc}</p>
+      </div>
+      <div className="flex-1 overflow-y-auto p-6">
+        {activeTab === 'sanitation' && <SanitationForm currentUser={currentUser} isAdmin={isAdmin} />}
+        {activeTab === 'personal'   && <PersonalHygieneForm currentUser={currentUser} isAdmin={isAdmin} />}
+      </div>
     </div>
   );
 };

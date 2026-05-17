@@ -55,8 +55,9 @@ import {
   RotateCcw,
   TrendingUp,
   Activity,
+  ShieldAlert,
 } from 'lucide-react';
-import { Order, Product, ProductClient, ProductSupplier, ViewType, OrderStatus, Client, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, PaymentRecord } from '../../shared/types';
+import { Order, Product, ProductClient, ProductSupplier, ViewType, OrderStatus, Client, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, PaymentRecord, ShippingRule } from '../../shared/types';
 import Dashboard from '../../../components/Dashboard';
 import OrdersList from '../../../components/OrdersList';
 import ProductList from '../../../components/ProductList';
@@ -85,6 +86,9 @@ const InboundScan = React.lazy(() => import('../../../components/InboundScan'));
 const QrLabelPrint = React.lazy(() => import('../../../components/QrLabelPrint'));
 const SmartStoreAnalytics = React.lazy(() => import('../../../components/SmartStoreAnalytics'));
 const HaccpChecklist = React.lazy(() => import('../../../components/HaccpChecklist'));
+const SanitationChecklistView = React.lazy(() =>
+  import('../../../components/HaccpChecklist').then(m => ({ default: m.StaffChecklistView }))
+);
 const ReturnManager = React.lazy(() => import('../../../components/ReturnManager'));
 const ReceivingReturnsManager = React.lazy(() => import('../../../components/ReceivingReturnsManager'));
 const ProductionManager = React.lazy(() => import('../../../components/ProductionManager'));
@@ -941,6 +945,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     <NavItem icon={Layers} label="파렛트 관리" active={currentView === 'pallets'} onClick={() => handleNavClick('pallets')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={CalendarCheck} label="연차 신청" active={currentView === 'leave-portal'} onClick={() => handleNavClick('leave-portal')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={ShieldCheck} label="확인사항" active={currentView === 'confirmation-items'} onClick={() => handleNavClick('confirmation-items')} collapsed={isSidebarCollapsed} />
+                    <NavItem icon={ShieldAlert} label="작업장 위생점검" active={currentView === 'sanitation-checklist'} onClick={() => handleNavClick('sanitation-checklist')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
                   </nav>
                 </div>
@@ -991,7 +996,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 'inbound-scan': '입고 스캔', 'client-portal': '거래처 포털',
                 'officetalk': '오피스톡', 'smartstore-analytics': '스마트스토어 분석',
                 'haccp-checklist': 'HACCP 체크리스트', 'return-management': '반품 관리',
-                'inbound-returns': '입고 / 반품',
+                'inbound-returns': '입고 / 반품', 'sanitation-checklist': '작업장 위생점검표',
               } as Record<string, string>)[currentView]) ?? ''}
             </p>
           </div>
@@ -1041,7 +1046,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               </div>
             </div>
           ) : (
-          <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'partners', 'notice', 'pallets', 'confirmation-items', 'shipping', 'production', 'inbound-scan', 'return-management'].includes(currentView)) ? '' : 'h-full'}>
+          <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'partners', 'notice', 'pallets', 'confirmation-items', 'shipping', 'production', 'inbound-scan', 'return-management', 'sanitation-checklist'].includes(currentView)) ? '' : 'h-full'}>
           {(currentView === 'dashboard' || currentView === 'ai-consultant') && (
             <div className="h-full flex flex-col overflow-hidden">
               <div className="flex items-center gap-1 px-6 pt-5 pb-0 shrink-0">
@@ -3107,6 +3112,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onDelete={(id) => deleteItem('adjustmentRequests', id)}
             />
           )}
+          {currentView === 'sanitation-checklist' && (
+            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+              <SanitationChecklistView currentUser={currentUser ? { id: currentUser.id, name: currentUser.name } : undefined} isAdmin={isAdmin} />
+            </React.Suspense>
+          )}
           {currentView === 'leave-portal' && (
             <LeaveManager
               currentUser={currentUser}
@@ -3335,24 +3345,24 @@ const AdminApp: React.FC<AdminAppProps> = ({
           products={products}
           clients={clients}
           productClients={productClients}
-          productSuppliers={productSuppliers}
+          productSuppliers={productSuppliers as ProductSupplier[]}
           shippingRules={shippingRules}
           onClose={() => {setIsProductModalOpen(false); setEditingProduct(null);}}
           onSaveProductClientConfig={async (id, config) => {
             try { await updateItem('partner_item', id, config); } catch { /* 문서 없으면 무시 */ }
           }}
-          onSaveShippingRule={async (rule) => {
+          onSaveShippingRule={async (rule: Partial<ShippingRule> & { id: string }) => {
             const { doc: fDoc, updateDoc: fUpdate } = await import('firebase/firestore');
             const { db: fireDb } = await import('../../shared/firebase');
             const { id, ...data } = rule;
             await fUpdate(fDoc(fireDb, 'shipping_rule', id), data);
           }}
-          onAddShippingRule={async (rule) => {
+          onAddShippingRule={async (rule: Omit<ShippingRule, 'id'>) => {
             const { addDoc, collection: col } = await import('firebase/firestore');
             const { db: fireDb } = await import('../../shared/firebase');
             await addDoc(col(fireDb, 'shipping_rule'), rule);
           }}
-          onUpsertProductSupplier={(ps) => addItem('partner_item', { ...ps, Partner_ID: ps.Partner_ID, Item_ID: ps.Item_ID, Direction: 'in' as const, Standard_Price: ps.Standard_Price })}
+          onUpsertProductSupplier={(ps: ProductSupplier) => addItem('partner_item', { ...ps, Partner_ID: ps.Partner_ID, Item_ID: ps.Item_ID, Direction: 'in' as const, Standard_Price: ps.Standard_Price })}
           onAddSubmaterial={async (name, category) => {
             const unit = category === '라벨' ? '매' : '개';
             const id = await addItem('items', { name, category, stock: 0, minStock: 0, unit, price: 0, image: '' });

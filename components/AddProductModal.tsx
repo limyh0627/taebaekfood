@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Package, Tag, Box, Layers, Plus, Building2, Check, Trash2 } from 'lucide-react';
 import { Product, InventoryCategory, Client, ClientBoxConfig, ProductClient, ProductSupplier, ShippingRule } from '../types';
