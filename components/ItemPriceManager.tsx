@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useMemo } from 'react';
 import { Plus, Edit2, Trash2, Search, Save, X } from 'lucide-react';
 import { Product, InventoryCategory } from '../types';
@@ -110,7 +110,7 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
                         const subs = p.submaterials ?? [];
                         const 용기 = subs.find(s => s.category === '용기')?.name;
                         const 마개 = subs.find(s => s.category === '마개')?.name;
-                        const 정보 = p.oil || p.용량 || '';
+                        const 정보 = p.oil || p.spec || '';
                         const tags = [용기 && `용기: ${용기}`, 마개 && `마개: ${마개}`, 정보 && `정보: ${정보}`].filter(Boolean);
                         return tags.length > 0 ? (
                           <div className="flex flex-wrap gap-1 mt-1">

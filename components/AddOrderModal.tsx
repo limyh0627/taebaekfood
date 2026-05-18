@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, LayoutGrid, Layers } from 'lucide-react';
 import { Product, ProductClient, OrderItem, Order, Client, OrderSource, OrderPallet, PalletStock, ShippingRule } from '../types';
@@ -576,7 +576,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
                             <p className="text-xs font-bold text-slate-800 truncate">{product.name}</p>
                             {(() => {
                               const label = product.submaterials?.find(s => s.category === '라벨')?.name;
-                              const vol = product.용량;
+                              const vol = product.spec;
                               const parts = [label, vol].filter(Boolean);
                               const pc = selectedClient ? productClients.find(p => p.productId === product.id && p.clientId === selectedClient.id) : null;
                               const boxName = pc?.boxTypeId ? products.find(p => p.id === pc.boxTypeId)?.name : null;

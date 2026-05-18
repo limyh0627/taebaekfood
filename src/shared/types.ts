@@ -217,6 +217,8 @@ export interface Item {
   defaultBoxConfig?: BoxConfig;       // @deprecated
   clientBoxConfigs?: ClientBoxConfig[]; // @deprecated
   품목?: string;
+  spec?: string;              // 규격/내용량 (예: "200g", "1kg", "300ml")
+  /** @deprecated spec 사용 */
   용량?: string;
   isSmartStore?: boolean;
   smartStorePrice?: number;

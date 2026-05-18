@@ -1,4 +1,4 @@
-
+﻿
 // ============================================================
 // [ADMIN APP 경계 — 미래 분리 안내]
 //
@@ -259,7 +259,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           : PRODUCT_FORMULA[prodKey];
         if (!formula) continue;
         for (const f of formula) {
-          const usedKg = toKg(prod.용량 || '', f.raw, item.quantity) * f.ratio;
+          const usedKg = toKg(prod.spec || '', f.raw, item.quantity) * f.ratio;
           if (usedKg <= 0) continue;
           if (!dayMap[f.raw]) dayMap[f.raw] = {};
           if (!dayMap[f.raw][dateStr]) dayMap[f.raw][dateStr] = { used: 0, clients: [] };
@@ -635,7 +635,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         const dateStr = order.deliveredAt?.slice(0, 10) || new Date().toISOString().slice(0, 10);
         const clientName = clients.find(c => c.id === order.clientId)?.name || order.customerName || '';
         for (const f of formula) {
-          const usedKg = toKg(product.용량 || '', f.raw, item.quantity) * f.ratio;
+          const usedKg = toKg(product.spec || '', f.raw, item.quantity) * f.ratio;
           if (usedKg <= 0) continue;
           const entryId = `rm-auto-${order.id}-${f.raw.replace(/\s/g, '_')}`;
           await setDoc(doc(db, 'rawMaterialLedger', entryId), {
@@ -1298,7 +1298,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         {selectedLog.productionRows.map((r, i) => (
                           <tr key={i} className="hover:bg-blue-50">
                             <td className="border border-slate-200 px-3 py-1.5 font-bold text-slate-800">{r.groupLabel}</td>
-                            <td className="border border-slate-200 px-3 py-1.5 text-center text-slate-600">{r.용량}</td>
+                            <td className="border border-slate-200 px-3 py-1.5 text-center text-slate-600">{r.spec}</td>
                             <td className="border border-slate-200 px-3 py-1.5 text-right font-black text-blue-700">{r.수량}</td>
                             <td className="border border-slate-200 px-3 py-1.5 text-center text-slate-500">{r.소비기한}</td>
                             <td className="border border-slate-200 px-3 py-1.5 text-slate-400">{r.비고}</td>
@@ -1452,14 +1452,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
               return order.items.flatMap((item, itemIdx) => {
                 const product = allProducts.find(p => p.id === item.productId);
                 if (product && SUB_ONLY_CATS.has(product.category)) return [];
-                return [{ 상호: clientName, 품목: product?.품목 || item.name, 용량: item.displaySize || product?.용량 || '', 수량: item.quantity, 소비기한: calcExpiry(item.mfgDate || ''), 제조일자: item.mfgDate || '', orderId: order.id, itemIdx }];
+                return [{ 상호: clientName, 품목: product?.품목 || item.name, 용량: item.displaySize || product?.spec || '', 수량: item.quantity, 소비기한: calcExpiry(item.mfgDate || ''), 제조일자: item.mfgDate || '', orderId: order.id, itemIdx }];
               });
             });
             const rightRows: RightRow[] = Object.values(
               rightRowsRaw.reduce((acc, row) => {
-                const key = `${row.상호}||${row.품목}||${row.용량}`;
+                const key = `${row.상호}||${row.품목}||${row.spec}`;
                 if (!acc[key]) {
-                  acc[key] = { 상호: row.상호, 품목: row.품목, 용량: row.용량, 수량: row.수량, 소비기한: row.소비기한, 제조일자: row.제조일자, orderItems: [{ orderId: row.orderId, itemIdx: row.itemIdx }] };
+                  acc[key] = { 상호: row.상호, 품목: row.품목, 용량: row.spec, 수량: row.수량, 소비기한: row.소비기한, 제조일자: row.제조일자, orderItems: [{ orderId: row.orderId, itemIdx: row.itemIdx }] };
                 } else {
                   acc[key].수량 += row.수량;
                   acc[key].orderItems.push({ orderId: row.orderId, itemIdx: row.itemIdx });
@@ -1483,8 +1483,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
             };
             const agg: Record<string, { qty: number; mfgDates: string[]; clients: string[] }> = {};
             rightRows.forEach(r => {
-              const mappedPumok = remapSalesPumok(r.상호, r.품목, r.용량);
-              const key = `${mappedPumok}||${r.용량}`;
+              const mappedPumok = remapSalesPumok(r.상호, r.품목, r.spec);
+              const key = `${mappedPumok}||${r.spec}`;
               if (!agg[key]) agg[key] = { qty: 0, mfgDates: [], clients: [] };
               agg[key].qty += r.수량;
               if (r.제조일자) agg[key].mfgDates.push(r.제조일자);
@@ -1549,10 +1549,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
               defaultTopTemplate.map(t => [t.key, new Set(t.volumes)])
             );
             allProducts
-              .filter(p => p.category === '완제품' && p.품목 && p.용량 && !bottomPumokSet.has(p.품목))
+              .filter(p => p.category === '완제품' && p.품목 && p.spec && !bottomPumokSet.has(p.품목))
               .forEach(p => {
                 if (!topTemplateMap.has(p.품목!)) topTemplateMap.set(p.품목!, new Set());
-                topTemplateMap.get(p.품목!)!.add(p.용량!);
+                topTemplateMap.get(p.품목!)!.add(p.spec!);
               });
             const topTemplate: { label: string; key: string; volumes: string[] }[] = Array.from(topTemplateMap.entries())
               .map(([key, volSet]) => ({ label: labelMap[key] || key, key, volumes: sortVolumes(Array.from(volSet)) }))
@@ -1656,9 +1656,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 const l = leftRows[i];
                 const r = rightRows[i];
                 const row = ws.addRow([
-                  l?.groupLabel ?? '', l?.용량 ?? '', l ? (l.수량 || 0) : '', l?.소비기한 ?? '', l?.비고 ?? '',
+                  l?.groupLabel ?? '', l?.spec ?? '', l ? (l.수량 || 0) : '', l?.소비기한 ?? '', l?.비고 ?? '',
                   '',
-                  r?.상호 ?? '', r?.품목 ?? '', r?.용량 ?? '', r ? r.수량 : '', r?.소비기한 ?? '',
+                  r?.상호 ?? '', r?.품목 ?? '', r?.spec ?? '', r ? r.수량 : '', r?.소비기한 ?? '',
                 ]);
                 row.height = 16;
 
@@ -1934,9 +1934,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                     const remappedPumok = p?.품목 === '새싹참기름' ? '하남댁참기름' : p?.품목 === '새싹들기름' ? '하남댁들기름' : p?.품목;
                                     if (!p || remappedPumok !== cat) return;
                                     if (!dayMap[day]) dayMap[day] = [];
-                                    const existing = dayMap[day].find(r => r.용량 === (p.용량 || ''));
+                                    const existing = dayMap[day].find(r => r.spec === (p.spec || ''));
                                     if (existing) existing.수량 += item.quantity;
-                                    else dayMap[day].push({ 용량: p.용량 || '', 수량: item.quantity, mfgDate: item.mfgDate || '' });
+                                    else dayMap[day].push({ 용량: p.spec || '', 수량: item.quantity, mfgDate: item.mfgDate || '' });
                                   });
                                 });
                               const ws = wb.addWorksheet(cat);
@@ -1976,7 +1976,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                               hRow.height = 18;
                               let totalInput = 0;
                               for (let d = 1; d <= daysInMonth; d++) {
-                                const rows = (dayMap[d] || []).sort((a, b) => a.용량.localeCompare(b.용량));
+                                const rows = (dayMap[d] || []).sort((a, b) => a.spec.localeCompare(b.spec));
                                 if (rows.length === 0) {
                                   const r = ws.addRow([d, '-', '', '', '-', '', '']);
                                   r.eachCell((cell, col) => {
@@ -1986,11 +1986,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                   });
                                 } else {
                                   rows.forEach((row, i) => {
-                                    const vol = parseVolumeLiter(row.용량);
+                                    const vol = parseVolumeLiter(row.spec);
                                     const inputKg = Math.round(vol * row.수량 * 0.92);
                                     totalInput += inputKg;
-                                    const dv = row.용량.endsWith('ml') && parseFloat(row.용량) >= 1000
-                                      ? `${parseFloat(row.용량)/1000}l` : row.용량;
+                                    const dv = row.spec.endsWith('ml') && parseFloat(row.spec) >= 1000
+                                      ? `${parseFloat(row.spec)/1000}l` : row.spec;
                                     const sobiDisp = row.mfgDate ? row.mfgDate.replace(/-/g, '.') : '';
                                     const r = ws.addRow([i === 0 ? d : '', inputKg, dv, row.수량, inputKg, sobiDisp, '']);
                                     r.eachCell((cell, col) => {
@@ -2057,7 +2057,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                   order.items.forEach(item => {
                                     const p = allProducts.find(pr => pr.id === item.productId);
                                     if (!p || p.품목 !== catKey) return;
-                                    total += Math.round(parseVolL2(p.용량 || '') * item.quantity * 0.92);
+                                    total += Math.round(parseVolL2(p.spec || '') * item.quantity * 0.92);
                                   });
                                 });
                               return total;
@@ -2255,12 +2255,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
                             {Array.from({ length: Math.max(leftRows.length, rightRows.length) }).map((_, i) => {
                               const l = leftRows[i];
                               const r = rightRows[i];
-                              const hasIssue = r && (!r.품목 || !r.용량 || !r.제조일자);
+                              const hasIssue = r && (!r.품목 || !r.spec || !r.제조일자);
                               return (
                                 <tr key={i} className={`transition-colors ${hasIssue ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-slate-50/50'}`}>
                                   {/* 좌측 */}
                                   <td className={`px-3 py-1.5 border border-slate-200 font-bold whitespace-nowrap ${l?.groupLabel ? 'bg-blue-50 text-slate-800' : 'text-slate-400'}`}>{l?.groupLabel ?? ''}</td>
-                                  <td className="px-3 py-1.5 border border-slate-200 text-center text-slate-600">{l?.용량 ?? ''}</td>
+                                  <td className="px-3 py-1.5 border border-slate-200 text-center text-slate-600">{l?.spec ?? ''}</td>
                                   <td className={`px-3 py-1.5 border border-slate-200 text-center font-black ${l && l.수량 > 0 ? 'text-indigo-700' : 'text-slate-300'}`}>{l ? (l.수량 || 0) : ''}</td>
                                   <td className="px-3 py-1.5 border border-slate-200 text-center text-slate-500 whitespace-nowrap">{l?.소비기한 ?? ''}</td>
                                   <td className="px-3 py-1.5 border border-slate-200 text-slate-500 text-[10px] break-words max-w-[160px]">{l?.비고 ?? ''}</td>
@@ -2269,7 +2269,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                   {/* 우측 */}
                                   <td className="px-3 py-1.5 border border-slate-200 font-bold text-slate-800 whitespace-nowrap">{r?.상호 ?? ''}</td>
                                   <td className="px-3 py-1.5 border border-slate-200 text-slate-700">{r?.품목 ?? ''}</td>
-                                  <td className="px-3 py-1.5 border border-slate-200 text-center text-slate-600">{r?.용량 ?? ''}</td>
+                                  <td className="px-3 py-1.5 border border-slate-200 text-center text-slate-600">{r?.spec ?? ''}</td>
                                   <td className={`px-3 py-1.5 border border-slate-200 text-center font-black ${r && r.수량 > 0 ? 'text-indigo-700' : 'text-slate-300'}`}>{r?.수량 ?? ''}</td>
                                   <td className="px-2 py-1 border border-slate-200">
                                     {r && (
@@ -2604,9 +2604,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         const remappedPumok = p?.품목 === '새싹참기름' ? '하남댁참기름' : p?.품목 === '새싹들기름' ? '하남댁들기름' : p?.품목;
                         if (!p || remappedPumok !== productionWorkCat) return;
                         if (!dayMap[day]) dayMap[day] = [];
-                        const existing = dayMap[day].find(r => r.용량 === (p.용량 || ''));
+                        const existing = dayMap[day].find(r => r.spec === (p.spec || ''));
                         if (existing) existing.수량 += item.quantity;
-                        else dayMap[day].push({ 용량: p.용량 || '', 수량: item.quantity, mfgDate: item.mfgDate || '' });
+                        else dayMap[day].push({ 용량: p.spec || '', 수량: item.quantity, mfgDate: item.mfgDate || '' });
                       });
                     });
                   let totalInput = 0;
@@ -2649,7 +2649,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                           </thead>
                           <tbody>
                             {Array.from({ length: daysInMonth }, (_, i) => i + 1).flatMap(day => {
-                              const rows = (dayMap[day] || []).sort((a, b) => a.용량.localeCompare(b.용량));
+                              const rows = (dayMap[day] || []).sort((a, b) => a.spec.localeCompare(b.spec));
                               if (rows.length === 0) {
                                 return [(
                                   <tr key={day} className="border-b border-slate-100">
@@ -2664,7 +2664,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                 )];
                               }
                               return rows.map((row, i) => {
-                                const vol = parseVolumeLiter(row.용량);
+                                const vol = parseVolumeLiter(row.spec);
                                 const inputKg = Math.round(vol * row.수량 * 0.92);
                                 totalInput += inputKg;
                                 const sobiDisp = row.mfgDate ? row.mfgDate.replace(/-/g, '.') : '';
@@ -2674,7 +2674,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                       {i === 0 ? day : ''}
                                     </td>
                                     <td className="px-3 py-1.5 text-center font-bold text-indigo-700 border border-slate-100">{inputKg}</td>
-                                    <td className="px-3 py-1.5 text-center text-slate-700 border border-slate-100">{displayVol(row.용량)}</td>
+                                    <td className="px-3 py-1.5 text-center text-slate-700 border border-slate-100">{displayVol(row.spec)}</td>
                                     <td className="px-3 py-1.5 text-center text-slate-700 border border-slate-100">{row.수량}</td>
                                     <td className="px-3 py-1.5 text-center font-bold text-indigo-700 border border-slate-100">{inputKg}</td>
                                     <td className="px-3 py-1.5 text-center text-slate-600 border border-slate-100">{sobiDisp}</td>
@@ -2723,7 +2723,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         order.items.forEach(item => {
                           const p = allProducts.find(pr => pr.id === item.productId);
                           if (!p || p.품목 !== catKey) return;
-                          total += Math.round(parseVolL(p.용량 || '') * item.quantity * 0.92);
+                          total += Math.round(parseVolL(p.spec || '') * item.quantity * 0.92);
                         });
                       });
                     return total;

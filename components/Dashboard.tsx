@@ -1,4 +1,4 @@
-
+﻿
 import React, { useMemo, useState } from 'react';
 import {
   XAxis,
@@ -216,7 +216,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, products, clients = [], p
             firstGroup.name,
             firstGroup.items.map(p => ({
               name: p.name,
-              spec: p.용량 ?? '',
+              spec: p.spec ?? '',
               qty: Number(orderQtys[p.id]) || Math.max(1, p.minStock - p.stock),
               price: p.cost ?? 0,
             }))
@@ -271,7 +271,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, products, clients = [], p
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-xs font-black text-slate-800">{p.name}</span>
-                          {p.용량 && <span className="ml-1.5 text-[10px] text-slate-400">{p.용량}</span>}
+                          {p.spec && <span className="ml-1.5 text-[10px] text-slate-400">{p.spec}</span>}
                         </td>
                         <td className="px-4 py-3 text-xs text-slate-500">{p.unit}</td>
                         <td className="px-4 py-3">

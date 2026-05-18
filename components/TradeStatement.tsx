@@ -467,14 +467,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       const co = confirmedOrders.find(c => c.id === id);
       if (co) {
         const isBox = product.category === '향미유' && (co as any).isBox;
-        rows.push({ name: product.name, spec: product.용량 || product.unit || '', qty: String(co.quantity), price: '', isTaxExempt: false, isBoxUnit: isBox, boxSize: isBox ? 12 : undefined });
+        rows.push({ name: product.name, spec: product.spec || product.unit || '', qty: String(co.quantity), price: '', isTaxExempt: false, isBoxUnit: isBox, boxSize: isBox ? 12 : undefined });
         return;
       }
       const req = orderRequests?.find((r: { id: string; quantity: number; isBox?: boolean }) => r.id === id);
       if (req) {
         const ps = productSuppliers.find(s => s.productId === id && s.supplierId === selectedClientId);
         const isBox = product.category === '향미유' && (req as any).isBox;
-        rows.push({ name: product.name, spec: product.용량 || product.unit || '', qty: String(req.quantity), price: ps?.price ? String(ps.price) : '', isTaxExempt: ps?.taxType === '면세', isBoxUnit: isBox, boxSize: isBox ? 12 : undefined });
+        rows.push({ name: product.name, spec: product.spec || product.unit || '', qty: String(req.quantity), price: ps?.price ? String(ps.price) : '', isTaxExempt: ps?.taxType === '면세', isBoxUnit: isBox, boxSize: isBox ? 12 : undefined });
       }
     });
     if (rows.length === 0) return;
@@ -549,7 +549,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     selectedOrder.items.forEach(item => {
       const product = allProducts.find(p => p.id === item.productId);
       const displayName = product?.품목 || item.name;
-      const spec = item.displaySize || product?.용량 || '';
+      const spec = item.displaySize || product?.spec || '';
       const key  = `${displayName}||${spec}`;
       const piList = stmtType === '매출' ? productClients : productSuppliers;
       const pcEntry = piList.find(
@@ -1262,7 +1262,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       const filled = prev.filter(r => r.name.trim());
       return [
         ...filled,
-        { name: pc.product!.name, spec: pc.product!.용량 || '', qty: '1', price: String(pc.pc.price ?? pc.product!.price ?? 0), isTaxExempt: false },
+        { name: pc.product!.name, spec: pc.product!.spec || '', qty: '1', price: String(pc.pc.price ?? pc.product!.price ?? 0), isTaxExempt: false },
         { name: '', spec: '', qty: '', price: '', isTaxExempt: false },
       ];
     });
@@ -1403,7 +1403,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const rows: ManualRow[] = o.items.map(item => {
           const product = allProducts.find(p => p.id === item.productId);
           const displayName = product?.품목 || item.name;
-          const spec = item.displaySize || product?.용량 || '';
+          const spec = item.displaySize || product?.spec || '';
           const pcEntry = productClients.find(pc => pc.productId === item.productId && pc.clientId === o.clientId);
           const price = pcEntry?.price ?? item.price ?? product?.price ?? 0;
           const isTaxExempt = pcEntry?.taxType === '면세';
@@ -2540,7 +2540,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   {searchableRows.map(({pc,product})=>(
                     <div key={pc.id} className="flex items-center gap-3 px-5 py-2">
                       <span className="text-xs font-black text-slate-700 flex-1 truncate">{product!.name}</span>
-                      {product!.용량 && <span className="text-[10px] text-slate-400">{product!.용량}</span>}
+                      {product!.spec && <span className="text-[10px] text-slate-400">{product!.spec}</span>}
                       <input type="number" placeholder="단가"
                         value={pricePanelEdits[pc.id]??(pc.price!==undefined?String(pc.price):'')}
                         onChange={e=>setPricePanelEdits(prev=>({...prev,[pc.id]:e.target.value}))}
@@ -2696,7 +2696,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                               />
                               <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                                 <span className="font-black text-slate-800">{product.name}</span>
-                                {product.용량&&<span className="text-slate-400">{product.용량}</span>}
+                                {product.spec&&<span className="text-slate-400">{product.spec}</span>}
                               </div>
                               <span className="text-slate-600 font-bold">
                                 {product.category === '향미유' && (co as any).isBox
@@ -2743,7 +2743,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                               />
                               <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                                 <span className="font-black text-slate-800">{product.name}</span>
-                                {product.용량&&<span className="text-slate-400">{product.용량}</span>}
+                                {product.spec&&<span className="text-slate-400">{product.spec}</span>}
                               </div>
                               <div className="flex flex-col items-end gap-0.5 shrink-0">
                                 <span className="text-slate-600 font-bold">
@@ -2812,7 +2812,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                               setSelectedClientId(supplierId);
                               const rows = items.map(({product,co})=>{
                                 const isBox = product.category==='향미유'&&(co as any).isBox;
-                                return {name:product.name,spec:product.용량||product.unit||'',qty:String(co.quantity),price:'',isTaxExempt:false,isBoxUnit:isBox,boxSize:isBox?12:undefined};
+                                return {name:product.name,spec:product.spec||product.unit||'',qty:String(co.quantity),price:'',isTaxExempt:false,isBoxUnit:isBox,boxSize:isBox?12:undefined};
                               });
                               setManualItems([...rows,{name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);
                               setManualMode(true);
@@ -2845,7 +2845,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                   const rows = items.map(({product,req})=>{
                                     const ps = productSuppliers.find(s=>(s.productId===product.id||s.Item_ID===product.id)&&(s.supplierId===supplierId||s.Partner_ID===supplierId));
                                     const isBox = product.category==='향미유'&&(req as any).isBox;
-                                    return {name:product.name,spec:product.용량||product.unit||'',qty:String(req.quantity),price:ps?.price?String(ps.price):'',isTaxExempt:ps?.taxType==='면세',isBoxUnit:isBox,boxSize:isBox?12:undefined};
+                                    return {name:product.name,spec:product.spec||product.unit||'',qty:String(req.quantity),price:ps?.price?String(ps.price):'',isTaxExempt:ps?.taxType==='면세',isBoxUnit:isBox,boxSize:isBox?12:undefined};
                                   });
                                   setManualItems([...rows,{name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);
                                   setManualMode(true);
@@ -2860,7 +2860,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                               <div key={product.id} className="flex items-center gap-3 px-3 py-2">
                                 <div className="flex-1 min-w-0">
                                   <span className="text-xs font-bold text-slate-800">{product.name}</span>
-                                  {product.용량 && <span className="ml-1 text-[10px] text-slate-400">{product.용량}</span>}
+                                  {product.spec && <span className="ml-1 text-[10px] text-slate-400">{product.spec}</span>}
                                 </div>
                                 <span className="text-xs text-slate-500 shrink-0 font-bold">{(req as any).isBox ? `${req.quantity}BOX` : `${req.quantity}${product.unit||''}`}</span>
                                 <button
@@ -2869,7 +2869,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                     const ps = supplierId ? productSuppliers.find(s=>(s.productId===product.id||s.Item_ID===product.id)&&(s.supplierId===supplierId||s.Partner_ID===supplierId)) : null;
                                     const isBox = product.category==='향미유'&&(req as any).isBox;
                                     setManualItems([
-                                      {name:product.name,spec:product.용량||product.unit||'',qty:String(req.quantity),price:ps?.price?String(ps.price):'',isTaxExempt:ps?.taxType==='면세',isBoxUnit:isBox,boxSize:isBox?12:undefined},
+                                      {name:product.name,spec:product.spec||product.unit||'',qty:String(req.quantity),price:ps?.price?String(ps.price):'',isTaxExempt:ps?.taxType==='면세',isBoxUnit:isBox,boxSize:isBox?12:undefined},
                                       {name:'',spec:'',qty:'',price:'',isTaxExempt:false},
                                     ]);
                                     setManualMode(true);
@@ -2940,7 +2940,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       <input type="text" value={quickName} placeholder="품목명..."
                         onChange={e=>{setQuickName(e.target.value);setQuickSearchOpen(true);
                           const match=searchableRows.find(r=>(r.product!.품목||r.product!.name)===e.target.value);
-                          if(match){setQuickSpec(match.product!.용량||'');setQuickPrice(String(match.pc.price??match.product!.price??''));setQuickIsTaxExempt(match.pc.taxType==='면세');}
+                          if(match){setQuickSpec(match.product!.spec||'');setQuickPrice(String(match.pc.price??match.product!.price??''));setQuickIsTaxExempt(match.pc.taxType==='면세');}
                         }}
                         onFocus={()=>setQuickSearchOpen(true)}
                         onBlur={()=>setTimeout(()=>setQuickSearchOpen(false),150)}
@@ -2955,7 +2955,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                             const sub = r.product!.submaterials ?? [];
                             const 용기 = sub.find(s=>s.category==='용기')?.name;
                             const 마개 = sub.find(s=>s.category==='마개')?.name;
-                            const 정보 = r.product!.oil || r.product!.용량 || '';
+                            const 정보 = r.product!.oil || r.product!.spec || '';
                             const tags = [용기, 마개, 정보].filter(Boolean).join(' · ');
                             return (
                               <button key={r.pc.id}
@@ -2966,7 +2966,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                   if (!isLinked && selectedClientId && r.product!.id && createMode === '매출') {
                                     onAddProductClient?.(r.product!.id, selectedClientId, price, taxType);
                                   }
-                                  setQuickName(docN);setQuickSpec(r.product!.용량||'');setQuickPrice(String(price||''));setQuickIsTaxExempt(taxType==='면세');setQuickSearchOpen(false);
+                                  setQuickName(docN);setQuickSpec(r.product!.spec||'');setQuickPrice(String(price||''));setQuickIsTaxExempt(taxType==='면세');setQuickSearchOpen(false);
                                 }}
                                 className="w-full flex items-center justify-between px-3 py-2 text-xs hover:bg-blue-50 text-left transition-colors">
                                 <span className="font-black text-slate-800">{docN}</span>
@@ -3021,7 +3021,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   const row=searchableRows.find(r=>r.product!.id===productId);
                   if(!row) continue;
                   const docN=row.product!.품목||row.product!.name;
-                  toAdd.push({name:docN,spec:row.product!.용량||'',qty:String(qty),price:String(row.pc.price??row.product!.price??''),isTaxExempt:row.pc.taxType==='면세',note:''});
+                  toAdd.push({name:docN,spec:row.product!.spec||'',qty:String(qty),price:String(row.pc.price??row.product!.price??''),isTaxExempt:row.pc.taxType==='면세',note:''});
                 }
                 if(toAdd.length===0){setShowItemPicker(false);return;}
                 setManualMode(true);
@@ -3075,7 +3075,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                 <td className="px-4 py-2.5">
                                   <span className="text-xs font-black text-slate-800">{docN}</span>
                                 </td>
-                                <td className="px-4 py-2.5 text-[11px] text-slate-400">{r.product!.용량||''}</td>
+                                <td className="px-4 py-2.5 text-[11px] text-slate-400">{r.product!.spec||''}</td>
                                 <td className="px-4 py-2.5 text-xs text-right font-black text-slate-700">
                                   {r.pc.price!==undefined ? fmt(r.pc.price)+'원' : <span className="text-slate-300 font-normal">미설정</span>}
                                 </td>
@@ -3171,11 +3171,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                         const sub2 = r.product!.submaterials ?? [];
                                         const 용기2 = sub2.find(s=>s.category==='용기')?.name;
                                         const 마개2 = sub2.find(s=>s.category==='마개')?.name;
-                                        const 정보2 = r.product!.oil || r.product!.용량 || '';
+                                        const 정보2 = r.product!.oil || r.product!.spec || '';
                                         const tags2 = [용기2, 마개2, 정보2].filter(Boolean).join(' · ');
                                         return (
                                           <button key={r.pc.id}
-                                            onMouseDown={()=>{setManualItems(prev=>prev.map((item,i)=>i===idx?{...item,name:docN,spec:r.product!.용량||'',price:String(r.pc.price??r.product!.price??0),isTaxExempt:r.pc.taxType==='면세'}:item));setActiveSearchRow(null);}}
+                                            onMouseDown={()=>{setManualItems(prev=>prev.map((item,i)=>i===idx?{...item,name:docN,spec:r.product!.spec||'',price:String(r.pc.price??r.product!.price??0),isTaxExempt:r.pc.taxType==='면세'}:item));setActiveSearchRow(null);}}
                                             className="w-full flex items-center justify-between px-3 py-2 text-xs hover:bg-blue-50 text-left transition-colors">
                                             <span className="font-black text-slate-800">{docN}</span>
                                             <span className="text-slate-400 text-[10px]">{tags2}</span>

@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useMemo } from 'react';
 import { Tag, Search, Save, AlertCircle } from 'lucide-react';
 import { Product, Client, ProductClient, ProductSupplier } from '../types';
@@ -233,7 +233,7 @@ const PriceManager: React.FC<PriceManagerProps> = ({
                             <span className="text-xs font-black text-slate-800">{product!.name}</span>
                             {hasNoPrice && <span className="ml-1.5 text-[9px] font-black text-amber-500 bg-amber-100 px-1.5 py-0.5 rounded-full">단가 미입력</span>}
                           </td>
-                          <td className="px-4 py-3 text-[11px] text-slate-400">{product!.용량 || '-'}</td>
+                          <td className="px-4 py-3 text-[11px] text-slate-400">{product!.spec || '-'}</td>
                           <td className="px-4 py-3"><div className="flex justify-end">
                             <input type="number" placeholder={product!.cost ? String(product!.cost) : '원가'} value={costEdits[product!.id] ?? ''}
                               onChange={e => setCostEdits(prev => ({ ...prev, [product!.id]: e.target.value }))}
@@ -283,7 +283,7 @@ const PriceManager: React.FC<PriceManagerProps> = ({
                             <span className="text-xs font-black text-slate-800">{product.name}</span>
                             {hasNoPrice && <span className="ml-1.5 text-[9px] font-black text-amber-500 bg-amber-100 px-1.5 py-0.5 rounded-full">미입력</span>}
                           </td>
-                          <td className="px-4 py-3 text-[11px] text-slate-400">{product.용량 || '-'}</td>
+                          <td className="px-4 py-3 text-[11px] text-slate-400">{product.spec || '-'}</td>
                           <td className="px-4 py-3"><div className="flex justify-end">
                             <input type="number"
                               placeholder={ps.price ? String(ps.price) : ps.Standard_Price ? String(ps.Standard_Price) : '매입단가'}

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+﻿import React, { useMemo, useState } from 'react';
 import { Order, Client, Product } from '../src/shared/types';
 import { TrendingUp, Users, RefreshCw, ChevronDown, ChevronUp, Tag, Check, X } from 'lucide-react';
 import PageHeader from './PageHeader';
@@ -469,7 +469,7 @@ export default function SmartStoreAnalytics({ orders, clients, products, onUpdat
                     <tr key={p.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
                       <td className="px-5 py-3.5">
                         <p className="font-semibold text-slate-800">{p.name}</p>
-                        {p.용량 && <p className="text-xs text-slate-400 mt-0.5">{p.용량}</p>}
+                        {p.spec && <p className="text-xs text-slate-400 mt-0.5">{p.spec}</p>}
                       </td>
                       <td className="px-5 py-3.5 text-right text-slate-400">{formatAmount(p.price)}</td>
                       <td className="px-5 py-3.5 text-right">

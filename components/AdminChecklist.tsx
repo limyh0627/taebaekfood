@@ -1,4 +1,4 @@
-
+﻿
 import React, { useMemo, useState } from 'react';
 import {
   Clock, AlertCircle, Package, ArrowRight,
@@ -124,7 +124,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
       map.get(supplierId)!.items.push({
         productId: req.id,
         name: product.name,
-        spec: (product as any).용량 || product.unit || '',
+        spec: (product as any).spec || product.unit || '',
         qty: req.quantity,
         price: ps?.Standard_Price ?? ps?.price ?? 0,
         isBox: req.isBox ?? false,

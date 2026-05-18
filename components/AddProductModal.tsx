@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import { X, Package, Tag, Box, Layers, Plus, Building2, Check, Trash2 } from 'lucide-react';
 import { Product, InventoryCategory, Client, ClientBoxConfig, ProductClient, ProductSupplier, ShippingRule } from '../types';
 
@@ -75,7 +75,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
         : { boxType: '', unitsPerBox: 0 }
     ),
     clientBoxConfigs: initialData?.clientBoxConfigs ?? [] as ClientBoxConfig[],
-    용량: initialData?.용량 || '',
+    spec: initialData?.spec || '',
     품목: initialData?.품목 || '',
     isSmartStore: initialData?.isSmartStore ?? false,
     clientIds: initialData?.clientIds ?? (initialData?.clientId ? [initialData.clientId] : []),
@@ -179,7 +179,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       ...(formData.category === 'box' && { freightType: formData.freightType, boxSize: formData.boxSize }),
       ...(isProductCategory && hasBoxConfig && { defaultBoxConfig: formData.defaultBoxConfig }),
       ...(isProductCategory && formData.clientBoxConfigs.length > 0 && { clientBoxConfigs: formData.clientBoxConfigs }),
-      ...(formData.용량 && { 용량: formData.용량 }),
+      ...(formData.spec && { spec: formData.spec }),
       ...(formData.품목 && { 품목: formData.품목 }),
       ...(formData.category === 'product' && formData.clientIds.length > 0 && { clientIds: formData.clientIds }),
       ...(formData.category === 'product' && { isSmartStore: formData.isSmartStore }),
@@ -388,13 +388,13 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                                     onClick={() => {
                                       const filtered = formData.submaterials.filter(s => getSubCat(s) !== cat);
                                       const autoCapacity = cat === 'container'
-                                        ? (allSubmaterials.find(a => a.id === sub.id) as Product | undefined)?.용량 || ''
-                                        : formData.용량;
+                                        ? (allSubmaterials.find(a => a.id === sub.id) as Product | undefined)?.spec || ''
+                                        : formData.spec;
                                       const newSub = { id: sub.id, name: sub.name, category: cat, stock: 1, unit: sub.unit };
                                       const newData: typeof formData = {
                                         ...formData,
                                         submaterials: [...filtered, newSub],
-                                        ...(cat === 'container' && { 용량: autoCapacity }),
+                                        ...(cat === 'container' && { spec: autoCapacity }),
                                       };
                                       setFormData(newData);
                                       setActiveSubCategory(null);
@@ -487,7 +487,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                 <input
                   type="text"
                   value={formData.품목}
-                  onChange={(e) => { setFormData({...formData, 품목: e.target.value, 용량: ''}); setShowPumokDrop(true); setPumokWarn(false); }}
+                  onChange={(e) => { setFormData({...formData, 품목: e.target.value, spec: ''}); setShowPumokDrop(true); setPumokWarn(false); }}
                   onFocus={() => setShowPumokDrop(true)}
                   placeholder="예: 시골향참기름1"
                   className={`w-full bg-slate-50 border rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 transition-all ${pumokWarn ? 'border-red-400 focus:ring-red-400' : 'border-slate-200 focus:ring-indigo-500'}`}
@@ -498,7 +498,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                       <button
                         key={v}
                         type="button"
-                        onMouseDown={(e) => { e.preventDefault(); setFormData({...formData, 품목: v, 용량: ''}); setShowPumokDrop(false); }}
+                        onMouseDown={(e) => { e.preventDefault(); setFormData({...formData, 품목: v, spec: ''}); setShowPumokDrop(false); }}
                         className={`w-full text-left px-5 py-2.5 text-sm font-bold hover:bg-indigo-50 hover:text-indigo-700 transition-all ${formData.품목 === v ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700'}`}
                       >
                         {v}
@@ -522,9 +522,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                     <button
                       key={vol}
                       type="button"
-                      onClick={() => setFormData({...formData, 용량: vol})}
+                      onClick={() => setFormData({...formData, spec: vol})}
                       className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
-                        formData.용량 === vol
+                        formData.spec === vol
                           ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
                           : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'
                       }`}
@@ -536,8 +536,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
               ) : (
                 <input
                   type="text"
-                  value={formData.용량}
-                  onChange={(e) => setFormData({...formData, 용량: e.target.value})}
+                  value={formData.spec}
+                  onChange={(e) => setFormData({...formData, spec: e.target.value})}
                   placeholder="예: 200g, 500g, 1kg, 300ml"
                   className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                 />

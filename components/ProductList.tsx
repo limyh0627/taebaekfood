@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Package,
@@ -736,7 +736,7 @@ const ProductList: React.FC<ProductListProps> = ({
                         {product.품목 ? (
                           <div className="flex flex-col">
                             <span className="text-[11px] font-bold text-slate-600">{product.품목}</span>
-                            {product.용량 && <span className="text-[10px] text-slate-400">{product.용량}</span>}
+                            {product.spec && <span className="text-[10px] text-slate-400">{product.spec}</span>}
                           </div>
                         ) : <span className="text-[10px] text-slate-200">-</span>}
                       </td>
@@ -1317,7 +1317,7 @@ const ProductList: React.FC<ProductListProps> = ({
                                     onRequestPurchaseInvoice(
                                       psMap.get(product.id)!,
                                       supplierName || '',
-                                      [{ name: product.name, spec: product.용량 || '', qty: conf.quantity, price: product.price ?? 0 }]
+                                      [{ name: product.name, spec: product.spec || '', qty: conf.quantity, price: product.price ?? 0 }]
                                     );
                                   }}
                                   className="text-[10px] font-black px-2.5 py-1.5 rounded-xl transition-all shrink-0 border bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50"
@@ -2398,7 +2398,7 @@ const ProductList: React.FC<ProductListProps> = ({
                   if (!groups.has(sid)) groups.set(sid, { supplierId: sid, supplierName: sname, items: [] });
                   groups.get(sid)!.items.push({
                     name: product.name,
-                    spec: product.용량 || '',
+                    spec: product.spec || '',
                     qty: item.qty,
                     price: product.price ?? 0,
                     productId: product.id,
@@ -2477,7 +2477,7 @@ const ProductList: React.FC<ProductListProps> = ({
                   if (!groups.has(sid)) groups.set(sid, { supplierId: sid, supplierName: sname, items: [] });
                   groups.get(sid)!.items.push({
                     name: product.name,
-                    spec: product.용량 || '',
+                    spec: product.spec || '',
                     qty: conf.quantity,
                     price: product.price ?? 0,
                     productId: product.id,
