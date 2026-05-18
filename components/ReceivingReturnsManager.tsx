@@ -738,7 +738,30 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
 
   return (
     <div className="space-y-4">
-      <PageHeader title="입고 / 반품" subtitle="선입고 처리 · 거래처별 입고 · 반품 접수 및 처리" />
+      <PageHeader
+        title="입고 / 반품"
+        subtitle="선입고 처리 · 거래처별 입고 · 반품 접수 및 처리"
+        right={
+          <button
+            onClick={() => {
+              if (mainTab === '입고' && inboundTab === '스캔') {
+                setInboundTab('거래처별');
+              } else {
+                setMainTab('입고');
+                setInboundTab('스캔');
+              }
+            }}
+            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-black transition-all shadow-sm ${
+              mainTab === '입고' && inboundTab === '스캔'
+                ? 'bg-teal-600 text-white'
+                : 'bg-teal-50 text-teal-700 hover:bg-teal-100'
+            }`}
+          >
+            <ScanLine size={15} />
+            <span>스캔 입고</span>
+          </button>
+        }
+      />
 
       {/* ── 메인 탭 ── */}
       <div className="flex bg-slate-100 rounded-xl p-1 gap-1 w-fit">
@@ -764,22 +787,23 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
       {mainTab === '입고' && (
         <div className="space-y-4">
           {/* 입고 서브탭 */}
-          <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
-            {([
-              { key: '스캔', label: '스캔 입고', Icon: ScanLine },
-              { key: '거래처별', label: '거래처별', Icon: Building2 },
-              { key: '이력', label: '입고 이력', Icon: History },
-            ] as { key: InboundTab; label: string; Icon: React.ElementType }[]).map(({ key, label, Icon }) => (
-              <button
-                key={key}
-                onClick={() => setInboundTab(key)}
-                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${inboundTab === key ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-              >
-                <Icon size={13} />
-                {label}
-              </button>
-            ))}
-          </div>
+          {inboundTab !== '스캔' && (
+            <div className="flex bg-slate-100 rounded-xl p-1 gap-1 w-fit">
+              {([
+                { key: '거래처별', label: '거래처별', Icon: Building2 },
+                { key: '이력', label: '입고 이력', Icon: History },
+              ] as { key: InboundTab; label: string; Icon: React.ElementType }[]).map(({ key, label, Icon }) => (
+                <button
+                  key={key}
+                  onClick={() => setInboundTab(key)}
+                  className={`flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-black transition-all ${inboundTab === key ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  <Icon size={13} />
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* ── 스캔 입고 ── */}
           {inboundTab === '스캔' && (

@@ -75,6 +75,8 @@ interface ProductListProps {
   onUpdateSubmaterial?: (id: string, data: Partial<Product>) => void;
   pendingReceipts?: import('../src/shared/types').PendingReceipt[];
   itemCustomers?: PartnerItem[];
+  inboundContent?: React.ReactNode;
+  inboundBadge?: number;
 }
 
 
@@ -105,7 +107,7 @@ const RAW_MATERIALS_EN: Record<string, string> = {
   '생들기름': 'Raw Perilla Oil',
 };
 
-type MainTab = 'requests' | 'history' | 'master';
+type MainTab = 'requests' | 'history' | 'master' | 'inbound';
 type TopTab = 'finished' | 'specialty' | 'product' | 'rawmaterial';
 
 const ProductList: React.FC<ProductListProps> = ({
@@ -141,6 +143,8 @@ const ProductList: React.FC<ProductListProps> = ({
   pendingReceipts = [],
   productSuppliers = [],
   itemCustomers = [],
+  inboundContent,
+  inboundBadge = 0,
 }) => {
   const [isEn, setIsEn] = useState(() => localStorage.getItem('inventoryLang') === 'en');
   const toggleLang = () => setIsEn(prev => {
@@ -439,7 +443,7 @@ const ProductList: React.FC<ProductListProps> = ({
       <div className="flex flex-col space-y-4">
 
         {/* 하위 탭 + 검색 */}
-        {!zeroStockOnly && (topTab === 'product' || topTab === 'finished' || topTab === 'specialty') && (
+        {!zeroStockOnly && activeTab !== 'inbound' && (topTab === 'product' || topTab === 'finished' || topTab === 'specialty') && (
           <div className="flex items-center gap-3 flex-wrap">
             <div className="bg-slate-100/50 p-1 rounded-2xl flex items-center self-start border border-slate-200">
               <button
@@ -457,6 +461,16 @@ const ProductList: React.FC<ProductListProps> = ({
                 <span>발주 내역</span>
                 {cart.length > 0 && <span className="absolute -top-1 -right-1 bg-rose-500 text-white w-5 h-5 flex items-center justify-center rounded-full text-[10px] shadow-lg">{cart.length}</span>}
               </button>
+              {inboundContent && (
+                <button
+                  onClick={() => setActiveTab('inbound')}
+                  className={`px-5 py-2 rounded-xl flex items-center space-x-2 transition-all text-xs font-black relative ${activeTab === 'inbound' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  <Inbox size={16} />
+                  <span>입고/반품</span>
+                  {inboundBadge > 0 && <span className="absolute -top-1 -right-1 bg-amber-500 text-white w-5 h-5 flex items-center justify-center rounded-full text-[10px] shadow-lg">{inboundBadge}</span>}
+                </button>
+              )}
             </div>
             <div className="relative w-36 md:w-48">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={15} />
@@ -560,7 +574,13 @@ const ProductList: React.FC<ProductListProps> = ({
         </div>}
       </div>
 
-      {(zeroStockOnly || topTab === 'product' || topTab === 'finished' || topTab === 'specialty') && <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+      {activeTab === 'inbound' && inboundContent && (
+        <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+          {inboundContent}
+        </div>
+      )}
+
+      {activeTab !== 'inbound' && (zeroStockOnly || topTab === 'product' || topTab === 'finished' || topTab === 'specialty') && <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
         {activeTab === 'requests' && draftOrders.length > 0 && (
           <div className="mb-8 bg-indigo-50/50 border border-indigo-100 rounded-[32px] p-6">
             <div className="flex items-center justify-between mb-6 px-2">
