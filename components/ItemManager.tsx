@@ -154,7 +154,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
       (!clientSearch.trim() || c.name.includes(clientSearch)) &&
       (!clientTypeFilter || c.type === clientTypeFilter)
     ),
-    [salesClients, clientSearch, clientTypeFilter]
+    [activePartnerClients, clientSearch, clientTypeFilter]
   );
 
   const handleClientTypeFilter = (type: string) => {
@@ -939,7 +939,6 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                   {filteredClients
-                    .filter(c => (partnerTab === 'sales' ? clientProductCount.get(c.id) ?? 0 : supplierItemCount.get(c.id) ?? 0) > 0)
                     .map(c => {
                       const count = partnerTab === 'sales'
                         ? (clientProductCount.get(c.id) ?? 0)

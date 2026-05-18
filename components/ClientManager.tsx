@@ -104,7 +104,7 @@ const ClientManager: React.FC<ClientManagerProps> = ({ clients, onUpdateClient, 
             return (
               <button
                 key={tab.id}
-                onClick={() => { setActiveTab(tab.id); setActiveTypeTab('전체'); setPage(1); }}
+                onClick={() => { setActiveTab(tab.id); setActiveTypeTab('전체'); setPage(1); setSearchTerm(''); }}
                 className={`flex items-center space-x-2 px-4 py-2 rounded-xl transition-all whitespace-nowrap border text-sm ${
                   isActive ? 'bg-white border-indigo-200 text-indigo-600 shadow-sm ring-1 ring-indigo-50' : 'bg-white border-slate-100 text-slate-500 hover:border-slate-200'
                 }`}
