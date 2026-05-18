@@ -1,7 +1,6 @@
 
 import React, { useState } from 'react';
 import { X, Users, Phone, Mail, LayoutGrid, Check, Store, Truck, User, MapPin } from 'lucide-react';
-import RegionSelect from './RegionSelect';
 import { Client, ClientType, PartnerType } from '../types';
 
 declare global {
@@ -19,9 +18,8 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ onClose, onSave }) => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    phone: '',
+    mobile: '',
     type: '일반' as ClientType,
-    region: '',
     address: '',
     note: '',
     partnerType: '매출처' as PartnerType
@@ -47,9 +45,8 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ onClose, onSave }) => {
       id: `c-${Date.now()}`,
       name: formData.name,
       email: formData.email,
-      phone: formData.phone,
+      mobile: formData.mobile,
       type: formData.type,
-      region: formData.region,
       address: formData.address,
       note: formData.note,
       partnerType: formData.partnerType
@@ -61,7 +58,7 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ onClose, onSave }) => {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose} />
-      
+
       <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-300">
         <div className="p-6 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -83,7 +80,7 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ onClose, onSave }) => {
             <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
               <User size={14} className="mr-2" /> 거래처명 (상호명)
             </label>
-            <input 
+            <input
               required
               autoFocus
               type="text"
@@ -94,28 +91,17 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ onClose, onSave }) => {
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Phone size={14} className="mr-2" /> 연락처
-              </label>
-              <input 
-                type="text"
-                value={formData.phone}
-                onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                placeholder="010-0000-0000"
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <LayoutGrid size={14} className="mr-2" /> 지역
-              </label>
-              <RegionSelect
-                value={formData.region}
-                onChange={(v) => setFormData({...formData, region: v})}
-              />
-            </div>
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
+              <Phone size={14} className="mr-2" /> 핸드폰
+            </label>
+            <input
+              type="text"
+              value={formData.mobile}
+              onChange={(e) => setFormData({...formData, mobile: e.target.value})}
+              placeholder="010-0000-0000"
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+            />
           </div>
 
           <div className="space-y-2">
@@ -201,8 +187,8 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ onClose, onSave }) => {
                     type="button"
                     onClick={() => setFormData({...formData, type: type.id})}
                     className={`flex flex-col items-center justify-center p-4 rounded-2xl border transition-all ${
-                      isSelected 
-                        ? 'bg-indigo-50 border-indigo-500 ring-1 ring-indigo-500 shadow-md' 
+                      isSelected
+                        ? 'bg-indigo-50 border-indigo-500 ring-1 ring-indigo-500 shadow-md'
                         : 'bg-white border-slate-100 hover:border-slate-200'
                     }`}
                   >
@@ -219,14 +205,14 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ onClose, onSave }) => {
         </form>
 
         <div className="p-6 border-t border-slate-100 bg-slate-50/50 rounded-b-3xl flex space-x-3">
-          <button 
+          <button
             type="button"
             onClick={onClose}
             className="flex-1 py-4 rounded-2xl font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 transition-all"
           >
             취소
           </button>
-          <button 
+          <button
             type="submit"
             onClick={handleSubmit}
             className="flex-1 py-4 rounded-2xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all flex items-center justify-center space-x-2"
