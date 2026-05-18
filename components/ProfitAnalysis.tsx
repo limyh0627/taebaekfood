@@ -1291,11 +1291,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
       })()}
       {/* ── 재고액 탭 ── */}
       {mainTab === 'inventory-value' && (() => {
-        const getStock = (p: Product) => {
-          if (p.itemType === 'FINISHED') return p.finishedStock ?? 0;
-          if (p.itemType === 'WIP') return p.wipStock ?? 0;
-          return p.stock ?? 0;
-        };
+        const getStock = (p: Product) => p.stock ?? 0;
 
         const rows = products
           .map(p => ({ ...p, stock: getStock(p), value: getStock(p) * (p.cost ?? 0) }))

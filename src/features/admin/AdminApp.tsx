@@ -556,11 +556,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const product = allProducts.find(p => p.id === item.productId);
       if (!product) continue;
       const col = getProductCollection(product.category as string);
-      if (product.category === 'product') {
-        await updateItem(col, product.id, { finishedStock: (product.finishedStock ?? 0) + item.quantity });
-      } else {
-        await updateItem(col, product.id, { stock: product.stock + item.quantity });
-      }
+      await updateItem(col, product.id, { stock: product.stock + item.quantity });
     }
 
     if (req.linkedStatementId && req.totalAmount > 0) {
