@@ -168,27 +168,40 @@ export interface SubmaterialComponent {
 
 // 새 영문 체계
 export type InventoryCategory =
-  'raw' | 'wip' | 'product' | 'giftset' |
-  'label' | 'cap' | 'container' | 'box' | 'tape' | 'shipping' |
+  'raw' | 'wip' | 'product' | 'goods' | 'giftset' | 'submaterial' | 'shipping' |
   // @deprecated 마이그레이션 완료 전 하위 호환
+  'label' | 'cap' | 'container' | 'box' | 'tape' |
   '완제품' | '향미유' | '고춧가루' | '용기' | '마개' | '테이프' | '박스' | '라벨';
 
-export const PRODUCT_LINE = ['raw', 'wip', 'product', 'giftset'] as const;
-export const SUBMATERIALS  = ['label', 'cap', 'container', 'box', 'tape'] as const;
+export type ItemSubtype =
+  // goods 세부 분류
+  '참기름' | '들기름' | '참깨' | '들깨' | '검정깨' | '향미유' | '고춧가루' |
+  // submaterial 세부 분류
+  '마개' | '용기' | '박스' | '테이프' | '라벨';
+
+export const PRODUCT_LINE = ['raw', 'wip', 'product', 'goods', 'giftset'] as const;
+export const SUBMATERIALS  = ['submaterial'] as const;
+export const SUBMATERIAL_TYPES = ['마개', '용기', '박스', '테이프', '라벨'] as const;
 export const SHIPPING_ITEMS = ['shipping'] as const;
 export const isProductLine = (cat: string): boolean => (PRODUCT_LINE as readonly string[]).includes(cat);
-export const isSubmaterial = (cat: string): boolean => (SUBMATERIALS  as readonly string[]).includes(cat);
+export const isSubmaterial = (cat: string): boolean =>
+  cat === 'submaterial' || (['label', 'cap', 'container', 'box', 'tape'] as string[]).includes(cat);
 
 // 한국어 → 영문 카테고리 변환 맵 (마이그레이션용)
 export const CATEGORY_MIGRATION_MAP: Record<string, string> = {
   '완제품': 'product',
-  '향미유': 'product',
-  '고춧가루': 'product',
-  '용기': 'container',
-  '마개': 'cap',
-  '테이프': 'tape',
-  '박스': 'box',
-  '라벨': 'label',
+  '향미유': 'goods',
+  '고춧가루': 'goods',
+  '용기': 'submaterial',
+  '마개': 'submaterial',
+  '테이프': 'submaterial',
+  '박스': 'submaterial',
+  '라벨': 'submaterial',
+  'container': 'submaterial',
+  'cap': 'submaterial',
+  'tape': 'submaterial',
+  'box': 'submaterial',
+  'label': 'submaterial',
 };
 
 export type ProductStage = 'WIP' | 'FINISHED';
@@ -199,7 +212,7 @@ export interface Item {
   name: string;
   sku?: string;
   category: InventoryCategory | string;
-  subtype?: string;              // category 내 세부분류 (예: '향미유', '고춧가루')
+  subtype?: ItemSubtype | string; // category 내 세부분류
   itemType?: ProductStage;       // @deprecated → category: 'wip'|'product' 사용
   cost?: number;                 // 원가 (제조/매입원가)
   price: number;
@@ -537,6 +550,7 @@ export interface ReturnRequest {
   items: ReturnItem[];
   totalAmount: number;
   status: 'pending' | 'processed';
+  returnType?: '매출' | '매입'; // 매출=고객이 우리에게 반품, 매입=우리가 공급사에 반품
   createdAt: string;
   createdBy?: string;
   processedAt?: string;

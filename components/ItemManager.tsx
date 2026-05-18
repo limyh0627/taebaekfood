@@ -26,21 +26,35 @@ interface ItemManagerProps {
 }
 
 const CATEGORY_MAP: Record<string, string> = {
-  'Cap': 'cap', 'Tape': 'tape',
-  '완제품': 'product', '향미유': 'product', '고춧가루': 'product',
-  '용기': 'container', '마개': 'cap', '테이프': 'tape', '박스': 'box', '라벨': 'label',
+  'cap': '마개', 'container': '용기', 'box': '박스', 'tape': '테이프', 'label': '라벨',
+  'Cap': '마개', 'Tape': '테이프',
+  '마개': '마개', '용기': '용기', '박스': '박스', '테이프': '테이프', '라벨': '라벨',
 };
 const normalizeCategory = (cat: string) => CATEGORY_MAP[cat] || cat;
-
-const CATEGORIES: InventoryCategory[] = ['product', 'wip', 'raw', 'giftset', 'container', 'cap', 'tape', 'box', 'label', 'shipping'];
-const CATEGORY_LABELS: Record<string, string> = {
-  product: '완제품', wip: '반제품', raw: '원료', giftset: '선물세트',
-  container: '용기', cap: '마개', tape: '테이프', box: '박스', label: '라벨', shipping: '배송',
+const itemSubCat = (item: { category: string; subtype?: string }) =>
+  item.category === 'submaterial' ? (item.subtype || '') : normalizeCategory(item.category);
+const inferSubtype = (item: { subtype?: string; name: string; category: string }): string => {
+  if (item.subtype) return item.subtype;
+  const n = item.name;
+  if (n.includes('들기름')) return '들기름';
+  if (n.includes('참기름')) return '참기름';
+  if (n.includes('검정깨') || n.includes('검정참깨')) return '검정깨';
+  if (n.includes('들깨')) return '들깨';
+  if (n.includes('참깨')) return '참깨';
+  if (n.includes('고춧가루')) return '고춧가루';
+  if (n.includes('향미유')) return '향미유';
+  return CATEGORY_LABELS[item.category] || item.category;
 };
-const LINK_CATEGORIES = ['product', 'wip', 'raw', '참기름', '들기름', '깨', '검정깨', '들깨'];
-const SUB_ORDER: Record<string, number> = { 'label': 0, 'container': 1, 'cap': 2, 'tape': 3, 'box': 4 };
-const sortSubs = (subs: { name: string; category: string }[]) =>
-  [...subs].sort((a, b) => (SUB_ORDER[normalizeCategory(a.category)] ?? 9) - (SUB_ORDER[normalizeCategory(b.category)] ?? 9));
+
+const CATEGORIES: InventoryCategory[] = ['product', 'goods', 'wip', 'raw', 'giftset', 'submaterial', 'shipping'];
+const CATEGORY_LABELS: Record<string, string> = {
+  product: '완제품', goods: '상품', wip: '반제품', raw: '원료',
+  giftset: '선물세트', submaterial: '부자재', shipping: '배송',
+};
+const LINK_CATEGORIES = ['product', 'goods', 'wip', 'raw', 'giftset', 'submaterial'];
+const SUB_ORDER: Record<string, number> = { '라벨': 0, '용기': 1, '마개': 2, '테이프': 3, '박스': 4 };
+const sortSubs = (subs: { name: string; category: string; subtype?: string }[]) =>
+  [...subs].sort((a, b) => (SUB_ORDER[itemSubCat(a)] ?? 9) - (SUB_ORDER[itemSubCat(b)] ?? 9));
 
 const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productClients = [], productSuppliers = [], itemCustomers = [], shippingRules = [], itemBoms = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct, onMergeProducts, onSaveItemCustomer, onSaveShippingRule, onAddShippingRule, isAdmin = true }) => {
   const [mainView, setMainView] = useState<'flat' | 'by-client'>(isAdmin ? 'flat' : 'by-client');
@@ -105,8 +119,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
     const groups: Record<string, typeof finished> = {};
     for (const p of finished) {
       const subs = p.submaterials || [];
-      const 용기 = subs.filter(s => normalizeCategory(s.category) === 'container').map(s => s.name).sort().join(',');
-      const 마개 = subs.filter(s => normalizeCategory(s.category) === 'cap').map(s => s.name).sort().join(',');
+      const 용기 = subs.filter(s => normalizeCategory(s.category) === '용기').map(s => s.name).sort().join(',');
+      const 마개 = subs.filter(s => normalizeCategory(s.category) === '마개').map(s => s.name).sort().join(',');
       const key = `${p.name}||용기:${용기}|마개:${마개}`;
       if (!groups[key]) groups[key] = [];
       groups[key].push(p);
@@ -118,7 +132,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
         const [namePart, containerPart] = key.split('||');
         const items = prods.map(p => {
           const subs = p.submaterials || [];
-          const 라벨 = subs.filter(s => normalizeCategory(s.category) === 'label').map(s => s.name).join(', ');
+          const 라벨 = subs.filter(s => normalizeCategory(s.category) === '라벨').map(s => s.name).join(', ');
           const pcs = pcByProduct[p.id] || [];
           const directClients = [...new Set([...(p.clientIds || [])])];
           return { product: p, 라벨, pcs, directClients, subMap };
@@ -393,6 +407,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
           <table className="w-full text-left border-collapse">
             <thead className="sticky top-0 z-10">
               <tr className="bg-slate-50/50 border-b border-slate-100">
+                <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">카테고리</th>
                 <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[100px]">품목 정보</th>
                 {!(mainView === 'by-client' && selectedClientId) && activeCategory === 'product' && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">거래처</th>}
                 {!(mainView === 'by-client' && selectedClientId) && activeCategory !== 'product' && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">매입거래처</th>}
@@ -409,13 +424,13 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
             <tbody className="divide-y divide-slate-50">
               {!selectedClientId && !showAll ? (
                 <tr>
-                  <td colSpan={isAdmin ? 7 : 5} className="px-6 py-16 text-center text-slate-300 font-medium text-sm">
+                  <td colSpan={isAdmin ? 8 : 6} className="px-6 py-16 text-center text-slate-300 font-medium text-sm">
                     거래처를 선택하세요.
                   </td>
                 </tr>
               ) : pagedItems.length === 0 ? (
                 <tr>
-                  <td colSpan={isAdmin ? 7 : 5} className="px-6 py-16 text-center text-slate-400 font-medium text-sm">
+                  <td colSpan={isAdmin ? 8 : 6} className="px-6 py-16 text-center text-slate-400 font-medium text-sm">
                     {showAll ? '등록된 품목이 없습니다.' : '이 거래처에 연결된 품목이 없습니다.'}
                   </td>
                 </tr>
@@ -423,6 +438,28 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                 pagedItems.map(item => (
                   <React.Fragment key={item.id}>
                   <tr className="hover:bg-slate-50/50 transition-colors group">
+                    <td className="px-2 py-3">
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-black whitespace-nowrap ${(() => {
+                        const sub = inferSubtype(item);
+                        if (item.category === 'product') return 'bg-indigo-50 text-indigo-600';
+                        if (sub === '향미유' || sub === '참기름' || sub === '들기름') return 'bg-purple-50 text-purple-600';
+                        if (sub === '고춧가루') return 'bg-red-50 text-red-500';
+                        if (sub === '참깨' || sub === '들깨' || sub === '검정깨') return 'bg-amber-50 text-amber-700';
+                        if (item.category === 'goods') return 'bg-orange-50 text-orange-500';
+                        if (sub === '용기') return 'bg-sky-50 text-sky-600';
+                        if (sub === '라벨') return 'bg-amber-50 text-amber-600';
+                        if (sub === '박스') return 'bg-emerald-50 text-emerald-600';
+                        if (sub === '마개') return 'bg-slate-100 text-slate-600';
+                        if (sub === '테이프') return 'bg-teal-50 text-teal-600';
+                        if (item.category === 'wip') return 'bg-violet-50 text-violet-600';
+                        if (item.category === 'raw') return 'bg-lime-50 text-lime-700';
+                        if (item.category === 'giftset') return 'bg-pink-50 text-pink-600';
+                        if (item.category === 'shipping') return 'bg-cyan-50 text-cyan-600';
+                        return 'bg-slate-100 text-slate-500';
+                      })()}`}>
+                        {inferSubtype(item)}
+                      </span>
+                    </td>
                     <td className="px-3 py-3">
                       <div className="flex items-center space-x-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-slate-300 shrink-0" />
@@ -468,12 +505,12 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                         </span>
                       </td>
                     )}
-                    {['container', 'cap', 'label'].map(cat => (
+                    {(['용기', '마개', '라벨'] as const).map(cat => (
                       <td key={cat} className="px-2 py-3">
                         {item.category === 'product' ? (() => {
                           const subs = (item.submaterials ?? []).filter(s => {
                             const full = products.find(p => p.id === s.id);
-                            return normalizeCategory(full?.category || s.category || '') === cat;
+                            return full ? itemSubCat(full) === cat : normalizeCategory(s.category) === cat;
                           });
                           return subs.length > 0
                             ? <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">{subs.map(s => s.name).join(', ')}</span>
@@ -549,12 +586,15 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                     // BOM: 이 품목의 구성 부자재 (item_bom)
                     const boms = itemBoms.filter(b => b.parent_id === item.id);
                     const getBomChild = (cat: string) => {
-                      const bom = boms.find(b => normalizeCategory(products.find(p => p.id === b.child_id)?.category || '') === cat);
+                      const bom = boms.find(b => {
+                        const child = products.find(p => p.id === b.child_id);
+                        return child ? itemSubCat(child) === cat : false;
+                      });
                       return bom ? products.find(p => p.id === bom.child_id) : null;
                     };
-                    const containerItem = getBomChild('container');
-                    const labelItem = getBomChild('label');
-                    const capItem = getBomChild('cap');
+                    const containerItem = getBomChild('용기');
+                    const labelItem = getBomChild('라벨');
+                    const capItem = getBomChild('마개');
                     // 거래처별 포장 설정 (shipping_rule)
                     const rules = shippingRules.filter(r => r.item_id === item.id);
                     return (
@@ -607,7 +647,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                                               <select className="border border-emerald-300 rounded px-1 text-xs w-full"
                                                 value={editing.box_item_id ?? rule.box_item_id}
                                                 onChange={e => setEditingRule(prev => ({ ...prev, [rule.id]: { ...prev[rule.id], box_item_id: e.target.value } }))}>
-                                                {products.filter(p => p.category === 'box' || p.category === 'shipping').map(p => (
+                                                {products.filter(p => p.category === 'box' || (p.category === 'submaterial' && p.subtype === '박스')).map(p => (
                                                   <option key={p.id} value={p.id}>{p.name}</option>
                                                 ))}
                                               </select>
@@ -626,7 +666,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                                                 value={editing.tape_item_id ?? rule.tape_item_id ?? ''}
                                                 onChange={e => setEditingRule(prev => ({ ...prev, [rule.id]: { ...prev[rule.id], tape_item_id: e.target.value || undefined } }))}>
                                                 <option value="">없음</option>
-                                                {products.filter(p => p.category === 'tape').map(p => (
+                                                {products.filter(p => p.category === 'tape' || (p.category === 'submaterial' && p.subtype === '테이프')).map(p => (
                                                   <option key={p.id} value={p.id}>{p.name}</option>
                                                 ))}
                                               </select>
@@ -758,8 +798,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                     <div className="mt-3 space-y-2">
                       {group.items.map(({ product, 라벨, pcs, directClients, subMap }) => {
                         const subs = product.submaterials || [];
-                        const 용기목록 = subs.filter(s => normalizeCategory(s.category) === 'container').map(s => s.name).join(', ');
-                        const 마개목록 = subs.filter(s => normalizeCategory(s.category) === 'cap').map(s => s.name).join(', ');
+                        const 용기목록 = subs.filter(s => normalizeCategory(s.category) === '용기').map(s => s.name).join(', ');
+                        const 마개목록 = subs.filter(s => normalizeCategory(s.category) === '마개').map(s => s.name).join(', ');
                         return (
                         <div key={product.id} className="bg-white rounded-xl border border-amber-100 px-4 py-3">
                           <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -1001,7 +1041,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
       {/* 품목 연결 모달 */}
       {showLinkPanel && selectedClientId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowLinkPanel(false)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl mx-4 flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl mx-4 flex flex-col h-[85vh] animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
             {/* 헤더 */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <div>
@@ -1085,8 +1125,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
         const { item, clientId } = packagingModal;
         const clientName = clients.find(c => c.id === clientId)?.name ?? clientId;
         const existingRule = shippingRules.find(r => r.item_id === item.id && r.partner_id === clientId);
-        const boxItems = products.filter(p => p.category === 'box');
-        const tapeItems = products.filter(p => p.category === 'tape');
+        const boxItems = products.filter(p => p.category === 'box' || (p.category === 'submaterial' && p.subtype === '박스'));
+        const tapeItems = products.filter(p => p.category === 'tape' || (p.category === 'submaterial' && p.subtype === '테이프'));
 
         const closeModal = () => { setPackagingModal(null); setPackagingEdit({}); setPackagingAdding(false); };
 

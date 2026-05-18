@@ -374,7 +374,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
       // 박스·테이프 외 부자재 (BOM 기반)
       for (const s of (product.submaterials || [])) {
         const sub = submaterials.find(sm => sm.id === s.id);
-        if (!sub || sub.category === 'box' || sub.category === 'tape') continue;
+        if (!sub || sub.category === 'box' || sub.category === 'tape' ||
+            (sub.category === 'submaterial' && (sub.subtype === '박스' || sub.subtype === '테이프'))) continue;
         usage[sub.id] = { name: sub.name, needed: (usage[sub.id]?.needed ?? 0) + item.quantity, unit: '개' };
       }
     }
@@ -479,6 +480,29 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
 
+
+  // --- 카테고리 구조 마이그레이션 (goods / submaterial) ---
+  const categoryMigrationDone = useRef(false);
+  useEffect(() => {
+    if (allProducts.length === 0 || categoryMigrationDone.current) return;
+    categoryMigrationDone.current = true;
+    const SUBMATERIAL_MAP: Record<string, string> = {
+      'cap': '마개', 'container': '용기', 'box': '박스', 'tape': '테이프', 'label': '라벨',
+      '마개': '마개', '용기': '용기', '박스': '박스', '테이프': '테이프', '라벨': '라벨',
+    };
+    const GOODS_CATS = ['향미유', '고춧가루'];
+    allProducts.forEach(p => {
+      const cat = (p as any).category as string;
+      if (SUBMATERIAL_MAP[cat] !== undefined) {
+        updateItem('items', p.id, { category: 'submaterial', subtype: SUBMATERIAL_MAP[cat] });
+      } else if (
+        GOODS_CATS.includes(cat) ||
+        p.subtype === '향미유' || p.subtype === '고춧가루'
+      ) {
+        if (cat !== 'goods') updateItem('items', p.id, { category: 'goods' });
+      }
+    });
+  }, [allProducts]);
 
   // --- minStock 초기값 10 migration ---
   const minStockMigrationDone = useRef(false);
@@ -625,7 +649,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
       for (const s of product.submaterials) {
         const actualSub = submaterials.find(sm => sm.id === s.id);
         if (!actualSub) continue;
-        if (actualSub.category === 'box' || actualSub.category === 'tape') continue;
+        if (actualSub.category === 'box' || actualSub.category === 'tape' ||
+            (actualSub.category === 'submaterial' && (actualSub.subtype === '박스' || actualSub.subtype === '테이프'))) continue;
         await updateItem('items', actualSub.id, { stock: actualSub.stock - item.quantity });
       }
 
@@ -937,6 +962,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     <NavItem icon={Truck} label="배송 관리" active={currentView === 'shipping'} onClick={() => handleNavClick('shipping')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={ShoppingCart} label="주문 관리" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={(lowStockCount > 0 ? lowStockCount : 0) + returnRequests.filter(r => r.status === 'pending').length + pendingReceipts.filter(r => r.status === 'pending_voucher').length || undefined} />
+                    <NavItem icon={Package} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={Layers} label="파렛트 관리" active={currentView === 'pallets'} onClick={() => handleNavClick('pallets')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={CalendarCheck} label="연차 신청" active={currentView === 'leave-portal'} onClick={() => handleNavClick('leave-portal')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={ShieldCheck} label="확인사항" active={currentView === 'confirmation-items'} onClick={() => handleNavClick('confirmation-items')} collapsed={isSidebarCollapsed} />
@@ -1170,7 +1196,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onConfirmRequest={(id: string) => { const r = orderRequests.find(r => r.id === id); handleBulkAddConfirmedOrders([{ id, quantity: r?.quantity || 0, isBox: (r as any)?.isBox }]); }}
               onConfirmRequests={(ids: string[]) => handleBulkAddConfirmedOrders(orderRequests.filter(r => ids.includes(r.id)).map(r => ({id: r.id, quantity: r.quantity, isBox: (r as any).isBox})))}
               onBulkAddConfirmedOrders={handleBulkAddConfirmedOrders}
-              onConfirmAllRequests={() => handleBulkAddConfirmedOrders(orderRequests.map(r => ({id: r.id, quantity: r.quantity, isBox: (r as any).isBox})))} 
+              onConfirmAllRequests={async () => { await handleBulkAddConfirmedOrders(orderRequests.map(r => ({id: r.id, quantity: r.quantity, isBox: (r as any).isBox}))); }}
               onFinishConfirmedOrder={handleFinishConfirmedOrder}
               onFinishConfirmedOrders={(ids: string[]) => ids.forEach(handleFinishConfirmedOrder)}
               onFinishAllConfirmedOrders={() => confirmedOrders.forEach(c => handleFinishConfirmedOrder(c.id))}
@@ -1235,7 +1261,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               }}
               onDeleteRawMaterialEntry={(id) => deleteItem('rawMaterialLedger', id)}
               onUpdateSubmaterial={(id, data) => updateItem('items', id, data)}
-              inboundBadge={returnRequests.filter(r => r.status === 'pending').length + pendingReceipts.filter(r => r.status === 'pending_voucher').length}
+              inboundBadge={pendingReceipts.filter(r => r.status === 'pending_voucher').length}
               inboundContent={
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                   <ReceivingReturnsManager
@@ -1248,6 +1274,24 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     isAdmin={isAdmin}
                     onUpdateSubmaterial={(id, data) => updateItem('submaterials', id, data)}
                     onProcessReturn={handleProcessReturn}
+                    initialTab="입고"
+                  />
+                </React.Suspense>
+              }
+              returnBadge={returnRequests.filter(r => r.status === 'pending').length}
+              returnContent={
+                <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+                  <ReceivingReturnsManager
+                    submaterials={submaterials}
+                    products={allProducts}
+                    clients={clients}
+                    orders={orders}
+                    issuedStatements={issuedStatements}
+                    currentUser={{ id: currentUser.id, name: currentUser.name }}
+                    isAdmin={isAdmin}
+                    onUpdateSubmaterial={(id, data) => updateItem('submaterials', id, data)}
+                    onProcessReturn={handleProcessReturn}
+                    initialTab="반품"
                   />
                 </React.Suspense>
               }

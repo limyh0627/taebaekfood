@@ -289,13 +289,13 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
       {/* 탭 */}
       <div className="flex flex-wrap gap-2">
         <button
-          onClick={() => setActiveTab('leave')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'leave' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
+          onClick={() => setActiveTab('ops')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'ops' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
         >
-          <CalendarDays size={15} />연차 신청
-          {pendingLeaves.length > 0 && (
-            <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center ${activeTab === 'leave' ? 'bg-white/30 text-white' : 'bg-amber-100 text-amber-700'}`}>
-              {pendingLeaves.length}
+          <ClipboardList size={15} />거래명세서
+          {(pendingReturns.length + pendingVoucherCount + pendingStmtEdits.length + orderRequests.length) > 0 && (
+            <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center ${activeTab === 'ops' ? 'bg-white/30 text-white' : 'bg-amber-100 text-amber-700'}`}>
+              {pendingReturns.length + pendingVoucherCount + pendingStmtEdits.length + orderRequests.length}
             </span>
           )}
         </button>
@@ -311,13 +311,13 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
           )}
         </button>
         <button
-          onClick={() => setActiveTab('ops')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'ops' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
+          onClick={() => setActiveTab('leave')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'leave' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
         >
-          <ClipboardList size={15} />거래명세서
-          {(pendingReturns.length + pendingVoucherCount + pendingStmtEdits.length + orderRequests.length) > 0 && (
-            <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center ${activeTab === 'ops' ? 'bg-white/30 text-white' : 'bg-amber-100 text-amber-700'}`}>
-              {pendingReturns.length + pendingVoucherCount + pendingStmtEdits.length + orderRequests.length}
+          <CalendarDays size={15} />연차 신청
+          {pendingLeaves.length > 0 && (
+            <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center ${activeTab === 'leave' ? 'bg-white/30 text-white' : 'bg-amber-100 text-amber-700'}`}>
+              {pendingLeaves.length}
             </span>
           )}
         </button>
