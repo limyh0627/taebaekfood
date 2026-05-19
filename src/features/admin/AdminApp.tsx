@@ -1278,23 +1278,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   />
                 </React.Suspense>
               }
-              returnBadge={returnRequests.filter(r => r.status === 'pending').length}
-              returnContent={
-                <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
-                  <ReceivingReturnsManager
-                    submaterials={submaterials}
-                    products={allProducts}
-                    clients={clients}
-                    orders={orders}
-                    issuedStatements={issuedStatements}
-                    currentUser={{ id: currentUser.id, name: currentUser.name }}
-                    isAdmin={isAdmin}
-                    onUpdateSubmaterial={(id, data) => updateItem('submaterials', id, data)}
-                    onProcessReturn={handleProcessReturn}
-                    initialTab="반품"
-                  />
-                </React.Suspense>
-              }
             />
           )}
           {currentView === 'inbound-scan' && (
@@ -1489,21 +1472,22 @@ const AdminApp: React.FC<AdminAppProps> = ({
             };
 
             // 우측: 완제품, (상호, 품목, 용량) 기준 그룹화
-            type RightRow = { 상호: string; 품목: string; 용량: string; 수량: number; 소비기한: string; 제조일자: string; orderItems: Array<{orderId: string; itemIdx: number}>; };
+            type RightRow = { 상호: string; 품목: string; 용량: string; spec?: string; 수량: number; 소비기한: string; 제조일자: string; orderItems: Array<{orderId: string; itemIdx: number}>; };
             const rightRowsRaw = shippedOrders.flatMap(order => {
               const client = clients.find(c => c.id === order.clientId);
               const clientName = client?.name || order.customerName || '';
               return order.items.flatMap((item, itemIdx) => {
                 const product = allProducts.find(p => p.id === item.productId);
                 if (product && SUB_ONLY_CATS.has(product.category)) return [];
-                return [{ 상호: clientName, 품목: product?.품목 || item.name, 용량: item.displaySize || product?.spec || '', 수량: item.quantity, 소비기한: calcExpiry(item.mfgDate || ''), 제조일자: item.mfgDate || '', orderId: order.id, itemIdx }];
+                const 용량 = product?.spec || product?.용량 || item.displaySize || '';
+                return [{ 상호: clientName, 품목: product?.품목 || item.name, 용량, 수량: item.quantity, 소비기한: calcExpiry(item.mfgDate || ''), 제조일자: item.mfgDate || '', orderId: order.id, itemIdx }];
               });
             });
             const rightRows: RightRow[] = Object.values(
               rightRowsRaw.reduce((acc, row) => {
-                const key = `${row.상호}||${row.품목}||${row.spec}`;
+                const key = `${row.상호}||${row.품목}||${row.용량}`;
                 if (!acc[key]) {
-                  acc[key] = { 상호: row.상호, 품목: row.품목, 용량: row.spec, 수량: row.수량, 소비기한: row.소비기한, 제조일자: row.제조일자, orderItems: [{ orderId: row.orderId, itemIdx: row.itemIdx }] };
+                  acc[key] = { 상호: row.상호, 품목: row.품목, 용량: row.용량, spec: row.용량, 수량: row.수량, 소비기한: row.소비기한, 제조일자: row.제조일자, orderItems: [{ orderId: row.orderId, itemIdx: row.itemIdx }] };
                 } else {
                   acc[key].수량 += row.수량;
                   acc[key].orderItems.push({ orderId: row.orderId, itemIdx: row.itemIdx });
@@ -1527,7 +1511,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             };
             const agg: Record<string, { qty: number; mfgDates: string[]; clients: string[] }> = {};
             rightRows.forEach(r => {
-              const mappedPumok = remapSalesPumok(r.상호, r.품목, r.spec);
+              const mappedPumok = remapSalesPumok(r.상호, r.품목, r.spec ?? '');
               const key = `${mappedPumok}||${r.spec}`;
               if (!agg[key]) agg[key] = { qty: 0, mfgDates: [], clients: [] };
               agg[key].qty += r.수량;
@@ -1633,14 +1617,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
             };
 
             // 좌측 rows 생성
-            const leftRows: { groupLabel: string; 용량: string; 수량: number; 소비기한: string; 비고: string }[] = [];
+            const leftRows: { groupLabel: string; 용량: string; spec?: string; 수량: number; 소비기한: string; 비고: string }[] = [];  // spec = 용량 alias
             topTemplate.forEach(({ label, key, volumes }) => {
               volumes.forEach((vol, i) => {
                 const a = agg[`${key}||${vol}`] || { qty: 0, mfgDates: [], clients: [] };
                 const earliestMfg = a.mfgDates.length ? [...a.mfgDates].sort()[0] : '';
                 const expiryStr = earliestMfg ? calcExpiry(earliestMfg) : '';
                 const clientNote = a.clients.join(', ');
-                leftRows.push({ groupLabel: i === 0 ? label : '', 용량: vol, 수량: a.qty, 소비기한: expiryStr, 비고: clientNote });
+                leftRows.push({ groupLabel: i === 0 ? label : '', 용량: vol, spec: vol, 수량: a.qty, 소비기한: expiryStr, 비고: clientNote });
               });
             });
 
@@ -1963,7 +1947,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                             const left = { horizontal: 'left' as const, vertical: 'middle' as const };
 
                             for (const cat of ALL_CATS) {
-                              type WRow = { 용량: string; 수량: number; mfgDate: string };
+                              type WRow = { 용량: string; spec: string; 수량: number; mfgDate: string };
                               const dayMap: Record<number, WRow[]> = {};
                               orders
                                 .filter(o => [OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(o.status as OrderStatus))
@@ -1980,7 +1964,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                     if (!dayMap[day]) dayMap[day] = [];
                                     const existing = dayMap[day].find(r => r.spec === (p.spec || ''));
                                     if (existing) existing.수량 += item.quantity;
-                                    else dayMap[day].push({ 용량: p.spec || '', 수량: item.quantity, mfgDate: item.mfgDate || '' });
+                                    else dayMap[day].push({ 용량: p.spec || '', spec: p.spec || '', 수량: item.quantity, mfgDate: item.mfgDate || '' });
                                   });
                                 });
                               const ws = wb.addWorksheet(cat);
@@ -2633,7 +2617,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   const [wy, wm] = productionWorkMonth.split('-').map(Number);
                   const daysInMonth = new Date(wy, wm, 0).getDate();
                   // 해당 카테고리 + 해당 월의 데이터 수집
-                  type WRow = { 용량: string; 수량: number; mfgDate: string };
+                  type WRow = { 용량: string; spec: string; 수량: number; mfgDate: string };
                   const dayMap: Record<number, WRow[]> = {};
                   orders
                     .filter(o => [OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(o.status as OrderStatus))
@@ -2650,7 +2634,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         if (!dayMap[day]) dayMap[day] = [];
                         const existing = dayMap[day].find(r => r.spec === (p.spec || ''));
                         if (existing) existing.수량 += item.quantity;
-                        else dayMap[day].push({ 용량: p.spec || '', 수량: item.quantity, mfgDate: item.mfgDate || '' });
+                        else dayMap[day].push({ 용량: p.spec || '', spec: p.spec || '', 수량: item.quantity, mfgDate: item.mfgDate || '' });
                       });
                     });
                   let totalInput = 0;
@@ -3095,7 +3079,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'haccp-checklist' && (
             <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
-              <HaccpChecklist currentUser={{ id: currentUser.id, name: currentUser.name }} />
+              <HaccpChecklist currentUser={{ id: currentUser.id, name: currentUser.name }} isAdmin={isAdmin} />
             </React.Suspense>
           )}
           {currentView === 'return-management' && (

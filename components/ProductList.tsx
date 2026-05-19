@@ -18,34 +18,16 @@ import {
   ListPlus,
   AlertCircle,
   Tag,
-  Building2,
-  ChevronRight,
-  RotateCcw,
-  History,
-  FileText,
+  Building2
 } from 'lucide-react';
 import { Product, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, ProductSupplier, PartnerItem } from '../types';
-import { PendingReceipt } from '../src/shared/types';
 import AddProductModal from './AddProductModal';
 import ConfirmModal from './ConfirmModal';
 import InboundManager from './InboundManager';
 import PageHeader from './PageHeader';
 
 const normCat = (cat: string): string =>
-  ({ product: '완제품', goods: '상품', container: '용기', cap: '마개', tape: '테이프', box: '박스', label: '라벨' } as Record<string, string>)[cat] ?? cat;
-
-const inferSubtype = (item: { subtype?: string; name: string; category: string }): string => {
-  if (item.subtype) return item.subtype;
-  const n = item.name;
-  if (n.includes('들기름')) return '들기름';
-  if (n.includes('참기름')) return '참기름';
-  if (n.includes('검정깨') || n.includes('검정참깨')) return '검정깨';
-  if (n.includes('들깨')) return '들깨';
-  if (n.includes('참깨')) return '참깨';
-  if (n.includes('고춧가루')) return '고춧가루';
-  if (n.includes('향미유')) return '향미유';
-  return normCat(item.category);
-};
+  ({ product: '완제품', container: '용기', cap: '마개', tape: '테이프', box: '박스', label: '라벨' } as Record<string, string>)[cat] ?? cat;
 
 interface OrderRequest {
   id: string;
@@ -68,7 +50,7 @@ interface ProductListProps {
   onConfirmRequest: (id: string) => void;
   onConfirmRequests: (ids: string[]) => void;
   onBulkAddConfirmedOrders: (items: { id: string, quantity: number, isBox?: boolean }[]) => void;
-  onConfirmAllRequests: () => Promise<void>;
+  onConfirmAllRequests: () => void;
   onFinishConfirmedOrder: (id: string) => void;
   onFinishConfirmedOrders: (ids: string[]) => void;
   onFinishAllConfirmedOrders: () => void;
@@ -91,12 +73,10 @@ interface ProductListProps {
   currentUser?: { name: string; id: string } | null;
   isAdmin?: boolean;
   onUpdateSubmaterial?: (id: string, data: Partial<Product>) => void;
-  pendingReceipts?: PendingReceipt[];
+  pendingReceipts?: import('../src/shared/types').PendingReceipt[];
   itemCustomers?: PartnerItem[];
   inboundContent?: React.ReactNode;
   inboundBadge?: number;
-  returnContent?: React.ReactNode;
-  returnBadge?: number;
 }
 
 
@@ -128,7 +108,6 @@ const RAW_MATERIALS_EN: Record<string, string> = {
 };
 
 type MainTab = 'requests' | 'history' | 'master' | 'inbound';
-type InboundSubTab = '입고' | '반품';
 type TopTab = 'finished' | 'specialty' | 'product' | 'rawmaterial';
 
 const ProductList: React.FC<ProductListProps> = ({
@@ -142,7 +121,6 @@ const ProductList: React.FC<ProductListProps> = ({
   onUpdateOrderRequestQty,
   onUpdateOrderRequestIsBox,
   onBulkAddConfirmedOrders,
-  onConfirmAllRequests,
   onFinishConfirmedOrder,
   onUpdateConfirmedQty,
   onRemoveConfirmedOrder,
@@ -167,8 +145,6 @@ const ProductList: React.FC<ProductListProps> = ({
   itemCustomers = [],
   inboundContent,
   inboundBadge = 0,
-  returnContent,
-  returnBadge = 0,
 }) => {
   const [isEn, setIsEn] = useState(() => localStorage.getItem('inventoryLang') === 'en');
   const toggleLang = () => setIsEn(prev => {
@@ -188,10 +164,6 @@ const ProductList: React.FC<ProductListProps> = ({
 
   const [topTab, setTopTab] = useState<TopTab>('finished');
   const [activeTab, setActiveTab] = useState<MainTab>('master');
-  const [inboundSubTab, setInboundSubTab] = useState<InboundSubTab>('입고');
-  const [showInboundOverlay, setShowInboundOverlay] = useState(false);
-  const [showReturnOverlay, setShowReturnOverlay] = useState(false);
-  const [historyMonth, setHistoryMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [rmMaterial, setRmMaterial] = useState(RAW_MATERIALS[0]);
   const [rmDate, setRmDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [rmReceived, setRmReceived] = useState('');
@@ -266,7 +238,6 @@ const ProductList: React.FC<ProductListProps> = ({
   const cart = orderRequests.map(r => ({ id: r.id, qty: r.quantity, isBox: r.isBox ?? false }));
   const [showCartPanel, setShowCartPanel] = useState(false);
   const [showCartModal, setShowCartModal] = useState(false);
-  const [isConfirming, setIsConfirming] = useState(false);
   const [confirmedChecked, setConfirmedChecked] = useState<Set<string>>(new Set());
   const [showConfirmedModal, setShowConfirmedModal] = useState(false);
 
@@ -312,9 +283,8 @@ const ProductList: React.FC<ProductListProps> = ({
   const [adjustmentReason, setAdjustmentReason] = useState('');
   const [adjustmentQty, setAdjustmentQty] = useState<number>(0);
 
-  const subCategories: { id: InventoryCategory | '전체' | '상품', label: string, icon: any }[] = [
+  const subCategories: { id: InventoryCategory | '전체', label: string, icon: any }[] = [
     { id: '완제품', label: '완제품', icon: Package },
-    { id: '상품', label: '상품', icon: Tag },
     { id: '향미유', label: '향미유', icon: Grape },
     { id: '고춧가루', label: '고춧가루', icon: Tag },
     { id: '용기', label: '용기', icon: Cylinder },
@@ -345,9 +315,9 @@ const ProductList: React.FC<ProductListProps> = ({
           result = result.filter(p => normCat(p.category) === '완제품');
         }
       } else if (topTab === 'specialty') {
-        result = result.filter(p => normCat(p.category) === '상품' || normCat(p.category) === '향미유' || normCat(p.category) === '고춧가루');
+        result = result.filter(p => normCat(p.category) === '향미유' || normCat(p.category) === '고춧가루');
       } else if (topTab === 'product') {
-        result = result.filter(p => normCat(p.category) !== '완제품' && normCat(p.category) !== '상품' && normCat(p.category) !== '향미유' && normCat(p.category) !== '고춧가루');
+        result = result.filter(p => normCat(p.category) !== '완제품' && normCat(p.category) !== '향미유' && normCat(p.category) !== '고춧가루');
       }
       if (activeCategory !== '전체') {
         if (activeCategory === '박스') result = result.filter(p => normCat(p.category) === '박스' || p.id.startsWith('GS-'));
@@ -374,7 +344,7 @@ const ProductList: React.FC<ProductListProps> = ({
       result = result.filter(p => normCat(p.category) !== '완제품' && p.stock < p.minStock);
     }
 
-    const CATEGORY_ORDER = ['완제품', '상품', '향미유', '고춧가루', '용기', '마개', '테이프', '박스', '라벨'];
+    const CATEGORY_ORDER = ['완제품', '향미유', '고춧가루', '용기', '마개', '테이프', '박스', '라벨'];
     return [...result].sort((a, b) => {
       const aCritical = normCat(a.category) !== '완제품' && a.stock < a.minStock ? 0 : 1;
       const bCritical = normCat(b.category) !== '완제품' && b.stock < b.minStock ? 0 : 1;
@@ -450,117 +420,72 @@ const ProductList: React.FC<ProductListProps> = ({
 
   return (
     <div className="space-y-5 animate-in fade-in duration-300 h-full flex flex-col relative">
-
-      {/* 장바구니 FAB */}
-      {activeTab === 'master' && (
-        <button
-          onClick={() => setShowCartPanel(true)}
-          className="fixed bottom-6 right-4 z-30 flex items-center justify-center w-14 h-14 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-full shadow-xl transition-all"
-        >
-          <ShoppingCart size={22} />
-          {cart.length > 0 && (
-            <span className="absolute -top-1 -right-1 bg-amber-400 text-white w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-black shadow">{cart.length}</span>
-          )}
-        </button>
-      )}
-
       <PageHeader
         title="재고 관리"
         subtitle="실시간 재고 현황을 파악하고 부족한 자재를 즉시 발주하세요."
         right={
           <div className="bg-slate-100 p-1 rounded-2xl flex items-center shrink-0">
-            <button
-              onClick={() => setActiveTab('master')}
-              className={`px-3 py-2 rounded-xl flex items-center gap-1 transition-all text-xs font-black ${activeTab === 'master' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              <Box size={13} /><span>재고 현황</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('inbound')}
-              className={`px-3 py-2 rounded-xl flex items-center gap-1 transition-all text-xs font-black relative ${activeTab === 'inbound' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              <Inbox size={13} /><span>입고/반품</span>
-              {(inboundBadge + returnBadge) > 0 && <span className="absolute -top-1 -right-1 bg-amber-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow">{inboundBadge + returnBadge}</span>}
-            </button>
+            {([
+              { id: 'finished', label: '완제품', color: 'text-violet-600', icon: <Package size={13}/>, onClick: () => { setTopTab('finished'); setActiveCategory('전체'); setActiveSupplierId('전체'); } },
+              { id: 'specialty', label: '상품', color: 'text-orange-500', icon: <Box size={13}/>, onClick: () => { setTopTab('specialty'); setActiveCategory('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
+              { id: 'product', label: '부자재', color: 'text-indigo-600', icon: <Box size={13}/>, onClick: () => { setTopTab('product'); setActiveCategory('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
+              { id: 'rawmaterial', label: '원료재고', color: 'text-emerald-600', icon: <Grape size={13}/>, onClick: () => setTopTab('rawmaterial') },
+            ] as const).map(t => (
+              <button key={t.id} onClick={t.onClick}
+                className={`px-3 py-2 rounded-xl flex items-center gap-1 transition-all text-xs font-black whitespace-nowrap ${topTab === t.id ? `bg-white ${t.color} shadow-sm` : 'text-slate-400 hover:text-slate-600'}`}>
+                {t.icon}<span>{t.label}</span>
+              </button>
+            ))}
           </div>
         }
       />
 
       <div className="flex flex-col space-y-4">
 
-        {/* 카테고리 토글 + 검색 행 (입고/반품 탭에서는 숨김) */}
-        {!zeroStockOnly && activeTab !== 'inbound' && (
+        {/* 하위 탭 + 검색 */}
+        {!zeroStockOnly && activeTab !== 'inbound' && (topTab === 'product' || topTab === 'finished' || topTab === 'specialty') && (
           <div className="flex items-center gap-3 flex-wrap">
             <div className="bg-slate-100/50 p-1 rounded-2xl flex items-center self-start border border-slate-200">
-              {([
-                { id: 'finished', label: '완제품', color: 'text-violet-600', icon: <Package size={13}/>, onClick: () => { setTopTab('finished'); setActiveCategory('전체'); setActiveSupplierId('전체'); } },
-                { id: 'specialty', label: '상품', color: 'text-orange-500', icon: <Box size={13}/>, onClick: () => { setTopTab('specialty'); setActiveCategory('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
-                { id: 'product', label: '부자재', color: 'text-indigo-600', icon: <Box size={13}/>, onClick: () => { setTopTab('product'); setActiveCategory('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
-                { id: 'rawmaterial', label: '원료재고', color: 'text-emerald-600', icon: <Grape size={13}/>, onClick: () => setTopTab('rawmaterial') },
-              ] as const).map(t => (
-                <button key={t.id} onClick={t.onClick}
-                  className={`px-3 py-2 rounded-xl flex items-center gap-1 transition-all text-xs font-black whitespace-nowrap ${topTab === t.id ? `bg-white ${t.color} shadow-sm` : 'text-slate-400 hover:text-slate-600'}`}>
-                  {t.icon}<span>{t.label}</span>
+              <button
+                onClick={() => setActiveTab('master')}
+                className={`px-5 py-2 rounded-xl flex items-center space-x-2 transition-all text-xs font-black ${activeTab === 'master' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <Box size={16} />
+                <span>재고 현황</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('requests')}
+                className={`px-5 py-2 rounded-xl flex items-center space-x-2 transition-all text-xs font-black relative ${activeTab === 'requests' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <ClipboardCheck size={16} />
+                <span>발주 내역</span>
+                {cart.length > 0 && <span className="absolute -top-1 -right-1 bg-rose-500 text-white w-5 h-5 flex items-center justify-center rounded-full text-[10px] shadow-lg">{cart.length}</span>}
+              </button>
+              {inboundContent && (
+                <button
+                  onClick={() => setActiveTab('inbound')}
+                  className="px-5 py-2 rounded-xl flex items-center space-x-2 transition-all text-xs font-black relative text-slate-500 hover:text-slate-700"
+                >
+                  <Inbox size={16} />
+                  <span>입고/반품</span>
+                  {inboundBadge > 0 && <span className="absolute -top-1 -right-1 bg-amber-500 text-white w-5 h-5 flex items-center justify-center rounded-full text-[10px] shadow-lg">{inboundBadge}</span>}
                 </button>
-              ))}
+              )}
             </div>
-            {activeTab === 'master' && (
-              <div className="relative w-36 md:w-48">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={15} />
-                <input
-                  type="text"
-                  placeholder="품목명 · 거래처 검색..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-2xl pl-9 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 shadow-sm transition-all"
-                />
-              </div>
-            )}
+            <div className="relative w-36 md:w-48">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={15} />
+              <input
+                type="text"
+                placeholder="품목명 · 거래처 검색..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-2xl pl-9 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 shadow-sm transition-all"
+              />
+            </div>
           </div>
         )}
 
-        {/* 입고처리/반품처리 버튼 행 (입고/반품 탭에서만) */}
-        {activeTab === 'inbound' && (inboundContent || returnContent) && (
-          <div className="flex items-center justify-end gap-2">
-            {inboundContent && (
-              <button onClick={() => setShowInboundOverlay(true)} className="flex items-center gap-1.5 px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-black transition-all shadow-sm relative">
-                <Inbox size={13} /><span>입고처리</span>
-                {inboundBadge > 0 && <span className="absolute -top-1 -right-1 bg-amber-400 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow">{inboundBadge}</span>}
-              </button>
-            )}
-            {returnContent && (
-              <button onClick={() => setShowReturnOverlay(true)} className="flex items-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black transition-all shadow-sm relative">
-                <RotateCcw size={13} /><span>반품처리</span>
-                {returnBadge > 0 && <span className="absolute -top-1 -right-1 bg-rose-400 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow">{returnBadge}</span>}
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* 입고/반품 서브탭 (필터 행 위치) */}
-        {activeTab === 'inbound' && (inboundContent || returnContent) && (
-          <div className="flex items-center gap-2">
-            {inboundContent && (
-              <button
-                onClick={() => setInboundSubTab('입고')}
-                className={`px-4 py-2 rounded-2xl border text-xs font-black transition-all ${inboundSubTab === '입고' ? 'bg-teal-50 border-teal-200 text-teal-700 ring-2 ring-teal-50' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
-              >
-                입고
-              </button>
-            )}
-            {returnContent && (
-              <button
-                onClick={() => setInboundSubTab('반품')}
-                className={`px-4 py-2 rounded-2xl border text-xs font-black transition-all ${inboundSubTab === '반품' ? 'bg-rose-50 border-rose-200 text-rose-700 ring-2 ring-rose-50' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
-              >
-                반품
-                {returnBadge > 0 && <span className="ml-1.5 bg-rose-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">{returnBadge}</span>}
-              </button>
-            )}
-          </div>
-        )}
-
-        {activeTab !== 'inbound' && (topTab === 'product' || topTab === 'finished' || topTab === 'specialty') && <div className="flex flex-col gap-2">
+        {(topTab === 'product' || topTab === 'finished' || topTab === 'specialty') && <div className="flex flex-col gap-2">
           {/* 품목별 필터 - 상품·부자재 탭 */}
           {!zeroStockOnly && (topTab === 'specialty' || topTab === 'product') && <div className="flex items-center gap-2 flex-wrap">
             <button
@@ -572,8 +497,8 @@ const ProductList: React.FC<ProductListProps> = ({
             </button>
             {showCategoryFilter && subCategories
               .filter(s => topTab === 'specialty'
-                ? (s.id === '상품' || s.id === '향미유' || s.id === '고춧가루')
-                : (s.id !== '완제품' && s.id !== '상품' && s.id !== '향미유' && s.id !== '고춧가루'))
+                ? (s.id === '향미유' || s.id === '고춧가루')
+                : (s.id !== '완제품' && s.id !== '향미유' && s.id !== '고춧가루'))
               .map(sub => {
                 const Icon = sub.icon;
                 const isActive = activeCategory === sub.id;
@@ -649,152 +574,9 @@ const ProductList: React.FC<ProductListProps> = ({
         </div>}
       </div>
 
-      {/* 입고처리 오버레이 */}
-      {showInboundOverlay && inboundContent && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center" onClick={e => { if (e.target === e.currentTarget) setShowInboundOverlay(false); }}>
-          <div className="bg-slate-50 rounded-t-3xl sm:rounded-3xl w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl">
-            <div className="sticky top-0 z-10 bg-slate-50 px-5 pt-5 pb-3 border-b border-slate-200 flex items-center justify-between">
-              <span className="font-black text-slate-800 text-base">입고 처리</span>
-              <button onClick={() => setShowInboundOverlay(false)} className="p-2 rounded-xl hover:bg-slate-200 transition-colors">
-                <X size={18} className="text-slate-500" />
-              </button>
-            </div>
-            <div className="p-4">{inboundContent}</div>
-          </div>
-        </div>
-      )}
-
-      {/* 반품처리 오버레이 */}
-      {showReturnOverlay && returnContent && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center" onClick={e => { if (e.target === e.currentTarget) setShowReturnOverlay(false); }}>
-          <div className="bg-slate-50 rounded-t-3xl sm:rounded-3xl w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl">
-            <div className="sticky top-0 z-10 bg-slate-50 px-5 pt-5 pb-3 border-b border-slate-200 flex items-center justify-between">
-              <span className="font-black text-slate-800 text-base">반품 처리</span>
-              <button onClick={() => setShowReturnOverlay(false)} className="p-2 rounded-xl hover:bg-slate-200 transition-colors">
-                <X size={18} className="text-slate-500" />
-              </button>
-            </div>
-            <div className="p-4">{returnContent}</div>
-          </div>
-        </div>
-      )}
-
-      {/* 입고/반품 탭 콘텐츠 */}
-      {activeTab === 'inbound' && (
-        <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-6">
-          {inboundSubTab === '입고' && (() => {
-            const pending = (pendingReceipts ?? []).filter(r => r.status === 'pending_voucher');
-            const history = (pendingReceipts ?? [])
-              .filter(r => r.registeredAt.slice(0, 7) === historyMonth)
-              .sort((a, b) => b.registeredAt.localeCompare(a.registeredAt));
-            return (
-              <>
-                {/* ── 발주 예정 (확정된 것만) ── */}
-                {confirmedOrders.length === 0 ? (
-                  <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 text-sm">
-                    <ClipboardCheck size={28} className="mx-auto mb-2 opacity-30" />
-                    <p>확정된 발주 예정 없음</p>
-                    <p className="text-[11px] mt-1">재고현황에서 담기 후 장바구니에서 확정하세요</p>
-                  </div>
-                ) : (
-                  <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                    <div className="px-5 py-3 border-b border-slate-50 flex items-center gap-2">
-                      <ClipboardCheck size={16} className="text-indigo-500" />
-                      <span className="font-black text-sm text-slate-800">발주 예정 목록</span>
-                      <span className="text-[10px] font-black bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">{confirmedOrders.length}건</span>
-                    </div>
-                    <div className="divide-y divide-slate-50">
-                      {confirmedOrders.map(item => {
-                        const product = productMap.get(item.id);
-                        if (!product) return null;
-                        const supplierName = supplierMap.get(psMap.get(product.id) ?? '')?.name;
-                        return (
-                          <div key={item.id} className="px-5 py-3 flex items-center gap-4">
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <p className="text-[10px] text-slate-400">현재 재고 {product.stock} {product.unit}</p>
-                                {supplierName && <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-md">{supplierName}</span>}
-                              </div>
-                            </div>
-                            <span className="text-sm font-black text-indigo-600 shrink-0">{item.quantity}{item.isBox ? 'B' : product.unit}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* ── 입고대기 (전표 미작성) ── */}
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <FileText size={14} className="text-amber-500" />
-                    <span className="text-xs font-black text-slate-700 uppercase tracking-wider">입고대기</span>
-                    {pending.length > 0 && <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-full">{pending.length}건 전표 미작성</span>}
-                  </div>
-                  {pending.length === 0 ? (
-                    <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 text-sm">전표 미작성 입고 없음</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {pending.map(r => (
-                        <div key={r.id} className="bg-white rounded-2xl border border-amber-100 p-4 shadow-sm space-y-2">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <p className="font-black text-slate-800 text-sm">{r.supplierName}</p>
-                              <p className="text-xs text-slate-400">{r.registeredAt.slice(0, 10)} · {r.registeredBy ?? ''}</p>
-                            </div>
-                            <span className="px-2 py-1 rounded-lg text-[10px] font-black bg-amber-50 text-amber-700 shrink-0">전표 미작성</span>
-                          </div>
-                          {r.items.map((item, i) => (
-                            <div key={i} className="flex justify-between text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-1.5">
-                              <span>{item.name}</span>
-                              <span className="font-bold">{item.quantity.toLocaleString()} {item.unit}</span>
-                            </div>
-                          ))}
-                          {r.note && <p className="text-xs text-slate-500 bg-amber-50 border border-amber-100 rounded-lg px-3 py-1.5">비고: {r.note}</p>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* ── 입고이력 ── */}
-                <div>
-                  <div className="flex items-center gap-3 mb-3">
-                    <History size={14} className="text-slate-400" />
-                    <span className="text-xs font-black text-slate-700 uppercase tracking-wider">입고이력</span>
-                    <input type="month" value={historyMonth} onChange={e => setHistoryMonth(e.target.value)} className="border border-slate-200 rounded-xl px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-teal-400 ml-auto" />
-                  </div>
-                  {history.length === 0 ? (
-                    <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 text-sm">해당 월의 입고 이력 없음</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {history.map(r => (
-                        <div key={r.id} className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-2">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <p className="font-black text-slate-800 text-sm">{r.supplierName}</p>
-                              <p className="text-xs text-slate-400">{r.registeredAt.slice(0, 10)} · {r.registeredBy ?? ''}</p>
-                            </div>
-                            <span className={`px-2 py-1 rounded-lg text-[10px] font-black shrink-0 ${r.status === 'voucher_linked' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                              {r.status === 'voucher_linked' ? '✓ 전표 연결됨' : '전표 미작성'}
-                            </span>
-                          </div>
-                          {r.items.map((item, i) => (
-                            <div key={i} className="flex justify-between text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-1.5">
-                              <span>{item.name}</span>
-                              <span className="font-bold">{item.quantity.toLocaleString()} {item.unit}</span>
-                            </div>
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </>
-            );
-          })()}
-          {inboundSubTab === '반품' && returnContent && returnContent}
+      {activeTab === 'inbound' && inboundContent && (
+        <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+          {inboundContent}
         </div>
       )}
 
@@ -836,7 +618,7 @@ const ProductList: React.FC<ProductListProps> = ({
                       <div className="text-left sm:text-center">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter mb-0.5">현재 재고</p>
                         <p className="text-sm font-black text-slate-900">
-                          {product.subtype === '향미유' ? fmtHamiyou(product.stock) : `${product.stock}${product.unit}`}
+                          {product.category === '향미유' ? fmtHamiyou(product.stock) : `${product.stock}${product.unit}`}
                         </p>
                       </div>
 
@@ -906,23 +688,18 @@ const ProductList: React.FC<ProductListProps> = ({
                       onClick={() => setExpandedRowId(isExpanded ? null : product.id)}
                     >
                       <td className="px-4 py-3">
-                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${(() => {
-                          const sub = inferSubtype(product);
-                          if (normCat(product.category) === '완제품') return 'bg-indigo-50 text-indigo-600';
-                          if (sub === '향미유' || sub === '참기름' || sub === '들기름') return 'bg-purple-50 text-purple-600';
-                          if (sub === '고춧가루') return 'bg-red-50 text-red-500';
-                          if (sub === '참깨' || sub === '들깨' || sub === '검정깨') return 'bg-amber-50 text-amber-700';
-                          if (normCat(product.category) === '상품') return 'bg-orange-50 text-orange-500';
-                          if (sub === '용기') return 'bg-sky-50 text-sky-600';
-                          if (sub === '라벨') return 'bg-amber-50 text-amber-600';
-                          if (sub === '박스') return 'bg-emerald-50 text-emerald-600';
-                          if (sub === '마개') return 'bg-slate-100 text-slate-600';
-                          if (sub === '테이프') return 'bg-teal-50 text-teal-600';
-                          return 'bg-slate-100 text-slate-500';
-                        })()}`}>{inferSubtype(product)}</span>
+                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${
+                          normCat(product.category) === '완제품' ? 'bg-indigo-50 text-indigo-600' :
+                          normCat(product.category) === '향미유' ? 'bg-purple-50 text-purple-600' :
+                          normCat(product.category) === '고춧가루' ? 'bg-red-50 text-red-500' :
+                          normCat(product.category) === '용기' ? 'bg-sky-50 text-sky-600' :
+                          normCat(product.category) === '라벨' ? 'bg-amber-50 text-amber-600' :
+                          normCat(product.category) === '박스' ? 'bg-emerald-50 text-emerald-600' :
+                          'bg-slate-100 text-slate-500'
+                        }`}>{normCat(product.category)}</span>
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell" onClick={e => e.stopPropagation()}>
-                        {(normCat(product.category) === '완제품' || normCat(product.category) === '상품' || normCat(product.category) === '향미유') && product.clientIds && product.clientIds.length > 0 ? (() => {
+                        {(normCat(product.category) === '완제품' || normCat(product.category) === '향미유') && product.clientIds && product.clientIds.length > 0 ? (() => {
                           const isExp = expandedClientRowId === product.id;
                           const sorted = priorityClientId && product.clientIds.includes(priorityClientId)
                             ? [priorityClientId, ...product.clientIds.filter(id => id !== priorityClientId)]
@@ -974,28 +751,28 @@ const ProductList: React.FC<ProductListProps> = ({
                               onKeyDown={e => {
                                 if (e.key === 'Enter') {
                                   const val = parseInt(editingStockVal);
-                                  if (!isNaN(val) && val >= 0) onUpdateProduct({ ...product, stock: product.subtype === '향미유' ? val * 12 : val });
+                                  if (!isNaN(val) && val >= 0) onUpdateProduct({ ...product, stock: product.category === '향미유' ? val * 12 : val });
                                   setEditingStockId(null);
                                 }
                                 if (e.key === 'Escape') setEditingStockId(null);
                               }}
                               onBlur={() => {
                                 const val = parseInt(editingStockVal);
-                                if (!isNaN(val) && val >= 0) onUpdateProduct({ ...product, stock: product.subtype === '향미유' ? val * 12 : val });
+                                if (!isNaN(val) && val >= 0) onUpdateProduct({ ...product, stock: product.category === '향미유' ? val * 12 : val });
                                 setEditingStockId(null);
                               }}
                               onClick={e => e.stopPropagation()}
                               className="w-20 text-right text-sm font-black border border-indigo-300 rounded-lg py-1 px-2 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                             />
-                            <span className="text-[10px] text-slate-400">{product.subtype === '향미유' ? 'B' : product.unit}</span>
+                            <span className="text-[10px] text-slate-400">{product.category === '향미유' ? 'B' : product.unit}</span>
                           </div>
                         ) : (
                           <button
-                            onClick={e => { e.stopPropagation(); setEditingStockId(product.id); setEditingStockVal(String(product.subtype === '향미유' ? Math.floor(product.stock / 12) : product.stock)); }}
+                            onClick={e => { e.stopPropagation(); setEditingStockId(product.id); setEditingStockVal(String(product.category === '향미유' ? Math.floor(product.stock / 12) : product.stock)); }}
                             className={`text-base font-black hover:underline hover:text-indigo-600 transition-colors cursor-pointer ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}
                             title="클릭하여 수량 수정"
                           >
-                            {product.subtype === '향미유' ? fmtHamiyou(product.stock) : product.stock}
+                            {product.category === '향미유' ? fmtHamiyou(product.stock) : product.stock}
                           </button>
                         )}
                         {editingStockId !== product.id && (
@@ -1019,7 +796,7 @@ const ProductList: React.FC<ProductListProps> = ({
                               >담김 ✓</button>
                             ) : inlineCartId === product.id ? (
                               <div className="flex items-center gap-1 justify-end" onClick={e => e.stopPropagation()}>
-                                {product.subtype === '향미유' && (
+                                {product.category === '향미유' && (
                                   <div className="flex rounded-lg border border-indigo-200 overflow-hidden text-[9px] font-black">
                                     <button onClick={() => setInlineCartIsBox(false)} className={`px-1.5 py-1 transition-all ${!inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>낱개</button>
                                     <button onClick={() => setInlineCartIsBox(true)} className={`px-1.5 py-1 transition-all ${inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>BOX</button>
@@ -1031,14 +808,14 @@ const ProductList: React.FC<ProductListProps> = ({
                                   value={inlineCartQty}
                                   onChange={e => setInlineCartQty(parseInt(e.target.value) || 0)}
                                   onKeyDown={e => {
-                                    if (e.key === 'Enter') { addToCart(product.id, inlineCartQty, product.subtype === '향미유' ? inlineCartIsBox : undefined); setInlineCartId(null); }
+                                    if (e.key === 'Enter') { addToCart(product.id, inlineCartQty, product.category === '향미유' ? inlineCartIsBox : undefined); setInlineCartId(null); }
                                     if (e.key === 'Escape') setInlineCartId(null);
                                   }}
                                   className="w-14 text-center text-xs font-black border border-indigo-300 rounded-lg py-1 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                                 />
-                                <span className="text-[10px] text-slate-400">{product.subtype === '향미유' && inlineCartIsBox ? 'BOX' : product.unit}</span>
+                                <span className="text-[10px] text-slate-400">{product.category === '향미유' && inlineCartIsBox ? 'BOX' : product.unit}</span>
                                 <button
-                                  onClick={() => { addToCart(product.id, inlineCartQty, product.subtype === '향미유' ? inlineCartIsBox : undefined); setInlineCartId(null); }}
+                                  onClick={() => { addToCart(product.id, inlineCartQty, product.category === '향미유' ? inlineCartIsBox : undefined); setInlineCartId(null); }}
                                   className="text-[10px] font-black px-2 py-1 rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 transition-all"
                                 >담기</button>
                                 <button onClick={() => setInlineCartId(null)} className="text-slate-300 hover:text-slate-500"><X size={12} /></button>
@@ -1159,7 +936,7 @@ const ProductList: React.FC<ProductListProps> = ({
                                   >담김 ✓</button>
                                 ) : inlineCartId === product.id ? (
                                   <div className="flex-1 flex flex-col gap-1">
-                                    {product.subtype === '향미유' && (
+                                    {product.category === '향미유' && (
                                       <div className="flex rounded-lg border border-indigo-200 overflow-hidden text-[10px] font-black self-start">
                                         <button onClick={() => setInlineCartIsBox(false)} className={`px-2 py-1 transition-all ${!inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>낱개</button>
                                         <button onClick={() => setInlineCartIsBox(true)} className={`px-2 py-1 transition-all ${inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>BOX</button>
@@ -1172,14 +949,14 @@ const ProductList: React.FC<ProductListProps> = ({
                                         value={inlineCartQty}
                                         onChange={e => setInlineCartQty(parseInt(e.target.value) || 0)}
                                         onKeyDown={e => {
-                                          if (e.key === 'Enter') { addToCart(product.id, inlineCartQty, product.subtype === '향미유' ? inlineCartIsBox : undefined); setInlineCartId(null); setExpandedRowId(null); }
+                                          if (e.key === 'Enter') { addToCart(product.id, inlineCartQty, product.category === '향미유' ? inlineCartIsBox : undefined); setInlineCartId(null); setExpandedRowId(null); }
                                           if (e.key === 'Escape') setInlineCartId(null);
                                         }}
                                         className="flex-1 text-center text-xs font-black border border-indigo-300 rounded-lg py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                                       />
-                                      <span className="text-[10px] text-slate-400">{product.subtype === '향미유' && inlineCartIsBox ? 'BOX' : product.unit}</span>
+                                      <span className="text-[10px] text-slate-400">{product.category === '향미유' && inlineCartIsBox ? 'BOX' : product.unit}</span>
                                       <button
-                                        onClick={() => { addToCart(product.id, inlineCartQty, product.subtype === '향미유' ? inlineCartIsBox : undefined); setInlineCartId(null); setExpandedRowId(null); }}
+                                        onClick={() => { addToCart(product.id, inlineCartQty, product.category === '향미유' ? inlineCartIsBox : undefined); setInlineCartId(null); setExpandedRowId(null); }}
                                         className="text-[11px] font-black px-3 py-1.5 rounded-xl bg-indigo-500 text-white"
                                       >담기</button>
                                       <button onClick={() => setInlineCartId(null)} className="text-slate-300"><X size={14} /></button>
@@ -1331,14 +1108,14 @@ const ProductList: React.FC<ProductListProps> = ({
                             <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
                             <div className="flex items-center gap-2 mt-0.5">
                               <p className="text-[10px] text-slate-400">
-                                현재 재고 {product.subtype === '향미유' ? fmtHamiyou(product.stock) : `${product.stock} ${product.unit}`}
+                                현재 재고 {product.category === '향미유' ? fmtHamiyou(product.stock) : `${product.stock} ${product.unit}`}
                               </p>
                               {supplierName && (
                                 <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-md">{supplierName}</span>
                               )}
                             </div>
                           </div>
-                          {product.subtype === '향미유' && (
+                          {product.category === '향미유' && (
                             <button
                               onClick={() => onUpdateOrderRequestIsBox?.(item.id, !item.isBox)}
                               className={`text-[10px] font-black px-2 py-1 rounded-lg border transition-all shrink-0 ${item.isBox ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-500 border-slate-200 hover:border-purple-300'}`}
@@ -1354,7 +1131,7 @@ const ProductList: React.FC<ProductListProps> = ({
                             />
                             <button onClick={() => updateCartQty(item.id, item.qty + 1)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black transition-all">+</button>
                             <span className="text-[11px] text-slate-400 shrink-0">
-                              {product.subtype === '향미유' ? (item.isBox ? `B(${item.qty * 12}개)` : '개') : product.unit}
+                              {product.category === '향미유' ? (item.isBox ? `B(${item.qty * 12}개)` : '개') : product.unit}
                             </span>
                           </div>
                           <button onClick={() => removeFromCart(item.id)} className="text-slate-300 hover:text-rose-400 transition-all shrink-0 ml-1"><X size={15} /></button>
@@ -2508,9 +2285,9 @@ const ProductList: React.FC<ProductListProps> = ({
 
       {/* ── 발주 장바구니 패널 ── */}
       {showCartPanel && (
-        <>
-          <div className="fixed inset-0 z-40 bg-slate-900/30 backdrop-blur-sm" onClick={() => setShowCartPanel(false)} />
-          <div className="fixed inset-y-0 right-0 z-50 w-full max-w-sm flex flex-col bg-white shadow-2xl animate-in slide-in-from-right-4 duration-300">
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm" onClick={() => setShowCartPanel(false)} />
+          <div className="relative bg-white w-full max-w-sm h-full flex flex-col shadow-2xl animate-in slide-in-from-right-4 duration-300">
             <div className="p-5 border-b border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-xl bg-indigo-600 text-white"><ShoppingCart size={18} /></div>
@@ -2537,8 +2314,8 @@ const ProductList: React.FC<ProductListProps> = ({
                   <div key={item.id} className="bg-slate-50 rounded-2xl border border-slate-100 p-3 flex items-center gap-3">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
-                      <p className="text-[10px] text-slate-400 font-medium">현재 재고 {product.subtype === '향미유' ? fmtHamiyou(product.stock) : `${product.stock}${product.unit}`}</p>
-                      {product.subtype === '향미유' && (
+                      <p className="text-[10px] text-slate-400 font-medium">현재 재고 {product.category === '향미유' ? fmtHamiyou(product.stock) : `${product.stock}${product.unit}`}</p>
+                      {product.category === '향미유' && (
                         <div className="flex rounded-lg border border-indigo-200 overflow-hidden text-[9px] font-black mt-1 w-fit">
                           <button onClick={() => onUpdateOrderRequestIsBox?.(item.id, false)} className={`px-2 py-0.5 transition-all ${!item.isBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>낱개</button>
                           <button onClick={() => onUpdateOrderRequestIsBox?.(item.id, true)} className={`px-2 py-0.5 transition-all ${item.isBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>BOX</button>
@@ -2554,7 +2331,7 @@ const ProductList: React.FC<ProductListProps> = ({
                         className="w-12 text-center text-sm font-black border border-slate-200 rounded-lg py-1 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                       />
                       <button onClick={() => updateCartQty(item.id, item.qty + 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 text-sm font-black transition-all">+</button>
-                      <span className="text-[10px] text-slate-400 w-6">{product.subtype === '향미유' && item.isBox ? 'BOX' : product.unit}</span>
+                      <span className="text-[10px] text-slate-400 w-6">{product.category === '향미유' && item.isBox ? 'BOX' : product.unit}</span>
                     </div>
                     <button onClick={() => removeFromCart(item.id)} className="text-slate-300 hover:text-rose-400 transition-all shrink-0">
                       <X size={14} />
@@ -2564,37 +2341,22 @@ const ProductList: React.FC<ProductListProps> = ({
               })}
             </div>
 
-            <div className="px-4 pt-4 border-t border-slate-100 space-y-2" style={{ paddingBottom: 'max(16px, env(safe-area-inset-bottom, 16px))' }}>
+            <div className="p-4 border-t border-slate-100 space-y-2">
               <button
-                type="button"
-                disabled={cart.length === 0 || isConfirming}
-                onClick={async () => {
-                  if (cart.length === 0 || isConfirming) return;
-                  setIsConfirming(true);
-                  try {
-                    await onConfirmAllRequests();
-                    setShowCartPanel(false);
-                  } catch (e) {
-                    console.error('확정 처리 오류:', e);
-                    const msg = e instanceof Error ? e.message : String(e);
-                    alert(`확정 처리 중 오류가 발생했습니다.\n\n${msg}`);
-                  } finally {
-                    setIsConfirming(false);
-                  }
-                }}
-                className="w-full py-3.5 bg-indigo-600 text-white rounded-2xl text-sm font-black shadow-lg hover:bg-indigo-700 active:scale-[0.98] transition-all disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center gap-2"
+                disabled={cart.length === 0}
+                onClick={() => setShowCartModal(true)}
+                className="w-full py-3.5 bg-indigo-600 text-white rounded-2xl text-sm font-black shadow-lg hover:bg-indigo-700 active:scale-[0.98] transition-all disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center gap-2"
               >
-                <ClipboardCheck size={16} />
-                {isConfirming ? '처리 중...' : `확정 (${cart.length}건)`}
+                <ShoppingCart size={16} />
+                전표 작성 ({cart.length}건)
               </button>
               <button
-                type="button"
                 onClick={() => orderRequests.forEach(r => onRemoveOrderRequest(r.id))}
                 className="w-full py-2.5 text-xs font-bold text-slate-400 hover:text-slate-600 transition-all"
               >전체 비우기</button>
             </div>
           </div>
-        </>
+        </div>
       )}
 
       {isAddModalOpen && (

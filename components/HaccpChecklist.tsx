@@ -428,105 +428,137 @@ interface TempRow {
   inspector: string;
 }
 
-const TempForm: React.FC = () => {
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [rows, setRows] = useState<TempRow[]>(() =>
-    STORAGE_ZONES.map(z => ({ date: '', zone: z.id, amTemp: '', pmTemp: '', result: '', corrective: '', inspector: '' }))
-  );
-  const ref = useRef<HTMLDivElement>(null);
+interface TempRecord {
+  id?: string;
+  month: string;
+  rows: TempRow[];
+  createdBy: string; createdAt: string;
+  updatedBy: string; updatedAt: string;
+  revisionCount: number;
+  confirmedBy?: string; confirmedAt?: string;
+}
 
-  const addRow = () => setRows(prev => [...prev, { date: '', zone: STORAGE_ZONES[0].id, amTemp: '', pmTemp: '', result: '', corrective: '', inspector: '' }]);
-  const update = (idx: number, field: keyof TempRow, value: string) =>
-    setRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
+const defaultTempRows = (): TempRow[] =>
+  STORAGE_ZONES.map(z => ({ date: '', zone: z.id, amTemp: '', pmTemp: '', result: '' as '', corrective: '', inspector: '' }));
+
+const TempForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const [month, setMonth] = useState(currentMonth);
+  const [records, setRecords] = useState<TempRecord[]>([]);
+  const [workingRows, setWorkingRows] = useState<TempRow[]>(defaultTempRows);
+  const [saving, setSaving] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const printRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const q = query(collection(db, 'haccp_temp'), orderBy('month', 'desc'));
+    return onSnapshot(q, snap => setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as TempRecord))));
+  }, []);
+
+  const currentRecord = records.find(r => r.month === month);
+  const isReadOnly = month < currentMonth && !isAdmin;
+
+  useEffect(() => {
+    const rec = records.find(r => r.month === month);
+    setWorkingRows(rec ? rec.rows : defaultTempRows());
+  }, [month, records]);
+
+  const addRow = () => {
+    if (isReadOnly) return;
+    setWorkingRows(prev => [...prev, { date: '', zone: STORAGE_ZONES[0].id, amTemp: '', pmTemp: '', result: '' as '', corrective: '', inspector: '' }]);
+  };
+  const update = (idx: number, field: keyof TempRow, value: string) => {
+    if (isReadOnly) return;
+    setWorkingRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
+  };
+
+  const handleSave = async () => {
+    if (isReadOnly) return;
+    setSaving(true);
+    const now = new Date().toISOString();
+    const userName = currentUser?.name ?? '알 수 없음';
+    try {
+      if (!currentRecord?.id) {
+        await addDoc(collection(db, 'haccp_temp'), { month, rows: workingRows, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now, revisionCount: 0 });
+      } else {
+        await updateDoc(doc(db, 'haccp_temp', currentRecord.id), { rows: workingRows, updatedBy: userName, updatedAt: now, revisionCount: (currentRecord.revisionCount ?? 0) + 1 });
+      }
+    } finally { setSaving(false); }
+  };
+
+  const handleConfirm = async () => {
+    if (!canConfirm || !currentRecord?.id) return;
+    setConfirming(true);
+    try {
+      await updateDoc(doc(db, 'haccp_temp', currentRecord.id), { confirmedBy: currentUser?.name ?? '관리자', confirmedAt: new Date().toISOString() });
+    } finally { setConfirming(false); }
+  };
+
+  const statusEl = currentRecord?.confirmedBy
+    ? <span className="flex items-center gap-1 text-xs text-emerald-600 font-bold"><BadgeCheck size={13}/>{currentRecord.confirmedBy} 확인완료</span>
+    : currentRecord
+    ? <span className="text-xs text-blue-600 font-bold">저장됨 · 수정 {currentRecord.revisionCount}회 · {currentRecord.updatedBy}</span>
+    : <span className="text-xs text-slate-400">미저장</span>;
 
   return (
-    <div>
-      <div className="flex gap-3 mb-3 flex-wrap">
-        <label className="text-xs text-slate-600 flex items-center gap-1">
-          관리월: <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="border border-slate-300 rounded px-1 py-0.5 text-xs" />
+    <div className="flex flex-col min-h-full">
+      <div className="flex gap-3 mb-4 flex-wrap items-center bg-white border border-slate-200 rounded-xl px-4 py-3">
+        <label className="text-xs font-bold text-slate-600 flex items-center gap-1">
+          관리월: <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="border border-slate-300 rounded px-2 py-1 text-xs ml-1" />
         </label>
-        <button onClick={addRow} className="text-xs px-2 py-1 border border-slate-300 rounded hover:bg-slate-50">+ 행 추가</button>
-        <button
-          onClick={() => ref.current && downloadAsPDF(ref.current, `HACCP_온도관리일지_${month}.pdf`)}
-          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
-        >
-          <FileDown size={13} /> PDF 저장
-        </button>
+        <div className="flex-1">{statusEl}</div>
+        {isReadOnly && <span className="text-xs text-amber-600 font-bold px-2 py-1 bg-amber-50 rounded-lg border border-amber-200">이전 월 · 읽기 전용</span>}
+        {records.length > 0 && (
+          <select onChange={e => { if (e.target.value) setMonth(e.target.value); e.target.value = ''; }} defaultValue="" className="text-xs border border-slate-200 rounded-lg px-2 py-1 text-slate-500 bg-white">
+            <option value="">최근 기록 이동</option>
+            {records.slice(0, 12).map(r => <option key={r.id} value={r.month}>{r.month}{r.confirmedBy ? ' ✓' : ''}</option>)}
+          </select>
+        )}
       </div>
 
-      <div ref={ref} className="bg-white p-6 font-sans" style={{ fontFamily: 'Malgun Gothic, sans-serif' }}>
+      <div ref={printRef} className="bg-white p-6 font-sans" style={{ fontFamily: 'Malgun Gothic, sans-serif' }}>
         <FormHeader title="냉장·냉동창고 온도관리 일지" date={month} />
-
         <div className="mb-3 text-xs">
           <table className="border-collapse w-full mb-2">
-            <thead>
-              <tr>
-                <th className={TH}>보관장소</th>
-                <th className={TH}>관리기준</th>
-                <th className={TH}>비고</th>
-              </tr>
-            </thead>
+            <thead><tr><th className={TH}>보관장소</th><th className={TH}>관리기준</th><th className={TH}>비고</th></tr></thead>
             <tbody>
-              {STORAGE_ZONES.map(z => (
-                <tr key={z.id}>
-                  <td className={TD}>{z.name}</td>
-                  <td className={TD}>{z.standard}</td>
-                  <td className={TDL}></td>
-                </tr>
-              ))}
+              {STORAGE_ZONES.map(z => (<tr key={z.id}><td className={TD}>{z.name}</td><td className={TD}>{z.standard}</td><td className={TDL}></td></tr>))}
             </tbody>
           </table>
         </div>
-
         <p className="text-xs text-slate-500 mb-2">※ 1일 1회 이상 측정 / O: 기준 내 / X: 기준 이탈 (이탈 시 개선조치 기재)</p>
-
         <table className="w-full border-collapse text-xs">
           <thead>
             <tr>
-              <th className={TH}>측정일</th>
-              <th className={TH}>보관장소</th>
-              <th className={TH}>오전온도(℃)</th>
-              <th className={TH}>오후온도(℃)</th>
-              <th className={TH}>적합여부</th>
-              <th className={TH} style={{ width: 130 }}>개선조치</th>
-              <th className={TH}>측정자</th>
+              <th className={TH}>측정일</th><th className={TH}>보관장소</th><th className={TH}>오전온도(℃)</th>
+              <th className={TH}>오후온도(℃)</th><th className={TH}>적합여부</th><th className={TH} style={{ width: 130 }}>개선조치</th><th className={TH}>측정자</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, idx) => (
+            {workingRows.map((row, idx) => (
               <tr key={idx}>
-                <td className={TD}>
-                  <input type="date" value={row.date} onChange={e => update(idx, 'date', e.target.value)} className="text-xs border-none outline-none bg-transparent w-24" />
-                </td>
-                <td className={TD}>
-                  <select value={row.zone} onChange={e => update(idx, 'zone', e.target.value)} className="text-xs border-none outline-none bg-transparent">
-                    {STORAGE_ZONES.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
-                  </select>
-                </td>
-                <td className={TD}>
-                  <input value={row.amTemp} onChange={e => update(idx, 'amTemp', e.target.value)} placeholder="예: 5.2" className="w-14 text-xs border-none outline-none bg-transparent text-center" />
-                </td>
-                <td className={TD}>
-                  <input value={row.pmTemp} onChange={e => update(idx, 'pmTemp', e.target.value)} placeholder="예: 6.1" className="w-14 text-xs border-none outline-none bg-transparent text-center" />
-                </td>
-                <td className={TD}>
-                  <select value={row.result} onChange={e => update(idx, 'result', e.target.value)} className={`text-xs border-none outline-none bg-transparent font-bold ${row.result === 'X' ? 'text-rose-600' : row.result === 'O' ? 'text-green-600' : ''}`}>
-                    <option value="">-</option>
-                    <option value="O">O</option>
-                    <option value="X">X</option>
-                  </select>
-                </td>
-                <td className={TDL}>
-                  <input value={row.corrective} onChange={e => update(idx, 'corrective', e.target.value)} className="w-full text-xs border-none outline-none bg-transparent" />
-                </td>
-                <td className={TD}>
-                  <input value={row.inspector} onChange={e => update(idx, 'inspector', e.target.value)} className="w-16 text-xs border-none outline-none bg-transparent text-center" />
-                </td>
+                <td className={TD}><input type="date" value={row.date} onChange={e => update(idx, 'date', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent w-24 disabled:text-slate-500" /></td>
+                <td className={TD}><select value={row.zone} onChange={e => update(idx, 'zone', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent disabled:text-slate-500">{STORAGE_ZONES.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}</select></td>
+                <td className={TD}><input value={row.amTemp} onChange={e => update(idx, 'amTemp', e.target.value)} disabled={isReadOnly} placeholder="예: 5.2" className="w-14 text-xs border-none outline-none bg-transparent text-center" /></td>
+                <td className={TD}><input value={row.pmTemp} onChange={e => update(idx, 'pmTemp', e.target.value)} disabled={isReadOnly} placeholder="예: 6.1" className="w-14 text-xs border-none outline-none bg-transparent text-center" /></td>
+                <td className={TD}><select value={row.result} onChange={e => update(idx, 'result', e.target.value)} disabled={isReadOnly} className={`text-xs border-none outline-none bg-transparent font-bold ${row.result === 'X' ? 'text-rose-600' : row.result === 'O' ? 'text-green-600' : ''}`}><option value="">-</option><option value="O">O</option><option value="X">X</option></select></td>
+                <td className={TDL}><input value={row.corrective} onChange={e => update(idx, 'corrective', e.target.value)} disabled={isReadOnly} className="w-full text-xs border-none outline-none bg-transparent" /></td>
+                <td className={TD}><input value={row.inspector} onChange={e => update(idx, 'inspector', e.target.value)} disabled={isReadOnly} className="w-16 text-xs border-none outline-none bg-transparent text-center" /></td>
               </tr>
             ))}
           </tbody>
         </table>
         <SignBox />
+      </div>
+
+      <div className="sticky bottom-0 bg-white border-t border-slate-200 px-4 py-3 flex gap-2 flex-wrap items-center mt-4">
+        {!isReadOnly && <button onClick={addRow} className="text-xs px-3 py-2 border border-slate-300 rounded-lg hover:bg-slate-50">+ 행 추가</button>}
+        <div className="flex-1" />
+        <button onClick={() => printRef.current && downloadAsPDF(printRef.current, `HACCP_온도관리일지_${month}.pdf`)} className="flex items-center gap-1.5 px-3 py-2 border border-slate-300 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-50"><FileDown size={13}/>PDF</button>
+        {canConfirm && currentRecord?.id && !currentRecord.confirmedBy && (
+          <button onClick={handleConfirm} disabled={confirming} className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 disabled:opacity-50"><BadgeCheck size={13}/>{confirming ? '처리 중...' : '관리자 확인'}</button>
+        )}
+        {!isReadOnly && <button onClick={handleSave} disabled={saving} className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 disabled:opacity-50"><Save size={13}/>{saving ? '저장 중...' : '저장'}</button>}
       </div>
     </div>
   );
@@ -795,35 +827,102 @@ interface IncomingRow {
   inspector: string;
 }
 
-const IncomingForm: React.FC = () => {
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [rows, setRows] = useState<IncomingRow[]>([
-    { date: '', supplier: '', material: RAW_MATERIALS[0], materialType: '원료', quantity: '', unit: 'kg', lotNo: '', expDate: '', appearance: '', packaging: '', label: '', certAvail: '', result: '', corrective: '', inspector: '' },
-  ]);
-  const ref = useRef<HTMLDivElement>(null);
+interface IncomingRecord {
+  id?: string;
+  month: string;
+  rows: IncomingRow[];
+  createdBy: string; createdAt: string;
+  updatedBy: string; updatedAt: string;
+  revisionCount: number;
+  confirmedBy?: string; confirmedAt?: string;
+}
 
-  const addRow = () => setRows(prev => [...prev, { date: '', supplier: '', material: RAW_MATERIALS[0], materialType: '원료', quantity: '', unit: 'kg', lotNo: '', expDate: '', appearance: '', packaging: '', label: '', certAvail: '', result: '', corrective: '', inspector: '' }]);
-  const update = (idx: number, field: keyof IncomingRow, value: string) =>
-    setRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
+const defaultIncomingRow = (): IncomingRow => ({ date: '', supplier: '', material: RAW_MATERIALS[0], materialType: '원료', quantity: '', unit: 'kg', lotNo: '', expDate: '', appearance: '' as '', packaging: '' as '', label: '' as '', certAvail: '' as '', result: '' as '', corrective: '', inspector: '' });
+
+const IncomingForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const [month, setMonth] = useState(currentMonth);
+  const [records, setRecords] = useState<IncomingRecord[]>([]);
+  const [workingRows, setWorkingRows] = useState<IncomingRow[]>([defaultIncomingRow()]);
+  const [saving, setSaving] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const printRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const q = query(collection(db, 'haccp_incoming'), orderBy('month', 'desc'));
+    return onSnapshot(q, snap => setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as IncomingRecord))));
+  }, []);
+
+  const currentRecord = records.find(r => r.month === month);
+  const isReadOnly = month < currentMonth && !isAdmin;
+
+  useEffect(() => {
+    const rec = records.find(r => r.month === month);
+    setWorkingRows(rec ? rec.rows : [defaultIncomingRow()]);
+  }, [month, records]);
+
+  const addRow = () => { if (!isReadOnly) setWorkingRows(prev => [...prev, defaultIncomingRow()]); };
+  const update = (idx: number, field: keyof IncomingRow, value: string) => {
+    if (isReadOnly) return;
+    setWorkingRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
+  };
+
+  const handleSave = async () => {
+    if (isReadOnly) return;
+    setSaving(true);
+    const now = new Date().toISOString();
+    const userName = currentUser?.name ?? '알 수 없음';
+    try {
+      if (!currentRecord?.id) {
+        await addDoc(collection(db, 'haccp_incoming'), { month, rows: workingRows, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now, revisionCount: 0 });
+      } else {
+        await updateDoc(doc(db, 'haccp_incoming', currentRecord.id), { rows: workingRows, updatedBy: userName, updatedAt: now, revisionCount: (currentRecord.revisionCount ?? 0) + 1 });
+      }
+    } finally { setSaving(false); }
+  };
+
+  const handleConfirm = async () => {
+    if (!canConfirm || !currentRecord?.id) return;
+    setConfirming(true);
+    try {
+      await updateDoc(doc(db, 'haccp_incoming', currentRecord.id), { confirmedBy: currentUser?.name ?? '관리자', confirmedAt: new Date().toISOString() });
+    } finally { setConfirming(false); }
+  };
 
   const resultColor = (r: IncomingRow['result']) => r === '합격' ? 'text-green-600' : r === '불합격' ? 'text-rose-600' : r === '조건부합격' ? 'text-amber-600' : '';
 
+  const statusEl = currentRecord?.confirmedBy
+    ? <span className="flex items-center gap-1 text-xs text-emerald-600 font-bold"><BadgeCheck size={13}/>{currentRecord.confirmedBy} 확인완료</span>
+    : currentRecord
+    ? <span className="text-xs text-blue-600 font-bold">저장됨 · 수정 {currentRecord.revisionCount}회 · {currentRecord.updatedBy}</span>
+    : <span className="text-xs text-slate-400">미저장</span>;
+
   return (
-    <div>
-      <div className="flex gap-3 mb-3 flex-wrap">
+    <div className="relative pb-16">
+      {/* 컨트롤 바 */}
+      <div className="flex gap-3 mb-3 flex-wrap items-center">
         <label className="text-xs text-slate-600 flex items-center gap-1">
           관리월: <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="border border-slate-300 rounded px-1 py-0.5 text-xs" />
         </label>
-        <button onClick={addRow} className="text-xs px-2 py-1 border border-slate-300 rounded hover:bg-slate-50">+ 행 추가</button>
-        <button
-          onClick={() => ref.current && downloadAsPDF(ref.current, `HACCP_입고검사일지_${month}.pdf`)}
-          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
-        >
-          <FileDown size={13} /> PDF 저장
-        </button>
+        {statusEl}
+        {isReadOnly && (
+          <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-500 rounded font-medium">읽기 전용</span>
+        )}
+        {records.length > 0 && (
+          <select
+            className="ml-auto text-xs border border-slate-300 rounded px-2 py-1"
+            value={month}
+            onChange={e => setMonth(e.target.value)}
+          >
+            {records.map(r => (
+              <option key={r.month} value={r.month}>{r.month} {r.confirmedBy ? '✓' : ''}</option>
+            ))}
+          </select>
+        )}
       </div>
 
-      <div ref={ref} className="bg-white p-6 font-sans" style={{ fontFamily: 'Malgun Gothic, sans-serif' }}>
+      {/* 인쇄 영역 */}
+      <div ref={printRef} className="bg-white p-6 font-sans" style={{ fontFamily: 'Malgun Gothic, sans-serif' }}>
         <FormHeader title="원료·부자재 입고검사일지" date={month} />
         <p className="text-xs text-slate-500 mb-3">O: 적합 / X: 부적합 / N/A: 해당 없음 | 불합격 시 반품 또는 격리 조치 후 처리결과 기재</p>
 
@@ -849,33 +948,33 @@ const IncomingForm: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, idx) => (
+              {workingRows.map((row, idx) => (
                 <tr key={idx}>
-                  <td className={TD}><input type="date" value={row.date} onChange={e => update(idx, 'date', e.target.value)} className="text-xs border-none outline-none bg-transparent w-24" /></td>
-                  <td className={TDL}><input value={row.supplier} onChange={e => update(idx, 'supplier', e.target.value)} className="w-20 text-xs border-none outline-none bg-transparent" /></td>
+                  <td className={TD}><input type="date" value={row.date} onChange={e => update(idx, 'date', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent w-24 disabled:opacity-60" /></td>
+                  <td className={TDL}><input value={row.supplier} onChange={e => update(idx, 'supplier', e.target.value)} disabled={isReadOnly} className="w-20 text-xs border-none outline-none bg-transparent disabled:opacity-60" /></td>
                   <td className={TD}>
-                    <select value={row.material} onChange={e => update(idx, 'material', e.target.value)} className="text-xs border-none outline-none bg-transparent max-w-20">
+                    <select value={row.material} onChange={e => update(idx, 'material', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent max-w-20 disabled:opacity-60">
                       <optgroup label="원료">{RAW_MATERIALS.map(m => <option key={m}>{m}</option>)}</optgroup>
                       <optgroup label="부자재">{SUB_MATERIALS.map(m => <option key={m}>{m}</option>)}</optgroup>
                     </select>
                   </td>
                   <td className={TD}>
-                    <select value={row.materialType} onChange={e => update(idx, 'materialType', e.target.value)} className="text-xs border-none outline-none bg-transparent">
+                    <select value={row.materialType} onChange={e => update(idx, 'materialType', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent disabled:opacity-60">
                       <option>원료</option>
                       <option>부자재</option>
                     </select>
                   </td>
-                  <td className={TD}><input value={row.quantity} onChange={e => update(idx, 'quantity', e.target.value)} className="w-12 text-xs border-none outline-none bg-transparent text-center" /></td>
+                  <td className={TD}><input value={row.quantity} onChange={e => update(idx, 'quantity', e.target.value)} disabled={isReadOnly} className="w-12 text-xs border-none outline-none bg-transparent text-center disabled:opacity-60" /></td>
                   <td className={TD}>
-                    <select value={row.unit} onChange={e => update(idx, 'unit', e.target.value)} className="text-xs border-none outline-none bg-transparent">
+                    <select value={row.unit} onChange={e => update(idx, 'unit', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent disabled:opacity-60">
                       {['kg', 'g', 'L', '개', '본', '장', '롤'].map(u => <option key={u}>{u}</option>)}
                     </select>
                   </td>
-                  <td className={TD}><input value={row.lotNo} onChange={e => update(idx, 'lotNo', e.target.value)} className="w-16 text-xs border-none outline-none bg-transparent text-center" /></td>
-                  <td className={TD}><input type="date" value={row.expDate} onChange={e => update(idx, 'expDate', e.target.value)} className="text-xs border-none outline-none bg-transparent w-24" /></td>
+                  <td className={TD}><input value={row.lotNo} onChange={e => update(idx, 'lotNo', e.target.value)} disabled={isReadOnly} className="w-16 text-xs border-none outline-none bg-transparent text-center disabled:opacity-60" /></td>
+                  <td className={TD}><input type="date" value={row.expDate} onChange={e => update(idx, 'expDate', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent w-24 disabled:opacity-60" /></td>
                   {(['appearance', 'packaging', 'label'] as const).map(f => (
                     <td key={f} className={TD}>
-                      <select value={row[f]} onChange={e => update(idx, f, e.target.value)} className={`text-xs border-none outline-none bg-transparent font-bold ${row[f] === 'X' ? 'text-rose-600' : row[f] === 'O' ? 'text-green-600' : ''}`}>
+                      <select value={row[f]} onChange={e => update(idx, f, e.target.value)} disabled={isReadOnly} className={`text-xs border-none outline-none bg-transparent font-bold disabled:opacity-60 ${row[f] === 'X' ? 'text-rose-600' : row[f] === 'O' ? 'text-green-600' : ''}`}>
                         <option value="">-</option>
                         <option value="O">O</option>
                         <option value="X">X</option>
@@ -883,7 +982,7 @@ const IncomingForm: React.FC = () => {
                     </td>
                   ))}
                   <td className={TD}>
-                    <select value={row.certAvail} onChange={e => update(idx, 'certAvail', e.target.value)} className={`text-xs border-none outline-none bg-transparent font-bold ${row.certAvail === 'X' ? 'text-rose-600' : row.certAvail === 'O' ? 'text-green-600' : ''}`}>
+                    <select value={row.certAvail} onChange={e => update(idx, 'certAvail', e.target.value)} disabled={isReadOnly} className={`text-xs border-none outline-none bg-transparent font-bold disabled:opacity-60 ${row.certAvail === 'X' ? 'text-rose-600' : row.certAvail === 'O' ? 'text-green-600' : ''}`}>
                       <option value="">-</option>
                       <option value="O">O</option>
                       <option value="X">X</option>
@@ -891,21 +990,54 @@ const IncomingForm: React.FC = () => {
                     </select>
                   </td>
                   <td className={TD}>
-                    <select value={row.result} onChange={e => update(idx, 'result', e.target.value)} className={`text-xs border-none outline-none bg-transparent font-bold ${resultColor(row.result)}`}>
+                    <select value={row.result} onChange={e => update(idx, 'result', e.target.value)} disabled={isReadOnly} className={`text-xs border-none outline-none bg-transparent font-bold disabled:opacity-60 ${resultColor(row.result)}`}>
                       <option value="">-</option>
                       <option value="합격">합격</option>
                       <option value="불합격">불합격</option>
                       <option value="조건부합격">조건부합격</option>
                     </select>
                   </td>
-                  <td className={TDL}><input value={row.corrective} onChange={e => update(idx, 'corrective', e.target.value)} className="w-full text-xs border-none outline-none bg-transparent" /></td>
-                  <td className={TD}><input value={row.inspector} onChange={e => update(idx, 'inspector', e.target.value)} className="w-12 text-xs border-none outline-none bg-transparent text-center" /></td>
+                  <td className={TDL}><input value={row.corrective} onChange={e => update(idx, 'corrective', e.target.value)} disabled={isReadOnly} className="w-full text-xs border-none outline-none bg-transparent disabled:opacity-60" /></td>
+                  <td className={TD}><input value={row.inspector} onChange={e => update(idx, 'inspector', e.target.value)} disabled={isReadOnly} className="w-12 text-xs border-none outline-none bg-transparent text-center disabled:opacity-60" /></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
         <SignBox />
+      </div>
+
+      {/* 하단 액션 바 */}
+      <div className="sticky bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-2 flex items-center gap-2 z-10">
+        {!isReadOnly && (
+          <button onClick={addRow} className="flex items-center gap-1 text-xs px-3 py-1.5 border border-slate-300 rounded-lg hover:bg-slate-50 font-medium">
+            <Plus size={12} /> 행 추가
+          </button>
+        )}
+        <button
+          onClick={() => printRef.current && downloadAsPDF(printRef.current, `HACCP_입고검사일지_${month}.pdf`)}
+          className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-slate-300 rounded-lg hover:bg-slate-50 font-medium"
+        >
+          <FileDown size={12} /> PDF
+        </button>
+        {canConfirm && currentRecord?.id && !currentRecord.confirmedBy && (
+          <button
+            onClick={handleConfirm}
+            disabled={confirming}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-bold disabled:opacity-50"
+          >
+            <BadgeCheck size={12} /> {confirming ? '처리 중…' : '관리자 확인'}
+          </button>
+        )}
+        {!isReadOnly && (
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="ml-auto flex items-center gap-1.5 text-xs px-4 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold disabled:opacity-50"
+          >
+            <Save size={12} /> {saving ? '저장 중…' : '저장'}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -972,29 +1104,111 @@ interface AreaCleanRow {
   note: string;
 }
 
-const CleaningForm: React.FC = () => {
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [machineRows, setMachineRows] = useState<MachineCleanRow[]>(
-    MACHINES.map(m => ({ date: '', machine: m.name, used: '', cleanMethod: m.method, sanitizer: '', result: '', cleaner: '', verifier: '', note: '' }))
-  );
-  const [areaRows, setAreaRows] = useState<AreaCleanRow[]>(
-    CLEAN_AREAS.map(a => ({ date: '', area: a, result: '', sanitized: '', sanitizer: '', cleaner: '', note: '' }))
-  );
+interface CleaningRecord {
+  id?: string;
+  month: string;
+  machineRows: MachineCleanRow[];
+  areaRows: AreaCleanRow[];
+  createdBy: string; createdAt: string;
+  updatedBy: string; updatedAt: string;
+  revisionCount: number;
+  confirmedBy?: string; confirmedAt?: string;
+}
+
+const defaultMachineRows = (): MachineCleanRow[] =>
+  MACHINES.map(m => ({ date: '', machine: m.name, used: '' as '', cleanMethod: m.method, sanitizer: '', result: '' as '', cleaner: '', verifier: '', note: '' }));
+const defaultAreaRows = (): AreaCleanRow[] =>
+  CLEAN_AREAS.map(a => ({ date: '', area: a, result: '' as '', sanitized: '' as '', sanitizer: '', cleaner: '', note: '' }));
+
+const CleaningForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const [month, setMonth] = useState(currentMonth);
+  const [records, setRecords] = useState<CleaningRecord[]>([]);
+  const [machineRows, setMachineRows] = useState<MachineCleanRow[]>(defaultMachineRows());
+  const [areaRows, setAreaRows] = useState<AreaCleanRow[]>(defaultAreaRows());
+  const [saving, setSaving] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const machineRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLDivElement>(null);
 
-  const addMachineRow = () =>
-    setMachineRows(prev => [...prev, { date: '', machine: MACHINE_NAMES[0], used: '', cleanMethod: MACHINES[0].method, sanitizer: '', result: '', cleaner: '', verifier: '', note: '' }]);
-  const updateMachine = (idx: number, field: keyof MachineCleanRow, value: string) =>
-    setMachineRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
+  useEffect(() => {
+    const q = query(collection(db, 'haccp_cleaning'), orderBy('month', 'desc'));
+    return onSnapshot(q, snap => setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as CleaningRecord))));
+  }, []);
 
-  const addAreaRow = () =>
-    setAreaRows(prev => [...prev, { date: '', area: CLEAN_AREAS[0], result: '', sanitized: '', sanitizer: '', cleaner: '', note: '' }]);
-  const updateArea = (idx: number, field: keyof AreaCleanRow, value: string) =>
+  const currentRecord = records.find(r => r.month === month);
+  const isReadOnly = month < currentMonth && !isAdmin;
+
+  useEffect(() => {
+    const rec = records.find(r => r.month === month);
+    setMachineRows(rec ? rec.machineRows : defaultMachineRows());
+    setAreaRows(rec ? rec.areaRows : defaultAreaRows());
+  }, [month, records]);
+
+  const addMachineRow = () => { if (!isReadOnly) setMachineRows(prev => [...prev, { date: '', machine: MACHINE_NAMES[0], used: '' as '', cleanMethod: MACHINES[0].method, sanitizer: '', result: '' as '', cleaner: '', verifier: '', note: '' }]); };
+  const updateMachine = (idx: number, field: keyof MachineCleanRow, value: string) => {
+    if (isReadOnly) return;
+    setMachineRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
+  };
+
+  const addAreaRow = () => { if (!isReadOnly) setAreaRows(prev => [...prev, { date: '', area: CLEAN_AREAS[0], result: '' as '', sanitized: '' as '', sanitizer: '', cleaner: '', note: '' }]); };
+  const updateArea = (idx: number, field: keyof AreaCleanRow, value: string) => {
+    if (isReadOnly) return;
     setAreaRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
+  };
+
+  const handleSave = async () => {
+    if (isReadOnly) return;
+    setSaving(true);
+    const now = new Date().toISOString();
+    const userName = currentUser?.name ?? '알 수 없음';
+    try {
+      if (!currentRecord?.id) {
+        await addDoc(collection(db, 'haccp_cleaning'), { month, machineRows, areaRows, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now, revisionCount: 0 });
+      } else {
+        await updateDoc(doc(db, 'haccp_cleaning', currentRecord.id), { machineRows, areaRows, updatedBy: userName, updatedAt: now, revisionCount: (currentRecord.revisionCount ?? 0) + 1 });
+      }
+    } finally { setSaving(false); }
+  };
+
+  const handleConfirm = async () => {
+    if (!canConfirm || !currentRecord?.id) return;
+    setConfirming(true);
+    try {
+      await updateDoc(doc(db, 'haccp_cleaning', currentRecord.id), { confirmedBy: currentUser?.name ?? '관리자', confirmedAt: new Date().toISOString() });
+    } finally { setConfirming(false); }
+  };
+
+  const statusEl = currentRecord?.confirmedBy
+    ? <span className="flex items-center gap-1 text-xs text-emerald-600 font-bold"><BadgeCheck size={13}/>{currentRecord.confirmedBy} 확인완료</span>
+    : currentRecord
+    ? <span className="text-xs text-blue-600 font-bold">저장됨 · 수정 {currentRecord.revisionCount}회 · {currentRecord.updatedBy}</span>
+    : <span className="text-xs text-slate-400">미저장</span>;
 
   return (
-    <div className="space-y-8">
+    <div className="relative pb-16 space-y-8">
+      {/* 컨트롤 바 */}
+      <div className="flex gap-3 flex-wrap items-center">
+        <label className="text-xs text-slate-600 flex items-center gap-1">
+          관리월: <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="border border-slate-300 rounded px-1 py-0.5 text-xs" />
+        </label>
+        {statusEl}
+        {isReadOnly && (
+          <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-500 rounded font-medium">읽기 전용</span>
+        )}
+        {records.length > 0 && (
+          <select
+            className="ml-auto text-xs border border-slate-300 rounded px-2 py-1"
+            value={month}
+            onChange={e => setMonth(e.target.value)}
+          >
+            {records.map(r => (
+              <option key={r.month} value={r.month}>{r.month} {r.confirmedBy ? '✓' : ''}</option>
+            ))}
+          </select>
+        )}
+      </div>
+
       {/* 세척소독제 기준 안내 */}
       <div className="border border-amber-300 bg-amber-50 rounded-lg p-3 text-xs">
         <div className="font-bold text-amber-800 mb-1">세척·소독제 사용 기준 (식약처 소규모 HACCP 기준)</div>
@@ -1011,10 +1225,9 @@ const CleaningForm: React.FC = () => {
       <div>
         <div className="flex gap-3 mb-3 flex-wrap items-center">
           <span className="text-sm font-bold text-slate-700">기계·설비 세척소독 일지</span>
-          <label className="text-xs text-slate-600 flex items-center gap-1 ml-2">
-            관리월: <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="border border-slate-300 rounded px-1 py-0.5 text-xs" />
-          </label>
-          <button onClick={addMachineRow} className="text-xs px-2 py-1 border border-slate-300 rounded hover:bg-slate-50">+ 행 추가</button>
+          {!isReadOnly && (
+            <button onClick={addMachineRow} className="text-xs px-2 py-1 border border-slate-300 rounded hover:bg-slate-50 ml-2">+ 행 추가</button>
+          )}
           <button
             onClick={() => machineRef.current && downloadAsPDF(machineRef.current, `HACCP_기계세척소독일지_${month}.pdf`)}
             className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
@@ -1046,39 +1259,39 @@ const CleaningForm: React.FC = () => {
                 {machineRows.map((row, idx) => (
                   <tr key={idx}>
                     <td className={TD}>
-                      <input type="date" value={row.date} onChange={e => updateMachine(idx, 'date', e.target.value)} className="text-xs border-none outline-none bg-transparent w-24" />
+                      <input type="date" value={row.date} onChange={e => updateMachine(idx, 'date', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent w-24 disabled:opacity-60" />
                     </td>
                     <td className={TD}>
-                      <select value={row.machine} onChange={e => updateMachine(idx, 'machine', e.target.value)} className="text-xs border-none outline-none bg-transparent">
+                      <select value={row.machine} onChange={e => updateMachine(idx, 'machine', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent disabled:opacity-60">
                         {MACHINE_NAMES.map(m => <option key={m}>{m}</option>)}
                       </select>
                     </td>
                     <td className={TD}>
-                      <select value={row.used} onChange={e => updateMachine(idx, 'used', e.target.value)} className={`text-xs border-none outline-none bg-transparent font-bold ${row.used === 'X' ? 'text-slate-400' : row.used === 'O' ? 'text-slate-700' : ''}`}>
+                      <select value={row.used} onChange={e => updateMachine(idx, 'used', e.target.value)} disabled={isReadOnly} className={`text-xs border-none outline-none bg-transparent font-bold disabled:opacity-60 ${row.used === 'X' ? 'text-slate-400' : row.used === 'O' ? 'text-slate-700' : ''}`}>
                         <option value="">-</option>
                         <option value="O">O(사용)</option>
                         <option value="X">X(미사용)</option>
                       </select>
                     </td>
                     <td className={TDL}>
-                      <input value={row.cleanMethod} onChange={e => updateMachine(idx, 'cleanMethod', e.target.value)} className="w-full text-xs border-none outline-none bg-transparent" placeholder="세척방법 기재" />
+                      <input value={row.cleanMethod} onChange={e => updateMachine(idx, 'cleanMethod', e.target.value)} disabled={isReadOnly} className="w-full text-xs border-none outline-none bg-transparent disabled:opacity-60" placeholder="세척방법 기재" />
                     </td>
                     <td className={TD}>
-                      <select value={row.sanitizer} onChange={e => updateMachine(idx, 'sanitizer', e.target.value)} className="text-xs border-none outline-none bg-transparent">
+                      <select value={row.sanitizer} onChange={e => updateMachine(idx, 'sanitizer', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent disabled:opacity-60">
                         <option value="">선택</option>
                         {SANITIZERS.map(s => <option key={s}>{s}</option>)}
                       </select>
                     </td>
                     <td className={TD}>
-                      <select value={row.result} onChange={e => updateMachine(idx, 'result', e.target.value)} className={`text-xs border-none outline-none bg-transparent font-bold ${row.result === 'X' ? 'text-rose-600' : row.result === 'O' ? 'text-green-600' : ''}`}>
+                      <select value={row.result} onChange={e => updateMachine(idx, 'result', e.target.value)} disabled={isReadOnly} className={`text-xs border-none outline-none bg-transparent font-bold disabled:opacity-60 ${row.result === 'X' ? 'text-rose-600' : row.result === 'O' ? 'text-green-600' : ''}`}>
                         <option value="">-</option>
                         <option value="O">O</option>
                         <option value="X">X</option>
                       </select>
                     </td>
-                    <td className={TD}><input value={row.cleaner} onChange={e => updateMachine(idx, 'cleaner', e.target.value)} className="w-12 text-xs border-none outline-none bg-transparent text-center" /></td>
-                    <td className={TD}><input value={row.verifier} onChange={e => updateMachine(idx, 'verifier', e.target.value)} className="w-12 text-xs border-none outline-none bg-transparent text-center" /></td>
-                    <td className={TDL}><input value={row.note} onChange={e => updateMachine(idx, 'note', e.target.value)} className="w-full text-xs border-none outline-none bg-transparent" /></td>
+                    <td className={TD}><input value={row.cleaner} onChange={e => updateMachine(idx, 'cleaner', e.target.value)} disabled={isReadOnly} className="w-12 text-xs border-none outline-none bg-transparent text-center disabled:opacity-60" /></td>
+                    <td className={TD}><input value={row.verifier} onChange={e => updateMachine(idx, 'verifier', e.target.value)} disabled={isReadOnly} className="w-12 text-xs border-none outline-none bg-transparent text-center disabled:opacity-60" /></td>
+                    <td className={TDL}><input value={row.note} onChange={e => updateMachine(idx, 'note', e.target.value)} disabled={isReadOnly} className="w-full text-xs border-none outline-none bg-transparent disabled:opacity-60" /></td>
                   </tr>
                 ))}
               </tbody>
@@ -1092,7 +1305,9 @@ const CleaningForm: React.FC = () => {
       <div>
         <div className="flex gap-3 mb-3 flex-wrap items-center">
           <span className="text-sm font-bold text-slate-700">작업구역 청소·소독 일지</span>
-          <button onClick={addAreaRow} className="text-xs px-2 py-1 border border-slate-300 rounded hover:bg-slate-50 ml-2">+ 행 추가</button>
+          {!isReadOnly && (
+            <button onClick={addAreaRow} className="text-xs px-2 py-1 border border-slate-300 rounded hover:bg-slate-50 ml-2">+ 행 추가</button>
+          )}
           <button
             onClick={() => areaRef.current && downloadAsPDF(areaRef.current, `HACCP_구역청소일지_${month}.pdf`)}
             className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
@@ -1122,22 +1337,22 @@ const CleaningForm: React.FC = () => {
                 {areaRows.map((row, idx) => (
                   <tr key={idx}>
                     <td className={TD}>
-                      <input type="date" value={row.date} onChange={e => updateArea(idx, 'date', e.target.value)} className="text-xs border-none outline-none bg-transparent w-24" />
+                      <input type="date" value={row.date} onChange={e => updateArea(idx, 'date', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent w-24 disabled:opacity-60" />
                     </td>
                     <td className={TD}>
-                      <select value={row.area} onChange={e => updateArea(idx, 'area', e.target.value)} className="text-xs border-none outline-none bg-transparent">
+                      <select value={row.area} onChange={e => updateArea(idx, 'area', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent disabled:opacity-60">
                         {CLEAN_AREAS.map(a => <option key={a}>{a}</option>)}
                       </select>
                     </td>
                     <td className={TD}>
-                      <select value={row.result} onChange={e => updateArea(idx, 'result', e.target.value)} className={`text-xs border-none outline-none bg-transparent font-bold ${row.result === 'X' ? 'text-rose-600' : row.result === 'O' ? 'text-green-600' : ''}`}>
+                      <select value={row.result} onChange={e => updateArea(idx, 'result', e.target.value)} disabled={isReadOnly} className={`text-xs border-none outline-none bg-transparent font-bold disabled:opacity-60 ${row.result === 'X' ? 'text-rose-600' : row.result === 'O' ? 'text-green-600' : ''}`}>
                         <option value="">-</option>
                         <option value="O">O</option>
                         <option value="X">X</option>
                       </select>
                     </td>
                     <td className={TD}>
-                      <select value={row.sanitized} onChange={e => updateArea(idx, 'sanitized', e.target.value)} className={`text-xs border-none outline-none bg-transparent font-bold ${row.sanitized === 'X' ? 'text-rose-600' : row.sanitized === 'O' ? 'text-green-600' : ''}`}>
+                      <select value={row.sanitized} onChange={e => updateArea(idx, 'sanitized', e.target.value)} disabled={isReadOnly} className={`text-xs border-none outline-none bg-transparent font-bold disabled:opacity-60 ${row.sanitized === 'X' ? 'text-rose-600' : row.sanitized === 'O' ? 'text-green-600' : ''}`}>
                         <option value="">-</option>
                         <option value="O">O(실시)</option>
                         <option value="X">X(미실시)</option>
@@ -1145,13 +1360,13 @@ const CleaningForm: React.FC = () => {
                       </select>
                     </td>
                     <td className={TD}>
-                      <select value={row.sanitizer} onChange={e => updateArea(idx, 'sanitizer', e.target.value)} className="text-xs border-none outline-none bg-transparent">
+                      <select value={row.sanitizer} onChange={e => updateArea(idx, 'sanitizer', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent disabled:opacity-60">
                         <option value="">선택</option>
                         {SANITIZERS.map(s => <option key={s}>{s}</option>)}
                       </select>
                     </td>
-                    <td className={TD}><input value={row.cleaner} onChange={e => updateArea(idx, 'cleaner', e.target.value)} className="w-12 text-xs border-none outline-none bg-transparent text-center" /></td>
-                    <td className={TDL}><input value={row.note} onChange={e => updateArea(idx, 'note', e.target.value)} className="w-full text-xs border-none outline-none bg-transparent" /></td>
+                    <td className={TD}><input value={row.cleaner} onChange={e => updateArea(idx, 'cleaner', e.target.value)} disabled={isReadOnly} className="w-12 text-xs border-none outline-none bg-transparent text-center disabled:opacity-60" /></td>
+                    <td className={TDL}><input value={row.note} onChange={e => updateArea(idx, 'note', e.target.value)} disabled={isReadOnly} className="w-full text-xs border-none outline-none bg-transparent disabled:opacity-60" /></td>
                   </tr>
                 ))}
               </tbody>
@@ -1159,6 +1374,28 @@ const CleaningForm: React.FC = () => {
           </div>
           <SignBox />
         </div>
+      </div>
+
+      {/* 하단 액션 바 */}
+      <div className="sticky bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-2 flex items-center gap-2 z-10">
+        {canConfirm && currentRecord?.id && !currentRecord.confirmedBy && (
+          <button
+            onClick={handleConfirm}
+            disabled={confirming}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-bold disabled:opacity-50"
+          >
+            <BadgeCheck size={12} /> {confirming ? '처리 중…' : '관리자 확인'}
+          </button>
+        )}
+        {!isReadOnly && (
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="ml-auto flex items-center gap-1.5 text-xs px-4 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold disabled:opacity-50"
+          >
+            <Save size={12} /> {saving ? '저장 중…' : '저장'}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1220,7 +1457,7 @@ const emptyRecord = (slot: SlotTime): Omit<SanitationRecord, 'id'> => ({
   revisionCount: -1,
 });
 
-export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean }> = ({ currentUser, isAdmin }) => {
+export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
   const [records, setRecords] = useState<SanitationRecord[]>([]);
   const [selected, setSelected] = useState<SanitationRecord | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1469,8 +1706,8 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
               >
                 <FileDown size={12} /> PDF
               </button>
-              {/* 관리자 전용 확인 버튼 — isAdmin이면 항상 표시 */}
-              {isAdmin && (
+              {/* 관리자 전용 확인 버튼 — canConfirm이면 표시 */}
+              {canConfirm && (
                 selected.confirmedBy
                   ? <span className="flex items-center gap-1 px-3 py-2 bg-emerald-50 border border-emerald-300 text-emerald-700 rounded-lg text-xs font-bold">
                       <BadgeCheck size={13} /> {selected.confirmedBy} 확인완료
@@ -1680,7 +1917,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
                 <div className="h-10 flex items-center justify-center">
                   {selected.confirmedBy
                     ? <span className="text-slate-700 font-semibold">{selected.confirmedBy}</span>
-                    : isAdmin && selected.id && allChecked
+                    : canConfirm && selected.id && allChecked
                       ? <button
                           onClick={handleConfirm}
                           disabled={confirming}
@@ -1688,9 +1925,9 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
                         >
                           <BadgeCheck size={11} /> {confirming ? '처리 중...' : '확인'}
                         </button>
-                      : isAdmin && !selected.id
+                      : canConfirm && !selected.id
                         ? <span className="text-slate-300 text-[10px]">저장 후 확인</span>
-                        : isAdmin && !allChecked
+                        : canConfirm && !allChecked
                           ? <span className="text-slate-300 text-[10px]">항목 완료 후</span>
                           : <span className="text-slate-200 text-xs">-</span>
                   }
@@ -1754,7 +1991,7 @@ const emptyPersonalRecord = (): Omit<PersonalHygieneRecord, 'id'> => ({
   revisionCount: -1,
 });
 
-export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean }> = ({ currentUser, isAdmin }) => {
+export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
   const [records, setRecords] = useState<PersonalHygieneRecord[]>([]);
   const [selected, setSelected] = useState<PersonalHygieneRecord | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1898,7 +2135,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
               <button onClick={() => printRef.current && downloadAsPDF(printRef.current, `개인위생점검표_${selected.checkDate}.pdf`)} className="flex items-center gap-1 px-3 py-2 bg-slate-600 text-white rounded-lg text-xs font-bold hover:bg-slate-700">
                 <FileDown size={12} /> PDF
               </button>
-              {isAdmin && (
+              {canConfirm && (
                 selected.confirmedBy
                   ? <span className="flex items-center gap-1 px-3 py-2 bg-emerald-50 border border-emerald-300 text-emerald-700 rounded-lg text-xs font-bold"><BadgeCheck size={13} /> {selected.confirmedBy} 확인완료</span>
                   : <button onClick={handleConfirm} disabled={confirming || !selected.id || !allChecked}
@@ -2025,12 +2262,12 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
                 <div className="h-10 flex items-center justify-center">
                   {selected.confirmedBy
                     ? <span className="text-slate-700 font-semibold">{selected.confirmedBy}</span>
-                    : isAdmin && selected.id && allChecked
+                    : canConfirm && selected.id && allChecked
                       ? <button onClick={handleConfirm} disabled={confirming} className="flex items-center gap-1 px-2 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-40">
                           <BadgeCheck size={11} /> {confirming ? '처리 중...' : '확인'}
                         </button>
-                      : isAdmin && !selected.id ? <span className="text-slate-300 text-[10px]">저장 후 확인</span>
-                      : isAdmin ? <span className="text-slate-300 text-[10px]">항목 완료 후</span>
+                      : canConfirm && !selected.id ? <span className="text-slate-300 text-[10px]">저장 후 확인</span>
+                      : canConfirm ? <span className="text-slate-300 text-[10px]">항목 완료 후</span>
                       : <span className="text-slate-200 text-xs">-</span>}
                 </div>
               </div>
@@ -2089,8 +2326,8 @@ export const StaffChecklistView: React.FC<{ currentUser?: { id: string; name: st
         <p className="text-xs text-slate-500">{STAFF_TABS.find(t => t.id === activeTab)?.desc}</p>
       </div>
       <div className="flex-1 overflow-y-auto p-6">
-        {activeTab === 'sanitation' && <SanitationForm currentUser={currentUser} isAdmin={isAdmin} />}
-        {activeTab === 'personal'   && <PersonalHygieneForm currentUser={currentUser} isAdmin={isAdmin} />}
+        {activeTab === 'sanitation' && <SanitationForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={isAdmin} />}
+        {activeTab === 'personal'   && <PersonalHygieneForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={isAdmin} />}
       </div>
     </div>
   );
@@ -2158,13 +2395,13 @@ const HaccpChecklist: React.FC<{ currentUser?: { id: string; name: string }; isA
       <div className="flex-1 overflow-y-auto p-6">
         {activeTab === 'overview'  && <OverviewForm />}
         {activeTab === 'daily'     && <DailyForm />}
-        {activeTab === 'cleaning'  && <CleaningForm />}
+        {activeTab === 'cleaning'  && <CleaningForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={false} />}
         {activeTab === 'pest'      && <PestForm />}
-        {activeTab === 'temp'      && <TempForm />}
+        {activeTab === 'temp'      && <TempForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={false} />}
         {activeTab === 'ccp-heat'  && <CCPHeatForm />}
         {activeTab === 'ccp-metal'   && <CCPMetalForm />}
-        {activeTab === 'incoming'    && <IncomingForm />}
-        {activeTab === 'sanitation'  && <SanitationForm currentUser={currentUser} isAdmin={isAdmin} />}
+        {activeTab === 'incoming'    && <IncomingForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={false} />}
+        {activeTab === 'sanitation'  && <SanitationForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={false} />}
       </div>
     </div>
   );

@@ -61,6 +61,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
   const [dragDeliveryId, setDragDeliveryId] = useState<string | null>(null);
   const [previewDeliveryOrderId, setPreviewDeliveryOrderId] = useState<string | null>(null);
   const [deliveryTab, setDeliveryTab] = useState<'배송일정관리' | '배송캘린더'>('배송일정관리');
+  const [currentWeekDate, setCurrentWeekDate] = useState(new Date());
   const [mobileCollapsed, setMobileCollapsed] = useState<Set<string>>(new Set());
   const toggleMobileCollapse = (id: string) => setMobileCollapsed(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
   const [selectedDispatchedIds, setSelectedDispatchedIds] = useState<Set<string>>(new Set());
@@ -177,6 +178,130 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
 
     return grouped;
   }, [orders, clients, regionList]);
+
+  // Week navigation helpers
+  const getWeekStart = (d: Date) => {
+    const day = d.getDay();
+    const diff = day === 0 ? -6 : 1 - day; // Monday = start
+    const start = new Date(d);
+    start.setDate(d.getDate() + diff);
+    start.setHours(0, 0, 0, 0);
+    return start;
+  };
+
+  const weekStart = getWeekStart(currentWeekDate);
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(weekStart.getDate() + i);
+    return d;
+  });
+
+  const hasWeekendOrdersInWeek = weekDays.some(d => {
+    const dateStr = d.toISOString().split('T')[0];
+    const dow = d.getDay();
+    return (dow === 0 || dow === 6) && (deliverySchedules[dateStr]?.length > 0 || deliveredSchedules[dateStr]?.length > 0);
+  });
+
+  const visibleWeekDays = hasWeekendOrdersInWeek ? weekDays : weekDays.filter(d => d.getDay() !== 0 && d.getDay() !== 6);
+  const dayLabels = ["일", "월", "화", "수", "목", "금", "토"];
+
+  const prevWeek = () => setCurrentWeekDate(prev => { const d = new Date(prev); d.setDate(d.getDate() - 7); return d; });
+  const nextWeek = () => setCurrentWeekDate(prev => { const d = new Date(prev); d.setDate(d.getDate() + 7); return d; });
+
+  const weekLabel = (() => {
+    const endDate = visibleWeekDays[visibleWeekDays.length - 1];
+    const sM = weekStart.getMonth() + 1;
+    const sD = weekStart.getDate();
+    const eM = endDate.getMonth() + 1;
+    const eD = endDate.getDate();
+    const yr = weekStart.getFullYear();
+    return sM === eM ? `${yr}년 ${sM}월 ${sD}일 – ${eD}일` : `${yr}년 ${sM}월 ${sD}일 – ${eM}월 ${eD}일`;
+  })();
+
+  const renderWeekCalendar = () => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const getStatusColor = (status: OrderStatus) => {
+      switch (status) {
+        case OrderStatus.PENDING: return 'bg-amber-100 text-amber-700 border-amber-200';
+        case OrderStatus.PROCESSING: return 'bg-sky-100 text-pink-700 border-sky-200';
+        case OrderStatus.SHIPPED: return 'bg-indigo-100 text-indigo-700 border-indigo-200';
+        case OrderStatus.DISPATCHED: return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+        case OrderStatus.DELIVERED: return 'bg-slate-100 text-slate-500 border-slate-200';
+        default: return 'bg-slate-100 text-slate-600 border-slate-200';
+      }
+    };
+    return visibleWeekDays.map(d => {
+      const dateStr = d.toISOString().split('T')[0];
+      const dayOrders = deliverySchedules[dateStr] || [];
+      const deliveredOrders = deliveredSchedules[dateStr] || [];
+      const isToday = todayStr === dateStr;
+      const showDelivered = expandedDeliveredDates.has(dateStr);
+      return (
+        <div
+          key={dateStr}
+          onDragOver={handleDragOver}
+          onDrop={(e) => handleDrop(e, dateStr)}
+          className={`border-r border-slate-100 p-3 flex flex-col transition-all hover:bg-indigo-50/30 group ${isToday ? 'bg-indigo-50/30' : 'bg-white'}`}
+          style={{ minHeight: 200 }}
+        >
+          <div className="flex justify-between items-center mb-2">
+            <div className="flex flex-col items-start">
+              <span className="text-[10px] font-black text-slate-400 uppercase">{dayLabels[d.getDay()]}</span>
+              <span className={`text-lg font-black w-8 h-8 flex items-center justify-center rounded-full ${isToday ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-700 group-hover:text-indigo-600'}`}>
+                {d.getDate()}
+              </span>
+            </div>
+            <div className="flex flex-col items-end gap-0.5">
+              {dayOrders.length > 0 && (
+                <span className="text-[10px] font-black text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-md">{dayOrders.length}건</span>
+              )}
+              {deliveredOrders.length > 0 && (
+                <button
+                  onClick={e => { e.stopPropagation(); toggleDeliveredDate(dateStr); }}
+                  className="text-[10px] font-black text-slate-400 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded-md transition-all"
+                >
+                  이전 {deliveredOrders.length}건
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="flex-1 space-y-1.5 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+            {dayOrders.map(order => {
+              const progress = order.items.length > 0
+                ? Math.round((order.items.filter(i => i.checked).length / order.items.length) * 100) : 0;
+              return (
+                <div
+                  key={order.id}
+                  onClick={() => handleOrderClick(order)}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, order.id)}
+                  className={`text-[10px] font-bold py-1.5 px-2.5 rounded-xl border flex justify-between items-center cursor-pointer hover:brightness-95 transition-all active:scale-95 ${getStatusColor(order.status)}`}
+                >
+                  <span className="flex-1 truncate">{order.customerName}</span>
+                  <span className="ml-1 shrink-0 opacity-70">{progress}%</span>
+                </div>
+              );
+            })}
+            {showDelivered && deliveredOrders.map(order => (
+              <div
+                key={order.id}
+                onClick={() => handleOrderClick(order)}
+                className="text-[10px] font-bold py-1.5 px-2.5 rounded-xl border flex justify-between items-center cursor-pointer bg-slate-50 border-slate-200 text-slate-400 hover:brightness-95 transition-all"
+              >
+                <span className="flex-1 truncate">{order.customerName}</span>
+                <span className="ml-1 shrink-0">완료</span>
+              </div>
+            ))}
+            {dayOrders.length === 0 && deliveredOrders.length === 0 && (
+              <div className="flex-1 flex items-center justify-center">
+                <span className="text-[10px] text-slate-300 font-bold">배송 없음</span>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    });
+  };
 
   const renderCalendar = () => {
     const totalDays = daysInMonth(year, month);
@@ -684,7 +809,38 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
         );
       })()}
 
-      {/* Calendar Section */}
+      {/* Weekly Calendar */}
+      {deliveryTab === '배송캘린더' && (
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="w-10 h-10 bg-violet-100 text-violet-600 rounded-xl flex items-center justify-center shadow-inner">
+                <CalendarIcon size={20} />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-900">{weekLabel}</h3>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">주간 배송 캘린더</p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button onClick={prevWeek} className="p-2.5 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-violet-600 transition-all">
+                <ChevronLeft size={18} />
+              </button>
+              <button onClick={() => setCurrentWeekDate(new Date())} className="px-4 py-2 text-xs font-black text-violet-600 bg-violet-50 rounded-xl hover:bg-violet-100 transition-all">
+                이번주
+              </button>
+              <button onClick={nextWeek} className="p-2.5 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-violet-600 transition-all">
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
+          <div className={`grid border-l border-slate-100`} style={{ gridTemplateColumns: `repeat(${visibleWeekDays.length}, minmax(0, 1fr))` }}>
+            {renderWeekCalendar()}
+          </div>
+        </div>
+      )}
+
+      {/* Monthly Calendar */}
       {deliveryTab === '배송캘린더' && <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         <div className="p-8 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center space-x-4">
@@ -693,7 +849,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
             </div>
             <div>
               <h3 className="text-xl font-black text-slate-900">{year}년 {monthNames[month]}</h3>
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">배송 일정 캘린더</p>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">월간 배송 캘린더</p>
             </div>
           </div>
           <div className="flex items-center space-x-2">
