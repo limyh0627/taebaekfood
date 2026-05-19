@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FileDown, ClipboardList, Thermometer, Bug, CheckSquare, Scan, ShoppingCart, Wrench, ShieldAlert, Save, Trash2, BadgeCheck, User, Plus } from 'lucide-react';
 import { db } from '../src/shared/firebase';
-import { collection, addDoc, updateDoc, doc, onSnapshot, query, orderBy, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, setDoc, doc, onSnapshot, query, orderBy, deleteDoc } from 'firebase/firestore';
 
 // ── 공통 스타일 ────────────────────────────────────────────────────────────────
 const TH = 'border border-slate-400 bg-slate-100 p-1.5 text-xs font-bold text-center';
@@ -55,7 +55,7 @@ const SignBox: React.FC<{ labels?: string[] }> = ({ labels = ['작성자', '확�
 );
 
 // ── 탭 ID 타입 ─────────────────────────────────────────────────────────────────
-type TabId = 'overview' | 'daily' | 'pest' | 'temp' | 'ccp-heat' | 'ccp-metal' | 'incoming' | 'cleaning' | 'sanitation';
+type TabId = 'overview' | 'daily' | 'pest' | 'temp' | 'ccp-heat' | 'ccp-metal' | 'incoming' | 'cleaning' | 'sanitation' | 'personal';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 1. 소규모 HACCP 사후평가 점검표 (20항목)
@@ -412,11 +412,12 @@ const PestForm: React.FC = () => {
 // 4. 냉장·냉동창고 온도관리 일지
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 const STORAGE_ZONES = [
-  { id: 'ref1', name: '냉장창고 1', standard: '0~10℃' },
-  { id: 'ref2', name: '냉장창고 2', standard: '0~10℃' },
-  { id: 'fz1', name: '냉동창고', standard: '-18℃ 이하' },
-  { id: 'rm1', name: '원료 보관실', standard: '실온(15~25℃)' },
+  { name: '냉장창고 1', standard: '0~10℃' },
+  { name: '냉장창고 2', standard: '0~10℃' },
+  { name: '냉동창고', standard: '-18℃ 이하' },
+  { name: '원료 보관실', standard: '실온(15~25℃)' },
 ];
+type StorageZone = { name: string; standard: string };
 
 interface TempRow {
   date: string;
@@ -438,16 +439,17 @@ interface TempRecord {
   confirmedBy?: string; confirmedAt?: string;
 }
 
-const defaultTempRows = (): TempRow[] =>
-  STORAGE_ZONES.map(z => ({ date: '', zone: z.id, amTemp: '', pmTemp: '', result: '' as '', corrective: '', inspector: '' }));
+const defaultTempRows = (zones: StorageZone[] = STORAGE_ZONES): TempRow[] =>
+  zones.map(z => ({ date: '', zone: z.name, amTemp: '', pmTemp: '', result: '' as '', corrective: '', inspector: '' }));
 
-const TempForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
+export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
   const currentMonth = new Date().toISOString().slice(0, 7);
   const [month, setMonth] = useState(currentMonth);
   const [records, setRecords] = useState<TempRecord[]>([]);
   const [workingRows, setWorkingRows] = useState<TempRow[]>(defaultTempRows);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [templateZones, setTemplateZones] = useState<StorageZone[]>(STORAGE_ZONES);
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -455,17 +457,26 @@ const TempForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?:
     return onSnapshot(q, snap => setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as TempRecord))));
   }, []);
 
+  useEffect(() => {
+    return onSnapshot(doc(db, 'haccp_templates', 'temp_zones'), snap => {
+      if (snap.exists()) {
+        const data = snap.data().zones;
+        if (Array.isArray(data) && data.length > 0) setTemplateZones(data);
+      }
+    });
+  }, []);
+
   const currentRecord = records.find(r => r.month === month);
   const isReadOnly = month < currentMonth && !isAdmin;
 
   useEffect(() => {
     const rec = records.find(r => r.month === month);
-    setWorkingRows(rec ? rec.rows : defaultTempRows());
+    setWorkingRows(rec ? rec.rows : defaultTempRows(templateZones));
   }, [month, records]);
 
   const addRow = () => {
     if (isReadOnly) return;
-    setWorkingRows(prev => [...prev, { date: '', zone: STORAGE_ZONES[0].id, amTemp: '', pmTemp: '', result: '' as '', corrective: '', inspector: '' }]);
+    setWorkingRows(prev => [...prev, { date: '', zone: templateZones[0]?.name ?? '', amTemp: '', pmTemp: '', result: '' as '', corrective: '', inspector: '' }]);
   };
   const update = (idx: number, field: keyof TempRow, value: string) => {
     if (isReadOnly) return;
@@ -522,7 +533,7 @@ const TempForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?:
           <table className="border-collapse w-full mb-2">
             <thead><tr><th className={TH}>보관장소</th><th className={TH}>관리기준</th><th className={TH}>비고</th></tr></thead>
             <tbody>
-              {STORAGE_ZONES.map(z => (<tr key={z.id}><td className={TD}>{z.name}</td><td className={TD}>{z.standard}</td><td className={TDL}></td></tr>))}
+              {templateZones.map(z => (<tr key={z.name}><td className={TD}>{z.name}</td><td className={TD}>{z.standard}</td><td className={TDL}></td></tr>))}
             </tbody>
           </table>
         </div>
@@ -538,7 +549,7 @@ const TempForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?:
             {workingRows.map((row, idx) => (
               <tr key={idx}>
                 <td className={TD}><input type="date" value={row.date} onChange={e => update(idx, 'date', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent w-24 disabled:text-slate-500" /></td>
-                <td className={TD}><select value={row.zone} onChange={e => update(idx, 'zone', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent disabled:text-slate-500">{STORAGE_ZONES.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}</select></td>
+                <td className={TD}><select value={row.zone} onChange={e => update(idx, 'zone', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent disabled:text-slate-500">{templateZones.map(z => <option key={z.name} value={z.name}>{z.name}</option>)}{row.zone && !templateZones.find(z => z.name === row.zone) && <option value={row.zone}>{row.zone}</option>}</select></td>
                 <td className={TD}><input value={row.amTemp} onChange={e => update(idx, 'amTemp', e.target.value)} disabled={isReadOnly} placeholder="예: 5.2" className="w-14 text-xs border-none outline-none bg-transparent text-center" /></td>
                 <td className={TD}><input value={row.pmTemp} onChange={e => update(idx, 'pmTemp', e.target.value)} disabled={isReadOnly} placeholder="예: 6.1" className="w-14 text-xs border-none outline-none bg-transparent text-center" /></td>
                 <td className={TD}><select value={row.result} onChange={e => update(idx, 'result', e.target.value)} disabled={isReadOnly} className={`text-xs border-none outline-none bg-transparent font-bold ${row.result === 'X' ? 'text-rose-600' : row.result === 'O' ? 'text-green-600' : ''}`}><option value="">-</option><option value="O">O</option><option value="X">X</option></select></td>
@@ -1444,11 +1455,11 @@ const todayStr = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-const emptyRecord = (slot: SlotTime): Omit<SanitationRecord, 'id'> => ({
+const emptyRecord = (slot: SlotTime, items = SANITATION_ITEMS): Omit<SanitationRecord, 'id'> => ({
   checkDate: todayStr(),
   checkZone: '',
   checkTime: slot,
-  rows: SANITATION_ITEMS.map(() => ({ result: '', note: '', inspector: '' })),
+  rows: items.map(() => ({ result: '', note: '', inspector: '' })),
   specialNotes: '',
   createdBy: '',
   createdAt: '',
@@ -1464,6 +1475,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
   const [confirming, setConfirming] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [templateItems, setTemplateItems] = useState<{ item: string; standard: string }[]>(SANITATION_ITEMS);
   const printRef = useRef<HTMLDivElement>(null);
 
   const today = todayStr();
@@ -1475,13 +1487,22 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
     });
   }, []);
 
+  useEffect(() => {
+    return onSnapshot(doc(db, 'haccp_templates', 'sanitation'), snap => {
+      if (snap.exists()) {
+        const data = snap.data().items;
+        if (Array.isArray(data) && data.length > 0) setTemplateItems(data);
+      }
+    });
+  }, []);
+
   // 오늘 슬롯 기존 데이터 조회
   const todayMorning = records.find(r => r.checkDate === today && r.checkTime === '08:30');
   const todayAfternoon = records.find(r => r.checkDate === today && r.checkTime === '15:00');
 
   const openSlot = (slot: SlotTime) => {
     const existing = slot === '08:30' ? todayMorning : todayAfternoon;
-    setSelected(existing ?? { ...emptyRecord(slot) } as SanitationRecord);
+    setSelected(existing ?? { ...emptyRecord(slot, templateItems) } as SanitationRecord);
     setSaveError('');
   };
 
@@ -1525,7 +1546,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
     if (!selected || isReadOnly) return;
     // 부적합 행은 비고사항(조치) 필수
     const missingNote = selected.rows
-      .map((r, i) => r.result === 'fail' && !r.note.trim() ? SANITATION_ITEMS[i].item : null)
+      .map((r, i) => r.result === 'fail' && !r.note.trim() ? (templateItems[i]?.item ?? `항목 ${i + 1}`) : null)
       .filter(Boolean) as string[];
     if (missingNote.length > 0) {
       setSaveError(`부적합 항목의 비고사항(조치)을 입력해주세요: ${missingNote.join(', ')}`);
@@ -1669,8 +1690,8 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
               <div className="text-slate-500">{slotLabel(r.checkTime)}</div>
               <div className="flex items-center justify-between mt-1.5">
                 <span className="text-slate-500">{revLabel(r)}</span>
-                <button onClick={e => { e.stopPropagation(); r.id && handleDelete(r.id); }}
-                  className="text-rose-400 hover:text-rose-600"><Trash2 size={11} /></button>
+                {isAdmin && <button onClick={e => { e.stopPropagation(); r.id && handleDelete(r.id); }}
+                  className="text-rose-400 hover:text-rose-600"><Trash2 size={11} /></button>}
               </div>
               {r.createdBy && <div className="text-slate-400 mt-1 truncate">{r.createdBy}</div>}
             </div>
@@ -1775,7 +1796,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
 
             {/* 모바일 카드 */}
             <div className="flex flex-col gap-2 md:hidden">
-              {SANITATION_ITEMS.map((item, idx) => {
+              {templateItems.map((item, idx) => {
                 const row = selected.rows[idx] ?? { result: '', note: '', inspector: '', author: '' };
                 const needNote = row.result === 'fail' && !row.note.trim();
                 return (
@@ -1842,7 +1863,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
                   </tr>
                 </thead>
                 <tbody>
-                  {SANITATION_ITEMS.map((item, idx) => {
+                  {templateItems.map((item, idx) => {
                     const row = selected.rows[idx] ?? { result: '', note: '', inspector: '' };
                     const needNote = row.result === 'fail' && !row.note.trim();
                     return (
@@ -1954,12 +1975,11 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 10. 개인위생점검표 (HACCP-PRP-002)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-const PERSONAL_HYGIENE_COLS = ['건강', '손세척', '손톱', '악세사리', '위생복', '위생모', '마스크', '장갑'] as const;
-type HygieneColKey = typeof PERSONAL_HYGIENE_COLS[number];
+const PERSONAL_HYGIENE_COLS = ['건강', '손세척', '손톱', '악세사리', '위생복', '위생모', '마스크', '장갑'];
 
 interface PersonalHygieneRow {
   name: string;
-  checks: Record<HygieneColKey, 'O' | 'X' | ''>;
+  checks: Record<string, 'O' | 'X' | ''>;
   note: string;
 }
 interface PersonalHygieneRecord {
@@ -1976,11 +1996,11 @@ interface PersonalHygieneRecord {
   confirmedAt?: string;
 }
 
-const emptyPersonalRecord = (): Omit<PersonalHygieneRecord, 'id'> => ({
+const emptyPersonalRecord = (cols: string[] = PERSONAL_HYGIENE_COLS): Omit<PersonalHygieneRecord, 'id'> => ({
   checkDate: todayStr(),
   rows: Array.from({ length: 8 }, () => ({
     name: '',
-    checks: Object.fromEntries(PERSONAL_HYGIENE_COLS.map(k => [k, ''])) as Record<HygieneColKey, 'O' | 'X' | ''>,
+    checks: Object.fromEntries(cols.map(k => [k, ''])) as Record<string, 'O' | 'X' | ''>,
     note: '',
   })),
   inspector: '',
@@ -1997,6 +2017,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [templateCols, setTemplateCols] = useState<string[]>(PERSONAL_HYGIENE_COLS);
   const printRef = useRef<HTMLDivElement>(null);
   const today = todayStr();
 
@@ -2007,14 +2028,23 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
     });
   }, []);
 
+  useEffect(() => {
+    return onSnapshot(doc(db, 'haccp_templates', 'personal_hygiene'), snap => {
+      if (snap.exists()) {
+        const data = snap.data().cols;
+        if (Array.isArray(data) && data.length > 0) setTemplateCols(data);
+      }
+    });
+  }, []);
+
   const todayRecord = records.find(r => r.checkDate === today);
-  const openToday = () => setSelected(todayRecord ?? { ...emptyPersonalRecord() } as PersonalHygieneRecord);
+  const openToday = () => setSelected(todayRecord ?? { ...emptyPersonalRecord(templateCols) } as PersonalHygieneRecord);
   const openHistory = (r: PersonalHygieneRecord) => { setSelected(r); setShowHistory(false); };
   const isReadOnly = selected ? selected.checkDate !== today : false;
   const filledRows = selected?.rows.filter(r => r.name.trim()) ?? [];
-  const allChecked = filledRows.length > 0 && filledRows.every(r => PERSONAL_HYGIENE_COLS.every(col => r.checks[col] !== ''));
+  const allChecked = filledRows.length > 0 && filledRows.every(r => templateCols.every(col => r.checks[col] !== ''));
 
-  const toggleCheck = (rowIdx: number, col: HygieneColKey, val: 'O' | 'X') => {
+  const toggleCheck = (rowIdx: number, col: string, val: 'O' | 'X') => {
     if (isReadOnly) return;
     setSelected(prev => {
       if (!prev) return prev;
@@ -2030,7 +2060,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
 
   const addRow = () => setSelected(prev => prev ? {
     ...prev,
-    rows: [...prev.rows, { name: '', checks: Object.fromEntries(PERSONAL_HYGIENE_COLS.map(k => [k, ''])) as Record<HygieneColKey, 'O' | 'X' | ''>, note: '' }],
+    rows: [...prev.rows, { name: '', checks: Object.fromEntries(templateCols.map(k => [k, ''])) as Record<string, 'O' | 'X' | ''>, note: '' }],
   } : prev);
 
   const revLabel = (r: PersonalHygieneRecord) => r.revisionCount < 0 ? '미저장' : `Rev.${r.revisionCount}`;
@@ -2108,7 +2138,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
               <div className="font-bold text-slate-700">{r.checkDate}</div>
               <div className="flex items-center justify-between mt-1.5">
                 <span className="text-slate-500">{revLabel(r)}</span>
-                <button onClick={e => { e.stopPropagation(); r.id && handleDelete(r.id); }} className="text-rose-400 hover:text-rose-600"><Trash2 size={11} /></button>
+              {isAdmin && <button onClick={e => { e.stopPropagation(); r.id && handleDelete(r.id); }} className="text-rose-400 hover:text-rose-600"><Trash2 size={11} /></button>}
               </div>
               {r.inspector && <div className="text-slate-400 mt-1 truncate">점검자: {r.inspector}</div>}
             </div>
@@ -2170,7 +2200,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
                       : <input value={row.name} onChange={e => setRowField(rowIdx, 'name', e.target.value)} placeholder="성명" className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-blue-400" />}
                   </div>
                   <div className="grid grid-cols-4 gap-1.5 mb-2">
-                    {PERSONAL_HYGIENE_COLS.map(col => (
+                    {templateCols.map(col => (
                       <div key={col} className="flex flex-col items-center gap-1">
                         <span className="text-[9px] text-slate-500 font-bold leading-tight text-center">{col}</span>
                         <div className="flex gap-0.5">
@@ -2203,7 +2233,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
                   <tr>
                     <th className={TH} style={{ width: 28 }}>No</th>
                     <th className={TH} style={{ width: 72 }}>성명</th>
-                    {PERSONAL_HYGIENE_COLS.map(col => <th key={col} className={TH} style={{ width: 52 }}>{col}</th>)}
+                    {templateCols.map(col => <th key={col} className={TH} style={{ width: 52 }}>{col}</th>)}
                     <th className={TH}>비고</th>
                   </tr>
                 </thead>
@@ -2215,7 +2245,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
                         {isReadOnly ? row.name
                           : <input value={row.name} onChange={e => setRowField(rowIdx, 'name', e.target.value)} placeholder="성명" className="w-full text-xs border-none outline-none bg-transparent text-center" />}
                       </td>
-                      {PERSONAL_HYGIENE_COLS.map(col => (
+                      {templateCols.map(col => (
                         <td key={col} className={TD}>
                           {isReadOnly
                             ? <span className={row.checks[col] === 'O' ? 'text-emerald-600 font-black' : row.checks[col] === 'X' ? 'text-rose-600 font-black' : ''}>{row.checks[col] || ''}</span>
@@ -2286,14 +2316,413 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 개인위생 템플릿 에디터 (관리자 전용)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+export const PersonalHygieneTemplateEditor: React.FC = () => {
+  const [cols, setCols] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [newCol, setNewCol] = useState('');
+
+  useEffect(() => {
+    return onSnapshot(doc(db, 'haccp_templates', 'personal_hygiene'), snap => {
+      if (snap.exists()) {
+        const data = snap.data().cols;
+        if (Array.isArray(data) && data.length > 0) { setCols(data); return; }
+      }
+      setCols([...PERSONAL_HYGIENE_COLS]);
+    });
+  }, []);
+
+  const handleSave = async () => {
+    const valid = cols.filter(c => c.trim());
+    if (valid.length === 0) { alert('항목을 1개 이상 입력해주세요.'); return; }
+    setSaving(true);
+    try {
+      await setDoc(doc(db, 'haccp_templates', 'personal_hygiene'), { cols: valid });
+      setEditing(false);
+    } finally { setSaving(false); }
+  };
+
+  const addCol = () => {
+    const v = newCol.trim();
+    if (!v) return;
+    if (cols.includes(v)) { alert('이미 있는 항목입니다.'); return; }
+    setCols(prev => [...prev, v]);
+    setNewCol('');
+  };
+
+  const removeCol = (idx: number) => setCols(prev => prev.filter((_, i) => i !== idx));
+
+  const moveCol = (idx: number, dir: -1 | 1) => {
+    const next = [...cols];
+    const target = idx + dir;
+    if (target < 0 || target >= next.length) return;
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setCols(next);
+  };
+
+  const updateCol = (idx: number, val: string) =>
+    setCols(prev => prev.map((c, i) => i === idx ? val : c));
+
+  if (!editing) {
+    return (
+      <div className="bg-white border border-slate-200 rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <span className="text-xs font-bold text-slate-700">개인위생 점검 항목 템플릿</span>
+            <span className="ml-2 text-xs text-slate-400">{cols.length}개 열</span>
+          </div>
+          <button
+            onClick={() => setEditing(true)}
+            className="flex items-center gap-1 px-3 py-1.5 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-lg text-xs font-bold hover:bg-indigo-100"
+          >
+            <Wrench size={11} /> 항목 편집
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {cols.map((col, idx) => (
+            <span key={idx} className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs">{col}</span>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white border border-indigo-200 rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs font-bold text-indigo-700">개인위생 항목 편집 중</span>
+        <div className="flex gap-2">
+          <button onClick={() => setEditing(false)} className="px-3 py-1.5 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">취소</button>
+          <button onClick={handleSave} disabled={saving} className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-50">
+            <Save size={11} /> {saving ? '저장 중...' : '저장'}
+          </button>
+        </div>
+      </div>
+
+      <div className="text-xs text-slate-500 mb-3 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+        ⚠️ 항목 변경 시 오늘부터 새로 작성하는 점검표에 적용됩니다. 기존 저장 기록에는 영향 없습니다.
+      </div>
+
+      <div className="flex flex-col gap-2 mb-3">
+        {cols.map((col, idx) => (
+          <div key={idx} className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2">
+            <span className="text-xs text-slate-400 w-5 text-center shrink-0">{idx + 1}</span>
+            <input
+              value={col}
+              onChange={e => updateCol(idx, e.target.value)}
+              className="flex-1 border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
+            />
+            <button onClick={() => moveCol(idx, -1)} disabled={idx === 0} className="p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30 text-xs">↑</button>
+            <button onClick={() => moveCol(idx, 1)} disabled={idx === cols.length - 1} className="p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30 text-xs">↓</button>
+            <button onClick={() => removeCol(idx)} className="p-1 text-rose-400 hover:text-rose-600"><Trash2 size={12} /></button>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex gap-2">
+        <input
+          value={newCol}
+          onChange={e => setNewCol(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && addCol()}
+          placeholder="새 항목명 입력 후 추가"
+          className="flex-1 border border-dashed border-indigo-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
+        />
+        <button onClick={addCol} className="flex items-center gap-1 px-3 py-2 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-lg text-xs font-bold hover:bg-indigo-100">
+          <Plus size={12} /> 추가
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 온도관리 보관장소 템플릿 에디터 (관리자 전용)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+export const TempZoneTemplateEditor: React.FC = () => {
+  const [zones, setZones] = useState<StorageZone[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    return onSnapshot(doc(db, 'haccp_templates', 'temp_zones'), snap => {
+      if (snap.exists()) {
+        const data = snap.data().zones;
+        if (Array.isArray(data) && data.length > 0) { setZones(data); return; }
+      }
+      setZones([...STORAGE_ZONES]);
+    });
+  }, []);
+
+  const handleSave = async () => {
+    const valid = zones.filter(z => z.name.trim());
+    if (valid.length === 0) { alert('보관장소를 1개 이상 입력해주세요.'); return; }
+    setSaving(true);
+    try {
+      await setDoc(doc(db, 'haccp_templates', 'temp_zones'), { zones: valid });
+      setEditing(false);
+    } finally { setSaving(false); }
+  };
+
+  const addZone = () => setZones(prev => [...prev, { name: '', standard: '' }]);
+  const removeZone = (idx: number) => setZones(prev => prev.filter((_, i) => i !== idx));
+  const updateZone = (idx: number, field: 'name' | 'standard', val: string) =>
+    setZones(prev => prev.map((z, i) => i === idx ? { ...z, [field]: val } : z));
+  const moveZone = (idx: number, dir: -1 | 1) => {
+    const next = [...zones];
+    const target = idx + dir;
+    if (target < 0 || target >= next.length) return;
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setZones(next);
+  };
+
+  if (!editing) {
+    return (
+      <div className="bg-white border border-slate-200 rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <span className="text-xs font-bold text-slate-700">보관장소 템플릿</span>
+            <span className="ml-2 text-xs text-slate-400">{zones.length}개 장소</span>
+          </div>
+          <button
+            onClick={() => setEditing(true)}
+            className="flex items-center gap-1 px-3 py-1.5 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-lg text-xs font-bold hover:bg-indigo-100"
+          >
+            <Wrench size={11} /> 장소 편집
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {zones.map((z, idx) => (
+            <span key={idx} className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs">
+              {z.name}
+              {z.standard && <span className="text-slate-400 ml-1">({z.standard})</span>}
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white border border-indigo-200 rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs font-bold text-indigo-700">보관장소 편집 중</span>
+        <div className="flex gap-2">
+          <button onClick={() => setEditing(false)} className="px-3 py-1.5 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">취소</button>
+          <button onClick={handleSave} disabled={saving} className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-50">
+            <Save size={11} /> {saving ? '저장 중...' : '저장'}
+          </button>
+        </div>
+      </div>
+
+      <div className="text-xs text-slate-500 mb-3 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+        ⚠️ 변경 시 새로 추가하는 행에 적용됩니다. 기존 저장 기록에는 영향 없습니다.
+      </div>
+
+      <div className="flex flex-col gap-2 mb-3">
+        <div className="grid grid-cols-12 gap-1 px-1 text-[10px] font-bold text-slate-400 uppercase">
+          <div className="col-span-1 text-center">순서</div>
+          <div className="col-span-4">보관장소명</div>
+          <div className="col-span-5">관리기준(온도)</div>
+          <div className="col-span-2 text-center">관리</div>
+        </div>
+        {zones.map((z, idx) => (
+          <div key={idx} className="grid grid-cols-12 gap-1 items-center bg-slate-50 rounded-lg p-2">
+            <div className="col-span-1 text-xs text-slate-400 text-center font-bold">{idx + 1}</div>
+            <div className="col-span-4">
+              <input
+                value={z.name}
+                onChange={e => updateZone(idx, 'name', e.target.value)}
+                placeholder="보관장소명"
+                className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              />
+            </div>
+            <div className="col-span-5">
+              <input
+                value={z.standard}
+                onChange={e => updateZone(idx, 'standard', e.target.value)}
+                placeholder="예: 0~10℃"
+                className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              />
+            </div>
+            <div className="col-span-2 flex items-center justify-center gap-1">
+              <button onClick={() => moveZone(idx, -1)} disabled={idx === 0} className="p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30 text-xs">↑</button>
+              <button onClick={() => moveZone(idx, 1)} disabled={idx === zones.length - 1} className="p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30 text-xs">↓</button>
+              <button onClick={() => removeZone(idx)} className="p-1 text-rose-400 hover:text-rose-600"><Trash2 size={12} /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={addZone}
+        className="flex items-center gap-1 px-3 py-2 border border-dashed border-indigo-300 text-indigo-600 rounded-lg text-xs font-medium hover:bg-indigo-50 w-full justify-center"
+      >
+        <Plus size={12} /> 보관장소 추가
+      </button>
+    </div>
+  );
+};
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 작업장 위생 템플릿 에디터 (관리자 전용 — HACCP 체크리스트 탭에서 사용)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+export const SanitationTemplateEditor: React.FC = () => {
+  const [items, setItems] = useState<{ item: string; standard: string }[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    return onSnapshot(doc(db, 'haccp_templates', 'sanitation'), snap => {
+      if (snap.exists()) {
+        const data = snap.data().items;
+        if (Array.isArray(data) && data.length > 0) { setItems(data); return; }
+      }
+      setItems([...SANITATION_ITEMS]);
+    });
+  }, []);
+
+  const handleSave = async () => {
+    const validItems = items.filter(it => it.item.trim());
+    if (validItems.length === 0) { alert('항목명을 1개 이상 입력해주세요.'); return; }
+    setSaving(true);
+    try {
+      await setDoc(doc(db, 'haccp_templates', 'sanitation'), { items: validItems });
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    // Firestore snapshot이 최신 상태를 유지하므로 그냥 닫기
+    setEditing(false);
+  };
+
+  const updateItem = (idx: number, field: 'item' | 'standard', val: string) =>
+    setItems(prev => prev.map((it, i) => i === idx ? { ...it, [field]: val } : it));
+
+  const addItem = () => setItems(prev => [...prev, { item: '', standard: '' }]);
+
+  const removeItem = (idx: number) => setItems(prev => prev.filter((_, i) => i !== idx));
+
+  const moveItem = (idx: number, dir: -1 | 1) => {
+    const next = [...items];
+    const target = idx + dir;
+    if (target < 0 || target >= next.length) return;
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setItems(next);
+  };
+
+  if (!editing) {
+    return (
+      <div className="bg-white border border-slate-200 rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <span className="text-xs font-bold text-slate-700">작업장 위생 점검 항목 템플릿</span>
+            <span className="ml-2 text-xs text-slate-400">{items.length}개 항목</span>
+          </div>
+          <button
+            onClick={() => setEditing(true)}
+            className="flex items-center gap-1 px-3 py-1.5 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-lg text-xs font-bold hover:bg-indigo-100"
+          >
+            <Wrench size={11} /> 항목 편집
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {items.map((it, idx) => (
+            <span key={idx} className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs">
+              {idx + 1}. {it.item}
+              {it.standard && <span className="text-slate-400 ml-1">({it.standard})</span>}
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white border border-indigo-200 rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs font-bold text-indigo-700">점검 항목 편집 중</span>
+        <div className="flex gap-2">
+          <button onClick={handleCancel} className="px-3 py-1.5 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
+            취소
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-50"
+          >
+            <Save size={11} /> {saving ? '저장 중...' : '저장'}
+          </button>
+        </div>
+      </div>
+
+      <div className="text-xs text-slate-500 mb-3 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+        ⚠️ 항목 변경 시 오늘부터 새로 작성하는 점검표에 적용됩니다. 기존 저장 기록에는 영향 없습니다.
+      </div>
+
+      <div className="flex flex-col gap-2 mb-3">
+        <div className="grid grid-cols-12 gap-1 px-1 text-[10px] font-bold text-slate-400 uppercase">
+          <div className="col-span-1 text-center">순서</div>
+          <div className="col-span-4">항목명</div>
+          <div className="col-span-5">기준</div>
+          <div className="col-span-2 text-center">관리</div>
+        </div>
+        {items.map((it, idx) => (
+          <div key={idx} className="grid grid-cols-12 gap-1 items-center bg-slate-50 rounded-lg p-2">
+            <div className="col-span-1 text-xs text-slate-400 text-center font-bold">{idx + 1}</div>
+            <div className="col-span-4">
+              <input
+                value={it.item}
+                onChange={e => updateItem(idx, 'item', e.target.value)}
+                placeholder="항목명"
+                className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              />
+            </div>
+            <div className="col-span-5">
+              <input
+                value={it.standard}
+                onChange={e => updateItem(idx, 'standard', e.target.value)}
+                placeholder="점검 기준"
+                className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              />
+            </div>
+            <div className="col-span-2 flex items-center justify-center gap-1">
+              <button onClick={() => moveItem(idx, -1)} disabled={idx === 0} className="p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30 text-xs">↑</button>
+              <button onClick={() => moveItem(idx, 1)} disabled={idx === items.length - 1} className="p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30 text-xs">↓</button>
+              <button onClick={() => removeItem(idx)} className="p-1 text-rose-400 hover:text-rose-600"><Trash2 size={12} /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={addItem}
+        className="flex items-center gap-1 px-3 py-2 border border-dashed border-indigo-300 text-indigo-600 rounded-lg text-xs font-medium hover:bg-indigo-50 w-full justify-center"
+      >
+        <Plus size={12} /> 항목 추가
+      </button>
+    </div>
+  );
+};
+
 // 직원용 위생점검 탭 뷰 (작업장 위생 + 개인위생)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export const StaffChecklistView: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean }> = ({ currentUser, isAdmin }) => {
-  const [activeTab, setActiveTab] = useState<'sanitation' | 'personal'>('sanitation');
+  const [activeTab, setActiveTab] = useState<'sanitation' | 'personal' | 'temp'>('sanitation');
   const STAFF_TABS = [
-    { id: 'sanitation' as const, label: '작업장 위생점검표', desc: 'HACCP-PRP-001 · 작업장 위생 8개 항목 점검 (1일 2회)', active: 'emerald' },
-    { id: 'personal' as const,   label: '개인위생점검표',    desc: 'HACCP-PRP-002 · 작업자 개인위생 점검 (1일 1회)',     active: 'blue'    },
+    { id: 'sanitation' as const, label: '작업장 위생점검표', desc: 'HACCP-PRP-001 · 작업장 위생 점검 (1일 2회)',   icon: <ShieldAlert size={13} />, color: 'emerald' },
+    { id: 'personal' as const,   label: '개인위생점검표',    desc: 'HACCP-PRP-002 · 작업자 개인위생 점검 (1일 1회)', icon: <User size={13} />,        color: 'blue'    },
+    { id: 'temp' as const,       label: '온도관리 일지',     desc: '냉장·냉동창고 온도 기록 (월 단위)',              icon: <Thermometer size={13} />, color: 'slate'   },
   ];
+  const activeColor: Record<string, string> = {
+    emerald: 'bg-emerald-50 text-emerald-700 font-bold',
+    blue: 'bg-blue-50 text-blue-700 font-bold',
+    slate: 'bg-slate-200 text-slate-700 font-bold',
+  };
   return (
     <div className="flex flex-col h-full bg-slate-50">
       <div className="bg-white border-b border-slate-200 px-6 py-4">
@@ -2302,21 +2731,19 @@ export const StaffChecklistView: React.FC<{ currentUser?: { id: string; name: st
             <ShieldAlert size={18} className="text-emerald-600" />
           </div>
           <div>
-            <h1 className="text-base font-black text-slate-800">위생 점검표</h1>
-            <p className="text-xs text-slate-400">HACCP-PRP · 작업장 위생 및 개인위생 점검</p>
+            <h1 className="text-base font-black text-slate-800">위생·온도 점검표</h1>
+            <p className="text-xs text-slate-400">HACCP-PRP · 작업장 위생, 개인위생, 온도 기록</p>
           </div>
         </div>
       </div>
       <div className="bg-white border-b border-slate-200 px-4">
-        <div className="flex gap-0.5 py-2">
+        <div className="flex gap-0.5 py-2 overflow-x-auto">
           {STAFF_TABS.map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
-                activeTab === tab.id
-                  ? tab.active === 'emerald' ? 'bg-emerald-50 text-emerald-700 font-bold' : 'bg-blue-50 text-blue-700 font-bold'
-                  : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                activeTab === tab.id ? activeColor[tab.color] : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
               }`}>
-              <ShieldAlert size={13} />
+              {tab.icon}
               {tab.label}
             </button>
           ))}
@@ -2328,6 +2755,7 @@ export const StaffChecklistView: React.FC<{ currentUser?: { id: string; name: st
       <div className="flex-1 overflow-y-auto p-6">
         {activeTab === 'sanitation' && <SanitationForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={isAdmin} />}
         {activeTab === 'personal'   && <PersonalHygieneForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={isAdmin} />}
+        {activeTab === 'temp'       && <TempForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={isAdmin} />}
       </div>
     </div>
   );
@@ -2346,6 +2774,7 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode; desc: string }[] 
   { id: 'ccp-metal',  label: 'CCP-P 금속검출',     icon: <Scan size={14} />,          desc: 'Fe 2.0㎜ / Sus 2.5㎜ 불검출' },
   { id: 'incoming',   label: '입고검사일지',         icon: <ShoppingCart size={14} />,  desc: '원료·부자재 입고검사' },
   { id: 'sanitation', label: '작업장 위생점검표',   icon: <ShieldAlert size={14} />,   desc: 'HACCP-PRP-001 · 작업장 위생 8개 항목 점검 (Firestore 저장)' },
+  { id: 'personal',   label: '개인위생점검표',      icon: <User size={14} />,           desc: 'HACCP-PRP-002 · 작업자 개인위생 점검 (1일 1회)' },
 ];
 
 const HaccpChecklist: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean }> = ({ currentUser, isAdmin }) => {
@@ -2397,11 +2826,27 @@ const HaccpChecklist: React.FC<{ currentUser?: { id: string; name: string }; isA
         {activeTab === 'daily'     && <DailyForm />}
         {activeTab === 'cleaning'  && <CleaningForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={false} />}
         {activeTab === 'pest'      && <PestForm />}
-        {activeTab === 'temp'      && <TempForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={false} />}
+        {activeTab === 'temp'      && (
+          <div className="flex flex-col gap-4">
+            <TempZoneTemplateEditor />
+            <TempForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={isAdmin ?? false} />
+          </div>
+        )}
         {activeTab === 'ccp-heat'  && <CCPHeatForm />}
         {activeTab === 'ccp-metal'   && <CCPMetalForm />}
         {activeTab === 'incoming'    && <IncomingForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={false} />}
-        {activeTab === 'sanitation'  && <SanitationForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={false} />}
+        {activeTab === 'sanitation'  && (
+          <div className="flex flex-col gap-4">
+            <SanitationTemplateEditor />
+            <SanitationForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={isAdmin ?? false} />
+          </div>
+        )}
+        {activeTab === 'personal'    && (
+          <div className="flex flex-col gap-4">
+            <PersonalHygieneTemplateEditor />
+            <PersonalHygieneForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={isAdmin ?? false} />
+          </div>
+        )}
       </div>
     </div>
   );
