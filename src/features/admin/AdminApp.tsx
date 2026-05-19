@@ -1278,6 +1278,23 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   />
                 </React.Suspense>
               }
+              returnBadge={returnRequests.filter(r => r.status === 'pending').length}
+              returnContent={
+                <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+                  <ReceivingReturnsManager
+                    submaterials={submaterials}
+                    products={allProducts}
+                    clients={clients}
+                    orders={orders}
+                    issuedStatements={issuedStatements}
+                    currentUser={{ id: currentUser.id, name: currentUser.name }}
+                    isAdmin={isAdmin}
+                    onUpdateSubmaterial={(id, data) => updateItem('submaterials', id, data)}
+                    onProcessReturn={handleProcessReturn}
+                    initialTab="반품"
+                  />
+                </React.Suspense>
+              }
             />
           )}
           {currentView === 'inbound-scan' && (
