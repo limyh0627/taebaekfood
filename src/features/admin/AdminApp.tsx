@@ -681,6 +681,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   const handleRemoveConfirmedOrder = async (id: string) => {
     await deleteItem('confirmedOrders', id);
+    await deleteItem('orderRequests', id);
   };
 
   const handleClearAllConfirmedOrders = async () => {
@@ -1210,6 +1211,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               }}
               onAddAdjustmentRequest={(req) => addItem('adjustmentRequests', req)}
               suppliers={clients.filter(c => c.partnerType === '매입처' || c.partnerType === '매출+매입처')}
+              productSuppliers={productSuppliers}
               clients={clients}
               currentUser={currentUser}
               isAdmin={isAdmin}
