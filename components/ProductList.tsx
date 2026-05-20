@@ -177,7 +177,7 @@ const ProductList: React.FC<ProductListProps> = ({
     return next;
   });
   const t = (ko: string, en: string) => isEn ? en : ko;
-  const psMap = useMemo(() => new Map(productSuppliers.map(ps => [ps.productId, ps.supplierId])), [productSuppliers]);
+  const psMap = useMemo(() => new Map(productSuppliers.map(ps => [ps.Item_ID, ps.Partner_ID])), [productSuppliers]);
   const fmt1 = (v: number) => { const s = Number(v).toFixed(1); return s.endsWith('.0') ? s.slice(0, -2) : s; };
   const fmtHamiyou = (stock: number) => {
     const boxes = Math.floor(stock / 12);
@@ -333,8 +333,8 @@ const ProductList: React.FC<ProductListProps> = ({
     } else {
       result = products.filter(p => !p.archived);
     }
-    // 탭별 분리 — 최소수량 미만 필터 활성화 시 전체 품목 대상
-    if (!zeroStockOnly) {
+    // 탭별 분리 — 발주예정/이력 탭에서는 카테고리/거래처 필터 미적용
+    if (!zeroStockOnly && activeTab !== 'requests' && activeTab !== 'history') {
       if (topTab === 'finished') {
         if (finishedFilter === 'oil') {
           result = result.filter(p => normCat(p.category) === '향미유' || normCat(p.category) === '완제품');
@@ -689,41 +689,116 @@ const ProductList: React.FC<ProductListProps> = ({
               .sort((a, b) => b.registeredAt.localeCompare(a.registeredAt));
             return (
               <>
-                {/* ── 발주 예정 (확정된 것만) ── */}
-                {confirmedOrders.length === 0 ? (
-                  <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 text-sm">
-                    <ClipboardCheck size={28} className="mx-auto mb-2 opacity-30" />
-                    <p>확정된 발주 예정 없음</p>
-                    <p className="text-[11px] mt-1">재고현황에서 담기 후 장바구니에서 확정하세요</p>
-                  </div>
-                ) : (
-                  <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                    <div className="px-5 py-3 border-b border-slate-50 flex items-center gap-2">
-                      <ClipboardCheck size={16} className="text-indigo-500" />
-                      <span className="font-black text-sm text-slate-800">발주 예정 목록</span>
-                      <span className="text-[10px] font-black bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">{confirmedOrders.length}건</span>
+                {/* ── 장바구니 (미확정 발주) ── */}
+                {cart.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between px-1">
+                      <div className="flex items-center gap-2">
+                        <ShoppingCart size={15} className="text-indigo-400" />
+                        <span className="font-black text-sm text-slate-800">발주 예정 목록</span>
+                        <span className="text-[10px] font-black bg-indigo-50 text-indigo-500 px-2 py-0.5 rounded-full">{cart.length}건 · 미확정</span>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          await onBulkAddConfirmedOrders(orderRequests.map(r => ({ id: r.id, quantity: r.quantity, isBox: (r as any).isBox })));
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-xs font-black rounded-xl hover:bg-indigo-700 transition-all"
+                      >
+                        <ClipboardCheck size={13} />
+                        전체 확정
+                      </button>
                     </div>
-                    <div className="divide-y divide-slate-50">
-                      {confirmedOrders.map(item => {
-                        const product = productMap.get(item.id);
-                        if (!product) return null;
-                        const supplierName = supplierMap.get(psMap.get(product.id) ?? '')?.name;
-                        return (
-                          <div key={item.id} className="px-5 py-3 flex items-center gap-4">
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <p className="text-[10px] text-slate-400">현재 재고 {product.stock} {product.unit}</p>
-                                {supplierName && <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-md">{supplierName}</span>}
+                    <div className="bg-white rounded-2xl border border-indigo-100 shadow-sm overflow-hidden">
+                      <div className="divide-y divide-slate-50">
+                        {cart.map(item => {
+                          const product = productMap.get(item.id);
+                          if (!product) return null;
+                          const supplierName = supplierMap.get(psMap.get(item.id) ?? '')?.name;
+                          return (
+                            <div key={item.id} className="px-4 py-3 flex items-center gap-3">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <p className="text-[10px] text-slate-400">현재 재고 {product.stock} {product.unit}</p>
+                                  {supplierName
+                                    ? <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-md">{supplierName}</span>
+                                    : <span className="text-[10px] text-slate-300 bg-slate-50 px-1.5 py-0.5 rounded-md">거래처 미지정</span>
+                                  }
+                                </div>
                               </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button onClick={() => updateCartQty(item.id, item.qty - 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-xs transition-all">-</button>
+                                <input
+                                  type="number"
+                                  value={item.qty}
+                                  onChange={e => updateCartQty(item.id, parseInt(e.target.value) || 0)}
+                                  className="w-12 text-center text-sm font-black border border-slate-200 rounded-xl py-1 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                                />
+                                <button onClick={() => updateCartQty(item.id, item.qty + 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-xs transition-all">+</button>
+                                <span className="text-[11px] text-slate-400">{item.isBox ? 'B' : product.unit}</span>
+                              </div>
+                              <button onClick={() => removeFromCart(item.id)} className="text-slate-300 hover:text-rose-400 transition-all shrink-0 ml-1"><X size={15} /></button>
                             </div>
-                            <span className="text-sm font-black text-indigo-600 shrink-0">{item.quantity}{item.isBox ? 'B' : product.unit}</span>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 )}
+
+                {/* ── 확정된 발주 예정 ── */}
+                {confirmedOrders.length > 0 && (() => {
+                  const groups = new Map<string, { supplierId: string; supplierName: string; items: typeof confirmedOrders }>();
+                  confirmedOrders.forEach(item => {
+                    const sid = psMap.get(item.id) ?? '__none__';
+                    const sname = supplierMap.get(sid)?.name ?? '거래처 미지정';
+                    if (!groups.has(sid)) groups.set(sid, { supplierId: sid, supplierName: sname, items: [] });
+                    groups.get(sid)!.items.push(item);
+                  });
+                  return (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 px-1">
+                        <ClipboardCheck size={16} className="text-indigo-500" />
+                        <span className="font-black text-sm text-slate-800">확정된 발주 목록</span>
+                        <span className="text-[10px] font-black bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">{confirmedOrders.length}건</span>
+                      </div>
+                      {Array.from(groups.values()).map(group => (
+                        <div key={group.supplierId} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                          <div className="px-4 py-2.5 bg-orange-50 border-b border-orange-100 flex items-center gap-2">
+                            <span className="text-xs font-black text-orange-700">{group.supplierName}</span>
+                            <span className="text-[10px] text-orange-400">{group.items.length}개 품목</span>
+                          </div>
+                          <div className="divide-y divide-slate-50">
+                            {group.items.map(item => {
+                              const product = productMap.get(item.id);
+                              if (!product) return null;
+                              return (
+                                <div key={item.id} className="px-4 py-3 flex items-center gap-3">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
+                                    <p className="text-[10px] text-slate-400 mt-0.5">현재 재고 {product.stock} {product.unit}</p>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <button onClick={() => onUpdateConfirmedQty(item.id, item.quantity - 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-xs transition-all">-</button>
+                                    <input
+                                      type="number"
+                                      value={item.quantity}
+                                      onChange={e => onUpdateConfirmedQty(item.id, parseInt(e.target.value) || 0)}
+                                      className="w-12 text-center text-sm font-black border border-slate-200 rounded-xl py-1 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                                    />
+                                    <button onClick={() => onUpdateConfirmedQty(item.id, item.quantity + 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-xs transition-all">+</button>
+                                    <span className="text-[11px] text-slate-400">{item.isBox ? 'B' : product.unit}</span>
+                                  </div>
+                                  <button onClick={() => onRemoveConfirmedOrder(item.id)} className="text-slate-300 hover:text-rose-400 transition-all shrink-0 ml-1"><X size={15} /></button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
 
                 {/* ── 입고대기 (전표 미작성) ── */}
                 <div>
@@ -1316,12 +1391,7 @@ const ProductList: React.FC<ProductListProps> = ({
                     <button onClick={() => orderRequests.forEach(r => onRemoveOrderRequest(r.id))} className="text-[10px] font-bold text-slate-400 hover:text-rose-500 transition-all">전체 비우기</button>
                   </div>
                   <div className="divide-y divide-slate-50">
-                    {cart
-                      .filter(item => {
-                        if (activeSupplierId === '전체') return true;
-                        return psMap.get(item.id) === activeSupplierId;
-                      })
-                      .map(item => {
+                    {cart.map(item => {
                       const product = productMap.get(item.id);
                       if (!product) return null;
                       const supplierName = supplierMap.get(psMap.get(product.id) ?? '')?.name;
@@ -1333,9 +1403,10 @@ const ProductList: React.FC<ProductListProps> = ({
                               <p className="text-[10px] text-slate-400">
                                 현재 재고 {product.subtype === '향미유' ? fmtHamiyou(product.stock) : `${product.stock} ${product.unit}`}
                               </p>
-                              {supplierName && (
-                                <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-md">{supplierName}</span>
-                              )}
+                              {supplierName
+                                ? <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-md">{supplierName}</span>
+                                : <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md">거래처 미지정</span>
+                              }
                             </div>
                           </div>
                           {product.subtype === '향미유' && (
