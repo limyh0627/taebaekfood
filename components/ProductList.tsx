@@ -2156,104 +2156,58 @@ const ProductList: React.FC<ProductListProps> = ({
           )}
 
           {/* 원료별 잔량 요약 카드 */}
-          <div className="overflow-x-auto pb-1 no-scrollbar">
-            <div className="flex gap-2 min-w-max">
-              {RAW_MATERIALS.map(m => {
-                const bal = rawMaterialBalances[m] ?? 0;
-                const hasData = rawMaterialLedger.some(e => e.material === m);
-                if (!hasData) return null;
-                const isLow = bal < 20;
-                return (
-                  <button
-                    key={m}
-                    onClick={() => setRmFilter(m)}
-                    className={`flex flex-col items-start px-4 py-3 rounded-2xl border transition-all min-w-[110px] ${
-                      rmFilter === m
-                        ? 'bg-emerald-600 border-emerald-600 text-white shadow-md'
-                        : isLow
-                        ? 'bg-rose-50 border-rose-200 text-slate-700 hover:border-rose-400'
-                        : 'bg-white border-slate-200 text-slate-700 hover:border-emerald-300 hover:shadow-sm'
-                    }`}
-                  >
-                    <span className={`text-[10px] font-black uppercase tracking-wide truncate w-full text-left ${rmFilter === m ? 'text-emerald-100' : isLow ? 'text-rose-400' : 'text-slate-400'}`}>
-                      {isEn ? RAW_MATERIALS_EN[m] ?? m : m}
-                    </span>
-                    <span className={`text-lg font-black mt-0.5 leading-tight ${rmFilter === m ? 'text-white' : isLow ? 'text-rose-600' : 'text-slate-800'}`}>
-                      {bal.toLocaleString('ko-KR')}
-                      <span className={`text-[10px] font-bold ml-0.5 ${rmFilter === m ? 'text-emerald-200' : 'text-slate-400'}`}>kg</span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 단위별 현황 — 특정 원료 선택 시 표시 */}
-          {rmFilter !== '전체' && (() => {
+          {(() => {
+            const CATS = [
+              { label: '깨', items: ['참깨', '들깨', '깨분', '볶음들깨', '검정깨'] },
+              { label: '기름', items: ['통깨참기름', '깨분참기름', '통들깨들기름', '수입들기름', '생들기름'] },
+              { label: '가루', items: ['탈피들깨가루', '볶음참깨', '볶음검정참깨'] },
+            ];
             const OIL_SET = new Set(['통깨참기름', '깨분참기름', '통들깨들기름', '수입들기름', '생들기름']);
-            const unitMap = new Map<string, { size: number; tag?: string; netCount: number; netKg: number }>();
-            const sortedForUnit = rawMaterialLedger
-              .filter(e => e.material === rmFilter && e.canSize != null && e.canCount != null)
-              .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt));
-            for (const e of sortedForUnit) {
-              const key = `${e.canSize}_${e.canSizeTag ?? ''}`;
-              if (!unitMap.has(key)) unitMap.set(key, { size: e.canSize!, tag: e.canSizeTag, netCount: 0, netKg: 0 });
-              const u = unitMap.get(key)!;
-              if (e.type === 'stocktake_unit') {
-                u.netCount = e.canCount!;
-                u.netKg = Math.round(e.canCount! * e.canSize! * 10) / 10;
-              } else {
-                if (e.received > 0) { u.netCount += e.canCount!; u.netKg += e.received; }
-                if (e.used > 0)     { u.netCount -= e.canCount!; u.netKg -= e.used; }
-              }
-            }
-            const visible = Array.from(unitMap.values()).filter(u => u.netCount !== 0).sort((a, b) => a.size - b.size || (a.tag ?? '').localeCompare(b.tag ?? ''));
-            if (visible.length === 0) return null;
-            const unit = OIL_SET.has(rmFilter) ? 'L' : 'kg';
             return (
-              <div className="bg-indigo-50 border border-indigo-200 rounded-2xl px-4 py-3">
-                <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-2">단위별 현재고</p>
-                <div className="flex flex-wrap gap-2">
-                  {visible.map(u => {
-                    const label = `${u.size}${unit}${u.tag ? ` (${u.tag})` : ''}`;
-                    return (
-                      <div key={`${u.size}_${u.tag ?? ''}`} className="bg-white border border-indigo-200 rounded-xl px-3 py-2.5 min-w-[80px] text-center">
-                        <p className="text-[10px] font-black text-indigo-400 mb-1">{label}</p>
-                        <p className="text-xl font-black text-slate-800 leading-tight">{u.netCount}<span className="text-xs font-bold text-slate-400 ml-0.5">개</span></p>
-                        <p className="text-[9px] text-slate-400 mt-0.5">{Math.round(u.netKg * 10) / 10}{unit}</p>
+              <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                {CATS.map((cat, idx) => {
+                  const visibleItems = cat.items.filter(m => rawMaterialLedger.some(e => e.material === m));
+                  if (visibleItems.length === 0) return null;
+                  return (
+                    <div key={cat.label} className={`flex items-stretch${idx > 0 ? ' border-t border-slate-100' : ''}`}>
+                      <div className="shrink-0 w-10 flex items-center justify-center bg-slate-50 border-r border-slate-100">
+                        <span className="text-xs font-black text-slate-400">{cat.label}</span>
                       </div>
-                    );
-                  })}
-                </div>
+                      <div className="flex gap-2 overflow-x-auto no-scrollbar px-3 py-3 flex-1">
+                        {visibleItems.map(m => {
+                          const bal = rawMaterialBalances[m] ?? 0;
+                          const isLow = bal < 20;
+                          const unit = OIL_SET.has(m) ? 'L' : 'kg';
+                          const isSelected = rmFilter === m;
+                          return (
+                            <button
+                              key={m}
+                              onClick={() => setRmFilter(m)}
+                              className={`flex flex-col items-start px-3 py-2 rounded-xl border transition-all shrink-0 ${
+                                isSelected
+                                  ? 'bg-emerald-600 border-emerald-600 shadow-sm'
+                                  : isLow
+                                  ? 'bg-rose-50 border-rose-200 hover:border-rose-300'
+                                  : 'bg-slate-50 border-transparent hover:bg-white hover:border-emerald-200 hover:shadow-sm'
+                              }`}
+                            >
+                              <span className={`text-[10px] font-bold whitespace-nowrap mb-0.5 ${isSelected ? 'text-emerald-100' : isLow ? 'text-rose-400' : 'text-slate-500'}`}>
+                                {isEn ? RAW_MATERIALS_EN[m] ?? m : m}
+                              </span>
+                              <span className={`text-base font-black leading-none ${isSelected ? 'text-white' : isLow ? 'text-rose-600' : 'text-slate-800'}`}>
+                                {bal.toLocaleString('ko-KR')}
+                                <span className={`text-[9px] font-bold ml-0.5 ${isSelected ? 'text-emerald-200' : 'text-slate-400'}`}>{unit}</span>
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             );
           })()}
-
-          {/* 필터 — 가로 스크롤 chip */}
-          <div className="flex items-center gap-2">
-            <div className="overflow-x-auto no-scrollbar flex-1">
-              <div className="flex gap-1.5 min-w-max">
-                {RAW_MATERIALS.map(m => (
-                  <button key={m} onClick={() => setRmFilter(m)}
-                    className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all border whitespace-nowrap ${
-                      rmFilter === m
-                        ? 'bg-emerald-600 text-white border-emerald-600'
-                        : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
-                    }`}>
-                    {isEn ? RAW_MATERIALS_EN[m] ?? m : m}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {/* select 병행 - 모바일에서 빠른 선택용 */}
-            <select
-              value={rmFilter}
-              onChange={e => setRmFilter(e.target.value)}
-              className="shrink-0 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-[11px] font-black outline-none focus:border-emerald-400 sm:hidden"
-            >
-              {RAW_MATERIALS.map(m => <option key={m} value={m}>{isEn ? RAW_MATERIALS_EN[m] ?? m : m}</option>)}
-            </select>
-          </div>
 
           {/* 월 선택 */}
           {(() => {
