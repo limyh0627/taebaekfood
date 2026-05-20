@@ -689,64 +689,7 @@ const ProductList: React.FC<ProductListProps> = ({
               .sort((a, b) => b.registeredAt.localeCompare(a.registeredAt));
             return (
               <>
-                {/* ── 장바구니 (미확정 발주) ── */}
-                {cart.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between px-1">
-                      <div className="flex items-center gap-2">
-                        <ShoppingCart size={15} className="text-indigo-400" />
-                        <span className="font-black text-sm text-slate-800">발주 예정 목록</span>
-                        <span className="text-[10px] font-black bg-indigo-50 text-indigo-500 px-2 py-0.5 rounded-full">{cart.length}건 · 미확정</span>
-                      </div>
-                      <button
-                        onClick={async () => {
-                          await onBulkAddConfirmedOrders(orderRequests.map(r => ({ id: r.id, quantity: r.quantity, isBox: (r as any).isBox })));
-                        }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-xs font-black rounded-xl hover:bg-indigo-700 transition-all"
-                      >
-                        <ClipboardCheck size={13} />
-                        전체 확정
-                      </button>
-                    </div>
-                    <div className="bg-white rounded-2xl border border-indigo-100 shadow-sm overflow-hidden">
-                      <div className="divide-y divide-slate-50">
-                        {cart.map(item => {
-                          const product = productMap.get(item.id);
-                          if (!product) return null;
-                          const supplierName = supplierMap.get(psMap.get(item.id) ?? '')?.name;
-                          return (
-                            <div key={item.id} className="px-4 py-3 flex items-center gap-3">
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
-                                <div className="flex items-center gap-2 mt-0.5">
-                                  <p className="text-[10px] text-slate-400">현재 재고 {product.stock} {product.unit}</p>
-                                  {supplierName
-                                    ? <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-md">{supplierName}</span>
-                                    : <span className="text-[10px] text-slate-300 bg-slate-50 px-1.5 py-0.5 rounded-md">거래처 미지정</span>
-                                  }
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <button onClick={() => updateCartQty(item.id, item.qty - 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-xs transition-all">-</button>
-                                <input
-                                  type="number"
-                                  value={item.qty}
-                                  onChange={e => updateCartQty(item.id, parseInt(e.target.value) || 0)}
-                                  className="w-12 text-center text-sm font-black border border-slate-200 rounded-xl py-1 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-                                />
-                                <button onClick={() => updateCartQty(item.id, item.qty + 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-xs transition-all">+</button>
-                                <span className="text-[11px] text-slate-400">{item.isBox ? 'B' : product.unit}</span>
-                              </div>
-                              <button onClick={() => removeFromCart(item.id)} className="text-slate-300 hover:text-rose-400 transition-all shrink-0 ml-1"><X size={15} /></button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* ── 확정된 발주 예정 ── */}
+                {/* ── 발주 예정 목록 (확정된 발주) ── */}
                 {confirmedOrders.length > 0 && (() => {
                   const groups = new Map<string, { supplierId: string; supplierName: string; items: typeof confirmedOrders }>();
                   confirmedOrders.forEach(item => {
