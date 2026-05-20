@@ -9,7 +9,7 @@ import jsQR from 'jsqr';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../src/shared/firebase';
-import { addItem, updateItem, subscribeToCollection } from '../src/shared/services/firebaseService';
+import { addItem, updateItem, deleteItem, subscribeToCollection } from '../src/shared/services/firebaseService';
 import {
   SubmaterialComponent, PendingReceipt, PendingReceiptItem, QrMapping,
   IssuedStatement, IssuedStatementItem, ReturnRequest, ReturnItem, ReturnReason,
@@ -37,6 +37,7 @@ interface ReceivingReturnsManagerProps {
   submaterials: SubmaterialComponent[];
   products: Product[];
   clients: Client[];
+  productSuppliers: import('../src/shared/types').PartnerItem[];
   orders: Order[];
   issuedStatements: IssuedStatement[];
   currentUser: { id: string; name: string };
@@ -50,6 +51,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   submaterials,
   products,
   clients,
+  productSuppliers,
   orders,
   issuedStatements,
   currentUser,
@@ -393,29 +395,32 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         push(sub?.name ?? product?.name ?? pi.name, sub, product);
       });
     } else {
-      // purchaseItems 미설정 → supplierId 폴백 (기존 데이터 호환)
-      products
-        .filter(p =>
-          p.supplierId === client.id &&
-          p.category !== '완제품'
-        )
-        .forEach(p => {
-          const sub = submaterials.find(s => s.id === p.id)
-            ?? submaterials.find(s => s.name === p.name)
-            ?? null;
-          push(p.name, sub, sub ? null : p);
-        });
+      // purchaseItems 미설정 → partner_item(Direction=in) 우선, supplierId 폴백
+      const supplierItemIds = new Set(
+        productSuppliers
+          .filter(ps => (ps.Partner_ID ?? ps.supplierId) === client.id)
+          .map(ps => ps.Item_ID ?? ps.productId)
+          .filter((id): id is string => !!id)
+      );
+      const allItems = [
+        ...submaterials.filter(s => supplierItemIds.has(s.id)),
+        ...products.filter(p => p.category !== '완제품' && (supplierItemIds.has(p.id) || p.supplierId === client.id)),
+      ];
+      allItems.forEach(p => {
+        const sub = submaterials.find(s => s.id === p.id) ?? null;
+        const prod = sub ? null : (products.find(pr => pr.id === p.id) ?? null);
+        push(p.name, sub, prod);
+      });
     }
 
     return result;
   };
 
-  // supplierId로 연결된 품목이 있는 거래처 ID 집합 (partnerType 무관)
-  const supplierClientIds = new Set(
-    products
-      .filter(p => p.supplierId && p.category !== '완제품')
-      .map(p => p.supplierId!)
-  );
+  // partner_item(in) 또는 supplierId로 연결된 거래처 ID 집합 (partnerType 무관)
+  const supplierClientIds = new Set([
+    ...productSuppliers.map(ps => ps.Partner_ID ?? ps.supplierId).filter((id): id is string => !!id),
+    ...products.filter(p => p.supplierId && p.category !== '완제품').map(p => p.supplierId!),
+  ]);
 
   // 연결 품목이 하나라도 있는 거래처 — partnerType 설정 여부 무관하게 표시
   const suppliersWithItems = clients.filter(c =>
@@ -449,8 +454,41 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         if (product) return { id: product.id, name: product.name };
         return { id, name: id };
       });
-      await updateItem('clients', configClientId, { purchaseItems });
+
+      // partners 문서에 purchaseItems 저장
+      await updateItem('partners', configClientId, { purchaseItems });
+
+      // partner_item 동기화 (Direction='in')
+      // 이 거래처의 기존 매입 항목
+      const existing = productSuppliers.filter(
+        ps => (ps.Partner_ID ?? ps.supplierId) === configClientId
+      );
+      const existingItemIds = new Set(existing.map(ps => ps.Item_ID ?? ps.productId).filter(Boolean) as string[]);
+
+      // 새로 추가할 항목
+      const toAdd = configSelectedIds.filter(id => !existingItemIds.has(id));
+      // 제거할 항목 (선택에서 빠진 기존 항목)
+      const toRemove = existing.filter(ps => {
+        const itemId = ps.Item_ID ?? ps.productId;
+        return itemId && !configSelectedIds.includes(itemId);
+      });
+
+      await Promise.all([
+        ...toAdd.map(itemId =>
+          addItem('partner_item', {
+            id: `${itemId}_${configClientId}_in`,
+            Partner_ID: configClientId,
+            Item_ID: itemId,
+            Direction: 'in' as const,
+          })
+        ),
+        ...toRemove.map(ps => deleteItem('partner_item', ps.id)),
+      ]);
+
       setShowConfigModal(false);
+    } catch (e) {
+      console.error('거래처 품목 설정 저장 실패:', e);
+      alert('저장 중 오류가 발생했습니다: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
       setConfigSaving(false);
     }
@@ -555,7 +593,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     const remaining = getSupplierLinkedItems(client).filter(
       ({ name, sub, product }) => (sub?.id ?? product?.id ?? name) !== key
     );
-    await updateItem('clients', client.id, {
+    await updateItem('partners', client.id, {
       purchaseItems: remaining.map(({ name, sub, product }) => ({
         id: sub?.id ?? product?.id ?? name,
         name: sub?.name ?? product?.name ?? name,
