@@ -613,7 +613,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
       if (!product) continue;
 
       // 향미유/고춧가루: 재고는 낱개 단위로 저장, 낱개 기준으로 차감
-      if (product.subtype === '향미유' || product.subtype === '고춧가루') {
+      // category가 'goods'(migration 이후) 또는 구형 '향미유'/'고춧가루'인 경우도 포함
+      if (
+        product.subtype === '향미유' || product.subtype === '고춧가루' ||
+        product.category === '향미유' || product.category === '고춧가루' ||
+        product.category === 'goods'
+      ) {
         const uPerBox = item.unitsPerBox || product.defaultBoxConfig?.unitsPerBox || product.boxSize || 12;
         const deductQty = item.isBoxUnit && item.boxQuantity
           ? item.boxQuantity * uPerBox  // BOX → 낱개 변환
@@ -642,6 +647,22 @@ const AdminApp: React.FC<AdminAppProps> = ({
         const deductQty = boxesUsed ?? Math.ceil(item.quantity / (boxSubToDeduct.boxSize || 1));
         if (deductQty > 0) {
           await updateItem('items', boxSubToDeduct.id, { stock: boxSubToDeduct.stock - deductQty });
+        }
+      }
+
+      // 테이프 차감: 50박스당 1개, 같은 테이프 종류끼리 박스 수 누적
+      if (pc?.tapeTypeId) {
+        const tapeItem = submaterials.find(sm => sm.id === pc.tapeTypeId);
+        const effectiveBoxes = boxesUsed ?? (boxSubToDeduct ? Math.ceil(item.quantity / (boxSubToDeduct.boxSize || 1)) : null);
+        if (tapeItem && effectiveBoxes && effectiveBoxes > 0) {
+          const accumulated = (tapeItem as any).accumulatedBoxes ?? 0;
+          const newTotal = accumulated + effectiveBoxes;
+          const tapesToDeduct = Math.floor(newTotal / 50);
+          const remainder = newTotal % 50;
+          await updateItem('items', tapeItem.id, {
+            accumulatedBoxes: remainder,
+            ...(tapesToDeduct > 0 ? { stock: tapeItem.stock - tapesToDeduct } : {}),
+          });
         }
       }
 
@@ -1804,7 +1825,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 o.status === OrderStatus.SHIPPED &&
                 o.customerName !== '생산기록' &&
                 o.items.length > 0 &&
-                o.items.every(item => allProducts.find(pr => pr.id === item.productId)?.category === '향미유')
+                o.items.every(item => {
+                  const pr = allProducts.find(pr => pr.id === item.productId);
+                  return pr?.category === '향미유' || pr?.category === 'goods' || pr?.subtype === '향미유' || pr?.subtype === '고춧가루';
+                })
               );
               for (const o of hyangmiyuOnlyOrders) {
                 await deductSubmaterialsForOrder(o);

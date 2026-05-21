@@ -575,7 +575,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         } else {
           const product = products.find(p => p.id === item.submaterialId);
           if (product) {
-            await updateItem('products', product.id, { stock: (product.stock ?? 0) + item.quantity });
+            await updateItem('items', product.id, { stock: (product.stock ?? 0) + item.quantity });
           }
         }
       }
