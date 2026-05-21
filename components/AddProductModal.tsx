@@ -199,7 +199,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     onSave(finalProduct);
 
     // ProductSupplier upsert — partner_item Direction='in'으로 저장
-    if (formData.category !== 'product' && formData.supplierId && onUpsertProductSupplier) {
+    if (formData.supplierId && onUpsertProductSupplier) {
       const supplierId = formData.supplierId;
       const itemId = finalProduct.id;
       const psId = `${itemId}_${supplierId}_in`;

@@ -98,7 +98,9 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   const [geminiError, setGeminiError] = useState<string | null>(null);
 
   // ── Scan inbound form ──
-  const [scanSupplier, setScanSupplier] = useState('');
+  const [scanSupplierId, setScanSupplierId] = useState('');
+  const [scanSupplierSearch, setScanSupplierSearch] = useState('');
+  const [showScanSupplierDropdown, setShowScanSupplierDropdown] = useState(false);
   const [scanItems, setScanItems] = useState<ScanFormItem[]>([]);
   const [scanNote, setScanNote] = useState('');
   const [scanSaving, setScanSaving] = useState(false);
@@ -283,7 +285,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
           unitPrice: p.unitPrice?.toString() ?? sub?.cost?.toString() ?? '',
         };
       });
-      if (parsed[0]?.supplier) setScanSupplier(parsed[0].supplier);
+      if (parsed[0]?.supplier) { setScanSupplierSearch(parsed[0].supplier); setShowScanSupplierDropdown(true); }
       setScanItems(prev => [...prev, ...newItems]);
       closeCamera();
     } catch {
@@ -312,7 +314,8 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   // ══════════════════════════════════════════
 
   const saveScanInbound = async () => {
-    if (!scanSupplier.trim()) { alert('거래처명을 입력해주세요.'); return; }
+    const supplier = clients.find(c => c.id === scanSupplierId);
+    if (!supplier) { alert('거래처를 선택해주세요.'); return; }
     if (scanItems.length === 0) { alert('품목을 추가해주세요.'); return; }
     const invalid = scanItems.find(i => !i.quantity || isNaN(Number(i.quantity)));
     if (invalid) { alert(`"${invalid.name}" 수량을 입력해주세요.`); return; }
@@ -333,7 +336,8 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
       }));
       const totalAmount = items.reduce((s, i) => s + i.quantity * (i.unitPrice ?? 0), 0);
       await addItem('pendingReceipts', {
-        supplierName: scanSupplier,
+        supplierName: supplier.name,
+        supplierId: supplier.id,
         items,
         totalAmount,
         photoUrl,
@@ -347,7 +351,8 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         const sub = submaterials.find(s => s.id === item.submaterialId);
         if (sub) onUpdateSubmaterial(sub.id, { stock: (sub.stock ?? 0) + item.quantity });
       }
-      setScanSupplier('');
+      setScanSupplierId('');
+      setScanSupplierSearch('');
       setScanItems([]);
       setScanNote('');
       setCapturedImage(null);
@@ -854,13 +859,35 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
           {inboundTab === '스캔' && (
             <div className="space-y-4">
               <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-3">
-                <p className="text-xs font-black text-slate-500 uppercase tracking-widest">거래처 정보</p>
-                <input
-                  value={scanSupplier}
-                  onChange={e => setScanSupplier(e.target.value)}
-                  placeholder="거래처명 입력"
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-                />
+                <p className="text-xs font-black text-slate-500 uppercase tracking-widest">거래처 *</p>
+                <div className="relative">
+                  <input
+                    value={scanSupplierSearch}
+                    onChange={e => { setScanSupplierSearch(e.target.value); setShowScanSupplierDropdown(true); if (!e.target.value) setScanSupplierId(''); }}
+                    onFocus={() => setShowScanSupplierDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowScanSupplierDropdown(false), 150)}
+                    placeholder="거래처 검색..."
+                    className={`w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 ${scanSupplierId ? 'border-teal-300 bg-teal-50' : 'border-slate-200'}`}
+                  />
+                  {showScanSupplierDropdown && (
+                    <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-auto">
+                      {suppliers
+                        .filter(c => !scanSupplierSearch || c.name.toLowerCase().includes(scanSupplierSearch.toLowerCase()))
+                        .map(c => (
+                          <button
+                            key={c.id}
+                            onMouseDown={() => { setScanSupplierId(c.id); setScanSupplierSearch(c.name); setShowScanSupplierDropdown(false); }}
+                            className={`w-full px-3 py-2.5 text-left text-sm hover:bg-teal-50 transition-colors ${scanSupplierId === c.id ? 'bg-teal-50 font-bold text-teal-700' : 'text-slate-700'}`}
+                          >
+                            {c.name}
+                          </button>
+                        ))}
+                      {suppliers.filter(c => !scanSupplierSearch || c.name.toLowerCase().includes(scanSupplierSearch.toLowerCase())).length === 0 && (
+                        <p className="px-3 py-2.5 text-sm text-slate-400">검색 결과 없음</p>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-3">
@@ -930,7 +957,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
 
               <button
                 onClick={saveScanInbound}
-                disabled={scanSaving}
+                disabled={scanSaving || !scanSupplierId}
                 className="w-full flex items-center justify-center gap-2 py-3.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white rounded-xl font-black text-sm transition-all shadow-md"
               >
                 {scanSaving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
@@ -1600,12 +1627,15 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                     </button>
                   );
                 })}
-              {/* 상품 (향미유/고춧가루 등 완제품 제외) */}
+              {/* 상품 (향미유/고춧가루 등 완제품 제외, 부자재 섹션 중복 제거) */}
               {products
-                .filter(p =>
-                  p.category !== '완제품' &&
-                  (!configSearch || p.name.toLowerCase().includes(configSearch.toLowerCase()))
-                )
+                .filter(p => {
+                  const subIds = new Set(submaterials.map(s => s.id));
+                  return p.category !== '완제품' &&
+                    p.category !== 'product' &&
+                    !subIds.has(p.id) &&
+                    (!configSearch || p.name.toLowerCase().includes(configSearch.toLowerCase()));
+                })
                 .map(product => {
                   const checked = configSelectedIds.includes(product.id);
                   return (

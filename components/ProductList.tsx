@@ -203,6 +203,7 @@ const ProductList: React.FC<ProductListProps> = ({
   const [rmFilter, setRmFilter] = useState(RAW_MATERIALS[0]);
   const [rmMonth, setRmMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [rmViewType, setRmViewType] = useState<'all' | 'received' | 'used'>('all');
+  const [showAllMonths, setShowAllMonths] = useState(false);
   const [rmOpenBalance, setRmOpenBalance] = useState('');
   const [rmOpenDate, setRmOpenDate] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`; });
   const [rmOpenMaterial, setRmOpenMaterial] = useState(RAW_MATERIALS[0]);
@@ -2192,7 +2193,10 @@ const ProductList: React.FC<ProductListProps> = ({
                       <div className="shrink-0 w-10 flex items-center justify-center bg-slate-50 border-r border-slate-100">
                         <span className="text-xs font-black text-slate-400">{cat.label}</span>
                       </div>
-                      <div className="flex gap-2 overflow-x-auto no-scrollbar px-3 py-3 flex-1">
+                      <div className={cat.label === '기름'
+                        ? "grid grid-cols-2 sm:flex sm:flex-wrap gap-2 px-3 py-3 flex-1"
+                        : "flex gap-2 overflow-x-auto no-scrollbar px-3 py-3 flex-1"
+                      }>
                         {visibleItems.map(m => {
                           const bal = rawMaterialBalances[m] ?? 0;
                           const isLow = bal < 20;
@@ -2202,7 +2206,7 @@ const ProductList: React.FC<ProductListProps> = ({
                             <button
                               key={m}
                               onClick={() => setRmFilter(m)}
-                              className={`flex flex-col items-start px-3 py-2 rounded-xl border transition-all shrink-0 ${
+                              className={`flex flex-col items-start px-3 py-2 rounded-xl border transition-all ${cat.label !== '기름' ? 'shrink-0' : ''} ${
                                 isSelected
                                   ? 'bg-emerald-600 border-emerald-600 shadow-sm'
                                   : isLow
@@ -2234,22 +2238,32 @@ const ProductList: React.FC<ProductListProps> = ({
               ...rawMaterialLedger.map(e => e.date.slice(0, 7)),
               ...autoUsageEntries.map(e => e.date.slice(0, 7)),
             ])).sort((a, b) => b.localeCompare(a));
-            return allMonths.length > 0 ? (
-              <div className="overflow-x-auto no-scrollbar pb-1">
-                <div className="flex gap-1.5 min-w-max">
-                  {allMonths.map(m => (
-                    <button key={m} onClick={() => setRmMonth(m)}
-                      className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all border whitespace-nowrap ${
-                        rmMonth === m
-                          ? 'bg-emerald-600 text-white border-emerald-600'
-                          : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
-                      }`}>
-                      {m}
-                    </button>
-                  ))}
-                </div>
+            if (allMonths.length === 0) return null;
+            const RECENT = 12;
+            const visibleMonths = showAllMonths ? allMonths : allMonths.slice(0, RECENT);
+            const hasMore = allMonths.length > RECENT;
+            return (
+              <div className="flex flex-wrap gap-1.5">
+                {visibleMonths.map(m => (
+                  <button key={m} onClick={() => setRmMonth(m)}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all border whitespace-nowrap ${
+                      rmMonth === m
+                        ? 'bg-emerald-600 text-white border-emerald-600'
+                        : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
+                    }`}>
+                    {m}
+                  </button>
+                ))}
+                {hasMore && (
+                  <button
+                    onClick={() => setShowAllMonths(v => !v)}
+                    className="px-3 py-1.5 rounded-lg text-[11px] font-black transition-all border border-dashed border-slate-300 text-slate-400 hover:border-slate-400 hover:text-slate-600 whitespace-nowrap"
+                  >
+                    {showAllMonths ? '접기' : `+${allMonths.length - RECENT}개월 더`}
+                  </button>
+                )}
               </div>
-            ) : null;
+            );
           })()}
 
           {/* 입고/사용 필터 */}

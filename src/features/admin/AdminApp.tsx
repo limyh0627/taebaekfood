@@ -1156,6 +1156,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               clients={clients}
               products={allProducts}
               productClients={productClients}
+              shippingRules={shippingRules}
               onDeleteOrder={(id) => {
                 const o = orders.find(x => x.id === id);
                 if (o?.status === OrderStatus.DELIVERED) { alert('예전 주문은 삭제할 수 없습니다.'); return; }
