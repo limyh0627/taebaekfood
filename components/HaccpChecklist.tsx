@@ -1564,7 +1564,7 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
   };
 
   const handleConfirm = async () => {
-    if (!isAdmin) return;
+    if (!canConfirm) return;
     if (!selected?.id) {
       alert('점검표를 먼저 저장해주세요.');
       return;
@@ -2054,7 +2054,7 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
   };
 
   const handleConfirm = async () => {
-    if (!isAdmin || !selected?.id) return;
+    if (!canConfirm || !selected?.id) return;
     if (!allChecked) { alert('성명이 입력된 모든 작업자의 항목을 완료 후 확인할 수 있습니다.'); return; }
     setConfirming(true);
     const now = new Date().toISOString();
