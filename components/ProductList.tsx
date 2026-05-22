@@ -177,7 +177,7 @@ const ProductList: React.FC<ProductListProps> = ({
     return next;
   });
   const t = (ko: string, en: string) => isEn ? en : ko;
-  const psMap = useMemo(() => new Map(productSuppliers.map(ps => [ps.productId, ps.supplierId])), [productSuppliers]);
+  const psMap = useMemo(() => new Map(productSuppliers.map(ps => [ps.Item_ID, ps.Partner_ID])), [productSuppliers]);
   const fmt1 = (v: number) => { const s = Number(v).toFixed(1); return s.endsWith('.0') ? s.slice(0, -2) : s; };
   const fmtHamiyou = (stock: number) => {
     const boxes = Math.floor(stock / 12);
@@ -203,6 +203,7 @@ const ProductList: React.FC<ProductListProps> = ({
   const [rmFilter, setRmFilter] = useState(RAW_MATERIALS[0]);
   const [rmMonth, setRmMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [rmViewType, setRmViewType] = useState<'all' | 'received' | 'used'>('all');
+  const [showAllMonths, setShowAllMonths] = useState(false);
   const [rmOpenBalance, setRmOpenBalance] = useState('');
   const [rmOpenDate, setRmOpenDate] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`; });
   const [rmOpenMaterial, setRmOpenMaterial] = useState(RAW_MATERIALS[0]);
@@ -689,41 +690,60 @@ const ProductList: React.FC<ProductListProps> = ({
               .sort((a, b) => b.registeredAt.localeCompare(a.registeredAt));
             return (
               <>
-                {/* ── 발주 예정 (확정된 것만) ── */}
-                {confirmedOrders.length === 0 ? (
+                {/* ── 발주 예정 목록 (거래처별) ── */}
+                {cart.length === 0 ? (
                   <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 text-sm">
                     <ClipboardCheck size={28} className="mx-auto mb-2 opacity-30" />
-                    <p>확정된 발주 예정 없음</p>
-                    <p className="text-[11px] mt-1">재고현황에서 담기 후 장바구니에서 확정하세요</p>
+                    <p>발주 예정 없음</p>
+                    <p className="text-[11px] mt-1">재고현황에서 품목을 담아주세요</p>
                   </div>
-                ) : (
-                  <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                    <div className="px-5 py-3 border-b border-slate-50 flex items-center gap-2">
-                      <ClipboardCheck size={16} className="text-indigo-500" />
-                      <span className="font-black text-sm text-slate-800">발주 예정 목록</span>
-                      <span className="text-[10px] font-black bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">{confirmedOrders.length}건</span>
-                    </div>
-                    <div className="divide-y divide-slate-50">
-                      {confirmedOrders.map(item => {
-                        const product = productMap.get(item.id);
-                        if (!product) return null;
-                        const supplierName = supplierMap.get(psMap.get(product.id) ?? '')?.name;
-                        return (
-                          <div key={item.id} className="px-5 py-3 flex items-center gap-4">
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <p className="text-[10px] text-slate-400">현재 재고 {product.stock} {product.unit}</p>
-                                {supplierName && <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-md">{supplierName}</span>}
-                              </div>
-                            </div>
-                            <span className="text-sm font-black text-indigo-600 shrink-0">{item.quantity}{item.isBox ? 'B' : product.unit}</span>
+                ) : (() => {
+                  const groups = new Map<string, { supplierId: string; supplierName: string; items: typeof cart }>();
+                  cart.forEach(item => {
+                    const sid = psMap.get(item.id) ?? '__none__';
+                    const sname = supplierMap.get(sid)?.name ?? '거래처 미지정';
+                    if (!groups.has(sid)) groups.set(sid, { supplierId: sid, supplierName: sname, items: [] });
+                    groups.get(sid)!.items.push(item);
+                  });
+                  return (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 px-1">
+                        <ClipboardCheck size={16} className="text-indigo-500" />
+                        <span className="font-black text-sm text-slate-800">발주 예정 목록</span>
+                        <span className="text-[10px] font-black bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">{cart.length}건</span>
+                      </div>
+                      {Array.from(groups.values()).map(group => (
+                        <div key={group.supplierId} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                          <div className="px-4 py-2.5 bg-orange-50 border-b border-orange-100 flex items-center gap-2">
+                            <span className="text-xs font-black text-orange-700">{group.supplierName}</span>
+                            <span className="text-[10px] text-orange-400">{group.items.length}개 품목</span>
                           </div>
-                        );
-                      })}
+                          <div className="divide-y divide-slate-50">
+                            {group.items.map(item => {
+                              const product = productMap.get(item.id);
+                              if (!product) return null;
+                              return (
+                                <div key={item.id} className="px-4 py-3 flex items-center gap-3">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
+                                    <p className="text-[10px] text-slate-400 mt-0.5">현재 재고 {product.stock} {product.unit}</p>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <button onClick={() => updateCartQty(item.id, item.qty - 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-xs transition-all">-</button>
+                                    <span className="w-10 text-center text-sm font-black text-slate-800">{item.qty}</span>
+                                    <button onClick={() => updateCartQty(item.id, item.qty + 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-xs transition-all">+</button>
+                                    <span className="text-[11px] text-slate-400">{item.isBox ? 'B' : product.unit}</span>
+                                  </div>
+                                  <button onClick={() => removeFromCart(item.id)} className="text-slate-300 hover:text-rose-400 transition-all shrink-0 ml-1"><X size={15} /></button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* ── 입고대기 (전표 미작성) ── */}
                 <div>
@@ -2156,104 +2176,61 @@ const ProductList: React.FC<ProductListProps> = ({
           )}
 
           {/* 원료별 잔량 요약 카드 */}
-          <div className="overflow-x-auto pb-1 no-scrollbar">
-            <div className="flex gap-2 min-w-max">
-              {RAW_MATERIALS.map(m => {
-                const bal = rawMaterialBalances[m] ?? 0;
-                const hasData = rawMaterialLedger.some(e => e.material === m);
-                if (!hasData) return null;
-                const isLow = bal < 20;
-                return (
-                  <button
-                    key={m}
-                    onClick={() => setRmFilter(m)}
-                    className={`flex flex-col items-start px-4 py-3 rounded-2xl border transition-all min-w-[110px] ${
-                      rmFilter === m
-                        ? 'bg-emerald-600 border-emerald-600 text-white shadow-md'
-                        : isLow
-                        ? 'bg-rose-50 border-rose-200 text-slate-700 hover:border-rose-400'
-                        : 'bg-white border-slate-200 text-slate-700 hover:border-emerald-300 hover:shadow-sm'
-                    }`}
-                  >
-                    <span className={`text-[10px] font-black uppercase tracking-wide truncate w-full text-left ${rmFilter === m ? 'text-emerald-100' : isLow ? 'text-rose-400' : 'text-slate-400'}`}>
-                      {isEn ? RAW_MATERIALS_EN[m] ?? m : m}
-                    </span>
-                    <span className={`text-lg font-black mt-0.5 leading-tight ${rmFilter === m ? 'text-white' : isLow ? 'text-rose-600' : 'text-slate-800'}`}>
-                      {bal.toLocaleString('ko-KR')}
-                      <span className={`text-[10px] font-bold ml-0.5 ${rmFilter === m ? 'text-emerald-200' : 'text-slate-400'}`}>kg</span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 단위별 현황 — 특정 원료 선택 시 표시 */}
-          {rmFilter !== '전체' && (() => {
+          {(() => {
+            const CATS = [
+              { label: '깨', items: ['참깨', '들깨', '깨분', '볶음들깨', '검정깨'] },
+              { label: '기름', items: ['통깨참기름', '깨분참기름', '통들깨들기름', '수입들기름', '생들기름'] },
+              { label: '가루', items: ['탈피들깨가루', '볶음참깨', '볶음검정참깨'] },
+            ];
             const OIL_SET = new Set(['통깨참기름', '깨분참기름', '통들깨들기름', '수입들기름', '생들기름']);
-            const unitMap = new Map<string, { size: number; tag?: string; netCount: number; netKg: number }>();
-            const sortedForUnit = rawMaterialLedger
-              .filter(e => e.material === rmFilter && e.canSize != null && e.canCount != null)
-              .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt));
-            for (const e of sortedForUnit) {
-              const key = `${e.canSize}_${e.canSizeTag ?? ''}`;
-              if (!unitMap.has(key)) unitMap.set(key, { size: e.canSize!, tag: e.canSizeTag, netCount: 0, netKg: 0 });
-              const u = unitMap.get(key)!;
-              if (e.type === 'stocktake_unit') {
-                u.netCount = e.canCount!;
-                u.netKg = Math.round(e.canCount! * e.canSize! * 10) / 10;
-              } else {
-                if (e.received > 0) { u.netCount += e.canCount!; u.netKg += e.received; }
-                if (e.used > 0)     { u.netCount -= e.canCount!; u.netKg -= e.used; }
-              }
-            }
-            const visible = Array.from(unitMap.values()).filter(u => u.netCount !== 0).sort((a, b) => a.size - b.size || (a.tag ?? '').localeCompare(b.tag ?? ''));
-            if (visible.length === 0) return null;
-            const unit = OIL_SET.has(rmFilter) ? 'L' : 'kg';
             return (
-              <div className="bg-indigo-50 border border-indigo-200 rounded-2xl px-4 py-3">
-                <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-2">단위별 현재고</p>
-                <div className="flex flex-wrap gap-2">
-                  {visible.map(u => {
-                    const label = `${u.size}${unit}${u.tag ? ` (${u.tag})` : ''}`;
-                    return (
-                      <div key={`${u.size}_${u.tag ?? ''}`} className="bg-white border border-indigo-200 rounded-xl px-3 py-2.5 min-w-[80px] text-center">
-                        <p className="text-[10px] font-black text-indigo-400 mb-1">{label}</p>
-                        <p className="text-xl font-black text-slate-800 leading-tight">{u.netCount}<span className="text-xs font-bold text-slate-400 ml-0.5">개</span></p>
-                        <p className="text-[9px] text-slate-400 mt-0.5">{Math.round(u.netKg * 10) / 10}{unit}</p>
+              <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                {CATS.map((cat, idx) => {
+                  const visibleItems = cat.items.filter(m => rawMaterialLedger.some(e => e.material === m));
+                  if (visibleItems.length === 0) return null;
+                  return (
+                    <div key={cat.label} className={`flex items-stretch${idx > 0 ? ' border-t border-slate-100' : ''}`}>
+                      <div className="shrink-0 w-10 flex items-center justify-center bg-slate-50 border-r border-slate-100">
+                        <span className="text-xs font-black text-slate-400">{cat.label}</span>
                       </div>
-                    );
-                  })}
-                </div>
+                      <div className={cat.label === '기름'
+                        ? "grid grid-cols-2 sm:flex sm:flex-wrap gap-2 px-3 py-3 flex-1"
+                        : "flex gap-2 overflow-x-auto no-scrollbar px-3 py-3 flex-1"
+                      }>
+                        {visibleItems.map(m => {
+                          const bal = rawMaterialBalances[m] ?? 0;
+                          const isLow = bal < 20;
+                          const unit = OIL_SET.has(m) ? 'L' : 'kg';
+                          const isSelected = rmFilter === m;
+                          return (
+                            <button
+                              key={m}
+                              onClick={() => setRmFilter(m)}
+                              className={`flex flex-col items-start px-3 py-2 rounded-xl border transition-all ${cat.label !== '기름' ? 'shrink-0' : ''} ${
+                                isSelected
+                                  ? 'bg-emerald-600 border-emerald-600 shadow-sm'
+                                  : isLow
+                                  ? 'bg-rose-50 border-rose-200 hover:border-rose-300'
+                                  : 'bg-slate-50 border-transparent hover:bg-white hover:border-emerald-200 hover:shadow-sm'
+                              }`}
+                            >
+                              <span className={`text-[10px] font-bold whitespace-nowrap mb-0.5 ${isSelected ? 'text-emerald-100' : isLow ? 'text-rose-400' : 'text-slate-500'}`}>
+                                {isEn ? RAW_MATERIALS_EN[m] ?? m : m}
+                              </span>
+                              <span className={`text-base font-black leading-none ${isSelected ? 'text-white' : isLow ? 'text-rose-600' : 'text-slate-800'}`}>
+                                {bal.toLocaleString('ko-KR')}
+                                <span className={`text-[9px] font-bold ml-0.5 ${isSelected ? 'text-emerald-200' : 'text-slate-400'}`}>{unit}</span>
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             );
           })()}
-
-          {/* 필터 — 가로 스크롤 chip */}
-          <div className="flex items-center gap-2">
-            <div className="overflow-x-auto no-scrollbar flex-1">
-              <div className="flex gap-1.5 min-w-max">
-                {RAW_MATERIALS.map(m => (
-                  <button key={m} onClick={() => setRmFilter(m)}
-                    className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all border whitespace-nowrap ${
-                      rmFilter === m
-                        ? 'bg-emerald-600 text-white border-emerald-600'
-                        : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
-                    }`}>
-                    {isEn ? RAW_MATERIALS_EN[m] ?? m : m}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {/* select 병행 - 모바일에서 빠른 선택용 */}
-            <select
-              value={rmFilter}
-              onChange={e => setRmFilter(e.target.value)}
-              className="shrink-0 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-[11px] font-black outline-none focus:border-emerald-400 sm:hidden"
-            >
-              {RAW_MATERIALS.map(m => <option key={m} value={m}>{isEn ? RAW_MATERIALS_EN[m] ?? m : m}</option>)}
-            </select>
-          </div>
 
           {/* 월 선택 */}
           {(() => {
@@ -2261,22 +2238,32 @@ const ProductList: React.FC<ProductListProps> = ({
               ...rawMaterialLedger.map(e => e.date.slice(0, 7)),
               ...autoUsageEntries.map(e => e.date.slice(0, 7)),
             ])).sort((a, b) => b.localeCompare(a));
-            return allMonths.length > 0 ? (
-              <div className="overflow-x-auto no-scrollbar pb-1">
-                <div className="flex gap-1.5 min-w-max">
-                  {allMonths.map(m => (
-                    <button key={m} onClick={() => setRmMonth(m)}
-                      className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all border whitespace-nowrap ${
-                        rmMonth === m
-                          ? 'bg-emerald-600 text-white border-emerald-600'
-                          : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
-                      }`}>
-                      {m}
-                    </button>
-                  ))}
-                </div>
+            if (allMonths.length === 0) return null;
+            const RECENT = 12;
+            const visibleMonths = showAllMonths ? allMonths : allMonths.slice(0, RECENT);
+            const hasMore = allMonths.length > RECENT;
+            return (
+              <div className="flex flex-wrap gap-1.5">
+                {visibleMonths.map(m => (
+                  <button key={m} onClick={() => setRmMonth(m)}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all border whitespace-nowrap ${
+                      rmMonth === m
+                        ? 'bg-emerald-600 text-white border-emerald-600'
+                        : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
+                    }`}>
+                    {m}
+                  </button>
+                ))}
+                {hasMore && (
+                  <button
+                    onClick={() => setShowAllMonths(v => !v)}
+                    className="px-3 py-1.5 rounded-lg text-[11px] font-black transition-all border border-dashed border-slate-300 text-slate-400 hover:border-slate-400 hover:text-slate-600 whitespace-nowrap"
+                  >
+                    {showAllMonths ? '접기' : `+${allMonths.length - RECENT}개월 더`}
+                  </button>
+                )}
               </div>
-            ) : null;
+            );
           })()}
 
           {/* 입고/사용 필터 */}

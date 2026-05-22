@@ -556,19 +556,32 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                     {(isAdmin || (mainView === 'by-client' && !!selectedClientId)) && (
                       <td className="px-2 py-3 text-center">
                         {isAdmin && mainView === 'by-client' && selectedClientId ? (
-                          // 거래처별 뷰: 포장설정 버튼
-                          <button
-                            onClick={() => {
-                              const existing = shippingRules.find(r => r.item_id === item.id && r.partner_id === selectedClientId);
-                              setPackagingModal({ item, clientId: selectedClientId });
-                              setPackagingEdit(existing ? { ...existing } : {});
-                              setPackagingAdding(!existing);
-                            }}
-                            className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-800 transition-all"
-                            title="포장설정"
-                          >
-                            <Settings size={13} />
-                          </button>
+                          // 거래처별 뷰: 포장설정 + 연결 해제 버튼
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => {
+                                const existing = shippingRules.find(r => r.item_id === item.id && r.partner_id === selectedClientId);
+                                setPackagingModal({ item, clientId: selectedClientId });
+                                setPackagingEdit(existing ? { ...existing } : {});
+                                setPackagingAdding(!existing);
+                              }}
+                              className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-800 transition-all"
+                              title="포장설정"
+                            >
+                              <Settings size={13} />
+                            </button>
+                            <button
+                              onClick={() => setConfirmModal({
+                                message: `"${item.name}" 연결을 해제할까요?`,
+                                subMessage: `${clients.find(c => c.id === selectedClientId)?.name ?? ''} 거래처에서 이 품목이 제거됩니다.`,
+                                onConfirm: () => { onUnlinkProduct(item.id, selectedClientId); setConfirmModal(null); },
+                              })}
+                              className="p-1.5 rounded-lg bg-rose-50 text-rose-400 hover:bg-rose-100 hover:text-rose-600 transition-all"
+                              title="연결 해제"
+                            >
+                              <X size={13} />
+                            </button>
+                          </div>
                         ) : isAdmin ? (
                           // 품목 목록 뷰: 품목 수정 버튼
                           <button

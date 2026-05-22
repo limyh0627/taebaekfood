@@ -9,7 +9,7 @@ import jsQR from 'jsqr';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../src/shared/firebase';
-import { addItem, updateItem, subscribeToCollection } from '../src/shared/services/firebaseService';
+import { addItem, updateItem, deleteItem, subscribeToCollection } from '../src/shared/services/firebaseService';
 import {
   SubmaterialComponent, PendingReceipt, PendingReceiptItem, QrMapping,
   IssuedStatement, IssuedStatementItem, ReturnRequest, ReturnItem, ReturnReason,
@@ -37,6 +37,7 @@ interface ReceivingReturnsManagerProps {
   submaterials: SubmaterialComponent[];
   products: Product[];
   clients: Client[];
+  productSuppliers: import('../src/shared/types').PartnerItem[];
   orders: Order[];
   issuedStatements: IssuedStatement[];
   currentUser: { id: string; name: string };
@@ -50,6 +51,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   submaterials,
   products,
   clients,
+  productSuppliers,
   orders,
   issuedStatements,
   currentUser,
@@ -96,7 +98,9 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   const [geminiError, setGeminiError] = useState<string | null>(null);
 
   // ── Scan inbound form ──
-  const [scanSupplier, setScanSupplier] = useState('');
+  const [scanSupplierId, setScanSupplierId] = useState('');
+  const [scanSupplierSearch, setScanSupplierSearch] = useState('');
+  const [showScanSupplierDropdown, setShowScanSupplierDropdown] = useState(false);
   const [scanItems, setScanItems] = useState<ScanFormItem[]>([]);
   const [scanNote, setScanNote] = useState('');
   const [scanSaving, setScanSaving] = useState(false);
@@ -281,7 +285,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
           unitPrice: p.unitPrice?.toString() ?? sub?.cost?.toString() ?? '',
         };
       });
-      if (parsed[0]?.supplier) setScanSupplier(parsed[0].supplier);
+      if (parsed[0]?.supplier) { setScanSupplierSearch(parsed[0].supplier); setShowScanSupplierDropdown(true); }
       setScanItems(prev => [...prev, ...newItems]);
       closeCamera();
     } catch {
@@ -310,7 +314,8 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   // ══════════════════════════════════════════
 
   const saveScanInbound = async () => {
-    if (!scanSupplier.trim()) { alert('거래처명을 입력해주세요.'); return; }
+    const supplier = clients.find(c => c.id === scanSupplierId);
+    if (!supplier) { alert('거래처를 선택해주세요.'); return; }
     if (scanItems.length === 0) { alert('품목을 추가해주세요.'); return; }
     const invalid = scanItems.find(i => !i.quantity || isNaN(Number(i.quantity)));
     if (invalid) { alert(`"${invalid.name}" 수량을 입력해주세요.`); return; }
@@ -331,7 +336,8 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
       }));
       const totalAmount = items.reduce((s, i) => s + i.quantity * (i.unitPrice ?? 0), 0);
       await addItem('pendingReceipts', {
-        supplierName: scanSupplier,
+        supplierName: supplier.name,
+        supplierId: supplier.id,
         items,
         totalAmount,
         photoUrl,
@@ -345,7 +351,8 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         const sub = submaterials.find(s => s.id === item.submaterialId);
         if (sub) onUpdateSubmaterial(sub.id, { stock: (sub.stock ?? 0) + item.quantity });
       }
-      setScanSupplier('');
+      setScanSupplierId('');
+      setScanSupplierSearch('');
       setScanItems([]);
       setScanNote('');
       setCapturedImage(null);
@@ -393,29 +400,32 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         push(sub?.name ?? product?.name ?? pi.name, sub, product);
       });
     } else {
-      // purchaseItems 미설정 → supplierId 폴백 (기존 데이터 호환)
-      products
-        .filter(p =>
-          p.supplierId === client.id &&
-          p.category !== '완제품'
-        )
-        .forEach(p => {
-          const sub = submaterials.find(s => s.id === p.id)
-            ?? submaterials.find(s => s.name === p.name)
-            ?? null;
-          push(p.name, sub, sub ? null : p);
-        });
+      // purchaseItems 미설정 → partner_item(Direction=in) 우선, supplierId 폴백
+      const supplierItemIds = new Set(
+        productSuppliers
+          .filter(ps => (ps.Partner_ID ?? ps.supplierId) === client.id)
+          .map(ps => ps.Item_ID ?? ps.productId)
+          .filter((id): id is string => !!id)
+      );
+      const allItems = [
+        ...submaterials.filter(s => supplierItemIds.has(s.id)),
+        ...products.filter(p => p.category !== '완제품' && (supplierItemIds.has(p.id) || p.supplierId === client.id)),
+      ];
+      allItems.forEach(p => {
+        const sub = submaterials.find(s => s.id === p.id) ?? null;
+        const prod = sub ? null : (products.find(pr => pr.id === p.id) ?? null);
+        push(p.name, sub, prod);
+      });
     }
 
     return result;
   };
 
-  // supplierId로 연결된 품목이 있는 거래처 ID 집합 (partnerType 무관)
-  const supplierClientIds = new Set(
-    products
-      .filter(p => p.supplierId && p.category !== '완제품')
-      .map(p => p.supplierId!)
-  );
+  // partner_item(in) 또는 supplierId로 연결된 거래처 ID 집합 (partnerType 무관)
+  const supplierClientIds = new Set([
+    ...productSuppliers.map(ps => ps.Partner_ID ?? ps.supplierId).filter((id): id is string => !!id),
+    ...products.filter(p => p.supplierId && p.category !== '완제품').map(p => p.supplierId!),
+  ]);
 
   // 연결 품목이 하나라도 있는 거래처 — partnerType 설정 여부 무관하게 표시
   const suppliersWithItems = clients.filter(c =>
@@ -449,8 +459,41 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         if (product) return { id: product.id, name: product.name };
         return { id, name: id };
       });
-      await updateItem('clients', configClientId, { purchaseItems });
+
+      // partners 문서에 purchaseItems 저장
+      await updateItem('partners', configClientId, { purchaseItems });
+
+      // partner_item 동기화 (Direction='in')
+      // 이 거래처의 기존 매입 항목
+      const existing = productSuppliers.filter(
+        ps => (ps.Partner_ID ?? ps.supplierId) === configClientId
+      );
+      const existingItemIds = new Set(existing.map(ps => ps.Item_ID ?? ps.productId).filter(Boolean) as string[]);
+
+      // 새로 추가할 항목
+      const toAdd = configSelectedIds.filter(id => !existingItemIds.has(id));
+      // 제거할 항목 (선택에서 빠진 기존 항목)
+      const toRemove = existing.filter(ps => {
+        const itemId = ps.Item_ID ?? ps.productId;
+        return itemId && !configSelectedIds.includes(itemId);
+      });
+
+      await Promise.all([
+        ...toAdd.map(itemId =>
+          addItem('partner_item', {
+            id: `${itemId}_${configClientId}_in`,
+            Partner_ID: configClientId,
+            Item_ID: itemId,
+            Direction: 'in' as const,
+          })
+        ),
+        ...toRemove.map(ps => deleteItem('partner_item', ps.id)),
+      ]);
+
       setShowConfigModal(false);
+    } catch (e) {
+      console.error('거래처 품목 설정 저장 실패:', e);
+      alert('저장 중 오류가 발생했습니다: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
       setConfigSaving(false);
     }
@@ -537,7 +580,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         } else {
           const product = products.find(p => p.id === item.submaterialId);
           if (product) {
-            await updateItem('products', product.id, { stock: (product.stock ?? 0) + item.quantity });
+            await updateItem('items', product.id, { stock: (product.stock ?? 0) + item.quantity });
           }
         }
       }
@@ -555,7 +598,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     const remaining = getSupplierLinkedItems(client).filter(
       ({ name, sub, product }) => (sub?.id ?? product?.id ?? name) !== key
     );
-    await updateItem('clients', client.id, {
+    await updateItem('partners', client.id, {
       purchaseItems: remaining.map(({ name, sub, product }) => ({
         id: sub?.id ?? product?.id ?? name,
         name: sub?.name ?? product?.name ?? name,
@@ -816,13 +859,35 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
           {inboundTab === '스캔' && (
             <div className="space-y-4">
               <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-3">
-                <p className="text-xs font-black text-slate-500 uppercase tracking-widest">거래처 정보</p>
-                <input
-                  value={scanSupplier}
-                  onChange={e => setScanSupplier(e.target.value)}
-                  placeholder="거래처명 입력"
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-                />
+                <p className="text-xs font-black text-slate-500 uppercase tracking-widest">거래처 *</p>
+                <div className="relative">
+                  <input
+                    value={scanSupplierSearch}
+                    onChange={e => { setScanSupplierSearch(e.target.value); setShowScanSupplierDropdown(true); if (!e.target.value) setScanSupplierId(''); }}
+                    onFocus={() => setShowScanSupplierDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowScanSupplierDropdown(false), 150)}
+                    placeholder="거래처 검색..."
+                    className={`w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 ${scanSupplierId ? 'border-teal-300 bg-teal-50' : 'border-slate-200'}`}
+                  />
+                  {showScanSupplierDropdown && (
+                    <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-auto">
+                      {suppliers
+                        .filter(c => !scanSupplierSearch || c.name.toLowerCase().includes(scanSupplierSearch.toLowerCase()))
+                        .map(c => (
+                          <button
+                            key={c.id}
+                            onMouseDown={() => { setScanSupplierId(c.id); setScanSupplierSearch(c.name); setShowScanSupplierDropdown(false); }}
+                            className={`w-full px-3 py-2.5 text-left text-sm hover:bg-teal-50 transition-colors ${scanSupplierId === c.id ? 'bg-teal-50 font-bold text-teal-700' : 'text-slate-700'}`}
+                          >
+                            {c.name}
+                          </button>
+                        ))}
+                      {suppliers.filter(c => !scanSupplierSearch || c.name.toLowerCase().includes(scanSupplierSearch.toLowerCase())).length === 0 && (
+                        <p className="px-3 py-2.5 text-sm text-slate-400">검색 결과 없음</p>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-3">
@@ -892,7 +957,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
 
               <button
                 onClick={saveScanInbound}
-                disabled={scanSaving}
+                disabled={scanSaving || !scanSupplierId}
                 className="w-full flex items-center justify-center gap-2 py-3.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white rounded-xl font-black text-sm transition-all shadow-md"
               >
                 {scanSaving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
@@ -1562,12 +1627,15 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                     </button>
                   );
                 })}
-              {/* 상품 (향미유/고춧가루 등 완제품 제외) */}
+              {/* 상품 (향미유/고춧가루 등 완제품 제외, 부자재 섹션 중복 제거) */}
               {products
-                .filter(p =>
-                  p.category !== '완제품' &&
-                  (!configSearch || p.name.toLowerCase().includes(configSearch.toLowerCase()))
-                )
+                .filter(p => {
+                  const subIds = new Set(submaterials.map(s => s.id));
+                  return p.category !== '완제품' &&
+                    p.category !== 'product' &&
+                    !subIds.has(p.id) &&
+                    (!configSearch || p.name.toLowerCase().includes(configSearch.toLowerCase()));
+                })
                 .map(product => {
                   const checked = configSelectedIds.includes(product.id);
                   return (

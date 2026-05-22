@@ -61,6 +61,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
   const [dragDeliveryId, setDragDeliveryId] = useState<string | null>(null);
   const [previewDeliveryOrderId, setPreviewDeliveryOrderId] = useState<string | null>(null);
   const [deliveryTab, setDeliveryTab] = useState<'배송일정관리' | '배송캘린더'>('배송일정관리');
+  const [calendarView, setCalendarView] = useState<'주간' | '월간'>('주간');
   const [currentWeekDate, setCurrentWeekDate] = useState(new Date());
   const [mobileCollapsed, setMobileCollapsed] = useState<Set<string>>(new Set());
   const toggleMobileCollapse = (id: string) => setMobileCollapsed(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
@@ -809,73 +810,67 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
         );
       })()}
 
-      {/* Weekly Calendar */}
+      {/* Calendar (Weekly / Monthly toggle) */}
       {deliveryTab === '배송캘린더' && (
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-          <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="w-10 h-10 bg-violet-100 text-violet-600 rounded-xl flex items-center justify-center shadow-inner">
-                <CalendarIcon size={20} />
+          {/* 공통 헤더 — 뷰 토글 + 현재 뷰 내비게이션 */}
+          <div className="p-5 border-b border-slate-100 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-inner ${calendarView === '주간' ? 'bg-violet-100 text-violet-600' : 'bg-indigo-100 text-indigo-600'}`}>
+                <CalendarIcon size={18} />
               </div>
               <div>
-                <h3 className="text-lg font-black text-slate-900">{weekLabel}</h3>
-                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">주간 배송 캘린더</p>
+                <h3 className="text-base font-black text-slate-900">
+                  {calendarView === '주간' ? weekLabel : `${year}년 ${monthNames[month]}`}
+                </h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">배송 캘린더</p>
               </div>
             </div>
-            <div className="flex items-center space-x-2">
-              <button onClick={prevWeek} className="p-2.5 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-violet-600 transition-all">
-                <ChevronLeft size={18} />
-              </button>
-              <button onClick={() => setCurrentWeekDate(new Date())} className="px-4 py-2 text-xs font-black text-violet-600 bg-violet-50 rounded-xl hover:bg-violet-100 transition-all">
-                이번주
-              </button>
-              <button onClick={nextWeek} className="p-2.5 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-violet-600 transition-all">
-                <ChevronRight size={18} />
-              </button>
+            <div className="flex items-center gap-2">
+              {/* 주간/월간 토글 */}
+              <div className="flex bg-slate-100 p-0.5 rounded-xl">
+                {(['주간', '월간'] as const).map(v => (
+                  <button key={v} onClick={() => setCalendarView(v)}
+                    className={`px-3 py-1.5 rounded-[10px] text-xs font-black transition-all ${calendarView === v ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                    {v}
+                  </button>
+                ))}
+              </div>
+              {/* 주간 내비게이션 */}
+              {calendarView === '주간' && <>
+                <button onClick={prevWeek} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-violet-600 transition-all"><ChevronLeft size={16} /></button>
+                <button onClick={() => setCurrentWeekDate(new Date())} className="px-3 py-1.5 text-xs font-black text-violet-600 bg-violet-50 rounded-xl hover:bg-violet-100 transition-all">이번주</button>
+                <button onClick={nextWeek} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-violet-600 transition-all"><ChevronRight size={16} /></button>
+              </>}
+              {/* 월간 내비게이션 */}
+              {calendarView === '월간' && <>
+                <button onClick={prevMonth} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-indigo-600 transition-all"><ChevronLeft size={16} /></button>
+                <button onClick={() => setCurrentDate(new Date())} className="px-3 py-1.5 text-xs font-black text-indigo-600 bg-indigo-50 rounded-xl hover:bg-indigo-100 transition-all">오늘</button>
+                <button onClick={nextMonth} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-indigo-600 transition-all"><ChevronRight size={16} /></button>
+              </>}
             </div>
           </div>
-          <div className={`grid border-l border-slate-100`} style={{ gridTemplateColumns: `repeat(${visibleWeekDays.length}, minmax(0, 1fr))` }}>
-            {renderWeekCalendar()}
-          </div>
+
+          {/* 주간 뷰 */}
+          {calendarView === '주간' && (
+            <div className="grid border-l border-slate-100" style={{ gridTemplateColumns: `repeat(${visibleWeekDays.length}, minmax(0, 1fr))` }}>
+              {renderWeekCalendar()}
+            </div>
+          )}
+
+          {/* 월간 뷰 */}
+          {calendarView === '월간' && <>
+            <div className={`grid ${hasWeekendOrders ? 'grid-cols-7' : 'grid-cols-5'} bg-slate-50/50 border-b border-slate-100`}>
+              {(hasWeekendOrders ? ["일", "월", "화", "수", "목", "금", "토"] : ["월", "화", "수", "목", "금"]).map(day => (
+                <div key={day} className="py-3 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">{day}</div>
+              ))}
+            </div>
+            <div className={`grid ${hasWeekendOrders ? 'grid-cols-7' : 'grid-cols-5'} border-l border-slate-100`}>
+              {renderCalendar()}
+            </div>
+          </>}
         </div>
       )}
-
-      {/* Monthly Calendar */}
-      {deliveryTab === '배송캘린더' && <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-        <div className="p-8 border-b border-slate-100 flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center shadow-inner">
-              <CalendarIcon size={24} />
-            </div>
-            <div>
-              <h3 className="text-xl font-black text-slate-900">{year}년 {monthNames[month]}</h3>
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">월간 배송 캘린더</p>
-            </div>
-          </div>
-          <div className="flex items-center space-x-2">
-            <button onClick={prevMonth} className="p-3 hover:bg-slate-100 rounded-2xl text-slate-400 hover:text-indigo-600 transition-all">
-              <ChevronLeft size={20} />
-            </button>
-            <button onClick={() => setCurrentDate(new Date())} className="px-5 py-2.5 text-xs font-black text-indigo-600 bg-indigo-50 rounded-xl hover:bg-indigo-100 transition-all">
-              오늘
-            </button>
-            <button onClick={nextMonth} className="p-3 hover:bg-slate-100 rounded-2xl text-slate-400 hover:text-indigo-600 transition-all">
-              <ChevronRight size={20} />
-            </button>
-          </div>
-        </div>
-
-        <div className={`grid ${hasWeekendOrders ? 'grid-cols-7' : 'grid-cols-5'} bg-slate-50/50 border-b border-slate-100`}>
-          {(hasWeekendOrders ? ["일", "월", "화", "수", "목", "금", "토"] : ["월", "화", "수", "목", "금"]).map(day => (
-            <div key={day} className="py-3 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">
-              {day}
-            </div>
-          ))}
-        </div>
-        <div className={`grid ${hasWeekendOrders ? 'grid-cols-7' : 'grid-cols-5'} border-l border-slate-100`}>
-          {renderCalendar()}
-        </div>
-      </div>}
 
       {deliveryTab === '배송일정관리' && <div className="space-y-6">
         <div className="flex items-center space-x-3">
