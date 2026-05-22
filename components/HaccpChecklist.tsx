@@ -420,10 +420,8 @@ const STORAGE_ZONES = [
 type StorageZone = { name: string; standard: string };
 
 interface TempRow {
-  date: string;
   zone: string;
-  amTemp: string;
-  pmTemp: string;
+  temp: string;
   result: '' | 'O' | 'X';
   corrective: string;
   inspector: string;
@@ -431,7 +429,8 @@ interface TempRow {
 
 interface TempRecord {
   id?: string;
-  month: string;
+  date: string;
+  measureTime: '12:30';
   rows: TempRow[];
   createdBy: string; createdAt: string;
   updatedBy: string; updatedAt: string;
@@ -440,20 +439,20 @@ interface TempRecord {
 }
 
 const defaultTempRows = (zones: StorageZone[] = STORAGE_ZONES): TempRow[] =>
-  zones.map(z => ({ date: '', zone: z.name, amTemp: '', pmTemp: '', result: '' as '', corrective: '', inspector: '' }));
+  zones.map(z => ({ zone: z.name, temp: '', result: '' as '', corrective: '', inspector: '' }));
 
 export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
-  const currentMonth = new Date().toISOString().slice(0, 7);
-  const [month, setMonth] = useState(currentMonth);
+  const today = todayStr();
   const [records, setRecords] = useState<TempRecord[]>([]);
-  const [workingRows, setWorkingRows] = useState<TempRow[]>(defaultTempRows);
+  const [selected, setSelected] = useState<TempRecord | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [templateZones, setTemplateZones] = useState<StorageZone[]>(STORAGE_ZONES);
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'haccp_temp'), orderBy('month', 'desc'));
+    const q = query(collection(db, 'haccp_temp'), orderBy('date', 'desc'));
     return onSnapshot(q, snap => setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as TempRecord))));
   }, []);
 
@@ -466,111 +465,262 @@ export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; is
     });
   }, []);
 
-  const currentRecord = records.find(r => r.month === month);
-  const isReadOnly = month < currentMonth && !isAdmin;
+  const todayRecord = records.find(r => r.date === today);
+  const isReadOnly = selected ? selected.date !== today : false;
 
-  useEffect(() => {
-    const rec = records.find(r => r.month === month);
-    setWorkingRows(rec ? rec.rows : defaultTempRows(templateZones));
-  }, [month, records]);
-
-  const addRow = () => {
-    if (isReadOnly) return;
-    setWorkingRows(prev => [...prev, { date: '', zone: templateZones[0]?.name ?? '', amTemp: '', pmTemp: '', result: '' as '', corrective: '', inspector: '' }]);
+  const openToday = () => {
+    if (todayRecord) { setSelected(todayRecord); return; }
+    const rows = defaultTempRows(templateZones).map(r => ({ ...r, inspector: currentUser?.name ?? '' }));
+    setSelected({ date: today, measureTime: '12:30', rows, createdBy: '', createdAt: '', updatedBy: '', updatedAt: '', revisionCount: -1 } as TempRecord);
   };
+
+  const openHistory = (r: TempRecord) => { setSelected(r); setShowHistory(false); };
+
   const update = (idx: number, field: keyof TempRow, value: string) => {
     if (isReadOnly) return;
-    setWorkingRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
+    if (field === 'temp') value = value.replace(/[^-\d]/g, '');
+    setSelected(prev => prev ? { ...prev, rows: prev.rows.map((r, i) => i === idx ? { ...r, [field]: value } : r) } : prev);
+  };
+
+  const addRow = () => {
+    if (isReadOnly || !isAdmin) return;
+    setSelected(prev => prev ? {
+      ...prev,
+      rows: [...prev.rows, { zone: templateZones[0]?.name ?? '', temp: '', result: '' as '', corrective: '', inspector: currentUser?.name ?? '' }],
+    } : prev);
   };
 
   const handleSave = async () => {
-    if (isReadOnly) return;
+    if (!selected || isReadOnly) return;
     setSaving(true);
     const now = new Date().toISOString();
     const userName = currentUser?.name ?? '알 수 없음';
     try {
-      if (!currentRecord?.id) {
-        await addDoc(collection(db, 'haccp_temp'), { month, rows: workingRows, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now, revisionCount: 0 });
+      if (!selected.id) {
+        const data = { ...selected, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now, revisionCount: 0 };
+        const ref = await addDoc(collection(db, 'haccp_temp'), data);
+        setSelected({ ...data, id: ref.id });
       } else {
-        await updateDoc(doc(db, 'haccp_temp', currentRecord.id), { rows: workingRows, updatedBy: userName, updatedAt: now, revisionCount: (currentRecord.revisionCount ?? 0) + 1 });
+        const upd = { rows: selected.rows, updatedBy: userName, updatedAt: now, revisionCount: (selected.revisionCount ?? 0) + 1 };
+        await updateDoc(doc(db, 'haccp_temp', selected.id), upd as any);
+        setSelected(prev => prev ? { ...prev, ...upd } : prev);
       }
     } finally { setSaving(false); }
   };
 
   const handleConfirm = async () => {
-    if (!canConfirm || !currentRecord?.id) return;
+    if (!canConfirm || !selected?.id) return;
     setConfirming(true);
     try {
-      await updateDoc(doc(db, 'haccp_temp', currentRecord.id), { confirmedBy: currentUser?.name ?? '관리자', confirmedAt: new Date().toISOString() });
+      const upd = { confirmedBy: currentUser?.name ?? '관리자', confirmedAt: new Date().toISOString() };
+      await updateDoc(doc(db, 'haccp_temp', selected.id), upd);
+      setSelected(prev => prev ? { ...prev, ...upd } : prev);
     } finally { setConfirming(false); }
   };
 
-  const statusEl = currentRecord?.confirmedBy
-    ? <span className="flex items-center gap-1 text-xs text-emerald-600 font-bold"><BadgeCheck size={13}/>{currentRecord.confirmedBy} 확인완료</span>
-    : currentRecord
-    ? <span className="text-xs text-blue-600 font-bold">저장됨 · 수정 {currentRecord.revisionCount}회 · {currentRecord.updatedBy}</span>
-    : <span className="text-xs text-slate-400">미저장</span>;
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('이 기록을 삭제하시겠습니까?')) return;
+    await deleteDoc(doc(db, 'haccp_temp', id));
+    if (selected?.id === id) setSelected(null);
+  };
+
+  const revLabel = (r: TempRecord) => r.revisionCount < 0 ? '미저장' : `Rev.${r.revisionCount}`;
+  const pastRecords = records.filter(r => r.date !== today);
 
   return (
-    <div className="flex flex-col min-h-full">
-      <div className="flex gap-3 mb-4 flex-wrap items-center bg-white border border-slate-200 rounded-xl px-4 py-3">
-        <label className="text-xs font-bold text-slate-600 flex items-center gap-1">
-          관리월: <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="border border-slate-300 rounded px-2 py-1 text-xs ml-1" />
-        </label>
-        <div className="flex-1">{statusEl}</div>
-        {isReadOnly && <span className="text-xs text-amber-600 font-bold px-2 py-1 bg-amber-50 rounded-lg border border-amber-200">이전 월 · 읽기 전용</span>}
-        {records.length > 0 && (
-          <select onChange={e => { if (e.target.value) setMonth(e.target.value); e.target.value = ''; }} defaultValue="" className="text-xs border border-slate-200 rounded-lg px-2 py-1 text-slate-500 bg-white">
-            <option value="">최근 기록 이동</option>
-            {records.slice(0, 12).map(r => <option key={r.id} value={r.month}>{r.month}{r.confirmedBy ? ' ✓' : ''}</option>)}
-          </select>
-        )}
-      </div>
-
-      <div ref={printRef} className="bg-white p-6 font-sans" style={{ fontFamily: 'Malgun Gothic, sans-serif' }}>
-        <FormHeader title="냉장·냉동창고 온도관리 일지" date={month} />
-        <div className="mb-3 text-xs">
-          <table className="border-collapse w-full mb-2">
-            <thead><tr><th className={TH}>보관장소</th><th className={TH}>관리기준</th><th className={TH}>비고</th></tr></thead>
-            <tbody>
-              {templateZones.map(z => (<tr key={z.name}><td className={TD}>{z.name}</td><td className={TD}>{z.standard}</td><td className={TDL}></td></tr>))}
-            </tbody>
-          </table>
+    <div className="flex flex-col gap-4">
+      {/* 오늘 날짜 카드 */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4">
+        <div className="text-xs text-slate-500 mb-3">
+          오늘 측정일 <span className="font-bold text-slate-800 ml-1">{today}</span>
+          <span className="ml-2 text-slate-400">· 측정시간 12:30 · 1일 1회</span>
         </div>
-        <p className="text-xs text-slate-500 mb-2">※ 1일 1회 이상 측정 / O: 기준 내 / X: 기준 이탈 (이탈 시 개선조치 기재)</p>
-        <table className="w-full border-collapse text-xs">
-          <thead>
-            <tr>
-              <th className={TH}>측정일</th><th className={TH}>보관장소</th><th className={TH}>오전온도(℃)</th>
-              <th className={TH}>오후온도(℃)</th><th className={TH}>적합여부</th><th className={TH} style={{ width: 130 }}>개선조치</th><th className={TH}>측정자</th>
-            </tr>
-          </thead>
-          <tbody>
-            {workingRows.map((row, idx) => (
-              <tr key={idx}>
-                <td className={TD}><input type="date" value={row.date} onChange={e => update(idx, 'date', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent w-24 disabled:text-slate-500" /></td>
-                <td className={TD}><select value={row.zone} onChange={e => update(idx, 'zone', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent disabled:text-slate-500">{templateZones.map(z => <option key={z.name} value={z.name}>{z.name}</option>)}{row.zone && !templateZones.find(z => z.name === row.zone) && <option value={row.zone}>{row.zone}</option>}</select></td>
-                <td className={TD}><input value={row.amTemp} onChange={e => update(idx, 'amTemp', e.target.value)} disabled={isReadOnly} placeholder="예: 5.2" className="w-14 text-xs border-none outline-none bg-transparent text-center" /></td>
-                <td className={TD}><input value={row.pmTemp} onChange={e => update(idx, 'pmTemp', e.target.value)} disabled={isReadOnly} placeholder="예: 6.1" className="w-14 text-xs border-none outline-none bg-transparent text-center" /></td>
-                <td className={TD}><select value={row.result} onChange={e => update(idx, 'result', e.target.value)} disabled={isReadOnly} className={`text-xs border-none outline-none bg-transparent font-bold ${row.result === 'X' ? 'text-rose-600' : row.result === 'O' ? 'text-green-600' : ''}`}><option value="">-</option><option value="O">O</option><option value="X">X</option></select></td>
-                <td className={TDL}><input value={row.corrective} onChange={e => update(idx, 'corrective', e.target.value)} disabled={isReadOnly} className="w-full text-xs border-none outline-none bg-transparent" /></td>
-                <td className={TD}><input value={row.inspector} onChange={e => update(idx, 'inspector', e.target.value)} disabled={isReadOnly} className="w-16 text-xs border-none outline-none bg-transparent text-center" /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <SignBox />
+        <button onClick={openToday} className={`w-full flex flex-col items-center justify-center gap-1 py-4 rounded-xl border-2 text-sm font-bold transition-all ${
+          selected?.date === today ? 'border-teal-500 bg-teal-50 text-teal-700'
+          : todayRecord ? 'border-teal-200 bg-teal-50/50 text-teal-600 hover:border-teal-400'
+          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'
+        }`}>
+          <span className="text-base">🌡️</span>
+          <span>오늘 온도 측정 기록</span>
+          {todayRecord
+            ? <span className="text-xs font-normal text-teal-500">✓ {revLabel(todayRecord)} 저장됨</span>
+            : <span className="text-xs font-normal text-slate-400">미작성</span>}
+        </button>
       </div>
 
-      <div className="sticky bottom-0 bg-white border-t border-slate-200 px-4 py-3 flex gap-2 flex-wrap items-center mt-4">
-        {!isReadOnly && <button onClick={addRow} className="text-xs px-3 py-2 border border-slate-300 rounded-lg hover:bg-slate-50">+ 행 추가</button>}
-        <div className="flex-1" />
-        <button onClick={() => printRef.current && downloadAsPDF(printRef.current, `HACCP_온도관리일지_${month}.pdf`)} className="flex items-center gap-1.5 px-3 py-2 border border-slate-300 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-50"><FileDown size={13}/>PDF</button>
-        {canConfirm && currentRecord?.id && !currentRecord.confirmedBy && (
-          <button onClick={handleConfirm} disabled={confirming} className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 disabled:opacity-50"><BadgeCheck size={13}/>{confirming ? '처리 중...' : '관리자 확인'}</button>
-        )}
-        {!isReadOnly && <button onClick={handleSave} disabled={saving} className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 disabled:opacity-50"><Save size={13}/>{saving ? '저장 중...' : '저장'}</button>}
-      </div>
+      {/* 이전 기록 */}
+      <button onClick={() => setShowHistory(v => !v)} className="flex items-center justify-between px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-50">
+        <span>이전 측정 기록 ({pastRecords.length}건)</span>
+        <span>{showHistory ? '▲' : '▼'}</span>
+      </button>
+      {showHistory && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+          {pastRecords.length === 0 && <p className="col-span-full text-xs text-slate-400 py-4 text-center">이전 기록이 없습니다</p>}
+          {pastRecords.map(r => (
+            <div key={r.id} onClick={() => openHistory(r)} className={`p-3 rounded-lg border cursor-pointer text-xs transition-colors ${selected?.id === r.id ? 'bg-slate-100 border-slate-400' : 'bg-white border-slate-200 hover:border-slate-400'}`}>
+              <div className="font-bold text-slate-700">{r.date}</div>
+              <div className="flex items-center justify-between mt-1.5">
+                <span className="text-slate-500">{revLabel(r)}</span>
+                {isAdmin && <button onClick={e => { e.stopPropagation(); r.id && handleDelete(r.id); }} className="text-rose-400 hover:text-rose-600"><Trash2 size={11} /></button>}
+              </div>
+              {r.confirmedBy && <div className="text-emerald-600 font-bold mt-1 text-[10px]">✓ 확인완료</div>}
+              {!r.confirmedBy && r.createdBy && <div className="text-slate-400 mt-1 truncate">{r.createdBy}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!selected && (
+        <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-2">
+          <Thermometer size={28} className="text-slate-300" />
+          <p className="text-sm">위에서 오늘 온도 측정을 시작해주세요</p>
+        </div>
+      )}
+
+      {selected && (
+        <div className="flex flex-col gap-3">
+          {/* 액션 바 */}
+          <div className="sticky top-0 z-20 flex items-center gap-2 flex-wrap bg-slate-50/95 backdrop-blur-sm border-b border-slate-200 py-2 -mx-6 px-6">
+            <span className={`text-xs font-bold px-2 py-1 rounded border ${isReadOnly ? 'bg-slate-100 text-slate-500 border-slate-300' : 'bg-teal-50 text-teal-700 border-teal-200'}`}>
+              {isReadOnly ? '📋 조회 (수정 불가)' : `✏️ ${revLabel(selected)}`}
+            </span>
+            <span className="text-xs text-slate-500">{selected.date} · 측정시간 12:30</span>
+            <div className="ml-auto flex gap-2 flex-wrap justify-end">
+              <button onClick={() => printRef.current && downloadAsPDF(printRef.current, `HACCP_온도관리일지_${selected.date}.pdf`)}
+                className="flex items-center gap-1 px-3 py-2 bg-slate-600 text-white rounded-lg text-xs font-bold hover:bg-slate-700">
+                <FileDown size={12} /> PDF
+              </button>
+              {canConfirm && (
+                selected.confirmedBy
+                  ? <span className="flex items-center gap-1 px-3 py-2 bg-emerald-50 border border-emerald-300 text-emerald-700 rounded-lg text-xs font-bold"><BadgeCheck size={13} /> {selected.confirmedBy} 확인완료</span>
+                  : <button onClick={handleConfirm} disabled={confirming || !selected.id}
+                      className="flex items-center gap-1 px-3 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                      <BadgeCheck size={13} /> {confirming ? '처리 중...' : !selected.id ? '저장 먼저' : '관리자 확인'}
+                    </button>
+              )}
+              {!isReadOnly && (
+                <button onClick={handleSave} disabled={saving}
+                  className="flex items-center gap-1 px-3 py-2 bg-teal-600 text-white rounded-lg text-xs font-bold hover:bg-teal-700 disabled:opacity-50">
+                  <Save size={12} /> {saving ? '저장 중...' : '저장'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* 인쇄 영역 */}
+          <div ref={printRef} className="bg-white border border-slate-200 rounded-xl p-4 md:p-6" style={{ fontFamily: 'Malgun Gothic, sans-serif' }}>
+            <h2 className="text-base md:text-lg font-black text-center mb-4">냉장·냉동창고 온도관리 일지</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-px border border-slate-300 rounded-lg overflow-hidden mb-4 text-xs">
+              {[
+                { label: '회사명', value: '태백식품' },
+                { label: '측정일', value: selected.date },
+                { label: '측정시간', value: '12:30' },
+                { label: '측정자', value: selected.rows[0]?.inspector || currentUser?.name || '-' },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex flex-col">
+                  <span className="bg-slate-100 text-slate-600 font-bold text-center py-1 text-[10px] border-b border-slate-200">{label}</span>
+                  <span className="text-center py-1.5 text-slate-800 font-medium">{value}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="mb-3 text-xs">
+              <table className="border-collapse w-full mb-2">
+                <thead><tr><th className={TH}>보관장소</th><th className={TH}>관리기준</th></tr></thead>
+                <tbody>
+                  {templateZones.map(z => (<tr key={z.name}><td className={TD}>{z.name}</td><td className={TD}>{z.standard}</td></tr>))}
+                </tbody>
+              </table>
+            </div>
+
+            <p className="text-xs text-slate-500 mb-2">※ O: 기준 내 / X: 기준 이탈 (이탈 시 개선조치 기재)</p>
+            <table className="w-full border-collapse text-xs">
+              <thead>
+                <tr>
+                  <th className={TH}>보관장소</th>
+                  <th className={TH}>온도(℃)</th>
+                  <th className={TH}>적합여부</th>
+                  <th className={TH} style={{ width: 130 }}>개선조치</th>
+                  <th className={TH}>측정자</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selected.rows.map((row, idx) => (
+                  <tr key={idx} className={row.result === 'X' ? 'bg-rose-50' : row.result === 'O' ? 'bg-emerald-50/50' : ''}>
+                    <td className={TDL}>
+                      {isReadOnly
+                        ? row.zone
+                        : <select value={row.zone} onChange={e => update(idx, 'zone', e.target.value)} className="text-xs border-none outline-none bg-transparent w-full">
+                            {templateZones.map(z => <option key={z.name} value={z.name}>{z.name}</option>)}
+                            {row.zone && !templateZones.find(z => z.name === row.zone) && <option value={row.zone}>{row.zone}</option>}
+                          </select>
+                      }
+                    </td>
+                    <td className={TD}>
+                      <input value={row.temp} onChange={e => update(idx, 'temp', e.target.value)} disabled={isReadOnly}
+                        placeholder="예: 5" className="w-14 text-xs border-none outline-none bg-transparent text-center disabled:text-slate-500" />
+                    </td>
+                    <td className={TD}>
+                      <select value={row.result} onChange={e => update(idx, 'result', e.target.value)} disabled={isReadOnly}
+                        className={`text-xs border-none outline-none bg-transparent font-bold ${row.result === 'X' ? 'text-rose-600' : row.result === 'O' ? 'text-green-600' : ''}`}>
+                        <option value="">-</option><option value="O">O</option><option value="X">X</option>
+                      </select>
+                    </td>
+                    <td className={TDL}>
+                      <input value={row.corrective} onChange={e => update(idx, 'corrective', e.target.value)} disabled={isReadOnly}
+                        className="w-full text-xs border-none outline-none bg-transparent" />
+                    </td>
+                    <td className={TD}>
+                      <input value={row.inspector} onChange={e => update(idx, 'inspector', e.target.value)} disabled={isReadOnly}
+                        className="w-16 text-xs border-none outline-none bg-transparent text-center" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!isReadOnly && isAdmin && (
+              <button onClick={addRow} className="mt-2 flex items-center gap-1 px-3 py-1.5 border border-dashed border-slate-300 rounded-lg text-xs text-slate-400 hover:border-teal-400 hover:text-teal-500">
+                <Plus size={12} /> 행 추가
+              </button>
+            )}
+
+            {/* 서명란 */}
+            <div className="grid grid-cols-2 gap-3 mt-4 md:flex md:justify-end md:gap-4 text-xs">
+              <div className="border border-slate-400 text-center md:w-28">
+                <div className="bg-slate-100 text-xs font-bold py-1 border-b border-slate-400">측정자</div>
+                <div className="h-10 flex items-center justify-center text-slate-700 font-semibold">
+                  {selected.rows[0]?.inspector || currentUser?.name || '-'}
+                </div>
+              </div>
+              <div className="border border-slate-400 text-center md:w-28">
+                <div className="bg-slate-100 text-xs font-bold py-1 border-b border-slate-400">확인자</div>
+                <div className="h-10 flex items-center justify-center">
+                  {selected.confirmedBy
+                    ? <span className="text-slate-700 font-semibold">{selected.confirmedBy}</span>
+                    : canConfirm && selected.id
+                      ? <button onClick={handleConfirm} disabled={confirming}
+                          className="flex items-center gap-1 px-2 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-40">
+                          <BadgeCheck size={11} /> {confirming ? '처리 중...' : '확인'}
+                        </button>
+                      : canConfirm && !selected.id
+                        ? <span className="text-slate-300 text-[10px]">저장 후 확인</span>
+                        : <span className="text-slate-200 text-xs">-</span>
+                  }
+                </div>
+              </div>
+            </div>
+
+            {selected.id && (
+              <div className="mt-3 text-xs text-slate-400 text-right">
+                최초 작성: {selected.createdBy} ({selected.createdAt?.slice(0, 16).replace('T', ' ')})
+                {selected.updatedBy !== selected.createdBy && (
+                  <> · 최종 수정: {selected.updatedBy} ({selected.updatedAt?.slice(0, 16).replace('T', ' ')})</>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -2038,14 +2188,37 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
   }, []);
 
   const todayRecord = records.find(r => r.checkDate === today);
-  const openToday = () => setSelected(todayRecord ?? { ...emptyPersonalRecord(templateCols) } as PersonalHygieneRecord);
+
+  const openToday = () => {
+    const record = todayRecord ?? { ...emptyPersonalRecord(templateCols) } as PersonalHygieneRecord;
+    if (!isAdmin && currentUser?.name) {
+      const byName = record.rows.findIndex(r => r.name === currentUser.name);
+      const targetIdx = byName >= 0 ? byName : record.rows.findIndex(r => !r.name.trim());
+      if (targetIdx >= 0 && record.rows[targetIdx].name !== currentUser.name) {
+        setSelected({ ...record, rows: record.rows.map((r, i) => i === targetIdx ? { ...r, name: currentUser.name } : r) });
+        return;
+      }
+    }
+    setSelected(record);
+  };
+
   const openHistory = (r: PersonalHygieneRecord) => { setSelected(r); setShowHistory(false); };
   const isReadOnly = selected ? selected.checkDate !== today : false;
   const filledRows = selected?.rows.filter(r => r.name.trim()) ?? [];
   const allChecked = filledRows.length > 0 && filledRows.every(r => templateCols.every(col => r.checks[col] !== ''));
 
+  // 비관리자: 본인 행 인덱스 (이름 일치 → 없으면 첫 빈 행)
+  const myRowIdx: number = (!isAdmin && selected && currentUser?.name)
+    ? (() => {
+        const byName = selected.rows.findIndex(r => r.name === currentUser.name);
+        return byName >= 0 ? byName : selected.rows.findIndex(r => !r.name.trim());
+      })()
+    : -1;
+
+  const canEditRow = (rowIdx: number) => isAdmin || rowIdx === myRowIdx;
+
   const toggleCheck = (rowIdx: number, col: string, val: 'O' | 'X') => {
-    if (isReadOnly) return;
+    if (isReadOnly || !canEditRow(rowIdx)) return;
     setSelected(prev => {
       if (!prev) return prev;
       const newVal = prev.rows[rowIdx].checks[col] === val ? '' : val;
@@ -2054,7 +2227,8 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
   };
 
   const setRowField = (rowIdx: number, field: 'name' | 'note', val: string) => {
-    if (isReadOnly) return;
+    if (isReadOnly || !canEditRow(rowIdx)) return;
+    if (!isAdmin && field === 'name') return; // 비관리자는 이름 변경 불가
     setSelected(prev => prev ? { ...prev, rows: prev.rows.map((r, i) => i === rowIdx ? { ...r, [field]: val } : r) } : prev);
   };
 
@@ -2191,38 +2365,50 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
 
             {/* 모바일 카드 */}
             <div className="flex flex-col gap-2 md:hidden">
-              {selected.rows.map((row, rowIdx) => (
-                <div key={rowIdx} className="border border-slate-200 rounded-xl p-3 bg-white">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xs text-slate-400 font-bold w-5 shrink-0">{rowIdx + 1}</span>
-                    {isReadOnly
-                      ? <span className="text-sm font-bold text-slate-800">{row.name || '-'}</span>
-                      : <input value={row.name} onChange={e => setRowField(rowIdx, 'name', e.target.value)} placeholder="성명" className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-blue-400" />}
-                  </div>
-                  <div className="grid grid-cols-4 gap-1.5 mb-2">
-                    {templateCols.map(col => (
-                      <div key={col} className="flex flex-col items-center gap-1">
-                        <span className="text-[9px] text-slate-500 font-bold leading-tight text-center">{col}</span>
-                        <div className="flex gap-0.5">
-                          {(['O', 'X'] as const).map(val => (
-                            <button key={val} onClick={() => toggleCheck(rowIdx, col, val)} disabled={isReadOnly}
-                              className={`w-6 h-6 rounded text-[10px] font-black border transition-colors ${row.checks[col] === val ? (val === 'O' ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-rose-500 text-white border-rose-500') : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`}>
-                              {val}
-                            </button>
-                          ))}
+              {selected.rows.map((row, rowIdx) => {
+                const isMyRow = rowIdx === myRowIdx;
+                const rowEditable = !isReadOnly && canEditRow(rowIdx);
+                return (
+                  <div key={rowIdx} className={`border rounded-xl p-3 ${isMyRow ? 'border-blue-300 bg-blue-50 ring-2 ring-blue-100' : 'border-slate-200 bg-white'}`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs text-slate-400 font-bold w-5 shrink-0">{rowIdx + 1}</span>
+                      {isMyRow && !isReadOnly
+                        ? <span className="flex-1 text-sm font-bold text-blue-700 px-2 py-1.5 bg-blue-100 rounded-lg">{row.name} <span className="text-[10px] font-normal text-blue-400 ml-1">(나)</span></span>
+                        : isReadOnly || !isAdmin
+                          ? <span className="text-sm font-bold text-slate-800">{row.name || '-'}</span>
+                          : <input value={row.name} onChange={e => setRowField(rowIdx, 'name', e.target.value)} placeholder="성명" className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      }
+                    </div>
+                    <div className="grid grid-cols-4 gap-1.5 mb-2">
+                      {templateCols.map(col => (
+                        <div key={col} className="flex flex-col items-center gap-1">
+                          <span className="text-[9px] text-slate-500 font-bold leading-tight text-center">{col}</span>
+                          <div className="flex gap-0.5">
+                            {(['O', 'X'] as const).map(val => (
+                              <button key={val} onClick={() => toggleCheck(rowIdx, col, val)} disabled={!rowEditable}
+                                className={`w-6 h-6 rounded text-[10px] font-black border transition-colors ${row.checks[col] === val ? (val === 'O' ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-rose-500 text-white border-rose-500') : rowEditable ? 'bg-white text-slate-400 border-slate-200 hover:border-slate-400' : 'bg-slate-50 text-slate-200 border-slate-100 cursor-not-allowed'}`}>
+                                {val}
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
+                    {!rowEditable
+                      ? <span className="text-xs text-slate-600">{row.note}</span>
+                      : <input value={row.note} onChange={e => setRowField(rowIdx, 'note', e.target.value)} placeholder="비고" className="w-full border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none" />}
                   </div>
-                  {isReadOnly
-                    ? <span className="text-xs text-slate-600">{row.note}</span>
-                    : <input value={row.note} onChange={e => setRowField(rowIdx, 'note', e.target.value)} placeholder="비고" className="w-full border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none" />}
-                </div>
-              ))}
-              {!isReadOnly && (
+                );
+              })}
+              {!isReadOnly && isAdmin && (
                 <button onClick={addRow} className="flex items-center justify-center gap-1 py-2.5 border-2 border-dashed border-slate-300 rounded-xl text-xs text-slate-400 hover:border-blue-400 hover:text-blue-500 transition-colors">
                   <Plus size={13} /> 행 추가
                 </button>
+              )}
+              {!isReadOnly && !isAdmin && myRowIdx < 0 && (
+                <div className="text-center text-xs text-rose-500 py-3 bg-rose-50 rounded-xl border border-rose-200">
+                  빈 행이 없습니다. 관리자에게 문의해주세요.
+                </div>
               )}
             </div>
 
@@ -2238,17 +2424,27 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
                   </tr>
                 </thead>
                 <tbody>
-                  {selected.rows.map((row, rowIdx) => (
-                    <tr key={rowIdx} className={Object.values(row.checks).some(v => v === 'X') ? 'bg-rose-50' : ''}>
+                  {selected.rows.map((row, rowIdx) => {
+                    const isMyRow = rowIdx === myRowIdx;
+                    const rowEditable = !isReadOnly && canEditRow(rowIdx);
+                    return (
+                    <tr key={rowIdx} className={
+                      isMyRow && !isReadOnly ? 'bg-blue-50 ring-1 ring-inset ring-blue-200' :
+                      Object.values(row.checks).some(v => v === 'X') ? 'bg-rose-50' : ''
+                    }>
                       <td className={TD}>{rowIdx + 1}</td>
                       <td className={TD}>
-                        {isReadOnly ? row.name
-                          : <input value={row.name} onChange={e => setRowField(rowIdx, 'name', e.target.value)} placeholder="성명" className="w-full text-xs border-none outline-none bg-transparent text-center" />}
+                        {isMyRow && !isReadOnly
+                          ? <span className="font-bold text-blue-700">{row.name}<span className="text-[9px] text-blue-400 ml-1">(나)</span></span>
+                          : isReadOnly || !isAdmin
+                            ? row.name
+                            : <input value={row.name} onChange={e => setRowField(rowIdx, 'name', e.target.value)} placeholder="성명" className="w-full text-xs border-none outline-none bg-transparent text-center" />
+                        }
                       </td>
                       {templateCols.map(col => (
                         <td key={col} className={TD}>
-                          {isReadOnly
-                            ? <span className={row.checks[col] === 'O' ? 'text-emerald-600 font-black' : row.checks[col] === 'X' ? 'text-rose-600 font-black' : ''}>{row.checks[col] || ''}</span>
+                          {!rowEditable
+                            ? <span className={row.checks[col] === 'O' ? 'text-emerald-600 font-black' : row.checks[col] === 'X' ? 'text-rose-600 font-black' : 'text-slate-300'}>{row.checks[col] || '-'}</span>
                             : <div className="flex gap-0.5 justify-center">
                                 {(['O', 'X'] as const).map(val => (
                                   <button key={val} onClick={() => toggleCheck(rowIdx, col, val)}
@@ -2261,14 +2457,15 @@ export const PersonalHygieneForm: React.FC<{ currentUser?: { id: string; name: s
                         </td>
                       ))}
                       <td className={TDL}>
-                        {isReadOnly ? row.note
+                        {!rowEditable ? row.note
                           : <input value={row.note} onChange={e => setRowField(rowIdx, 'note', e.target.value)} placeholder="비고" className="w-full text-xs border-none outline-none bg-transparent" />}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
-              {!isReadOnly && (
+              {!isReadOnly && isAdmin && (
                 <button onClick={addRow} className="flex items-center gap-1 px-3 py-1.5 border border-dashed border-slate-300 rounded-lg text-xs text-slate-400 hover:border-blue-400 hover:text-blue-500 transition-colors">
                   <Plus size={12} /> 행 추가
                 </button>
@@ -2753,7 +2950,12 @@ export const StaffChecklistView: React.FC<{ currentUser?: { id: string; name: st
         <p className="text-xs text-slate-500">{STAFF_TABS.find(t => t.id === activeTab)?.desc}</p>
       </div>
       <div className="flex-1 overflow-y-auto p-6">
-        {activeTab === 'sanitation' && <SanitationForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={isAdmin} />}
+        {activeTab === 'sanitation' && (
+          <div className="flex flex-col gap-4">
+            {isAdmin && <SanitationTemplateEditor />}
+            <SanitationForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={isAdmin} />
+          </div>
+        )}
         {activeTab === 'personal'   && <PersonalHygieneForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={isAdmin} />}
         {activeTab === 'temp'       && <TempForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={isAdmin} />}
       </div>
