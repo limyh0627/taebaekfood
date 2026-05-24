@@ -55,7 +55,7 @@ const SignBox: React.FC<{ labels?: string[] }> = ({ labels = ['작성자', '확�
 );
 
 // ── 탭 ID 타입 ─────────────────────────────────────────────────────────────────
-type TabId = 'overview' | 'daily' | 'pest' | 'temp' | 'ccp-heat' | 'ccp-metal' | 'incoming' | 'cleaning' | 'sanitation' | 'personal';
+type TabId = 'overview' | 'daily' | 'pest' | 'temp' | 'ccp-heat' | 'ccp-metal' | 'incoming' | 'cleaning' | 'sanitation' | 'personal' | 'weekly-sanitation' | 'closing';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 1. 소규모 HACCP 사후평가 점검표 (20항목)
@@ -2909,16 +2909,20 @@ export const SanitationTemplateEditor: React.FC = () => {
 // 직원용 위생점검 탭 뷰 (작업장 위생 + 개인위생)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export const StaffChecklistView: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean }> = ({ currentUser, isAdmin }) => {
-  const [activeTab, setActiveTab] = useState<'sanitation' | 'personal' | 'temp'>('sanitation');
+  const [activeTab, setActiveTab] = useState<'sanitation' | 'personal' | 'temp' | 'weekly-sanitation' | 'closing'>('sanitation');
   const STAFF_TABS = [
-    { id: 'sanitation' as const, label: '작업장 위생점검표', desc: 'HACCP-PRP-001 · 작업장 위생 점검 (1일 2회)',   icon: <ShieldAlert size={13} />, color: 'emerald' },
-    { id: 'personal' as const,   label: '개인위생점검표',    desc: 'HACCP-PRP-002 · 작업자 개인위생 점검 (1일 1회)', icon: <User size={13} />,        color: 'blue'    },
-    { id: 'temp' as const,       label: '온도관리 일지',     desc: '냉장·냉동창고 온도 기록 (월 단위)',              icon: <Thermometer size={13} />, color: 'slate'   },
+    { id: 'sanitation' as const,        label: '작업장 위생점검표',    desc: 'HACCP-PRP-001 · 작업장 위생 점검 (1일 2회)',   icon: <ShieldAlert size={13} />,   color: 'emerald' },
+    { id: 'weekly-sanitation' as const, label: '위생점검표(주간/월간)', desc: '작업장 위생 점검 — 주간 · 월간 주기',           icon: <ClipboardList size={13} />, color: 'teal'    },
+    { id: 'closing' as const,           label: '마감 체크리스트',       desc: '일별 마감 점검 — 오늘 날짜만 작성 가능',         icon: <CheckSquare size={13} />,   color: 'orange'  },
+    { id: 'personal' as const,          label: '개인위생점검표',        desc: 'HACCP-PRP-002 · 작업자 개인위생 점검 (1일 1회)', icon: <User size={13} />,          color: 'blue'    },
+    { id: 'temp' as const,              label: '온도관리 일지',         desc: '냉장·냉동창고 온도 기록 (월 단위)',              icon: <Thermometer size={13} />,   color: 'slate'   },
   ];
   const activeColor: Record<string, string> = {
     emerald: 'bg-emerald-50 text-emerald-700 font-bold',
-    blue: 'bg-blue-50 text-blue-700 font-bold',
-    slate: 'bg-slate-200 text-slate-700 font-bold',
+    teal:    'bg-teal-50 text-teal-700 font-bold',
+    orange:  'bg-orange-50 text-orange-700 font-bold',
+    blue:    'bg-blue-50 text-blue-700 font-bold',
+    slate:   'bg-slate-200 text-slate-700 font-bold',
   };
   return (
     <div className="flex flex-col h-full bg-slate-50">
@@ -2956,9 +2960,960 @@ export const StaffChecklistView: React.FC<{ currentUser?: { id: string; name: st
             <SanitationForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={isAdmin} />
           </div>
         )}
+        {activeTab === 'weekly-sanitation' && (
+          <div className="flex flex-col gap-4">
+            <PeriodicSanitationForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={isAdmin} />
+          </div>
+        )}
+        {activeTab === 'closing' && (
+          <div className="flex flex-col gap-4">
+            <ClosingChecklistForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={isAdmin} />
+          </div>
+        )}
         {activeTab === 'personal'   && <PersonalHygieneForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={isAdmin} />}
         {activeTab === 'temp'       && <TempForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={isAdmin} />}
       </div>
+    </div>
+  );
+};
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 11. 작업장 위생 점검표 (주간/월간)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const WEEKLY_ITEMS_DEFAULT: { item: string; standard: string }[] = [
+  { item: '주간 항목 1', standard: '기준' },
+  { item: '주간 항목 2', standard: '기준' },
+  { item: '주간 항목 3', standard: '기준' },
+  { item: '주간 항목 4', standard: '기준' },
+  { item: '주간 항목 5', standard: '기준' },
+];
+
+const MONTHLY_ITEMS_DEFAULT: { item: string; standard: string }[] = [
+  { item: '월간 항목 1', standard: '기준' },
+  { item: '월간 항목 2', standard: '기준' },
+  { item: '월간 항목 3', standard: '기준' },
+  { item: '월간 항목 4', standard: '기준' },
+  { item: '월간 항목 5', standard: '기준' },
+];
+
+type PeriodCycle = 'weekly' | 'monthly';
+
+interface PeriodRow {
+  result: 'pass' | 'fail' | '';
+  note: string;
+  inspector: string;
+}
+
+interface PeriodRecord {
+  id?: string;
+  cycle: PeriodCycle;
+  period: string;
+  checkZone: string;
+  rows: PeriodRow[];
+  specialNotes: string;
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+  confirmedBy?: string;
+  confirmedAt?: string;
+}
+
+const currentWeekStr = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const start = new Date(year, 0, 1);
+  const weekNum = Math.ceil(((now.getTime() - start.getTime()) / 86400000 + start.getDay() + 1) / 7);
+  return `${year}-W${String(weekNum).padStart(2, '0')}`;
+};
+
+const emptyPeriodRecord = (cycle: PeriodCycle, period: string, items: { item: string; standard: string }[]): Omit<PeriodRecord, 'id'> => ({
+  cycle, period,
+  checkZone: '',
+  rows: items.map(() => ({ result: '', note: '', inspector: '' })),
+  specialNotes: '',
+  createdBy: '', createdAt: '', updatedBy: '', updatedAt: '',
+});
+
+const PeriodicSanitationTemplateEditor: React.FC<{ cycle: PeriodCycle }> = ({ cycle }) => {
+  const templateKey = cycle === 'weekly' ? 'weekly_sanitation' : 'monthly_sanitation';
+  const defaultItems = cycle === 'weekly' ? WEEKLY_ITEMS_DEFAULT : MONTHLY_ITEMS_DEFAULT;
+  const [items, setItems] = useState<{ item: string; standard: string }[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    return onSnapshot(doc(db, 'haccp_templates', templateKey), snap => {
+      if (snap.exists()) {
+        const data = snap.data().items;
+        if (Array.isArray(data) && data.length > 0) { setItems(data); return; }
+      }
+      setItems([...defaultItems]);
+    });
+  }, [cycle]);
+
+  const handleSave = async () => {
+    const validItems = items.filter(it => it.item.trim());
+    if (validItems.length === 0) { alert('항목명을 1개 이상 입력해주세요.'); return; }
+    setSaving(true);
+    try {
+      await setDoc(doc(db, 'haccp_templates', templateKey), { items: validItems });
+      setEditing(false);
+    } finally { setSaving(false); }
+  };
+
+  const updateItem = (idx: number, field: 'item' | 'standard', val: string) =>
+    setItems(prev => prev.map((it, i) => i === idx ? { ...it, [field]: val } : it));
+  const addItem = () => setItems(prev => [...prev, { item: '', standard: '' }]);
+  const removeItem = (idx: number) => setItems(prev => prev.filter((_, i) => i !== idx));
+  const moveItem = (idx: number, dir: -1 | 1) => {
+    const next = [...items];
+    const target = idx + dir;
+    if (target < 0 || target >= next.length) return;
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setItems(next);
+  };
+
+  const cycleName = cycle === 'weekly' ? '주간' : '월간';
+
+  if (!editing) {
+    return (
+      <div className="bg-white border border-slate-200 rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <span className="text-xs font-bold text-slate-700">{cycleName} 위생 점검 항목 템플릿</span>
+            <span className="ml-2 text-xs text-slate-400">{items.length}개 항목</span>
+          </div>
+          <button
+            onClick={() => setEditing(true)}
+            className="flex items-center gap-1 px-3 py-1.5 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-lg text-xs font-bold hover:bg-indigo-100"
+          >
+            <Wrench size={11} /> 항목 편집
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {items.map((it, idx) => (
+            <span key={idx} className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs">
+              {idx + 1}. {it.item}
+              {it.standard && <span className="text-slate-400 ml-1">({it.standard})</span>}
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white border border-indigo-200 rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs font-bold text-slate-700">{cycleName} 점검 항목 편집</span>
+        <div className="flex gap-2">
+          <button onClick={() => setEditing(false)} className="px-3 py-1.5 text-xs text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50">취소</button>
+          <button onClick={handleSave} disabled={saving} className="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-bold disabled:opacity-50">
+            {saving ? '저장 중…' : '저장'}
+          </button>
+        </div>
+      </div>
+      <div className="flex flex-col gap-1.5 mb-3">
+        {items.map((it, idx) => (
+          <div key={idx} className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 w-5 text-right">{idx + 1}</span>
+            <input value={it.item} onChange={e => updateItem(idx, 'item', e.target.value)} placeholder="점검항목" className="flex-1 border border-slate-300 rounded px-2 py-1 text-xs" />
+            <input value={it.standard} onChange={e => updateItem(idx, 'standard', e.target.value)} placeholder="기준" className="w-36 border border-slate-300 rounded px-2 py-1 text-xs" />
+            <button onClick={() => moveItem(idx, -1)} className="text-slate-400 hover:text-slate-700 text-xs px-1">↑</button>
+            <button onClick={() => moveItem(idx, 1)} className="text-slate-400 hover:text-slate-700 text-xs px-1">↓</button>
+            <button onClick={() => removeItem(idx)} className="text-rose-400 hover:text-rose-600 text-xs px-1"><Trash2 size={12} /></button>
+          </div>
+        ))}
+      </div>
+      <button onClick={addItem} className="flex items-center gap-1 px-3 py-2 border border-dashed border-indigo-300 text-indigo-600 rounded-lg text-xs font-medium hover:bg-indigo-50 w-full justify-center">
+        <Plus size={12} /> 항목 추가
+      </button>
+    </div>
+  );
+};
+
+const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
+  const [cycle, setCycle] = useState<PeriodCycle>('weekly');
+  const [weekPeriod, setWeekPeriod] = useState(currentWeekStr());
+  const [monthPeriod, setMonthPeriod] = useState(new Date().toISOString().slice(0, 7));
+  const [weekItems, setWeekItems] = useState<{ item: string; standard: string }[]>(WEEKLY_ITEMS_DEFAULT);
+  const [monthItems, setMonthItems] = useState<{ item: string; standard: string }[]>(MONTHLY_ITEMS_DEFAULT);
+  const [records, setRecords] = useState<PeriodRecord[]>([]);
+  const [selected, setSelected] = useState<PeriodRecord | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const printRef = useRef<HTMLDivElement>(null);
+
+  const period = cycle === 'weekly' ? weekPeriod : monthPeriod;
+  const items = cycle === 'weekly' ? weekItems : monthItems;
+  const cycleName = cycle === 'weekly' ? '주간' : '월간';
+
+  useEffect(() => {
+    const q = query(collection(db, 'haccp_periodic_sanitation'), orderBy('period', 'desc'));
+    return onSnapshot(q, snap => {
+      setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as PeriodRecord)));
+    });
+  }, []);
+
+  useEffect(() => {
+    return onSnapshot(doc(db, 'haccp_templates', 'weekly_sanitation'), snap => {
+      if (snap.exists()) {
+        const data = snap.data().items;
+        if (Array.isArray(data) && data.length > 0) setWeekItems(data);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    return onSnapshot(doc(db, 'haccp_templates', 'monthly_sanitation'), snap => {
+      if (snap.exists()) {
+        const data = snap.data().items;
+        if (Array.isArray(data) && data.length > 0) setMonthItems(data);
+      }
+    });
+  }, []);
+
+  const currentRecord = records.find(r => r.cycle === cycle && r.period === period);
+
+  // 주기/기간이 바뀌면 해당 기록으로 자동 초기화
+  useEffect(() => {
+    const existing = records.find(r => r.cycle === cycle && r.period === period);
+    setSelected(existing ?? ({ ...emptyPeriodRecord(cycle, period, items) } as PeriodRecord));
+    setSaveError('');
+  }, [cycle, period]);
+
+  // Firestore 기록이 뒤늦게 로드됐을 때 미저장 상태면 동기화
+  useEffect(() => {
+    const existing = records.find(r => r.cycle === cycle && r.period === period);
+    if (existing && !selected?.id) setSelected(existing);
+  }, [records]);
+
+  const openHistory = (r: PeriodRecord) => {
+    setSelected(r);
+    setSaveError('');
+    setShowHistory(false);
+  };
+
+  // 실제 이번 주/이번 달만 작성 가능
+  const actualCurrentPeriod = cycle === 'weekly' ? currentWeekStr() : new Date().toISOString().slice(0, 7);
+  const isReadOnly = period !== actualCurrentPeriod;
+
+  const toggleResult = (idx: number, val: 'pass' | 'fail') => {
+    if (isReadOnly) return;
+    const userName = currentUser?.name ?? '';
+    setSelected(prev => {
+      if (!prev) return prev;
+      const row = prev.rows[idx];
+      const newResult = row.result === val ? '' : val;
+      return {
+        ...prev,
+        rows: prev.rows.map((r, i) => i === idx ? { ...r, result: newResult, inspector: r.inspector || (newResult ? userName : '') } : r),
+      };
+    });
+  };
+
+  const setRow = (idx: number, field: keyof PeriodRow, val: string) => {
+    if (isReadOnly) return;
+    setSelected(prev => prev ? { ...prev, rows: prev.rows.map((r, i) => i === idx ? { ...r, [field]: val } : r) } : prev);
+  };
+
+  const handleSave = async () => {
+    if (!selected || isReadOnly) return;
+    const missingNote = selected.rows
+      .map((r, i) => r.result === 'fail' && !r.note.trim() ? (items[i]?.item ?? `항목 ${i + 1}`) : null)
+      .filter(Boolean) as string[];
+    if (missingNote.length > 0) { setSaveError(`부적합 항목의 비고사항을 입력해주세요: ${missingNote.join(', ')}`); return; }
+    setSaveError('');
+    setSaving(true);
+    const now = new Date().toISOString();
+    const userName = currentUser?.name ?? '알 수 없음';
+    try {
+      if (!selected.id) {
+        const data: Omit<PeriodRecord, 'id'> = { ...selected, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now };
+        const ref = await addDoc(collection(db, 'haccp_periodic_sanitation'), data);
+        setSelected({ ...data, id: ref.id });
+      } else {
+        const update = { ...selected, updatedBy: userName, updatedAt: now };
+        await updateDoc(doc(db, 'haccp_periodic_sanitation', selected.id), update as any);
+        setSelected(prev => prev ? { ...prev, ...update } : prev);
+      }
+    } finally { setSaving(false); }
+  };
+
+  const handleConfirm = async () => {
+    if (!canConfirm) return;
+    if (!selected?.id) { alert('점검표를 먼저 저장해주세요.'); return; }
+    setConfirming(true);
+    const now = new Date().toISOString();
+    const userName = currentUser?.name ?? '관리자';
+    try {
+      const update = { confirmedBy: userName, confirmedAt: now };
+      await updateDoc(doc(db, 'haccp_periodic_sanitation', selected.id), update);
+      const confirmed = { ...selected, ...update };
+      setSelected(confirmed);
+      if (window.confirm('확인 처리되었습니다.\nPDF 파일을 만들겠습니까?')) {
+        if (printRef.current) await downloadAsPDF(printRef.current, `작업장위생점검표_${cycleName}_${selected.period}.pdf`);
+      }
+    } finally { setConfirming(false); }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('이 점검표를 삭제하시겠습니까?')) return;
+    await deleteDoc(doc(db, 'haccp_periodic_sanitation', id));
+    if (selected?.id === id) setSelected(null);
+  };
+
+  const resultBadge = (result: PeriodRow['result']) => {
+    if (result === 'pass') return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">적합</span>;
+    if (result === 'fail') return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-700">부적합</span>;
+    return <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-400">미입력</span>;
+  };
+
+  const pastRecords = records.filter(r => r.cycle === cycle && !(r.cycle === cycle && r.period === period));
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* 주간/월간 서브 탭 + 기간 선택 */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4">
+        <div className="flex gap-2 mb-4">
+          {(['weekly', 'monthly'] as PeriodCycle[]).map(c => (
+            <button
+              key={c}
+              onClick={() => { setCycle(c); setSaveError(''); }}
+              className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${
+                cycle === c ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {c === 'weekly' ? '주간 점검표' : '월간 점검표'}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-slate-500">{cycleName} 기간:</span>
+          {cycle === 'weekly' ? (
+            <input type="week" value={weekPeriod} onChange={e => setWeekPeriod(e.target.value)} className="border border-slate-300 rounded px-2 py-1 text-xs" />
+          ) : (
+            <input type="month" value={monthPeriod} onChange={e => setMonthPeriod(e.target.value)} className="border border-slate-300 rounded px-2 py-1 text-xs" />
+          )}
+          {currentRecord && (
+            <span className="text-xs text-emerald-600 font-bold">✓ 저장된 기록</span>
+          )}
+        </div>
+      </div>
+
+      {/* 이전 기록 */}
+      <button
+        onClick={() => setShowHistory(v => !v)}
+        className="flex items-center justify-between px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-50"
+      >
+        <span>{cycleName} 이전 점검 기록 ({pastRecords.length}건)</span>
+        <span>{showHistory ? '▲' : '▼'}</span>
+      </button>
+      {showHistory && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+          {pastRecords.map(r => (
+            <button
+              key={r.id}
+              onClick={() => openHistory(r)}
+              className={`flex flex-col items-start gap-0.5 px-3 py-2 border rounded-lg text-xs font-medium transition-colors ${
+                selected?.id === r.id ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <span className="font-bold">{r.period}</span>
+              <span className="text-slate-400">{r.confirmedBy ? `✓ ${r.confirmedBy}` : '미확인'}</span>
+              {isAdmin && r.id && (
+                <span
+                  onClick={e => { e.stopPropagation(); handleDelete(r.id!); }}
+                  className="mt-1 text-rose-400 hover:text-rose-600 text-xs cursor-pointer"
+                >
+                  삭제
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* 점검표 폼 */}
+      {selected && <div className="flex flex-col gap-3">
+          {/* 액션 바 — 상단 고정 */}
+          <div className="sticky top-0 z-20 flex items-center gap-2 flex-wrap bg-slate-50/95 backdrop-blur-sm border-b border-slate-200 py-2 -mx-6 px-6">
+            <span className={`text-xs font-bold px-2 py-1 rounded border ${
+              isReadOnly ? 'bg-slate-100 text-slate-500 border-slate-300' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+            }`}>
+              {isReadOnly ? '📋 조회 (수정 불가)' : `✏️ ${selected.id ? '수정' : '신규'}`}
+            </span>
+            <span className="text-xs text-slate-500">{cycleName} · {selected.period}</span>
+            <div className="ml-auto flex gap-2 flex-wrap justify-end">
+              <button
+                onClick={() => printRef.current && downloadAsPDF(printRef.current, `작업장위생점검표_${cycleName}_${selected.period}.pdf`)}
+                className="flex items-center gap-1 px-3 py-2 bg-slate-600 text-white rounded-lg text-xs font-bold hover:bg-slate-700"
+              >
+                <FileDown size={12} /> PDF
+              </button>
+              {canConfirm && (
+                selected.confirmedBy
+                  ? <span className="flex items-center gap-1 px-3 py-2 bg-emerald-50 border border-emerald-300 text-emerald-700 rounded-lg text-xs font-bold">
+                      <BadgeCheck size={13} /> {selected.confirmedBy} 확인완료
+                    </span>
+                  : <button
+                      onClick={handleConfirm}
+                      disabled={confirming || !selected.id}
+                      className="flex items-center gap-1 px-3 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-40"
+                    >
+                      <BadgeCheck size={13} /> {confirming ? '처리 중...' : !selected.id ? '저장 먼저' : '관리자 확인'}
+                    </button>
+              )}
+              {!isReadOnly && (
+                <button onClick={handleSave} disabled={saving}
+                  className="flex items-center gap-1 px-3 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  <Save size={12} /> {saving ? '저장 중...' : '저장'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {saveError && (
+            <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg px-3 py-2">
+              ⚠️ {saveError}
+            </div>
+          )}
+
+          {/* 인쇄 영역 */}
+          <div ref={printRef} className="bg-white border border-slate-200 rounded-xl p-4 md:p-6" style={{ fontFamily: 'Malgun Gothic, sans-serif' }}>
+            <h2 className="text-base md:text-lg font-black text-center mb-4">HACCP 작업장 위생점검표 ({cycleName})</h2>
+
+            {/* 헤더 정보 */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-px border border-slate-300 rounded-lg overflow-hidden mb-4 text-xs">
+              {[
+                { label: '회사명',   value: '태백식품' },
+                { label: '문서번호', value: 'HACCP-PRP-001' },
+                { label: '작성자',   value: selected.createdBy || (isReadOnly ? '-' : currentUser?.name ?? '-') },
+                { label: '개정번호', value: selected.id ? '최신' : '미저장' },
+                { label: '점검주기', value: cycleName },
+                { label: '점검기간', value: selected.period },
+              ].map(f => (
+                <div key={f.label} className="bg-white">
+                  <div className="bg-slate-100 px-2 py-1 font-bold text-slate-600 border-b border-slate-300">{f.label}</div>
+                  <div className="px-2 py-1.5 text-slate-800">{f.value}</div>
+                </div>
+              ))}
+              <div className="bg-white col-span-2">
+                <div className="bg-slate-100 px-2 py-1 font-bold text-slate-600 border-b border-slate-300">점검구역</div>
+                <div className="px-1 py-1">
+                  {isReadOnly
+                    ? <div className="px-1 py-0.5 text-slate-800">{selected.checkZone || '-'}</div>
+                    : <input value={selected.checkZone} onChange={e => setSelected(p => p ? { ...p, checkZone: e.target.value } : p)}
+                        placeholder="구역 입력" className="w-full text-xs outline-none bg-transparent" />
+                  }
+                </div>
+              </div>
+            </div>
+
+            <div className="text-xs font-bold mb-2">■ 작업장 위생 점검 항목</div>
+
+            <table className="w-full border-collapse text-xs mb-4">
+              <thead>
+                <tr>
+                  <th className={TH} style={{ width: 28 }}>번호</th>
+                  <th className={TH}>점검항목</th>
+                  <th className={TH} style={{ width: 140 }}>기준</th>
+                  <th className={TH} style={{ width: 28 }}>O</th>
+                  <th className={TH} style={{ width: 28 }}>X</th>
+                  <th className={TH} style={{ width: 70 }}>결과</th>
+                  <th className={TH} style={{ width: 80 }}>작성자</th>
+                  <th className={TH} style={{ width: 110 }}>비고(개선조치)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item, idx) => {
+                  const row = selected.rows[idx] ?? { result: '', note: '', inspector: '' };
+                  return (
+                    <tr key={idx} className={row.result === 'fail' ? 'bg-rose-50' : ''}>
+                      <td className={TD}>{idx + 1}</td>
+                      <td className={TDL}>{item.item}</td>
+                      <td className={TD}>{item.standard}</td>
+                      <td className={TD}>
+                        <input type="checkbox" checked={row.result === 'pass'} onChange={() => toggleResult(idx, 'pass')} disabled={isReadOnly} />
+                      </td>
+                      <td className={TD}>
+                        <input type="checkbox" checked={row.result === 'fail'} onChange={() => toggleResult(idx, 'fail')} disabled={isReadOnly} />
+                      </td>
+                      <td className={TD}>{resultBadge(row.result)}</td>
+                      <td className={TD}>
+                        {row.inspector
+                          ? <span className="inline-flex px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-medium">{row.inspector}</span>
+                          : <span className="text-slate-300 text-xs">-</span>
+                        }
+                      </td>
+                      <td className={TDL}>
+                        <input
+                          value={row.note}
+                          onChange={e => setRow(idx, 'note', e.target.value)}
+                          disabled={isReadOnly}
+                          className="w-full text-xs border-none outline-none bg-transparent disabled:opacity-60"
+                          placeholder={row.result === 'fail' ? '조치 내용 필수' : ''}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            <div className="mb-4">
+              <div className="text-xs font-bold text-slate-700 mb-1">특이사항</div>
+              <textarea
+                value={selected.specialNotes}
+                onChange={e => !isReadOnly && setSelected(prev => prev ? { ...prev, specialNotes: e.target.value } : prev)}
+                disabled={isReadOnly}
+                rows={2}
+                className="w-full border border-slate-300 rounded px-2 py-1 text-xs disabled:opacity-60 resize-none"
+                placeholder="특이사항을 입력하세요"
+              />
+            </div>
+
+            {/* 서명란 — 확인자 없이, 관리자는 확인 시에만 표시 */}
+            <div className="flex gap-2 mt-3 justify-end">
+              <div className="border border-slate-400 text-center w-24">
+                <div className="bg-slate-100 text-xs font-bold py-0.5 border-b border-slate-400">작성자</div>
+                <div className="h-8 flex items-center justify-center text-xs text-slate-700">
+                  {selected.createdBy || (isReadOnly ? '-' : currentUser?.name ?? '')}
+                </div>
+              </div>
+              <div className="border border-slate-400 text-center w-24">
+                <div className="bg-slate-100 text-xs font-bold py-0.5 border-b border-slate-400">관리자</div>
+                <div className="h-8 flex items-center justify-center text-xs text-slate-700">
+                  {selected.confirmedBy
+                    ? <span className="text-emerald-700 font-bold">{selected.confirmedBy}</span>
+                    : <span className="text-slate-300">-</span>
+                  }
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+  );
+};
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 12. 마감 체크리스트
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const CLOSING_ITEMS_DEFAULT: { item: string; standard: string }[] = [
+  { item: '마감 항목 1', standard: '기준' },
+  { item: '마감 항목 2', standard: '기준' },
+  { item: '마감 항목 3', standard: '기준' },
+  { item: '마감 항목 4', standard: '기준' },
+  { item: '마감 항목 5', standard: '기준' },
+];
+
+interface ClosingRecord {
+  id?: string;
+  checkDate: string;
+  checkZone: string;
+  rows: PeriodRow[];
+  specialNotes: string;
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+  confirmedBy?: string;
+  confirmedAt?: string;
+}
+
+const emptyClosingRecord = (date: string, items: { item: string; standard: string }[]): Omit<ClosingRecord, 'id'> => ({
+  checkDate: date,
+  checkZone: '',
+  rows: items.map(() => ({ result: '', note: '', inspector: '' })),
+  specialNotes: '',
+  createdBy: '', createdAt: '', updatedBy: '', updatedAt: '',
+});
+
+const ClosingChecklistTemplateEditor: React.FC = () => {
+  const [items, setItems] = useState<{ item: string; standard: string }[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    return onSnapshot(doc(db, 'haccp_templates', 'closing_checklist'), snap => {
+      if (snap.exists()) {
+        const data = snap.data().items;
+        if (Array.isArray(data) && data.length > 0) { setItems(data); return; }
+      }
+      setItems([...CLOSING_ITEMS_DEFAULT]);
+    });
+  }, []);
+
+  const handleSave = async () => {
+    const validItems = items.filter(it => it.item.trim());
+    if (validItems.length === 0) { alert('항목명을 1개 이상 입력해주세요.'); return; }
+    setSaving(true);
+    try {
+      await setDoc(doc(db, 'haccp_templates', 'closing_checklist'), { items: validItems });
+      setEditing(false);
+    } finally { setSaving(false); }
+  };
+
+  const updateItem = (idx: number, field: 'item' | 'standard', val: string) =>
+    setItems(prev => prev.map((it, i) => i === idx ? { ...it, [field]: val } : it));
+  const addItem = () => setItems(prev => [...prev, { item: '', standard: '' }]);
+  const removeItem = (idx: number) => setItems(prev => prev.filter((_, i) => i !== idx));
+  const moveItem = (idx: number, dir: -1 | 1) => {
+    const next = [...items];
+    const target = idx + dir;
+    if (target < 0 || target >= next.length) return;
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setItems(next);
+  };
+
+  if (!editing) {
+    return (
+      <div className="bg-white border border-slate-200 rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <span className="text-xs font-bold text-slate-700">마감 체크리스트 항목 템플릿</span>
+            <span className="ml-2 text-xs text-slate-400">{items.length}개 항목</span>
+          </div>
+          <button onClick={() => setEditing(true)} className="flex items-center gap-1 px-3 py-1.5 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-lg text-xs font-bold hover:bg-indigo-100">
+            <Wrench size={11} /> 항목 편집
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {items.map((it, idx) => (
+            <span key={idx} className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs">
+              {idx + 1}. {it.item}
+              {it.standard && <span className="text-slate-400 ml-1">({it.standard})</span>}
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white border border-indigo-200 rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs font-bold text-slate-700">마감 체크리스트 항목 편집</span>
+        <div className="flex gap-2">
+          <button onClick={() => setEditing(false)} className="px-3 py-1.5 text-xs text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50">취소</button>
+          <button onClick={handleSave} disabled={saving} className="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-bold disabled:opacity-50">
+            {saving ? '저장 중…' : '저장'}
+          </button>
+        </div>
+      </div>
+      <div className="flex flex-col gap-1.5 mb-3">
+        {items.map((it, idx) => (
+          <div key={idx} className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 w-5 text-right">{idx + 1}</span>
+            <input value={it.item} onChange={e => updateItem(idx, 'item', e.target.value)} placeholder="점검항목" className="flex-1 border border-slate-300 rounded px-2 py-1 text-xs" />
+            <input value={it.standard} onChange={e => updateItem(idx, 'standard', e.target.value)} placeholder="기준" className="w-36 border border-slate-300 rounded px-2 py-1 text-xs" />
+            <button onClick={() => moveItem(idx, -1)} className="text-slate-400 hover:text-slate-700 text-xs px-1">↑</button>
+            <button onClick={() => moveItem(idx, 1)} className="text-slate-400 hover:text-slate-700 text-xs px-1">↓</button>
+            <button onClick={() => removeItem(idx)} className="text-rose-400 hover:text-rose-600 text-xs px-1"><Trash2 size={12} /></button>
+          </div>
+        ))}
+      </div>
+      <button onClick={addItem} className="flex items-center gap-1 px-3 py-2 border border-dashed border-indigo-300 text-indigo-600 rounded-lg text-xs font-medium hover:bg-indigo-50 w-full justify-center">
+        <Plus size={12} /> 항목 추가
+      </button>
+    </div>
+  );
+};
+
+const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
+  const [checkDate, setCheckDate] = useState(todayStr());
+  const [templateItems, setTemplateItems] = useState<{ item: string; standard: string }[]>(CLOSING_ITEMS_DEFAULT);
+  const [records, setRecords] = useState<ClosingRecord[]>([]);
+  const [selected, setSelected] = useState<ClosingRecord | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const printRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const q = query(collection(db, 'haccp_closing_checklist'), orderBy('checkDate', 'desc'));
+    return onSnapshot(q, snap => {
+      setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() } as ClosingRecord)));
+    });
+  }, []);
+
+  useEffect(() => {
+    return onSnapshot(doc(db, 'haccp_templates', 'closing_checklist'), snap => {
+      if (snap.exists()) {
+        const data = snap.data().items;
+        if (Array.isArray(data) && data.length > 0) setTemplateItems(data);
+      }
+    });
+  }, []);
+
+  // 날짜가 바뀌면 해당 날짜 기록으로 자동 초기화
+  useEffect(() => {
+    const existing = records.find(r => r.checkDate === checkDate);
+    setSelected(existing ?? ({ ...emptyClosingRecord(checkDate, templateItems) } as ClosingRecord));
+    setSaveError('');
+  }, [checkDate]);
+
+  useEffect(() => {
+    const existing = records.find(r => r.checkDate === checkDate);
+    if (existing && !selected?.id) setSelected(existing);
+  }, [records]);
+
+  const isReadOnly = checkDate !== todayStr();
+
+  const toggleResult = (idx: number, val: 'pass' | 'fail') => {
+    if (isReadOnly) return;
+    const userName = currentUser?.name ?? '';
+    setSelected(prev => {
+      if (!prev) return prev;
+      const row = prev.rows[idx];
+      const newResult = row.result === val ? '' : val;
+      return {
+        ...prev,
+        rows: prev.rows.map((r, i) => i === idx ? { ...r, result: newResult, inspector: r.inspector || (newResult ? userName : '') } : r),
+      };
+    });
+  };
+
+  const setRow = (idx: number, field: keyof PeriodRow, val: string) => {
+    if (isReadOnly) return;
+    setSelected(prev => prev ? { ...prev, rows: prev.rows.map((r, i) => i === idx ? { ...r, [field]: val } : r) } : prev);
+  };
+
+  const handleSave = async () => {
+    if (!selected || isReadOnly) return;
+    const missingNote = selected.rows
+      .map((r, i) => r.result === 'fail' && !r.note.trim() ? (templateItems[i]?.item ?? `항목 ${i + 1}`) : null)
+      .filter(Boolean) as string[];
+    if (missingNote.length > 0) { setSaveError(`부적합 항목의 비고사항을 입력해주세요: ${missingNote.join(', ')}`); return; }
+    setSaveError('');
+    setSaving(true);
+    const now = new Date().toISOString();
+    const userName = currentUser?.name ?? '알 수 없음';
+    try {
+      if (!selected.id) {
+        const data: Omit<ClosingRecord, 'id'> = { ...selected, createdBy: userName, createdAt: now, updatedBy: userName, updatedAt: now };
+        const ref = await addDoc(collection(db, 'haccp_closing_checklist'), data);
+        setSelected({ ...data, id: ref.id });
+      } else {
+        const update = { ...selected, updatedBy: userName, updatedAt: now };
+        await updateDoc(doc(db, 'haccp_closing_checklist', selected.id), update as any);
+        setSelected(prev => prev ? { ...prev, ...update } : prev);
+      }
+    } finally { setSaving(false); }
+  };
+
+  const handleConfirm = async () => {
+    if (!canConfirm) return;
+    if (!selected?.id) { alert('점검표를 먼저 저장해주세요.'); return; }
+    setConfirming(true);
+    const now = new Date().toISOString();
+    const userName = currentUser?.name ?? '관리자';
+    try {
+      const update = { confirmedBy: userName, confirmedAt: now };
+      await updateDoc(doc(db, 'haccp_closing_checklist', selected.id), update);
+      const confirmed = { ...selected, ...update };
+      setSelected(confirmed);
+      if (window.confirm('확인 처리되었습니다.\nPDF 파일을 만들겠습니까?')) {
+        if (printRef.current) await downloadAsPDF(printRef.current, `마감체크리스트_${selected.checkDate}.pdf`);
+      }
+    } finally { setConfirming(false); }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('이 체크리스트를 삭제하시겠습니까?')) return;
+    await deleteDoc(doc(db, 'haccp_closing_checklist', id));
+    if (selected?.id === id) setSelected(null);
+  };
+
+  const resultBadge = (result: PeriodRow['result']) => {
+    if (result === 'pass') return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">적합</span>;
+    if (result === 'fail') return <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-700">부적합</span>;
+    return <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-400">미입력</span>;
+  };
+
+  const pastRecords = records.filter(r => r.checkDate !== todayStr());
+  const currentRecord = records.find(r => r.checkDate === checkDate);
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* 날짜 선택 */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4">
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-slate-500">점검일자:</span>
+          <input type="date" value={checkDate} onChange={e => setCheckDate(e.target.value)} className="border border-slate-300 rounded px-2 py-1 text-xs" />
+          {currentRecord && <span className="text-xs text-emerald-600 font-bold">✓ 저장된 기록</span>}
+          {isReadOnly && <span className="text-xs text-amber-600 font-medium">📋 오늘({todayStr()})만 작성 가능</span>}
+        </div>
+      </div>
+
+      {/* 이전 기록 */}
+      <button onClick={() => setShowHistory(v => !v)} className="flex items-center justify-between px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-50">
+        <span>이전 마감 기록 ({pastRecords.length}건)</span>
+        <span>{showHistory ? '▲' : '▼'}</span>
+      </button>
+      {showHistory && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+          {pastRecords.map(r => (
+            <button key={r.id} onClick={() => { setCheckDate(r.checkDate); setShowHistory(false); }}
+              className={`flex flex-col items-start gap-0.5 px-3 py-2 border rounded-lg text-xs font-medium transition-colors ${
+                checkDate === r.checkDate ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <span className="font-bold">{r.checkDate}</span>
+              <span className="text-slate-400">{r.confirmedBy ? `✓ ${r.confirmedBy}` : '미확인'}</span>
+              {isAdmin && r.id && (
+                <span onClick={e => { e.stopPropagation(); handleDelete(r.id!); }} className="mt-1 text-rose-400 hover:text-rose-600 text-xs cursor-pointer">삭제</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* 폼 */}
+      {selected && <div className="flex flex-col gap-3">
+        {/* 액션 바 */}
+        <div className="sticky top-0 z-20 flex items-center gap-2 flex-wrap bg-slate-50/95 backdrop-blur-sm border-b border-slate-200 py-2 -mx-6 px-6">
+          <span className={`text-xs font-bold px-2 py-1 rounded border ${
+            isReadOnly ? 'bg-slate-100 text-slate-500 border-slate-300' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+          }`}>
+            {isReadOnly ? '📋 조회 (수정 불가)' : `✏️ ${selected.id ? '수정' : '신규'}`}
+          </span>
+          <span className="text-xs text-slate-500">마감 체크리스트 · {selected.checkDate}</span>
+          <div className="ml-auto flex gap-2 flex-wrap justify-end">
+            <button onClick={() => printRef.current && downloadAsPDF(printRef.current, `마감체크리스트_${selected.checkDate}.pdf`)}
+              className="flex items-center gap-1 px-3 py-2 bg-slate-600 text-white rounded-lg text-xs font-bold hover:bg-slate-700">
+              <FileDown size={12} /> PDF
+            </button>
+            {canConfirm && (
+              selected.confirmedBy
+                ? <span className="flex items-center gap-1 px-3 py-2 bg-emerald-50 border border-emerald-300 text-emerald-700 rounded-lg text-xs font-bold">
+                    <BadgeCheck size={13} /> {selected.confirmedBy} 확인완료
+                  </span>
+                : <button onClick={handleConfirm} disabled={confirming || !selected.id}
+                    className="flex items-center gap-1 px-3 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-40">
+                    <BadgeCheck size={13} /> {confirming ? '처리 중...' : !selected.id ? '저장 먼저' : '관리자 확인'}
+                  </button>
+            )}
+            {!isReadOnly && (
+              <button onClick={handleSave} disabled={saving}
+                className="flex items-center gap-1 px-3 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 disabled:opacity-50">
+                <Save size={12} /> {saving ? '저장 중...' : '저장'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {saveError && <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg px-3 py-2">⚠️ {saveError}</div>}
+
+        {/* 인쇄 영역 */}
+        <div ref={printRef} className="bg-white border border-slate-200 rounded-xl p-4 md:p-6" style={{ fontFamily: 'Malgun Gothic, sans-serif' }}>
+          <h2 className="text-base md:text-lg font-black text-center mb-4">마감 체크리스트</h2>
+
+          {/* 헤더 정보 */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-px border border-slate-300 rounded-lg overflow-hidden mb-4 text-xs">
+            {[
+              { label: '회사명',   value: '태백식품' },
+              { label: '문서번호', value: 'HACCP-PRP-003' },
+              { label: '작성자',   value: selected.createdBy || (isReadOnly ? '-' : currentUser?.name ?? '-') },
+              { label: '개정번호', value: selected.id ? '최신' : '미저장' },
+              { label: '점검일자', value: selected.checkDate },
+            ].map(f => (
+              <div key={f.label} className="bg-white">
+                <div className="bg-slate-100 px-2 py-1 font-bold text-slate-600 border-b border-slate-300">{f.label}</div>
+                <div className="px-2 py-1.5 text-slate-800">{f.value}</div>
+              </div>
+            ))}
+            <div className="bg-white col-span-3">
+              <div className="bg-slate-100 px-2 py-1 font-bold text-slate-600 border-b border-slate-300">점검구역</div>
+              <div className="px-1 py-1">
+                {isReadOnly
+                  ? <div className="px-1 py-0.5 text-slate-800">{selected.checkZone || '-'}</div>
+                  : <input value={selected.checkZone} onChange={e => setSelected(p => p ? { ...p, checkZone: e.target.value } : p)}
+                      placeholder="구역 입력" className="w-full text-xs outline-none bg-transparent" />
+                }
+              </div>
+            </div>
+          </div>
+
+          <div className="text-xs font-bold mb-2">■ 마감 점검 항목</div>
+
+          <table className="w-full border-collapse text-xs mb-4">
+            <thead>
+              <tr>
+                <th className={TH} style={{ width: 28 }}>번호</th>
+                <th className={TH}>점검항목</th>
+                <th className={TH} style={{ width: 140 }}>기준</th>
+                <th className={TH} style={{ width: 28 }}>O</th>
+                <th className={TH} style={{ width: 28 }}>X</th>
+                <th className={TH} style={{ width: 70 }}>결과</th>
+                <th className={TH} style={{ width: 80 }}>작성자</th>
+                <th className={TH} style={{ width: 110 }}>비고(개선조치)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {templateItems.map((item, idx) => {
+                const row = selected.rows[idx] ?? { result: '', note: '', inspector: '' };
+                return (
+                  <tr key={idx} className={row.result === 'fail' ? 'bg-rose-50' : ''}>
+                    <td className={TD}>{idx + 1}</td>
+                    <td className={TDL}>{item.item}</td>
+                    <td className={TD}>{item.standard}</td>
+                    <td className={TD}><input type="checkbox" checked={row.result === 'pass'} onChange={() => toggleResult(idx, 'pass')} disabled={isReadOnly} /></td>
+                    <td className={TD}><input type="checkbox" checked={row.result === 'fail'} onChange={() => toggleResult(idx, 'fail')} disabled={isReadOnly} /></td>
+                    <td className={TD}>{resultBadge(row.result)}</td>
+                    <td className={TD}>
+                      {row.inspector
+                        ? <span className="inline-flex px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-medium">{row.inspector}</span>
+                        : <span className="text-slate-300 text-xs">-</span>
+                      }
+                    </td>
+                    <td className={TDL}>
+                      <input value={row.note} onChange={e => setRow(idx, 'note', e.target.value)} disabled={isReadOnly}
+                        className="w-full text-xs border-none outline-none bg-transparent disabled:opacity-60"
+                        placeholder={row.result === 'fail' ? '조치 내용 필수' : ''} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          <div className="mb-4">
+            <div className="text-xs font-bold text-slate-700 mb-1">특이사항</div>
+            <textarea value={selected.specialNotes}
+              onChange={e => !isReadOnly && setSelected(prev => prev ? { ...prev, specialNotes: e.target.value } : prev)}
+              disabled={isReadOnly} rows={2}
+              className="w-full border border-slate-300 rounded px-2 py-1 text-xs disabled:opacity-60 resize-none"
+              placeholder="특이사항을 입력하세요" />
+          </div>
+
+          {/* 서명란 */}
+          <div className="flex gap-2 mt-3 justify-end">
+            <div className="border border-slate-400 text-center w-24">
+              <div className="bg-slate-100 text-xs font-bold py-0.5 border-b border-slate-400">작성자</div>
+              <div className="h-8 flex items-center justify-center text-xs text-slate-700">
+                {selected.createdBy || (isReadOnly ? '-' : currentUser?.name ?? '')}
+              </div>
+            </div>
+            <div className="border border-slate-400 text-center w-24">
+              <div className="bg-slate-100 text-xs font-bold py-0.5 border-b border-slate-400">관리자</div>
+              <div className="h-8 flex items-center justify-center text-xs text-slate-700">
+                {selected.confirmedBy
+                  ? <span className="text-emerald-700 font-bold">{selected.confirmedBy}</span>
+                  : <span className="text-slate-300">-</span>
+                }
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>}
     </div>
   );
 };
@@ -2975,8 +3930,10 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode; desc: string }[] 
   { id: 'ccp-heat',   label: 'CCP-B 가열·살균',    icon: <Scan size={14} />,          desc: '가열공정 온도·시간 모니터링' },
   { id: 'ccp-metal',  label: 'CCP-P 금속검출',     icon: <Scan size={14} />,          desc: 'Fe 2.0㎜ / Sus 2.5㎜ 불검출' },
   { id: 'incoming',   label: '입고검사일지',         icon: <ShoppingCart size={14} />,  desc: '원료·부자재 입고검사' },
-  { id: 'sanitation', label: '작업장 위생점검표',   icon: <ShieldAlert size={14} />,   desc: 'HACCP-PRP-001 · 작업장 위생 8개 항목 점검 (Firestore 저장)' },
-  { id: 'personal',   label: '개인위생점검표',      icon: <User size={14} />,           desc: 'HACCP-PRP-002 · 작업자 개인위생 점검 (1일 1회)' },
+  { id: 'sanitation',        label: '작업장 위생점검표',        icon: <ShieldAlert size={14} />,   desc: 'HACCP-PRP-001 · 작업장 위생 8개 항목 점검 (Firestore 저장)' },
+  { id: 'weekly-sanitation', label: '위생점검표(주간/월간)',    icon: <ClipboardList size={14} />, desc: '작업장 위생 점검표 — 주간 · 월간 주기 점검 (Firestore 저장)' },
+  { id: 'closing',           label: '마감 체크리스트',          icon: <CheckSquare size={14} />,   desc: '일별 마감 점검 — 오늘 날짜만 작성 가능 (Firestore 저장)' },
+  { id: 'personal',          label: '개인위생점검표',          icon: <User size={14} />,           desc: 'HACCP-PRP-002 · 작업자 개인위생 점검 (1일 1회)' },
 ];
 
 const HaccpChecklist: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean }> = ({ currentUser, isAdmin }) => {
@@ -3041,6 +3998,19 @@ const HaccpChecklist: React.FC<{ currentUser?: { id: string; name: string }; isA
           <div className="flex flex-col gap-4">
             <SanitationTemplateEditor />
             <SanitationForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={isAdmin ?? false} />
+          </div>
+        )}
+        {activeTab === 'weekly-sanitation' && (
+          <div className="flex flex-col gap-4">
+            {isAdmin && <PeriodicSanitationTemplateEditor cycle="weekly" />}
+            {isAdmin && <PeriodicSanitationTemplateEditor cycle="monthly" />}
+            <PeriodicSanitationForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={isAdmin ?? false} />
+          </div>
+        )}
+        {activeTab === 'closing' && (
+          <div className="flex flex-col gap-4">
+            {isAdmin && <ClosingChecklistTemplateEditor />}
+            <ClosingChecklistForm currentUser={currentUser} isAdmin={isAdmin} canConfirm={isAdmin ?? false} />
           </div>
         )}
         {activeTab === 'personal'    && (
