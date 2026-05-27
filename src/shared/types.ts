@@ -28,7 +28,7 @@ export interface OrderItem {
   boxQuantity?: number;   // 박스 수 (isBoxUnit이 true일 때)
   unitsPerBox?: number;   // 박스당 낱개 수 (주문 시점 기준)
   boxType?: string;       // 박스 종류 표시명 (예: "2번박스")
-  boxSubId?: string;      // 부자재 박스 ID (재고 차감 대상)
+  boxSubId?: string;      // 박스 품목 ID (재고 차감 + 표시용)
   displaySize?: string;   // 서류 규격란 표기 (통합 품목용, 예: "1kg", "20kg")
 }
 
@@ -147,7 +147,7 @@ export interface Order {
 export interface BoxConfig {
   boxType: string;     // 박스 종류 표시명 (예: "2번박스", "3번박스")
   unitsPerBox: number; // 박스당 낱개 수 (예: 12, 10)
-  boxSubId?: string;   // 부자재 박스 ID (재고 차감 대상)
+  boxSubId?: string;   // 박스 품목 ID
 }
 
 export interface ClientBoxConfig {
@@ -438,6 +438,27 @@ export interface PaymentRecord {
   note?: string;
 }
 
+// ── 발주 (purchaseOrders 컬렉션) ─────────────────────────────────────────────
+// 매입 플로우: pending → invoiced → received
+// 매출 issuedStatements.orderId 와 대칭: issuedStatements.purchaseOrderId
+export interface PurchaseOrder {
+  id: string;
+  productId: string;
+  productName: string;
+  supplierId?: string;
+  supplierName?: string;
+  quantity: number;
+  unit?: string;
+  isBox?: boolean;
+  price?: number;
+  status: 'pending' | 'invoiced' | 'received';
+  confirmedByUser?: boolean;
+  linkedStatementId?: string;  // 연결된 issuedStatement ID
+  createdAt: string;
+  invoicedAt?: string;
+  receivedAt?: string;
+}
+
 export interface CompanyInfo {
   name: string;           // 상호
   ceoName: string;        // 대표자명
@@ -491,6 +512,7 @@ export interface PendingReceiptItem {
 
 export interface PendingReceipt {
   id: string;
+  supplierId?: string;      // 거래처 ID (partner)
   supplierName: string;
   items: PendingReceiptItem[];
   totalAmount?: number;
@@ -611,7 +633,7 @@ export interface ProductionSalesLog {
   createdAt: string;    // ISO timestamp
   createdBy: string;    // 작성자
   orderCount: number;   // 처리 주문 수
-  productionRows: { groupLabel: string; 용량: string; spec?: string; 수량: number; 소비기한: string; 비고: string }[];
+  productionRows: { groupLabel: string; spec: string; 수량: number; 소비기한: string; 비고: string }[];
   orderSummaries: { customerName: string; items: { name: string; qty: number }[] }[];
 }
 // ─────────────────────────────────────────────────────────────────────────────

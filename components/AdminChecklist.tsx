@@ -7,6 +7,7 @@ import {
   X, Loader2, Check, Plus,
 } from 'lucide-react';
 import { LeaveRequest, AdjustmentRequest, Employee, ReturnRequest, ReturnItem, PendingReceipt, IssuedStatement, IssuedStatementItem, Client, PendingStatementEdit, Item, PartnerItem } from '../types';
+import { PurchaseOrder } from '../src/shared/types';
 import { addItem, updateItem } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 
@@ -25,7 +26,7 @@ interface AdminChecklistProps {
   pendingStatementEdits?: PendingStatementEdit[];
   onApproveStatementEdit?: (_edit: PendingStatementEdit) => void;
   onRejectStatementEdit?: (_id: string) => void;
-  orderRequests?: { id: string; quantity: number; isBox?: boolean }[];
+  orderRequests?: PurchaseOrder[];
   items?: Item[];
   productSuppliers?: PartnerItem[];
   onCreatePurchaseStatement?: (_data: { supplierId: string; supplierName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }> }) => void;

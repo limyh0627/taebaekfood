@@ -29,7 +29,7 @@ import {
   ClipboardPaste,
   Layers
 } from 'lucide-react';
-import { Order, OrderStatus, Client, OrderSource, OrderItem, Product, OrderPallet, DeliveryBox, ProductClient, PalletStock, ShippingRule } from '../types';
+import { Order, OrderStatus, Client, OrderSource, OrderItem, Product, OrderPallet, DeliveryBox, PalletStock, ShippingRule, ItemBom } from '../types';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 
@@ -62,9 +62,9 @@ interface OrdersListProps {
   orders: Order[];
   clients: Client[];
   products: Product[];
-  productClients?: ProductClient[];
   palletStocks?: PalletStock[];
   shippingRules?: ShippingRule[];
+  itemBoms?: ItemBom[];
   onUpdateStatus: (id: string, status: OrderStatus) => void;
   onUpdateDeliveryDate: (id: string, date: string) => void;
   onUpdateReceivedDate?: (id: string, date: string) => void;
@@ -89,9 +89,9 @@ interface OrderCardProps {
   order: Order;
   clients: Client[];
   products: Product[];
-  productClients?: ProductClient[];
   palletStocks?: PalletStock[];
   shippingRules?: ShippingRule[];
+  itemBoms?: ItemBom[];
   editingOrderId: string | null;
   setEditingOrderId: (id: string | null) => void;
   showAddProductSelect: string | null;
@@ -148,7 +148,7 @@ export const OrderCard = memo<OrderCardProps>(({
   editingOrderId, setEditingOrderId,
   showAddProductSelect, setShowAddProductSelect,
   onUpdateItems, onUpdateDeliveryDate, onUpdateStatus, onUpdatePallets,
-  onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1, isHighlighted = false, highlightOrderId, productClients, palletStocks = [], shippingRules = [],
+  onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1, isHighlighted = false, highlightOrderId, palletStocks = [], shippingRules = [], itemBoms = [],
 }) => {
   const highlighted = isHighlighted || highlightOrderId === order.id;
   const isEditing = editingOrderId === order.id;
@@ -330,8 +330,8 @@ export const OrderCard = memo<OrderCardProps>(({
               };
               const editProductInfo = products.find(p => p.id === item.productId);
               const isOil = isSecondary(editProductInfo?.category);
-              const pc = productClients?.find(c => c.productId === item.productId && c.clientId === order.clientId);
-              const qtyPerBox = item.unitsPerBox ?? pc?.qtyPerBox;
+              const rule = shippingRules.find(r => r.item_id === item.productId && r.partner_id === order.clientId);
+              const qtyPerBox = item.unitsPerBox ?? rule?.qty_per_box;
               const toggleBoxUnit = () => {
                 const newItems = [...order.items];
                 if (item.isBoxUnit) {
@@ -410,39 +410,28 @@ export const OrderCard = memo<OrderCardProps>(({
                     <span className={`ml-1.5 px-1 py-0.5 rounded text-[8px] font-black shrink-0 ${isItemChecked ? 'text-emerald-700 bg-emerald-100' : 'text-indigo-600 bg-indigo-50'}`}>
                       {item.isBoxUnit && item.boxQuantity
                         ? item.unitsPerBox
-                          ? `${item.boxType ? item.boxType + ' ' : ''}${item.boxQuantity}박스(${item.quantity}개)`
+                          ? `${item.boxQuantity}박스(${item.quantity}개)`
                           : `${item.boxQuantity}박스`
                         : `${item.quantity}${productInfo?.unit || '개'}`}
                     </span>
                   </div>
                   {(() => {
-                    const ruleSubs: { id: string; name: string }[] = [];
-                    // 1. item.boxSubId 직접 저장된 박스 (AddOrderModal에서 설정)
-                    if (item.boxSubId) {
-                      const b = products.find(p => p.id === item.boxSubId);
-                      if (b) ruleSubs.push({ id: b.id, name: b.name });
-                    }
-                    // 2. shipping_rule 기반 박스/테이프 (boxSubId 없는 경우 fallback)
-                    if (ruleSubs.length === 0) {
-                      const rule = shippingRules.find(r => r.item_id === item.productId && r.partner_id === order.clientId);
-                      if (rule?.box_item_id) { const b = products.find(p => p.id === rule.box_item_id); if (b) ruleSubs.push({ id: b.id, name: b.name }); }
-                      if (rule?.tape_item_id) { const t = products.find(p => p.id === rule.tape_item_id); if (t) ruleSubs.push({ id: t.id, name: t.name }); }
-                    }
-                    // 3. ProductClient 기반 부자재 (boxTypeId, tapeTypeId) — 구버전 폴백
-                    const ruleSubIds = new Set(ruleSubs.map(s => s.id));
-                    const pc = productClients?.find(c => c.productId === item.productId && c.clientId === order.clientId);
-                    const pcSubs: { id: string; name: string }[] = [];
-                    if (pc?.boxTypeId && !ruleSubIds.has(pc.boxTypeId)) { const b = products.find(p => p.id === pc.boxTypeId); if (b) pcSubs.push({ id: b.id, name: b.name }); }
-                    if (pc?.tapeTypeId && !ruleSubIds.has(pc.tapeTypeId)) { const t = products.find(p => p.id === pc.tapeTypeId); if (t) pcSubs.push({ id: t.id, name: t.name }); }
-                    // 4. product.submaterials 구버전 폴백
-                    const allKnownIds = new Set([...ruleSubs, ...pcSubs].map(s => s.id));
-                    const legacySubs = (productInfo?.submaterials ?? []).filter(sm => {
-                      if (allKnownIds.has(sm.id)) return false;
-                      const fullSub = products.find(p => p.id === sm.id);
-                      const cat = normalizeCategory(fullSub?.category || sm.category || '');
-                      return ['마개', '테이프', '박스', '용기', '라벨', 'submaterial'].includes(cat);
-                    }).map(sm => ({ id: sm.id, name: sm.name }));
-                    const allSubs = [...ruleSubs, ...pcSubs, ...legacySubs];
+                    // 1. item_bom 기반 구성품 (submaterial 카테고리만)
+                    const bomSubs = itemBoms
+                      .filter(b => b.parent_id === item.productId)
+                      .map(b => products.find(p => p.id === b.child_id))
+                      .filter((p): p is Product => !!p && p.category === 'submaterial');
+                    const bomSubIds = new Set(bomSubs.map(p => p.id));
+
+                    // 2. 박스/테이프: item.boxSubId 스냅샷 우선, 없으면 shipping_rule 조회
+                    const packagingSubs: { id: string; name: string }[] = [];
+                    const rule = shippingRules.find(r => r.item_id === item.productId && r.partner_id === order.clientId);
+                    const boxId = item.boxSubId || rule?.box_item_id;
+                    const tapeId = rule?.tape_item_id;
+                    if (boxId) { const b = products.find(p => p.id === boxId); if (b && !bomSubIds.has(b.id)) packagingSubs.push({ id: b.id, name: b.name }); }
+                    if (tapeId) { const t = products.find(p => p.id === tapeId); if (t && !bomSubIds.has(t.id)) packagingSubs.push({ id: t.id, name: t.name }); }
+
+                    const allSubs = [...bomSubs.map(p => ({ id: p.id, name: p.name })), ...packagingSubs];
                     if (allSubs.length === 0) return null;
                     return (
                       <div className={`mt-0.5 ${gridCols >= 2 ? 'grid grid-cols-2 md:flex md:flex-wrap md:items-center gap-x-1 gap-y-0.5 md:gap-1 md:pl-[20px]' : 'flex flex-wrap items-center gap-x-1 gap-y-0.5 pl-[20px]'}`}>
@@ -866,7 +855,7 @@ const deliveryExtraConfigs = [
 const historyConfig = { id: 'history_col', label: '예전 주문 이력', icon: History, color: 'bg-slate-700', bgColor: 'bg-slate-50/80', borderColor: 'border-slate-200', textColor: 'text-slate-700', statusFilter: [OrderStatus.DELIVERED], targetStatus: undefined };
 
 const OrdersList: React.FC<OrdersListProps> = ({
-  title, subtitle, orders, clients, products, productClients, palletStocks, shippingRules = [],
+  title, subtitle, orders, clients, products, palletStocks, shippingRules = [], itemBoms = [],
   onUpdateStatus, onUpdateDeliveryDate, onUpdatePallets,
   onUpdateItems, onUpdateDeliveryBoxes,
   onToggleInvoicePrinted, onToggleItemChecked,
@@ -981,7 +970,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
   // OrderCard/OrderSourceGroup에 공통으로 넘길 props
   const cardSharedProps = {
-    clients, products, productClients, palletStocks, shippingRules,
+    clients, products, palletStocks, shippingRules, itemBoms,
     editingOrderId, setEditingOrderId,
     showAddProductSelect, setShowAddProductSelect,
     onUpdateItems, onUpdateDeliveryDate, onUpdateStatus, onUpdatePallets,

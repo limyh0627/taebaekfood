@@ -6,7 +6,7 @@ import {
   AppNotification, IssuedStatement,
   ItemFormula, ItemBom, ShippingRule, CompanyInfo, PendingReceipt, QrMapping, ReturnRequest,
   AccountCode, AccountGroup, FixedCostTemplate, InventorySnapshot, ProductionSalesLog,
-  PendingStatementEdit,
+  PendingStatementEdit, PurchaseOrder,
 } from '../types';
 import { subscribeToCollection, subscribeToDocument } from '../services/firebaseService';
 import { authReady } from '../firebase';
@@ -29,8 +29,7 @@ export interface AppData {
   qrMappings: QrMapping[];
   // 주문
   orders: Order[];
-  confirmedOrders: { id: string; quantity: number }[];
-  orderRequests: { id: string; quantity: number; confirmedByUser?: boolean }[];
+  purchaseOrders: PurchaseOrder[];
   // 품목 (items 컬렉션 통합 — 완제품+부자재)
   items: Item[];
   products: Item[];        // items 중 완제품 (backward compat)
@@ -76,8 +75,7 @@ export interface AppData {
 
 export function useAppData(): AppData {
   const [orders, setOrders] = useState<Order[]>([]);
-  const [confirmedOrders, setConfirmedOrders] = useState<{ id: string; quantity: number }[]>([]);
-  const [orderRequests, setOrderRequests] = useState<{ id: string; quantity: number; confirmedByUser?: boolean }[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [partnerItems, setPartnerItems] = useState<PartnerItem[]>([]);
   const [partners, setPartners] = useState<Partner[]>([]);
@@ -130,8 +128,7 @@ export function useAppData(): AppData {
         subscribeToCollection<Employee>('employees', setEmployees),
         subscribeToCollection<LeaveRequest>('leaveRequests', setLeaveRequests),
         subscribeToCollection<AdjustmentRequest>('adjustmentRequests', setAdjustmentRequests),
-        subscribeToCollection<{ id: string; quantity: number }>('confirmedOrders', setConfirmedOrders),
-        subscribeToCollection<{ id: string; quantity: number; confirmedByUser?: boolean }>('orderRequests', setOrderRequests),
+        subscribeToCollection<PurchaseOrder>('purchaseOrders', setPurchaseOrders),
         subscribeToCollection<Order>('orders', (data) => { setOrders(data); markLoaded('orders'); }),
         subscribeToCollection<Item>('items', (data) => { setItems(data); markLoaded('items'); }),
         subscribeToCollection<Partner>('partners', setPartners),
@@ -185,7 +182,7 @@ export function useAppData(): AppData {
   );
 
   return {
-    orders, confirmedOrders, orderRequests,
+    orders, purchaseOrders,
     items, products, submaterials,
     partnerItems, productClients, productSuppliers,
     partners, clients: partners,

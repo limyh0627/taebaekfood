@@ -564,6 +564,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     try {
       const totalAmount = receiptItems.reduce((s, i) => s + i.quantity * (i.unitPrice ?? 0), 0);
       await addItem('pendingReceipts', {
+        supplierId: client.id,
         supplierName: client.name,
         items: receiptItems,
         totalAmount,

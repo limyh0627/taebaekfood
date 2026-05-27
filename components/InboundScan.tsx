@@ -8,13 +8,13 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../src/shared/firebase';
 import { addItem, updateItem } from '../src/shared/services/firebaseService';
-import { Product, PendingReceipt, QrMapping } from '../src/shared/types';
+import { Product, PendingReceipt, QrMapping, PurchaseOrder } from '../src/shared/types';
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY ?? '';
 
 interface InboundScanProps {
   submaterials: Product[];
-  confirmedOrders: { id: string; quantity: number }[];
+  confirmedOrders: PurchaseOrder[];
   qrMappings: QrMapping[];
   currentUser: { id: string; name: string };
   onUpdateSubmaterial: (id: string, data: Partial<Product>) => void;

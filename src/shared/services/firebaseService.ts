@@ -160,6 +160,30 @@ export const setProductClients = async (productId: string, clientIds: string[]) 
   await batch.commit();
 };
 
+// partner_item 컬렉션에 품목-거래처(Direction='in') 매핑 저장
+export const setProductSuppliers = async (productId: string, supplierIds: string[]) => {
+  const { getDocs, query: q, collection: col, where } = await import('firebase/firestore');
+
+  const existing = await getDocs(q(col(db, 'partner_item'), where('Item_ID', '==', productId), where('Direction', '==', 'in')));
+  const existingMap = new Map(existing.docs.map(d => [d.data().Partner_ID as string, d.ref]));
+
+  const batch = writeBatch(db);
+
+  existingMap.forEach((ref, supplierId) => {
+    if (!supplierIds.includes(supplierId)) batch.delete(ref);
+  });
+
+  for (const supplierId of supplierIds) {
+    if (!existingMap.has(supplierId)) {
+      const id = `${productId}_${supplierId}_in`;
+      const ref = doc(db, 'partner_item', id);
+      batch.set(ref, { id, Item_ID: productId, Partner_ID: supplierId, Direction: 'in' });
+    }
+  }
+
+  await batch.commit();
+};
+
 export const syncInitialData = async (collectionName: string, initialData: any[]) => {
   // This is a helper to seed data if needed
   for (const item of initialData) {

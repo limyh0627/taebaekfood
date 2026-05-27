@@ -27,7 +27,6 @@ import {
   Truck,
   Users,
   Layers,
-  Database as DatabaseIcon,
   Download,
   Bell,
   BellRing,
@@ -73,7 +72,6 @@ import LeaveManager from '../../../components/LeaveManager';
 import ConfirmationItems from '../../../components/ConfirmationItems';
 import ProductModal from '../../../components/AddProductModal';
 import NoticeBoard from '../../../components/NoticeBoard';
-import DatabaseView from '../../../components/DatabaseView';
 import ItemManager from '../../../components/ItemManager';
 import ItemPriceManager from '../../../components/ItemPriceManager';
 import PriceManager from '../../../components/PriceManager';
@@ -98,22 +96,11 @@ const ProfitAnalysis = React.lazy(() => import('../../../components/ProfitAnalys
 import { db } from '../../shared/firebase';
 import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg } from '../../constants/formula';
 import {
-  INITIAL_NOTICES,
-  INITIAL_BOARD_POSTS,
-  INITIAL_FILES,
-  INITIAL_PALLETS,
-  INITIAL_EMPLOYEES,
-  INITIAL_PRODUCTS,
-  INITIAL_CLIENTS,
-  INITIAL_SUPPLIERS,
-  INITIAL_ACCOUNT_GROUPS,
-  INITIAL_ACCOUNT_CODES,
-} from '../../config/company';
-import {
   addItem,
   updateItem,
   deleteItem,
   setProductClients,
+  setProductSuppliers,
   setDocument,
 } from '../../shared/services/firebaseService';
 import type { AppData } from '../../shared/hooks/useAppData';
@@ -148,8 +135,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
   onExitPreview,
 }) => {
   const {
-    orders, confirmedOrders, orderRequests,
-    products, submaterials, productClients, productSuppliers,
+    orders, purchaseOrders,
+    products, submaterials, partnerItems, productClients, productSuppliers,
     clients, employees, leaveRequests,
     pallets, palletTransactions, adjustmentRequests,
     noticePosts, chatRooms, chatMessages,
@@ -233,6 +220,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
     })),
     [products, submaterials, productClientMap]
   );
+
+  const pendingPurchaseOrders = useMemo(() => purchaseOrders.filter(po => po.status === 'pending'), [purchaseOrders]);
+  const invoicedPurchaseOrders = useMemo(() => purchaseOrders.filter(po => po.status === 'invoiced'), [purchaseOrders]);
 
   const lowStockCount = allProducts.filter(p =>
     p.category !== 'product' && p.minStock > 0 && p.stock < p.minStock
@@ -445,109 +435,84 @@ const AdminApp: React.FC<AdminAppProps> = ({
     cleanupDuplicates();
   }, []);
 
-  // 초기 데이터 시딩 (데이터베이스가 비어있을 때만 실행 권장)
-  const seedDatabase = async () => {
-    const collections = [
-      { name: 'notices', data: INITIAL_NOTICES },
-      { name: 'boardPosts', data: INITIAL_BOARD_POSTS },
-      { name: 'files', data: INITIAL_FILES },
-      { name: 'pallets', data: INITIAL_PALLETS },
-      { name: 'employees', data: INITIAL_EMPLOYEES },
-      { name: 'items', data: INITIAL_PRODUCTS.filter((p: Product) => p.category === 'product') },
-      { name: 'items', data: INITIAL_PRODUCTS.filter((p: Product) => p.category !== 'product') },
-      { name: 'partners', data: INITIAL_CLIENTS },
-      { name: 'suppliers', data: INITIAL_SUPPLIERS },
-      { name: 'accountGroups', data: INITIAL_ACCOUNT_GROUPS },
-      { name: 'accountCodes', data: INITIAL_ACCOUNT_CODES },
-    ];
-
-    for (const col of collections) {
-      const snapshot = await getDocs(collection(db, col.name));
-      if (snapshot.empty) {
-        const batch = writeBatch(db);
-        for (const item of col.data) {
-          const { id, ...rest } = item as any;
-          const docRef = id ? doc(db, col.name, id) : doc(collection(db, col.name));
-          batch.set(docRef, rest);
-          
-          // 서브컬렉션 데이터는 더 이상 사용하지 않고 메인 문서의 submaterials 필드(배열)로 관리합니다.
-        }
-        await batch.commit();
-        console.log(`${col.name} seeded`);
-      }
-    }
-    alert('기본 데이터가 Firebase에 성공적으로 저장되었습니다.');
-  };
-
-
-
-  // --- 카테고리 구조 마이그레이션 (goods / submaterial) ---
-  const categoryMigrationDone = useRef(false);
-  useEffect(() => {
-    if (allProducts.length === 0 || categoryMigrationDone.current) return;
-    categoryMigrationDone.current = true;
-    const SUBMATERIAL_MAP: Record<string, string> = {
-      'cap': '마개', 'container': '용기', 'box': '박스', 'tape': '테이프', 'label': '라벨',
-      '마개': '마개', '용기': '용기', '박스': '박스', '테이프': '테이프', '라벨': '라벨',
-    };
-    const GOODS_CATS = ['향미유', '고춧가루'];
-    allProducts.forEach(p => {
-      const cat = (p as any).category as string;
-      if (SUBMATERIAL_MAP[cat] !== undefined) {
-        updateItem('items', p.id, { category: 'submaterial', subtype: SUBMATERIAL_MAP[cat] });
-      } else if (
-        GOODS_CATS.includes(cat) ||
-        p.subtype === '향미유' || p.subtype === '고춧가루'
-      ) {
-        if (cat !== 'goods') updateItem('items', p.id, { category: 'goods' });
-      }
-    });
-  }, [allProducts]);
-
-  // --- minStock 초기값 10 migration ---
-  const minStockMigrationDone = useRef(false);
-  useEffect(() => {
-    if (allProducts.length === 0 || minStockMigrationDone.current) return;
-    minStockMigrationDone.current = true;
-    allProducts.forEach(p => {
-      if (!p.minStock || p.minStock === 0) {
-        updateItem(getProductCollection(p.category), p.id, { minStock: 10 });
-      }
-    });
-  }, [allProducts]);
-
-  // --- 재고 관리 핸들러 (Firebase 기반) ---
+  // --- 재고 관리 핸들러 (purchaseOrders 기반) ---
   const handleAddOrderRequest = async (id: string, quantity: number, isBox?: boolean) => {
-    const exists = orderRequests.find(r => r.id === id);
+    const exists = purchaseOrders.find(po => po.id === id);
+    const product = allProducts.find(p => p.id === id);
+    const ps = productSuppliers.find(s => s.Item_ID === id || (s as any).productId === id);
+    const supplierId = ps?.Partner_ID || (ps as any)?.supplierId;
+    const supplierName = supplierId ? clients.find(c => c.id === supplierId)?.name : undefined;
     if (exists) {
-      await updateItem('orderRequests', id, { quantity, confirmedByUser: true, isBox: isBox ?? false });
+      await updateItem('purchaseOrders', id, { quantity, confirmedByUser: true, isBox: isBox ?? false, ...(supplierId ? { supplierId, supplierName } : {}) });
     } else {
-      await addItem('orderRequests', { id, quantity, confirmedByUser: true, isBox: isBox ?? false });
+      await addItem('purchaseOrders', {
+        id, productId: id, productName: product?.name ?? '',
+        quantity, isBox: isBox ?? false, status: 'pending',
+        confirmedByUser: true, createdAt: new Date().toISOString(),
+        ...(supplierId ? { supplierId, supplierName } : {}),
+      });
     }
   };
 
   const handleRemoveOrderRequest = async (id: string) => {
-    await deleteItem('orderRequests', id);
+    await deleteItem('purchaseOrders', id);
   };
 
   const handleUpdateOrderRequestQty = async (id: string, quantity: number) => {
-    await updateItem('orderRequests', id, { quantity });
+    await updateItem('purchaseOrders', id, { quantity });
   };
 
   const handleToggleConfirmRequestQty = async (id: string) => {
-    const req = orderRequests.find(r => r.id === id);
-    if (req) await updateItem('orderRequests', id, { confirmedByUser: !req.confirmedByUser });
+    const po = purchaseOrders.find(po => po.id === id);
+    if (po) await updateItem('purchaseOrders', id, { confirmedByUser: !po.confirmedByUser });
   };
 
+  // 장바구니 확정 → 발주예정(pending) 생성
   const handleBulkAddConfirmedOrders = async (items: { id: string, quantity: number, isBox?: boolean }[]) => {
     for (const item of items) {
-      await addItem('confirmedOrders', item);
-      await deleteItem('orderRequests', item.id);
+      const existing = purchaseOrders.find(po => po.id === item.id);
+      const product = allProducts.find(p => p.id === item.id);
+      if (existing) {
+        await updateItem('purchaseOrders', item.id, {
+          quantity: item.quantity, isBox: item.isBox ?? false, status: 'pending',
+        });
+      } else {
+        await addItem('purchaseOrders', {
+          id: item.id, productId: item.id, productName: product?.name ?? '',
+          quantity: item.quantity, isBox: item.isBox ?? false,
+          status: 'pending', createdAt: new Date().toISOString(),
+        });
+      }
+    }
+  };
+
+  // 발주예정 → 입고대기(invoiced)로 직접 확정 (전표 없이)
+  const handleConfirmPendingToInvoiced = async (items: { id: string, quantity: number, isBox?: boolean }[]) => {
+    for (const item of items) {
+      const existing = purchaseOrders.find(po => po.id === item.id);
+      const ps = productSuppliers.find(s => s.Item_ID === item.id || (s as any).productId === item.id);
+      const supplierId = ps?.Partner_ID || (ps as any)?.supplierId;
+      const supplierName = supplierId ? clients.find(c => c.id === supplierId)?.name : undefined;
+      if (existing) {
+        await updateItem('purchaseOrders', item.id, {
+          status: 'invoiced', invoicedAt: new Date().toISOString(),
+          ...(supplierId && !existing.supplierId ? { supplierId, supplierName } : {}),
+        });
+      } else {
+        const product = allProducts.find(p => p.id === item.id);
+        await addItem('purchaseOrders', {
+          id: item.id, productId: item.id, productName: product?.name ?? '',
+          quantity: item.quantity, isBox: item.isBox ?? false,
+          status: 'invoiced', createdAt: new Date().toISOString(),
+          invoicedAt: new Date().toISOString(),
+          ...(supplierId ? { supplierId, supplierName } : {}),
+        });
+      }
     }
   };
 
   const handleUpdateOrderRequestIsBox = async (id: string, isBox: boolean) => {
-    await updateItem('orderRequests', id, { isBox });
+    await updateItem('purchaseOrders', id, { isBox });
   };
 
   // 출고 완료 시 완제품 품목별로 생산 실적 자동 기록
@@ -638,9 +603,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
           ? Math.ceil(item.quantity / item.unitsPerBox)
           : null;
 
-      // 박스 차감: productClients에서 boxTypeId 참조 (주문 시점 boxSubId 폴백)
-      const pc = productClients.find(p => p.productId === product.id && p.clientId === order.clientId);
-      const boxSubId = item.boxSubId || pc?.boxTypeId;
+      // 박스 차감: shipping_rule 기반 박스 ID (주문 시점 boxSubId 폴백)
+      const shippingRule = shippingRules.find(r => r.item_id === product.id && r.partner_id === order.clientId);
+      const boxSubId = item.boxSubId || shippingRule?.box_item_id;
       const boxSubToDeduct = boxSubId ? submaterials.find(sm => sm.id === boxSubId) : null;
 
       if (boxSubToDeduct) {
@@ -650,21 +615,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
         }
       }
 
-      // 테이프 차감: 50박스당 1개, 같은 테이프 종류끼리 박스 수 누적
-      if (pc?.tapeTypeId) {
-        const tapeItem = submaterials.find(sm => sm.id === pc.tapeTypeId);
-        const effectiveBoxes = boxesUsed ?? (boxSubToDeduct ? Math.ceil(item.quantity / (boxSubToDeduct.boxSize || 1)) : null);
-        if (tapeItem && effectiveBoxes && effectiveBoxes > 0) {
-          const accumulated = (tapeItem as any).accumulatedBoxes ?? 0;
-          const newTotal = accumulated + effectiveBoxes;
-          const tapesToDeduct = Math.floor(newTotal / 50);
-          const remainder = newTotal % 50;
-          await updateItem('items', tapeItem.id, {
-            accumulatedBoxes: remainder,
-            ...(tapesToDeduct > 0 ? { stock: tapeItem.stock - tapesToDeduct } : {}),
-          });
-        }
-      }
 
       // 박스·테이프 외 부자재 차감 (낱개 수량 기준)
       for (const s of product.submaterials) {
@@ -706,21 +656,21 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   const handleClearAllConfirmedOrders = async () => {
-    for (const conf of confirmedOrders) {
-      await deleteItem('confirmedOrders', conf.id);
+    for (const po of invoicedPurchaseOrders) {
+      await deleteItem('purchaseOrders', po.id);
     }
   };
 
   const handleFinishConfirmedOrder = async (id: string) => {
-    const conf = confirmedOrders.find(c => c.id === id);
-    if (!conf) return;
+    const po = purchaseOrders.find(po => po.id === id);
+    if (!po) return;
     const product = allProducts.find(p => p.id === id);
     if (product) {
       const collectionName = getProductCollection(product.category);
-      const addQty = product.subtype === '향미유' && (conf as any).isBox ? conf.quantity * 12 : conf.quantity;
+      const addQty = product.subtype === '향미유' && po.isBox ? po.quantity * 12 : po.quantity;
       await updateItem(collectionName, id, { stock: product.stock + addQty });
     }
-    await deleteItem('confirmedOrders', id);
+    await updateItem('purchaseOrders', id, { status: 'received', receivedAt: new Date().toISOString() });
   };
 
   const handleToggleItemChecked = (orderId: string, itemIdx: number, checkedBy?: string) => {
@@ -950,7 +900,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       <NavItem icon={Users} label="거래처 관리" active={currentView === 'partners'} onClick={() => handleNavClick('partners')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={ClipboardList} label="확인사항" active={currentView === 'admin-checklist'} onClick={() => handleNavClick('admin-checklist')} collapsed={isSidebarCollapsed} badge={adminPendingCount > 0 ? adminPendingCount : undefined} />
                       <NavItem icon={QrCode} label="QR 라벨 인쇄" active={false} onClick={() => setShowQrLabel(true)} collapsed={isSidebarCollapsed} />
-                      <NavItem icon={DatabaseIcon} label="데이터베이스" active={currentView === 'database'} onClick={() => handleNavClick('database')} collapsed={isSidebarCollapsed} />
                     </nav>
                   </div>
                   <div>
@@ -1035,7 +984,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 'profit-analysis': '손익 / 비용 분석', 'cost-management': '비용 관리', 'client-stats': '거래처통계', 'cash-flow': '현금흐름 분석',
                 'production': '생산 실적', 'admin-checklist': '확인사항',
                 'leave-portal': '연차 신청', 'confirmation-items': '확인사항',
-                'database': '데이터베이스', 'item-management': '품목 관리', 'item-price-management': '품목 관리',
+                'item-management': '품목 관리', 'item-price-management': '품목 관리',
                 'inbound-scan': '입고 스캔', 'client-portal': '거래처 포털',
                 'officetalk': '오피스톡', 'smartstore-analytics': '스마트스토어 분석',
                 'haccp-checklist': 'HACCP 체크리스트', 'return-management': '반품 관리',
@@ -1155,8 +1104,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
               orders={orders}
               clients={clients}
               products={allProducts}
-              productClients={productClients}
               shippingRules={shippingRules}
+              itemBoms={itemBoms}
               onDeleteOrder={(id) => {
                 const o = orders.find(x => x.id === id);
                 if (o?.status === OrderStatus.DELIVERED) { alert('예전 주문은 삭제할 수 없습니다.'); return; }
@@ -1209,21 +1158,21 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 await updateItem(getProductCollection(p.category), p.id, p);
               }}
               onAddProduct={(p) => addItem(getProductCollection(p.category), p)} 
-              orderRequests={orderRequests} 
-              confirmedOrders={confirmedOrders} 
-              onAddOrderRequest={handleAddOrderRequest} 
-              onRemoveOrderRequest={handleRemoveOrderRequest} 
+              orderRequests={pendingPurchaseOrders}
+              confirmedOrders={invoicedPurchaseOrders}
+              onAddOrderRequest={handleAddOrderRequest}
+              onRemoveOrderRequest={handleRemoveOrderRequest}
               onUpdateOrderRequestQty={handleUpdateOrderRequestQty}
               onUpdateOrderRequestIsBox={handleUpdateOrderRequestIsBox}
               onToggleConfirmRequestQty={handleToggleConfirmRequestQty}
-              onConfirmRequest={(id: string) => { const r = orderRequests.find(r => r.id === id); handleBulkAddConfirmedOrders([{ id, quantity: r?.quantity || 0, isBox: (r as any)?.isBox }]); }}
-              onConfirmRequests={(ids: string[]) => handleBulkAddConfirmedOrders(orderRequests.filter(r => ids.includes(r.id)).map(r => ({id: r.id, quantity: r.quantity, isBox: (r as any).isBox})))}
+              onConfirmRequest={(id: string) => { const r = pendingPurchaseOrders.find(r => r.id === id); handleConfirmPendingToInvoiced([{ id, quantity: r?.quantity || 0, isBox: r?.isBox }]); }}
+              onConfirmRequests={(ids: string[]) => handleConfirmPendingToInvoiced(pendingPurchaseOrders.filter(r => ids.includes(r.id)).map(r => ({id: r.id, quantity: r.quantity, isBox: r.isBox})))}
               onBulkAddConfirmedOrders={handleBulkAddConfirmedOrders}
-              onConfirmAllRequests={async () => { await handleBulkAddConfirmedOrders(orderRequests.map(r => ({id: r.id, quantity: r.quantity, isBox: (r as any).isBox}))); }}
+              onConfirmAllRequests={async () => { await handleConfirmPendingToInvoiced(pendingPurchaseOrders.map(r => ({id: r.id, quantity: r.quantity, isBox: r.isBox}))); }}
               onFinishConfirmedOrder={handleFinishConfirmedOrder}
               onFinishConfirmedOrders={(ids: string[]) => ids.forEach(handleFinishConfirmedOrder)}
-              onFinishAllConfirmedOrders={() => confirmedOrders.forEach(c => handleFinishConfirmedOrder(c.id))}
-              onUpdateConfirmedQty={(id: string, qty: number) => updateItem('confirmedOrders', id, { quantity: qty })}
+              onFinishAllConfirmedOrders={() => invoicedPurchaseOrders.forEach(c => handleFinishConfirmedOrder(c.id))}
+              onUpdateConfirmedQty={(id: string, qty: number) => updateItem('purchaseOrders', id, { quantity: qty })}
               onRemoveConfirmedOrder={handleRemoveConfirmedOrder}
               onClearAllConfirmedOrders={handleClearAllConfirmedOrders}
               onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
@@ -1247,6 +1196,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       const col = getProductCollection(product.category);
                       const addQty = item.isBoxUnit ? item.qty * (item.boxSize || 12) : item.qty;
                       await updateItem(col, product.id, { stock: product.stock + addQty });
+                      // purchaseOrder도 received 상태로 업데이트
+                      const po = purchaseOrders.find(po => po.productId === product.id && po.status === 'invoiced');
+                      if (po) await updateItem('purchaseOrders', po.id, { status: 'received', receivedAt: new Date().toISOString() });
                     }
                   }
                 }
@@ -1285,6 +1237,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               }}
               onDeleteRawMaterialEntry={(id) => deleteItem('rawMaterialLedger', id)}
               onUpdateSubmaterial={(id, data) => updateItem('items', id, data)}
+              pendingReceipts={pendingReceipts}
               inboundBadge={pendingReceipts.filter(r => r.status === 'pending_voucher').length}
               inboundContent={
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
@@ -1326,7 +1279,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {currentView === 'inbound-scan' && (
             <InboundScan
               submaterials={submaterials}
-              confirmedOrders={confirmedOrders}
+              confirmedOrders={invoicedPurchaseOrders}
               qrMappings={appData.qrMappings}
               currentUser={{ id: currentUser.id, name: currentUser.name }}
               onUpdateSubmaterial={(id, data) => updateItem('items', id, data)}
@@ -1393,36 +1346,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
             </div>
           )}
           {currentView === 'partners' && <ClientManager clients={clients} onUpdateClient={(c) => updateItem('partners', c.id, c)} onAddClient={(c) => addItem('partners', c)} onDeleteClient={(id) => deleteItem('partners', id)} />}
-          {currentView === 'database' && (
-            <div className="space-y-6">
-              <div className="bg-indigo-50 p-6 rounded-3xl border border-indigo-100 flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-bold text-indigo-900">Firebase 데이터 마이그레이션</h3>
-                  <p className="text-sm text-indigo-700">구글 시트 등에서 가져온 초기 데이터를 Firebase Firestore로 업로드합니다.</p>
-                </div>
-                <button 
-                  onClick={seedDatabase}
-                  className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg hover:bg-indigo-700 transition-all flex items-center space-x-2"
-                >
-                  <Download size={18} />
-                  <span>데이터 업로드 시작</span>
-                </button>
-              </div>
-              <DatabaseView onSync={async (data) => { 
-                // Clients sync
-                for (const c of data.clients) {
-                  await addItem('partners', c);
-                }
-                
-                // Products sync
-                for (const p of data.products) {
-                  const collectionName = getProductCollection(p.category);
-                  await addItem(collectionName, p);
-                }
-                alert('동기화가 완료되었습니다.');
-              }} />
-            </div>
-          )}
           {currentView === 'notice' && <NoticeBoard posts={noticePosts} onAddPost={(post) => addItem('notices', post)} />}
           {currentView === 'pallets' && (
             <PalletManager 
@@ -1484,7 +1407,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onRejectStatementEdit={async (id) => {
                 await updateItem('pendingStatementEdits', id, { status: 'rejected' });
               }}
-              orderRequests={orderRequests}
+              orderRequests={pendingPurchaseOrders}
               items={allProducts}
               productSuppliers={appData.productSuppliers}
               onCreatePurchaseStatement={(data) => {
@@ -1515,7 +1438,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             };
 
             // 우측: 완제품, (상호, 품목, 용량) 기준 그룹화
-            type RightRow = { 상호: string; 품목: string; 용량: string; spec?: string; 수량: number; 소비기한: string; 제조일자: string; orderItems: Array<{orderId: string; itemIdx: number}>; };
+            type RightRow = { 상호: string; 품목: string; spec: string; 수량: number; 소비기한: string; 제조일자: string; orderItems: Array<{orderId: string; itemIdx: number}>; };
             const rightRowsRaw = shippedOrders.flatMap(order => {
               const client = clients.find(c => c.id === order.clientId);
               const clientName = client?.name || order.customerName || '';
@@ -1530,7 +1453,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               rightRowsRaw.reduce((acc, row) => {
                 const key = `${row.상호}||${row.품목}||${row.용량}`;
                 if (!acc[key]) {
-                  acc[key] = { 상호: row.상호, 품목: row.품목, 용량: row.용량, spec: row.용량, 수량: row.수량, 소비기한: row.소비기한, 제조일자: row.제조일자, orderItems: [{ orderId: row.orderId, itemIdx: row.itemIdx }] };
+                  acc[key] = { 상호: row.상호, 품목: row.품목, spec: row.용량, 수량: row.수량, 소비기한: row.소비기한, 제조일자: row.제조일자, orderItems: [{ orderId: row.orderId, itemIdx: row.itemIdx }] };
                 } else {
                   acc[key].수량 += row.수량;
                   acc[key].orderItems.push({ orderId: row.orderId, itemIdx: row.itemIdx });
@@ -1660,14 +1583,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
             };
 
             // 좌측 rows 생성
-            const leftRows: { groupLabel: string; 용량: string; spec?: string; 수량: number; 소비기한: string; 비고: string }[] = [];  // spec = 용량 alias
+            const leftRows: { groupLabel: string; spec: string; 수량: number; 소비기한: string; 비고: string }[] = [];
             topTemplate.forEach(({ label, key, volumes }) => {
               volumes.forEach((vol, i) => {
                 const a = agg[`${key}||${vol}`] || { qty: 0, mfgDates: [], clients: [] };
                 const earliestMfg = a.mfgDates.length ? [...a.mfgDates].sort()[0] : '';
                 const expiryStr = earliestMfg ? calcExpiry(earliestMfg) : '';
                 const clientNote = a.clients.join(', ');
-                leftRows.push({ groupLabel: i === 0 ? label : '', 용량: vol, spec: vol, 수량: a.qty, 소비기한: expiryStr, 비고: clientNote });
+                leftRows.push({ groupLabel: i === 0 ? label : '', spec: vol, 수량: a.qty, 소비기한: expiryStr, 비고: clientNote });
               });
             });
 
@@ -1993,7 +1916,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                             const left = { horizontal: 'left' as const, vertical: 'middle' as const };
 
                             for (const cat of ALL_CATS) {
-                              type WRow = { 용량: string; spec: string; 수량: number; mfgDate: string };
+                              type WRow = { spec: string; 수량: number; mfgDate: string };
                               const dayMap: Record<number, WRow[]> = {};
                               orders
                                 .filter(o => [OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(o.status as OrderStatus))
@@ -2010,7 +1933,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                     if (!dayMap[day]) dayMap[day] = [];
                                     const existing = dayMap[day].find(r => r.spec === (p.spec || ''));
                                     if (existing) existing.수량 += item.quantity;
-                                    else dayMap[day].push({ 용량: p.spec || '', spec: p.spec || '', 수량: item.quantity, mfgDate: item.mfgDate || '' });
+                                    else dayMap[day].push({ spec: p.spec || '', 수량: item.quantity, mfgDate: item.mfgDate || '' });
                                   });
                                 });
                               const ws = wb.addWorksheet(cat);
@@ -2663,7 +2586,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   const [wy, wm] = productionWorkMonth.split('-').map(Number);
                   const daysInMonth = new Date(wy, wm, 0).getDate();
                   // 해당 카테고리 + 해당 월의 데이터 수집
-                  type WRow = { 용량: string; spec: string; 수량: number; mfgDate: string };
+                  type WRow = { spec: string; 수량: number; mfgDate: string };
                   const dayMap: Record<number, WRow[]> = {};
                   orders
                     .filter(o => [OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(o.status as OrderStatus))
@@ -2680,7 +2603,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         if (!dayMap[day]) dayMap[day] = [];
                         const existing = dayMap[day].find(r => r.spec === (p.spec || ''));
                         if (existing) existing.수량 += item.quantity;
-                        else dayMap[day].push({ 용량: p.spec || '', spec: p.spec || '', 수량: item.quantity, mfgDate: item.mfgDate || '' });
+                        else dayMap[day].push({ spec: p.spec || '', 수량: item.quantity, mfgDate: item.mfgDate || '' });
                       });
                     });
                   let totalInput = 0;
@@ -3008,10 +2931,28 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onDeleteIssuedStatement={(id) => deleteItem('issuedStatements', id)}
               pendingInvoice={pendingInvoice}
               onClearPendingInvoice={() => setPendingInvoice(null)}
-              confirmedOrders={confirmedOrders}
-              orderRequests={orderRequests}
-              onAddConfirmedOrder={(item) => addItem('confirmedOrders', item)}
-              onRemoveConfirmedOrder={(id) => deleteItem('confirmedOrders', id)}
+              confirmedOrders={invoicedPurchaseOrders}
+              orderRequests={pendingPurchaseOrders}
+              onAddConfirmedOrder={async (item) => {
+                const existing = purchaseOrders.find(po => po.id === item.id);
+                if (existing) {
+                  await updateItem('purchaseOrders', item.id, {
+                    status: 'invoiced', quantity: item.quantity,
+                    isBox: item.isBox ?? false, invoicedAt: new Date().toISOString(),
+                    ...(item.supplierId ? { supplierId: item.supplierId, supplierName: item.supplierName } : {}),
+                  });
+                } else {
+                  const product = allProducts.find(p => p.id === item.id);
+                  await addItem('purchaseOrders', {
+                    id: item.id, productId: item.id, productName: product?.name ?? '',
+                    quantity: item.quantity, isBox: item.isBox ?? false,
+                    supplierId: item.supplierId, supplierName: item.supplierName,
+                    status: 'invoiced', createdAt: new Date().toISOString(),
+                    invoicedAt: new Date().toISOString(),
+                  });
+                }
+              }}
+              onRemoveConfirmedOrder={(id) => deleteItem('purchaseOrders', id)}
               onRemoveOrderRequest={handleRemoveOrderRequest}
               companyInfo={companyInfo}
               onSaveCompanyInfo={(info) => setDocument('settings', 'company', info)}
@@ -3173,8 +3114,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     // 하지만 여기서는 "입고 예정" 리스트에 있는 것을 처리하는 것이므로 stock 반영은 안 함.
                   }
                   
-                  // 처리 완료 후 입고 예정 리스트(confirmedOrders)에서 제거
-                  await deleteItem('confirmedOrders', req.productId);
+                  // 처리 완료 후 입고 예정 리스트(purchaseOrders)에서 제거
+                  await deleteItem('purchaseOrders', req.productId);
                 }
                 await updateItem('adjustmentRequests', req.id, { status: 'processed', processedAt: new Date().toISOString() });
                 alert('처리가 완료되었습니다.');
@@ -3233,6 +3174,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     const current = productClients.filter(pc => pc.Item_ID === productId).map(pc => pc.Partner_ID);
                     await setProductClients(productId, current.filter(id => id !== clientId));
                   }}
+                  onLinkSupplier={async (productId, supplierId) => {
+                    const current = partnerItems.filter(pi => pi.Item_ID === productId && pi.Direction === 'in').map(pi => pi.Partner_ID);
+                    if (!current.includes(supplierId)) {
+                      await setProductSuppliers(productId, [...current, supplierId]);
+                    }
+                  }}
+                  onUnlinkSupplier={async (productId, supplierId) => {
+                    const current = partnerItems.filter(pi => pi.Item_ID === productId && pi.Direction === 'in').map(pi => pi.Partner_ID);
+                    await setProductSuppliers(productId, current.filter(id => id !== supplierId));
+                  }}
                   productClients={productClients}
                   productSuppliers={productSuppliers}
                   onMergeProducts={async (keepId, deleteIds) => {
@@ -3241,21 +3192,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     const batch = wb(fireDb);
 
                     for (const delId of deleteIds) {
-                      const snap = await getDocs(q(col(fireDb, 'partner_item'), where('productId', '==', delId)));
+                      const snap = await getDocs(q(col(fireDb, 'partner_item'), where('Item_ID', '==', delId)));
                       for (const docSnap of snap.docs) {
                         const data = docSnap.data();
-                        const newRef = d(fireDb, 'partner_item', `${keepId}_${data.clientId}`);
-                        const existing = productClients.find(pc => pc.productId === keepId && pc.clientId === data.clientId);
+                        const dir = data.Direction ?? 'out';
+                        const newId = `${keepId}_${data.Partner_ID}_${dir}`;
+                        const newRef = d(fireDb, 'partner_item', newId);
+                        const existing = partnerItems.find(pi => pi.Item_ID === keepId && pi.Partner_ID === data.Partner_ID && pi.Direction === dir);
                         if (!existing) {
-                          batch.set(newRef, { ...data, productId: keepId, id: `${keepId}_${data.clientId}` });
+                          batch.set(newRef, { ...data, Item_ID: keepId, id: newId });
                         }
                         batch.delete(docSnap.ref);
-                      }
-                      const delProduct = allProducts.find(p => p.id === delId);
-                      if (delProduct?.clientIds?.length) {
-                        const keepProduct = allProducts.find(p => p.id === keepId);
-                        const mergedIds = [...new Set([...(keepProduct?.clientIds ?? []), ...delProduct.clientIds])];
-                        batch.update(d(fireDb, 'items', keepId), { clientIds: mergedIds });
                       }
                       batch.delete(d(fireDb, 'items', delId));
                     }

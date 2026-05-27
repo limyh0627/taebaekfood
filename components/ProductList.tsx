@@ -25,7 +25,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { Product, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, ProductSupplier, PartnerItem } from '../types';
-import { PendingReceipt } from '../src/shared/types';
+import { PendingReceipt, PurchaseOrder } from '../src/shared/types';
 import AddProductModal from './AddProductModal';
 import ConfirmModal from './ConfirmModal';
 import InboundManager from './InboundManager';
@@ -47,17 +47,10 @@ const inferSubtype = (item: { subtype?: string; name: string; category: string }
   return normCat(item.category);
 };
 
-interface OrderRequest {
-  id: string;
-  quantity: number;
-  confirmedByUser?: boolean;
-  isBox?: boolean;
-}
-
 interface ProductListProps {
   products: Product[];
-  orderRequests: OrderRequest[];
-  confirmedOrders: { id: string; quantity: number; isBox?: boolean }[];
+  orderRequests: PurchaseOrder[];
+  confirmedOrders: PurchaseOrder[];
   onUpdateProduct: (product: Product) => void;
   onAddProduct: (product: Product) => void;
   onAddOrderRequest: (id: string, qty: number, isBox?: boolean) => void;
@@ -263,8 +256,8 @@ const ProductList: React.FC<ProductListProps> = ({
   const [stocktakeValues, setStocktakeValues] = useState<Record<string, string>>({});
   const [stocktakeUnitQtys, setStocktakeUnitQtys] = useState<Record<string, string>>({}); // key: `${material}_${size}_${tag}`
   const [stocktakeDate, setStocktakeDate] = useState(() => new Date().toISOString().slice(0, 10));
-  // cart는 Firebase orderRequests를 그대로 사용 (localStorage 제거)
-  const cart = orderRequests.map(r => ({ id: r.id, qty: r.quantity, isBox: r.isBox ?? false }));
+  // cart는 로컬 상태 (Firebase 쓰기는 확정 버튼 시에만)
+  const [cart, setCart] = useState<{ id: string; qty: number; isBox: boolean }[]>([]);
   const [showCartPanel, setShowCartPanel] = useState(false);
   const [showCartModal, setShowCartModal] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
@@ -272,14 +265,16 @@ const ProductList: React.FC<ProductListProps> = ({
   const [showConfirmedModal, setShowConfirmedModal] = useState(false);
 
   const addToCart = (productId: string, defaultQty: number, isBox?: boolean) => {
-    if (!orderRequests.some(r => r.id === productId)) {
-      onAddOrderRequest(productId, defaultQty, isBox ?? false);
+    if (!cart.some(c => c.id === productId)) {
+      setCart(prev => [...prev, { id: productId, qty: defaultQty, isBox: isBox ?? false }]);
     }
   };
-  const removeFromCart = (id: string) => onRemoveOrderRequest(id);
-  const updateCartQty = (id: string, qty: number) => onUpdateOrderRequestQty(id, Math.max(1, qty));
+  const removeFromCart = (id: string) => setCart(prev => prev.filter(c => c.id !== id));
+  const updateCartQty = (id: string, qty: number) => setCart(prev => prev.map(c => c.id === id ? { ...c, qty: Math.max(1, qty) } : c));
+  const updateCartIsBox = (id: string, isBox: boolean) => setCart(prev => prev.map(c => c.id === id ? { ...c, isBox } : c));
   const submitCart = () => {
-    onBulkAddConfirmedOrders(orderRequests.map(r => ({ id: r.id, quantity: r.quantity, isBox: r.isBox })));
+    onBulkAddConfirmedOrders(cart.map(c => ({ id: c.id, quantity: c.qty, isBox: c.isBox })));
+    setCart([]);
     setShowCartPanel(false);
   };
 
@@ -293,15 +288,15 @@ const ProductList: React.FC<ProductListProps> = ({
 
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    orderRequests.forEach(req => {
-      const product = products.find(p => p.id === req.id);
+    cart.forEach(c => {
+      const product = products.find(p => p.id === c.id);
       if (product) {
         const nc = normCat(product.category);
         counts[nc] = (counts[nc] || 0) + 1;
       }
     });
     return counts;
-  }, [orderRequests, products]);
+  }, [cart, products]);
 
   const [adjustmentModal, setAdjustmentModal] = useState<{
     isOpen: boolean;
@@ -745,37 +740,42 @@ const ProductList: React.FC<ProductListProps> = ({
                   );
                 })()}
 
-                {/* ── 입고대기 (전표 미작성) ── */}
+                {/* ── 입고대기 (발주카드 invoiced) ── */}
                 <div>
                   <div className="flex items-center gap-2 mb-3">
                     <FileText size={14} className="text-amber-500" />
                     <span className="text-xs font-black text-slate-700 uppercase tracking-wider">입고대기</span>
-                    {pending.length > 0 && <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-full">{pending.length}건 전표 미작성</span>}
+                    {confirmedOrders.length > 0 && <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-full">{confirmedOrders.length}건</span>}
                   </div>
-                  {pending.length === 0 ? (
-                    <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 text-sm">전표 미작성 입고 없음</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {pending.map(r => (
-                        <div key={r.id} className="bg-white rounded-2xl border border-amber-100 p-4 shadow-sm space-y-2">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <p className="font-black text-slate-800 text-sm">{r.supplierName}</p>
-                              <p className="text-xs text-slate-400">{r.registeredAt.slice(0, 10)} · {r.registeredBy ?? ''}</p>
-                            </div>
-                            <span className="px-2 py-1 rounded-lg text-[10px] font-black bg-amber-50 text-amber-700 shrink-0">전표 미작성</span>
+                  {confirmedOrders.length === 0 ? (
+                    <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 text-sm">입고 대기 없음</div>
+                  ) : (() => {
+                    const groups = new Map<string, { supplierName: string; orders: typeof confirmedOrders }>();
+                    confirmedOrders.forEach(po => {
+                      const key = po.supplierName || '거래처 미지정';
+                      if (!groups.has(key)) groups.set(key, { supplierName: key, orders: [] });
+                      groups.get(key)!.orders.push(po);
+                    });
+                    return (
+                      <div className="space-y-2">
+                        {Array.from(groups.values()).map(group => (
+                          <div key={group.supplierName} className="bg-white rounded-2xl border border-amber-100 p-4 shadow-sm space-y-2">
+                            <p className="font-black text-slate-800 text-sm">{group.supplierName}</p>
+                            {group.orders.map(po => {
+                              const product = productMap.get(po.productId);
+                              const unit = po.isBox ? '박스' : (po.unit || product?.unit || '');
+                              return (
+                                <div key={po.id} className="flex justify-between text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-1.5">
+                                  <span>{po.productName}</span>
+                                  <span className="font-bold">{po.quantity.toLocaleString()} {unit}</span>
+                                </div>
+                              );
+                            })}
                           </div>
-                          {r.items.map((item, i) => (
-                            <div key={i} className="flex justify-between text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-1.5">
-                              <span>{item.name}</span>
-                              <span className="font-bold">{item.quantity.toLocaleString()} {item.unit}</span>
-                            </div>
-                          ))}
-                          {r.note && <p className="text-xs text-slate-500 bg-amber-50 border border-amber-100 rounded-lg px-3 py-1.5">비고: {r.note}</p>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* ── 입고이력 ── */}
@@ -928,10 +928,10 @@ const ProductList: React.FC<ProductListProps> = ({
                       <td className="px-4 py-3">
                         <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${(() => {
                           const sub = inferSubtype(product);
-                          if (normCat(product.category) === '완제품') return 'bg-indigo-50 text-indigo-600';
                           if (sub === '향미유' || sub === '참기름' || sub === '들기름') return 'bg-purple-50 text-purple-600';
                           if (sub === '고춧가루') return 'bg-red-50 text-red-500';
                           if (sub === '참깨' || sub === '들깨' || sub === '검정깨') return 'bg-amber-50 text-amber-700';
+                          if (normCat(product.category) === '완제품') return 'bg-indigo-50 text-indigo-600';
                           if (normCat(product.category) === '상품') return 'bg-orange-50 text-orange-500';
                           if (sub === '용기') return 'bg-sky-50 text-sky-600';
                           if (sub === '라벨') return 'bg-amber-50 text-amber-600';
@@ -942,37 +942,46 @@ const ProductList: React.FC<ProductListProps> = ({
                         })()}`}>{inferSubtype(product)}</span>
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell" onClick={e => e.stopPropagation()}>
-                        {(normCat(product.category) === '완제품' || normCat(product.category) === '상품' || normCat(product.category) === '향미유') && product.clientIds && product.clientIds.length > 0 ? (() => {
-                          const isExp = expandedClientRowId === product.id;
-                          const sorted = priorityClientId && product.clientIds.includes(priorityClientId)
-                            ? [priorityClientId, ...product.clientIds.filter(id => id !== priorityClientId)]
-                            : product.clientIds;
-                          const shown = isExp ? sorted : sorted.slice(0, 1);
-                          return (
-                            <div className="flex flex-wrap gap-1 items-center">
-                              {shown.map(cid => {
-                                const cIdx = clients.findIndex(c => c.id === cid);
-                                const cname = cIdx >= 0 ? clients[cIdx].name : null;
-                                if (!cname) return null;
-                                return <span key={cid} className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${CLIENT_BADGE_COLORS[cIdx % CLIENT_BADGE_COLORS.length]}`}>{cname}</span>;
-                              })}
-                              {!isExp && product.clientIds.length > 1 && (
-                                <button onClick={() => setExpandedClientRowId(product.id)} className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 transition-colors">+{product.clientIds.length - 1}</button>
-                              )}
-                              {isExp && (
-                                <button onClick={() => setExpandedClientRowId(null)} className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 transition-colors">접기</button>
-                              )}
-                            </div>
-                          );
-                        })() : <span className="text-[10px] text-slate-200">-</span>}
+                        {normCat(product.category) === '완제품' ? (
+                          // 완제품: 매출처 (Direction='out', clientIds 기반)
+                          product.clientIds && product.clientIds.length > 0 ? (() => {
+                            const isExp = expandedClientRowId === product.id;
+                            const sorted = priorityClientId && product.clientIds.includes(priorityClientId)
+                              ? [priorityClientId, ...product.clientIds.filter(id => id !== priorityClientId)]
+                              : product.clientIds;
+                            const shown = isExp ? sorted : sorted.slice(0, 1);
+                            return (
+                              <div className="flex flex-wrap gap-1 items-center">
+                                {shown.map(cid => {
+                                  const cIdx = clients.findIndex(c => c.id === cid);
+                                  const cname = cIdx >= 0 ? clients[cIdx].name : null;
+                                  if (!cname) return null;
+                                  return <span key={cid} className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${CLIENT_BADGE_COLORS[cIdx % CLIENT_BADGE_COLORS.length]}`}>{cname}</span>;
+                                })}
+                                {!isExp && product.clientIds.length > 1 && (
+                                  <button onClick={() => setExpandedClientRowId(product.id)} className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 transition-colors">+{product.clientIds.length - 1}</button>
+                                )}
+                                {isExp && (
+                                  <button onClick={() => setExpandedClientRowId(null)} className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 transition-colors">접기</button>
+                                )}
+                              </div>
+                            );
+                          })() : <span className="text-[10px] text-slate-200">-</span>
+                        ) : (
+                          // 상품/부자재: 매입처 (Direction='in', psMap 기반)
+                          (() => {
+                            const supplierId = psMap.get(product.id);
+                            const sname = supplierId ? supplierMap.get(supplierId)?.name : null;
+                            return sname
+                              ? <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">{sname}</span>
+                              : <span className="text-[10px] text-slate-200">-</span>;
+                          })()
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-bold text-slate-800">{product.name}</span>
                           {isCritical && <AlertCircle size={12} className="text-rose-500 shrink-0" />}
-                          <button onClick={e => { e.stopPropagation(); onEditProduct(product); }} className="text-slate-200 hover:text-indigo-500 transition-all shrink-0 hidden sm:inline-flex">
-                            <Edit size={12} />
-                          </button>
                         </div>
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell">
@@ -1333,7 +1342,7 @@ const ProductList: React.FC<ProductListProps> = ({
                       <span className="font-black text-sm text-slate-800">발주 예정 목록</span>
                       <span className="text-[10px] font-black bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">{cart.length}건</span>
                     </div>
-                    <button onClick={() => orderRequests.forEach(r => onRemoveOrderRequest(r.id))} className="text-[10px] font-bold text-slate-400 hover:text-rose-500 transition-all">전체 비우기</button>
+                    <button onClick={() => setCart([])} className="text-[10px] font-bold text-slate-400 hover:text-rose-500 transition-all">전체 비우기</button>
                   </div>
                   <div className="divide-y divide-slate-50">
                     {cart
@@ -2527,8 +2536,8 @@ const ProductList: React.FC<ProductListProps> = ({
                       <p className="text-[10px] text-slate-400 font-medium">현재 재고 {product.subtype === '향미유' ? fmtHamiyou(product.stock) : `${product.stock}${product.unit}`}</p>
                       {product.subtype === '향미유' && (
                         <div className="flex rounded-lg border border-indigo-200 overflow-hidden text-[9px] font-black mt-1 w-fit">
-                          <button onClick={() => onUpdateOrderRequestIsBox?.(item.id, false)} className={`px-2 py-0.5 transition-all ${!item.isBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>낱개</button>
-                          <button onClick={() => onUpdateOrderRequestIsBox?.(item.id, true)} className={`px-2 py-0.5 transition-all ${item.isBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>BOX</button>
+                          <button onClick={() => updateCartIsBox(item.id, false)} className={`px-2 py-0.5 transition-all ${!item.isBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>낱개</button>
+                          <button onClick={() => updateCartIsBox(item.id, true)} className={`px-2 py-0.5 transition-all ${item.isBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>BOX</button>
                         </div>
                       )}
                     </div>
@@ -2576,7 +2585,7 @@ const ProductList: React.FC<ProductListProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => orderRequests.forEach(r => onRemoveOrderRequest(r.id))}
+                onClick={() => setCart([])}
                 className="w-full py-2.5 text-xs font-bold text-slate-400 hover:text-slate-600 transition-all"
               >전체 비우기</button>
             </div>

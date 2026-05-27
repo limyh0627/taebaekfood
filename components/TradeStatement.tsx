@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
 import { Order, Product, Client, ProductClient, ProductSupplier, OrderStatus, IssuedStatement, CompanyInfo, PaymentRecord, AccountCode } from '../types';
+import { PurchaseOrder } from '../src/shared/types';
 import PageHeader from './PageHeader';
 
 interface TradeStatementProps {
@@ -30,9 +31,9 @@ interface TradeStatementProps {
   onDeleteIssuedStatement?: (id: string) => void;
   pendingInvoice?: { supplierId: string; supplierName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }> } | null;
   onClearPendingInvoice?: () => void;
-  confirmedOrders?: { id: string; quantity: number }[];
-  orderRequests?: { id: string; quantity: number; confirmedByUser?: boolean }[];
-  onAddConfirmedOrder?: (item: { id: string; quantity: number }) => void;
+  confirmedOrders?: PurchaseOrder[];
+  orderRequests?: PurchaseOrder[];
+  onAddConfirmedOrder?: (item: { id: string; quantity: number; isBox?: boolean; supplierId?: string; supplierName?: string }) => void;
   onRemoveConfirmedOrder?: (id: string) => void;
   onRemoveOrderRequest?: (id: string) => void;
   companyInfo?: CompanyInfo | null;
@@ -68,7 +69,7 @@ function buildSupplierGroups<T extends { id: string }>(
   const map = new Map<string, { supplierName: string; items: { product: Product; item: T }[] }>();
   for (const item of orders) {
     const product = allProducts.find(p => p.id === item.id);
-    const sid = product ? psMap.get(product.id) : undefined;
+    const sid = product ? ((item as any).supplierId || psMap.get(product.id)) : undefined;
     if (!sid) continue;
     const sName = clients.find(c => c.id === sid)?.name ?? sid;
     if (!map.has(sid)) map.set(sid, { supplierName: sName, items: [] });
@@ -382,10 +383,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setActiveSearchRow(null);
   };
 
-  // ── 매입전표에 이미 사용된 품목명 집합 ──
-  const issuedPurchaseNames = useMemo(() => {
+
+  // ── 매입전표 발행된 발주 품목 ID 집합 (발행완료/미발행 뱃지) ──
+  const issuedPurchaseOrderIds = useMemo(() => {
     const s = new Set<string>();
-    issuedStatements.filter(st => st.type === '매입').forEach(st => st.items.forEach(i => s.add(i.name)));
+    issuedStatements
+      .filter(st => st.type === '매입')
+      .forEach(st => ((st as any).purchaseOrderIds ?? (st as any).confirmedProductIds ?? []).forEach((id: string) => s.add(id)));
     return s;
   }, [issuedStatements]);
 
@@ -626,6 +630,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         supply: i.supply, tax: i.tax, total: i.total, isTaxExempt: i.isTaxExempt,
         isBoxUnit: i.isBoxUnit, boxSize: i.boxSize, accountCode: i.accountCode || undefined,
       })),
+      // 매입전표: 발주된 품목 ID 목록 (purchaseOrders 연결용)
+      ...(stmtType === '매입' ? {
+        purchaseOrderIds: lineItems
+          .map(i => allProducts.find(p => p.name === i.name))
+          .filter(Boolean)
+          .map(p => p!.id),
+      } : {}),
     };
     onAddIssuedStatement?.(stmt);
     // 매출전표 발행 시 사용된 단가를 ProductClient에 자동 저장
@@ -686,27 +697,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         }
       }
     }
-    // 매입전표 발행 시 입고대기(confirmedOrders)에 있는 품목 자동 제거 (전표가 입고 추적 담당)
-    if (stmtType === '매입' && onRemoveConfirmedOrder) {
+    // 매입전표 발행 시 발주예정(pending) → 입고대기(invoiced)로 상태 전환
+    if (stmtType === '매입' && onAddConfirmedOrder) {
       for (const item of lineItems) {
         const product = allProducts.find(p => p.name === item.name);
         if (product) {
-          const existing = confirmedOrders.find(c => c.id === product.id);
-          if (existing) {
-            onRemoveConfirmedOrder(existing.id);
-          }
-        }
-      }
-    }
-    // 매입전표 발행 시 발주예정(orderRequests)에 있는 품목 자동 제거
-    if (stmtType === '매입' && onRemoveOrderRequest) {
-      for (const item of lineItems) {
-        const product = allProducts.find(p => p.name === item.name);
-        if (product) {
-          const existing = orderRequests.find(r => r.id === product.id);
-          if (existing) {
-            onRemoveOrderRequest(existing.id);
-          }
+          const existing = orderRequests?.find(r => r.id === product.id);
+          onAddConfirmedOrder({
+            id: product.id,
+            quantity: existing?.quantity ?? item.qty,
+            isBox: existing?.isBox,
+            supplierId: selectedClientId,
+            supplierName: selectedClient?.name,
+          });
         }
       }
     }
@@ -2587,19 +2590,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     </div>
                   )}
                   {createMode==='매입' && (
-                    <div className="ml-auto flex items-center gap-2">
-                      {selectedConfirmedIds.length > 0 && (
-                        <button
-                          onClick={loadSelectedToManual}
-                          className="px-3 py-1.5 rounded-lg text-xs font-black bg-indigo-600 text-white hover:bg-indigo-700 transition-all">
-                          전표 작성 ({selectedConfirmedIds.length}건)
+                    <>
+                      <span className="text-xs text-slate-400">
+                        {(confirmedBySupplier.find(s=>s.supplierId===selectedClientId)?.items.length??0) + (orderRequestsBySupplier.find(s=>s.supplierId===selectedClientId)?.items.length??0)}건
+                      </span>
+                      <div className="ml-auto flex items-center gap-2">
+                        <button onClick={()=>setManualMode(true)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-black bg-slate-700 text-white hover:bg-slate-800 transition-all">
+                          직접 입력
                         </button>
-                      )}
-                      <button onClick={()=>setManualMode(true)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-black bg-slate-700 text-white hover:bg-slate-800 transition-all">
-                        직접 입력
-                      </button>
-                    </div>
+                      </div>
+                    </>
                   )}
                 </div>
 
@@ -2653,8 +2654,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 {createMode==='매입' && (()=>{
                   const supplierItems=confirmedBySupplier.find(s=>s.supplierId===selectedClientId);
                   const reqItems=orderRequestsBySupplier.find(s=>s.supplierId===selectedClientId);
-                  const hasConfirmed=supplierItems&&supplierItems.items.length>0;
-                  const hasRequests=reqItems&&reqItems.items.length>0;
+                  const confirmedItems=supplierItems?.items??[];
+                  const requestItems=reqItems?.items??[];
+                  const hasConfirmed=confirmedItems.length>0;
+                  const hasRequests=requestItems.length>0;
                   if(!hasConfirmed&&!hasRequests) return (
                     <div className="flex flex-col items-center justify-center flex-1 py-12 text-slate-300">
                       <ClipboardList size={36} strokeWidth={1.5} className="mb-2"/>
@@ -2662,101 +2665,79 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       <p className="text-xs text-slate-300 mt-1">직접 입력으로 전표를 작성하세요</p>
                     </div>
                   );
+                  const loadItem = (product: Product, qty: number, isBox: boolean) => {
+                    const ps = productSuppliers.find(s=>(s.Item_ID===product.id||s.productId===product.id)&&(s.Partner_ID===selectedClientId||s.supplierId===selectedClientId));
+                    return { name: product.name, spec: product.spec||product.unit||'', qty: String(qty), price: ps?.Standard_Price?String(ps.Standard_Price):(ps?.price?String(ps.price):''), isTaxExempt: ps?.taxType==='면세', isBoxUnit: isBox, boxSize: isBox?12:undefined };
+                  };
+                  const loadAll = (items: {product: Product; qty: number; isBox: boolean}[]) => {
+                    setManualItems([...items.map(({product,qty,isBox})=>loadItem(product,qty,isBox)), {name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);
+                    setManualMode(true);
+                  };
                   return (
                     <div className="divide-y divide-slate-100">
                       {hasConfirmed && <>
-                        <div className="px-5 py-2 bg-emerald-50 flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={supplierItems!.items.every(({product})=>selectedConfirmedIds.includes(product.id))}
-                              ref={el=>{if(el){const some=supplierItems!.items.some(({product})=>selectedConfirmedIds.includes(product.id));el.indeterminate=some&&!supplierItems!.items.every(({product})=>selectedConfirmedIds.includes(product.id));}}}
-                              onChange={e=>{
-                                const ids=supplierItems!.items.map(({product})=>product.id);
-                                setSelectedConfirmedIds(prev=>e.target.checked?[...new Set([...prev,...ids])]:prev.filter(id=>!ids.includes(id)));
-                              }}
-                              className="w-3.5 h-3.5 accent-emerald-600 cursor-pointer"
-                            />
-                            <span className="text-[11px] font-black text-emerald-700">발주확정 ({supplierItems!.items.length}품목)</span>
-                          </div>
+                        <div className="px-5 py-2 bg-emerald-50 flex items-center justify-between sticky top-0 z-10">
+                          <span className="text-[11px] font-black text-emerald-700">발주확정 ({confirmedItems.length}품목)</span>
+                          {confirmedItems.length > 1 && (
+                            <button onClick={()=>loadAll(confirmedItems.map(({product,co})=>({product,qty:co.quantity,isBox:product.category==='향미유'&&!!(co as any).isBox})))}
+                              className="flex items-center gap-1 text-[10px] font-black text-emerald-700 hover:text-emerald-900 transition-colors">
+                              전체 불러오기<ChevronRight size={10}/>
+                            </button>
+                          )}
                         </div>
-                        {supplierItems!.items.map(({product,co})=>{
-                          const issued=issuedPurchaseNames.has(product.name);
-                          const checked=selectedConfirmedIds.includes(product.id);
+                        {confirmedItems.map(({product,co})=>{
+                          const issued=issuedPurchaseOrderIds.has(product.id);
+                          const isBox=product.category==='향미유'&&!!(co as any).isBox;
                           return (
-                            <label key={product.id}
-                              className={`w-full flex items-center gap-3 px-5 py-3 text-xs cursor-pointer transition-colors ${checked?'bg-emerald-50/60':'hover:bg-slate-50'}`}>
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={e=>{
-                                  setSelectedConfirmedIds(prev=>e.target.checked?[...prev,product.id]:prev.filter(id=>id!==product.id));
-                                }}
-                                className="w-4 h-4 accent-indigo-600 shrink-0"
-                              />
+                            <button key={product.id} onClick={()=>{setManualItems([loadItem(product,co.quantity,isBox),{name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);setManualMode(true);}}
+                              className={`w-full flex items-center gap-3 text-left px-5 py-3 text-xs transition-all ${issued?'bg-emerald-50 hover:bg-emerald-100':'hover:bg-pink-50'}`}>
                               <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                                 <span className="font-black text-slate-800">{product.name}</span>
                                 {product.spec&&<span className="text-slate-400">{product.spec}</span>}
                               </div>
-                              <span className="text-slate-600 font-bold">
-                                {product.category === '향미유' && (co as any).isBox
-                                  ? `${co.quantity}BOX(${co.quantity*12}개)`
-                                  : `${co.quantity}${product.unit||'개'}`}
+                              <span className="text-slate-600 font-bold shrink-0">
+                                {isBox ? `${co.quantity}BOX(${co.quantity*12}개)` : `${co.quantity}${product.unit||'개'}`}
                               </span>
                               {issued
                                 ? <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">발행완료</span>
                                 : <span className="text-[10px] font-black text-pink-500 bg-pink-100 px-1.5 py-0.5 rounded-full">미발행</span>}
-                            </label>
+                              <ChevronRight size={14} className="text-slate-300 shrink-0"/>
+                            </button>
                           );
                         })}
                       </>}
                       {hasRequests && <>
-                        <div className="px-5 py-2 bg-indigo-50 flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={reqItems!.items.every(({product})=>selectedConfirmedIds.includes(product.id))}
-                              ref={el=>{if(el){const some=reqItems!.items.some(({product})=>selectedConfirmedIds.includes(product.id));el.indeterminate=some&&!reqItems!.items.every(({product})=>selectedConfirmedIds.includes(product.id));}}}
-                              onChange={e=>{
-                                const ids=reqItems!.items.map(({product})=>product.id);
-                                setSelectedConfirmedIds(prev=>e.target.checked?[...new Set([...prev,...ids])]:prev.filter(id=>!ids.includes(id)));
-                              }}
-                              className="w-3.5 h-3.5 accent-indigo-600 cursor-pointer"
-                            />
-                            <span className="text-[11px] font-black text-indigo-600">발주예정 ({reqItems!.items.length}품목)</span>
-                          </div>
+                        <div className="px-5 py-2 bg-indigo-50 flex items-center justify-between sticky top-0 z-10">
+                          <span className="text-[11px] font-black text-indigo-600">발주예정 ({requestItems.length}품목)</span>
+                          {requestItems.length > 1 && (
+                            <button onClick={()=>loadAll(requestItems.map(({product,req})=>({product,qty:req.quantity,isBox:product.category==='향미유'&&!!(req as any).isBox})))}
+                              className="flex items-center gap-1 text-[10px] font-black text-indigo-600 hover:text-indigo-800 transition-colors">
+                              전체 불러오기<ChevronRight size={10}/>
+                            </button>
+                          )}
                         </div>
-                        {reqItems!.items.map(({product,req})=>{
-                          const issued=issuedPurchaseNames.has(product.name);
-                          const ps=productSuppliers.find(s=>s.productId===product.id&&s.supplierId===selectedClientId);
-                          const checked=selectedConfirmedIds.includes(product.id);
+                        {requestItems.map(({product,req})=>{
+                          const issued=issuedPurchaseOrderIds.has(product.id);
+                          const isBox=product.category==='향미유'&&!!(req as any).isBox;
+                          const ps=productSuppliers.find(s=>(s.Item_ID===product.id||s.productId===product.id)&&(s.Partner_ID===selectedClientId||s.supplierId===selectedClientId));
                           return (
-                            <label key={product.id}
-                              className={`w-full flex items-center gap-3 px-5 py-3 text-xs cursor-pointer transition-colors ${checked?'bg-indigo-50/60':'hover:bg-slate-50'}`}>
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={e=>{
-                                  setSelectedConfirmedIds(prev=>e.target.checked?[...prev,product.id]:prev.filter(id=>id!==product.id));
-                                }}
-                                className="w-4 h-4 accent-indigo-600 shrink-0"
-                              />
+                            <button key={product.id} onClick={()=>{setManualItems([loadItem(product,req.quantity,isBox),{name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);setManualMode(true);}}
+                              className={`w-full flex items-center gap-3 text-left px-5 py-3 text-xs transition-all ${issued?'bg-emerald-50 hover:bg-emerald-100':'hover:bg-pink-50'}`}>
                               <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                                 <span className="font-black text-slate-800">{product.name}</span>
                                 {product.spec&&<span className="text-slate-400">{product.spec}</span>}
                               </div>
                               <div className="flex flex-col items-end gap-0.5 shrink-0">
                                 <span className="text-slate-600 font-bold">
-                                  {product.category === '향미유' && (req as any).isBox
-                                    ? `${req.quantity}BOX(${req.quantity*12}개)`
-                                    : `${req.quantity}${product.unit||'개'}`}
+                                  {isBox ? `${req.quantity}BOX(${req.quantity*12}개)` : `${req.quantity}${product.unit||'개'}`}
                                 </span>
                                 {ps?.price ? <span className="text-[10px] text-slate-400">{ps.price.toLocaleString()}원</span> : <span className="text-[10px] text-amber-400">단가미등록</span>}
                               </div>
                               {issued
                                 ? <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">발행완료</span>
-                                : <span className="text-[10px] font-black text-indigo-400 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded-full">예정</span>}
-                            </label>
+                                : <span className="text-[10px] font-black text-pink-500 bg-pink-100 px-1.5 py-0.5 rounded-full">미발행</span>}
+                              <ChevronRight size={14} className="text-slate-300 shrink-0"/>
+                            </button>
                           );
                         })}
                       </>}
@@ -2796,96 +2777,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               </div>
             )}
 
-            {/* ── 발주확정 + 발주예정 목록 (매입·거래처 미선택) ── */}
-            {createMode==='매입' && !selectedClientId && (confirmedBySupplier.length > 0 || orderRequests.length > 0) && (
-              <div className="flex-shrink-0 px-5 py-3 border-b border-slate-100 bg-slate-50 space-y-4">
-                {/* 발주확정 — 거래처 버튼 방식 유지 */}
-                {confirmedBySupplier.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">발주확정 ({confirmedOrders.length})</div>
-                    <div className="flex flex-wrap gap-2">
-                      {confirmedBySupplier.map(({supplierId,supplierName,items})=>{
-                        const issuedCount = items.filter(({product}) => issuedPurchaseNames.has(product.name)).length;
-                        return (
-                          <button key={supplierId}
-                            onClick={()=>{
-                              setSelectedClientId(supplierId);
-                              const rows = items.map(({product,co})=>{
-                                const isBox = product.category==='향미유'&&(co as any).isBox;
-                                return {name:product.name,spec:product.spec||product.unit||'',qty:String(co.quantity),price:'',isTaxExempt:false,isBoxUnit:isBox,boxSize:isBox?12:undefined};
-                              });
-                              setManualItems([...rows,{name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);
-                              setManualMode(true);
-                            }}
-                            className="flex items-center gap-2 px-3 py-2 bg-white border border-emerald-200 rounded-xl text-xs font-black text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition-all">
-                            <span>{supplierName}</span>
-                            <span className="text-slate-400">{items.length}품목</span>
-                            {issuedCount > 0 && <span className="text-[10px] font-black text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">{issuedCount}발행</span>}
-                            <ChevronRight size={11}/>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-                {/* 발주예정 — 거래처별 카드 + 품목 개별 추가 */}
-                {orderRequests.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">발주예정 ({orderRequests.length})</div>
-                    <div className="space-y-2">
-                      {orderRequestsAllGroups.map(({supplierId,supplierName,items})=>(
-                        <div key={supplierId||'unmapped'} className="bg-white border border-indigo-100 rounded-xl overflow-hidden">
-                          {/* 거래처 헤더 */}
-                          <div className="flex items-center justify-between px-3 py-2 bg-indigo-50/60 border-b border-indigo-100">
-                            <span className="text-[11px] font-black text-indigo-700">{supplierName}</span>
-                            {supplierId && (
-                              <button
-                                onClick={()=>{
-                                  setSelectedClientId(supplierId);
-                                  const rows = items.map(({product,req})=>{
-                                    const ps = productSuppliers.find(s=>(s.productId===product.id||s.Item_ID===product.id)&&(s.supplierId===supplierId||s.Partner_ID===supplierId));
-                                    const isBox = product.category==='향미유'&&(req as any).isBox;
-                                    return {name:product.name,spec:product.spec||product.unit||'',qty:String(req.quantity),price:ps?.price?String(ps.price):'',isTaxExempt:ps?.taxType==='면세',isBoxUnit:isBox,boxSize:isBox?12:undefined};
-                                  });
-                                  setManualItems([...rows,{name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);
-                                  setManualMode(true);
-                                }}
-                                className="flex items-center gap-1 text-[10px] font-black text-indigo-600 hover:text-indigo-800 transition-colors"
-                              >전체 추가<ChevronRight size={10}/></button>
-                            )}
-                          </div>
-                          {/* 품목 목록 */}
-                          <div className="divide-y divide-slate-50">
-                            {items.map(({product,req})=>(
-                              <div key={product.id} className="flex items-center gap-3 px-3 py-2">
-                                <div className="flex-1 min-w-0">
-                                  <span className="text-xs font-bold text-slate-800">{product.name}</span>
-                                  {product.spec && <span className="ml-1 text-[10px] text-slate-400">{product.spec}</span>}
-                                </div>
-                                <span className="text-xs text-slate-500 shrink-0 font-bold">{(req as any).isBox ? `${req.quantity}BOX` : `${req.quantity}${product.unit||''}`}</span>
-                                <button
-                                  onClick={()=>{
-                                    if (supplierId) setSelectedClientId(supplierId);
-                                    const ps = supplierId ? productSuppliers.find(s=>(s.productId===product.id||s.Item_ID===product.id)&&(s.supplierId===supplierId||s.Partner_ID===supplierId)) : null;
-                                    const isBox = product.category==='향미유'&&(req as any).isBox;
-                                    setManualItems([
-                                      {name:product.name,spec:product.spec||product.unit||'',qty:String(req.quantity),price:ps?.price?String(ps.price):'',isTaxExempt:ps?.taxType==='면세',isBoxUnit:isBox,boxSize:isBox?12:undefined},
-                                      {name:'',spec:'',qty:'',price:'',isTaxExempt:false},
-                                    ]);
-                                    setManualMode(true);
-                                  }}
-                                  className="shrink-0 text-[10px] font-black text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-2 py-0.5 rounded-lg transition-colors"
-                                >추가</button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* ── 빠른 품목 입력 바 ── */}
             {selectedClientId && (selectedOrderId || manualMode || editingStmt) && (!editingStmt || isEditMode) && (() => {

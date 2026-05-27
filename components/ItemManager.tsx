@@ -18,6 +18,8 @@ interface ItemManagerProps {
   onDeleteProduct: (_id: string, _category: string) => void;
   onLinkProduct: (_productId: string, _clientId: string) => void;
   onUnlinkProduct: (_productId: string, _clientId: string) => void;
+  onLinkSupplier?: (_productId: string, _supplierId: string) => void;
+  onUnlinkSupplier?: (_productId: string, _supplierId: string) => void;
   onMergeProducts?: (_keepId: string, _deleteIds: string[]) => Promise<void>;
   onSaveItemCustomer?: (_ic: Partial<PartnerItem> & { id: string }) => Promise<void>;
   onSaveShippingRule?: (_rule: Partial<ShippingRule> & { id: string }) => Promise<void>;
@@ -56,7 +58,7 @@ const SUB_ORDER: Record<string, number> = { '라벨': 0, '용기': 1, '마개': 
 const sortSubs = (subs: { name: string; category: string; subtype?: string }[]) =>
   [...subs].sort((a, b) => (SUB_ORDER[itemSubCat(a)] ?? 9) - (SUB_ORDER[itemSubCat(b)] ?? 9));
 
-const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productClients = [], productSuppliers = [], itemCustomers = [], shippingRules = [], itemBoms = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct, onMergeProducts, onSaveItemCustomer, onSaveShippingRule, onAddShippingRule, isAdmin = true }) => {
+const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productClients = [], productSuppliers = [], itemCustomers = [], shippingRules = [], itemBoms = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct, onLinkSupplier, onUnlinkSupplier, onMergeProducts, onSaveItemCustomer, onSaveShippingRule, onAddShippingRule, isAdmin = true }) => {
   const [mainView, setMainView] = useState<'flat' | 'by-client'>(isAdmin ? 'flat' : 'by-client');
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(true);
@@ -296,11 +298,14 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
   const linkableProduts = useMemo(() => {
     if (!selectedClientId) return [];
     const term = linkSearch.toLowerCase().trim();
+    const alreadyLinked = clientScopeTab === 'purchase'
+      ? new Set(productSuppliers.filter(ps => (ps.supplierId ?? ps.Partner_ID) === selectedClientId).map(ps => ps.productId ?? ps.Item_ID))
+      : null;
     return products
-      .filter(p => p.category === linkCategory && !(p.clientIds ?? []).includes(selectedClientId))
+      .filter(p => p.category === linkCategory && (alreadyLinked ? !alreadyLinked.has(p.id) : !(p.clientIds ?? []).includes(selectedClientId)))
       .filter(p => !term || p.name.toLowerCase().includes(term))
       .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-  }, [products, selectedClientId, linkCategory, linkSearch]);
+  }, [products, selectedClientId, linkCategory, linkSearch, clientScopeTab, productSuppliers]);
 
   // 품목 테이블 패널 (공통)
   const productPanel = (
@@ -441,10 +446,10 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                     <td className="px-2 py-3">
                       <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-black whitespace-nowrap ${(() => {
                         const sub = inferSubtype(item);
-                        if (item.category === 'product') return 'bg-indigo-50 text-indigo-600';
                         if (sub === '향미유' || sub === '참기름' || sub === '들기름') return 'bg-purple-50 text-purple-600';
                         if (sub === '고춧가루') return 'bg-red-50 text-red-500';
                         if (sub === '참깨' || sub === '들깨' || sub === '검정깨') return 'bg-amber-50 text-amber-700';
+                        if (item.category === 'product') return 'bg-indigo-50 text-indigo-600';
                         if (item.category === 'goods') return 'bg-orange-50 text-orange-500';
                         if (sub === '용기') return 'bg-sky-50 text-sky-600';
                         if (sub === '라벨') return 'bg-amber-50 text-amber-600';
@@ -557,25 +562,29 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                       <td className="px-2 py-3 text-center">
                         {isAdmin && mainView === 'by-client' && selectedClientId ? (
                           // 거래처별 뷰: 포장설정 + 연결 해제 버튼
-                          <div className="flex items-center justify-center gap-1">
+                          <div className="flex items-center gap-1 justify-center">
+                            {clientScopeTab === 'sales' && (
+                              <button
+                                onClick={() => {
+                                  const existing = shippingRules.find(r => r.item_id === item.id && r.partner_id === selectedClientId);
+                                  setPackagingModal({ item, clientId: selectedClientId });
+                                  setPackagingEdit(existing ? { ...existing } : {});
+                                  setPackagingAdding(!existing);
+                                }}
+                                className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-800 transition-all"
+                                title="포장설정"
+                              >
+                                <Settings size={13} />
+                              </button>
+                            )}
                             <button
                               onClick={() => {
-                                const existing = shippingRules.find(r => r.item_id === item.id && r.partner_id === selectedClientId);
-                                setPackagingModal({ item, clientId: selectedClientId });
-                                setPackagingEdit(existing ? { ...existing } : {});
-                                setPackagingAdding(!existing);
+                                if (clientScopeTab === 'purchase' && onUnlinkSupplier) {
+                                  onUnlinkSupplier(item.id, selectedClientId);
+                                } else {
+                                  onUnlinkProduct(item.id, selectedClientId);
+                                }
                               }}
-                              className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-800 transition-all"
-                              title="포장설정"
-                            >
-                              <Settings size={13} />
-                            </button>
-                            <button
-                              onClick={() => setConfirmModal({
-                                message: `"${item.name}" 연결을 해제할까요?`,
-                                subMessage: `${clients.find(c => c.id === selectedClientId)?.name ?? ''} 거래처에서 이 품목이 제거됩니다.`,
-                                onConfirm: () => { onUnlinkProduct(item.id, selectedClientId); setConfirmModal(null); },
-                              })}
                               className="p-1.5 rounded-lg bg-rose-50 text-rose-400 hover:bg-rose-100 hover:text-rose-600 transition-all"
                               title="연결 해제"
                             >
@@ -1110,7 +1119,13 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                         )}
                       </div>
                       <button
-                        onClick={() => onLinkProduct(p.id, selectedClientId)}
+                        onClick={() => {
+                          if (clientScopeTab === 'purchase' && onLinkSupplier) {
+                            onLinkSupplier(p.id, selectedClientId);
+                          } else {
+                            onLinkProduct(p.id, selectedClientId);
+                          }
+                        }}
                         className="flex items-center gap-1 text-[10px] font-black text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-all shrink-0 ml-3"
                       >
                         <Plus size={11} /> 연결
