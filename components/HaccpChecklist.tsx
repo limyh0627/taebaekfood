@@ -1945,54 +1945,45 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
             <div className="text-xs font-bold mb-2">■ 작업장 위생 점검 항목</div>
 
             {/* 모바일 카드 */}
-            <div className="flex flex-col gap-2 md:hidden">
+            <div className="flex flex-col gap-1.5 md:hidden">
               {templateItems.map((item, idx) => {
                 const row = selected.rows[idx] ?? { result: '', note: '', inspector: '', author: '' };
                 const needNote = row.result === 'fail' && !row.note.trim();
                 return (
-                  <div key={idx} className={`border rounded-xl p-3 text-xs ${
-                    row.result === 'pass' ? 'border-emerald-300 bg-emerald-50' :
-                    row.result === 'fail' ? 'border-rose-300 bg-rose-50' : 'border-slate-200 bg-white'
+                  <div key={idx} className={`border rounded-lg text-xs ${
+                    row.result === 'pass' ? 'border-emerald-200 bg-emerald-50' :
+                    row.result === 'fail' ? 'border-rose-200 bg-rose-50' : 'border-slate-200 bg-white'
                   }`}>
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div>
-                        <span className="text-slate-400 mr-1">{idx + 1}.</span>
-                        <span className="font-bold text-slate-800">{item.item}</span>
-                        <div className="text-slate-500 mt-0.5">{item.standard}</div>
+                    <div className="flex items-start gap-2 p-2.5">
+                      <span className="text-slate-400 font-bold shrink-0 pt-0.5">{idx + 1}.</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-slate-800 leading-snug">{item.item}</div>
+                        <div className="text-slate-400 text-[11px] mt-0.5 leading-snug">{item.standard}</div>
                       </div>
-                      {resultBadge(row.result)}
+                      {isReadOnly
+                        ? <div className="shrink-0">{resultBadge(row.result)}</div>
+                        : <div className="flex gap-1 shrink-0">
+                            <button onClick={() => toggleResult(idx, 'pass')} className={`w-10 h-9 rounded font-bold border text-sm transition-colors ${
+                              row.result === 'pass' ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-emerald-600 border-emerald-300'
+                            }`}>O</button>
+                            <button onClick={() => toggleResult(idx, 'fail')} className={`w-10 h-9 rounded font-bold border text-sm transition-colors ${
+                              row.result === 'fail' ? 'bg-rose-500 text-white border-rose-500' : 'bg-white text-rose-600 border-rose-300'
+                            }`}>X</button>
+                          </div>
+                      }
                     </div>
-                    {!isReadOnly && (
-                      <div className="flex gap-2 mb-2">
-                        <button onClick={() => toggleResult(idx, 'pass')}
-                          className={`flex-1 py-2.5 rounded-lg text-xs font-bold border transition-colors ${
-                            row.result === 'pass' ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-emerald-600 border-emerald-300 hover:bg-emerald-50'
-                          }`}>적합 ✓</button>
-                        <button onClick={() => toggleResult(idx, 'fail')}
-                          className={`flex-1 py-2.5 rounded-lg text-xs font-bold border transition-colors ${
-                            row.result === 'fail' ? 'bg-rose-500 text-white border-rose-500' : 'bg-white text-rose-600 border-rose-300 hover:bg-rose-50'
-                          }`}>부적합 ✗</button>
+                    {(row.result === 'fail' || (isReadOnly && row.note)) && (
+                      <div className="px-2.5 pb-2.5">
+                        <div className="border-t border-slate-200 pt-2">
+                          {isReadOnly
+                            ? <div className="text-slate-700">{row.note || '-'}</div>
+                            : <input value={row.note} onChange={e => setRow(idx, 'note', e.target.value)}
+                                placeholder="조치 내용 필수 입력"
+                                className={`w-full border rounded px-2 py-1.5 text-xs bg-white ${needNote ? 'border-rose-400' : 'border-slate-200'}`} />
+                          }
+                        </div>
                       </div>
                     )}
-                    <div className="mb-2">
-                      <div className="text-slate-500 mb-0.5">점검자</div>
-                      {isReadOnly
-                        ? <div className="text-slate-700">{row.inspector || '-'}</div>
-                        : <input value={row.inspector} onChange={e => setRow(idx, 'inspector', e.target.value)}
-                            placeholder={currentUser?.name ?? '이름'} className="w-full border border-slate-200 rounded px-2 py-1 text-xs bg-white" />
-                      }
-                    </div>
-                    <div>
-                      <div className={`mb-0.5 ${needNote ? 'text-rose-600 font-bold' : 'text-slate-500'}`}>
-                        비고사항(조치){row.result === 'fail' && <span className="text-rose-500"> *필수</span>}
-                      </div>
-                      {isReadOnly
-                        ? <div className="text-slate-700">{row.note || '-'}</div>
-                        : <input value={row.note} onChange={e => setRow(idx, 'note', e.target.value)}
-                            placeholder={row.result === 'fail' ? '조치 내용 필수 입력' : '특이사항 입력'}
-                            className={`w-full border rounded px-2 py-1 text-xs bg-white ${needNote ? 'border-rose-400' : 'border-slate-200'}`} />
-                      }
-                    </div>
                   </div>
                 );
               })}
@@ -3407,7 +3398,7 @@ const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: strin
                 <div className="px-1 py-1">
                   {isReadOnly
                     ? <div className="px-1 py-0.5 text-slate-800">{selected.checkZone || '-'}</div>
-                    : <input value={selected.checkZone} onChange={e => setSelected(p => p ? { ...p, checkZone: e.target.value } : p)}
+                    : <input value={selected.checkZone ?? ''} onChange={e => setSelected(p => p ? { ...p, checkZone: e.target.value } : p)}
                         placeholder="구역 입력" className="w-full text-xs outline-none bg-transparent" />
                   }
                 </div>
@@ -3416,54 +3407,102 @@ const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: strin
 
             <div className="text-xs font-bold mb-2">■ 작업장 위생 점검 항목</div>
 
-            <table className="w-full border-collapse text-xs mb-4">
-              <thead>
-                <tr>
-                  <th className={TH} style={{ width: 28 }}>번호</th>
-                  <th className={TH}>점검항목</th>
-                  <th className={TH} style={{ width: 140 }}>기준</th>
-                  <th className={TH} style={{ width: 28 }}>O</th>
-                  <th className={TH} style={{ width: 28 }}>X</th>
-                  <th className={TH} style={{ width: 70 }}>결과</th>
-                  <th className={TH} style={{ width: 80 }}>작성자</th>
-                  <th className={TH} style={{ width: 110 }}>비고(개선조치)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item, idx) => {
-                  const row = selected.rows[idx] ?? { result: '', note: '', inspector: '' };
-                  return (
-                    <tr key={idx} className={row.result === 'fail' ? 'bg-rose-50' : ''}>
-                      <td className={TD}>{idx + 1}</td>
-                      <td className={TDL}>{item.item}</td>
-                      <td className={TD}>{item.standard}</td>
-                      <td className={TD}>
-                        <input type="checkbox" checked={row.result === 'pass'} onChange={() => toggleResult(idx, 'pass')} disabled={isReadOnly} />
-                      </td>
-                      <td className={TD}>
-                        <input type="checkbox" checked={row.result === 'fail'} onChange={() => toggleResult(idx, 'fail')} disabled={isReadOnly} />
-                      </td>
-                      <td className={TD}>{resultBadge(row.result)}</td>
-                      <td className={TD}>
-                        {row.inspector
-                          ? <span className="inline-flex px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-medium">{row.inspector}</span>
-                          : <span className="text-slate-300 text-xs">-</span>
-                        }
-                      </td>
-                      <td className={TDL}>
-                        <input
-                          value={row.note}
-                          onChange={e => setRow(idx, 'note', e.target.value)}
-                          disabled={isReadOnly}
-                          className="w-full text-xs border-none outline-none bg-transparent disabled:opacity-60"
-                          placeholder={row.result === 'fail' ? '조치 내용 필수' : ''}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            {/* 모바일 카드 */}
+            <div className="flex flex-col gap-1.5 md:hidden">
+              {items.map((item, idx) => {
+                const row = selected.rows[idx] ?? { result: '', note: '', inspector: '' };
+                const needNote = row.result === 'fail' && !row.note?.trim();
+                return (
+                  <div key={idx} className={`border rounded-lg text-xs ${
+                    row.result === 'pass' ? 'border-emerald-200 bg-emerald-50' :
+                    row.result === 'fail' ? 'border-rose-200 bg-rose-50' : 'border-slate-200 bg-white'
+                  }`}>
+                    <div className="flex items-start gap-2 p-2.5">
+                      <span className="text-slate-400 font-bold shrink-0 pt-0.5">{idx + 1}.</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-slate-800 leading-snug">{item.item}</div>
+                        <div className="text-slate-400 text-[11px] mt-0.5 leading-snug">{item.standard}</div>
+                      </div>
+                      {isReadOnly
+                        ? <div className="shrink-0">{resultBadge(row.result)}</div>
+                        : <div className="flex gap-1 shrink-0">
+                            <button onClick={() => toggleResult(idx, 'pass')} className={`w-10 h-9 rounded font-bold border text-sm transition-colors ${
+                              row.result === 'pass' ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-emerald-600 border-emerald-300'
+                            }`}>O</button>
+                            <button onClick={() => toggleResult(idx, 'fail')} className={`w-10 h-9 rounded font-bold border text-sm transition-colors ${
+                              row.result === 'fail' ? 'bg-rose-500 text-white border-rose-500' : 'bg-white text-rose-600 border-rose-300'
+                            }`}>X</button>
+                          </div>
+                      }
+                    </div>
+                    {(row.result === 'fail' || (isReadOnly && row.note)) && (
+                      <div className="px-2.5 pb-2.5">
+                        <div className="border-t border-slate-200 pt-2">
+                          {isReadOnly
+                            ? <div className="text-slate-700">{row.note || '-'}</div>
+                            : <input value={row.note} onChange={e => setRow(idx, 'note', e.target.value)}
+                                placeholder="조치 내용 필수 입력"
+                                className={`w-full border rounded px-2 py-1.5 text-xs bg-white ${needNote ? 'border-rose-400' : 'border-slate-200'}`} />
+                          }
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 데스크탑 테이블 */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full border-collapse text-xs mb-4">
+                <thead>
+                  <tr>
+                    <th className={TH} style={{ width: 28 }}>번호</th>
+                    <th className={TH}>점검항목</th>
+                    <th className={TH} style={{ width: 140 }}>기준</th>
+                    <th className={TH} style={{ width: 28 }}>O</th>
+                    <th className={TH} style={{ width: 28 }}>X</th>
+                    <th className={TH} style={{ width: 70 }}>결과</th>
+                    <th className={TH} style={{ width: 80 }}>작성자</th>
+                    <th className={TH} style={{ width: 110 }}>비고(개선조치)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item, idx) => {
+                    const row = selected.rows[idx] ?? { result: '', note: '', inspector: '' };
+                    return (
+                      <tr key={idx} className={row.result === 'fail' ? 'bg-rose-50' : ''}>
+                        <td className={TD}>{idx + 1}</td>
+                        <td className={TDL}>{item.item}</td>
+                        <td className={TD}>{item.standard}</td>
+                        <td className={TD}>
+                          <input type="checkbox" checked={row.result === 'pass'} onChange={() => toggleResult(idx, 'pass')} disabled={isReadOnly} />
+                        </td>
+                        <td className={TD}>
+                          <input type="checkbox" checked={row.result === 'fail'} onChange={() => toggleResult(idx, 'fail')} disabled={isReadOnly} />
+                        </td>
+                        <td className={TD}>{resultBadge(row.result)}</td>
+                        <td className={TD}>
+                          {row.inspector
+                            ? <span className="inline-flex px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-medium">{row.inspector}</span>
+                            : <span className="text-slate-300 text-xs">-</span>
+                          }
+                        </td>
+                        <td className={TDL}>
+                          <input
+                            value={row.note}
+                            onChange={e => setRow(idx, 'note', e.target.value)}
+                            disabled={isReadOnly}
+                            className="w-full text-xs border-none outline-none bg-transparent disabled:opacity-60"
+                            placeholder={row.result === 'fail' ? '조치 내용 필수' : ''}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
             <div className="mb-4">
               <div className="text-xs font-bold text-slate-700 mb-1">특이사항</div>
@@ -3835,7 +3874,7 @@ const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string 
               <div className="px-1 py-1">
                 {isReadOnly
                   ? <div className="px-1 py-0.5 text-slate-800">{selected.checkZone || '-'}</div>
-                  : <input value={selected.checkZone} onChange={e => setSelected(p => p ? { ...p, checkZone: e.target.value } : p)}
+                  : <input value={selected.checkZone ?? ''} onChange={e => setSelected(p => p ? { ...p, checkZone: e.target.value } : p)}
                       placeholder="구역 입력" className="w-full text-xs outline-none bg-transparent" />
                 }
               </div>
@@ -3844,46 +3883,94 @@ const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string 
 
           <div className="text-xs font-bold mb-2">■ 마감 점검 항목</div>
 
-          <table className="w-full border-collapse text-xs mb-4">
-            <thead>
-              <tr>
-                <th className={TH} style={{ width: 28 }}>번호</th>
-                <th className={TH}>점검항목</th>
-                <th className={TH} style={{ width: 140 }}>기준</th>
-                <th className={TH} style={{ width: 28 }}>O</th>
-                <th className={TH} style={{ width: 28 }}>X</th>
-                <th className={TH} style={{ width: 70 }}>결과</th>
-                <th className={TH} style={{ width: 80 }}>작성자</th>
-                <th className={TH} style={{ width: 110 }}>비고(개선조치)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {templateItems.map((item, idx) => {
-                const row = selected.rows[idx] ?? { result: '', note: '', inspector: '' };
-                return (
-                  <tr key={idx} className={row.result === 'fail' ? 'bg-rose-50' : ''}>
-                    <td className={TD}>{idx + 1}</td>
-                    <td className={TDL}>{item.item}</td>
-                    <td className={TD}>{item.standard}</td>
-                    <td className={TD}><input type="checkbox" checked={row.result === 'pass'} onChange={() => toggleResult(idx, 'pass')} disabled={isReadOnly} /></td>
-                    <td className={TD}><input type="checkbox" checked={row.result === 'fail'} onChange={() => toggleResult(idx, 'fail')} disabled={isReadOnly} /></td>
-                    <td className={TD}>{resultBadge(row.result)}</td>
-                    <td className={TD}>
-                      {row.inspector
-                        ? <span className="inline-flex px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-medium">{row.inspector}</span>
-                        : <span className="text-slate-300 text-xs">-</span>
-                      }
-                    </td>
-                    <td className={TDL}>
-                      <input value={row.note} onChange={e => setRow(idx, 'note', e.target.value)} disabled={isReadOnly}
-                        className="w-full text-xs border-none outline-none bg-transparent disabled:opacity-60"
-                        placeholder={row.result === 'fail' ? '조치 내용 필수' : ''} />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          {/* 모바일 카드 */}
+          <div className="flex flex-col gap-1.5 md:hidden">
+            {templateItems.map((item, idx) => {
+              const row = selected.rows[idx] ?? { result: '', note: '', inspector: '' };
+              const needNote = row.result === 'fail' && !row.note?.trim();
+              return (
+                <div key={idx} className={`border rounded-lg text-xs ${
+                  row.result === 'pass' ? 'border-emerald-200 bg-emerald-50' :
+                  row.result === 'fail' ? 'border-rose-200 bg-rose-50' : 'border-slate-200 bg-white'
+                }`}>
+                  <div className="flex items-start gap-2 p-2.5">
+                    <span className="text-slate-400 font-bold shrink-0 pt-0.5">{idx + 1}.</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-slate-800 leading-snug">{item.item}</div>
+                      <div className="text-slate-400 text-[11px] mt-0.5 leading-snug">{item.standard}</div>
+                    </div>
+                    {isReadOnly
+                      ? <div className="shrink-0">{resultBadge(row.result)}</div>
+                      : <div className="flex gap-1 shrink-0">
+                          <button onClick={() => toggleResult(idx, 'pass')} className={`w-10 h-9 rounded font-bold border text-sm transition-colors ${
+                            row.result === 'pass' ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-emerald-600 border-emerald-300'
+                          }`}>O</button>
+                          <button onClick={() => toggleResult(idx, 'fail')} className={`w-10 h-9 rounded font-bold border text-sm transition-colors ${
+                            row.result === 'fail' ? 'bg-rose-500 text-white border-rose-500' : 'bg-white text-rose-600 border-rose-300'
+                          }`}>X</button>
+                        </div>
+                    }
+                  </div>
+                  {(row.result === 'fail' || (isReadOnly && row.note)) && (
+                    <div className="px-2.5 pb-2.5">
+                      <div className="border-t border-slate-200 pt-2">
+                        {isReadOnly
+                          ? <div className="text-slate-700">{row.note || '-'}</div>
+                          : <input value={row.note} onChange={e => setRow(idx, 'note', e.target.value)}
+                              placeholder="조치 내용 필수 입력"
+                              className={`w-full border rounded px-2 py-1.5 text-xs bg-white ${needNote ? 'border-rose-400' : 'border-slate-200'}`} />
+                        }
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 데스크탑 테이블 */}
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full border-collapse text-xs mb-4">
+              <thead>
+                <tr>
+                  <th className={TH} style={{ width: 28 }}>번호</th>
+                  <th className={TH}>점검항목</th>
+                  <th className={TH} style={{ width: 140 }}>기준</th>
+                  <th className={TH} style={{ width: 28 }}>O</th>
+                  <th className={TH} style={{ width: 28 }}>X</th>
+                  <th className={TH} style={{ width: 70 }}>결과</th>
+                  <th className={TH} style={{ width: 80 }}>작성자</th>
+                  <th className={TH} style={{ width: 110 }}>비고(개선조치)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {templateItems.map((item, idx) => {
+                  const row = selected.rows[idx] ?? { result: '', note: '', inspector: '' };
+                  return (
+                    <tr key={idx} className={row.result === 'fail' ? 'bg-rose-50' : ''}>
+                      <td className={TD}>{idx + 1}</td>
+                      <td className={TDL}>{item.item}</td>
+                      <td className={TD}>{item.standard}</td>
+                      <td className={TD}><input type="checkbox" checked={row.result === 'pass'} onChange={() => toggleResult(idx, 'pass')} disabled={isReadOnly} /></td>
+                      <td className={TD}><input type="checkbox" checked={row.result === 'fail'} onChange={() => toggleResult(idx, 'fail')} disabled={isReadOnly} /></td>
+                      <td className={TD}>{resultBadge(row.result)}</td>
+                      <td className={TD}>
+                        {row.inspector
+                          ? <span className="inline-flex px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-medium">{row.inspector}</span>
+                          : <span className="text-slate-300 text-xs">-</span>
+                        }
+                      </td>
+                      <td className={TDL}>
+                        <input value={row.note} onChange={e => setRow(idx, 'note', e.target.value)} disabled={isReadOnly}
+                          className="w-full text-xs border-none outline-none bg-transparent disabled:opacity-60"
+                          placeholder={row.result === 'fail' ? '조치 내용 필수' : ''} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
           <div className="mb-4">
             <div className="text-xs font-bold text-slate-700 mb-1">특이사항</div>
