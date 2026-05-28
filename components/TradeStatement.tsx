@@ -1299,11 +1299,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       });
       // 오래된 순 → 최신 순으로 처리 (같은 날: 전표 먼저, 수금 나중)
       evs.sort((a, b) => {
-        const d = a.date.localeCompare(b.date);
+        const d = (a.date ?? '').localeCompare(b.date ?? '');
         if (d !== 0) return d;
         if (a.kind === 'stmt' && b.kind === 'pay') return -1;
         if (a.kind === 'pay' && b.kind === 'stmt') return 1;
-        return a.tieKey.localeCompare(b.tieKey);
+        return (a.tieKey ?? '').localeCompare(b.tieKey ?? '');
       });
       let running = 0;
       evs.forEach(e => {
@@ -1996,8 +1996,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 const stmt = row.data;
                 const issuedDate = new Date(stmt.issuedAt);
                 const dateLabel  = `${stmt.tradeDate} ${String(issuedDate.getHours()).padStart(2,'0')}:${String(issuedDate.getMinutes()).padStart(2,'0')}`;
-                const summary    = stmt.items.slice(0, 2).map(i => i.name).join(', ') + (stmt.items.length > 2 ? ` 외 ${stmt.items.length - 2}건` : '');
-                const isReturn   = stmt.items.some(i => i.qty < 0);
+                const stmtItems  = stmt.items ?? [];
+                const summary    = stmtItems.slice(0, 2).map(i => i.name).join(', ') + (stmtItems.length > 2 ? ` 외 ${stmtItems.length - 2}건` : '');
+                const isReturn   = stmtItems.some(i => i.qty < 0);
                 const cumul = row.cumul;
                 return (
                   <tr key={stmt.id} className={`transition-colors cursor-pointer ${isReturn ? 'bg-rose-50 hover:bg-rose-100' : 'hover:bg-slate-50'}`}
