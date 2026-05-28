@@ -112,17 +112,20 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
   );
   const totalPending = pendingLeaves.length + pendingAdjustments.length + pendingReturns.length + pendingStmtEdits.length;
 
-  // 발주 예정: 거래처(공급처)별 그룹화
+  // 발주 예정: 거래처(공급처)별 그룹화 — 거래처 미지정 품목은 각각 별도 그룹으로 분리
   const orderGroups = useMemo(() => {
     const map = new Map<string, { supplierId: string; supplierName: string; items: Array<{ productId: string; name: string; spec: string; qty: number; price: number; isBox: boolean }> }>();
     for (const req of orderRequests) {
       const product = items.find(p => p.id === req.id);
       if (!product) continue;
       const ps = productSuppliers.find(s => (s.Item_ID === req.id || s.productId === req.id) && s.Direction === 'in');
-      const supplierId = ps?.Partner_ID ?? ps?.supplierId ?? 'unknown';
-      const supplierName = ps ? (clients.find(c => c.id === supplierId)?.name ?? supplierId) : '미지정';
-      if (!map.has(supplierId)) map.set(supplierId, { supplierId, supplierName, items: [] });
-      map.get(supplierId)!.items.push({
+      const realSupplierId = ps?.Partner_ID ?? ps?.supplierId;
+      // 거래처 지정된 경우만 같은 supplierId로 묶음, 미지정 품목은 품목별로 고유키 부여
+      const groupKey = realSupplierId ?? `unknown__${req.id}`;
+      const supplierId = realSupplierId ?? '';
+      const supplierName = realSupplierId ? (clients.find(c => c.id === realSupplierId)?.name ?? realSupplierId) : '미지정';
+      if (!map.has(groupKey)) map.set(groupKey, { supplierId, supplierName, items: [] });
+      map.get(groupKey)!.items.push({
         productId: req.id,
         name: product.name,
         spec: (product as any).spec || product.unit || '',
@@ -131,7 +134,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
         isBox: req.isBox ?? false,
       });
     }
-    return Array.from(map.values());
+    return Array.from(map.entries()).map(([key, g]) => ({ ...g, key }));
   }, [orderRequests, items, productSuppliers, clients]);
 
   const getAdjTypeLabel = (type: string) => {
@@ -616,7 +619,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                 {orderGroups.length === 0 ? (
                   <tr><td colSpan={6} className="px-6 py-5 text-center text-xs text-slate-300">발주 예정 품목 없음</td></tr>
                 ) : orderGroups.map(group => (
-                  <tr key={group.supplierId} className="hover:bg-slate-50/50 transition-colors border-b border-slate-50">
+                  <tr key={group.key} className="hover:bg-slate-50/50 transition-colors border-b border-slate-50">
                     <td className="px-3 py-3"><span className="px-2 py-1 rounded-lg text-[10px] font-black bg-orange-50 text-orange-600 whitespace-nowrap">발주예정</span></td>
                     <td className="px-3 py-3 text-[10px] text-slate-400">-</td>
                     <td className="px-3 py-3"><span className="text-[11px] font-black text-slate-800">{group.supplierName}</span></td>
