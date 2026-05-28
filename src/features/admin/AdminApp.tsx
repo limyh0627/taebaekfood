@@ -651,8 +651,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   const handleRemoveConfirmedOrder = async (id: string) => {
-    await deleteItem('confirmedOrders', id);
-    await deleteItem('orderRequests', id);
+    await deleteItem('purchaseOrders', id);
   };
 
   const handleClearAllConfirmedOrders = async () => {
