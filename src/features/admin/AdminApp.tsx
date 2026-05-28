@@ -472,15 +472,20 @@ const AdminApp: React.FC<AdminAppProps> = ({
     for (const item of items) {
       const existing = purchaseOrders.find(po => po.id === item.id);
       const product = allProducts.find(p => p.id === item.id);
+      const ps = productSuppliers.find(s => s.Item_ID === item.id || (s as any).productId === item.id);
+      const supplierId = ps?.Partner_ID || (ps as any)?.supplierId;
+      const supplierName = supplierId ? clients.find(c => c.id === supplierId)?.name : undefined;
       if (existing) {
         await updateItem('purchaseOrders', item.id, {
           quantity: item.quantity, isBox: item.isBox ?? false, status: 'pending',
+          ...(supplierId && !existing.supplierId ? { supplierId, supplierName } : {}),
         });
       } else {
         await addItem('purchaseOrders', {
           id: item.id, productId: item.id, productName: product?.name ?? '',
           quantity: item.quantity, isBox: item.isBox ?? false,
           status: 'pending', createdAt: new Date().toISOString(),
+          ...(supplierId ? { supplierId, supplierName } : {}),
         });
       }
     }
@@ -571,6 +576,31 @@ const AdminApp: React.FC<AdminAppProps> = ({
     });
   };
 
+  // 재고 안전 차감 — 음수가 되면 알림을 자동 생성 (차감 자체는 막지 않음 = 옵션 B)
+  const deductStock = async (
+    collectionName: string,
+    itemId: string,
+    currentStock: number,
+    deductQty: number,
+    itemName: string,
+    unit: string,
+    context: string,
+  ) => {
+    const newStock = currentStock - deductQty;
+    await updateItem(collectionName, itemId, { stock: newStock });
+    if (newStock < 0) {
+      console.warn(`[재고 부족] ${itemName}: ${currentStock}${unit} → ${newStock}${unit} (${context})`);
+      await addItem('notifications', {
+        type: 'inventory_shortage',
+        title: '재고 부족 경고',
+        body: `${itemName}: ${currentStock}${unit} → ${newStock}${unit} (부족분 ${Math.abs(newStock)}${unit}). 사유: ${context}`,
+        linkedId: itemId,
+        readBy: [],
+        createdAt: new Date().toISOString(),
+      } as Omit<AppNotification, 'id'>);
+    }
+  };
+
   // 주문이 이력으로 이동할 때 부자재 차감 (완제품 재고는 변동 없음)
   const deductSubmaterialsForOrder = async (order: Order) => {
     for (const item of order.items) {
@@ -588,8 +618,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         const deductQty = item.isBoxUnit && item.boxQuantity
           ? item.boxQuantity * uPerBox  // BOX → 낱개 변환
           : item.quantity;
-        const collection = products.find(p => p.id === product.id) ? 'items' : 'items';
-        await updateItem(collection, product.id, { stock: product.stock - deductQty });
+        await deductStock('items', product.id, product.stock, deductQty, product.name, product.unit || '개', `주문 ${order.id} 출고`);
         continue;
       }
 
@@ -611,7 +640,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       if (boxSubToDeduct) {
         const deductQty = boxesUsed ?? Math.ceil(item.quantity / (boxSubToDeduct.boxSize || 1));
         if (deductQty > 0) {
-          await updateItem('items', boxSubToDeduct.id, { stock: boxSubToDeduct.stock - deductQty });
+          await deductStock('items', boxSubToDeduct.id, boxSubToDeduct.stock, deductQty, boxSubToDeduct.name, boxSubToDeduct.unit || '개', `주문 ${order.id} 박스 출고`);
         }
       }
 
@@ -622,7 +651,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         if (!actualSub) continue;
         if (actualSub.category === 'box' || actualSub.category === 'tape' ||
             (actualSub.category === 'submaterial' && (actualSub.subtype === '박스' || actualSub.subtype === '테이프'))) continue;
-        await updateItem('items', actualSub.id, { stock: actualSub.stock - item.quantity });
+        await deductStock('items', actualSub.id, actualSub.stock, item.quantity, actualSub.name, actualSub.unit || '개', `주문 ${order.id} ${product.name} 부자재 출고`);
       }
 
       // 원료 사용량 → rawMaterialLedger 기록 (완제품 한정)
@@ -1249,7 +1278,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     issuedStatements={issuedStatements}
                     currentUser={{ id: currentUser.id, name: currentUser.name }}
                     isAdmin={isAdmin}
-                    onUpdateSubmaterial={(id, data) => updateItem('submaterials', id, data)}
+                    onUpdateSubmaterial={(id, data) => updateItem('items', id, data)}
                     onProcessReturn={handleProcessReturn}
                     initialTab="입고"
                   />
@@ -1267,7 +1296,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     issuedStatements={issuedStatements}
                     currentUser={{ id: currentUser.id, name: currentUser.name }}
                     isAdmin={isAdmin}
-                    onUpdateSubmaterial={(id, data) => updateItem('submaterials', id, data)}
+                    onUpdateSubmaterial={(id, data) => updateItem('items', id, data)}
                     onProcessReturn={handleProcessReturn}
                     initialTab="반품"
                   />
@@ -3430,6 +3459,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
               setOpenChatRoomId(n.linkedId);
             } else if (n.type === 'leave_request' || n.type === 'confirmation') {
               if (isAdmin || isAdminAuthenticated) setCurrentView('admin-checklist');
+            } else if (n.type === 'inventory_shortage') {
+              if (isAdmin || isAdminAuthenticated) setCurrentView('admin-checklist');
             }
           };
 
@@ -3437,24 +3468,38 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <p className="text-center text-slate-400 text-xs py-8">알림이 없습니다</p>
           ) : sorted.map(n => {
             const isUnread = !n.readBy.includes(currentUser.id);
+            const isShortage = n.type === 'inventory_shortage';
+            // 재고 부족 알림은 빨간색으로 강조
+            const cardBg = isShortage
+              ? (isUnread ? 'bg-rose-50' : 'bg-rose-50/40')
+              : (isUnread ? 'bg-indigo-50/60' : '');
+            const dotColor = isShortage
+              ? (isUnread ? 'bg-rose-500' : 'bg-transparent')
+              : (isUnread ? 'bg-indigo-500' : 'bg-transparent');
+            const titleColor = isShortage
+              ? (isUnread ? 'text-rose-700' : 'text-rose-500')
+              : (isUnread ? 'text-slate-800' : 'text-slate-500');
             return (
               <div
                 key={n.id}
                 onClick={() => handleNotifClick(n)}
-                className={`flex items-start gap-3 px-4 py-3 border-b border-slate-50 cursor-pointer hover:bg-slate-50 transition-colors ${isUnread ? 'bg-indigo-50/60' : ''}`}
+                className={`flex items-start gap-3 px-4 py-3 border-b border-slate-50 cursor-pointer hover:bg-slate-50 transition-colors ${cardBg}`}
               >
-                <div className={`mt-0.5 shrink-0 w-2 h-2 rounded-full ${isUnread ? 'bg-indigo-500' : 'bg-transparent'}`} />
+                <div className={`mt-0.5 shrink-0 w-2 h-2 rounded-full ${dotColor}`} />
                 <div className="flex-1 min-w-0">
-                  <p className={`text-[11px] font-bold ${isUnread ? 'text-slate-800' : 'text-slate-500'}`}>{n.title}</p>
-                  <p className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">
+                  <div className="flex items-center gap-1.5">
+                    {isShortage && <span className="text-[9px] font-black bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded">⚠ 재고</span>}
+                    <p className={`text-[11px] font-bold ${titleColor}`}>{n.title}</p>
+                  </div>
+                  <p className={`text-[10px] mt-0.5 leading-relaxed ${isShortage ? 'text-rose-600' : 'text-slate-500'}`}>
                     {n.type === 'new_order' && n.body.includes(' 주문이') ? (
                       <><span className="font-black text-slate-800 text-[11px]">{n.body.split(' 주문이')[0]}</span>{' '}주문이 등록되었습니다.</>
                     ) : n.body}
                   </p>
                   <p className="text-[9px] text-slate-300 mt-1">{new Date(n.createdAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
                 </div>
-                {(n.type === 'new_order' || n.type === 'mention' || n.type === 'leave_request' || n.type === 'confirmation') && (
-                  <span className="text-[9px] text-indigo-400 font-bold shrink-0 mt-0.5">바로가기 →</span>
+                {(n.type === 'new_order' || n.type === 'mention' || n.type === 'leave_request' || n.type === 'confirmation' || n.type === 'inventory_shortage') && (
+                  <span className={`text-[9px] font-bold shrink-0 mt-0.5 ${isShortage ? 'text-rose-500' : 'text-indigo-400'}`}>바로가기 →</span>
                 )}
               </div>
             );

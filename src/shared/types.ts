@@ -474,7 +474,7 @@ export interface CompanyInfo {
 
 export interface AppNotification {
   id: string;
-  type: 'new_order' | 'confirmation' | 'mention' | 'leave_request';
+  type: 'new_order' | 'confirmation' | 'mention' | 'leave_request' | 'inventory_shortage';
   title: string;
   body: string;
   readBy: string[];   // 읽은 userId 목록
