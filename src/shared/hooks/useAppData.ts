@@ -147,7 +147,20 @@ export function useAppData(): AppData {
         subscribeToCollection<{ id: string; type: string; date: string; amount: number }>('sesameInputLedger', setSesameInputLedger),
         subscribeToCollection<AppNotification>('notifications', setAppNotifications),
         subscribeToCollection<WorkOrderItem>('workOrderItems', (data) => setWorkOrderItems([...data].sort((a, b) => a.sortIndex - b.sortIndex))),
-        subscribeToCollection<IssuedStatement>('issuedStatements', setIssuedStatements),
+        subscribeToCollection<IssuedStatement>('issuedStatements', (data) => {
+          setIssuedStatements(data.map(s => {
+            if (!s.items || !s.tradeDate) {
+              console.warn('[useAppData] issuedStatement 필드 누락:', { id: s.id, hasItems: !!s.items, hasTradeDate: !!s.tradeDate });
+            }
+            return {
+              ...s,
+              items: s.items ?? [],
+              payments: s.payments ?? [],
+              tradeDate: s.tradeDate ?? '',
+              issuedAt: s.issuedAt ?? '',
+            };
+          }));
+        }),
         subscribeToCollection<PendingReceipt>('pendingReceipts', setPendingReceipts),
         subscribeToCollection<QrMapping>('qrMappings', setQrMappings),
         subscribeToCollection<ItemFormula>('item_formula', setItemFormulas),
