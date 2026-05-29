@@ -16,7 +16,7 @@ export enum OrderStatus {
 }
 
 export interface OrderItem {
-  productId: string;
+  itemId: string;
   name: string;
   quantity: number;
   price: number;
@@ -39,12 +39,12 @@ export interface OrderPallet {
 }
 
 export interface DeliveryBox {
-  productId: string;
+  itemId: string;
   name: string;
   quantity: number;
 }
 
-export type ClientType = '스마트스토어' | '택배' | '일반';
+export type PartnerChannel = '스마트스토어' | '택배' | '일반';
 
 export type PartnerType = '매출처' | '매입처' | '매출+매입처';
 
@@ -77,9 +77,8 @@ export interface PartnerItem {
   // @deprecated → items 컬렉션으로 이관 예정
   weightInKg?: number;
   // @deprecated backward compat — useAppData에서 자동 주입
-  productId?: string;
-  clientId?: string;
-  supplierId?: string;
+  itemId?: string;
+  partnerId?: string;
   Standard_Price?: number;     // @deprecated → price 사용
   item_id?: string;
   customer_id?: string;
@@ -95,10 +94,6 @@ export interface ShippingRule {
   partner_id?: string;    // 거래처별 오버라이드 (없으면 전체 기본값)
 }
 
-// @deprecated — PartnerItem 사용
-export type ProductClient = PartnerItem;
-// @deprecated — PartnerItem 사용
-export type ProductSupplier = PartnerItem;
 
 // ── 파트너 (partners 컬렉션) ──────────────────────────────────────────────
 export interface Partner {
@@ -106,7 +101,7 @@ export interface Partner {
   name: string;
   email?: string;
   phone?: string;
-  type: ClientType;
+  type: PartnerChannel;
   region?: string;
   address?: string;
   addressDetail?: string;
@@ -120,14 +115,12 @@ export interface Partner {
   purchaseItems?: PurchaseItem[];
 }
 
-// @deprecated — Partner 사용
-export type Client = Partner;
 
 export type OrderSource = '스마트스토어' | '택배' | '일반';
 
 export interface Order {
   id: string;
-  clientId?: string;
+  partnerId?: string;
   customerName: string;
   items: OrderItem[];
   totalAmount: number;
@@ -151,7 +144,7 @@ export interface BoxConfig {
 }
 
 export interface ClientBoxConfig {
-  clientId: string;
+  partnerId: string;
   configs: BoxConfig[]; // 거래처당 여러 박스 설정 가능
 }
 
@@ -223,8 +216,8 @@ export interface Item {
   unit: string;
   image: string;
   oil?: string;
-  clientId?: string;   // @deprecated — clientIds 사용
-  clientIds?: string[];
+  partnerId?: string;   // @deprecated — partnerIds 사용
+  partnerIds?: string[];
   freightType?: 's' | 'a' | 'b' | 'c' | 'd' | 'e';
   boxSize?: number;    // @deprecated
   defaultBoxConfig?: BoxConfig;       // @deprecated
@@ -242,11 +235,8 @@ export interface Item {
   netContent?: string;         // 내용량 표시 (예: "200g", "300ml", "1.8L") — product만 해당
   weightInKg?: number;         // 실중량 (kg) — product만 해당
   archived?: boolean;         // 통합 마이그레이션으로 대체된 구 품목
-  supplierId?: string;        // @deprecated — productSuppliers 사용
 }
 
-// @deprecated — Item 사용
-export type Product = Item;
 
 export interface PalletStock {
   id: string;
@@ -258,7 +248,7 @@ export interface PalletStock {
 
 export interface PalletTransaction {
   id: string;
-  clientId: string;
+  partnerId: string;
   palletId: string;
   type: 'in' | 'out';
   quantity: number;
@@ -363,7 +353,7 @@ export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'clie
 export interface ProductionRecord {
   id: string;
   date: string;               // YYYY-MM-DD
-  productId: string;
+  itemId: string;
   productName: string;
   finishedQty: number;        // FINISHED 생산 수량
   wipUsed?: number;           // WIP 투입 수량 (옵션)
@@ -416,7 +406,7 @@ export interface IssuedStatement {
   issuedAt: string;       // ISO timestamp (전표일자)
   tradeDate: string;      // YYYY-MM-DD
   type: '매출' | '매입';
-  clientId: string;
+  partnerId: string;
   clientName: string;
   orderId: string;
   docNo: string;
@@ -443,10 +433,10 @@ export interface PaymentRecord {
 // 매출 issuedStatements.orderId 와 대칭: issuedStatements.purchaseOrderId
 export interface PurchaseOrder {
   id: string;
-  productId: string;
+  itemId: string;
   productName: string;
-  supplierId?: string;
-  supplierName?: string;
+  partnerId?: string;
+  partnerName?: string;
   quantity: number;
   unit?: string;
   isBox?: boolean;
@@ -512,8 +502,8 @@ export interface PendingReceiptItem {
 
 export interface PendingReceipt {
   id: string;
-  supplierId?: string;      // 거래처 ID (partner)
-  supplierName: string;
+  partnerId?: string;      // 거래처 ID (partner)
+  partnerName: string;
   items: PendingReceiptItem[];
   totalAmount?: number;
   photoUrl?: string;       // Firebase Storage URL
@@ -556,7 +546,7 @@ export interface ItemBom {
 export type ReturnReason = '품질불량' | '오배송' | '과잉재고' | '기타';
 
 export interface ReturnItem {
-  productId: string;
+  itemId: string;
   name: string;
   quantity: number;
   price: number;
@@ -567,7 +557,7 @@ export interface ReturnItem {
 export interface ReturnRequest {
   id: string;
   orderId?: string;
-  clientId: string;
+  partnerId: string;
   clientName: string;
   items: ReturnItem[];
   totalAmount: number;
@@ -589,7 +579,7 @@ export interface PendingStatementEdit {
   clientName: string;
   proposedData: {
     tradeDate: string;
-    clientId: string;
+    partnerId: string;
     clientName: string;
     totalSupply: number;
     totalTax: number;
@@ -643,7 +633,7 @@ export type AdjustmentStatus = 'pending' | 'processed' | 'rejected';
 
 export interface AdjustmentRequest {
   id: string;
-  productId: string;
+  itemId: string;
   productName: string;
   originalQuantity: number;
   requestedQuantity?: number;

@@ -11,8 +11,8 @@ import {
   ReturnRequest,
   ReturnItem,
   ReturnReason,
-  Product,
-  Client,
+  Item,
+  Partner,
   Order,
   IssuedStatement,
 } from '../src/shared/types';
@@ -20,8 +20,8 @@ import { addItem, subscribeToCollection } from '../src/shared/services/firebaseS
 import PageHeader from './PageHeader';
 
 interface ReturnManagerProps {
-  products: Product[];
-  clients: Client[];
+  items: Item[];
+  partners: Partner[];
   orders: Order[];
   issuedStatements: IssuedStatement[];
   currentUser: { id: string; name: string };
@@ -34,8 +34,7 @@ type Tab = '접수' | '이력';
 const RETURN_REASONS: ReturnReason[] = ['품질불량', '오배송', '과잉재고', '기타'];
 
 const ReturnManager: React.FC<ReturnManagerProps> = ({
-  products,
-  clients,
+  items, partners,
   orders,
   issuedStatements,
   currentUser,
@@ -49,7 +48,7 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
   const [selectedClientId, setSelectedClientId] = useState('');
   const [selectedOrderId, setSelectedOrderId] = useState('');
   const [selectedStatementId, setSelectedStatementId] = useState('');
-  const [items, setItems] = useState<Partial<ReturnItem>[]>([]);
+  const [returnLineItems, setReturnLineItems] = useState<Partial<ReturnItem>[]>([]);
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -65,31 +64,31 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
   useEffect(() => {
     setSelectedOrderId('');
     setSelectedStatementId('');
-    setItems([]);
+    setReturnLineItems([]);
   }, [selectedClientId]);
 
-  const sellableProducts = products.filter(p =>
+  const sellableProducts = items.filter(p =>
     ['완제품', '향미유', '고춧가루'].includes(p.category as string)
   );
 
   const clientOrders = orders
-    .filter(o => o.clientId === selectedClientId && o.status === 'DELIVERED')
+    .filter(o => o.partnerId === selectedClientId && o.status === 'DELIVERED')
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, 30);
 
   const clientStatements = issuedStatements
-    .filter(s => s.clientId === selectedClientId && s.type === '매출')
+    .filter(s => s.partnerId === selectedClientId && s.type === '매출')
     .sort((a, b) => b.tradeDate.localeCompare(a.tradeDate))
     .slice(0, 30);
 
   const handleSelectOrder = (orderId: string) => {
     setSelectedOrderId(orderId);
-    if (!orderId) { setItems([]); return; }
+    if (!orderId) { setReturnLineItems([]); return; }
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
-    setItems(
+    setReturnLineItems(
       order.items.map(i => ({
-        productId: i.productId,
+        itemId: i.itemId,
         name: i.name,
         quantity: 0,
         price: i.price,
@@ -100,42 +99,42 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
   };
 
   const appendItem = () => {
-    setItems(prev => [...prev, { reason: '기타' as ReturnReason, isResellable: true, quantity: 0, price: 0 }]);
+    setReturnLineItems(prev => [...prev, { reason: '기타' as ReturnReason, isResellable: true, quantity: 0, price: 0 }]);
   };
 
   const updateItemField = <K extends keyof ReturnItem>(idx: number, key: K, val: ReturnItem[K]) => {
-    setItems(prev => prev.map((it, i) => (i === idx ? { ...it, [key]: val } : it)));
+    setReturnLineItems(prev => prev.map((it, i) => (i === idx ? { ...it, [key]: val } : it)));
   };
 
   const removeItemRow = (idx: number) => {
-    setItems(prev => prev.filter((_, i) => i !== idx));
+    setReturnLineItems(prev => prev.filter((_, i) => i !== idx));
   };
 
-  const handleProductSelect = (idx: number, productId: string) => {
-    const p = products.find(x => x.id === productId);
-    setItems(prev =>
+  const handleProductSelect = (idx: number, itemId: string) => {
+    const p = items.find(x => x.id === itemId);
+    setReturnLineItems(prev =>
       prev.map((it, i) =>
-        i === idx ? { ...it, productId, name: p?.name ?? '', price: p?.price ?? 0 } : it
+        i === idx ? { ...it, itemId, name: p?.name ?? '', price: p?.price ?? 0 } : it
       )
     );
   };
 
-  const validItems = items.filter(
+  const validItems = returnLineItems.filter(
     (it): it is ReturnItem =>
-      !!it.productId && !!it.name && (it.quantity ?? 0) > 0
+      !!it.itemId && !!it.name && (it.quantity ?? 0) > 0
   );
 
   const totalAmount = validItems.reduce((sum, it) => sum + it.quantity * it.price, 0);
 
   const handleSubmit = async () => {
-    const selectedClient = clients.find(c => c.id === selectedClientId);
+    const selectedClient = partners.find(c => c.id === selectedClientId);
     if (!selectedClient) { alert('거래처를 선택해주세요.'); return; }
     if (validItems.length === 0) { alert('반품 품목을 1개 이상 입력해주세요.'); return; }
 
     setSaving(true);
     try {
       const req = {
-        clientId: selectedClientId,
+        partnerId: selectedClientId,
         clientName: selectedClient.name,
         ...(selectedOrderId && { orderId: selectedOrderId }),
         ...(selectedStatementId && { linkedStatementId: selectedStatementId }),
@@ -147,7 +146,7 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
       };
       await addItem('returnRequests', req);
       setSelectedClientId('');
-      setItems([]);
+      setReturnLineItems([]);
       setNote('');
       setTab('이력');
     } finally {
@@ -207,7 +206,7 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">거래처 선택</option>
-                {clients.map(c => (
+                {partners.map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
@@ -260,7 +259,7 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
           </div>
 
           {/* 품목 컬럼 헤더 */}
-          {items.length > 0 && (
+          {returnLineItems.length > 0 && (
             <div className="grid grid-cols-12 gap-2 px-2.5 text-[10px] font-black text-slate-400 uppercase tracking-wider">
               <div className="col-span-4">품목</div>
               <div className="col-span-1 text-center">수량</div>
@@ -271,17 +270,17 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
           )}
 
           {/* 품목 행 */}
-          {items.length === 0 ? (
+          {returnLineItems.length === 0 ? (
             <p className="text-slate-400 text-sm py-6 text-center border-2 border-dashed border-slate-200 rounded-xl">
               원주문을 선택하거나 품목을 직접 추가하세요
             </p>
           ) : (
             <div className="space-y-2">
-              {items.map((it, idx) => (
+              {returnLineItems.map((it, idx) => (
                 <div key={idx} className="grid grid-cols-12 gap-2 items-center bg-slate-50 rounded-xl p-2.5">
                   <div className="col-span-4">
                     <select
-                      value={it.productId ?? ''}
+                      value={it.itemId ?? ''}
                       onChange={e => handleProductSelect(idx, e.target.value)}
                       className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"
                     >

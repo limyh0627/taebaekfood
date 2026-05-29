@@ -134,26 +134,26 @@ export const deleteSubItem = async (
 };
 
 // partner_item 컬렉션에 품목-거래처(Direction='out') 매핑 저장 — 기존 box/tape 설정 보존
-export const setProductClients = async (productId: string, clientIds: string[]) => {
+export const setProductClients = async (itemId: string, partnerIds: string[]) => {
   const { getDocs, query: q, collection: col, where } = await import('firebase/firestore');
 
   // 기존 레코드 조회 (Direction='out' 필터)
-  const existing = await getDocs(q(col(db, 'partner_item'), where('Item_ID', '==', productId), where('Direction', '==', 'out')));
+  const existing = await getDocs(q(col(db, 'partner_item'), where('Item_ID', '==', itemId), where('Direction', '==', 'out')));
   const existingMap = new Map(existing.docs.map(d => [d.data().Partner_ID as string, d.ref]));
 
   const batch = writeBatch(db);
 
   // 연결 해제된 거래처 삭제
-  existingMap.forEach((ref, clientId) => {
-    if (!clientIds.includes(clientId)) batch.delete(ref);
+  existingMap.forEach((ref, partnerId) => {
+    if (!partnerIds.includes(partnerId)) batch.delete(ref);
   });
 
   // 새로 연결된 거래처만 추가 (기존 레코드는 건드리지 않아 박스/테이프 설정 보존)
-  for (const clientId of clientIds) {
-    if (!existingMap.has(clientId)) {
-      const id = `${productId}_${clientId}_out`;
+  for (const partnerId of partnerIds) {
+    if (!existingMap.has(partnerId)) {
+      const id = `${itemId}_${partnerId}_out`;
       const ref = doc(db, 'partner_item', id);
-      batch.set(ref, { id, Item_ID: productId, Partner_ID: clientId, Direction: 'out' });
+      batch.set(ref, { id, Item_ID: itemId, Partner_ID: partnerId, Direction: 'out' });
     }
   }
 
@@ -161,23 +161,23 @@ export const setProductClients = async (productId: string, clientIds: string[]) 
 };
 
 // partner_item 컬렉션에 품목-거래처(Direction='in') 매핑 저장
-export const setProductSuppliers = async (productId: string, supplierIds: string[]) => {
+export const setProductSuppliers = async (itemId: string, supplierIds: string[]) => {
   const { getDocs, query: q, collection: col, where } = await import('firebase/firestore');
 
-  const existing = await getDocs(q(col(db, 'partner_item'), where('Item_ID', '==', productId), where('Direction', '==', 'in')));
+  const existing = await getDocs(q(col(db, 'partner_item'), where('Item_ID', '==', itemId), where('Direction', '==', 'in')));
   const existingMap = new Map(existing.docs.map(d => [d.data().Partner_ID as string, d.ref]));
 
   const batch = writeBatch(db);
 
-  existingMap.forEach((ref, supplierId) => {
-    if (!supplierIds.includes(supplierId)) batch.delete(ref);
+  existingMap.forEach((ref, partnerId) => {
+    if (!supplierIds.includes(partnerId)) batch.delete(ref);
   });
 
-  for (const supplierId of supplierIds) {
-    if (!existingMap.has(supplierId)) {
-      const id = `${productId}_${supplierId}_in`;
+  for (const partnerId of supplierIds) {
+    if (!existingMap.has(partnerId)) {
+      const id = `${itemId}_${partnerId}_in`;
       const ref = doc(db, 'partner_item', id);
-      batch.set(ref, { id, Item_ID: productId, Partner_ID: supplierId, Direction: 'in' });
+      batch.set(ref, { id, Item_ID: itemId, Partner_ID: partnerId, Direction: 'in' });
     }
   }
 

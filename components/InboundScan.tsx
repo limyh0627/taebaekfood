@@ -8,16 +8,16 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../src/shared/firebase';
 import { addItem, updateItem } from '../src/shared/services/firebaseService';
-import { Product, PendingReceipt, QrMapping, PurchaseOrder } from '../src/shared/types';
+import { Item, PendingReceipt, QrMapping, PurchaseOrder } from '../src/shared/types';
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY ?? '';
 
 interface InboundScanProps {
-  submaterials: Product[];
+  submaterials: Item[];
   confirmedOrders: PurchaseOrder[];
   qrMappings: QrMapping[];
   currentUser: { id: string; name: string };
-  onUpdateSubmaterial: (id: string, data: Partial<Product>) => void;
+  onUpdateSubmaterial: (id: string, data: Partial<Item>) => void;
   onFinishConfirmedOrder: (id: string) => void;
   onClose: () => void;
 }
@@ -30,7 +30,7 @@ interface ConfirmItem {
   unit: string;
   quantity: string;
   unitPrice: string;
-  supplierName: string;
+  partnerName: string;
   route: 'order_match' | 'pre_inbound'; // 발주매칭 or 선입고
   confirmedOrderId?: string;
   confirmedQty?: number;
@@ -120,7 +120,7 @@ const InboundScan: React.FC<InboundScanProps> = ({
   }, [scanState, qrMappings, submaterials, confirmedOrders]);
 
   // 품목 → 발주 매칭 라우팅
-  const routeItem = useCallback((sub: Product): ConfirmItem => {
+  const routeItem = useCallback((sub: Item): ConfirmItem => {
     const match = confirmedOrders.find(c => c.id === sub.id);
     return {
       submaterialId: sub.id,
@@ -128,7 +128,7 @@ const InboundScan: React.FC<InboundScanProps> = ({
       unit: sub.unit,
       quantity: match ? String(match.quantity) : '',
       unitPrice: sub.cost ? String(sub.cost) : '',
-      supplierName: '',
+      partnerName: '',
       route: match ? 'order_match' : 'pre_inbound',
       confirmedOrderId: match?.id,
       confirmedQty: match?.quantity,
@@ -206,7 +206,7 @@ const InboundScan: React.FC<InboundScanProps> = ({
           ...base,
           quantity: p.quantity ? String(p.quantity) : base.quantity,
           unitPrice: p.unitPrice ? String(p.unitPrice) : base.unitPrice,
-          supplierName: p.supplier || '',
+          partnerName: p.supplier || '',
         };
       }).filter(Boolean) as ConfirmItem[];
 
@@ -246,7 +246,7 @@ const InboundScan: React.FC<InboundScanProps> = ({
         } else {
           // 선입고 → pendingReceipts 저장
           const receipt: Omit<PendingReceipt, 'id'> = {
-            supplierName: item.supplierName,
+            partnerName: item.partnerName,
             items: [{ submaterialId: sub.id, name: sub.name, quantity: qty, unit: sub.unit, unitPrice: item.unitPrice ? Number(item.unitPrice) : undefined }],
             totalAmount: qty * (item.unitPrice ? Number(item.unitPrice) : 0),
             photoUrl,
@@ -274,7 +274,7 @@ const InboundScan: React.FC<InboundScanProps> = ({
   };
 
   // QR 매핑 저장 후 확인 단계로
-  const saveMappingAndRoute = async (sub: Product) => {
+  const saveMappingAndRoute = async (sub: Item) => {
     if (!mappingModal) return;
     const mapping: Omit<QrMapping, 'id'> = {
       qrValue: mappingModal.qrValue,
@@ -408,8 +408,8 @@ const InboundScan: React.FC<InboundScanProps> = ({
                     <div>
                       <p className="text-white/50 text-[10px] mb-1">거래처</p>
                       <input
-                        value={item.supplierName}
-                        onChange={e => updateItem_(idx, 'supplierName', e.target.value)}
+                        value={item.partnerName}
+                        onChange={e => updateItem_(idx, 'partnerName', e.target.value)}
                         placeholder="거래처명 (선택)"
                         className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-teal-400"
                       />

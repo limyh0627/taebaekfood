@@ -64,10 +64,10 @@ const InboundManager: React.FC<InboundManagerProps> = ({
 
   // 임시 입고 폼
   const [tempForm, setTempForm] = useState<{
-    supplierName: string;
+    partnerName: string;
     items: { submaterialId: string; name: string; quantity: string; unit: string; unitPrice: string }[];
     note: string;
-  }>({ supplierName: '', items: [], note: '' });
+  }>({ partnerName: '', items: [], note: '' });
 
   // QR 매핑 모달
   const [mappingModal, setMappingModal] = useState<{ qrValue: string } | null>(null);
@@ -247,7 +247,7 @@ const InboundManager: React.FC<InboundManagerProps> = ({
           unitPrice: p.unitPrice?.toString() ?? sub?.cost?.toString() ?? '',
         };
       });
-      if (parsed[0]?.supplier) setTempForm(prev => ({ ...prev, supplierName: parsed[0].supplier!, items: [...prev.items, ...newItems] }));
+      if (parsed[0]?.supplier) setTempForm(prev => ({ ...prev, partnerName: parsed[0].supplier!, items: [...prev.items, ...newItems] }));
       else setTempForm(prev => ({ ...prev, items: [...prev.items, ...newItems] }));
       closeCamera();
     } catch (e) {
@@ -268,7 +268,7 @@ const InboundManager: React.FC<InboundManagerProps> = ({
 
   // ── 임시 입고 저장 ──
   const saveTempReceipt = async () => {
-    if (!tempForm.supplierName.trim()) { alert('거래처명을 입력해주세요.'); return; }
+    if (!tempForm.partnerName.trim()) { alert('거래처명을 입력해주세요.'); return; }
     if (tempForm.items.length === 0) { alert('품목을 추가해주세요.'); return; }
     const invalidItem = tempForm.items.find(i => !i.quantity || isNaN(Number(i.quantity)));
     if (invalidItem) { alert(`"${invalidItem.name}" 수량을 입력해주세요.`); return; }
@@ -289,7 +289,7 @@ const InboundManager: React.FC<InboundManagerProps> = ({
       }));
       const totalAmount = items.reduce((sum, i) => sum + (i.quantity * (i.unitPrice ?? 0)), 0);
       const receipt: Omit<PendingReceipt, 'id'> = {
-        supplierName: tempForm.supplierName,
+        partnerName: tempForm.partnerName,
         items,
         totalAmount,
         photoUrl,
@@ -305,7 +305,7 @@ const InboundManager: React.FC<InboundManagerProps> = ({
         const sub = submaterials.find(s => s.id === item.submaterialId);
         if (sub) onUpdateSubmaterial(sub.id, { stock: (sub.stock ?? 0) + item.quantity });
       }
-      setTempForm({ supplierName: '', items: [], note: '' });
+      setTempForm({ partnerName: '', items: [], note: '' });
       setCapturedImage(null);
       setCapturedFile(null);
       setTab('history');
@@ -417,8 +417,8 @@ const InboundManager: React.FC<InboundManagerProps> = ({
           <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-3">
             <p className="text-xs font-black text-slate-500 uppercase tracking-widest">거래처 정보</p>
             <input
-              value={tempForm.supplierName}
-              onChange={e => setTempForm(p => ({ ...p, supplierName: e.target.value }))}
+              value={tempForm.partnerName}
+              onChange={e => setTempForm(p => ({ ...p, partnerName: e.target.value }))}
               placeholder="거래처명 입력"
               className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
             />
@@ -541,7 +541,7 @@ const InboundManager: React.FC<InboundManagerProps> = ({
             <div key={r.id} className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-2">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="font-black text-slate-800 text-sm">{r.supplierName}</p>
+                  <p className="font-black text-slate-800 text-sm">{r.partnerName}</p>
                   <p className="text-xs text-slate-400">{r.registeredAt.slice(0, 10)} · {r.registeredBy}</p>
                 </div>
                 <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${r.status === 'voucher_linked' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>

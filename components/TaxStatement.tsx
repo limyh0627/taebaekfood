@@ -4,12 +4,11 @@ import {
   FileText, Printer, Search, Check, CheckSquare, Download, X,
   Receipt, Eye, Calendar, Building2, ChevronDown, ChevronUp, Edit2, Trash2, Package,
 } from 'lucide-react';
-import { Client, IssuedStatement, CompanyInfo } from '../types';
+import { Partner, IssuedStatement, CompanyInfo } from '../types';
 import PageHeader from './PageHeader';
 
 interface TaxStatementProps {
-  issuedStatements: IssuedStatement[];
-  clients: Client[];
+  issuedStatements: IssuedStatement[];partners;
   companyInfo?: CompanyInfo | null;
   onUpdateIssuedStatement?: (id: string, data: Partial<IssuedStatement>) => void;
 }
@@ -17,8 +16,7 @@ interface TaxStatementProps {
 const fmt = (n: number) => n.toLocaleString('ko-KR');
 
 const TaxStatement: React.FC<TaxStatementProps> = ({
-  issuedStatements,
-  clients,
+  issuedStatements, partners,
   companyInfo,
   onUpdateIssuedStatement,
 }) => {
@@ -53,7 +51,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
     const map = new Map<string, number>();
     issuedStatements
       .filter(s => s.type === '매출' && s.tradeDate.slice(0, 7) === selectedMonth && !!s.taxIssuedAt)
-      .forEach(s => { map.set(s.clientId, (map.get(s.clientId) ?? 0) + 1); });
+      .forEach(s => { map.set(s.partnerId, (map.get(s.partnerId) ?? 0) + 1); });
     return map;
   }, [issuedStatements, selectedMonth]);
 
@@ -61,25 +59,25 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
     const map = new Map<string, number>();
     issuedStatements
       .filter(s => s.type === '매출' && s.tradeDate.slice(0, 7) === selectedMonth && !s.taxIssuedAt)
-      .forEach(s => { map.set(s.clientId, (map.get(s.clientId) ?? 0) + 1); });
+      .forEach(s => { map.set(s.partnerId, (map.get(s.partnerId) ?? 0) + 1); });
     return map;
   }, [issuedStatements, selectedMonth]);
 
   const taxClients = useMemo(() => {
     const inMonth = new Set(
-      issuedStatements.filter(s => s.type === '매출' && s.tradeDate.slice(0, 7) === selectedMonth).map(s => s.clientId)
+      issuedStatements.filter(s => s.type === '매출' && s.tradeDate.slice(0, 7) === selectedMonth).map(s => s.partnerId)
     );
-    return clients
+    return partners
       .filter(c => inMonth.has(c.id))
       .filter(c => !taxClientSearch || c.name.includes(taxClientSearch))
       .filter(c => !onlyUnissued || (clientUnissuedCount.get(c.id) ?? 0) > 0)
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [clients, issuedStatements, selectedMonth, taxClientSearch, onlyUnissued, clientUnissuedCount]);
+  }, [partners, issuedStatements, selectedMonth, taxClientSearch, onlyUnissued, clientUnissuedCount]);
 
   const clientStmts = useMemo(() =>
     taxClientId
       ? issuedStatements
-          .filter(s => s.clientId === taxClientId && s.type === '매출' && s.tradeDate.slice(0, 7) === selectedMonth)
+          .filter(s => s.partnerId === taxClientId && s.type === '매출' && s.tradeDate.slice(0, 7) === selectedMonth)
           .sort((a, b) => b.tradeDate.localeCompare(a.tradeDate))
       : [],
     [issuedStatements, taxClientId, selectedMonth]
@@ -150,7 +148,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
     setTaxStmtIds(allSel ? [] : ids);
   };
 
-  const selectedClient = clients.find(c => c.id === taxClientId);
+  const selectedClient = partners.find(c => c.id === taxClientId);
   const tradeMonth = selectedStmts.length > 0 ? selectedStmts[selectedStmts.length - 1].tradeDate.slice(0, 7) : '';
 
   const handleTaxIssue = () => {
@@ -198,16 +196,16 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
 
   // ── 조회 탭 로직 ──
   const issuedClients = useMemo(() =>
-    clients
-      .filter(c => issuedStatements.some(s => s.clientId === c.id && s.type === '매출' && !!s.taxIssuedAt))
+    partners
+      .filter(c => issuedStatements.some(s => s.partnerId === c.id && s.type === '매출' && !!s.taxIssuedAt))
       .filter(c => !histClientSearch || c.name.includes(histClientSearch))
       .sort((a, b) => a.name.localeCompare(b.name)),
-    [clients, issuedStatements, histClientSearch]
+    [partners, issuedStatements, histClientSearch]
   );
 
   const histStmts = useMemo(() =>
     issuedStatements
-      .filter(s => s.type === '매출' && !!s.taxIssuedAt && (!histClientId || s.clientId === histClientId))
+      .filter(s => s.type === '매출' && !!s.taxIssuedAt && (!histClientId || s.partnerId === histClientId))
       .sort((a, b) => (b.taxIssuedAt ?? '').localeCompare(a.taxIssuedAt ?? '')),
     [issuedStatements, histClientId]
   );
@@ -227,7 +225,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
         totalAmount: stmts.reduce((a, s) => a + s.totalAmount, 0),
         isBundle: stmts.length > 1,
         issuedAt: key,
-        clientId: stmts[0].clientId,
+        partnerId: stmts[0].partnerId,
         clientName: stmts[0].clientName,
       }))
       .sort((a, b) => b.issuedAt.localeCompare(a.issuedAt));
@@ -235,7 +233,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
 
   // ── 미리보기용 그룹 ──
   const previewGroup = histPreviewGroupKey ? histGroups.find(g => g.key === histPreviewGroupKey) : null;
-  const previewClient = previewGroup ? clients.find(c => c.id === previewGroup.clientId) : null;
+  const previewClient = previewGroup ? partners.find(c => c.id === previewGroup.partnerId) : null;
   const previewMerged = useMemo((): { taxable: MergedItem[]; exempt: MergedItem[] } => {
     if (!previewGroup) return { taxable: [], exempt: [] };
     const map = new Map<string, MergedItem>();
@@ -773,7 +771,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                     <span className="text-[10px] font-black text-slate-400 uppercase text-center">보기</span>
                   </div>
                   {histGroups.map(group => {
-                    const cl = clients.find(c => c.id === group.clientId);
+                    const cl = partners.find(c => c.id === group.partnerId);
                     const isSelected = histPreviewGroupKey === group.key;
                     const isExpanded = expandedGroups.has(group.key);
                     const tradeDates = group.stmts.map(s => s.tradeDate).sort();

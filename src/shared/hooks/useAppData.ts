@@ -15,7 +15,7 @@ export interface WorkOrderItem {
   id: string;
   key: string;
   orderId: string;
-  productId: string;
+  itemId: string;
   itemName: string;
   clientName: string;
   qty: number;
@@ -30,17 +30,12 @@ export interface AppData {
   // 주문
   orders: Order[];
   purchaseOrders: PurchaseOrder[];
-  // 품목 (items 컬렉션 통합 — 완제품+부자재)
+  // 품목 (items 컬렉션)
   items: Item[];
-  products: Item[];        // items 중 완제품 (backward compat)
-  submaterials: Item[];    // items 중 부자재 (backward compat)
-  // 파트너-품목 매핑 (partner_item 컬렉션 통합)
+  // 파트너-품목 매핑 (partner_item 컬렉션)
   partnerItems: PartnerItem[];
-  productClients: PartnerItem[];   // Direction='out' (backward compat)
-  productSuppliers: PartnerItem[]; // Direction='in'  (backward compat)
-  // 파트너 / 직원
+  // 파트너 (partners 컬렉션)
   partners: Partner[];
-  clients: Partner[];       // backward compat
   employees: Employee[];
   leaveRequests: LeaveRequest[];
   // 재고 / 파렛트
@@ -68,7 +63,6 @@ export interface AppData {
   fixedCostTemplates: FixedCostTemplate[];
   inventorySnapshots: InventorySnapshot[];
   productionSalesLogs: ProductionSalesLog[];
-  itemCustomers: PartnerItem[];
   pendingStatementEdits: PendingStatementEdit[];
   isDataLoading: boolean;
 }
@@ -135,9 +129,8 @@ export function useAppData(): AppData {
         subscribeToCollection<PartnerItem>('partner_item', (data) => {
           setPartnerItems(data.map(pi => ({
             ...pi,
-            productId: pi.Item_ID,
-            clientId:   pi.Direction === 'out' ? pi.Partner_ID : undefined,
-            supplierId: pi.Direction === 'in'  ? pi.Partner_ID : undefined,
+            itemId: pi.Item_ID,
+            partnerId: pi.Partner_ID,
             price: pi.price ?? pi.Standard_Price,
           })));
         }),
@@ -183,22 +176,11 @@ export function useAppData(): AppData {
     };
   }, []);
 
-  // backward compat splits
-  const products    = useMemo(() => items.filter(i => i.category === 'product'), [items]);
-  const submaterials = useMemo(() => items.filter(i => i.category !== 'product'), [items]);
-  const productClients   = useMemo(() => partnerItems.filter(pi => pi.Direction === 'out'), [partnerItems]);
-  const productSuppliers = useMemo(() => partnerItems.filter(pi => pi.Direction === 'in'),  [partnerItems]);
-  // itemCustomers: Direction='out' PartnerItem에 item_id/customer_id 별칭 주입
-  const itemCustomers = useMemo(() =>
-    productClients.map(pc => ({ ...pc, item_id: pc.Item_ID, customer_id: pc.Partner_ID })),
-    [productClients]
-  );
-
   return {
     orders, purchaseOrders,
-    items, products, submaterials,
-    partnerItems, productClients, productSuppliers,
-    partners, clients: partners,
+    items,
+    partnerItems,
+    partners,
     employees, leaveRequests,
     pallets, palletTransactions, adjustmentRequests,
     noticePosts, chatRooms, chatMessages,
@@ -207,6 +189,6 @@ export function useAppData(): AppData {
     pendingReceipts, qrMappings, itemFormulas, itemBoms, shippingRules, returnRequests,
     companyInfo, accountGroups, accountCodes, fixedCostTemplates, inventorySnapshots,
     productionSalesLogs, pendingStatementEdits,
-    itemCustomers, isDataLoading,
+    isDataLoading,
   };
 }

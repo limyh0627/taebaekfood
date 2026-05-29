@@ -64,8 +64,8 @@ const StaffRoot: React.FC = () => {
   if (currentView === 'client-portal') {
     return (
       <ClientPortal
-        clients={appData.clients}
-        products={[...appData.products, ...appData.submaterials]}
+        clients={appData.partners}
+        products={appData.items}
         onOrderSubmit={(o) => addItem('orders', o)}
         onExit={() => setCurrentView('orders')}
       />

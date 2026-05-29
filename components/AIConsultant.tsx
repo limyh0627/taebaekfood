@@ -1,12 +1,12 @@
 
 import React from 'react';
 import { Sparkles } from 'lucide-react';
-import { Order, Product } from '../types';
+import { Order, Item } from '../types';
 import PageHeader from './PageHeader';
 
 interface AIConsultantProps {
   orders: Order[];
-  products: Product[];
+  items?: Item[];
 }
 
 const AIConsultant: React.FC<AIConsultantProps> = () => {

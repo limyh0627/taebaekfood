@@ -1,19 +1,19 @@
 
 import React, { useState, useMemo } from 'react';
 import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X, Copy, ChevronDown, ChevronUp, GitMerge, Save, Settings } from 'lucide-react';
-import { Product, InventoryCategory, Client, ProductClient, ProductSupplier, PartnerItem, ShippingRule, ItemBom } from '../types';
+import { Item, InventoryCategory, Partner, PartnerItem, ShippingRule, ItemBom } from '../types';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 
 interface ItemManagerProps {
-  products: Product[];
-  clients: Client[];
-  productClients?: ProductClient[];
-  productSuppliers?: ProductSupplier[];
-  itemCustomers?: PartnerItem[];
+  items: Item[];
+  partners: Partner[];
+  productClients?: PartnerItem[];
+  productSuppliers?: PartnerItem[];
+  partnerItems?: PartnerItem[];
   shippingRules?: ShippingRule[];
   itemBoms?: ItemBom[];
-  onEditProduct: (_product: Product) => void;
+  onEditProduct: (_product: Item) => void;
   onAddProduct: () => void;
   onDeleteProduct: (_id: string, _category: string) => void;
   onLinkProduct: (_productId: string, _clientId: string) => void;
@@ -58,7 +58,11 @@ const SUB_ORDER: Record<string, number> = { '라벨': 0, '용기': 1, '마개': 
 const sortSubs = (subs: { name: string; category: string; subtype?: string }[]) =>
   [...subs].sort((a, b) => (SUB_ORDER[itemSubCat(a)] ?? 9) - (SUB_ORDER[itemSubCat(b)] ?? 9));
 
-const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productClients = [], productSuppliers = [], itemCustomers = [], shippingRules = [], itemBoms = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct, onLinkSupplier, onUnlinkSupplier, onMergeProducts, onSaveItemCustomer, onSaveShippingRule, onAddShippingRule, isAdmin = true }) => {
+const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClients = [], productSuppliers = [], partnerItems = [], shippingRules = [], itemBoms = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct, onLinkSupplier, onUnlinkSupplier, onMergeProducts, onSaveItemCustomer, onSaveShippingRule, onAddShippingRule, isAdmin = true }) => {
+  // Compute derived variables
+  const products = items;
+  const clients = partners;
+  const itemCustomers = partnerItems;
   const [mainView, setMainView] = useState<'flat' | 'by-client'>(isAdmin ? 'flat' : 'by-client');
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(true);
@@ -82,7 +86,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
   const [expandedPackagingId, setExpandedPackagingId] = useState<string | null>(null);
   const [editingIc, setEditingIc] = useState<Record<string, Partial<PartnerItem>>>({});
   const [editingRule, setEditingRule] = useState<Record<string, Partial<ShippingRule>>>({});
-  const [packagingModal, setPackagingModal] = useState<{ item: Product; clientId: string } | null>(null);
+  const [packagingModal, setPackagingModal] = useState<{ item: Item; partnerId: string } | null>(null);
   const [packagingEdit, setPackagingEdit] = useState<Partial<ShippingRule>>({});
   const [packagingAdding, setPackagingAdding] = useState(false);
   const [packagingSaving, setPackagingSaving] = useState(false);
@@ -97,26 +101,26 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
         const tDiff = (TYPE_ORDER[a.type] ?? 0) - (TYPE_ORDER[b.type] ?? 0);
         return tDiff !== 0 ? tDiff : a.name.localeCompare(b.name, 'ko');
       }),
-    [clients]
+    [partners]
   );
   const purchaseClients = useMemo(() =>
     clients
       .filter(c => c.partnerType === '매입처' || c.partnerType === '매출+매입처')
       .sort((a, b) => a.name.localeCompare(b.name, 'ko')),
-    [clients]
+    [partners]
   );
   const activePartnerClients = partnerTab === 'sales' ? salesClients : purchaseClients;
 
   const duplicateGroups = useMemo(() => {
-    const finished = products.filter(p => !p.archived && ['product', 'wip', 'giftset'].includes(p.category));
-    const pcByProduct: Record<string, ProductClient[]> = {};
+    const finished = items.filter(p => !p.archived && ['product', 'wip', 'giftset'].includes(p.category));
+    const pcByProduct: Record<string, PartnerItem[]> = {};
     for (const pc of productClients) {
       const key = pc.Item_ID;
       if (!key) continue;
       if (!pcByProduct[key]) pcByProduct[key] = [];
       pcByProduct[key].push(pc);
     }
-    const subMap = Object.fromEntries(products.map(p => [p.id, p.name]));
+    const subMap = Object.fromEntries(items.map(p => [p.id, p.name]));
 
     const groups: Record<string, typeof finished> = {};
     for (const p of finished) {
@@ -136,7 +140,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
           const subs = p.submaterials || [];
           const 라벨 = subs.filter(s => normalizeCategory(s.category) === '라벨').map(s => s.name).join(', ');
           const pcs = pcByProduct[p.id] || [];
-          const directClients = [...new Set([...(p.clientIds || [])])];
+          const directClients = [...new Set([...(p.partnerIds || [])])];
           return { product: p, 라벨, pcs, directClients, subMap };
         });
         const labels = [...new Set(items.map(i => i.라벨).filter(Boolean))];
@@ -149,17 +153,17 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
   const clientProductCount = useMemo(() => {
     const map = new Map<string, number>();
     for (const p of products) {
-      for (const cid of p.clientIds ?? []) {
+      for (const cid of p.partnerIds ?? []) {
         map.set(cid, (map.get(cid) ?? 0) + 1);
       }
     }
     return map;
-  }, [products]);
+  }, [items]);
 
   const supplierItemCount = useMemo(() => {
     const map = new Map<string, number>();
     for (const ps of productSuppliers) {
-      const sid = ps.supplierId ?? ps.Partner_ID;
+      const sid = ps.partnerId ?? ps.Partner_ID;
       if (sid) map.set(sid, (map.get(sid) ?? 0) + 1);
     }
     return map;
@@ -177,7 +181,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
     const next = clientTypeFilter === type ? null : type;
     setClientTypeFilter(next);
     if (next && selectedClientId) {
-      const cur = clients.find(c => c.id === selectedClientId);
+      const cur = partners.find(c => c.id === selectedClientId);
       if (cur && cur.type !== next) {
         setSelectedClientId(null);
         setShowAll(false);
@@ -185,20 +189,20 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
     }
   };
 
-  const selectedClient = selectedClientId ? clients.find(c => c.id === selectedClientId) : null;
+  const selectedClient = selectedClientId ? partners.find(c => c.id === selectedClientId) : null;
 
   const filteredItems = useMemo(() => {
     const isByClientPurchase = mainView === 'by-client' && clientScopeTab === 'purchase' && selectedClientId;
     let result = mainView === 'flat' || showAll || showNoClient
-      ? products.filter(p => !p.archived && p.category === activeCategory)
+      ? items.filter(p => !p.archived && p.category === activeCategory)
       : selectedClientId
         ? isByClientPurchase
-          ? products.filter(p => !p.archived && productSuppliers.some(ps => (ps.productId ?? ps.Item_ID) === p.id && (ps.supplierId ?? ps.Partner_ID) === selectedClientId))
-          : products.filter(p => !p.archived && p.category === activeCategory && (p.clientIds ?? []).includes(selectedClientId))
+          ? items.filter(p => !p.archived && productSuppliers.some(ps => (ps.itemId ?? ps.Item_ID) === p.id && (ps.partnerId ?? ps.Partner_ID) === selectedClientId))
+          : items.filter(p => !p.archived && p.category === activeCategory && (p.partnerIds ?? []).includes(selectedClientId))
         : [];
 
     if (showNoClient) {
-      result = result.filter(p => (p.clientIds ?? []).length === 0);
+      result = result.filter(p => (p.partnerIds ?? []).length === 0);
     }
 
     if (searchTerm.trim()) {
@@ -206,14 +210,14 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
       if (mainView === 'flat') {
         result = result.filter(p =>
           p.name.toLowerCase().includes(term) ||
-          clients.some(c => (p.clientIds ?? []).includes(c.id) && c.name.toLowerCase().includes(term))
+          partners.some(c => (p.partnerIds ?? []).includes(c.id) && c.name.toLowerCase().includes(term))
         );
       } else {
         result = result.filter(p => p.name.toLowerCase().includes(term) || p.id.toLowerCase().includes(term));
       }
     }
     return [...result].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-  }, [products, activeCategory, selectedClientId, showAll, showNoClient, searchTerm, mainView, clients, clientScopeTab, productSuppliers]);
+  }, [products, activeCategory, selectedClientId, showAll, showNoClient, searchTerm, mainView, partners, clientScopeTab, productSuppliers]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -299,10 +303,10 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
     if (!selectedClientId) return [];
     const term = linkSearch.toLowerCase().trim();
     const alreadyLinked = clientScopeTab === 'purchase'
-      ? new Set(productSuppliers.filter(ps => (ps.supplierId ?? ps.Partner_ID) === selectedClientId).map(ps => ps.productId ?? ps.Item_ID))
+      ? new Set(productSuppliers.filter(ps => (ps.partnerId ?? ps.Partner_ID) === selectedClientId).map(ps => ps.itemId ?? ps.Item_ID))
       : null;
     return products
-      .filter(p => p.category === linkCategory && (alreadyLinked ? !alreadyLinked.has(p.id) : !(p.clientIds ?? []).includes(selectedClientId)))
+      .filter(p => p.category === linkCategory && (alreadyLinked ? !alreadyLinked.has(p.id) : !(p.partnerIds ?? []).includes(selectedClientId)))
       .filter(p => !term || p.name.toLowerCase().includes(term))
       .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
   }, [products, selectedClientId, linkCategory, linkSearch, clientScopeTab, productSuppliers]);
@@ -479,8 +483,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                             'bg-rose-100 text-rose-700','bg-sky-100 text-sky-700','bg-violet-100 text-violet-700',
                             'bg-teal-100 text-teal-700','bg-orange-100 text-orange-700','bg-pink-100 text-pink-700',
                           ];
-                          const clientList = clients.filter(c => !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처');
-                          const matched = (item.clientIds ?? []).map(id => clientList.find(c => c.id === id)).filter(Boolean) as typeof clientList;
+                          const clientList = partners.filter(c => !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처');
+                          const matched = (item.partnerIds ?? []).map(id => clientList.find(c => c.id === id)).filter(Boolean) as typeof clientList;
                           if (!matched.length) return <span className="text-slate-200">-</span>;
                           const isExp = expandedClientRowId === item.id;
                           const shown = isExp ? matched : matched.slice(0, 1);
@@ -506,7 +510,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                     {!(mainView === 'by-client' && selectedClientId) && activeCategory !== 'product' && (
                       <td className="px-2 py-3">
                         <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
-                          {clients.find(c => c.id === productSuppliers.find(ps => ps.productId === item.id)?.supplierId)?.name ?? <span className="text-slate-200">-</span>}
+                          {partners.find(c => c.id === productSuppliers.find(ps => ps.itemId === item.id)?.partnerId)?.name ?? <span className="text-slate-200">-</span>}
                         </span>
                       </td>
                     )}
@@ -514,7 +518,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                       <td key={cat} className="px-2 py-3">
                         {item.category === 'product' ? (() => {
                           const subs = (item.submaterials ?? []).filter(s => {
-                            const full = products.find(p => p.id === s.id);
+                            const full = items.find(p => p.id === s.id);
                             return full ? itemSubCat(full) === cat : normalizeCategory(s.category) === cat;
                           });
                           return subs.length > 0
@@ -527,8 +531,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                     ))}
                     {(mainView === 'by-client' && selectedClientId && clientScopeTab === 'sales') && (() => {
                       const rule = shippingRules.find(r => r.item_id === item.id && r.partner_id === selectedClientId);
-                      const boxName = rule?.box_item_id ? (products.find(p => p.id === rule.box_item_id)?.name ?? rule.box_item_id) : null;
-                      const tapeName = rule?.tape_item_id ? (products.find(p => p.id === rule.tape_item_id)?.name ?? rule.tape_item_id) : null;
+                      const boxName = rule?.box_item_id ? (items.find(p => p.id === rule.box_item_id)?.name ?? rule.box_item_id) : null;
+                      const tapeName = rule?.tape_item_id ? (items.find(p => p.id === rule.tape_item_id)?.name ?? rule.tape_item_id) : null;
                       return (
                         <>
                           <td className="px-2 py-3">
@@ -567,7 +571,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                               <button
                                 onClick={() => {
                                   const existing = shippingRules.find(r => r.item_id === item.id && r.partner_id === selectedClientId);
-                                  setPackagingModal({ item, clientId: selectedClientId });
+                                  setPackagingModal({ item, partnerId: selectedClientId });
                                   setPackagingEdit(existing ? { ...existing } : {});
                                   setPackagingAdding(!existing);
                                 }}
@@ -609,10 +613,10 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                     const boms = itemBoms.filter(b => b.parent_id === item.id);
                     const getBomChild = (cat: string) => {
                       const bom = boms.find(b => {
-                        const child = products.find(p => p.id === b.child_id);
+                        const child = items.find(p => p.id === b.child_id);
                         return child ? itemSubCat(child) === cat : false;
                       });
-                      return bom ? products.find(p => p.id === bom.child_id) : null;
+                      return bom ? items.find(p => p.id === bom.child_id) : null;
                     };
                     const containerItem = getBomChild('용기');
                     const labelItem = getBomChild('라벨');
@@ -652,13 +656,13 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                                   <tbody>
                                     {rules.map(rule => {
                                       const clientName = rule.partner_id
-                                        ? (clients.find(c => c.id === rule.partner_id)?.name ?? rule.partner_id)
+                                        ? (partners.find(c => c.id === rule.partner_id)?.name ?? rule.partner_id)
                                         : '전체 (기본)';
-                                      const boxItem = products.find(p => p.id === rule.box_item_id);
-                                      const tapeItem = rule.tape_item_id ? products.find(p => p.id === rule.tape_item_id) : null;
-                                      const partnerPrice = itemCustomers.find(ic =>
-                                        (ic.item_id ?? ic.Item_ID) === item.id &&
-                                        (ic.customer_id ?? ic.Partner_ID) === rule.partner_id
+                                      const boxItem = items.find(p => p.id === rule.box_item_id);
+                                      const tapeItem = rule.tape_item_id ? items.find(p => p.id === rule.tape_item_id) : null;
+                                      const partnerPrice = partnerItems.find(ic =>
+                                        ic.Item_ID === item.id &&
+                                        ic.Partner_ID === rule.partner_id
                                       )?.price;
                                       const editing = editingRule[rule.id];
                                       return (
@@ -669,7 +673,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                                               <select className="border border-emerald-300 rounded px-1 text-xs w-full"
                                                 value={editing.box_item_id ?? rule.box_item_id}
                                                 onChange={e => setEditingRule(prev => ({ ...prev, [rule.id]: { ...prev[rule.id], box_item_id: e.target.value } }))}>
-                                                {products.filter(p => p.category === 'box' || (p.category === 'submaterial' && p.subtype === '박스')).map(p => (
+                                                {items.filter(p => p.category === 'box' || (p.category === 'submaterial' && p.subtype === '박스')).map(p => (
                                                   <option key={p.id} value={p.id}>{p.name}</option>
                                                 ))}
                                               </select>
@@ -688,7 +692,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                                                 value={editing.tape_item_id ?? rule.tape_item_id ?? ''}
                                                 onChange={e => setEditingRule(prev => ({ ...prev, [rule.id]: { ...prev[rule.id], tape_item_id: e.target.value || undefined } }))}>
                                                 <option value="">없음</option>
-                                                {products.filter(p => p.category === 'tape' || (p.category === 'submaterial' && p.subtype === '테이프')).map(p => (
+                                                {items.filter(p => p.category === 'tape' || (p.category === 'submaterial' && p.subtype === '테이프')).map(p => (
                                                   <option key={p.id} value={p.id}>{p.name}</option>
                                                 ))}
                                               </select>
@@ -837,7 +841,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                           {pcs.length > 0 ? (
                             <div className="space-y-1">
                               {pcs.map(pc => {
-                                const cname = clients.find(c => c.id === pc.clientId)?.name || pc.clientId;
+                                const cname = partners.find(c => c.id === pc.partnerId)?.name || pc.partnerId;
                                 const boxName = pc.boxTypeId ? (subMap[pc.boxTypeId] || pc.boxTypeId) : null;
                                 const tapeName = pc.tapeTypeId ? (subMap[pc.tapeTypeId] || pc.tapeTypeId) : null;
                                 return (
@@ -852,7 +856,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
                             </div>
                           ) : (
                             <div className="text-[11px] text-slate-400">
-                              거래처: {directClients.map(id => clients.find(c => c.id === id)?.name || id).join(', ') || '없음'} — 포장 설정 없음
+                              거래처: {directClients.map(id => partners.find(c => c.id === id)?.name || id).join(', ') || '없음'} — 포장 설정 없음
                             </div>
                           )}
                         </div>
@@ -1150,11 +1154,11 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
 
       {/* 포장설정 모달 */}
       {packagingModal && (() => {
-        const { item, clientId } = packagingModal;
-        const clientName = clients.find(c => c.id === clientId)?.name ?? clientId;
-        const existingRule = shippingRules.find(r => r.item_id === item.id && r.partner_id === clientId);
-        const boxItems = products.filter(p => p.category === 'box' || (p.category === 'submaterial' && p.subtype === '박스'));
-        const tapeItems = products.filter(p => p.category === 'tape' || (p.category === 'submaterial' && p.subtype === '테이프'));
+        const { item, partnerId } = packagingModal;
+        const clientName = partners.find(c => c.id === partnerId)?.name ?? partnerId;
+        const existingRule = shippingRules.find(r => r.item_id === item.id && r.partner_id === partnerId);
+        const boxItems = items.filter(p => p.category === 'box' || (p.category === 'submaterial' && p.subtype === '박스'));
+        const tapeItems = items.filter(p => p.category === 'tape' || (p.category === 'submaterial' && p.subtype === '테이프'));
 
         const closeModal = () => { setPackagingModal(null); setPackagingEdit({}); setPackagingAdding(false); };
 
@@ -1166,7 +1170,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ products, clients, productCli
             } else if (!existingRule && onAddShippingRule) {
               await onAddShippingRule({
                 item_id: item.id,
-                partner_id: clientId,
+                partner_id: partnerId,
                 box_item_id: packagingEdit.box_item_id ?? '',
                 qty_per_box: packagingEdit.qty_per_box ?? 1,
                 tape_item_id: packagingEdit.tape_item_id,

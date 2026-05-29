@@ -1,5 +1,5 @@
 ﻿
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Package,
   Edit,
@@ -23,8 +23,6 @@ import {
   RotateCcw,
   History,
   FileText,
-  FileDown,
-  PrinterIcon,
 } from 'lucide-react';
 import { Item, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, PartnerItem } from '../types';
 import { PendingReceipt, PurchaseOrder } from '../src/shared/types';
@@ -179,9 +177,6 @@ const ItemList: React.FC<ItemListProps> = ({
     return `${boxes}B+${rem}개(${stock}개)`;
   };
 
-  const [showClosingModal, setShowClosingModal] = useState(false);
-  const closingRef = useRef<HTMLDivElement>(null);
-
   const [topTab, setTopTab] = useState<TopTab>('finished');
   const [activeTab, setActiveTab] = useState<MainTab>('master');
   const [inboundSubTab, setInboundSubTab] = useState<InboundSubTab>('입고');
@@ -281,11 +276,10 @@ const ItemList: React.FC<ItemListProps> = ({
   const removeFromCart = (id: string) => setCart(prev => prev.filter(c => c.id !== id));
   const updateCartQty = (id: string, qty: number) => setCart(prev => prev.map(c => c.id === id ? { ...c, qty: Math.max(1, qty) } : c));
   const updateCartIsBox = (id: string, isBox: boolean) => setCart(prev => prev.map(c => c.id === id ? { ...c, isBox } : c));
-  const submitCart = async () => {
-    await onBulkAddConfirmedOrders(cart.map(c => ({ id: c.id, quantity: c.qty, isBox: c.isBox })));
+  const submitCart = () => {
+    onBulkAddConfirmedOrders(cart.map(c => ({ id: c.id, quantity: c.qty, isBox: c.isBox })));
     setCart([]);
     setShowCartPanel(false);
-    setActiveTab('inbound');
   };
 
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
@@ -474,28 +468,20 @@ const ItemList: React.FC<ItemListProps> = ({
         title="재고 관리"
         subtitle="실시간 재고 현황을 파악하고 부족한 자재를 즉시 발주하세요."
         right={
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="bg-slate-100 p-1 rounded-2xl flex items-center shrink-0">
             <button
-              onClick={() => setShowClosingModal(true)}
-              className="flex items-center gap-1.5 px-3 py-2 bg-orange-500 text-white rounded-xl text-xs font-black hover:bg-orange-600 transition-colors"
+              onClick={() => setActiveTab('master')}
+              className={`px-3 py-2 rounded-xl flex items-center gap-1 transition-all text-xs font-black ${activeTab === 'master' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
             >
-              <ClipboardCheck size={13} /> 재고 마감
+              <Box size={13} /><span>재고 현황</span>
             </button>
-            <div className="bg-slate-100 p-1 rounded-2xl flex items-center">
-              <button
-                onClick={() => setActiveTab('master')}
-                className={`px-3 py-2 rounded-xl flex items-center gap-1 transition-all text-xs font-black ${activeTab === 'master' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-              >
-                <Box size={13} /><span>재고 현황</span>
-              </button>
-              <button
-                onClick={() => setActiveTab('inbound')}
-                className={`px-3 py-2 rounded-xl flex items-center gap-1 transition-all text-xs font-black relative ${activeTab === 'inbound' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-              >
-                <Inbox size={13} /><span>입고/반품</span>
-                {(inboundBadge + returnBadge) > 0 && <span className="absolute -top-1 -right-1 bg-amber-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow">{inboundBadge + returnBadge}</span>}
-              </button>
-            </div>
+            <button
+              onClick={() => setActiveTab('inbound')}
+              className={`px-3 py-2 rounded-xl flex items-center gap-1 transition-all text-xs font-black relative ${activeTab === 'inbound' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              <Inbox size={13} /><span>입고/반품</span>
+              {(inboundBadge + returnBadge) > 0 && <span className="absolute -top-1 -right-1 bg-amber-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow">{inboundBadge + returnBadge}</span>}
+            </button>
           </div>
         }
       />
@@ -703,49 +689,51 @@ const ItemList: React.FC<ItemListProps> = ({
               .sort((a, b) => b.registeredAt.localeCompare(a.registeredAt));
             return (
               <>
-                {/* ── 발주 예정 목록 (Firestore pending) ── */}
-                {orderRequests.length === 0 ? (
+                {/* ── 발주 예정 목록 (거래처별) ── */}
+                {cart.length === 0 ? (
                   <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 text-sm">
                     <ClipboardCheck size={28} className="mx-auto mb-2 opacity-30" />
                     <p>발주 예정 없음</p>
-                    <p className="text-[11px] mt-1">재고현황에서 품목을 담아 확정하세요</p>
+                    <p className="text-[11px] mt-1">재고현황에서 품목을 담아주세요</p>
                   </div>
                 ) : (() => {
-                  const groups = new Map<string, { partnerName: string; items: typeof orderRequests }>();
-                  orderRequests.forEach(po => {
-                    const key = po.partnerName || '거래처 미지정';
-                    if (!groups.has(key)) groups.set(key, { partnerName: key, items: [] });
-                    groups.get(key)!.items.push(po);
+                  const groups = new Map<string, { partnerId: string; partnerName: string; items: typeof cart }>();
+                  cart.forEach(item => {
+                    const sid = psMap.get(item.id) ?? '__none__';
+                    const sname = supplierMap.get(sid)?.name ?? '거래처 미지정';
+                    if (!groups.has(sid)) groups.set(sid, { partnerId: sid, partnerName: sname, items: [] });
+                    groups.get(sid)!.items.push(item);
                   });
                   return (
                     <div className="space-y-3">
                       <div className="flex items-center gap-2 px-1">
                         <ClipboardCheck size={16} className="text-indigo-500" />
                         <span className="font-black text-sm text-slate-800">발주 예정 목록</span>
-                        <span className="text-[10px] font-black bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">{orderRequests.length}건</span>
+                        <span className="text-[10px] font-black bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">{cart.length}건</span>
                       </div>
                       {Array.from(groups.values()).map(group => (
-                        <div key={group.partnerName} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                        <div key={group.partnerId} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                           <div className="px-4 py-2.5 bg-orange-50 border-b border-orange-100 flex items-center gap-2">
                             <span className="text-xs font-black text-orange-700">{group.partnerName}</span>
                             <span className="text-[10px] text-orange-400">{group.items.length}개 품목</span>
                           </div>
                           <div className="divide-y divide-slate-50">
-                            {group.items.map(po => {
-                              const product = productMap.get(po.itemId ?? po.id);
+                            {group.items.map(item => {
+                              const product = productMap.get(item.id);
+                              if (!product) return null;
                               return (
-                                <div key={po.id} className="px-4 py-3 flex items-center gap-3">
+                                <div key={item.id} className="px-4 py-3 flex items-center gap-3">
                                   <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-bold text-slate-800 truncate">{po.productName || product?.name}</p>
-                                    <p className="text-[10px] text-slate-400 mt-0.5">현재 재고 {product?.stock ?? '-'} {product?.unit ?? ''}</p>
+                                    <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
+                                    <p className="text-[10px] text-slate-400 mt-0.5">현재 재고 {product.stock} {product.unit}</p>
                                   </div>
                                   <div className="flex items-center gap-1.5 shrink-0">
-                                    <button onClick={() => onUpdateOrderRequestQty(po.id, Math.max(1, po.quantity - 1))} className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-xs transition-all">-</button>
-                                    <span className="w-10 text-center text-sm font-black text-slate-800">{po.quantity}</span>
-                                    <button onClick={() => onUpdateOrderRequestQty(po.id, po.quantity + 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-xs transition-all">+</button>
-                                    <span className="text-[11px] text-slate-400">{po.isBox ? 'B' : (product?.unit ?? '')}</span>
+                                    <button onClick={() => updateCartQty(item.id, item.qty - 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-xs transition-all">-</button>
+                                    <span className="w-10 text-center text-sm font-black text-slate-800">{item.qty}</span>
+                                    <button onClick={() => updateCartQty(item.id, item.qty + 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-xs transition-all">+</button>
+                                    <span className="text-[11px] text-slate-400">{item.isBox ? 'B' : product.unit}</span>
                                   </div>
-                                  <button onClick={() => onRemoveOrderRequest(po.id)} className="text-slate-300 hover:text-rose-400 transition-all shrink-0 ml-1"><X size={15} /></button>
+                                  <button onClick={() => removeFromCart(item.id)} className="text-slate-300 hover:text-rose-400 transition-all shrink-0 ml-1"><X size={15} /></button>
                                 </div>
                               );
                             })}
@@ -2584,7 +2572,8 @@ const ItemList: React.FC<ItemListProps> = ({
                   if (cart.length === 0 || isConfirming) return;
                   setIsConfirming(true);
                   try {
-                    await submitCart();
+                    await onConfirmAllRequests();
+                    setShowCartPanel(false);
                   } catch (e) {
                     console.error('확정 처리 오류:', e);
                     const msg = e instanceof Error ? e.message : String(e);
@@ -2883,133 +2872,6 @@ const ItemList: React.FC<ItemListProps> = ({
           </div>
         </div>
       )}
-
-    {/* ── 재고 마감 모달 ───────────────────────────────────────────── */}
-    {showClosingModal && (() => {
-      const today = new Date();
-      const dateStr = `${today.getMonth() + 1}월 ${today.getDate()}일`;
-      const finishedItems = items.filter(p => !p.archived && (normCat(p.category) === '완제품' || normCat(p.category) === '상품' || normCat(p.category) === '향미유' || normCat(p.category) === '고춧가루'));
-      const totalStock = finishedItems.reduce((sum, p) => sum + (p.stock || 0), 0);
-
-      const getBoxInfo = (p: Item) => {
-        const bsz = (p as any).defaultBoxConfig?.unitsPerBox || (p as any).boxSize || 12;
-        const boxes = Math.floor((p.stock || 0) / bsz);
-        const rem = (p.stock || 0) % bsz;
-        return { boxes, rem, bsz };
-      };
-
-      const handlePrint = async () => {
-        if (!closingRef.current) return;
-        try {
-          const { default: html2canvas } = await import('html2canvas') as any;
-          const { default: jsPDF } = await import('jspdf') as any;
-          const canvas = await html2canvas(closingRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-          const imgData = canvas.toDataURL('image/png');
-          const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-          const pageW = pdf.internal.pageSize.getWidth();
-          const pageH = pdf.internal.pageSize.getHeight();
-          const ratio = canvas.height / canvas.width;
-          const imgH = pageW * ratio;
-          if (imgH <= pageH) {
-            pdf.addImage(imgData, 'PNG', 0, 0, pageW, imgH);
-          } else {
-            let posY = 0;
-            while (posY < imgH) {
-              pdf.addImage(imgData, 'PNG', 0, -posY, pageW, imgH);
-              posY += pageH;
-              if (posY < imgH) pdf.addPage();
-            }
-          }
-          pdf.save(`재고마감_${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}.pdf`);
-        } catch (e) {
-          window.print();
-        }
-      };
-
-      // 3열 그리드용으로 나누기
-      const cols: Item[][] = [[], [], []];
-      finishedItems.forEach((p, i) => cols[i % 3].push(p));
-      const rows = Math.ceil(finishedItems.length / 3);
-      const grid: (Item | null)[][] = Array.from({ length: rows }, (_, r) => [
-        cols[0][r] ?? null,
-        cols[1][r] ?? null,
-        cols[2][r] ?? null,
-      ]);
-
-      return (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto p-4">
-          <div className="bg-white rounded-2xl w-full max-w-2xl my-4 shadow-2xl">
-            {/* 액션 바 */}
-            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200">
-              <div>
-                <span className="text-sm font-black text-slate-800">재고 마감</span>
-                <span className="ml-2 text-xs text-slate-400">{dateStr} 기준</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 text-white rounded-lg text-xs font-bold hover:bg-slate-800">
-                  <FileDown size={12} /> PDF
-                </button>
-                <button onClick={() => setShowClosingModal(false)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
-
-            {/* 인쇄 영역 */}
-            <div ref={closingRef} className="p-5" style={{ fontFamily: 'Malgun Gothic, sans-serif' }}>
-              <div className="text-center text-sm font-black mb-3">&lt;재고 현황&gt;</div>
-              <div className="text-right text-xs text-slate-500 mb-3">{dateStr}</div>
-
-              <table className="w-full border-collapse text-xs" style={{ borderColor: '#374151' }}>
-                <thead>
-                  <tr>
-                    {[0, 1, 2].map(c => (
-                      <React.Fragment key={c}>
-                        <th className="border border-slate-400 bg-slate-100 px-1.5 py-1.5 font-bold text-center text-[11px]">품목</th>
-                        <th className="border border-slate-400 bg-slate-100 px-1 py-1.5 font-bold text-center text-[11px] w-10">Box</th>
-                        <th className="border border-slate-400 bg-slate-100 px-1 py-1.5 font-bold text-center text-[11px] w-10">△수량</th>
-                      </React.Fragment>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {grid.map((row, ri) => (
-                    <tr key={ri}>
-                      {row.map((p, ci) => {
-                        if (!p) return (
-                          <React.Fragment key={ci}>
-                            <td className="border border-slate-300 px-1.5 py-1.5" />
-                            <td className="border border-slate-300 px-1 py-1.5" />
-                            <td className="border border-slate-300 px-1 py-1.5" />
-                          </React.Fragment>
-                        );
-                        const { boxes, rem } = getBoxInfo(p);
-                        return (
-                          <React.Fragment key={ci}>
-                            <td className="border border-slate-300 px-1.5 py-1.5 text-slate-800 font-medium text-[11px]">{p.name}</td>
-                            <td className="border border-slate-300 px-1 py-1.5 text-center font-bold text-[11px]">{boxes > 0 ? boxes : '-'}</td>
-                            <td className="border border-slate-300 px-1 py-1.5 text-center text-[11px]">{rem > 0 ? rem : (boxes > 0 ? '-' : p.stock)}</td>
-                          </React.Fragment>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                  {/* 합계 행 */}
-                  <tr className="bg-slate-50">
-                    <td colSpan={8} className="border border-slate-400 px-2 py-1.5 text-right text-xs font-black text-slate-700">
-                      총 재고
-                    </td>
-                    <td className="border border-slate-400 px-2 py-1.5 text-center text-xs font-black text-slate-800">
-                      {totalStock.toLocaleString()}개
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      );
-    })()}
     </div>
   );
 };

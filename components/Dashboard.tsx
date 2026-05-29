@@ -18,16 +18,16 @@ import {
   ChevronUp,
   ShoppingCart
 } from 'lucide-react';
-import { Order, Product, OrderStatus, ViewType, Client } from '../types';
+import { Order, Item, OrderStatus, ViewType, Partner } from '../types';
 import PageHeader from './PageHeader';
 
 interface DashboardProps {
   orders: Order[];
-  products: Product[];
-  clients?: Client[];
-  productSuppliers?: import('../src/shared/types').ProductSupplier[];
+  items: Item[];
+  partners?: Partner[];
+  partnerItems?: import('../src/shared/types').PartnerItem[];
   onNavigate?: (view: ViewType) => void;
-  onCreatePurchaseOrder?: (supplierId: string, supplierName: string, items: Array<{ name: string; spec: string; qty: number; price: number }>) => void;
+  onCreatePurchaseOrder?: (partnerId: string, partnerName: string, items: Array<{ name: string; spec: string; qty: number; price: number }>) => void;
 }
 
 interface StatCardProps {
@@ -64,7 +64,11 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon: Icon, trend, co
   </div>
 );
 
-const Dashboard: React.FC<DashboardProps> = ({ orders, products, clients = [], productSuppliers = [], onNavigate, onCreatePurchaseOrder }) => {
+const Dashboard: React.FC<DashboardProps> = ({ orders, items, partners = [], partnerItems = [], onNavigate, onCreatePurchaseOrder }) => {
+  // Compute derived variables
+  const products = items;
+  const clients = partners;
+  const productSuppliers = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
   const [showLowStock, setShowLowStock] = useState(false);
   const [selectedLowStock, setSelectedLowStock] = useState<Set<string>>(new Set());
   const [orderQtys, setOrderQtys] = useState<Record<string, string>>({});
@@ -122,9 +126,9 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, products, clients = [], p
 
   const orderTrend = calcTrend(thisWeekOrders.length, lastWeekOrders.length);
 
-  const activeClients = new Set(orders.map(o => o.clientId)).size;
+  const activeClients = new Set(orders.map(o => o.partnerId)).size;
 
-  const lowStockList = products.filter(p =>
+  const lowStockList = items.filter(p =>
     p.category !== 'product' && p.minStock > 0 && p.stock < p.minStock
   ).sort((a, b) => (a.stock - a.minStock) - (b.stock - b.minStock)); // 부족량 큰 순
   const lowStockItems = lowStockList.length;
@@ -202,12 +206,12 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, products, clients = [], p
           // 공급업체별로 그룹화
           const grouped = new Map<string, { name: string; items: typeof selected }>();
           selected.forEach(p => {
-            const supplierId = productSuppliers.find(ps => ps.productId === p.id)?.supplierId ?? '__none__';
-            const supplier = clients.find(c => c.id === supplierId);
-            const supplierName = supplier?.name ?? '공급처 미지정';
-            const existing = grouped.get(supplierId) ?? { name: supplierName, items: [] };
+            const partnerId = productSuppliers.find(ps => ps.itemId === p.id)?.partnerId ?? '__none__';
+            const supplier = partners.find(c => c.id === partnerId);
+            const partnerName = supplier?.name ?? '공급처 미지정';
+            const existing = grouped.get(partnerId) ?? { name: partnerName, items: [] };
             existing.items.push(p);
-            grouped.set(supplierId, existing);
+            grouped.set(partnerId, existing);
           });
           // 첫 번째 그룹으로 발주서 생성 (공급처 여러 개면 첫 번째만)
           const [firstSupplierId, firstGroup] = [...grouped.entries()][0];
@@ -261,7 +265,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, products, clients = [], p
                 <tbody className="divide-y divide-slate-50">
                   {lowStockList.map(p => {
                     const shortage = p.minStock - p.stock;
-                    const supplier = clients.find(c => c.id === productSuppliers.find(ps => ps.productId === p.id)?.supplierId);
+                    const supplier = partners.find(c => c.id === productSuppliers.find(ps => ps.itemId === p.id)?.partnerId);
                     const isChecked = selectedLowStock.has(p.id);
                     return (
                       <tr key={p.id} className={`transition-colors ${isChecked ? 'bg-rose-50/50' : 'hover:bg-slate-50'}`}>

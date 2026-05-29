@@ -1,8 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
-import { Order, Product } from "./types";
+import { Order, Item } from "./types";
 
 // Business insights function using Gemini 3 Pro for complex reasoning tasks
-export const getBusinessInsights = async (orders: Order[], products: Product[]) => {
+export const getBusinessInsights = async (orders: Order[], products: Item[]) => {
   // Always initialize GoogleGenAI inside the function to ensure up-to-date API key usage
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const model = 'gemini-3-pro-preview';
@@ -13,7 +13,7 @@ export const getBusinessInsights = async (orders: Order[], products: Product[]) 
     return acc;
   }, { totalSales: 0, count: 0 });
 
-  const lowStockProducts = products.filter(p => p.stock < 10);
+  const lowStockItems = products.filter(p => p.stock < 10);
   const lowStockComponents = products.flatMap(p => p.submaterials || [])
     .filter(c => c.stock < 20);
 
@@ -21,7 +21,7 @@ export const getBusinessInsights = async (orders: Order[], products: Product[]) 
     다음은 현재 비즈니스 데이터 요약입니다:
     - 총 주문 수: ${salesSummary.count}
     - 총 매출액: ${salesSummary.totalSales.toLocaleString()}원
-    - 완제품 재고 부족: ${lowStockProducts.map(p => p.name).join(', ')}
+    - 완제품 재고 부족: ${lowStockItems.map(p => p.name).join(', ')}
     - 부자재(용기, 뚜껑 등) 재고 부족: ${lowStockComponents.map(c => c.name).join(', ')}
     
     최근 주문 내역:
@@ -46,7 +46,7 @@ export const getBusinessInsights = async (orders: Order[], products: Product[]) 
 };
 
 // Simple chat assistant function using Gemini 3 Flash
-export const chatWithAI = async (message: string, context: { orders: Order[], products: Product[] }) => {
+export const chatWithAI = async (message: string, context: { orders: Order[], products: Item[] }) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const model = 'gemini-3-flash-preview';
   

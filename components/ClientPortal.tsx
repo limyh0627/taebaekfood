@@ -12,11 +12,11 @@ import {
   X,
   AlertCircle
 } from 'lucide-react';
-import { Client, Product, Order, OrderStatus, OrderSource, OrderItem } from '../types';
+import { Partner, Item, Order, OrderStatus, OrderSource, OrderItem } from '../types';
 
 interface ClientPortalProps {
-  clients: Client[];
-  products: Product[];
+  clients: Partner[];
+  products: Item[];
   onOrderSubmit: (_order: Order) => void;
   onExit: () => void;
 }
@@ -24,8 +24,8 @@ interface ClientPortalProps {
 const ClientPortal: React.FC<ClientPortalProps> = ({ clients, products, onOrderSubmit, onExit }) => {
   const [step, setStep] = useState<'auth' | 'order' | 'confirm'>('auth');
   const [clientIdInput, setClientIdInput] = useState('');
-  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [cart, setCart] = useState<{ [productId: string]: number }>({});
+  const [selectedClient, setSelectedClient] = useState<Partner | null>(null);
+  const [cart, setCart] = useState<{ [itemId: string]: number }>({});
   const [isSuccess, setIsSuccess] = useState(false);
 
   const handleAuth = (e: React.FormEvent) => {
@@ -43,19 +43,19 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clients, products, onOrderS
     if (!selectedClient) return [];
     return products.filter(p => 
       p.category === 'product' &&
-      (!p.clientIds?.length || p.clientIds.includes(selectedClient.id))
+      (!p.partnerIds?.length || p.partnerIds.includes(selectedClient.id))
     );
   }, [products, selectedClient]);
 
-  const updateCart = (productId: string, delta: number) => {
+  const updateCart = (itemId: string, delta: number) => {
     setCart(prev => {
-      const current = prev[productId] || 0;
+      const current = prev[itemId] || 0;
       const next = Math.max(0, current + delta);
       if (next === 0) {
-        const { [productId]: _unused, ...rest } = prev;
+        const { [itemId]: _unused, ...rest } = prev;
         return rest;
       }
-      return { ...prev, [productId]: next };
+      return { ...prev, [itemId]: next };
     });
   };
 
@@ -72,7 +72,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clients, products, onOrderS
     const orderItems: OrderItem[] = Object.entries(cart).map(([id, qty]) => {
       const product = products.find(p => p.id === id)!;
       return {
-        productId: id,
+        itemId: id,
         name: product.name,
         // Fix: Explicitly cast qty as number to match OrderItem.quantity type
         quantity: qty as number,
@@ -83,7 +83,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clients, products, onOrderS
 
     const newOrder: Order = {
       id: `WEB-${Date.now()}`,
-      clientId: selectedClient.id,
+      partnerId: selectedClient.id,
       customerName: selectedClient.name,
       items: orderItems,
       totalAmount,

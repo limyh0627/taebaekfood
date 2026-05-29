@@ -1,13 +1,11 @@
 ﻿import React, { useMemo, useState } from 'react';
-import { Order, Client, Product } from '../src/shared/types';
+import { Order, Partner, Item } from '../src/shared/types';
 import { TrendingUp, Users, RefreshCw, ChevronDown, ChevronUp, Tag, Check, X } from 'lucide-react';
 import PageHeader from './PageHeader';
 
 interface Props {
-  orders: Order[];
-  clients: Client[];
-  products: Product[];
-  onUpdateProduct: (id: string, data: Partial<Product>) => void;
+  orders: Order[];partners;items;
+  onUpdateProduct: (id: string, data: Partial<Item>) => void;
 }
 
 type Tab = 'monthly' | 'customers' | 'retention' | 'prices';
@@ -25,7 +23,7 @@ function formatYearMonth(ym: string) {
   return `${y}년 ${parseInt(m)}월`;
 }
 
-export default function SmartStoreAnalytics({ orders, clients, products, onUpdateProduct }: Props) {
+export default function SmartStoreAnalytics({ orders, partners, items, onUpdateProduct }: Props) {
   const [tab, setTab] = useState<Tab>('monthly');
   const [expandedClient, setExpandedClient] = useState<string | null>(null);
   const [expandedRetention, setExpandedRetention] = useState<string | null>(null);
@@ -38,35 +36,35 @@ export default function SmartStoreAnalytics({ orders, clients, products, onUpdat
   );
 
   const ssClients = useMemo(
-    () => clients.filter(c => c.type === '스마트스토어'),
-    [clients]
+    () => partners.filter(c => c.type === '스마트스토어'),
+    [partners]
   );
 
   const ssProducts = useMemo(
-    () => products.filter(p =>
-      p.isSmartStore === true || p.clientIds?.includes('SMARTSTORE')
+    () => items.filter(p =>
+      p.isSmartStore === true || p.partnerIds?.includes('SMARTSTORE')
     ).sort((a, b) => a.name.localeCompare(b.name, 'ko')),
-    [products]
+    [items]
   );
 
   const priceMap = useMemo(() => {
     const m = new Map<string, number>();
-    for (const p of products) {
+    for (const p of items) {
       if (p.smartStorePrice != null) m.set(p.id, p.smartStorePrice);
     }
     return m;
-  }, [products]);
+  }, [items]);
 
-  // productId → name 맵
+  // itemId → name 맵
   const productNameMap = useMemo(() => {
     const m = new Map<string, string>();
-    for (const p of products) m.set(p.id, p.name);
+    for (const p of items) m.set(p.id, p.name);
     return m;
-  }, [products]);
+  }, [items]);
 
   function calcRevenue(o: Order) {
     return o.items.reduce((sum, item) => {
-      const unitPrice = priceMap.get(item.productId) ?? item.price;
+      const unitPrice = priceMap.get(item.itemId) ?? item.price;
       return sum + unitPrice * item.quantity;
     }, 0);
   }
@@ -75,7 +73,7 @@ export default function SmartStoreAnalytics({ orders, clients, products, onUpdat
   const firstOrderMonthMap = useMemo(() => {
     const m = new Map<string, string>();
     for (const o of ssOrders.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
-      const key = o.clientId ?? o.customerName;
+      const key = o.partnerId ?? o.customerName;
       if (!m.has(key)) m.set(key, getYearMonth(o.createdAt));
     }
     return m;
@@ -83,32 +81,32 @@ export default function SmartStoreAnalytics({ orders, clients, products, onUpdat
 
   // ── 월별 매출 ──────────────────────────────────────────────
   const monthlyData = useMemo(() => {
-    const map = new Map<string, { revenue: number; orderCount: number; clientIds: Set<string> }>();
+    const map = new Map<string, { revenue: number; orderCount: number; partnerIds: Set<string> }>();
     for (const o of ssOrders) {
       const ym = getYearMonth(o.createdAt);
-      if (!map.has(ym)) map.set(ym, { revenue: 0, orderCount: 0, clientIds: new Set() });
+      if (!map.has(ym)) map.set(ym, { revenue: 0, orderCount: 0, partnerIds: new Set() });
       const row = map.get(ym)!;
       row.revenue += calcRevenue(o);
       row.orderCount += 1;
-      if (o.clientId) row.clientIds.add(o.clientId);
+      if (o.partnerId) row.partnerIds.add(o.partnerId);
     }
     return Array.from(map.entries())
       .sort((a, b) => b[0].localeCompare(a[0]))
-      .map(([ym, data]) => ({ ym, ...data, uniqueClients: data.clientIds.size }));
+      .map(([ym, data]) => ({ ym, ...data, uniqueClients: data.partnerIds.size }));
   }, [ssOrders, priceMap]);
 
   // ── 고객별 현황 (품목 내역 포함) ─────────────────────────────
   const customerData = useMemo(() => {
     const clientMap = new Map<string, {
-      client: Client;
+      client: Partner;
       monthlyOrders: Map<string, { count: number; amount: number }>;
       productSummary: Map<string, { name: string; qty: number; amount: number }>;
     }>();
 
     for (const o of ssOrders) {
-      const key = o.clientId ?? o.customerName;
+      const key = o.partnerId ?? o.customerName;
       if (!clientMap.has(key)) {
-        const client = ssClients.find(c => c.id === o.clientId) ?? {
+        const client = ssClients.find(c => c.id === o.partnerId) ?? {
           id: key,
           name: o.customerName,
           type: '스마트스토어' as const,
@@ -126,7 +124,7 @@ export default function SmartStoreAnalytics({ orders, clients, products, onUpdat
 
       // 품목별 집계
       for (const item of o.items) {
-        const pid = item.productId;
+        const pid = item.itemId;
         if (!entry.productSummary.has(pid)) {
           entry.productSummary.set(pid, {
             name: productNameMap.get(pid) ?? item.name,
@@ -162,14 +160,14 @@ export default function SmartStoreAnalytics({ orders, clients, products, onUpdat
 
     for (const o of ssOrders) {
       const ym = getYearMonth(o.createdAt);
-      const key = o.clientId ?? o.customerName;
+      const key = o.partnerId ?? o.customerName;
       if (!map.has(ym)) map.set(ym, { newClients: [], returningClients: new Set(), newRevenue: 0, returningRevenue: 0 });
       const row = map.get(ym)!;
       const rev = calcRevenue(o);
       if (firstOrderMonthMap.get(key) === ym) {
         // 이미 추가된 신규가 아닐 때만 push
         if (!row.newClients.find(c => c.key === key)) {
-          const client = ssClients.find(c => c.id === o.clientId);
+          const client = ssClients.find(c => c.id === o.partnerId);
           row.newClients.push({ key, name: client?.name ?? o.customerName });
         }
         row.newRevenue += rev;
@@ -195,9 +193,9 @@ export default function SmartStoreAnalytics({ orders, clients, products, onUpdat
     const m = new Map<string, { qty: number; revenue: number }>();
     for (const o of ssOrders) {
       for (const item of o.items) {
-        if (!m.has(item.productId)) m.set(item.productId, { qty: 0, revenue: 0 });
-        const s = m.get(item.productId)!;
-        const unitPrice = priceMap.get(item.productId) ?? item.price;
+        if (!m.has(item.itemId)) m.set(item.itemId, { qty: 0, revenue: 0 });
+        const s = m.get(item.itemId)!;
+        const unitPrice = priceMap.get(item.itemId) ?? item.price;
         s.qty += item.quantity;
         s.revenue += unitPrice * item.quantity;
       }
@@ -214,7 +212,7 @@ export default function SmartStoreAnalytics({ orders, clients, products, onUpdat
     { id: 'prices', label: '단가 관리', icon: Tag },
   ];
 
-  function startEdit(p: Product) {
+  function startEdit(p: Item) {
     setEditingId(p.id);
     setEditValue(String(p.smartStorePrice ?? p.price ?? ''));
   }

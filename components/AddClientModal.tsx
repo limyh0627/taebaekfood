@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { X, Users, Phone, Mail, LayoutGrid, Check, Store, Truck, User, MapPin } from 'lucide-react';
-import { Client, ClientType, PartnerType } from '../types';
+import { Partner, PartnerChannel, PartnerType } from '../types';
 
 declare global {
   interface Window {
@@ -11,7 +11,7 @@ declare global {
 
 interface AddClientModalProps {
   onClose: () => void;
-  onSave: (_client: Client) => void;
+  onSave: (_client: Partner) => void;
 }
 
 const AddClientModal: React.FC<AddClientModalProps> = ({ onClose, onSave }) => {
@@ -19,7 +19,7 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ onClose, onSave }) => {
     name: '',
     email: '',
     mobile: '',
-    type: '일반' as ClientType,
+    type: '일반' as PartnerChannel,
     address: '',
     note: '',
     partnerType: '매출처' as PartnerType
@@ -31,7 +31,7 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ onClose, onSave }) => {
     }).open();
   };
 
-  const clientTypes: { id: ClientType, label: string, icon: any, color: string }[] = [
+  const clientTypes: { id: PartnerChannel, label: string, icon: any, color: string }[] = [
     { id: '일반', label: '일반 거래처', icon: User, color: 'bg-indigo-100 text-indigo-600' },
     { id: '택배', label: '택배사/대행', icon: Truck, color: 'bg-pink-100 text-pink-600' },
     { id: '스마트스토어', label: '스마트스토어', icon: Store, color: 'bg-lime-100 text-lime-600' },
@@ -41,7 +41,7 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ onClose, onSave }) => {
     e.preventDefault();
     if (!formData.name) return;
 
-    const newClient: Client = {
+    const newClient: Partner = {
       id: `c-${Date.now()}`,
       name: formData.name,
       email: formData.email,

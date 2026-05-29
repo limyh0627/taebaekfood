@@ -29,7 +29,7 @@ import {
   ClipboardPaste,
   Layers
 } from 'lucide-react';
-import { Order, OrderStatus, Client, OrderSource, OrderItem, Product, OrderPallet, DeliveryBox, PalletStock, ShippingRule, ItemBom } from '../types';
+import { Order, OrderStatus, Partner, OrderSource, OrderItem, Item, OrderPallet, DeliveryBox, PalletStock, ShippingRule, ItemBom } from '../types';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 
@@ -60,8 +60,8 @@ interface OrdersListProps {
   groupBy: 'status' | 'source';
   allowedStatuses: OrderStatus[];
   orders: Order[];
-  clients: Client[];
-  products: Product[];
+  partners: Partner[];
+  items: Item[];
   palletStocks?: PalletStock[];
   shippingRules?: ShippingRule[];
   itemBoms?: ItemBom[];
@@ -81,14 +81,14 @@ interface OrdersListProps {
   onHighlightClear?: () => void;
   newOrderId?: string | null;
   onNewOrderIdClear?: () => void;
-  workOrderItems?: { key: string; orderId: string; productId: string; itemName: string; clientName: string; qty: number; category: string }[];
-  onSetWorkOrderItems?: (items: { key: string; orderId: string; productId: string; itemName: string; clientName: string; qty: number; category: string }[]) => void;
+  workOrderItems?: { key: string; orderId: string; itemId: string; itemName: string; clientName: string; qty: number; category: string }[];
+  onSetWorkOrderItems?: (items: { key: string; orderId: string; itemId: string; itemName: string; clientName: string; qty: number; category: string }[]) => void;
 }
 
 interface OrderCardProps {
   order: Order;
-  clients: Client[];
-  products: Product[];
+  partners: Partner[];
+  items: Item[];
   palletStocks?: PalletStock[];
   shippingRules?: ShippingRule[];
   itemBoms?: ItemBom[];
@@ -115,8 +115,8 @@ interface OrderSourceGroupProps {
   gridCols?: number;
   collapsedCategories: Set<string>;
   onToggleCategory: (colId: string, source: OrderSource) => void;
-  clients: Client[];
-  products: Product[];
+  partners: Partner[];
+  items: Item[];
   editingOrderId: string | null;
   setEditingOrderId: (id: string | null) => void;
   showAddProductSelect: string | null;
@@ -134,7 +134,7 @@ interface OrderSourceGroupProps {
 interface DeliveryRowProps {
   order: Order;
   clientName: string;
-  products: Product[];
+  items: Item[];
   onToggleInvoicePrinted?: (id: string, val: boolean) => void;
   onUpdateDeliveryBoxes?: (id: string, boxes: DeliveryBox[]) => void;
 }
@@ -144,12 +144,15 @@ type TabType = 'delivery' | 'active' | 'history';
 // ─── OrderCard ────────────────────────────────────────────────────────────────
 
 export const OrderCard = memo<OrderCardProps>(({
-  order, clients, products,
+  order, partners, items,
   editingOrderId, setEditingOrderId,
   showAddProductSelect, setShowAddProductSelect,
   onUpdateItems, onUpdateDeliveryDate, onUpdateStatus, onUpdatePallets,
   onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1, isHighlighted = false, highlightOrderId, palletStocks = [], shippingRules = [], itemBoms = [],
 }) => {
+  // Compute derived variables
+  const clients = partners;
+  const products = items;
   const highlighted = isHighlighted || highlightOrderId === order.id;
   const isEditing = editingOrderId === order.id;
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
@@ -157,7 +160,7 @@ export const OrderCard = memo<OrderCardProps>(({
   // 향미유·고춧가루 제외한 품목만 진행률 및 완료 판단에 사용
   const isSecondary = (cat?: string) => cat === '향미유' || cat === '고춧가루';
   const nonHyangmiyuItems = order.items.filter(item => {
-    const p = products.find(p => p.id === item.productId);
+    const p = items.find(p => p.id === item.itemId);
     return !isSecondary(p?.category);
   });
   const totalItems = nonHyangmiyuItems.length || 1;
@@ -201,7 +204,7 @@ export const OrderCard = memo<OrderCardProps>(({
     }
   }, [allNonHyangmiyuDone]);
 
-  const client = clients.find(c => c.id === order.clientId);
+  const client = partners.find(c => c.id === order.partnerId);
   const rawName = order.customerName || client?.name || '이름 없음';
   const displayName = rawName.replace(/\s*\(\d{4}\.\s*\d+\.\s*\d+\.?\)\s*$/, '');
 
@@ -240,9 +243,9 @@ export const OrderCard = memo<OrderCardProps>(({
     });
   };
 
-  const handleAddItem = (product: Product) => {
+  const handleAddItem = (product: Item) => {
     const newItem: OrderItem = {
-      productId: product.id, name: product.name,
+      itemId: product.id, name: product.name,
       quantity: 1, price: product.price, checked: false,
     };
     onUpdateItems?.(order.id, [...order.items, newItem]);
@@ -328,9 +331,9 @@ export const OrderCard = memo<OrderCardProps>(({
                 '날인': 'bg-yellow-50 border-yellow-200 text-yellow-600',
                 '부착': 'bg-emerald-50 border-emerald-300 text-emerald-600',
               };
-              const editProductInfo = products.find(p => p.id === item.productId);
+              const editProductInfo = items.find(p => p.id === item.itemId);
               const isOil = isSecondary(editProductInfo?.category);
-              const rule = shippingRules.find(r => r.item_id === item.productId && r.partner_id === order.clientId);
+              const rule = shippingRules.find(r => r.item_id === item.itemId && r.partner_id === order.partnerId);
               const qtyPerBox = item.unitsPerBox ?? rule?.qty_per_box;
               const toggleBoxUnit = () => {
                 const newItems = [...order.items];
@@ -382,12 +385,12 @@ export const OrderCard = memo<OrderCardProps>(({
             {/* 접힌 상태: 완료 요약만 표시 */}
             {/* 일반 품목 (완제품): 펼쳐진 상태에서만 표시 */}
             {!isCollapsed && order.items.filter(item => {
-              const p = products.find(p => p.id === item.productId);
+              const p = items.find(p => p.id === item.itemId);
               return !isSecondary(p?.category);
             }).map((item, _) => {
               const idx = order.items.indexOf(item);
               const isItemChecked = !!item.checked;
-              const productInfo = products.find(p => p.id === item.productId);
+              const productInfo = items.find(p => p.id === item.itemId);
               const opts = ['대기', '날인', '부착'] as const;
               const current = item.labelType ?? '대기';
               const next = opts[(opts.indexOf(current) + 1) % opts.length];
@@ -418,18 +421,18 @@ export const OrderCard = memo<OrderCardProps>(({
                   {(() => {
                     // 1. item_bom 기반 구성품 (submaterial 카테고리만)
                     const bomSubs = itemBoms
-                      .filter(b => b.parent_id === item.productId)
-                      .map(b => products.find(p => p.id === b.child_id))
-                      .filter((p): p is Product => !!p && p.category === 'submaterial');
+                      .filter(b => b.parent_id === item.itemId)
+                      .map(b => items.find(p => p.id === b.child_id))
+                      .filter((p): p is Item => !!p && p.category === 'submaterial');
                     const bomSubIds = new Set(bomSubs.map(p => p.id));
 
                     // 2. 박스/테이프: item.boxSubId 스냅샷 우선, 없으면 shipping_rule 조회
                     const packagingSubs: { id: string; name: string }[] = [];
-                    const rule = shippingRules.find(r => r.item_id === item.productId && r.partner_id === order.clientId);
+                    const rule = shippingRules.find(r => r.item_id === item.itemId && r.partner_id === order.partnerId);
                     const boxId = item.boxSubId || rule?.box_item_id;
                     const tapeId = rule?.tape_item_id;
-                    if (boxId) { const b = products.find(p => p.id === boxId); if (b && !bomSubIds.has(b.id)) packagingSubs.push({ id: b.id, name: b.name }); }
-                    if (tapeId) { const t = products.find(p => p.id === tapeId); if (t && !bomSubIds.has(t.id)) packagingSubs.push({ id: t.id, name: t.name }); }
+                    if (boxId) { const b = items.find(p => p.id === boxId); if (b && !bomSubIds.has(b.id)) packagingSubs.push({ id: b.id, name: b.name }); }
+                    if (tapeId) { const t = items.find(p => p.id === tapeId); if (t && !bomSubIds.has(t.id)) packagingSubs.push({ id: t.id, name: t.name }); }
 
                     const allSubs = [...bomSubs.map(p => ({ id: p.id, name: p.name })), ...packagingSubs];
                     if (allSubs.length === 0) return null;
@@ -463,8 +466,8 @@ export const OrderCard = memo<OrderCardProps>(({
                 .replace(/참진한기름/g, '참진').replace(/참고소한기름/g, '참고소')
                 .replace(/들향기름골드/g, '들향골드').replace(/참향기름/g, '참향')
                 .replace(/들향기름/g, '들향').replace(/맛기름/g, '맛');
-              const hyangmiyuItems = order.items.filter(item => products.find(p => p.id === item.productId)?.category === '향미유');
-              const gochuItems = order.items.filter(item => products.find(p => p.id === item.productId)?.category === '고춧가루');
+              const hyangmiyuItems = order.items.filter(item => items.find(p => p.id === item.itemId)?.category === '향미유');
+              const gochuItems = order.items.filter(item => items.find(p => p.id === item.itemId)?.category === '고춧가루');
               if (hyangmiyuItems.length === 0 && gochuItems.length === 0) return null;
               return (
                 <div className="space-y-1 pt-1.5 border-t-2 border-dashed border-slate-200 mt-1.5">
@@ -520,14 +523,14 @@ export const OrderCard = memo<OrderCardProps>(({
           {showAddProductSelect === order.id ? (
             <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
               <select
-                onChange={(e) => { const p = products.find(prod => prod.id === e.target.value); if (p) handleAddItem(p); }}
+                onChange={(e) => { const p = items.find(prod => prod.id === e.target.value); if (p) handleAddItem(p); }}
                 className="w-full bg-slate-50 border border-indigo-200 rounded-lg py-1.5 px-2 text-[10px] font-bold outline-none"
                 defaultValue=""
               >
                 <option value="" disabled>추가할 품목 선택...</option>
                 <optgroup label="완제품">
                   {products
-                    .filter(p => p.category === '완제품' && p.clientId === order.clientId)
+                    .filter(p => p.category === '완제품' && p.partnerId === order.partnerId)
                     .sort((a, b) => {
                       const order = (name: string) => /가루/.test(name) ? 3 : /참기름|참진|참고소|참향/.test(name) ? 0 : /들기름|들향|들진|들고소/.test(name) ? 1 : /깨/.test(name) ? 2 : 4;
                       const diff = order(a.name) - order(b.name);
@@ -538,12 +541,12 @@ export const OrderCard = memo<OrderCardProps>(({
                     ))}
                 </optgroup>
                 <optgroup label="향미유">
-                  {products.filter(p => p.category === '향미유').map(p => (
+                  {items.filter(p => p.category === '향미유').map(p => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </optgroup>
                 <optgroup label="고춧가루">
-                  {products.filter(p => p.category === '고춧가루').map(p => (
+                  {items.filter(p => p.category === '고춧가루').map(p => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </optgroup>
@@ -658,7 +661,7 @@ export const OrderCard = memo<OrderCardProps>(({
           </select>
           <button onClick={() => setConfirmModal({
               message: '주문을 삭제하시겠습니까?',
-              subMessage: `${clients.find(c => c.id === order.clientId)?.name ?? ''} · 삭제 후 복구할 수 없습니다.`,
+              subMessage: `${partners.find(c => c.id === order.partnerId)?.name ?? ''} · 삭제 후 복구할 수 없습니다.`,
               onConfirm: () => { onDeleteOrder(order.id); setConfirmModal(null); },
             })}
             className="p-1.5 text-rose-400 hover:bg-rose-50 rounded-lg transition-all"
@@ -725,18 +728,19 @@ const OrderSourceGroup = memo<OrderSourceGroupProps>(({
 
 // ─── DeliveryRow ──────────────────────────────────────────────────────────────
 
-const DeliveryRow = memo<DeliveryRowProps>(({ order, clientName, products, onToggleInvoicePrinted, onUpdateDeliveryBoxes }) => {
+const DeliveryRow = memo<DeliveryRowProps>(({ order, clientName, items, onToggleInvoicePrinted, onUpdateDeliveryBoxes }) => {
   const [showBoxSelect, setShowBoxSelect] = useState(false);
   const [draft, setDraft] = useState<Record<string, number>>({});
+  const products = items;
 
   const availableBoxes = useMemo(
-    () => products.filter(p => p.category === '박스' && !/(비닐|자루|원조)/i.test(p.name)),
-    [products]
+    () => items.filter(p => p.category === '박스' && !/(비닐|자루|원조)/i.test(p.name)),
+    [items]
   );
 
   const openPanel = () => {
     const init: Record<string, number> = {};
-    (order.deliveryBoxes || []).forEach(b => { init[b.productId] = b.quantity; });
+    (order.deliveryBoxes || []).forEach(b => { init[b.itemId] = b.quantity; });
     setDraft(init);
     setShowBoxSelect(true);
   };
@@ -744,7 +748,7 @@ const DeliveryRow = memo<DeliveryRowProps>(({ order, clientName, products, onTog
   const handleConfirm = () => {
     const newBoxes: DeliveryBox[] = availableBoxes
       .filter(p => (draft[p.id] ?? 0) > 0)
-      .map(p => ({ productId: p.id, name: p.name, quantity: draft[p.id] }));
+      .map(p => ({ itemId: p.id, name: p.name, quantity: draft[p.id] }));
     onUpdateDeliveryBoxes?.(order.id, newBoxes);
     setShowBoxSelect(false);
   };
@@ -784,9 +788,9 @@ const DeliveryRow = memo<DeliveryRowProps>(({ order, clientName, products, onTog
         ) : (
           <div className="flex items-center gap-1 flex-wrap">
             {(order.deliveryBoxes || []).map(box => {
-              const boxProduct = products.find(p => p.id === box.productId);
+              const boxProduct = items.find(p => p.id === box.itemId);
               return (
-                <span key={box.productId} className="text-[9px] font-black bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded">
+                <span key={box.itemId} className="text-[9px] font-black bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded">
                   {box.name} ({(boxProduct?.freightType ?? 's').toUpperCase()}) ×{box.quantity}
                 </span>
               );
@@ -855,7 +859,7 @@ const deliveryExtraConfigs = [
 const historyConfig = { id: 'history_col', label: '예전 주문 이력', icon: History, color: 'bg-slate-700', bgColor: 'bg-slate-50/80', borderColor: 'border-slate-200', textColor: 'text-slate-700', statusFilter: [OrderStatus.DELIVERED], targetStatus: undefined };
 
 const OrdersList: React.FC<OrdersListProps> = ({
-  title, subtitle, orders, clients, products, palletStocks, shippingRules = [], itemBoms = [],
+  title, subtitle, orders, partners, items, palletStocks, shippingRules = [], itemBoms = [],
   onUpdateStatus, onUpdateDeliveryDate, onUpdatePallets,
   onUpdateItems, onUpdateDeliveryBoxes,
   onToggleInvoicePrinted, onToggleItemChecked,
@@ -868,6 +872,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
   newOrderId,
   onNewOrderIdClear,
 }) => {
+  // Compute derived variables
+  const clients = partners;
+  const products = items;
   const [activeTab, setActiveTab] = useState<TabType>('active');
   const [searchTerm, setSearchTerm] = useState('');
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
@@ -879,7 +886,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [historyDateFrom, setHistoryDateFrom] = useState('');
   const [historyDateTo, setHistoryDateTo] = useState('');
   const HISTORY_PREVIEW = 5;
-  type WorkItem = { key: string; orderId: string; productId: string; itemName: string; clientName: string; qty: number; category: string; };
+  type WorkItem = { key: string; orderId: string; itemId: string; itemName: string; clientName: string; qty: number; category: string; };
   const workItems: WorkItem[] = workOrderItemsProp;
   const setWorkItems = (items: WorkItem[] | ((prev: WorkItem[]) => WorkItem[])) => {
     const resolved = typeof items === 'function' ? items(workItems) : items;
@@ -966,11 +973,11 @@ const OrdersList: React.FC<OrdersListProps> = ({
     const map = new Map<string, string>();
     clients.forEach(c => map.set(c.id, c.name));
     return map;
-  }, [clients]);
+  }, [partners]);
 
   // OrderCard/OrderSourceGroup에 공통으로 넘길 props
   const cardSharedProps = {
-    clients, products, palletStocks, shippingRules, itemBoms,
+    partners, items, palletStocks, shippingRules, itemBoms,
     editingOrderId, setEditingOrderId,
     showAddProductSelect, setShowAddProductSelect,
     onUpdateItems, onUpdateDeliveryDate, onUpdateStatus, onUpdatePallets,
@@ -1047,13 +1054,13 @@ const OrdersList: React.FC<OrdersListProps> = ({
           ) : (
             <div className="divide-y divide-slate-50">
               {deliveryOrders.map(order => {
-                const clientName = (order.clientId && clientMap.get(order.clientId)) || order.customerName || '이름 없음';
+                const clientName = (order.partnerId && clientMap.get(order.partnerId)) || order.customerName || '이름 없음';
                 return (
                   <DeliveryRow
                     key={order.id}
                     order={order}
                     clientName={clientName}
-                    products={products}
+                    items={items}
                     onToggleInvoicePrinted={onToggleInvoicePrinted}
                     onUpdateDeliveryBoxes={onUpdateDeliveryBoxes}
                   />
@@ -1071,16 +1078,16 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
         // 픽커용 전체 품목 목록 (향미유·고춧가루 제외)
         const allPickableItems: WorkItem[] = pickableOrders.flatMap(o => {
-          const clientName = o.customerName || clients.find(c => c.id === o.clientId)?.name || '이름없음';
+          const clientName = o.customerName || partners.find(c => c.id === o.partnerId)?.name || '이름없음';
           return o.items
             .map((item, idx) => ({
               key: `${o.id}-${idx}`,
               orderId: o.id,
-              productId: item.productId,
+              itemId: item.itemId,
               itemName: item.name,
               clientName,
               qty: item.quantity,
-              category: products.find(p => p.id === item.productId)?.category || '',
+              category: items.find(p => p.id === item.itemId)?.category || '',
             }))
             .filter(wi => wi.category !== '향미유' && wi.category !== '고춧가루');
         });
@@ -1257,7 +1264,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                     {allPickableItems.length === 0 ? (
                       <p className="text-center text-sm text-slate-400 py-12">대기중/작업중 주문이 없습니다.</p>
                     ) : pickableOrders.map(o => {
-                      const clientName = o.customerName || clients.find(c => c.id === o.clientId)?.name || '이름없음';
+                      const clientName = o.customerName || partners.find(c => c.id === o.partnerId)?.name || '이름없음';
                       const orderItems = allPickableItems.filter(wi => wi.orderId === o.id);
                       return (
                         <div key={o.id} className="px-5 py-3 border-b border-slate-50">
@@ -1376,7 +1383,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
       {previewOrderId && (() => {
         const order = orders.find(o => o.id === previewOrderId);
         if (!order) return null;
-        const clientName = order.customerName || clients.find(c => c.id === order.clientId)?.name || '이름없음';
+        const clientName = order.customerName || partners.find(c => c.id === order.partnerId)?.name || '이름없음';
         return (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
@@ -1402,8 +1409,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
               <div className="p-4 overflow-y-auto max-h-[70vh]">
                 <OrderCard
                   order={order}
-                  clients={clients}
-                  products={products}
+                  partners={partners}
+                  items={items}
                   editingOrderId={editingOrderId}
                   setEditingOrderId={setEditingOrderId}
                   showAddProductSelect={showAddProductSelect}

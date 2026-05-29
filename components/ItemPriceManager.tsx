@@ -1,17 +1,17 @@
 ﻿
 import React, { useState, useMemo } from 'react';
 import { Plus, Edit2, Trash2, Search, Save, X } from 'lucide-react';
-import { Product, InventoryCategory } from '../types';
+import { Item, InventoryCategory } from '../types';
 import PageHeader from './PageHeader';
 import ConfirmModal from './ConfirmModal';
 
 interface ItemPriceManagerProps {
-  products: Product[];
-  onEditProduct: (product: Product) => void;
+  items: Item[];
+  onEditProduct: (product: Item) => void;
   onAddProduct: () => void;
   onDeleteProduct: (id: string, category: string) => void;
-  onUpdateCost?: (productId: string, cost: number) => void;
-  onUpdatePrice?: (productId: string, price: number) => void;
+  onUpdateCost?: (itemId: string, cost: number) => void;
+  onUpdatePrice?: (itemId: string, price: number) => void;
 }
 
 const CATEGORIES: (InventoryCategory | '전체')[] = ['전체', '완제품', '향미유', '고춧가루', '용기', '마개', '테이프', '박스', '라벨'];
@@ -19,7 +19,7 @@ const CATEGORIES: (InventoryCategory | '전체')[] = ['전체', '완제품', '�
 const fmt = (n: number) => n.toLocaleString('ko-KR');
 
 const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
-  products, onEditProduct, onAddProduct, onDeleteProduct, onUpdateCost, onUpdatePrice,
+  items, onEditProduct, onAddProduct, onDeleteProduct, onUpdateCost, onUpdatePrice,
 }) => {
   const [category, setCategory] = useState<string>('전체');
   const [search, setSearch] = useState('');
@@ -29,19 +29,19 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
 
   const filtered = useMemo(() => {
-    return products
+    return items
       .filter(p => category === '전체' || p.category === category)
       .filter(p => !search.trim() || p.name.toLowerCase().includes(search.toLowerCase()))
       .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-  }, [products, category, search]);
+  }, [items, category, search]);
 
-  const startEdit = (p: Product) => {
+  const startEdit = (p: Item) => {
     setEditingId(p.id);
     setEditCost(p.cost !== undefined ? String(p.cost) : '');
     setEditPrice(p.price !== undefined ? String(p.price) : '');
   };
 
-  const saveEdit = (p: Product) => {
+  const saveEdit = (p: Item) => {
     const cost = editCost.trim() !== '' ? Number(editCost) : undefined;
     const price = editPrice.trim() !== '' ? Number(editPrice) : undefined;
     if (cost !== undefined && !isNaN(cost)) onUpdateCost?.(p.id, cost);

@@ -34,7 +34,7 @@ interface RegionSelectProps {
   value: string;
   onChange: (value: string) => void;
   className?: string;
-  compact?: boolean; // 소형 모드 (ClientManager 인라인 편집용)
+  compact?: boolean; // 소형 모드 (PartnerManager 인라인 편집용)
 }
 
 const RegionSelect: React.FC<RegionSelectProps> = ({ value, onChange, className = '', compact = false }) => {

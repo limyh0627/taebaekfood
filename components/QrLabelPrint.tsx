@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { X, Printer, QrCode, Search } from 'lucide-react';
 import QRCode from 'qrcode';
-import { Product } from '../src/shared/types';
+import { Item } from '../src/shared/types';
 
 interface QrLabelPrintProps {
-  submaterials: Product[];
+  submaterials: Item[];
   onClose: () => void;
 }
 

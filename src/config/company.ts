@@ -10,7 +10,7 @@
  * 이후에는 Firestore DB에 저장된 데이터를 사용하므로 이 파일은 참조되지 않습니다.
  */
 
-import { Post, PalletStock, Employee, Product, Client, FileItem, AccountCode, AccountGroup } from '../../types';
+import { Post, PalletStock, Employee, Item, Partner, FileItem, AccountCode, AccountGroup } from '../../types';
 
 // ── 공지사항 초기 데이터 ──────────────────────────────────────────────────────
 export const INITIAL_NOTICES: Post[] = [
@@ -97,7 +97,7 @@ export const INITIAL_EMPLOYEES: Employee[] = [
 ];
 
 // ── 제품 초기 데이터 ──────────────────────────────────────────────────────────
-export const INITIAL_PRODUCTS: Product[] = [
+export const INITIAL_PRODUCTS: Item[] = [
   {
     id: 'p1',
     name: '태백 저온참기름 (300ml)',
@@ -139,14 +139,14 @@ export const INITIAL_PRODUCTS: Product[] = [
 ];
 
 // ── 거래처 초기 데이터 ────────────────────────────────────────────────────────
-export const INITIAL_CLIENTS: Client[] = [
+export const INITIAL_CLIENTS: Partner[] = [
   { id: 'c1', name: '태백유통 강원본부', email: 'tb_gw@tb.com', phone: '033-111-2222', type: '일반', region: '강원', partnerType: '매출처' },
   { id: 'sup-1', name: '형제프라콘', email: '', phone: '', type: '일반', partnerType: '매입처' },
   { id: 'sup-2', name: '호계', email: '', phone: '', type: '일반', partnerType: '매입처' },
   { id: 'sup-3', name: '밝은디자인', email: '', phone: '', type: '일반', partnerType: '매입처' },
 ];
 
-export const INITIAL_SUPPLIERS: Client[] = [];
+export const INITIAL_SUPPLIERS: Partner[] = [];
 
 // ── 계정과목 그룹 초기 데이터 ──────────────────────────────────────────────────
 export const INITIAL_ACCOUNT_GROUPS: AccountGroup[] = [

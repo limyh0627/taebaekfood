@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, ClipboardPaste, CheckCircle2, AlertCircle, ChevronDown, User, Truck, Store, LayoutGrid, Search, ArrowRight, ShoppingBag } from 'lucide-react';
-import { Product, ProductClient, Order, Client, OrderSource, OrderItem, OrderPallet } from '../types';
+import { Item, PartnerItem, Order, Partner, OrderSource, OrderItem, OrderPallet } from '../types';
 
 // ── 퍼지 매칭 ───────────────────────────────────────────────
 const getBigrams = (s: string) => {
@@ -32,7 +32,7 @@ type ParsedLine = {
   selectedProductId: string | null;
 };
 
-const parseLine = (line: string, pool: Product[]): ParsedLine => {
+const parseLine = (line: string, pool: Item[]): ParsedLine => {
   // "3박스", "5개", "1kg" 형태에서 마지막 수량+단위 추출
   // ※ \b 는 한글(非ASCII) 뒤에서 동작하지 않으므로 (?:\s|$) 로 대체
   const re = /(\d+(?:\.\d+)?)\s*(박스|box|개|kg|g|L|ml|l)(?=\s|$)/gi;
@@ -75,9 +75,10 @@ const matchClient = (name: string, q: string) => {
 
 // ── Props ────────────────────────────────────────────────────
 interface PasteOrderModalProps {
-  products: Product[];
-  clients: Client[];
-  productClients: ProductClient[];
+  items: Item[];
+  partners: Partner[];
+  partnerItems?: import('../src/shared/types').PartnerItem[];
+  productClients?: PartnerItem[];
   onClose: () => void;
   onSave: (_order: Omit<Order, 'id' | 'createdAt' | 'status'>) => void;
 }
@@ -85,8 +86,12 @@ interface PasteOrderModalProps {
 type Step = 'client' | 'paste' | 'review';
 
 const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
-  products, clients, productClients, onClose, onSave,
+  items, partners, partnerItems, productClients: _pc, onClose, onSave,
 }) => {
+  // Compute derived variables
+  const products = items;
+  const clients = partners;
+  const productClients = (_pc ?? partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', h);
@@ -95,7 +100,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
 
   const [step, setStep] = useState<Step>('client');
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [selectedClient, setSelectedClient] = useState<Partner | null>(null);
   const [pasteText, setPasteText] = useState('');
   const [parsedLines, setParsedLines] = useState<ParsedLine[]>([]);
   const [isDelivery, setIsDelivery] = useState(false);
@@ -111,26 +116,26 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   // 거래처별 품목 풀 — 거래처에 연결된 품목만 포함
   const productPool = useMemo(() => {
     if (!selectedClient) return [];
-    const finished = products.filter(p => {
+    const finished = items.filter(p => {
       if (p.category !== '완제품') return false;
-      if (p.clientIds?.includes(selectedClient.id)) return true;
-      if (selectedClient.type === '스마트스토어' && (p.clientIds?.includes('SMARTSTORE') || p.isSmartStore)) return true;
+      if (p.partnerIds?.includes(selectedClient.id)) return true;
+      if (selectedClient.type === '스마트스토어' && (p.partnerIds?.includes('SMARTSTORE') || p.isSmartStore)) return true;
       return false;
     });
     const hyangmiyu = selectedClient.type !== '스마트스토어'
-      ? products.filter(p => p.category === '향미유') : [];
+      ? items.filter(p => p.category === '향미유') : [];
     const gochu = selectedClient.type !== '스마트스토어'
-      ? products.filter(p => p.category === '고춧가루') : [];
+      ? items.filter(p => p.category === '고춧가루') : [];
     return [...finished, ...hyangmiyu, ...gochu];
   }, [products, selectedClient]);
 
   const filteredClients = useMemo(() => {
     if (!searchTerm.trim()) return [];
-    return clients.filter(c =>
+    return partners.filter(c =>
       (!c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처') &&
       matchClient(c.name || '', searchTerm)
     );
-  }, [searchTerm, clients]);
+  }, [searchTerm, partners]);
 
   const quickClients = useMemo(() => {
     const seen = new Set<string>();
@@ -139,7 +144,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
       .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'))
       .filter(c => { if (seen.has(c.name)) return false; seen.add(c.name); return true; })
       .slice(0, 12);
-  }, [clients]);
+  }, [partners]);
 
   const analyze = () => {
     const lines = pasteText.split('\n').map(l => l.trim()).filter(Boolean);
@@ -147,10 +152,10 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     setStep('review');
   };
 
-  const getBoxConfig = (productId: string) => {
-    const pc = productClients.find(p => p.productId === productId && p.clientId === selectedClient?.id);
+  const getBoxConfig = (itemId: string) => {
+    const pc = productClients.find(p => p.itemId === itemId && p.partnerId === selectedClient?.id);
     if (pc?.boxTypeId) return { unitsPerBox: pc.qtyPerBox ?? 0, boxType: pc.boxTypeId, boxSubId: pc.boxTypeId };
-    const p = products.find(pr => pr.id === productId);
+    const p = items.find(pr => pr.id === itemId);
     if (p?.defaultBoxConfig?.unitsPerBox) return p.defaultBoxConfig;
     return { unitsPerBox: 0, boxType: '' };
   };
@@ -158,14 +163,14 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   const handleSubmit = () => {
     if (!selectedClient) return;
     const validLines = parsedLines.filter(l => l.selectedProductId && l.qty > 0);
-    const items: OrderItem[] = validLines.flatMap(line => {
-      const product = products.find(p => p.id === line.selectedProductId);
+    const orderItems: OrderItem[] = validLines.flatMap(line => {
+      const product = items.find(p => p.id === line.selectedProductId);
       if (!product) return [];
       const cfg = getBoxConfig(line.selectedProductId!);
       const uPerBox = cfg.unitsPerBox;
       const actualQty = line.isBox && uPerBox > 0 ? line.qty * uPerBox : line.qty;
       return [{
-        productId: line.selectedProductId!,
+        itemId: line.selectedProductId!,
         name: product.name,
         quantity: actualQty,
         price: product.price || 0,
@@ -176,13 +181,13 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
         } : {}),
       }];
     });
-    if (!items.length) return;
-    const totalAmount = items.reduce((s, i) => s + i.price * i.quantity, 0);
+    if (!orderItems.length) return;
+    const totalAmount = orderItems.reduce((s, i) => s + i.price * i.quantity, 0);
     onSave({
-      clientId: selectedClient.id,
+      partnerId: selectedClient.id,
       customerName: selectedClient.name,
       email: selectedClient.email || '',
-      items,
+      items: orderItems,
       totalAmount,
       deliveryDate: new Date(deadline).toISOString(),
       source: (isDelivery ? '택배' : '일반') as OrderSource,
@@ -362,15 +367,15 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                       </div>
                     </div>
                     {matched && (() => {
-                      const pc = productClients.find(p => p.productId === matched.id && p.clientId === selectedClient?.id);
+                      const pc = productClients.find(p => p.itemId === matched.id && p.partnerId === selectedClient?.id);
                       const pcSubs: { id: string; name: string }[] = [];
-                      if (pc?.boxTypeId) { const b = products.find(p => p.id === pc.boxTypeId); if (b) pcSubs.push({ id: b.id, name: b.name }); }
-                      if (pc?.tapeTypeId) { const t = products.find(p => p.id === pc.tapeTypeId); if (t) pcSubs.push({ id: t.id, name: t.name }); }
+                      if (pc?.boxTypeId) { const b = items.find(p => p.id === pc.boxTypeId); if (b) pcSubs.push({ id: b.id, name: b.name }); }
+                      if (pc?.tapeTypeId) { const t = items.find(p => p.id === pc.tapeTypeId); if (t) pcSubs.push({ id: t.id, name: t.name }); }
                       const pcSubIds = new Set(pcSubs.map(s => s.id));
                       const legacySubs = (matched.submaterials ?? [])
                         .filter(sm => {
                           if (pcSubIds.has(sm.id)) return false;
-                          const fullSub = products.find(p => p.id === sm.id);
+                          const fullSub = items.find(p => p.id === sm.id);
                           const cat = fullSub?.category || sm.category || '';
                           return ['마개', '테이프', '박스', '용기', '라벨', 'Cap', 'Tape'].includes(cat);
                         })

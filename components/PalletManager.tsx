@@ -14,13 +14,13 @@ import {
   Clock,
   Search
 } from 'lucide-react';
-import { PalletStock, Order, Client, OrderStatus, PalletTransaction } from '../types';
+import { PalletStock, Order, Partner, OrderStatus, PalletTransaction } from '../types';
 import PageHeader from './PageHeader';
 
 interface PalletManagerProps {
   pallets: PalletStock[];
   orders: Order[];
-  clients: Client[];
+  partners: Partner[];
   palletTransactions: PalletTransaction[];
   onUpdatePallet: (_pallet: PalletStock) => void;
   onAddPalletTransaction: (_transaction: PalletTransaction) => void;
@@ -28,18 +28,17 @@ interface PalletManagerProps {
 
 const PalletManager: React.FC<PalletManagerProps> = ({ 
   pallets, 
-  orders, 
-  clients, 
+  orders, partners, 
   palletTransactions,
   onUpdatePallet,
   onAddPalletTransaction
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'clients'>('clients');
+  const [activeTab, setActiveTab] = useState<'overview' | 'partners'>('partners');
   const [searchTerm, setSearchTerm] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<PalletStock | null>(null);
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
-  const [selectedClientForTrans, setSelectedClientForTrans] = useState<Client | null>(null);
+  const [selectedClientForTrans, setSelectedClientForTrans] = useState<Partner | null>(null);
   const [transType, setTransType] = useState<'in' | 'out' | 'exchange'>('in');
   const [selectedClientIdForDetail, setSelectedClientIdForDetail] = useState<string | null>(null);
   const [historyPage, setHistoryPage] = useState(1);
@@ -50,8 +49,8 @@ const PalletManager: React.FC<PalletManagerProps> = ({
   const clientPalletStatus = useMemo(() => {
     const stats: Record<string, { name: string; pallets: Record<string, number> }> = {};
     
-    // Initialize with all clients
-    clients.forEach(client => {
+    // Initialize with all partners
+    partners.forEach(client => {
       stats[client.id] = { name: client.name, pallets: {} };
     });
 
@@ -59,34 +58,34 @@ const PalletManager: React.FC<PalletManagerProps> = ({
     orders
       .filter(o => o.pallets && o.pallets.length > 0 && o.status === OrderStatus.SHIPPED)
       .forEach(order => {
-        const clientId = order.clientId || 'unknown';
-        if (!stats[clientId]) stats[clientId] = { name: order.customerName, pallets: {} };
+        const partnerId = order.partnerId || 'unknown';
+        if (!stats[partnerId]) stats[partnerId] = { name: order.customerName, pallets: {} };
         
         order.pallets?.filter(p => !p.isExchange).forEach(p => {
           const pType = p.type || '기타';
           const qty = p.quantity || 0;
-          if (!stats[clientId].pallets[pType]) stats[clientId].pallets[pType] = 0;
-          stats[clientId].pallets[pType] -= qty; // Outbound -> balance down (-)
+          if (!stats[partnerId].pallets[pType]) stats[partnerId].pallets[pType] = 0;
+          stats[partnerId].pallets[pType] -= qty; // Outbound -> balance down (-)
         });
       });
 
     // Add/Subtract from manual transactions
     palletTransactions.forEach(trans => {
-      const clientId = trans.clientId;
-      if (!stats[clientId]) {
-        const client = clients.find(c => c.id === clientId);
-        stats[clientId] = { name: client?.name || '알 수 없는 거래처', pallets: {} };
+      const partnerId = trans.partnerId;
+      if (!stats[partnerId]) {
+        const client = partners.find(c => c.id === partnerId);
+        stats[partnerId] = { name: client?.name || '알 수 없는 거래처', pallets: {} };
       }
       
       const pallet = pallets.find(p => p.id === trans.palletId);
       const pType = pallet?.name || '기타';
       
-      if (!stats[clientId].pallets[pType]) stats[clientId].pallets[pType] = 0;
+      if (!stats[partnerId].pallets[pType]) stats[partnerId].pallets[pType] = 0;
       
       if (trans.type === 'in') {
-        stats[clientId].pallets[pType] += trans.quantity; // Inbound -> balance up (+)
+        stats[partnerId].pallets[pType] += trans.quantity; // Inbound -> balance up (+)
       } else {
-        stats[clientId].pallets[pType] -= trans.quantity; // Outbound -> balance down (-)
+        stats[partnerId].pallets[pType] -= trans.quantity; // Outbound -> balance down (-)
       }
     });
       
@@ -115,7 +114,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
         // Then by total magnitude (most negative/positive first)
         return Math.abs(b.total) - Math.abs(a.total);
       });
-  }, [orders, clients, palletTransactions, pallets, searchTerm]);
+  }, [orders, partners, palletTransactions, pallets, searchTerm]);
 
   const CLIENT_PAGE_SIZE = 15;
   const [clientPage, setClientPage] = useState(1);
@@ -130,7 +129,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
 
     // From manual transactions
     palletTransactions
-      .filter(t => t.clientId === selectedClientIdForDetail)
+      .filter(t => t.partnerId === selectedClientIdForDetail)
       .forEach(t => {
         const pallet = pallets.find(p => p.id === t.palletId);
         history.push({
@@ -145,7 +144,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
 
     // From orders
     orders
-      .filter(o => o.clientId === selectedClientIdForDetail && o.pallets && o.pallets.length > 0 && (o.status === OrderStatus.SHIPPED || o.status === OrderStatus.DISPATCHED))
+      .filter(o => o.partnerId === selectedClientIdForDetail && o.pallets && o.pallets.length > 0 && (o.status === OrderStatus.SHIPPED || o.status === OrderStatus.DISPATCHED))
       .forEach(o => {
         o.pallets?.forEach((p, idx) => {
           history.push({
@@ -185,17 +184,17 @@ const PalletManager: React.FC<PalletManagerProps> = ({
       const newQty = parseInt(formData.get('newQty') as string) || 0;
       if (returnQty <= 0 && newQty <= 0) return;
       if (returnQty > 0) {
-        onAddPalletTransaction({ id: `ptrans-${Date.now()}-in`, clientId: selectedClientForTrans.id, palletId, type: 'in', quantity: returnQty, date, note: `교체 반납${note ? ' — ' + note : ''}` });
+        onAddPalletTransaction({ id: `ptrans-${Date.now()}-in`, partnerId: selectedClientForTrans.id, palletId, type: 'in', quantity: returnQty, date, note: `교체 반납${note ? ' — ' + note : ''}` });
       }
       if (newQty > 0) {
-        onAddPalletTransaction({ id: `ptrans-${Date.now() + 1}-out`, clientId: selectedClientForTrans.id, palletId, type: 'out', quantity: newQty, date, note: `교체 지급${note ? ' — ' + note : ''}` });
+        onAddPalletTransaction({ id: `ptrans-${Date.now() + 1}-out`, partnerId: selectedClientForTrans.id, palletId, type: 'out', quantity: newQty, date, note: `교체 지급${note ? ' — ' + note : ''}` });
       }
       const pallet = pallets.find(p => p.id === palletId);
       if (pallet) onUpdatePallet({ ...pallet, inUse: Math.max(0, pallet.inUse + newQty - returnQty) });
     } else {
       const quantity = parseInt(formData.get('quantity') as string) || 0;
       if (quantity <= 0) return;
-      onAddPalletTransaction({ id: `ptrans-${Date.now()}`, clientId: selectedClientForTrans.id, palletId, type: transType as 'in' | 'out', quantity, date, note });
+      onAddPalletTransaction({ id: `ptrans-${Date.now()}`, partnerId: selectedClientForTrans.id, palletId, type: transType as 'in' | 'out', quantity, date, note });
       const pallet = pallets.find(p => p.id === palletId);
       if (pallet) onUpdatePallet({ ...pallet, inUse: transType === 'in' ? Math.max(0, pallet.inUse - quantity) : pallet.inUse + quantity });
     }
@@ -230,8 +229,8 @@ const PalletManager: React.FC<PalletManagerProps> = ({
         subtitle="실제 현장 출고 데이터를 기반으로 한 파렛트 순환 현황입니다."
         right={<div className="flex bg-slate-100 p-1 rounded-2xl items-center">
           <button
-            onClick={() => setActiveTab('clients')}
-            className={`px-4 py-2 rounded-xl flex items-center gap-1.5 transition-all ${activeTab === 'clients' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            onClick={() => setActiveTab('partners')}
+            className={`px-4 py-2 rounded-xl flex items-center gap-1.5 transition-all ${activeTab === 'partners' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
           >
             <Users size={14} />
             <span className="text-xs font-black">거래처별</span>
@@ -463,7 +462,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
         </div>
       )}
 
-      {/* Client Detail Modal */}
+      {/* Partner Detail Modal */}
       {selectedClientIdForDetail && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => {
@@ -479,7 +478,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                 </div>
                 <div>
                   <h3 className="text-2xl font-black text-slate-900">
-                    {clients.find(c => c.id === selectedClientIdForDetail)?.name || '거래처 정보'}
+                    {partners.find(c => c.id === selectedClientIdForDetail)?.name || '거래처 정보'}
                   </h3>
                   <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">파렛트 입출고 내역</p>
                 </div>
@@ -525,21 +524,21 @@ const PalletManager: React.FC<PalletManagerProps> = ({
               {/* Action Buttons */}
               <div className="flex gap-3">
                 <button
-                  onClick={() => { const client = clients.find(c => c.id === selectedClientIdForDetail); if (client) { setSelectedClientForTrans(client); setTransType('in'); setIsTransactionModalOpen(true); } }}
+                  onClick={() => { const client = partners.find(c => c.id === selectedClientIdForDetail); if (client) { setSelectedClientForTrans(client); setTransType('in'); setIsTransactionModalOpen(true); } }}
                   className="flex-1 py-3.5 bg-emerald-600 text-white rounded-2xl font-black shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all flex items-center justify-center gap-1.5 text-sm"
                 >
                   <RefreshCw size={16} />
                   <span>회수</span>
                 </button>
                 <button
-                  onClick={() => { const client = clients.find(c => c.id === selectedClientIdForDetail); if (client) { setSelectedClientForTrans(client); setTransType('exchange'); setIsTransactionModalOpen(true); } }}
+                  onClick={() => { const client = partners.find(c => c.id === selectedClientIdForDetail); if (client) { setSelectedClientForTrans(client); setTransType('exchange'); setIsTransactionModalOpen(true); } }}
                   className="flex-1 py-3.5 bg-amber-500 text-white rounded-2xl font-black shadow-lg shadow-amber-100 hover:bg-amber-600 transition-all flex items-center justify-center gap-1.5 text-sm"
                 >
                   <RefreshCw size={16} />
                   <span>교체</span>
                 </button>
                 <button
-                  onClick={() => { const client = clients.find(c => c.id === selectedClientIdForDetail); if (client) { setSelectedClientForTrans(client); setTransType('out'); setIsTransactionModalOpen(true); } }}
+                  onClick={() => { const client = partners.find(c => c.id === selectedClientIdForDetail); if (client) { setSelectedClientForTrans(client); setTransType('out'); setIsTransactionModalOpen(true); } }}
                   className="flex-1 py-3.5 bg-rose-600 text-white rounded-2xl font-black shadow-lg shadow-rose-100 hover:bg-rose-700 transition-all flex items-center justify-center gap-1.5 text-sm"
                 >
                   <Plus size={16} />

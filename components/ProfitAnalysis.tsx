@@ -5,11 +5,11 @@ import {
   ResponsiveContainer, Legend, Cell
 } from 'recharts';
 import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, BarChart2, DollarSign, Wallet, Users, ChevronLeft, ChevronRight, Save, Search, Package, X, CreditCard, Download, Archive, Clock } from 'lucide-react';
-import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Client, PaymentRecord, Product, AccountCode, AccountGroup, AccountGroupPlLine, InventorySnapshot } from '../types';
+import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Partner, PaymentRecord, Item, AccountCode, AccountGroup, AccountGroupPlLine, InventorySnapshot } from '../types';
 import PageHeader from './PageHeader';
 import CostManager from './CostManager';
 
-type MainTab = 'analysis' | 'costs' | 'clients' | 'inventory-value' | 'account-settings' | 'cash-flow';
+type MainTab = 'analysis' | 'costs' | 'partners' | 'inventory-value' | 'account-settings' | 'cash-flow';
 
 interface ProfitAnalysisProps {
   issuedStatements: IssuedStatement[];
@@ -20,8 +20,8 @@ interface ProfitAnalysisProps {
   onAddTemplate?: (data: Omit<FixedCostTemplate, 'id'>) => Promise<void>;
   onUpdateTemplate?: (id: string, data: Partial<FixedCostTemplate>) => Promise<void>;
   onDeleteTemplate?: (id: string) => Promise<void>;
-  clients?: Client[];
-  products?: Product[];
+  partners?: Partner[];
+  items?: Item[];
   onUpdateIssuedStatement?: (id: string, data: Partial<IssuedStatement>) => void;
   accountGroups?: AccountGroup[];
   accountCodes?: AccountCode[];
@@ -47,14 +47,14 @@ const MONTHS = 12;
 const COMPUTED_GROUP_IDS = new Set(['ag-gross-profit', 'ag-op-profit']);
 const SGNA_LEGACY_IDS = new Set(['ag-selling', 'ag-admin']);
 
-const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, fixedCostTemplates = [], onAddCost, onDeleteCost, onAddTemplate, onUpdateTemplate, onDeleteTemplate, clients = [], products = [], onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, initialTab }) => {
+const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, fixedCostTemplates = [], onAddCost, onDeleteCost, onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, initialTab }) => {
   // 계산결과 그룹 숨김 + 구 판매비/관리비 → 판관비로 통합 표시
   const accountGroups = rawAccountGroups
     .filter(g => !COMPUTED_GROUP_IDS.has(g.id))
     .map(g => SGNA_LEGACY_IDS.has(g.id) ? { ...g, id: 'ag-sgna', name: '판관비' } : g)
     .filter((g, idx, arr) => arr.findIndex(x => x.id === g.id) === idx);
   const [mainTab, setMainTab] = useState<MainTab>(initialTab ?? 'analysis');
-  const isStandalone = initialTab === 'clients' || initialTab === 'cash-flow';
+  const isStandalone = initialTab === 'partners' || initialTab === 'cash-flow';
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [period, setPeriod] = useState<'3M' | '6M' | '1Y' | 'custom'>('custom');
   const [selectedQuarter, setSelectedQuarter] = useState<1|2|3|4>(() => {
@@ -334,7 +334,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           </div>
         </>
       )}
-      {isStandalone && mainTab === 'clients' && (
+      {isStandalone && mainTab === 'partners' && (
         <PageHeader title="거래처 현황" subtitle="거래처별 매출 통계, 미수금 · 미지급금 조회" />
       )}
       {isStandalone && mainTab === 'cash-flow' && (
@@ -891,17 +891,17 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
       })()}
 
       {/* ── 거래처 통계 탭 (미수금 + 미지급금 + 통계 통합) ── */}
-      {mainTab === 'clients' && (() => {
+      {mainTab === 'partners' && (() => {
         const getPaid = (s: IssuedStatement) => (s.payments ?? []).reduce((a, p) => a + p.amount, 0);
         const getBalance = (s: IssuedStatement) => s.totalAmount - getPaid(s);
 
         // ── 전체 거래처 목록 (매출 + 매입 포함) ──
         const currentYear = new Date().getFullYear();
-        const allClientIds = new Set(issuedStatements.map(s => s.clientId));
+        const allClientIds = new Set(issuedStatements.map(s => s.partnerId));
         const allClientList = [...allClientIds].map(id => {
-          const name = issuedStatements.find(s => s.clientId === id)?.clientName ?? id;
-          const salesS = issuedStatements.filter(s => s.clientId === id && s.type === '매출');
-          const purchaseS = issuedStatements.filter(s => s.clientId === id && s.type === '매입');
+          const name = issuedStatements.find(s => s.partnerId === id)?.clientName ?? id;
+          const salesS = issuedStatements.filter(s => s.partnerId === id && s.type === '매출');
+          const purchaseS = issuedStatements.filter(s => s.partnerId === id && s.type === '매입');
           const receivable = salesS.reduce((a, s) => a + getBalance(s), 0);
           const payable = purchaseS.reduce((a, s) => a + getBalance(s), 0);
           const yearSales = salesS.filter(s => s.tradeDate.startsWith(String(currentYear))).reduce((a, s) => a + s.totalAmount, 0);
@@ -911,8 +911,8 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
 
         const selId = statsClientId;
         const selName = allClientList.find(c => c.id === selId)?.name ?? '';
-        const selSalesStmts = issuedStatements.filter(s => s.clientId === selId && s.type === '매출').sort((a, b) => b.tradeDate.localeCompare(a.tradeDate));
-        const selPurchaseStmts = issuedStatements.filter(s => s.clientId === selId && s.type === '매입').sort((a, b) => b.tradeDate.localeCompare(a.tradeDate));
+        const selSalesStmts = issuedStatements.filter(s => s.partnerId === selId && s.type === '매출').sort((a, b) => b.tradeDate.localeCompare(a.tradeDate));
+        const selPurchaseStmts = issuedStatements.filter(s => s.partnerId === selId && s.type === '매입').sort((a, b) => b.tradeDate.localeCompare(a.tradeDate));
         const yearSalesStmts = selSalesStmts.filter(s => s.tradeDate.startsWith(String(statsYear)));
         const yearSalesTotal = yearSalesStmts.reduce((a, s) => a + s.totalAmount, 0);
         const totalReceivable = selSalesStmts.reduce((a, s) => a + getBalance(s), 0);
@@ -997,7 +997,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           const allReceivable = allClientList.filter(c => c.receivable > 0);
           const totalReceivableAll = allReceivable.reduce((a, c) => a + c.receivable, 0);
           const paidThisMonth = allClientList.filter(c => {
-            const stmts = issuedStatements.filter(s => s.clientId === c.id && s.type === '매출');
+            const stmts = issuedStatements.filter(s => s.partnerId === c.id && s.type === '매출');
             return stmts.some(s => (s.payments ?? []).some(p => p.date.startsWith(month)));
           });
           const jsPDF = (await import('jspdf')).default;
@@ -1173,7 +1173,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             {/* 미수금 상세 팝업 */}
             {receivableDetailClient && (() => {
               const unpaidStmts = issuedStatements
-                .filter(s => s.clientId === receivableDetailClient.id && s.type === '매출' && getBalance(s) > 0)
+                .filter(s => s.partnerId === receivableDetailClient.id && s.type === '매출' && getBalance(s) > 0)
                 .sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
               const detailTotal = unpaidStmts.reduce((a, s) => a + getBalance(s), 0);
               return (
@@ -1291,7 +1291,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
       })()}
       {/* ── 재고액 탭 ── */}
       {mainTab === 'inventory-value' && (() => {
-        const getStock = (p: Product) => p.stock ?? 0;
+        const getStock = (p: Item) => p.stock ?? 0;
 
         const rows = products
           .map(p => ({ ...p, stock: getStock(p), value: getStock(p) * (p.cost ?? 0) }))

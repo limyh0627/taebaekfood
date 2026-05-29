@@ -1,13 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { Plus, Trash2, Factory, ChevronLeft, ChevronRight, Search, X, RefreshCw, Pencil, Check } from 'lucide-react';
 import PageHeader from './PageHeader';
-import { ProductionRecord, Product, Order, OrderStatus } from '../types';
+import { ProductionRecord, Item, Order, OrderStatus } from '../types';
 
 const SUB_ONLY_CATS = new Set(['용기', '마개', '테이프', '박스', '라벨', '향미유', '고춧가루']);
 
 interface ProductionManagerProps {
   records: ProductionRecord[];
-  products: Product[];
+  items: Item[];
   orders: Order[];
   onAdd: (record: ProductionRecord) => Promise<void>;
   onDelete: (id: string) => void;
@@ -20,7 +20,7 @@ const toLocalYMD = (d: Date) =>
 
 const ProductionManager: React.FC<ProductionManagerProps> = ({
   records,
-  products,
+  items,
   orders,
   onAdd,
   onDelete,
@@ -41,7 +41,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
 
   const [form, setForm] = useState({
     date: today,
-    productId: '',
+    itemId: '',
     finishedQty: '',
     wipProductId: '',
     wipUsed: '',
@@ -49,20 +49,20 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   });
 
   const finishedProducts = useMemo(
-    () => products.filter(p => !p.archived && (p.itemType === 'FINISHED' || p.category === '완제품')),
-    [products]
+    () => items.filter(p => !p.archived && (p.itemType === 'FINISHED' || p.category === '완제품')),
+    [items]
   );
 
   const wipProducts = useMemo(
-    () => products.filter(p => !p.archived && p.itemType === 'WIP'),
-    [products]
+    () => items.filter(p => !p.archived && p.itemType === 'WIP'),
+    [items]
   );
 
   const filteredRecords = useMemo(() => {
     return records
       .filter(r => {
         const matchMonth = showAll || r.date.startsWith(filterMonth);
-        const matchProduct = !filterProductId || r.productId === filterProductId;
+        const matchProduct = !filterProductId || r.itemId === filterProductId;
         const matchSearch =
           !searchText ||
           r.productName.includes(searchText) ||
@@ -76,11 +76,11 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   const monthlySummary = useMemo(() => {
     const map: Record<string, { productName: string; qty: number; count: number }> = {};
     filteredRecords.forEach(r => {
-      if (!map[r.productId]) {
-        map[r.productId] = { productName: r.productName, qty: 0, count: 0 };
+      if (!map[r.itemId]) {
+        map[r.itemId] = { productName: r.productName, qty: 0, count: 0 };
       }
-      map[r.productId].qty += r.finishedQty;
-      map[r.productId].count += 1;
+      map[r.itemId].qty += r.finishedQty;
+      map[r.itemId].count += 1;
     });
     return Object.values(map).sort((a, b) => b.qty - a.qty);
   }, [filteredRecords]);
@@ -103,17 +103,17 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   };
 
   const handleSubmit = () => {
-    if (!form.productId || !form.finishedQty) {
+    if (!form.itemId || !form.finishedQty) {
       alert('품목과 생산수량을 입력해주세요.');
       return;
     }
-    const product = products.find(p => p.id === form.productId);
-    const wipProduct = form.wipProductId ? products.find(p => p.id === form.wipProductId) : undefined;
+    const product = items.find(p => p.id === form.itemId);
+    const wipProduct = form.wipProductId ? items.find(p => p.id === form.wipProductId) : undefined;
 
     const record: ProductionRecord = {
       id: `pr-${Date.now()}`,
       date: form.date,
-      productId: form.productId,
+      itemId: form.itemId,
       productName: product?.name ?? '',
       finishedQty: Number(form.finishedQty),
       ...(wipProduct?.id ? { wipProductId: wipProduct.id, wipProductName: wipProduct.name } : {}),
@@ -125,7 +125,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
     };
 
     onAdd(record);
-    setForm({ date: today, productId: '', finishedQty: '', wipProductId: '', wipUsed: '', note: '' });
+    setForm({ date: today, itemId: '', finishedQty: '', wipProductId: '', wipUsed: '', note: '' });
     setShowForm(false);
   };
 
@@ -147,16 +147,16 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
 
       for (const order of deliveredOrders) {
         for (const item of order.items) {
-          const product = products.find(p => p.id === item.productId);
+          const product = items.find(p => p.id === item.itemId);
           if (product && SUB_ONLY_CATS.has(product.category)) continue;
 
-          const recordId = `pr-${order.id}-${item.productId}`;
+          const recordId = `pr-${order.id}-${item.itemId}`;
           if (existingIds.has(recordId)) continue;
 
           const record: ProductionRecord = {
             id: recordId,
             date: order.deliveredAt ? order.deliveredAt.slice(0, 10) : order.createdAt.slice(0, 10),
-            productId: item.productId,
+            itemId: item.itemId,
             productName: product?.name ?? item.name,
             finishedQty: item.quantity,
             ...(product?.cost != null ? { cost: product.cost } : {}),
@@ -227,8 +227,8 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
             <div>
               <label className="block text-xs font-bold text-slate-500 mb-1.5">생산 품목 (FINISHED)</label>
               <select
-                value={form.productId}
-                onChange={e => setForm(f => ({ ...f, productId: e.target.value }))}
+                value={form.itemId}
+                onChange={e => setForm(f => ({ ...f, itemId: e.target.value }))}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-emerald-400 bg-white"
               >
                 <option value="">품목 선택</option>
@@ -249,9 +249,9 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
                   min={0}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-emerald-400"
                 />
-                {form.productId && (
+                {form.itemId && (
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">
-                    {products.find(p => p.id === form.productId)?.unit ?? '개'}
+                    {items.find(p => p.id === form.itemId)?.unit ?? '개'}
                   </span>
                 )}
               </div>
@@ -441,7 +441,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
                     <td className="px-4 py-3 text-right">
                       <span className="font-black text-emerald-700">{r.finishedQty.toLocaleString()}</span>
                       <span className="text-xs text-slate-400 ml-0.5">
-                        {products.find(p => p.id === r.productId)?.unit ?? '개'}
+                        {items.find(p => p.id === r.itemId)?.unit ?? '개'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-slate-500 hidden sm:table-cell">

@@ -18,7 +18,7 @@ import {
   Square,
   CheckSquare
 } from 'lucide-react';
-import { Order, Client, OrderStatus, Product } from '../types';
+import { Order, Partner, OrderStatus, Item } from '../types';
 import { X, Save } from 'lucide-react';
 import { subscribeToDocument, setDocument } from '../src/shared/services/firebaseService';
 import { OrderCard } from './OrdersList';
@@ -28,8 +28,8 @@ import { OrderItem } from '../types';
 
 interface DeliveryManagerProps {
   orders: Order[];
-  clients: Client[];
-  products: Product[];
+  partners: Partner[];
+  items: Item[];
   onUpdateDeliveryDate?: (_id: string, _date: string) => void;
   onUpdateStatus?: (_id: string, _status: OrderStatus) => void;
   onUpdateItems?: (_id: string, _items: OrderItem[]) => void;
@@ -37,7 +37,10 @@ interface DeliveryManagerProps {
   onDeleteOrder?: (_id: string) => void;
 }
 
-const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, products, onUpdateDeliveryDate, onUpdateStatus, onUpdateItems, onToggleItemChecked, onDeleteOrder }) => {
+const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, items, onUpdateDeliveryDate, onUpdateStatus, onUpdateItems, onToggleItemChecked, onDeleteOrder }) => {
+  // Compute derived variables
+  const clients = partners;
+  const products = items;
   const [currentDate, setCurrentDate] = useState(new Date());
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [newDate, setNewDate] = useState('');
@@ -160,16 +163,16 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
   };
 
   const ordersByRegion = useMemo(() => {
-    const grouped: Record<string, { client: Client; orders: Order[] }[]> = {};
+    const grouped: Record<string, { client: Partner; orders: Order[] }[]> = {};
     regionList.forEach(r => { grouped[r] = []; });
 
     const activeOrders = orders.filter(o => o.status !== OrderStatus.DELIVERED);
 
     activeOrders.forEach(order => {
-      const client = clients.find(c => c.id === order.clientId);
+      const client = partners.find(c => c.id === order.partnerId);
       const region = cityToRegion(client?.region || "");
 
-      const existingClientEntry = grouped[region].find(e => e.client.id === order.clientId);
+      const existingClientEntry = grouped[region].find(e => e.client.id === order.partnerId);
       if (existingClientEntry) {
         existingClientEntry.orders.push(order);
       } else if (client) {
@@ -178,7 +181,11 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
     });
 
     return grouped;
-  }, [orders, clients, regionList]);
+  }, [orders, partners, regionList]);
+
+  // 로컬 날짜 문자열 (타임존 버그 방지)
+  const toLocalDateStr = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
   // Week navigation helpers
   const getWeekStart = (d: Date) => {
@@ -198,7 +205,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
   });
 
   const hasWeekendOrdersInWeek = weekDays.some(d => {
-    const dateStr = d.toISOString().split('T')[0];
+    const dateStr = toLocalDateStr(d);
     const dow = d.getDay();
     return (dow === 0 || dow === 6) && (deliverySchedules[dateStr]?.length > 0 || deliveredSchedules[dateStr]?.length > 0);
   });
@@ -220,7 +227,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
   })();
 
   const renderWeekCalendar = () => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = toLocalDateStr(new Date());
     const getStatusColor = (status: OrderStatus) => {
       switch (status) {
         case OrderStatus.PENDING: return 'bg-amber-100 text-amber-700 border-amber-200';
@@ -231,41 +238,165 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
         default: return 'bg-slate-100 text-slate-600 border-slate-200';
       }
     };
+
+    // 금일 배송순서 공통 데이터 (오늘 열에서 사용)
+    // deliveryOrdering에 있는 것 + 오늘 날짜 캘린더 주문 중 ordering에 없는 것 자동 포함
+    const todayCalendarExtra = orders
+      .filter(o =>
+        o.customerName !== '생산기록' &&
+        o.status !== OrderStatus.DELIVERED &&
+        o.deliveryDate?.split('T')[0] === todayStr &&
+        !deliveryOrdering.includes(o.id)
+      )
+      .map(o => o.id);
+    const todayValidDelivery = [
+      ...deliveryOrdering.filter(id =>
+        orders.some(o => o.id === id && o.status !== OrderStatus.DELIVERED && o.customerName !== '생산기록')
+      ),
+      ...todayCalendarExtra,
+    ];
+    const todayMorningIds = todayValidDelivery.filter(id => (deliveryTimeSlots[id] || '오전') === '오전');
+    const todayAfternoonIds = todayValidDelivery.filter(id => deliveryTimeSlots[id] === '오후');
+
+    const saveTodayOrdering = (next: string[], slots?: Record<string, '오전' | '오후'>) => {
+      setDeliveryOrdering(next);
+      setDocument('settings', 'deliveryOrdering', { ordering: next, timeSlots: slots ?? deliveryTimeSlots });
+    };
+
     return visibleWeekDays.map(d => {
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = toLocalDateStr(d);
       const dayOrders = deliverySchedules[dateStr] || [];
       const deliveredOrders = deliveredSchedules[dateStr] || [];
       const isToday = todayStr === dateStr;
       const showDelivered = expandedDeliveredDates.has(dateStr);
+
+      // 날짜 헤더 공통
+      const dateHeader = (
+        <div className="flex justify-between items-center mb-2 flex-shrink-0">
+          <div className="flex flex-col items-start">
+            <span className="text-[10px] font-black text-slate-400 uppercase">{dayLabels[d.getDay()]}</span>
+            <span className={`text-lg font-black w-8 h-8 flex items-center justify-center rounded-full ${isToday ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-700 group-hover:text-indigo-600'}`}>
+              {d.getDate()}
+            </span>
+          </div>
+          <div className="flex flex-col items-end gap-0.5">
+            {(isToday ? todayValidDelivery.length : dayOrders.length) > 0 && (
+              <span className="text-[10px] font-black text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-md">
+                {isToday ? todayValidDelivery.length : dayOrders.length}건
+              </span>
+            )}
+            {deliveredOrders.length > 0 && (
+              <button
+                onClick={e => { e.stopPropagation(); toggleDeliveredDate(dateStr); }}
+                className="text-[10px] font-black text-slate-400 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded-md transition-all"
+              >
+                이전 {deliveredOrders.length}건
+              </button>
+            )}
+          </div>
+        </div>
+      );
+
+      if (isToday) {
+        // 오늘 열 → 금일 배송순서 스타일
+        return (
+          <div
+            key={dateStr}
+            className="border-r border-slate-100 p-3 flex flex-col bg-indigo-50/30"
+            style={{ minHeight: 200 }}
+          >
+            {dateHeader}
+            <div className="flex-1 flex flex-col gap-1 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+              {todayValidDelivery.length === 0 ? (
+                <p className="text-center text-[10px] text-slate-300 font-bold py-4">배송순서 미설정</p>
+              ) : (
+                <>
+                  <span className="text-[9px] font-black text-amber-500 px-1">오전</span>
+                  {todayMorningIds.length === 0 && <p className="text-[9px] text-slate-300 text-center py-1">없음</p>}
+                  {todayMorningIds.map((id, idx) => {
+                    const o = orders.find(x => x.id === id);
+                    if (!o) return null;
+                    const clientName = partners.find(c => c.id === o.partnerId)?.name || o.customerName || '';
+                    const globalNum = todayValidDelivery.indexOf(id) + 1;
+                    return (
+                      <div
+                        key={id}
+                        draggable
+                        onDragStart={() => { setDragDeliveryIdx(idx); setDragDeliveryId(id); }}
+                        onDragOver={e => e.preventDefault()}
+                        onDrop={() => {
+                          if (dragDeliveryIdx === null || dragDeliveryIdx === todayValidDelivery.indexOf(id)) return;
+                          const next = [...todayValidDelivery];
+                          const [moved] = next.splice(dragDeliveryIdx, 1);
+                          next.splice(next.indexOf(id), 0, moved);
+                          saveTodayOrdering(next);
+                          setDragDeliveryIdx(null); setDragDeliveryId(null);
+                        }}
+                        onClick={() => setPreviewDeliveryOrderId(id)}
+                        className={`flex items-center gap-1.5 bg-white rounded-xl px-2 py-1.5 shadow-sm border border-amber-100 cursor-pointer hover:brightness-95 transition-all ${getStatusColor(o.status)}`}
+                      >
+                        <span className="text-[9px] font-black text-amber-500 w-3 shrink-0">{globalNum}</span>
+                        <span className="flex-1 text-[10px] font-bold truncate">{clientName}</span>
+                        <GripVertical size={10} className="text-slate-300 shrink-0" />
+                      </div>
+                    );
+                  })}
+                  <span className="text-[9px] font-black text-indigo-500 px-1 pt-1">오후</span>
+                  {todayAfternoonIds.length === 0 && <p className="text-[9px] text-slate-300 text-center py-1">없음</p>}
+                  {todayAfternoonIds.map((id, idx) => {
+                    const o = orders.find(x => x.id === id);
+                    if (!o) return null;
+                    const clientName = partners.find(c => c.id === o.partnerId)?.name || o.customerName || '';
+                    const globalNum = todayValidDelivery.indexOf(id) + 1;
+                    return (
+                      <div
+                        key={id}
+                        draggable
+                        onDragStart={() => { setDragDeliveryIdx(idx); setDragDeliveryId(id); }}
+                        onDragOver={e => e.preventDefault()}
+                        onDrop={() => {
+                          if (dragDeliveryIdx === null || dragDeliveryIdx === todayValidDelivery.indexOf(id)) return;
+                          const next = [...todayValidDelivery];
+                          const [moved] = next.splice(dragDeliveryIdx, 1);
+                          next.splice(next.indexOf(id), 0, moved);
+                          saveTodayOrdering(next);
+                          setDragDeliveryIdx(null); setDragDeliveryId(null);
+                        }}
+                        onClick={() => setPreviewDeliveryOrderId(id)}
+                        className={`flex items-center gap-1.5 bg-white rounded-xl px-2 py-1.5 shadow-sm border border-indigo-100 cursor-pointer hover:brightness-95 transition-all ${getStatusColor(o.status)}`}
+                      >
+                        <span className="text-[9px] font-black text-indigo-500 w-3 shrink-0">{globalNum}</span>
+                        <span className="flex-1 text-[10px] font-bold truncate">{clientName}</span>
+                        <GripVertical size={10} className="text-slate-300 shrink-0" />
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+              {showDelivered && deliveredOrders.map(order => (
+                <div
+                  key={order.id}
+                  onClick={() => handleOrderClick(order)}
+                  className="text-[10px] font-bold py-1.5 px-2.5 rounded-xl border flex justify-between items-center cursor-pointer bg-slate-50 border-slate-200 text-slate-400 hover:brightness-95 transition-all"
+                >
+                  <span className="flex-1 truncate">{order.customerName}</span>
+                  <span className="ml-1 shrink-0">완료</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div
           key={dateStr}
           onDragOver={handleDragOver}
           onDrop={(e) => handleDrop(e, dateStr)}
-          className={`border-r border-slate-100 p-3 flex flex-col transition-all hover:bg-indigo-50/30 group ${isToday ? 'bg-indigo-50/30' : 'bg-white'}`}
+          className="border-r border-slate-100 p-3 flex flex-col transition-all hover:bg-indigo-50/30 group bg-white"
           style={{ minHeight: 200 }}
         >
-          <div className="flex justify-between items-center mb-2">
-            <div className="flex flex-col items-start">
-              <span className="text-[10px] font-black text-slate-400 uppercase">{dayLabels[d.getDay()]}</span>
-              <span className={`text-lg font-black w-8 h-8 flex items-center justify-center rounded-full ${isToday ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-700 group-hover:text-indigo-600'}`}>
-                {d.getDate()}
-              </span>
-            </div>
-            <div className="flex flex-col items-end gap-0.5">
-              {dayOrders.length > 0 && (
-                <span className="text-[10px] font-black text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-md">{dayOrders.length}건</span>
-              )}
-              {deliveredOrders.length > 0 && (
-                <button
-                  onClick={e => { e.stopPropagation(); toggleDeliveredDate(dateStr); }}
-                  className="text-[10px] font-black text-slate-400 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded-md transition-all"
-                >
-                  이전 {deliveredOrders.length}건
-                </button>
-              )}
-            </div>
-          </div>
+          {dateHeader}
           <div className="flex-1 space-y-1.5 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
             {dayOrders.map(order => {
               const progress = order.items.length > 0
@@ -320,7 +451,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
       }
     };
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = toLocalDateStr(new Date());
     const renderDayCell = (day: number, dateStr: string) => {
       const dayOrders = deliverySchedules[dateStr] || [];
       const deliveredOrders = deliveredSchedules[dateStr] || [];
@@ -506,7 +637,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
                       {morningIds.map((id) => {
                         const o = dispatchedOrders.find(x => x.id === id);
                         if (!o) return null;
-                        const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '';
+                        const clientName = partners.find(c => c.id === o.partnerId)?.name || o.customerName || '';
                         const globalIdx = validDelivery.indexOf(id);
                         const globalNum = globalIdx + 1;
                         return (
@@ -560,7 +691,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
                       {afternoonIds.map((id) => {
                         const o = dispatchedOrders.find(x => x.id === id);
                         if (!o) return null;
-                        const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '';
+                        const clientName = partners.find(c => c.id === o.partnerId)?.name || o.customerName || '';
                         const globalIdx = validDelivery.indexOf(id);
                         const globalNum = globalIdx + 1;
                         return (
@@ -640,8 +771,8 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
                         <div className={`flex-1 transition-all rounded-2xl ${isChecked ? 'ring-2 ring-indigo-400 ring-offset-1' : ''}`}>
                           <OrderCard
                             order={order}
-                            clients={clients}
-                            products={products}
+                            partners={clients}
+                            items={products}
                             editingOrderId={editingOrderId}
                             setEditingOrderId={setEditingOrderId}
                             showAddProductSelect={showAddProductSelect}
@@ -708,8 +839,8 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
                     <OrderCard
                       key={order.id}
                       order={order}
-                      clients={clients}
-                      products={products}
+                      partners={clients}
+                      items={products}
                       editingOrderId={editingOrderId}
                       setEditingOrderId={setEditingOrderId}
                       showAddProductSelect={showAddProductSelect}
@@ -744,8 +875,8 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
                     <OrderCard
                       key={order.id}
                       order={order}
-                      clients={clients}
-                      products={products}
+                      partners={clients}
+                      items={products}
                       editingOrderId={editingOrderId}
                       setEditingOrderId={setEditingOrderId}
                       showAddProductSelect={showAddProductSelect}
@@ -773,7 +904,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
                     {dispatchedOrders.length === 0 ? (
                       <p className="text-center text-sm text-slate-400 py-10">작업완료 주문이 없습니다.</p>
                     ) : dispatchedOrders.map(o => {
-                      const clientName = clients.find(c => c.id === o.clientId)?.name || o.customerName || '';
+                      const clientName = partners.find(c => c.id === o.partnerId)?.name || o.customerName || '';
                       const isSelected = pickerDeliveryOrdering.includes(o.id);
                       const idx = pickerDeliveryOrdering.indexOf(o.id);
                       return (
@@ -1048,7 +1179,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
       {previewDeliveryOrderId && (() => {
         const order = orders.find(o => o.id === previewDeliveryOrderId);
         if (!order) return null;
-        const clientName = order.customerName || clients.find(c => c.id === order.clientId)?.name || '이름없음';
+        const clientName = order.customerName || partners.find(c => c.id === order.partnerId)?.name || '이름없음';
         return (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
@@ -1070,8 +1201,8 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, clients, prod
               <div className="p-4 overflow-y-auto max-h-[70vh]">
                 <OrderCard
                   order={order}
-                  clients={clients}
-                  products={products}
+                  partners={clients}
+                  items={products}
                   editingOrderId={editingOrderId}
                   setEditingOrderId={setEditingOrderId}
                   showAddProductSelect={showAddProductSelect}

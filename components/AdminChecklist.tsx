@@ -6,7 +6,7 @@ import {
   ClipboardList, RotateCcw, Building2, FileText, History, Link2,
   X, Loader2, Check, Plus,
 } from 'lucide-react';
-import { LeaveRequest, AdjustmentRequest, Employee, ReturnRequest, ReturnItem, PendingReceipt, IssuedStatement, IssuedStatementItem, Client, PendingStatementEdit, Item, PartnerItem } from '../types';
+import { LeaveRequest, AdjustmentRequest, Employee, ReturnRequest, ReturnItem, PendingReceipt, IssuedStatement, IssuedStatementItem, Partner, PendingStatementEdit, Item, PartnerItem } from '../types';
 import { PurchaseOrder } from '../src/shared/types';
 import { addItem, updateItem } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
@@ -17,7 +17,7 @@ interface AdminChecklistProps {
   employees: Employee[];
   returnRequests?: ReturnRequest[];
   pendingReceipts?: PendingReceipt[];
-  clients?: Client[];
+  partners?: Partner[];
   issuedStatements?: IssuedStatement[];
   onUpdateLeaveStatus: (_id: string, _status: 'approved' | 'rejected') => void;
   onUpdateAdjustmentStatus: (_id: string, _status: 'processed' | 'rejected') => void;
@@ -28,8 +28,8 @@ interface AdminChecklistProps {
   onRejectStatementEdit?: (_id: string) => void;
   orderRequests?: PurchaseOrder[];
   items?: Item[];
-  productSuppliers?: PartnerItem[];
-  onCreatePurchaseStatement?: (_data: { supplierId: string; supplierName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }> }) => void;
+  partnerItems?: PartnerItem[];
+  onCreatePurchaseStatement?: (_data: { partnerId: string; partnerName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }> }) => void;
 }
 
 type TabType = 'leave' | 'adjustment' | 'ops';
@@ -37,13 +37,13 @@ type TabType = 'leave' | 'adjustment' | 'ops';
 interface StatementDraftItem { name: string; qty: string; price: string; unit: string; isTaxExempt: boolean; }
 interface StatementDraft {
   receipt: PendingReceipt;
-  clientId: string;
+  partnerId: string;
   tradeDate: string;
   items: StatementDraftItem[];
 }
 interface ReturnStatementDraft {
   returnReq: ReturnRequest;
-  clientId: string;
+  partnerId: string;
   tradeDate: string;
   items: StatementDraftItem[];
 }
@@ -59,7 +59,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
   employees,
   returnRequests = [],
   pendingReceipts = [],
-  clients = [],
+  partners = [],
   issuedStatements = [],
   onUpdateLeaveStatus,
   onUpdateAdjustmentStatus,
@@ -70,9 +70,12 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
   onRejectStatementEdit,
   orderRequests = [],
   items = [],
-  productSuppliers = [],
+  partnerItems = [],
   onCreatePurchaseStatement,
 }) => {
+  // Compute derived variables
+  const clients = partners;
+  const productSuppliers = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
   const [activeTab, setActiveTab] = useState<TabType>('leave');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [inboundFilter, setInboundFilter] = useState<'pending_voucher' | 'all'>('all');
@@ -114,19 +117,18 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
 
   // 발주 예정: 거래처(공급처)별 그룹화 — 거래처 미지정 품목은 각각 별도 그룹으로 분리
   const orderGroups = useMemo(() => {
-    const map = new Map<string, { supplierId: string; supplierName: string; items: Array<{ productId: string; name: string; spec: string; qty: number; price: number; isBox: boolean }> }>();
+    const map = new Map<string, { partnerId: string; partnerName: string; items: Array<{ itemId: string; name: string; spec: string; qty: number; price: number; isBox: boolean }> }>();
     for (const req of orderRequests) {
       const product = items.find(p => p.id === req.id);
       if (!product) continue;
-      const ps = productSuppliers.find(s => (s.Item_ID === req.id || s.productId === req.id) && s.Direction === 'in');
-      const realSupplierId = ps?.Partner_ID ?? ps?.supplierId;
-      // 거래처 지정된 경우만 같은 supplierId로 묶음, 미지정 품목은 품목별로 고유키 부여
+      const ps = partnerItems.find(s => (s.Item_ID === req.id || s.itemId === req.id) && s.Direction === 'in');
+      const realSupplierId = ps?.Partner_ID ?? ps?.partnerId;
       const groupKey = realSupplierId ?? `unknown__${req.id}`;
-      const supplierId = realSupplierId ?? '';
-      const supplierName = realSupplierId ? (clients.find(c => c.id === realSupplierId)?.name ?? realSupplierId) : '미지정';
-      if (!map.has(groupKey)) map.set(groupKey, { supplierId, supplierName, items: [] });
+      const partnerId = realSupplierId ?? '';
+      const partnerName = realSupplierId ? (partners.find(c => c.id === realSupplierId)?.name ?? realSupplierId) : '미지정';
+      if (!map.has(groupKey)) map.set(groupKey, { partnerId, partnerName, items: [] });
       map.get(groupKey)!.items.push({
-        productId: req.id,
+        itemId: req.id,
         name: product.name,
         spec: (product as any).spec || product.unit || '',
         qty: req.quantity,
@@ -135,7 +137,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
       });
     }
     return Array.from(map.entries()).map(([key, g]) => ({ ...g, key }));
-  }, [orderRequests, items, productSuppliers, clients]);
+  }, [orderRequests, items, partnerItems, partners]);
 
   const getAdjTypeLabel = (type: string) => {
     if (type === 'quantity_change') return '수량 변동';
@@ -159,10 +161,10 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
   const getEmployeeName = (empId: string) => employees.find(e => e.id === empId)?.name ?? empId;
 
   const openReturnStmtModal = (req: ReturnRequest) => {
-    const matchedClient = clients.find(c => c.id === req.clientId);
+    const matchedClient = partners.find(c => c.id === req.partnerId);
     setReturnStmtDraft({
       returnReq: req,
-      clientId: matchedClient?.id ?? '',
+      partnerId: matchedClient?.id ?? '',
       tradeDate: req.createdAt.slice(0, 10),
       items: (req.items as ReturnItem[]).map(item => ({
         name: item.name,
@@ -176,7 +178,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
 
   const saveReturnStatement = async () => {
     if (!returnStmtDraft) return;
-    const client = clients.find(c => c.id === returnStmtDraft.clientId);
+    const client = partners.find(c => c.id === returnStmtDraft.partnerId);
     if (!client) { alert('거래처를 선택해주세요.'); return; }
     const validItems = returnStmtDraft.items.filter(i => Number(i.qty) > 0);
     if (validItems.length === 0) { alert('수량을 1개 이상 입력해주세요.'); return; }
@@ -196,7 +198,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
         issuedAt: new Date().toISOString(),
         tradeDate: returnStmtDraft.tradeDate,
         type: '매출' as const,
-        clientId: client.id,
+        partnerId: client.id,
         clientName: client.name,
         orderId: returnStmtDraft.returnReq.id,
         docNo,
@@ -217,14 +219,14 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
   };
 
   const openStatementModal = (receipt: PendingReceipt) => {
-    const matchedClient = clients.find(c =>
-      c.name === receipt.supplierName ||
-      c.name.includes(receipt.supplierName) ||
-      receipt.supplierName.includes(c.name)
+    const matchedClient = partners.find(c =>
+      c.name === receipt.partnerName ||
+      c.name.includes(receipt.partnerName) ||
+      receipt.partnerName.includes(c.name)
     );
     setStatementDraft({
       receipt,
-      clientId: matchedClient?.id ?? '',
+      partnerId: matchedClient?.id ?? '',
       tradeDate: receipt.registeredAt.slice(0, 10),
       items: receipt.items.map(item => ({
         name: item.name,
@@ -238,7 +240,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
 
   const saveStatement = async () => {
     if (!statementDraft) return;
-    const client = clients.find(c => c.id === statementDraft.clientId);
+    const client = partners.find(c => c.id === statementDraft.partnerId);
     if (!client) { alert('거래처를 선택해주세요.'); return; }
     const validItems = statementDraft.items.filter(i => Number(i.qty) > 0);
     if (validItems.length === 0) { alert('수량을 1개 이상 입력해주세요.'); return; }
@@ -258,7 +260,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
         issuedAt: new Date().toISOString(),
         tradeDate: statementDraft.tradeDate,
         type: '매입' as const,
-        clientId: client.id,
+        partnerId: client.id,
         clientName: client.name,
         orderId: statementDraft.receipt.id,
         docNo,
@@ -560,7 +562,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                   <tr key={r.id} className="hover:bg-slate-50/50 transition-colors border-b border-slate-50">
                     <td className="px-3 py-3"><span className={`px-2 py-1 rounded-lg text-[10px] font-black whitespace-nowrap ${r.status === 'voucher_linked' ? 'bg-emerald-50 text-emerald-600' : 'bg-teal-50 text-teal-600'}`}>{r.status === 'voucher_linked' ? '선입고✓' : '선입고'}</span></td>
                     <td className="px-3 py-3"><div className="flex items-center space-x-1 text-slate-500"><Clock size={12} className="shrink-0" /><span className="text-[10px] font-bold whitespace-nowrap">{r.registeredAt.slice(5, 10).replace('-', '.')}</span></div></td>
-                    <td className="px-3 py-3"><span className="text-[11px] font-black text-slate-800">{r.supplierName}</span></td>
+                    <td className="px-3 py-3"><span className="text-[11px] font-black text-slate-800">{r.partnerName}</span></td>
                     <td className="px-3 py-3">
                       <div className="space-y-0.5">
                         {r.items.slice(0, 2).map((item, i) => (<div key={i} className="text-[10px] text-slate-600 whitespace-nowrap">{item.name} × {item.quantity.toLocaleString()} {item.unit}</div>))}
@@ -622,7 +624,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                   <tr key={group.key} className="hover:bg-slate-50/50 transition-colors border-b border-slate-50">
                     <td className="px-3 py-3"><span className="px-2 py-1 rounded-lg text-[10px] font-black bg-orange-50 text-orange-600 whitespace-nowrap">발주예정</span></td>
                     <td className="px-3 py-3 text-[10px] text-slate-400">-</td>
-                    <td className="px-3 py-3"><span className="text-[11px] font-black text-slate-800">{group.supplierName}</span></td>
+                    <td className="px-3 py-3"><span className="text-[11px] font-black text-slate-800">{group.partnerName}</span></td>
                     <td className="px-3 py-3">
                       <div className="space-y-0.5">
                         {group.items.slice(0, 2).map((item, i) => (<div key={i} className="text-[10px] text-slate-600 whitespace-nowrap">{item.name} · {item.isBox ? `${item.qty}BOX` : `${item.qty}${item.spec || ''}`}{item.price > 0 ? ` · ${item.price.toLocaleString()}원` : ''}</div>))}
@@ -633,7 +635,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                     <td className="px-3 py-3">
                       <div className="flex items-center justify-center">
                         {onCreatePurchaseStatement && (
-                          <button onClick={() => onCreatePurchaseStatement({ supplierId: group.supplierId, supplierName: group.supplierName, items: group.items.map(i => ({ name: i.name, spec: i.spec, qty: i.qty, price: i.price, isBox: i.isBox })) })} className="flex items-center gap-1 px-2 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-[10px] font-black transition-colors whitespace-nowrap"><FileText size={11} />매입전표 작성</button>
+                          <button onClick={() => onCreatePurchaseStatement({ partnerId: group.partnerId, partnerName: group.partnerName, items: group.items.map(i => ({ name: i.name, spec: i.spec, qty: i.qty, price: i.price, isBox: i.isBox })) })} className="flex items-center gap-1 px-2 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-[10px] font-black transition-colors whitespace-nowrap"><FileText size={11} />매입전표 작성</button>
                         )}
                       </div>
                     </td>
@@ -661,8 +663,8 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
               <div className="space-y-1.5">
                 <label className="text-xs font-black text-slate-500 uppercase tracking-wider">거래처 (매출처) *</label>
                 <select
-                  value={returnStmtDraft.clientId}
-                  onChange={e => setReturnStmtDraft(d => d ? { ...d, clientId: e.target.value } : null)}
+                  value={returnStmtDraft.partnerId}
+                  onChange={e => setReturnStmtDraft(d => d ? { ...d, partnerId: e.target.value } : null)}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-rose-400"
                 >
                   <option value="">거래처 선택</option>
@@ -752,7 +754,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
             <div className="px-5 py-4 border-t border-slate-100">
               <button
                 onClick={saveReturnStatement}
-                disabled={returnStmtSaving || !returnStmtDraft.clientId}
+                disabled={returnStmtSaving || !returnStmtDraft.partnerId}
                 className="w-full flex items-center justify-center gap-2 py-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white rounded-xl font-black text-sm transition-all"
               >
                 {returnStmtSaving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
@@ -770,7 +772,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
               <div>
                 <p className="font-black text-slate-800">매입 전표 발행</p>
-                <p className="text-xs text-slate-400 mt-0.5">{statementDraft.receipt.supplierName} · {statementDraft.receipt.registeredAt.slice(0, 10)} 선입고</p>
+                <p className="text-xs text-slate-400 mt-0.5">{statementDraft.receipt.partnerName} · {statementDraft.receipt.registeredAt.slice(0, 10)} 선입고</p>
               </div>
               <button onClick={() => setStatementDraft(null)} className="p-2 text-slate-400 hover:text-slate-600"><X size={18} /></button>
             </div>
@@ -779,8 +781,8 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
               <div className="space-y-1.5">
                 <label className="text-xs font-black text-slate-500 uppercase tracking-wider">거래처 (매입처) *</label>
                 <select
-                  value={statementDraft.clientId}
-                  onChange={e => setStatementDraft(d => d ? { ...d, clientId: e.target.value } : null)}
+                  value={statementDraft.partnerId}
+                  onChange={e => setStatementDraft(d => d ? { ...d, partnerId: e.target.value } : null)}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-rose-400"
                 >
                   <option value="">거래처 선택</option>
@@ -870,7 +872,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
             <div className="px-5 py-4 border-t border-slate-100">
               <button
                 onClick={saveStatement}
-                disabled={statementSaving || !statementDraft.clientId}
+                disabled={statementSaving || !statementDraft.partnerId}
                 className="w-full flex items-center justify-center gap-2 py-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white rounded-xl font-black text-sm transition-all"
               >
                 {statementSaving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}

@@ -1,28 +1,34 @@
 ﻿
 import React, { useState, useMemo } from 'react';
 import { Tag, Search, Save, AlertCircle } from 'lucide-react';
-import { Product, Client, ProductClient, ProductSupplier } from '../types';
+import { Item, Partner, PartnerItem } from '../types';
 
 interface PriceManagerProps {
-  products: Product[];
-  clients: Client[];
-  productClients: ProductClient[];
-  productSuppliers: ProductSupplier[];
+  items: Item[];
+  partners: Partner[];
+  partnerItems?: import('../src/shared/types').PartnerItem[];
+  productClients?: PartnerItem[];
+  productSuppliers?: PartnerItem[];
   onUpdateProductClientPrice?: (id: string, price: number) => void;
   onUpdateProductClientTaxType?: (id: string, taxType: '과세' | '면세') => void;
-  onUpsertProductSupplier?: (ps: ProductSupplier) => void;
+  onUpsertProductSupplier?: (ps: PartnerItem) => void;
   onUpdateProductSupplierTaxType?: (id: string, taxType: '과세' | '면세') => void;
-  onUpdateProductCost?: (productId: string, cost: number) => void;
+  onUpdateProductCost?: (itemId: string, cost: number) => void;
 }
 
 const PriceManager: React.FC<PriceManagerProps> = ({
-  products, clients, productClients, productSuppliers,
+  items, partners, partnerItems, productClients: _pc, productSuppliers: _ps,
   onUpdateProductClientPrice, onUpdateProductClientTaxType,
   onUpsertProductSupplier, onUpdateProductSupplierTaxType,
   onUpdateProductCost,
 }) => {
+  // Compute derived variables
+  const products = items;
+  const clients = partners;
+  const productClients = (_pc ?? partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
+  const productSuppliers = (_ps ?? partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
   const [mode, setMode] = useState<'매출' | '매입'>('매출');
-  const [clientId, setClientId] = useState('');
+  const [partnerId, setClientId] = useState('');
   const [clientSearch, setClientSearch] = useState('');
   const [priceEdits, setPriceEdits] = useState<Record<string, string>>({});
   const [taxEdits, setTaxEdits] = useState<Record<string, '과세' | '면세'>>({});
@@ -31,7 +37,7 @@ const PriceManager: React.FC<PriceManagerProps> = ({
   const [saved, setSaved] = useState(false);
 
   const psMap = useMemo(() =>
-    new Map(productSuppliers.map(ps => [ps.productId ?? ps.Item_ID, ps.supplierId ?? ps.Partner_ID])),
+    new Map(productSuppliers.map(ps => [ps.itemId ?? ps.Item_ID, ps.partnerId ?? ps.Partner_ID])),
     [productSuppliers]
   );
 
@@ -43,29 +49,29 @@ const PriceManager: React.FC<PriceManagerProps> = ({
   );
 
   const selectedPcRows = useMemo(() =>
-    clientId
+    partnerId
       ? productClients
-          .filter(pc => (pc.clientId ?? pc.Partner_ID) === clientId)
-          .map(pc => ({ pc, product: products.find(p => p.id === (pc.productId ?? pc.Item_ID)) }))
+          .filter(pc => (pc.partnerId ?? pc.Partner_ID) === partnerId)
+          .map(pc => ({ pc, product: items.find(p => p.id === (pc.itemId ?? pc.Item_ID)) }))
           .filter(r => r.product)
           .sort((a, b) => a.product!.name.localeCompare(b.product!.name))
       : [],
-    [productClients, products, clientId]
+    [productClients, products, partnerId]
   );
 
   const selectedPsRows = useMemo(() =>
-    clientId
+    partnerId
       ? products
-          .filter(p => psMap.get(p.id) === clientId)
+          .filter(p => psMap.get(p.id) === partnerId)
           .map(p => {
             const ps = productSuppliers.find(s =>
-              (s.productId ?? s.Item_ID) === p.id && (s.supplierId ?? s.Partner_ID) === clientId
-            ) ?? { id: `${p.id}_${clientId}`, productId: p.id, Item_ID: p.id, supplierId: clientId, Partner_ID: clientId, Direction: 'in' as const } as unknown as ProductSupplier;
+              (s.itemId ?? s.Item_ID) === p.id && (s.partnerId ?? s.Partner_ID) === partnerId
+            ) ?? { id: `${p.id}_${partnerId}`, itemId: p.id, Item_ID: p.id, partnerId: partnerId, Partner_ID: partnerId, Direction: 'in' as const } as unknown as PartnerItem;
             return { ps, product: p };
           })
           .sort((a, b) => a.product.name.localeCompare(b.product.name))
       : [],
-    [products, productSuppliers, psMap, clientId]
+    [products, productSuppliers, psMap, partnerId]
   );
 
   const hasMissingPrice = mode === '매출'
@@ -84,9 +90,9 @@ const PriceManager: React.FC<PriceManagerProps> = ({
       for (const [pcId, tax] of Object.entries(taxEdits)) {
         onUpdateProductClientTaxType?.(pcId, tax);
       }
-      for (const [productId, val] of Object.entries(costEdits)) {
+      for (const [itemId, val] of Object.entries(costEdits)) {
         const n = parseFloat(val);
-        if (!isNaN(n) && n >= 0) onUpdateProductCost?.(productId, n);
+        if (!isNaN(n) && n >= 0) onUpdateProductCost?.(itemId, n);
       }
     } else {
       for (const [psId, val] of Object.entries(priceEdits)) {
@@ -95,7 +101,7 @@ const PriceManager: React.FC<PriceManagerProps> = ({
         const row = selectedPsRows.find(r => r.ps.id === psId);
         if (!row) continue;
         onUpsertProductSupplier?.({ ...row.ps, Standard_Price: n });
-        const itemId = row.ps.Item_ID ?? row.ps.productId;
+        const itemId = row.ps.Item_ID ?? row.ps.itemId;
         if (itemId) onUpdateProductCost?.(itemId, n);
       }
       for (const [psId, tax] of Object.entries(taxEdits)) {
@@ -132,20 +138,20 @@ const PriceManager: React.FC<PriceManagerProps> = ({
         <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
           {filteredClients.map(c => {
             const pcCount = mode === '매출'
-              ? productClients.filter(pc => (pc.clientId ?? pc.Partner_ID) === c.id).length
-              : productSuppliers.filter(ps => (ps.supplierId ?? ps.Partner_ID) === c.id).length;
+              ? productClients.filter(pc => (pc.partnerId ?? pc.Partner_ID) === c.id).length
+              : productSuppliers.filter(ps => (ps.partnerId ?? ps.Partner_ID) === c.id).length;
             const missingCount = mode === '매출'
-              ? productClients.filter(pc => (pc.clientId ?? pc.Partner_ID) === c.id && !pc.price && !pc.Standard_Price).length
-              : productSuppliers.filter(ps => (ps.supplierId ?? ps.Partner_ID) === c.id && !ps.price && !ps.Standard_Price).length;
+              ? productClients.filter(pc => (pc.partnerId ?? pc.Partner_ID) === c.id && !pc.price && !pc.Standard_Price).length
+              : productSuppliers.filter(ps => (ps.partnerId ?? ps.Partner_ID) === c.id && !ps.price && !ps.Standard_Price).length;
             if (pcCount === 0) return null;
             return (
               <button
                 key={c.id}
                 onClick={() => { setClientId(c.id); setPriceEdits({}); setTaxEdits({}); }}
-                className={`w-full text-left px-3 py-2.5 transition-all hover:bg-violet-50 ${clientId === c.id ? 'bg-violet-50 border-r-2 border-violet-500' : ''}`}
+                className={`w-full text-left px-3 py-2.5 transition-all hover:bg-violet-50 ${partnerId === c.id ? 'bg-violet-50 border-r-2 border-violet-500' : ''}`}
               >
                 <div className="flex items-center justify-between">
-                  <span className={`text-xs font-black truncate ${clientId === c.id ? 'text-violet-700' : 'text-slate-700'}`}>{c.name}</span>
+                  <span className={`text-xs font-black truncate ${partnerId === c.id ? 'text-violet-700' : 'text-slate-700'}`}>{c.name}</span>
                   {missingCount > 0 && (
                     <span className="text-[9px] font-black bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full ml-1 shrink-0">{missingCount}</span>
                   )}
@@ -173,7 +179,7 @@ const PriceManager: React.FC<PriceManagerProps> = ({
           <span className="text-[10px] text-slate-400">{mode === '매출' ? '거래처별 판매단가' : '매입처별 매입단가 (= 원가)'}</span>
         </div>
 
-        {!clientId ? (
+        {!partnerId ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-300">
             <Tag size={40} strokeWidth={1.5}/>
             <span className="text-sm font-bold">좌측에서 거래처를 선택하세요</span>
@@ -182,7 +188,7 @@ const PriceManager: React.FC<PriceManagerProps> = ({
           <>
             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <span className="font-black text-slate-900 text-sm">{clients.find(c => c.id === clientId)?.name}</span>
+                <span className="font-black text-slate-900 text-sm">{partners.find(c => c.id === partnerId)?.name}</span>
                 <span className="text-xs text-slate-400">{mode === '매출' ? selectedPcRows.length : selectedPsRows.length}품목</span>
                 {hasMissingPrice && (
                   <div className="flex items-center gap-1 text-[10px] font-black text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">

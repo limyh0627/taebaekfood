@@ -1,15 +1,16 @@
 ﻿
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, LayoutGrid, Layers } from 'lucide-react';
-import { Product, ProductClient, OrderItem, Order, Client, OrderSource, OrderPallet, PalletStock, ShippingRule } from '../types';
+import { Item, PartnerItem, OrderItem, Order, Partner, OrderSource, OrderPallet, PalletStock, ShippingRule } from '../types';
 
 interface AddOrderModalProps {
-  products: Product[];
-  clients: Client[];
-  productClients: ProductClient[];
+  items: Item[];
+  partners: Partner[];
+  partnerItems?: import('../src/shared/types').PartnerItem[];
+  productClients?: PartnerItem[];
   shippingRules?: ShippingRule[];
   palletStocks: PalletStock[];
-  submaterials: Product[];
+  submaterials?: Item[];
   onClose: () => void;
   onSave: (_order: Omit<Order, 'id' | 'createdAt' | 'status'>) => void;
 }
@@ -38,7 +39,13 @@ const matchClient = (name: string, query: string): boolean => {
   return name.toLowerCase().includes(q.toLowerCase());
 };
 
-const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, productClients, shippingRules = [], palletStocks, submaterials, onClose, onSave }) => {
+const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerItems, productClients: _pc, shippingRules = [], palletStocks, submaterials: _submaterials, onClose, onSave }) => {
+  // Compute derived variables
+  const products = items;
+  const submaterials = _submaterials ?? items.filter(i => i.category !== 'product');
+  const clients = partners;
+  const productClients = (_pc ?? partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handler);
@@ -46,8 +53,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
   }, [onClose]);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [selectedItems, setSelectedItems] = useState<{ productId: string, quantity: number | '', isBoxUnit: boolean, unitsPerBox: number, boxType: string, boxSubId?: string, displaySize?: string }[]>([]);
+  const [selectedClient, setSelectedClient] = useState<Partner | null>(null);
+  const [selectedItems, setSelectedItems] = useState<{ itemId: string, quantity: number | '', isBoxUnit: boolean, unitsPerBox: number, boxType: string, boxSubId?: string, displaySize?: string }[]>([]);
   const [showHyangmiyu, setShowHyangmiyu] = useState(false);
   const [showGochutgaru, setShowGochutgaru] = useState(false);
   const [deadline, setDeadline] = useState(() => {
@@ -68,15 +75,15 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
       .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'))
       .filter(c => { if (seen.has(c.name)) return false; seen.add(c.name); return true; })
       .slice(0, 15);
-  }, [clients]);
+  }, [partners]);
 
   const filteredClients = useMemo(() => {
     if (!searchTerm.trim()) return [];
-    return clients.filter(c =>
+    return partners.filter(c =>
       (!c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처') &&
       (matchClient(c.name || '', searchTerm) || (c.phone || '').includes(searchTerm))
     );
-  }, [searchTerm, clients]);
+  }, [searchTerm, partners]);
 
   const getProductTypeOrder = (name: string): number => {
     if (/가루/.test(name)) return 3;
@@ -93,9 +100,9 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
       .filter(p => {
         if (p.archived) return false;
         if (p.category !== 'product' || p.subtype === '향미유' || p.subtype === '고춧가루') return false;
-        if (p.clientIds?.includes(selectedClient.id)) return true;
+        if (p.partnerIds?.includes(selectedClient.id)) return true;
         // 스마트스토어 타입 거래처 선택 시 SMARTSTORE 태그 제품도 표시
-        if (selectedClient.type === '스마트스토어' && p.clientIds?.includes('SMARTSTORE')) return true;
+        if (selectedClient.type === '스마트스토어' && p.partnerIds?.includes('SMARTSTORE')) return true;
         // 스마트스토어 전용 체크된 품목도 스마트스토어 거래처에 표시
         if (selectedClient.type === '스마트스토어' && p.isSmartStore) return true;
         // 통합 품목(isRawMaterial): shipping_rule 등록 기반으로 표시
@@ -111,13 +118,13 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
   // 스마트스토어 제외 거래처 → 향미유 목록
   const displayHyangmiyu = useMemo(() => {
     if (!selectedClient || selectedClient.type === '스마트스토어') return [];
-    return products.filter(p => p.subtype === '향미유');
+    return items.filter(p => p.subtype === '향미유');
   }, [products, selectedClient]);
 
   // 스마트스토어 제외 거래처 → 고춧가루 목록
   const displayGochutgaru = useMemo(() => {
     if (!selectedClient || selectedClient.type === '스마트스토어') return [];
-    return products.filter(p => p.subtype === '고춧가루');
+    return items.filter(p => p.subtype === '고춧가루');
   }, [products, selectedClient]);
 
   // 현재 선택된 품목 기준 부자재 재고 부족 계산
@@ -128,7 +135,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
     for (const item of selectedItems) {
       const qty = typeof item.quantity === 'number' ? item.quantity : 0;
       if (qty <= 0) continue;
-      const product = products.find(p => p.id === item.productId);
+      const product = items.find(p => p.id === item.itemId);
       if (!product) continue;
 
       if (product.subtype === '향미유') {
@@ -169,7 +176,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
         continue;
       }
 
-      const pc = productClients.find(p => p.productId === product.id && p.clientId === selectedClient.id);
+      const pc = productClients.find(p => p.itemId === product.id && p.partnerId === selectedClient.id);
       const boxSize = pc?.qtyPerBox || item.unitsPerBox || 1;
       const boxesNeeded = Math.ceil(actualQty / boxSize);
 
@@ -214,78 +221,78 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
   }, [selectedItems, selectedClient, products, productClients, submaterials, shippingRules]);
 
   // 거래처별 박스 설정 조회 — shippingRules 기반
-  const getClientBoxConfigs = (productId: string, clientId?: string): { unitsPerBox: number; boxType: string; boxSubId?: string }[] => {
-    if (clientId) {
-      const rule = shippingRules.find(r => r.item_id === productId && r.partner_id === clientId);
+  const getClientBoxConfigs = (itemId: string, partnerId?: string): { unitsPerBox: number; boxType: string; boxSubId?: string }[] => {
+    if (partnerId) {
+      const rule = shippingRules.find(r => r.item_id === itemId && r.partner_id === partnerId);
       if (rule?.qty_per_box) {
         return [{ unitsPerBox: rule.qty_per_box, boxType: rule.box_item_id ?? '', boxSubId: rule.box_item_id }];
       }
     }
-    const p = products.find(pr => pr.id === productId);
+    const p = items.find(pr => pr.id === itemId);
     if (p?.defaultBoxConfig?.unitsPerBox) return [p.defaultBoxConfig];
     return [];
   };
 
   // 품목의 거래처별 포장 규격 목록 (shipping_rule 기반)
-  const getItemCustomerConfigs = (productId: string, clientId?: string) => {
-    if (!clientId) return [];
-    return shippingRules.filter(r => r.item_id === productId && (r.partner_id === clientId || !r.partner_id));
+  const getItemCustomerConfigs = (itemId: string, partnerId?: string) => {
+    if (!partnerId) return [];
+    return shippingRules.filter(r => r.item_id === itemId && (r.partner_id === partnerId || !r.partner_id));
   };
 
-  const toggleProduct = (productId: string) => {
+  const toggleProduct = (itemId: string) => {
     setSelectedItems(prev => {
-      const exists = prev.find(i => i.productId === productId);
-      if (exists) return prev.filter(i => i.productId !== productId);
+      const exists = prev.find(i => i.itemId === itemId);
+      if (exists) return prev.filter(i => i.itemId !== itemId);
 
-      const product = products.find(p => p.id === productId);
+      const product = items.find(p => p.id === itemId);
       const isHyangmiyu = product?.subtype === '향미유';
 
       // 통합 품목이면 shipping_rule 우선 참조
       if (product?.isRawMaterial && selectedClient) {
-        const rules = getItemCustomerConfigs(productId, selectedClient.id);
+        const rules = getItemCustomerConfigs(itemId, selectedClient.id);
         if (rules.length >= 1) {
           const rule = rules[0];
           const qpb = rule.qty_per_box ?? 0;
           return [...prev, {
-            productId, quantity: 1,
+            itemId, quantity: 1,
             isBoxUnit: qpb > 1,
             unitsPerBox: qpb,
             boxType: rule.box_item_id ?? '',
             boxSubId: rule.box_item_id || undefined,
-            displaySize: products.find(p => p.id === productId)?.netContent,
+            displaySize: items.find(p => p.id === itemId)?.netContent,
           }];
         }
       }
 
       // 기존 로직 (일반 품목)
-      const configs = getClientBoxConfigs(productId, selectedClient?.id);
+      const configs = getClientBoxConfigs(itemId, selectedClient?.id);
       const first = configs[0] ?? { unitsPerBox: isHyangmiyu ? 12 : 0, boxType: '', boxSubId: undefined };
       const defaultBoxUnit = first.unitsPerBox > 0;
-      return [...prev, { productId, quantity: 1, isBoxUnit: defaultBoxUnit, unitsPerBox: first.unitsPerBox, boxType: first.boxType, boxSubId: first.boxSubId }];
+      return [...prev, { itemId, quantity: 1, isBoxUnit: defaultBoxUnit, unitsPerBox: first.unitsPerBox, boxType: first.boxType, boxSubId: first.boxSubId }];
     });
   };
 
-  const handleQuantityInput = (productId: string, value: string) => {
+  const handleQuantityInput = (itemId: string, value: string) => {
     const qty = value === '' ? '' : parseInt(value) || '';
     setSelectedItems(prev => prev.map(item =>
-      item.productId === productId ? { ...item, quantity: qty } : item
+      item.itemId === itemId ? { ...item, quantity: qty } : item
     ));
   };
 
-  const handleQuantityStep = (productId: string, delta: number) => {
+  const handleQuantityStep = (itemId: string, delta: number) => {
     setSelectedItems(prev => prev.map(item => {
-      if (item.productId !== productId) return item;
+      if (item.itemId !== itemId) return item;
       const current = typeof item.quantity === 'number' ? item.quantity : 1;
       return { ...item, quantity: Math.max(1, current + delta) };
     }));
   };
 
-  const updateItem = (productId: string, patch: Partial<typeof selectedItems[0]>) => {
-    setSelectedItems(prev => prev.map(i => i.productId === productId ? { ...i, ...patch } : i));
+  const updateItem = (itemId: string, patch: Partial<typeof selectedItems[0]>) => {
+    setSelectedItems(prev => prev.map(i => i.itemId === itemId ? { ...i, ...patch } : i));
   };
 
   const renderItemControls = (product: { id: string; unit?: string; price: number; category?: string }) => {
-    const selection = selectedItems.find(i => i.productId === product.id);
+    const selection = selectedItems.find(i => i.itemId === product.id);
     if (!selection) return null;
     const uPerBox = selection.unitsPerBox ?? 0;
     const boxQty = typeof selection.quantity === 'number' ? selection.quantity : 0;
@@ -312,7 +319,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
                   key={rule.id}
                   type="button"
                   onClick={() => { const qpb = rule.qty_per_box ?? 0; updateItem(product.id, {
-                    displaySize: products.find(p => p.id === product.id)?.netContent,
+                    displaySize: items.find(p => p.id === product.id)?.netContent,
                     unitsPerBox: qpb,
                     isBoxUnit: qpb > 1,
                     boxType: rule.box_item_id ?? '',
@@ -425,15 +432,15 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
     e?.preventDefault();
     if (!selectedClient || selectedItems.length === 0) return;
 
-    const items: OrderItem[] = selectedItems.flatMap(item => {
+    const orderItems: OrderItem[] = selectedItems.flatMap(item => {
       if (!item.quantity || item.quantity <= 0) return [];
-      const product = products.find(p => p.id === item.productId)
-        ?? products.find(p => String(p.id).trim() === String(item.productId).trim());
+      const product = items.find(p => p.id === item.itemId)
+        ?? items.find(p => String(p.id).trim() === String(item.itemId).trim());
       if (!product) return [];
       const uPerBox = item.unitsPerBox ?? 0;
       const actualQty = item.isBoxUnit && uPerBox > 0 ? item.quantity * uPerBox : item.quantity;
       return [{
-        productId: item.productId,
+        itemId: item.itemId,
         name: product.name || '알 수 없는 상품',
         quantity: actualQty,
         price: product.price || 0,
@@ -444,17 +451,17 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
 
     const totalAmount = selectedItems.reduce((sum, item) => {
       if (!item.quantity || item.quantity <= 0) return sum;
-      const product = products.find(p => String(p.id).trim() === String(item.productId).trim());
+      const product = items.find(p => String(p.id).trim() === String(item.itemId).trim());
       const uPerBox = item.unitsPerBox ?? 0;
       const actualQty = item.isBoxUnit && uPerBox > 0 ? item.quantity * uPerBox : item.quantity;
       return sum + (product ? (product.price || 0) * actualQty : 0);
     }, 0);
 
     onSave({
-      clientId: selectedClient.id,
+      partnerId: selectedClient.id,
       customerName: selectedClient.name || '이름 없음',
       email: selectedClient.email || '',
-      items,
+      items: orderItems,
       totalAmount,
       deliveryDate: new Date(deadline).toISOString(),
       source: (isDelivery && source === '일반') ? '택배' : source,
@@ -583,7 +590,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
               <div className="grid grid-cols-2 gap-2">
                 {displayProducts.length > 0 ? (
                   displayProducts.map(product => {
-                    const selection = selectedItems.find(i => String(i.productId).trim() === String(product.id).trim());
+                    const selection = selectedItems.find(i => String(i.itemId).trim() === String(product.id).trim());
                     const isSelected = !!selection;
                     return (
                       <div key={product.id} onClick={() => toggleProduct(product.id)} className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col gap-2 ${isSelected ? 'bg-white border-indigo-500 shadow-md ring-1 ring-indigo-500' : 'bg-white border-slate-100 hover:border-indigo-200'}`}>
@@ -595,9 +602,9 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
                               const label = product.submaterials?.find(s => s.category === '라벨')?.name;
                               const vol = product.spec;
                               const parts = [label, vol].filter(Boolean);
-                              const pc = selectedClient ? productClients.find(p => p.productId === product.id && p.clientId === selectedClient.id) : null;
-                              const boxName = pc?.boxTypeId ? products.find(p => p.id === pc.boxTypeId)?.name : null;
-                              const tapeName = pc?.tapeTypeId ? products.find(p => p.id === pc.tapeTypeId)?.name : null;
+                              const pc = selectedClient ? productClients.find(p => p.itemId === product.id && p.partnerId === selectedClient.id) : null;
+                              const boxName = pc?.boxTypeId ? items.find(p => p.id === pc.boxTypeId)?.name : null;
+                              const tapeName = pc?.tapeTypeId ? items.find(p => p.id === pc.tapeTypeId)?.name : null;
                               const subParts = [boxName, tapeName].filter(Boolean);
                               return (
                                 <>
@@ -633,7 +640,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
               </button>
               {showHyangmiyu && <div className="grid grid-cols-2 gap-2">
                 {displayHyangmiyu.map(product => {
-                  const selection = selectedItems.find(i => String(i.productId).trim() === String(product.id).trim());
+                  const selection = selectedItems.find(i => String(i.itemId).trim() === String(product.id).trim());
                   const isSelected = !!selection;
                   return (
                     <div key={product.id} onClick={() => toggleProduct(product.id)} className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col gap-2 ${isSelected ? 'bg-white border-indigo-500 shadow-md ring-1 ring-indigo-500' : 'bg-white border-slate-100 hover:border-indigo-200'}`}>
@@ -660,7 +667,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ products, clients, produc
               </button>
               {showGochutgaru && <div className="grid grid-cols-2 gap-2">
                 {displayGochutgaru.map(product => {
-                  const isSelected = selectedItems.some(i => String(i.productId).trim() === String(product.id).trim());
+                  const isSelected = selectedItems.some(i => String(i.itemId).trim() === String(product.id).trim());
                   return (
                     <div key={product.id} onClick={() => toggleProduct(product.id)} className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col gap-2 ${isSelected ? 'bg-white border-indigo-500 shadow-md ring-1 ring-indigo-500' : 'bg-white border-slate-100 hover:border-indigo-200'}`}>
                       <div className="flex items-center gap-2">
