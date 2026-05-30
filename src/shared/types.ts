@@ -424,6 +424,7 @@ export interface PaymentRecord {
   id: string;
   amount: number;
   date: string;       // YYYY-MM-DD
+  createdAt?: string; // ISO timestamp
   method?: '현금' | '계좌이체' | '어음' | '카드' | '기타';
   note?: string;
 }
@@ -437,6 +438,7 @@ export interface PurchaseOrderItem {
   name: string;
   quantity: number;
   unit: string;
+  isBox?: boolean;
 }
 
 export interface PurchaseOrder {
@@ -454,9 +456,15 @@ export interface PurchaseOrder {
   createdAt: string;
   invoicedAt?: string;
   receivedAt?: string;
-  items?: PurchaseOrderItem[];  // 선입고/스캔입고 시 멀티품목
+  items?: PurchaseOrderItem[];  // 멀티품목 발주카드(거래처별 묶음) / 선입고·스캔입고
   photoUrl?: string;            // 입고 납품서 사진
 }
+
+// 발주카드의 품목 라인 통일 조회: 묶음(items[])이면 그대로, 단일품목 PO면 1줄로 변환
+export const poLines = (po: PurchaseOrder): PurchaseOrderItem[] =>
+  (po.items && po.items.length > 0)
+    ? po.items
+    : [{ itemId: po.itemId, name: po.itemName, quantity: po.quantity, unit: po.unit ?? '', isBox: po.isBox }];
 
 export interface CompanyInfo {
   name: string;           // 상호
@@ -575,6 +583,9 @@ export interface PendingStatementEdit {
   createdAt: string;
   createdBy: string;
   status: 'pending' | 'approved' | 'rejected';
+  reason?: string;                                              // 수정 사유
+  changes?: { name: string; oldQty: number; newQty: number }[]; // 품목별 수량 변경 내역(표시용)
+  sourcePoId?: string;                                          // 입고대기 발주카드에서 요청된 경우 그 PO id
 }
 
 // ── 계정과목 ──────────────────────────────────────────────────────────────────

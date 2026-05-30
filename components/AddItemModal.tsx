@@ -13,7 +13,7 @@ interface ProductModalProps {
   onSave: (_product: Item) => void;
   onSaveShippingRule?: (rule: Partial<ShippingRule> & { id: string }) => Promise<void>;
   onAddShippingRule?: (rule: Omit<ShippingRule, 'id'>) => Promise<void>;
-  onUpsertProductSupplier?: (ps: PartnerItem) => void;
+  onUpsertPartnerItem?: (ps: PartnerItem) => void;
   onAddSubmaterial?: (name: string, category: string) => Promise<string>;
 }
 
@@ -66,7 +66,7 @@ const PUMOK_VOLUMES: Record<string, string[]> = {
   '시골향볶음검정참깨': ['1kg','20kg','25kg'],
 };
 
-const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], items, partners = [], partnerItems, shippingRules = [], onClose, onSave, onSaveShippingRule, onAddShippingRule, onUpsertProductSupplier, onAddSubmaterial }) => {
+const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], items, partners = [], partnerItems, shippingRules = [], onClose, onSave, onSaveShippingRule, onAddShippingRule, onUpsertPartnerItem, onAddSubmaterial }) => {
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
   const partnerIn = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
 
@@ -200,12 +200,12 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     onSave(finalProduct);
 
     // PartnerItem upsert — partner_item Direction='in'으로 저장
-    if (formData.partnerId && onUpsertProductSupplier) {
+    if (formData.partnerId && onUpsertPartnerItem) {
       const partnerId = formData.partnerId;
       const itemId = finalProduct.id;
       const psId = `${itemId}_${partnerId}_in`;
       const existing = partnerIn.find(pi => pi.Item_ID === itemId);
-      onUpsertProductSupplier({ id: psId, Partner_ID: partnerId, Item_ID: itemId, Direction: 'in', Standard_Price: existing?.Standard_Price, taxType: existing?.taxType });
+      onUpsertPartnerItem({ id: psId, Partner_ID: partnerId, Item_ID: itemId, Direction: 'in', Standard_Price: existing?.Standard_Price, taxType: existing?.taxType });
     }
 
     // 거래처별 포장 설정 → shipping_rule 컬렉션에 저장

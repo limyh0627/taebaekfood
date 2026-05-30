@@ -73,7 +73,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
   onCreatePurchaseStatement,
 }) => {
   // Compute derived variables
-  const productSuppliers = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
+  const partnerIn = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
   const [activeTab, setActiveTab] = useState<TabType>('leave');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [inboundFilter, setInboundFilter] = useState<'pending_voucher' | 'all'>('all');
@@ -598,9 +598,24 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                     <td className="px-3 py-3"><div className="flex items-center space-x-1 text-slate-500"><Clock size={12} className="shrink-0" /><span className="text-[10px] font-bold whitespace-nowrap">{new Date(edit.createdAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}</span></div></td>
                     <td className="px-3 py-3"><span className="text-[11px] font-black text-slate-800">{edit.partnerName}</span></td>
                     <td className="px-3 py-3">
-                      <div className="space-y-0.5 text-[10px] text-slate-600">
+                      <div className="space-y-1 text-[10px] text-slate-600">
                         <div>{edit.statementDocNo} <span className={`px-1.5 py-0.5 rounded text-[9px] font-black ${edit.statementType === '매출' ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'}`}>{edit.statementType}</span></div>
                         <div>거래일: {edit.proposedData.tradeDate} · 합계: {(edit.proposedData.totalAmount ?? 0).toLocaleString()}원 · by {edit.createdBy}</div>
+                        {edit.changes && edit.changes.length > 0 && (
+                          <div className="flex flex-col gap-0.5 mt-1">
+                            {edit.changes.map((c, i) => (
+                              <div key={i} className="flex items-center gap-1 text-[10px]">
+                                <span className="font-bold text-slate-700">{c.name}</span>
+                                <span className="text-slate-400 font-black">{c.oldQty}</span>
+                                <span className="text-slate-300">→</span>
+                                {c.newQty <= 0
+                                  ? <span className="px-1 py-0.5 rounded bg-rose-50 text-rose-600 font-black">삭제</span>
+                                  : <span className="px-1 py-0.5 rounded bg-emerald-50 text-emerald-700 font-black">{c.newQty}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {edit.reason && <div className="text-[10px] text-amber-600 font-bold">사유: {edit.reason}</div>}
                       </div>
                     </td>
                     <td className="px-3 py-3 text-right"><span className="text-[11px] font-black text-slate-400">{edit.proposedData.items?.length ?? 0}품목</span></td>

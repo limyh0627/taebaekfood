@@ -5,7 +5,7 @@ import PageHeader from './PageHeader';
 
 interface Props {
   orders: Order[];partners;items;
-  onUpdateProduct: (id: string, data: Partial<Item>) => void;
+  onUpdateItem: (id: string, data: Partial<Item>) => void;
 }
 
 type Tab = 'monthly' | 'partners' | 'retention' | 'prices';
@@ -23,7 +23,7 @@ function formatYearMonth(ym: string) {
   return `${y}년 ${parseInt(m)}월`;
 }
 
-export default function SmartStoreAnalytics({ orders, partners, items, onUpdateProduct }: Props) {
+export default function SmartStoreAnalytics({ orders, partners, items, onUpdateItem }: Props) {
   const [tab, setTab] = useState<Tab>('monthly');
   const [expandedClient, setExpandedClient] = useState<string | null>(null);
   const [expandedRetention, setExpandedRetention] = useState<string | null>(null);
@@ -219,7 +219,7 @@ export default function SmartStoreAnalytics({ orders, partners, items, onUpdateP
   function cancelEdit() { setEditingId(null); setEditValue(''); }
   function saveEdit(id: string) {
     const val = parseInt(editValue.replace(/,/g, ''), 10);
-    if (!isNaN(val) && val >= 0) onUpdateProduct(id, { smartStorePrice: val });
+    if (!isNaN(val) && val >= 0) onUpdateItem(id, { smartStorePrice: val });
     setEditingId(null); setEditValue('');
   }
 

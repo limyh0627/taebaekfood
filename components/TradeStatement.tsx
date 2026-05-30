@@ -8,21 +8,18 @@ import {
 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
 import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentRecord, AccountCode } from '../types';
-import { PurchaseOrder } from '../src/shared/types';
+import { PurchaseOrder, poLines } from '../src/shared/types';
 import PageHeader from './PageHeader';
 
 interface TradeStatementProps {
   orders: Order[];
-  allProducts: Item[];
+  allItems: Item[];
   partners: Partner[];
   partnerItems?: import('../src/shared/types').PartnerItem[];
   accountCodes?: AccountCode[];
   issuedStatements: IssuedStatement[];
   onUpdateStatus?: (id: string, status: OrderStatus) => void;
-  onUpdateProductClientPrice?: (id: string, price: number) => void;
-  onUpdateProductClientTaxType?: (id: string, taxType: '과세' | '면세') => void;
-  onUpsertProductSupplier?: (ps: PartnerItem) => void;
-  onUpdateProductSupplierTaxType?: (id: string, taxType: '과세' | '면세') => void;
+  onUpsertPartnerItem?: (ps: PartnerItem) => void;
   onMarkInvoicePrinted?: (id: string, value: boolean) => void;
   onAddIssuedStatement?: (stmt: IssuedStatement) => void;
   onUpdateIssuedStatement?: (id: string, data: Partial<IssuedStatement>) => void;
@@ -35,9 +32,12 @@ interface TradeStatementProps {
   onAddConfirmedOrder?: (item: { id: string; quantity: number; isBox?: boolean; partnerId?: string; partnerName?: string }) => void;
   onRemoveConfirmedOrder?: (id: string) => void;
   onRemoveOrderRequest?: (id: string) => void;
+  // 매입전표 발행 시: 발주카드 없으면 새로 생성(입고대기, 같은 거래처 품목 묶음), 있으면 발주카드에 전표 id 연결 + 입고대기 전환
+  onCreateInboundPO?: (po: { partnerId: string; partnerName: string; statementId: string; items: { itemId: string; itemName: string; quantity: number; isBox?: boolean; unit: string }[] }) => void;
+  onLinkPurchaseOrder?: (poId: string, statementId: string) => void;
   companyInfo?: CompanyInfo | null;
   onSaveCompanyInfo?: (info: CompanyInfo) => void;
-  onUpdateProductCost?: (itemId: string, cost: number) => void;
+  onUpdateItemCost?: (itemId: string, cost: number) => void;
   onUpdateOrder?: (id: string, data: Partial<import('../types').Order>) => void;
   defaultTab?: 'history' | 'taxinvoice';
   onAddProductClient?: (itemId: string, partnerId: string, price: number, taxType: '과세' | '면세') => void;
@@ -63,11 +63,12 @@ const ACTIVE_STATUSES = new Set([OrderStatus.PENDING, OrderStatus.PROCESSING, Or
 const fmt = (n: number) => n.toLocaleString('ko-KR');
 
 function buildSupplierGroups<T extends { id: string }>(
-  orders: T[], allProducts: Item[], partners: Partner[], psMap: Map<string, string>
+  orders: T[], allItems: Item[], partners: Partner[], psMap: Map<string, string>
 ): { partnerId: string; partnerName: string; items: { product: Item; item: T }[] }[] {
   const map = new Map<string, { partnerName: string; items: { product: Item; item: T }[] }>();
   for (const item of orders) {
-    const product = allProducts.find(p => p.id === item.id);
+    const itemId = (item as any).itemId ?? item.id;
+    const product = allItems.find(p => p.id === itemId);
     const sid = product ? ((item as any).partnerId || psMap.get(product.id)) : undefined;
     if (!sid) continue;
     const sName = partners.find(c => c.id === sid)?.name ?? sid;
@@ -83,10 +84,9 @@ const monthStart = () => new Date().toISOString().slice(0, 7) + '-01';
 const yearStart  = () => new Date().getFullYear() + '-01-01';
 
 const TradeStatement: React.FC<TradeStatementProps> = ({
-  orders, allProducts, partners, partnerItems,
+  orders, allItems, partners, partnerItems,
   accountCodes = [],
-  issuedStatements, onUpdateStatus, onUpdateProductClientPrice,
-  onUpdateProductClientTaxType, onUpsertProductSupplier, onUpdateProductSupplierTaxType,
+  issuedStatements, onUpdateStatus, onUpsertPartnerItem,
   onMarkInvoicePrinted, onAddIssuedStatement,
   onUpdateIssuedStatement,
   onProposeEdit,
@@ -98,9 +98,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   onAddConfirmedOrder,
   onRemoveConfirmedOrder,
   onRemoveOrderRequest,
+  onCreateInboundPO,
+  onLinkPurchaseOrder,
   companyInfo,
   onSaveCompanyInfo,
-  onUpdateProductCost,
+  onUpdateItemCost,
   onUpdateOrder,
   defaultTab = 'history',
   onAddProductClient,
@@ -145,6 +147,16 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [manualItems, setManualItems] = useState<ManualRow[]>([
     { name: '', spec: '', qty: '', price: '', isTaxExempt: false, note: '' },
   ]);
+  // ── 매입: 선택해서 불러온 발주카드 id 목록. 발행 시 이 PO들의 linkedStatementId에 전표 id 연결 + 입고대기 전환 ──
+  const [loadedPoIds, setLoadedPoIds] = useState<string[]>([]);
+  // 발주카드(PurchaseOrder) → 직접입력 행들로 변환 (묶음 items[] 펼침, 카드 섹션·재발행 공용)
+  const poToManualRows = (po: PurchaseOrder): ManualRow[] =>
+    poLines(po).map(line => {
+      const product = allItems.find(p => p.id === line.itemId);
+      const ps = (partnerItems ?? []).find((s: any) => s.Direction === 'in' && (s.Item_ID === line.itemId || s.itemId === line.itemId) && (s.Partner_ID === selectedClientId || s.partnerId === selectedClientId));
+      const isBox = line.isBox ?? false;
+      return { name: line.name || product?.name || '', spec: product?.spec || line.unit || '', qty: String(line.quantity), price: ps?.price ? String(ps.price) : (ps?.Standard_Price ? String(ps.Standard_Price) : ''), isTaxExempt: ps?.taxType === '면세', isBoxUnit: isBox, boxSize: isBox ? 12 : undefined, accountCode: ps?.Account_Code };
+    });
   // ── 품목명 드롭다운 검색 ──
   const [activeSearchRow, setActiveSearchRow] = useState<number | null>(null);
   // ── 주문 불러오기 모드 계정코드 오버라이드 (key → code) ──
@@ -224,6 +236,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       id: Date.now().toString(),
       amount,
       date: payForm.date,
+      createdAt: new Date().toISOString(),
       method: payForm.method,
       ...(payForm.note.trim() ? { note: payForm.note.trim() } : {}),
     };
@@ -288,7 +301,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [showPurchasePicker, setShowPurchasePicker] = useState(false);
 
   // ── 중복발행 경고 ──
-  const [warnDuplicate, setWarnDuplicate] = useState<{ order: Order; stmt: IssuedStatement } | null>(null);
+  const [warnDuplicate, setWarnDuplicate] = useState<{ order?: Order; po?: PurchaseOrder; stmt: IssuedStatement } | null>(null);
 
   // ── 기존 전표 수정 ──
   const [editingStmt, setEditingStmt] = useState<IssuedStatement | null>(null);
@@ -319,8 +332,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setActiveSearchRow(null);
     setManualMode(false);
     setManualItems([{ name: '', spec: '', qty: '', price: '', isTaxExempt: false }]);
+    setLoadedPoIds([]);
   };
-  const closeCreate = () => { setCreateMode(null); setEditingStmt(null); setIsEditMode(false); setTradeNote(''); setSelectedItemIdx(null); setQuickName(''); setQuickSpec(''); setQuickQty(''); setQuickPrice(''); setQuickNote(''); setQuickSearchOpen(false); setQuickIsTaxExempt(false); setShowItemPicker(false); setPickerSearch(''); setPickerQtys({}); setAccountCodeOverrides({}); hasIssuedRef.current = false; };
+  const closeCreate = () => { setCreateMode(null); setEditingStmt(null); setIsEditMode(false); setTradeNote(''); setSelectedItemIdx(null); setQuickName(''); setQuickSpec(''); setQuickQty(''); setQuickPrice(''); setQuickNote(''); setQuickSearchOpen(false); setQuickIsTaxExempt(false); setShowItemPicker(false); setPickerSearch(''); setPickerQtys({}); setAccountCodeOverrides({}); setLoadedPoIds([]); hasIssuedRef.current = false; };
 
   // pendingInvoice가 오면 자동으로 매입전표 생성 모달 열기
   useEffect(() => {
@@ -401,23 +415,23 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // ── 발주확정 공급처별 그룹 ──
   const confirmedBySupplier = useMemo(
-    () => buildSupplierGroups(confirmedOrders, allProducts, partners, psMap)
+    () => buildSupplierGroups(confirmedOrders, allItems, partners, psMap)
       .map(g => ({ ...g, items: g.items.map(({ product, item }) => ({ product, co: item as { id: string; quantity: number } })) })),
-    [confirmedOrders, allProducts, partners, psMap]
+    [confirmedOrders, allItems, partners, psMap]
   );
 
   // ── 발주예정 공급처별 그룹 ──
   const orderRequestsBySupplier = useMemo(
-    () => buildSupplierGroups(orderRequests, allProducts, partners, psMap)
+    () => buildSupplierGroups(orderRequests, allItems, partners, psMap)
       .map(g => ({ ...g, items: g.items.map(({ product, item }) => ({ product, req: item as { id: string; quantity: number; confirmedByUser?: boolean } })) })),
-    [orderRequests, allProducts, partners, psMap]
+    [orderRequests, allItems, partners, psMap]
   );
 
   // ── 발주예정 전체 그룹 (psMap 의존 없이 partnerIn 직접 조회, 미지정 포함) ──
   const orderRequestsAllGroups = useMemo(() => {
     const map = new Map<string, { partnerId: string; partnerName: string; items: { product: Item; req: { id: string; quantity: number; confirmedByUser?: boolean; isBox?: boolean } }[] }>();
     for (const req of (orderRequests ?? [])) {
-      const product = allProducts.find(p => p.id === req.id);
+      const product = allItems.find(p => p.id === req.id);
       if (!product) continue;
       // Item_ID/itemId 모두 확인 (필드명 불일치 대응)
       const ps = partnerIn.find(s =>
@@ -432,7 +446,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       map.get(key)!.items.push({ product, req: req as any });
     }
     return Array.from(map.values());
-  }, [orderRequests, allProducts, partnerIn, partners]);
+  }, [orderRequests, allItems, partnerIn, partners]);
 
   // ── 매입 품목 선택 패널용: partnerIn 연결된 품목 전체 (공급처별 그룹) ──
   const purchasableBySupplier = useMemo(() => {
@@ -442,14 +456,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       const partnerId = ps.Partner_ID;
       const itemId = ps.Item_ID;
       if (!partnerId || !itemId) continue;
-      const p = allProducts.find(x => x.id === itemId);
+      const p = allItems.find(x => x.id === itemId);
       if (!p || (term && !p.name.toLowerCase().includes(term))) continue;
       const sName = partners.find(c => c.id === partnerId)?.name ?? partnerId;
       if (!map.has(partnerId)) map.set(partnerId, { partnerName: sName, items: [] });
       map.get(partnerId)!.items.push(p);
     }
     return Array.from(map.entries()).map(([sid, v]) => ({ partnerId: sid, ...v }));
-  }, [allProducts, partners, partnerIn, purchaseSearch]);
+  }, [allItems, partners, partnerIn, purchaseSearch]);
 
   // ── 현재 진행 주문 (매출전표 현재 주문만 패널용) ──
   const activeOrders = useMemo(() =>
@@ -467,7 +481,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const loadSelectedToManual = () => {
     const rows: ManualRow[] = [];
     selectedConfirmedIds.forEach(id => {
-      const product = allProducts.find(p => p.id === id);
+      const product = allItems.find(p => p.id === id);
       if (!product) return;
       const co = confirmedOrders.find(c => c.id === id);
       if (co) {
@@ -552,7 +566,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const itemMap: Record<string, LineItem> = {};
     let no = 1;
     selectedOrder.items.forEach(item => {
-      const product = allProducts.find(p => p.id === item.itemId);
+      const product = allItems.find(p => p.id === item.itemId);
       const displayName = product?.품목 || item.name;
       const spec = item.displaySize || product?.spec || '';
       const key  = `${displayName}||${spec}`;
@@ -592,7 +606,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       }
     });
     return Object.values(itemMap);
-  }, [manualMode, manualItems, selectedOrder, allProducts, partnerOut, partnerIn, selectedClientId, editablePrices, taxExemptOverrides, accountCodeOverrides, stmtType]);
+  }, [manualMode, manualItems, selectedOrder, allItems, partnerOut, partnerIn, selectedClientId, editablePrices, taxExemptOverrides, accountCodeOverrides, stmtType]);
 
   const totalSupply = lineItems.reduce((s, r) => s + r.supply, 0);
   const totalTax    = lineItems.reduce((s, r) => s + r.tax, 0);
@@ -607,7 +621,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // ── 발행 처리 ──
   const missingAccountCodes = lineItems.filter(i => !i.accountCode);
-  const canIssue = lineItems.length > 0 && selectedClientId && (manualMode || !!selectedOrderId) && missingAccountCodes.length === 0;
+  const canIssue = lineItems.length > 0 && !!selectedClientId && (manualMode || !!selectedOrderId) && missingAccountCodes.length === 0;
 
   const markIssued = useCallback(() => {
     if (!selectedClientId || lineItems.length === 0) return;
@@ -634,21 +648,40 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       // 매입전표: 발주된 품목 ID 목록 (purchaseOrders 연결용)
       ...(stmtType === '매입' ? {
         purchaseOrderIds: lineItems
-          .map(i => allProducts.find(p => p.name === i.name))
+          .map(i => allItems.find(p => p.name === i.name))
           .filter(Boolean)
           .map(p => p!.id),
       } : {}),
     };
     onAddIssuedStatement?.(stmt);
-    // 매출전표 발행 시 사용된 단가를 ProductClient에 자동 저장
-    if (stmtType === '매출' && onUpdateProductClientPrice) {
+    // 매입전표 발행 시 발주카드 처리:
+    //  - 발주카드 선택해서 발행 → 그 PO들의 linkedStatementId에 전표 id 연결 + 입고대기 전환
+    //  - 발주카드 없이 직접입력 발행 → 같은 거래처로 품목 묶어 새 입고대기 카드 1개 생성(전표 id 연결)
+    if (stmtType === '매입') {
+      if (loadedPoIds.length > 0) {
+        loadedPoIds.forEach(poId => onLinkPurchaseOrder?.(poId, stmt.id));
+      } else if (selectedClientId) {
+        const newItems = lineItems.map(item => {
+          const product = allItems.find(p => (p.품목 || p.name) === item.name);
+          return { itemId: product?.id || '', itemName: item.name, quantity: item.qty, isBox: item.isBoxUnit, unit: product?.unit || '개' };
+        });
+        if (newItems.length > 0) {
+          onCreateInboundPO?.({ partnerId: selectedClientId, partnerName: selectedClient?.name || '', statementId: stmt.id, items: newItems });
+        }
+      }
+    }
+    // 매출전표 발행 시 매출단가/계정 자동 저장 (partner_item canonical price = 매출단가)
+    if (stmtType === '매출' && onUpsertPartnerItem) {
       for (const item of lineItems) {
         if (!item.price || item.price <= 0) continue;
-        const product = allProducts.find(p => (p.품목 || p.name) === item.name);
-        if (!product) continue;
-        const pc = partnerOut.find(p => p.itemId === product.id && p.partnerId === selectedClientId);
-        if (pc && pc.price !== item.price) {
-          onUpdateProductClientPrice(pc.id, item.price);
+        const product = allItems.find(p => (p.품목 || p.name) === item.name);
+        if (!product || !selectedClientId) continue;
+        const pc = partnerOut.find(p => (p.itemId ?? p.Item_ID) === product.id && (p.partnerId ?? p.Partner_ID) === selectedClientId);
+        const pcId = pc?.id ?? `${product.id}_${selectedClientId}_out`;
+        const priceChanged = !pc || pc.price !== item.price;
+        const accountChanged = !!(item.accountCode && pc?.Account_Code !== item.accountCode);
+        if (priceChanged || accountChanged) {
+          onUpsertPartnerItem({ ...(pc ?? {}), id: pcId, Item_ID: product.id, Partner_ID: selectedClientId, Direction: 'out' as const, price: item.price, taxType: pc?.taxType, Account_Code: item.accountCode || pc?.Account_Code });
         }
       }
     }
@@ -657,12 +690,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     if (manualMode && selectedOrderId && onUpdateOrder && selectedOrder && !hasReturn) {
       // 기존 주문 품목 이름 집합 (매칭용)
       const existingItemNames = new Set(selectedOrder.items.map(oi => {
-        const product = allProducts.find(p => p.id === oi.itemId);
+        const product = allItems.find(p => p.id === oi.itemId);
         return (product?.품목 || oi.name).trim();
       }));
       // 기존 품목: 수량 업데이트
       const updatedItems = selectedOrder.items.map(oi => {
-        const product = allProducts.find(p => p.id === oi.itemId);
+        const product = allItems.find(p => p.id === oi.itemId);
         const displayName = product?.품목 || oi.name;
         const row = manualItems.find(r => r.name.trim() === displayName.trim());
         if (row) return { ...oi, quantity: parseFloat(row.qty) || oi.quantity };
@@ -674,7 +707,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         if (!name || existingItemNames.has(name)) continue;
         const qty = parseFloat(row.qty) || 0;
         if (qty <= 0) continue;
-        const product = allProducts.find(p => (p.품목 || p.name) === name);
+        const product = allItems.find(p => (p.품목 || p.name) === name);
         updatedItems.push({
           itemId: product?.id || '',
           name,
@@ -684,37 +717,24 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       }
       onUpdateOrder(selectedOrderId, { items: updatedItems });
     }
-    // 매입전표 발행 시 PartnerItem 단가 자동 저장 + Item.cost 동기화
-    if (stmtType === '매입' && onUpsertProductSupplier) {
+    // 매입전표 발행 시 원가/계정 자동 저장 (partner_item canonical price = 원가, items.cost 동기화)
+    if (stmtType === '매입' && onUpsertPartnerItem) {
       for (const item of lineItems) {
         if (!item.price || item.price <= 0) continue;
-        const product = allProducts.find(p => (p.품목 || p.name) === item.name);
+        const product = allItems.find(p => (p.품목 || p.name) === item.name);
         if (!product || !selectedClientId) continue;
-        const psId = `${product.id}_${selectedClientId}_in`;
-        const existing = partnerIn.find(s => s.Item_ID === product.id && s.Partner_ID === selectedClientId);
-        if (!existing || existing.Standard_Price !== item.price) {
-          onUpsertProductSupplier({ id: psId, Item_ID: product.id, Partner_ID: selectedClientId, Direction: 'in', Standard_Price: item.price, taxType: existing?.taxType });
-          onUpdateProductCost?.(product.id, item.price);
+        const existing = partnerIn.find(s => (s.Item_ID ?? s.itemId) === product.id && (s.Partner_ID ?? s.partnerId) === selectedClientId);
+        const psId = existing?.id ?? `${product.id}_${selectedClientId}_in`;
+        const prevPrice = existing?.price ?? existing?.Standard_Price;
+        const priceChanged = prevPrice !== item.price;
+        const accountChanged = !!(item.accountCode && existing?.Account_Code !== item.accountCode);
+        if (priceChanged || accountChanged) {
+          onUpsertPartnerItem({ ...(existing ?? {}), id: psId, Item_ID: product.id, Partner_ID: selectedClientId, Direction: 'in' as const, price: item.price, taxType: existing?.taxType, Account_Code: item.accountCode || existing?.Account_Code });
+          if (priceChanged) onUpdateItemCost?.(product.id, item.price);
         }
       }
     }
-    // 매입전표 발행 시 발주예정(pending) → 입고대기(invoiced)로 상태 전환
-    if (stmtType === '매입' && onAddConfirmedOrder) {
-      for (const item of lineItems) {
-        const product = allProducts.find(p => p.name === item.name);
-        if (product) {
-          const existing = orderRequests?.find(r => r.id === product.id);
-          onAddConfirmedOrder({
-            id: product.id,
-            quantity: existing?.quantity ?? item.qty,
-            isBox: existing?.isBox,
-            partnerId: selectedClientId,
-            partnerName: selectedClient?.name,
-          });
-        }
-      }
-    }
-  }, [manualMode, selectedOrderId, selectedClientId, tradeDate, stmtType, selectedClient, docNo, totalSupply, totalTax, totalAmount, lineItems, onMarkInvoicePrinted, onAddIssuedStatement, onAddConfirmedOrder, onRemoveConfirmedOrder, onRemoveOrderRequest, allProducts, confirmedOrders, orderRequests, partnerOut, partnerIn, onUpdateProductClientPrice, onUpsertProductSupplier, onUpdateProductCost, onUpdateOrder, selectedOrder, manualItems]);
+  }, [manualMode, selectedOrderId, selectedClientId, tradeDate, stmtType, selectedClient, docNo, totalSupply, totalTax, totalAmount, lineItems, onMarkInvoicePrinted, onAddIssuedStatement, onAddConfirmedOrder, onRemoveConfirmedOrder, onRemoveOrderRequest, onCreateInboundPO, onLinkPurchaseOrder, loadedPoIds, allItems, confirmedOrders, orderRequests, partnerOut, partnerIn, onUpsertPartnerItem, onUpdateItemCost, onUpdateOrder, selectedOrder, manualItems]);
 
   const handleIssue = () => {
     markIssued();
@@ -736,12 +756,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         isBoxUnit: i.isBoxUnit, boxSize: i.boxSize, accountCode: i.accountCode || undefined,
       })),
     };
-    if (onProposeEdit) {
-      onProposeEdit(editingStmt.id, proposed, editingStmt.type, editingStmt.docNo, editingStmt.partnerName);
-      alert('수정 요청이 관리자에게 전달되었습니다.');
-    } else {
-      onUpdateIssuedStatement?.(editingStmt.id, proposed);
-    }
+    onUpdateIssuedStatement?.(editingStmt.id, proposed);
     setIsEditMode(false);
   }, [editingStmt, tradeDate, selectedClientId, selectedClient, totalSupply, totalTax, totalAmount, lineItems, onProposeEdit, onUpdateIssuedStatement]);
 
@@ -1224,40 +1239,38 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // 매출 전표용: partnerOut 테이블 기반 (거래처별 단가 포함)
   const partnerItemRows = useMemo(() =>
     partnerOut.filter(pc=>pc.partnerId===selectedClientId)
-      .map(pc=>({ pc, product: allProducts.find(p=>p.id===pc.itemId) }))
+      .map(pc=>({ pc, product: allItems.find(p=>p.id===pc.itemId) }))
       .filter(r=>r.product),
-    [partnerOut, selectedClientId, allProducts]
+    [partnerOut, selectedClientId, allItems]
   );
 
   // 매입 전표용: supplierId로 연결된 품목 + PartnerItem 단가
   // pc는 PartnerItem 호환 shim (searchableRows 공통 사용을 위해)
   const inboundPartnerItemRows = useMemo(() =>
-    allProducts
+    allItems
       .filter(p => psMap.get(p.id) === selectedClientId)
       .map(p => {
         const ps = partnerIn.find(s => s.itemId === p.id && s.partnerId === selectedClientId)
           ?? { id: `${p.id}_${selectedClientId}`, itemId: p.id, partnerId: selectedClientId } as PartnerItem;
-        const pc = { id: ps.id, itemId: ps.itemId, partnerId: ps.partnerId, price: ps.price, taxType: ps.taxType };
-        return { pc, ps, product: p };
+        return { pc: ps, ps, product: p };
       }),
-    [allProducts, selectedClientId, partnerIn, psMap]
+    [allItems, selectedClientId, partnerIn, psMap]
   );
 
   // 현재 모드에 따른 검색 소스
   const searchableRows = createMode === '매입' ? inboundPartnerItemRows : partnerItemRows;
 
-  // 매출 단가 저장
-  const savePcPrice = (pcId: string) => {
-    const val = parseFloat(pricePanelEdits[pcId] || '');
-    if (!isNaN(val) && val >= 0) onUpdateProductClientPrice?.(pcId, val);
+  // 단가 저장 (매출: price, 매입: Standard_Price)
+  const savePcPrice = (pc: PartnerItem) => {
+    const val = parseFloat(pricePanelEdits[pc.id] || '');
+    if (!isNaN(val) && val >= 0) onUpsertPartnerItem?.({ ...pc, price: val });
   };
 
-  // 매입 단가 저장 (PartnerItem upsert + Item.cost 동기화)
   const savePsPrice = (ps: PartnerItem, newPrice: number) => {
     if (isNaN(newPrice) || newPrice < 0) return;
-    onUpsertProductSupplier?.({ ...ps, Standard_Price: newPrice });
-    const itemId = ps.Item_ID;
-    if (itemId) onUpdateProductCost?.(itemId, newPrice);
+    onUpsertPartnerItem?.({ ...ps, Standard_Price: newPrice });
+    const itemId = ps.Item_ID ?? ps.itemId;
+    if (itemId) onUpdateItemCost?.(itemId, newPrice);
   };
 
   // ── 등록 품목 추가 (직접입력 모드) ──
@@ -1273,10 +1286,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   }, []);
 
   // ── 전표+수금/지불 통합 타임라인 ──
-  type StmtRow = { kind: 'stmt'; data: IssuedStatement; cumul: number; dateKey: string };
+  type StmtRow = { kind: 'stmt'; data: IssuedStatement; cumul: number; dateKey: string; ts: string };
   type PayRow  = { kind: 'pay';  partnerId: string; partnerName: string; stmtType: '매출'|'매입';
                    date: string; amount: number; method?: string; note?: string;
-                   paymentId: string; cumul: number; dateKey: string; src: IssuedStatement };
+                   paymentId: string; cumul: number; dateKey: string; ts: string; src: IssuedStatement };
   type TimelineRow = StmtRow | PayRow;
 
   const allTimelineRows = useMemo((): TimelineRow[] => {
@@ -1289,33 +1302,39 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     });
     grouped.forEach(stmts => {
       type Ev =
-        | { kind: 'stmt'; s: IssuedStatement; date: string; tieKey: string }
-        | { kind: 'pay';  date: string; tieKey: string; amount: number; method?: string; note?: string; paymentId: string; src: IssuedStatement };
+        | { kind: 'stmt'; s: IssuedStatement; date: string; ts: string }
+        | { kind: 'pay';  date: string; ts: string; amount: number; method?: string; note?: string; paymentId: string; src: IssuedStatement };
       const evs: Ev[] = [];
+      // 화면 표시값 기준 정렬: 표시 날짜(전표=tradeDate, 지불=p.date) + 표시 시각(로컬)
+      const timeOf = (iso?: string) => {
+        if (!iso) return '00:00:00';
+        const d = new Date(iso);
+        return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+      };
       stmts.forEach(s => {
-        evs.push({ kind: 'stmt', s, date: s.tradeDate, tieKey: s.issuedAt });
+        evs.push({ kind: 'stmt', s, date: s.tradeDate, ts: `${s.tradeDate}T${timeOf(s.issuedAt)}` });
         (s.payments ?? []).forEach(p =>
-          evs.push({ kind: 'pay', date: p.date, tieKey: p.id, amount: p.amount, method: p.method, note: p.note, paymentId: p.id, src: s })
+          evs.push({ kind: 'pay', date: p.date, ts: `${p.date}T${timeOf(p.createdAt)}`, amount: p.amount, method: p.method, note: p.note, paymentId: p.id, src: s })
         );
       });
-      // 오래된 순 → 최신 순으로 처리 (같은 날: 전표 먼저, 수금 나중)
+      // 실제 발생시각(ts) 오름차순으로 누적잔액 계산. 동시각이면 전표 먼저(매출 가산 후 수금 차감)
       evs.sort((a, b) => {
-        const d = (a.date ?? '').localeCompare(b.date ?? '');
+        const d = (a.ts ?? '').localeCompare(b.ts ?? '');
         if (d !== 0) return d;
         if (a.kind === 'stmt' && b.kind === 'pay') return -1;
         if (a.kind === 'pay' && b.kind === 'stmt') return 1;
-        return (a.tieKey ?? '').localeCompare(b.tieKey ?? '');
+        return 0;
       });
       let running = 0;
       evs.forEach(e => {
         if (e.kind === 'stmt') {
           running += e.s.totalAmount;
-          rows.push({ kind: 'stmt', data: e.s, cumul: running, dateKey: `${e.date}__${e.tieKey}` });
+          rows.push({ kind: 'stmt', data: e.s, cumul: running, dateKey: `${e.date}__${e.ts}`, ts: e.ts });
         } else {
           running -= e.amount;
           rows.push({ kind: 'pay', partnerId: e.src.partnerId, partnerName: e.src.partnerName,
             stmtType: e.src.type, date: e.date, amount: e.amount, method: e.method, note: e.note,
-            paymentId: e.paymentId, cumul: running, dateKey: `${e.date}__${e.tieKey}`, src: e.src });
+            paymentId: e.paymentId, cumul: running, dateKey: `${e.date}__${e.ts}`, ts: e.ts, src: e.src });
         }
       });
     });
@@ -1339,14 +1358,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         return true;
       })
       .sort((a, b) => {
-        const dateA = a.dateKey.split('__')[0];
-        const dateB = b.dateKey.split('__')[0];
-        const d = dateA.localeCompare(dateB);
+        // 실제 발생시각(ts) 오래된→최신 — 전표·지불 통합 정렬
+        const d = a.ts.localeCompare(b.ts);
         if (d !== 0) return d;
-        // 같은 날: stmt 먼저 (cumul 계산 순서와 일치시켜 잔액 흐름이 자연스럽게)
+        // 동시각이면 전표를 위로(매출 가산 후 수금 차감 순)
         if (a.kind === 'stmt' && b.kind === 'pay') return -1;
         if (a.kind === 'pay' && b.kind === 'stmt') return 1;
-        return a.dateKey.localeCompare(b.dateKey);
+        return 0;
       }); // 오래된→최신
   }, [allTimelineRows, histFrom, histTo, histTypeFilter, histSearch]);
 
@@ -1405,13 +1423,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         setTaxExemptOverrides({});
         // 주문 품목을 편집 가능한 형태로 미리 채움
         const rows: ManualRow[] = o.items.map(item => {
-          const product = allProducts.find(p => p.id === item.itemId);
+          const product = allItems.find(p => p.id === item.itemId);
           const displayName = product?.품목 || item.name;
           const spec = item.displaySize || product?.spec || '';
           const pcEntry = partnerOut.find(pc => pc.itemId === item.itemId && pc.partnerId === o.partnerId);
           const price = pcEntry?.price ?? item.price ?? product?.price ?? 0;
           const isTaxExempt = pcEntry?.taxType === '면세';
-          return { name: displayName, spec, qty: String(item.quantity), price: String(price), isTaxExempt, note: '' };
+          return { name: displayName, spec, qty: String(item.quantity), price: String(price), isTaxExempt, note: '', accountCode: pcEntry?.Account_Code };
         });
         rows.push({ name: '', spec: '', qty: '', price: '', isTaxExempt: false, note: '' });
         setManualItems(rows);
@@ -1970,7 +1988,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     <tr key={`pay__${row.paymentId}`}
                       className={`cursor-pointer transition-colors ${row.stmtType === '매출' ? 'bg-lime-50/80 hover:bg-lime-100/80' : 'bg-orange-50/80 hover:bg-orange-100/80'}`}
                       onClick={() => { const p = row.src.payments?.find(p => p.id === row.paymentId); if (p) openEditPay(row.src, p); }}>
-                      <td className="px-4 py-2 text-[11px] font-mono text-slate-500 whitespace-nowrap">{row.date}</td>
+                      <td className="px-4 py-2 text-[11px] font-mono text-slate-500 whitespace-nowrap">{row.date}{(() => { const p = row.src.payments?.find(p => p.id === row.paymentId); return p?.createdAt ? ` ${p.createdAt.slice(11,16)}` : ''; })()}</td>
                       <td className="px-4 py-2">
                         <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.stmtType === '매출' ? 'bg-lime-100 text-lime-700' : 'bg-orange-100 text-orange-700'}`}>{label}</span>
                       </td>
@@ -2550,11 +2568,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                         value={pricePanelEdits[pc.id]??(pc.price!==undefined?String(pc.price):'')}
                         onChange={e=>setPricePanelEdits(prev=>({...prev,[pc.id]:e.target.value}))}
                         className="w-24 text-right bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-violet-300"/>
-                      <button onClick={()=>onUpdateProductClientTaxType?.(pc.id,pc.taxType==='면세'?'과세':'면세')}
+                      <button onClick={()=>onUpsertPartnerItem?.({...pc,taxType:pc.taxType==='면세'?'과세':'면세'})}
                         className={`px-2.5 py-1 rounded-lg text-[10px] font-black border transition-all ${pc.taxType==='면세'?'bg-indigo-500 text-white border-indigo-500':'bg-white text-slate-500 border-slate-200 hover:bg-slate-100'}`}>
                         {pc.taxType==='면세'?'면세':'과세'}
                       </button>
-                      <button onClick={()=>savePcPrice(pc.id)}
+                      <button onClick={()=>savePcPrice(pc)}
                         className="px-2.5 py-1 rounded-lg text-[10px] font-black bg-violet-600 text-white hover:bg-violet-700 transition-all">
                         저장
                       </button>
@@ -2654,95 +2672,108 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 })()}
 
                 {createMode==='매입' && (()=>{
-                  const inboundPartnerItems=confirmedBySupplier.find(s=>s.partnerId===selectedClientId);
-                  const reqItems=orderRequestsBySupplier.find(s=>s.partnerId===selectedClientId);
-                  const confirmedItems=inboundPartnerItems?.items??[];
-                  const requestItems=reqItems?.items??[];
-                  const hasConfirmed=confirmedItems.length>0;
-                  const hasRequests=requestItems.length>0;
-                  if(!hasConfirmed&&!hasRequests) return (
+                  // 원본 PO(묶음 items[] 포함)를 거래처별로 직접 조회 — 주문카드와 동일 구조
+                  const myConfirmed = confirmedOrders.filter(po => po.partnerId === selectedClientId);
+                  const myRequests  = orderRequests.filter(po => po.partnerId === selectedClientId);
+                  if(myConfirmed.length===0 && myRequests.length===0) return (
                     <div className="flex flex-col items-center justify-center flex-1 py-12 text-slate-300">
                       <ClipboardList size={36} strokeWidth={1.5} className="mb-2"/>
                       <p className="text-xs font-bold text-slate-400">발주 항목이 없습니다</p>
                       <p className="text-xs text-slate-300 mt-1">직접 입력으로 전표를 작성하세요</p>
                     </div>
                   );
-                  const loadItem = (product: Item, qty: number, isBox: boolean) => {
-                    const ps = partnerIn.find(s=>(s.Item_ID===product.id||s.itemId===product.id)&&(s.Partner_ID===selectedClientId||s.partnerId===selectedClientId));
-                    return { name: product.name, spec: product.spec||product.unit||'', qty: String(qty), price: ps?.Standard_Price?String(ps.Standard_Price):(ps?.price?String(ps.price):''), isTaxExempt: ps?.taxType==='면세', isBoxUnit: isBox, boxSize: isBox?12:undefined };
-                  };
-                  const loadAll = (items: {product: Item; qty: number; isBox: boolean}[]) => {
-                    setManualItems([...items.map(({product,qty,isBox})=>loadItem(product,qty,isBox)), {name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);
+
+                  const loadCard = (po: PurchaseOrder) => {
+                    setManualItems([...poToManualRows(po), {name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);
+                    setLoadedPoIds(prev => Array.from(new Set([...prev, po.id].filter(Boolean))));
                     setManualMode(true);
                   };
+                  // 발주카드 클릭: 이 카드에 연결된 전표(linkedStatementId)가 있으면 중복 경고, 아니면 로드
+                  const clickCard = (po: PurchaseOrder) => {
+                    const linked = po.linkedStatementId ? issuedStatements.find(s => s.id === po.linkedStatementId) : undefined;
+                    if (linked) { setWarnDuplicate({ po, stmt: linked }); return; }
+                    loadCard(po);
+                  };
+                  // 카드 요약: 품목명 나열
+                  const summarize = (po: PurchaseOrder) => {
+                    const lines = poLines(po);
+                    const first = lines[0]?.name || (allItems.find(p=>p.id===lines[0]?.itemId)?.name) || '품목';
+                    return lines.length > 1 ? `${first} 외 ${lines.length-1}건` : first;
+                  };
+                  const totalQty = (po: PurchaseOrder) => poLines(po).reduce((s,l)=>s+(l.quantity||0),0);
+
+                  // 월별 그룹 (주문카드와 동일 구조)
+                  const groupByMonth = (pos: PurchaseOrder[]) => {
+                    const m: Record<string, PurchaseOrder[]> = {};
+                    [...pos].sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).forEach(po=>{
+                      const k = (po.createdAt||'').slice(0,7)||'미정';
+                      (m[k] ??= []).push(po);
+                    });
+                    return m;
+                  };
+                  const confByMonth = groupByMonth(myConfirmed);
+                  const confMonths = Object.keys(confByMonth).sort().reverse();
+                  const reqByMonth = groupByMonth(myRequests);
+                  const reqMonths = Object.keys(reqByMonth).sort().reverse();
+
                   return (
                     <div className="divide-y divide-slate-100">
-                      {hasConfirmed && <>
-                        <div className="px-5 py-2 bg-emerald-50 flex items-center justify-between sticky top-0 z-10">
-                          <span className="text-[11px] font-black text-emerald-700">발주확정 ({confirmedItems.length}품목)</span>
-                          {confirmedItems.length > 1 && (
-                            <button onClick={()=>loadAll(confirmedItems.map(({product,co})=>({product,qty:co.quantity,isBox:product.category==='향미유'&&!!(co as any).isBox})))}
-                              className="flex items-center gap-1 text-[10px] font-black text-emerald-700 hover:text-emerald-900 transition-colors">
-                              전체 불러오기<ChevronRight size={10}/>
-                            </button>
-                          )}
+                      {myConfirmed.length>0 && confMonths.map(month=>(
+                        <div key={month}>
+                          <div className="px-5 py-2 bg-slate-50 flex items-center gap-2 sticky top-0 z-10">
+                            <span className="text-[11px] font-black text-slate-500">{month}</span>
+                            <span className="text-[10px] text-slate-400">{confByMonth[month].length}건</span>
+                          </div>
+                          <div className="divide-y divide-slate-50">
+                            {confByMonth[month].map(po=>{
+                              const alreadyIssued = !!po.linkedStatementId;
+                              const receivedDate = (po.receivedAt||po.invoicedAt||po.createdAt||'').slice(0,10);
+                              const createdDate  = (po.createdAt||'').slice(0,10);
+                              return (
+                                <button key={po.id} onClick={()=>clickCard(po)}
+                                  className={`w-full flex items-center gap-3 text-left px-5 py-3 text-xs transition-all ${alreadyIssued?'bg-emerald-50 hover:bg-emerald-100':'hover:bg-pink-50'}`}>
+                                  <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                                    <span className="font-black text-slate-800">입고: {receivedDate||'미정'}</span>
+                                    <span className="text-slate-400">발주일 {createdDate} · {summarize(po)}</span>
+                                  </div>
+                                  <span className="text-slate-600 font-bold shrink-0">{totalQty(po)}개</span>
+                                  {alreadyIssued
+                                    ? <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">발행완료</span>
+                                    : <span className="text-[10px] font-black text-pink-500 bg-pink-100 px-1.5 py-0.5 rounded-full">미발행</span>}
+                                  <ChevronRight size={14} className="text-slate-300 shrink-0"/>
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
-                        {confirmedItems.map(({product,co})=>{
-                          const issued=issuedPurchaseOrderIds.has(product.id);
-                          const isBox=product.category==='향미유'&&!!(co as any).isBox;
-                          return (
-                            <button key={product.id} onClick={()=>{setManualItems([loadItem(product,co.quantity,isBox),{name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);setManualMode(true);}}
-                              className={`w-full flex items-center gap-3 text-left px-5 py-3 text-xs transition-all ${issued?'bg-emerald-50 hover:bg-emerald-100':'hover:bg-pink-50'}`}>
-                              <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                                <span className="font-black text-slate-800">{product.name}</span>
-                                {product.spec&&<span className="text-slate-400">{product.spec}</span>}
-                              </div>
-                              <span className="text-slate-600 font-bold shrink-0">
-                                {isBox ? `${co.quantity}BOX(${co.quantity*12}개)` : `${co.quantity}${product.unit||'개'}`}
-                              </span>
-                              {issued
-                                ? <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">발행완료</span>
-                                : <span className="text-[10px] font-black text-pink-500 bg-pink-100 px-1.5 py-0.5 rounded-full">미발행</span>}
-                              <ChevronRight size={14} className="text-slate-300 shrink-0"/>
-                            </button>
-                          );
-                        })}
-                      </>}
-                      {hasRequests && <>
-                        <div className="px-5 py-2 bg-indigo-50 flex items-center justify-between sticky top-0 z-10">
-                          <span className="text-[11px] font-black text-indigo-600">발주예정 ({requestItems.length}품목)</span>
-                          {requestItems.length > 1 && (
-                            <button onClick={()=>loadAll(requestItems.map(({product,req})=>({product,qty:req.quantity,isBox:product.category==='향미유'&&!!(req as any).isBox})))}
-                              className="flex items-center gap-1 text-[10px] font-black text-indigo-600 hover:text-indigo-800 transition-colors">
-                              전체 불러오기<ChevronRight size={10}/>
-                            </button>
-                          )}
+                      ))}
+                      {myRequests.length>0 && reqMonths.map(month=>(
+                        <div key={`req-${month}`}>
+                          <div className="px-5 py-2 bg-indigo-50 flex items-center gap-2 sticky top-0 z-10">
+                            <span className="text-[11px] font-black text-indigo-600">발주예정 {month}</span>
+                            <span className="text-[10px] text-indigo-400">{reqByMonth[month].length}건</span>
+                          </div>
+                          <div className="divide-y divide-slate-50">
+                            {reqByMonth[month].map(po=>{
+                              const alreadyIssued = !!po.linkedStatementId;
+                              const createdDate = (po.createdAt||'').slice(0,10);
+                              return (
+                                <button key={po.id} onClick={()=>clickCard(po)}
+                                  className={`w-full flex items-center gap-3 text-left px-5 py-3 text-xs transition-all ${alreadyIssued?'bg-emerald-50 hover:bg-emerald-100':'hover:bg-indigo-50'}`}>
+                                  <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                                    <span className="font-black text-slate-800">발주: {createdDate||'미정'}</span>
+                                    <span className="text-slate-400">{summarize(po)} · {totalQty(po)}개</span>
+                                  </div>
+                                  {alreadyIssued
+                                    ? <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">발행완료</span>
+                                    : <span className="text-[10px] font-black text-indigo-500 bg-indigo-100 px-1.5 py-0.5 rounded-full">미발행</span>}
+                                  <ChevronRight size={14} className="text-slate-300 shrink-0"/>
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
-                        {requestItems.map(({product,req})=>{
-                          const issued=issuedPurchaseOrderIds.has(product.id);
-                          const isBox=product.category==='향미유'&&!!(req as any).isBox;
-                          const ps=partnerIn.find(s=>(s.Item_ID===product.id||s.itemId===product.id)&&(s.Partner_ID===selectedClientId||s.partnerId===selectedClientId));
-                          return (
-                            <button key={product.id} onClick={()=>{setManualItems([loadItem(product,req.quantity,isBox),{name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);setManualMode(true);}}
-                              className={`w-full flex items-center gap-3 text-left px-5 py-3 text-xs transition-all ${issued?'bg-emerald-50 hover:bg-emerald-100':'hover:bg-pink-50'}`}>
-                              <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                                <span className="font-black text-slate-800">{product.name}</span>
-                                {product.spec&&<span className="text-slate-400">{product.spec}</span>}
-                              </div>
-                              <div className="flex flex-col items-end gap-0.5 shrink-0">
-                                <span className="text-slate-600 font-bold">
-                                  {isBox ? `${req.quantity}BOX(${req.quantity*12}개)` : `${req.quantity}${product.unit||'개'}`}
-                                </span>
-                                {ps?.price ? <span className="text-[10px] text-slate-400">{ps.price.toLocaleString()}원</span> : <span className="text-[10px] text-amber-400">단가미등록</span>}
-                              </div>
-                              {issued
-                                ? <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">발행완료</span>
-                                : <span className="text-[10px] font-black text-pink-500 bg-pink-100 px-1.5 py-0.5 rounded-full">미발행</span>}
-                              <ChevronRight size={14} className="text-slate-300 shrink-0"/>
-                            </button>
-                          );
-                        })}
-                      </>}
+                      ))}
                     </div>
                   );
                 })()}
@@ -2787,7 +2818,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               const selItem = selectedItemIdx!==null&&!manualMode ? lineItems[selectedItemIdx] : null;
               const infoProduct = quickName ? qProduct
                 : selRow ? (searchableRows.find(r=>(r.product!.품목||r.product!.name)===selRow.name)?.product as any)
-                : selItem ? (allProducts.find(p=>(p.품목||p.name)===selItem.name) as any)
+                : selItem ? (allItems.find(p=>(p.품목||p.name)===selItem.name) as any)
                 : null;
               const productCost = infoProduct?.cost ?? 0;
               const salePrice = quickName ? (parseFloat(quickPrice)||0)
@@ -2806,7 +2837,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   return docN.includes(q) || r.product!.name.toLowerCase().includes(q);
                 });
                 if (partnerMatches.length > 0) return partnerMatches;
-                return allProducts
+                return allItems
                   .filter(p => (p.품목 || p.name).toLowerCase().includes(q))
                   .map(p => {
                     const existingPc = partnerOut.find(pc => pc.itemId === p.id && pc.partnerId === selectedClientId);
@@ -3260,7 +3291,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       {payments.map(p => (
                         <div key={p.id}
                           className="flex items-center gap-2 px-3 py-2 bg-white rounded-xl border border-slate-200">
-                          <span className="text-[10px] font-mono text-slate-400 w-20 shrink-0">{p.date}</span>
+                          <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                            {p.date}{p.createdAt ? ` ${p.createdAt.slice(11,16)}` : ''}
+                          </span>
                           <span className="text-xs font-black text-slate-800 flex-1">{fmt(p.amount)}원</span>
                           <span className="text-[10px] text-slate-400">{[p.method, p.note].filter(Boolean).join(' · ')}</span>
                           <button onClick={() => openEditPay(editingStmt, p)}
@@ -3364,11 +3397,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               </button>
               <button onClick={()=>{
                 const o = warnDuplicate.order;
+                const poCard = warnDuplicate.po;
                 setWarnDuplicate(null);
-                setSelectedOrderId(o.id);
-                setShowPreview(false);
-                setEditablePrices({});
-                setTaxExemptOverrides({});
+                if (poCard) {
+                  // 매입 발주카드 재발행: 직접입력으로 로드
+                  setManualItems([...poToManualRows(poCard), {name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);
+                  setLoadedPoIds(prev => Array.from(new Set([...prev, (poCard as any).id].filter(Boolean))));
+                  setManualMode(true);
+                } else if (o) {
+                  setSelectedOrderId(o.id);
+                  setShowPreview(false);
+                  setEditablePrices({});
+                  setTaxExemptOverrides({});
+                }
               }}
                 className="flex-1 py-2.5 rounded-xl bg-rose-100 text-rose-700 text-xs font-black hover:bg-rose-200">
                 그래도 재발행

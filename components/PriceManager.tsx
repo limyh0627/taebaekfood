@@ -7,18 +7,13 @@ interface PriceManagerProps {
   items: Item[];
   partners: Partner[];
   partnerItems?: import('../src/shared/types').PartnerItem[];
-  onUpdateProductClientPrice?: (id: string, price: number) => void;
-  onUpdateProductClientTaxType?: (id: string, taxType: '과세' | '면세') => void;
-  onUpsertProductSupplier?: (ps: PartnerItem) => void;
-  onUpdateProductSupplierTaxType?: (id: string, taxType: '과세' | '면세') => void;
-  onUpdateProductCost?: (itemId: string, cost: number) => void;
+  onUpsertPartnerItem?: (ps: PartnerItem) => void;
+  onUpdateItemCost?: (itemId: string, cost: number) => void;
 }
 
 const PriceManager: React.FC<PriceManagerProps> = ({
   items, partners, partnerItems,
-  onUpdateProductClientPrice, onUpdateProductClientTaxType,
-  onUpsertProductSupplier, onUpdateProductSupplierTaxType,
-  onUpdateProductCost,
+  onUpsertPartnerItem, onUpdateItemCost,
 }) => {
   const products = items;
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
@@ -81,14 +76,16 @@ const PriceManager: React.FC<PriceManagerProps> = ({
     if (mode === '매출') {
       for (const [pcId, val] of Object.entries(priceEdits)) {
         const n = parseFloat(val);
-        if (!isNaN(n) && n >= 0) onUpdateProductClientPrice?.(pcId, n);
+        const row = selectedPcRows.find(r => r.pc.id === pcId);
+        if (!isNaN(n) && n >= 0 && row) onUpsertPartnerItem?.({ ...row.pc, price: n });
       }
       for (const [pcId, tax] of Object.entries(taxEdits)) {
-        onUpdateProductClientTaxType?.(pcId, tax);
+        const row = selectedPcRows.find(r => r.pc.id === pcId);
+        if (row) onUpsertPartnerItem?.({ ...row.pc, taxType: tax });
       }
       for (const [itemId, val] of Object.entries(costEdits)) {
         const n = parseFloat(val);
-        if (!isNaN(n) && n >= 0) onUpdateProductCost?.(itemId, n);
+        if (!isNaN(n) && n >= 0) onUpdateItemCost?.(itemId, n);
       }
     } else {
       for (const [psId, val] of Object.entries(priceEdits)) {
@@ -96,15 +93,13 @@ const PriceManager: React.FC<PriceManagerProps> = ({
         if (isNaN(n) || n < 0) continue;
         const row = selectedPsRows.find(r => r.ps.id === psId);
         if (!row) continue;
-        onUpsertProductSupplier?.({ ...row.ps, Standard_Price: n });
+        onUpsertPartnerItem?.({ ...row.ps, Standard_Price: n });
         const itemId = row.ps.Item_ID ?? row.ps.itemId;
-        if (itemId) onUpdateProductCost?.(itemId, n);
+        if (itemId) onUpdateItemCost?.(itemId, n);
       }
       for (const [psId, tax] of Object.entries(taxEdits)) {
         const row = selectedPsRows.find(r => r.ps.id === psId);
-        if (!row) continue;
-        onUpsertProductSupplier?.({ ...row.ps, taxType: tax });
-        onUpdateProductSupplierTaxType?.(psId, tax);
+        if (row) onUpsertPartnerItem?.({ ...row.ps, taxType: tax });
       }
     }
     setPriceEdits({});

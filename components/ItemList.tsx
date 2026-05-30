@@ -1,5 +1,5 @@
 ﻿
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Package,
   Edit,
@@ -19,18 +19,15 @@ import {
   AlertCircle,
   Tag,
   Building2,
-  ChevronRight,
   RotateCcw,
   History,
   FileText,
   FileDown,
-  PrinterIcon,
 } from 'lucide-react';
 import { Item, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, PartnerItem } from '../types';
-import { PurchaseOrder } from '../src/shared/types';
+import { PurchaseOrder, poLines } from '../src/shared/types';
 import AddItemModal from './AddItemModal';
 import ConfirmModal from './ConfirmModal';
-import InboundManager from './InboundManager';
 import PageHeader from './PageHeader';
 
 const normCat = (cat: string): string =>
@@ -53,11 +50,15 @@ interface ItemListProps {
   items: Item[];
   orderRequests: PurchaseOrder[];
   confirmedOrders: PurchaseOrder[];
-  onUpdateProduct: (product: Item) => void;
-  onAddProduct: (product: Item) => void;
+  onUpdateItem: (product: Item) => void;
+  onAddItem: (product: Item) => void;
   onAddOrderRequest: (id: string, qty: number, isBox?: boolean) => void;
   onRemoveOrderRequest: (id: string) => void;
   onUpdateOrderRequestQty: (id: string, qty: number) => void;
+  onUpdatePoItemQty?: (poId: string, index: number, qty: number) => void;
+  onRemovePoItem?: (poId: string, index: number) => void;
+  // 입고대기 수정 → 연결된 매입전표 수정 요청 (관리자 확인사항으로)
+  onRequestPoEdit?: (poId: string, newLines: { itemId: string; quantity: number }[], reason: string) => void;
   onUpdateOrderRequestIsBox?: (id: string, isBox: boolean) => void;
   onToggleConfirmRequestQty: (id: string) => void;
   onConfirmRequest: (id: string) => void;
@@ -71,7 +72,7 @@ interface ItemListProps {
   onRemoveConfirmedOrder: (id: string) => void;
   onClearAllConfirmedOrders: () => void;
   onEditProduct: (product: Item) => void;
-  onDeleteProduct: (id: string) => void;
+  onDeleteItem: (id: string) => void;
   onAddAdjustmentRequest: (req: AdjustmentRequest) => void;
   inboundPartners: { id: string; name: string }[];
   partners?: { id: string; name: string; partnerType?: string }[];
@@ -104,23 +105,6 @@ const CLIENT_BADGE_COLORS = [
   'bg-orange-50 text-orange-500',
   'bg-indigo-50 text-indigo-500',
 ];
-const RAW_MATERIALS = ['참깨','들깨','검정깨','탈피들깨가루','깨분','볶음참깨','볶음들깨','볶음검정참깨','통깨참기름','깨분참기름','통들깨들기름','수입들기름','생들기름'];
-const RAW_MATERIALS_EN: Record<string, string> = {
-  '참깨': 'Sesame',
-  '들깨': 'Perilla',
-  '검정깨': 'Black Sesame',
-  '탈피들깨가루': 'Hulled Perilla Powder',
-  '깨분': 'Sesame Powder',
-  '볶음참깨': 'Roasted Sesame',
-  '볶음들깨': 'Roasted Perilla',
-  '볶음검정참깨': 'Roasted Black Sesame',
-  '통깨참기름': 'Sesame Oil (Whole)',
-  '깨분참기름': 'Sesame Oil (Powder)',
-  '통들깨들기름': 'Perilla Oil (Whole)',
-  '수입들기름': 'Imported Perilla Oil',
-  '생들기름': 'Raw Perilla Oil',
-};
-
 type MainTab = 'requests' | 'history' | 'master' | 'inbound';
 type InboundSubTab = '입고' | '반품';
 type TopTab = 'finished' | 'goods' | 'submaterial' | 'rawmaterial' | 'wip';
@@ -129,11 +113,14 @@ const ItemList: React.FC<ItemListProps> = ({
   items,
   orderRequests,
   confirmedOrders,
-  onAddProduct,
-  onUpdateProduct,
+  onAddItem,
+  onUpdateItem,
   onAddOrderRequest,
   onRemoveOrderRequest,
   onUpdateOrderRequestQty,
+  onUpdatePoItemQty,
+  onRemovePoItem,
+  onRequestPoEdit,
   onUpdateOrderRequestIsBox,
   onBulkAddConfirmedOrders,
   onConfirmAllRequests,
@@ -142,7 +129,7 @@ const ItemList: React.FC<ItemListProps> = ({
   onRemoveConfirmedOrder,
   onClearAllConfirmedOrders,
   onEditProduct,
-  onDeleteProduct,
+  onDeleteItem,
   onAddAdjustmentRequest,
   inboundPartners,
   partners = [],
@@ -163,15 +150,7 @@ const ItemList: React.FC<ItemListProps> = ({
   returnContent,
   returnBadge = 0,
 }) => {
-  const [isEn, setIsEn] = useState(() => localStorage.getItem('inventoryLang') === 'en');
-  const toggleLang = () => setIsEn(prev => {
-    const next = !prev;
-    localStorage.setItem('inventoryLang', next ? 'en' : 'ko');
-    return next;
-  });
-  const t = (ko: string, en: string) => isEn ? en : ko;
   const psMap = useMemo(() => new Map(partnerItems.filter(pi => pi.Direction === 'in').map(pi => [pi.Item_ID, pi.Partner_ID])), [partnerItems]);
-  const fmt1 = (v: number) => { const s = Number(v).toFixed(1); return s.endsWith('.0') ? s.slice(0, -2) : s; };
   const fmtHamiyou = (stock: number) => {
     const boxes = Math.floor(stock / 12);
     const rem = stock % 12;
@@ -188,21 +167,6 @@ const ItemList: React.FC<ItemListProps> = ({
   const [showInboundOverlay, setShowInboundOverlay] = useState(false);
   const [showReturnOverlay, setShowReturnOverlay] = useState(false);
   const [historyMonth, setHistoryMonth] = useState(() => new Date().toISOString().slice(0, 7));
-  const [rmMaterial, setRmMaterial] = useState(RAW_MATERIALS[0]);
-  const [rmDate, setRmDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [rmReceived, setRmReceived] = useState('');
-  const [rmUsed, setRmUsed] = useState('');
-  const [rmNote, setRmNote] = useState('');
-  const [rmCanQty, setRmCanQty] = useState('');
-  const [rmCanSize, setRmCanSize] = useState<{ size: number; tag?: string } | null>(null);
-  const [rmCanMode, setRmCanMode] = useState<'received' | 'used'>('received');
-  const [rmFilter, setRmFilter] = useState(RAW_MATERIALS[0]);
-  const [rmMonth, setRmMonth] = useState(() => new Date().toISOString().slice(0, 7));
-  const [rmViewType, setRmViewType] = useState<'all' | 'received' | 'used'>('all');
-  const [showAllMonths, setShowAllMonths] = useState(false);
-  const [rmOpenBalance, setRmOpenBalance] = useState('');
-  const [rmOpenDate, setRmOpenDate] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`; });
-  const [rmOpenMaterial, setRmOpenMaterial] = useState(RAW_MATERIALS[0]);
   const [activeCategory, setActiveCategory] = useState<string>('전체');
   const [activeSupplierId, setActiveSupplierId] = useState<string>('전체');
   const [showCategoryFilter, setShowCategoryFilter] = useState(false);
@@ -211,17 +175,6 @@ const ItemList: React.FC<ItemListProps> = ({
   // 볶음참깨 규격별 재고 편집 상태: { [itemId]: { [variantKey]: number } }
   const [editingVariantStocks, setEditingVariantStocks] = useState<Record<string, Record<string, number>>>({});
 
-  // legacy alias used in a few places
-  const activeSubCategory = activeCategory !== '전체' ? activeCategory : activeSupplierId;
-  const setActiveSubCategory = (v: string) => {
-    setActiveCategory('전체'); setActiveSupplierId('전체');
-  };
-  const filterMode = showCategoryFilter ? 'category' : showSupplierFilter ? 'inboundPartner' : null;
-  const toggleFilterMode = (mode: 'inboundPartner' | 'category') => {
-    if (mode === 'category') setShowCategoryFilter(p => !p);
-    else setShowSupplierFilter(p => !p);
-    setActiveSubCategory('전체');
-  };
   const [searchTerm, setSearchTerm] = useState('');
   
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -240,6 +193,11 @@ const ItemList: React.FC<ItemListProps> = ({
   
   const [expandedReqId, setExpandedReqId] = useState<string | null>(null);
   const [reqEditQty, setReqEditQty] = useState<number>(0);
+  // 발주예정 수량 인라인 편집: key = `${poId}-${lineIdx}`
+  const [editingReqLine, setEditingReqLine] = useState<string | null>(null);
+  const [editingReqVal, setEditingReqVal] = useState<string>('');
+  // 입고대기 수정(전표수정 요청) 모달
+  const [poEditModal, setPoEditModal] = useState<{ po: PurchaseOrder; rows: { itemId: string; name: string; qty: string }[]; reason: string } | null>(null);
   const [reqNote, setReqNote] = useState<string>('');
   const [inlineCartId, setInlineCartId] = useState<string | null>(null);
   const [inlineCartQty, setInlineCartQty] = useState<number>(0);
@@ -249,16 +207,7 @@ const ItemList: React.FC<ItemListProps> = ({
   const [finishedFilter, setFinishedFilter] = useState<'all' | 'oil' | 'powder'>('all');
   const [stockOnly, setStockOnly] = useState(false);
   const [zeroStockOnly, setZeroStockOnly] = useState(false);
-  const [showClientSearch, setShowClientSearch] = useState(false);
-  const [partnerSearchTerm, setClientSearchTerm] = useState('');
-  const [selectedSearchClientId, setSelectedSearchClientId] = useState<string | null>(null);
-  const [priorityClientId, setPriorityClientId] = useState<string | null>(null);
-  const [showRmSheet, setShowRmSheet] = useState(false);
-  const [rmSheetTab, setRmSheetTab] = useState<'new' | 'carryover'>('new');
-  const [showStocktake, setShowStocktake] = useState(false);
-  const [stocktakeValues, setStocktakeValues] = useState<Record<string, string>>({});
-  const [stocktakeUnitQtys, setStocktakeUnitQtys] = useState<Record<string, string>>({}); // key: `${material}_${size}_${tag}`
-  const [stocktakeDate, setStocktakeDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [priorityClientId] = useState<string | null>(null);
   // cart는 로컬 상태 (Firebase 쓰기는 확정 버튼 시에만)
   const [cart, setCart] = useState<{ id: string; qty: number; isBox: boolean }[]>([]);
   const [showCartPanel, setShowCartPanel] = useState(false);
@@ -333,9 +282,9 @@ const ItemList: React.FC<ItemListProps> = ({
   const filteredProducts = useMemo(() => {
     let result: Item[] = [];
     if (activeTab === 'requests') {
-      result = items.filter(p => !p.archived && orderRequests.some(r => r.id === p.id));
+      result = items.filter(p => !p.archived && orderRequests.some(r => (r.itemId ?? r.id) === p.id));
     } else if (activeTab === 'history') {
-      result = items.filter(p => !p.archived && confirmedOrders.some(c => c.id === p.id));
+      result = items.filter(p => !p.archived && confirmedOrders.some(c => (c.itemId ?? c.id) === p.id));
     } else {
       result = items.filter(p => !p.archived);
     }
@@ -356,6 +305,8 @@ const ItemList: React.FC<ItemListProps> = ({
         result = result.filter(p => p.category === 'wip');
       } else if (topTab === 'submaterial') {
         result = result.filter(p => p.category === 'submaterial' || ['label','cap','container','box','tape','용기','마개','테이프','박스','라벨'].includes(p.category as string));
+      } else if (topTab === 'rawmaterial') {
+        result = result.filter(p => p.category === 'raw');
       }
       if (activeCategory !== '전체') {
         if (activeCategory === '박스') result = result.filter(p => normCat(p.category) === '박스' || p.id.startsWith('GS-'));
@@ -400,37 +351,6 @@ const ItemList: React.FC<ItemListProps> = ({
   const pagedProducts = filteredProducts.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
 
-
-  // 원료별 현재 잔량 — display와 동일한 머지 로직으로 계산
-  const rawMaterialBalances = useMemo(() => {
-    const result: Record<string, number> = {};
-    for (const material of RAW_MATERIALS) {
-      const ledger = rawMaterialLedger.filter(e => e.material === material);
-      const manualRows = ledger.filter(e => e.type === 'manual');
-      const toMerge = [
-        ...ledger.filter(e => e.type !== 'manual' && e.type !== 'stocktake_unit').map(e => ({ date: e.date, received: e.received, used: e.used, note: e.note })),
-        ...autoUsageEntries.filter(e => e.material === material).map(e => ({ date: e.date, received: 0, used: e.used, note: e.note })),
-      ];
-      const mergedMap: Record<string, { date: string; received: number; used: number; note: string }> = {};
-      for (const e of toMerge) {
-        if (!mergedMap[e.date]) mergedMap[e.date] = { date: e.date, received: 0, used: 0, note: e.note };
-        mergedMap[e.date].received = Math.round((mergedMap[e.date].received + e.received) * 1000) / 1000;
-        mergedMap[e.date].used = Math.round((mergedMap[e.date].used + e.used) * 1000) / 1000;
-      }
-      const all = [
-        ...manualRows.map(e => ({ date: e.date, received: e.received, used: e.used, note: e.note })),
-        ...Object.values(mergedMap),
-      ].sort((a, b) => a.date.localeCompare(b.date));
-
-      let balance = 0;
-      for (const e of all) {
-        if (e.note === '전월이월') balance = e.received;
-        else balance += e.received - e.used;
-      }
-      result[material] = Math.round(balance * 1000) / 1000;
-    }
-    return result;
-  }, [rawMaterialLedger, autoUsageEntries]);
 
   const updateDraftQty = (id: string, qty: number) => {
     setDraftOrders(prev => prev.map(d => d.id === id ? { ...d, quantity: Math.max(0, qty) } : d));
@@ -700,7 +620,6 @@ const ItemList: React.FC<ItemListProps> = ({
       {activeTab === 'inbound' && (
         <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-6">
           {inboundSubTab === '입고' && (() => {
-            const pending = (receivedOrders ?? []).filter(r => !r.linkedStatementId);
             const history = (receivedOrders ?? [])
               .filter(r => (r.receivedAt ?? '').slice(0, 7) === historyMonth)
               .sort((a, b) => (b.receivedAt ?? '').localeCompare(a.receivedAt ?? ''));
@@ -734,24 +653,41 @@ const ItemList: React.FC<ItemListProps> = ({
                             <span className="text-[10px] text-orange-400">{group.items.length}개 품목</span>
                           </div>
                           <div className="divide-y divide-slate-50">
-                            {group.items.map(po => {
-                              const product = productMap.get(po.itemId ?? po.id);
+                            {group.items.flatMap(po => poLines(po).map((line, idx) => {
+                              const product = productMap.get(line.itemId);
+                              const lineKey = `${po.id}-${idx}`;
+                              const isEditing = editingReqLine === lineKey;
+                              const setQty = (q: number) => onUpdatePoItemQty ? onUpdatePoItemQty(po.id, idx, q) : onUpdateOrderRequestQty(po.id, q);
+                              const removeLine = () => onRemovePoItem ? onRemovePoItem(po.id, idx) : onRemoveOrderRequest(po.id);
+                              const saveEdit = () => { const q = Math.max(1, parseInt(editingReqVal) || 1); setQty(q); setEditingReqLine(null); };
                               return (
-                                <div key={po.id} className="px-4 py-3 flex items-center gap-3">
+                                <div key={lineKey} className="px-4 py-3 flex items-center gap-3">
                                   <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-bold text-slate-800 truncate">{po.itemName}</p>
+                                    <p className="text-sm font-bold text-slate-800 truncate">{line.name}</p>
                                     <p className="text-[10px] text-slate-400 mt-0.5">현재 재고 {product?.stock ?? '-'} {product?.unit ?? ''}</p>
                                   </div>
-                                  <div className="flex items-center gap-1.5 shrink-0">
-                                    <button onClick={() => onUpdateOrderRequestQty(po.id, Math.max(1, po.quantity - 1))} className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-xs transition-all">-</button>
-                                    <span className="w-10 text-center text-sm font-black text-slate-800">{po.quantity}</span>
-                                    <button onClick={() => onUpdateOrderRequestQty(po.id, po.quantity + 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-xs transition-all">+</button>
-                                    <span className="text-[11px] text-slate-400">{po.isBox ? 'B' : (product?.unit ?? '')}</span>
-                                  </div>
-                                  <button onClick={() => onRemoveOrderRequest(po.id)} className="text-slate-300 hover:text-rose-400 transition-all shrink-0 ml-1"><X size={15} /></button>
+                                  {isEditing ? (
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <input type="number" autoFocus value={editingReqVal}
+                                        onChange={e => setEditingReqVal(e.target.value)}
+                                        onKeyDown={e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditingReqLine(null); }}
+                                        className="w-16 text-center text-sm font-black border border-teal-300 rounded-lg px-1 py-1 outline-none focus:ring-2 focus:ring-teal-400" />
+                                      <span className="text-[11px] text-slate-400">{line.isBox ? 'B' : (product?.unit ?? '')}</span>
+                                      <button onClick={saveEdit} className="px-2 py-1 rounded-lg bg-teal-500 text-white text-[11px] font-black hover:bg-teal-600">저장</button>
+                                      <button onClick={() => setEditingReqLine(null)} className="px-2 py-1 rounded-lg bg-slate-100 text-slate-500 text-[11px] font-black hover:bg-slate-200">취소</button>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <span className="text-sm font-black text-slate-800">{line.quantity}</span>
+                                      <span className="text-[11px] text-slate-400">{line.isBox ? 'B' : (product?.unit ?? '')}</span>
+                                      <button onClick={() => { setEditingReqLine(lineKey); setEditingReqVal(String(line.quantity)); }}
+                                        className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all" title="수정"><Edit size={13} /></button>
+                                      <button onClick={removeLine} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-500 transition-all" title="삭제"><Trash2 size={13} /></button>
+                                    </div>
+                                  )}
                                 </div>
                               );
-                            })}
+                            }))}
                           </div>
                         </div>
                       ))}
@@ -778,18 +714,37 @@ const ItemList: React.FC<ItemListProps> = ({
                     return (
                       <div className="space-y-2">
                         {Array.from(groups.values()).map(group => (
-                          <div key={group.partnerName} className="bg-white rounded-2xl border border-amber-100 p-4 shadow-sm space-y-2">
+                          <div key={group.partnerName} className="bg-white rounded-2xl border border-amber-100 p-4 shadow-sm space-y-3">
                             <p className="font-black text-slate-800 text-sm">{group.partnerName}</p>
-                            {group.orders.map(po => {
-                              const product = productMap.get(po.itemId);
-                              const unit = po.isBox ? '박스' : (po.unit || product?.unit || '');
-                              return (
-                                <div key={po.id} className="flex justify-between text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-1.5">
-                                  <span>{po.itemName || product?.name}</span>
-                                  <span className="font-bold">{po.quantity.toLocaleString()} {unit}</span>
+                            {group.orders.map(po => (
+                              <div key={po.id} className="rounded-xl border border-slate-100 p-2.5 space-y-2">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[10px] text-slate-400 font-bold">발주일 {(po.createdAt||'').slice(0,10)}</span>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <button onClick={() => onFinishConfirmedOrder(po.id)}
+                                      className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-[11px] font-black hover:bg-emerald-600 transition-all">
+                                      입고확정
+                                    </button>
+                                    {po.linkedStatementId && onRequestPoEdit && (
+                                      <button onClick={() => setPoEditModal({ po, rows: poLines(po).map(l => ({ itemId: l.itemId, name: l.name, qty: String(l.quantity) })), reason: '' })}
+                                        className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-[11px] font-black hover:bg-slate-200 transition-all">
+                                        수정
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
-                              );
-                            })}
+                                {poLines(po).map((line, idx) => {
+                                  const product = productMap.get(line.itemId);
+                                  const unit = line.isBox ? '박스' : (line.unit || product?.unit || '');
+                                  return (
+                                    <div key={`${po.id}-${idx}`} className="flex justify-between text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-1.5">
+                                      <span>{line.name || product?.name}</span>
+                                      <span className="font-bold">{line.quantity.toLocaleString()} {unit}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ))}
                           </div>
                         ))}
                       </div>
@@ -924,7 +879,7 @@ const ItemList: React.FC<ItemListProps> = ({
               <tbody className="divide-y divide-slate-50">
                 {pagedProducts.map(product => {
                   const isCritical = normCat(product.category) !== '완제품' && product.stock < product.minStock;
-                  const confInfo = confirmedOrders.find(c => c.id === product.id);
+                  const confInfo = confirmedOrders.find(c => (c.itemId ?? c.id) === product.id);
                   const inCart = cart.some(c => c.id === product.id);
                   const isExpanded = expandedRowId === product.id;
                   const statusBadge = normCat(product.category) === '완제품' ? (
@@ -1022,14 +977,14 @@ const ItemList: React.FC<ItemListProps> = ({
                               onKeyDown={e => {
                                 if (e.key === 'Enter') {
                                   const val = parseInt(editingStockVal);
-                                  if (!isNaN(val) && val >= 0) onUpdateProduct({ ...product, stock: product.subtype === '향미유' ? val * 12 : val });
+                                  if (!isNaN(val) && val >= 0) onUpdateItem({ ...product, stock: product.subtype === '향미유' ? val * 12 : val });
                                   setEditingStockId(null);
                                 }
                                 if (e.key === 'Escape') setEditingStockId(null);
                               }}
                               onBlur={() => {
                                 const val = parseInt(editingStockVal);
-                                if (!isNaN(val) && val >= 0) onUpdateProduct({ ...product, stock: product.subtype === '향미유' ? val * 12 : val });
+                                if (!isNaN(val) && val >= 0) onUpdateItem({ ...product, stock: product.subtype === '향미유' ? val * 12 : val });
                                 setEditingStockId(null);
                               }}
                               onClick={e => e.stopPropagation()}
@@ -1171,7 +1126,7 @@ const ItemList: React.FC<ItemListProps> = ({
                                   <button
                                     onClick={async () => {
                                       const newStocks = { ...currentStocks, ...editing };
-                                      await onUpdateProduct({ ...product, variantStocks: newStocks });
+                                      await onUpdateItem({ ...product, variantStocks: newStocks });
                                       setEditingVariantStocks(prev => { const n = { ...prev }; delete n[product.id]; return n; });
                                     }}
                                     className="text-[11px] font-black px-3 py-1.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition-all shadow-sm"
@@ -1338,7 +1293,7 @@ const ItemList: React.FC<ItemListProps> = ({
                 <button onClick={() => setRowEditProduct(null)} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm">취소</button>
                 <button
                   onClick={() => {
-                    onUpdateProduct({ ...rowEditProduct, ...rowEditForm } as Item);
+                    onUpdateItem({ ...rowEditProduct, ...rowEditForm } as Item);
                     setRowEditProduct(null);
                   }}
                   className="flex-1 py-2.5 bg-indigo-600 text-white font-bold rounded-xl text-sm hover:bg-indigo-700 transition-all"
@@ -1676,817 +1631,6 @@ const ItemList: React.FC<ItemListProps> = ({
         )}
       </div>}
 
-      {/* 원료 재고 탭 */}
-      {topTab === 'rawmaterial' && (
-        <div className="space-y-4 animate-in slide-in-from-right-4 duration-500">
-          {/* Bottom Sheet */}
-          {showRmSheet && (
-            <div className="fixed inset-0 z-[200] flex flex-col justify-end sm:justify-center sm:items-center">
-              {/* 배경 */}
-              <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowRmSheet(false)} />
-              {/* 시트 */}
-              <div className="relative bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md shadow-2xl animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
-                {/* 핸들바 */}
-                <div className="flex justify-center pt-3 pb-1 sm:hidden">
-                  <div className="w-10 h-1 rounded-full bg-slate-200" />
-                </div>
-                {/* 헤더 */}
-                <div className="px-5 pt-3 pb-0 flex items-center justify-between sm:pt-5">
-                  <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
-                    <button
-                      onClick={() => setRmSheetTab('new')}
-                      className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${rmSheetTab === 'new' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                    >{t('새 기록', 'New Record')}</button>
-                    <button
-                      onClick={() => setRmSheetTab('carryover')}
-                      className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${rmSheetTab === 'carryover' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                    >{t('전월이월', 'Carry Over')}</button>
-                  </div>
-                  <button onClick={() => setShowRmSheet(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl transition-all">
-                    <X size={18} />
-                  </button>
-                </div>
-
-                {/* 새 기록 탭 */}
-                {rmSheetTab === 'new' && (() => {
-                  // 캔 단위 입고 지원 원료 (sizes: kg or L per can options)
-                  type CanOption = { size: number; tag?: string; usedByKg?: boolean };
-                  const CAN_MATERIALS: Record<string, CanOption[]> = {
-                    '참깨': [{ size: 25 }, { size: 1000, tag: '톤백', usedByKg: true }],
-                    '깨분참기름': [{ size: 16.5 }, { size: 18 }],
-                    '수입들기름': [{ size: 16.5 }, { size: 18 }],
-                    '생들기름': [{ size: 16.5 }, { size: 18 }],
-                    '들깨': [{ size: 25 }],
-                    '검정깨': [{ size: 10 }, { size: 20 }],
-                    '탈피들깨가루': [{ size: 20 }],
-                    '깨분': [{ size: 16.5 }],
-                    '볶음참깨': [{ size: 10 }, { size: 20 }, { size: 20, tag: '자루' }],
-                    '볶음검정참깨': [{ size: 10 }, { size: 20 }, { size: 20, tag: '자루' }],
-                    '볶음들깨': [{ size: 25 }],
-                    '통깨참기름': [{ size: 16.5 }, { size: 18 }],
-                    '통들깨들기름': [{ size: 16.5 }, { size: 18 }],
-                  };
-                  const OIL_MATERIALS = new Set(['통깨참기름', '깨분참기름', '통들깨들기름', '수입들기름', '생들기름']);
-                  const canUnit = OIL_MATERIALS.has(rmMaterial) ? 'L' : 'kg';
-                  const canOptions = CAN_MATERIALS[rmMaterial];
-                  const matchedOpt = rmCanSize !== null
-                    ? canOptions?.find(o => o.size === rmCanSize.size && (o.tag ?? '') === (rmCanSize.tag ?? ''))
-                    : null;
-                  const kgPerCan = matchedOpt
-                    ? matchedOpt.size
-                    : (canOptions?.length === 1 ? canOptions[0].size : null);
-                  const canSizes = canOptions; // alias for template compatibility
-                  const canCount = Number(rmCanQty) || 0;
-                  const calcKg = kgPerCan && canCount > 0
-                    ? Math.round(canCount * kgPerCan * 10) / 10
-                    : null;
-                  // 사용 모드에서 kg 직접 입력 (톤백처럼 부분 사용하는 단위)
-                  const isUsedByKg = rmCanMode === 'used' && (matchedOpt?.usedByKg ?? (canOptions?.length === 1 && canOptions[0].usedByKg));
-                  return (
-                  <div className="px-5 pt-4 pb-6 space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t('원료명', 'Material')}</label>
-                        <select value={rmMaterial} onChange={e => { setRmMaterial(e.target.value); setRmCanQty(''); setRmReceived(''); setRmUsed(''); setRmCanSize(null); setRmCanMode('received'); }}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-emerald-400">
-                          {RAW_MATERIALS.map(m => <option key={m} value={m}>{isEn ? RAW_MATERIALS_EN[m] ?? m : m}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t('날짜', 'Date')}</label>
-                        <input type="date" value={rmDate} onChange={e => setRmDate(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-emerald-400 cursor-pointer" />
-                      </div>
-                    </div>
-
-                    {/* 단위 입력 — 단위 지원 원료 선택 시 표시 */}
-                    {canSizes && (
-                      <div className={`border rounded-xl px-4 py-3 space-y-2 ${rmCanMode === 'used' ? 'bg-rose-50 border-rose-200' : 'bg-amber-50 border-amber-200'}`}>
-                        {/* 입고/사용 토글 */}
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">단위 기록</span>
-                          <div className="flex rounded-lg overflow-hidden border border-slate-200 ml-auto">
-                            <button
-                              type="button"
-                              onClick={() => { setRmCanMode('received'); setRmCanQty(''); setRmUsed(''); }}
-                              className={`px-3 py-1 text-xs font-black transition-all ${rmCanMode === 'received' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-400 hover:bg-slate-50'}`}
-                            >입고</button>
-                            <button
-                              type="button"
-                              onClick={() => { setRmCanMode('used'); setRmCanQty(''); setRmReceived(''); }}
-                              className={`px-3 py-1 text-xs font-black transition-all ${rmCanMode === 'used' ? 'bg-rose-500 text-white' : 'bg-white text-slate-400 hover:bg-slate-50'}`}
-                            >사용</button>
-                          </div>
-                        </div>
-                        {canSizes.length > 1 && (
-                          <div>
-                            <label className={`text-[10px] font-black uppercase tracking-widest block mb-1.5 ${rmCanMode === 'used' ? 'text-rose-500' : 'text-amber-600'}`}>단위 선택</label>
-                            <div className="flex flex-wrap gap-2">
-                              {canSizes.map(opt => {
-                                const isSelected = rmCanSize !== null && rmCanSize.size === opt.size && (rmCanSize.tag ?? '') === (opt.tag ?? '');
-                                const optLabel = `${opt.size}${canUnit}${opt.tag ? ` (${opt.tag})` : ''}`;
-                                const selColor = rmCanMode === 'used'
-                                  ? (isSelected ? 'bg-rose-500 text-white border-rose-500' : 'bg-white text-rose-500 border-rose-300 hover:border-rose-500')
-                                  : (isSelected ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-amber-600 border-amber-300 hover:border-amber-500');
-                                return (
-                                  <button
-                                    key={`${opt.size}_${opt.tag ?? ''}`}
-                                    type="button"
-                                    onClick={() => { setRmCanSize(opt); setRmCanQty(''); setRmReceived(''); setRmUsed(''); }}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all border ${selColor}`}
-                                  >{optLabel}</button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                        {kgPerCan && (isUsedByKg ? (
-                          /* 톤백 등 사용 시 kg 직접 입력 */
-                          <div>
-                            <label className="text-[10px] font-black text-rose-500 uppercase tracking-widest block mb-1.5">사용량 ({canUnit}) — {kgPerCan}{canUnit} 단위에서 직접 입력</label>
-                            <input
-                              type="number" inputMode="decimal" placeholder="0"
-                              value={rmUsed}
-                              onChange={e => { setRmUsed(e.target.value); setRmReceived(''); setRmCanQty(''); }}
-                              className="w-36 bg-white border border-rose-300 rounded-xl px-3 py-2 text-sm font-black outline-none focus:border-rose-500 text-center"
-                            />
-                            <span className="ml-2 text-sm font-bold text-rose-500">{canUnit}</span>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="flex items-center justify-between">
-                              <label className={`text-[10px] font-black uppercase tracking-widest ${rmCanMode === 'used' ? 'text-rose-500' : 'text-amber-600'}`}>
-                                {rmCanMode === 'used' ? '사용' : '입고'} 수량 (1개 = {kgPerCan} {canUnit})
-                              </label>
-                              {calcKg !== null && (
-                                <span className={`text-xs font-black ${rmCanMode === 'used' ? 'text-rose-700' : 'text-amber-700'}`}>
-                                  {canCount}개 × {kgPerCan}{canUnit} = <span className={rmCanMode === 'used' ? 'text-rose-600' : 'text-emerald-700'}>{calcKg} {canUnit}</span>
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="number" inputMode="numeric" placeholder="개수"
-                                value={rmCanQty}
-                                onChange={e => {
-                                  setRmCanQty(e.target.value);
-                                  const n = Number(e.target.value);
-                                  const kg = n > 0 ? String(Math.round(n * kgPerCan * 10) / 10) : '';
-                                  if (rmCanMode === 'received') { setRmReceived(kg); setRmUsed(''); }
-                                  else { setRmUsed(kg); setRmReceived(''); }
-                                }}
-                                className={`w-28 bg-white rounded-xl px-3 py-2 text-sm font-black outline-none text-center border ${rmCanMode === 'used' ? 'border-rose-300 focus:border-rose-500' : 'border-amber-300 focus:border-amber-500'}`}
-                              />
-                              <span className={`text-sm font-bold ${rmCanMode === 'used' ? 'text-rose-500' : 'text-amber-600'}`}>개</span>
-                            </div>
-                          </>
-                        ))}
-                        {canSizes.length > 1 && !kgPerCan && (
-                          <p className={`text-xs font-bold ${rmCanMode === 'used' ? 'text-rose-400' : 'text-amber-500'}`}>위에서 단위를 선택하세요.</p>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t('입고량 (kg)', 'Received (kg)')}</label>
-                        <input type="number" placeholder="0" value={rmReceived}
-                          onChange={e => { setRmReceived(e.target.value); if (kgPerCan) setRmCanQty(''); }}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-emerald-400" />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t('사용량 (kg)', 'Used (kg)')}</label>
-                        <input type="number" placeholder="0" value={rmUsed} onChange={e => setRmUsed(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-emerald-400" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t('비고', 'Note')}</label>
-                      <input type="text" placeholder={t('거래처명, 메모 등', 'InboundPartner, memo, etc.')} value={rmNote} onChange={e => setRmNote(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-emerald-400" />
-                    </div>
-                    {currentUser && (
-                      <div className="flex items-center gap-2 px-1">
-                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{t('작성자', 'Author')}</span>
-                        <span className="text-xs font-bold text-slate-500">{currentUser.name}</span>
-                      </div>
-                    )}
-                    <button
-                      onClick={() => {
-                        if (!rmDate) return;
-                        onAddRawMaterialEntry({
-                          id: `rm-${Date.now()}`,
-                          material: rmMaterial,
-                          date: rmDate,
-                          received: Number(rmReceived) || 0,
-                          used: Number(rmUsed) || 0,
-                          note: rmNote,
-                          createdAt: new Date().toISOString(),
-                          addedBy: currentUser?.name,
-                          type: 'manual',
-                          ...(kgPerCan && canCount > 0 ? {
-                            canSize: kgPerCan,
-                            canSizeTag: rmCanSize?.tag,
-                            canCount,
-                          } : {}),
-                        });
-                        setRmReceived(''); setRmUsed(''); setRmNote(''); setRmCanQty(''); setRmCanSize(null); setRmCanMode('received');
-                        setShowRmSheet(false);
-                      }}
-                      className="w-full py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 active:scale-[0.99] transition-all"
-                    >
-                      {t('추가', 'Add')}
-                    </button>
-                  </div>
-                  );
-                })()}
-
-                {/* 전월이월 탭 */}
-                {rmSheetTab === 'carryover' && (
-                  <div className="px-5 pt-4 pb-6 space-y-3">
-                    <p className="text-xs text-slate-400 font-bold">{t('매월 1일 기준 전월 마감 잔량을 입력하세요.', 'Enter the closing balance from the previous month (as of the 1st).')}</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t('원료명', 'Material')}</label>
-                        <select value={rmOpenMaterial} onChange={e => setRmOpenMaterial(e.target.value)}
-                          className="w-full bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-amber-400">
-                          {RAW_MATERIALS.map(m => <option key={m} value={m}>{isEn ? RAW_MATERIALS_EN[m] ?? m : m}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t('기준일', 'Date')}</label>
-                        <input type="date" value={rmOpenDate} onChange={e => setRmOpenDate(e.target.value)}
-                          className="w-full bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-amber-400 cursor-pointer" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t('전월 마감 잔량 (kg)', 'Closing Balance (kg)')}</label>
-                      <input type="number" placeholder="0" value={rmOpenBalance} onChange={e => setRmOpenBalance(e.target.value)}
-                        className="w-full bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-amber-400" />
-                    </div>
-                    <button
-                      onClick={() => {
-                        if (!rmOpenDate || !rmOpenBalance) return;
-                        onAddRawMaterialEntry({
-                          id: `rm-open-${Date.now()}`,
-                          material: rmOpenMaterial,
-                          date: rmOpenDate,
-                          received: Number(rmOpenBalance),
-                          used: 0,
-                          note: '전월이월',
-                          createdAt: new Date().toISOString(),
-                        });
-                        setRmOpenBalance('');
-                        setShowRmSheet(false);
-                      }}
-                      className="w-full py-3 bg-amber-500 text-white rounded-2xl text-sm font-black hover:bg-amber-600 active:scale-[0.99] transition-all"
-                    >
-                      {t('전월이월 저장', 'Save Carry Over')}
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* 헤더: 기록 추가 버튼 */}
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">{t('원료별 현재고', 'Current Stock')}</p>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={toggleLang}
-                className="px-2.5 py-1 rounded-lg text-[10px] font-black border transition-all border-slate-200 text-slate-400 hover:border-indigo-300 hover:text-indigo-500"
-              >{isEn ? 'KO' : 'EN'}</button>
-              <button
-                onClick={() => {
-                  const today = new Date().toISOString().slice(0, 10);
-                  for (const mat of RAW_MATERIALS) {
-                    const bal = rawMaterialBalances[mat] ?? 0;
-                    if (bal === 0) continue;
-                    onAddRawMaterialEntry({
-                      id: `rm-zero-${mat}-${Date.now()}`,
-                      material: mat,
-                      date: today,
-                      received: bal < 0 ? Math.round(-bal * 1000) / 1000 : 0,
-                      used: bal > 0 ? Math.round(bal * 1000) / 1000 : 0,
-                      note: '재고정정',
-                      createdAt: new Date().toISOString(),
-                      addedBy: currentUser?.name,
-                      type: 'manual',
-                    });
-                  }
-                }}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-500 rounded-xl text-xs font-black hover:bg-slate-200 active:scale-95 transition-all"
-              >전체 0 맞춤</button>
-              <button
-                onClick={() => { setStocktakeValues({}); setStocktakeUnitQtys({}); setStocktakeDate(new Date().toISOString().slice(0, 10)); setShowStocktake(true); }}
-                className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-xl text-xs font-black hover:bg-indigo-100 active:scale-95 transition-all"
-              >재고 실사</button>
-              <button
-                onClick={() => { setRmSheetTab('new'); setShowRmSheet(true); }}
-                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black hover:bg-emerald-700 active:scale-95 transition-all shadow-sm"
-              >
-                <span className="text-base leading-none">+</span> {t('기록 추가', 'Add Record')}
-              </button>
-            </div>
-          </div>
-
-          {/* 재고 실사 모달 */}
-          {showStocktake && (
-            <div className="fixed inset-0 z-[200] flex items-center justify-center">
-              <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowStocktake(false)} />
-              <div className="relative bg-white rounded-3xl w-full max-w-lg mx-4 shadow-2xl animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
-                <div className="px-6 pt-5 pb-4 border-b border-slate-100 flex items-center justify-between shrink-0">
-                  <div>
-                    <h2 className="text-sm font-black text-slate-800">재고 실사</h2>
-                    <p className="text-[11px] text-slate-400 font-medium mt-0.5">실제 수량을 입력하면 차이를 계산해 정정 처리합니다</p>
-                  </div>
-                  <button onClick={() => setShowStocktake(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl transition-all"><X size={18} /></button>
-                </div>
-                <div className="px-6 py-4 shrink-0">
-                  <div className="flex items-center gap-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">실사 기준일</label>
-                    <input type="date" value={stocktakeDate} onChange={e => setStocktakeDate(e.target.value)}
-                      className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-bold outline-none focus:border-indigo-400 cursor-pointer" />
-                  </div>
-                </div>
-                <div className="overflow-y-auto flex-1 px-6">
-                  {(() => {
-                    type CanOpt = { size: number; tag?: string };
-                    const ST_CAN: Record<string, CanOpt[]> = {
-                      '참깨': [{ size: 25 }, { size: 1000, tag: '톤백' }],
-                      '깨분참기름': [{ size: 16.5 }, { size: 18 }],
-                      '수입들기름': [{ size: 16.5 }, { size: 18 }],
-                      '생들기름': [{ size: 16.5 }, { size: 18 }],
-                      '들깨': [{ size: 25 }],
-                      '검정깨': [{ size: 10 }, { size: 20 }],
-                      '탈피들깨가루': [{ size: 20 }],
-                      '깨분': [{ size: 16.5 }],
-                      '볶음참깨': [{ size: 10 }, { size: 20 }, { size: 20, tag: '자루' }],
-                      '볶음검정참깨': [{ size: 10 }, { size: 20 }, { size: 20, tag: '자루' }],
-                      '볶음들깨': [{ size: 25 }],
-                      '통깨참기름': [{ size: 16.5 }, { size: 18 }],
-                      '통들깨들기름': [{ size: 16.5 }, { size: 18 }],
-                    };
-                    const OIL_SET2 = new Set(['통깨참기름', '깨분참기름', '통들깨들기름', '수입들기름', '생들기름']);
-                    return (
-                  <table className="w-full text-left">
-                    <thead className="sticky top-0 bg-white">
-                      <tr className="border-b border-slate-100">
-                        <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">원료명</th>
-                        <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">장부 현재고</th>
-                        <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">실사 수량</th>
-                        <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">차이</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50">
-                      {RAW_MATERIALS.filter(m => rawMaterialLedger.some(e => e.material === m)).map(m => {
-                        const book = Math.round((rawMaterialBalances[m] ?? 0) * 1000) / 1000;
-                        const actualStr = stocktakeValues[m] ?? '';
-                        const actual = actualStr === '' ? null : Number(actualStr);
-                        const diff = actual !== null ? Math.round((actual - book) * 1000) / 1000 : null;
-                        const opts = ST_CAN[m];
-                        const unit = OIL_SET2.has(m) ? 'L' : 'kg';
-                        return (
-                          <React.Fragment key={m}>
-                            <tr className="hover:bg-slate-50/50">
-                              <td className="py-2.5 text-sm font-bold text-slate-700">{m}</td>
-                              <td className="py-2.5 text-sm font-black text-slate-800 text-right">{book.toLocaleString('ko-KR')} {unit}</td>
-                              <td className="py-2.5 text-right">
-                                <input
-                                  type="number"
-                                  placeholder={String(book)}
-                                  value={actualStr}
-                                  onChange={e => setStocktakeValues(prev => ({ ...prev, [m]: e.target.value }))}
-                                  className="w-24 text-right bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-sm font-bold outline-none focus:border-indigo-400"
-                                />
-                              </td>
-                              <td className="py-2.5 text-right">
-                                {diff !== null && diff !== 0 && (
-                                  <span className={`text-sm font-black ${diff > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                    {diff > 0 ? '+' : ''}{diff.toLocaleString('ko-KR')} {unit}
-                                  </span>
-                                )}
-                                {diff === 0 && <span className="text-sm font-black text-slate-400">일치</span>}
-                              </td>
-                            </tr>
-                            {opts && (
-                              <tr className="bg-amber-50/60">
-                                <td colSpan={4} className="px-1 pb-2 pt-0">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="text-[9px] font-black text-amber-500 uppercase tracking-widest whitespace-nowrap">단위입력 →</span>
-                                    {opts.map(opt => {
-                                      const key = `${m}_${opt.size}_${opt.tag ?? ''}`;
-                                      const optLabel = `${opt.size}${unit}${opt.tag ? `(${opt.tag})` : ''}`;
-                                      return (
-                                        <div key={key} className="flex items-center gap-1">
-                                          <span className="text-[10px] font-black text-amber-600 whitespace-nowrap">{optLabel}</span>
-                                          <input
-                                            type="number"
-                                            inputMode="numeric"
-                                            placeholder="0"
-                                            value={stocktakeUnitQtys[key] ?? ''}
-                                            onChange={e => {
-                                              const val = e.target.value;
-                                              setStocktakeUnitQtys(prev => ({ ...prev, [key]: val }));
-                                              // 이 원료의 모든 단위 합산 → kg 자동 계산
-                                              const updated = { ...stocktakeUnitQtys, [key]: val };
-                                              const total = opts.reduce((sum, o) => {
-                                                const k = `${m}_${o.size}_${o.tag ?? ''}`;
-                                                const n = Number(updated[k] ?? 0);
-                                                return sum + n * o.size;
-                                              }, 0);
-                                              const rounded = Math.round(total * 10) / 10;
-                                              setStocktakeValues(prev => ({ ...prev, [m]: rounded > 0 ? String(rounded) : '' }));
-                                            }}
-                                            className="w-14 text-center bg-white border border-amber-300 rounded-lg px-1.5 py-1 text-xs font-black outline-none focus:border-amber-500"
-                                          />
-                                          <span className="text-[10px] text-amber-500">개</span>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                          </React.Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                    );
-                  })()}
-                </div>
-                <div className="px-6 py-4 border-t border-slate-100 shrink-0">
-                  {(() => {
-                    const ST_CAN2: Record<string, { size: number; tag?: string }[]> = {
-                      '참깨': [{ size: 25 }, { size: 1000, tag: '톤백' }],
-                      '깨분참기름': [{ size: 16.5 }, { size: 18 }], '수입들기름': [{ size: 16.5 }, { size: 18 }],
-                      '생들기름': [{ size: 16.5 }, { size: 18 }], '들깨': [{ size: 25 }],
-                      '검정깨': [{ size: 10 }, { size: 20 }], '탈피들깨가루': [{ size: 20 }],
-                      '깨분': [{ size: 16.5 }], '볶음참깨': [{ size: 10 }, { size: 20 }, { size: 20, tag: '자루' }],
-                      '볶음검정참깨': [{ size: 10 }, { size: 20 }, { size: 20, tag: '자루' }],
-                      '볶음들깨': [{ size: 25 }], '통깨참기름': [{ size: 16.5 }, { size: 18 }],
-                      '통들깨들기름': [{ size: 16.5 }, { size: 18 }],
-                    };
-                    const hasDiff = RAW_MATERIALS.some(m => {
-                      const book = rawMaterialBalances[m] ?? 0;
-                      const actual = stocktakeValues[m] !== undefined && stocktakeValues[m] !== '' ? Number(stocktakeValues[m]) : null;
-                      if (actual !== null && Math.round((actual - book) * 1000) / 1000 !== 0) return true;
-                      const opts = ST_CAN2[m];
-                      if (opts) return opts.some(opt => stocktakeUnitQtys[`${m}_${opt.size}_${opt.tag ?? ''}`] !== undefined);
-                      return false;
-                    });
-                    return (
-                      <button
-                        disabled={!hasDiff}
-                        onClick={() => {
-                          for (const m of RAW_MATERIALS) {
-                            const book = rawMaterialBalances[m] ?? 0;
-                            const actualStr = stocktakeValues[m];
-                            // 차이가 있으면 정정 항목 저장
-                            if (actualStr !== undefined && actualStr !== '') {
-                              const actual = Number(actualStr);
-                              const diff = Math.round((actual - book) * 1000) / 1000;
-                              if (diff !== 0) {
-                                onAddRawMaterialEntry({
-                                  id: `rm-stocktake-${m}-${Date.now()}`,
-                                  material: m,
-                                  date: stocktakeDate,
-                                  received: diff > 0 ? diff : 0,
-                                  used: diff < 0 ? -diff : 0,
-                                  note: '재고실사정정',
-                                  createdAt: new Date().toISOString(),
-                                  addedBy: currentUser?.name,
-                                  type: 'manual',
-                                });
-                              }
-                            }
-                            // 단위 수량 입력이 있으면 stocktake_unit 스냅샷 저장
-                            const opts = ST_CAN2[m];
-                            if (!opts) continue;
-                            const hasUnitEntry = opts.some(opt => stocktakeUnitQtys[`${m}_${opt.size}_${opt.tag ?? ''}`] !== undefined);
-                            if (!hasUnitEntry) continue;
-                            const ts = Date.now();
-                            for (const opt of opts) {
-                              const key = `${m}_${opt.size}_${opt.tag ?? ''}`;
-                              const qty = Number(stocktakeUnitQtys[key] ?? 0);
-                              onAddRawMaterialEntry({
-                                id: `rm-stku-${ts}-${m}-${opt.size}-${opt.tag ?? ''}`,
-                                material: m,
-                                date: stocktakeDate,
-                                received: 0,
-                                used: 0,
-                                note: '재고실사단위현황',
-                                createdAt: new Date().toISOString(),
-                                addedBy: currentUser?.name,
-                                type: 'stocktake_unit',
-                                canSize: opt.size,
-                                canSizeTag: opt.tag,
-                                canCount: qty,
-                              });
-                            }
-                          }
-                          setShowStocktake(false);
-                          setStocktakeValues({});
-                          setStocktakeUnitQtys({});
-                        }}
-                        className="w-full py-3 bg-indigo-600 text-white rounded-2xl text-sm font-black hover:bg-indigo-700 active:scale-[0.99] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        정정 항목 저장
-                      </button>
-                    );
-                  })()}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 원료별 잔량 요약 — 품목당 한 행 */}
-          {(() => {
-            const ALL_MATERIALS = [
-              '참깨', '들깨', '깨분', '볶음들깨', '검정깨',
-              '통깨참기름', '깨분참기름', '통들깨들기름', '수입들기름', '생들기름',
-              '탈피들깨가루', '볶음참깨', '볶음검정참깨',
-            ];
-            const OIL_SET = new Set(['통깨참기름', '깨분참기름', '통들깨들기름', '수입들기름', '생들기름']);
-            const visibleMaterials = ALL_MATERIALS.filter(m => rawMaterialLedger.some(e => e.material === m));
-            if (visibleMaterials.length === 0) return null;
-            return (
-              <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden divide-y divide-slate-100">
-                {visibleMaterials.map(m => {
-                  const bal = rawMaterialBalances[m] ?? 0;
-                  const isLow = bal < 20;
-                  const unit = OIL_SET.has(m) ? 'L' : 'kg';
-                  const isSelected = rmFilter === m;
-                  return (
-                    <button
-                      key={m}
-                      onClick={() => setRmFilter(m)}
-                      className={`w-full flex items-center justify-between px-4 py-3 transition-all text-left ${
-                        isSelected ? 'bg-emerald-600' : isLow ? 'bg-rose-50 hover:bg-rose-100' : 'hover:bg-slate-50'
-                      }`}
-                    >
-                      <span className={`text-sm font-bold ${isSelected ? 'text-white' : isLow ? 'text-rose-500' : 'text-slate-700'}`}>
-                        {isEn ? RAW_MATERIALS_EN[m] ?? m : m}
-                      </span>
-                      <span className={`text-sm font-black ${isSelected ? 'text-white' : isLow ? 'text-rose-600' : 'text-slate-800'}`}>
-                        {bal.toLocaleString('ko-KR')}
-                        <span className={`text-[10px] font-bold ml-0.5 ${isSelected ? 'text-emerald-200' : 'text-slate-400'}`}>{unit}</span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            );
-          })()}
-
-          {/* 월 선택 */}
-          {(() => {
-            const allMonths = Array.from(new Set([
-              ...rawMaterialLedger.map(e => e.date.slice(0, 7)),
-              ...autoUsageEntries.map(e => e.date.slice(0, 7)),
-            ])).sort((a, b) => b.localeCompare(a));
-            if (allMonths.length === 0) return null;
-            const RECENT = 12;
-            const visibleMonths = showAllMonths ? allMonths : allMonths.slice(0, RECENT);
-            const hasMore = allMonths.length > RECENT;
-            return (
-              <div className="flex flex-wrap gap-1.5">
-                {visibleMonths.map(m => (
-                  <button key={m} onClick={() => setRmMonth(m)}
-                    className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all border whitespace-nowrap ${
-                      rmMonth === m
-                        ? 'bg-emerald-600 text-white border-emerald-600'
-                        : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
-                    }`}>
-                    {m}
-                  </button>
-                ))}
-                {hasMore && (
-                  <button
-                    onClick={() => setShowAllMonths(v => !v)}
-                    className="px-3 py-1.5 rounded-lg text-[11px] font-black transition-all border border-dashed border-slate-300 text-slate-400 hover:border-slate-400 hover:text-slate-600 whitespace-nowrap"
-                  >
-                    {showAllMonths ? '접기' : `+${allMonths.length - RECENT}개월 더`}
-                  </button>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* 입고/사용 필터 */}
-          <div className="flex gap-1.5">
-            {(['all', 'received', 'used'] as const).map(v => (
-              <button key={v} onClick={() => setRmViewType(v)}
-                className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all border whitespace-nowrap ${
-                  rmViewType === v
-                    ? v === 'received' ? 'bg-indigo-600 text-white border-indigo-600'
-                      : v === 'used' ? 'bg-rose-500 text-white border-rose-500'
-                      : 'bg-slate-700 text-white border-slate-700'
-                    : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
-                }`}>
-                {v === 'all' ? '전체' : v === 'received' ? '입고만' : '사용만'}
-              </button>
-            ))}
-          </div>
-
-          {/* 테이블: 전재고+입고-사용=현재고 */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-100">
-                  {rmFilter === '전체' && <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">원료명</th>}
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">날짜</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap">전재고</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap">입고량</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap">사용량</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap">현재고</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[120px]">비고</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hidden sm:table-cell whitespace-nowrap">작성자</th>
-                  <th className="px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {(() => {
-                  // auto 사용량 항목 (isAuto: true, id 없음)
-                  type DisplayEntry = { id?: string; material: string; date: string; received: number; used: number; note: string; isAuto: boolean; addedBy?: string };
-                  const ledger = rmFilter === '전체' ? rawMaterialLedger : rawMaterialLedger.filter(e => e.material === rmFilter);
-                  const ledgerFiltered = ledger.filter(e => e.date.startsWith(rmMonth));
-                  // type==='manual'인 항목만 개별 행, 나머지(기존 포함)는 자동처럼 합침
-                  const manualEntries: DisplayEntry[] = ledgerFiltered
-                    .filter(e => e.type === 'manual')
-                    .map(e => ({ id: e.id, material: e.material, date: e.date, received: e.received, used: e.used, note: e.note, isAuto: false, addedBy: e.addedBy }));
-                  const toMergeEntries: DisplayEntry[] = [
-                    ...ledgerFiltered
-                      .filter(e => e.type !== 'manual' && e.type !== 'stocktake_unit')
-                      .map(e => ({ id: e.id, material: e.material, date: e.date, received: e.received, used: e.used, note: e.note, isAuto: false, addedBy: e.addedBy })),
-                    ...(rmFilter === '전체' ? autoUsageEntries : autoUsageEntries.filter(e => e.material === rmFilter))
-                      .filter(e => e.date.startsWith(rmMonth))
-                      .map(e => ({ material: e.material, date: e.date, received: 0, used: e.used, note: e.note, isAuto: true })),
-                  ];
-
-                  // 날짜·원료 기준으로 합치고 비고를 "거래처 외 N개"로
-                  const mergedEntries = Object.values(
-                    toMergeEntries.reduce<Record<string, DisplayEntry & { _notes: string[] }>>((acc, e) => {
-                      const key = `${e.date}__${e.material}`;
-                      if (!acc[key]) acc[key] = { ...e, received: 0, used: 0, _notes: [] };
-                      acc[key].received = Math.round((acc[key].received + e.received) * 1000) / 1000;
-                      acc[key].used = Math.round((acc[key].used + e.used) * 1000) / 1000;
-                      const name = (e.note || '').replace(/^자동:\s*/, '').trim();
-                      if (name && !acc[key]._notes.includes(name)) acc[key]._notes.push(name);
-                      return acc;
-                    }, {})
-                  ).map(e => {
-                    const names = e._notes;
-                    const note = names.length === 0 ? '' : names.length === 1 ? names[0] : `${names[0]} 외 ${names.length - 1}개`;
-                    return { ...e, note };
-                  });
-
-                  // 이전 달까지의 잔액을 시작값으로 사용 (전월이월 자동 계산)
-                  const prevMonthEnd = (() => {
-                    if (rmFilter === '전체') return 0;
-                    const mat = rmFilter;
-                    const prevLedger = rawMaterialLedger.filter(e => e.material === mat && e.date < rmMonth);
-                    const prevAuto = autoUsageEntries.filter(e => e.material === mat && e.date < rmMonth);
-                    const prevToMerge = [
-                      ...prevLedger.filter(e => e.type !== 'manual' && e.type !== 'stocktake_unit').map(e => ({ date: e.date, received: e.received, used: e.used, note: e.note })),
-                      ...prevAuto.map(e => ({ date: e.date, received: 0, used: e.used, note: e.note })),
-                    ];
-                    const prevMerged = Object.values(prevToMerge.reduce<Record<string, { date: string; received: number; used: number; note: string }>>((acc, e) => {
-                      if (!acc[e.date]) acc[e.date] = { ...e, received: 0, used: 0 };
-                      acc[e.date].received = Math.round((acc[e.date].received + e.received) * 1000) / 1000;
-                      acc[e.date].used = Math.round((acc[e.date].used + e.used) * 1000) / 1000;
-                      return acc;
-                    }, {}));
-                    const prevAll = [
-                      ...prevLedger.filter(e => e.type === 'manual').map(e => ({ date: e.date, received: e.received, used: e.used, note: e.note })),
-                      ...prevMerged,
-                    ].sort((a, b) => a.date.localeCompare(b.date));
-                    let b = 0;
-                    for (const e of prevAll) {
-                      if (e.note === '전월이월') b = e.received;
-                      else b += e.received - e.used;
-                    }
-                    return Math.round(b * 1000) / 1000;
-                  })();
-
-                  // 오래된 순으로 잔액 계산 후 최신순으로 표시
-                  const sortedAsc = [...manualEntries, ...mergedEntries].sort((a, b) => a.date.localeCompare(b.date) || (a.isAuto ? 1 : -1));
-                  let bal = prevMonthEnd;
-                  const withBalance = sortedAsc.map(entry => {
-                    const isOpen = entry.note === '전월이월';
-                    if (isOpen) { bal = entry.received; return { ...entry, prev: entry.received, curr: entry.received, isOpen: true }; }
-                    const prev = Math.round(bal * 1000) / 1000;
-                    bal += entry.received - entry.used;
-                    const curr = Math.round(bal * 1000) / 1000;
-                    return { ...entry, prev, curr, isOpen: false };
-                  });
-                  const sorted = withBalance
-                    .filter(e => rmViewType === 'all' || (rmViewType === 'received' ? e.received > 0 : e.used > 0))
-                    .sort((a, b) => b.date.localeCompare(a.date) || (a.isAuto ? 1 : -1));
-
-                  {
-                    return sorted.map((entry, idx) => {
-                      const isOpen = entry.isOpen;
-                      if (isOpen) {
-                        const balance = entry.received;
-                        return (
-                          <tr key={entry.id || `auto-${idx}`} className="hover:bg-amber-50 bg-amber-50/50 transition-colors">
-                            <td className="px-4 py-2.5 text-[11px] font-bold text-slate-500">{entry.date}</td>
-                            <td className="px-4 py-2.5 text-[11px] font-black text-amber-600 text-right">{entry.received}</td>
-                            <td className="px-4 py-2.5 text-[11px] text-slate-300 text-right">-</td>
-                            <td className="px-4 py-2.5 text-[11px] text-slate-300 text-right">-</td>
-                            <td className="px-4 py-2.5 text-[11px] font-black text-amber-600 text-right">{entry.received}</td>
-                            <td className="px-4 py-2.5 text-[11px] text-amber-500 font-bold whitespace-nowrap">전월이월</td>
-                            <td className="px-4 py-2.5 hidden sm:table-cell">
-                              {entry.addedBy && <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md">{entry.addedBy}</span>}
-                            </td>
-                            <td className="px-4 py-2.5">
-                              {entry.id && <button onClick={() => setConfirmModal({
-                                  message: '이 기록을 삭제하시겠습니까?',
-                                  subMessage: `${entry.material} · ${entry.date} · ${entry.received}kg (전월이월)`,
-                                  onConfirm: () => { onDeleteRawMaterialEntry(entry.id!); setConfirmModal(null); },
-                                })}
-                                className="p-1 text-slate-300 hover:text-rose-400 hover:bg-rose-50 rounded transition-all">
-                                <Trash2 size={12} />
-                              </button>}
-                            </td>
-                          </tr>
-                        );
-                      }
-                      const { prev, curr } = entry as any;
-                      return (
-                        <tr key={entry.id || `auto-${idx}`} className={`transition-colors ${entry.isAuto ? 'hover:bg-indigo-50/30 bg-indigo-50/10' : 'hover:bg-slate-50'}`}>
-                          <td className="px-4 py-2.5 text-[11px] font-bold text-slate-500 whitespace-nowrap">{entry.date}</td>
-                          <td className="px-4 py-2.5 text-[11px] text-slate-400 text-right whitespace-nowrap">{fmt1(prev)}</td>
-                          <td className="px-4 py-2.5 text-[11px] font-black text-indigo-600 text-right whitespace-nowrap">{entry.received > 0 ? `+${fmt1(entry.received)}` : '-'}</td>
-                          <td className="px-4 py-2.5 text-[11px] font-black text-rose-500 text-right whitespace-nowrap">{entry.used > 0 ? `-${fmt1(entry.used)}` : '-'}</td>
-                          <td className="px-4 py-2.5 text-[11px] font-black text-slate-800 text-right whitespace-nowrap">{fmt1(curr)}</td>
-                          <td className="px-4 py-2.5 text-[11px] text-slate-500 max-w-[160px]">
-                            {entry.isAuto
-                              ? <span className="text-indigo-400 truncate block" title={entry.note}>{entry.note}</span>
-                              : <span className="truncate block" title={entry.note || '-'}>{entry.note || '-'}</span>}
-                          </td>
-                          <td className="px-4 py-2.5 hidden sm:table-cell">
-                            {entry.addedBy
-                              ? <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md">{entry.addedBy}</span>
-                              : entry.isAuto ? <span className="text-[10px] text-slate-200">자동</span> : null}
-                          </td>
-                          <td className="px-4 py-2.5">
-                            {!entry.isAuto && entry.id && <button onClick={() => setConfirmModal({
-                                message: '이 기록을 삭제하시겠습니까?',
-                                subMessage: `${entry.date} · 입고 ${entry.received > 0 ? entry.received + 'kg' : '-'} / 사용 ${entry.used > 0 ? entry.used + 'kg' : '-'}${entry.note ? ' · ' + entry.note : ''}`,
-                                onConfirm: () => { onDeleteRawMaterialEntry(entry.id!); setConfirmModal(null); },
-                              })}
-                              className="p-1 text-slate-300 hover:text-rose-400 hover:bg-rose-50 rounded transition-all">
-                              <Trash2 size={12} />
-                            </button>}
-                          </td>
-                        </tr>
-                      );
-                    });
-                  }
-                  // 전체 필터: 원료명 표시, 전재고/현재고 없음
-                  return sorted.map((entry, idx) => (
-                    <tr key={entry.id || `auto-${idx}`} className={`transition-colors ${entry.isAuto ? 'hover:bg-indigo-50/30 bg-indigo-50/10' : 'hover:bg-slate-50'}`}>
-                      <td className="px-4 py-2.5 whitespace-nowrap"><span className="text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-lg">{entry.material}</span></td>
-                      <td className="px-4 py-2.5 text-[11px] font-bold text-slate-500 whitespace-nowrap">{entry.date}</td>
-                      <td className="px-4 py-2.5 text-[11px] text-slate-300 text-right">-</td>
-                      <td className="px-4 py-2.5 text-[11px] font-black text-indigo-600 text-right whitespace-nowrap">{entry.received > 0 ? `+${entry.received}` : '-'}</td>
-                      <td className="px-4 py-2.5 text-[11px] font-black text-rose-500 text-right whitespace-nowrap">{entry.used > 0 ? `-${entry.used}` : '-'}</td>
-                      <td className="px-4 py-2.5 text-[11px] text-slate-300 text-right">-</td>
-                      <td className="px-4 py-2.5 text-[11px] text-slate-500 max-w-[160px]">
-                        {entry.isAuto
-                          ? <span className="text-indigo-400 truncate block" title={entry.note}>{entry.note}</span>
-                          : <span className="truncate block" title={entry.note || '-'}>{entry.note || '-'}</span>}
-                      </td>
-                      <td className="px-4 py-2.5 hidden sm:table-cell">
-                        {entry.addedBy
-                          ? <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md">{entry.addedBy}</span>
-                          : entry.isAuto ? <span className="text-[10px] text-slate-200">자동</span> : null}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        {!entry.isAuto && entry.id && <button onClick={() => setConfirmModal({
-                            message: '이 기록을 삭제하시겠습니까?',
-                            subMessage: `${entry.material} · ${entry.date} · 입고 ${entry.received > 0 ? entry.received + 'kg' : '-'} / 사용 ${entry.used > 0 ? entry.used + 'kg' : '-'}${entry.note ? ' · ' + entry.note : ''}`,
-                            onConfirm: () => { onDeleteRawMaterialEntry(entry.id!); setConfirmModal(null); },
-                          })}
-                          className="p-1 text-slate-300 hover:text-rose-400 hover:bg-rose-50 rounded transition-all">
-                          <Trash2 size={12} />
-                        </button>}
-                      </td>
-                    </tr>
-                  ));
-                })()}
-                {rawMaterialLedger.length === 0 && (
-                  <tr><td colSpan={9} className="px-4 py-12 text-center text-slate-300 text-sm font-bold">기록이 없습니다</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {/* Draft Orders Floating Button removed as requested */}
 
@@ -2593,7 +1737,7 @@ const ItemList: React.FC<ItemListProps> = ({
       )}
 
       {isAddModalOpen && (
-        <AddItemModal onClose={() => setIsAddModalOpen(false)} onSave={(newProduct) => { onAddProduct(newProduct); setIsAddModalOpen(false); }} />
+        <AddItemModal onClose={() => setIsAddModalOpen(false)} onSave={(newProduct) => { onAddItem(newProduct); setIsAddModalOpen(false); }} />
       )}
 
       {confirmModal && (
@@ -2994,6 +2138,52 @@ const ItemList: React.FC<ItemListProps> = ({
         </div>
       );
     })()}
+
+    {/* ── 입고대기 수정 → 매입전표 수정 요청 모달 ── */}
+    {poEditModal && (
+      <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setPoEditModal(null)} />
+        <div className="relative bg-white rounded-3xl w-full max-w-md mx-4 shadow-2xl animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+          <div className="px-6 pt-5 pb-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+            <div>
+              <h2 className="text-sm font-black text-slate-800">전표 수정 요청</h2>
+              <p className="text-[11px] text-slate-400 font-medium mt-0.5">연결된 매입전표 수정을 관리자에게 요청합니다</p>
+            </div>
+            <button onClick={() => setPoEditModal(null)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl transition-all"><X size={18} /></button>
+          </div>
+          <div className="overflow-y-auto flex-1 px-6 py-4 space-y-3">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">수정 수량 (0 입력 시 해당 품목 삭제)</p>
+            {poEditModal.rows.map((row, i) => (
+              <div key={`${row.itemId}-${i}`} className="flex items-center gap-3">
+                <span className="flex-1 text-sm font-bold text-slate-700 truncate">{row.name}</span>
+                <input type="number" value={row.qty}
+                  onChange={e => setPoEditModal(m => m ? { ...m, rows: m.rows.map((r, j) => j === i ? { ...r, qty: e.target.value } : r) } : m)}
+                  className="w-20 text-center text-sm font-black border border-slate-300 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-teal-400" />
+              </div>
+            ))}
+            <div className="pt-2">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">사유</p>
+              <textarea value={poEditModal.reason}
+                onChange={e => setPoEditModal(m => m ? { ...m, reason: e.target.value } : m)}
+                placeholder="수정 사유를 입력하세요 (예: 입고 수량 부족)"
+                className="w-full h-20 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-400 resize-none" />
+            </div>
+          </div>
+          <div className="px-6 py-4 border-t border-slate-100 flex gap-2 shrink-0">
+            <button onClick={() => setPoEditModal(null)}
+              className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200 transition-all">취소</button>
+            <button
+              onClick={() => {
+                if (!poEditModal.reason.trim()) { alert('사유를 입력하세요.'); return; }
+                const newLines = poEditModal.rows.map(r => ({ itemId: r.itemId, quantity: Math.max(0, parseInt(r.qty) || 0) }));
+                onRequestPoEdit?.(poEditModal.po.id, newLines, poEditModal.reason.trim());
+                setPoEditModal(null);
+              }}
+              className="flex-1 py-2.5 rounded-xl bg-teal-500 text-white text-xs font-black hover:bg-teal-600 transition-all">수정 요청</button>
+          </div>
+        </div>
+      </div>
+    )}
     </div>
   );
 };

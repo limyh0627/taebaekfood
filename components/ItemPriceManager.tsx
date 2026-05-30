@@ -8,8 +8,8 @@ import ConfirmModal from './ConfirmModal';
 interface ItemPriceManagerProps {
   items: Item[];
   onEditProduct: (product: Item) => void;
-  onAddProduct: () => void;
-  onDeleteProduct: (id: string, category: string) => void;
+  onAddItem: () => void;
+  onDeleteItem: (id: string, category: string) => void;
   onUpdateCost?: (itemId: string, cost: number) => void;
   onUpdatePrice?: (itemId: string, price: number) => void;
 }
@@ -19,7 +19,7 @@ const CATEGORIES: (InventoryCategory | '전체')[] = ['전체', '완제품', '�
 const fmt = (n: number) => n.toLocaleString('ko-KR');
 
 const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
-  items, onEditProduct, onAddProduct, onDeleteProduct, onUpdateCost, onUpdatePrice,
+  items, onEditProduct, onAddItem, onDeleteItem, onUpdateCost, onUpdatePrice,
 }) => {
   const [category, setCategory] = useState<string>('전체');
   const [search, setSearch] = useState('');
@@ -55,7 +55,7 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
         title="품목 관리"
         subtitle="품목 추가·수정·삭제 및 판매단가·원가를 관리합니다."
         right={
-          <button onClick={onAddProduct}
+          <button onClick={onAddItem}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black hover:bg-indigo-700 shadow-sm transition-all">
             <Plus size={13}/>품목 추가
           </button>
@@ -172,7 +172,7 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
                             <button onClick={() => setConfirmModal({
                               message: `'${p.name}'을(를) 삭제하시겠습니까?`,
                               subMessage: '삭제 후 복구할 수 없습니다.',
-                              onConfirm: () => { onDeleteProduct(p.id, p.category); setConfirmModal(null); },
+                              onConfirm: () => { onDeleteItem(p.id, p.category); setConfirmModal(null); },
                             })}
                               className="p-2 text-rose-300 hover:bg-rose-50 hover:text-rose-500 rounded-xl transition-all" title="삭제">
                               <Trash2 size={15}/>

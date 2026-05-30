@@ -937,6 +937,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             id: Date.now().toString(),
             amount: Number(payForm.amount),
             date: payForm.date,
+            createdAt: new Date().toISOString(),
             method: payForm.method,
             ...(payForm.note.trim() ? { note: payForm.note.trim() } : {}),
           };
@@ -969,7 +970,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                     <div className="mt-1 space-y-0.5">
                       {stmt.payments!.map(p => (
                         <div key={p.id} className="text-[9px] text-slate-400 flex gap-2">
-                          <span>{p.date}</span><span>{p.method}</span>
+                          <span>{p.date}{p.createdAt ? ` ${p.createdAt.slice(11,16)}` : ''}</span><span>{p.method}</span>
                           <span className="font-black text-emerald-600">+{fmt(p.amount)}원</span>
                           {p.note && <span>{p.note}</span>}
                         </div>

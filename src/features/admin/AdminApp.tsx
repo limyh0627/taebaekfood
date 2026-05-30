@@ -56,7 +56,7 @@ import {
   Activity,
   ShieldAlert,
 } from 'lucide-react';
-import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, PaymentRecord, ShippingRule } from '../../shared/types';
+import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, PaymentRecord, ShippingRule, poLines } from '../../shared/types';
 import Dashboard from '../../../components/Dashboard';
 import OrdersList from '../../../components/OrdersList';
 import ItemList from '../../../components/ItemList';
@@ -153,8 +153,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const submaterials = useMemo(() => items.filter(i => i.category !== 'product'), [items]);
 
   // partner_item 컬렉션 Direction 기준 분리
-  const productSuppliers = useMemo(() => partnerItems.filter(pi => pi.Direction === 'in'),  [partnerItems]);
-  const productClients   = useMemo(() => partnerItems.filter(pi => pi.Direction === 'out'), [partnerItems]);
+  const partnerIn = useMemo(() => partnerItems.filter(pi => pi.Direction === 'in'),  [partnerItems]);
+  const partnerOut   = useMemo(() => partnerItems.filter(pi => pi.Direction === 'out'), [partnerItems]);
 
   // partners 컬렉션
 
@@ -189,7 +189,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     const prevYm = `${py}-${String(pm).padStart(2, '0')}`;
     const already = inventorySnapshots.some(s => s.yearMonth === prevYm);
     if (already) return;
-    const totalValue = allProducts.reduce((sum, p) => sum + (p.stock ?? 0) * (p.cost ?? 0), 0);
+    const totalValue = allItems.reduce((sum, p) => sum + (p.stock ?? 0) * (p.cost ?? 0), 0);
     addItem('inventorySnapshots', {
       id: `inv-snap-${prevYm}`,
       yearMonth: prevYm,
@@ -212,20 +212,20 @@ const AdminApp: React.FC<AdminAppProps> = ({
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // productClients로부터 itemId → partnerIds[] 맵 생성
+  // partnerOut로부터 itemId → partnerIds[] 맵 생성
   const productClientMap = useMemo(() => {
     const map = new Map<string, string[]>();
-    for (const pc of productClients) {
+    for (const pc of partnerOut) {
       if (!pc.Item_ID || !pc.Partner_ID) continue;
       const arr = map.get(pc.Item_ID) ?? [];
       arr.push(pc.Partner_ID);
       map.set(pc.Item_ID, arr);
     }
     return map;
-  }, [productClients]);
+  }, [partnerOut]);
 
-  // Combined products for UI — clientIds를 productClients 기반으로 조인
-  const allProducts = useMemo(() =>
+  // Combined products for UI — clientIds를 partnerOut 기반으로 조인
+  const allItems = useMemo(() =>
     [...products, ...submaterials].map(p => ({
       ...p,
       partnerIds: productClientMap.get(p.id) ?? p.partnerIds ?? [],
@@ -236,7 +236,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const pendingPurchaseOrders = useMemo(() => purchaseOrders.filter(po => po.status === 'pending'), [purchaseOrders]);
   const invoicedPurchaseOrders = useMemo(() => purchaseOrders.filter(po => po.status === 'invoiced'), [purchaseOrders]);
 
-  const lowStockCount = allProducts.filter(p =>
+  const lowStockCount = allItems.filter(p =>
     p.category !== 'product' && p.minStock > 0 && p.stock < p.minStock
   ).length;
 
@@ -251,7 +251,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const dateStr = o.deliveredAt!.slice(0, 10);
       const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '';
       for (const item of o.items) {
-        const prod = allProducts.find(p => p.id === item.itemId);
+        const prod = allItems.find(p => p.id === item.itemId);
         if (!prod || prod.category !== 'product') continue;
         const prodKey = prod.품목 || prod.name;
         // Firestore BOM 우선, 없으면 하드코딩 fallback
@@ -278,7 +278,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       }
     }
     return result;
-  }, [orders, allProducts, partners, itemFormulas]);
+  }, [orders, allItems, partners, itemFormulas]);
 
   // 재고 발주 관련 상태 (orderRequests는 useAppData에서 Firebase로 관리)
 
@@ -333,7 +333,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const checkAndAlertShortage = async (orderItems: Order['items'], partnerId?: string) => {
     const usage: Record<string, { name: string; needed: number; unit: string }> = {};
     for (const item of orderItems) {
-      const product = allProducts.find(p => p.id === item.itemId);
+      const product = allItems.find(p => p.id === item.itemId);
       if (!product) continue;
 
       // 향미유: 재고는 박스 단위
@@ -449,21 +449,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // --- 재고 관리 핸들러 (purchaseOrders 기반) ---
   const handleAddOrderRequest = async (id: string, quantity: number, isBox?: boolean) => {
-    const exists = purchaseOrders.find(po => po.id === id);
-    const product = allProducts.find(p => p.id === id);
-    const ps = productSuppliers.find(s => s.Item_ID === id || (s as any).itemId === id);
+    // append-only: 발주할 때마다 새 발주카드 추가
+    const product = allItems.find(p => p.id === id);
+    const ps = partnerIn.find(s => s.Item_ID === id || (s as any).itemId === id);
     const partnerId = ps?.Partner_ID || (ps as any)?.partnerId;
     const partnerName = partnerId ? partners.find(c => c.id === partnerId)?.name : undefined;
-    if (exists) {
-      await updateItem('purchaseOrders', id, { quantity, confirmedByUser: true, isBox: isBox ?? false, ...(partnerId ? { partnerId, partnerName } : {}) });
-    } else {
-      await addItem('purchaseOrders', {
-        id, itemId: id, itemName: product?.name ?? '',
-        quantity, isBox: isBox ?? false, status: 'pending',
-        confirmedByUser: true, createdAt: new Date().toISOString(),
-        ...(partnerId ? { partnerId, partnerName } : {}),
-      });
-    }
+    await addItem('purchaseOrders', {
+      id: `po-${Date.now()}`, itemId: id, itemName: product?.name ?? '',
+      quantity, isBox: isBox ?? false, status: 'pending',
+      confirmedByUser: true, createdAt: new Date().toISOString(),
+      ...(partnerId ? { partnerId, partnerName } : {}),
+    });
   };
 
   const handleRemoveOrderRequest = async (id: string) => {
@@ -474,57 +470,75 @@ const AdminApp: React.FC<AdminAppProps> = ({
     await updateItem('purchaseOrders', id, { quantity });
   };
 
+  // 묶음 발주카드(items[]) 내 품목 수량 수정 / 제거
+  const handleUpdatePoItemQty = async (poId: string, index: number, quantity: number) => {
+    const po = purchaseOrders.find(p => p.id === poId);
+    if (!po) return;
+    if (po.items && po.items.length > 0) {
+      await updateItem('purchaseOrders', poId, { items: po.items.map((it, i) => i === index ? { ...it, quantity } : it) });
+    } else {
+      await updateItem('purchaseOrders', poId, { quantity });
+    }
+  };
+  const handleRemovePoItem = async (poId: string, index: number) => {
+    const po = purchaseOrders.find(p => p.id === poId);
+    if (!po) return;
+    if (po.items && po.items.length > 0) {
+      const items = po.items.filter((_, i) => i !== index);
+      if (items.length === 0) await deleteItem('purchaseOrders', poId);
+      else await updateItem('purchaseOrders', poId, { items });
+    } else {
+      await deleteItem('purchaseOrders', poId);
+    }
+  };
+
   const handleToggleConfirmRequestQty = async (id: string) => {
     const po = purchaseOrders.find(po => po.id === id);
     if (po) await updateItem('purchaseOrders', id, { confirmedByUser: !po.confirmedByUser });
   };
 
   // 장바구니 확정 → 발주예정(pending) 생성
+  // 주문카드처럼: 같은 거래처 품목은 묶어서 발주카드 1개(items[]), 제출할 때마다 새 카드 추가(append-only)
   const handleBulkAddConfirmedOrders = async (items: { id: string, quantity: number, isBox?: boolean }[]) => {
-    for (const item of items) {
-      const existing = purchaseOrders.find(po => po.id === item.id);
-      const product = allProducts.find(p => p.id === item.id);
-      const ps = productSuppliers.find(s => s.Item_ID === item.id || (s as any).productId === item.id);
+    const base = Date.now();
+    const createdAt = new Date().toISOString();
+    // 거래처별 묶음 (partnerId 없으면 품목별 개별 카드)
+    const groups = new Map<string, { partnerId?: string; partnerName?: string; items: typeof items }>();
+    items.forEach((item, idx) => {
+      const ps = partnerIn.find(s => s.Item_ID === item.id || (s as any).itemId === item.id);
       const partnerId = ps?.Partner_ID || (ps as any)?.partnerId;
       const partnerName = partnerId ? partners.find(c => c.id === partnerId)?.name : undefined;
-      if (existing) {
-        await updateItem('purchaseOrders', item.id, {
-          quantity: item.quantity, isBox: item.isBox ?? false, status: 'pending',
-          ...(partnerId && !existing.partnerId ? { partnerId, partnerName } : {}),
-        });
-      } else {
-        await addItem('purchaseOrders', {
-          id: item.id, itemId: item.id, itemName: product?.name ?? '',
-          quantity: item.quantity, isBox: item.isBox ?? false,
-          status: 'pending', createdAt: new Date().toISOString(),
-          ...(partnerId ? { partnerId, partnerName } : {}),
-        });
-      }
+      const key = partnerId || `__none_${idx}`;
+      if (!groups.has(key)) groups.set(key, { partnerId, partnerName, items: [] });
+      groups.get(key)!.items.push(item);
+    });
+    let gi = 0;
+    for (const g of groups.values()) {
+      const poItems = g.items.map(it => {
+        const product = allItems.find(p => p.id === it.id);
+        return { itemId: it.id, name: product?.name ?? '', quantity: it.quantity, unit: product?.unit ?? '개', isBox: it.isBox ?? false };
+      });
+      await addItem('purchaseOrders', {
+        id: `po-${base}-${gi++}`, itemId: '', itemName: '', quantity: 0,
+        items: poItems, status: 'pending', createdAt,
+        ...(g.partnerId ? { partnerId: g.partnerId, partnerName: g.partnerName } : {}),
+      });
     }
   };
 
   // 발주예정 → 입고대기(invoiced)로 직접 확정 (전표 없이)
+  // item.id는 PO 문서 ID (UUID 또는 itemId)
   const handleConfirmPendingToInvoiced = async (items: { id: string, quantity: number, isBox?: boolean }[]) => {
     for (const item of items) {
-      const existing = purchaseOrders.find(po => po.id === item.id);
-      const ps = productSuppliers.find(s => s.Item_ID === item.id || (s as any).itemId === item.id);
+      const po = purchaseOrders.find(po => po.id === item.id);
+      if (!po) continue;
+      const ps = partnerIn.find(s => s.Item_ID === (po.itemId ?? po.id) || (s as any).itemId === (po.itemId ?? po.id));
       const partnerId = ps?.Partner_ID || (ps as any)?.partnerId;
       const partnerName = partnerId ? partners.find(c => c.id === partnerId)?.name : undefined;
-      if (existing) {
-        await updateItem('purchaseOrders', item.id, {
-          status: 'invoiced', invoicedAt: new Date().toISOString(),
-          ...(partnerId && !existing.partnerId ? { partnerId, partnerName } : {}),
-        });
-      } else {
-        const product = allProducts.find(p => p.id === item.id);
-        await addItem('purchaseOrders', {
-          id: item.id, itemId: item.id, itemName: product?.name ?? '',
-          quantity: item.quantity, isBox: item.isBox ?? false,
-          status: 'invoiced', createdAt: new Date().toISOString(),
-          invoicedAt: new Date().toISOString(),
-          ...(partnerId ? { partnerId, partnerName } : {}),
-        });
-      }
+      await updateItem('purchaseOrders', item.id, {
+        status: 'invoiced', invoicedAt: new Date().toISOString(),
+        ...(partnerId && !po.partnerId ? { partnerId, partnerName } : {}),
+      });
     }
   };
 
@@ -535,11 +549,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // 출고 완료 시 완제품 품목별로 생산 실적 자동 기록
   const createProductionRecordsForOrder = async (order: Order) => {
     const finishedItems = order.items.filter(item => {
-      const p = allProducts.find(pr => pr.id === item.itemId);
+      const p = allItems.find(pr => pr.id === item.itemId);
       return p && p.category === 'product';
     });
     for (const item of finishedItems) {
-      const product = allProducts.find(p => p.id === item.itemId);
+      const product = allItems.find(p => p.id === item.itemId);
       if (!product) continue;
       const record: ProductionRecord = {
         id: `pr-${order.id}-${item.itemId}-${Date.now()}`,
@@ -559,7 +573,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const handleProcessReturn = async (req: ReturnRequest) => {
     for (const item of req.items) {
       if (!item.isResellable) continue;
-      const product = allProducts.find(p => p.id === item.itemId);
+      const product = allItems.find(p => p.id === item.itemId);
       if (!product) continue;
       const col = getProductCollection(product.category as string);
       await updateItem(col, product.id, { stock: product.stock + item.quantity });
@@ -616,7 +630,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // 주문이 이력으로 이동할 때 부자재 차감 (완제품 재고는 변동 없음)
   const deductSubmaterialsForOrder = async (order: Order) => {
     for (const item of order.items) {
-      const product = allProducts.find(p => p.id === item.itemId);
+      const product = allItems.find(p => p.id === item.itemId);
       if (!product) continue;
 
       // 향미유/고춧가루: 재고는 낱개 단위로 저장, 낱개 기준으로 차감
@@ -704,13 +718,68 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const handleFinishConfirmedOrder = async (id: string) => {
     const po = purchaseOrders.find(po => po.id === id);
     if (!po) return;
-    const product = allProducts.find(p => p.id === id);
-    if (product) {
+    // 묶음/단일 품목 모두 재고 가산
+    for (const line of poLines(po)) {
+      const product = allItems.find(p => p.id === line.itemId);
+      if (!product) continue;
       const collectionName = getProductCollection(product.category);
-      const addQty = product.subtype === '향미유' && po.isBox ? po.quantity * 12 : po.quantity;
-      await updateItem(collectionName, id, { stock: product.stock + addQty });
+      const addQty = (product.subtype === '향미유' || product.category === '향미유') && line.isBox ? line.quantity * 12 : line.quantity;
+      await updateItem(collectionName, product.id, { stock: (product.stock ?? 0) + addQty });
     }
     await updateItem('purchaseOrders', id, { status: 'received', receivedAt: new Date().toISOString() });
+  };
+
+  // 입고대기 발주카드 수정: 새 수량으로 즉시 입고확정(received+재고 반영) + 연결된 매입전표 수정 요청 생성
+  const handleRequestPoEdit = async (poId: string, newLines: { itemId: string; quantity: number }[], reason: string) => {
+    const po = purchaseOrders.find(p => p.id === poId);
+    if (!po) return;
+    const qtyByItemId = new Map(newLines.map(l => [l.itemId, l.quantity]));
+
+    // 연결된 매입전표가 있으면 회계 정정용 전표수정 요청 생성
+    const stmt = po.linkedStatementId ? issuedStatements.find(s => s.id === po.linkedStatementId) : undefined;
+    if (stmt) {
+      const changes: { name: string; oldQty: number; newQty: number }[] = [];
+      const newItems: typeof stmt.items = [];
+      for (const it of stmt.items) {
+        const product = allItems.find(p => (p.품목 || p.name) === it.name);
+        const newQty = product ? qtyByItemId.get(product.id) : undefined;
+        if (newQty === undefined || newQty === it.qty) { newItems.push(it); continue; }
+        changes.push({ name: it.name, oldQty: it.qty, newQty });
+        if (newQty <= 0) continue; // 0 = 품목 삭제
+        const unitSupply = it.qty !== 0 ? it.supply / it.qty : 0;
+        const supply = Math.round(unitSupply * newQty);
+        const tax = it.isTaxExempt ? 0 : Math.round(supply * 0.1);
+        newItems.push({ ...it, qty: newQty, supply, tax, total: supply + tax });
+      }
+      if (changes.length > 0) {
+        const totalSupply = newItems.reduce((s, i) => s + i.supply, 0);
+        const totalTax = newItems.reduce((s, i) => s + i.tax, 0);
+        await addItem('pendingStatementEdits', {
+          id: `pse-${Date.now()}`,
+          statementId: stmt.id, statementDocNo: stmt.docNo, statementType: stmt.type,
+          partnerName: stmt.partnerName,
+          proposedData: {
+            tradeDate: stmt.tradeDate, partnerId: stmt.partnerId, partnerName: stmt.partnerName,
+            totalSupply, totalTax, totalAmount: totalSupply + totalTax, items: newItems,
+          },
+          createdAt: new Date().toISOString(), createdBy: currentUser.name, status: 'pending',
+          reason, changes, sourcePoId: poId,
+        });
+      }
+    }
+
+    // 즉시 입고확정: 새 수량으로 재고 가산 + received 전환
+    const newPoItems = poLines(po)
+      .map(l => ({ ...l, quantity: qtyByItemId.get(l.itemId) ?? l.quantity }))
+      .filter(l => l.quantity > 0);
+    for (const line of newPoItems) {
+      const product = allItems.find(p => p.id === line.itemId);
+      if (!product) continue;
+      const collectionName = getProductCollection(product.category);
+      const addQty = (product.subtype === '향미유' || product.category === '향미유') && line.isBox ? line.quantity * 12 : line.quantity;
+      await updateItem(collectionName, product.id, { stock: (product.stock ?? 0) + addQty });
+    }
+    await updateItem('purchaseOrders', poId, { items: newPoItems, status: 'received', receivedAt: new Date().toISOString() });
   };
 
   const handleToggleItemChecked = (orderId: string, itemIdx: number, checkedBy?: string) => {
@@ -1101,14 +1170,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 {currentView === 'dashboard' && (
                   <Dashboard
                     orders={orders}
-                    items={allProducts}
+                    items={allItems}
                     partners={partners}
                     partnerItems={partnerItems}
                     onNavigate={(view) => setCurrentView(view)}
                   />
                 )}
                 {currentView === 'ai-consultant' && (
-                  <AIConsultant orders={orders} items={allProducts} />
+                  <AIConsultant orders={orders} items={allItems} />
                 )}
               </div>
             </div>
@@ -1117,7 +1186,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <DeliveryManager
               orders={orders}
               partners={partners}
-              items={allProducts}
+              items={allItems}
               onUpdateDeliveryDate={(id, date) => updateItem('orders', id, { deliveryDate: date })}
               onUpdateStatus={async (id, status) => {
                 if (status === OrderStatus.DELIVERED) {
@@ -1144,7 +1213,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <OrdersList
               orders={orders}
               partners={partners}
-              items={allProducts}
+              items={allItems}
               shippingRules={shippingRules}
               itemBoms={itemBoms}
               onDeleteOrder={(id) => {
@@ -1194,16 +1263,19 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'inventory' && (
             <ItemList 
-              items={allProducts} 
-              onUpdateProduct={async (p) => {
+              items={allItems} 
+              onUpdateItem={async (p) => {
                 await updateItem(getProductCollection(p.category), p.id, p);
               }}
-              onAddProduct={(p) => addItem(getProductCollection(p.category), p)} 
+              onAddItem={(p) => addItem(getProductCollection(p.category), p)} 
               orderRequests={pendingPurchaseOrders}
               confirmedOrders={invoicedPurchaseOrders}
               onAddOrderRequest={handleAddOrderRequest}
               onRemoveOrderRequest={handleRemoveOrderRequest}
               onUpdateOrderRequestQty={handleUpdateOrderRequestQty}
+              onUpdatePoItemQty={handleUpdatePoItemQty}
+              onRemovePoItem={handleRemovePoItem}
+              onRequestPoEdit={handleRequestPoEdit}
               onUpdateOrderRequestIsBox={handleUpdateOrderRequestIsBox}
               onToggleConfirmRequestQty={handleToggleConfirmRequestQty}
               onConfirmRequest={(id: string) => { const r = pendingPurchaseOrders.find(r => r.id === id); handleConfirmPendingToInvoiced([{ id, quantity: r?.quantity || 0, isBox: r?.isBox }]); }}
@@ -1217,7 +1289,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onRemoveConfirmedOrder={handleRemoveConfirmedOrder}
               onClearAllConfirmedOrders={handleClearAllConfirmedOrders}
               onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
-              onDeleteProduct={(id) => {
+              onDeleteItem={(id) => {
                 const inProducts = items.some(p => p.id === id);
                 deleteItem(inProducts ? 'items' : 'items', id);
               }}
@@ -1232,7 +1304,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 const stmt = issuedStatements.find(s => s.id === id);
                 if (stmt && stmt.type === '매입') {
                   for (const item of stmt.items) {
-                    const product = allProducts.find(p => p.name === item.name);
+                    const product = allItems.find(p => p.name === item.name);
                     if (product) {
                       const col = getProductCollection(product.category);
                       const addQty = item.isBoxUnit ? item.qty * (item.boxSize || 12) : item.qty;
@@ -1284,7 +1356,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                   <ReceivingReturnsManager
                     submaterials={submaterials}
-                    items={allProducts}
+                    items={allItems}
                     partners={partners}
                     partnerItems={partnerItems}
                     orders={orders}
@@ -1302,7 +1374,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                   <ReceivingReturnsManager
                     submaterials={submaterials}
-                    items={allProducts}
+                    items={allItems}
                     partners={partners}
                     partnerItems={partnerItems}
                     orders={orders}
@@ -1434,7 +1506,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onUpdateAdjustmentStatus={(id, status) => updateItem('adjustmentRequests', id, { status, processedAt: new Date().toISOString() })}
               onDeleteAdjustmentRequest={(id) => deleteItem('adjustmentRequests', id)}
               onProcessAdjustment={async (req) => {
-                const product = allProducts.find(p => p.id === req.itemId);
+                const product = allItems.find(p => p.id === req.itemId);
                 if (req.type === 'quantity_change' && product && req.requestedQuantity !== undefined) {
                   await updateItem('items', req.itemId, { stock: req.requestedQuantity });
                 }
@@ -1442,6 +1514,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               }}
               pendingStatementEdits={pendingStatementEdits}
               onApproveStatementEdit={async (edit) => {
+                // 재고/PO는 수정 시점에 즉시 반영됨 → 승인은 매입전표(회계)만 정정
                 await updateItem('issuedStatements', edit.statementId, edit.proposedData);
                 await updateItem('pendingStatementEdits', edit.id, { status: 'approved' });
               }}
@@ -1449,7 +1522,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 await updateItem('pendingStatementEdits', id, { status: 'rejected' });
               }}
               orderRequests={pendingPurchaseOrders}
-              items={allProducts}
+              items={allItems}
               partnerItems={partnerItems}
               onCreatePurchaseStatement={(data) => {
                 setPendingInvoice(data);
@@ -1463,7 +1536,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               o.status === OrderStatus.SHIPPED &&
               o.partnerName !== '생산기록' &&
               o.items.some(item => {
-                const p = allProducts.find(pr => pr.id === item.itemId);
+                const p = allItems.find(pr => pr.id === item.itemId);
                 // 제품 ID가 DB에 없으면(삭제 후 재등록 등) 완제품으로 간주
                 // 명확히 부자재인 경우만 제외
                 return !p || !SUB_ONLY_CATS.has(p.category);
@@ -1484,7 +1557,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               const partner = partners.find(c => c.id === order.partnerId);
               const partnerName = partner?.name || order.partnerName || '';
               return order.items.flatMap((item, itemIdx) => {
-                const product = allProducts.find(p => p.id === item.itemId);
+                const product = allItems.find(p => p.id === item.itemId);
                 if (product && SUB_ONLY_CATS.has(product.category)) return [];
                 const 용량 = product?.spec || product?.용량 || item.displaySize || '';
                 return [{ 상호: partnerName, 품목: product?.품목 || item.name, 용량, 수량: item.quantity, 소비기한: calcExpiry(item.mfgDate || ''), 제조일자: item.mfgDate || '', orderId: order.id, itemIdx }];
@@ -1583,7 +1656,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             const topTemplateMap = new Map<string, Set<string>>(
               defaultTopTemplate.map(t => [t.key, new Set(t.volumes)])
             );
-            allProducts
+            allItems
               .filter(p => p.category === '완제품' && p.품목 && p.spec && !bottomPumokSet.has(p.품목))
               .forEach(p => {
                 if (!topTemplateMap.has(p.품목!)) topTemplateMap.set(p.품목!, new Set());
@@ -1638,7 +1711,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             // 제조일자 미입력 완제품 체크
             const missingMfgDate = shippedOrders.flatMap(o =>
               o.items.filter(item => {
-                const p = allProducts.find(pr => pr.id === item.itemId);
+                const p = allItems.find(pr => pr.id === item.itemId);
                 return p?.category === '완제품' && !item.mfgDate;
               }).map(item => item.name)
             );
@@ -1791,7 +1864,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 o.partnerName !== '생산기록' &&
                 o.items.length > 0 &&
                 o.items.every(item => {
-                  const pr = allProducts.find(pr => pr.id === item.itemId);
+                  const pr = allItems.find(pr => pr.id === item.itemId);
                   return pr?.category === '향미유' || pr?.category === 'goods' || pr?.subtype === '향미유' || pr?.subtype === '고춧가루';
                 })
               );
@@ -1853,7 +1926,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                           <span className="text-[10px] text-slate-400 whitespace-nowrap">→ 제조 -3일 ±1</span>
                           {(() => {
                             const cnt = orders.filter(o => o.status === OrderStatus.SHIPPED && o.partnerName !== '생산기록')
-                              .flatMap(o => o.items.filter(item => allProducts.find(p => p.id === item.itemId)?.category === '완제품')).length;
+                              .flatMap(o => o.items.filter(item => allItems.find(p => p.id === item.itemId)?.category === '완제품')).length;
                             return cnt > 0 ? <span className="text-[10px] font-bold text-amber-500 whitespace-nowrap">{cnt}건</span> : null;
                           })()}
                           <button
@@ -1866,7 +1939,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                               );
                               for (const o of targetOrders) {
                                 o.items.forEach((item, itemIdx) => {
-                                  const p = allProducts.find(pr => pr.id === item.itemId);
+                                  const p = allItems.find(pr => pr.id === item.itemId);
                                   if (p?.category === '완제품') {
                                     unset.push({ orderId: o.id, itemIdx, itemName: p.품목 || item.name });
                                   }
@@ -1968,7 +2041,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                   if (d.getFullYear() !== wy || d.getMonth() + 1 !== wm) return;
                                   const day = d.getDate();
                                   order.items.forEach(item => {
-                                    const p = allProducts.find(pr => pr.id === item.itemId);
+                                    const p = allItems.find(pr => pr.id === item.itemId);
                                     const remappedPumok = p?.품목 === '새싹참기름' ? '하남댁참기름' : p?.품목 === '새싹들기름' ? '하남댁들기름' : p?.품목;
                                     if (!p || remappedPumok !== cat) return;
                                     if (!dayMap[day]) dayMap[day] = [];
@@ -2093,7 +2166,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                   const d = new Date(docStr);
                                   if (d.getFullYear() !== xl2Year || d.getMonth() + 1 !== xl2Month || d.getDate() !== day) return;
                                   order.items.forEach(item => {
-                                    const p = allProducts.find(pr => pr.id === item.itemId);
+                                    const p = allItems.find(pr => pr.id === item.itemId);
                                     if (!p || p.품목 !== catKey) return;
                                     total += Math.round(parseVolL2(p.spec || '') * item.quantity * 0.92);
                                   });
@@ -2638,7 +2711,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       if (d.getFullYear() !== wy || d.getMonth() + 1 !== wm) return;
                       const day = d.getDate();
                       order.items.forEach(item => {
-                        const p = allProducts.find(pr => pr.id === item.itemId);
+                        const p = allItems.find(pr => pr.id === item.itemId);
                         const remappedPumok = p?.품목 === '새싹참기름' ? '하남댁참기름' : p?.품목 === '새싹들기름' ? '하남댁들기름' : p?.품목;
                         if (!p || remappedPumok !== productionWorkCat) return;
                         if (!dayMap[day]) dayMap[day] = [];
@@ -2759,7 +2832,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         const d = new Date(docStr);
                         if (d.getFullYear() !== lm2Year || d.getMonth() + 1 !== lm2Month || d.getDate() !== day) return;
                         order.items.forEach(item => {
-                          const p = allProducts.find(pr => pr.id === item.itemId);
+                          const p = allItems.find(pr => pr.id === item.itemId);
                           if (!p || p.품목 !== catKey) return;
                           total += Math.round(parseVolL(p.spec || '') * item.quantity * 0.92);
                         });
@@ -2929,7 +3002,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {currentView === 'trade-statement' && (
             <TradeStatement
               orders={orders}
-              allProducts={allProducts}
+              allItems={allItems}
               partners={partners}
               partnerItems={partnerItems}
               accountCodes={appData.accountCodes}
@@ -2946,13 +3019,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   await updateItem('orders', id, { status });
                 }
               }}
-              onUpdateProductClientPrice={(id, price) => updateItem('partner_item', id, { price })}
-              onUpdateProductClientTaxType={(id, taxType) => updateItem('partner_item', id, { taxType })}
-              onUpsertProductSupplier={(ps) => addItem('partner_item', { ...ps, Partner_ID: ps.partnerId ?? ps.Partner_ID, Item_ID: ps.itemId ?? ps.Item_ID, Direction: 'in' as const, price: ps.price ?? ps.Standard_Price })}
-              onUpdateProductSupplierTaxType={(id, taxType) => updateItem('partner_item', id, { taxType })}
+              onUpsertPartnerItem={(ps) => addItem('partner_item', { ...ps, Partner_ID: ps.partnerId ?? ps.Partner_ID, Item_ID: ps.itemId ?? ps.Item_ID, Direction: ps.Direction ?? 'out' as const })}
               onMarkInvoicePrinted={(id, value) => updateItem('orders', id, { invoicePrinted: value })}
               onUpdateOrder={(id, data) => updateItem('orders', id, data)}
-              onAddIssuedStatement={(stmt) => addItem('issuedStatements', stmt)}
+              onAddIssuedStatement={(stmt) => addItem('issuedStatements', stmt).catch(e => { console.error('전표 저장 실패:', e); alert('전표 저장 실패: ' + (e?.message ?? String(e))); })}
               onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
               onProposeEdit={(id, data, stmtType, docNo, partnerName) => {
                 const stmt = issuedStatements.find(s => s.id === id);
@@ -2982,7 +3052,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     ...(item.partnerId ? { partnerId: item.partnerId, partnerName: item.partnerName } : {}),
                   });
                 } else {
-                  const product = allProducts.find(p => p.id === item.id);
+                  const product = allItems.find(p => p.id === item.id);
                   await addItem('purchaseOrders', {
                     id: item.id, itemId: item.id, itemName: product?.name ?? '',
                     quantity: item.quantity, isBox: item.isBox ?? false,
@@ -2994,9 +3064,19 @@ const AdminApp: React.FC<AdminAppProps> = ({
               }}
               onRemoveConfirmedOrder={(id) => deleteItem('purchaseOrders', id)}
               onRemoveOrderRequest={handleRemoveOrderRequest}
+              onLinkPurchaseOrder={(poId, statementId) =>
+                updateItem('purchaseOrders', poId, { status: 'invoiced', invoicedAt: new Date().toISOString(), linkedStatementId: statementId })}
+              onCreateInboundPO={(po) =>
+                addItem('purchaseOrders', {
+                  id: `po-${Date.now()}`, itemId: '', itemName: '', quantity: 0,
+                  partnerId: po.partnerId, partnerName: po.partnerName,
+                  items: po.items, status: 'invoiced',
+                  invoicedAt: new Date().toISOString(), createdAt: new Date().toISOString(),
+                  linkedStatementId: po.statementId,
+                })}
               companyInfo={companyInfo}
               onSaveCompanyInfo={(info) => setDocument('settings', 'company', info)}
-              onUpdateProductCost={(itemId, cost) => updateItem('items', itemId, { cost })}
+              onUpdateItemCost={(itemId, cost) => updateItem('items', itemId, { cost })}
               onAddProductClient={(itemId, partnerId, price, taxType) =>
                 addItem('partner_item', {
                   id: `${itemId}_${partnerId}_out`,
@@ -3036,7 +3116,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 onUpdateTemplate={(id, data) => updateItem('fixedCostTemplates', id, data)}
                 onDeleteTemplate={(id) => deleteItem('fixedCostTemplates', id)}
                 partners={partners}
-                items={allProducts}
+                items={allItems}
                 onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
                 accountGroups={appData.accountGroups}
                 accountCodes={appData.accountCodes}
@@ -3064,7 +3144,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   }}
                   onDeleteCost={(id) => deleteItem('fixedCosts', id)}
                   partners={partners}
-                  items={allProducts}
+                  items={allItems}
                   onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
                   accountGroups={appData.accountGroups}
                   accountCodes={appData.accountCodes}
@@ -3087,7 +3167,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   }}
                   onDeleteCost={(id) => deleteItem('fixedCosts', id)}
                   partners={partners}
-                  items={allProducts}
+                  items={allItems}
                   onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
                   accountGroups={appData.accountGroups}
                   accountCodes={appData.accountCodes}
@@ -3100,8 +3180,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <SmartStoreAnalytics
               orders={orders}
               partners={partners}
-              items={allProducts}
-              onUpdateProduct={(id, data) => updateItem('items', id, data)}
+              items={allItems}
+              onUpdateItem={(id, data) => updateItem('items', id, data)}
             />
           )}
           {currentView === 'haccp-checklist' && (
@@ -3112,7 +3192,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {currentView === 'return-management' && (
             <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
               <ReturnManager
-                items={allProducts}
+                items={allItems}
                 partners={partners}
                 orders={orders}
                 issuedStatements={issuedStatements}
@@ -3126,7 +3206,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
               <ProductionManager
                 records={productionRecords}
-                items={allProducts}
+                items={allItems}
                 orders={orders}
                 onAdd={(record) => addItem('productionRecords', record)}
                 onDelete={(id) => deleteItem('productionRecords', id)}
@@ -3142,7 +3222,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onUpdateStatus={(id, status) => updateItem('adjustmentRequests', id, { status, processedAt: new Date().toISOString() })}
               onProcessAdjustment={async (req) => {
                 // 실제 재고 반영 로직
-                const product = allProducts.find(p => p.id === req.itemId);
+                const product = allItems.find(p => p.id === req.itemId);
                 if (product) {
                   const collectionName = getProductCollection(product.category);
                   if (req.type === 'quantity_change') {
@@ -3196,23 +3276,23 @@ const AdminApp: React.FC<AdminAppProps> = ({
               {true && (
                 <ItemManager
                   isAdmin={isAdmin}
-                  items={allProducts}
+                  items={allItems}
                   partners={partners}
                   partnerItems={partnerItems}
                   onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
-                  onAddProduct={() => { setEditingProduct(null); setIsProductModalOpen(true); }}
-                  onDeleteProduct={(id) => {
+                  onAddItem={() => { setEditingProduct(null); setIsProductModalOpen(true); }}
+                  onDeleteItem={(id) => {
                     const inProducts = items.some(p => p.id === id);
                     deleteItem(inProducts ? 'items' : 'items', id);
                   }}
-                  onLinkProduct={async (itemId, partnerId) => {
-                    const current = productClients.filter(pc => pc.Item_ID === itemId).map(pc => pc.Partner_ID);
+                  onLinkItem={async (itemId, partnerId) => {
+                    const current = partnerOut.filter(pc => pc.Item_ID === itemId).map(pc => pc.Partner_ID);
                     if (!current.includes(partnerId)) {
                       await setProductClients(itemId, [...current, partnerId]);
                     }
                   }}
-                  onUnlinkProduct={async (itemId, partnerId) => {
-                    const current = productClients.filter(pc => pc.Item_ID === itemId).map(pc => pc.Partner_ID);
+                  onUnlinkItem={async (itemId, partnerId) => {
+                    const current = partnerOut.filter(pc => pc.Item_ID === itemId).map(pc => pc.Partner_ID);
                     await setProductClients(itemId, current.filter(id => id !== partnerId));
                   }}
                   onLinkSupplier={async (itemId, partnerId) => {
@@ -3225,7 +3305,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     const current = partnerItems.filter(pi => pi.Item_ID === itemId && pi.Direction === 'in').map(pi => pi.Partner_ID);
                     await setProductSuppliers(itemId, current.filter(id => id !== partnerId));
                   }}
-                  onMergeProducts={async (keepId, deleteIds) => {
+                  onMergeItems={async (keepId, deleteIds) => {
                     const { getDocs, query: q, collection: col, where, writeBatch: wb, doc: d } = await import('firebase/firestore');
                     const { db: fireDb } = await import('../../shared/firebase');
                     const batch = wb(fireDb);
@@ -3276,10 +3356,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
           {currentView === 'item-price-management' && (
             <ItemPriceManager
-              items={allProducts}
+              items={allItems}
               onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
-              onAddProduct={() => { setEditingProduct(null); setIsProductModalOpen(true); }}
-              onDeleteProduct={(id) => deleteItem('items', id)}
+              onAddItem={() => { setEditingProduct(null); setIsProductModalOpen(true); }}
+              onDeleteItem={(id) => deleteItem('items', id)}
               onUpdateCost={(itemId, cost) => updateItem('items', itemId, { cost })}
               onUpdatePrice={(itemId, price) => updateItem('items', itemId, { price })}
             />
@@ -3359,7 +3439,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           correctPassword={companyInfo?.adminPassword || '0000'}
         />
       )}
-      {isAddOrderOpen && <AddOrderModal items={allProducts} partners={partners} partnerItems={partnerItems} shippingRules={shippingRules} palletStocks={pallets} submaterials={submaterials} onClose={() => setIsAddOrderOpen(false)} onSave={async (o) => {
+      {isAddOrderOpen && <AddOrderModal items={allItems} partners={partners} partnerItems={partnerItems} shippingRules={shippingRules} palletStocks={pallets} submaterials={submaterials} onClose={() => setIsAddOrderOpen(false)} onSave={async (o) => {
         try {
           console.log('[AddOrder] 저장 시작', o);
           const orderId = `ORD-${Date.now()}`;
@@ -3376,7 +3456,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           alert(`주문 저장 실패: ${err instanceof Error ? err.message : String(err)}`);
         }
       }} />}
-      {isPasteOrderOpen && <PasteOrderModal items={allProducts} partners={partners} partnerItems={partnerItems} onClose={() => setIsPasteOrderOpen(false)} onSave={async (o) => {
+      {isPasteOrderOpen && <PasteOrderModal items={allItems} partners={partners} partnerItems={partnerItems} onClose={() => setIsPasteOrderOpen(false)} onSave={async (o) => {
         try {
           console.log('[PasteOrder] 저장 시작', o);
           const orderId = `ORD-${Date.now()}`;
@@ -3413,7 +3493,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             const { db: fireDb } = await import('../../shared/firebase');
             await addDoc(col(fireDb, 'shipping_rule'), rule);
           }}
-          onUpsertProductSupplier={(ps: PartnerItem) => addItem('partner_item', { ...ps, Partner_ID: ps.Partner_ID, Item_ID: ps.Item_ID, Direction: 'in' as const, Standard_Price: ps.Standard_Price })}
+          onUpsertPartnerItem={(ps: PartnerItem) => addItem('partner_item', { ...ps, Partner_ID: ps.partnerId ?? ps.Partner_ID, Item_ID: ps.itemId ?? ps.Item_ID, Direction: ps.Direction ?? 'in' as const })}
           onAddSubmaterial={async (name, category) => {
             const unit = category === '라벨' ? '매' : '개';
             const id = await addItem('items', { name, category, stock: 0, minStock: 0, unit, price: 0, image: '' });
@@ -3428,7 +3508,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 await deleteItem(prevCollection, p.id);
               }
             }
-            // productClients 컬렉션에 거래처 매핑 저장
+            // partnerOut 컬렉션에 거래처 매핑 저장
             const partnerIds = p.partnerIds ?? [];
             await setProductClients(p.id, partnerIds);
             // products/submaterials에 저장 시 partnerIds 제외

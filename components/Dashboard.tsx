@@ -67,7 +67,7 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon: Icon, trend, co
 const Dashboard: React.FC<DashboardProps> = ({ orders, items, partners = [], partnerItems = [], onNavigate, onCreatePurchaseOrder }) => {
   // Compute derived variables
   const products = items;
-  const productSuppliers = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
+  const partnerIn = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
   const [showLowStock, setShowLowStock] = useState(false);
   const [selectedLowStock, setSelectedLowStock] = useState<Set<string>>(new Set());
   const [orderQtys, setOrderQtys] = useState<Record<string, string>>({});
@@ -205,7 +205,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, items, partners = [], par
           // 공급업체별로 그룹화
           const grouped = new Map<string, { name: string; items: typeof selected }>();
           selected.forEach(p => {
-            const partnerId = productSuppliers.find(ps => ps.itemId === p.id)?.partnerId ?? '__none__';
+            const partnerId = partnerIn.find(ps => ps.itemId === p.id)?.partnerId ?? '__none__';
             const inboundPartner = partners.find(c => c.id === partnerId);
             const partnerName = inboundPartner?.name ?? '공급처 미지정';
             const existing = grouped.get(partnerId) ?? { name: partnerName, items: [] };
@@ -264,7 +264,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, items, partners = [], par
                 <tbody className="divide-y divide-slate-50">
                   {lowStockList.map(p => {
                     const shortage = p.minStock - p.stock;
-                    const inboundPartner = partners.find(c => c.id === productSuppliers.find(ps => ps.itemId === p.id)?.partnerId);
+                    const inboundPartner = partners.find(c => c.id === partnerIn.find(ps => ps.itemId === p.id)?.partnerId);
                     const isChecked = selectedLowStock.has(p.id);
                     return (
                       <tr key={p.id} className={`transition-colors ${isChecked ? 'bg-rose-50/50' : 'hover:bg-slate-50'}`}>

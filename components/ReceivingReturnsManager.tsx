@@ -60,7 +60,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   initialTab = '입고',
 }) => {
   // Compute derived variables
-  const productSuppliers = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
+  const partnerIn = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
   // ── Tab state ──
   const [mainTab, setMainTab] = useState<MainTab>(initialTab);
   const [inboundTab, setInboundTab] = useState<InboundTab>('거래처별');
@@ -400,7 +400,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     } else {
       // purchaseItems 미설정 → partner_item(Direction=in) 우선, partnerId 폴백
       const inboundPartnerItemIds = new Set(
-        productSuppliers
+        partnerIn
           .filter(ps => (ps.Partner_ID ?? ps.partnerId) === partner.id)
           .map(ps => ps.Item_ID ?? ps.itemId)
           .filter((id): id is string => !!id)
@@ -421,7 +421,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
 
   // partner_item(in) 또는 supplierId로 연결된 거래처 ID 집합 (partnerType 무관)
   const inboundPartnerClientIds = new Set([
-    ...productSuppliers.map(ps => ps.Partner_ID ?? ps.partnerId).filter((id): id is string => !!id),
+    ...partnerIn.map(ps => ps.Partner_ID ?? ps.partnerId).filter((id): id is string => !!id),
     ...items.filter(p => p.partnerId && p.category !== '완제품').map(p => p.partnerId!),
   ]);
 
@@ -463,7 +463,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
 
       // partner_item 동기화 (Direction='in')
       // 이 거래처의 기존 매입 항목
-      const existing = productSuppliers.filter(
+      const existing = partnerIn.filter(
         ps => (ps.Partner_ID ?? ps.partnerId) === configClientId
       );
       const existingItemIds = new Set(existing.map(ps => ps.Item_ID ?? ps.itemId).filter(Boolean) as string[]);

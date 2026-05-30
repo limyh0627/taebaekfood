@@ -12,13 +12,13 @@ interface ItemManagerProps {
   shippingRules?: ShippingRule[];
   itemBoms?: ItemBom[];
   onEditProduct: (_product: Item) => void;
-  onAddProduct: () => void;
-  onDeleteProduct: (_id: string, _category: string) => void;
-  onLinkProduct: (_productId: string, _clientId: string) => void;
-  onUnlinkProduct: (_productId: string, _clientId: string) => void;
+  onAddItem: () => void;
+  onDeleteItem: (_id: string, _category: string) => void;
+  onLinkItem: (_productId: string, _clientId: string) => void;
+  onUnlinkItem: (_productId: string, _clientId: string) => void;
   onLinkSupplier?: (_productId: string, _supplierId: string) => void;
   onUnlinkSupplier?: (_productId: string, _supplierId: string) => void;
-  onMergeProducts?: (_keepId: string, _deleteIds: string[]) => Promise<void>;
+  onMergeItems?: (_keepId: string, _deleteIds: string[]) => Promise<void>;
   onSaveItemCustomer?: (_ic: Partial<PartnerItem> & { id: string }) => Promise<void>;
   onSaveShippingRule?: (_rule: Partial<ShippingRule> & { id: string }) => Promise<void>;
   onAddShippingRule?: (_rule: Omit<ShippingRule, 'id'>) => Promise<void>;
@@ -56,7 +56,7 @@ const SUB_ORDER: Record<string, number> = { '라벨': 0, '용기': 1, '마개': 
 const sortSubs = (subs: { name: string; category: string; subtype?: string }[]) =>
   [...subs].sort((a, b) => (SUB_ORDER[itemSubCat(a)] ?? 9) - (SUB_ORDER[itemSubCat(b)] ?? 9));
 
-const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems = [], shippingRules = [], itemBoms = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct, onLinkSupplier, onUnlinkSupplier, onMergeProducts, onSaveItemCustomer, onSaveShippingRule, onAddShippingRule, isAdmin = true }) => {
+const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems = [], shippingRules = [], itemBoms = [], onEditProduct, onAddItem, onDeleteItem, onLinkItem, onUnlinkItem, onLinkSupplier, onUnlinkSupplier, onMergeItems, onSaveItemCustomer, onSaveShippingRule, onAddShippingRule, isAdmin = true }) => {
   const products = items;
   const itemCustomers = partnerItems;
   const partnerOut = partnerItems.filter(pi => pi.Direction === 'out');
@@ -315,7 +315,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
       {isAdmin && (
         <div className="flex items-center justify-end lg:hidden">
           <button
-            onClick={onAddProduct}
+            onClick={onAddItem}
             className="flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-2 rounded-xl font-black text-xs shadow-md"
           >
             <Plus size={14} />
@@ -345,7 +345,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
           )}
           {isAdmin && (
             <button
-              onClick={onAddProduct}
+              onClick={onAddItem}
               className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-black text-sm shadow-md hover:bg-indigo-700 transition-all active:scale-95"
             >
               <Plus size={15} />
@@ -583,7 +583,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                                 if (partnerScopeTab === 'purchase' && onUnlinkSupplier) {
                                   onUnlinkSupplier(item.id, selectedClientId);
                                 } else {
-                                  onUnlinkProduct(item.id, selectedClientId);
+                                  onUnlinkItem(item.id, selectedClientId);
                                 }
                               }}
                               className="p-1.5 rounded-lg bg-rose-50 text-rose-400 hover:bg-rose-100 hover:text-rose-600 transition-all"
@@ -773,7 +773,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
             </button>
             {isAdmin && (
               <button
-                onClick={onAddProduct}
+                onClick={onAddItem}
                 className="lg:hidden flex items-center gap-2 bg-indigo-600 text-white px-3 py-2 rounded-xl font-black text-xs shadow-md whitespace-nowrap"
               >
                 <Plus size={14} />
@@ -860,7 +860,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                         );
                       })}
 
-                      {onMergeProducts && (() => {
+                      {onMergeItems && (() => {
                         const allIds = group.items.map(i => i.product.id);
                         const mergeSet = selectedMergeIds[group.key] ?? new Set(allIds);
                         const keepId = (() => {
@@ -931,7 +931,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                                 if (!window.confirm(`"${group.name}" 통합하시겠습니까?\n\n남기는 품목: ${keepId}\n삭제할 품목: ${deleteIds.join(', ')}\n\n삭제 품목의 거래처/포장설정이 남기는 품목으로 이전됩니다.`)) return;
                                 setMerging(true);
                                 try {
-                                  await onMergeProducts(keepId, deleteIds);
+                                  await onMergeItems(keepId, deleteIds);
                                   setDupExpandedKeys(prev => { const n = new Set(prev); n.delete(group.key); return n; });
                                 } finally {
                                   setMerging(false);
@@ -1124,7 +1124,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                           if (partnerScopeTab === 'purchase' && onLinkSupplier) {
                             onLinkSupplier(p.id, selectedClientId);
                           } else {
-                            onLinkProduct(p.id, selectedClientId);
+                            onLinkItem(p.id, selectedClientId);
                           }
                         }}
                         className="flex items-center gap-1 text-[10px] font-black text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-all shrink-0 ml-3"
