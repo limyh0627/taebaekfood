@@ -430,7 +430,15 @@ export interface PaymentRecord {
 
 // ── 발주 (purchaseOrders 컬렉션) ─────────────────────────────────────────────
 // 매입 플로우: pending → invoiced → received
-// 매출 issuedStatements.orderId 와 대칭: issuedStatements.purchaseOrderId
+// received + linkedStatementId 없음 = 전표 작성 대기
+// received + linkedStatementId 있음 = 전표 연결 완료
+export interface PurchaseOrderItem {
+  itemId: string;
+  name: string;
+  quantity: number;
+  unit: string;
+}
+
 export interface PurchaseOrder {
   id: string;
   itemId: string;
@@ -440,13 +448,14 @@ export interface PurchaseOrder {
   quantity: number;
   unit?: string;
   isBox?: boolean;
-  price?: number;
   status: 'pending' | 'invoiced' | 'received';
   confirmedByUser?: boolean;
-  linkedStatementId?: string;  // 연결된 issuedStatement ID
+  linkedStatementId?: string;
   createdAt: string;
   invoicedAt?: string;
   receivedAt?: string;
+  items?: PurchaseOrderItem[];  // 선입고/스캔입고 시 멀티품목
+  photoUrl?: string;            // 입고 납품서 사진
 }
 
 export interface CompanyInfo {
@@ -490,29 +499,6 @@ export interface RawMaterialEntry {
   canCount?: number;    // 단위 수량 (몇 개)
 }
 
-// ── 입고 관리 ────────────────────────────────────────────────────────────
-
-export interface PendingReceiptItem {
-  submaterialId: string;
-  name: string;
-  quantity: number;
-  unit: string;
-  unitPrice?: number;
-}
-
-export interface PendingReceipt {
-  id: string;
-  partnerId?: string;      // 거래처 ID (partner)
-  partnerName: string;
-  items: PendingReceiptItem[];
-  totalAmount?: number;
-  photoUrl?: string;       // Firebase Storage URL
-  registeredBy: string;    // 등록자 이름
-  registeredAt: string;    // ISO timestamp
-  status: 'pending_voucher' | 'voucher_linked';
-  linkedStatementId?: string; // 연결된 전표 ID
-  note?: string;
-}
 
 export interface QrMapping {
   id: string;

@@ -20,7 +20,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../src/shared/firebase';
 import { addItem, updateItem, subscribeToCollection } from '../src/shared/services/firebaseService';
-import { SubmaterialComponent, PendingReceipt, PendingReceiptItem, QrMapping, IssuedStatement } from '../src/shared/types';
+import { SubmaterialComponent, PurchaseOrder, PurchaseOrderItem, QrMapping, IssuedStatement } from '../src/shared/types';
 import PageHeader from './PageHeader';
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY ?? '';
@@ -48,7 +48,7 @@ const InboundManager: React.FC<InboundManagerProps> = ({
   embedded = false,
 }) => {
   const [tab, setTab] = useState<Tab>(embedded ? 'temporary' : 'waiting');
-  const [pendingReceipts, setPendingReceipts] = useState<PendingReceipt[]>([]);
+  const [receivedOrders, setReceivedOrders] = useState<PurchaseOrder[]>([]);
   const [qrMappings, setQrMappings] = useState<QrMapping[]>([]);
 
   // 카메라 / QR 상태
@@ -88,7 +88,9 @@ const InboundManager: React.FC<InboundManagerProps> = ({
 
   // ── Firestore 구독 ──
   useEffect(() => {
-    const unsub1 = subscribeToCollection<PendingReceipt>('pendingReceipts', setPendingReceipts);
+    const unsub1 = subscribeToCollection<PurchaseOrder>('purchaseOrders', (all) => {
+      setReceivedOrders(all.filter(po => po.status === 'received'));
+    });
     const unsub2 = subscribeToCollection<QrMapping>('qrMappings', (items) => {
       setQrMappings(items);
       items.forEach(m => qrMappingCache.set(m.qrValue, m));
@@ -280,29 +282,28 @@ const InboundManager: React.FC<InboundManagerProps> = ({
         await uploadBytes(storageRef, capturedFile);
         photoUrl = await getDownloadURL(storageRef);
       }
-      const items: PendingReceiptItem[] = tempForm.items.map(i => ({
-        submaterialId: i.submaterialId,
+      const items: PurchaseOrderItem[] = tempForm.items.map(i => ({
+        itemId: i.submaterialId,
         name: i.name,
         quantity: Number(i.quantity),
         unit: i.unit,
-        unitPrice: i.unitPrice ? Number(i.unitPrice) : undefined,
       }));
-      const totalAmount = items.reduce((sum, i) => sum + (i.quantity * (i.unitPrice ?? 0)), 0);
-      const receipt: Omit<PendingReceipt, 'id'> = {
+      const po: Omit<PurchaseOrder, 'id'> = {
+        itemId: '',
+        itemName: '',
+        quantity: 0,
         partnerName: tempForm.partnerName,
         items,
-        totalAmount,
         photoUrl,
-        registeredBy: currentUser.name,
-        registeredAt: new Date().toISOString(),
-        status: 'pending_voucher',
-        note: tempForm.note || undefined,
+        status: 'received',
+        receivedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
       };
-      await addItem('pendingReceipts', receipt);
+      await addItem('purchaseOrders', po);
       // 재고 즉시 반영
       for (const item of items) {
-        if (!item.submaterialId) continue;
-        const sub = submaterials.find(s => s.id === item.submaterialId);
+        if (!item.itemId) continue;
+        const sub = submaterials.find(s => s.id === item.itemId);
         if (sub) onUpdateSubmaterial(sub.id, { stock: (sub.stock ?? 0) + item.quantity });
       }
       setTempForm({ partnerName: '', items: [], note: '' });
@@ -348,8 +349,8 @@ const InboundManager: React.FC<InboundManagerProps> = ({
 
   // ── 렌더 ──
   const visibleTabs = embedded
-    ? ([{ key: 'temporary', label: '임시입고', count: undefined }, { key: 'history', label: '입고이력', count: pendingReceipts.length }] as { key: Tab; label: string; count?: number }[])
-    : ([{ key: 'waiting', label: '입고대기', count: waitingStatements.length }, { key: 'temporary', label: '임시입고', count: undefined }, { key: 'history', label: '이력', count: pendingReceipts.length }] as { key: Tab; label: string; count?: number }[]);
+    ? ([{ key: 'temporary', label: '임시입고', count: undefined }, { key: 'history', label: '입고이력', count: receivedOrders.length }] as { key: Tab; label: string; count?: number }[])
+    : ([{ key: 'waiting', label: '입고대기', count: waitingStatements.length }, { key: 'temporary', label: '임시입고', count: undefined }, { key: 'history', label: '이력', count: receivedOrders.length }] as { key: Tab; label: string; count?: number }[]);
 
   return (
     <div className={`flex flex-col space-y-4 ${embedded ? '' : 'h-full animate-in slide-in-from-right-4 duration-500'}`}>
@@ -532,40 +533,37 @@ const InboundManager: React.FC<InboundManagerProps> = ({
       {/* ── 탭 3: 이력 ── */}
       {tab === 'history' && (
         <div className="flex-1 overflow-auto space-y-3 px-1">
-          {pendingReceipts.length === 0 ? (
+          {receivedOrders.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-slate-300">
               <History size={40} strokeWidth={1.5} className="mb-2" />
-              <p className="text-sm font-bold text-slate-400">등록된 임시 입고 내역이 없습니다</p>
+              <p className="text-sm font-bold text-slate-400">등록된 입고 내역이 없습니다</p>
             </div>
-          ) : [...pendingReceipts].sort((a, b) => b.registeredAt.localeCompare(a.registeredAt)).map(r => (
+          ) : [...receivedOrders].sort((a, b) => (b.receivedAt ?? '').localeCompare(a.receivedAt ?? '')).map(r => (
             <div key={r.id} className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-2">
               <div className="flex items-start justify-between">
                 <div>
                   <p className="font-black text-slate-800 text-sm">{r.partnerName}</p>
-                  <p className="text-xs text-slate-400">{r.registeredAt.slice(0, 10)} · {r.registeredBy}</p>
+                  <p className="text-xs text-slate-400">{(r.receivedAt ?? '').slice(0, 10)} · {r.partnerName ?? ''}</p>
                 </div>
-                <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${r.status === 'voucher_linked' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                  {r.status === 'voucher_linked' ? '전표연결완료' : '전표작성 전'}
+                <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${r.linkedStatementId ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                  {r.linkedStatementId ? '전표연결완료' : '전표작성 전'}
                 </span>
               </div>
-              {r.items.map((item, i) => (
+              {(r.items ?? []).map((item, i) => (
                 <div key={i} className="flex justify-between text-xs text-slate-600">
                   <span>{item.name}</span>
                   <span className="font-bold">{item.quantity.toLocaleString()} {item.unit}</span>
                 </div>
               ))}
-              {r.totalAmount !== undefined && r.totalAmount > 0 && (
-                <p className="text-xs text-slate-400 pt-1 border-t border-slate-50">합계 <span className="font-black text-slate-700">{r.totalAmount.toLocaleString()}원</span></p>
-              )}
               {r.photoUrl && (
                 <a href={r.photoUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-teal-600 hover:underline">
                   <ImageIcon size={12} /> 첨부 사진 보기
                 </a>
               )}
-              {isAdmin && r.status === 'pending_voucher' && (
+              {isAdmin && !r.linkedStatementId && (
                 <button
                   onClick={async () => {
-                    await updateItem('pendingReceipts', r.id, { status: 'voucher_linked' });
+                    await updateItem('purchaseOrders', r.id, { linkedStatementId: 'manual' });
                   }}
                   className="flex items-center gap-1.5 px-3 py-1.5 border border-teal-300 text-teal-700 rounded-lg text-xs font-black hover:bg-teal-50 transition-all"
                 >

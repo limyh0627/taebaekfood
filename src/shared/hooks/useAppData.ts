@@ -4,7 +4,7 @@ import {
   PalletStock, PalletTransaction, Employee, LeaveRequest,
   AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry,
   AppNotification, IssuedStatement,
-  ItemFormula, ItemBom, ShippingRule, CompanyInfo, PendingReceipt, QrMapping, ReturnRequest,
+  ItemFormula, ItemBom, ShippingRule, CompanyInfo, QrMapping, ReturnRequest,
   AccountCode, AccountGroup, FixedCostTemplate, InventorySnapshot, ProductionSalesLog,
   PendingStatementEdit, PurchaseOrder,
 } from '../types';
@@ -25,7 +25,6 @@ export interface WorkOrderItem {
 }
 
 export interface AppData {
-  pendingReceipts: PendingReceipt[];
   qrMappings: QrMapping[];
   // 주문
   orders: Order[];
@@ -86,7 +85,6 @@ export function useAppData(): AppData {
   const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
   const [workOrderItems, setWorkOrderItems] = useState<WorkOrderItem[]>([]);
   const [issuedStatements, setIssuedStatements] = useState<IssuedStatement[]>([]);
-  const [pendingReceipts, setPendingReceipts] = useState<PendingReceipt[]>([]);
   const [qrMappings, setQrMappings] = useState<QrMapping[]>([]);
   const [itemFormulas, setItemFormulas] = useState<ItemFormula[]>([]);
   const [itemBoms, setItemBoms] = useState<ItemBom[]>([]);
@@ -154,7 +152,6 @@ export function useAppData(): AppData {
             };
           }));
         }),
-        subscribeToCollection<PendingReceipt>('pendingReceipts', setPendingReceipts),
         subscribeToCollection<QrMapping>('qrMappings', setQrMappings),
         subscribeToCollection<ItemFormula>('item_formula', setItemFormulas),
         subscribeToCollection<ItemBom>('item_bom', setItemBoms),
@@ -186,7 +183,7 @@ export function useAppData(): AppData {
     noticePosts, chatRooms, chatMessages,
     rawMaterialLedger, sesameInputLedger,
     appNotifications, workOrderItems, issuedStatements,
-    pendingReceipts, qrMappings, itemFormulas, itemBoms, shippingRules, returnRequests,
+    qrMappings, itemFormulas, itemBoms, shippingRules, returnRequests,
     companyInfo, accountGroups, accountCodes, fixedCostTemplates, inventorySnapshots,
     productionSalesLogs, pendingStatementEdits,
     isDataLoading,

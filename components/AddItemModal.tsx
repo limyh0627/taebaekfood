@@ -8,12 +8,9 @@ interface ProductModalProps {
   items?: Item[];
   partners?: Partner[];
   partnerItems?: import('../src/shared/types').PartnerItem[];
-  productClients?: PartnerItem[];
-  productSuppliers?: PartnerItem[];
   shippingRules?: ShippingRule[];
   onClose: () => void;
   onSave: (_product: Item) => void;
-  onSaveProductClientConfig?: (id: string, config: Partial<PartnerItem>) => Promise<void>;
   onSaveShippingRule?: (rule: Partial<ShippingRule> & { id: string }) => Promise<void>;
   onAddShippingRule?: (rule: Omit<ShippingRule, 'id'>) => Promise<void>;
   onUpsertProductSupplier?: (ps: PartnerItem) => void;
@@ -69,9 +66,10 @@ const PUMOK_VOLUMES: Record<string, string[]> = {
   '시골향볶음검정참깨': ['1kg','20kg','25kg'],
 };
 
-const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], items, partners = [], partnerItems, productClients = [], productSuppliers = [], shippingRules = [], onClose, onSave, onSaveProductClientConfig, onSaveShippingRule, onAddShippingRule, onUpsertProductSupplier, onAddSubmaterial }) => {
-  // Compute derived variables
-  const products = items ?? [];
+const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], items, partners = [], partnerItems, shippingRules = [], onClose, onSave, onSaveShippingRule, onAddShippingRule, onUpsertProductSupplier, onAddSubmaterial }) => {
+  const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
+  const partnerIn = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
+
   const [formData, setFormData] = useState(() => ({
     name: initialData?.name || '',
     category: (initialData?.category as InventoryCategory) || 'product',
@@ -92,7 +90,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     품목: initialData?.품목 || '',
     isSmartStore: initialData?.isSmartStore ?? false,
     partnerIds: initialData?.partnerIds ?? (initialData?.partnerId ? [initialData.partnerId] : []),
-    partnerId: productSuppliers.find(ps => ps.Item_ID === initialData?.id)?.Partner_ID ?? '',
+    partnerId: partnerIn.find(pi => pi.Item_ID === initialData?.id)?.Partner_ID ?? '',
     submaterials: (initialData?.submaterials || []).map(s => ({
       ...s,
       category: normCat(s.category)
@@ -115,7 +113,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const [partnerPackagingConfigs, setClientPackagingConfigs] = useState<Record<string, { boxTypeId?: string; qtyPerBox?: number; tapeTypeId?: string }>>(() => {
     const map: Record<string, { boxTypeId?: string; qtyPerBox?: number; tapeTypeId?: string }> = {};
     if (initialData) {
-      productClients.filter(pc => pc.Item_ID === initialData.id).forEach(pc => {
+      partnerOut.filter(pi => pi.Item_ID === initialData.id).forEach(pc => {
         const rule = shippingRules.find(r => r.item_id === initialData.id && r.partner_id === pc.Partner_ID);
         map[pc.Partner_ID] = {
           boxTypeId: rule?.box_item_id ?? pc.boxTypeId,
@@ -206,7 +204,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       const partnerId = formData.partnerId;
       const itemId = finalProduct.id;
       const psId = `${itemId}_${partnerId}_in`;
-      const existing = productSuppliers.find(ps => ps.Item_ID === itemId);
+      const existing = partnerIn.find(pi => pi.Item_ID === itemId);
       onUpsertProductSupplier({ id: psId, Partner_ID: partnerId, Item_ID: itemId, Direction: 'in', Standard_Price: existing?.Standard_Price, taxType: existing?.taxType });
     }
 

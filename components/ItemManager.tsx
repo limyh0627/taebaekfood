@@ -8,8 +8,6 @@ import PageHeader from './PageHeader';
 interface ItemManagerProps {
   items: Item[];
   partners: Partner[];
-  productClients?: PartnerItem[];
-  productSuppliers?: PartnerItem[];
   partnerItems?: PartnerItem[];
   shippingRules?: ShippingRule[];
   itemBoms?: ItemBom[];
@@ -58,10 +56,11 @@ const SUB_ORDER: Record<string, number> = { '라벨': 0, '용기': 1, '마개': 
 const sortSubs = (subs: { name: string; category: string; subtype?: string }[]) =>
   [...subs].sort((a, b) => (SUB_ORDER[itemSubCat(a)] ?? 9) - (SUB_ORDER[itemSubCat(b)] ?? 9));
 
-const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClients = [], productSuppliers = [], partnerItems = [], shippingRules = [], itemBoms = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct, onLinkSupplier, onUnlinkSupplier, onMergeProducts, onSaveItemCustomer, onSaveShippingRule, onAddShippingRule, isAdmin = true }) => {
-  // Compute derived variables
+const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems = [], shippingRules = [], itemBoms = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct, onLinkSupplier, onUnlinkSupplier, onMergeProducts, onSaveItemCustomer, onSaveShippingRule, onAddShippingRule, isAdmin = true }) => {
   const products = items;
   const itemCustomers = partnerItems;
+  const partnerOut = partnerItems.filter(pi => pi.Direction === 'out');
+  const partnerIn = partnerItems.filter(pi => pi.Direction === 'in');
   const [mainView, setMainView] = useState<'flat' | 'by-partner'>(isAdmin ? 'flat' : 'by-partner');
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(true);
@@ -113,7 +112,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
   const duplicateGroups = useMemo(() => {
     const finished = items.filter(p => !p.archived && ['product', 'wip', 'giftset'].includes(p.category));
     const pcByProduct: Record<string, PartnerItem[]> = {};
-    for (const pc of productClients) {
+    for (const pc of partnerOut) {
       const key = pc.Item_ID;
       if (!key) continue;
       if (!pcByProduct[key]) pcByProduct[key] = [];
@@ -147,26 +146,25 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
         return { key, name: namePart, container: containerPart, items, canMerge };
       })
       .sort((a, b) => (a.canMerge ? 0 : 1) - (b.canMerge ? 0 : 1));
-  }, [products, productClients]);
+  }, [products, partnerItems]);
 
   const partnerItemCount = useMemo(() => {
     const map = new Map<string, number>();
-    for (const p of products) {
-      for (const cid of p.partnerIds ?? []) {
-        map.set(cid, (map.get(cid) ?? 0) + 1);
-      }
+    for (const pc of partnerOut) {
+      const cid = pc.Partner_ID ?? (pc as any).partnerId;
+      if (cid) map.set(cid, (map.get(cid) ?? 0) + 1);
     }
     return map;
-  }, [items]);
+  }, [partnerItems]);
 
   const inboundPartnerItemCount = useMemo(() => {
     const map = new Map<string, number>();
-    for (const ps of productSuppliers) {
+    for (const ps of partnerIn) {
       const sid = ps.partnerId ?? ps.Partner_ID;
       if (sid) map.set(sid, (map.get(sid) ?? 0) + 1);
     }
     return map;
-  }, [productSuppliers]);
+  }, [partnerItems]);
 
   const filteredClients = useMemo(() =>
     activePartnerClients.filter(c =>
@@ -196,7 +194,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
       ? items.filter(p => !p.archived && p.category === activeCategory)
       : selectedClientId
         ? isByClientPurchase
-          ? items.filter(p => !p.archived && productSuppliers.some(ps => (ps.itemId ?? ps.Item_ID) === p.id && (ps.partnerId ?? ps.Partner_ID) === selectedClientId))
+          ? items.filter(p => !p.archived && partnerIn.some(ps => (ps.itemId ?? ps.Item_ID) === p.id && (ps.partnerId ?? ps.Partner_ID) === selectedClientId))
           : items.filter(p => !p.archived && p.category === activeCategory && (p.partnerIds ?? []).includes(selectedClientId))
         : [];
 
@@ -216,7 +214,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
       }
     }
     return [...result].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-  }, [products, activeCategory, selectedClientId, showAll, showNoClient, searchTerm, mainView, partners, partnerScopeTab, productSuppliers]);
+  }, [products, activeCategory, selectedClientId, showAll, showNoClient, searchTerm, mainView, partners, partnerScopeTab, partnerItems]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -302,13 +300,13 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
     if (!selectedClientId) return [];
     const term = linkSearch.toLowerCase().trim();
     const alreadyLinked = partnerScopeTab === 'purchase'
-      ? new Set(productSuppliers.filter(ps => (ps.partnerId ?? ps.Partner_ID) === selectedClientId).map(ps => ps.itemId ?? ps.Item_ID))
+      ? new Set(partnerIn.filter(ps => (ps.partnerId ?? ps.Partner_ID) === selectedClientId).map(ps => ps.itemId ?? ps.Item_ID))
       : null;
     return products
       .filter(p => p.category === linkCategory && (alreadyLinked ? !alreadyLinked.has(p.id) : !(p.partnerIds ?? []).includes(selectedClientId)))
       .filter(p => !term || p.name.toLowerCase().includes(term))
       .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-  }, [products, selectedClientId, linkCategory, linkSearch, partnerScopeTab, productSuppliers]);
+  }, [products, selectedClientId, linkCategory, linkSearch, partnerScopeTab, partnerIn]);
 
   // 품목 테이블 패널 (공통)
   const productPanel = (
@@ -509,7 +507,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
                     {!(mainView === 'by-partner' && selectedClientId) && activeCategory !== 'product' && (
                       <td className="px-2 py-3">
                         <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
-                          {partners.find(c => c.id === productSuppliers.find(ps => ps.itemId === item.id)?.partnerId)?.name ?? <span className="text-slate-200">-</span>}
+                          {partners.find(c => c.id === partnerIn.find(ps => ps.itemId === item.id)?.partnerId)?.name ?? <span className="text-slate-200">-</span>}
                         </span>
                       </td>
                     )}

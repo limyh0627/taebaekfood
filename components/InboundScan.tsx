@@ -8,7 +8,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../src/shared/firebase';
 import { addItem, updateItem } from '../src/shared/services/firebaseService';
-import { Item, PendingReceipt, QrMapping, PurchaseOrder } from '../src/shared/types';
+import { Item, PurchaseOrder, PurchaseOrderItem, QrMapping } from '../src/shared/types';
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY ?? '';
 
@@ -244,17 +244,20 @@ const InboundScan: React.FC<InboundScanProps> = ({
           // 발주 매칭 → 입고 완료 처리
           onFinishConfirmedOrder(item.confirmedOrderId);
         } else {
-          // 선입고 → pendingReceipts 저장
-          const receipt: Omit<PendingReceipt, 'id'> = {
+          // 선입고 → purchaseOrders received로 저장
+          const po: Omit<PurchaseOrder, 'id'> = {
+            itemId: sub.id,
+            itemName: sub.name,
             partnerName: item.partnerName,
-            items: [{ submaterialId: sub.id, name: sub.name, quantity: qty, unit: sub.unit, unitPrice: item.unitPrice ? Number(item.unitPrice) : undefined }],
-            totalAmount: qty * (item.unitPrice ? Number(item.unitPrice) : 0),
+            quantity: qty,
+            unit: sub.unit,
+            items: [{ itemId: sub.id, name: sub.name, quantity: qty, unit: sub.unit }] as PurchaseOrderItem[],
             photoUrl,
-            registeredBy: currentUser.name,
-            registeredAt: new Date().toISOString(),
-            status: 'pending_voucher',
+            status: 'received',
+            receivedAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
           };
-          await addItem('pendingReceipts', receipt);
+          await addItem('purchaseOrders', po);
         }
       }
 

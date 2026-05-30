@@ -7,8 +7,6 @@ interface PriceManagerProps {
   items: Item[];
   partners: Partner[];
   partnerItems?: import('../src/shared/types').PartnerItem[];
-  productClients?: PartnerItem[];
-  productSuppliers?: PartnerItem[];
   onUpdateProductClientPrice?: (id: string, price: number) => void;
   onUpdateProductClientTaxType?: (id: string, taxType: '과세' | '면세') => void;
   onUpsertProductSupplier?: (ps: PartnerItem) => void;
@@ -17,15 +15,14 @@ interface PriceManagerProps {
 }
 
 const PriceManager: React.FC<PriceManagerProps> = ({
-  items, partners, partnerItems, productClients: _pc, productSuppliers: _ps,
+  items, partners, partnerItems,
   onUpdateProductClientPrice, onUpdateProductClientTaxType,
   onUpsertProductSupplier, onUpdateProductSupplierTaxType,
   onUpdateProductCost,
 }) => {
-  // Compute derived variables
   const products = items;
-  const productClients = (_pc ?? partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
-  const productSuppliers = (_ps ?? partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
+  const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
+  const partnerIn = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
   const [mode, setMode] = useState<'매출' | '매입'>('매출');
   const [partnerId, setClientId] = useState('');
   const [partnerSearch, setClientSearch] = useState('');
@@ -36,8 +33,8 @@ const PriceManager: React.FC<PriceManagerProps> = ({
   const [saved, setSaved] = useState(false);
 
   const psMap = useMemo(() =>
-    new Map(productSuppliers.map(ps => [ps.itemId ?? ps.Item_ID, ps.partnerId ?? ps.Partner_ID])),
-    [productSuppliers]
+    new Map(partnerIn.map(ps => [ps.itemId ?? ps.Item_ID, ps.partnerId ?? ps.Partner_ID])),
+    [partnerIn]
   );
 
   const filteredClients = useMemo(() =>
@@ -49,13 +46,13 @@ const PriceManager: React.FC<PriceManagerProps> = ({
 
   const selectedPcRows = useMemo(() =>
     partnerId
-      ? productClients
+      ? partnerOut
           .filter(pc => (pc.partnerId ?? pc.Partner_ID) === partnerId)
           .map(pc => ({ pc, product: items.find(p => p.id === (pc.itemId ?? pc.Item_ID)) }))
           .filter(r => r.product)
           .sort((a, b) => a.product!.name.localeCompare(b.product!.name))
       : [],
-    [productClients, products, partnerId]
+    [partnerOut, products, partnerId]
   );
 
   const selectedPsRows = useMemo(() =>
@@ -63,14 +60,14 @@ const PriceManager: React.FC<PriceManagerProps> = ({
       ? products
           .filter(p => psMap.get(p.id) === partnerId)
           .map(p => {
-            const ps = productSuppliers.find(s =>
+            const ps = partnerIn.find(s =>
               (s.itemId ?? s.Item_ID) === p.id && (s.partnerId ?? s.Partner_ID) === partnerId
             ) ?? { id: `${p.id}_${partnerId}`, itemId: p.id, Item_ID: p.id, partnerId: partnerId, Partner_ID: partnerId, Direction: 'in' as const } as unknown as PartnerItem;
             return { ps, product: p };
           })
           .sort((a, b) => a.product.name.localeCompare(b.product.name))
       : [],
-    [products, productSuppliers, psMap, partnerId]
+    [products, partnerIn, psMap, partnerId]
   );
 
   const hasMissingPrice = mode === '매출'
@@ -137,11 +134,11 @@ const PriceManager: React.FC<PriceManagerProps> = ({
         <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
           {filteredClients.map(c => {
             const pcCount = mode === '매출'
-              ? productClients.filter(pc => (pc.partnerId ?? pc.Partner_ID) === c.id).length
-              : productSuppliers.filter(ps => (ps.partnerId ?? ps.Partner_ID) === c.id).length;
+              ? partnerOut.filter(pc => (pc.partnerId ?? pc.Partner_ID) === c.id).length
+              : partnerIn.filter(ps => (ps.partnerId ?? ps.Partner_ID) === c.id).length;
             const missingCount = mode === '매출'
-              ? productClients.filter(pc => (pc.partnerId ?? pc.Partner_ID) === c.id && !pc.price && !pc.Standard_Price).length
-              : productSuppliers.filter(ps => (ps.partnerId ?? ps.Partner_ID) === c.id && !ps.price && !ps.Standard_Price).length;
+              ? partnerOut.filter(pc => (pc.partnerId ?? pc.Partner_ID) === c.id && !pc.price && !pc.Standard_Price).length
+              : partnerIn.filter(ps => (ps.partnerId ?? ps.Partner_ID) === c.id && !ps.price && !ps.Standard_Price).length;
             if (pcCount === 0) return null;
             return (
               <button

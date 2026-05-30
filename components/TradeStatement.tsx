@@ -16,8 +16,6 @@ interface TradeStatementProps {
   allProducts: Item[];
   partners: Partner[];
   partnerItems?: import('../src/shared/types').PartnerItem[];
-  productClients?: PartnerItem[];
-  productSuppliers?: PartnerItem[];
   accountCodes?: AccountCode[];
   issuedStatements: IssuedStatement[];
   onUpdateStatus?: (id: string, status: OrderStatus) => void;
@@ -85,7 +83,7 @@ const monthStart = () => new Date().toISOString().slice(0, 7) + '-01';
 const yearStart  = () => new Date().getFullYear() + '-01-01';
 
 const TradeStatement: React.FC<TradeStatementProps> = ({
-  orders, allProducts, partners, partnerItems, productClients: _pc, productSuppliers: _ps,
+  orders, allProducts, partners, partnerItems,
   accountCodes = [],
   issuedStatements, onUpdateStatus, onUpdateProductClientPrice,
   onUpdateProductClientTaxType, onUpsertProductSupplier, onUpdateProductSupplierTaxType,
@@ -107,9 +105,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   defaultTab = 'history',
   onAddProductClient,
 }) => {
-  // Compute derived variables from partnerItems
-  const productSuppliers = (_ps ?? partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
-  const productClients = (_pc ?? partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
+  const partnerIn = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
+  const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
 
   // ── 전표 생성 오버레이 ──
   const [createMode, setCreateMode] = useState<StatementType | null>(null);
@@ -397,10 +394,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     return s;
   }, [issuedStatements]);
 
-  // productSuppliers → Item_ID:Partner_ID 빠른 조회 맵
+  // partnerIn → Item_ID:Partner_ID 빠른 조회 맵
   const psMap = useMemo(() => new Map(
-    productSuppliers.filter(ps => ps.Item_ID && ps.Partner_ID).map(ps => [ps.Item_ID!, ps.Partner_ID!])
-  ), [productSuppliers]);
+    partnerIn.filter(ps => ps.Item_ID && ps.Partner_ID).map(ps => [ps.Item_ID!, ps.Partner_ID!])
+  ), [partnerIn]);
 
   // ── 발주확정 공급처별 그룹 ──
   const confirmedBySupplier = useMemo(
@@ -416,14 +413,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     [orderRequests, allProducts, partners, psMap]
   );
 
-  // ── 발주예정 전체 그룹 (psMap 의존 없이 productSuppliers 직접 조회, 미지정 포함) ──
+  // ── 발주예정 전체 그룹 (psMap 의존 없이 partnerIn 직접 조회, 미지정 포함) ──
   const orderRequestsAllGroups = useMemo(() => {
     const map = new Map<string, { partnerId: string; partnerName: string; items: { product: Item; req: { id: string; quantity: number; confirmedByUser?: boolean; isBox?: boolean } }[] }>();
     for (const req of (orderRequests ?? [])) {
       const product = allProducts.find(p => p.id === req.id);
       if (!product) continue;
       // Item_ID/itemId 모두 확인 (필드명 불일치 대응)
-      const ps = productSuppliers.find(s =>
+      const ps = partnerIn.find(s =>
         (s.Item_ID === req.id || (s as any).itemId === req.id) && s.Direction === 'in'
       );
       const partnerId = ps ? (ps.Partner_ID || (ps as any).partnerId || '') : '';
@@ -435,13 +432,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       map.get(key)!.items.push({ product, req: req as any });
     }
     return Array.from(map.values());
-  }, [orderRequests, allProducts, productSuppliers, partners]);
+  }, [orderRequests, allProducts, partnerIn, partners]);
 
-  // ── 매입 품목 선택 패널용: productSuppliers 연결된 품목 전체 (공급처별 그룹) ──
+  // ── 매입 품목 선택 패널용: partnerIn 연결된 품목 전체 (공급처별 그룹) ──
   const purchasableBySupplier = useMemo(() => {
     const term = purchaseSearch.toLowerCase().trim();
     const map = new Map<string, { partnerName: string; items: Item[] }>();
-    for (const ps of productSuppliers) {
+    for (const ps of partnerIn) {
       const partnerId = ps.Partner_ID;
       const itemId = ps.Item_ID;
       if (!partnerId || !itemId) continue;
@@ -452,7 +449,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       map.get(partnerId)!.items.push(p);
     }
     return Array.from(map.entries()).map(([sid, v]) => ({ partnerId: sid, ...v }));
-  }, [allProducts, partners, productSuppliers, purchaseSearch]);
+  }, [allProducts, partners, partnerIn, purchaseSearch]);
 
   // ── 현재 진행 주문 (매출전표 현재 주문만 패널용) ──
   const activeOrders = useMemo(() =>
@@ -480,7 +477,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       }
       const req = orderRequests?.find((r: { id: string; quantity: number; isBox?: boolean }) => r.id === id);
       if (req) {
-        const ps = productSuppliers.find(s => s.itemId === id && s.partnerId === selectedClientId);
+        const ps = partnerIn.find(s => s.itemId === id && s.partnerId === selectedClientId);
         const isBox = product.category === '향미유' && (req as any).isBox;
         rows.push({ name: product.name, spec: product.spec || product.unit || '', qty: String(req.quantity), price: ps?.price ? String(ps.price) : '', isTaxExempt: ps?.taxType === '면세', isBoxUnit: isBox, boxSize: isBox ? 12 : undefined });
       }
@@ -559,7 +556,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       const displayName = product?.품목 || item.name;
       const spec = item.displaySize || product?.spec || '';
       const key  = `${displayName}||${spec}`;
-      const piList = stmtType === '매출' ? productClients : productSuppliers;
+      const piList = stmtType === '매출' ? partnerOut : partnerIn;
       const pcEntry = piList.find(
         pc => pc.Item_ID === item.itemId && pc.Partner_ID === selectedClientId
       );
@@ -595,7 +592,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       }
     });
     return Object.values(itemMap);
-  }, [manualMode, manualItems, selectedOrder, allProducts, productClients, productSuppliers, selectedClientId, editablePrices, taxExemptOverrides, accountCodeOverrides, stmtType]);
+  }, [manualMode, manualItems, selectedOrder, allProducts, partnerOut, partnerIn, selectedClientId, editablePrices, taxExemptOverrides, accountCodeOverrides, stmtType]);
 
   const totalSupply = lineItems.reduce((s, r) => s + r.supply, 0);
   const totalTax    = lineItems.reduce((s, r) => s + r.tax, 0);
@@ -649,7 +646,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         if (!item.price || item.price <= 0) continue;
         const product = allProducts.find(p => (p.품목 || p.name) === item.name);
         if (!product) continue;
-        const pc = productClients.find(p => p.itemId === product.id && p.partnerId === selectedClientId);
+        const pc = partnerOut.find(p => p.itemId === product.id && p.partnerId === selectedClientId);
         if (pc && pc.price !== item.price) {
           onUpdateProductClientPrice(pc.id, item.price);
         }
@@ -694,7 +691,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const product = allProducts.find(p => (p.품목 || p.name) === item.name);
         if (!product || !selectedClientId) continue;
         const psId = `${product.id}_${selectedClientId}_in`;
-        const existing = productSuppliers.find(s => s.Item_ID === product.id && s.Partner_ID === selectedClientId);
+        const existing = partnerIn.find(s => s.Item_ID === product.id && s.Partner_ID === selectedClientId);
         if (!existing || existing.Standard_Price !== item.price) {
           onUpsertProductSupplier({ id: psId, Item_ID: product.id, Partner_ID: selectedClientId, Direction: 'in', Standard_Price: item.price, taxType: existing?.taxType });
           onUpdateProductCost?.(product.id, item.price);
@@ -717,7 +714,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         }
       }
     }
-  }, [manualMode, selectedOrderId, selectedClientId, tradeDate, stmtType, selectedClient, docNo, totalSupply, totalTax, totalAmount, lineItems, onMarkInvoicePrinted, onAddIssuedStatement, onAddConfirmedOrder, onRemoveConfirmedOrder, onRemoveOrderRequest, allProducts, confirmedOrders, orderRequests, productClients, productSuppliers, onUpdateProductClientPrice, onUpsertProductSupplier, onUpdateProductCost, onUpdateOrder, selectedOrder, manualItems]);
+  }, [manualMode, selectedOrderId, selectedClientId, tradeDate, stmtType, selectedClient, docNo, totalSupply, totalTax, totalAmount, lineItems, onMarkInvoicePrinted, onAddIssuedStatement, onAddConfirmedOrder, onRemoveConfirmedOrder, onRemoveOrderRequest, allProducts, confirmedOrders, orderRequests, partnerOut, partnerIn, onUpdateProductClientPrice, onUpsertProductSupplier, onUpdateProductCost, onUpdateOrder, selectedOrder, manualItems]);
 
   const handleIssue = () => {
     markIssued();
@@ -1224,12 +1221,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   };
 
   // ── 단가 패널 / 등록 품목 ──
-  // 매출 전표용: productClients 테이블 기반 (거래처별 단가 포함)
+  // 매출 전표용: partnerOut 테이블 기반 (거래처별 단가 포함)
   const partnerItemRows = useMemo(() =>
-    productClients.filter(pc=>pc.partnerId===selectedClientId)
+    partnerOut.filter(pc=>pc.partnerId===selectedClientId)
       .map(pc=>({ pc, product: allProducts.find(p=>p.id===pc.itemId) }))
       .filter(r=>r.product),
-    [productClients, selectedClientId, allProducts]
+    [partnerOut, selectedClientId, allProducts]
   );
 
   // 매입 전표용: supplierId로 연결된 품목 + PartnerItem 단가
@@ -1238,12 +1235,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     allProducts
       .filter(p => psMap.get(p.id) === selectedClientId)
       .map(p => {
-        const ps = productSuppliers.find(s => s.itemId === p.id && s.partnerId === selectedClientId)
+        const ps = partnerIn.find(s => s.itemId === p.id && s.partnerId === selectedClientId)
           ?? { id: `${p.id}_${selectedClientId}`, itemId: p.id, partnerId: selectedClientId } as PartnerItem;
         const pc = { id: ps.id, itemId: ps.itemId, partnerId: ps.partnerId, price: ps.price, taxType: ps.taxType };
         return { pc, ps, product: p };
       }),
-    [allProducts, selectedClientId, productSuppliers, psMap]
+    [allProducts, selectedClientId, partnerIn, psMap]
   );
 
   // 현재 모드에 따른 검색 소스
@@ -1411,7 +1408,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           const product = allProducts.find(p => p.id === item.itemId);
           const displayName = product?.품목 || item.name;
           const spec = item.displaySize || product?.spec || '';
-          const pcEntry = productClients.find(pc => pc.itemId === item.itemId && pc.partnerId === o.partnerId);
+          const pcEntry = partnerOut.find(pc => pc.itemId === item.itemId && pc.partnerId === o.partnerId);
           const price = pcEntry?.price ?? item.price ?? product?.price ?? 0;
           const isTaxExempt = pcEntry?.taxType === '면세';
           return { name: displayName, spec, qty: String(item.quantity), price: String(price), isTaxExempt, note: '' };
@@ -2671,7 +2668,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     </div>
                   );
                   const loadItem = (product: Item, qty: number, isBox: boolean) => {
-                    const ps = productSuppliers.find(s=>(s.Item_ID===product.id||s.itemId===product.id)&&(s.Partner_ID===selectedClientId||s.partnerId===selectedClientId));
+                    const ps = partnerIn.find(s=>(s.Item_ID===product.id||s.itemId===product.id)&&(s.Partner_ID===selectedClientId||s.partnerId===selectedClientId));
                     return { name: product.name, spec: product.spec||product.unit||'', qty: String(qty), price: ps?.Standard_Price?String(ps.Standard_Price):(ps?.price?String(ps.price):''), isTaxExempt: ps?.taxType==='면세', isBoxUnit: isBox, boxSize: isBox?12:undefined };
                   };
                   const loadAll = (items: {product: Item; qty: number; isBox: boolean}[]) => {
@@ -2724,7 +2721,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                         {requestItems.map(({product,req})=>{
                           const issued=issuedPurchaseOrderIds.has(product.id);
                           const isBox=product.category==='향미유'&&!!(req as any).isBox;
-                          const ps=productSuppliers.find(s=>(s.Item_ID===product.id||s.itemId===product.id)&&(s.Partner_ID===selectedClientId||s.partnerId===selectedClientId));
+                          const ps=partnerIn.find(s=>(s.Item_ID===product.id||s.itemId===product.id)&&(s.Partner_ID===selectedClientId||s.partnerId===selectedClientId));
                           return (
                             <button key={product.id} onClick={()=>{setManualItems([loadItem(product,req.quantity,isBox),{name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);setManualMode(true);}}
                               className={`w-full flex items-center gap-3 text-left px-5 py-3 text-xs transition-all ${issued?'bg-emerald-50 hover:bg-emerald-100':'hover:bg-pink-50'}`}>
@@ -2812,7 +2809,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 return allProducts
                   .filter(p => (p.품목 || p.name).toLowerCase().includes(q))
                   .map(p => {
-                    const existingPc = productClients.find(pc => pc.itemId === p.id && pc.partnerId === selectedClientId);
+                    const existingPc = partnerOut.find(pc => pc.itemId === p.id && pc.partnerId === selectedClientId);
                     return {
                       pc: { id: existingPc?.id ?? p.id, itemId: p.id, partnerId: selectedClientId, price: existingPc?.price ?? p.price, taxType: existingPc?.taxType },
                       product: p,

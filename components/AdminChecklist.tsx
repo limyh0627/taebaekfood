@@ -6,8 +6,7 @@ import {
   ClipboardList, RotateCcw, Building2, FileText, History, Link2,
   X, Loader2, Check, Plus,
 } from 'lucide-react';
-import { LeaveRequest, AdjustmentRequest, Employee, ReturnRequest, ReturnItem, PendingReceipt, IssuedStatement, IssuedStatementItem, Partner, PendingStatementEdit, Item, PartnerItem } from '../types';
-import { PurchaseOrder } from '../src/shared/types';
+import { LeaveRequest, AdjustmentRequest, Employee, ReturnRequest, ReturnItem, IssuedStatement, IssuedStatementItem, Partner, PendingStatementEdit, Item, PartnerItem, PurchaseOrder, PurchaseOrderItem } from '../src/shared/types';
 import { addItem, updateItem } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 
@@ -16,7 +15,7 @@ interface AdminChecklistProps {
   adjustmentRequests: AdjustmentRequest[];
   employees: Employee[];
   returnRequests?: ReturnRequest[];
-  pendingReceipts?: PendingReceipt[];
+  receivedOrders?: PurchaseOrder[];
   partners?: Partner[];
   issuedStatements?: IssuedStatement[];
   onUpdateLeaveStatus: (_id: string, _status: 'approved' | 'rejected') => void;
@@ -36,7 +35,7 @@ type TabType = 'leave' | 'adjustment' | 'ops';
 
 interface StatementDraftItem { name: string; qty: string; price: string; unit: string; isTaxExempt: boolean; }
 interface StatementDraft {
-  receipt: PendingReceipt;
+  receipt: PurchaseOrder;
   partnerId: string;
   tradeDate: string;
   items: StatementDraftItem[];
@@ -58,7 +57,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
   adjustmentRequests,
   employees,
   returnRequests = [],
-  pendingReceipts = [],
+  receivedOrders = [],
   partners = [],
   issuedStatements = [],
   onUpdateLeaveStatus,
@@ -99,13 +98,13 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     [returnRequests]
   );
-  const pendingVoucherCount = pendingReceipts.filter(r => r.status === 'pending_voucher').length;
+  const pendingVoucherCount = receivedOrders.filter(r => !r.linkedStatementId).length;
   const filteredReceipts = useMemo(() => {
     const list = inboundFilter === 'pending_voucher'
-      ? pendingReceipts.filter(r => r.status === 'pending_voucher')
-      : pendingReceipts;
-    return [...list].sort((a, b) => b.registeredAt.localeCompare(a.registeredAt));
-  }, [pendingReceipts, inboundFilter]);
+      ? receivedOrders.filter(r => !r.linkedStatementId)
+      : receivedOrders;
+    return [...list].sort((a, b) => (b.receivedAt ?? '').localeCompare(a.receivedAt ?? ''));
+  }, [receivedOrders, inboundFilter]);
 
   const pendingStmtEdits = useMemo(() =>
     pendingStatementEdits.filter(e => e.status === 'pending')
@@ -217,23 +216,28 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
     }
   };
 
-  const openStatementModal = (receipt: PendingReceipt) => {
+  const openStatementModal = (po: PurchaseOrder) => {
     const matchedClient = partners.find(c =>
-      c.name === receipt.partnerName ||
-      c.name.includes(receipt.partnerName) ||
-      receipt.partnerName.includes(c.name)
+      c.id === po.partnerId ||
+      c.name === po.partnerName ||
+      (po.partnerName && (c.name.includes(po.partnerName) || po.partnerName.includes(c.name)))
     );
     setStatementDraft({
-      receipt,
-      partnerId: matchedClient?.id ?? '',
-      tradeDate: receipt.registeredAt.slice(0, 10),
-      items: receipt.items.map(item => ({
-        name: item.name,
-        qty: item.quantity.toString(),
-        price: (item.unitPrice ?? 0).toString(),
-        unit: item.unit,
-        isTaxExempt: false,
-      })),
+      receipt: po,
+      partnerId: matchedClient?.id ?? po.partnerId ?? '',
+      tradeDate: po.receivedAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
+      items: (po.items ?? []).map((item: PurchaseOrderItem) => {
+        const pi = partnerItems.find(p =>
+          (p.Item_ID ?? (p as any).itemId) === item.itemId && p.Direction === 'in'
+        );
+        return {
+          name: item.name,
+          qty: item.quantity.toString(),
+          price: (pi?.Standard_Price ?? pi?.price ?? 0).toString(),
+          unit: item.unit,
+          isTaxExempt: pi?.taxType === '면세',
+        };
+      }),
     });
   };
 
@@ -268,8 +272,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
         totalAmount: totalSupply + totalTax,
         items: stmtItems,
       } as Omit<IssuedStatement, 'id'>);
-      await updateItem('pendingReceipts', statementDraft.receipt.id, {
-        status: 'voucher_linked',
+      await updateItem('purchaseOrders', statementDraft.receipt.id, {
         linkedStatementId: stmtId,
       });
       setStatementDraft(null);
@@ -559,20 +562,19 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                   <tr><td colSpan={6} className="px-6 py-5 text-center text-xs text-slate-300">선입고 이력 없음</td></tr>
                 ) : filteredReceipts.map(r => (
                   <tr key={r.id} className="hover:bg-slate-50/50 transition-colors border-b border-slate-50">
-                    <td className="px-3 py-3"><span className={`px-2 py-1 rounded-lg text-[10px] font-black whitespace-nowrap ${r.status === 'voucher_linked' ? 'bg-emerald-50 text-emerald-600' : 'bg-teal-50 text-teal-600'}`}>{r.status === 'voucher_linked' ? '선입고✓' : '선입고'}</span></td>
-                    <td className="px-3 py-3"><div className="flex items-center space-x-1 text-slate-500"><Clock size={12} className="shrink-0" /><span className="text-[10px] font-bold whitespace-nowrap">{r.registeredAt.slice(5, 10).replace('-', '.')}</span></div></td>
+                    <td className="px-3 py-3"><span className={`px-2 py-1 rounded-lg text-[10px] font-black whitespace-nowrap ${r.linkedStatementId ? 'bg-emerald-50 text-emerald-600' : 'bg-teal-50 text-teal-600'}`}>{r.linkedStatementId ? '선입고✓' : '선입고'}</span></td>
+                    <td className="px-3 py-3"><div className="flex items-center space-x-1 text-slate-500"><Clock size={12} className="shrink-0" /><span className="text-[10px] font-bold whitespace-nowrap">{(r.receivedAt ?? '').slice(5, 10).replace('-', '.')}</span></div></td>
                     <td className="px-3 py-3"><span className="text-[11px] font-black text-slate-800">{r.partnerName}</span></td>
                     <td className="px-3 py-3">
                       <div className="space-y-0.5">
-                        {r.items.slice(0, 2).map((item, i) => (<div key={i} className="text-[10px] text-slate-600 whitespace-nowrap">{item.name} × {item.quantity.toLocaleString()} {item.unit}</div>))}
-                        {r.items.length > 2 && <div className="text-[10px] text-slate-400">+{r.items.length - 2}건</div>}
-                        {r.note && <div className="text-[10px] text-slate-500 bg-amber-50 rounded px-2 py-0.5 mt-1">비고: {r.note}</div>}
+                        {(r.items ?? []).slice(0, 2).map((item, i) => (<div key={i} className="text-[10px] text-slate-600 whitespace-nowrap">{item.name} × {item.quantity.toLocaleString()} {item.unit}</div>))}
+                        {(r.items ?? []).length > 2 && <div className="text-[10px] text-slate-400">+{(r.items ?? []).length - 2}건</div>}
                       </div>
                     </td>
-                    <td className="px-3 py-3 text-right"><span className="text-[11px] font-black text-slate-400">{r.items.length}품목</span></td>
+                    <td className="px-3 py-3 text-right"><span className="text-[11px] font-black text-slate-400">{(r.items ?? []).length}품목</span></td>
                     <td className="px-3 py-3">
                       <div className="flex items-center justify-center">
-                        {r.status === 'pending_voucher' ? (
+                        {!r.linkedStatementId ? (
                           <button onClick={() => openStatementModal(r)} className="flex items-center gap-1 px-2 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-black transition-all shadow-sm whitespace-nowrap"><FileText size={11} /> 매입전표 발행</button>
                         ) : (
                           <span className="flex items-center gap-1 text-emerald-600 text-[10px] font-black whitespace-nowrap"><Check size={11} /> 전표 발행됨</span>
@@ -771,7 +773,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
               <div>
                 <p className="font-black text-slate-800">매입 전표 발행</p>
-                <p className="text-xs text-slate-400 mt-0.5">{statementDraft.receipt.partnerName} · {statementDraft.receipt.registeredAt.slice(0, 10)} 선입고</p>
+                <p className="text-xs text-slate-400 mt-0.5">{statementDraft.receipt.partnerName} · {statementDraft.receipt.receivedAt?.slice(0, 10) ?? ''} 선입고</p>
               </div>
               <button onClick={() => setStatementDraft(null)} className="p-2 text-slate-400 hover:text-slate-600"><X size={18} /></button>
             </div>

@@ -27,7 +27,7 @@ import {
   PrinterIcon,
 } from 'lucide-react';
 import { Item, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, PartnerItem } from '../types';
-import { PendingReceipt, PurchaseOrder } from '../src/shared/types';
+import { PurchaseOrder } from '../src/shared/types';
 import AddItemModal from './AddItemModal';
 import ConfirmModal from './ConfirmModal';
 import InboundManager from './InboundManager';
@@ -86,7 +86,7 @@ interface ItemListProps {
   currentUser?: { name: string; id: string } | null;
   isAdmin?: boolean;
   onUpdateSubmaterial?: (id: string, data: Partial<Item>) => void;
-  pendingReceipts?: PendingReceipt[];
+  receivedOrders?: PurchaseOrder[];
   inboundContent?: React.ReactNode;
   inboundBadge?: number;
   returnContent?: React.ReactNode;
@@ -156,7 +156,7 @@ const ItemList: React.FC<ItemListProps> = ({
   currentUser,
   isAdmin = false,
   onUpdateSubmaterial,
-  pendingReceipts = [],
+  receivedOrders = [],
   partnerItems = [],
   inboundContent,
   inboundBadge = 0,
@@ -700,10 +700,10 @@ const ItemList: React.FC<ItemListProps> = ({
       {activeTab === 'inbound' && (
         <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-6">
           {inboundSubTab === '입고' && (() => {
-            const pending = (pendingReceipts ?? []).filter(r => r.status === 'pending_voucher');
-            const history = (pendingReceipts ?? [])
-              .filter(r => r.registeredAt.slice(0, 7) === historyMonth)
-              .sort((a, b) => b.registeredAt.localeCompare(a.registeredAt));
+            const pending = (receivedOrders ?? []).filter(r => !r.linkedStatementId);
+            const history = (receivedOrders ?? [])
+              .filter(r => (r.receivedAt ?? '').slice(0, 7) === historyMonth)
+              .sort((a, b) => (b.receivedAt ?? '').localeCompare(a.receivedAt ?? ''));
             return (
               <>
                 {/* ── 발주 예정 목록 (Firestore pending) ── */}
@@ -739,7 +739,7 @@ const ItemList: React.FC<ItemListProps> = ({
                               return (
                                 <div key={po.id} className="px-4 py-3 flex items-center gap-3">
                                   <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-bold text-slate-800 truncate">{po.itemName || product?.name}</p>
+                                    <p className="text-sm font-bold text-slate-800 truncate">{po.itemName}</p>
                                     <p className="text-[10px] text-slate-400 mt-0.5">현재 재고 {product?.stock ?? '-'} {product?.unit ?? ''}</p>
                                   </div>
                                   <div className="flex items-center gap-1.5 shrink-0">
@@ -785,7 +785,7 @@ const ItemList: React.FC<ItemListProps> = ({
                               const unit = po.isBox ? '박스' : (po.unit || product?.unit || '');
                               return (
                                 <div key={po.id} className="flex justify-between text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-1.5">
-                                  <span>{po.itemName}</span>
+                                  <span>{po.itemName || product?.name}</span>
                                   <span className="font-bold">{po.quantity.toLocaleString()} {unit}</span>
                                 </div>
                               );
@@ -813,13 +813,13 @@ const ItemList: React.FC<ItemListProps> = ({
                           <div className="flex items-start justify-between">
                             <div>
                               <p className="font-black text-slate-800 text-sm">{r.partnerName}</p>
-                              <p className="text-xs text-slate-400">{r.registeredAt.slice(0, 10)} · {r.registeredBy ?? ''}</p>
+                              <p className="text-xs text-slate-400">{(r.receivedAt ?? '').slice(0, 10)} · {r.partnerName ?? ''}</p>
                             </div>
-                            <span className={`px-2 py-1 rounded-lg text-[10px] font-black shrink-0 ${r.status === 'voucher_linked' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                              {r.status === 'voucher_linked' ? '✓ 전표 연결됨' : '전표 미작성'}
+                            <span className={`px-2 py-1 rounded-lg text-[10px] font-black shrink-0 ${r.linkedStatementId ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                              {r.linkedStatementId ? '✓ 전표 연결됨' : '전표 미작성'}
                             </span>
                           </div>
-                          {r.items.map((item, i) => (
+                          {(r.items ?? []).map((item, i) => (
                             <div key={i} className="flex justify-between text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-1.5">
                               <span>{item.name}</span>
                               <span className="font-bold">{item.quantity.toLocaleString()} {item.unit}</span>
@@ -1425,7 +1425,7 @@ const ItemList: React.FC<ItemListProps> = ({
 
             {/* 선입고 섹션 — 발주 없이 스캔된 입고 (전표 작성 전) */}
             {activeTab === 'requests' && (() => {
-              const unlinked = pendingReceipts.filter(r => r.status === 'pending_voucher');
+              const unlinked = receivedOrders.filter(r => !r.linkedStatementId);
               if (unlinked.length === 0) return null;
               return (
                 <div className="bg-white rounded-2xl border border-amber-100 shadow-sm overflow-hidden mb-4">
@@ -1438,29 +1438,28 @@ const ItemList: React.FC<ItemListProps> = ({
                     </div>
                   </div>
                   <div className="divide-y divide-slate-50">
-                    {unlinked.sort((a, b) => b.registeredAt.localeCompare(a.registeredAt)).map(r => (
+                    {unlinked.sort((a, b) => (b.receivedAt ?? '').localeCompare(a.receivedAt ?? '')).map(r => (
                       <div key={r.id} className="px-5 py-3 flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="font-bold text-xs text-slate-700">{r.partnerName || '거래처 미확인'}</span>
-                            <span className="text-[10px] text-slate-400">{r.registeredAt.slice(0, 10)}</span>
+                            <span className="text-[10px] text-slate-400">{(r.receivedAt ?? '').slice(0, 10)}</span>
                           </div>
-                          {r.items.map((item, i) => (
+                          {(r.items ?? []).map((item, i) => (
                             <div key={i} className="flex items-center gap-1 text-xs text-slate-600">
                               <span>{item.name}</span>
                               <span className="text-slate-400">·</span>
                               <span className="font-bold">{item.quantity.toLocaleString()} {item.unit}</span>
                             </div>
                           ))}
-                          {r.note && <p className="text-[11px] text-slate-400 mt-0.5">{r.note}</p>}
                         </div>
                         {isAdmin && onRequestPurchaseInvoice && (
                           <button
                             onClick={() => {
                               onRequestPurchaseInvoice(
                                 '',
-                                r.partnerName,
-                                r.items.map(i => ({ name: i.name, spec: '', qty: i.quantity, price: i.unitPrice ?? 0 }))
+                                r.partnerName ?? '',
+                                (r.items ?? []).map(i => ({ name: i.name, spec: '', qty: i.quantity, price: 0 }))
                               );
                             }}
                             className="shrink-0 flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-[11px] font-black hover:bg-indigo-700 transition-all"

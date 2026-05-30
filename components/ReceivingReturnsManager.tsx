@@ -11,7 +11,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../src/shared/firebase';
 import { addItem, updateItem, deleteItem, subscribeToCollection } from '../src/shared/services/firebaseService';
 import {
-  SubmaterialComponent, PendingReceipt, PendingReceiptItem, QrMapping,
+  SubmaterialComponent, PurchaseOrder, PurchaseOrderItem, QrMapping,
   IssuedStatement, IssuedStatementItem, ReturnRequest, ReturnItem, ReturnReason,
   Item, Partner, Order,
 } from '../src/shared/types';
@@ -67,18 +67,16 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   const [returnTab, setReturnTab] = useState<ReturnTab>('받기');
 
   // ── Shared Firestore data ──
-  const [pendingReceipts, setPendingReceipts] = useState<PendingReceipt[]>([]);
   const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([]);
   const [qrMappings, setQrMappings] = useState<QrMapping[]>([]);
 
   useEffect(() => {
-    const u1 = subscribeToCollection<PendingReceipt>('pendingReceipts', setPendingReceipts);
-    const u2 = subscribeToCollection<ReturnRequest>('returnRequests', setReturnRequests);
+    const u1 = subscribeToCollection<ReturnRequest>('returnRequests', setReturnRequests);
     const u3 = subscribeToCollection<QrMapping>('qrMappings', items => {
       setQrMappings(items);
       items.forEach(m => qrMappingCache.set(m.qrValue, m));
     });
-    return () => { u1(); u2(); u3(); };
+    return () => { u1(); u3(); };
   }, []);
 
   // ── Camera refs ──
@@ -129,7 +127,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   // ── 전표 발행 모달 ──
   interface StatementDraftItem { name: string; qty: string; price: string; unit: string; isTaxExempt: boolean; }
   interface StatementDraft {
-    receipt: PendingReceipt;
+    receipt: PurchaseOrder;
     partnerId: string;
     tradeDate: string;
     items: StatementDraftItem[];
@@ -328,28 +326,27 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         await uploadBytes(storageRef, capturedFile);
         photoUrl = await getDownloadURL(storageRef);
       }
-      const items: PendingReceiptItem[] = scanItems.map(i => ({
-        submaterialId: i.submaterialId,
+      const items: PurchaseOrderItem[] = scanItems.map(i => ({
+        itemId: i.submaterialId,
         name: i.name,
         quantity: Number(i.quantity),
         unit: i.unit,
-        unitPrice: i.unitPrice ? Number(i.unitPrice) : undefined,
       }));
-      const totalAmount = items.reduce((s, i) => s + i.quantity * (i.unitPrice ?? 0), 0);
-      await addItem('pendingReceipts', {
+      await addItem('purchaseOrders', {
+        itemId: '',
+        itemName: '',
+        quantity: 0,
         partnerName: inboundPartner.name,
         partnerId: inboundPartner.id,
         items,
-        totalAmount,
         photoUrl,
-        registeredBy: currentUser.name,
-        registeredAt: new Date().toISOString(),
-        status: 'pending_voucher',
-        note: scanNote || undefined,
-      } as Omit<PendingReceipt, 'id'>);
+        status: 'received',
+        receivedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+      } as Omit<PurchaseOrder, 'id'>);
       for (const item of items) {
-        if (!item.submaterialId) continue;
-        const sub = submaterials.find(s => s.id === item.submaterialId);
+        if (!item.itemId) continue;
+        const sub = submaterials.find(s => s.id === item.itemId);
         if (sub) onUpdateSubmaterial(sub.id, { stock: (sub.stock ?? 0) + item.quantity });
       }
       setScanSupplierId('');
@@ -531,7 +528,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
 
   const saveSupplierInbound = async (partner: Partner) => {
     const linkedItems = getSupplierLinkedItems(partner);
-    const receiptItems: PendingReceiptItem[] = [];
+    const receiptItems: PurchaseOrderItem[] = [];
 
     for (const { sub, product } of linkedItems) {
       const itemId = sub?.id ?? product?.id;
@@ -539,48 +536,46 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
       const qty = Number(inboundPartnerQtys[itemId] ?? 0);
       if (qty <= 0) continue;
       const unit = sub?.unit ?? product?.unit ?? '';
-      const price = inboundPartnerPrices[itemId] ? Number(inboundPartnerPrices[itemId]) : (sub?.cost ?? product?.cost ?? product?.price);
+      const price = inboundPartnerPrices[itemId] ? Number(inboundPartnerPrices[itemId]) : (sub?.cost ?? product?.cost);
       receiptItems.push({
-        submaterialId: itemId,
+        itemId,
         name: sub?.name ?? product?.name ?? '',
         quantity: qty,
         unit,
-        unitPrice: price,
       });
     }
     for (const extra of inboundPartnerExtraItems) {
       const qty = Number(extra.quantity);
       if (qty <= 0) continue;
       receiptItems.push({
-        submaterialId: extra.submaterialId,
+        itemId: extra.submaterialId,
         name: extra.name,
         quantity: qty,
         unit: extra.unit,
-        unitPrice: extra.unitPrice ? Number(extra.unitPrice) : undefined,
       });
     }
 
     if (receiptItems.length === 0) { alert('수량을 1개 이상 입력해주세요.'); return; }
     setSupplierSaving(true);
     try {
-      const totalAmount = receiptItems.reduce((s, i) => s + i.quantity * (i.unitPrice ?? 0), 0);
-      await addItem('pendingReceipts', {
+      await addItem('purchaseOrders', {
+        itemId: '',
+        itemName: '',
+        quantity: 0,
         partnerId: partner.id,
         partnerName: partner.name,
         items: receiptItems,
-        totalAmount,
-        registeredBy: currentUser.name,
-        registeredAt: new Date().toISOString(),
-        status: 'pending_voucher',
-        note: inboundPartnerNote || undefined,
-      } as Omit<PendingReceipt, 'id'>);
+        status: 'received',
+        receivedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+      } as Omit<PurchaseOrder, 'id'>);
       for (const item of receiptItems) {
-        if (!item.submaterialId) continue;
-        const sub = submaterials.find(s => s.id === item.submaterialId);
+        if (!item.itemId) continue;
+        const sub = submaterials.find(s => s.id === item.itemId);
         if (sub) {
           onUpdateSubmaterial(sub.id, { stock: (sub.stock ?? 0) + item.quantity });
         } else {
-          const product = items.find(p => p.id === item.submaterialId);
+          const product = items.find(p => p.id === item.itemId);
           if (product) {
             await updateItem('items', product.id, { stock: (product.stock ?? 0) + item.quantity });
           }
@@ -612,23 +607,28 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   // 전표 발행 helpers
   // ══════════════════════════════════════════
 
-  const openStatementModal = (receipt: PendingReceipt) => {
+  const openStatementModal = (po: PurchaseOrder) => {
     const matchedClient = partners.find(c =>
-      c.name === receipt.partnerName ||
-      c.name.includes(receipt.partnerName) ||
-      receipt.partnerName.includes(c.name)
+      c.id === po.partnerId ||
+      c.name === po.partnerName ||
+      (po.partnerName && (c.name.includes(po.partnerName) || po.partnerName.includes(c.name)))
     );
     setStatementDraft({
-      receipt,
-      partnerId: matchedClient?.id ?? '',
-      tradeDate: receipt.registeredAt.slice(0, 10),
-      items: receipt.items.map(item => ({
-        name: item.name,
-        qty: item.quantity.toString(),
-        price: (item.unitPrice ?? 0).toString(),
-        unit: item.unit,
-        isTaxExempt: false,
-      })),
+      receipt: po,
+      partnerId: matchedClient?.id ?? po.partnerId ?? '',
+      tradeDate: po.receivedAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
+      items: (po.items ?? []).map((item: PurchaseOrderItem) => {
+        const pi = partnerItems.find(p =>
+          (p.Item_ID ?? (p as any).itemId) === item.itemId && p.Direction === 'in'
+        );
+        return {
+          name: item.name,
+          qty: item.quantity.toString(),
+          price: (pi?.Standard_Price ?? pi?.price ?? 0).toString(),
+          unit: item.unit,
+          isTaxExempt: pi?.taxType === '면세',
+        };
+      }),
     });
   };
 
@@ -666,8 +666,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         items: stmtItems,
       } as Omit<IssuedStatement, 'id'>);
 
-      await updateItem('pendingReceipts', statementDraft.receipt.id, {
-        status: 'voucher_linked',
+      await updateItem('purchaseOrders', statementDraft.receipt.id, {
         linkedStatementId: stmtId,
       });
       setStatementDraft(null);
@@ -1678,7 +1677,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
               <div>
                 <p className="font-black text-slate-800">매입 전표 발행</p>
-                <p className="text-xs text-slate-400 mt-0.5">{statementDraft.receipt.partnerName} · {statementDraft.receipt.registeredAt.slice(0, 10)} 선입고</p>
+                <p className="text-xs text-slate-400 mt-0.5">{statementDraft.receipt.partnerName} · {statementDraft.receipt.receivedAt?.slice(0, 10) ?? ''} 선입고</p>
               </div>
               <button onClick={() => setStatementDraft(null)} className="p-2 text-slate-400 hover:text-slate-600"><X size={18} /></button>
             </div>

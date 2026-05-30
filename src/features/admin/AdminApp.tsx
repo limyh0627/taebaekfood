@@ -143,8 +143,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
     rawMaterialLedger, sesameInputLedger,
     appNotifications, workOrderItems, issuedStatements,
     itemFormulas, itemBoms, shippingRules, returnRequests, companyInfo, inventorySnapshots, productionSalesLogs, isDataLoading,
-    pendingReceipts, pendingStatementEdits,
+    pendingStatementEdits,
   } = appData;
+  const receivedOrders = purchaseOrders.filter(po => po.status === 'received');
 
 
   // items 컬렉션 카테고리별 분리
@@ -913,7 +914,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               const adminPendingCount =
                 leaveRequests.filter(r => r.status === 'pending' || r.status === 'cancel_pending' || r.modifyRequest?.status === 'pending').length +
                 adjustmentRequests.filter(r => r.status === 'pending').length +
-                pendingReceipts.filter(r => r.status === 'pending_voucher').length;
+                receivedOrders.filter(r => !r.linkedStatementId).length;
               return (
                 <>
                   <div>
@@ -971,7 +972,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     <NavItem icon={MessageSquare} label="오피스톡" active={currentView === 'officetalk'} onClick={() => handleNavClick('officetalk')} collapsed={isSidebarCollapsed} badge={chatRooms.filter(r => r.participantIds.includes(currentUser.id) && r.lastUpdatedAt > (r.lastReadBy?.[currentUser.id] ?? '')).length || undefined} />
                     <NavItem icon={Truck} label="배송 관리" active={currentView === 'shipping'} onClick={() => handleNavClick('shipping')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={ShoppingCart} label="주문 관리" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} />
-                    <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={(lowStockCount > 0 ? lowStockCount : 0) + returnRequests.filter(r => r.status === 'pending').length + pendingReceipts.filter(r => r.status === 'pending_voucher').length || undefined} />
+                    <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={(lowStockCount > 0 ? lowStockCount : 0) + returnRequests.filter(r => r.status === 'pending').length + receivedOrders.filter(r => !r.linkedStatementId).length || undefined} />
                     <NavItem icon={Package} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={Layers} label="파렛트 관리" active={currentView === 'pallets'} onClick={() => handleNavClick('pallets')} collapsed={isSidebarCollapsed} />
                     <NavItem icon={CalendarCheck} label="연차 신청" active={currentView === 'leave-portal'} onClick={() => handleNavClick('leave-portal')} collapsed={isSidebarCollapsed} />
@@ -1277,8 +1278,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
               }}
               onDeleteRawMaterialEntry={(id) => deleteItem('rawMaterialLedger', id)}
               onUpdateSubmaterial={(id, data) => updateItem('items', id, data)}
-              pendingReceipts={pendingReceipts}
-              inboundBadge={pendingReceipts.filter(r => r.status === 'pending_voucher').length}
+              receivedOrders={receivedOrders}
+              inboundBadge={receivedOrders.filter(r => !r.linkedStatementId).length}
               inboundContent={
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                   <ReceivingReturnsManager
@@ -1415,7 +1416,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               adjustmentRequests={adjustmentRequests}
               employees={employees}
               returnRequests={returnRequests}
-              pendingReceipts={pendingReceipts}
+              receivedOrders={receivedOrders}
               partners={partners}
               issuedStatements={issuedStatements}
               onUpdateLeaveStatus={(id, status) => {
@@ -3401,9 +3402,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
           partnerItems={partnerItems}
           shippingRules={shippingRules}
           onClose={() => {setIsProductModalOpen(false); setEditingProduct(null);}}
-          onSaveProductClientConfig={async (id, config) => {
-            try { await updateItem('partner_item', id, config); } catch { /* 문서 없으면 무시 */ }
-          }}
           onSaveShippingRule={async (rule: Partial<ShippingRule> & { id: string }) => {
             const { doc: fDoc, updateDoc: fUpdate } = await import('firebase/firestore');
             const { db: fireDb } = await import('../../shared/firebase');

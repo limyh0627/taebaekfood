@@ -78,7 +78,6 @@ interface PasteOrderModalProps {
   items: Item[];
   partners: Partner[];
   partnerItems?: import('../src/shared/types').PartnerItem[];
-  productClients?: PartnerItem[];
   onClose: () => void;
   onSave: (_order: Omit<Order, 'id' | 'createdAt' | 'status'>) => void;
 }
@@ -86,11 +85,10 @@ interface PasteOrderModalProps {
 type Step = 'partner' | 'paste' | 'review';
 
 const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
-  items, partners, partnerItems, productClients: _pc, onClose, onSave,
+  items, partners, partnerItems, onClose, onSave,
 }) => {
-  // Compute derived variables
   const products = items;
-  const productClients = (_pc ?? partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
+  const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', h);
@@ -152,7 +150,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   };
 
   const getBoxConfig = (itemId: string) => {
-    const pc = productClients.find(p => p.itemId === itemId && p.partnerId === selectedClient?.id);
+    const pc = partnerOut.find(p => p.itemId === itemId && p.partnerId === selectedClient?.id);
     if (pc?.boxTypeId) return { unitsPerBox: pc.qtyPerBox ?? 0, boxType: pc.boxTypeId, boxSubId: pc.boxTypeId };
     const p = items.find(pr => pr.id === itemId);
     if (p?.defaultBoxConfig?.unitsPerBox) return p.defaultBoxConfig;
@@ -366,7 +364,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                       </div>
                     </div>
                     {matched && (() => {
-                      const pc = productClients.find(p => p.itemId === matched.id && p.partnerId === selectedClient?.id);
+                      const pc = partnerOut.find(p => p.itemId === matched.id && p.partnerId === selectedClient?.id);
                       const pcSubs: { id: string; name: string }[] = [];
                       if (pc?.boxTypeId) { const b = items.find(p => p.id === pc.boxTypeId); if (b) pcSubs.push({ id: b.id, name: b.name }); }
                       if (pc?.tapeTypeId) { const t = items.find(p => p.id === pc.tapeTypeId); if (t) pcSubs.push({ id: t.id, name: t.name }); }

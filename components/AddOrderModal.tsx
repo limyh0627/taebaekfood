@@ -7,7 +7,6 @@ interface AddOrderModalProps {
   items: Item[];
   partners: Partner[];
   partnerItems?: import('../src/shared/types').PartnerItem[];
-  productClients?: PartnerItem[];
   shippingRules?: ShippingRule[];
   palletStocks: PalletStock[];
   submaterials?: Item[];
@@ -39,11 +38,11 @@ const matchClient = (name: string, query: string): boolean => {
   return name.toLowerCase().includes(q.toLowerCase());
 };
 
-const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerItems, productClients: _pc, shippingRules = [], palletStocks, submaterials: _submaterials, onClose, onSave }) => {
-  // Compute derived variables
+const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerItems, shippingRules = [], palletStocks, submaterials: _submaterials, onClose, onSave }) => {
   const products = items;
   const submaterials = _submaterials ?? items.filter(i => i.category !== 'product');
-  const productClients = (_pc ?? partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
+  const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
+
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -175,7 +174,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
         continue;
       }
 
-      const pc = productClients.find(p => p.itemId === product.id && p.partnerId === selectedClient.id);
+      const pc = partnerOut.find(p => p.itemId === product.id && p.partnerId === selectedClient.id);
       const boxSize = pc?.qtyPerBox || item.unitsPerBox || 1;
       const boxesNeeded = Math.ceil(actualQty / boxSize);
 
@@ -217,7 +216,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
       }
     }
     return Object.values(usage).filter(v => v.needed > v.stock);
-  }, [selectedItems, selectedClient, products, productClients, submaterials, shippingRules]);
+  }, [selectedItems, selectedClient, products, partnerOut, submaterials, shippingRules]);
 
   // 거래처별 박스 설정 조회 — shippingRules 기반
   const getClientBoxConfigs = (itemId: string, partnerId?: string): { unitsPerBox: number; boxType: string; boxSubId?: string }[] => {
@@ -601,7 +600,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                               const label = product.submaterials?.find(s => s.category === '라벨')?.name;
                               const vol = product.spec;
                               const parts = [label, vol].filter(Boolean);
-                              const pc = selectedClient ? productClients.find(p => p.itemId === product.id && p.partnerId === selectedClient.id) : null;
+                              const pc = selectedClient ? partnerOut.find(p => p.itemId === product.id && p.partnerId === selectedClient.id) : null;
                               const boxName = pc?.boxTypeId ? items.find(p => p.id === pc.boxTypeId)?.name : null;
                               const tapeName = pc?.tapeTypeId ? items.find(p => p.id === pc.tapeTypeId)?.name : null;
                               const subParts = [boxName, tapeName].filter(Boolean);
