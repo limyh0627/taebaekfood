@@ -17,7 +17,7 @@ export interface WorkOrderItem {
   orderId: string;
   itemId: string;
   itemName: string;
-  clientName: string;
+  partnerName: string;
   qty: number;
   category: string;
   sortIndex: number;

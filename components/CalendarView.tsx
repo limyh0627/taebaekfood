@@ -155,7 +155,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ orders, onUpdateDeliveryDat
                               </div>
                               {dayOrders.map(o => (
                                 <div key={o.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-[10px] font-bold border ${getStatusColor(o.status)}`}>
-                                  <span className="truncate flex-1">{o.customerName || '이름없음'}</span>
+                                  <span className="truncate flex-1">{o.partnerName || '이름없음'}</span>
                                   <span className="shrink-0 opacity-60 text-[9px]">{STATUS_SHORT[o.status]}</span>
                                 </div>
                               ))}
@@ -194,7 +194,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ orders, onUpdateDeliveryDat
                               className={`p-2 rounded-lg border text-[10px] font-bold shadow-sm cursor-grab active:cursor-grabbing transition-all hover:scale-[1.02] ${getStatusColor(order.status)}`}
                             >
                               <div className="flex items-center justify-between mb-0.5">
-                                <span className="truncate max-w-[80px]">{order.customerName}</span>
+                                <span className="truncate max-w-[80px]">{order.partnerName}</span>
                               </div>
                               <div className="flex items-center opacity-80 font-medium">
                                 <Package size={10} className="mr-1 shrink-0" />

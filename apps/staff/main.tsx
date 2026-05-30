@@ -16,7 +16,7 @@ import { useAdminData } from '../../src/hooks/useAdminData';
 import { addItem, updateItem } from '../../src/shared/services/firebaseService';
 import { DEFAULT_COMPANY_INFO } from '../../src/config';
 import AuthPage from '../../src/shared/components/AuthPage';
-import ClientPortal from '../../components/ClientPortal';
+import PartnerPortal from '../../components/PartnerPortal';
 import StaffApp from '../../src/features/staff/StaffApp';
 import '../../src/index.css';
 
@@ -61,11 +61,11 @@ const StaffRoot: React.FC = () => {
     setCurrentView('orders');
   };
 
-  if (currentView === 'client-portal') {
+  if (currentView === 'partner-portal') {
     return (
-      <ClientPortal
-        clients={appData.partners}
-        products={appData.items}
+      <PartnerPortal
+        partners={appData.partners}
+        items={appData.items}
         onOrderSubmit={(o) => addItem('orders', o)}
         onExit={() => setCurrentView('orders')}
       />

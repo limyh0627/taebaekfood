@@ -161,7 +161,7 @@ export const setProductClients = async (itemId: string, partnerIds: string[]) =>
 };
 
 // partner_item 컬렉션에 품목-거래처(Direction='in') 매핑 저장
-export const setProductSuppliers = async (itemId: string, supplierIds: string[]) => {
+export const setProductSuppliers = async (itemId: string, inboundPartnerIds: string[]) => {
   const { getDocs, query: q, collection: col, where } = await import('firebase/firestore');
 
   const existing = await getDocs(q(col(db, 'partner_item'), where('Item_ID', '==', itemId), where('Direction', '==', 'in')));
@@ -170,10 +170,10 @@ export const setProductSuppliers = async (itemId: string, supplierIds: string[])
   const batch = writeBatch(db);
 
   existingMap.forEach((ref, partnerId) => {
-    if (!supplierIds.includes(partnerId)) batch.delete(ref);
+    if (!inboundPartnerIds.includes(partnerId)) batch.delete(ref);
   });
 
-  for (const partnerId of supplierIds) {
+  for (const partnerId of inboundPartnerIds) {
     if (!existingMap.has(partnerId)) {
       const id = `${itemId}_${partnerId}_in`;
       const ref = doc(db, 'partner_item', id);

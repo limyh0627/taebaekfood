@@ -972,7 +972,7 @@ const SUB_MATERIALS = [
 
 interface IncomingRow {
   date: string;
-  supplier: string;
+  inboundPartner: string;
   material: string;
   materialType: '원료' | '부자재';
   quantity: string;
@@ -998,7 +998,7 @@ interface IncomingRecord {
   confirmedBy?: string; confirmedAt?: string;
 }
 
-const defaultIncomingRow = (): IncomingRow => ({ date: '', supplier: '', material: RAW_MATERIALS[0], materialType: '원료', quantity: '', unit: 'kg', lotNo: '', expDate: '', appearance: '' as '', packaging: '' as '', label: '' as '', certAvail: '' as '', result: '' as '', corrective: '', inspector: '' });
+const defaultIncomingRow = (): IncomingRow => ({ date: '', inboundPartner: '', material: RAW_MATERIALS[0], materialType: '원료', quantity: '', unit: 'kg', lotNo: '', expDate: '', appearance: '' as '', packaging: '' as '', label: '' as '', certAvail: '' as '', result: '' as '', corrective: '', inspector: '' });
 
 const IncomingForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
   const currentMonth = new Date().toISOString().slice(0, 7);
@@ -1112,7 +1112,7 @@ const IncomingForm: React.FC<{ currentUser?: { id: string; name: string }; isAdm
               {workingRows.map((row, idx) => (
                 <tr key={idx}>
                   <td className={TD}><input type="date" value={row.date} onChange={e => update(idx, 'date', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent w-24 disabled:opacity-60" /></td>
-                  <td className={TDL}><input value={row.supplier} onChange={e => update(idx, 'supplier', e.target.value)} disabled={isReadOnly} className="w-20 text-xs border-none outline-none bg-transparent disabled:opacity-60" /></td>
+                  <td className={TDL}><input value={row.inboundPartner} onChange={e => update(idx, 'inboundPartner', e.target.value)} disabled={isReadOnly} className="w-20 text-xs border-none outline-none bg-transparent disabled:opacity-60" /></td>
                   <td className={TD}>
                     <select value={row.material} onChange={e => update(idx, 'material', e.target.value)} disabled={isReadOnly} className="text-xs border-none outline-none bg-transparent max-w-20 disabled:opacity-60">
                       <optgroup label="원료">{RAW_MATERIALS.map(m => <option key={m}>{m}</option>)}</optgroup>

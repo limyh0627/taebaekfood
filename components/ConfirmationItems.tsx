@@ -101,7 +101,7 @@ const ConfirmationItems: React.FC<ConfirmationItemsProps> = ({
                              req.type === 'reorder_alert' ? <ShoppingCart size={14} /> :
                              <Package size={14} />}
                           </div>
-                          <span className="text-[11px] font-black text-slate-800 whitespace-nowrap">{req.productName}</span>
+                          <span className="text-[11px] font-black text-slate-800 whitespace-nowrap">{req.itemName}</span>
                         </div>
                       </td>
                       <td className="px-3 py-3">

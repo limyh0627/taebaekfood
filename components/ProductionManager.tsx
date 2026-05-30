@@ -43,7 +43,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
     date: today,
     itemId: '',
     finishedQty: '',
-    wipProductId: '',
+    wipItemId: '',
     wipUsed: '',
     note: '',
   });
@@ -65,8 +65,8 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
         const matchProduct = !filterProductId || r.itemId === filterProductId;
         const matchSearch =
           !searchText ||
-          r.productName.includes(searchText) ||
-          (r.wipProductName ?? '').includes(searchText) ||
+          r.itemName.includes(searchText) ||
+          (r.wipItemName ?? '').includes(searchText) ||
           (r.note ?? '').includes(searchText);
         return matchMonth && matchProduct && matchSearch;
       })
@@ -74,10 +74,10 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   }, [records, filterMonth, showAll, filterProductId, searchText]);
 
   const monthlySummary = useMemo(() => {
-    const map: Record<string, { productName: string; qty: number; count: number }> = {};
+    const map: Record<string, { itemName: string; qty: number; count: number }> = {};
     filteredRecords.forEach(r => {
       if (!map[r.itemId]) {
-        map[r.itemId] = { productName: r.productName, qty: 0, count: 0 };
+        map[r.itemId] = { itemName: r.itemName, qty: 0, count: 0 };
       }
       map[r.itemId].qty += r.finishedQty;
       map[r.itemId].count += 1;
@@ -108,15 +108,15 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
       return;
     }
     const product = items.find(p => p.id === form.itemId);
-    const wipProduct = form.wipProductId ? items.find(p => p.id === form.wipProductId) : undefined;
+    const wipProduct = form.wipItemId ? items.find(p => p.id === form.wipItemId) : undefined;
 
     const record: ProductionRecord = {
       id: `pr-${Date.now()}`,
       date: form.date,
       itemId: form.itemId,
-      productName: product?.name ?? '',
+      itemName: product?.name ?? '',
       finishedQty: Number(form.finishedQty),
-      ...(wipProduct?.id ? { wipProductId: wipProduct.id, wipProductName: wipProduct.name } : {}),
+      ...(wipProduct?.id ? { wipItemId: wipProduct.id, wipItemName: wipProduct.name } : {}),
       ...(form.wipUsed ? { wipUsed: Number(form.wipUsed) } : {}),
       ...(product?.cost != null ? { cost: product.cost } : {}),
       ...(form.note ? { note: form.note } : {}),
@@ -125,7 +125,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
     };
 
     onAdd(record);
-    setForm({ date: today, itemId: '', finishedQty: '', wipProductId: '', wipUsed: '', note: '' });
+    setForm({ date: today, itemId: '', finishedQty: '', wipItemId: '', wipUsed: '', note: '' });
     setShowForm(false);
   };
 
@@ -133,7 +133,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   const handleSyncFromOrders = async () => {
     try {
       const deliveredOrders = orders.filter(
-        o => o.status === OrderStatus.DELIVERED && o.customerName !== '생산기록'
+        o => o.status === OrderStatus.DELIVERED && o.partnerName !== '생산기록'
       );
 
       if (deliveredOrders.length === 0) {
@@ -157,10 +157,10 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
             id: recordId,
             date: order.deliveredAt ? order.deliveredAt.slice(0, 10) : order.createdAt.slice(0, 10),
             itemId: item.itemId,
-            productName: product?.name ?? item.name,
+            itemName: product?.name ?? item.name,
             finishedQty: item.quantity,
             ...(product?.cost != null ? { cost: product.cost } : {}),
-            note: `주문 자동 연동 (${order.customerName})`,
+            note: `주문 자동 연동 (${order.partnerName})`,
             createdAt: new Date().toISOString(),
           };
           await onAdd(record);
@@ -260,8 +260,8 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
             <div>
               <label className="block text-xs font-bold text-slate-500 mb-1.5">투입 WIP 품목 <span className="font-normal text-slate-400">(옵션)</span></label>
               <select
-                value={form.wipProductId}
-                onChange={e => setForm(f => ({ ...f, wipProductId: e.target.value }))}
+                value={form.wipItemId}
+                onChange={e => setForm(f => ({ ...f, wipItemId: e.target.value }))}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-emerald-400 bg-white"
               >
                 <option value="">선택 안 함</option>
@@ -271,7 +271,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
               </select>
             </div>
 
-            {form.wipProductId && (
+            {form.wipItemId && (
               <div>
                 <label className="block text-xs font-bold text-slate-500 mb-1.5">WIP 투입 수량</label>
                 <input
@@ -285,7 +285,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
               </div>
             )}
 
-            <div className={form.wipProductId ? '' : 'sm:col-span-2'}>
+            <div className={form.wipItemId ? '' : 'sm:col-span-2'}>
               <label className="block text-xs font-bold text-slate-500 mb-1.5">비고</label>
               <input
                 type="text"
@@ -368,8 +368,8 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
           <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">{fmtMonth(filterMonth)} 생산 요약</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {monthlySummary.map(s => (
-              <div key={s.productName} className="bg-emerald-50 rounded-xl p-3">
-                <p className="text-xs text-emerald-600 font-bold truncate">{s.productName}</p>
+              <div key={s.itemName} className="bg-emerald-50 rounded-xl p-3">
+                <p className="text-xs text-emerald-600 font-bold truncate">{s.itemName}</p>
                 <p className="text-xl font-black text-slate-800 mt-0.5">{s.qty.toLocaleString()}</p>
                 <p className="text-[10px] text-slate-400">{s.count}회 생산</p>
               </div>
@@ -436,7 +436,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <span className="font-bold text-slate-800">{r.productName}</span>
+                      <span className="font-bold text-slate-800">{r.itemName}</span>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <span className="font-black text-emerald-700">{r.finishedQty.toLocaleString()}</span>
@@ -445,7 +445,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
                       </span>
                     </td>
                     <td className="px-4 py-3 text-slate-500 hidden sm:table-cell">
-                      {r.wipProductName ?? <span className="text-slate-300">—</span>}
+                      {r.wipItemName ?? <span className="text-slate-300">—</span>}
                     </td>
                     <td className="px-4 py-3 text-right text-slate-500 hidden sm:table-cell">
                       {r.wipUsed != null ? r.wipUsed.toLocaleString() : <span className="text-slate-300">—</span>}

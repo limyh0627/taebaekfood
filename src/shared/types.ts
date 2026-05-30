@@ -121,7 +121,7 @@ export type OrderSource = '스마트스토어' | '택배' | '일반';
 export interface Order {
   id: string;
   partnerId?: string;
-  customerName: string;
+  partnerName: string;
   items: OrderItem[];
   totalAmount: number;
   status: OrderStatus;
@@ -221,7 +221,7 @@ export interface Item {
   freightType?: 's' | 'a' | 'b' | 'c' | 'd' | 'e';
   boxSize?: number;    // @deprecated
   defaultBoxConfig?: BoxConfig;       // @deprecated
-  clientBoxConfigs?: ClientBoxConfig[]; // @deprecated
+  partnerBoxConfigs?: ClientBoxConfig[]; // @deprecated
   품목?: string;
   spec?: string;              // 규격/내용량 (예: "200g", "1kg", "300ml")
   /** @deprecated spec 사용 */
@@ -347,18 +347,18 @@ export interface ChatRoom {
 }
 
 
-export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'clients' | 'partners' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'client-portal' | 'item-management' | 'item-price-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'tax-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'inbound-scan' | 'smartstore-analytics' | 'haccp-checklist' | 'return-management' | 'inbound-returns' | 'client-stats' | 'cash-flow' | 'sanitation-checklist';
+export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'partners' | 'partners' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'partner-portal' | 'item-management' | 'item-price-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'tax-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'inbound-scan' | 'smartstore-analytics' | 'haccp-checklist' | 'return-management' | 'inbound-returns' | 'partner-stats' | 'cash-flow' | 'sanitation-checklist';
 
 // ── 생산 실적 ──────────────────────────────────────────────────────────────────
 export interface ProductionRecord {
   id: string;
   date: string;               // YYYY-MM-DD
   itemId: string;
-  productName: string;
+  itemName: string;
   finishedQty: number;        // FINISHED 생산 수량
   wipUsed?: number;           // WIP 투입 수량 (옵션)
-  wipProductId?: string;      // 투입한 WIP 품목 ID (옵션)
-  wipProductName?: string;    // 투입한 WIP 품목명 (옵션)
+  wipItemId?: string;      // 투입한 WIP 품목 ID (옵션)
+  wipItemName?: string;    // 투입한 WIP 품목명 (옵션)
   cost?: number;              // 건당 원가 (자동 계산 또는 수동 입력)
   note?: string;
   createdBy?: string;
@@ -407,7 +407,7 @@ export interface IssuedStatement {
   tradeDate: string;      // YYYY-MM-DD
   type: '매출' | '매입';
   partnerId: string;
-  clientName: string;
+  partnerName: string;
   orderId: string;
   docNo: string;
   totalSupply: number;
@@ -434,7 +434,7 @@ export interface PaymentRecord {
 export interface PurchaseOrder {
   id: string;
   itemId: string;
-  productName: string;
+  itemName: string;
   partnerId?: string;
   partnerName?: string;
   quantity: number;
@@ -558,7 +558,7 @@ export interface ReturnRequest {
   id: string;
   orderId?: string;
   partnerId: string;
-  clientName: string;
+  partnerName: string;
   items: ReturnItem[];
   totalAmount: number;
   status: 'pending' | 'processed';
@@ -576,11 +576,11 @@ export interface PendingStatementEdit {
   statementId: string;
   statementDocNo: string;
   statementType: '매출' | '매입';
-  clientName: string;
+  partnerName: string;
   proposedData: {
     tradeDate: string;
     partnerId: string;
-    clientName: string;
+    partnerName: string;
     totalSupply: number;
     totalTax: number;
     totalAmount: number;
@@ -624,7 +624,7 @@ export interface ProductionSalesLog {
   createdBy: string;    // 작성자
   orderCount: number;   // 처리 주문 수
   productionRows: { groupLabel: string; spec: string; 수량: number; 소비기한: string; 비고: string }[];
-  orderSummaries: { customerName: string; items: { name: string; qty: number }[] }[];
+  orderSummaries: { partnerName: string; items: { name: string; qty: number }[] }[];
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -634,7 +634,7 @@ export type AdjustmentStatus = 'pending' | 'processed' | 'rejected';
 export interface AdjustmentRequest {
   id: string;
   itemId: string;
-  productName: string;
+  itemName: string;
   originalQuantity: number;
   requestedQuantity?: number;
   type: AdjustmentType;

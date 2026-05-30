@@ -156,7 +156,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const productClients   = useMemo(() => partnerItems.filter(pi => pi.Direction === 'out'), [partnerItems]);
 
   // partners 컬렉션
-  const clients = partners;
 
   const { fixedCosts, productionRecords } = adminData;
 
@@ -246,10 +245,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // 원료 자동 사용량 (DELIVERED 주문 → 원료별·날짜별 집계)
   // itemFormulas가 있으면 Firestore item_formula 사용, 없으면 PRODUCT_FORMULA fallback
   const autoRawMaterialUsage = useMemo<Array<{material: string; date: string; used: number; note: string}>>(() => {
-    const dayMap: Record<string, Record<string, { used: number; clients: string[] }>> = {};
+    const dayMap: Record<string, Record<string, { used: number; partners: string[] }>> = {};
     for (const o of orders.filter(o => o.status === OrderStatus.DELIVERED && o.deliveredAt)) {
       const dateStr = o.deliveredAt!.slice(0, 10);
-      const clientName = partners.find(c => c.id === o.partnerId)?.name || o.customerName || '';
+      const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '';
       for (const item of o.items) {
         const prod = allProducts.find(p => p.id === item.itemId);
         if (!prod || prod.category !== 'product') continue;
@@ -264,21 +263,21 @@ const AdminApp: React.FC<AdminAppProps> = ({
           const usedKg = toKg(prod.spec || '', f.raw, item.quantity) * f.ratio;
           if (usedKg <= 0) continue;
           if (!dayMap[f.raw]) dayMap[f.raw] = {};
-          if (!dayMap[f.raw][dateStr]) dayMap[f.raw][dateStr] = { used: 0, clients: [] };
+          if (!dayMap[f.raw][dateStr]) dayMap[f.raw][dateStr] = { used: 0, partners: [] };
           dayMap[f.raw][dateStr].used += usedKg;
-          if (clientName && !dayMap[f.raw][dateStr].clients.includes(clientName)) dayMap[f.raw][dateStr].clients.push(clientName);
+          if (partnerName && !dayMap[f.raw][dateStr].partners.includes(partnerName)) dayMap[f.raw][dateStr].partners.push(partnerName);
         }
       }
     }
     const result: Array<{ material: string; date: string; used: number; note: string }> = [];
     for (const [mat, dates] of Object.entries(dayMap)) {
-      for (const [date, { used, clients }] of Object.entries(dates)) {
-        const note = partners.length === 0 ? '생산' : partners.length === 1 ? clients[0] : `${clients[0]} 외 ${partners.length - 1}`;
+      for (const [date, { used, partners }] of Object.entries(dates)) {
+        const note = partners.length === 0 ? '생산' : partners.length === 1 ? partners[0] : `${partners[0]} 외 ${partners.length - 1}`;
         result.push({ material: mat, date, used: Math.round(used * 1000) / 1000, note });
       }
     }
     return result;
-  }, [orders, allProducts, clients, itemFormulas]);
+  }, [orders, allProducts, partners, itemFormulas]);
 
   // 재고 발주 관련 상태 (orderRequests는 useAppData에서 Firebase로 관리)
 
@@ -395,7 +394,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       await addItem('adjustmentRequests', {
         id: `REORDER-${subId}-${Date.now()}`,
         itemId: subId,
-        productName: data.name,
+        itemName: data.name,
         originalQuantity: sub.stock,
         requestedQuantity: shortage,
         type: 'reorder_alert',
@@ -458,7 +457,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       await updateItem('purchaseOrders', id, { quantity, confirmedByUser: true, isBox: isBox ?? false, ...(partnerId ? { partnerId, partnerName } : {}) });
     } else {
       await addItem('purchaseOrders', {
-        id, itemId: id, productName: product?.name ?? '',
+        id, itemId: id, itemName: product?.name ?? '',
         quantity, isBox: isBox ?? false, status: 'pending',
         confirmedByUser: true, createdAt: new Date().toISOString(),
         ...(partnerId ? { partnerId, partnerName } : {}),
@@ -486,7 +485,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const product = allProducts.find(p => p.id === item.id);
       const ps = productSuppliers.find(s => s.Item_ID === item.id || (s as any).productId === item.id);
       const partnerId = ps?.Partner_ID || (ps as any)?.partnerId;
-      const partnerName = partnerId ? clients.find(c => c.id === partnerId)?.name : undefined;
+      const partnerName = partnerId ? partners.find(c => c.id === partnerId)?.name : undefined;
       if (existing) {
         await updateItem('purchaseOrders', item.id, {
           quantity: item.quantity, isBox: item.isBox ?? false, status: 'pending',
@@ -494,7 +493,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         });
       } else {
         await addItem('purchaseOrders', {
-          id: item.id, itemId: item.id, productName: product?.name ?? '',
+          id: item.id, itemId: item.id, itemName: product?.name ?? '',
           quantity: item.quantity, isBox: item.isBox ?? false,
           status: 'pending', createdAt: new Date().toISOString(),
           ...(partnerId ? { partnerId, partnerName } : {}),
@@ -518,7 +517,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       } else {
         const product = allProducts.find(p => p.id === item.id);
         await addItem('purchaseOrders', {
-          id: item.id, itemId: item.id, productName: product?.name ?? '',
+          id: item.id, itemId: item.id, itemName: product?.name ?? '',
           quantity: item.quantity, isBox: item.isBox ?? false,
           status: 'invoiced', createdAt: new Date().toISOString(),
           invoicedAt: new Date().toISOString(),
@@ -545,10 +544,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
         id: `pr-${order.id}-${item.itemId}-${Date.now()}`,
         date: (order.deliveredAt ?? new Date().toISOString()).slice(0, 10),
         itemId: item.itemId,
-        productName: product.name,
+        itemName: product.name,
         finishedQty: item.quantity,
         ...(product.cost !== undefined ? { cost: product.cost } : {}),
-        note: `주문 자동 연동 (${order.customerName})`,
+        note: `주문 자동 연동 (${order.partnerName})`,
         createdAt: new Date().toISOString(),
       };
       await addItem('productionRecords', record);
@@ -670,7 +669,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const formula = PRODUCT_FORMULA[product.품목 || product.name];
       if (formula) {
         const dateStr = order.deliveredAt?.slice(0, 10) || new Date().toISOString().slice(0, 10);
-        const clientName = partners.find(c => c.id === order.partnerId)?.name || order.customerName || '';
+        const partnerName = partners.find(c => c.id === order.partnerId)?.name || order.partnerName || '';
         for (const f of formula) {
           const usedKg = toKg(product.spec || '', f.raw, item.quantity) * f.ratio;
           if (usedKg <= 0) continue;
@@ -681,7 +680,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             date: dateStr,
             received: 0,
             used: Math.round(usedKg * 1000) / 1000,
-            note: `자동: ${clientName}`,
+            note: `자동: ${partnerName}`,
             createdAt: new Date().toISOString(),
             type: 'auto',
             orderId: order.id,
@@ -760,7 +759,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   const handleNavClick = (view: ViewType) => {
-    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant', 'cost-management', 'profit-analysis', 'production', 'admin-checklist', 'smartstore-analytics', 'haccp-checklist', 'client-stats', 'cash-flow'];
+    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant', 'cost-management', 'profit-analysis', 'production', 'admin-checklist', 'smartstore-analytics', 'haccp-checklist', 'partner-stats', 'cash-flow'];
     if (adminOnlyViews.includes(view) && !isAdminAuthenticated && !isAdmin) {
       setPendingAdminView(view);
       setIsAdminAuthModalOpen(true);
@@ -922,7 +921,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     <nav className="space-y-1">
                       <NavItem icon={LayoutDashboard} label="대시보드" active={currentView === 'dashboard' || currentView === 'ai-consultant'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={BarChart2} label="손익 / 비용 분석" active={currentView === 'profit-analysis' || currentView === 'cost-management'} onClick={() => handleNavClick('profit-analysis')} collapsed={isSidebarCollapsed} />
-                      <NavItem icon={TrendingUp} label="거래처통계" active={currentView === 'client-stats'} onClick={() => handleNavClick('client-stats')} collapsed={isSidebarCollapsed} />
+                      <NavItem icon={TrendingUp} label="거래처통계" active={currentView === 'partner-stats'} onClick={() => handleNavClick('partner-stats')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={Activity} label="현금흐름 분석" active={currentView === 'cash-flow'} onClick={() => handleNavClick('cash-flow')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={Factory} label="생산 실적" active={currentView === 'production'} onClick={() => handleNavClick('production')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={ShoppingBag} label="스마트스토어 분석" active={currentView === 'smartstore-analytics'} onClick={() => handleNavClick('smartstore-analytics')} collapsed={isSidebarCollapsed} />
@@ -946,7 +945,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">외부 서비스</p>}
                     <nav className="space-y-1">
                       <button
-                        onClick={() => setCurrentView('client-portal')}
+                        onClick={() => setCurrentView('partner-portal')}
                         title={isSidebarCollapsed ? "거래처 주문 포털" : undefined}
                         className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between px-4'} py-3 rounded-xl text-slate-500 hover:bg-cyan-50 hover:text-cyan-600 transition-all group`}
                       >
@@ -985,7 +984,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">외부 서비스</p>}
                   <nav className="space-y-1">
                     <button
-                      onClick={() => setCurrentView('client-portal')}
+                      onClick={() => setCurrentView('partner-portal')}
                       title={isSidebarCollapsed ? "거래처 주문 포털" : undefined}
                       className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between px-4'} py-3 rounded-xl text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 transition-all group`}
                     >
@@ -1021,11 +1020,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 'orders': '주문 관리', 'shipping': '배송 관리', 'inventory': '재고 관리',
                 'pallets': '파렛트 관리', 'hr': '인사 관리', 'partners': '거래처 관리',
                 'notice': '공지사항', 'documents': '서류 관리', 'trade-statement': '거래명세서', 'tax-statement': '세금계산서',
-                'profit-analysis': '손익 / 비용 분석', 'cost-management': '비용 관리', 'client-stats': '거래처통계', 'cash-flow': '현금흐름 분석',
+                'profit-analysis': '손익 / 비용 분석', 'cost-management': '비용 관리', 'partner-stats': '거래처통계', 'cash-flow': '현금흐름 분석',
                 'production': '생산 실적', 'admin-checklist': '확인사항',
                 'leave-portal': '연차 신청', 'confirmation-items': '확인사항',
                 'item-management': '품목 관리', 'item-price-management': '품목 관리',
-                'inbound-scan': '입고 스캔', 'client-portal': '거래처 포털',
+                'inbound-scan': '입고 스캔', 'partner-portal': '거래처 포털',
                 'officetalk': '오피스톡', 'smartstore-analytics': '스마트스토어 분석',
                 'haccp-checklist': 'HACCP 체크리스트', 'return-management': '반품 관리',
                 'inbound-returns': '입고 / 반품', 'sanitation-checklist': '작업장 위생점검표',
@@ -1222,7 +1221,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 deleteItem(inProducts ? 'items' : 'items', id);
               }}
               onAddAdjustmentRequest={(req) => addItem('adjustmentRequests', req)}
-              suppliers={partners.filter(c => c.partnerType === '매입처' || c.partnerType === '매출+매입처')}
+              inboundPartners={partners.filter(c => c.partnerType === '매입처' || c.partnerType === '매출+매입처')}
               partnerItems={partnerItems}
               partners={partners}
               currentUser={currentUser}
@@ -1376,7 +1375,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     <div className="space-y-1">
                       {selectedLog.orderSummaries.map((s, i) => (
                         <div key={i} className="flex items-center gap-3 px-3 py-2 bg-slate-50 rounded-xl border border-slate-100 text-xs">
-                          <span className="font-black text-slate-800 w-28 shrink-0">{s.customerName}</span>
+                          <span className="font-black text-slate-800 w-28 shrink-0">{s.partnerName}</span>
                           <span className="text-slate-500">{s.items.map(it => `${it.name} ${it.qty}개`).join(', ')}</span>
                         </div>
                       ))}
@@ -1461,7 +1460,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             const SUB_ONLY_CATS = new Set(['container', 'cap', 'tape', 'box', 'label', 'raw']);
             const shippedOrders = orders.filter(o =>
               o.status === OrderStatus.SHIPPED &&
-              o.customerName !== '생산기록' &&
+              o.partnerName !== '생산기록' &&
               o.items.some(item => {
                 const p = allProducts.find(pr => pr.id === item.itemId);
                 // 제품 ID가 DB에 없으면(삭제 후 재등록 등) 완제품으로 간주
@@ -1481,13 +1480,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
             // 우측: 완제품, (상호, 품목, 용량) 기준 그룹화
             type RightRow = { 상호: string; 품목: string; spec: string; 수량: number; 소비기한: string; 제조일자: string; orderItems: Array<{orderId: string; itemIdx: number}>; };
             const rightRowsRaw = shippedOrders.flatMap(order => {
-              const client = partners.find(c => c.id === order.partnerId);
-              const clientName = client?.name || order.customerName || '';
+              const partner = partners.find(c => c.id === order.partnerId);
+              const partnerName = partner?.name || order.partnerName || '';
               return order.items.flatMap((item, itemIdx) => {
                 const product = allProducts.find(p => p.id === item.itemId);
                 if (product && SUB_ONLY_CATS.has(product.category)) return [];
                 const 용량 = product?.spec || product?.용량 || item.displaySize || '';
-                return [{ 상호: clientName, 품목: product?.품목 || item.name, 용량, 수량: item.quantity, 소비기한: calcExpiry(item.mfgDate || ''), 제조일자: item.mfgDate || '', orderId: order.id, itemIdx }];
+                return [{ 상호: partnerName, 품목: product?.품목 || item.name, 용량, 수량: item.quantity, 소비기한: calcExpiry(item.mfgDate || ''), 제조일자: item.mfgDate || '', orderId: order.id, itemIdx }];
               });
             });
             const rightRows: RightRow[] = Object.values(
@@ -1516,14 +1515,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
               if (상호 === '해피유통(00)' && 품목 === '시골향들기름2' && 용량 === '300ml') return '하남댁들기름';
               return 품목;
             };
-            const agg: Record<string, { qty: number; mfgDates: string[]; clients: string[] }> = {};
+            const agg: Record<string, { qty: number; mfgDates: string[]; partners: string[] }> = {};
             rightRows.forEach(r => {
               const mappedPumok = remapSalesPumok(r.상호, r.품목, r.spec ?? '');
               const key = `${mappedPumok}||${r.spec}`;
-              if (!agg[key]) agg[key] = { qty: 0, mfgDates: [], clients: [] };
+              if (!agg[key]) agg[key] = { qty: 0, mfgDates: [], partners: [] };
               agg[key].qty += r.수량;
               if (r.제조일자) agg[key].mfgDates.push(r.제조일자);
-              if (r.상호 && !agg[key].clients.includes(r.상호)) agg[key].clients.push(r.상호);
+              if (r.상호 && !agg[key].partners.includes(r.상호)) agg[key].partners.push(r.상호);
             });
 
             // 좌측 하단 템플릿 (참깨/들깨 계열)
@@ -1627,11 +1626,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
             const leftRows: { groupLabel: string; spec: string; 수량: number; 소비기한: string; 비고: string }[] = [];
             topTemplate.forEach(({ label, key, volumes }) => {
               volumes.forEach((vol, i) => {
-                const a = agg[`${key}||${vol}`] || { qty: 0, mfgDates: [], clients: [] };
+                const a = agg[`${key}||${vol}`] || { qty: 0, mfgDates: [], partners: [] };
                 const earliestMfg = a.mfgDates.length ? [...a.mfgDates].sort()[0] : '';
                 const expiryStr = earliestMfg ? calcExpiry(earliestMfg) : '';
-                const clientNote = a.clients.join(', ');
-                leftRows.push({ groupLabel: i === 0 ? label : '', spec: vol, 수량: a.qty, 소비기한: expiryStr, 비고: clientNote });
+                const partnerNote = a.partners.join(', ');
+                leftRows.push({ groupLabel: i === 0 ? label : '', spec: vol, 수량: a.qty, 소비기한: expiryStr, 비고: partnerNote });
               });
             });
 
@@ -1736,12 +1735,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
               ws.addRow([]);
 
               bottomTemplate.forEach(({ 품목, 용량 }) => {
-                const a = agg[`${품목}||${용량}`] || { qty: 0, mfgDates: [], clients: [] };
+                const a = agg[`${품목}||${용량}`] || { qty: 0, mfgDates: [], partners: [] };
                 const earliestMfg = a.mfgDates.length ? [...a.mfgDates].sort()[0] : '';
                 const expiryStr = earliestMfg ? calcExpiry(earliestMfg) : '';
-                const clientNote = a.clients.join(', ');
+                const partnerNote = a.partners.join(', ');
                 const displayQty = getBottomQty(품목, 용량);
-                const row = ws.addRow([품목, 용량, displayQty, expiryStr, clientNote]);
+                const row = ws.addRow([품목, 용량, displayQty, expiryStr, partnerNote]);
                 row.height = 16;
                 [1,2,3,4,5].forEach(c => {
                   const cell = row.getCell(c);
@@ -1774,7 +1773,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 orderCount: shippedOrders.length,
                 productionRows: leftRows,
                 orderSummaries: shippedOrders.map(o => ({
-                  customerName: o.customerName,
+                  partnerName: o.partnerName,
                   items: o.items.map(i => ({ name: i.name, qty: i.quantity ?? 1 })),
                 })),
               });
@@ -1788,7 +1787,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               // 향미유만 있는 출고 주문도 이력으로 이동 + 재고 차감
               const hyangmiyuOnlyOrders = orders.filter(o =>
                 o.status === OrderStatus.SHIPPED &&
-                o.customerName !== '생산기록' &&
+                o.partnerName !== '생산기록' &&
                 o.items.length > 0 &&
                 o.items.every(item => {
                   const pr = allProducts.find(pr => pr.id === item.itemId);
@@ -1852,30 +1851,30 @@ const AdminApp: React.FC<AdminAppProps> = ({
                           />
                           <span className="text-[10px] text-slate-400 whitespace-nowrap">→ 제조 -3일 ±1</span>
                           {(() => {
-                            const cnt = orders.filter(o => o.status === OrderStatus.SHIPPED && o.customerName !== '생산기록')
+                            const cnt = orders.filter(o => o.status === OrderStatus.SHIPPED && o.partnerName !== '생산기록')
                               .flatMap(o => o.items.filter(item => allProducts.find(p => p.id === item.itemId)?.category === '완제품')).length;
                             return cnt > 0 ? <span className="text-[10px] font-bold text-amber-500 whitespace-nowrap">{cnt}건</span> : null;
                           })()}
                           <button
                             onClick={async () => {
                               if (!bulkMfgDate) return;
-                              type UnsetItem = { orderId: string; itemIdx: number; productName: string };
+                              type UnsetItem = { orderId: string; itemIdx: number; itemName: string };
                               const unset: UnsetItem[] = [];
                               const targetOrders = orders.filter(o =>
-                                o.status === OrderStatus.SHIPPED && o.customerName !== '생산기록'
+                                o.status === OrderStatus.SHIPPED && o.partnerName !== '생산기록'
                               );
                               for (const o of targetOrders) {
                                 o.items.forEach((item, itemIdx) => {
                                   const p = allProducts.find(pr => pr.id === item.itemId);
                                   if (p?.category === '완제품') {
-                                    unset.push({ orderId: o.id, itemIdx, productName: p.품목 || item.name });
+                                    unset.push({ orderId: o.id, itemIdx, itemName: p.품목 || item.name });
                                   }
                                 });
                               }
                               if (unset.length === 0) { alert('적용할 항목이 없습니다.'); return; }
                               const uniqueProducts: string[] = [];
-                              for (const { productName } of unset) {
-                                if (!uniqueProducts.includes(productName)) uniqueProducts.push(productName);
+                              for (const { itemName } of unset) {
+                                if (!uniqueProducts.includes(itemName)) uniqueProducts.push(itemName);
                               }
                               // 서류날짜 - 3일 base, 품목별 index % 3 → -1, 0, +1 분산
                               const offsets = [-1, 0, 1];
@@ -1886,9 +1885,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                 productDateMap[name] = d.toISOString().slice(0, 10);
                               });
                               const byOrder: Record<string, { itemIdx: number; date: string }[]> = {};
-                              for (const { orderId, itemIdx, productName } of unset) {
+                              for (const { orderId, itemIdx, itemName } of unset) {
                                 if (!byOrder[orderId]) byOrder[orderId] = [];
-                                byOrder[orderId].push({ itemIdx, date: productDateMap[productName] });
+                                byOrder[orderId].push({ itemIdx, date: productDateMap[itemName] });
                               }
                               for (const [orderId, updates] of Object.entries(byOrder)) {
                                 const o = orders.find(ord => ord.id === orderId);
@@ -2352,10 +2351,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         </thead>
                         <tbody>
                           {bottomTemplate.map(({ 품목, 용량 }) => {
-                            const a = agg[`${품목}||${용량}`] || { qty: 0, mfgDates: [], clients: [] };
+                            const a = agg[`${품목}||${용량}`] || { qty: 0, mfgDates: [], partners: [] };
                             const earliestMfg = a.mfgDates.length ? [...a.mfgDates].sort()[0] : '';
                             const expiryStr = earliestMfg ? calcExpiry(earliestMfg) : '';
-                            const clientNote = a.clients.join(', ');
+                            const partnerNote = a.partners.join(', ');
                             const displayQty = getBottomQty(품목, 용량);
                             return (
                               <tr key={`${품목}${용량}`} className="hover:bg-slate-50/50">
@@ -2363,7 +2362,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                 <td className="px-3 py-1.5 border border-slate-200 text-center text-slate-600">{용량}</td>
                                 <td className={`px-3 py-1.5 border border-slate-200 text-center font-black ${displayQty > 0 ? 'text-indigo-700' : 'text-slate-300'}`}>{displayQty}</td>
                                 <td className="px-3 py-1.5 border border-slate-200 text-center text-slate-500 whitespace-nowrap">{expiryStr}</td>
-                                <td className="px-3 py-1.5 border border-slate-200 text-slate-500 text-[10px] break-words max-w-[160px]">{clientNote}</td>
+                                <td className="px-3 py-1.5 border border-slate-200 text-slate-500 text-[10px] break-words max-w-[160px]">{partnerNote}</td>
                               </tr>
                             );
                           })}
@@ -2954,14 +2953,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onUpdateOrder={(id, data) => updateItem('orders', id, data)}
               onAddIssuedStatement={(stmt) => addItem('issuedStatements', stmt)}
               onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
-              onProposeEdit={(id, data, stmtType, docNo, clientName) => {
+              onProposeEdit={(id, data, stmtType, docNo, partnerName) => {
                 const stmt = issuedStatements.find(s => s.id === id);
                 addItem('pendingStatementEdits', {
                   id: `pse-${Date.now()}`,
                   statementId: id,
                   statementDocNo: docNo,
                   statementType: stmtType,
-                  clientName,
+                  partnerName,
                   proposedData: data,
                   createdAt: new Date().toISOString(),
                   createdBy: currentUser.name,
@@ -2984,7 +2983,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 } else {
                   const product = allProducts.find(p => p.id === item.id);
                   await addItem('purchaseOrders', {
-                    id: item.id, itemId: item.id, productName: product?.name ?? '',
+                    id: item.id, itemId: item.id, itemName: product?.name ?? '',
                     quantity: item.quantity, isBox: item.isBox ?? false,
                     partnerId: item.partnerId, partnerName: item.partnerName,
                     status: 'invoiced', createdAt: new Date().toISOString(),
@@ -3050,7 +3049,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               />
             </div>
           )}
-          {currentView === 'client-stats' && (
+          {currentView === 'partner-stats' && (
             <div className="h-full overflow-y-auto p-6">
               <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                 <ProfitAnalysis
@@ -3335,7 +3334,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   const adminRequest: AdjustmentRequest = {
                     id: `MENTION-${Date.now()}`,
                     itemId: 'chat-mention',
-                    productName: `[채팅 언급] ${msg.senderName}`,
+                    itemName: `[채팅 언급] ${msg.senderName}`,
                     originalQuantity: 0,
                     type: 'chat_mention',
                     reason: msg.text,
@@ -3366,8 +3365,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
           await addItem('orders', {...o, id: orderId, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
           console.log('[AddOrder] orders 저장 완료', orderId);
           await checkAndAlertShortage(o.items, o.partnerId);
-          const clientName = partners.find(c => c.id === o.partnerId)?.name || o.customerName || '거래처';
-          await addItem('notifications', { type: 'new_order', title: '신규 주문', body: `${clientName} 주문이 등록되었습니다.`, readBy: [], createdAt: new Date().toISOString(), senderId: currentUser.id, linkedId: orderId } as Omit<AppNotification,'id'>);
+          const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '거래처';
+          await addItem('notifications', { type: 'new_order', title: '신규 주문', body: `${partnerName} 주문이 등록되었습니다.`, readBy: [], createdAt: new Date().toISOString(), senderId: currentUser.id, linkedId: orderId } as Omit<AppNotification,'id'>);
           setNewOrderId(orderId);
           setIsAddOrderOpen(false);
           console.log('[AddOrder] 완료');
@@ -3383,8 +3382,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
           await addItem('orders', {...o, id: orderId, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
           console.log('[PasteOrder] orders 저장 완료', orderId);
           await checkAndAlertShortage(o.items, o.partnerId);
-          const clientName = partners.find(c => c.id === o.partnerId)?.name || o.customerName || '거래처';
-          await addItem('notifications', { type: 'new_order', title: '신규 주문', body: `${clientName} 주문이 등록되었습니다.`, readBy: [], createdAt: new Date().toISOString(), senderId: currentUser.id, linkedId: orderId } as Omit<AppNotification,'id'>);
+          const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '거래처';
+          await addItem('notifications', { type: 'new_order', title: '신규 주문', body: `${partnerName} 주문이 등록되었습니다.`, readBy: [], createdAt: new Date().toISOString(), senderId: currentUser.id, linkedId: orderId } as Omit<AppNotification,'id'>);
           setNewOrderId(orderId);
           setIsPasteOrderOpen(false);
           console.log('[PasteOrder] 완료');

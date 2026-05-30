@@ -185,7 +185,7 @@ const InboundScan: React.FC<InboundScanProps> = ({
 품목 목록: ${subList}
 
 응답 형식 (JSON 배열만):
-[{"name":"품목명","quantity":수량,"unit":"단위","unitPrice":단가,"supplier":"거래처명"}]
+[{"name":"품목명","quantity":수량,"unit":"단위","unitPrice":단가,"inboundPartner":"거래처명"}]
 
 품목명은 반드시 위 목록의 이름과 정확히 일치해야 합니다. 거래처명이 안 보이면 supplier는 빈 문자열.`;
 
@@ -196,7 +196,7 @@ const InboundScan: React.FC<InboundScanProps> = ({
       const text = result.response.text().trim();
       const jsonMatch = text.match(/\[[\s\S]*\]/);
       if (!jsonMatch) throw new Error('파싱 실패');
-      const parsed = JSON.parse(jsonMatch[0]) as { name: string; quantity: number; unit: string; unitPrice?: number; supplier?: string }[];
+      const parsed = JSON.parse(jsonMatch[0]) as { name: string; quantity: number; unit: string; unitPrice?: number; inboundPartner?: string }[];
 
       const items: ConfirmItem[] = parsed.map(p => {
         const sub = submaterials.find(s => s.name === p.name);
@@ -206,7 +206,7 @@ const InboundScan: React.FC<InboundScanProps> = ({
           ...base,
           quantity: p.quantity ? String(p.quantity) : base.quantity,
           unitPrice: p.unitPrice ? String(p.unitPrice) : base.unitPrice,
-          partnerName: p.supplier || '',
+          partnerName: p.inboundPartner || '',
         };
       }).filter(Boolean) as ConfirmItem[];
 

@@ -9,7 +9,7 @@ import { useAdminData } from './src/hooks/useAdminData';
 import { addItem, updateItem } from './src/services/firebaseService';
 import { DEFAULT_COMPANY_INFO } from './src/config';
 import AuthPage from './components/AuthPage';
-import ClientPortal from './components/ClientPortal';
+import PartnerPortal from './components/PartnerPortal';
 import AdminApp from './src/features/admin/AdminApp';
 import StaffApp from './src/features/staff/StaffApp';
 
@@ -41,11 +41,11 @@ const App: React.FC = () => {
     setIsAdminAuthenticated(false);
   };
 
-  if (currentView === 'client-portal') {
+  if (currentView === 'partner-portal') {
     return (
-      <ClientPortal
-        clients={appData.partners}
-        products={appData.items}
+      <PartnerPortal
+        partners={appData.partners}
+        items={appData.items}
         onOrderSubmit={(o) => addItem('orders', o)}
         onExit={() => setCurrentView('orders')}
       />

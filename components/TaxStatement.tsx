@@ -47,7 +47,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
     return [...s].sort((a, b) => b.localeCompare(a));
   }, [issuedStatements]);
 
-  const clientIssuedCount = useMemo(() => {
+  const partnerIssuedCount = useMemo(() => {
     const map = new Map<string, number>();
     issuedStatements
       .filter(s => s.type === '매출' && s.tradeDate.slice(0, 7) === selectedMonth && !!s.taxIssuedAt)
@@ -55,7 +55,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
     return map;
   }, [issuedStatements, selectedMonth]);
 
-  const clientUnissuedCount = useMemo(() => {
+  const partnerUnissuedCount = useMemo(() => {
     const map = new Map<string, number>();
     issuedStatements
       .filter(s => s.type === '매출' && s.tradeDate.slice(0, 7) === selectedMonth && !s.taxIssuedAt)
@@ -70,11 +70,11 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
     return partners
       .filter(c => inMonth.has(c.id))
       .filter(c => !taxClientSearch || c.name.includes(taxClientSearch))
-      .filter(c => !onlyUnissued || (clientUnissuedCount.get(c.id) ?? 0) > 0)
+      .filter(c => !onlyUnissued || (partnerUnissuedCount.get(c.id) ?? 0) > 0)
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [partners, issuedStatements, selectedMonth, taxClientSearch, onlyUnissued, clientUnissuedCount]);
+  }, [partners, issuedStatements, selectedMonth, taxClientSearch, onlyUnissued, partnerUnissuedCount]);
 
-  const clientStmts = useMemo(() =>
+  const partnerStmts = useMemo(() =>
     taxClientId
       ? issuedStatements
           .filter(s => s.partnerId === taxClientId && s.type === '매출' && s.tradeDate.slice(0, 7) === selectedMonth)
@@ -83,7 +83,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
     [issuedStatements, taxClientId, selectedMonth]
   );
 
-  const selectedStmts = useMemo(() => clientStmts.filter(s => taxStmtIds.includes(s.id)), [clientStmts, taxStmtIds]);
+  const selectedStmts = useMemo(() => partnerStmts.filter(s => taxStmtIds.includes(s.id)), [partnerStmts, taxStmtIds]);
 
   type MergedItem = { name: string; spec: string; qty: number; supply: number; tax: number; total: number; isTaxExempt: boolean };
   const mergedFromStmts = useMemo(() => {
@@ -143,7 +143,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
     setTaxStmtIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
   const toggleAll = () => {
-    const ids = clientStmts.map(s => s.id);
+    const ids = partnerStmts.map(s => s.id);
     const allSel = ids.every(id => taxStmtIds.includes(id));
     setTaxStmtIds(allSel ? [] : ids);
   };
@@ -226,7 +226,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
         isBundle: stmts.length > 1,
         issuedAt: key,
         partnerId: stmts[0].partnerId,
-        clientName: stmts[0].clientName,
+        partnerName: stmts[0].partnerName,
       }))
       .sort((a, b) => b.issuedAt.localeCompare(a.issuedAt));
   }, [histStmts]);
@@ -279,9 +279,9 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
 
   const sup = companyInfo;
 
-  const TaxInvoicePreview = ({ stmt, clientName, buyerInfo }: {
+  const TaxInvoicePreview = ({ stmt, partnerName, buyerInfo }: {
     stmt: IssuedStatement;
-    clientName?: string;
+    partnerName?: string;
     buyerInfo?: typeof taxBuyerInfo;
   }) => {
     const taxable = stmt.items.filter(i => !i.isTaxExempt);
@@ -295,7 +295,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
         <div className="flex items-center justify-between border-b-2 border-black px-4 py-3">
           <h1 style={{fontSize:'20px',fontWeight:900,letterSpacing:'6px'}}>세 금 계 산 서</h1>
           <div className="text-right" style={{fontSize:'10px',color:'#666'}}>
-            <div>거래처: {clientName}</div>
+            <div>거래처: {partnerName}</div>
             <div>거래일: {stmt.tradeDate}</div>
           </div>
         </div>
@@ -311,7 +311,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
           </div>
           <div className="p-3">
             <h3 style={{fontSize:'10px',fontWeight:900,marginBottom:'6px',paddingBottom:'4px',borderBottom:'1px solid #eee',color:'#444'}}>공급받는자</h3>
-            {[['등록번호', buyerInfo?.bizNo||''], ['상    호', clientName||''], ['대 표 자', buyerInfo?.ceoName||''], ['사업장주소', buyerInfo?.address||''], ['업    태', buyerInfo?.bizType||''], ['종    목', buyerInfo?.bizItem||'']].map(([label, value]) => (
+            {[['등록번호', buyerInfo?.bizNo||''], ['상    호', partnerName||''], ['대 표 자', buyerInfo?.ceoName||''], ['사업장주소', buyerInfo?.address||''], ['업    태', buyerInfo?.bizType||''], ['종    목', buyerInfo?.bizItem||'']].map(([label, value]) => (
               <div key={label} style={{display:'flex',gap:'8px',marginBottom:'3px',fontSize:'10px'}}>
                 <span style={{color:'#666',width:'60px',flexShrink:0}}>{label}</span>
                 <span style={{fontWeight:700}}>{value}</span>
@@ -433,8 +433,8 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
               </div>
               <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
                 {taxClients.map(c => {
-                  const issued = clientIssuedCount.get(c.id) ?? 0;
-                  const unissued = clientUnissuedCount.get(c.id) ?? 0;
+                  const issued = partnerIssuedCount.get(c.id) ?? 0;
+                  const unissued = partnerUnissuedCount.get(c.id) ?? 0;
                   return (
                     <button key={c.id} onClick={() => { setTaxClientId(c.id); setTaxStmtIds([]); }}
                       className={`w-full text-left px-3 py-2.5 transition-all hover:bg-emerald-50 ${taxClientId === c.id ? 'bg-emerald-50 border-r-2 border-emerald-500' : ''}`}>
@@ -492,19 +492,19 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                 <div className="flex items-center gap-3 px-4 py-2 bg-slate-50 border-b border-slate-100">
                   <button onClick={toggleAll}
                     className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all shrink-0 ${
-                      clientStmts.length > 0 && clientStmts.every(s => taxStmtIds.includes(s.id))
+                      partnerStmts.length > 0 && partnerStmts.every(s => taxStmtIds.includes(s.id))
                         ? 'bg-emerald-600 border-emerald-600'
-                        : clientStmts.some(s => taxStmtIds.includes(s.id))
+                        : partnerStmts.some(s => taxStmtIds.includes(s.id))
                           ? 'bg-emerald-200 border-emerald-400'
                           : 'border-slate-300'
                     }`}>
-                    {clientStmts.some(s => taxStmtIds.includes(s.id)) && <CheckSquare size={10} className="text-white"/>}
+                    {partnerStmts.some(s => taxStmtIds.includes(s.id)) && <CheckSquare size={10} className="text-white"/>}
                   </button>
                   <span className="text-[11px] font-black text-slate-700">{selectedMonth.replace('-', '년 ')}월</span>
-                  <span className="text-[10px] text-slate-400">{clientStmts.length}건</span>
-                  <span className="ml-auto text-[11px] font-black text-slate-600">{fmt(clientStmts.reduce((s, r) => s + r.totalAmount, 0))}원</span>
+                  <span className="text-[10px] text-slate-400">{partnerStmts.length}건</span>
+                  <span className="ml-auto text-[11px] font-black text-slate-600">{fmt(partnerStmts.reduce((s, r) => s + r.totalAmount, 0))}원</span>
                 </div>
-                {clientStmts.map(s => {
+                {partnerStmts.map(s => {
                   const isSel = taxStmtIds.includes(s.id);
                   const isIssued = !!s.taxIssuedAt;
                   return (
@@ -526,7 +526,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                     </button>
                   );
                 })}
-                {clientStmts.length === 0 && (
+                {partnerStmts.length === 0 && (
                   <div className="py-10 text-center text-slate-400 text-sm">해당 월 전표 없음</div>
                 )}
               </div>
@@ -784,7 +784,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                           <div>
                             <div className="flex items-center gap-2 flex-wrap">
                               <Building2 size={11} className="text-slate-400 shrink-0"/>
-                              <span className="text-xs font-black text-slate-800">{cl?.name ?? group.clientName ?? '-'}</span>
+                              <span className="text-xs font-black text-slate-800">{cl?.name ?? group.partnerName ?? '-'}</span>
                               <span className="text-[9px] font-black bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full">발행완료</span>
                               {group.isBundle && (
                                 <span className="text-[9px] font-black bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">

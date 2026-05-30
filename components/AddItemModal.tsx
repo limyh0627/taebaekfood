@@ -72,7 +72,6 @@ const PUMOK_VOLUMES: Record<string, string[]> = {
 const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], items, partners = [], partnerItems, productClients = [], productSuppliers = [], shippingRules = [], onClose, onSave, onSaveProductClientConfig, onSaveShippingRule, onAddShippingRule, onUpsertProductSupplier, onAddSubmaterial }) => {
   // Compute derived variables
   const products = items ?? [];
-  const clients = partners;
   const [formData, setFormData] = useState(() => ({
     name: initialData?.name || '',
     category: (initialData?.category as InventoryCategory) || 'product',
@@ -88,7 +87,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
         ? { boxType: '', unitsPerBox: initialData!.boxSize! }
         : { boxType: '', unitsPerBox: 0 }
     ),
-    clientBoxConfigs: initialData?.clientBoxConfigs ?? [] as ClientBoxConfig[],
+    partnerBoxConfigs: initialData?.partnerBoxConfigs ?? [] as ClientBoxConfig[],
     spec: initialData?.spec || '',
     품목: initialData?.품목 || '',
     isSmartStore: initialData?.isSmartStore ?? false,
@@ -103,8 +102,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const [activeSubCategory, setActiveSubCategory] = useState<string | null>(null);
   const [addingSubCat, setAddingSubCat] = useState<string | null>(null);
   const [newSubName, setNewSubName] = useState('');
-  const [clientSearch, setClientSearch] = useState('');
-  const [supplierSearch, setSupplierSearch] = useState('');
+  const [partnerSearch, setClientSearch] = useState('');
+  const [inboundPartnerSearch, setSupplierSearch] = useState('');
   const [subSearch, setSubSearch] = useState<Record<string, string>>({});
   const [showPumokDrop, setShowPumokDrop] = useState(false);
   const [pumokWarn, setPumokWarn] = useState(false);
@@ -113,7 +112,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const [showBoxClientDrop, setShowBoxClientDrop] = useState(false);
 
   // 거래처별 포장 설정 (shipping_rule 기반, partner_item 필드 fallback)
-  const [clientPackagingConfigs, setClientPackagingConfigs] = useState<Record<string, { boxTypeId?: string; qtyPerBox?: number; tapeTypeId?: string }>>(() => {
+  const [partnerPackagingConfigs, setClientPackagingConfigs] = useState<Record<string, { boxTypeId?: string; qtyPerBox?: number; tapeTypeId?: string }>>(() => {
     const map: Record<string, { boxTypeId?: string; qtyPerBox?: number; tapeTypeId?: string }> = {};
     if (initialData) {
       productClients.filter(pc => pc.Item_ID === initialData.id).forEach(pc => {
@@ -161,7 +160,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     ])
   ].filter(v => !formData.품목 || v.toLowerCase().includes(formData.품목.toLowerCase()));
 
-  const supplierClients = partners.filter(c =>
+  const inboundPartners = partners.filter(c =>
     c.partnerType === '매입처' || c.partnerType === '매출+매입처'
   );
   const salesClients = partners.filter(c =>
@@ -193,7 +192,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
         : (formData.submaterials.length > 0 ? formData.submaterials : (initialData?.submaterials || [])),
       ...(formData.category === 'box' && { freightType: formData.freightType, boxSize: formData.boxSize }),
       ...(isProductCategory && hasBoxConfig && { defaultBoxConfig: formData.defaultBoxConfig }),
-      ...(isProductCategory && formData.clientBoxConfigs.length > 0 && { clientBoxConfigs: formData.clientBoxConfigs }),
+      ...(isProductCategory && formData.partnerBoxConfigs.length > 0 && { partnerBoxConfigs: formData.partnerBoxConfigs }),
       ...(formData.spec && { spec: formData.spec }),
       ...(formData.품목 && { 품목: formData.품목 }),
       ...(formData.category === 'product' && formData.partnerIds.length > 0 && { partnerIds: formData.partnerIds }),
@@ -215,7 +214,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     if ((onSaveShippingRule || onAddShippingRule) && finalProduct.partnerIds?.length) {
       const pid = finalProduct.id;
       for (const partnerId of finalProduct.partnerIds) {
-        const cfg = clientPackagingConfigs[partnerId] ?? {};
+        const cfg = partnerPackagingConfigs[partnerId] ?? {};
         if (!cfg.boxTypeId && !cfg.qtyPerBox && !cfg.tapeTypeId) continue;
         const existing = shippingRules.find(r => r.item_id === pid && r.partner_id === partnerId);
         if (existing && onSaveShippingRule) {
@@ -602,12 +601,12 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
               </label>
               <input
                 type="text"
-                value={supplierSearch}
+                value={inboundPartnerSearch}
                 onChange={e => setSupplierSearch(e.target.value)}
                 placeholder="거래처 검색..."
                 className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-400 transition-all"
               />
-              {supplierClients.length === 0 ? (
+              {inboundPartners.length === 0 ? (
                 <p className="text-xs text-slate-400 px-1">등록된 매입거래처 없음</p>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
@@ -622,8 +621,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                   >
                     선택 안 함
                   </button>
-                  {supplierClients
-                    .filter(c => !supplierSearch.trim() || c.name.toLowerCase().includes(supplierSearch.toLowerCase()))
+                  {inboundPartners
+                    .filter(c => !inboundPartnerSearch.trim() || c.name.toLowerCase().includes(inboundPartnerSearch.toLowerCase()))
                     .sort((a, b) => (formData.partnerId === a.id ? -1 : formData.partnerId === b.id ? 1 : 0))
                     .map(c => {
                       const selected = formData.partnerId === c.id;

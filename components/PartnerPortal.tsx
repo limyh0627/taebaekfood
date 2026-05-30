@@ -14,25 +14,25 @@ import {
 } from 'lucide-react';
 import { Partner, Item, Order, OrderStatus, OrderSource, OrderItem } from '../types';
 
-interface ClientPortalProps {
-  clients: Partner[];
-  products: Item[];
+interface PartnerPortalProps {
+  partners: Partner[];
+  items: Item[];
   onOrderSubmit: (_order: Order) => void;
   onExit: () => void;
 }
 
-const ClientPortal: React.FC<ClientPortalProps> = ({ clients, products, onOrderSubmit, onExit }) => {
+const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, onOrderSubmit, onExit }) => {
   const [step, setStep] = useState<'auth' | 'order' | 'confirm'>('auth');
-  const [clientIdInput, setClientIdInput] = useState('');
+  const [partnerIdInput, setPartnerIdInput] = useState('');
   const [selectedClient, setSelectedClient] = useState<Partner | null>(null);
   const [cart, setCart] = useState<{ [itemId: string]: number }>({});
   const [isSuccess, setIsSuccess] = useState(false);
 
   const handleAuth = (e: React.FormEvent) => {
     e.preventDefault();
-    const client = clients.find(c => c.id.toLowerCase() === clientIdInput.toLowerCase());
-    if (client) {
-      setSelectedClient(client);
+    const partner = partners.find(c => c.id.toLowerCase() === partnerIdInput.toLowerCase());
+    if (partner) {
+      setSelectedClient(partner);
       setStep('order');
     } else {
       alert('유효하지 않은 거래처 코드입니다. (예: c1, c2)');
@@ -41,11 +41,11 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clients, products, onOrderS
 
   const associatedProducts = useMemo(() => {
     if (!selectedClient) return [];
-    return products.filter(p => 
+    return items.filter(p => 
       p.category === 'product' &&
       (!p.partnerIds?.length || p.partnerIds.includes(selectedClient.id))
     );
-  }, [products, selectedClient]);
+  }, [items, selectedClient]);
 
   const updateCart = (itemId: string, delta: number) => {
     setCart(prev => {
@@ -61,7 +61,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clients, products, onOrderS
 
   // Fix: Explicitly type reduce parameters to avoid arithmetic error with unknown types
   const totalAmount = Object.entries(cart).reduce((sum: number, [id, qty]) => {
-    const product = products.find(p => p.id === id);
+    const product = items.find(p => p.id === id);
     // Fix: Explicitly cast qty as number as Object.entries value might be inferred as unknown in some environments
     return sum + (product ? product.price * (qty as number) : 0);
   }, 0);
@@ -70,7 +70,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clients, products, onOrderS
     if (!selectedClient) return;
 
     const orderItems: OrderItem[] = Object.entries(cart).map(([id, qty]) => {
-      const product = products.find(p => p.id === id)!;
+      const product = items.find(p => p.id === id)!;
       return {
         itemId: id,
         name: product.name,
@@ -84,7 +84,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clients, products, onOrderS
     const newOrder: Order = {
       id: `WEB-${Date.now()}`,
       partnerId: selectedClient.id,
-      customerName: selectedClient.name,
+      partnerName: selectedClient.name,
       items: orderItems,
       totalAmount,
       status: OrderStatus.PENDING,
@@ -116,8 +116,8 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clients, products, onOrderS
               <input 
                 autoFocus
                 type="text" 
-                value={clientIdInput}
-                onChange={(e) => setClientIdInput(e.target.value)}
+                value={partnerIdInput}
+                onChange={(e) => setPartnerIdInput(e.target.value)}
                 placeholder="거래처 코드 (ID)" 
                 className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-14 pr-4 py-4 font-black text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
               />
@@ -267,4 +267,4 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clients, products, onOrderS
   );
 };
 
-export default ClientPortal;
+export default PartnerPortal;

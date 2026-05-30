@@ -9,12 +9,12 @@ declare global {
   }
 }
 
-interface AddClientModalProps {
+interface AddPartnerModalProps {
   onClose: () => void;
   onSave: (_client: Partner) => void;
 }
 
-const AddClientModal: React.FC<AddClientModalProps> = ({ onClose, onSave }) => {
+const AddPartnerModal: React.FC<AddPartnerModalProps> = ({ onClose, onSave }) => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -31,7 +31,7 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ onClose, onSave }) => {
     }).open();
   };
 
-  const clientTypes: { id: PartnerChannel, label: string, icon: any, color: string }[] = [
+  const partnerChannelTypes: { id: PartnerChannel, label: string, icon: any, color: string }[] = [
     { id: '일반', label: '일반 거래처', icon: User, color: 'bg-indigo-100 text-indigo-600' },
     { id: '택배', label: '택배사/대행', icon: Truck, color: 'bg-pink-100 text-pink-600' },
     { id: '스마트스토어', label: '스마트스토어', icon: Store, color: 'bg-lime-100 text-lime-600' },
@@ -134,7 +134,7 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ onClose, onSave }) => {
               type="email"
               value={formData.email}
               onChange={(e) => setFormData({...formData, email: e.target.value})}
-              placeholder="contact@client.com"
+              placeholder="contact@partner.com"
               className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
             />
           </div>
@@ -178,7 +178,7 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ onClose, onSave }) => {
               <LayoutGrid size={14} className="mr-2" /> 주문 채널 유형
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {clientTypes.map((type) => {
+              {partnerChannelTypes.map((type) => {
                 const Icon = type.icon;
                 const isSelected = formData.type === type.id;
                 return (
@@ -226,4 +226,4 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ onClose, onSave }) => {
   );
 };
 
-export default AddClientModal;
+export default AddPartnerModal;

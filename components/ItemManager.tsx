@@ -61,22 +61,21 @@ const sortSubs = (subs: { name: string; category: string; subtype?: string }[]) 
 const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClients = [], productSuppliers = [], partnerItems = [], shippingRules = [], itemBoms = [], onEditProduct, onAddProduct, onDeleteProduct, onLinkProduct, onUnlinkProduct, onLinkSupplier, onUnlinkSupplier, onMergeProducts, onSaveItemCustomer, onSaveShippingRule, onAddShippingRule, isAdmin = true }) => {
   // Compute derived variables
   const products = items;
-  const clients = partners;
   const itemCustomers = partnerItems;
-  const [mainView, setMainView] = useState<'flat' | 'by-client'>(isAdmin ? 'flat' : 'by-client');
+  const [mainView, setMainView] = useState<'flat' | 'by-partner'>(isAdmin ? 'flat' : 'by-partner');
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(true);
   const [showNoClient, setShowNoClient] = useState(false);
   const [activeCategory, setActiveCategory] = useState<InventoryCategory>('product');
   const [searchTerm, setSearchTerm] = useState('');
-  const [clientSearch, setClientSearch] = useState('');
+  const [partnerSearch, setClientSearch] = useState('');
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
   const [linkSearch, setLinkSearch] = useState('');
   const [showLinkPanel, setShowLinkPanel] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
   const [linkCategory, setLinkCategory] = useState('product');
-  const [clientTypeFilter, setClientTypeFilter] = useState<string | null>(null);
+  const [partnerTypeFilter, setClientTypeFilter] = useState<string | null>(null);
   const [expandedClientRowId, setExpandedClientRowId] = useState<string | null>(null);
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [dupExpandedKeys, setDupExpandedKeys] = useState<Set<string>>(new Set());
@@ -91,11 +90,11 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
   const [packagingAdding, setPackagingAdding] = useState(false);
   const [packagingSaving, setPackagingSaving] = useState(false);
   const [partnerTab, setPartnerTab] = useState<'sales' | 'purchase'>('sales');
-  const [clientScopeTab, setClientScopeTab] = useState<'sales' | 'purchase'>('sales');
+  const [partnerScopeTab, setClientScopeTab] = useState<'sales' | 'purchase'>('sales');
 
   const TYPE_ORDER: Record<string, number> = { '일반': 0, '택배': 1, '스마트스토어': 2 };
   const salesClients = useMemo(() =>
-    clients
+    partners
       .filter(c => !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처')
       .sort((a, b) => {
         const tDiff = (TYPE_ORDER[a.type] ?? 0) - (TYPE_ORDER[b.type] ?? 0);
@@ -104,7 +103,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
     [partners]
   );
   const purchaseClients = useMemo(() =>
-    clients
+    partners
       .filter(c => c.partnerType === '매입처' || c.partnerType === '매출+매입처')
       .sort((a, b) => a.name.localeCompare(b.name, 'ko')),
     [partners]
@@ -150,7 +149,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
       .sort((a, b) => (a.canMerge ? 0 : 1) - (b.canMerge ? 0 : 1));
   }, [products, productClients]);
 
-  const clientProductCount = useMemo(() => {
+  const partnerItemCount = useMemo(() => {
     const map = new Map<string, number>();
     for (const p of products) {
       for (const cid of p.partnerIds ?? []) {
@@ -160,7 +159,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
     return map;
   }, [items]);
 
-  const supplierItemCount = useMemo(() => {
+  const inboundPartnerItemCount = useMemo(() => {
     const map = new Map<string, number>();
     for (const ps of productSuppliers) {
       const sid = ps.partnerId ?? ps.Partner_ID;
@@ -171,14 +170,14 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
 
   const filteredClients = useMemo(() =>
     activePartnerClients.filter(c =>
-      (!clientSearch.trim() || c.name.includes(clientSearch)) &&
-      (!clientTypeFilter || c.type === clientTypeFilter)
+      (!partnerSearch.trim() || c.name.includes(partnerSearch)) &&
+      (!partnerTypeFilter || c.type === partnerTypeFilter)
     ),
-    [activePartnerClients, clientSearch, clientTypeFilter]
+    [activePartnerClients, partnerSearch, partnerTypeFilter]
   );
 
   const handleClientTypeFilter = (type: string) => {
-    const next = clientTypeFilter === type ? null : type;
+    const next = partnerTypeFilter === type ? null : type;
     setClientTypeFilter(next);
     if (next && selectedClientId) {
       const cur = partners.find(c => c.id === selectedClientId);
@@ -192,7 +191,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
   const selectedClient = selectedClientId ? partners.find(c => c.id === selectedClientId) : null;
 
   const filteredItems = useMemo(() => {
-    const isByClientPurchase = mainView === 'by-client' && clientScopeTab === 'purchase' && selectedClientId;
+    const isByClientPurchase = mainView === 'by-partner' && partnerScopeTab === 'purchase' && selectedClientId;
     let result = mainView === 'flat' || showAll || showNoClient
       ? items.filter(p => !p.archived && p.category === activeCategory)
       : selectedClientId
@@ -217,7 +216,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
       }
     }
     return [...result].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-  }, [products, activeCategory, selectedClientId, showAll, showNoClient, searchTerm, mainView, partners, clientScopeTab, productSuppliers]);
+  }, [products, activeCategory, selectedClientId, showAll, showNoClient, searchTerm, mainView, partners, partnerScopeTab, productSuppliers]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -248,7 +247,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
         <input
           type="text"
           placeholder="거래처 검색..."
-          value={clientSearch}
+          value={partnerSearch}
           onChange={e => setClientSearch(e.target.value)}
           className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
         />
@@ -259,7 +258,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
             key={type}
             onClick={() => handleClientTypeFilter(type)}
             className={`flex-1 px-1.5 py-1.5 rounded-lg text-[9px] font-black transition-all whitespace-nowrap ${
-              clientTypeFilter === type
+              partnerTypeFilter === type
                 ? 'bg-indigo-600 text-white shadow'
                 : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
             }`}
@@ -270,7 +269,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
       </div>
       <div className="flex flex-col overflow-y-auto max-h-[calc(100vh-280px)] divide-y divide-slate-100">
         {filteredClients.map(c => {
-          const count = clientProductCount.get(c.id) ?? 0;
+          const count = partnerItemCount.get(c.id) ?? 0;
           const isSelected = selectedClientId === c.id;
           return (
             <button
@@ -302,14 +301,14 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
   const linkableProduts = useMemo(() => {
     if (!selectedClientId) return [];
     const term = linkSearch.toLowerCase().trim();
-    const alreadyLinked = clientScopeTab === 'purchase'
+    const alreadyLinked = partnerScopeTab === 'purchase'
       ? new Set(productSuppliers.filter(ps => (ps.partnerId ?? ps.Partner_ID) === selectedClientId).map(ps => ps.itemId ?? ps.Item_ID))
       : null;
     return products
       .filter(p => p.category === linkCategory && (alreadyLinked ? !alreadyLinked.has(p.id) : !(p.partnerIds ?? []).includes(selectedClientId)))
       .filter(p => !term || p.name.toLowerCase().includes(term))
       .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-  }, [products, selectedClientId, linkCategory, linkSearch, clientScopeTab, productSuppliers]);
+  }, [products, selectedClientId, linkCategory, linkSearch, partnerScopeTab, productSuppliers]);
 
   // 품목 테이블 패널 (공통)
   const productPanel = (
@@ -418,16 +417,16 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
               <tr className="bg-slate-50/50 border-b border-slate-100">
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">카테고리</th>
                 <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[100px]">품목 정보</th>
-                {!(mainView === 'by-client' && selectedClientId) && activeCategory === 'product' && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">거래처</th>}
-                {!(mainView === 'by-client' && selectedClientId) && activeCategory !== 'product' && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">매입거래처</th>}
+                {!(mainView === 'by-partner' && selectedClientId) && activeCategory === 'product' && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">거래처</th>}
+                {!(mainView === 'by-partner' && selectedClientId) && activeCategory !== 'product' && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">매입거래처</th>}
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">용기</th>
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">마개</th>
                 <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">라벨</th>
-                {(mainView === 'by-client' && selectedClientId && clientScopeTab === 'sales') && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">박스</th>}
-                {(mainView === 'by-client' && selectedClientId && clientScopeTab === 'sales') && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">테이프</th>}
+                {(mainView === 'by-partner' && selectedClientId && partnerScopeTab === 'sales') && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">박스</th>}
+                {(mainView === 'by-partner' && selectedClientId && partnerScopeTab === 'sales') && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">테이프</th>}
                 {isAdmin && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">원가</th>}
                 {isAdmin && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">판매단가</th>}
-                {(isAdmin || (mainView === 'by-client' && !!selectedClientId)) && <th className="px-2 py-3" />}
+                {(isAdmin || (mainView === 'by-partner' && !!selectedClientId)) && <th className="px-2 py-3" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -475,7 +474,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
                         <p className="text-[11px] font-bold text-slate-600 whitespace-nowrap">{item.name}</p>
                       </div>
                     </td>
-                    {!(mainView === 'by-client' && selectedClientId) && activeCategory === 'product' && (
+                    {!(mainView === 'by-partner' && selectedClientId) && activeCategory === 'product' && (
                       <td className="px-2 py-3">
                         {(() => {
                           const BADGE_COLORS = [
@@ -483,15 +482,15 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
                             'bg-rose-100 text-rose-700','bg-sky-100 text-sky-700','bg-violet-100 text-violet-700',
                             'bg-teal-100 text-teal-700','bg-orange-100 text-orange-700','bg-pink-100 text-pink-700',
                           ];
-                          const clientList = partners.filter(c => !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처');
-                          const matched = (item.partnerIds ?? []).map(id => clientList.find(c => c.id === id)).filter(Boolean) as typeof clientList;
+                          const partnerList = partners.filter(c => !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처');
+                          const matched = (item.partnerIds ?? []).map(id => partnerList.find(c => c.id === id)).filter(Boolean) as typeof partnerList;
                           if (!matched.length) return <span className="text-slate-200">-</span>;
                           const isExp = expandedClientRowId === item.id;
                           const shown = isExp ? matched : matched.slice(0, 1);
                           return (
                             <div className="flex flex-wrap gap-1 items-center" onClick={e => e.stopPropagation()}>
                               {shown.map((c) => {
-                                const colorIdx = clientList.indexOf(c) % BADGE_COLORS.length;
+                                const colorIdx = partnerList.indexOf(c) % BADGE_COLORS.length;
                                 return (
                                   <span key={c.id} className={`inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-black ${BADGE_COLORS[colorIdx]}`}>{c.name}</span>
                                 );
@@ -507,7 +506,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
                         })()}
                       </td>
                     )}
-                    {!(mainView === 'by-client' && selectedClientId) && activeCategory !== 'product' && (
+                    {!(mainView === 'by-partner' && selectedClientId) && activeCategory !== 'product' && (
                       <td className="px-2 py-3">
                         <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
                           {partners.find(c => c.id === productSuppliers.find(ps => ps.itemId === item.id)?.partnerId)?.name ?? <span className="text-slate-200">-</span>}
@@ -529,7 +528,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
                         )}
                       </td>
                     ))}
-                    {(mainView === 'by-client' && selectedClientId && clientScopeTab === 'sales') && (() => {
+                    {(mainView === 'by-partner' && selectedClientId && partnerScopeTab === 'sales') && (() => {
                       const rule = shippingRules.find(r => r.item_id === item.id && r.partner_id === selectedClientId);
                       const boxName = rule?.box_item_id ? (items.find(p => p.id === rule.box_item_id)?.name ?? rule.box_item_id) : null;
                       const tapeName = rule?.tape_item_id ? (items.find(p => p.id === rule.tape_item_id)?.name ?? rule.tape_item_id) : null;
@@ -562,12 +561,12 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
                           : <span className="text-[10px] text-slate-200">-</span>}
                       </td>
                     )}
-                    {(isAdmin || (mainView === 'by-client' && !!selectedClientId)) && (
+                    {(isAdmin || (mainView === 'by-partner' && !!selectedClientId)) && (
                       <td className="px-2 py-3 text-center">
-                        {isAdmin && mainView === 'by-client' && selectedClientId ? (
+                        {isAdmin && mainView === 'by-partner' && selectedClientId ? (
                           // 거래처별 뷰: 포장설정 + 연결 해제 버튼
                           <div className="flex items-center gap-1 justify-center">
-                            {clientScopeTab === 'sales' && (
+                            {partnerScopeTab === 'sales' && (
                               <button
                                 onClick={() => {
                                   const existing = shippingRules.find(r => r.item_id === item.id && r.partner_id === selectedClientId);
@@ -583,7 +582,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
                             )}
                             <button
                               onClick={() => {
-                                if (clientScopeTab === 'purchase' && onUnlinkSupplier) {
+                                if (partnerScopeTab === 'purchase' && onUnlinkSupplier) {
                                   onUnlinkSupplier(item.id, selectedClientId);
                                 } else {
                                   onUnlinkProduct(item.id, selectedClientId);
@@ -655,7 +654,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
                                   </thead>
                                   <tbody>
                                     {rules.map(rule => {
-                                      const clientName = rule.partner_id
+                                      const partnerName = rule.partner_id
                                         ? (partners.find(c => c.id === rule.partner_id)?.name ?? rule.partner_id)
                                         : '전체 (기본)';
                                       const boxItem = items.find(p => p.id === rule.box_item_id);
@@ -667,7 +666,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
                                       const editing = editingRule[rule.id];
                                       return (
                                         <tr key={rule.id} className="border-t border-emerald-100">
-                                          <td className="px-3 py-2 font-bold text-slate-700">{clientName}</td>
+                                          <td className="px-3 py-2 font-bold text-slate-700">{partnerName}</td>
                                           <td className="px-3 py-2 text-slate-600">
                                             {editing ? (
                                               <select className="border border-emerald-300 rounded px-1 text-xs w-full"
@@ -960,7 +959,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
       {/* 뷰 탭 — 관리자만 */}
       {isAdmin && (
         <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5 w-fit">
-          {([['flat', '품목 목록'], ['by-client', '거래처별 품목']] as const).map(([v, label]) => (
+          {([['flat', '품목 목록'], ['by-partner', '거래처별 품목']] as const).map(([v, label]) => (
             <button key={v} onClick={() => { setMainView(v); setSelectedClientId(null); setShowAll(true); setPage(1); setSearchTerm(''); }}
               className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${mainView === v ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
               {label}
@@ -973,7 +972,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
       {isAdmin && mainView === 'flat' && productPanel}
 
       {/* 거래처별 품목 뷰 */}
-      {mainView === 'by-client' && (
+      {mainView === 'by-partner' && (
         <>
           {!selectedClientId ? (
             /* 거래처 그리드 */
@@ -994,7 +993,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
                   <input
                     type="text"
                     placeholder="거래처 검색..."
-                    value={clientSearch}
+                    value={partnerSearch}
                     onChange={e => setClientSearch(e.target.value)}
                     className="w-full bg-white border border-slate-200 rounded-2xl pl-10 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all shadow-sm"
                   />
@@ -1007,8 +1006,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
                   {filteredClients
                     .map(c => {
                       const count = partnerTab === 'sales'
-                        ? (clientProductCount.get(c.id) ?? 0)
-                        : (supplierItemCount.get(c.id) ?? 0);
+                        ? (partnerItemCount.get(c.id) ?? 0)
+                        : (inboundPartnerItemCount.get(c.id) ?? 0);
                       return (
                         <button key={c.id} onClick={() => handleSelectClient(c.id)}
                           className="bg-white border border-slate-200 rounded-2xl px-4 py-3.5 text-left hover:border-indigo-300 hover:shadow-md transition-all active:scale-95 group">
@@ -1046,13 +1045,13 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
                 <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
                   <button
                     onClick={() => { setClientScopeTab('sales'); setPage(1); }}
-                    className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${clientScopeTab === 'sales' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                    className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${partnerScopeTab === 'sales' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                   >
                     매출 품목
                   </button>
                   <button
                     onClick={() => { setClientScopeTab('purchase'); setPage(1); }}
-                    className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${clientScopeTab === 'purchase' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                    className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${partnerScopeTab === 'purchase' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                   >
                     매입 품목
                   </button>
@@ -1124,7 +1123,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
                       </div>
                       <button
                         onClick={() => {
-                          if (clientScopeTab === 'purchase' && onLinkSupplier) {
+                          if (partnerScopeTab === 'purchase' && onLinkSupplier) {
                             onLinkSupplier(p.id, selectedClientId);
                           } else {
                             onLinkProduct(p.id, selectedClientId);
@@ -1155,7 +1154,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
       {/* 포장설정 모달 */}
       {packagingModal && (() => {
         const { item, partnerId } = packagingModal;
-        const clientName = partners.find(c => c.id === partnerId)?.name ?? partnerId;
+        const partnerName = partners.find(c => c.id === partnerId)?.name ?? partnerId;
         const existingRule = shippingRules.find(r => r.item_id === item.id && r.partner_id === partnerId);
         const boxItems = items.filter(p => p.category === 'box' || (p.category === 'submaterial' && p.subtype === '박스'));
         const tapeItems = items.filter(p => p.category === 'tape' || (p.category === 'submaterial' && p.subtype === '테이프'));
@@ -1192,7 +1191,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, productClien
                   <p className="text-xs text-slate-400 font-medium mt-0.5">
                     <span className="text-indigo-600 font-bold">{item.name}</span>
                     <span className="mx-1">·</span>
-                    <span className="text-emerald-600 font-bold">{clientName}</span>
+                    <span className="text-emerald-600 font-bold">{partnerName}</span>
                   </p>
                 </div>
                 <button onClick={closeModal} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 transition-all">

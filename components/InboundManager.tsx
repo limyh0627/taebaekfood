@@ -226,7 +226,7 @@ const InboundManager: React.FC<InboundManagerProps> = ({
 [{"name":"품목명","quantity":수량,"unit":"단위","unitPrice":단가}]
 
 품목명은 반드시 위 품목 목록에 있는 이름과 정확히 일치해야 합니다.
-거래처명이 보이면 "supplier" 필드도 추가해주세요.`;
+거래처명이 보이면 "inboundPartner" 필드도 추가해주세요.`;
 
       const result = await model.generateContent([
         prompt,
@@ -235,7 +235,7 @@ const InboundManager: React.FC<InboundManagerProps> = ({
       const text = result.response.text().trim();
       const jsonMatch = text.match(/\[[\s\S]*\]/);
       if (!jsonMatch) throw new Error('파싱 실패');
-      const parsed = JSON.parse(jsonMatch[0]) as { name: string; quantity: number; unit: string; unitPrice?: number; supplier?: string }[];
+      const parsed = JSON.parse(jsonMatch[0]) as { name: string; quantity: number; unit: string; unitPrice?: number; inboundPartner?: string }[];
 
       const newItems = parsed.map(p => {
         const sub = submaterials.find(s => s.name === p.name);
@@ -247,7 +247,7 @@ const InboundManager: React.FC<InboundManagerProps> = ({
           unitPrice: p.unitPrice?.toString() ?? sub?.cost?.toString() ?? '',
         };
       });
-      if (parsed[0]?.supplier) setTempForm(prev => ({ ...prev, partnerName: parsed[0].supplier!, items: [...prev.items, ...newItems] }));
+      if (parsed[0]?.inboundPartner) setTempForm(prev => ({ ...prev, partnerName: parsed[0].inboundPartner!, items: [...prev.items, ...newItems] }));
       else setTempForm(prev => ({ ...prev, items: [...prev.items, ...newItems] }));
       closeCamera();
     } catch (e) {
@@ -383,7 +383,7 @@ const InboundManager: React.FC<InboundManagerProps> = ({
             <div key={stmt.id} className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-3">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="font-black text-slate-800 text-sm">{stmt.clientName}</p>
+                  <p className="font-black text-slate-800 text-sm">{stmt.partnerName}</p>
                   <p className="text-xs text-slate-400 mt-0.5">{stmt.tradeDate} · 전표 {stmt.docNo}</p>
                 </div>
                 <span className="px-2 py-1 bg-amber-50 text-amber-700 rounded-lg text-[10px] font-black">입고대기</span>
@@ -708,7 +708,7 @@ const InboundManager: React.FC<InboundManagerProps> = ({
               </button>
             </div>
             <div className="bg-slate-50 rounded-xl p-3 space-y-1">
-              <p className="text-sm font-bold text-slate-700">{confirmingStatement.clientName}</p>
+              <p className="text-sm font-bold text-slate-700">{confirmingStatement.partnerName}</p>
               <p className="text-xs text-slate-400">{confirmingStatement.tradeDate}</p>
               {confirmingStatement.items.map((item, i) => (
                 <div key={i} className="flex justify-between text-xs text-slate-600">

@@ -67,7 +67,6 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon: Icon, trend, co
 const Dashboard: React.FC<DashboardProps> = ({ orders, items, partners = [], partnerItems = [], onNavigate, onCreatePurchaseOrder }) => {
   // Compute derived variables
   const products = items;
-  const clients = partners;
   const productSuppliers = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
   const [showLowStock, setShowLowStock] = useState(false);
   const [selectedLowStock, setSelectedLowStock] = useState<Set<string>>(new Set());
@@ -207,8 +206,8 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, items, partners = [], par
           const grouped = new Map<string, { name: string; items: typeof selected }>();
           selected.forEach(p => {
             const partnerId = productSuppliers.find(ps => ps.itemId === p.id)?.partnerId ?? '__none__';
-            const supplier = partners.find(c => c.id === partnerId);
-            const partnerName = supplier?.name ?? '공급처 미지정';
+            const inboundPartner = partners.find(c => c.id === partnerId);
+            const partnerName = inboundPartner?.name ?? '공급처 미지정';
             const existing = grouped.get(partnerId) ?? { name: partnerName, items: [] };
             existing.items.push(p);
             grouped.set(partnerId, existing);
@@ -265,7 +264,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, items, partners = [], par
                 <tbody className="divide-y divide-slate-50">
                   {lowStockList.map(p => {
                     const shortage = p.minStock - p.stock;
-                    const supplier = partners.find(c => c.id === productSuppliers.find(ps => ps.itemId === p.id)?.partnerId);
+                    const inboundPartner = partners.find(c => c.id === productSuppliers.find(ps => ps.itemId === p.id)?.partnerId);
                     const isChecked = selectedLowStock.has(p.id);
                     return (
                       <tr key={p.id} className={`transition-colors ${isChecked ? 'bg-rose-50/50' : 'hover:bg-slate-50'}`}>
@@ -296,7 +295,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, items, partners = [], par
                           />
                         </td>
                         <td className="px-4 py-3 text-xs text-slate-500">
-                          {supplier?.name ?? <span className="text-slate-300">미지정</span>}
+                          {inboundPartner?.name ?? <span className="text-slate-300">미지정</span>}
                         </td>
                       </tr>
                     );
@@ -358,10 +357,10 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, items, partners = [], par
                 <div key={order.id} className="flex items-center justify-between py-3 border-b border-slate-50 last:border-0">
                   <div className="flex items-center space-x-3">
                     <div className="w-9 h-9 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 font-black text-sm flex-shrink-0">
-                      {order.customerName?.[0] ?? '?'}
+                      {order.partnerName?.[0] ?? '?'}
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-slate-800 leading-tight">{order.customerName}</p>
+                      <p className="text-sm font-bold text-slate-800 leading-tight">{order.partnerName}</p>
                       <p className="text-xs text-slate-400">{new Date(order.createdAt).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}</p>
                     </div>
                   </div>

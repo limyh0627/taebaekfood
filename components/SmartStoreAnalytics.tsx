@@ -8,7 +8,7 @@ interface Props {
   onUpdateProduct: (id: string, data: Partial<Item>) => void;
 }
 
-type Tab = 'monthly' | 'customers' | 'retention' | 'prices';
+type Tab = 'monthly' | 'partners' | 'retention' | 'prices';
 
 function formatAmount(n: number) {
   return n.toLocaleString('ko-KR') + '원';
@@ -73,7 +73,7 @@ export default function SmartStoreAnalytics({ orders, partners, items, onUpdateP
   const firstOrderMonthMap = useMemo(() => {
     const m = new Map<string, string>();
     for (const o of ssOrders.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
-      const key = o.partnerId ?? o.customerName;
+      const key = o.partnerId ?? o.partnerName;
       if (!m.has(key)) m.set(key, getYearMonth(o.createdAt));
     }
     return m;
@@ -96,24 +96,24 @@ export default function SmartStoreAnalytics({ orders, partners, items, onUpdateP
   }, [ssOrders, priceMap]);
 
   // ── 고객별 현황 (품목 내역 포함) ─────────────────────────────
-  const customerData = useMemo(() => {
-    const clientMap = new Map<string, {
-      client: Partner;
+  const partnerData = useMemo(() => {
+    const partnerMap = new Map<string, {
+      partner: Partner;
       monthlyOrders: Map<string, { count: number; amount: number }>;
       productSummary: Map<string, { name: string; qty: number; amount: number }>;
     }>();
 
     for (const o of ssOrders) {
-      const key = o.partnerId ?? o.customerName;
-      if (!clientMap.has(key)) {
-        const client = ssClients.find(c => c.id === o.partnerId) ?? {
+      const key = o.partnerId ?? o.partnerName;
+      if (!partnerMap.has(key)) {
+        const partner = ssClients.find(c => c.id === o.partnerId) ?? {
           id: key,
-          name: o.customerName,
+          name: o.partnerName,
           type: '스마트스토어' as const,
         };
-        clientMap.set(key, { client, monthlyOrders: new Map(), productSummary: new Map() });
+        partnerMap.set(key, { partner, monthlyOrders: new Map(), productSummary: new Map() });
       }
-      const entry = clientMap.get(key)!;
+      const entry = partnerMap.get(key)!;
 
       // 월별 집계
       const ym = getYearMonth(o.createdAt);
@@ -139,13 +139,13 @@ export default function SmartStoreAnalytics({ orders, partners, items, onUpdateP
       }
     }
 
-    return Array.from(clientMap.values()).map(({ client, monthlyOrders, productSummary }) => {
+    return Array.from(partnerMap.values()).map(({ partner, monthlyOrders, productSummary }) => {
       const months = Array.from(monthlyOrders.entries()).sort((a, b) => b[0].localeCompare(a[0]));
       const productList = Array.from(productSummary.values()).sort((a, b) => b.amount - a.amount);
       const totalAmount = months.reduce((s, [, v]) => s + v.amount, 0);
       const totalOrders = months.reduce((s, [, v]) => s + v.count, 0);
-      const firstMonth = firstOrderMonthMap.get(client.id) ?? '';
-      return { client, months, productList, totalAmount, totalOrders, activeMonths: months.length, firstMonth };
+      const firstMonth = firstOrderMonthMap.get(partner.id) ?? '';
+      return { partner, months, productList, totalAmount, totalOrders, activeMonths: months.length, firstMonth };
     }).sort((a, b) => b.totalAmount - a.totalAmount);
   }, [ssOrders, ssClients, priceMap, productNameMap, firstOrderMonthMap]);
 
@@ -160,15 +160,15 @@ export default function SmartStoreAnalytics({ orders, partners, items, onUpdateP
 
     for (const o of ssOrders) {
       const ym = getYearMonth(o.createdAt);
-      const key = o.partnerId ?? o.customerName;
+      const key = o.partnerId ?? o.partnerName;
       if (!map.has(ym)) map.set(ym, { newClients: [], returningClients: new Set(), newRevenue: 0, returningRevenue: 0 });
       const row = map.get(ym)!;
       const rev = calcRevenue(o);
       if (firstOrderMonthMap.get(key) === ym) {
         // 이미 추가된 신규가 아닐 때만 push
         if (!row.newClients.find(c => c.key === key)) {
-          const client = ssClients.find(c => c.id === o.partnerId);
-          row.newClients.push({ key, name: client?.name ?? o.customerName });
+          const partner = ssClients.find(c => c.id === o.partnerId);
+          row.newClients.push({ key, name: partner?.name ?? o.partnerName });
         }
         row.newRevenue += rev;
       } else {
@@ -207,7 +207,7 @@ export default function SmartStoreAnalytics({ orders, partners, items, onUpdateP
 
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
     { id: 'monthly', label: '월별 매출', icon: TrendingUp },
-    { id: 'customers', label: '고객별 현황', icon: Users },
+    { id: 'partners', label: '고객별 현황', icon: Users },
     { id: 'retention', label: '신규 / 재주문', icon: RefreshCw },
     { id: 'prices', label: '단가 관리', icon: Tag },
   ];
@@ -293,23 +293,23 @@ export default function SmartStoreAnalytics({ orders, partners, items, onUpdateP
         )}
 
         {/* ── 고객별 현황 ── */}
-        {tab === 'customers' && (
+        {tab === 'partners' && (
           <div className="space-y-3">
-            {customerData.length === 0 && (
+            {partnerData.length === 0 && (
               <div className="bg-white rounded-2xl p-10 text-center text-slate-400 shadow-sm border border-slate-100">스마트스토어 주문이 없습니다</div>
             )}
-            {customerData.map(({ client, months, productList, totalAmount, totalOrders, activeMonths, firstMonth }) => {
-              const isExpanded = expandedClient === client.id;
+            {partnerData.map(({ partner, months, productList, totalAmount, totalOrders, activeMonths, firstMonth }) => {
+              const isExpanded = expandedClient === partner.id;
               const isNew = firstMonth === getYearMonth(new Date().toISOString()) || activeMonths === 1;
               return (
-                <div key={client.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                <div key={partner.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
                   <button
                     className="w-full px-5 py-4 flex items-center gap-3 hover:bg-slate-50 transition-colors"
-                    onClick={() => setExpandedClient(isExpanded ? null : client.id)}
+                    onClick={() => setExpandedClient(isExpanded ? null : partner.id)}
                   >
                     <div className="flex-1 text-left">
                       <div className="flex items-center gap-2">
-                        <p className="font-bold text-slate-800">{client.name}</p>
+                        <p className="font-bold text-slate-800">{partner.name}</p>
                         {firstMonth && (
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-600">
                             신규 {formatYearMonth(firstMonth)}

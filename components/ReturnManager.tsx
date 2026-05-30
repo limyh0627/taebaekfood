@@ -71,12 +71,12 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
     ['완제품', '향미유', '고춧가루'].includes(p.category as string)
   );
 
-  const clientOrders = orders
+  const partnerOrders = orders
     .filter(o => o.partnerId === selectedClientId && o.status === 'DELIVERED')
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, 30);
 
-  const clientStatements = issuedStatements
+  const partnerStatements = issuedStatements
     .filter(s => s.partnerId === selectedClientId && s.type === '매출')
     .sort((a, b) => b.tradeDate.localeCompare(a.tradeDate))
     .slice(0, 30);
@@ -135,7 +135,7 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
     try {
       const req = {
         partnerId: selectedClientId,
-        clientName: selectedClient.name,
+        partnerName: selectedClient.name,
         ...(selectedOrderId && { orderId: selectedOrderId }),
         ...(selectedStatementId && { linkedStatementId: selectedStatementId }),
         items: validItems,
@@ -156,7 +156,7 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
 
   const handleProcess = async (req: ReturnRequest) => {
     if (!isAdmin) { alert('관리자만 반품 처리를 할 수 있습니다.'); return; }
-    if (!window.confirm(`${req.clientName}의 반품을 처리하시겠습니까?\n재판매 가능 품목의 재고가 복귀됩니다.`)) return;
+    if (!window.confirm(`${req.partnerName}의 반품을 처리하시겠습니까?\n재판매 가능 품목의 재고가 복귀됩니다.`)) return;
     setProcessingId(req.id);
     try {
       await onProcessReturn(req);
@@ -221,7 +221,7 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40"
               >
                 <option value="">원주문 선택 (품목 자동 채움)</option>
-                {clientOrders.map(o => (
+                {partnerOrders.map(o => (
                   <option key={o.id} value={o.id}>
                     {o.createdAt.slice(0, 10)} — {o.items.map(i => i.name).join(', ').slice(0, 25)}
                   </option>
@@ -238,7 +238,7 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40"
               >
                 <option value="">전표 선택 (미수금 차감)</option>
-                {clientStatements.map(s => (
+                {partnerStatements.map(s => (
                   <option key={s.id} value={s.id}>
                     {s.tradeDate} — {s.docNo} (₩{s.totalAmount.toLocaleString()})
                   </option>
@@ -436,7 +436,7 @@ const ReturnCard: React.FC<ReturnCardProps> = ({ req, isAdmin, isProcessing, onP
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-black text-slate-800 text-sm">{req.clientName}</p>
+            <p className="font-black text-slate-800 text-sm">{req.partnerName}</p>
             <span
               className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
                 req.status === 'processed'

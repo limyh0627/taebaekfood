@@ -1,5 +1,5 @@
 ﻿
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   Package,
   Edit,
@@ -23,6 +23,8 @@ import {
   RotateCcw,
   History,
   FileText,
+  FileDown,
+  PrinterIcon,
 } from 'lucide-react';
 import { Item, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, PartnerItem } from '../types';
 import { PendingReceipt, PurchaseOrder } from '../src/shared/types';
@@ -71,7 +73,7 @@ interface ItemListProps {
   onEditProduct: (product: Item) => void;
   onDeleteProduct: (id: string) => void;
   onAddAdjustmentRequest: (req: AdjustmentRequest) => void;
-  suppliers: { id: string; name: string }[];
+  inboundPartners: { id: string; name: string }[];
   partners?: { id: string; name: string; partnerType?: string }[];
   partnerItems?: PartnerItem[];
   rawMaterialLedger: RawMaterialEntry[];
@@ -121,7 +123,7 @@ const RAW_MATERIALS_EN: Record<string, string> = {
 
 type MainTab = 'requests' | 'history' | 'master' | 'inbound';
 type InboundSubTab = '입고' | '반품';
-type TopTab = 'finished' | 'specialty' | 'product' | 'rawmaterial';
+type TopTab = 'finished' | 'goods' | 'submaterial' | 'rawmaterial' | 'wip';
 
 const ItemList: React.FC<ItemListProps> = ({
   items,
@@ -142,7 +144,7 @@ const ItemList: React.FC<ItemListProps> = ({
   onEditProduct,
   onDeleteProduct,
   onAddAdjustmentRequest,
-  suppliers,
+  inboundPartners,
   partners = [],
   rawMaterialLedger,
   onRequestPurchaseInvoice,
@@ -176,6 +178,9 @@ const ItemList: React.FC<ItemListProps> = ({
     if (rem === 0) return `${boxes}B(${stock}개)`;
     return `${boxes}B+${rem}개(${stock}개)`;
   };
+
+  const [showClosingModal, setShowClosingModal] = useState(false);
+  const closingRef = useRef<HTMLDivElement>(null);
 
   const [topTab, setTopTab] = useState<TopTab>('finished');
   const [activeTab, setActiveTab] = useState<MainTab>('master');
@@ -211,8 +216,8 @@ const ItemList: React.FC<ItemListProps> = ({
   const setActiveSubCategory = (v: string) => {
     setActiveCategory('전체'); setActiveSupplierId('전체');
   };
-  const filterMode = showCategoryFilter ? 'category' : showSupplierFilter ? 'supplier' : null;
-  const toggleFilterMode = (mode: 'supplier' | 'category') => {
+  const filterMode = showCategoryFilter ? 'category' : showSupplierFilter ? 'inboundPartner' : null;
+  const toggleFilterMode = (mode: 'inboundPartner' | 'category') => {
     if (mode === 'category') setShowCategoryFilter(p => !p);
     else setShowSupplierFilter(p => !p);
     setActiveSubCategory('전체');
@@ -245,7 +250,7 @@ const ItemList: React.FC<ItemListProps> = ({
   const [stockOnly, setStockOnly] = useState(false);
   const [zeroStockOnly, setZeroStockOnly] = useState(false);
   const [showClientSearch, setShowClientSearch] = useState(false);
-  const [clientSearchTerm, setClientSearchTerm] = useState('');
+  const [partnerSearchTerm, setClientSearchTerm] = useState('');
   const [selectedSearchClientId, setSelectedSearchClientId] = useState<string | null>(null);
   const [priorityClientId, setPriorityClientId] = useState<string | null>(null);
   const [showRmSheet, setShowRmSheet] = useState(false);
@@ -276,10 +281,11 @@ const ItemList: React.FC<ItemListProps> = ({
   const removeFromCart = (id: string) => setCart(prev => prev.filter(c => c.id !== id));
   const updateCartQty = (id: string, qty: number) => setCart(prev => prev.map(c => c.id === id ? { ...c, qty: Math.max(1, qty) } : c));
   const updateCartIsBox = (id: string, isBox: boolean) => setCart(prev => prev.map(c => c.id === id ? { ...c, isBox } : c));
-  const submitCart = () => {
-    onBulkAddConfirmedOrders(cart.map(c => ({ id: c.id, quantity: c.qty, isBox: c.isBox })));
+  const submitCart = async () => {
+    await onBulkAddConfirmedOrders(cart.map(c => ({ id: c.id, quantity: c.qty, isBox: c.isBox })));
     setCart([]);
     setShowCartPanel(false);
+    setActiveTab('inbound');
   };
 
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
@@ -288,7 +294,7 @@ const ItemList: React.FC<ItemListProps> = ({
   const PAGE_SIZE = 24;
 
   const productMap = useMemo(() => new Map(items.map(p => [p.id, p])), [items]);
-  const supplierMap = useMemo(() => new Map(suppliers.map(s => [s.id, s])), [suppliers]);
+  const inboundPartnerMap = useMemo(() => new Map(inboundPartners.map(s => [s.id, s])), [inboundPartners]);
 
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -305,7 +311,7 @@ const ItemList: React.FC<ItemListProps> = ({
   const [adjustmentModal, setAdjustmentModal] = useState<{
     isOpen: boolean;
     itemId: string;
-    productName: string;
+    itemName: string;
     originalQuantity: number;
     type: AdjustmentType;
   } | null>(null);
@@ -344,10 +350,12 @@ const ItemList: React.FC<ItemListProps> = ({
         } else {
           result = result.filter(p => normCat(p.category) === '완제품');
         }
-      } else if (topTab === 'specialty') {
+      } else if (topTab === 'goods') {
         result = result.filter(p => normCat(p.category) === '상품' || normCat(p.category) === '향미유' || normCat(p.category) === '고춧가루');
-      } else if (topTab === 'product') {
-        result = result.filter(p => normCat(p.category) !== '완제품' && normCat(p.category) !== '상품' && normCat(p.category) !== '향미유' && normCat(p.category) !== '고춧가루');
+      } else if (topTab === 'wip') {
+        result = result.filter(p => p.category === 'wip');
+      } else if (topTab === 'submaterial') {
+        result = result.filter(p => p.category === 'submaterial' || ['label','cap','container','box','tape','용기','마개','테이프','박스','라벨'].includes(p.category as string));
       }
       if (activeCategory !== '전체') {
         if (activeCategory === '박스') result = result.filter(p => normCat(p.category) === '박스' || p.id.startsWith('GS-'));
@@ -361,10 +369,10 @@ const ItemList: React.FC<ItemListProps> = ({
       const q = searchTerm.toLowerCase();
       result = result.filter(p => {
         if (p.name.toLowerCase().includes(q)) return true;
-        const partnerName = suppliers.find(s => s.id === psMap.get(p.id))?.name || '';
-        if (partnerName.toLowerCase().includes(q)) return true;
-        const clientName = (p.partnerIds ?? []).some(cid => partners.find(c => c.id === cid)?.name.toLowerCase().includes(q));
-        return clientName;
+        const inboundPartnerName = inboundPartners.find(s => s.id === psMap.get(p.id))?.name || '';
+        if (inboundPartnerName.toLowerCase().includes(q)) return true;
+        const hasPartnerMatch = (p.partnerIds ?? []).some(cid => partners.find(c => c.id === cid)?.name.toLowerCase().includes(q));
+        return hasPartnerMatch;
       });
     }
     if (stockOnly) {
@@ -385,7 +393,7 @@ const ItemList: React.FC<ItemListProps> = ({
       const bIdx = bCatIdx === -1 ? 99 : bCatIdx;
       return aIdx - bIdx;
     });
-  }, [items, activeTab, activeCategory, activeSupplierId, searchTerm, orderRequests, confirmedOrders, suppliers, partners, topTab, finishedFilter, stockOnly, zeroStockOnly]);
+  }, [items, activeTab, activeCategory, activeSupplierId, searchTerm, orderRequests, confirmedOrders, inboundPartners, partners, topTab, finishedFilter, stockOnly, zeroStockOnly]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -468,20 +476,28 @@ const ItemList: React.FC<ItemListProps> = ({
         title="재고 관리"
         subtitle="실시간 재고 현황을 파악하고 부족한 자재를 즉시 발주하세요."
         right={
-          <div className="bg-slate-100 p-1 rounded-2xl flex items-center shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
             <button
-              onClick={() => setActiveTab('master')}
-              className={`px-3 py-2 rounded-xl flex items-center gap-1 transition-all text-xs font-black ${activeTab === 'master' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+              onClick={() => setShowClosingModal(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-orange-500 text-white rounded-xl text-xs font-black hover:bg-orange-600 transition-colors"
             >
-              <Box size={13} /><span>재고 현황</span>
+              <ClipboardCheck size={13} /> 재고 마감
             </button>
-            <button
-              onClick={() => setActiveTab('inbound')}
-              className={`px-3 py-2 rounded-xl flex items-center gap-1 transition-all text-xs font-black relative ${activeTab === 'inbound' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              <Inbox size={13} /><span>입고/반품</span>
-              {(inboundBadge + returnBadge) > 0 && <span className="absolute -top-1 -right-1 bg-amber-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow">{inboundBadge + returnBadge}</span>}
-            </button>
+            <div className="bg-slate-100 p-1 rounded-2xl flex items-center">
+              <button
+                onClick={() => setActiveTab('master')}
+                className={`px-3 py-2 rounded-xl flex items-center gap-1 transition-all text-xs font-black ${activeTab === 'master' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                <Box size={13} /><span>재고 현황</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('inbound')}
+                className={`px-3 py-2 rounded-xl flex items-center gap-1 transition-all text-xs font-black relative ${activeTab === 'inbound' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                <Inbox size={13} /><span>입고/반품</span>
+                {(inboundBadge + returnBadge) > 0 && <span className="absolute -top-1 -right-1 bg-amber-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow">{inboundBadge + returnBadge}</span>}
+              </button>
+            </div>
           </div>
         }
       />
@@ -494,8 +510,9 @@ const ItemList: React.FC<ItemListProps> = ({
             <div className="bg-slate-100/50 p-1 rounded-2xl flex items-center self-start border border-slate-200">
               {([
                 { id: 'finished', label: '완제품', color: 'text-violet-600', icon: <Package size={13}/>, onClick: () => { setTopTab('finished'); setActiveCategory('전체'); setActiveSupplierId('전체'); } },
-                { id: 'specialty', label: '상품', color: 'text-orange-500', icon: <Box size={13}/>, onClick: () => { setTopTab('specialty'); setActiveCategory('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
-                { id: 'product', label: '부자재', color: 'text-indigo-600', icon: <Box size={13}/>, onClick: () => { setTopTab('product'); setActiveCategory('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
+                { id: 'goods', label: '상품', color: 'text-orange-500', icon: <Box size={13}/>, onClick: () => { setTopTab('goods'); setActiveCategory('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
+                { id: 'wip', label: '반제품', color: 'text-sky-600', icon: <Cylinder size={13}/>, onClick: () => { setTopTab('wip'); setActiveCategory('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
+                { id: 'submaterial', label: '부자재', color: 'text-indigo-600', icon: <Box size={13}/>, onClick: () => { setTopTab('submaterial'); setActiveCategory('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
                 { id: 'rawmaterial', label: '원료재고', color: 'text-emerald-600', icon: <Grape size={13}/>, onClick: () => setTopTab('rawmaterial') },
               ] as const).map(t => (
                 <button key={t.id} onClick={t.onClick}
@@ -560,9 +577,9 @@ const ItemList: React.FC<ItemListProps> = ({
           </div>
         )}
 
-        {activeTab !== 'inbound' && (topTab === 'product' || topTab === 'finished' || topTab === 'specialty') && <div className="flex flex-col gap-2">
+        {activeTab !== 'inbound' && (topTab === 'submaterial' || topTab === 'finished' || topTab === 'goods') && <div className="flex flex-col gap-2">
           {/* 품목별 필터 - 상품·부자재 탭 */}
-          {!zeroStockOnly && (topTab === 'specialty' || topTab === 'product') && <div className="flex items-center gap-2 flex-wrap">
+          {!zeroStockOnly && (topTab === 'goods' || topTab === 'submaterial') && <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => setShowCategoryFilter(p => !p)}
               className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl border text-[11px] font-black transition-all ${showCategoryFilter ? 'bg-indigo-50 border-indigo-200 text-indigo-600 ring-2 ring-indigo-50' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
@@ -571,7 +588,7 @@ const ItemList: React.FC<ItemListProps> = ({
               <span>품목별</span>
             </button>
             {showCategoryFilter && subCategories
-              .filter(s => topTab === 'specialty'
+              .filter(s => topTab === 'goods'
                 ? (s.id === '상품' || s.id === '향미유' || s.id === '고춧가루')
                 : (s.id !== '완제품' && s.id !== '상품' && s.id !== '향미유' && s.id !== '고춧가루'))
               .map(sub => {
@@ -633,15 +650,15 @@ const ItemList: React.FC<ItemListProps> = ({
               <Building2 size={14} />
               <span>거래처별</span>
             </button>
-            {showSupplierFilter && suppliers.map(supplier => {
-              const isActive = activeSupplierId === supplier.id;
+            {showSupplierFilter && inboundPartners.map(inboundPartner => {
+              const isActive = activeSupplierId === inboundPartner.id;
               return (
-                <button key={supplier.id}
-                  onClick={() => setActiveSupplierId(isActive ? '전체' : supplier.id)}
+                <button key={inboundPartner.id}
+                  onClick={() => setActiveSupplierId(isActive ? '전체' : inboundPartner.id)}
                   className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl transition-all whitespace-nowrap border text-[11px] font-black relative ${isActive ? 'bg-white border-orange-200 text-orange-500 shadow-sm ring-2 ring-orange-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
                 >
                   <Building2 size={14} />
-                  <span>{supplier.name}</span>
+                  <span>{inboundPartner.name}</span>
                 </button>
               );
             })}
@@ -689,51 +706,49 @@ const ItemList: React.FC<ItemListProps> = ({
               .sort((a, b) => b.registeredAt.localeCompare(a.registeredAt));
             return (
               <>
-                {/* ── 발주 예정 목록 (거래처별) ── */}
-                {cart.length === 0 ? (
+                {/* ── 발주 예정 목록 (Firestore pending) ── */}
+                {orderRequests.length === 0 ? (
                   <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 text-sm">
                     <ClipboardCheck size={28} className="mx-auto mb-2 opacity-30" />
                     <p>발주 예정 없음</p>
-                    <p className="text-[11px] mt-1">재고현황에서 품목을 담아주세요</p>
+                    <p className="text-[11px] mt-1">재고현황에서 품목을 담아 확정하세요</p>
                   </div>
                 ) : (() => {
-                  const groups = new Map<string, { partnerId: string; partnerName: string; items: typeof cart }>();
-                  cart.forEach(item => {
-                    const sid = psMap.get(item.id) ?? '__none__';
-                    const sname = supplierMap.get(sid)?.name ?? '거래처 미지정';
-                    if (!groups.has(sid)) groups.set(sid, { partnerId: sid, partnerName: sname, items: [] });
-                    groups.get(sid)!.items.push(item);
+                  const groups = new Map<string, { partnerName: string; items: typeof orderRequests }>();
+                  orderRequests.forEach(po => {
+                    const key = po.partnerName || '거래처 미지정';
+                    if (!groups.has(key)) groups.set(key, { partnerName: key, items: [] });
+                    groups.get(key)!.items.push(po);
                   });
                   return (
                     <div className="space-y-3">
                       <div className="flex items-center gap-2 px-1">
                         <ClipboardCheck size={16} className="text-indigo-500" />
                         <span className="font-black text-sm text-slate-800">발주 예정 목록</span>
-                        <span className="text-[10px] font-black bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">{cart.length}건</span>
+                        <span className="text-[10px] font-black bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">{orderRequests.length}건</span>
                       </div>
                       {Array.from(groups.values()).map(group => (
-                        <div key={group.partnerId} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                        <div key={group.partnerName} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                           <div className="px-4 py-2.5 bg-orange-50 border-b border-orange-100 flex items-center gap-2">
                             <span className="text-xs font-black text-orange-700">{group.partnerName}</span>
                             <span className="text-[10px] text-orange-400">{group.items.length}개 품목</span>
                           </div>
                           <div className="divide-y divide-slate-50">
-                            {group.items.map(item => {
-                              const product = productMap.get(item.id);
-                              if (!product) return null;
+                            {group.items.map(po => {
+                              const product = productMap.get(po.itemId ?? po.id);
                               return (
-                                <div key={item.id} className="px-4 py-3 flex items-center gap-3">
+                                <div key={po.id} className="px-4 py-3 flex items-center gap-3">
                                   <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
-                                    <p className="text-[10px] text-slate-400 mt-0.5">현재 재고 {product.stock} {product.unit}</p>
+                                    <p className="text-sm font-bold text-slate-800 truncate">{po.itemName || product?.name}</p>
+                                    <p className="text-[10px] text-slate-400 mt-0.5">현재 재고 {product?.stock ?? '-'} {product?.unit ?? ''}</p>
                                   </div>
                                   <div className="flex items-center gap-1.5 shrink-0">
-                                    <button onClick={() => updateCartQty(item.id, item.qty - 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-xs transition-all">-</button>
-                                    <span className="w-10 text-center text-sm font-black text-slate-800">{item.qty}</span>
-                                    <button onClick={() => updateCartQty(item.id, item.qty + 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-xs transition-all">+</button>
-                                    <span className="text-[11px] text-slate-400">{item.isBox ? 'B' : product.unit}</span>
+                                    <button onClick={() => onUpdateOrderRequestQty(po.id, Math.max(1, po.quantity - 1))} className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-xs transition-all">-</button>
+                                    <span className="w-10 text-center text-sm font-black text-slate-800">{po.quantity}</span>
+                                    <button onClick={() => onUpdateOrderRequestQty(po.id, po.quantity + 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-xs transition-all">+</button>
+                                    <span className="text-[11px] text-slate-400">{po.isBox ? 'B' : (product?.unit ?? '')}</span>
                                   </div>
-                                  <button onClick={() => removeFromCart(item.id)} className="text-slate-300 hover:text-rose-400 transition-all shrink-0 ml-1"><X size={15} /></button>
+                                  <button onClick={() => onRemoveOrderRequest(po.id)} className="text-slate-300 hover:text-rose-400 transition-all shrink-0 ml-1"><X size={15} /></button>
                                 </div>
                               );
                             })}
@@ -770,7 +785,7 @@ const ItemList: React.FC<ItemListProps> = ({
                               const unit = po.isBox ? '박스' : (po.unit || product?.unit || '');
                               return (
                                 <div key={po.id} className="flex justify-between text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-1.5">
-                                  <span>{po.productName}</span>
+                                  <span>{po.itemName}</span>
                                   <span className="font-bold">{po.quantity.toLocaleString()} {unit}</span>
                                 </div>
                               );
@@ -822,7 +837,7 @@ const ItemList: React.FC<ItemListProps> = ({
         </div>
       )}
 
-      {activeTab !== 'inbound' && (zeroStockOnly || topTab === 'product' || topTab === 'finished' || topTab === 'specialty') && <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+      {activeTab !== 'inbound' && (zeroStockOnly || topTab === 'submaterial' || topTab === 'finished' || topTab === 'goods') && <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
         {activeTab === 'requests' && draftOrders.length > 0 && (
           <div className="mb-8 bg-indigo-50/50 border border-indigo-100 rounded-[32px] p-6">
             <div className="flex items-center justify-between mb-6 px-2">
@@ -975,7 +990,7 @@ const ItemList: React.FC<ItemListProps> = ({
                           // 상품/부자재: 매입처 (Direction='in', psMap 기반)
                           (() => {
                             const partnerId = psMap.get(product.id);
-                            const sname = partnerId ? supplierMap.get(partnerId)?.name : null;
+                            const sname = partnerId ? inboundPartnerMap.get(partnerId)?.name : null;
                             return sname
                               ? <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">{sname}</span>
                               : <span className="text-[10px] text-slate-200">-</span>;
@@ -1184,7 +1199,7 @@ const ItemList: React.FC<ItemListProps> = ({
                               <div>{statusBadge}</div>
                             </div>
                             <div className="flex items-center gap-2 pt-1" onClick={e => e.stopPropagation()}>
-                              {product.category !== '완제품' && (
+                              {purchasableIds.has(product.id) && (
                                 inCart ? (
                                   <button
                                     onClick={() => removeFromCart(product.id)}
@@ -1357,7 +1372,7 @@ const ItemList: React.FC<ItemListProps> = ({
                       .map(item => {
                       const product = productMap.get(item.id);
                       if (!product) return null;
-                      const partnerName = supplierMap.get(psMap.get(product.id) ?? '')?.name;
+                      const partnerName = inboundPartnerMap.get(psMap.get(product.id) ?? '')?.name;
                       return (
                         <div key={item.id} className="px-5 py-3 flex items-center gap-4">
                           <div className="flex-1 min-w-0">
@@ -1510,7 +1525,7 @@ const ItemList: React.FC<ItemListProps> = ({
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
                             <span className="text-[9px] font-black text-sky-600 bg-sky-50 border border-sky-100 px-1.5 py-0.5 rounded-md">전표</span>
-                            <span className="text-xs font-black text-orange-500 bg-orange-50 px-2 py-0.5 rounded-md">{stmt.clientName}</span>
+                            <span className="text-xs font-black text-orange-500 bg-orange-50 px-2 py-0.5 rounded-md">{stmt.partnerName}</span>
                             <span className="text-[10px] text-slate-400">{stmt.tradeDate} · {stmt.docNo}</span>
                           </div>
                           <button
@@ -1539,7 +1554,7 @@ const ItemList: React.FC<ItemListProps> = ({
                       .map(conf => {
                         const product = productMap.get(conf.id);
                         if (!product) return null;
-                        const partnerName = supplierMap.get(psMap.get(product.id) ?? '')?.name;
+                        const partnerName = inboundPartnerMap.get(psMap.get(product.id) ?? '')?.name;
                         const isExpanded = expandedReqId === conf.id;
                         return (
                           <div key={conf.id}>
@@ -1848,7 +1863,7 @@ const ItemList: React.FC<ItemListProps> = ({
                     </div>
                     <div>
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{t('비고', 'Note')}</label>
-                      <input type="text" placeholder={t('거래처명, 메모 등', 'Supplier, memo, etc.')} value={rmNote} onChange={e => setRmNote(e.target.value)}
+                      <input type="text" placeholder={t('거래처명, 메모 등', 'InboundPartner, memo, etc.')} value={rmNote} onChange={e => setRmNote(e.target.value)}
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:border-emerald-400" />
                     </div>
                     {currentUser && (
@@ -2188,57 +2203,39 @@ const ItemList: React.FC<ItemListProps> = ({
             </div>
           )}
 
-          {/* 원료별 잔량 요약 카드 */}
+          {/* 원료별 잔량 요약 — 품목당 한 행 */}
           {(() => {
-            const CATS = [
-              { label: '깨', items: ['참깨', '들깨', '깨분', '볶음들깨', '검정깨'] },
-              { label: '기름', items: ['통깨참기름', '깨분참기름', '통들깨들기름', '수입들기름', '생들기름'] },
-              { label: '가루', items: ['탈피들깨가루', '볶음참깨', '볶음검정참깨'] },
+            const ALL_MATERIALS = [
+              '참깨', '들깨', '깨분', '볶음들깨', '검정깨',
+              '통깨참기름', '깨분참기름', '통들깨들기름', '수입들기름', '생들기름',
+              '탈피들깨가루', '볶음참깨', '볶음검정참깨',
             ];
             const OIL_SET = new Set(['통깨참기름', '깨분참기름', '통들깨들기름', '수입들기름', '생들기름']);
+            const visibleMaterials = ALL_MATERIALS.filter(m => rawMaterialLedger.some(e => e.material === m));
+            if (visibleMaterials.length === 0) return null;
             return (
-              <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                {CATS.map((cat, idx) => {
-                  const visibleItems = cat.items.filter(m => rawMaterialLedger.some(e => e.material === m));
-                  if (visibleItems.length === 0) return null;
+              <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden divide-y divide-slate-100">
+                {visibleMaterials.map(m => {
+                  const bal = rawMaterialBalances[m] ?? 0;
+                  const isLow = bal < 20;
+                  const unit = OIL_SET.has(m) ? 'L' : 'kg';
+                  const isSelected = rmFilter === m;
                   return (
-                    <div key={cat.label} className={`flex items-stretch${idx > 0 ? ' border-t border-slate-100' : ''}`}>
-                      <div className="shrink-0 w-10 flex items-center justify-center bg-slate-50 border-r border-slate-100">
-                        <span className="text-xs font-black text-slate-400">{cat.label}</span>
-                      </div>
-                      <div className={cat.label === '기름'
-                        ? "grid grid-cols-2 sm:flex sm:flex-wrap gap-2 px-3 py-3 flex-1"
-                        : "flex gap-2 overflow-x-auto no-scrollbar px-3 py-3 flex-1"
-                      }>
-                        {visibleItems.map(m => {
-                          const bal = rawMaterialBalances[m] ?? 0;
-                          const isLow = bal < 20;
-                          const unit = OIL_SET.has(m) ? 'L' : 'kg';
-                          const isSelected = rmFilter === m;
-                          return (
-                            <button
-                              key={m}
-                              onClick={() => setRmFilter(m)}
-                              className={`flex flex-col items-start px-3 py-2 rounded-xl border transition-all ${cat.label !== '기름' ? 'shrink-0' : ''} ${
-                                isSelected
-                                  ? 'bg-emerald-600 border-emerald-600 shadow-sm'
-                                  : isLow
-                                  ? 'bg-rose-50 border-rose-200 hover:border-rose-300'
-                                  : 'bg-slate-50 border-transparent hover:bg-white hover:border-emerald-200 hover:shadow-sm'
-                              }`}
-                            >
-                              <span className={`text-[10px] font-bold whitespace-nowrap mb-0.5 ${isSelected ? 'text-emerald-100' : isLow ? 'text-rose-400' : 'text-slate-500'}`}>
-                                {isEn ? RAW_MATERIALS_EN[m] ?? m : m}
-                              </span>
-                              <span className={`text-base font-black leading-none ${isSelected ? 'text-white' : isLow ? 'text-rose-600' : 'text-slate-800'}`}>
-                                {bal.toLocaleString('ko-KR')}
-                                <span className={`text-[9px] font-bold ml-0.5 ${isSelected ? 'text-emerald-200' : 'text-slate-400'}`}>{unit}</span>
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
+                    <button
+                      key={m}
+                      onClick={() => setRmFilter(m)}
+                      className={`w-full flex items-center justify-between px-4 py-3 transition-all text-left ${
+                        isSelected ? 'bg-emerald-600' : isLow ? 'bg-rose-50 hover:bg-rose-100' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className={`text-sm font-bold ${isSelected ? 'text-white' : isLow ? 'text-rose-500' : 'text-slate-700'}`}>
+                        {isEn ? RAW_MATERIALS_EN[m] ?? m : m}
+                      </span>
+                      <span className={`text-sm font-black ${isSelected ? 'text-white' : isLow ? 'text-rose-600' : 'text-slate-800'}`}>
+                        {bal.toLocaleString('ko-KR')}
+                        <span className={`text-[10px] font-bold ml-0.5 ${isSelected ? 'text-emerald-200' : 'text-slate-400'}`}>{unit}</span>
+                      </span>
+                    </button>
                   );
                 })}
               </div>
@@ -2495,7 +2492,7 @@ const ItemList: React.FC<ItemListProps> = ({
       {/* Draft Orders Floating Button removed as requested */}
 
       {/* ── 플로팅 카트 아이콘 ── */}
-      {topTab === 'product' && cart.length > 0 && (
+      {topTab === 'submaterial' && cart.length > 0 && (
         <button
           onClick={() => setShowCartPanel(true)}
           className="fixed bottom-8 right-6 z-40 flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-3 rounded-2xl shadow-xl transition-all active:scale-95 animate-in fade-in zoom-in-95 duration-300"
@@ -2572,8 +2569,7 @@ const ItemList: React.FC<ItemListProps> = ({
                   if (cart.length === 0 || isConfirming) return;
                   setIsConfirming(true);
                   try {
-                    await onConfirmAllRequests();
-                    setShowCartPanel(false);
+                    await submitCart();
                   } catch (e) {
                     console.error('확정 처리 오류:', e);
                     const msg = e instanceof Error ? e.message : String(e);
@@ -2632,7 +2628,7 @@ const ItemList: React.FC<ItemListProps> = ({
                   const product = items.find(p => p.id === item.id);
                   if (!product) return;
                   const sid = psMap.get(product.id) || '__none__';
-                  const sname = suppliers.find(s => s.id === sid)?.name || '거래처 미지정';
+                  const sname = inboundPartners.find(s => s.id === sid)?.name || '거래처 미지정';
                   if (!groups.has(sid)) groups.set(sid, { partnerId: sid, partnerName: sname, items: [] });
                   groups.get(sid)!.items.push({
                     name: product.name,
@@ -2711,7 +2707,7 @@ const ItemList: React.FC<ItemListProps> = ({
                   const product = productMap.get(conf.id);
                   if (!product) return;
                   const sid = psMap.get(product.id) || '__none__';
-                  const sname = supplierMap.get(sid)?.name || '거래처 미지정';
+                  const sname = inboundPartnerMap.get(sid)?.name || '거래처 미지정';
                   if (!groups.has(sid)) groups.set(sid, { partnerId: sid, partnerName: sname, items: [] });
                   groups.get(sid)!.items.push({
                     name: product.name,
@@ -2778,7 +2774,7 @@ const ItemList: React.FC<ItemListProps> = ({
                 </div>
                 <div>
                   <h3 className="text-xl font-black text-slate-900">수량 변동 및 취소 요청</h3>
-                  <p className="text-sm text-slate-500 font-medium">{adjustmentModal.productName}</p>
+                  <p className="text-sm text-slate-500 font-medium">{adjustmentModal.itemName}</p>
                 </div>
               </div>
 
@@ -2852,7 +2848,7 @@ const ItemList: React.FC<ItemListProps> = ({
                     onAddAdjustmentRequest({
                       id: `ADJ-${Date.now()}`,
                       itemId: adjustmentModal.itemId,
-                      productName: adjustmentModal.productName,
+                      itemName: adjustmentModal.itemName,
                       originalQuantity: adjustmentModal.originalQuantity,
                       requestedQuantity: adjustmentModal.type === 'quantity_change' ? adjustmentQty : 0,
                       type: adjustmentModal.type,
@@ -2872,6 +2868,133 @@ const ItemList: React.FC<ItemListProps> = ({
           </div>
         </div>
       )}
+
+    {/* ── 재고 마감 모달 ───────────────────────────────────────────── */}
+    {showClosingModal && (() => {
+      const today = new Date();
+      const dateStr = `${today.getMonth() + 1}월 ${today.getDate()}일`;
+      const finishedItems = items.filter(p => !p.archived && (normCat(p.category) === '완제품' || normCat(p.category) === '상품' || normCat(p.category) === '향미유' || normCat(p.category) === '고춧가루'));
+      const totalStock = finishedItems.reduce((sum, p) => sum + (p.stock || 0), 0);
+
+      const getBoxInfo = (p: Item) => {
+        const bsz = (p as any).defaultBoxConfig?.unitsPerBox || (p as any).boxSize || 12;
+        const boxes = Math.floor((p.stock || 0) / bsz);
+        const rem = (p.stock || 0) % bsz;
+        return { boxes, rem, bsz };
+      };
+
+      const handlePrint = async () => {
+        if (!closingRef.current) return;
+        try {
+          const { default: html2canvas } = await import('html2canvas') as any;
+          const { default: jsPDF } = await import('jspdf') as any;
+          const canvas = await html2canvas(closingRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+          const imgData = canvas.toDataURL('image/png');
+          const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+          const pageW = pdf.internal.pageSize.getWidth();
+          const pageH = pdf.internal.pageSize.getHeight();
+          const ratio = canvas.height / canvas.width;
+          const imgH = pageW * ratio;
+          if (imgH <= pageH) {
+            pdf.addImage(imgData, 'PNG', 0, 0, pageW, imgH);
+          } else {
+            let posY = 0;
+            while (posY < imgH) {
+              pdf.addImage(imgData, 'PNG', 0, -posY, pageW, imgH);
+              posY += pageH;
+              if (posY < imgH) pdf.addPage();
+            }
+          }
+          pdf.save(`재고마감_${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}.pdf`);
+        } catch (e) {
+          window.print();
+        }
+      };
+
+      // 3열 그리드용으로 나누기
+      const cols: Item[][] = [[], [], []];
+      finishedItems.forEach((p, i) => cols[i % 3].push(p));
+      const rows = Math.ceil(finishedItems.length / 3);
+      const grid: (Item | null)[][] = Array.from({ length: rows }, (_, r) => [
+        cols[0][r] ?? null,
+        cols[1][r] ?? null,
+        cols[2][r] ?? null,
+      ]);
+
+      return (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto p-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl my-4 shadow-2xl">
+            {/* 액션 바 */}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200">
+              <div>
+                <span className="text-sm font-black text-slate-800">재고 마감</span>
+                <span className="ml-2 text-xs text-slate-400">{dateStr} 기준</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 text-white rounded-lg text-xs font-bold hover:bg-slate-800">
+                  <FileDown size={12} /> PDF
+                </button>
+                <button onClick={() => setShowClosingModal(false)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* 인쇄 영역 */}
+            <div ref={closingRef} className="p-5" style={{ fontFamily: 'Malgun Gothic, sans-serif' }}>
+              <div className="text-center text-sm font-black mb-3">&lt;재고 현황&gt;</div>
+              <div className="text-right text-xs text-slate-500 mb-3">{dateStr}</div>
+
+              <table className="w-full border-collapse text-xs" style={{ borderColor: '#374151' }}>
+                <thead>
+                  <tr>
+                    {[0, 1, 2].map(c => (
+                      <React.Fragment key={c}>
+                        <th className="border border-slate-400 bg-slate-100 px-1.5 py-1.5 font-bold text-center text-[11px]">품목</th>
+                        <th className="border border-slate-400 bg-slate-100 px-1 py-1.5 font-bold text-center text-[11px] w-10">Box</th>
+                        <th className="border border-slate-400 bg-slate-100 px-1 py-1.5 font-bold text-center text-[11px] w-10">△수량</th>
+                      </React.Fragment>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {grid.map((row, ri) => (
+                    <tr key={ri}>
+                      {row.map((p, ci) => {
+                        if (!p) return (
+                          <React.Fragment key={ci}>
+                            <td className="border border-slate-300 px-1.5 py-1.5" />
+                            <td className="border border-slate-300 px-1 py-1.5" />
+                            <td className="border border-slate-300 px-1 py-1.5" />
+                          </React.Fragment>
+                        );
+                        const { boxes, rem } = getBoxInfo(p);
+                        return (
+                          <React.Fragment key={ci}>
+                            <td className="border border-slate-300 px-1.5 py-1.5 text-slate-800 font-medium text-[11px]">{p.name}</td>
+                            <td className="border border-slate-300 px-1 py-1.5 text-center font-bold text-[11px]">{boxes > 0 ? boxes : '-'}</td>
+                            <td className="border border-slate-300 px-1 py-1.5 text-center text-[11px]">{rem > 0 ? rem : (boxes > 0 ? '-' : p.stock)}</td>
+                          </React.Fragment>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                  {/* 합계 행 */}
+                  <tr className="bg-slate-50">
+                    <td colSpan={8} className="border border-slate-400 px-2 py-1.5 text-right text-xs font-black text-slate-700">
+                      총 재고
+                    </td>
+                    <td className="border border-slate-400 px-2 py-1.5 text-center text-xs font-black text-slate-800">
+                      {totalStock.toLocaleString()}개
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    })()}
     </div>
   );
 };

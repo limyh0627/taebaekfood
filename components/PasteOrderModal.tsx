@@ -83,14 +83,13 @@ interface PasteOrderModalProps {
   onSave: (_order: Omit<Order, 'id' | 'createdAt' | 'status'>) => void;
 }
 
-type Step = 'client' | 'paste' | 'review';
+type Step = 'partner' | 'paste' | 'review';
 
 const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   items, partners, partnerItems, productClients: _pc, onClose, onSave,
 }) => {
   // Compute derived variables
   const products = items;
-  const clients = partners;
   const productClients = (_pc ?? partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -98,7 +97,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     return () => document.removeEventListener('keydown', h);
   }, [onClose]);
 
-  const [step, setStep] = useState<Step>('client');
+  const [step, setStep] = useState<Step>('partner');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClient, setSelectedClient] = useState<Partner | null>(null);
   const [pasteText, setPasteText] = useState('');
@@ -139,7 +138,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
 
   const quickClients = useMemo(() => {
     const seen = new Set<string>();
-    return clients
+    return partners
       .filter(c => !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처')
       .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'))
       .filter(c => { if (seen.has(c.name)) return false; seen.add(c.name); return true; })
@@ -185,7 +184,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     const totalAmount = orderItems.reduce((s, i) => s + i.price * i.quantity, 0);
     onSave({
       partnerId: selectedClient.id,
-      customerName: selectedClient.name,
+      partnerName: selectedClient.name,
       email: selectedClient.email || '',
       items: orderItems,
       totalAmount,
@@ -217,7 +216,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
             <div>
               <h3 className="text-lg font-bold text-slate-900">복사 주문</h3>
               <p className="text-xs text-slate-400">
-                {step === 'client' ? '거래처를 선택하세요' : step === 'paste' ? '주문 내용을 붙여넣으세요' : '매칭 결과를 확인하세요'}
+                {step === 'partner' ? '거래처를 선택하세요' : step === 'paste' ? '주문 내용을 붙여넣으세요' : '매칭 결과를 확인하세요'}
               </p>
             </div>
           </div>
@@ -228,15 +227,15 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
 
         {/* 스텝 인디케이터 */}
         <div className="px-6 pt-4 flex items-center gap-2">
-          {(['client', 'paste', 'review'] as Step[]).map((s, i) => (
+          {(['partner', 'paste', 'review'] as Step[]).map((s, i) => (
             <React.Fragment key={s}>
-              <div className={`flex items-center gap-1.5 text-[11px] font-black ${step === s ? 'text-violet-600' : i < ['client','paste','review'].indexOf(step) ? 'text-emerald-500' : 'text-slate-300'}`}>
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${step === s ? 'bg-violet-600 text-white' : i < ['client','paste','review'].indexOf(step) ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-300'}`}>
+              <div className={`flex items-center gap-1.5 text-[11px] font-black ${step === s ? 'text-violet-600' : i < ['partner','paste','review'].indexOf(step) ? 'text-emerald-500' : 'text-slate-300'}`}>
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${step === s ? 'bg-violet-600 text-white' : i < ['partner','paste','review'].indexOf(step) ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-300'}`}>
                   {i + 1}
                 </div>
-                {s === 'client' ? '거래처' : s === 'paste' ? '입력' : '확인'}
+                {s === 'partner' ? '거래처' : s === 'paste' ? '입력' : '확인'}
               </div>
-              {i < 2 && <div className={`flex-1 h-0.5 rounded ${i < ['client','paste','review'].indexOf(step) ? 'bg-emerald-300' : 'bg-slate-100'}`} />}
+              {i < 2 && <div className={`flex-1 h-0.5 rounded ${i < ['partner','paste','review'].indexOf(step) ? 'bg-emerald-300' : 'bg-slate-100'}`} />}
             </React.Fragment>
           ))}
         </div>
@@ -244,7 +243,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
 
           {/* ── STEP 1: 거래처 선택 ── */}
-          {step === 'client' && (
+          {step === 'partner' && (
             <div className="space-y-4">
               <div className="relative">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -296,7 +295,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                 <div className="flex items-center gap-2">
                   <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)}
                     className="text-[10px] font-bold text-violet-700 bg-white border border-violet-200 rounded-lg px-2 py-1.5 outline-none" />
-                  <button onClick={() => { setSelectedClient(null); setStep('client'); }}
+                  <button onClick={() => { setSelectedClient(null); setStep('partner'); }}
                     className="text-[10px] font-bold text-violet-400 hover:text-violet-600 underline">변경</button>
                 </div>
               </div>
@@ -407,12 +406,12 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
 
         {/* 하단 버튼 */}
         <div className="p-6 border-t border-slate-100 bg-slate-50/50 rounded-b-3xl">
-          {step === 'client' && (
+          {step === 'partner' && (
             <button onClick={onClose} className="w-full py-3.5 rounded-2xl font-bold text-slate-500 bg-white border border-slate-200">취소</button>
           )}
           {step === 'paste' && (
             <div className="flex gap-3">
-              <button onClick={() => setStep('client')} className="flex-1 py-3.5 rounded-2xl font-bold text-slate-500 bg-white border border-slate-200">이전</button>
+              <button onClick={() => setStep('partner')} className="flex-1 py-3.5 rounded-2xl font-bold text-slate-500 bg-white border border-slate-200">이전</button>
               <button onClick={analyze} disabled={!pasteText.trim()}
                 className="flex-1 py-3.5 rounded-2xl font-black text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-40 transition-all">
                 분석하기

@@ -24,12 +24,11 @@ const PriceManager: React.FC<PriceManagerProps> = ({
 }) => {
   // Compute derived variables
   const products = items;
-  const clients = partners;
   const productClients = (_pc ?? partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
   const productSuppliers = (_ps ?? partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
   const [mode, setMode] = useState<'매출' | '매입'>('매출');
   const [partnerId, setClientId] = useState('');
-  const [clientSearch, setClientSearch] = useState('');
+  const [partnerSearch, setClientSearch] = useState('');
   const [priceEdits, setPriceEdits] = useState<Record<string, string>>({});
   const [taxEdits, setTaxEdits] = useState<Record<string, '과세' | '면세'>>({});
   const [costEdits, setCostEdits] = useState<Record<string, string>>({});
@@ -42,10 +41,10 @@ const PriceManager: React.FC<PriceManagerProps> = ({
   );
 
   const filteredClients = useMemo(() =>
-    clients
-      .filter(c => !clientSearch || c.name.includes(clientSearch))
+    partners
+      .filter(c => !partnerSearch || c.name.includes(partnerSearch))
       .sort((a, b) => a.name.localeCompare(b.name)),
-    [clients, clientSearch]
+    [partners, partnerSearch]
   );
 
   const selectedPcRows = useMemo(() =>
@@ -129,7 +128,7 @@ const PriceManager: React.FC<PriceManagerProps> = ({
             <input
               type="text"
               placeholder="거래처 검색..."
-              value={clientSearch}
+              value={partnerSearch}
               onChange={e => setClientSearch(e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-7 pr-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-violet-300"
             />

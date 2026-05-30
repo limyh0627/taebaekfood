@@ -43,7 +43,6 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
   // Compute derived variables
   const products = items;
   const submaterials = _submaterials ?? items.filter(i => i.category !== 'product');
-  const clients = partners;
   const productClients = (_pc ?? partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
 
   useEffect(() => {
@@ -70,7 +69,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
 
   const quickClients = useMemo(() => {
     const seen = new Set<string>();
-    return [...clients]
+    return [...partners]
       .filter(c => !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처')
       .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'))
       .filter(c => { if (seen.has(c.name)) return false; seen.add(c.name); return true; })
@@ -459,7 +458,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
 
     onSave({
       partnerId: selectedClient.id,
-      customerName: selectedClient.name || '이름 없음',
+      partnerName: selectedClient.name || '이름 없음',
       email: selectedClient.email || '',
       items: orderItems,
       totalAmount,
@@ -499,12 +498,12 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
 
                   {filteredClients.length > 0 && (
                     <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 rounded-2xl shadow-xl z-20 overflow-hidden max-h-80 overflow-y-auto custom-scrollbar">
-                      {filteredClients.map(client => (
-                        <button key={client.id} onClick={() => { setSelectedClient(client); setSource(client.type as OrderSource); setSearchTerm(''); setIsDelivery(client.type === '택배' || client.type === '스마트스토어'); }} className="w-full px-5 py-3 text-left hover:bg-indigo-50 flex items-center justify-between group">
+                      {filteredClients.map(partner => (
+                        <button key={partner.id} onClick={() => { setSelectedClient(partner); setSource(partner.type as OrderSource); setSearchTerm(''); setIsDelivery(partner.type === '택배' || partner.type === '스마트스토어'); }} className="w-full px-5 py-3 text-left hover:bg-indigo-50 flex items-center justify-between group">
                           <div>
                             <div className="flex items-center space-x-2">
-                              <p className="font-bold text-slate-800 text-sm">{client.name || '이름 없음'}</p>
-                              {client.region && <span className="text-[9px] text-slate-400">{client.region}</span>}
+                              <p className="font-bold text-slate-800 text-sm">{partner.name || '이름 없음'}</p>
+                              {partner.region && <span className="text-[9px] text-slate-400">{partner.region}</span>}
                             </div>
                           </div>
                           <ArrowRight size={16} className="text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
@@ -518,17 +517,17 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                   <div className="space-y-2">
                     <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest px-1">자주 사용하는 거래처</p>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      {quickClients.map(client => {
+                      {quickClients.map(partner => {
                         const typeConfig = {
                           '일반': { icon: User, color: 'bg-indigo-100 text-indigo-600' },
                           '택배': { icon: Truck, color: 'bg-pink-100 text-pink-600' },
                           '스마트스토어': { icon: Store, color: 'bg-lime-100 text-lime-600' },
-                        }[client.type] || { icon: LayoutGrid, color: 'bg-slate-100 text-slate-600' };
+                        }[partner.type] || { icon: LayoutGrid, color: 'bg-slate-100 text-slate-600' };
                         const TypeIcon = typeConfig.icon;
                         return (
                           <button
-                            key={client.id}
-                            onClick={() => { setSelectedClient(client); setSource(client.type as OrderSource); setIsDelivery(client.type === '택배' || client.type === '스마트스토어'); }}
+                            key={partner.id}
+                            onClick={() => { setSelectedClient(partner); setSource(partner.type as OrderSource); setIsDelivery(partner.type === '택배' || partner.type === '스마트스토어'); }}
                             className="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-100 transition-all p-4 text-left"
                           >
                             <div className="flex items-center space-x-3 min-w-0">
@@ -537,11 +536,11 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                               </div>
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2">
-                                  <h3 className="text-sm font-bold text-slate-900 truncate">{client.name}</h3>
-                                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-black flex-shrink-0 ${typeConfig.color}`}>{client.type}</span>
+                                  <h3 className="text-sm font-bold text-slate-900 truncate">{partner.name}</h3>
+                                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-black flex-shrink-0 ${typeConfig.color}`}>{partner.type}</span>
                                 </div>
-                                {client.region && (
-                                  <p className="text-[11px] text-slate-400 mt-0.5">{client.region}</p>
+                                {partner.region && (
+                                  <p className="text-[11px] text-slate-400 mt-0.5">{partner.region}</p>
                                 )}
                               </div>
                             </div>

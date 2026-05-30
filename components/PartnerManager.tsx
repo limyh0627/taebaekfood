@@ -24,7 +24,7 @@ declare global {
     daum: { Postcode: new (config: { oncomplete: (data: { address: string }) => void }) => { open: () => void } };
   }
 }
-import AddClientModal from './AddClientModal';
+import AddPartnerModal from './AddPartnerModal';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 
@@ -52,7 +52,7 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
     { id: '매출+매입처', label: '매출+매입처' },
   ];
 
-  const clientTypes: { id: PartnerChannel | '전체', label: string, icon: any, color: string }[] = [
+  const partnerChannelTypes: { id: PartnerChannel | '전체', label: string, icon: any, color: string }[] = [
     { id: '전체', label: '전체', icon: LayoutGrid, color: 'bg-slate-100 text-slate-600' },
     { id: '일반', label: '일반 거래처', icon: User, color: 'bg-indigo-100 text-indigo-600' },
     { id: '택배', label: '택배사/대행', icon: Truck, color: 'bg-pink-100 text-pink-600' },
@@ -120,7 +120,7 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
 
         {(activeTab === '매출처' || activeTab === '전체') && (
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-            {clientTypes.filter(t => t.id !== '전체').map(t => {
+            {partnerChannelTypes.filter(t => t.id !== '전체').map(t => {
               const Icon = t.icon;
               const isActive = activeTypeTab === t.id;
               const count = partners
@@ -162,15 +162,15 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
 
       <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-          {pagedClients.map((client) => {
-            const currentTypeConfig = clientTypes.find(t => t.id === client.type) || clientTypes[1];
+          {pagedClients.map((partner) => {
+            const currentTypeConfig = partnerChannelTypes.find(t => t.id === partner.type) || partnerChannelTypes[1];
             const TypeIcon = currentTypeConfig.icon;
-            const pt = getEffectivePartnerType(client);
+            const pt = getEffectivePartnerType(partner);
             const ptColor = pt === '매출처' ? 'bg-indigo-100 text-indigo-600' : pt === '매입처' ? 'bg-orange-100 text-orange-600' : 'bg-violet-100 text-violet-600';
-            const fullAddress = [client.address, client.addressDetail].filter(Boolean).join(' ');
+            const fullAddress = [partner.address, partner.addressDetail].filter(Boolean).join(' ');
 
             return (
-              <div key={client.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all">
+              <div key={partner.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all">
                 <div className="p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3 min-w-0">
@@ -179,32 +179,32 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <h3 className="text-sm font-bold text-slate-900 truncate">{client.name}</h3>
+                          <h3 className="text-sm font-bold text-slate-900 truncate">{partner.name}</h3>
                           <span className={`px-1.5 py-0.5 rounded text-[9px] font-black flex-shrink-0 ${ptColor}`}>{pt}</span>
                           {(pt === '매출처' || pt === '매출+매입처') && (
-                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-black flex-shrink-0 ${currentTypeConfig.color}`}>{client.type}</span>
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-black flex-shrink-0 ${currentTypeConfig.color}`}>{partner.type}</span>
                           )}
                         </div>
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1 text-slate-400">
-                          {client.ownerName && <div className="flex items-center text-[11px] font-bold text-slate-500">{client.ownerName}</div>}
-                          {client.bizNo && <div className="text-[11px]">{client.bizNo}</div>}
-                          {(client.tel || client.mobile || client.phone) && <div className="flex items-center text-[11px]"><Phone size={11} className="mr-1" />{client.tel || client.mobile || client.phone}</div>}
-                          {client.email && <div className="flex items-center text-[11px]"><Mail size={11} className="mr-1" />{client.email}</div>}
-                          {client.region && <div className="flex items-center text-[11px]"><LayoutGrid size={11} className="mr-1" /><span className="font-bold text-slate-600">{client.region}</span></div>}
+                          {partner.ownerName && <div className="flex items-center text-[11px] font-bold text-slate-500">{partner.ownerName}</div>}
+                          {partner.bizNo && <div className="text-[11px]">{partner.bizNo}</div>}
+                          {(partner.tel || partner.mobile || partner.phone) && <div className="flex items-center text-[11px]"><Phone size={11} className="mr-1" />{partner.tel || partner.mobile || partner.phone}</div>}
+                          {partner.email && <div className="flex items-center text-[11px]"><Mail size={11} className="mr-1" />{partner.email}</div>}
+                          {partner.region && <div className="flex items-center text-[11px]"><LayoutGrid size={11} className="mr-1" /><span className="font-bold text-slate-600">{partner.region}</span></div>}
                           {fullAddress && (
                             <div className="flex items-center text-[11px] w-full mt-0.5">
                               <MapPin size={11} className="mr-1 flex-shrink-0" />
                               <span className="text-slate-500 truncate">{fullAddress}</span>
                             </div>
                           )}
-                          {client.note && (
-                            <div className="text-[11px] w-full mt-0.5 text-slate-400 italic truncate">{client.note}</div>
+                          {partner.note && (
+                            <div className="text-[11px] w-full mt-0.5 text-slate-400 italic truncate">{partner.note}</div>
                           )}
                         </div>
                       </div>
                     </div>
                     <button
-                      onClick={() => setEditForm({ ...client })}
+                      onClick={() => setEditForm({ ...partner })}
                       className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all flex-shrink-0"
                     >
                       <Edit size={15} />
@@ -436,7 +436,7 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
       )}
 
       {isAddModalOpen && (
-        <AddClientModal
+        <AddPartnerModal
           onClose={() => setIsAddModalOpen(false)}
           onSave={(newClient) => { onAddClient(newClient); setIsAddModalOpen(false); }}
         />

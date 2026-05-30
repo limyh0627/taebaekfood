@@ -60,7 +60,6 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   initialTab = '입고',
 }) => {
   // Compute derived variables
-  const clients = partners;
   const productSuppliers = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
   // ── Tab state ──
   const [mainTab, setMainTab] = useState<MainTab>(initialTab);
@@ -107,13 +106,13 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   const [scanNote, setScanNote] = useState('');
   const [scanSaving, setScanSaving] = useState(false);
 
-  // ── Supplier-based inbound ──
+  // ── InboundPartner-based inbound ──
   const [activeSupplier, setActiveSupplier] = useState<string | null>(null);
-  const [supplierQtys, setSupplierQtys] = useState<Record<string, string>>({});
-  const [supplierPrices, setSupplierPrices] = useState<Record<string, string>>({});
-  const [supplierNote, setSupplierNote] = useState('');
-  const [supplierExtraItems, setSupplierExtraItems] = useState<ScanFormItem[]>([]);
-  const [supplierSaving, setSupplierSaving] = useState(false);
+  const [inboundPartnerQtys, setSupplierQtys] = useState<Record<string, string>>({});
+  const [inboundPartnerPrices, setSupplierPrices] = useState<Record<string, string>>({});
+  const [inboundPartnerNote, setSupplierNote] = useState('');
+  const [inboundPartnerExtraItems, setSupplierExtraItems] = useState<ScanFormItem[]>([]);
+  const [inboundPartnerSaving, setSupplierSaving] = useState(false);
   // 로컬 제거 (Firestore 반영 전 즉시 숨김용)
   const [removedItemKeys, setRemovedItemKeys] = useState<Set<string>>(new Set());
 
@@ -268,7 +267,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
 [{"name":"품목명","quantity":수량,"unit":"단위","unitPrice":단가}]
 
 품목명은 반드시 위 품목 목록에 있는 이름과 정확히 일치해야 합니다.
-거래처명이 보이면 "supplier" 필드도 추가해주세요.`;
+거래처명이 보이면 "inboundPartner" 필드도 추가해주세요.`;
       const result = await model.generateContent([
         prompt,
         { inlineData: { mimeType: 'image/jpeg', data: base64 } },
@@ -276,7 +275,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
       const text = result.response.text().trim();
       const jsonMatch = text.match(/\[[\s\S]*\]/);
       if (!jsonMatch) throw new Error('파싱 실패');
-      const parsed = JSON.parse(jsonMatch[0]) as { name: string; quantity: number; unit: string; unitPrice?: number; supplier?: string }[];
+      const parsed = JSON.parse(jsonMatch[0]) as { name: string; quantity: number; unit: string; unitPrice?: number; inboundPartner?: string }[];
       const newItems: ScanFormItem[] = parsed.map(p => {
         const sub = submaterials.find(s => s.name === p.name);
         return {
@@ -287,7 +286,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
           unitPrice: p.unitPrice?.toString() ?? sub?.cost?.toString() ?? '',
         };
       });
-      if (parsed[0]?.supplier) { setScanSupplierSearch(parsed[0].supplier); setShowScanSupplierDropdown(true); }
+      if (parsed[0]?.inboundPartner) { setScanSupplierSearch(parsed[0].inboundPartner); setShowScanSupplierDropdown(true); }
       setScanItems(prev => [...prev, ...newItems]);
       closeCamera();
     } catch {
@@ -316,8 +315,8 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   // ══════════════════════════════════════════
 
   const saveScanInbound = async () => {
-    const supplier = partners.find(c => c.id === scanSupplierId);
-    if (!supplier) { alert('거래처를 선택해주세요.'); return; }
+    const inboundPartner = partners.find(c => c.id === scanSupplierId);
+    if (!inboundPartner) { alert('거래처를 선택해주세요.'); return; }
     if (scanItems.length === 0) { alert('품목을 추가해주세요.'); return; }
     const invalid = scanItems.find(i => !i.quantity || isNaN(Number(i.quantity)));
     if (invalid) { alert(`"${invalid.name}" 수량을 입력해주세요.`); return; }
@@ -338,8 +337,8 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
       }));
       const totalAmount = items.reduce((s, i) => s + i.quantity * (i.unitPrice ?? 0), 0);
       await addItem('pendingReceipts', {
-        partnerName: supplier.name,
-        partnerId: supplier.id,
+        partnerName: inboundPartner.name,
+        partnerId: inboundPartner.id,
         items,
         totalAmount,
         photoUrl,
@@ -366,10 +365,10 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   };
 
   // ══════════════════════════════════════════
-  // Supplier-based inbound
+  // InboundPartner-based inbound
   // ══════════════════════════════════════════
 
-  const suppliers = partners.filter(c =>
+  const inboundPartners = partners.filter(c =>
     c.partnerType === '매입처' || c.partnerType === '매출+매입처'
   );
 
@@ -377,7 +376,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   // purchaseItems가 존재하면 그게 최종 목록 (X로 수동 관리한 상태)
   // purchaseItems가 없으면 items.partnerId 폴백
   // sub가 없으면 Item(향미유/고춧가루 등)에서도 검색
-  const getSupplierLinkedItems = (client: Partner): { name: string; sub: SubmaterialComponent | null; product: Item | null }[] => {
+  const getSupplierLinkedItems = (partner: Partner): { name: string; sub: SubmaterialComponent | null; product: Item | null }[] => {
     const seen = new Set<string>();
     const result: { name: string; sub: SubmaterialComponent | null; product: Item | null }[] = [];
 
@@ -388,9 +387,9 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
       result.push({ name, sub, product });
     };
 
-    if (client.purchaseItems && client.purchaseItems.length > 0) {
+    if (partner.purchaseItems && partner.purchaseItems.length > 0) {
       // purchaseItems가 있으면 이것만 사용 (수동 설정이 우선)
-      client.purchaseItems.forEach(pi => {
+      partner.purchaseItems.forEach(pi => {
         const sub = submaterials.find(s => s.id === pi.id)
           ?? submaterials.find(s => s.name === pi.name)
           ?? null;
@@ -403,15 +402,15 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
       });
     } else {
       // purchaseItems 미설정 → partner_item(Direction=in) 우선, partnerId 폴백
-      const supplierItemIds = new Set(
+      const inboundPartnerItemIds = new Set(
         productSuppliers
-          .filter(ps => (ps.Partner_ID ?? ps.partnerId) === client.id)
+          .filter(ps => (ps.Partner_ID ?? ps.partnerId) === partner.id)
           .map(ps => ps.Item_ID ?? ps.itemId)
           .filter((id): id is string => !!id)
       );
       const allItems = [
-        ...submaterials.filter(s => supplierItemIds.has(s.id)),
-        ...items.filter(p => p.category !== '완제품' && (supplierItemIds.has(p.id) || p.partnerId === client.id)),
+        ...submaterials.filter(s => inboundPartnerItemIds.has(s.id)),
+        ...items.filter(p => p.category !== '완제품' && (inboundPartnerItemIds.has(p.id) || p.partnerId === partner.id)),
       ];
       allItems.forEach(p => {
         const sub = submaterials.find(s => s.id === p.id) ?? null;
@@ -424,21 +423,21 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   };
 
   // partner_item(in) 또는 supplierId로 연결된 거래처 ID 집합 (partnerType 무관)
-  const supplierClientIds = new Set([
+  const inboundPartnerClientIds = new Set([
     ...productSuppliers.map(ps => ps.Partner_ID ?? ps.partnerId).filter((id): id is string => !!id),
     ...items.filter(p => p.partnerId && p.category !== '완제품').map(p => p.partnerId!),
   ]);
 
   // 연결 품목이 하나라도 있는 거래처 — partnerType 설정 여부 무관하게 표시
-  const suppliersWithItems = partners.filter(c =>
-    getSupplierLinkedItems(c).length > 0 || supplierClientIds.has(c.id)
+  const inboundPartnersWithItems = partners.filter(c =>
+    getSupplierLinkedItems(c).length > 0 || inboundPartnerClientIds.has(c.id)
   );
 
   const openConfigModal = (partnerId = '') => {
     setConfigClientId(partnerId);
     if (partnerId) {
-      const client = partners.find(c => c.id === partnerId);
-      const existingIds = getSupplierLinkedItems(client!)
+      const partner = partners.find(c => c.id === partnerId);
+      const existingIds = getSupplierLinkedItems(partner!)
         .map(({ sub, product }) => sub?.id ?? product?.id)
         .filter((id): id is string => !!id);
       setConfigSelectedIds(existingIds);
@@ -507,13 +506,13 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     );
   };
 
-  const handleOpenSupplier = (client: Partner) => {
-    if (activeSupplier === client.id) {
+  const handleOpenSupplier = (partner: Partner) => {
+    if (activeSupplier === partner.id) {
       setActiveSupplier(null);
       return;
     }
-    setActiveSupplier(client.id);
-    const items = getSupplierLinkedItems(client);
+    setActiveSupplier(partner.id);
+    const items = getSupplierLinkedItems(partner);
     const qtys: Record<string, string> = {};
     const prices: Record<string, string> = {};
     items.forEach(({ sub, product }) => {
@@ -530,17 +529,17 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     setRemovedItemKeys(new Set());
   };
 
-  const saveSupplierInbound = async (client: Partner) => {
-    const linkedItems = getSupplierLinkedItems(client);
+  const saveSupplierInbound = async (partner: Partner) => {
+    const linkedItems = getSupplierLinkedItems(partner);
     const receiptItems: PendingReceiptItem[] = [];
 
     for (const { sub, product } of linkedItems) {
       const itemId = sub?.id ?? product?.id;
       if (!itemId) continue;
-      const qty = Number(supplierQtys[itemId] ?? 0);
+      const qty = Number(inboundPartnerQtys[itemId] ?? 0);
       if (qty <= 0) continue;
       const unit = sub?.unit ?? product?.unit ?? '';
-      const price = supplierPrices[itemId] ? Number(supplierPrices[itemId]) : (sub?.cost ?? product?.cost ?? product?.price);
+      const price = inboundPartnerPrices[itemId] ? Number(inboundPartnerPrices[itemId]) : (sub?.cost ?? product?.cost ?? product?.price);
       receiptItems.push({
         submaterialId: itemId,
         name: sub?.name ?? product?.name ?? '',
@@ -549,7 +548,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         unitPrice: price,
       });
     }
-    for (const extra of supplierExtraItems) {
+    for (const extra of inboundPartnerExtraItems) {
       const qty = Number(extra.quantity);
       if (qty <= 0) continue;
       receiptItems.push({
@@ -566,14 +565,14 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     try {
       const totalAmount = receiptItems.reduce((s, i) => s + i.quantity * (i.unitPrice ?? 0), 0);
       await addItem('pendingReceipts', {
-        partnerId: client.id,
-        partnerName: client.name,
+        partnerId: partner.id,
+        partnerName: partner.name,
         items: receiptItems,
         totalAmount,
         registeredBy: currentUser.name,
         registeredAt: new Date().toISOString(),
         status: 'pending_voucher',
-        note: supplierNote || undefined,
+        note: inboundPartnerNote || undefined,
       } as Omit<PendingReceipt, 'id'>);
       for (const item of receiptItems) {
         if (!item.submaterialId) continue;
@@ -594,14 +593,14 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     }
   };
 
-  const removeLinkedItem = async (client: Partner, key: string) => {
+  const removeLinkedItem = async (partner: Partner, key: string) => {
     // 즉시 로컬에서 숨김
     setRemovedItemKeys(prev => new Set([...prev, key]));
     // 현재 연결 품목에서 해당 항목 제외 후 purchaseItems 저장
-    const remaining = getSupplierLinkedItems(client).filter(
+    const remaining = getSupplierLinkedItems(partner).filter(
       ({ name, sub, product }) => (sub?.id ?? product?.id ?? name) !== key
     );
-    await updateItem('partners', client.id, {
+    await updateItem('partners', partner.id, {
       purchaseItems: remaining.map(({ name, sub, product }) => ({
         id: sub?.id ?? product?.id ?? name,
         name: sub?.name ?? product?.name ?? name,
@@ -635,8 +634,8 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
 
   const saveStatement = async () => {
     if (!statementDraft) return;
-    const client = partners.find(c => c.id === statementDraft.partnerId);
-    if (!client) { alert('거래처를 선택해주세요.'); return; }
+    const partner = partners.find(c => c.id === statementDraft.partnerId);
+    if (!partner) { alert('거래처를 선택해주세요.'); return; }
     const validItems = statementDraft.items.filter(i => Number(i.qty) > 0);
     if (validItems.length === 0) { alert('수량을 1개 이상 입력해주세요.'); return; }
 
@@ -657,8 +656,8 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         issuedAt: new Date().toISOString(),
         tradeDate: statementDraft.tradeDate,
         type: '매입' as const,
-        partnerId: client.id,
-        clientName: client.name,
+        partnerId: partner.id,
+        partnerName: partner.name,
         orderId: statementDraft.receipt.id,
         docNo,
         totalSupply,
@@ -696,12 +695,12 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
       return;
     }
     // 연결 품목 없으면 최근 주문 이력으로 fallback
-    const clientOrders = orders
+    const partnerOrders = orders
       .filter(o => o.partnerId === returnClientId)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     const seen = new Set<string>();
     const preItems: { itemId: string; name: string; qty: string; unit: string }[] = [];
-    for (const order of clientOrders) {
+    for (const order of partnerOrders) {
       for (const item of order.items) {
         if (!item.itemId || seen.has(item.itemId)) continue;
         const product = sellableProducts.find(p => p.id === item.itemId);
@@ -728,8 +727,8 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   };
 
   const handleReturnSubmit = async () => {
-    const client = partners.find(c => c.id === returnClientId);
-    if (!client) { alert('거래처를 선택해주세요.'); return; }
+    const partner = partners.find(c => c.id === returnClientId);
+    if (!partner) { alert('거래처를 선택해주세요.'); return; }
     const items: ReturnItem[] = returnItems
       .filter(i => Number(i.qty) > 0)
       .map(i => ({
@@ -745,7 +744,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     try {
       await addItem('returnRequests', {
         partnerId: returnClientId,
-        clientName: client.name,
+        partnerName: partner.name,
         items,
         totalAmount: 0,
         status: 'pending' as const,
@@ -764,8 +763,8 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   };
 
   const handlePurchaseReturnSubmit = async () => {
-    const supplier = partners.find(c => c.id === prSupplierId);
-    if (!supplier) { alert('거래처를 선택해주세요.'); return; }
+    const inboundPartner = partners.find(c => c.id === prSupplierId);
+    if (!inboundPartner) { alert('거래처를 선택해주세요.'); return; }
     const items: ReturnItem[] = prItems
       .filter(i => Number(i.qty) > 0)
       .map(i => ({
@@ -781,7 +780,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     try {
       await addItem('returnRequests', {
         partnerId: prSupplierId,
-        clientName: supplier.name,
+        partnerName: inboundPartner.name,
         items,
         totalAmount: 0,
         status: 'pending' as const,
@@ -802,7 +801,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
 
   const handleProcessReturn = async (req: ReturnRequest) => {
     if (!isAdmin) { alert('관리자만 반품 처리를 할 수 있습니다.'); return; }
-    if (!window.confirm(`${req.clientName}의 반품을 처리하시겠습니까?\n재판매 가능 품목의 재고가 복귀됩니다.`)) return;
+    if (!window.confirm(`${req.partnerName}의 반품을 처리하시겠습니까?\n재판매 가능 품목의 재고가 복귀됩니다.`)) return;
     setProcessingId(req.id);
     try {
       await onProcessReturn(req);
@@ -874,7 +873,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                   />
                   {showScanSupplierDropdown && (
                     <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-auto">
-                      {suppliers
+                      {inboundPartners
                         .filter(c => !scanSupplierSearch || c.name.toLowerCase().includes(scanSupplierSearch.toLowerCase()))
                         .map(c => (
                           <button
@@ -885,7 +884,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                             {c.name}
                           </button>
                         ))}
-                      {suppliers.filter(c => !scanSupplierSearch || c.name.toLowerCase().includes(scanSupplierSearch.toLowerCase())).length === 0 && (
+                      {inboundPartners.filter(c => !scanSupplierSearch || c.name.toLowerCase().includes(scanSupplierSearch.toLowerCase())).length === 0 && (
                         <p className="px-3 py-2.5 text-sm text-slate-400">검색 결과 없음</p>
                       )}
                     </div>
@@ -974,7 +973,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-xs text-slate-400">
-                  {suppliers.length > 0 ? `${suppliers.length}개 매입거래처` : '매입거래처 없음'}
+                  {inboundPartners.length > 0 ? `${inboundPartners.length}개 매입거래처` : '매입거래처 없음'}
                 </p>
                 <button
                   onClick={() => openConfigModal()}
@@ -984,26 +983,26 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                 </button>
               </div>
 
-              {suppliers.length === 0 ? (
+              {inboundPartners.length === 0 ? (
                 <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center text-slate-400">
                   <Building2 size={32} className="mx-auto mb-3 opacity-30" />
                   <p className="text-sm font-bold">매입거래처가 없습니다</p>
                   <p className="text-xs mt-1">거래처 관리에서 매입처를 등록해주세요</p>
                 </div>
-              ) : suppliers.map(supplier => {
-                const linkedItems = getSupplierLinkedItems(supplier);
-                const isActive = activeSupplier === supplier.id;
+              ) : inboundPartners.map(inboundPartner => {
+                const linkedItems = getSupplierLinkedItems(inboundPartner);
+                const isActive = activeSupplier === inboundPartner.id;
                 return (
-                  <div key={supplier.id} className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
+                  <div key={inboundPartner.id} className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
                     <button
                       className="w-full p-4 flex items-center gap-3 hover:bg-slate-50 transition-colors text-left"
-                      onClick={() => handleOpenSupplier(supplier)}
+                      onClick={() => handleOpenSupplier(inboundPartner)}
                     >
                       <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center shrink-0">
                         <Building2 size={18} className="text-teal-600" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-black text-slate-800 text-sm">{supplier.name}</p>
+                        <p className="font-black text-slate-800 text-sm">{inboundPartner.name}</p>
                         <p className="text-xs text-slate-400 mt-0.5">
                           {linkedItems.length > 0
                             ? `연결된 품목 ${linkedItems.length}개`
@@ -1048,7 +1047,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                                           type="number"
                                           min={0}
                                           placeholder="수량"
-                                          value={supplierQtys[itemId] ?? ''}
+                                          value={inboundPartnerQtys[itemId] ?? ''}
                                           onChange={e => setSupplierQtys(prev => ({ ...prev, [itemId]: e.target.value }))}
                                           className="w-24 px-2 py-1.5 border border-slate-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-400"
                                         />
@@ -1056,7 +1055,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                                       </div>
                                     )}
                                     <button
-                                      onClick={() => removeLinkedItem(supplier, key)}
+                                      onClick={() => removeLinkedItem(inboundPartner, key)}
                                       className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors shrink-0"
                                       title="목록에서 제거"
                                     >
@@ -1070,10 +1069,10 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                         })()}
 
                         {/* 추가 품목 직접 입력 */}
-                        {supplierExtraItems.length > 0 && (
+                        {inboundPartnerExtraItems.length > 0 && (
                           <div className="space-y-2">
                             <p className="text-xs font-black text-slate-500 uppercase tracking-widest">추가 품목</p>
-                            {supplierExtraItems.map((item, idx) => (
+                            {inboundPartnerExtraItems.map((item, idx) => (
                               <div key={idx} className="flex items-center gap-2 bg-blue-50 rounded-xl p-3">
                                 <select
                                   value={item.submaterialId}
@@ -1117,7 +1116,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                         <div>
                           <p className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">비고</p>
                           <input
-                            value={supplierNote}
+                            value={inboundPartnerNote}
                             onChange={e => setSupplierNote(e.target.value)}
                             placeholder="메모 (선택)"
                             className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
@@ -1125,11 +1124,11 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                         </div>
 
                         <button
-                          onClick={() => saveSupplierInbound(supplier)}
-                          disabled={supplierSaving}
+                          onClick={() => saveSupplierInbound(inboundPartner)}
+                          disabled={inboundPartnerSaving}
                           className="w-full flex items-center justify-center gap-2 py-3 bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white rounded-xl font-black text-sm transition-all"
                         >
-                          {supplierSaving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+                          {inboundPartnerSaving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
                           선입고 처리 (재고 즉시 반영)
                         </button>
                       </div>
@@ -1194,7 +1193,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                   />
                   {showReturnClientDropdown && (
                     <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-auto">
-                      {clients
+                      {partners
                         .filter(c => !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처')
                         .filter(c => !returnClientSearch || c.name.toLowerCase().includes(returnClientSearch.toLowerCase()))
                         .map(c => (
@@ -1323,7 +1322,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                   />
                   {showPrSupplierDropdown && (
                     <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-auto">
-                      {suppliers
+                      {inboundPartners
                         .filter(c => !prSupplierSearch || c.name.toLowerCase().includes(prSupplierSearch.toLowerCase()))
                         .map(c => (
                           <button
@@ -1585,7 +1584,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                   )}
                   {showConfigClientDropdown && (
                     <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
-                      {clients
+                      {partners
                         .filter(c => !configClientSearch.trim() || c.name.includes(configClientSearch))
                         .map(c => (
                           <button
@@ -1694,7 +1693,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                   className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-rose-400"
                 >
                   <option value="">거래처 선택</option>
-                  {clients
+                  {partners
                     .filter(c => c.partnerType === '매입처' || c.partnerType === '매출+매입처' || !c.partnerType)
                     .map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
@@ -1883,7 +1882,7 @@ const ReturnCard: React.FC<ReturnCardProps> = ({ req, isAdmin, isProcessing, onP
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-black text-slate-800 text-sm">{req.clientName}</p>
+            <p className="font-black text-slate-800 text-sm">{req.partnerName}</p>
             <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${req.status === 'processed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
               {req.status === 'processed' ? '처리완료' : '처리대기'}
             </span>

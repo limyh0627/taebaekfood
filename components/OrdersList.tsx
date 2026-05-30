@@ -81,8 +81,8 @@ interface OrdersListProps {
   onHighlightClear?: () => void;
   newOrderId?: string | null;
   onNewOrderIdClear?: () => void;
-  workOrderItems?: { key: string; orderId: string; itemId: string; itemName: string; clientName: string; qty: number; category: string }[];
-  onSetWorkOrderItems?: (items: { key: string; orderId: string; itemId: string; itemName: string; clientName: string; qty: number; category: string }[]) => void;
+  workOrderItems?: { key: string; orderId: string; itemId: string; itemName: string; partnerName: string; qty: number; category: string }[];
+  onSetWorkOrderItems?: (items: { key: string; orderId: string; itemId: string; itemName: string; partnerName: string; qty: number; category: string }[]) => void;
 }
 
 interface OrderCardProps {
@@ -133,7 +133,7 @@ interface OrderSourceGroupProps {
 
 interface DeliveryRowProps {
   order: Order;
-  clientName: string;
+  partnerName: string;
   items: Item[];
   onToggleInvoicePrinted?: (id: string, val: boolean) => void;
   onUpdateDeliveryBoxes?: (id: string, boxes: DeliveryBox[]) => void;
@@ -151,7 +151,6 @@ export const OrderCard = memo<OrderCardProps>(({
   onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1, isHighlighted = false, highlightOrderId, palletStocks = [], shippingRules = [], itemBoms = [],
 }) => {
   // Compute derived variables
-  const clients = partners;
   const products = items;
   const highlighted = isHighlighted || highlightOrderId === order.id;
   const isEditing = editingOrderId === order.id;
@@ -204,8 +203,8 @@ export const OrderCard = memo<OrderCardProps>(({
     }
   }, [allNonHyangmiyuDone]);
 
-  const client = partners.find(c => c.id === order.partnerId);
-  const rawName = order.customerName || client?.name || '이름 없음';
+  const partner = partners.find(c => c.id === order.partnerId);
+  const rawName = order.partnerName || partner?.name || '이름 없음';
   const displayName = rawName.replace(/\s*\(\d{4}\.\s*\d+\.\s*\d+\.?\)\s*$/, '');
 
   const handleDirectQtyChange = (idx: number, value: string) => {
@@ -728,7 +727,7 @@ const OrderSourceGroup = memo<OrderSourceGroupProps>(({
 
 // ─── DeliveryRow ──────────────────────────────────────────────────────────────
 
-const DeliveryRow = memo<DeliveryRowProps>(({ order, clientName, items, onToggleInvoicePrinted, onUpdateDeliveryBoxes }) => {
+const DeliveryRow = memo<DeliveryRowProps>(({ order, partnerName, items, onToggleInvoicePrinted, onUpdateDeliveryBoxes }) => {
   const [showBoxSelect, setShowBoxSelect] = useState(false);
   const [draft, setDraft] = useState<Record<string, number>>({});
   const products = items;
@@ -764,7 +763,7 @@ const DeliveryRow = memo<DeliveryRowProps>(({ order, clientName, items, onToggle
         </button>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={`text-sm font-bold ${order.invoicePrinted ? 'line-through text-slate-400' : 'text-slate-800'}`}>{clientName}</span>
+            <span className={`text-sm font-bold ${order.invoicePrinted ? 'line-through text-slate-400' : 'text-slate-800'}`}>{partnerName}</span>
             <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${STATUS_COLOR[order.status] || 'bg-slate-100 text-slate-500'}`}>
               {STATUS_LABEL[order.status] || order.status}
             </span>
@@ -873,7 +872,6 @@ const OrdersList: React.FC<OrdersListProps> = ({
   onNewOrderIdClear,
 }) => {
   // Compute derived variables
-  const clients = partners;
   const products = items;
   const [activeTab, setActiveTab] = useState<TabType>('active');
   const [searchTerm, setSearchTerm] = useState('');
@@ -886,7 +884,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [historyDateFrom, setHistoryDateFrom] = useState('');
   const [historyDateTo, setHistoryDateTo] = useState('');
   const HISTORY_PREVIEW = 5;
-  type WorkItem = { key: string; orderId: string; itemId: string; itemName: string; clientName: string; qty: number; category: string; };
+  type WorkItem = { key: string; orderId: string; itemId: string; itemName: string; partnerName: string; qty: number; category: string; };
   const workItems: WorkItem[] = workOrderItemsProp;
   const setWorkItems = (items: WorkItem[] | ((prev: WorkItem[]) => WorkItem[])) => {
     const resolved = typeof items === 'function' ? items(workItems) : items;
@@ -956,7 +954,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
     if (!searchTerm.trim()) return orders;
     const q = searchTerm.toLowerCase();
     return orders.filter(o =>
-      (o.customerName || '').toLowerCase().includes(q) ||
+      (o.partnerName || '').toLowerCase().includes(q) ||
       (o.id || '').toLowerCase().includes(q)
     );
   }, [orders, searchTerm]);
@@ -968,10 +966,10 @@ const OrdersList: React.FC<OrdersListProps> = ({
     [filteredOrders]
   );
 
-  // DeliveryRow에 넘길 clientName 미리 계산
-  const clientMap = useMemo(() => {
+  // DeliveryRow에 넘길 partnerName 미리 계산
+  const partnerMap = useMemo(() => {
     const map = new Map<string, string>();
-    clients.forEach(c => map.set(c.id, c.name));
+    partners.forEach(c => map.set(c.id, c.name));
     return map;
   }, [partners]);
 
@@ -1054,12 +1052,12 @@ const OrdersList: React.FC<OrdersListProps> = ({
           ) : (
             <div className="divide-y divide-slate-50">
               {deliveryOrders.map(order => {
-                const clientName = (order.partnerId && clientMap.get(order.partnerId)) || order.customerName || '이름 없음';
+                const partnerName = (order.partnerId && partnerMap.get(order.partnerId)) || order.partnerName || '이름 없음';
                 return (
                   <DeliveryRow
                     key={order.id}
                     order={order}
-                    clientName={clientName}
+                    partnerName={partnerName}
                     items={items}
                     onToggleInvoicePrinted={onToggleInvoicePrinted}
                     onUpdateDeliveryBoxes={onUpdateDeliveryBoxes}
@@ -1078,14 +1076,14 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
         // 픽커용 전체 품목 목록 (향미유·고춧가루 제외)
         const allPickableItems: WorkItem[] = pickableOrders.flatMap(o => {
-          const clientName = o.customerName || partners.find(c => c.id === o.partnerId)?.name || '이름없음';
+          const partnerName = o.partnerName || partners.find(c => c.id === o.partnerId)?.name || '이름없음';
           return o.items
             .map((item, idx) => ({
               key: `${o.id}-${idx}`,
               orderId: o.id,
               itemId: item.itemId,
               itemName: item.name,
-              clientName,
+              partnerName,
               qty: item.quantity,
               category: items.find(p => p.id === item.itemId)?.category || '',
             }))
@@ -1151,7 +1149,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 className="flex-1 min-w-0 text-left hover:opacity-70 transition-opacity"
               >
                 <p className="text-[11px] font-bold text-slate-700 truncate">{wi.itemName}</p>
-                <p className="text-[9px] text-slate-400 truncate">{wi.clientName} · {wi.qty}개</p>
+                <p className="text-[9px] text-slate-400 truncate">{wi.partnerName} · {wi.qty}개</p>
               </button>
               <div className="flex flex-col gap-0.5">
                 <button onClick={e => { e.stopPropagation(); moveInSection(wi.key, 'up'); }} disabled={isFirst} className="text-slate-300 hover:text-violet-500 disabled:opacity-20 transition-all"><ChevronUp size={12} /></button>
@@ -1264,12 +1262,12 @@ const OrdersList: React.FC<OrdersListProps> = ({
                     {allPickableItems.length === 0 ? (
                       <p className="text-center text-sm text-slate-400 py-12">대기중/작업중 주문이 없습니다.</p>
                     ) : pickableOrders.map(o => {
-                      const clientName = o.customerName || partners.find(c => c.id === o.partnerId)?.name || '이름없음';
+                      const partnerName = o.partnerName || partners.find(c => c.id === o.partnerId)?.name || '이름없음';
                       const orderItems = allPickableItems.filter(wi => wi.orderId === o.id);
                       return (
                         <div key={o.id} className="px-5 py-3 border-b border-slate-50">
                           <div className="flex items-center gap-2 mb-2">
-                            <span className="text-sm font-bold text-slate-700">{clientName}</span>
+                            <span className="text-sm font-bold text-slate-700">{partnerName}</span>
                             <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${o.status === OrderStatus.PROCESSING ? 'bg-sky-100 text-sky-600' : 'bg-amber-100 text-amber-600'}`}>
                               {o.status === OrderStatus.PROCESSING ? '작업중' : '대기중'}
                             </span>
@@ -1328,7 +1326,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
         const col = historyConfig;
         const allColOrders = filteredOrders.filter(o => col.statusFilter.includes(o.status));
         const filteredHistoryOrders = allColOrders.filter(o => {
-          if (historySearch && !((o.customerName || '').includes(historySearch))) return false;
+          if (historySearch && !((o.partnerName || '').includes(historySearch))) return false;
           const dateStr = (o.deliveredAt || o.deliveryDate || o.createdAt || '').slice(0, 10);
           if (historyDateFrom && dateStr < historyDateFrom) return false;
           if (historyDateTo && dateStr > historyDateTo) return false;
@@ -1383,7 +1381,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
       {previewOrderId && (() => {
         const order = orders.find(o => o.id === previewOrderId);
         if (!order) return null;
-        const clientName = order.customerName || partners.find(c => c.id === order.partnerId)?.name || '이름없음';
+        const partnerName = order.partnerName || partners.find(c => c.id === order.partnerId)?.name || '이름없음';
         return (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
@@ -1395,7 +1393,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
             >
               <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-white rounded-t-3xl">
                 <div>
-                  <h3 className="font-black text-slate-900">{clientName}</h3>
+                  <h3 className="font-black text-slate-900">{partnerName}</h3>
                   <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
                     order.status === OrderStatus.PROCESSING ? 'bg-sky-100 text-sky-600' : 'bg-amber-100 text-amber-600'
                   }`}>

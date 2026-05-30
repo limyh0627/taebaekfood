@@ -39,7 +39,6 @@ interface DeliveryManagerProps {
 
 const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, items, onUpdateDeliveryDate, onUpdateStatus, onUpdateItems, onToggleItemChecked, onDeleteOrder }) => {
   // Compute derived variables
-  const clients = partners;
   const products = items;
   const [currentDate, setCurrentDate] = useState(new Date());
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -119,7 +118,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
   const deliverySchedules = useMemo(() => {
     const schedules: Record<string, Order[]> = {};
     orders.forEach(order => {
-      if (order.deliveryDate && order.customerName !== '생산기록' && order.status !== OrderStatus.DELIVERED) {
+      if (order.deliveryDate && order.partnerName !== '생산기록' && order.status !== OrderStatus.DELIVERED) {
         const date = order.deliveryDate.split('T')[0];
         if (!schedules[date]) schedules[date] = [];
         schedules[date].push(order);
@@ -131,7 +130,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
   const deliveredSchedules = useMemo(() => {
     const schedules: Record<string, Order[]> = {};
     orders.forEach(order => {
-      if (order.deliveryDate && order.customerName !== '생산기록' && order.status === OrderStatus.DELIVERED) {
+      if (order.deliveryDate && order.partnerName !== '생산기록' && order.status === OrderStatus.DELIVERED) {
         const date = order.deliveryDate.split('T')[0];
         if (!schedules[date]) schedules[date] = [];
         schedules[date].push(order);
@@ -163,20 +162,20 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
   };
 
   const ordersByRegion = useMemo(() => {
-    const grouped: Record<string, { client: Partner; orders: Order[] }[]> = {};
+    const grouped: Record<string, { partner: Partner; orders: Order[] }[]> = {};
     regionList.forEach(r => { grouped[r] = []; });
 
     const activeOrders = orders.filter(o => o.status !== OrderStatus.DELIVERED);
 
     activeOrders.forEach(order => {
-      const client = partners.find(c => c.id === order.partnerId);
-      const region = cityToRegion(client?.region || "");
+      const partner = partners.find(c => c.id === order.partnerId);
+      const region = cityToRegion(partner?.region || "");
 
-      const existingClientEntry = grouped[region].find(e => e.client.id === order.partnerId);
+      const existingClientEntry = grouped[region].find(e => e.partner.id === order.partnerId);
       if (existingClientEntry) {
         existingClientEntry.orders.push(order);
-      } else if (client) {
-        grouped[region].push({ client, orders: [order] });
+      } else if (partner) {
+        grouped[region].push({ partner, orders: [order] });
       }
     });
 
@@ -243,7 +242,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
     // deliveryOrdering에 있는 것 + 오늘 날짜 캘린더 주문 중 ordering에 없는 것 자동 포함
     const todayCalendarExtra = orders
       .filter(o =>
-        o.customerName !== '생산기록' &&
+        o.partnerName !== '생산기록' &&
         o.status !== OrderStatus.DELIVERED &&
         o.deliveryDate?.split('T')[0] === todayStr &&
         !deliveryOrdering.includes(o.id)
@@ -251,7 +250,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
       .map(o => o.id);
     const todayValidDelivery = [
       ...deliveryOrdering.filter(id =>
-        orders.some(o => o.id === id && o.status !== OrderStatus.DELIVERED && o.customerName !== '생산기록')
+        orders.some(o => o.id === id && o.status !== OrderStatus.DELIVERED && o.partnerName !== '생산기록')
       ),
       ...todayCalendarExtra,
     ];
@@ -316,7 +315,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                   {todayMorningIds.map((id, idx) => {
                     const o = orders.find(x => x.id === id);
                     if (!o) return null;
-                    const clientName = partners.find(c => c.id === o.partnerId)?.name || o.customerName || '';
+                    const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '';
                     const globalNum = todayValidDelivery.indexOf(id) + 1;
                     return (
                       <div
@@ -336,7 +335,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                         className={`flex items-center gap-1.5 bg-white rounded-xl px-2 py-1.5 shadow-sm border border-amber-100 cursor-pointer hover:brightness-95 transition-all ${getStatusColor(o.status)}`}
                       >
                         <span className="text-[9px] font-black text-amber-500 w-3 shrink-0">{globalNum}</span>
-                        <span className="flex-1 text-[10px] font-bold truncate">{clientName}</span>
+                        <span className="flex-1 text-[10px] font-bold truncate">{partnerName}</span>
                         <GripVertical size={10} className="text-slate-300 shrink-0" />
                       </div>
                     );
@@ -346,7 +345,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                   {todayAfternoonIds.map((id, idx) => {
                     const o = orders.find(x => x.id === id);
                     if (!o) return null;
-                    const clientName = partners.find(c => c.id === o.partnerId)?.name || o.customerName || '';
+                    const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '';
                     const globalNum = todayValidDelivery.indexOf(id) + 1;
                     return (
                       <div
@@ -366,7 +365,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                         className={`flex items-center gap-1.5 bg-white rounded-xl px-2 py-1.5 shadow-sm border border-indigo-100 cursor-pointer hover:brightness-95 transition-all ${getStatusColor(o.status)}`}
                       >
                         <span className="text-[9px] font-black text-indigo-500 w-3 shrink-0">{globalNum}</span>
-                        <span className="flex-1 text-[10px] font-bold truncate">{clientName}</span>
+                        <span className="flex-1 text-[10px] font-bold truncate">{partnerName}</span>
                         <GripVertical size={10} className="text-slate-300 shrink-0" />
                       </div>
                     );
@@ -379,7 +378,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                   onClick={() => handleOrderClick(order)}
                   className="text-[10px] font-bold py-1.5 px-2.5 rounded-xl border flex justify-between items-center cursor-pointer bg-slate-50 border-slate-200 text-slate-400 hover:brightness-95 transition-all"
                 >
-                  <span className="flex-1 truncate">{order.customerName}</span>
+                  <span className="flex-1 truncate">{order.partnerName}</span>
                   <span className="ml-1 shrink-0">완료</span>
                 </div>
               ))}
@@ -409,7 +408,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                   onDragStart={(e) => handleDragStart(e, order.id)}
                   className={`text-[10px] font-bold py-1.5 px-2.5 rounded-xl border flex justify-between items-center cursor-pointer hover:brightness-95 transition-all active:scale-95 ${getStatusColor(order.status)}`}
                 >
-                  <span className="flex-1 truncate">{order.customerName}</span>
+                  <span className="flex-1 truncate">{order.partnerName}</span>
                   <span className="ml-1 shrink-0 opacity-70">{progress}%</span>
                 </div>
               );
@@ -420,7 +419,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                 onClick={() => handleOrderClick(order)}
                 className="text-[10px] font-bold py-1.5 px-2.5 rounded-xl border flex justify-between items-center cursor-pointer bg-slate-50 border-slate-200 text-slate-400 hover:brightness-95 transition-all"
               >
-                <span className="flex-1 truncate">{order.customerName}</span>
+                <span className="flex-1 truncate">{order.partnerName}</span>
                 <span className="ml-1 shrink-0">완료</span>
               </div>
             ))}
@@ -501,7 +500,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                     onDragStart={(e) => handleDragStart(e, order.id)}
                     className={`text-[9px] font-bold py-1 px-2 rounded-lg border flex justify-between items-center cursor-pointer hover:brightness-95 transition-all active:scale-95 ${getStatusColor(order.status)}`}
                   >
-                    <span className="flex-1 min-w-[32px] truncate">{order.customerName}</span>
+                    <span className="flex-1 min-w-[32px] truncate">{order.partnerName}</span>
                     <span className="ml-1 shrink-0 opacity-70">{progress}%</span>
                   </div>
                 );
@@ -516,7 +515,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                   onClick={() => handleOrderClick(order)}
                   className="text-[9px] font-bold py-1 px-2 rounded-lg border flex justify-between items-center cursor-pointer bg-slate-50 border-slate-200 text-slate-400 hover:brightness-95 transition-all"
                 >
-                  <span className="flex-1 min-w-[32px] truncate">{order.customerName}</span>
+                  <span className="flex-1 min-w-[32px] truncate">{order.partnerName}</span>
                   <span className="ml-1 shrink-0">완료</span>
                 </div>
               ))}
@@ -571,10 +570,10 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
       {/* 작업완료 / 보류 / 출고 컬럼 */}
       {deliveryTab === '배송일정관리' && (() => {
         const dispatchedOrders = orders
-          .filter(o => o.status === OrderStatus.DISPATCHED && o.customerName !== '생산기록')
+          .filter(o => o.status === OrderStatus.DISPATCHED && o.partnerName !== '생산기록')
           .sort((a, b) => (a.deliveryDate || '').localeCompare(b.deliveryDate || ''));
-        const onHoldOrders = orders.filter(o => o.status === OrderStatus.ON_HOLD && o.customerName !== '생산기록');
-        const shippedOrders = orders.filter(o => o.status === OrderStatus.SHIPPED && o.customerName !== '생산기록');
+        const onHoldOrders = orders.filter(o => o.status === OrderStatus.ON_HOLD && o.partnerName !== '생산기록');
+        const shippedOrders = orders.filter(o => o.status === OrderStatus.SHIPPED && o.partnerName !== '생산기록');
         // 배송순서 유효 주문 (작업완료 중 deliveryOrdering에 있는 것)
         const validDelivery = deliveryOrdering.filter(id => dispatchedOrders.some(o => o.id === id));
 
@@ -637,7 +636,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                       {morningIds.map((id) => {
                         const o = dispatchedOrders.find(x => x.id === id);
                         if (!o) return null;
-                        const clientName = partners.find(c => c.id === o.partnerId)?.name || o.customerName || '';
+                        const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '';
                         const globalIdx = validDelivery.indexOf(id);
                         const globalNum = globalIdx + 1;
                         return (
@@ -666,7 +665,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                               onClick={e => { e.stopPropagation(); setPreviewDeliveryOrderId(id); }}
                               className="flex-1 min-w-0 text-left hover:opacity-70 transition-opacity"
                             >
-                              <p className="text-[11px] font-bold text-slate-700 truncate">{clientName}</p>
+                              <p className="text-[11px] font-bold text-slate-700 truncate">{partnerName}</p>
                               <p className="text-[9px] text-slate-400 truncate">{(() => { const d = new Date(o.deliveryDate); return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; })()} · {o.items.length}품목</p>
                             </button>
                             <button onClick={e => { e.stopPropagation(); toggleTimeSlot(id); }} className="text-[8px] font-black text-amber-300 hover:text-amber-500 shrink-0">오전</button>
@@ -691,7 +690,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                       {afternoonIds.map((id) => {
                         const o = dispatchedOrders.find(x => x.id === id);
                         if (!o) return null;
-                        const clientName = partners.find(c => c.id === o.partnerId)?.name || o.customerName || '';
+                        const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '';
                         const globalIdx = validDelivery.indexOf(id);
                         const globalNum = globalIdx + 1;
                         return (
@@ -721,7 +720,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                               onClick={e => { e.stopPropagation(); setPreviewDeliveryOrderId(id); }}
                               className="flex-1 min-w-0 text-left hover:opacity-70 transition-opacity"
                             >
-                              <p className="text-[11px] font-bold text-slate-700 truncate">{clientName}</p>
+                              <p className="text-[11px] font-bold text-slate-700 truncate">{partnerName}</p>
                               <p className="text-[9px] text-slate-400 truncate">{(() => { const d = new Date(o.deliveryDate); return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; })()} · {o.items.length}품목</p>
                             </button>
                             <button onClick={e => { e.stopPropagation(); toggleTimeSlot(id); }} className="text-[8px] font-black text-indigo-300 hover:text-indigo-500 shrink-0">오후</button>
@@ -771,7 +770,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                         <div className={`flex-1 transition-all rounded-2xl ${isChecked ? 'ring-2 ring-indigo-400 ring-offset-1' : ''}`}>
                           <OrderCard
                             order={order}
-                            partners={clients}
+                            partners={partners}
                             items={products}
                             editingOrderId={editingOrderId}
                             setEditingOrderId={setEditingOrderId}
@@ -839,7 +838,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                     <OrderCard
                       key={order.id}
                       order={order}
-                      partners={clients}
+                      partners={partners}
                       items={products}
                       editingOrderId={editingOrderId}
                       setEditingOrderId={setEditingOrderId}
@@ -875,7 +874,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                     <OrderCard
                       key={order.id}
                       order={order}
-                      partners={clients}
+                      partners={partners}
                       items={products}
                       editingOrderId={editingOrderId}
                       setEditingOrderId={setEditingOrderId}
@@ -904,7 +903,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                     {dispatchedOrders.length === 0 ? (
                       <p className="text-center text-sm text-slate-400 py-10">작업완료 주문이 없습니다.</p>
                     ) : dispatchedOrders.map(o => {
-                      const clientName = partners.find(c => c.id === o.partnerId)?.name || o.customerName || '';
+                      const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '';
                       const isSelected = pickerDeliveryOrdering.includes(o.id);
                       const idx = pickerDeliveryOrdering.indexOf(o.id);
                       return (
@@ -921,7 +920,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                             {isSelected ? idx + 1 : ''}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-bold text-slate-700 truncate">{clientName}</p>
+                            <p className="text-sm font-bold text-slate-700 truncate">{partnerName}</p>
                             <p className="text-[10px] text-slate-400 truncate">{o.items.map(i => i.name).join(', ')}</p>
                           </div>
                         </button>
@@ -1033,14 +1032,14 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                   </span>
                 </div>
                 <div className="p-4 space-y-3 flex-1 overflow-y-auto max-h-[400px] custom-scrollbar">
-                  {regionData.map(({ client, orders }) => (
-                    <div key={client.id} className="p-4 bg-white border border-slate-100 rounded-2xl hover:border-indigo-200 transition-all group">
+                  {regionData.map(({ partner, orders }) => (
+                    <div key={partner.id} className="p-4 bg-white border border-slate-100 rounded-2xl hover:border-indigo-200 transition-all group">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center space-x-3">
                           <div className="w-8 h-8 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center">
                             <Building2 size={16} />
                           </div>
-                          <span className="text-sm font-bold text-slate-800">{client.name}</span>
+                          <span className="text-sm font-bold text-slate-800">{partner.name}</span>
                         </div>
                         <span className="text-[10px] font-black text-indigo-600">
                           {orders.length}건 주문
@@ -1060,7 +1059,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                               className="flex flex-col space-y-1 p-3 bg-slate-50 rounded-xl border border-slate-100 cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/30 transition-all active:scale-95"
                             >
                               <div className="flex items-center justify-between">
-                                <span className="text-[11px] font-bold text-slate-700 truncate">{order.customerName}</span>
+                                <span className="text-[11px] font-bold text-slate-700 truncate">{order.partnerName}</span>
                                 <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-md">{progress}%</span>
                               </div>
                               <div className="flex items-center justify-between text-[10px]">
@@ -1111,7 +1110,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                   <CalendarIcon size={20} />
                 </div>
                 <h3 className="text-xl font-black text-slate-900">
-                  {editingOrder.customerName}
+                  {editingOrder.partnerName}
                   <span className="text-slate-400 font-bold text-base ml-2">({editingOrder.deliveryDate.split('T')[0]})</span>
                 </h3>
               </div>
@@ -1179,7 +1178,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
       {previewDeliveryOrderId && (() => {
         const order = orders.find(o => o.id === previewDeliveryOrderId);
         if (!order) return null;
-        const clientName = order.customerName || partners.find(c => c.id === order.partnerId)?.name || '이름없음';
+        const partnerName = order.partnerName || partners.find(c => c.id === order.partnerId)?.name || '이름없음';
         return (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
@@ -1191,7 +1190,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
             >
               <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-white rounded-t-3xl">
                 <div>
-                  <h3 className="font-black text-slate-900">{clientName}</h3>
+                  <h3 className="font-black text-slate-900">{partnerName}</h3>
                   <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-600">작업완료</span>
                 </div>
                 <button onClick={() => setPreviewDeliveryOrderId(null)} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400">
@@ -1201,7 +1200,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
               <div className="p-4 overflow-y-auto max-h-[70vh]">
                 <OrderCard
                   order={order}
-                  partners={clients}
+                  partners={partners}
                   items={products}
                   editingOrderId={editingOrderId}
                   setEditingOrderId={setEditingOrderId}

@@ -84,7 +84,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   const [receivableDetailClient, setReceivableDetailClient] = useState<{ id: string; name: string } | null>(null);
 
   // ── 거래처 탭 서브탭 ──
-  const [clientsSubTab, setClientsSubTab] = useState<'receivables' | 'stats'>('receivables');
+  const [partnersSubTab, setClientsSubTab] = useState<'receivables' | 'stats'>('receivables');
   const now = new Date();
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
@@ -658,7 +658,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                               <div key={s.id} className="flex items-center gap-3 text-[11px]">
                                 <span className={`px-1.5 py-0.5 rounded-full font-black text-[9px] ${s.type === '매출' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>{s.type}</span>
                                 <span className="text-slate-600">{s.tradeDate}</span>
-                                <span className="font-bold text-slate-800">{s.clientName}</span>
+                                <span className="font-bold text-slate-800">{s.partnerName}</span>
                                 <span className="ml-auto font-black text-slate-700">{fmt(s.totalAmount)}원</span>
                               </div>
                             ))}
@@ -899,7 +899,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         const currentYear = new Date().getFullYear();
         const allClientIds = new Set(issuedStatements.map(s => s.partnerId));
         const allClientList = [...allClientIds].map(id => {
-          const name = issuedStatements.find(s => s.partnerId === id)?.clientName ?? id;
+          const name = issuedStatements.find(s => s.partnerId === id)?.partnerName ?? id;
           const salesS = issuedStatements.filter(s => s.partnerId === id && s.type === '매출');
           const purchaseS = issuedStatements.filter(s => s.partnerId === id && s.type === '매입');
           const receivable = salesS.reduce((a, s) => a + getBalance(s), 0);
@@ -1240,7 +1240,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
                 <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4">
                   <h3 className="text-sm font-black text-slate-800">{payTarget.type === '매출' ? '수금 등록 — 미수금 감소' : '지불 등록 — 미지급금 감소'}</h3>
-                  <div className="text-xs text-slate-400">{payTarget.clientName} · {payTarget.tradeDate}</div>
+                  <div className="text-xs text-slate-400">{payTarget.partnerName} · {payTarget.tradeDate}</div>
                   <div className="bg-slate-50 rounded-xl px-4 py-3 text-xs text-center">
                     <span className="text-slate-500">잔여 {payTarget.type === '매출' ? '미수금' : '미지급금'} </span>
                     <span className="font-black text-rose-600 text-base">{fmt(getBalance(payTarget))}원</span>

@@ -28,7 +28,7 @@ interface TradeStatementProps {
   onMarkInvoicePrinted?: (id: string, value: boolean) => void;
   onAddIssuedStatement?: (stmt: IssuedStatement) => void;
   onUpdateIssuedStatement?: (id: string, data: Partial<IssuedStatement>) => void;
-  onProposeEdit?: (id: string, data: Partial<IssuedStatement>, stmtType: '매출' | '매입', docNo: string, clientName: string) => void;
+  onProposeEdit?: (id: string, data: Partial<IssuedStatement>, stmtType: '매출' | '매입', docNo: string, partnerName: string) => void;
   onDeleteIssuedStatement?: (id: string) => void;
   pendingInvoice?: { partnerId: string; partnerName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }> } | null;
   onClearPendingInvoice?: () => void;
@@ -110,7 +110,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // Compute derived variables from partnerItems
   const productSuppliers = (_ps ?? partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
   const productClients = (_pc ?? partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
-  const clients = partners;
 
   // ── 전표 생성 오버레이 ──
   const [createMode, setCreateMode] = useState<StatementType | null>(null);
@@ -118,7 +117,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // ── 거래처/주문 선택 ──
   const [selectedClientId, setSelectedClientId] = useState('');
   const [selectedOrderId, setSelectedOrderId] = useState('');
-  const [clientSearch, setClientSearch] = useState('');
+  const [partnerSearch, setClientSearch] = useState('');
   const [onlyActive, setOnlyActive] = useState(false);
 
   // ── 기간 필터 (주문 선택) ──
@@ -458,7 +457,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // ── 현재 진행 주문 (매출전표 현재 주문만 패널용) ──
   const activeOrders = useMemo(() =>
     orders
-      .filter(o => (ACTIVE_STATUSES.has(o.status as OrderStatus) || !!o.invoicePrinted) && o.customerName !== '생산기록')
+      .filter(o => (ACTIVE_STATUSES.has(o.status as OrderStatus) || !!o.invoicePrinted) && o.partnerName !== '생산기록')
       .sort((a, b) => {
         const aP = !!a.invoicePrinted, bP = !!b.invoicePrinted;
         if (aP !== bP) return aP ? 1 : -1;
@@ -508,12 +507,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         (c.partnerType === undefined || c.partnerType === '매출처' || c.partnerType === '매출+매입처');
     });
     if (onlyActive) base = base.filter(c => activeClientIds.has(c.id));
-    if (!clientSearch.trim()) return base;
-    return base.filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase()));
-  }, [clients, clientSearch, onlyActive, activeClientIds, createMode]);
+    if (!partnerSearch.trim()) return base;
+    return base.filter(c => c.name.toLowerCase().includes(partnerSearch.toLowerCase()));
+  }, [partners, partnerSearch, onlyActive, activeClientIds, createMode]);
 
   // ── 주문 목록 ──
-  const clientOrders = useMemo(() => {
+  const partnerOrders = useMemo(() => {
     let list = orders
       .filter(o => o.partnerId === selectedClientId)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -530,7 +529,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     return list;
   }, [orders, selectedClientId, onlyActive, dateFrom, dateTo]);
 
-  const selectedOrder  = clientOrders.find(o => o.id === selectedOrderId);
+  const selectedOrder  = partnerOrders.find(o => o.id === selectedOrderId);
   const selectedClient = partners.find(c => c.id === selectedClientId);
 
   // ── 품목 행 계산 ──
@@ -606,7 +605,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const dateStr = `${tradeDateObj.getFullYear()}년 ${tradeDateObj.getMonth() + 1}월 ${tradeDateObj.getDate()}일`;
   const docNo   = `${tradeDateObj.getFullYear()}-${String(tradeDateObj.getMonth() + 1).padStart(2, '0')}-${String(issuedStatements.length + 1).padStart(4, '0')}`;
 
-  const supplierLabel = stmtType === '매출' ? '【 공급자 】' : `【 공급자 】　${selectedClient?.name||''}`;
+  const inboundPartnerLabel = stmtType === '매출' ? '【 공급자 】' : `【 공급자 】　${selectedClient?.name||''}`;
   const receiverLabel = stmtType === '매출' ? `【 공급받는자 】　${selectedClient?.name||''}` : '【 공급받는자 】';
 
   // ── 발행 처리 ──
@@ -624,7 +623,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       tradeDate,
       type: stmtType,
       partnerId: selectedClientId,
-      clientName: selectedClient?.name || '',
+      partnerName: selectedClient?.name || '',
       orderId: selectedOrderId,
       docNo,
       totalSupply,
@@ -730,7 +729,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const proposed: Partial<IssuedStatement> = {
       tradeDate,
       partnerId: selectedClientId,
-      clientName: selectedClient?.name || '',
+      partnerName: selectedClient?.name || '',
       totalSupply,
       totalTax,
       totalAmount,
@@ -741,7 +740,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       })),
     };
     if (onProposeEdit) {
-      onProposeEdit(editingStmt.id, proposed, editingStmt.type, editingStmt.docNo, editingStmt.clientName);
+      onProposeEdit(editingStmt.id, proposed, editingStmt.type, editingStmt.docNo, editingStmt.partnerName);
       alert('수정 요청이 관리자에게 전달되었습니다.');
     } else {
       onUpdateIssuedStatement?.(editingStmt.id, proposed);
@@ -749,7 +748,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setIsEditMode(false);
   }, [editingStmt, tradeDate, selectedClientId, selectedClient, totalSupply, totalTax, totalAmount, lineItems, onProposeEdit, onUpdateIssuedStatement]);
 
-  const buildPrintHtml = (items: LineItem[] | IssuedStatement['items'], sup: number, tax: number, amt: number, type: StatementType, client: string, docNoStr: string, dateString: string) => {
+  const buildPrintHtml = (items: LineItem[] | IssuedStatement['items'], sup: number, tax: number, amt: number, type: StatementType, partner: string, docNoStr: string, dateString: string) => {
     const m = dateString.match(/(\d+)년\s*(\d+)월\s*(\d+)일/);
     const yyyy = m ? m[1] : '';
     const mmN  = m ? m[2] : '';
@@ -759,7 +758,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const ci = companyInfo;
     const isSale = type === '매출';
 
-    const supName    = isSale ? (ci?.name || '') : client;
+    const supName    = isSale ? (ci?.name || '') : partner;
     const supCeo     = isSale ? (ci?.ceoName || '') : '';
     const supBizNo   = isSale ? (ci?.bizNo || '') : '';
     const supBizType = isSale ? (ci?.bizType || '') : '';
@@ -768,13 +767,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const supPhone   = isSale ? (ci?.phone || '') : '';
     const supFax     = isSale ? (ci?.fax || '') : '';
 
-    const buyName    = isSale ? client : (ci?.name || '');
+    const buyName    = isSale ? partner : (ci?.name || '');
     const buyCeo     = isSale ? '' : (ci?.ceoName || '');
     const buyBizNo   = isSale ? '' : (ci?.bizNo || '');
     const buyBizType = isSale ? '' : (ci?.bizType || '');
     const buyBizItem = isSale ? '' : (ci?.bizItem || '');
     const buyAddr    = isSale ? '' : (ci?.address || '');
-    const buyPhone   = isSale ? (partners.find(c => c.name === client)?.phone || '') : (ci?.phone || '');
+    const buyPhone   = isSale ? (partners.find(c => c.name === partner)?.phone || '') : (ci?.phone || '');
     const buyFax   = isSale ? '' : (ci?.fax||'');
 
     const MAX_ROWS = 9;
@@ -1001,30 +1000,30 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const handleDetailPrint = (stmt: IssuedStatement) => {
     const d = new Date(stmt.tradeDate + 'T00:00:00');
     const ds = `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
-    const html = buildPrintHtml(stmt.items as any, stmt.totalSupply, stmt.totalTax, stmt.totalAmount, stmt.type, stmt.clientName, stmt.docNo, ds);
+    const html = buildPrintHtml(stmt.items as any, stmt.totalSupply, stmt.totalTax, stmt.totalAmount, stmt.type, stmt.partnerName, stmt.docNo, ds);
     printViaIframe(html, `${stmt.type}전표`);
   };
 
   const handleTaxInvoice = () => {
     const ci = companyInfo;
     const isSale = stmtType === '매출';
-    const clientObj = selectedClient;
+    const partnerObj = selectedClient;
     const taxableItems = lineItems.filter(i => !i.isTaxExempt);
     const exemptItems  = lineItems.filter(i => i.isTaxExempt);
     const taxSupply = taxableItems.reduce((s,i)=>s+i.supply, 0);
     const taxAmt    = taxableItems.reduce((s,i)=>s+i.tax, 0);
     const exSupply  = exemptItems.reduce((s,i)=>s+i.supply, 0);
 
-    const supName  = isSale ? (ci?.name||'') : (clientObj?.name||'');
+    const supName  = isSale ? (ci?.name||'') : (partnerObj?.name||'');
     const supBizNo = isSale ? (ci?.bizNo||'') : '';
     const supCeo   = isSale ? (ci?.ceoName||'') : '';
-    const supAddr  = isSale ? (ci?.address||'') : (clientObj?.region||'');
+    const supAddr  = isSale ? (ci?.address||'') : (partnerObj?.region||'');
     const supBizType = isSale ? (ci?.bizType||'') : '';
     const supBizItem = isSale ? (ci?.bizItem||'') : '';
-    const buyName  = isSale ? (clientObj?.name||'') : (ci?.name||'');
+    const buyName  = isSale ? (partnerObj?.name||'') : (ci?.name||'');
     const buyBizNo = isSale ? '' : (ci?.bizNo||'');
     const buyCeo   = isSale ? '' : (ci?.ceoName||'');
-    const buyAddr  = isSale ? (clientObj?.region||'') : (ci?.address||'');
+    const buyAddr  = isSale ? (partnerObj?.region||'') : (ci?.address||'');
     const buyBizType = isSale ? '' : (ci?.bizType||'');
     const buyBizItem = isSale ? '' : (ci?.bizItem||'');
 
@@ -1226,7 +1225,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // ── 단가 패널 / 등록 품목 ──
   // 매출 전표용: productClients 테이블 기반 (거래처별 단가 포함)
-  const clientProductRows = useMemo(() =>
+  const partnerItemRows = useMemo(() =>
     productClients.filter(pc=>pc.partnerId===selectedClientId)
       .map(pc=>({ pc, product: allProducts.find(p=>p.id===pc.itemId) }))
       .filter(r=>r.product),
@@ -1235,7 +1234,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // 매입 전표용: supplierId로 연결된 품목 + PartnerItem 단가
   // pc는 PartnerItem 호환 shim (searchableRows 공통 사용을 위해)
-  const supplierProductRows = useMemo(() =>
+  const inboundPartnerItemRows = useMemo(() =>
     allProducts
       .filter(p => psMap.get(p.id) === selectedClientId)
       .map(p => {
@@ -1248,7 +1247,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   );
 
   // 현재 모드에 따른 검색 소스
-  const searchableRows = createMode === '매입' ? supplierProductRows : clientProductRows;
+  const searchableRows = createMode === '매입' ? inboundPartnerItemRows : partnerItemRows;
 
   // 매출 단가 저장
   const savePcPrice = (pcId: string) => {
@@ -1265,7 +1264,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   };
 
   // ── 등록 품목 추가 (직접입력 모드) ──
-  const addProductRow = useCallback((pc: typeof clientProductRows[0]) => {
+  const addProductRow = useCallback((pc: typeof partnerItemRows[0]) => {
     setManualItems(prev => {
       const filled = prev.filter(r => r.name.trim());
       return [
@@ -1278,7 +1277,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // ── 전표+수금/지불 통합 타임라인 ──
   type StmtRow = { kind: 'stmt'; data: IssuedStatement; cumul: number; dateKey: string };
-  type PayRow  = { kind: 'pay';  partnerId: string; clientName: string; stmtType: '매출'|'매입';
+  type PayRow  = { kind: 'pay';  partnerId: string; partnerName: string; stmtType: '매출'|'매입';
                    date: string; amount: number; method?: string; note?: string;
                    paymentId: string; cumul: number; dateKey: string; src: IssuedStatement };
   type TimelineRow = StmtRow | PayRow;
@@ -1317,7 +1316,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           rows.push({ kind: 'stmt', data: e.s, cumul: running, dateKey: `${e.date}__${e.tieKey}` });
         } else {
           running -= e.amount;
-          rows.push({ kind: 'pay', partnerId: e.src.partnerId, clientName: e.src.clientName,
+          rows.push({ kind: 'pay', partnerId: e.src.partnerId, partnerName: e.src.partnerName,
             stmtType: e.src.type, date: e.date, amount: e.amount, method: e.method, note: e.note,
             paymentId: e.paymentId, cumul: running, dateKey: `${e.date}__${e.tieKey}`, src: e.src });
         }
@@ -1330,7 +1329,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     return allTimelineRows
       .filter(row => {
         const d = row.kind === 'stmt' ? row.data.tradeDate : row.date;
-        const name = row.kind === 'stmt' ? row.data.clientName : row.clientName;
+        const name = row.kind === 'stmt' ? row.data.partnerName : row.partnerName;
         const type = row.kind === 'stmt' ? row.data.type : row.stmtType;
         const docNo = row.kind === 'stmt' ? row.data.docNo : '';
         if (histFrom && d < histFrom) return false;
@@ -1355,7 +1354,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   }, [allTimelineRows, histFrom, histTo, histTypeFilter, histSearch]);
 
   // 거래처별 미수금/미지급금 총합 맵 (전체 전표 기준)
-  const clientBalanceMap = useMemo(() => {
+  const partnerBalanceMap = useMemo(() => {
     const map = new Map<string, { receivable: number; payable: number }>();
     issuedStatements.forEach(s => {
       const bal = s.totalAmount - (s.payments ?? []).reduce((a, p) => a + p.amount, 0);
@@ -1374,12 +1373,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const receivableSummary = useMemo(() => {
     let totalReceivable = 0, countReceivable = 0;
     let totalPayable = 0, countPayable = 0;
-    clientBalanceMap.forEach(({ receivable, payable }) => {
+    partnerBalanceMap.forEach(({ receivable, payable }) => {
       if (receivable > 0) { totalReceivable += receivable; countReceivable++; }
       if (payable > 0) { totalPayable += payable; countPayable++; }
     });
     return { totalReceivable, countReceivable, totalPayable, countPayable };
-  }, [clientBalanceMap]);
+  }, [partnerBalanceMap]);
 
   const setQuickRange = (preset: '당일'|'금주'|'당월'|'당년'|'ALL') => {
     setHistQuick(preset);
@@ -1478,19 +1477,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
       {/* ── 세금계산서 탭 (TaxStatement 컴포넌트로 이동) ── */}
       {false && (() => {
-        const taxClients = clients
+        const taxClients = partners
           .filter(c => issuedStatements.some(s => s.partnerId === c.id && s.type === '매출'))
           .filter(c => !taxClientSearch || c.name.includes(taxClientSearch))
           .sort((a, b) => a.name.localeCompare(b.name));
 
-        const clientStmts = taxClientId
+        const partnerStmts = taxClientId
           ? issuedStatements.filter(s => s.partnerId === taxClientId && s.type === '매출')
               .sort((a, b) => b.tradeDate.localeCompare(a.tradeDate))
           : [];
 
         // 월별 그룹
         const byMonth = new Map<string, IssuedStatement[]>();
-        clientStmts.forEach(s => {
+        partnerStmts.forEach(s => {
           const ym = s.tradeDate.slice(0, 7);
           if (!byMonth.has(ym)) byMonth.set(ym, []);
           byMonth.get(ym)!.push(s);
@@ -1498,7 +1497,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const months = [...byMonth.keys()].sort((a, b) => b.localeCompare(a));
 
         // 선택된 전표들
-        const selectedStmts = clientStmts.filter(s => taxStmtIds.includes(s.id));
+        const selectedStmts = partnerStmts.filter(s => taxStmtIds.includes(s.id));
 
         // 선택 전표 품목 합산 (과세/면세 분리)
         type MergedItem = { name: string; spec: string; qty: number; supply: number; tax: number; total: number; isTaxExempt: boolean };
@@ -1660,7 +1659,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   <FileText size={36} className="text-slate-200 mb-3"/>
                   <p className="text-slate-400 text-sm font-bold">거래처를 선택하세요</p>
                 </div>
-              ) : clientStmts.length === 0 ? (
+              ) : partnerStmts.length === 0 ? (
                 <div className="bg-white rounded-2xl border border-dashed border-slate-200 py-12 text-center text-slate-400 text-sm font-bold">발행된 전표가 없습니다</div>
               ) : (<>
                 {/* 공급받는자 정보 */}
@@ -1978,7 +1977,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       <td className="px-4 py-2">
                         <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.stmtType === '매출' ? 'bg-lime-100 text-lime-700' : 'bg-orange-100 text-orange-700'}`}>{label}</span>
                       </td>
-                      <td className="px-4 py-2 text-xs font-bold text-slate-800">{row.clientName}</td>
+                      <td className="px-4 py-2 text-xs font-bold text-slate-800">{row.partnerName}</td>
                       <td className="px-4 py-2 text-xs text-right font-black text-slate-800">{fmt(row.amount)}</td>
                       <td className="px-4 py-2 text-xs text-right">
                         {cumul === 0
@@ -2017,7 +2016,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                         {isReturn && <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">반품</span>}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-xs font-bold text-slate-800">{stmt.clientName}</td>
+                    <td className="px-4 py-3 text-xs font-bold text-slate-800">{stmt.partnerName}</td>
                     <td className={`px-4 py-3 text-xs text-right font-black ${isReturn ? 'text-rose-600' : 'text-slate-800'}`}>{fmt(stmt.totalAmount)}</td>
                     <td className="px-4 py-3 text-xs text-right">
                       {cumul === 0
@@ -2060,7 +2059,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             <h3 className="text-sm font-black text-slate-800">
               {payTarget.type === '매입' ? '지불 처리' : '수금 처리'}
             </h3>
-            <div className="text-xs text-slate-400">{payTarget.clientName} · {payTarget.tradeDate}</div>
+            <div className="text-xs text-slate-400">{payTarget.partnerName} · {payTarget.tradeDate}</div>
             <div className="bg-slate-50 rounded-xl px-4 py-3 text-xs flex items-center justify-between gap-3">
               <div>
                 <span className="text-slate-500">잔액 </span>
@@ -2150,7 +2149,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 <X size={16}/>
               </button>
             </div>
-            <div className="text-xs text-slate-400">{editPayInfo.stmt.clientName} · {editPayInfo.stmt.tradeDate}</div>
+            <div className="text-xs text-slate-400">{editPayInfo.stmt.partnerName} · {editPayInfo.stmt.tradeDate}</div>
             <div className="space-y-3">
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">금액</label>
@@ -2218,7 +2217,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       {showQuickPay && (() => {
         const stmtTypeForPay = quickPayType === '수금' ? '매출' : '매입';
         const selectedClientObj = quickPayClientId ? partners.find(c => c.id === quickPayClientId) : null;
-        const clientTotal = quickPayClientId
+        const partnerTotal = quickPayClientId
           ? issuedStatements
               .filter(s => s.partnerId === quickPayClientId && s.type === stmtTypeForPay)
               .reduce((sum, s) => sum + getBalance(s), 0)
@@ -2259,7 +2258,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const handleQuickPaySave = () => {
           const amt = Number(quickPayAmount);
           if (!quickPayClientId || amt <= 0) return;
-          if (amt > clientTotal && clientTotal > 0 && !quickPayOverWarn) {
+          if (amt > partnerTotal && partnerTotal > 0 && !quickPayOverWarn) {
             setQuickPayOverWarn(true);
             return;
           }
@@ -2317,12 +2316,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   <div className="mt-2 px-3 py-2 bg-slate-50 rounded-xl flex items-center justify-between">
                     <span className="text-[11px] text-slate-500">누적잔액</span>
                     <div className="flex items-center gap-2">
-                      <span className={`text-sm font-black ${clientTotal > 0 ? (quickPayType === '수금' ? 'text-blue-600' : 'text-rose-600') : 'text-emerald-600'}`}>
-                        {clientTotal > 0 ? `${fmt(clientTotal)}원` : '없음'}
+                      <span className={`text-sm font-black ${partnerTotal > 0 ? (quickPayType === '수금' ? 'text-blue-600' : 'text-rose-600') : 'text-emerald-600'}`}>
+                        {partnerTotal > 0 ? `${fmt(partnerTotal)}원` : '없음'}
                       </span>
-                      {clientTotal > 0 && (
+                      {partnerTotal > 0 && (
                         <button
-                          onClick={() => setQuickPayAmount(String(clientTotal))}
+                          onClick={() => setQuickPayAmount(String(partnerTotal))}
                           className="text-[10px] font-black px-2 py-1 rounded-lg bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition-all">
                           완불처리
                         </button>
@@ -2372,7 +2371,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               {quickPayOverWarn && (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs space-y-2">
                   <p className="font-black text-amber-700">
-                    입력금액이 누적잔액({fmt(clientTotal)}원)을 초과합니다.
+                    입력금액이 누적잔액({fmt(partnerTotal)}원)을 초과합니다.
                     초과분은 {quickPayType === '수금' ? '줄돈' : '받을돈'}으로 전환됩니다.
                   </p>
                   <div className="flex gap-2">
@@ -2405,7 +2404,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <span className={`text-xs font-black px-2.5 py-1 rounded-full ${detailStmt.type==='매출'?'bg-blue-100 text-blue-700':'bg-rose-100 text-rose-700'}`}>{detailStmt.type}</span>
-                <span className="font-black text-slate-900">{detailStmt.clientName}</span>
+                <span className="font-black text-slate-900">{detailStmt.partnerName}</span>
                 <span className="text-xs text-slate-400">{detailStmt.tradeDate}</span>
                 <span className="text-[10px] text-slate-300 font-mono">{detailStmt.docNo}</span>
               </div>
@@ -2497,7 +2496,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               {!selectedClientId ? (<>
                 <div className="relative">
                   <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
-                  <input type="text" placeholder="거래처 검색..." value={clientSearch}
+                  <input type="text" placeholder="거래처 검색..." value={partnerSearch}
                     onChange={e=>setClientSearch(e.target.value)}
                     className="bg-white border border-slate-200 rounded-lg pl-7 pr-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300 w-40"/>
                 </div>
@@ -2573,7 +2572,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
                 <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-100 bg-slate-50 flex-shrink-0 flex-wrap">
                   <span className="text-xs font-black text-slate-600">{createMode==='매출'?'주문 선택':'발주 선택'}</span>
-                  {createMode==='매출' && <span className="text-xs text-slate-400">{clientOrders.length}건</span>}
+                  {createMode==='매출' && <span className="text-xs text-slate-400">{partnerOrders.length}건</span>}
                   {createMode==='매출' && (
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {(['당일','금주','당월'] as const).map(p=>(
@@ -2611,14 +2610,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 </div>
 
                 {createMode==='매출' && (()=>{
-                  if(clientOrders.length===0) return (
+                  if(partnerOrders.length===0) return (
                     <div className="flex flex-col items-center justify-center flex-1 py-12 text-slate-300">
                       <ClipboardList size={36} strokeWidth={1.5} className="mb-2"/>
                       <p className="text-xs font-bold text-slate-400">해당 조건의 주문이 없습니다</p>
                     </div>
                   );
                   const byMonth: Record<string,Order[]>={};
-                  clientOrders.forEach(o=>{
+                  partnerOrders.forEach(o=>{
                     const m=(o.deliveryDate||o.createdAt||'').slice(0,7);
                     if(!byMonth[m])byMonth[m]=[];
                     byMonth[m].push(o);
@@ -2658,9 +2657,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 })()}
 
                 {createMode==='매입' && (()=>{
-                  const supplierItems=confirmedBySupplier.find(s=>s.partnerId===selectedClientId);
+                  const inboundPartnerItems=confirmedBySupplier.find(s=>s.partnerId===selectedClientId);
                   const reqItems=orderRequestsBySupplier.find(s=>s.partnerId===selectedClientId);
-                  const confirmedItems=supplierItems?.items??[];
+                  const confirmedItems=inboundPartnerItems?.items??[];
                   const requestItems=reqItems?.items??[];
                   const hasConfirmed=confirmedItems.length>0;
                   const hasRequests=requestItems.length>0;
@@ -2805,11 +2804,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               const quickResults = quickSearchOpen ? (() => {
                 if (!quickName.trim()) return [];
                 const q = quickName.toLowerCase();
-                const clientMatches = searchableRows.filter(r => {
+                const partnerMatches = searchableRows.filter(r => {
                   const docN = (r.product!.품목 || r.product!.name).toLowerCase();
                   return docN.includes(q) || r.product!.name.toLowerCase().includes(q);
                 });
-                if (clientMatches.length > 0) return clientMatches;
+                if (partnerMatches.length > 0) return partnerMatches;
                 return allProducts
                   .filter(p => (p.품목 || p.name).toLowerCase().includes(q))
                   .map(p => {
@@ -3357,7 +3356,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               </div>
             </div>
             <div className="bg-amber-50 rounded-2xl px-4 py-3 space-y-1">
-              <p className="text-[11px] font-bold text-amber-800">{warnDuplicate.stmt.clientName} · {warnDuplicate.stmt.tradeDate}</p>
+              <p className="text-[11px] font-bold text-amber-800">{warnDuplicate.stmt.partnerName} · {warnDuplicate.stmt.tradeDate}</p>
               <p className="text-[10px] text-amber-600">문서번호: {warnDuplicate.stmt.docNo}</p>
               <p className="text-[10px] text-amber-600">합계: {fmt(warnDuplicate.stmt.totalAmount)}원</p>
             </div>
