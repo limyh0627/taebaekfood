@@ -3494,6 +3494,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             await addDoc(col(fireDb, 'shipping_rule'), rule);
           }}
           onUpsertPartnerItem={(ps: PartnerItem) => addItem('partner_item', { ...ps, Partner_ID: ps.partnerId ?? ps.Partner_ID, Item_ID: ps.itemId ?? ps.Item_ID, Direction: ps.Direction ?? 'in' as const })}
+          onDeletePartnerItem={(id: string) => deleteItem('partner_item', id)}
           onAddSubmaterial={async (name, category) => {
             const unit = category === '라벨' ? '매' : '개';
             const id = await addItem('items', { name, category, stock: 0, minStock: 0, unit, price: 0, image: '' });

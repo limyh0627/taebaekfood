@@ -506,9 +506,39 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                     )}
                     {!(mainView === 'by-partner' && selectedClientId) && activeCategory !== 'product' && (
                       <td className="px-2 py-3">
-                        <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
-                          {partners.find(c => c.id === partnerIn.find(ps => ps.itemId === item.id)?.partnerId)?.name ?? <span className="text-slate-200">-</span>}
-                        </span>
+                        {(() => {
+                          const BADGE_COLORS = [
+                            'bg-indigo-100 text-indigo-700','bg-emerald-100 text-emerald-700','bg-amber-100 text-amber-700',
+                            'bg-rose-100 text-rose-700','bg-sky-100 text-sky-700','bg-violet-100 text-violet-700',
+                            'bg-teal-100 text-teal-700','bg-orange-100 text-orange-700','bg-pink-100 text-pink-700',
+                          ];
+                          const inIds = [...new Set(
+                            partnerIn
+                              .filter(ps => (ps.itemId ?? ps.Item_ID) === item.id)
+                              .map(ps => (ps.partnerId ?? ps.Partner_ID))
+                              .filter(Boolean)
+                          )];
+                          const matched = inIds.map(id => partners.find(c => c.id === id)).filter(Boolean) as typeof partners;
+                          if (!matched.length) return <span className="text-slate-200">-</span>;
+                          const isExp = expandedClientRowId === item.id;
+                          const shown = isExp ? matched : matched.slice(0, 1);
+                          return (
+                            <div className="flex flex-wrap gap-1 items-center" onClick={e => e.stopPropagation()}>
+                              {shown.map((c) => {
+                                const colorIdx = partners.indexOf(c) % BADGE_COLORS.length;
+                                return (
+                                  <span key={c.id} className={`inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-black ${BADGE_COLORS[colorIdx]}`}>{c.name}</span>
+                                );
+                              })}
+                              {!isExp && matched.length > 1 && (
+                                <button onClick={() => setExpandedClientRowId(item.id)} className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 transition-colors">+{matched.length - 1}</button>
+                              )}
+                              {isExp && (
+                                <button onClick={() => setExpandedClientRowId(null)} className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 transition-colors">접기</button>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                     )}
                     {(['용기', '마개', '라벨'] as const).map(cat => (
@@ -593,13 +623,26 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                             </button>
                           </div>
                         ) : isAdmin ? (
-                          // 품목 목록 뷰: 품목 수정 버튼
-                          <button
-                            onClick={() => onEditProduct(item)}
-                            className="p-1.5 rounded-lg bg-indigo-50 text-indigo-500 hover:bg-indigo-100 hover:text-indigo-700 transition-all"
-                          >
-                            <Edit size={13} />
-                          </button>
+                          // 품목 목록 뷰: 품목 수정 / 삭제 버튼
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => onEditProduct(item)}
+                              className="p-1.5 rounded-lg bg-indigo-50 text-indigo-500 hover:bg-indigo-100 hover:text-indigo-700 transition-all"
+                              title="수정"
+                            >
+                              <Edit size={13} />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (!window.confirm(`"${item.name}" 품목을 삭제하시겠습니까?\n\n삭제 후 복구할 수 없습니다.`)) return;
+                                onDeleteItem(item.id, item.category);
+                              }}
+                              className="p-1.5 rounded-lg bg-rose-50 text-rose-400 hover:bg-rose-100 hover:text-rose-600 transition-all"
+                              title="삭제"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
                         ) : null}
                       </td>
                     )}

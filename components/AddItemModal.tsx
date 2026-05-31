@@ -14,6 +14,7 @@ interface ProductModalProps {
   onSaveShippingRule?: (rule: Partial<ShippingRule> & { id: string }) => Promise<void>;
   onAddShippingRule?: (rule: Omit<ShippingRule, 'id'>) => Promise<void>;
   onUpsertPartnerItem?: (ps: PartnerItem) => void;
+  onDeletePartnerItem?: (id: string) => void;
   onAddSubmaterial?: (name: string, category: string) => Promise<string>;
 }
 
@@ -66,7 +67,7 @@ const PUMOK_VOLUMES: Record<string, string[]> = {
   '시골향볶음검정참깨': ['1kg','20kg','25kg'],
 };
 
-const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], items, partners = [], partnerItems, shippingRules = [], onClose, onSave, onSaveShippingRule, onAddShippingRule, onUpsertPartnerItem, onAddSubmaterial }) => {
+const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], items, partners = [], partnerItems, shippingRules = [], onClose, onSave, onSaveShippingRule, onAddShippingRule, onUpsertPartnerItem, onDeletePartnerItem, onAddSubmaterial }) => {
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
   const partnerIn = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
 
@@ -90,7 +91,10 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     품목: initialData?.품목 || '',
     isSmartStore: initialData?.isSmartStore ?? false,
     partnerIds: initialData?.partnerIds ?? (initialData?.partnerId ? [initialData.partnerId] : []),
-    partnerId: partnerIn.find(pi => pi.Item_ID === initialData?.id)?.Partner_ID ?? '',
+    inPartnerIds: partnerIn
+      .filter(pi => pi.Item_ID === initialData?.id)
+      .map(pi => (pi.partnerId ?? pi.Partner_ID))
+      .filter(Boolean) as string[],
     submaterials: (initialData?.submaterials || []).map(s => ({
       ...s,
       category: normCat(s.category)
@@ -107,6 +111,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const [pumokWarn, setPumokWarn] = useState(false);
   const [expandedBoxClient, setExpandedBoxClient] = useState<string | null>(null);
   const [boxClientSearch, setBoxClientSearch] = useState('');
+  const [volNum, setVolNum] = useState('');
+  const [volUnit, setVolUnit] = useState<'ml' | 'kg'>('ml');
+  const [customVols, setCustomVols] = useState<string[]>(initialData?.spec ? [initialData.spec] : []);
   const [showBoxClientDrop, setShowBoxClientDrop] = useState(false);
 
   // 거래처별 포장 설정 (shipping_rule 기반, partner_item 필드 fallback)
@@ -199,13 +206,22 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
 
     onSave(finalProduct);
 
-    // PartnerItem upsert — partner_item Direction='in'으로 저장
-    if (formData.partnerId && onUpsertPartnerItem) {
-      const partnerId = formData.partnerId;
+    // PartnerItem 다중 upsert/삭제 — partner_item Direction='in'
+    if (onUpsertPartnerItem) {
       const itemId = finalProduct.id;
-      const psId = `${itemId}_${partnerId}_in`;
-      const existing = partnerIn.find(pi => pi.Item_ID === itemId);
-      onUpsertPartnerItem({ id: psId, Partner_ID: partnerId, Item_ID: itemId, Direction: 'in', Standard_Price: existing?.Standard_Price, taxType: existing?.taxType });
+      const prevIn = partnerIn.filter(pi => pi.Item_ID === itemId);
+      // 선택된 매입거래처 upsert (기존 doc/단가 유지)
+      for (const partnerId of formData.inPartnerIds) {
+        const existing = prevIn.find(pi => (pi.partnerId ?? pi.Partner_ID) === partnerId);
+        onUpsertPartnerItem({ id: existing?.id ?? `${itemId}_${partnerId}_in`, Partner_ID: partnerId, Item_ID: itemId, Direction: 'in', Standard_Price: existing?.Standard_Price, taxType: existing?.taxType });
+      }
+      // 해제된 매입거래처 삭제
+      if (onDeletePartnerItem) {
+        for (const pi of prevIn) {
+          const pid = pi.partnerId ?? pi.Partner_ID;
+          if (pid && !formData.inPartnerIds.includes(pid)) onDeletePartnerItem(pi.id);
+        }
+      }
     }
 
     // 거래처별 포장 설정 → shipping_rule 컬렉션에 저장
@@ -553,19 +569,31 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             </div>
           )}
 
-          {/* 용량 (완제품) */}
-          {formData.category === 'product' && (
+          {/* 용량 (완제품/반제품) */}
+          {(formData.category === 'product' || formData.category === 'wip') && (() => {
+            const presetVols = (formData.품목 && PUMOK_VOLUMES[formData.품목]) || [];
+            const allVols = Array.from(new Set([...presetVols, ...customVols]));
+            const addVol = () => {
+              const n = volNum.trim();
+              if (!n) return;
+              const vol = `${n}${volUnit}`;
+              if (!presetVols.includes(vol) && !customVols.includes(vol)) setCustomVols(prev => [...prev, vol]);
+              setFormData(fd => ({ ...fd, spec: vol }));
+              setVolNum('');
+            };
+            return (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Box size={14} className="mr-2" /> 용량 (서류용)
               </label>
-              {formData.품목 && PUMOK_VOLUMES[formData.품목] ? (
+              {allVols.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                  {PUMOK_VOLUMES[formData.품목].map(vol => (
+                  {allVols.map(vol => (
                     <button
                       key={vol}
                       type="button"
-                      onClick={() => setFormData({...formData, spec: vol})}
+                      onClick={() => setFormData(fd => ({...fd, spec: fd.spec === vol ? '' : vol}))}
+                      title={formData.spec === vol ? '클릭하면 선택 해제' : undefined}
                       className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
                         formData.spec === vol
                           ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
@@ -576,25 +604,48 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                     </button>
                   ))}
                 </div>
-              ) : (
+              )}
+              {/* 용량 직접 추가: 숫자 입력 + ml/kg 토글 */}
+              <div className="flex items-center gap-2">
                 <input
-                  type="text"
-                  value={formData.spec}
-                  onChange={(e) => setFormData({...formData, spec: e.target.value})}
-                  placeholder="예: 200g, 500g, 1kg, 300ml"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                  type="number"
+                  inputMode="decimal"
+                  value={volNum}
+                  onChange={(e) => setVolNum(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addVol(); } }}
+                  placeholder="예: 300"
+                  className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                 />
+                <button
+                  type="button"
+                  onClick={() => setVolUnit(prev => prev === 'ml' ? 'kg' : 'ml')}
+                  title="단위 전환 (ml ↔ kg)"
+                  className="shrink-0 w-16 px-4 py-3.5 rounded-2xl border border-indigo-200 bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-all"
+                >
+                  {volUnit}
+                </button>
+                <button
+                  type="button"
+                  onClick={addVol}
+                  className="shrink-0 px-5 py-3.5 rounded-2xl bg-indigo-50 text-indigo-600 text-sm font-bold hover:bg-indigo-100 transition-all"
+                >
+                  추가
+                </button>
+              </div>
+              {formData.spec && (
+                <p className="text-[11px] font-bold text-slate-400">선택된 용량: <span className="text-indigo-600">{formData.spec}</span></p>
               )}
             </div>
-          )}
+            );
+          })()}
 
           {/* 매입거래처 (비완제품) */}
           {formData.category !== 'product' && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Building2 size={14} className="mr-2" /> 매입거래처
-                {formData.partnerId && (
-                  <span className="ml-2 px-1.5 py-0.5 bg-indigo-600 text-white text-[9px] font-black rounded-full">1</span>
+                <Building2 size={14} className="mr-2" /> 매입거래처 <span className="ml-1 text-[10px] text-slate-300 normal-case">(여러 개 선택 가능)</span>
+                {formData.inPartnerIds.length > 0 && (
+                  <span className="ml-2 px-1.5 py-0.5 bg-indigo-600 text-white text-[9px] font-black rounded-full">{formData.inPartnerIds.length}</span>
                 )}
               </label>
               <input
@@ -610,9 +661,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
                   <button
                     type="button"
-                    onClick={() => setFormData({...formData, partnerId: ''})}
+                    onClick={() => setFormData(fd => ({...fd, inPartnerIds: []}))}
                     className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold border transition-all ${
-                      !formData.partnerId
+                      formData.inPartnerIds.length === 0
                         ? 'bg-slate-600 border-slate-600 text-white shadow-sm'
                         : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
                     }`}
@@ -621,14 +672,14 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                   </button>
                   {inboundPartners
                     .filter(c => !inboundPartnerSearch.trim() || c.name.toLowerCase().includes(inboundPartnerSearch.toLowerCase()))
-                    .sort((a, b) => (formData.partnerId === a.id ? -1 : formData.partnerId === b.id ? 1 : 0))
+                    .sort((a, b) => (formData.inPartnerIds.includes(a.id) ? -1 : 0) - (formData.inPartnerIds.includes(b.id) ? -1 : 0))
                     .map(c => {
-                      const selected = formData.partnerId === c.id;
+                      const selected = formData.inPartnerIds.includes(c.id);
                       return (
                         <button
                           key={c.id}
                           type="button"
-                          onClick={() => setFormData({...formData, partnerId: selected ? '' : c.id})}
+                          onClick={() => setFormData(fd => ({...fd, inPartnerIds: selected ? fd.inPartnerIds.filter(id => id !== c.id) : [...fd.inPartnerIds, c.id]}))}
                           className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold border transition-all text-left ${
                             selected
                               ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
