@@ -101,12 +101,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     }))
   }));
 
-  const [activeSubCategory, setActiveSubCategory] = useState<string | null>(null);
-  const [addingSubCat, setAddingSubCat] = useState<string | null>(null);
-  const [newSubName, setNewSubName] = useState('');
   const [partnerSearch, setClientSearch] = useState('');
   const [inboundPartnerSearch, setSupplierSearch] = useState('');
-  const [subSearch, setSubSearch] = useState<Record<string, string>>({});
   const [showPumokDrop, setShowPumokDrop] = useState(false);
   const [pumokWarn, setPumokWarn] = useState(false);
   const [expandedBoxClient, setExpandedBoxClient] = useState<string | null>(null);
@@ -114,6 +110,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const [volNum, setVolNum] = useState('');
   const [volUnit, setVolUnit] = useState<'ml' | 'kg'>('ml');
   const [customVols, setCustomVols] = useState<string[]>(initialData?.spec ? [initialData.spec] : []);
+  const [bomSearch, setBomSearch] = useState('');
+  const [bomPickerOpen, setBomPickerOpen] = useState(false);
+  const [bomCatFilter, setBomCatFilter] = useState<string>('all');
   const [showBoxClientDrop, setShowBoxClientDrop] = useState(false);
 
   // 거래처별 포장 설정 (shipping_rule 기반, partner_item 필드 fallback)
@@ -192,7 +191,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       minStock: formData.category === 'product' ? 0 : formData.minStock,
       unit: formData.unit,
       image: initialData?.image || '',
-      submaterials: formData.category === 'product'
+      submaterials: ['product', 'giftset', 'shipping'].includes(formData.category)
         ? formData.submaterials
         : (formData.submaterials.length > 0 ? formData.submaterials : (initialData?.submaterials || [])),
       ...(formData.category === 'box' && { freightType: formData.freightType, boxSize: formData.boxSize }),
@@ -359,165 +358,154 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
           </div>
 
 
-          {/* BOM 설정 (완제품) */}
-          {formData.category === 'product' && (
+          {/* 구성품 (BOM) — 완제품/선물세트/배송: 전체 품목 검색·추가 */}
+          {['product', 'giftset', 'shipping'].includes(formData.category) && (() => {
+            const pool = [...(items ?? []), ...allSubmaterials];
+            const addedIds = new Set(formData.submaterials.map(s => s.id));
+            const q = bomSearch.trim().toLowerCase();
+            const SUB_CATS = ['용기', '마개', '라벨', '박스', '테이프'];
+            const catKey = (p: { category?: string; subtype?: string }) => {
+              const n = normCat(p.category);
+              if (SUB_CATS.includes(n)) return n;
+              if (p.category === 'submaterial' && p.subtype && SUB_CATS.includes(p.subtype)) return p.subtype;
+              return p.category || '기타';
+            };
+            const catLabelOf = (k: string) => CATEGORY_LABELS[k] ?? k;
+            const CAT_ORDER = ['product', 'goods', 'wip', 'raw', 'giftset', '용기', '마개', '라벨', '박스', '테이프', 'submaterial', 'shipping'];
+            const selectable = pool.filter(p => p.id !== initialData?.id && !addedIds.has(p.id));
+            // 칩 목록은 전체 품목 기준으로 고정 (추가/필터에 따라 안 바뀌게)
+            const availableCats = [...new Set(pool.filter(p => p.id !== initialData?.id).map(catKey))].sort((a, b) => {
+              const ai = CAT_ORDER.indexOf(a); const bi = CAT_ORDER.indexOf(b);
+              return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+            });
+            const results = selectable.filter(p => (bomCatFilter === 'all' || catKey(p) === bomCatFilter) && (!q || p.name.toLowerCase().includes(q)));
+            const groups = new Map<string, typeof results>();
+            for (const p of results) {
+              const k = catKey(p);
+              if (!groups.has(k)) groups.set(k, []);
+              groups.get(k)!.push(p);
+            }
+            const sortedGroups = [...groups.entries()].sort((a, b) => {
+              const ai = CAT_ORDER.indexOf(a[0]); const bi = CAT_ORDER.indexOf(b[0]);
+              return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+            });
+            return (
             <div className="space-y-3 pt-2 border-t border-slate-100">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Layers size={14} className="mr-2" /> 구성 부자재 (BOM)
+                <Layers size={14} className="mr-2" /> 구성품 (BOM)
+                {formData.submaterials.length > 0 && (
+                  <span className="ml-2 px-1.5 py-0.5 bg-indigo-600 text-white text-[9px] font-black rounded-full">{formData.submaterials.length}</span>
+                )}
               </label>
-              <div className="space-y-2">
-                {(['용기', '마개', '라벨'] as const).map(cat => {
-                  const getSubCat = (s: typeof formData.submaterials[0]) => {
-                    if ((s as any).category === 'submaterial') return (s as any).subtype || '';
-                    if (s.category) return normCat(s.category);
-                    const found = allSubmaterials.find(a => a.id === s.id);
-                    if (found?.category === 'submaterial') return found.subtype || '';
-                    return normCat(found?.category || '');
-                  };
-                  const selectedSub = formData.submaterials
-                    .filter(s => s.id !== 's-auto-C-NONE' && s.name !== 'C-NONE')
-                    .find(s => getSubCat(s) === cat);
-                  const isOpen = activeSubCategory === cat;
 
-                  return (
-                    <div key={cat} className="bg-slate-50 rounded-2xl border border-slate-100 overflow-hidden transition-all">
+              {/* 추가된 구성품 + 수량 */}
+              {formData.submaterials.length > 0 && (
+                <div className="space-y-2">
+                  {formData.submaterials.map((s, idx) => (
+                    <div key={`${s.id}-${idx}`} className="flex items-center gap-2 bg-slate-50 rounded-2xl border border-slate-100 px-4 py-2.5">
+                      <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md shrink-0">{catLabelOf(catKey(s))}</span>
+                      <span className="flex-1 text-sm font-bold text-slate-700 truncate">{s.name}</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={s.stock ?? 1}
+                        onChange={e => {
+                          const qty = e.target.value === '' ? 0 : Number(e.target.value);
+                          setFormData(fd => ({ ...fd, submaterials: fd.submaterials.map((x, i) => i === idx ? { ...x, stock: qty } : x) }));
+                        }}
+                        className="w-16 text-center text-sm font-black bg-white border border-slate-200 rounded-lg py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 shrink-0"
+                      />
+                      <span className="text-[10px] font-bold text-slate-400 w-6 shrink-0">{s.unit || '개'}</span>
                       <button
                         type="button"
-                        onClick={() => setActiveSubCategory(isOpen ? null : cat)}
-                        className="w-full flex items-center justify-between p-4 hover:bg-slate-100/50 transition-all"
-                      >
-                        <div className="flex items-center space-x-3">
-                          <span className="text-[10px] font-black text-indigo-600 uppercase tracking-tighter bg-indigo-50 px-2 py-1 rounded-md">{cat}</span>
-                          {selectedSub ? (
-                            <div className="flex items-center space-x-2">
-                              <span className="text-sm font-bold text-slate-700">{selectedSub.name}</span>
-                            </div>
-                          ) : (
-                            <span className="text-sm font-medium text-slate-400">{cat} 선택 안함</span>
-                          )}
-                        </div>
-                        <Plus size={16} className={`text-slate-400 transition-transform ${isOpen ? 'rotate-45' : ''}`} />
-                      </button>
-
-                      {isOpen && (
-                        <div className="p-4 bg-white border-t border-slate-100 animate-in slide-in-from-top-2 duration-200">
-                          <input
-                            type="text"
-                            value={subSearch[cat] || ''}
-                            onChange={e => setSubSearch(prev => ({ ...prev, [cat]: e.target.value }))}
-                            placeholder={`${cat} 검색...`}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400 mb-3"
-                          />
-                          <div className="grid grid-cols-1 gap-2 mb-4 max-h-48 overflow-y-auto custom-scrollbar pr-1">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const filtered = formData.submaterials.filter(s => getSubCat(s) !== cat);
-                                setFormData({ ...formData, submaterials: filtered });
-                                setActiveSubCategory(null);
-                              }}
-                              className={`flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all border ${!selectedSub ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-slate-50 border-slate-100 text-slate-500 hover:bg-slate-100'}`}
-                            >
-                              <span>{cat} 선택 안함</span>
-                              {!selectedSub && <div className="w-2 h-2 bg-indigo-600 rounded-full" />}
-                            </button>
-
-                            {allSubmaterials
-                              .filter(s => normCat(s.category) === cat || (s.category === 'submaterial' && s.subtype === cat))
-                              .filter(s => !subSearch[cat] || s.name.toLowerCase().includes(subSearch[cat].toLowerCase()))
-                              .sort((a, b) => {
-                                const sikolA = a.name.startsWith('시골향');
-                                const sikolB = b.name.startsWith('시골향');
-                                if (sikolA && !sikolB) return -1;
-                                if (!sikolA && sikolB) return 1;
-                                if (sikolA && sikolB) {
-                                  const order = (n: string) =>
-                                    n.includes('참기름') ? 0 : n.includes('들기름') ? 1 : n.includes('가루') ? 2 : 3;
-                                  const diff = order(a.name) - order(b.name);
-                                  if (diff !== 0) return diff;
-                                }
-                                return a.name.localeCompare(b.name, 'ko');
-                              })
-                              .map(sub => {
-                                const isSelected = selectedSub?.id === sub.id;
-                                return (
-                                  <button
-                                    key={sub.id}
-                                    type="button"
-                                    onClick={() => {
-                                      const filtered = formData.submaterials.filter(s => getSubCat(s) !== cat);
-                                      const autoCapacity = cat === '용기'
-                                        ? (allSubmaterials.find(a => a.id === sub.id) as Item | undefined)?.spec || ''
-                                        : formData.spec;
-                                      const newSub = { id: sub.id, name: sub.name, category: cat, stock: 1, unit: sub.unit };
-                                      const newData: typeof formData = {
-                                        ...formData,
-                                        submaterials: [...filtered, newSub],
-                                        ...(cat === '용기' && { spec: autoCapacity }),
-                                      };
-                                      setFormData(newData);
-                                      setActiveSubCategory(null);
-                                    }}
-                                    className={`flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all border ${isSelected ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-slate-50 border-slate-100 text-slate-500 hover:bg-slate-100'}`}
-                                  >
-                                    <span>{sub.name}</span>
-                                    {isSelected && <div className="w-2 h-2 bg-indigo-600 rounded-full" />}
-                                  </button>
-                                );
-                              })}
-                          </div>
-
-                          {/* 새 항목 추가 */}
-                          {onAddSubmaterial && (
-                            addingSubCat === cat ? (
-                              <div className="flex items-center gap-2 mt-2">
-                                <input
-                                  autoFocus
-                                  type="text"
-                                  value={newSubName}
-                                  onChange={e => setNewSubName(e.target.value)}
-                                  onKeyDown={async e => {
-                                    if (e.key === 'Enter' && newSubName.trim()) {
-                                      const unit = cat === '라벨' ? '매' : '개';
-                                      const newId = await onAddSubmaterial(newSubName.trim(), cat);
-                                      const newSub = { id: newId, name: newSubName.trim(), category: cat, unit, stock: 1 };
-                                      const filtered = formData.submaterials.filter(s => getSubCat(s) !== cat);
-                                      setFormData({ ...formData, submaterials: [...filtered, newSub] });
-                                      setNewSubName('');
-                                      setAddingSubCat(null);
-                                      setActiveSubCategory(null);
-                                    } else if (e.key === 'Escape') {
-                                      setNewSubName(''); setAddingSubCat(null);
-                                    }
-                                  }}
-                                  placeholder={`새 ${cat} 이름 입력 후 Enter`}
-                                  className="flex-1 bg-slate-50 border border-indigo-300 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => { setNewSubName(''); setAddingSubCat(null); }}
-                                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
-                                ><X size={14} /></button>
-                              </div>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => { setAddingSubCat(cat); setNewSubName(''); }}
-                                className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-indigo-500 border border-dashed border-indigo-200 hover:bg-indigo-50 transition-all"
-                              >
-                                <Plus size={12} /> 새 {cat} 추가
-                              </button>
-                            )
-                          )}
-                        </div>
-                      )}
+                        onClick={() => setFormData(fd => ({ ...fd, submaterials: fd.submaterials.filter((_, i) => i !== idx) }))}
+                        className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all shrink-0"
+                      ><X size={14} /></button>
                     </div>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
+              )}
 
+              {/* 추가 버튼 */}
+              <button
+                type="button"
+                onClick={() => { setBomSearch(''); setBomCatFilter('all'); setBomPickerOpen(true); }}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-3 rounded-2xl text-sm font-bold text-indigo-600 border border-dashed border-indigo-200 hover:bg-indigo-50 transition-all"
+              >
+                <Plus size={16} /> 구성품 추가
+              </button>
+
+              {/* 구성품 선택 오버레이 */}
+              {bomPickerOpen && (
+                <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center" onClick={() => setBomPickerOpen(false)}>
+                  <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
+                  <div className="relative bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-lg max-h-[85vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                    <div className="sticky top-0 bg-white px-5 pt-5 pb-3 border-b border-slate-100 rounded-t-3xl">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="font-black text-slate-800 text-base">구성품 추가</span>
+                        <button type="button" onClick={() => setBomPickerOpen(false)} className="p-2 rounded-xl hover:bg-slate-100 transition-colors"><X size={18} className="text-slate-500" /></button>
+                      </div>
+                      {/* 카테고리 토글 */}
+                      <div className="flex flex-wrap gap-1.5 mb-2.5">
+                        <button
+                          type="button"
+                          onClick={() => setBomCatFilter('all')}
+                          className={`px-3 py-1.5 rounded-full text-[11px] font-black border transition-all ${bomCatFilter === 'all' ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}
+                        >전체</button>
+                        {availableCats.map(c => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => setBomCatFilter(c)}
+                            className={`px-3 py-1.5 rounded-full text-[11px] font-black border transition-all ${bomCatFilter === c ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}
+                          >{catLabelOf(c)}</button>
+                        ))}
+                      </div>
+                      <input
+                        autoFocus
+                        type="text"
+                        value={bomSearch}
+                        onChange={e => setBomSearch(e.target.value)}
+                        placeholder="품목명 검색..."
+                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400"
+                      />
+                    </div>
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3">
+                      {sortedGroups.length === 0 ? (
+                        <p className="text-xs text-slate-400 px-1 py-2">{q ? '검색 결과 없음' : '추가할 품목 없음'}</p>
+                      ) : sortedGroups.map(([k, list]) => (
+                        <div key={k}>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 mb-1.5">{catLabelOf(k)} <span className="text-slate-300">{list.length}</span></p>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {list.sort((a, b) => a.name.localeCompare(b.name, 'ko')).map(p => (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => setFormData(fd => {
+                                  const next = { ...fd, submaterials: [...fd.submaterials, { id: p.id, name: p.name, category: catKey(p), stock: 1, unit: p.unit }] };
+                                  // 완제품: 용기 추가 시 그 용기의 용량(spec) 자동 입력
+                                  if (fd.category === 'product' && catKey(p) === '용기' && (p as any).spec) next.spec = (p as any).spec;
+                                  return next;
+                                })}
+                                className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold border bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-600 transition-all text-left"
+                              >
+                                <Plus size={11} className="shrink-0 text-indigo-400" />
+                                <span className="truncate">{p.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="p-4 border-t border-slate-100">
+                      <button type="button" onClick={() => setBomPickerOpen(false)} className="w-full py-3 rounded-2xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-all">완료 ({formData.submaterials.length})</button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+            );
+          })()}
 
           {/* 1박스 당 수량 (박스 부자재) */}
           {formData.category === 'box' && (
