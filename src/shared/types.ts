@@ -154,6 +154,7 @@ export interface SubmaterialComponent {
   category: InventoryCategory | string;
   stock: number;
   unit: string;
+  spec?: string;   // 규격/용량 (완제품 구분용)
   cost?: number;   // 부자재 원가
   boxSize?: number;
   qrCode?: string; // 납품업체 QR/바코드 값

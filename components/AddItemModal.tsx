@@ -404,7 +404,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                   {formData.submaterials.map((s, idx) => (
                     <div key={`${s.id}-${idx}`} className="flex items-center gap-2 bg-slate-50 rounded-2xl border border-slate-100 px-4 py-2.5">
                       <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md shrink-0">{catLabelOf(catKey(s))}</span>
-                      <span className="flex-1 text-sm font-bold text-slate-700 truncate">{s.name}</span>
+                      <span className="flex-1 text-sm font-bold text-slate-700 truncate">{s.name}{(s as any).spec && <span className="ml-1.5 text-[11px] font-black text-indigo-400">{(s as any).spec}</span>}</span>
                       <input
                         type="number"
                         min={0}
@@ -439,7 +439,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
               {bomPickerOpen && (
                 <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center" onClick={() => setBomPickerOpen(false)}>
                   <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
-                  <div className="relative bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-lg max-h-[85vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                  <div className="relative bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-lg h-[85vh] sm:h-[600px] flex flex-col shadow-2xl animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
                     <div className="sticky top-0 bg-white px-5 pt-5 pb-3 border-b border-slate-100 rounded-t-3xl">
                       <div className="flex items-center justify-between mb-3">
                         <span className="font-black text-slate-800 text-base">구성품 추가</span>
@@ -482,7 +482,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                                 key={p.id}
                                 type="button"
                                 onClick={() => setFormData(fd => {
-                                  const next = { ...fd, submaterials: [...fd.submaterials, { id: p.id, name: p.name, category: catKey(p), stock: 1, unit: p.unit }] };
+                                  const newSub = { id: p.id, name: p.name, category: catKey(p), stock: 1, unit: p.unit, ...((p as any).spec ? { spec: (p as any).spec } : {}) };
+                                  const next = { ...fd, submaterials: [...fd.submaterials, newSub] };
                                   // 완제품: 용기 추가 시 그 용기의 용량(spec) 자동 입력
                                   if (fd.category === 'product' && catKey(p) === '용기' && (p as any).spec) next.spec = (p as any).spec;
                                   return next;
@@ -491,6 +492,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                               >
                                 <Plus size={11} className="shrink-0 text-indigo-400" />
                                 <span className="truncate">{p.name}</span>
+                                {catKey(p) === 'product' && (p as any).spec && (
+                                  <span className="ml-auto shrink-0 text-[10px] font-black text-indigo-400">{(p as any).spec}</span>
+                                )}
                               </button>
                             ))}
                           </div>
