@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
-  Order, Item, Partner, PartnerItem, Post,
+  Order, OrderStatus, Item, Partner, PartnerItem, Post,
   PalletStock, PalletTransaction, Employee, LeaveRequest,
   AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry,
   AppNotification, IssuedStatement,
@@ -8,7 +8,8 @@ import {
   AccountCode, AccountGroup, FixedCostTemplate, InventorySnapshot, ProductionSalesLog,
   PendingStatementEdit, PurchaseOrder,
 } from '../types';
-import { subscribeToCollection, subscribeToDocument } from '../services/firebaseService';
+import { subscribeToCollection, subscribeToRecentCollection, subscribeToDocument, fetchCollection, fetchDateRange } from '../services/firebaseService';
+import { where } from 'firebase/firestore';
 import { authReady } from '../firebase';
 
 export interface WorkOrderItem {
@@ -64,6 +65,10 @@ export interface AppData {
   productionSalesLogs: ProductionSalesLog[];
   pendingStatementEdits: PendingStatementEdit[];
   isDataLoading: boolean;
+  refreshStaticData: () => void;
+  historicalOrders: Order[];
+  loadHistoricalOrders: (start: string, end: string) => Promise<void>;
+  isLoadingHistoricalOrders: boolean;
 }
 
 export function useAppData(): AppData {
@@ -97,8 +102,28 @@ export function useAppData(): AppData {
   const [inventorySnapshots, setInventorySnapshots] = useState<InventorySnapshot[]>([]);
   const [productionSalesLogs, setProductionSalesLogs] = useState<ProductionSalesLog[]>([]);
   const [pendingStatementEdits, setPendingStatementEdits] = useState<PendingStatementEdit[]>([]);
+  const [historicalOrders, setHistoricalOrders] = useState<Order[]>([]);
+  const [isLoadingHistoricalOrders, setIsLoadingHistoricalOrders] = useState(false);
   const [isDataLoading, setIsDataLoading] = useState(true);
   const loadedRef = useRef(new Set<string>());
+  // 정적 데이터 새로고침 트리거
+  const [staticRefreshKey, setStaticRefreshKey] = useState(0);
+  const refreshStaticData = useCallback(() => setStaticRefreshKey(k => k + 1), []);
+
+  const loadHistoricalOrders = useCallback(async (start: string, end: string) => {
+    setIsLoadingHistoricalOrders(true);
+    try {
+      const { where } = await import('firebase/firestore');
+      const data = await fetchCollection<Order>('orders', [
+        where('status', '==', OrderStatus.DELIVERED),
+        where('deliveredAt', '>=', start + 'T00:00:00.000Z'),
+        where('deliveredAt', '<=', end + 'T23:59:59.999Z'),
+      ]);
+      setHistoricalOrders(data);
+    } finally {
+      setIsLoadingHistoricalOrders(false);
+    }
+  }, []);
 
   const markLoaded = (key: string) => {
     loadedRef.current.add(key);
@@ -107,6 +132,7 @@ export function useAppData(): AppData {
     }
   };
 
+  // ── 실시간 구독 (자주 바뀌는 데이터) ──
   useEffect(() => {
     let unsubscribes: (() => void)[] = [];
     let cancelled = false;
@@ -116,29 +142,21 @@ export function useAppData(): AppData {
       unsubscribes = [
         subscribeToCollection<Post>('notices', setNoticePosts),
         subscribeToCollection<PalletStock>('pallets', setPallets),
-        subscribeToCollection<PalletTransaction>('palletTransactions', setPalletTransactions),
+        subscribeToRecentCollection<PalletTransaction>('palletTransactions', 'date', 7, setPalletTransactions),
         subscribeToCollection<Employee>('employees', setEmployees),
         subscribeToCollection<LeaveRequest>('leaveRequests', setLeaveRequests),
         subscribeToCollection<AdjustmentRequest>('adjustmentRequests', setAdjustmentRequests),
         subscribeToCollection<PurchaseOrder>('purchaseOrders', setPurchaseOrders),
-        subscribeToCollection<Order>('orders', (data) => { setOrders(data); markLoaded('orders'); }),
+        subscribeToCollection<Order>('orders', (data) => { setOrders(data); markLoaded('orders'); }, [where('status', '!=', OrderStatus.DELIVERED)]),
         subscribeToCollection<Item>('items', (data) => { setItems(data); markLoaded('items'); }),
         subscribeToCollection<Partner>('partners', setPartners),
-        subscribeToCollection<PartnerItem>('partner_item', (data) => {
-          setPartnerItems(data.map(pi => ({
-            ...pi,
-            itemId: pi.Item_ID,
-            partnerId: pi.Partner_ID,
-            price: pi.price ?? pi.Standard_Price,
-          })));
-        }),
         subscribeToCollection<ChatRoom>('chatRooms', setChatRooms),
-        subscribeToCollection<ChatMessage>('chatMessages', setChatMessages),
-        subscribeToCollection<RawMaterialEntry>('rawMaterialLedger', setRawMaterialLedger),
-        subscribeToCollection<{ id: string; type: string; date: string; amount: number }>('sesameInputLedger', setSesameInputLedger),
+        subscribeToRecentCollection<ChatMessage>('chatMessages', 'createdAt', 7, setChatMessages),
+        subscribeToRecentCollection<RawMaterialEntry>('rawMaterialLedger', 'date', 7, setRawMaterialLedger),
+        subscribeToRecentCollection<{ id: string; type: string; date: string; amount: number }>('sesameInputLedger', 'date', 7, setSesameInputLedger),
         subscribeToCollection<AppNotification>('notifications', setAppNotifications),
         subscribeToCollection<WorkOrderItem>('workOrderItems', (data) => setWorkOrderItems([...data].sort((a, b) => a.sortIndex - b.sortIndex))),
-        subscribeToCollection<IssuedStatement>('issuedStatements', (data) => {
+        subscribeToRecentCollection<IssuedStatement>('issuedStatements', 'tradeDate', 7, (data) => {
           setIssuedStatements(data.map(s => {
             if (!s.items || !s.tradeDate) {
               console.warn('[useAppData] issuedStatement 필드 누락:', { id: s.id, hasItems: !!s.items, hasTradeDate: !!s.tradeDate });
@@ -152,18 +170,11 @@ export function useAppData(): AppData {
             };
           }));
         }),
-        subscribeToCollection<QrMapping>('qrMappings', setQrMappings),
-        subscribeToCollection<ItemFormula>('item_formula', setItemFormulas),
-        subscribeToCollection<ItemBom>('item_bom', setItemBoms),
-        subscribeToCollection<ShippingRule>('shipping_rule', setShippingRules),
-        subscribeToCollection<ReturnRequest>('returnRequests', setReturnRequests),
+        subscribeToRecentCollection<ReturnRequest>('returnRequests', 'createdAt', 7, setReturnRequests),
         subscribeToDocument<CompanyInfo>('settings', 'company', setCompanyInfo),
-        subscribeToCollection<AccountGroup>('accountGroups', setAccountGroups),
-        subscribeToCollection<AccountCode>('accountCodes', setAccountCodes),
-        subscribeToCollection<FixedCostTemplate>('fixedCostTemplates', setFixedCostTemplates),
         subscribeToCollection<InventorySnapshot>('inventorySnapshots', setInventorySnapshots),
-        subscribeToCollection<ProductionSalesLog>('productionSalesLogs', setProductionSalesLogs),
-        subscribeToCollection<PendingStatementEdit>('pendingStatementEdits', setPendingStatementEdits),
+        subscribeToRecentCollection<ProductionSalesLog>('productionSalesLogs', 'date', 7, setProductionSalesLogs),
+        subscribeToRecentCollection<PendingStatementEdit>('pendingStatementEdits', 'createdAt', 7, setPendingStatementEdits),
       ];
     });
 
@@ -172,6 +183,36 @@ export function useAppData(): AppData {
       unsubscribes.forEach(u => u());
     };
   }, []);
+
+  // ── 1회 읽기 (거의 안 바뀌는 정적 데이터) — refreshStaticData() 호출 시 재로드 ──
+  useEffect(() => {
+    authReady.then(() => {
+      Promise.all([
+        fetchCollection<PartnerItem>('partner_item'),
+        fetchCollection<ShippingRule>('shipping_rule'),
+        fetchCollection<ItemBom>('item_bom'),
+        fetchCollection<ItemFormula>('item_formula'),
+        fetchCollection<AccountGroup>('accountGroups'),
+        fetchCollection<AccountCode>('accountCodes'),
+        fetchCollection<FixedCostTemplate>('fixedCostTemplates'),
+        fetchCollection<QrMapping>('qrMappings'),
+      ]).then(([piData, srData, bomData, ifData, agData, acData, fctData, qrData]) => {
+        setPartnerItems(piData.map(pi => ({
+          ...pi,
+          itemId: pi.Item_ID,
+          partnerId: pi.Partner_ID,
+          price: pi.price ?? pi.Standard_Price,
+        })));
+        setShippingRules(srData);
+        setItemBoms(bomData);
+        setItemFormulas(ifData);
+        setAccountGroups(agData);
+        setAccountCodes(acData);
+        setFixedCostTemplates(fctData);
+        setQrMappings(qrData);
+      });
+    });
+  }, [staticRefreshKey]);
 
   return {
     orders, purchaseOrders,
@@ -187,5 +228,9 @@ export function useAppData(): AppData {
     companyInfo, accountGroups, accountCodes, fixedCostTemplates, inventorySnapshots,
     productionSalesLogs, pendingStatementEdits,
     isDataLoading,
+    refreshStaticData,
+    historicalOrders,
+    loadHistoricalOrders,
+    isLoadingHistoricalOrders,
   };
 }

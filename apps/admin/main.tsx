@@ -43,7 +43,7 @@ const AdminRoot: React.FC = () => {
     const saved = localStorage.getItem('tb_user');
     return saved ? JSON.parse(saved) : null;
   });
-  const [currentView, setCurrentView] = useState<ViewType>('dashboard');
+  const [currentView, setCurrentView] = useState<ViewType>('orders');
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [previewAsStaff, setPreviewAsStaff] = useState(false);
 

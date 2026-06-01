@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
 import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentRecord, AccountCode } from '../types';
+import { fetchDateRange } from '../src/shared/services/firebaseService';
 import { PurchaseOrder, poLines } from '../src/shared/types';
 import PageHeader from './PageHeader';
 
@@ -291,6 +292,50 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [histTypeFilter, setHistTypeFilter] = useState<'전체' | '매출' | '매입'>('전체');
   const [histSearch, setHistSearch] = useState('');
   const [histQuick, setHistQuick] = useState<'당일'|'금주'|'당월'|'당년'|'ALL'|''>('당월');
+
+  // ── 발행내역 온디맨드 fetch (7일 이전 데이터) ──
+  const [extraStatements, setExtraStatements] = useState<IssuedStatement[]>([]);
+  const [isFetchingHistory, setIsFetchingHistory] = useState(false);
+  const fetchedRangeRef = useRef<{ from: string; to: string } | null>(null);
+
+  const sevenDaysAgoCutoff = useMemo(() => {
+    const d = new Date(); d.setDate(d.getDate() - 7);
+    return d.toISOString().slice(0, 10);
+  }, []);
+
+  useEffect(() => {
+    const from = histFrom || '2020-01-01';
+    const to   = histTo   || today();
+    // 7일 이내면 props 데이터로 충분
+    if (from >= sevenDaysAgoCutoff) {
+      setExtraStatements([]);
+      fetchedRangeRef.current = null;
+      return;
+    }
+    // 동일 범위 재요청 방지
+    if (fetchedRangeRef.current?.from === from && fetchedRangeRef.current?.to === to) return;
+    setIsFetchingHistory(true);
+    fetchDateRange<IssuedStatement>('issuedStatements', 'tradeDate', from, to)
+      .then(data => {
+        setExtraStatements(data.map(s => ({
+          ...s,
+          items: s.items ?? [],
+          payments: s.payments ?? [],
+          tradeDate: s.tradeDate ?? '',
+          issuedAt: s.issuedAt ?? '',
+        })));
+        fetchedRangeRef.current = { from, to };
+      })
+      .finally(() => setIsFetchingHistory(false));
+  }, [histFrom, histTo, sevenDaysAgoCutoff]);
+
+  // props 7일치 + 온디맨드 fetch 데이터 합치기 (id 기준 dedup, props 우선)
+  const mergedStatements = useMemo(() => {
+    const map = new Map<string, IssuedStatement>();
+    extraStatements.forEach(s => map.set(s.id, s));
+    issuedStatements.forEach(s => map.set(s.id, s));
+    return Array.from(map.values());
+  }, [issuedStatements, extraStatements]);
 
   // ── 발행내역 상세 보기 ──
   const [detailStmt, setDetailStmt] = useState<IssuedStatement | null>(null);
@@ -1295,7 +1340,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const allTimelineRows = useMemo((): TimelineRow[] => {
     const rows: TimelineRow[] = [];
     const grouped = new Map<string, IssuedStatement[]>();
-    issuedStatements.forEach(s => {
+    mergedStatements.forEach(s => {
       const key = `${s.partnerId}__${s.type}`;
       if (!grouped.has(key)) grouped.set(key, []);
       grouped.get(key)!.push(s);
@@ -1339,7 +1384,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       });
     });
     return rows;
-  }, [issuedStatements]);
+  }, [mergedStatements]);
 
   const filteredHistory = useMemo((): TimelineRow[] => {
     return allTimelineRows
@@ -1371,7 +1416,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // 거래처별 미수금/미지급금 총합 맵 (전체 전표 기준)
   const partnerBalanceMap = useMemo(() => {
     const map = new Map<string, { receivable: number; payable: number }>();
-    issuedStatements.forEach(s => {
+    mergedStatements.forEach(s => {
       const bal = s.totalAmount - (s.payments ?? []).reduce((a, p) => a + p.amount, 0);
       if (bal <= 0) return;
       const key = s.partnerId;
@@ -1493,12 +1538,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       {/* ── 세금계산서 탭 (TaxStatement 컴포넌트로 이동) ── */}
       {false && (() => {
         const taxClients = partners
-          .filter(c => issuedStatements.some(s => s.partnerId === c.id && s.type === '매출'))
+          .filter(c => mergedStatements.some(s => s.partnerId === c.id && s.type === '매출'))
           .filter(c => !taxClientSearch || c.name.includes(taxClientSearch))
           .sort((a, b) => a.name.localeCompare(b.name));
 
         const partnerStmts = taxClientId
-          ? issuedStatements.filter(s => s.partnerId === taxClientId && s.type === '매출')
+          ? mergedStatements.filter(s => s.partnerId === taxClientId && s.type === '매출')
               .sort((a, b) => b.tradeDate.localeCompare(a.tradeDate))
           : [];
 
@@ -1954,7 +1999,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               onChange={e=>setHistSearch(e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400"/>
           </div>
-          <span className="text-[11px] text-slate-400 font-bold shrink-0">{filteredHistory.length}건</span>
+          {isFetchingHistory
+            ? <span className="text-[11px] text-indigo-400 font-bold shrink-0 animate-pulse">불러오는 중…</span>
+            : <span className="text-[11px] text-slate-400 font-bold shrink-0">{filteredHistory.length}건</span>
+          }
         </div>
       </div>
 

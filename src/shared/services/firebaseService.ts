@@ -12,9 +12,12 @@ import {
   doc,
   setDoc,
   query,
+  where,
+  getDocs,
   writeBatch,
   DocumentData,
-  QuerySnapshot
+  QuerySnapshot,
+  QueryConstraint,
 } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -34,16 +37,65 @@ export const setDocument = async (collectionName: string, docId: string, data: a
 
 export const subscribeToCollection = <T extends { id: string }>(
   collectionName: string,
+  callback: (data: T[]) => void,
+  constraints: QueryConstraint[] = []
+) => {
+  const q = query(collection(db, collectionName), ...constraints);
+  const cache = new Map<string, T>();
+
+  return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
+    const changes = snapshot.docChanges();
+    if (changes.length === 0) return;
+
+    for (const change of changes) {
+      if (change.type === 'added' || change.type === 'modified') {
+        cache.set(change.doc.id, { id: change.doc.id, ...change.doc.data() } as T);
+      } else if (change.type === 'removed') {
+        cache.delete(change.doc.id);
+      }
+    }
+    callback(Array.from(cache.values()));
+  });
+};
+
+// 1회 읽기 (정적 데이터용)
+export const fetchCollection = async <T extends { id: string }>(
+  collectionName: string,
+  constraints: QueryConstraint[] = []
+): Promise<T[]> => {
+  const q = query(collection(db, collectionName), ...constraints);
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() } as T));
+};
+
+// 날짜 기준 과거 N일치 구독
+export const subscribeToRecentCollection = <T extends { id: string }>(
+  collectionName: string,
+  dateField: string,
+  daysBack: number,
   callback: (data: T[]) => void
 ) => {
-  const q = query(collection(db, collectionName));
-  return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
-    const items = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as T));
-    callback(items);
-  });
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - daysBack);
+  // dateField이 ISO string이면 toISOString(), YYYY-MM-DD면 slice
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  return subscribeToCollection<T>(collectionName, callback, [where(dateField, '>=', cutoffStr)]);
+};
+
+// 특정 날짜 범위 one-time fetch (과거 데이터 온디맨드)
+export const fetchDateRange = async <T extends { id: string }>(
+  collectionName: string,
+  dateField: string,
+  startDate: string,
+  endDate: string
+): Promise<T[]> => {
+  const q = query(
+    collection(db, collectionName),
+    where(dateField, '>=', startDate),
+    where(dateField, '<=', endDate)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() } as T));
 };
 
 const stripUndefined = (obj: any): any => {

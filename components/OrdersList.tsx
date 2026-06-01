@@ -83,6 +83,8 @@ interface OrdersListProps {
   onNewOrderIdClear?: () => void;
   workOrderItems?: { key: string; orderId: string; itemId: string; itemName: string; partnerName: string; qty: number; category: string }[];
   onSetWorkOrderItems?: (items: { key: string; orderId: string; itemId: string; itemName: string; partnerName: string; qty: number; category: string }[]) => void;
+  onLoadHistoricalOrders?: (start: string, end: string) => Promise<void>;
+  isLoadingHistoricalOrders?: boolean;
 }
 
 interface OrderCardProps {
@@ -870,6 +872,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
   onHighlightClear,
   newOrderId,
   onNewOrderIdClear,
+  onLoadHistoricalOrders,
+  isLoadingHistoricalOrders = false,
 }) => {
   // Compute derived variables
   const products = items;
@@ -1361,6 +1365,19 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 <input type="date" value={historyDateTo} onChange={e => setHistoryDateTo(e.target.value)} className="flex-1 text-[10px] px-2 py-1 rounded-xl border border-slate-200 bg-white outline-none" />
                 {hasHistoryFilter && <button onClick={() => { setHistorySearch(''); setHistoryDateFrom(''); setHistoryDateTo(''); }} className="text-[10px] text-slate-400 hover:text-slate-600 px-1">✕</button>}
               </div>
+              {onLoadHistoricalOrders && (
+                <button
+                  onClick={() => {
+                    const from = historyDateFrom || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+                    const to = historyDateTo || new Date().toISOString().slice(0, 10);
+                    onLoadHistoricalOrders(from, to);
+                  }}
+                  disabled={isLoadingHistoricalOrders}
+                  className="w-full py-1.5 rounded-xl text-[11px] font-black bg-slate-700 text-white hover:bg-slate-800 disabled:opacity-50 transition-all"
+                >
+                  {isLoadingHistoricalOrders ? '불러오는 중…' : `📂 이력 불러오기 (${historyDateFrom || '30일 전'} ~ ${historyDateTo || '오늘'})`}
+                </button>
+              )}
             </div>
             <div className="p-5 space-y-6">
               {(['스마트스토어', '택배', '일반'] as OrderSource[]).map(source => (

@@ -143,8 +143,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
     rawMaterialLedger, sesameInputLedger,
     appNotifications, workOrderItems, issuedStatements,
     itemFormulas, itemBoms, shippingRules, returnRequests, companyInfo, inventorySnapshots, productionSalesLogs, isDataLoading,
-    pendingStatementEdits,
+    pendingStatementEdits, refreshStaticData,
+    historicalOrders, loadHistoricalOrders, isLoadingHistoricalOrders,
   } = appData;
+
+  // 활성 주문 + 불러온 이력 주문 통합
+  const allOrders = useMemo(
+    () => [...orders, ...historicalOrders],
+    [orders, historicalOrders]
+  );
   const receivedOrders = purchaseOrders.filter(po => po.status === 'received');
 
 
@@ -247,7 +254,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // itemFormulas가 있으면 Firestore item_formula 사용, 없으면 PRODUCT_FORMULA fallback
   const autoRawMaterialUsage = useMemo<Array<{material: string; date: string; used: number; note: string}>>(() => {
     const dayMap: Record<string, Record<string, { used: number; partners: string[] }>> = {};
-    for (const o of orders.filter(o => o.status === OrderStatus.DELIVERED && o.deliveredAt)) {
+    for (const o of allOrders.filter(o => o.status === OrderStatus.DELIVERED && o.deliveredAt)) {
       const dateStr = o.deliveredAt!.slice(0, 10);
       const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '';
       for (const item of o.items) {
@@ -1211,13 +1218,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'orders' && (
             <OrdersList
-              orders={orders}
+              orders={allOrders}
               partners={partners}
               items={allItems}
               shippingRules={shippingRules}
               itemBoms={itemBoms}
+              isLoadingHistoricalOrders={isLoadingHistoricalOrders}
+              onLoadHistoricalOrders={loadHistoricalOrders}
               onDeleteOrder={(id) => {
-                const o = orders.find(x => x.id === id);
+                const o = allOrders.find(x => x.id === id);
                 if (o?.status === OrderStatus.DELIVERED) { alert('예전 주문은 삭제할 수 없습니다.'); return; }
                 deleteItem('orders', id);
               }}
@@ -3112,19 +3121,19 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   });
                 }}
                 onDeleteCost={(id) => deleteItem('fixedCosts', id)}
-                onAddTemplate={async (data) => { await addItem('fixedCostTemplates', { ...data, id: `fct-${Date.now()}` }); }}
-                onUpdateTemplate={(id, data) => updateItem('fixedCostTemplates', id, data)}
-                onDeleteTemplate={(id) => deleteItem('fixedCostTemplates', id)}
+                onAddTemplate={async (data) => { await addItem('fixedCostTemplates', { ...data, id: `fct-${Date.now()}` }); refreshStaticData(); }}
+                onUpdateTemplate={async (id, data) => { await updateItem('fixedCostTemplates', id, data); refreshStaticData(); }}
+                onDeleteTemplate={async (id) => { await deleteItem('fixedCostTemplates', id); refreshStaticData(); }}
                 partners={partners}
                 items={allItems}
                 onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
                 accountGroups={appData.accountGroups}
                 accountCodes={appData.accountCodes}
-                onUpdateAccountCode={(id, data) => updateItem('accountCodes', id, data)}
-                onAddAccountCode={async (data) => addItem('accountCodes', { ...data, id: `ac-${Date.now()}` }) as Promise<string>}
-                onDeleteAccountCode={(id) => deleteItem('accountCodes', id)}
-                onAddAccountGroup={async (data) => addItem('accountGroups', { ...data, id: `ag-${Date.now()}` }) as Promise<string>}
-                onDeleteAccountGroup={(id) => deleteItem('accountGroups', id)}
+                onUpdateAccountCode={(id, data) => { updateItem('accountCodes', id, data); refreshStaticData(); }}
+                onAddAccountCode={async (data) => { const id = await addItem('accountCodes', { ...data, id: `ac-${Date.now()}` }); refreshStaticData(); return id; } }
+                onDeleteAccountCode={(id) => { deleteItem('accountCodes', id); refreshStaticData(); }}
+                onAddAccountGroup={async (data) => { const id = await addItem('accountGroups', { ...data, id: `ag-${Date.now()}` }); refreshStaticData(); return id; }}
+                onDeleteAccountGroup={(id) => { deleteItem('accountGroups', id); refreshStaticData(); }}
                 inventorySnapshots={inventorySnapshots}
                 onSaveInventorySnapshot={async (data) => { await addItem('inventorySnapshots', { ...data, id: `inv-snap-${data.yearMonth}` }); }}
               />
@@ -3289,21 +3298,25 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     const current = partnerOut.filter(pc => pc.Item_ID === itemId).map(pc => pc.Partner_ID);
                     if (!current.includes(partnerId)) {
                       await setProductClients(itemId, [...current, partnerId]);
+                      refreshStaticData();
                     }
                   }}
                   onUnlinkItem={async (itemId, partnerId) => {
                     const current = partnerOut.filter(pc => pc.Item_ID === itemId).map(pc => pc.Partner_ID);
                     await setProductClients(itemId, current.filter(id => id !== partnerId));
+                    refreshStaticData();
                   }}
                   onLinkSupplier={async (itemId, partnerId) => {
                     const current = partnerItems.filter(pi => pi.Item_ID === itemId && pi.Direction === 'in').map(pi => pi.Partner_ID);
                     if (!current.includes(partnerId)) {
                       await setProductSuppliers(itemId, [...current, partnerId]);
+                      refreshStaticData();
                     }
                   }}
                   onUnlinkSupplier={async (itemId, partnerId) => {
                     const current = partnerItems.filter(pi => pi.Item_ID === itemId && pi.Direction === 'in').map(pi => pi.Partner_ID);
                     await setProductSuppliers(itemId, current.filter(id => id !== partnerId));
+                    refreshStaticData();
                   }}
                   onMergeItems={async (keepId, deleteIds) => {
                     const { getDocs, query: q, collection: col, where, writeBatch: wb, doc: d } = await import('firebase/firestore');
@@ -3337,17 +3350,20 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       Object.entries(rest).filter(([, v]) => v !== undefined)
                     );
                     await fUpdate(fDoc(fireDb, 'partner_item', id), data);
+                    refreshStaticData();
                   }}
                   onSaveShippingRule={async (rule: Partial<import('../../shared/types').ShippingRule> & { id: string }) => {
                     const { doc: fDoc, updateDoc: fUpdate } = await import('firebase/firestore');
                     const { db: fireDb } = await import('../../shared/firebase');
                     const { id, ...data } = rule;
                     await fUpdate(fDoc(fireDb, 'shipping_rule', id), data);
+                    refreshStaticData();
                   }}
                   onAddShippingRule={async (rule: Omit<import('../../shared/types').ShippingRule, 'id'>) => {
                     const { addDoc, collection: col } = await import('firebase/firestore');
                     const { db: fireDb } = await import('../../shared/firebase');
                     await addDoc(col(fireDb, 'shipping_rule'), rule);
+                    refreshStaticData();
                   }}
                 />
               )}
@@ -3487,14 +3503,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
             const { db: fireDb } = await import('../../shared/firebase');
             const { id, ...data } = rule;
             await fUpdate(fDoc(fireDb, 'shipping_rule', id), data);
+            refreshStaticData();
           }}
           onAddShippingRule={async (rule: Omit<ShippingRule, 'id'>) => {
             const { addDoc, collection: col } = await import('firebase/firestore');
             const { db: fireDb } = await import('../../shared/firebase');
             await addDoc(col(fireDb, 'shipping_rule'), rule);
+            refreshStaticData();
           }}
-          onUpsertPartnerItem={(ps: PartnerItem) => addItem('partner_item', { ...ps, Partner_ID: ps.partnerId ?? ps.Partner_ID, Item_ID: ps.itemId ?? ps.Item_ID, Direction: ps.Direction ?? 'in' as const })}
-          onDeletePartnerItem={(id: string) => deleteItem('partner_item', id)}
+          onUpsertPartnerItem={(ps: PartnerItem) => { addItem('partner_item', { ...ps, Partner_ID: ps.partnerId ?? ps.Partner_ID, Item_ID: ps.itemId ?? ps.Item_ID, Direction: ps.Direction ?? 'in' as const }); refreshStaticData(); }}
+          onDeletePartnerItem={(id: string) => { deleteItem('partner_item', id); refreshStaticData(); }}
           onAddSubmaterial={async (name, category) => {
             const unit = category === '라벨' ? '매' : '개';
             const id = await addItem('items', { name, category, stock: 0, minStock: 0, unit, price: 0, image: '' });
