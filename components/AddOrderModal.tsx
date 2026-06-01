@@ -97,7 +97,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
     return products
       .filter(p => {
         if (p.archived) return false;
-        if (p.category !== 'product' || p.subtype === '향미유' || p.subtype === '고춧가루') return false;
+        const isOrderable = p.category === 'product' || p.category === 'giftset';
+        if (!isOrderable || p.subtype === '향미유' || p.subtype === '고춧가루') return false;
         if (p.partnerIds?.includes(selectedClient.id)) return true;
         // 스마트스토어 타입 거래처 선택 시 SMARTSTORE 태그 제품도 표시
         if (selectedClient.type === '스마트스토어' && p.partnerIds?.includes('SMARTSTORE')) return true;
