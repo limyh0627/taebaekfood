@@ -102,6 +102,7 @@ import {
   setProductClients,
   setProductSuppliers,
   setDocument,
+  fetchDateRange,
 } from '../../shared/services/firebaseService';
 import type { AppData } from '../../shared/hooks/useAppData';
 import type { AdminData } from '../../hooks/useAdminData';
@@ -145,13 +146,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
     itemFormulas, itemBoms, shippingRules, returnRequests, companyInfo, inventorySnapshots, productionSalesLogs, isDataLoading,
     pendingStatementEdits, refreshStaticData,
     historicalOrders, loadHistoricalOrders, isLoadingHistoricalOrders,
+    ordersMonths, setOrdersMonths,
   } = appData;
 
-  // 활성 주문 + 불러온 이력 주문 통합
-  const allOrders = useMemo(
-    () => [...orders, ...historicalOrders],
-    [orders, historicalOrders]
-  );
+  // 활성 주문 + 불러온 이력 주문 통합 (id 중복 제거)
+  const allOrders = useMemo(() => {
+    const map = new Map<string, typeof orders[number]>();
+    for (const o of historicalOrders) map.set(o.id, o);
+    for (const o of orders) map.set(o.id, o); // 실시간이 더 최신이므로 덮어씀
+    return Array.from(map.values());
+  }, [orders, historicalOrders]);
   const receivedOrders = purchaseOrders.filter(po => po.status === 'received');
 
 
@@ -186,6 +190,23 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [isMobile, setIsMobile] = useState(false);
   const [showQrLabel, setShowQrLabel] = useState(false);
   const [selectedLog, setSelectedLog] = useState<import('../../shared/types').ProductionSalesLog | null>(null);
+
+  // 라이브 구독은 7일치만 → 서류관리 > 생산판매기록부 월별 조회를 위해 24개월치 온디맨드 로드
+  const [extraProductionLogs, setExtraProductionLogs] = useState<import('../../shared/types').ProductionSalesLog[]>([]);
+  useEffect(() => {
+    const to = new Date().toISOString().slice(0, 10);
+    const fromDate = new Date(); fromDate.setMonth(fromDate.getMonth() - 24);
+    const from = fromDate.toISOString().slice(0, 10);
+    fetchDateRange<import('../../shared/types').ProductionSalesLog>('productionSalesLogs', 'date', from, to)
+      .then(setExtraProductionLogs)
+      .catch(e => console.error('[AdminApp] 과거 생산판매기록 로드 실패:', e));
+  }, []);
+  const mergedProductionSalesLogs = useMemo(() => {
+    const map = new Map<string, import('../../shared/types').ProductionSalesLog>();
+    extraProductionLogs.forEach(l => map.set(l.id, l));
+    productionSalesLogs.forEach(l => map.set(l.id, l));
+    return Array.from(map.values());
+  }, [productionSalesLogs, extraProductionLogs]);
 
   // 지난달 기말재고 스냅샷 자동 저장 (없을 때만)
   useEffect(() => {
@@ -402,7 +423,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       await addItem('adjustmentRequests', {
         id: `REORDER-${subId}-${Date.now()}`,
         itemId: subId,
-        itemName: data.name,
+        itemName: data.name || sub.name || subId,
         originalQuantity: sub.stock,
         requestedQuantity: shortage,
         type: 'reorder_alert',
@@ -1176,7 +1197,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               <div className="flex-1 overflow-y-auto">
                 {currentView === 'dashboard' && (
                   <Dashboard
-                    orders={orders}
+                    orders={allOrders}
                     items={allItems}
                     partners={partners}
                     partnerItems={partnerItems}
@@ -1184,7 +1205,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   />
                 )}
                 {currentView === 'ai-consultant' && (
-                  <AIConsultant orders={orders} items={allItems} />
+                  <AIConsultant orders={allOrders} items={allItems} />
                 )}
               </div>
             </div>
@@ -1225,6 +1246,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
               itemBoms={itemBoms}
               isLoadingHistoricalOrders={isLoadingHistoricalOrders}
               onLoadHistoricalOrders={loadHistoricalOrders}
+              ordersMonths={ordersMonths}
+              onChangeOrdersMonths={setOrdersMonths}
               onDeleteOrder={(id) => {
                 const o = allOrders.find(x => x.id === id);
                 if (o?.status === OrderStatus.DELIVERED) { alert('예전 주문은 삭제할 수 없습니다.'); return; }
@@ -1368,7 +1391,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     items={allItems}
                     partners={partners}
                     partnerItems={partnerItems}
-                    orders={orders}
+                    orders={allOrders}
                     issuedStatements={issuedStatements}
                     currentUser={{ id: currentUser.id, name: currentUser.name }}
                     isAdmin={isAdmin}
@@ -1386,7 +1409,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     items={allItems}
                     partners={partners}
                     partnerItems={partnerItems}
-                    orders={orders}
+                    orders={allOrders}
                     issuedStatements={issuedStatements}
                     currentUser={{ id: currentUser.id, name: currentUser.name }}
                     isAdmin={isAdmin}
@@ -1470,10 +1493,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {currentView === 'partners' && <PartnerManager partners={partners} onUpdateClient={(c) => updateItem('partners', c.id, c)} onAddClient={(c) => addItem('partners', c)} onDeleteClient={(id) => deleteItem('partners', id)} />}
           {currentView === 'notice' && <NoticeBoard posts={noticePosts} onAddPost={(post) => addItem('notices', post)} />}
           {currentView === 'pallets' && (
-            <PalletManager 
-              pallets={pallets} 
-              orders={orders} 
-              partners={partners} 
+            <PalletManager
+              pallets={pallets}
+              orders={allOrders}
+              partners={partners}
               palletTransactions={palletTransactions}
               onUpdatePallet={(p) => updateItem('pallets', p.id, p)} 
               onAddPalletTransaction={(t) => addItem('palletTransactions', t)}
@@ -2305,7 +2328,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 </div>
 
                 {docTab === '생산판매기록부' && isAdmin && (() => {
-                  const allLogs = [...productionSalesLogs].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+                  const allLogs = [...mergedProductionSalesLogs].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
                   const logs = allLogs.filter(log => (log.date ?? '').slice(0, 7) === docLogMonth);
                   return (
                     <div className="space-y-3">
@@ -3010,7 +3033,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           })()}
           {currentView === 'trade-statement' && (
             <TradeStatement
-              orders={orders}
+              orders={allOrders}
               allItems={allItems}
               partners={partners}
               partnerItems={partnerItems}
@@ -3187,7 +3210,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'smartstore-analytics' && (
             <SmartStoreAnalytics
-              orders={orders}
+              orders={allOrders}
               partners={partners}
               items={allItems}
               onUpdateItem={(id, data) => updateItem('items', id, data)}
@@ -3203,7 +3226,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               <ReturnManager
                 items={allItems}
                 partners={partners}
-                orders={orders}
+                orders={allOrders}
                 issuedStatements={issuedStatements}
                 currentUser={{ id: currentUser.id, name: currentUser.name }}
                 isAdmin={isAdmin}
@@ -3216,7 +3239,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               <ProductionManager
                 records={productionRecords}
                 items={allItems}
-                orders={orders}
+                orders={allOrders}
                 onAdd={(record) => addItem('productionRecords', record)}
                 onDelete={(id) => deleteItem('productionRecords', id)}
                 onUpdate={(id, updates) => updateItem('productionRecords', id, updates)}
@@ -3227,6 +3250,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {currentView === 'confirmation-items' && (
             <ConfirmationItems
               requests={adjustmentRequests}
+              items={allItems}
               isAdmin={isAdmin}
               onUpdateStatus={(id, status) => updateItem('adjustmentRequests', id, { status, processedAt: new Date().toISOString() })}
               onProcessAdjustment={async (req) => {

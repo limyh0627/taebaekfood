@@ -34,7 +34,8 @@ interface ScanFormItem {
 }
 
 interface ReceivingReturnsManagerProps {
-  submaterials: SubmaterialComponent[];items;
+  submaterials: SubmaterialComponent[];
+  items: Item[];
   partners: Partner[];
   partnerItems?: import('../src/shared/types').PartnerItem[];
   orders: Order[];

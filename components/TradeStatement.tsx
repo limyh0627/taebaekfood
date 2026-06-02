@@ -292,6 +292,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [histTypeFilter, setHistTypeFilter] = useState<'전체' | '매출' | '매입'>('전체');
   const [histSearch, setHistSearch] = useState('');
   const [histQuick, setHistQuick] = useState<'당일'|'금주'|'당월'|'당년'|'ALL'|''>('당월');
+  // 발행내역 페이지네이션
+  const HIST_PAGE_SIZE = 50;
+  const [historyPage, setHistoryPage] = useState(1);
 
   // ── 발행내역 온디맨드 fetch (7일 이전 데이터) ──
   const [extraStatements, setExtraStatements] = useState<IssuedStatement[]>([]);
@@ -1413,6 +1416,16 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       }); // 오래된→최신
   }, [allTimelineRows, histFrom, histTo, histTypeFilter, histSearch]);
 
+  // 페이지네이션: 필터 변경 시 1페이지로 리셋, 최신 페이지부터 보여줌
+  useEffect(() => { setHistoryPage(1); }, [histFrom, histTo, histTypeFilter, histSearch]);
+  const historyTotalPages = Math.max(1, Math.ceil(filteredHistory.length / HIST_PAGE_SIZE));
+  const pagedHistory = useMemo(() => {
+    // 최신순(역방향)으로 표시하기 위해 뒤에서부터 슬라이싱
+    const reversed = [...filteredHistory].reverse();
+    const start = (historyPage - 1) * HIST_PAGE_SIZE;
+    return reversed.slice(start, start + HIST_PAGE_SIZE);
+  }, [filteredHistory, historyPage]);
+
   // 거래처별 미수금/미지급금 총합 맵 (전체 전표 기준)
   const partnerBalanceMap = useMemo(() => {
     const map = new Map<string, { receivable: number; payable: number }>();
@@ -2027,7 +2040,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {filteredHistory.map(row => {
+              {pagedHistory.map(row => {
                 if (row.kind === 'pay') {
                   // ── 수금/지불 행 ──
                   const label = row.stmtType === '매출' ? '수금' : '지불';
@@ -2111,6 +2124,43 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               })}
             </tbody>
           </table>
+        )}
+        {/* 페이지네이션 */}
+        {filteredHistory.length > HIST_PAGE_SIZE && (
+          <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-slate-100 bg-slate-50/40">
+            <span className="text-[11px] text-slate-400 font-bold">
+              {(historyPage - 1) * HIST_PAGE_SIZE + 1}–{Math.min(historyPage * HIST_PAGE_SIZE, filteredHistory.length)} / {filteredHistory.length}건
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setHistoryPage(1)}
+                disabled={historyPage === 1}
+                className="px-2.5 py-1 rounded-lg text-[11px] font-black border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed">
+                « 최신
+              </button>
+              <button
+                onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
+                disabled={historyPage === 1}
+                className="px-2.5 py-1 rounded-lg text-[11px] font-black border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed">
+                ‹ 이전
+              </button>
+              <span className="px-2.5 py-1 rounded-lg text-[11px] font-black bg-slate-700 text-white">
+                {historyPage} / {historyTotalPages}
+              </span>
+              <button
+                onClick={() => setHistoryPage(p => Math.min(historyTotalPages, p + 1))}
+                disabled={historyPage === historyTotalPages}
+                className="px-2.5 py-1 rounded-lg text-[11px] font-black border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed">
+                다음 ›
+              </button>
+              <button
+                onClick={() => setHistoryPage(historyTotalPages)}
+                disabled={historyPage === historyTotalPages}
+                className="px-2.5 py-1 rounded-lg text-[11px] font-black border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed">
+                과거 »
+              </button>
+            </div>
+          </div>
         )}
       </div>
 

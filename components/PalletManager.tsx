@@ -1,11 +1,11 @@
 
-import React, { useState, useMemo } from 'react';
-import { 
-  Layers, 
-  RefreshCw, 
-  Plus, 
-  AlertTriangle, 
-  CheckCircle2, 
+import React, { useState, useMemo, useEffect } from 'react';
+import {
+  Layers,
+  RefreshCw,
+  Plus,
+  AlertTriangle,
+  CheckCircle2,
   Activity,
   Edit2,
   Check,
@@ -15,6 +15,7 @@ import {
   Search
 } from 'lucide-react';
 import { PalletStock, Order, Partner, OrderStatus, PalletTransaction } from '../types';
+import { fetchDateRange } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 
 interface PalletManagerProps {
@@ -26,14 +27,33 @@ interface PalletManagerProps {
   onAddPalletTransaction: (_transaction: PalletTransaction) => void;
 }
 
-const PalletManager: React.FC<PalletManagerProps> = ({ 
-  pallets, 
-  orders, partners, 
-  palletTransactions,
+const PalletManager: React.FC<PalletManagerProps> = ({
+  pallets,
+  orders, partners,
+  palletTransactions: liveTransactions,
   onUpdatePallet,
   onAddPalletTransaction
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'partners'>('partners');
+
+  // 라이브 구독은 7일치만 → 파렛트 잔량 계산에는 과거 누적이 필수이므로 24개월치 온디맨드 로드
+  const [extraTransactions, setExtraTransactions] = useState<PalletTransaction[]>([]);
+  useEffect(() => {
+    const to = new Date().toISOString().slice(0, 10);
+    const fromDate = new Date(); fromDate.setMonth(fromDate.getMonth() - 24);
+    const from = fromDate.toISOString().slice(0, 10);
+    fetchDateRange<PalletTransaction>('palletTransactions', 'date', from, to)
+      .then(setExtraTransactions)
+      .catch(e => console.error('[PalletManager] 과거 파렛트 거래 로드 실패:', e));
+  }, []);
+
+  // 라이브(7일) + 과거(24개월) 병합 — id 기준 dedup, 라이브 우선
+  const palletTransactions = useMemo(() => {
+    const map = new Map<string, PalletTransaction>();
+    extraTransactions.forEach(t => map.set(t.id, t));
+    liveTransactions.forEach(t => map.set(t.id, t));
+    return Array.from(map.values());
+  }, [liveTransactions, extraTransactions]);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<PalletStock | null>(null);

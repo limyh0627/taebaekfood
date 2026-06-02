@@ -85,6 +85,8 @@ interface OrdersListProps {
   onSetWorkOrderItems?: (items: { key: string; orderId: string; itemId: string; itemName: string; partnerName: string; qty: number; category: string }[]) => void;
   onLoadHistoricalOrders?: (start: string, end: string) => Promise<void>;
   isLoadingHistoricalOrders?: boolean;
+  ordersMonths?: number;
+  onChangeOrdersMonths?: (n: number) => void;
 }
 
 interface OrderCardProps {
@@ -874,6 +876,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
   onNewOrderIdClear,
   onLoadHistoricalOrders,
   isLoadingHistoricalOrders = false,
+  ordersMonths,
+  onChangeOrdersMonths,
 }) => {
   // Compute derived variables
   const products = items;
@@ -1002,6 +1006,20 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 </button>
               ))}
             </div>
+            {onChangeOrdersMonths && (
+              <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-2xl px-3 py-2 shadow-sm" title="Firestore 실시간 구독 범위 — 줄이면 읽기 비용 절감">
+                <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">실시간</span>
+                <select
+                  value={ordersMonths ?? 12}
+                  onChange={(e) => onChangeOrdersMonths(parseInt(e.target.value, 10))}
+                  className="text-xs font-black text-slate-700 bg-transparent outline-none cursor-pointer"
+                >
+                  {[1, 3, 6, 12, 24].map(n => (
+                    <option key={n} value={n}>최근 {n}개월</option>
+                  ))}
+                </select>
+              </div>
+            )}
             {onPasteClick && (
               <button onClick={onPasteClick} className="flex items-center gap-1.5 bg-violet-600 text-white px-4 py-2.5 rounded-xl text-sm font-black hover:bg-violet-700 transition-all shadow-sm">
                 <ClipboardPaste size={15} /><span className="hidden sm:inline">복사주문</span>

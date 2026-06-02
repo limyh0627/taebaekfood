@@ -5,11 +5,13 @@ import {
   ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { AdjustmentRequest } from '../types';
+import { Item } from '../src/shared/types';
 import PageHeader from './PageHeader';
 
 interface ConfirmationItemsProps {
   requests: AdjustmentRequest[];
   isAdmin: boolean;
+  items?: Item[];
   onUpdateStatus: (_id: string, _status: 'processed' | 'rejected') => void;
   onProcessAdjustment: (_req: AdjustmentRequest) => void;
   onDelete?: (_id: string) => void;
@@ -17,10 +19,18 @@ interface ConfirmationItemsProps {
 
 const ConfirmationItems: React.FC<ConfirmationItemsProps> = ({
   requests,
+  items = [],
   onUpdateStatus,
   onProcessAdjustment,
   onDelete,
 }) => {
+  const itemNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const it of items) m.set(it.id, it.name);
+    return m;
+  }, [items]);
+  const resolveItemName = (req: AdjustmentRequest) =>
+    req.itemName || itemNameById.get(req.itemId) || '(품목명 없음)';
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const sortedRequests = useMemo(() => {
@@ -101,7 +111,7 @@ const ConfirmationItems: React.FC<ConfirmationItemsProps> = ({
                              req.type === 'reorder_alert' ? <ShoppingCart size={14} /> :
                              <Package size={14} />}
                           </div>
-                          <span className="text-[11px] font-black text-slate-800 whitespace-nowrap">{req.itemName}</span>
+                          <span className={`text-[11px] font-black whitespace-nowrap ${req.itemName ? 'text-slate-800' : 'text-slate-400 italic'}`}>{resolveItemName(req)}</span>
                         </div>
                       </td>
                       <td className="px-3 py-3">

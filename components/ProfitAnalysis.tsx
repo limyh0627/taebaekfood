@@ -897,9 +897,20 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
 
         // ── 전체 거래처 목록 (매출 + 매입 포함) ──
         const currentYear = new Date().getFullYear();
-        const allClientIds = new Set(issuedStatements.map(s => s.partnerId));
+        // 거래처 마스터를 우선 사용 → 전표에 박제된 옛 이름/오타 방지
+        const partnerById = new Map(partners.map(p => [p.id, p]));
+        // 일부 전표는 partnerName 필드에 literal ID(c-1778504018504 등)가 잘못 저장돼 있음 → ID 형태면 무시
+        const looksLikeId = (s: string) => !s || /^(c|p|pt|po|stmt)-\d+/.test(s.trim());
+        const resolveName = (id: string) => {
+          const master = partnerById.get(id)?.name;
+          if (master && !looksLikeId(master)) return master;
+          const fromStmt = issuedStatements.find(s => s.partnerId === id && s.partnerName && !looksLikeId(s.partnerName))?.partnerName;
+          if (fromStmt) return fromStmt;
+          return master || '(이름 미지정)';
+        };
+        const allClientIds = new Set(issuedStatements.map(s => s.partnerId).filter(Boolean));
         const allClientList = [...allClientIds].map(id => {
-          const name = issuedStatements.find(s => s.partnerId === id)?.partnerName ?? id;
+          const name = resolveName(id);
           const salesS = issuedStatements.filter(s => s.partnerId === id && s.type === '매출');
           const purchaseS = issuedStatements.filter(s => s.partnerId === id && s.type === '매입');
           const receivable = salesS.reduce((a, s) => a + getBalance(s), 0);
@@ -910,7 +921,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           .sort((a, b) => (b.receivable + b.payable) - (a.receivable + a.payable));
 
         const selId = statsClientId;
-        const selName = allClientList.find(c => c.id === selId)?.name ?? '';
+        const selName = selId ? resolveName(selId) : '';
         const selSalesStmts = issuedStatements.filter(s => s.partnerId === selId && s.type === '매출').sort((a, b) => b.tradeDate.localeCompare(a.tradeDate));
         const selPurchaseStmts = issuedStatements.filter(s => s.partnerId === selId && s.type === '매입').sort((a, b) => b.tradeDate.localeCompare(a.tradeDate));
         const yearSalesStmts = selSalesStmts.filter(s => s.tradeDate.startsWith(String(statsYear)));
@@ -1241,7 +1252,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
                 <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4">
                   <h3 className="text-sm font-black text-slate-800">{payTarget.type === '매출' ? '수금 등록 — 미수금 감소' : '지불 등록 — 미지급금 감소'}</h3>
-                  <div className="text-xs text-slate-400">{payTarget.partnerName} · {payTarget.tradeDate}</div>
+                  <div className="text-xs text-slate-400">{resolveName(payTarget.partnerId)} · {payTarget.tradeDate}</div>
                   <div className="bg-slate-50 rounded-xl px-4 py-3 text-xs text-center">
                     <span className="text-slate-500">잔여 {payTarget.type === '매출' ? '미수금' : '미지급금'} </span>
                     <span className="font-black text-rose-600 text-base">{fmt(getBalance(payTarget))}원</span>

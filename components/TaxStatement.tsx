@@ -5,10 +5,12 @@ import {
   Receipt, Eye, Calendar, Building2, ChevronDown, ChevronUp, Edit2, Trash2, Package,
 } from 'lucide-react';
 import { Partner, IssuedStatement, CompanyInfo } from '../types';
+import { fetchDateRange } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 
 interface TaxStatementProps {
-  issuedStatements: IssuedStatement[];partners;
+  issuedStatements: IssuedStatement[];
+  partners: Partner[];
   companyInfo?: CompanyInfo | null;
   onUpdateIssuedStatement?: (id: string, data: Partial<IssuedStatement>) => void;
 }
@@ -16,11 +18,42 @@ interface TaxStatementProps {
 const fmt = (n: number) => n.toLocaleString('ko-KR');
 
 const TaxStatement: React.FC<TaxStatementProps> = ({
-  issuedStatements, partners,
+  issuedStatements: liveStatements, partners,
   companyInfo,
   onUpdateIssuedStatement,
 }) => {
   const [activeTab, setActiveTab] = useState<'issue' | 'history'>('issue');
+
+  // 라이브 구독은 7일치만 → 과거 12개월치를 온디맨드로 추가 로드
+  const [extraStatements, setExtraStatements] = useState<IssuedStatement[]>([]);
+  useEffect(() => {
+    const to = new Date().toISOString().slice(0, 10);
+    const fromDate = new Date(); fromDate.setMonth(fromDate.getMonth() - 12);
+    const from = fromDate.toISOString().slice(0, 10);
+    fetchDateRange<IssuedStatement>('issuedStatements', 'tradeDate', from, to)
+      .then(data => setExtraStatements(data.map(s => ({
+        ...s,
+        items: s.items ?? [],
+        payments: s.payments ?? [],
+        tradeDate: s.tradeDate ?? '',
+        issuedAt: s.issuedAt ?? '',
+      }))))
+      .catch(e => console.error('[TaxStatement] 과거 전표 로드 실패:', e));
+  }, []);
+
+  // 라이브(7일) + 과거(12개월) 병합 — id 기준 dedup, 라이브 우선
+  const issuedStatements = useMemo(() => {
+    const map = new Map<string, IssuedStatement>();
+    extraStatements.forEach(s => map.set(s.id, s));
+    liveStatements.forEach(s => map.set(s.id, s));
+    return Array.from(map.values());
+  }, [liveStatements, extraStatements]);
+
+  // 과거 전표를 업데이트할 때 라이브 구독이 잡지 못하므로 로컬 캐시도 갱신
+  const handleUpdateStatement = (id: string, data: Partial<IssuedStatement>) => {
+    onUpdateIssuedStatement?.(id, data);
+    setExtraStatements(prev => prev.map(s => s.id === id ? { ...s, ...data } : s));
+  };
 
   // ── 발행 탭 상태 ──
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
@@ -154,7 +187,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   const handleTaxIssue = () => {
     if (selectedStmts.length === 0) return;
     const issuedAt = new Date().toISOString();
-    selectedStmts.forEach(s => onUpdateIssuedStatement?.(s.id, { taxIssuedAt: issuedAt }));
+    selectedStmts.forEach(s => handleUpdateStatement(s.id, { taxIssuedAt: issuedAt }));
     setTaxStmtIds([]);
   };
 

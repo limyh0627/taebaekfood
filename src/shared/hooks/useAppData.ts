@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
-  Order, OrderStatus, Item, Partner, PartnerItem, Post,
+  Order, Item, Partner, PartnerItem, Post,
   PalletStock, PalletTransaction, Employee, LeaveRequest,
   AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry,
   AppNotification, IssuedStatement,
@@ -69,6 +69,8 @@ export interface AppData {
   historicalOrders: Order[];
   loadHistoricalOrders: (start: string, end: string) => Promise<void>;
   isLoadingHistoricalOrders: boolean;
+  ordersMonths: number;
+  setOrdersMonths: (n: number) => void;
 }
 
 export function useAppData(): AppData {
@@ -105,21 +107,34 @@ export function useAppData(): AppData {
   const [historicalOrders, setHistoricalOrders] = useState<Order[]>([]);
   const [isLoadingHistoricalOrders, setIsLoadingHistoricalOrders] = useState(false);
   const [isDataLoading, setIsDataLoading] = useState(true);
+  const [ordersMonths, setOrdersMonthsState] = useState<number>(() => {
+    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('tb_orders_months') : null;
+    const n = saved ? parseInt(saved, 10) : 12;
+    return Number.isFinite(n) && n > 0 ? n : 12;
+  });
+  const setOrdersMonths = useCallback((n: number) => {
+    setOrdersMonthsState(n);
+    try { localStorage.setItem('tb_orders_months', String(n)); } catch {}
+  }, []);
   const loadedRef = useRef(new Set<string>());
   // 정적 데이터 새로고침 트리거
   const [staticRefreshKey, setStaticRefreshKey] = useState(0);
   const refreshStaticData = useCallback(() => setStaticRefreshKey(k => k + 1), []);
 
+  const loadedHistoricalRangeRef = useRef<{ start: string; end: string } | null>(null);
   const loadHistoricalOrders = useCallback(async (start: string, end: string) => {
+    // 이미 같거나 더 넓은 범위를 로드했으면 skip
+    const prev = loadedHistoricalRangeRef.current;
+    if (prev && prev.start <= start && prev.end >= end) return;
     setIsLoadingHistoricalOrders(true);
     try {
       const { where } = await import('firebase/firestore');
       const data = await fetchCollection<Order>('orders', [
-        where('status', '==', OrderStatus.DELIVERED),
-        where('deliveredAt', '>=', start + 'T00:00:00.000Z'),
-        where('deliveredAt', '<=', end + 'T23:59:59.999Z'),
+        where('createdAt', '>=', start + 'T00:00:00.000Z'),
+        where('createdAt', '<=', end + 'T23:59:59.999Z'),
       ]);
       setHistoricalOrders(data);
+      loadedHistoricalRangeRef.current = { start, end };
     } finally {
       setIsLoadingHistoricalOrders(false);
     }
@@ -147,7 +162,6 @@ export function useAppData(): AppData {
         subscribeToCollection<LeaveRequest>('leaveRequests', setLeaveRequests),
         subscribeToCollection<AdjustmentRequest>('adjustmentRequests', setAdjustmentRequests),
         subscribeToCollection<PurchaseOrder>('purchaseOrders', setPurchaseOrders),
-        subscribeToCollection<Order>('orders', (data) => { setOrders(data); markLoaded('orders'); }, [where('status', '!=', OrderStatus.DELIVERED)]),
         subscribeToCollection<Item>('items', (data) => { setItems(data); markLoaded('items'); }),
         subscribeToCollection<Partner>('partners', setPartners),
         subscribeToCollection<ChatRoom>('chatRooms', setChatRooms),
@@ -183,6 +197,25 @@ export function useAppData(): AppData {
       unsubscribes.forEach(u => u());
     };
   }, []);
+
+  // ── orders 구독 — ordersMonths 변경 시 재구독 ──
+  useEffect(() => {
+    let unsub: (() => void) | null = null;
+    let cancelled = false;
+    authReady.then(() => {
+      if (cancelled) return;
+      const cutoff = new Date(Date.now() - ordersMonths * 30 * 86400000).toISOString();
+      unsub = subscribeToCollection<Order>(
+        'orders',
+        (data) => { setOrders(data); markLoaded('orders'); },
+        [where('createdAt', '>=', cutoff)],
+      );
+    });
+    return () => {
+      cancelled = true;
+      if (unsub) unsub();
+    };
+  }, [ordersMonths]);
 
   // ── 1회 읽기 (거의 안 바뀌는 정적 데이터) — refreshStaticData() 호출 시 재로드 ──
   useEffect(() => {
@@ -232,5 +265,7 @@ export function useAppData(): AppData {
     historicalOrders,
     loadHistoricalOrders,
     isLoadingHistoricalOrders,
+    ordersMonths,
+    setOrdersMonths,
   };
 }

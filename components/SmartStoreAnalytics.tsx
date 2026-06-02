@@ -4,7 +4,9 @@ import { TrendingUp, Users, RefreshCw, ChevronDown, ChevronUp, Tag, Check, X } f
 import PageHeader from './PageHeader';
 
 interface Props {
-  orders: Order[];partners;items;
+  orders: Order[];
+  partners: Partner[];
+  items: Item[];
   onUpdateItem: (id: string, data: Partial<Item>) => void;
 }
 

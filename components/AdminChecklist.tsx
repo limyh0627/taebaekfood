@@ -6,7 +6,7 @@ import {
   ClipboardList, RotateCcw, Building2, FileText, History, Link2,
   X, Loader2, Check, Plus,
 } from 'lucide-react';
-import { LeaveRequest, AdjustmentRequest, Employee, ReturnRequest, ReturnItem, IssuedStatement, IssuedStatementItem, Partner, PendingStatementEdit, Item, PartnerItem, PurchaseOrder, PurchaseOrderItem } from '../src/shared/types';
+import { LeaveRequest, AdjustmentRequest, Employee, ReturnRequest, ReturnItem, IssuedStatement, IssuedStatementItem, Partner, PendingStatementEdit, Item, PartnerItem, PurchaseOrder, PurchaseOrderItem, poLines } from '../src/shared/types';
 import { addItem, updateItem } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 
@@ -35,7 +35,8 @@ type TabType = 'leave' | 'adjustment' | 'ops';
 
 interface StatementDraftItem { name: string; qty: string; price: string; unit: string; isTaxExempt: boolean; }
 interface StatementDraft {
-  receipt: PurchaseOrder;
+  receipt: PurchaseOrder;     // 표시용 대표 PO (pos[0])
+  pos: PurchaseOrder[];        // 발행 시 일괄 상태전환할 PO들 (단일/묶음 모두)
   partnerId: string;
   tradeDate: string;
   items: StatementDraftItem[];
@@ -113,29 +114,33 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
   );
   const totalPending = pendingLeaves.length + pendingAdjustments.length + pendingReturns.length + pendingStmtEdits.length;
 
-  // 발주 예정: 거래처(공급처)별 그룹화 — 거래처 미지정 품목은 각각 별도 그룹으로 분리
+  // 발주 예정 거래처별 묶음: 같은 partnerId는 한 묶음, 미지정은 PO별 별도 묶음
   const orderGroups = useMemo(() => {
-    const map = new Map<string, { partnerId: string; partnerName: string; items: Array<{ itemId: string; name: string; spec: string; qty: number; price: number; isBox: boolean }> }>();
-    for (const req of orderRequests) {
-      const product = items.find(p => p.id === req.id);
-      if (!product) continue;
-      const ps = partnerItems.find(s => (s.Item_ID === req.id || s.itemId === req.id) && s.Direction === 'in');
-      const realSupplierId = ps?.Partner_ID ?? ps?.partnerId;
-      const groupKey = realSupplierId ?? `unknown__${req.id}`;
-      const partnerId = realSupplierId ?? '';
-      const partnerName = realSupplierId ? (partners.find(c => c.id === realSupplierId)?.name ?? realSupplierId) : '미지정';
-      if (!map.has(groupKey)) map.set(groupKey, { partnerId, partnerName, items: [] });
-      map.get(groupKey)!.items.push({
-        itemId: req.id,
-        name: product.name,
-        spec: (product as any).spec || product.unit || '',
-        qty: req.quantity,
-        price: ps?.Standard_Price ?? ps?.price ?? 0,
-        isBox: req.isBox ?? false,
-      });
+    const map = new Map<string, { key: string; partnerId: string; partnerName: string; pos: PurchaseOrder[]; lines: PurchaseOrderItem[] }>();
+    for (const po of orderRequests) {
+      // PO에 partnerId 저장돼있으면 우선 사용, 없으면 첫 라인 partner_item에서 추정
+      let resolvedPartnerId: string | undefined = po.partnerId;
+      let resolvedPartnerName: string | undefined = po.partnerName;
+      const lines = poLines(po);
+      if (!resolvedPartnerId && lines[0]) {
+        const ps = partnerItems.find(s => (s.Item_ID === lines[0].itemId || s.itemId === lines[0].itemId) && s.Direction === 'in');
+        resolvedPartnerId = ps?.Partner_ID ?? ps?.partnerId;
+        if (resolvedPartnerId && !resolvedPartnerName) {
+          resolvedPartnerName = partners.find(c => c.id === resolvedPartnerId)?.name ?? resolvedPartnerId;
+        }
+      }
+      // 미지정이면 PO별로 고유키 → 별도 행, 지정이면 partnerId로 묶음
+      const groupKey = resolvedPartnerId ?? `unknown__${po.id}`;
+      const partnerName = resolvedPartnerName ?? '미지정';
+      if (!map.has(groupKey)) {
+        map.set(groupKey, { key: groupKey, partnerId: resolvedPartnerId ?? '', partnerName, pos: [], lines: [] });
+      }
+      const g = map.get(groupKey)!;
+      g.pos.push(po);
+      g.lines.push(...lines);
     }
-    return Array.from(map.entries()).map(([key, g]) => ({ ...g, key }));
-  }, [orderRequests, items, partnerItems, partners]);
+    return Array.from(map.values());
+  }, [orderRequests, partnerItems, partners]);
 
   const getAdjTypeLabel = (type: string) => {
     if (type === 'quantity_change') return '수량 변동';
@@ -216,28 +221,57 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
     }
   };
 
+  // 라인 → 드래프트 아이템 변환 (단가/세금 자동 채움)
+  const lineToDraftItem = (line: PurchaseOrderItem): StatementDraftItem => {
+    const pi = partnerItems.find(p =>
+      (p.Item_ID ?? (p as any).itemId) === line.itemId && p.Direction === 'in'
+    );
+    const item = items.find(it => it.id === line.itemId);
+    return {
+      name: line.name || item?.name || '',
+      qty: line.quantity.toString(),
+      price: (pi?.Standard_Price ?? pi?.price ?? 0).toString(),
+      unit: line.unit || item?.unit || '',
+      isTaxExempt: pi?.taxType === '면세',
+    };
+  };
+
+  // 단일 PO 모달 (선입고 이력에서 사용)
+  // tradeDate: 선입고는 receivedAt(실제 입고일), 그 외엔 오늘. PO의 createdAt(과거)은 사용하지 않음 —
+  // useAppData가 issuedStatements를 최근 7일치만 구독해서, 과거 날짜로 발행하면 화면에서 누락됨
   const openStatementModal = (po: PurchaseOrder) => {
     const matchedClient = partners.find(c =>
       c.id === po.partnerId ||
       c.name === po.partnerName ||
       (po.partnerName && (c.name.includes(po.partnerName) || po.partnerName.includes(c.name)))
     );
+    const lines = poLines(po);
     setStatementDraft({
       receipt: po,
+      pos: [po],
       partnerId: matchedClient?.id ?? po.partnerId ?? '',
       tradeDate: po.receivedAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
-      items: (po.items ?? []).map((item: PurchaseOrderItem) => {
-        const pi = partnerItems.find(p =>
-          (p.Item_ID ?? (p as any).itemId) === item.itemId && p.Direction === 'in'
-        );
-        return {
-          name: item.name,
-          qty: item.quantity.toString(),
-          price: (pi?.Standard_Price ?? pi?.price ?? 0).toString(),
-          unit: item.unit,
-          isTaxExempt: pi?.taxType === '면세',
-        };
-      }),
+      items: lines.map(lineToDraftItem),
+    });
+  };
+
+  // 묶음 PO 모달 (발주 예정에서 같은 거래처를 묶어 한 번에 발행)
+  // tradeDate는 오늘 (발주 등록일 아님). 비즈니스 의미상 매입전표 거래일 = 발행 당일
+  const openStatementModalForGroup = (groupPos: PurchaseOrder[], groupPartnerId: string, groupPartnerName: string) => {
+    if (groupPos.length === 0) return;
+    const matchedClient = partners.find(c =>
+      c.id === groupPartnerId ||
+      c.name === groupPartnerName ||
+      (groupPartnerName && (c.name.includes(groupPartnerName) || groupPartnerName.includes(c.name)))
+    );
+    const allLines = groupPos.flatMap(p => poLines(p));
+    const firstPo = groupPos[0];
+    setStatementDraft({
+      receipt: firstPo,
+      pos: groupPos,
+      partnerId: matchedClient?.id ?? groupPartnerId ?? firstPo.partnerId ?? '',
+      tradeDate: new Date().toISOString().slice(0, 10),
+      items: allLines.map(lineToDraftItem),
     });
   };
 
@@ -272,9 +306,17 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
         totalAmount: totalSupply + totalTax,
         items: stmtItems,
       } as Omit<IssuedStatement, 'id'>);
-      await updateItem('purchaseOrders', statementDraft.receipt.id, {
-        linkedStatementId: stmtId,
-      });
+      // 묶음 발행 시 묶인 모든 PO를 일괄 업데이트
+      // 발주 예정(pending)에서 발행하면 status를 invoiced(입고대기)로 전환
+      // (재고 가산과 received 전환은 별도 "입고확인" 단계에서 handleFinishConfirmedOrder가 처리)
+      const nowIso = new Date().toISOString();
+      await Promise.all(statementDraft.pos.map(po => {
+        const isPending = po.status === 'pending';
+        return updateItem('purchaseOrders', po.id, {
+          linkedStatementId: stmtId,
+          ...(isPending ? { status: 'invoiced', invoicedAt: nowIso } : {}),
+        });
+      }));
       setStatementDraft(null);
     } finally {
       setStatementSaving(false);
@@ -454,7 +496,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                           <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${req.type === 'chat_mention' ? 'bg-indigo-100 text-indigo-600' : req.type === 'reorder_alert' ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-400'}`}>
                             {req.type === 'chat_mention' ? <AtSign size={14} /> : req.type === 'reorder_alert' ? <ShoppingCart size={14} /> : <Package size={14} />}
                           </div>
-                          <span className="text-[11px] font-black text-slate-800 whitespace-nowrap">{req.itemName}</span>
+                          <span className={`text-[11px] font-black whitespace-nowrap ${req.itemName ? 'text-slate-800' : 'text-slate-400 italic'}`}>{req.itemName || items.find(i => i.id === req.itemId)?.name || '(품목명 없음)'}</span>
                         </div>
                       </td>
                       <td className="px-3 py-3"><span className={`px-2 py-1 rounded-lg text-[10px] font-black whitespace-nowrap ${getAdjTypeClass(req.type)}`}>{getAdjTypeLabel(req.type)}</span></td>
@@ -636,27 +678,45 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                 </td></tr>
                 {orderGroups.length === 0 ? (
                   <tr><td colSpan={6} className="px-6 py-5 text-center text-xs text-slate-300">발주 예정 품목 없음</td></tr>
-                ) : orderGroups.map(group => (
-                  <tr key={group.key} className="hover:bg-slate-50/50 transition-colors border-b border-slate-50">
-                    <td className="px-3 py-3"><span className="px-2 py-1 rounded-lg text-[10px] font-black bg-orange-50 text-orange-600 whitespace-nowrap">발주예정</span></td>
-                    <td className="px-3 py-3 text-[10px] text-slate-400">-</td>
-                    <td className="px-3 py-3"><span className="text-[11px] font-black text-slate-800">{group.partnerName}</span></td>
-                    <td className="px-3 py-3">
-                      <div className="space-y-0.5">
-                        {group.items.slice(0, 2).map((item, i) => (<div key={i} className="text-[10px] text-slate-600 whitespace-nowrap">{item.name} · {item.isBox ? `${item.qty}BOX` : `${item.qty}${item.spec || ''}`}{item.price > 0 ? ` · ${item.price.toLocaleString()}원` : ''}</div>))}
-                        {group.items.length > 2 && <div className="text-[10px] text-slate-400">+{group.items.length - 2}건</div>}
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-right"><span className="text-[11px] font-black text-slate-400">{group.items.length}품목</span></td>
-                    <td className="px-3 py-3">
-                      <div className="flex items-center justify-center">
-                        {onCreatePurchaseStatement && (
-                          <button onClick={() => onCreatePurchaseStatement({ partnerId: group.partnerId, partnerName: group.partnerName, items: group.items.map(i => ({ name: i.name, spec: i.spec, qty: i.qty, price: i.price, isBox: i.isBox })) })} className="flex items-center gap-1 px-2 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-[10px] font-black transition-colors whitespace-nowrap"><FileText size={11} />매입전표 작성</button>
+                ) : orderGroups.map(group => {
+                  // 그룹 대표일자: 묶인 PO 중 가장 빠른 createdAt
+                  const repDate = [...group.pos]
+                    .map(p => p.createdAt ?? '')
+                    .sort()[0] ?? '';
+                  const isUnknown = !group.partnerId;
+                  return (
+                    <tr key={group.key} className="hover:bg-slate-50/50 transition-colors border-b border-slate-50">
+                      <td className="px-3 py-3">
+                        <span className={`px-2 py-1 rounded-lg text-[10px] font-black whitespace-nowrap ${isUnknown ? 'bg-slate-50 text-slate-500' : 'bg-orange-50 text-orange-600'}`}>
+                          {isUnknown ? '미지정' : '발주예정'}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3"><div className="flex items-center space-x-1 text-slate-500"><Clock size={12} className="shrink-0" /><span className="text-[10px] font-bold whitespace-nowrap">{repDate.slice(5, 10).replace('-', '.')}</span></div></td>
+                      <td className="px-3 py-3">
+                        <span className={`text-[11px] font-black ${isUnknown ? 'text-slate-400' : 'text-slate-800'}`}>{group.partnerName}</span>
+                        {!isUnknown && group.pos.length > 1 && (
+                          <span className="ml-1.5 text-[9px] font-black bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded">묶음 {group.pos.length}건</span>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="space-y-0.5">
+                          {group.lines.slice(0, 2).map((line, i) => (<div key={i} className="text-[10px] text-slate-600 whitespace-nowrap">{line.name} × {line.quantity.toLocaleString()} {line.unit}</div>))}
+                          {group.lines.length > 2 && <div className="text-[10px] text-slate-400">+{group.lines.length - 2}건</div>}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-right"><span className="text-[11px] font-black text-slate-400">{group.lines.length}품목</span></td>
+                      <td className="px-3 py-3">
+                        <div className="flex items-center justify-center">
+                          <button
+                            onClick={() => openStatementModalForGroup(group.pos, group.partnerId, group.partnerName)}
+                            className="flex items-center gap-1 px-2 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-[10px] font-black transition-all shadow-sm whitespace-nowrap">
+                            <FileText size={11} /> 매입전표 작성
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
