@@ -55,6 +55,7 @@ import {
   TrendingUp,
   Activity,
   ShieldAlert,
+  UserPlus,
 } from 'lucide-react';
 import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, PaymentRecord, ShippingRule, poLines } from '../../shared/types';
 import Dashboard from '../../../components/Dashboard';
@@ -78,6 +79,7 @@ import PriceManager from '../../../components/PriceManager';
 import TaxStatement from '../../../components/TaxStatement';
 import OfficeTalk from '../../../components/OfficeTalk';
 import AdminChecklist from '../../../components/AdminChecklist';
+import PartnerSignupApproval from '../../../components/PartnerSignupApproval';
 import type * as ExcelJSType from 'exceljs';
 
 const InboundScan = React.lazy(() => import('../../../components/InboundScan'));
@@ -106,7 +108,15 @@ import {
 } from '../../shared/services/firebaseService';
 import type { AppData } from '../../shared/hooks/useAppData';
 import type { AdminData } from '../../hooks/useAdminData';
-import { collection, getDocs, writeBatch, doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, writeBatch, doc, getDoc, setDoc, deleteDoc, onSnapshot, query, where } from 'firebase/firestore';
+
+// 거래처 주문 포털(웹) URL — .env의 VITE_PARTNER_PORTAL_URL로 운영 도메인 지정 가능
+const PARTNER_PORTAL_URL =
+  (import.meta.env.VITE_PARTNER_PORTAL_URL as string | undefined) || 'http://localhost:3000';
+
+const openPartnerPortal = () => {
+  window.open(PARTNER_PORTAL_URL, '_blank', 'noopener,noreferrer');
+};
 
 interface AdminAppProps {
   currentUser: Employee;
@@ -190,6 +200,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [isMobile, setIsMobile] = useState(false);
   const [showQrLabel, setShowQrLabel] = useState(false);
   const [selectedLog, setSelectedLog] = useState<import('../../shared/types').ProductionSalesLog | null>(null);
+
+  // 거래처 가입승인 대기 카운트 (web 홈페이지에서 가입한 users 중 status='pending')
+  const [pendingSignupCount, setPendingSignupCount] = useState(0);
+  useEffect(() => {
+    if (!isAdmin) return;
+    const qy = query(collection(db, 'users'), where('status', '==', 'pending'));
+    const unsub = onSnapshot(qy, (snap) => setPendingSignupCount(snap.size), () => setPendingSignupCount(0));
+    return unsub;
+  }, [isAdmin]);
 
   // 라이브 구독은 7일치만 → 서류관리 > 생산판매기록부 월별 조회를 위해 24개월치 온디맨드 로드
   const [extraProductionLogs, setExtraProductionLogs] = useState<import('../../shared/types').ProductionSalesLog[]>([]);
@@ -1035,6 +1054,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       <NavItem icon={UserCheck} label="인사 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={Users} label="거래처 관리" active={currentView === 'partners'} onClick={() => handleNavClick('partners')} collapsed={isSidebarCollapsed} />
+                      <NavItem icon={UserPlus} label="거래처 가입승인" active={currentView === 'partner-signup'} onClick={() => handleNavClick('partner-signup')} collapsed={isSidebarCollapsed} badge={pendingSignupCount > 0 ? pendingSignupCount : undefined} />
                       <NavItem icon={ClipboardList} label="확인사항" active={currentView === 'admin-checklist'} onClick={() => handleNavClick('admin-checklist')} collapsed={isSidebarCollapsed} badge={adminPendingCount > 0 ? adminPendingCount : undefined} />
                       <NavItem icon={QrCode} label="QR 라벨 인쇄" active={false} onClick={() => setShowQrLabel(true)} collapsed={isSidebarCollapsed} />
                     </nav>
@@ -1043,7 +1063,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">외부 서비스</p>}
                     <nav className="space-y-1">
                       <button
-                        onClick={() => setCurrentView('partner-portal')}
+                        onClick={openPartnerPortal}
                         title={isSidebarCollapsed ? "거래처 주문 포털" : undefined}
                         className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between px-4'} py-3 rounded-xl text-slate-500 hover:bg-cyan-50 hover:text-cyan-600 transition-all group`}
                       >
@@ -1082,7 +1102,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">외부 서비스</p>}
                   <nav className="space-y-1">
                     <button
-                      onClick={() => setCurrentView('partner-portal')}
+                      onClick={openPartnerPortal}
                       title={isSidebarCollapsed ? "거래처 주문 포털" : undefined}
                       className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between px-4'} py-3 rounded-xl text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 transition-all group`}
                     >
@@ -1561,6 +1581,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 setCurrentView('trade-statement' as ViewType);
               }}
             />
+          )}
+          {currentView === 'partner-signup' && (
+            <PartnerSignupApproval partners={partners} />
           )}
           {currentView === 'documents' && (() => {
             const SUB_ONLY_CATS = new Set(['container', 'cap', 'tape', 'box', 'label', 'raw']);
