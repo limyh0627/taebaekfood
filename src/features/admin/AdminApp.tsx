@@ -96,7 +96,7 @@ const TradeStatement = React.lazy(() => import('../../../components/TradeStateme
 const ProfitAnalysis = React.lazy(() => import('../../../components/ProfitAnalysis'));
 
 import { db } from '../../shared/firebase';
-import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg } from '../../constants/formula';
+import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf } from '../../constants/formula';
 import {
   addItem,
   updateItem,
@@ -1397,6 +1397,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     used: 0,
                     note: `${entry.material} 압착 (수율 ${rate * 100}%)`,
                     createdAt: new Date().toISOString(),
+                    unit: unitOf(product),
                   });
                 }
               }}
@@ -2562,7 +2563,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       ws.columns = [
                         { width: 12 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 30 }
                       ];
-                      const hRow = ws.addRow(['날짜', '전재고(kg)', '입고량(kg)', '사용량(kg)', '현재고(kg)', '비고']);
+                      const u = unitOf(mat);
+                      const hRow = ws.addRow(['날짜', `전재고(${u})`, `입고량(${u})`, `사용량(${u})`, `현재고(${u})`, '비고']);
                       hRow.font = { bold: true, size: 9 };
                       const border = { top: { style: 'thin' as const }, bottom: { style: 'thin' as const }, left: { style: 'thin' as const }, right: { style: 'thin' as const } };
                       hRow.eachCell(c => { c.border = border; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } }; });
@@ -2625,10 +2627,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-100">
                               <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase">날짜</th>
-                              <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">전재고(kg)</th>
-                              <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">입고량(kg)</th>
-                              <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">사용량(kg)</th>
-                              <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">현재고(kg)</th>
+                              <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">전재고({unitOf(rmActiveMaterial)})</th>
+                              <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">입고량({unitOf(rmActiveMaterial)})</th>
+                              <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">사용량({unitOf(rmActiveMaterial)})</th>
+                              <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">현재고({unitOf(rmActiveMaterial)})</th>
                               <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase">비고</th>
                               <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase"></th>
                             </tr>
@@ -2680,7 +2682,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                           <option value="neg">사용량 감소 (−)</option>
                                           <option value="pos">사용량 증가 (+)</option>
                                         </select>
-                                        <input type="number" min="0" step="0.001" placeholder="수량(kg)" value={rmCorrectionForm.amount}
+                                        <input type="number" min="0" step="0.001" placeholder={`수량(${unitOf(rmActiveMaterial)})`} value={rmCorrectionForm.amount}
                                           onChange={e => setRmCorrectionForm(f => ({ ...f, amount: e.target.value }))}
                                           className="border border-amber-300 rounded-lg px-2 py-1 text-[11px] w-24 outline-none focus:border-amber-500" />
                                         <input type="text" placeholder="비고" value={rmCorrectionForm.note}
@@ -2700,6 +2702,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                               note: rmCorrectionForm.note || `정정 (원본: ${row.id})`,
                                               createdAt: new Date().toISOString(),
                                               type: 'correction',
+                                              unit: unitOf(rmActiveMaterial),
                                             });
                                             setRmCorrectionTargetId(null);
                                           }}

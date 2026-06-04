@@ -28,6 +28,16 @@ export const RM_LIST = [
   '통깨참기름', '깨분참기름', '통들깨들기름', '수입들기름',
 ];
 
+/** 원료별 운영 단위 (입고/사용·원료수불부 표기 단위) */
+export type RawUnit = 'kg' | 'L';
+export const RM_UNITS: Record<string, RawUnit> = {
+  '참깨': 'kg', '들깨': 'kg', '검정깨': 'kg', '탈피들깨가루': 'kg', '깨분': 'kg',
+  '볶음참깨': 'kg', '볶음들깨': 'kg', '볶음검정참깨': 'kg',
+  '통깨참기름': 'L', '깨분참기름': 'L', '통들깨들기름': 'L', '수입들기름': 'L',
+  '생들기름': 'L',
+};
+export const unitOf = (material: string): RawUnit => RM_UNITS[material] ?? 'kg';
+
 /** 제품 용량 문자열 + 원료명 + 수량 → kg 환산 */
 export function toKg(용량: string, raw: string, qty: number): number {
   const m = 용량.match(/^([\d.]+)\s*(ml|l|g|kg)/i);

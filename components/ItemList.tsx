@@ -29,6 +29,8 @@ import { PurchaseOrder, poLines } from '../src/shared/types';
 import AddItemModal from './AddItemModal';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
+import RawMaterialEntryModal from './RawMaterialEntryModal';
+import { RM_LIST, unitOf } from '../src/constants/formula';
 
 const normCat = (cat: string): string =>
   ({ product: '완제품', goods: '상품', container: '용기', cap: '마개', tape: '테이프', box: '박스', label: '라벨' } as Record<string, string>)[cat] ?? cat;
@@ -166,6 +168,15 @@ const ItemList: React.FC<ItemListProps> = ({
   const [inboundSubTab, setInboundSubTab] = useState<InboundSubTab>('입고');
   const [showInboundOverlay, setShowInboundOverlay] = useState(false);
   const [showReturnOverlay, setShowReturnOverlay] = useState(false);
+  // 원료재고 입고/사용 기록 모달
+  const [rawEntryModal, setRawEntryModal] = useState<{ mode: 'inbound' | 'usage' } | null>(null);
+  // 저장 완료 토스트 (원료 입출고 기록 등)
+  const [toast, setToast] = useState<{ message: string } | null>(null);
+  React.useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2200);
+    return () => clearTimeout(t);
+  }, [toast]);
   const [historyMonth, setHistoryMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [activeCategory, setActiveCategory] = useState<string>('전체');
   const [activeSupplierId, setActiveSupplierId] = useState<string>('전체');
@@ -451,6 +462,25 @@ const ItemList: React.FC<ItemListProps> = ({
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full bg-white border border-slate-200 rounded-2xl pl-9 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 shadow-sm transition-all"
                 />
+              </div>
+            )}
+            {/* 원료재고 탭 전용: 입고/사용 기록 버튼 */}
+            {activeTab === 'master' && topTab === 'rawmaterial' && (
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  type="button"
+                  onClick={() => setRawEntryModal({ mode: 'inbound' })}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-all shadow-sm"
+                >
+                  <Inbox size={13} /><span>입고 기록</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRawEntryModal({ mode: 'usage' })}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-xs font-black transition-all shadow-sm"
+                >
+                  <FileDown size={13} /><span>사용 기록</span>
+                </button>
               </div>
             )}
           </div>
@@ -1224,6 +1254,86 @@ const ItemList: React.FC<ItemListProps> = ({
           </div>
         )}
 
+        {/* ── 원료재고 최근 입출고 기록 ── */}
+        {activeTab === 'master' && topTab === 'rawmaterial' && (() => {
+          const recent = [...rawMaterialLedger]
+            .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+            .slice(0, 10);
+          return (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mt-4">
+              <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <History size={14} className="text-slate-400" />
+                  <h3 className="text-xs font-black text-slate-700 uppercase tracking-wider">최근 입출고 기록</h3>
+                  <span className="text-[10px] font-black text-slate-300">최근 10건</span>
+                </div>
+              </div>
+              {recent.length === 0 ? (
+                <div className="px-5 py-8 text-center text-xs font-bold text-slate-300">기록 없음</div>
+              ) : (
+                <ul className="divide-y divide-slate-50">
+                  {recent.map((r) => {
+                    const u = r.unit ?? unitOf(r.material);
+                    const isInbound = (r.received ?? 0) > 0;
+                    const isUsage = (r.used ?? 0) > 0;
+                    const isCorrectionNeg = (r.used ?? 0) < 0;
+                    const amt = isInbound ? r.received : Math.abs(r.used);
+                    const sign = isInbound || isCorrectionNeg ? '+' : '−';
+                    const tone = isInbound
+                      ? 'text-emerald-600'
+                      : isCorrectionNeg
+                        ? 'text-violet-600'
+                        : 'text-rose-500';
+                    const isMine = !!currentUser?.name && r.addedBy === currentUser.name;
+                    const typeBadge = r.type === 'auto'
+                      ? { label: '자동', cls: 'bg-blue-50 text-blue-600' }
+                      : r.type === 'correction'
+                        ? { label: '정정', cls: 'bg-amber-50 text-amber-700' }
+                        : { label: '수동', cls: 'bg-slate-50 text-slate-500' };
+                    const canDelete = !!isAdmin && r.type !== 'auto' && !!r.id;
+                    return (
+                      <li key={r.id} className="px-5 py-3 flex items-center gap-3 hover:bg-slate-50/60 transition-colors">
+                        <div className="w-16 text-[11px] font-bold text-slate-500 shrink-0">{r.date}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs font-black text-slate-800">{r.material}</span>
+                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${typeBadge.cls}`}>{typeBadge.label}</span>
+                            {isMine && <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600">본인</span>}
+                          </div>
+                          {(r.addedBy || r.note) && (
+                            <p className="text-[10px] text-slate-400 mt-0.5 truncate">
+                              {r.addedBy && <span className="mr-2">{r.addedBy}</span>}
+                              {r.note && <span>{r.note}</span>}
+                            </p>
+                          )}
+                        </div>
+                        <div className={`text-xs font-black ${tone} text-right shrink-0`}>
+                          {sign}{amt}{u}
+                        </div>
+                        {canDelete && (
+                          <button
+                            onClick={() => {
+                              if (confirm(`${r.material} 기록을 삭제할까요?`)) onDeleteRawMaterialEntry(r.id!);
+                            }}
+                            className="ml-1 px-2 py-1 rounded-lg text-[10px] font-black bg-slate-100 text-slate-400 hover:bg-rose-100 hover:text-rose-500 transition-colors shrink-0"
+                          >
+                            삭제
+                          </button>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {!isAdmin && recent.length > 0 && (
+                <p className="px-5 py-2 text-[10px] text-slate-400 border-t border-slate-100">
+                  수정 · 삭제는 관리자만 가능합니다.
+                </p>
+              )}
+            </div>
+          );
+        })()}
+
         {/* ── 행 수정 모달 ── */}
         {rowEditProduct && (
           <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4">
@@ -1747,6 +1857,41 @@ const ItemList: React.FC<ItemListProps> = ({
           onConfirm={confirmModal.onConfirm}
           onCancel={() => setConfirmModal(null)}
         />
+      )}
+
+      <RawMaterialEntryModal
+        open={!!rawEntryModal}
+        mode={rawEntryModal?.mode ?? 'inbound'}
+        materials={RM_LIST as unknown as string[]}
+        currentUserName={currentUser?.name}
+        onClose={() => setRawEntryModal(null)}
+        onSubmit={async (entry) => {
+          // 원료수불부에 기록
+          await onAddRawMaterialEntry(entry);
+          // 같은 이름의 raw 품목이 있으면 재고관리 stock도 즉시 동기화 (모달 입력 단위 = items.unit 가정)
+          const delta = (entry.received ?? 0) - (entry.used ?? 0);
+          if (delta !== 0) {
+            const target = items.find((i) => i.category === 'raw' && i.name === entry.material);
+            if (target) {
+              onUpdateItem({ ...target, stock: (target.stock ?? 0) + delta });
+            }
+          }
+          // 저장 완료 토스트
+          const amt = entry.received > 0 ? entry.received : Math.abs(entry.used);
+          const action = entry.received > 0 ? '입고' : '사용';
+          const u = entry.unit ?? 'kg';
+          setToast({ message: `${entry.material} ${amt}${u} ${action} 기록이 저장되었습니다` });
+        }}
+      />
+
+      {/* 저장 토스트 */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[1200] pointer-events-none">
+          <div className="bg-slate-900/90 backdrop-blur-sm text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
+            <ClipboardCheck size={14} className="text-emerald-400" />
+            <span>{toast.message}</span>
+          </div>
+        </div>
       )}
 
       {/* ── 발주 확정 모달 ── */}
