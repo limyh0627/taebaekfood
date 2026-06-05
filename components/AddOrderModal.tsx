@@ -591,8 +591,9 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                   displayProducts.map(product => {
                     const selection = selectedItems.find(i => String(i.itemId).trim() === String(product.id).trim());
                     const isSelected = !!selection;
+                    const isSesameOil = /참기름/.test(product.name);
                     return (
-                      <div key={product.id} onClick={() => toggleProduct(product.id)} className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col gap-2 ${isSelected ? 'bg-white border-indigo-500 shadow-md ring-1 ring-indigo-500' : 'bg-white border-slate-100 hover:border-indigo-200'}`}>
+                      <div key={product.id} onClick={() => toggleProduct(product.id)} className={`p-3 rounded-2xl border-2 transition-all cursor-pointer flex flex-col gap-2 ${isSelected ? 'bg-white border-indigo-500 shadow-md ring-1 ring-indigo-500' : isSesameOil ? 'bg-white border-red-400 hover:border-red-500' : 'bg-white border-slate-100 hover:border-indigo-200'}`}>
                         <div className="flex items-center gap-2">
                           <span className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 ${isSelected ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}>{product.category}</span>
                           <div className="flex flex-col min-w-0">
