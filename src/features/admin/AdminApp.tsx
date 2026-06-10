@@ -1389,6 +1389,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 };
                 if (entry.used > 0 && YIELD_AUTO[entry.material] && entry.note !== '재고실사정정') {
                   const { product, rate } = YIELD_AUTO[entry.material];
+                  // entry.used가 이미 kg 단위(modal이 변환해서 저장)이므로 수율 곱한 결과도 kg
                   await addItem('rawMaterialLedger', {
                     id: `rm-yield-${Date.now()}`,
                     material: product,
@@ -1397,7 +1398,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     used: 0,
                     note: `${entry.material} 압착 (수율 ${rate * 100}%)`,
                     createdAt: new Date().toISOString(),
-                    unit: unitOf(product),
+                    unit: 'kg', // canonical
                   });
                 }
               }}
@@ -2534,10 +2535,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   };
 
                   // 수불부 행 계산 — DB 데이터만 사용 (auto/manual/correction 모두 포함)
+                  // 옛 데이터(unit==='L')는 표시 시점에 ×density 환산 → 모두 kg 단위로 통일
                   const buildLedger = (material: string) => {
+                    const density = DENSITY[material] ?? 1.0;
                     const dbEntries: UsageRow[] = rawMaterialLedger
                       .filter(e => e.material === material)
-                      .map(e => ({ date: e.date, received: e.received, used: e.used, note: e.note, type: (e.type || 'manual') as UsageRow['type'], id: e.id }));
+                      .map(e => {
+                        const isLegacyL = e.unit === 'L' && density !== 1.0;
+                        const received = isLegacyL ? Math.round(e.received * density * 1000) / 1000 : e.received;
+                        const used     = isLegacyL ? Math.round(e.used     * density * 1000) / 1000 : e.used;
+                        return { date: e.date, received, used, note: e.note, type: (e.type || 'manual') as UsageRow['type'], id: e.id };
+                      });
                     const derivedEntries = calcDerivedReceived(material);
                     const allEntries = [...dbEntries, ...derivedEntries].sort((a, b) => a.date.localeCompare(b.date));
                     // 전재고 계산 (월 이전 누적)
@@ -2563,8 +2571,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       ws.columns = [
                         { width: 12 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 30 }
                       ];
-                      const u = unitOf(mat);
-                      const hRow = ws.addRow(['날짜', `전재고(${u})`, `입고량(${u})`, `사용량(${u})`, `현재고(${u})`, '비고']);
+                      // 수불부는 모든 원료를 kg로 통일 표시 (L 입력 데이터는 buildLedger에서 환산됨)
+                      const hRow = ws.addRow(['날짜', '전재고(kg)', '입고량(kg)', '사용량(kg)', '현재고(kg)', '비고']);
                       hRow.font = { bold: true, size: 9 };
                       const border = { top: { style: 'thin' as const }, bottom: { style: 'thin' as const }, left: { style: 'thin' as const }, right: { style: 'thin' as const } };
                       hRow.eachCell(c => { c.border = border; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } }; });
@@ -2627,10 +2635,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-100">
                               <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase">날짜</th>
-                              <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">전재고({unitOf(rmActiveMaterial)})</th>
-                              <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">입고량({unitOf(rmActiveMaterial)})</th>
-                              <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">사용량({unitOf(rmActiveMaterial)})</th>
-                              <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">현재고({unitOf(rmActiveMaterial)})</th>
+                              <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">전재고(kg)</th>
+                              <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">입고량(kg)</th>
+                              <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">사용량(kg)</th>
+                              <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">현재고(kg)</th>
                               <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase">비고</th>
                               <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase"></th>
                             </tr>
@@ -2692,17 +2700,25 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                           onClick={async () => {
                                             const amt = parseFloat(rmCorrectionForm.amount);
                                             if (!amt || amt <= 0) return;
-                                            const correctionUsed = rmCorrectionForm.isNegative ? -amt : amt;
+                                            // L 입력은 kg으로 환산해서 저장 (수불부 canonical 단위)
+                                            const inputUnit = unitOf(rmActiveMaterial);
+                                            const density = DENSITY[rmActiveMaterial] ?? 1.0;
+                                            const amtKg = inputUnit === 'L' ? Math.round(amt * density * 1000) / 1000 : amt;
+                                            const correctionUsed = rmCorrectionForm.isNegative ? -amtKg : amtKg;
+                                            const baseNote = rmCorrectionForm.note || `정정 (원본: ${row.id})`;
+                                            const inputTag = inputUnit === 'L' ? ` · 사용자 입력: ${amt}L` : '';
                                             await addItem('rawMaterialLedger', {
                                               id: `rm-corr-${Date.now()}`,
                                               material: rmActiveMaterial,
                                               date: rmCorrectionForm.date,
                                               received: 0,
                                               used: correctionUsed,
-                                              note: rmCorrectionForm.note || `정정 (원본: ${row.id})`,
+                                              note: baseNote + inputTag,
                                               createdAt: new Date().toISOString(),
                                               type: 'correction',
-                                              unit: unitOf(rmActiveMaterial),
+                                              unit: 'kg',
+                                              originalAmount: amt,
+                                              originalUnit: inputUnit,
                                             });
                                             setRmCorrectionTargetId(null);
                                           }}

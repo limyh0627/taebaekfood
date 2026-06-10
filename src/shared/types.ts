@@ -507,6 +507,9 @@ export interface RawMaterialEntry {
   canSizeTag?: string;  // 단위 추가 레이블 (예: '자루', '톤백')
   canCount?: number;    // 단위 수량 (몇 개)
   unit?: 'kg' | 'L';    // 운영 단위 — 미설정(legacy)이면 RM_UNITS 매핑으로 추정 (constants/formula.ts:unitOf)
+                        // 신규 entry는 모두 'kg'로 저장 (canonical). 'L'은 옛 데이터 또는 정정 시 호환용
+  originalAmount?: number;   // 사용자가 친 원본 값 (단위 환산 전)
+  originalUnit?: 'kg' | 'L'; // 사용자가 친 원본 단위
 }
 
 

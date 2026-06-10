@@ -16,6 +16,7 @@ import {
   Item, Partner, Order,
 } from '../src/shared/types';
 import PageHeader from './PageHeader';
+import { RM_LIST, DENSITY } from '../src/constants/formula';
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY ?? '';
 const qrMappingCache = new Map<string, QrMapping>();
@@ -327,7 +328,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         await uploadBytes(storageRef, capturedFile);
         photoUrl = await getDownloadURL(storageRef);
       }
-      const items: PurchaseOrderItem[] = scanItems.map(i => ({
+      const receiptItems: PurchaseOrderItem[] = scanItems.map(i => ({
         itemId: i.submaterialId,
         name: i.name,
         quantity: Number(i.quantity),
@@ -339,16 +340,55 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         quantity: 0,
         partnerName: inboundPartner.name,
         partnerId: inboundPartner.id,
-        items,
+        items: receiptItems,
         photoUrl,
         status: 'received',
         receivedAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
       } as Omit<PurchaseOrder, 'id'>);
-      for (const item of items) {
+      // 재고 가산 — 직접 updateItem을 await로 호출 (이전 fire-and-forget이 가끔 누락됨)
+      // RM_LIST에 있는 원료는 수불부에도 자동 기록
+      const todayDateScan = new Date().toISOString().slice(0, 10);
+      const nowIsoScan = new Date().toISOString();
+      for (const item of receiptItems) {
         if (!item.itemId) continue;
         const sub = submaterials.find(s => s.id === item.itemId);
-        if (sub) onUpdateSubmaterial(sub.id, { stock: (sub.stock ?? 0) + item.quantity });
+        const product = items.find(p => p.id === item.itemId);
+        const currentStock = sub?.stock ?? product?.stock;
+        if (currentStock === undefined) {
+          console.warn('[스캔 입고] items에서 품목을 못 찾음:', item);
+          continue;
+        }
+        try {
+          await updateItem('items', item.itemId, { stock: (currentStock ?? 0) + item.quantity });
+        } catch (err) {
+          console.error('[스캔 입고] 재고 갱신 실패:', item.itemId, err);
+          alert(`재고 갱신 실패 (${item.name}): ${(err as Error)?.message ?? String(err)}`);
+        }
+        // 원료수불부 자동 기록 (RM_LIST 등록된 원료만)
+        if (RM_LIST.includes(item.name)) {
+          const density = DENSITY[item.name] ?? 1.0;
+          const isL = item.unit === 'L';
+          const receivedKg = isL ? Math.round(item.quantity * density * 1000) / 1000 : item.quantity;
+          try {
+            await addItem('rawMaterialLedger', {
+              id: `rm-scan-${Date.now()}-${item.itemId.slice(0, 6)}-${Math.random().toString(36).slice(2, 6)}`,
+              material: item.name,
+              date: todayDateScan,
+              received: receivedKg,
+              used: 0,
+              note: `${inboundPartner.name} 스캔 입고`,
+              createdAt: nowIsoScan,
+              type: 'manual',
+              unit: 'kg',
+              originalAmount: item.quantity,
+              originalUnit: (isL ? 'L' : 'kg'),
+              addedBy: currentUser?.name,
+            });
+          } catch (err) {
+            console.error('[스캔 입고] 수불부 기록 실패:', item.name, err);
+          }
+        }
       }
       setScanSupplierId('');
       setScanSupplierSearch('');
@@ -570,15 +610,47 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         receivedAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
       } as Omit<PurchaseOrder, 'id'>);
+      // 재고 가산 — 직접 updateItem을 await로 호출 (이전 fire-and-forget이 가끔 누락됨)
+      // RM_LIST에 있는 원료는 수불부에도 자동 기록 → 최근 입출고 기록에 표시
+      const todayDate = new Date().toISOString().slice(0, 10);
+      const nowIso = new Date().toISOString();
       for (const item of receiptItems) {
         if (!item.itemId) continue;
         const sub = submaterials.find(s => s.id === item.itemId);
-        if (sub) {
-          onUpdateSubmaterial(sub.id, { stock: (sub.stock ?? 0) + item.quantity });
-        } else {
-          const product = items.find(p => p.id === item.itemId);
-          if (product) {
-            await updateItem('items', product.id, { stock: (product.stock ?? 0) + item.quantity });
+        const product = items.find(p => p.id === item.itemId);
+        const currentStock = sub?.stock ?? product?.stock;
+        if (currentStock === undefined) {
+          console.warn('[선입고] items에서 품목을 못 찾음:', item);
+          continue;
+        }
+        try {
+          await updateItem('items', item.itemId, { stock: (currentStock ?? 0) + item.quantity });
+        } catch (err) {
+          console.error('[선입고] 재고 갱신 실패:', item.itemId, err);
+          alert(`재고 갱신 실패 (${item.name}): ${(err as Error)?.message ?? String(err)}`);
+        }
+        // 원료수불부 자동 기록 (RM_LIST 등록된 원료만)
+        if (RM_LIST.includes(item.name)) {
+          const density = DENSITY[item.name] ?? 1.0;
+          const isL = item.unit === 'L';
+          const receivedKg = isL ? Math.round(item.quantity * density * 1000) / 1000 : item.quantity;
+          try {
+            await addItem('rawMaterialLedger', {
+              id: `rm-rcv-${Date.now()}-${item.itemId.slice(0, 6)}-${Math.random().toString(36).slice(2, 6)}`,
+              material: item.name,
+              date: todayDate,
+              received: receivedKg,
+              used: 0,
+              note: `${partner.name} 선입고`,
+              createdAt: nowIso,
+              type: 'manual',
+              unit: 'kg',
+              originalAmount: item.quantity,
+              originalUnit: (isL ? 'L' : 'kg'),
+              addedBy: currentUser?.name,
+            });
+          } catch (err) {
+            console.error('[선입고] 수불부 기록 실패:', item.name, err);
           }
         }
       }

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { X, Inbox, FileDown, Sparkles } from 'lucide-react';
 import { RawMaterialEntry } from '../types';
-import { unitOf } from '../src/constants/formula';
+import { unitOf, DENSITY } from '../src/constants/formula';
 
 interface Props {
   open: boolean;
@@ -65,17 +65,24 @@ const RawMaterialEntryModal: React.FC<Props> = ({
     setSubmitting(true);
     try {
       const id = mode === 'inbound' ? `rm-in-${Date.now()}` : `rm-use-${Date.now()}`;
+      // L 입력은 저장 시 kg으로 환산. 비고에 원본 입력값 자동 추가
+      const density = DENSITY[material] ?? 1.0;
+      const amtKg = unit === 'L' ? Math.round(amt * density * 1000) / 1000 : amt;
+      const inputTag = unit === 'L' ? ` · 사용자 입력: ${amt}L` : '';
+      const finalNote = (note.trim() + inputTag).trim();
       await onSubmit({
         id,
         material,
         date,
-        received: mode === 'inbound' ? amt : 0,
-        used:     mode === 'usage'   ? amt : 0,
-        note: note.trim(),
+        received: mode === 'inbound' ? amtKg : 0,
+        used:     mode === 'usage'   ? amtKg : 0,
+        note: finalNote,
         createdAt: new Date().toISOString(),
         type: 'manual',
         addedBy: currentUserName,
-        unit,
+        unit: 'kg',          // canonical
+        originalAmount: amt, // 사용자 원본 값
+        originalUnit: unit,  // 'kg' or 'L'
       });
       onClose();
     } finally {
