@@ -35,6 +35,13 @@ import { RM_LIST, unitOf } from '../src/constants/formula';
 const normCat = (cat: string): string =>
   ({ product: '완제품', goods: '상품', container: '용기', cap: '마개', tape: '테이프', box: '박스', label: '라벨' } as Record<string, string>)[cat] ?? cat;
 
+// 품목명 뒤에 용량(spec) 표시 — 이름에 이미 용량 표기(예: "300ML-소주병", "고춧가루 1kg")가 있으면 중복 표시하지 않음
+const hasVolumeInName = (name: string) => /\d+(\.\d+)?\s*(ml|kg|l|g)(?![a-z])/i.test(name);
+const withSpec = (p: { name: string; spec?: string }): string => {
+  const spec = (p.spec ?? '').trim();
+  return spec && !hasVolumeInName(p.name) ? `${p.name}/${spec}` : p.name;
+};
+
 const inferSubtype = (item: { subtype?: string; name: string; category: string }): string => {
   if (item.subtype) return item.subtype;
   const n = item.name;
@@ -331,6 +338,7 @@ const ItemList: React.FC<ItemListProps> = ({
       const q = searchTerm.toLowerCase();
       result = result.filter(p => {
         if (p.name.toLowerCase().includes(q)) return true;
+        if ((p.spec ?? '').toLowerCase().includes(q)) return true;
         const inboundPartnerName = inboundPartners.find(s => s.id === psMap.get(p.id))?.name || '';
         if (inboundPartnerName.toLowerCase().includes(q)) return true;
         const hasPartnerMatch = (p.partnerIds ?? []).some(cid => partners.find(c => c.id === cid)?.name.toLowerCase().includes(q));
@@ -851,7 +859,7 @@ const ItemList: React.FC<ItemListProps> = ({
                         <Package size={20} />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-black text-slate-800 truncate">{product.name}</p>
+                        <p className="text-sm font-black text-slate-800 truncate">{withSpec(product)}</p>
                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">{product.category}</p>
                       </div>
                     </div>
@@ -984,7 +992,7 @@ const ItemList: React.FC<ItemListProps> = ({
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold text-slate-800">{product.name}</span>
+                          <span className="text-sm font-bold text-slate-800">{withSpec(product)}</span>
                           {isCritical && <AlertCircle size={12} className="text-rose-500 shrink-0" />}
                         </div>
                       </td>
@@ -1441,7 +1449,7 @@ const ItemList: React.FC<ItemListProps> = ({
                       return (
                         <div key={item.id} className="px-5 py-3 flex items-center gap-4">
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
+                            <p className="text-sm font-bold text-slate-800 truncate">{withSpec(product)}</p>
                             <div className="flex items-center gap-2 mt-0.5">
                               <p className="text-[10px] text-slate-400">
                                 현재 재고 {product.subtype === '향미유' ? fmtHamiyou(product.stock) : `${product.stock} ${product.unit}`}
@@ -1636,7 +1644,7 @@ const ItemList: React.FC<ItemListProps> = ({
                                 className="w-4 h-4 accent-indigo-600 cursor-pointer shrink-0"
                               />
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
+                                <p className="text-sm font-bold text-slate-800 truncate">{withSpec(product)}</p>
                                 <div className="flex items-center gap-2 mt-0.5">
                                   <p className="text-[10px] text-slate-400">{product.category}</p>
                                   {partnerName && (
@@ -1786,7 +1794,7 @@ const ItemList: React.FC<ItemListProps> = ({
                 return (
                   <div key={item.id} className="bg-slate-50 rounded-2xl border border-slate-100 p-3 flex items-center gap-3">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-slate-800 truncate">{product.name}</p>
+                      <p className="text-sm font-bold text-slate-800 truncate">{withSpec(product)}</p>
                       <p className="text-[10px] text-slate-400 font-medium">현재 재고 {product.subtype === '향미유' ? fmtHamiyou(product.stock) : `${product.stock}${product.unit}`}</p>
                       {product.subtype === '향미유' && (
                         <div className="flex rounded-lg border border-indigo-200 overflow-hidden text-[9px] font-black mt-1 w-fit">
@@ -2259,7 +2267,7 @@ const ItemList: React.FC<ItemListProps> = ({
                         const { boxes, rem } = getBoxInfo(p);
                         return (
                           <React.Fragment key={ci}>
-                            <td className="border border-slate-300 px-1.5 py-1.5 text-slate-800 font-medium text-[11px]">{p.name}</td>
+                            <td className="border border-slate-300 px-1.5 py-1.5 text-slate-800 font-medium text-[11px]">{withSpec(p)}</td>
                             <td className="border border-slate-300 px-1 py-1.5 text-center font-bold text-[11px]">{boxes > 0 ? boxes : '-'}</td>
                             <td className="border border-slate-300 px-1 py-1.5 text-center text-[11px]">{rem > 0 ? rem : (boxes > 0 ? '-' : p.stock)}</td>
                           </React.Fragment>
