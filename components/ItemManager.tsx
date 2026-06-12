@@ -148,23 +148,28 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
       .sort((a, b) => (a.canMerge ? 0 : 1) - (b.canMerge ? 0 : 1));
   }, [products, partnerItems]);
 
+  // 삭제/통합된 품목을 가리키는 유령 연결은 카운트에서 제외 (목록과 개수 일치)
+  const validItemIds = useMemo(() => new Set(items.filter(p => !p.archived).map(p => p.id)), [items]);
+
   const partnerItemCount = useMemo(() => {
     const map = new Map<string, number>();
     for (const pc of partnerOut) {
       const cid = pc.Partner_ID ?? (pc as any).partnerId;
-      if (cid) map.set(cid, (map.get(cid) ?? 0) + 1);
+      const iid = pc.Item_ID ?? (pc as any).itemId;
+      if (cid && validItemIds.has(iid)) map.set(cid, (map.get(cid) ?? 0) + 1);
     }
     return map;
-  }, [partnerItems]);
+  }, [partnerItems, validItemIds]);
 
   const inboundPartnerItemCount = useMemo(() => {
     const map = new Map<string, number>();
     for (const ps of partnerIn) {
       const sid = ps.partnerId ?? ps.Partner_ID;
-      if (sid) map.set(sid, (map.get(sid) ?? 0) + 1);
+      const iid = ps.itemId ?? ps.Item_ID;
+      if (sid && validItemIds.has(iid)) map.set(sid, (map.get(sid) ?? 0) + 1);
     }
     return map;
-  }, [partnerItems]);
+  }, [partnerItems, validItemIds]);
 
   const filteredClients = useMemo(() =>
     activePartnerClients.filter(c =>
