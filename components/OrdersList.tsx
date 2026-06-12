@@ -429,6 +429,12 @@ export const OrderCard = memo<OrderCardProps>(({
                       .filter((p): p is Item => !!p && p.category === 'submaterial');
                     const bomSubIds = new Set(bomSubs.map(p => p.id));
 
+                    // 1.5 BOM 라벨이 삭제된 품목을 가리키면 품목 구성품 스냅샷의 라벨로 보완
+                    const hasBomLabel = bomSubs.some(p => p.subtype === '라벨');
+                    const snapLabels = hasBomLabel ? [] : (productInfo?.submaterials ?? [])
+                      .filter(s => (s.category === '라벨' || s.category === 'label') && !bomSubIds.has(s.id))
+                      .map(s => ({ id: s.id, name: items.find(p => p.id === s.id)?.name ?? s.name }));
+
                     // 2. 박스/테이프: item.boxSubId 스냅샷 우선, 없으면 shipping_rule 조회
                     const packagingSubs: { id: string; name: string }[] = [];
                     const rule = shippingRules.find(r => r.item_id === item.itemId && r.partner_id === order.partnerId);
@@ -437,7 +443,7 @@ export const OrderCard = memo<OrderCardProps>(({
                     if (boxId) { const b = items.find(p => p.id === boxId); if (b && !bomSubIds.has(b.id)) packagingSubs.push({ id: b.id, name: b.name }); }
                     if (tapeId) { const t = items.find(p => p.id === tapeId); if (t && !bomSubIds.has(t.id)) packagingSubs.push({ id: t.id, name: t.name }); }
 
-                    const allSubs = [...bomSubs.map(p => ({ id: p.id, name: p.name })), ...packagingSubs];
+                    const allSubs = [...bomSubs.map(p => ({ id: p.id, name: p.name })), ...snapLabels, ...packagingSubs];
                     if (allSubs.length === 0) return null;
                     return (
                       <div className={`mt-0.5 ${gridCols >= 2 ? 'grid grid-cols-2 md:flex md:flex-wrap md:items-center gap-x-1 gap-y-0.5 md:gap-1 md:pl-[20px]' : 'flex flex-wrap items-center gap-x-1 gap-y-0.5 pl-[20px]'}`}>
