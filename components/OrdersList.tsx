@@ -407,9 +407,9 @@ export const OrderCard = memo<OrderCardProps>(({
                 .replace(/들향기름골드/g, '들향골드').replace(/참향기름/g, '참향')
                 .replace(/들향기름/g, '들향').replace(/맛기름/g, '맛');
               return (
-                <div key={idx} className="flex flex-col border-b border-slate-50 pb-1 last:border-0">
+                <div key={idx} className="flex flex-col border-b border-slate-50 pb-1 last:border-0 cursor-pointer select-none" onClick={(e) => { e.stopPropagation(); onToggleItemChecked?.(order.id, idx, currentUserName); }}>
                   <div className="flex items-center text-[10px] font-bold">
-                    <div className={`mr-1.5 shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`} onClick={(e) => { e.stopPropagation(); onToggleItemChecked?.(order.id, idx, currentUserName); }} style={{cursor:'pointer'}}>
+                    <div className={`mr-1.5 shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`}>
                       {isItemChecked ? <CheckSquare size={14} /> : <Square size={14} />}
                     </div>
                     <span className={`break-words min-w-0 ${isItemChecked ? 'text-emerald-800 line-through opacity-50' : 'text-slate-700'}`}>{abbrev(item.name)}</span>
@@ -488,10 +488,12 @@ export const OrderCard = memo<OrderCardProps>(({
                         const isItemChecked = !!item.checked;
                         return (
                           <div key={idx} className={`flex items-center gap-1 text-[10px] font-bold ${isItemChecked ? 'opacity-50' : ''}`}>
-                            <div className={`shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`} onClick={() => onToggleItemChecked?.(order.id, idx)} style={{cursor:'pointer'}}>
-                              {isItemChecked ? <CheckSquare size={12} /> : <Square size={12} />}
+                            <div className="flex items-center gap-1 cursor-pointer select-none" onClick={(e) => { e.stopPropagation(); onToggleItemChecked?.(order.id, idx); }}>
+                              <div className={`shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`}>
+                                {isItemChecked ? <CheckSquare size={12} /> : <Square size={12} />}
+                              </div>
+                              <span className={`${isItemChecked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{abbrev(item.name)}</span>
                             </div>
-                            <span className={`${isItemChecked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{abbrev(item.name)}</span>
                             <span className={`text-[8px] font-black shrink-0 ${isItemChecked ? 'text-emerald-700 bg-emerald-100' : 'text-teal-600 bg-teal-50'} px-1 py-0.5 rounded`}>
                               {item.isBoxUnit && item.boxQuantity ? `${item.boxQuantity}B` : `${item.quantity}개`}
                             </span>
@@ -508,10 +510,12 @@ export const OrderCard = memo<OrderCardProps>(({
                         const isItemChecked = !!item.checked;
                         return (
                           <div key={idx} className={`flex items-center gap-1 text-[10px] font-bold ${isItemChecked ? 'opacity-50' : ''}`}>
-                            <div className={`shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`} onClick={() => onToggleItemChecked?.(order.id, idx)} style={{cursor:'pointer'}}>
-                              {isItemChecked ? <CheckSquare size={12} /> : <Square size={12} />}
+                            <div className="flex items-center gap-1 cursor-pointer select-none" onClick={(e) => { e.stopPropagation(); onToggleItemChecked?.(order.id, idx); }}>
+                              <div className={`shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`}>
+                                {isItemChecked ? <CheckSquare size={12} /> : <Square size={12} />}
+                              </div>
+                              <span className={`${isItemChecked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{item.name}</span>
                             </div>
-                            <span className={`${isItemChecked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{item.name}</span>
                             <span className={`text-[8px] font-black shrink-0 ${isItemChecked ? 'text-emerald-700 bg-emerald-100' : 'text-orange-600 bg-orange-50'} px-1 py-0.5 rounded`}>
                               {item.isBoxUnit && item.boxQuantity ? `${item.boxQuantity}B` : `${item.quantity}개`}
                             </span>
