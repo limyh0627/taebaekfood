@@ -9,14 +9,93 @@ import jsQR from 'jsqr';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../src/shared/firebase';
-import { addItem, updateItem, deleteItem, subscribeToCollection } from '../src/shared/services/firebaseService';
+import { addItem, updateItem, deleteItem, subscribeToCollection, mutateRawMaterialLots } from '../src/shared/services/firebaseService';
 import {
   SubmaterialComponent, PurchaseOrder, PurchaseOrderItem, QrMapping,
   IssuedStatement, IssuedStatementItem, ReturnRequest, ReturnItem, ReturnReason,
   Item, Partner, Order,
 } from '../src/shared/types';
 import PageHeader from './PageHeader';
-import { RM_LIST, DENSITY } from '../src/constants/formula';
+import { RM_LIST, DENSITY, baseRawName, parsePackageKg, lotStockInUnit } from '../src/constants/formula';
+import { withCarryOverLot, buildReceiveLot, receiptToKg, nextLotNo } from '../src/shared/lotUtils';
+
+/**
+ * 입고 품목이 어느 원료(raw)에 귀속되는지 해석. RM_LIST에 없거나 대상 raw 품목이 없으면 null.
+ * 별도 raw 품목 우선, 없으면 입고품목 자체가 raw면 그것.
+ */
+function rawLotTarget(allItems: Item[], product: Item | undefined, itemName: string): { baseName: string; rawItem: Item } | null {
+  const baseName = product?.rawMaterialName || baseRawName(itemName);
+  if (!RM_LIST.includes(baseName)) return null;
+  const rawItem = allItems.find(i => i.category === 'raw' && baseRawName(i.name) === baseName)
+               ?? (product?.category === 'raw' ? product : undefined);
+  return rawItem ? { baseName, rawItem } : null;
+}
+
+/**
+ * 매입 입고 1건을 원료(raw)에 반영한다: 로트 생성(+기존재고 이월 보존) + 원료수불부(kg) 기록.
+ * 캔/포대 SKU는 품목명 접미사("/16.5kg")가 붙어도 baseRawName으로 매칭하고,
+ * 개수 단위는 packageKg(spec 파싱)로 kg 환산한다.
+ * @returns recorded=true면 원료로 기록됨(baseName/kgIn 포함)
+ */
+async function recordRawMaterialReceipt(opts: {
+  allItems: Item[];
+  product?: Item;
+  itemName: string;
+  quantity: number;
+  unit?: string;
+  partnerId?: string;
+  partnerName: string;
+  dateStr: string;
+  nowIso: string;
+  poId?: string;
+  addedBy?: string;
+}): Promise<{ recorded: boolean; baseName?: string; kgIn?: number; lotted?: boolean }> {
+  const { allItems, product, itemName, quantity, unit, partnerId, partnerName, dateStr, nowIso, poId, addedBy } = opts;
+  const target = rawLotTarget(allItems, product, itemName);
+  if (!target) return { recorded: false };
+  const { baseName, rawItem } = target;
+
+  const packageKg = product?.packageKg ?? parsePackageKg(product?.spec) ?? parsePackageKg(itemName);
+  const density = DENSITY[baseName] ?? 1.0;
+  const u = (unit ?? product?.unit ?? '').toLowerCase();
+  const kgIn = receiptToKg({ quantity, unit: u, density, packageKg });
+
+  const newLot = buildReceiveLot({
+    material: baseName,
+    supplierId: partnerId,
+    supplierName: partnerName,
+    qtyIn: quantity,
+    kgIn,
+    packageType: product?.packageType ?? (packageKg && u !== 'kg' && u !== 'l' ? '캔' : undefined),
+    packageKg,
+    receivedDate: dateStr,
+    poId,
+  });
+  await mutateRawMaterialLots(
+    rawItem.id,
+    (lots, stock) => [...withCarryOverLot(lots, stock, baseName), { ...newLot, lotNo: nextLotNo(lots, newLot.receivedDate) }],
+    (lots) => lotStockInUnit(lots, baseName),
+  );
+
+  await addItem('rawMaterialLedger', {
+    id: `rm-rcv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    material: baseName,
+    date: dateStr,
+    received: kgIn,
+    used: 0,
+    note: `${partnerName} 입고`,
+    createdAt: nowIso,
+    type: 'manual',
+    unit: 'kg',
+    ...(packageKg ? { canSize: packageKg, canCount: quantity } : {}),
+    ...(product?.packageType ? { canSizeTag: product.packageType } : {}),
+    originalAmount: quantity,
+    originalUnit: (u === 'l' ? 'L' : 'kg'),
+    addedBy,
+  });
+
+  return { recorded: true, baseName, kgIn, lotted: true };
+}
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY ?? '';
 const qrMappingCache = new Map<string, QrMapping>();
@@ -334,7 +413,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         quantity: Number(i.quantity),
         unit: i.unit,
       }));
-      await addItem('purchaseOrders', {
+      const scanPoId = await addItem('purchaseOrders', {
         itemId: '',
         itemName: '',
         quantity: 0,
@@ -347,7 +426,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         createdAt: new Date().toISOString(),
       } as Omit<PurchaseOrder, 'id'>);
       // 재고 가산 — 직접 updateItem을 await로 호출 (이전 fire-and-forget이 가끔 누락됨)
-      // RM_LIST에 있는 원료는 수불부에도 자동 기록
+      // 원료(raw)는 로트가 재고를 소유하므로 매입 SKU만 stock 가산하고, 원료는 로트+수불부로 기록
       const todayDateScan = new Date().toISOString().slice(0, 10);
       const nowIsoScan = new Date().toISOString();
       for (const item of receiptItems) {
@@ -359,35 +438,24 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
           console.warn('[스캔 입고] items에서 품목을 못 찾음:', item);
           continue;
         }
-        try {
-          await updateItem('items', item.itemId, { stock: (currentStock ?? 0) + item.quantity });
-        } catch (err) {
-          console.error('[스캔 입고] 재고 갱신 실패:', item.itemId, err);
-          alert(`재고 갱신 실패 (${item.name}): ${(err as Error)?.message ?? String(err)}`);
-        }
-        // 원료수불부 자동 기록 (RM_LIST 등록된 원료만)
-        if (RM_LIST.includes(item.name)) {
-          const density = DENSITY[item.name] ?? 1.0;
-          const isL = item.unit === 'L';
-          const receivedKg = isL ? Math.round(item.quantity * density * 1000) / 1000 : item.quantity;
+        // 원료 로트가 재고를 소유하는 SKU(캔/포대 매입품 포함)는 stock을 누적하지 않음 (의미없는 누적 방지)
+        if (!rawLotTarget(items, product, item.name)) {
           try {
-            await addItem('rawMaterialLedger', {
-              id: `rm-scan-${Date.now()}-${item.itemId.slice(0, 6)}-${Math.random().toString(36).slice(2, 6)}`,
-              material: item.name,
-              date: todayDateScan,
-              received: receivedKg,
-              used: 0,
-              note: `${inboundPartner.name} 스캔 입고`,
-              createdAt: nowIsoScan,
-              type: 'manual',
-              unit: 'kg',
-              originalAmount: item.quantity,
-              originalUnit: (isL ? 'L' : 'kg'),
-              addedBy: currentUser?.name,
-            });
+            await updateItem('items', item.itemId, { stock: (currentStock ?? 0) + item.quantity });
           } catch (err) {
-            console.error('[스캔 입고] 수불부 기록 실패:', item.name, err);
+            console.error('[스캔 입고] 재고 갱신 실패:', item.itemId, err);
+            alert(`재고 갱신 실패 (${item.name}): ${(err as Error)?.message ?? String(err)}`);
           }
+        }
+        // 원료 로트 + 수불부 자동 기록 (RM_LIST 매칭 시)
+        try {
+          await recordRawMaterialReceipt({
+            allItems: items, product, itemName: item.name, quantity: item.quantity, unit: item.unit,
+            partnerId: inboundPartner.id, partnerName: inboundPartner.name,
+            dateStr: todayDateScan, nowIso: nowIsoScan, poId: scanPoId, addedBy: currentUser?.name,
+          });
+        } catch (err) {
+          console.error('[스캔 입고] 원료 로트/수불부 기록 실패:', item.name, err);
         }
       }
       setScanSupplierId('');
@@ -599,7 +667,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     if (receiptItems.length === 0) { alert('수량을 1개 이상 입력해주세요.'); return; }
     setSupplierSaving(true);
     try {
-      await addItem('purchaseOrders', {
+      const supplierPoId = await addItem('purchaseOrders', {
         itemId: '',
         itemName: '',
         quantity: 0,
@@ -611,7 +679,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         createdAt: new Date().toISOString(),
       } as Omit<PurchaseOrder, 'id'>);
       // 재고 가산 — 직접 updateItem을 await로 호출 (이전 fire-and-forget이 가끔 누락됨)
-      // RM_LIST에 있는 원료는 수불부에도 자동 기록 → 최근 입출고 기록에 표시
+      // 원료(raw)는 로트가 재고를 소유하므로 매입 SKU만 stock 가산하고, 원료는 로트+수불부로 기록
       const todayDate = new Date().toISOString().slice(0, 10);
       const nowIso = new Date().toISOString();
       for (const item of receiptItems) {
@@ -623,35 +691,24 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
           console.warn('[선입고] items에서 품목을 못 찾음:', item);
           continue;
         }
-        try {
-          await updateItem('items', item.itemId, { stock: (currentStock ?? 0) + item.quantity });
-        } catch (err) {
-          console.error('[선입고] 재고 갱신 실패:', item.itemId, err);
-          alert(`재고 갱신 실패 (${item.name}): ${(err as Error)?.message ?? String(err)}`);
-        }
-        // 원료수불부 자동 기록 (RM_LIST 등록된 원료만)
-        if (RM_LIST.includes(item.name)) {
-          const density = DENSITY[item.name] ?? 1.0;
-          const isL = item.unit === 'L';
-          const receivedKg = isL ? Math.round(item.quantity * density * 1000) / 1000 : item.quantity;
+        // 원료 로트가 재고를 소유하는 SKU(캔/포대 매입품 포함)는 stock을 누적하지 않음 (의미없는 누적 방지)
+        if (!rawLotTarget(items, product, item.name)) {
           try {
-            await addItem('rawMaterialLedger', {
-              id: `rm-rcv-${Date.now()}-${item.itemId.slice(0, 6)}-${Math.random().toString(36).slice(2, 6)}`,
-              material: item.name,
-              date: todayDate,
-              received: receivedKg,
-              used: 0,
-              note: `${partner.name} 선입고`,
-              createdAt: nowIso,
-              type: 'manual',
-              unit: 'kg',
-              originalAmount: item.quantity,
-              originalUnit: (isL ? 'L' : 'kg'),
-              addedBy: currentUser?.name,
-            });
+            await updateItem('items', item.itemId, { stock: (currentStock ?? 0) + item.quantity });
           } catch (err) {
-            console.error('[선입고] 수불부 기록 실패:', item.name, err);
+            console.error('[선입고] 재고 갱신 실패:', item.itemId, err);
+            alert(`재고 갱신 실패 (${item.name}): ${(err as Error)?.message ?? String(err)}`);
           }
+        }
+        // 원료 로트 + 수불부 자동 기록 (RM_LIST 매칭 시)
+        try {
+          await recordRawMaterialReceipt({
+            allItems: items, product, itemName: item.name, quantity: item.quantity, unit: item.unit,
+            partnerId: partner.id, partnerName: partner.name,
+            dateStr: todayDate, nowIso, poId: supplierPoId, addedBy: currentUser?.name,
+          });
+        } catch (err) {
+          console.error('[선입고] 원료 로트/수불부 기록 실패:', item.name, err);
         }
       }
       setActiveSupplier(null);

@@ -135,6 +135,7 @@ export interface Order {
   invoicePrinted?: boolean;
   deliveredAt?: string; // 주문이력으로 이동한 날짜
   documentDate?: string; // 서류 날짜 (원료수불부 기준일)
+  rawLotsDeducted?: boolean; // 납품완료 시 원료 로트 선입선출 차감 완료 표시(중복 차감 방지)
 }
 
 export interface BoxConfig {
@@ -231,7 +232,10 @@ export interface Item {
   smartStorePrice?: number;
   submaterials?: SubmaterialComponent[];
   isRawMaterial?: boolean;    // 원료로도 관리되는 품목 (수불부 자동 연동)
-  rawMaterialName?: string;   // 원료 수불부 키 이름 (예: "볶음참깨")
+  rawMaterialName?: string;   // 원료 수불부 키 이름 (예: "볶음참깨"). 캔/포대 매입 SKU가 어느 원료(raw)에 귀속되는지 연결
+  packageType?: string;       // 입고 포장 단위 ('캔' | '포대' | '자루') — 매입 SKU에만 사용
+  packageKg?: number;         // 포장 1개당 kg (예: 캔 16.5, 포대 20, 자루 25). 없으면 spec에서 파싱
+  lots?: RawMaterialLot[];    // 원료(raw) 로트 목록 — 배열 순서 = 선입선출 순서(앞=먼저 사용)
   variantStocks?: Record<string, number>; // 규격별 재고 { "1kg||labelId": 50, "20kg||": 100 }
   netContent?: string;         // 내용량 표시 (예: "200g", "300ml", "1.8L") — product만 해당
   weightInKg?: number;         // 실중량 (kg) — product만 해당
@@ -490,6 +494,27 @@ export interface AppNotification {
   linkedId?: string;  // 관련 order/request ID
   senderId?: string;  // 발생시킨 userId
   targetId?: string;  // 수신 대상 userId (없으면 전체)
+}
+
+/**
+ * 원료 로트(lot) — 입고 단위(거래처/포장)별 잔여 추적.
+ * 원료(raw) 품목 문서의 lots 배열에 저장하며, 배열 순서가 곧 선입선출 순서(앞=먼저 사용).
+ * 잔여는 항상 kg(canonical)로 보관하고, 기름은 화면에서 L로 환산 표시.
+ */
+export interface RawMaterialLot {
+  id: string;
+  supplierId?: string;        // 거래처 ID (이월 로트는 없음)
+  supplierName: string;       // 거래처명 (예: '풍회유통') 또는 '이월'
+  packageType?: string;       // '캔' | '포대' | '자루'
+  packageKg?: number;         // 포장 1개당 kg (16.5 등)
+  qtyIn?: number;             // 입고 시 포장 개수 (캔 68)
+  kgIn: number;               // 입고 kg (= packageKg × qtyIn, 자동계산)
+  kgRemaining: number;        // 잔여 kg (사용 시 차감)
+  receivedDate: string;       // 입고일 'YYYY-MM-DD'
+  lotNo?: string;             // 로트번호 (미래 확장)
+  status: 'active' | 'depleted';
+  poId?: string;              // 원본 입고 전표(purchaseOrders) 참조
+  createdAt: string;
 }
 
 export interface RawMaterialEntry {

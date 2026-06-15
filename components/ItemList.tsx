@@ -30,7 +30,10 @@ import AddItemModal from './AddItemModal';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 import RawMaterialEntryModal from './RawMaterialEntryModal';
-import { RM_LIST, unitOf } from '../src/constants/formula';
+import RawMaterialLotPanel from './RawMaterialLotPanel';
+import { RM_LIST, unitOf, baseRawName, lotStockInUnit } from '../src/constants/formula';
+import { mutateRawMaterialLots } from '../src/shared/services/firebaseService';
+import { withCarryOverLot, buildReceiveLot, nextLotNo } from '../src/shared/lotUtils';
 
 const normCat = (cat: string): string =>
   ({ product: '완제품', goods: '상품', container: '용기', cap: '마개', tape: '테이프', box: '박스', label: '라벨' } as Record<string, string>)[cat] ?? cat;
@@ -920,6 +923,10 @@ const ItemList: React.FC<ItemListProps> = ({
                   const confInfo = confirmedOrders.find(c => (c.itemId ?? c.id) === product.id);
                   const inCart = cart.some(c => c.id === product.id);
                   const isExpanded = expandedRowId === product.id;
+                  // 로트가 저장된 원료(raw) 품목 — raw면 자기 자신, 매입 SKU(캔/반제품)면 연결된 원료
+                  const lotRaw = product.category === 'raw'
+                    ? product
+                    : items.find(i => i.category === 'raw' && baseRawName(i.name) === (product.rawMaterialName || baseRawName(product.name)));
                   const statusBadge = normCat(product.category) === '완제품' ? (
                     <span className="text-[9px] font-black text-slate-300">자체생산</span>
                   ) : confInfo ? (
@@ -1176,6 +1183,18 @@ const ItemList: React.FC<ItemListProps> = ({
                         </tr>
                       );
                     })()}
+                    {/* 로트 펼침 행 — 원료(raw) 또는 원료에 연결된 매입 SKU(캔/반제품) 클릭 시 표시 */}
+                    {isExpanded && lotRaw && (
+                      <tr className="bg-emerald-50/40">
+                        <td colSpan={7} className="px-4 py-3">
+                          <RawMaterialLotPanel
+                            product={lotRaw}
+                            isAdmin={isAdmin}
+                            linkedNote={lotRaw.id !== product.id ? `이 품목은 원료 '${baseRawName(lotRaw.name)}'(으)로 관리됩니다` : undefined}
+                          />
+                        </td>
+                      </tr>
+                    )}
                     {/* 모바일 펼침 행 */}
                     {isExpanded && (
                       <tr className="sm:hidden bg-slate-50/80">
@@ -1874,14 +1893,30 @@ const ItemList: React.FC<ItemListProps> = ({
         currentUserName={currentUser?.name}
         onClose={() => setRawEntryModal(null)}
         onSubmit={async (entry) => {
-          // 원료수불부에 기록
+          // 원료수불부에 기록 (kg canonical)
           await onAddRawMaterialEntry(entry);
-          // 같은 이름의 raw 품목이 있으면 재고관리 stock도 즉시 동기화 (모달 입력 단위 = items.unit 가정)
-          const delta = (entry.received ?? 0) - (entry.used ?? 0);
-          if (delta !== 0) {
-            const target = items.find((i) => i.category === 'raw' && i.name === entry.material);
-            if (target) {
-              onUpdateItem({ ...target, stock: (target.stock ?? 0) + delta });
+          const rawTarget = items.find((i) => i.category === 'raw' && baseRawName(i.name) === entry.material);
+          if (rawTarget) {
+            if ((entry.received ?? 0) > 0) {
+              // 입고: 거래처 입고와 동일하게 로트 생성(+기존재고 이월 보존). stock은 로트 합계로 산정.
+              const lot = buildReceiveLot({
+                material: entry.material,
+                supplierName: entry.note?.trim() || '직접입고',
+                qtyIn: entry.canCount ?? 0,
+                kgIn: entry.received,
+                packageKg: entry.canSize,
+                packageType: entry.canSizeTag,
+                receivedDate: entry.date,
+              });
+              await mutateRawMaterialLots(
+                rawTarget.id,
+                (lots, stock) => [...withCarryOverLot(lots, stock, entry.material), { ...lot, lotNo: nextLotNo(lots, lot.receivedDate) }],
+                (lots) => lotStockInUnit(lots, entry.material),
+              );
+            } else {
+              // 사용/정정: stock 직접 조정 (로트 FIFO 차감은 2단계에서 연동)
+              const delta = (entry.received ?? 0) - (entry.used ?? 0);
+              if (delta !== 0) onUpdateItem({ ...rawTarget, stock: (rawTarget.stock ?? 0) + delta });
             }
           }
           // 저장 완료 토스트

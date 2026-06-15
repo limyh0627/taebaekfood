@@ -1,3 +1,4 @@
+import type { RawMaterialLot } from '../shared/types';
 
 /** 품목명 → 원료 배합비율 */
 export const PRODUCT_FORMULA: Record<string, { raw: string; ratio: number }[]> = {
@@ -38,6 +39,53 @@ export const RM_UNITS: Record<string, RawUnit> = {
   '생들기름': 'L',
 };
 export const unitOf = (material: string): RawUnit => RM_UNITS[material] ?? 'kg';
+
+/**
+ * 품목명에서 규격 접미사를 떼어낸 기본 원료명.
+ * 예) "깨분참기름/16.5kg" → "깨분참기름", "볶음들깨/25kg" → "볶음들깨"
+ * 품목명 일괄변경(규격 접미사 추가) 이후 RM_LIST 매칭이 깨지는 것을 보완.
+ */
+export function baseRawName(name: string): string {
+  return (name ?? '').split('/')[0].trim();
+}
+
+/**
+ * 규격 문자열에서 포장 1개당 kg을 파싱. "16.5kg" → 16.5, "20kg" → 20, "25kg" → 25.
+ * (L 규격은 포장 단위로 쓰지 않으므로 kg만 인식)
+ */
+export function parsePackageKg(spec?: string): number | undefined {
+  if (!spec) return undefined;
+  const m = spec.match(/([\d.]+)\s*kg/i);
+  return m ? parseFloat(m[1]) : undefined;
+}
+
+/** kg → 해당 원료의 운영 단위 값 (기름이면 L = kg / 밀도, 그 외 kg 그대로) */
+export function kgToUnit(kg: number, material: string): number {
+  if (unitOf(material) !== 'L') return kg;
+  const d = DENSITY[material] ?? 1.0;
+  return kg / d;
+}
+
+/** 운영 단위 값 → kg (기름이면 kg = L × 밀도, 그 외 그대로) */
+export function unitToKg(val: number, material: string): number {
+  if (unitOf(material) !== 'L') return val;
+  const d = DENSITY[material] ?? 1.0;
+  return val * d;
+}
+
+const round3 = (n: number) => Math.round(n * 1000) / 1000;
+
+/** active 로트들의 잔여 kg 합계 */
+export function lotKgRemaining(lots?: RawMaterialLot[]): number {
+  return round3((lots ?? [])
+    .filter(l => l.status === 'active')
+    .reduce((s, l) => s + (l.kgRemaining ?? 0), 0));
+}
+
+/** active 로트 잔여 합계를 원료 운영 단위(기름=L)로 환산 — items.stock 동기화용 */
+export function lotStockInUnit(lots: RawMaterialLot[] | undefined, material: string): number {
+  return round3(kgToUnit(lotKgRemaining(lots), material));
+}
 
 /** 제품 용량 문자열 + 원료명 + 수량 → kg 환산 */
 export function toKg(용량: string, raw: string, qty: number): number {

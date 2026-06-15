@@ -15,11 +15,13 @@ import {
   where,
   getDocs,
   writeBatch,
+  runTransaction,
   DocumentData,
   QuerySnapshot,
   QueryConstraint,
 } from "firebase/firestore";
 import { db } from "../firebase";
+import type { RawMaterialLot } from "../types";
 
 export const subscribeToDocument = <T>(
   collectionName: string,
@@ -130,6 +132,32 @@ export const updateItem = async (collectionName: string, id: string, data: any) 
 export const deleteItem = async (collectionName: string, id: string) => {
   const docRef = doc(db, collectionName, id);
   await deleteDoc(docRef);
+};
+
+/**
+ * 원료(raw) 품목의 lots 배열을 트랜잭션으로 안전하게 수정한다.
+ * 입고(로트 추가)·사용(차감)·순서변경(▲▼)이 동시에 일어나도 덮어쓰기 사고를 막는다.
+ * @param rawItemId  원료 품목 문서 ID (예: 'raw-깨분참기름')
+ * @param transform  현재 lots → 새 lots (순수 함수)
+ * @param computeStock  새 lots → items.stock에 쓸 값(원료의 운영 단위). 미지정 시 stock은 그대로 둠.
+ */
+export const mutateRawMaterialLots = async (
+  rawItemId: string,
+  transform: (currentLots: RawMaterialLot[], currentStock: number) => RawMaterialLot[],
+  computeStock?: (lots: RawMaterialLot[]) => number,
+) => {
+  await runTransaction(db, async (tx) => {
+    const ref = doc(db, "items", rawItemId);
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw new Error(`원료 품목을 찾을 수 없음: ${rawItemId}`);
+    const data = snap.data();
+    const current: RawMaterialLot[] = Array.isArray(data.lots) ? data.lots : [];
+    const next = transform(current, data.stock ?? 0);
+    // Firestore는 undefined 필드를 거부 → 로트 배열에서 제거 (캔/수동 입고 로트의 미입력 옵션 필드 대비)
+    const patch: { lots: RawMaterialLot[]; stock?: number } = { lots: stripUndefined(next) };
+    if (computeStock) patch.stock = computeStock(next);
+    tx.update(ref, patch);
+  });
 };
 
 export const subscribeToSubcollection = <T extends { id: string }>(

@@ -96,7 +96,8 @@ const TradeStatement = React.lazy(() => import('../../../components/TradeStateme
 const ProfitAnalysis = React.lazy(() => import('../../../components/ProfitAnalysis'));
 
 import { db } from '../../shared/firebase';
-import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf } from '../../constants/formula';
+import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, baseRawName, lotStockInUnit } from '../../constants/formula';
+import { deductFromLots } from '../../shared/lotUtils';
 import {
   addItem,
   updateItem,
@@ -105,6 +106,7 @@ import {
   setProductSuppliers,
   setDocument,
   fetchDateRange,
+  mutateRawMaterialLots,
 } from '../../shared/services/firebaseService';
 import type { AppData } from '../../shared/hooks/useAppData';
 import type { AdminData } from '../../hooks/useAdminData';
@@ -694,6 +696,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // 주문이 이력으로 이동할 때 부자재 차감 (완제품 재고는 변동 없음)
   const deductSubmaterialsForOrder = async (order: Order) => {
+    const rawUsage: Record<string, number> = {}; // 원료별 사용 kg 집계 (같은 원료가 여러 품목에 걸쳐도 합산)
     for (const item of order.items) {
       const product = allItems.find(p => p.id === item.itemId);
       if (!product) continue;
@@ -745,28 +748,65 @@ const AdminApp: React.FC<AdminAppProps> = ({
         await deductStock('items', actualSub.id, actualSub.stock, item.quantity, actualSub.name, actualSub.unit || '개', `주문 ${order.id} ${product.name} 부자재 출고`);
       }
 
-      // 원료 사용량 → rawMaterialLedger 기록 (완제품 한정)
+      // 원료 사용량 집계 (완제품 한정) — 기록/차감은 루프 후 원료별 합산해서 1회씩
       const formula = PRODUCT_FORMULA[product.품목 || product.name];
       if (formula) {
-        const dateStr = order.deliveredAt?.slice(0, 10) || new Date().toISOString().slice(0, 10);
-        const partnerName = partners.find(c => c.id === order.partnerId)?.name || order.partnerName || '';
         for (const f of formula) {
           const usedKg = toKg(product.spec || '', f.raw, item.quantity) * f.ratio;
-          if (usedKg <= 0) continue;
-          const entryId = `rm-auto-${order.id}-${f.raw.replace(/\s/g, '_')}`;
-          await setDoc(doc(db, 'rawMaterialLedger', entryId), {
-            id: entryId,
-            material: f.raw,
-            date: dateStr,
-            received: 0,
-            used: Math.round(usedKg * 1000) / 1000,
-            note: `자동: ${partnerName}`,
-            createdAt: new Date().toISOString(),
-            type: 'auto',
-            orderId: order.id,
-          }, { merge: true });
+          if (usedKg > 0) rawUsage[f.raw] = (rawUsage[f.raw] ?? 0) + usedKg;
         }
       }
+    }
+
+    // ── 원료별 합산 → 수불부 기록(합산) + 로트 선입선출 차감 ──
+    const rawNames = Object.keys(rawUsage);
+    if (rawNames.length > 0) {
+      const dateStr = order.deliveredAt?.slice(0, 10) || new Date().toISOString().slice(0, 10);
+      const customerName = partners.find(c => c.id === order.partnerId)?.name || order.partnerName || '';
+      const alreadyDeducted = !!order.rawLotsDeducted; // 재납품 등 중복 차감 방지
+      for (const raw of rawNames) {
+        const usedKg = Math.round(rawUsage[raw] * 1000) / 1000;
+        const rawItem = allItems.find(i => i.category === 'raw' && baseRawName(i.name) === raw);
+        let noteSuffix = '';
+        if (rawItem && !alreadyDeducted) {
+          let captured: { distribution: { supplierName: string; lotNo?: string; kg: number }[]; shortageKg: number } | null = null;
+          await mutateRawMaterialLots(
+            rawItem.id,
+            (lots) => { const r = deductFromLots(lots, usedKg); captured = r; return r.lots; },
+            (lots) => lotStockInUnit(lots, raw),
+          );
+          if (captured) {
+            const result = captured as { distribution: { supplierName: string; lotNo?: string; kg: number }[]; shortageKg: number };
+            if (result.distribution.length > 0) {
+              noteSuffix = ' ▸ ' + result.distribution.map(d => `${d.supplierName} ${Math.round(d.kg * 10) / 10}kg`).join(' + ');
+            }
+            if (result.shortageKg > 0) {
+              console.warn(`[원료 부족] ${raw}: 로트 잔량보다 ${result.shortageKg}kg 더 사용 (주문 ${order.id})`);
+              await addItem('notifications', {
+                type: 'inventory_shortage',
+                title: '원료 로트 부족',
+                body: `${raw}: 로트 잔량보다 ${result.shortageKg}kg 더 사용됨 (주문 ${order.id}, ${customerName}). 입고/이월 확인 필요.`,
+                linkedId: rawItem.id,
+                readBy: [],
+                createdAt: new Date().toISOString(),
+              } as Omit<AppNotification, 'id'>);
+            }
+          }
+        }
+        const entryId = `rm-auto-${order.id}-${raw.replace(/\s/g, '_')}`;
+        await setDoc(doc(db, 'rawMaterialLedger', entryId), {
+          id: entryId,
+          material: raw,
+          date: dateStr,
+          received: 0,
+          used: usedKg,
+          note: `자동: ${customerName}${noteSuffix}`,
+          createdAt: new Date().toISOString(),
+          type: 'auto',
+          orderId: order.id,
+        }, { merge: true });
+      }
+      if (!alreadyDeducted) await updateItem('orders', order.id, { rawLotsDeducted: true });
     }
   };
 
