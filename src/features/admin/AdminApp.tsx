@@ -227,6 +227,24 @@ const AdminApp: React.FC<AdminAppProps> = ({
     return Array.from(map.values());
   }, [productionSalesLogs, extraProductionLogs]);
 
+  // 라이브 구독은 7일치만(무료요금제 읽기 절약) → 원료수불부는 전재고(이월 잔고) 계산에 전체 이력이 필요.
+  // 수불부 탭을 열 때만 1회 온디맨드 조회하여 라이브 7일 구독분과 merge. (다른 페이지는 7일 유지)
+  const [extraRawMaterialLedger, setExtraRawMaterialLedger] = useState<import('../../shared/types').RawMaterialEntry[]>([]);
+  const [ledgerReloadKey, setLedgerReloadKey] = useState(0);
+  useEffect(() => {
+    if (docTab !== '원료수불부') return;
+    const to = new Date().toISOString().slice(0, 10);
+    fetchDateRange<import('../../shared/types').RawMaterialEntry>('rawMaterialLedger', 'date', '2020-01-01', to)
+      .then(setExtraRawMaterialLedger)
+      .catch(e => console.error('[AdminApp] 원료수불부 전체 이력 로드 실패:', e));
+  }, [docTab, ledgerReloadKey]);
+  const mergedRawMaterialLedger = useMemo(() => {
+    const map = new Map<string, import('../../shared/types').RawMaterialEntry>();
+    extraRawMaterialLedger.forEach(e => map.set(e.id, e));
+    rawMaterialLedger.forEach(e => map.set(e.id, e));
+    return Array.from(map.values());
+  }, [rawMaterialLedger, extraRawMaterialLedger]);
+
   // 지난달 기말재고 스냅샷 자동 저장 (없을 때만)
   useEffect(() => {
     if (isDataLoading || !isAdmin) return;
@@ -2525,7 +2543,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     const sourceEntry = Object.entries(YIELD_MAP).find(([, v]) => v.product === material);
                     if (!sourceEntry) return rows;
                     const [sourceMaterial, { yield: yieldRate }] = sourceEntry;
-                    rawMaterialLedger
+                    mergedRawMaterialLedger
                       .filter(e => e.material === sourceMaterial && e.used > 0 && e.type !== 'auto')
                       .forEach(e => {
                         const derivedKg = Math.round(e.used * yieldRate * 1000) / 1000;
@@ -2538,7 +2556,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   // 옛 데이터(unit==='L')는 표시 시점에 ×density 환산 → 모두 kg 단위로 통일
                   const buildLedger = (material: string) => {
                     const density = DENSITY[material] ?? 1.0;
-                    const dbEntries: UsageRow[] = rawMaterialLedger
+                    const dbEntries: UsageRow[] = mergedRawMaterialLedger
                       .filter(e => e.material === material)
                       .map(e => {
                         const isLegacyL = e.unit === 'L' && density !== 1.0;
@@ -2669,7 +2687,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                       )}
                                       {row.id && row.type !== 'auto' && (
                                         <button
-                                          onClick={() => { if (confirm('삭제할까요?')) deleteItem('rawMaterialLedger', row.id!); }}
+                                          onClick={async () => { if (confirm('삭제할까요?')) { await deleteItem('rawMaterialLedger', row.id!); setLedgerReloadKey(k => k + 1); } }}
                                           className="px-2 py-1 rounded-lg text-[10px] font-black bg-slate-100 text-slate-400 hover:bg-rose-100 hover:text-rose-500 transition-colors"
                                         >삭제</button>
                                       )}
@@ -2721,6 +2739,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                               originalUnit: inputUnit,
                                             });
                                             setRmCorrectionTargetId(null);
+                                            setLedgerReloadKey(k => k + 1);
                                           }}
                                           className="px-3 py-1 rounded-lg text-[11px] font-black bg-amber-600 text-white hover:bg-amber-700 transition-colors"
                                         >저장</button>
