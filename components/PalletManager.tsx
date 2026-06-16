@@ -18,6 +18,9 @@ import { PalletStock, Order, Partner, OrderStatus, PalletTransaction } from '../
 import { fetchDateRange } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 
+// 모듈 캐시 — 페이지 재진입 시 24개월 과거 거래 재조회 방지 (읽기 절약). 5분 TTL.
+let palletTxCache: { data: PalletTransaction[]; at: number } | null = null;
+
 interface PalletManagerProps {
   pallets: PalletStock[];
   orders: Order[];
@@ -37,13 +40,18 @@ const PalletManager: React.FC<PalletManagerProps> = ({
   const [activeTab, setActiveTab] = useState<'overview' | 'partners'>('partners');
 
   // 라이브 구독은 7일치만 → 파렛트 잔량 계산에는 과거 누적이 필수이므로 24개월치 온디맨드 로드
-  const [extraTransactions, setExtraTransactions] = useState<PalletTransaction[]>([]);
+  // 읽기 절약: 페이지 재진입마다 다시 읽지 않도록 모듈 캐시(5분). 최근 변경분은 라이브 7일 구독으로 반영됨.
+  const [extraTransactions, setExtraTransactions] = useState<PalletTransaction[]>(palletTxCache?.data ?? []);
   useEffect(() => {
+    if (palletTxCache && Date.now() - palletTxCache.at < 5 * 60 * 1000) {
+      setExtraTransactions(palletTxCache.data);
+      return;
+    }
     const to = new Date().toISOString().slice(0, 10);
     const fromDate = new Date(); fromDate.setMonth(fromDate.getMonth() - 24);
     const from = fromDate.toISOString().slice(0, 10);
     fetchDateRange<PalletTransaction>('palletTransactions', 'date', from, to)
-      .then(setExtraTransactions)
+      .then(d => { palletTxCache = { data: d, at: Date.now() }; setExtraTransactions(d); })
       .catch(e => console.error('[PalletManager] 과거 파렛트 거래 로드 실패:', e));
   }, []);
 

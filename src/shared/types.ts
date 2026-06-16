@@ -236,6 +236,8 @@ export interface Item {
   packageType?: string;       // 입고 포장 단위 ('캔' | '포대' | '자루') — 매입 SKU에만 사용
   packageKg?: number;         // 포장 1개당 kg (예: 캔 16.5, 포대 20, 자루 25). 없으면 spec에서 파싱
   lots?: RawMaterialLot[];    // 원료(raw) 로트 목록 — 배열 순서 = 선입선출 순서(앞=먼저 사용)
+  mixEnabled?: boolean;       // 기름 혼합 사용: ON이면 차감 시 상위 2개 로트를 비율대로 배분(OFF=선입선출)
+  mixTopPercent?: number;     // 혼합 시 상위 로트 비율(%) — 두 번째 로트는 100-이 값. 기본 50(5:5)
   variantStocks?: Record<string, number>; // 규격별 재고 { "1kg||labelId": 50, "20kg||": 100 }
   netContent?: string;         // 내용량 표시 (예: "200g", "300ml", "1.8L") — product만 해당
   weightInKg?: number;         // 실중량 (kg) — product만 해당

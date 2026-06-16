@@ -86,6 +86,7 @@ const InboundScan = React.lazy(() => import('../../../components/InboundScan'));
 const QrLabelPrint = React.lazy(() => import('../../../components/QrLabelPrint'));
 const SmartStoreAnalytics = React.lazy(() => import('../../../components/SmartStoreAnalytics'));
 const HaccpChecklist = React.lazy(() => import('../../../components/HaccpChecklist'));
+const BenzopyreneLog = React.lazy(() => import('../../../components/BenzopyreneLog'));
 const SanitationChecklistView = React.lazy(() =>
   import('../../../components/HaccpChecklist').then(m => ({ default: m.StaffChecklistView }))
 );
@@ -184,7 +185,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const { fixedCosts, productionRecords } = adminData;
 
   const [pendingInvoice, setPendingInvoice] = useState<{ partnerId: string; partnerName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }> } | null>(null);
-  const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부' | '거래명세서' | '생산작업기록부' | '생산작업기록부2' | 'haccp'>('생산판매기록부');
+  const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부' | '거래명세서' | '생산작업기록부' | '생산작업기록부2' | '벤조피렌' | 'haccp'>('생산판매기록부');
   const [docYearMonth, setDocYearMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [docLogMonth, setDocLogMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [bulkMfgDate, setBulkMfgDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -233,12 +234,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // 수불부 탭을 열 때만 1회 온디맨드 조회하여 라이브 7일 구독분과 merge. (다른 페이지는 7일 유지)
   const [extraRawMaterialLedger, setExtraRawMaterialLedger] = useState<import('../../shared/types').RawMaterialEntry[]>([]);
   const [ledgerReloadKey, setLedgerReloadKey] = useState(0);
+  // 읽기 절약: 탭 재진입마다 전체 이력을 다시 읽지 않고, 같은 reloadKey면 1회만 조회(캐시).
+  // 최근 변경분은 라이브 7일 구독(rawMaterialLedger)으로 들어와 mergedRawMaterialLedger에 반영됨.
+  const ledgerFetchedKeyRef = useRef<number | null>(null);
   useEffect(() => {
     if (docTab !== '원료수불부') return;
+    if (ledgerFetchedKeyRef.current === ledgerReloadKey) return; // 이미 이 reloadKey로 로드함 → 재조회 생략
+    ledgerFetchedKeyRef.current = ledgerReloadKey;
     const to = new Date().toISOString().slice(0, 10);
     fetchDateRange<import('../../shared/types').RawMaterialEntry>('rawMaterialLedger', 'date', '2020-01-01', to)
       .then(setExtraRawMaterialLedger)
-      .catch(e => console.error('[AdminApp] 원료수불부 전체 이력 로드 실패:', e));
+      .catch(e => { console.error('[AdminApp] 원료수불부 전체 이력 로드 실패:', e); ledgerFetchedKeyRef.current = null; }); // 실패 시 다음 진입에 재시도
   }, [docTab, ledgerReloadKey]);
   const mergedRawMaterialLedger = useMemo(() => {
     const map = new Map<string, import('../../shared/types').RawMaterialEntry>();
@@ -769,10 +775,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
         const rawItem = allItems.find(i => i.category === 'raw' && baseRawName(i.name) === raw);
         let noteSuffix = '';
         if (rawItem && !alreadyDeducted) {
+          // 혼합 사용 ON이면 상위 2개 로트를 비율대로 배분, 아니면 선입선출
+          const mix = rawItem.mixEnabled ? { topPercent: rawItem.mixTopPercent ?? 50 } : undefined;
           let captured: { distribution: { supplierName: string; lotNo?: string; kg: number }[]; shortageKg: number } | null = null;
           await mutateRawMaterialLots(
             rawItem.id,
-            (lots) => { const r = deductFromLots(lots, usedKg); captured = r; return r.lots; },
+            (lots) => { const r = deductFromLots(lots, usedKg, mix); captured = r; return r.lots; },
             (lots) => lotStockInUnit(lots, raw),
           );
           if (captured) {
@@ -2023,6 +2031,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
                           onClick={() => setDocTab('생산작업기록부2')}
                           className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '생산작업기록부2' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
                         >생산작업기록부2</button>
+                        <button
+                          onClick={() => setDocTab('벤조피렌')}
+                          className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '벤조피렌' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                        >벤조피렌 검사성적서</button>
                       </>)}
                     </div>
                     {docTab === '생산판매기록부' && (
@@ -2564,6 +2576,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 {docTab === 'haccp' && (
                   <React.Suspense fallback={<div className="py-20 text-center text-slate-400">로딩 중...</div>}>
                     <HaccpChecklist currentUser={{ id: currentUser.id, name: currentUser.name }} isAdmin={isAdmin} />
+                  </React.Suspense>
+                )}
+
+                {docTab === '벤조피렌' && (
+                  <React.Suspense fallback={<div className="py-20 text-center text-slate-400">로딩 중...</div>}>
+                    <BenzopyreneLog
+                      currentUserName={currentUser?.name}
+                      isAdmin={isAdmin}
+                    />
                   </React.Suspense>
                 )}
 

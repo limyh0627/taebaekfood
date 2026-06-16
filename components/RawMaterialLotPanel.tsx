@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowUp, ArrowDown, Layers, Truck, Trash2, CornerDownRight, Tag, Check, X } from 'lucide-react';
 import { Item, RawMaterialLot } from '../src/shared/types';
-import { mutateRawMaterialLots } from '../src/shared/services/firebaseService';
+import { mutateRawMaterialLots, updateItem } from '../src/shared/services/firebaseService';
 import { baseRawName, unitOf, kgToUnit, lotKgRemaining, lotStockInUnit } from '../src/constants/formula';
 
 interface Props {
@@ -26,8 +26,29 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editVal, setEditVal] = useState('');
 
+  // 기름 혼합 사용 설정 (상위 2개 로트 비율 배분)
+  const mixEnabled = !!product.mixEnabled;
+  const topPct = product.mixTopPercent ?? 50;
+  const [pctDraft, setPctDraft] = useState<string>(String(topPct));
+  React.useEffect(() => { setPctDraft(String(product.mixTopPercent ?? 50)); }, [product.mixTopPercent]);
+
   const totalKg = lotKgRemaining(active);
   const totalUnit = isOil ? kgToUnit(totalKg, material) : totalKg;
+
+  const setMixEnabled = async (on: boolean) => {
+    try { await updateItem('items', product.id, { mixEnabled: on, mixTopPercent: product.mixTopPercent ?? 50 }); }
+    catch (err) { console.error('[혼합 설정 실패]', err); }
+  };
+  const commitPct = async () => {
+    let v = parseInt(pctDraft, 10);
+    if (isNaN(v)) v = 50;
+    v = Math.max(0, Math.min(100, v));
+    setPctDraft(String(v));
+    if (v !== topPct) {
+      try { await updateItem('items', product.id, { mixTopPercent: v }); }
+      catch (err) { console.error('[혼합 비율 저장 실패]', err); }
+    }
+  };
 
   // active[i]와 active[i+dir]의 위치를 (id 기준으로) 전체 배열 안에서 교환 → 동시 입고와 충돌 방지
   const move = async (i: number, dir: -1 | 1) => {
@@ -113,6 +134,10 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-xs font-black text-slate-800">{lot.supplierName}</span>
             {pkg && <span className="text-[10px] font-bold text-slate-400">{pkg}</span>}
+            {/* 혼합 비율 배지 — 상위 2개 active 로트 */}
+            {mixEnabled && !dim && idx < 2 && (
+              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">혼합 {idx === 0 ? topPct : 100 - topPct}%</span>
+            )}
             {/* 로트번호 — 클릭(관리자)하면 인라인 편집 */}
             {editingId === lot.id ? (
               <span className="inline-flex items-center gap-1">
@@ -186,11 +211,37 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
         </div>
       )}
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-black text-emerald-700 uppercase tracking-wide">입고 로트 (선입선출)</span>
+        <span className="text-[11px] font-black text-emerald-700 uppercase tracking-wide">입고 로트 {mixEnabled ? '(혼합 사용)' : '(선입선출)'}</span>
         <span className="text-sm font-black text-emerald-800">
           합계 {fmt(totalUnit)} {unitLabel}{isOil && <span className="text-[11px] font-bold text-emerald-500"> ({fmt(totalKg)} kg)</span>}
         </span>
       </div>
+
+      {/* 기름 혼합 사용 — 상위 2개 로트를 비율대로 차감 (관리자, 기름만) */}
+      {isOil && isAdmin && (
+        <div className="flex items-center gap-2 flex-wrap bg-amber-50/60 border border-amber-100 rounded-xl px-3 py-2">
+          <button
+            onClick={(e) => { e.stopPropagation(); setMixEnabled(!mixEnabled); }}
+            className={`text-[11px] font-black px-2.5 py-1 rounded-full transition-colors ${mixEnabled ? 'bg-amber-500 text-white' : 'bg-white text-amber-600 border border-amber-200'}`}
+          >혼합 사용 {mixEnabled ? 'ON' : 'OFF'}</button>
+          {mixEnabled && (
+            <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-700">
+              <span>상위 2개 로트 비율</span>
+              <input
+                type="number" min={0} max={100}
+                value={pctDraft}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => setPctDraft(e.target.value)}
+                onBlur={commitPct}
+                onKeyDown={(e) => { if (e.key === 'Enter') commitPct(); }}
+                className="w-12 text-center border border-amber-300 rounded-md px-1 py-0.5 outline-none focus:ring-2 focus:ring-amber-400"
+              />
+              <span>: {100 - (parseInt(pctDraft, 10) || 0)}</span>
+              {active.length < 2 && <span className="text-amber-400">(로트 2개 이상일 때 적용)</span>}
+            </div>
+          )}
+        </div>
+      )}
 
       {active.length === 0 ? (
         <div className="bg-white rounded-xl border border-emerald-100 px-3 py-6 text-center text-xs font-bold text-slate-300">

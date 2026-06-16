@@ -68,28 +68,60 @@ export function buildReceiveLot(params: {
 }
 
 /**
- * 선입선출(FIFO) 차감: 배열 앞쪽 active 로트부터 kg을 빼낸다.
- * 한 로트가 0이 되면 status='depleted'. 잔량보다 많이 쓰면 shortageKg로 반환(음수 재고는 안 만듦).
- * @returns lots(차감 후), distribution(어느 로트에서 얼마 뺐는지), shortageKg(부족분)
+ * 로트 차감.
+ * - 기본: 선입선출(FIFO) — 앞쪽 active 로트부터.
+ * - 혼합(mix) 지정 시: 상위 2개 active 로트에 비율(topPercent: 첫 로트 %)대로 먼저 배분하고,
+ *   부족분은 FIFO로 이어서 차감(한쪽 소진 시 다음 순서로). active 로트가 1개뿐이면 FIFO와 동일.
+ * 한 로트가 0이 되면 status='depleted'. 잔량보다 많이 쓰면 shortageKg로 반환(음수 재고 안 만듦).
+ * @returns lots(차감 후), distribution(로트별 차감량), shortageKg(부족분)
  */
-export function deductFromLots(lots: RawMaterialLot[], kgToUse: number): {
+export function deductFromLots(
+  lots: RawMaterialLot[],
+  kgToUse: number,
+  mix?: { topPercent: number },
+): {
   lots: RawMaterialLot[];
   distribution: { supplierName: string; lotNo?: string; kg: number }[];
   shortageKg: number;
 } {
   let remaining = round3(kgToUse);
-  const distribution: { supplierName: string; lotNo?: string; kg: number }[] = [];
   const next = lots.map(l => ({ ...l }));
-  for (const l of next) {
-    if (remaining <= 0) break;
-    if (l.status !== 'active' || (l.kgRemaining ?? 0) <= 0) continue;
-    const take = Math.min(l.kgRemaining, remaining);
-    l.kgRemaining = round3(l.kgRemaining - take);
-    remaining = round3(remaining - take);
+  const dist: { idx: number; supplierName: string; lotNo?: string; kg: number }[] = [];
+  const activeIdx = next
+    .map((l, i) => ({ l, i }))
+    .filter(x => x.l.status === 'active' && (x.l.kgRemaining ?? 0) > 0)
+    .map(x => x.i);
+
+  const take = (idx: number, amount: number) => {
+    const l = next[idx];
+    const t = Math.min(l.kgRemaining, round3(amount), remaining);
+    if (t <= 0) return;
+    l.kgRemaining = round3(l.kgRemaining - t);
+    remaining = round3(remaining - t);
     if (l.kgRemaining <= 0.0001) { l.kgRemaining = 0; l.status = 'depleted'; }
-    distribution.push({ supplierName: l.supplierName, lotNo: l.lotNo, kg: round3(take) });
+    const ex = dist.find(d => d.idx === idx);
+    if (ex) ex.kg = round3(ex.kg + t);
+    else dist.push({ idx, supplierName: l.supplierName, lotNo: l.lotNo, kg: round3(t) });
+  };
+
+  // 혼합: 상위 2개 로트에 비율 배분 우선
+  if (mix && activeIdx.length >= 2 && remaining > 0) {
+    const total = round3(kgToUse);
+    const topAmt = round3(total * Math.max(0, Math.min(100, mix.topPercent)) / 100);
+    take(activeIdx[0], topAmt);
+    take(activeIdx[1], round3(total - topAmt));
   }
-  return { lots: next, distribution, shortageKg: round3(Math.max(0, remaining)) };
+  // 나머지(또는 비혼합): FIFO로 잔여 차감
+  for (const idx of activeIdx) {
+    if (remaining <= 0) break;
+    take(idx, remaining);
+  }
+
+  return {
+    lots: next,
+    distribution: dist.map(({ idx, ...d }) => d),
+    shortageKg: round3(Math.max(0, remaining)),
+  };
 }
 
 /**

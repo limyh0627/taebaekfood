@@ -73,6 +73,20 @@ check('부족분 계산 — 515kg 모자람', d3.shortageKg === 515, d3.shortage
 check('모든 로트 소진', d3.lots.every(l => l.kgRemaining === 0 && l.status === 'depleted'));
 check('원본 불변(순수함수)', fifoLots[0].kgRemaining === 825);
 
+console.log('── 혼합 차감 (상위 2개 비율 배분) ──');
+const mixLots = () => [mkLot('a', 825, '청양'), mkLot('b', 660, '청정'), mkLot('c', 500, '대성')];
+const m1 = deductFromLots(mixLots(), 100, { topPercent: 50 });
+check('50:50 → 청양50/청정50', m1.lots[0].kgRemaining === 775 && m1.lots[1].kgRemaining === 610 && m1.lots[2].kgRemaining === 500, m1.lots.map(l => l.kgRemaining));
+const m2 = deductFromLots(mixLots(), 100, { topPercent: 70 });
+check('70:30 → 청양70/청정30', m2.lots[0].kgRemaining === 755 && m2.lots[1].kgRemaining === 630, m2.lots.map(l => l.kgRemaining));
+check('혼합 분배 2건', m2.distribution.length === 2 && m2.distribution[0].kg === 70 && m2.distribution[1].kg === 30);
+// 상위 로트 부족 시 다음 순서로
+const m3 = deductFromLots([mkLot('a', 20, '청양'), mkLot('b', 660, '청정'), mkLot('c', 500, '대성')], 100, { topPercent: 50 });
+check('상위 부족(20) → 청양20+청정80, 청양 소진', m3.lots[0].kgRemaining === 0 && m3.lots[0].status === 'depleted' && m3.lots[1].kgRemaining === 580, m3.lots.map(l => `${l.kgRemaining}/${l.status}`));
+// active 1개면 혼합 무시(FIFO)
+const m4 = deductFromLots([mkLot('a', 825, '청양')], 100, { topPercent: 50 });
+check('로트 1개면 혼합 무시(FIFO)', m4.lots[0].kgRemaining === 725 && m4.distribution.length === 1);
+
 console.log('── Firestore 쓰기 전 undefined 제거 (mutateRawMaterialLots와 동일 strip) ──');
 // firebaseService.stripUndefined 와 동일 구현
 const stripUndefined = (o: any): any => Array.isArray(o) ? o.map(stripUndefined)

@@ -833,7 +833,7 @@ const ItemList: React.FC<ItemListProps> = ({
         </div>
       )}
 
-      {activeTab !== 'inbound' && (zeroStockOnly || topTab === 'submaterial' || topTab === 'finished' || topTab === 'goods' || topTab === 'rawmaterial') && <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+      {activeTab !== 'inbound' && (zeroStockOnly || topTab === 'submaterial' || topTab === 'finished' || topTab === 'goods' || topTab === 'rawmaterial' || topTab === 'wip') && <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
         {activeTab === 'requests' && draftOrders.length > 0 && (
           <div className="mb-8 bg-indigo-50/50 border border-indigo-100 rounded-[32px] p-6">
             <div className="flex items-center justify-between mb-6 px-2">
