@@ -1780,7 +1780,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               defaultTopTemplate.map(t => [t.key, new Set(t.volumes)])
             );
             allItems
-              .filter(p => p.category === '완제품' && p.품목 && p.spec && !bottomPumokSet.has(p.품목))
+              .filter(p => p.category === 'product' && p.품목 && p.spec && !bottomPumokSet.has(p.품목))
               .forEach(p => {
                 if (!topTemplateMap.has(p.품목!)) topTemplateMap.set(p.품목!, new Set());
                 topTemplateMap.get(p.품목!)!.add(p.spec!);
@@ -1835,7 +1835,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             const missingMfgDate = shippedOrders.flatMap(o =>
               o.items.filter(item => {
                 const p = allItems.find(pr => pr.id === item.itemId);
-                return p?.category === '완제품' && !item.mfgDate;
+                return p?.category === 'product' && !item.mfgDate;
               }).map(item => item.name)
             );
 
@@ -1988,25 +1988,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 }
                 await updateItem('orders', o.id, { status: OrderStatus.DELIVERED, deliveredAt: new Date().toISOString() });
               }
-              // 향미유만 있는 출고 주문도 이력으로 이동 + 재고 차감
-              const hyangmiyuOnlyOrders = orders.filter(o =>
-                o.status === OrderStatus.SHIPPED &&
-                o.partnerName !== '생산기록' &&
-                o.items.length > 0 &&
-                o.items.every(item => {
-                  const pr = allItems.find(pr => pr.id === item.itemId);
-                  return pr?.category === '향미유' || pr?.category === 'goods' || pr?.subtype === '향미유' || pr?.subtype === '고춧가루';
-                })
-              );
-              for (const o of hyangmiyuOnlyOrders) {
-                try {
-                  await deductSubmaterialsForOrder(o);
-                } catch (e) {
-                  console.error(`[주문 이력 이동] 향미유 차감 실패 (주문 ${o.id}, ${o.partnerName}):`, e);
-                  deductFailures.push(o.partnerName || o.id);
-                }
-                await updateItem('orders', o.id, { status: OrderStatus.DELIVERED, deliveredAt: new Date().toISOString() });
-              }
+              // 참고: 향미유/고춧가루만 있는 출고 주문도 위 shippedOrders 루프가 이미 처리한다
+              // (SUB_ONLY_CATS에 향미유/고춧가루가 없으므로 some(...) 조건을 만족).
+              // 과거에는 SUB_ONLY_CATS에 향미유가 포함돼 별도 루프가 필요했으나, 영문 카테고리
+              // 전환(e237fc4) 이후 중복 차감을 유발해 제거함.
               if (deductFailures.length > 0) {
                 alert(`주문 ${deductFailures.length}건은 이력으로 이동했지만 재고/원료 차감 중 오류가 발생했습니다:\n${[...new Set(deductFailures)].join(', ')}\n\n해당 품목의 재고/원료 로트를 확인해 주세요.`);
               }
@@ -2068,7 +2053,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                           <span className="text-[10px] text-slate-400 whitespace-nowrap">→ 제조 -3일 ±1</span>
                           {(() => {
                             const cnt = orders.filter(o => o.status === OrderStatus.SHIPPED && o.partnerName !== '생산기록')
-                              .flatMap(o => o.items.filter(item => allItems.find(p => p.id === item.itemId)?.category === '완제품')).length;
+                              .flatMap(o => o.items.filter(item => allItems.find(p => p.id === item.itemId)?.category === 'product')).length;
                             return cnt > 0 ? <span className="text-[10px] font-bold text-amber-500 whitespace-nowrap">{cnt}건</span> : null;
                           })()}
                           <button
@@ -2082,7 +2067,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                               for (const o of targetOrders) {
                                 o.items.forEach((item, itemIdx) => {
                                   const p = allItems.find(pr => pr.id === item.itemId);
-                                  if (p?.category === '완제품') {
+                                  if (p?.category === 'product') {
                                     unset.push({ orderId: o.id, itemIdx, itemName: p.품목 || item.name });
                                   }
                                 });

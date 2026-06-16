@@ -12,10 +12,11 @@ import {
   X,
   Users,
   Clock,
-  Search
+  Search,
+  Trash2
 } from 'lucide-react';
 import { PalletStock, Order, Partner, OrderStatus, PalletTransaction } from '../types';
-import { fetchDateRange, updateItem } from '../src/shared/services/firebaseService';
+import { fetchDateRange, updateItem, deleteItem } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 
 // 모듈 캐시 — 페이지 재진입 시 24개월 과거 거래 재조회 방지 (읽기 절약). 5분 TTL.
@@ -71,6 +72,10 @@ const PalletManager: React.FC<PalletManagerProps> = ({
   const [selectedClientIdForDetail, setSelectedClientIdForDetail] = useState<string | null>(null);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyDateFilter, setHistoryDateFilter] = useState('');
+  const [monthFilter, setMonthFilter] = useState<string>(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; // 기본값: 이번 달 ('' = 전체 기간)
+  });
 
   const ITEMS_PER_PAGE = 5;
 
@@ -84,7 +89,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
 
     // Add from orders
     orders
-      .filter(o => o.pallets && o.pallets.length > 0 && o.status === OrderStatus.SHIPPED)
+      .filter(o => o.pallets && o.pallets.length > 0 && (o.status === OrderStatus.SHIPPED || o.status === OrderStatus.DELIVERED))
       .forEach(order => {
         const partnerId = order.partnerId || 'unknown';
         if (!stats[partnerId]) stats[partnerId] = { name: order.partnerName, pallets: {} };
@@ -153,7 +158,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
   const partnerHistory = useMemo(() => {
     if (!selectedClientIdForDetail) return [];
 
-    const history: { id: string; type: 'in' | 'out'; quantity: number; date: string; note: string; palletName: string }[] = [];
+    const history: { id: string; type: 'in' | 'out'; quantity: number; date: string; note: string; palletName: string; txId?: string }[] = [];
 
     // From manual transactions
     palletTransactions
@@ -166,7 +171,8 @@ const PalletManager: React.FC<PalletManagerProps> = ({
           quantity: t.quantity,
           date: t.date,
           note: t.note || (t.type === 'in' ? '수동 입고' : '수동 출고'),
-          palletName: pallet?.name || '기타'
+          palletName: pallet?.name || '기타',
+          txId: t.id,
         });
       });
 
@@ -233,19 +239,37 @@ const PalletManager: React.FC<PalletManagerProps> = ({
     setSelectedClientForTrans(null);
   };
 
-  // 전체 요약: 미회수(거래처가 안 돌려준 합계) / 지급(총 나간 합계) / 교체중(교체 진행 중)
+  // 선택 가능한 월 목록(YYYY-MM) — 거래/주문 출고 날짜 기준, 최신순
+  const availableMonths = useMemo(() => {
+    const set = new Set<string>();
+    const now = new Date();
+    set.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`); // 이번 달은 거래 없어도 항상 표시
+    palletTransactions.forEach(t => { if (t.date) set.add(t.date.slice(0, 7)); });
+    orders.forEach(o => {
+      if (o.pallets && o.pallets.length > 0 && (o.status === OrderStatus.SHIPPED || o.status === OrderStatus.DELIVERED)) {
+        const m = (o.deliveryDate || '').slice(0, 7);
+        if (m) set.add(m);
+      }
+    });
+    return Array.from(set).filter(Boolean).sort((a, b) => b.localeCompare(a));
+  }, [palletTransactions, orders]);
+
+  // 전체 요약: 입고(들어온 합계) / 지급(나간 합계) / 교체중(교체 진행 중)
+  // monthFilter 지정 시 해당 월(YYYY-MM) 거래만 합산
   const palletSummary = useMemo(() => {
     let totalOut = 0, totalIn = 0, exchanging = 0;
+    const inMonth = (d?: string) => !monthFilter || (d ?? '').startsWith(monthFilter);
     palletTransactions.forEach(t => {
+      if (!inMonth(t.date)) return;
       if (t.type === 'out') totalOut += t.quantity;
       else if (t.type === 'in') totalIn += t.quantity;
       if (t.status === '교체중') exchanging += t.quantity;
     });
     orders
-      .filter(o => o.pallets && o.pallets.length > 0 && o.status === OrderStatus.SHIPPED)
-      .forEach(o => o.pallets?.filter(p => !p.isExchange).forEach(p => { totalOut += p.quantity || 0; }));
-    return { 미회수: Math.max(0, totalOut - totalIn), 지급: totalOut, 교체중: exchanging };
-  }, [palletTransactions, orders]);
+      .filter(o => o.pallets && o.pallets.length > 0 && (o.status === OrderStatus.SHIPPED || o.status === OrderStatus.DELIVERED))
+      .forEach(o => { if (inMonth(o.deliveryDate)) o.pallets?.filter(p => !p.isExchange).forEach(p => { totalOut += p.quantity || 0; }); });
+    return { 입고: totalIn, 지급: totalOut, 교체중: exchanging };
+  }, [palletTransactions, orders, monthFilter]);
 
   // 교체중 거래 목록 (거래처별 표시·완료 처리용)
   const pendingExchanges = useMemo(
@@ -256,20 +280,22 @@ const PalletManager: React.FC<PalletManagerProps> = ({
   // 전체 이력 — 이미 로딩된 거래(palletTransactions, 24개월) + 주문 출고분 재사용 (추가 Firebase 읽기 없음)
   const allPalletHistory = useMemo(() => {
     const pName = (id: string) => partners.find(p => p.id === id)?.name || '알 수 없음';
-    type Row = { id: string; date: string; partner: string; pallet: string; type: 'in' | 'out'; quantity: number; status?: string; note: string };
+    type Row = { id: string; date: string; partner: string; pallet: string; type: 'in' | 'out'; quantity: number; status?: string; note: string; txId?: string };
     const rows: Row[] = palletTransactions.map(t => ({
       id: t.id, date: t.date, partner: pName(t.partnerId),
       pallet: pallets.find(p => p.id === t.palletId)?.name || '기타',
-      type: t.type, quantity: t.quantity, status: t.status, note: t.note || '',
+      type: t.type, quantity: t.quantity, status: t.status, note: t.note || '', txId: t.id,
     }));
     orders
-      .filter(o => o.pallets && o.pallets.length > 0 && o.status === OrderStatus.SHIPPED)
+      .filter(o => o.pallets && o.pallets.length > 0 && (o.status === OrderStatus.SHIPPED || o.status === OrderStatus.DELIVERED))
       .forEach(o => o.pallets?.filter(p => !p.isExchange).forEach((p, i) => rows.push({
         id: `${o.id}-pl-${i}`, date: (o.deliveryDate || '').split('T')[0], partner: o.partnerName,
         pallet: p.type || '기타', type: 'out', quantity: p.quantity || 0, note: '주문 출고',
       })));
-    return rows.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
-  }, [palletTransactions, orders, partners, pallets]);
+    return rows
+      .filter(r => !monthFilter || (r.date ?? '').startsWith(monthFilter))
+      .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
+  }, [palletTransactions, orders, partners, pallets, monthFilter]);
 
   // 교체완료: 헌 파레트 입고 확인 → 원 거래를 교체완료로 표시 + 회수(in) 기록
   const completeExchange = async (tx: PalletTransaction) => {
@@ -286,6 +312,30 @@ const PalletManager: React.FC<PalletManagerProps> = ({
     } catch (e) {
       console.error('[파레트] 교체완료 실패:', e);
       alert('교체완료 처리 실패: ' + ((e as Error)?.message ?? e));
+    }
+  };
+
+  // 거래 삭제(정정) — 오입력된 수동 거래 제거. inUse 되돌림 + 로컬 캐시에서도 제거.
+  // (주문 출고에서 파생된 행은 txId가 없어 삭제 버튼이 노출되지 않음)
+  const deleteTransaction = async (txId: string) => {
+    const tx = palletTransactions.find(t => t.id === txId);
+    if (!tx) return;
+    const label = tx.type === 'in' ? '입고' : '지급';
+    if (!confirm(`이 파렛트 ${label} 거래(${tx.quantity}개)를 삭제할까요?\n되돌릴 수 없습니다.`)) return;
+    try {
+      await deleteItem('palletTransactions', tx.id);
+      // inUse 되돌림: 입고였으면 다시 +, 지급이었으면 −
+      const pallet = pallets.find(p => p.id === tx.palletId);
+      if (pallet) {
+        const delta = tx.type === 'in' ? tx.quantity : -tx.quantity;
+        onUpdatePallet({ ...pallet, inUse: Math.max(0, pallet.inUse + delta) });
+      }
+      // 라이브 구독(7일)이 즉시 못 지우는 과거 거래 대비 — 로컬 캐시/상태에서도 제거
+      setExtraTransactions(prev => prev.filter(t => t.id !== tx.id));
+      if (palletTxCache) palletTxCache = { data: palletTxCache.data.filter(t => t.id !== tx.id), at: palletTxCache.at };
+    } catch (e) {
+      console.error('[파레트] 거래 삭제 실패:', e);
+      alert('삭제 실패: ' + ((e as Error)?.message ?? e));
     }
   };
 
@@ -473,6 +523,16 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                 <h3 className="text-xs font-black text-slate-700 uppercase tracking-wider">파렛트 거래 이력</h3>
                 <span className="text-[10px] font-black text-slate-300">{allPalletHistory.length}건</span>
               </div>
+              <select
+                value={monthFilter}
+                onChange={(e) => setMonthFilter(e.target.value)}
+                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400"
+              >
+                <option value="">전체 기간</option>
+                {availableMonths.map(m => (
+                  <option key={m} value={m}>{m.slice(0, 4)}년 {m.slice(5)}월</option>
+                ))}
+              </select>
             </div>
             <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
               <table className="w-full text-left">
@@ -484,11 +544,12 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                     <th className="px-3 py-2 text-[10px] font-black text-slate-400 uppercase text-center">구분</th>
                     <th className="px-3 py-2 text-[10px] font-black text-slate-400 uppercase text-right">수량</th>
                     <th className="px-3 py-2 text-[10px] font-black text-slate-400 uppercase">비고</th>
+                    <th className="px-3 py-2 text-[10px] font-black text-slate-400 uppercase text-center">관리</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {allPalletHistory.length === 0 ? (
-                    <tr><td colSpan={6} className="px-3 py-16 text-center text-xs font-bold text-slate-300">거래 이력이 없습니다</td></tr>
+                    <tr><td colSpan={7} className="px-3 py-16 text-center text-xs font-bold text-slate-300">거래 이력이 없습니다</td></tr>
                   ) : allPalletHistory.map(r => (
                     <tr key={r.id} className="hover:bg-slate-50/40">
                       <td className="px-3 py-2.5 text-[11px] font-bold text-slate-500 whitespace-nowrap">{r.date}</td>
@@ -496,11 +557,18 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                       <td className="px-3 py-2.5 text-[11px] text-slate-500">{r.pallet}</td>
                       <td className="px-3 py-2.5 text-center">
                         <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${r.status === '교체중' ? 'bg-violet-50 text-violet-600' : r.status === '교체완료' ? 'bg-violet-100 text-violet-700' : r.type === 'in' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-                          {r.status ? r.status : r.type === 'in' ? '회수' : '지급'}
+                          {r.status ? r.status : r.type === 'in' ? '입고' : '지급'}
                         </span>
                       </td>
                       <td className={`px-3 py-2.5 text-right text-[11px] font-black ${r.type === 'in' ? 'text-emerald-600' : 'text-rose-600'}`}>{r.type === 'in' ? '+' : '−'}{r.quantity}</td>
                       <td className="px-3 py-2.5 text-[10px] text-slate-400 truncate max-w-[180px]">{r.note}</td>
+                      <td className="px-3 py-2.5 text-center">
+                        {r.txId ? (
+                          <button onClick={() => deleteTransaction(r.txId!)} className="p-1 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded transition-colors" title="거래 삭제(정정)">
+                            <Trash2 size={13} />
+                          </button>
+                        ) : <span className="text-[9px] text-slate-200">주문</span>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -510,17 +578,34 @@ const PalletManager: React.FC<PalletManagerProps> = ({
         </div>
       ) : (
         <div className="space-y-4 animate-in fade-in duration-300">
-          {/* 전체 요약: 미회수 / 지급 / 교체중 */}
+          {/* 월 선택 — 요약 숫자(입고/지급/교체중)를 해당 월로 필터 */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-black text-slate-500">기간</span>
+            <select
+              value={monthFilter}
+              onChange={(e) => setMonthFilter(e.target.value)}
+              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400"
+            >
+              <option value="">전체 기간</option>
+              {availableMonths.map(m => (
+                <option key={m} value={m}>{m.slice(0, 4)}년 {m.slice(5)}월</option>
+              ))}
+            </select>
+            {monthFilter && (
+              <span className="text-[10px] font-bold text-indigo-500">{monthFilter.slice(0, 4)}년 {monthFilter.slice(5)}월 기준</span>
+            )}
+          </div>
+          {/* 전체 요약: 입고 / 지급 / 교체중 */}
           <div className="grid grid-cols-3 gap-3">
-            <div className="bg-white p-4 rounded-2xl border border-amber-100 shadow-sm">
-              <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest">미회수</p>
-              <p className="text-2xl font-black text-amber-600">{palletSummary.미회수.toLocaleString()}<span className="text-sm font-bold text-slate-400">개</span></p>
-              <p className="text-[10px] text-slate-400">거래처가 아직 안 돌려준 파레트</p>
+            <div className="bg-white p-4 rounded-2xl border border-emerald-100 shadow-sm">
+              <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">입고</p>
+              <p className="text-2xl font-black text-emerald-600">{palletSummary.입고.toLocaleString()}<span className="text-sm font-bold text-slate-400">개</span></p>
+              <p className="text-[10px] text-slate-400">{monthFilter ? '이 달 들어온 파레트' : '거래처에서 들어온 총 파레트'}</p>
             </div>
             <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
               <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">지급</p>
               <p className="text-2xl font-black text-indigo-600">{palletSummary.지급.toLocaleString()}<span className="text-sm font-bold text-slate-400">개</span></p>
-              <p className="text-[10px] text-slate-400">거래처에 내준 총 파레트</p>
+              <p className="text-[10px] text-slate-400">{monthFilter ? '이 달 내준 파레트' : '거래처에 내준 총 파레트'}</p>
             </div>
             <div className="bg-white p-4 rounded-2xl border border-violet-100 shadow-sm">
               <p className="text-[10px] font-black text-violet-500 uppercase tracking-widest">교체중</p>
@@ -540,9 +625,9 @@ const PalletManager: React.FC<PalletManagerProps> = ({
               />
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <button onClick={() => { setSelectedClientForTrans(null); setTransType('in'); setIsTransactionModalOpen(true); }} className="px-3 py-2 rounded-xl text-xs font-black bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors flex items-center gap-1"><RefreshCw size={13} />회수</button>
               <button onClick={() => { setSelectedClientForTrans(null); setTransType('out'); setIsTransactionModalOpen(true); }} className="px-3 py-2 rounded-xl text-xs font-black bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors flex items-center gap-1"><Plus size={13} />지급</button>
               <button onClick={() => { setSelectedClientForTrans(null); setTransType('exchange'); setIsTransactionModalOpen(true); }} className="px-3 py-2 rounded-xl text-xs font-black bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors flex items-center gap-1"><RefreshCw size={13} />교체</button>
+              <button onClick={() => { setSelectedClientForTrans(null); setTransType('in'); setIsTransactionModalOpen(true); }} className="px-3 py-2 rounded-xl text-xs font-black bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors flex items-center gap-1"><RefreshCw size={13} />신규 입고</button>
             </div>
           </div>
 
@@ -787,6 +872,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                         <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase">구분</th>
                         <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase">종류</th>
                         <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase text-right">수량</th>
+                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase text-center">관리</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
@@ -803,11 +889,18 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                           <td className={`px-6 py-4 text-sm font-black text-right ${item.type === 'in' ? 'text-emerald-600' : 'text-rose-600'}`}>
                             {item.type === 'in' ? '+' : '-'}{item.quantity}
                           </td>
+                          <td className="px-6 py-4 text-center">
+                            {item.txId ? (
+                              <button onClick={() => deleteTransaction(item.txId!)} className="p-1 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded transition-colors" title="거래 삭제(정정)">
+                                <Trash2 size={14} />
+                              </button>
+                            ) : <span className="text-[9px] text-slate-200">주문</span>}
+                          </td>
                         </tr>
                       ))}
                       {paginatedHistory.length === 0 && (
                         <tr>
-                          <td colSpan={4} className="px-6 py-10 text-center text-slate-400 text-xs font-bold italic">기록이 없습니다.</td>
+                          <td colSpan={5} className="px-6 py-10 text-center text-slate-400 text-xs font-bold italic">기록이 없습니다.</td>
                         </tr>
                       )}
                     </tbody>
@@ -846,7 +939,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-slate-900">
-                    {transType === 'in' ? '파렛트 회수' : transType === 'exchange' ? '파렛트 교체' : '파렛트 지급'}
+                    {transType === 'in' ? '파렛트 신규 입고' : transType === 'exchange' ? '파렛트 교체' : '파렛트 지급'}
                   </h3>
                   <p className="text-xs text-slate-500">{selectedClientForTrans ? selectedClientForTrans.name : '거래처를 선택하세요'}</p>
                 </div>
@@ -903,7 +996,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
               <div className="pt-4 flex space-x-3">
                 <button type="button" onClick={() => setIsTransactionModalOpen(false)} className="flex-1 py-3 rounded-xl font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 transition-all">취소</button>
                 <button type="submit" className={`flex-1 py-3 rounded-xl font-bold text-white shadow-lg transition-all ${transType === 'in' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100' : transType === 'exchange' ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-100' : 'bg-rose-600 hover:bg-rose-700 shadow-rose-100'}`}>
-                  {transType === 'in' ? '회수 완료' : transType === 'exchange' ? '교체 등록(교체중)' : '지급 완료'}
+                  {transType === 'in' ? '입고 완료' : transType === 'exchange' ? '교체 등록(교체중)' : '지급 완료'}
                 </button>
               </div>
             </form>
