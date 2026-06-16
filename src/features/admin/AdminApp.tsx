@@ -1976,9 +1976,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
               });
 
               // 출고(SHIPPED) 주문을 예전 주문이력(DELIVERED)으로 이동 + 부자재 차감
+              // 차감(부자재/원료 로트)은 부수효과 — 실패해도 이력 이동(DELIVERED)은 반드시 진행한다.
+              const deductFailures: string[] = [];
               for (const o of shippedOrders) {
-                await deductSubmaterialsForOrder(o);
-                await createProductionRecordsForOrder(o);
+                try {
+                  await deductSubmaterialsForOrder(o);
+                  await createProductionRecordsForOrder(o);
+                } catch (e) {
+                  console.error(`[주문 이력 이동] 차감/생산기록 실패 (주문 ${o.id}, ${o.partnerName}):`, e);
+                  deductFailures.push(o.partnerName || o.id);
+                }
                 await updateItem('orders', o.id, { status: OrderStatus.DELIVERED, deliveredAt: new Date().toISOString() });
               }
               // 향미유만 있는 출고 주문도 이력으로 이동 + 재고 차감
@@ -1992,8 +1999,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 })
               );
               for (const o of hyangmiyuOnlyOrders) {
-                await deductSubmaterialsForOrder(o);
+                try {
+                  await deductSubmaterialsForOrder(o);
+                } catch (e) {
+                  console.error(`[주문 이력 이동] 향미유 차감 실패 (주문 ${o.id}, ${o.partnerName}):`, e);
+                  deductFailures.push(o.partnerName || o.id);
+                }
                 await updateItem('orders', o.id, { status: OrderStatus.DELIVERED, deliveredAt: new Date().toISOString() });
+              }
+              if (deductFailures.length > 0) {
+                alert(`주문 ${deductFailures.length}건은 이력으로 이동했지만 재고/원료 차감 중 오류가 발생했습니다:\n${[...new Set(deductFailures)].join(', ')}\n\n해당 품목의 재고/원료 로트를 확인해 주세요.`);
               }
             };
 
