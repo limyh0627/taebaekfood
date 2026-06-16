@@ -261,6 +261,8 @@ export interface PalletTransaction {
   quantity: number;
   date: string;
   note?: string;
+  status?: '교체중' | '교체완료';  // 교체(exchange) 거래용 — 신 파레트 지급(out) 후 헌 파레트 입고 확인 시 교체완료
+  exchangeReturnQty?: number;       // 교체완료 시 회수할 헌 파레트 수량
 }
 
 // Database related interfaces
