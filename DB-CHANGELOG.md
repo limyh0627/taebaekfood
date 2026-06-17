@@ -5,6 +5,21 @@
 
 ---
 
+## 2026-06-17 — 누락 입고 백필 (인천)청정식품 깨분참기름 20캔
+
+**작업자:** Claude 에이전트 (사용자 chdwp 요청)
+**사유:** 06-17 선입고 시 Firebase 일일 한도(429)로 로트/수불부 기록 트랜잭션이 실패(전표는 생성됨, 원료는 누락). 한도 회복 후 수동 백필.
+**스크립트:** `scripts/backfill-cheongjeong-260617.mts` (되돌리기: `--undo`, 백업 `scripts/backfill-cheongjeong-backup.json`)
+
+| 문서 | 변경 |
+|---|---|
+| `raw-깨분참기름` | `lots` += (인천)청정식품 330kg(20캔×16.5, lotNo 260617-01), `stock` 2779 → 3140.165 L |
+| `rawMaterialLedger/rm-backfill-cheongjeong-20260617` | +330kg 입고 기록 신규 |
+
+**관련 코드 수정(미배포):** 입고 시 원료 로트/수불부 기록 실패가 조용히 삼켜지던 것 → 사용자에게 경고창 표시(ReceivingReturnsManager 스캔·선입고 경로). 재발 시 즉시 인지 가능하도록.
+
+---
+
 ## 2026-06-15 — 원료 로트(lot) 시스템 도입
 
 **작업자:** Claude 에이전트 (사용자 chdwp 요청)

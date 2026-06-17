@@ -98,7 +98,8 @@ const ProfitAnalysis = React.lazy(() => import('../../../components/ProfitAnalys
 
 import { db } from '../../shared/firebase';
 import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, baseRawName, lotStockInUnit } from '../../constants/formula';
-import { deductFromLots } from '../../shared/lotUtils';
+import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo } from '../../shared/lotUtils';
+import { rawLotTarget, recordRawMaterialReceipt } from '../../shared/rawReceipt';
 import {
   addItem,
   updateItem,
@@ -831,13 +832,29 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const handleFinishConfirmedOrder = async (id: string) => {
     const po = purchaseOrders.find(po => po.id === id);
     if (!po) return;
-    // 묶음/단일 품목 모두 재고 가산
+    const nowIso = new Date().toISOString();
+    const dateStr = nowIso.slice(0, 10);
+    // 묶음/단일 품목 모두 처리: 원료(raw)에 귀속되면 로트+수불부, 아니면 SKU 재고 가산
     for (const line of poLines(po)) {
       const product = allItems.find(p => p.id === line.itemId);
       if (!product) continue;
-      const collectionName = getProductCollection(product.category);
-      const addQty = (product.subtype === '향미유' || product.category === '향미유') && line.isBox ? line.quantity * 12 : line.quantity;
-      await updateItem(collectionName, product.id, { stock: (product.stock ?? 0) + addQty });
+      const isRawLinked = !!rawLotTarget(allItems, product, product.name);
+      if (isRawLinked) {
+        // 원료 로트가 재고를 소유 → SKU stock 누적 안 하고 로트+수불부로 기록
+        try {
+          await recordRawMaterialReceipt({
+            allItems, product, itemName: product.name, quantity: line.quantity, unit: product.unit,
+            partnerId: po.partnerId, partnerName: po.partnerName || '거래처', dateStr, nowIso, poId: id, addedBy: currentUser?.name,
+          });
+        } catch (err) {
+          console.error('[입고확인] 원료 로트/수불부 기록 실패:', product.name, err);
+          alert(`⚠️ "${product.name}" 원료 재고/수불부 기록 실패\n사유: ${(err as Error)?.message ?? String(err)}\n\n입고확인은 됐지만 원료 로트가 안 잡혔습니다. (Firebase 한도 초과 등) 잠시 후 다시 시도하거나 관리자에게 알려주세요.`);
+        }
+      } else {
+        const collectionName = getProductCollection(product.category);
+        const addQty = (product.subtype === '향미유' || product.category === '향미유') && line.isBox ? line.quantity * 12 : line.quantity;
+        await updateItem(collectionName, product.id, { stock: (product.stock ?? 0) + addQty });
+      }
     }
     await updateItem('purchaseOrders', id, { status: 'received', receivedAt: new Date().toISOString() });
   };
@@ -881,16 +898,30 @@ const AdminApp: React.FC<AdminAppProps> = ({
       }
     }
 
-    // 즉시 입고확정: 새 수량으로 재고 가산 + received 전환
+    // 즉시 입고확정: 새 수량으로 원료 로트/수불부 또는 SKU 재고 반영 + received 전환
     const newPoItems = poLines(po)
       .map(l => ({ ...l, quantity: qtyByItemId.get(l.itemId) ?? l.quantity }))
       .filter(l => l.quantity > 0);
+    const nowIso2 = new Date().toISOString();
+    const dateStr2 = nowIso2.slice(0, 10);
     for (const line of newPoItems) {
       const product = allItems.find(p => p.id === line.itemId);
       if (!product) continue;
-      const collectionName = getProductCollection(product.category);
-      const addQty = (product.subtype === '향미유' || product.category === '향미유') && line.isBox ? line.quantity * 12 : line.quantity;
-      await updateItem(collectionName, product.id, { stock: (product.stock ?? 0) + addQty });
+      if (rawLotTarget(allItems, product, product.name)) {
+        try {
+          await recordRawMaterialReceipt({
+            allItems, product, itemName: product.name, quantity: line.quantity, unit: product.unit,
+            partnerId: po.partnerId, partnerName: po.partnerName || '거래처', dateStr: dateStr2, nowIso: nowIso2, poId, addedBy: currentUser?.name,
+          });
+        } catch (err) {
+          console.error('[입고확정-수정] 원료 로트/수불부 기록 실패:', product.name, err);
+          alert(`⚠️ "${product.name}" 원료 재고/수불부 기록 실패\n사유: ${(err as Error)?.message ?? String(err)}\n\n입고확정은 됐지만 원료 로트가 안 잡혔습니다. (Firebase 한도 초과 등) 잠시 후 다시 시도하세요.`);
+        }
+      } else {
+        const collectionName = getProductCollection(product.category);
+        const addQty = (product.subtype === '향미유' || product.category === '향미유') && line.isBox ? line.quantity * 12 : line.quantity;
+        await updateItem(collectionName, product.id, { stock: (product.stock ?? 0) + addQty });
+      }
     }
     await updateItem('purchaseOrders', poId, { items: newPoItems, status: 'received', receivedAt: new Date().toISOString() });
   };
@@ -1456,16 +1487,31 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 if (entry.used > 0 && YIELD_AUTO[entry.material] && entry.note !== '재고실사정정') {
                   const { product, rate } = YIELD_AUTO[entry.material];
                   // entry.used가 이미 kg 단위(modal이 변환해서 저장)이므로 수율 곱한 결과도 kg
+                  const derivedKg = Math.round(entry.used * rate * 1000) / 1000;
                   await addItem('rawMaterialLedger', {
                     id: `rm-yield-${Date.now()}`,
                     material: product,
                     date: entry.date,
-                    received: Math.round(entry.used * rate * 1000) / 1000,
+                    received: derivedKg,
                     used: 0,
                     note: `${entry.material} 압착 (수율 ${rate * 100}%)`,
                     createdAt: new Date().toISOString(),
                     unit: 'kg', // canonical
                   });
+                  // 파생 원료(통깨참기름 등)에도 로트 생성 → 수불부와 로트/재고 일치 (안 만들면 출고 시 로트 부족)
+                  const derivedRaw = allItems.find(i => i.category === 'raw' && baseRawName(i.name) === product);
+                  if (derivedRaw && derivedKg > 0) {
+                    const lot = buildReceiveLot({ material: product, supplierName: `${entry.material} 압착`, qtyIn: 0, kgIn: derivedKg, receivedDate: entry.date });
+                    try {
+                      await mutateRawMaterialLots(
+                        derivedRaw.id,
+                        (lots, stock) => [...withCarryOverLot(lots, stock, product), { ...lot, lotNo: nextLotNo(lots, lot.receivedDate) }],
+                        (lots) => lotStockInUnit(lots, product),
+                      );
+                    } catch (err) {
+                      console.error('[수율 자동입고] 파생 원료 로트 생성 실패:', product, err);
+                    }
+                  }
                 }
               }}
               onDeleteRawMaterialEntry={(id) => deleteItem('rawMaterialLedger', id)}

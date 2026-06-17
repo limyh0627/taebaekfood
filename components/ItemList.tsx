@@ -31,9 +31,9 @@ import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 import RawMaterialEntryModal from './RawMaterialEntryModal';
 import RawMaterialLotPanel from './RawMaterialLotPanel';
-import { RM_LIST, unitOf, baseRawName, lotStockInUnit } from '../src/constants/formula';
+import { RM_LIST, unitOf, baseRawName, lotStockInUnit, unitToKg, lotKgRemaining } from '../src/constants/formula';
 import { mutateRawMaterialLots } from '../src/shared/services/firebaseService';
-import { withCarryOverLot, buildReceiveLot, nextLotNo } from '../src/shared/lotUtils';
+import { withCarryOverLot, buildReceiveLot, nextLotNo, deductFromLots } from '../src/shared/lotUtils';
 
 const normCat = (cat: string): string =>
   ({ product: '완제품', goods: '상품', container: '용기', cap: '마개', tape: '테이프', box: '박스', label: '라벨' } as Record<string, string>)[cat] ?? cat;
@@ -243,6 +243,7 @@ const ItemList: React.FC<ItemListProps> = ({
     [partnerItems]
   );
 
+  const stockEditCancelled = useRef(false); // 재고 편집 취소(ESC) 여부 — blur 중복 커밋 방지
   const addToCart = (itemId: string, defaultQty: number, isBox?: boolean) => {
     if (!cart.some(c => c.id === itemId)) {
       setCart(prev => [...prev, { id: itemId, qty: defaultQty, isBox: isBox ?? false }]);
@@ -256,6 +257,48 @@ const ItemList: React.FC<ItemListProps> = ({
     setCart([]);
     setShowCartPanel(false);
     setActiveTab('inbound');
+  };
+
+  // 재고 수정 커밋. 원료(raw)는 직접 덮어쓰지 않고 '실사조정'으로 로트를 목표값에 맞춤(+수불부 기록).
+  // (원료 stock은 로트 합계가 기준이라 직접 덮어쓰면 다음 로트연산에 사라지므로 반드시 로트로 조정)
+  const commitStockEdit = async (product: Item, val: number) => {
+    if (isNaN(val) || val < 0) return;
+    if (product.category === 'raw') {
+      const material = baseRawName(product.name);
+      const unitLabel = product.unit ?? (unitOf(material) === 'L' ? 'L' : 'kg');
+      if (!confirm(`${product.name} 재고를 ${val}${unitLabel}로 맞출까요?\n현재 로트 합계와의 차이가 '실사조정'으로 로트·수불부에 기록됩니다.`)) return;
+      const targetKg = unitToKg(val, material);
+      let adjustKg = 0;
+      await mutateRawMaterialLots(
+        product.id,
+        (lots, stock) => {
+          const withCarry = withCarryOverLot(lots, stock, material);
+          adjustKg = Math.round((targetKg - lotKgRemaining(withCarry)) * 1000) / 1000;
+          if (adjustKg > 0.001) {
+            const lot = buildReceiveLot({ material, supplierName: '실사조정', qtyIn: 0, kgIn: adjustKg, receivedDate: new Date().toISOString().slice(0, 10) });
+            return [...withCarry, { ...lot, lotNo: nextLotNo(withCarry, lot.receivedDate) }];
+          }
+          if (adjustKg < -0.001) return deductFromLots(withCarry, -adjustKg).lots;
+          return withCarry;
+        },
+        (lots) => lotStockInUnit(lots, material),
+      );
+      if (Math.abs(adjustKg) > 0.001) {
+        // note '재고실사정정' = AdminApp의 수율 자동입고 제외 키워드 (실사조정이 수율을 트리거하지 않도록)
+        onAddRawMaterialEntry({
+          id: `rm-stocktake-${Date.now()}`,
+          material, date: new Date().toISOString().slice(0, 10),
+          received: adjustKg > 0 ? adjustKg : 0,
+          used: adjustKg < 0 ? -adjustKg : 0,
+          note: '재고실사정정',
+          createdAt: new Date().toISOString(),
+          type: 'correction', unit: 'kg',
+        } as RawMaterialEntry);
+        setToast({ message: `${product.name} 실사조정 ${adjustKg > 0 ? '+' : ''}${Math.round(adjustKg * 10) / 10}kg 반영` });
+      }
+    } else {
+      onUpdateItem({ ...product, stock: product.subtype === '향미유' ? val * 12 : val });
+    }
   };
 
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
@@ -1020,17 +1063,13 @@ const ItemList: React.FC<ItemListProps> = ({
                               value={editingStockVal}
                               onChange={e => setEditingStockVal(e.target.value)}
                               onKeyDown={e => {
-                                if (e.key === 'Enter') {
-                                  const val = parseInt(editingStockVal);
-                                  if (!isNaN(val) && val >= 0) onUpdateItem({ ...product, stock: product.subtype === '향미유' ? val * 12 : val });
-                                  setEditingStockId(null);
-                                }
-                                if (e.key === 'Escape') setEditingStockId(null);
+                                if (e.key === 'Enter') { stockEditCancelled.current = false; e.currentTarget.blur(); }
+                                if (e.key === 'Escape') { stockEditCancelled.current = true; e.currentTarget.blur(); }
                               }}
                               onBlur={() => {
-                                const val = parseInt(editingStockVal);
-                                if (!isNaN(val) && val >= 0) onUpdateItem({ ...product, stock: product.subtype === '향미유' ? val * 12 : val });
+                                if (!stockEditCancelled.current) commitStockEdit(product, parseFloat(editingStockVal));
                                 setEditingStockId(null);
+                                stockEditCancelled.current = false;
                               }}
                               onClick={e => e.stopPropagation()}
                               className="w-20 text-right text-sm font-black border border-indigo-300 rounded-lg py-1 px-2 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
@@ -1913,8 +1952,17 @@ const ItemList: React.FC<ItemListProps> = ({
                 (lots, stock) => [...withCarryOverLot(lots, stock, entry.material), { ...lot, lotNo: nextLotNo(lots, lot.receivedDate) }],
                 (lots) => lotStockInUnit(lots, entry.material),
               );
+            } else if ((entry.used ?? 0) > 0) {
+              // 사용: 로트 FIFO(혼합 시 비율) 차감 — 기존재고 이월 보존 후 차감. stock은 로트 합계로 산정
+              // (직접 stock만 줄이면 다음 로트연산 때 stock=로트합계로 덮어써져 사용분이 사라지므로 반드시 로트에서 차감)
+              const mix = rawTarget.mixEnabled ? { topPercent: rawTarget.mixTopPercent ?? 50 } : undefined;
+              await mutateRawMaterialLots(
+                rawTarget.id,
+                (lots, stock) => deductFromLots(withCarryOverLot(lots, stock, entry.material), entry.used, mix).lots,
+                (lots) => lotStockInUnit(lots, entry.material),
+              );
             } else {
-              // 사용/정정: stock 직접 조정 (로트 FIFO 차감은 2단계에서 연동)
+              // 그 외(정정 등 used<=0): stock 직접 조정
               const delta = (entry.received ?? 0) - (entry.used ?? 0);
               if (delta !== 0) onUpdateItem({ ...rawTarget, stock: (rawTarget.stock ?? 0) + delta });
             }
