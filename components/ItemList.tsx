@@ -282,6 +282,7 @@ const ItemList: React.FC<ItemListProps> = ({
           return withCarry;
         },
         (lots) => lotStockInUnit(lots, material),
+        { lots: product.lots ?? [], stock: product.stock ?? 0 },
       );
       if (Math.abs(adjustKg) > 0.001) {
         // note '재고실사정정' = AdminApp의 수율 자동입고 제외 키워드 (실사조정이 수율을 트리거하지 않도록)
@@ -1960,6 +1961,7 @@ const ItemList: React.FC<ItemListProps> = ({
                 rawTarget.id,
                 (lots, stock) => deductFromLots(withCarryOverLot(lots, stock, entry.material), entry.used, mix).lots,
                 (lots) => lotStockInUnit(lots, entry.material),
+                { lots: rawTarget.lots ?? [], stock: rawTarget.stock ?? 0 },
               );
             } else {
               // 그 외(정정 등 used<=0): stock 직접 조정

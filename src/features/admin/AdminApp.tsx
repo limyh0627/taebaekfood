@@ -1507,6 +1507,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         derivedRaw.id,
                         (lots, stock) => [...withCarryOverLot(lots, stock, product), { ...lot, lotNo: nextLotNo(lots, lot.receivedDate) }],
                         (lots) => lotStockInUnit(lots, product),
+                        { lots: derivedRaw.lots ?? [], stock: derivedRaw.stock ?? 0 },
                       );
                     } catch (err) {
                       console.error('[수율 자동입고] 파생 원료 로트 생성 실패:', product, err);
