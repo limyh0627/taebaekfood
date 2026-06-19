@@ -149,7 +149,7 @@ export const mutateRawMaterialLots = async (
   transform: (currentLots: RawMaterialLot[], currentStock: number) => RawMaterialLot[],
   computeStock?: (lots: RawMaterialLot[]) => number,
   fallback?: { lots: RawMaterialLot[]; stock: number },
-) => {
+): Promise<RawMaterialLot[]> => {
   // Firestore는 undefined 필드를 거부 → 로트 배열에서 제거 (캔/수동 입고 로트의 미입력 옵션 필드 대비)
   const buildPatch = (next: RawMaterialLot[]): { lots: RawMaterialLot[]; stock?: number } => {
     const patch: { lots: RawMaterialLot[]; stock?: number } = { lots: stripUndefined(next) };
@@ -157,23 +157,27 @@ export const mutateRawMaterialLots = async (
     return patch;
   };
   try {
-    await runTransaction(db, async (tx) => {
+    return await runTransaction(db, async (tx) => {
       const ref = doc(db, "items", rawItemId);
       const snap = await tx.get(ref);
       if (!snap.exists()) throw new Error(`원료 품목을 찾을 수 없음: ${rawItemId}`);
       const data = snap.data();
       const current: RawMaterialLot[] = Array.isArray(data.lots) ? data.lots : [];
-      tx.update(ref, buildPatch(transform(current, data.stock ?? 0)));
+      const next = transform(current, data.stock ?? 0);
+      tx.update(ref, buildPatch(next));
+      return next;
     });
   } catch (err) {
+    // [QUOTA-FALLBACK] Blaze 전환 후 이 catch 블록 + fallback 파라미터 제거 가능
     const code = (err as { code?: string })?.code;
     const msg = String((err as { message?: string })?.message ?? '');
     const exhausted = code === 'resource-exhausted' || /resource-exhausted|quota/i.test(msg);
     if (exhausted && fallback) {
       // 읽기 한도 소진 → 트랜잭션(읽기) 대신 메모리 로트 기준 순수 쓰기로 기록 보존
       console.warn(`[mutateRawMaterialLots] 읽기 한도 소진 → 메모리 기준 순수쓰기 폴백 (${rawItemId})`);
-      await updateDoc(doc(db, "items", rawItemId), buildPatch(transform(fallback.lots, fallback.stock)));
-      return;
+      const next = transform(fallback.lots, fallback.stock);
+      await updateDoc(doc(db, "items", rawItemId), buildPatch(next));
+      return next;
     }
     throw err;
   }

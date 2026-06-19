@@ -63,7 +63,7 @@ export async function recordRawMaterialReceipt(opts: {
     rawItem.id,
     (lots, stock) => [...withCarryOverLot(lots, stock, baseName), { ...newLot, lotNo: nextLotNo(lots, newLot.receivedDate) }],
     (lots) => lotStockInUnit(lots, baseName),
-    { lots: rawItem.lots ?? [], stock: rawItem.stock ?? 0 }, // 읽기 한도 소진 시 메모리 기준 순수쓰기 폴백
+    { lots: rawItem.lots ?? [], stock: rawItem.stock ?? 0 }, // [QUOTA-FALLBACK] 읽기 한도 소진 시 메모리 기준 순수쓰기
   );
 
   await addItem('rawMaterialLedger', {

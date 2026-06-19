@@ -702,7 +702,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   // 주문이 이력으로 이동할 때 부자재 차감 (완제품 재고는 변동 없음)
-  const deductSubmaterialsForOrder = async (order: Order) => {
+  // lotCache: [QUOTA-FALLBACK] 일괄 처리 시 메모리상 로트를 체이닝해 읽기 한도 폴백에서도 유실 방지 (Blaze 후 제거 가능)
+  const deductSubmaterialsForOrder = async (order: Order, lotCache?: Map<string, import('../../shared/types').RawMaterialLot[]>) => {
     const rawUsage: Record<string, number> = {}; // 원료별 사용 kg 집계 (같은 원료가 여러 품목에 걸쳐도 합산)
     for (const item of order.items) {
       const product = allItems.find(p => p.id === item.itemId);
@@ -755,8 +756,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
         await deductStock('items', actualSub.id, actualSub.stock, item.quantity, actualSub.name, actualSub.unit || '개', `주문 ${order.id} ${product.name} 부자재 출고`);
       }
 
-      // 원료 사용량 집계 (완제품 한정) — 기록/차감은 루프 후 원료별 합산해서 1회씩
-      const formula = PRODUCT_FORMULA[product.품목 || product.name];
+      // 원료 사용량 집계 (완제품 한정) — 배합식 출처 통일: Firestore BOM(item_formula) 우선, 없으면 PRODUCT_FORMULA
+      // (화면 표시 autoRawMaterialUsage와 동일 로직 → 표시와 실제 차감이 일치)
+      const prodKey = product.품목 || product.name;
+      const bomRows = itemFormulas.filter(b => b.parent_key === prodKey);
+      const formula = bomRows.length > 0
+        ? bomRows.map(b => ({ raw: b.child_name, ratio: b.ratio * (b.yield_rate || 1) }))
+        : PRODUCT_FORMULA[prodKey];
       if (formula) {
         for (const f of formula) {
           const usedKg = toKg(product.spec || '', f.raw, item.quantity) * f.ratio;
@@ -779,11 +785,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
           // 혼합 사용 ON이면 상위 2개 로트를 비율대로 배분, 아니면 선입선출
           const mix = rawItem.mixEnabled ? { topPercent: rawItem.mixTopPercent ?? 50 } : undefined;
           let captured: { distribution: { supplierName: string; lotNo?: string; kg: number }[]; shortageKg: number } | null = null;
-          await mutateRawMaterialLots(
+          // [QUOTA-FALLBACK] 읽기 막혀도 차감 보존. 일괄(batch)은 lotCache로 메모리 체이닝(같은 원료 연속 차감 유실 방지)
+          const fallbackLots = lotCache?.get(rawItem.id) ?? (rawItem.lots ?? []);
+          const newLots = await mutateRawMaterialLots(
             rawItem.id,
             (lots) => { const r = deductFromLots(lots, usedKg, mix); captured = r; return r.lots; },
             (lots) => lotStockInUnit(lots, raw),
+            { lots: fallbackLots, stock: rawItem.stock ?? 0 },
           );
+          lotCache?.set(rawItem.id, newLots);
           if (captured) {
             const result = captured as { distribution: { supplierName: string; lotNo?: string; kg: number }[]; shortageKg: number };
             if (result.distribution.length > 0) {
@@ -1507,7 +1517,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         derivedRaw.id,
                         (lots, stock) => [...withCarryOverLot(lots, stock, product), { ...lot, lotNo: nextLotNo(lots, lot.receivedDate) }],
                         (lots) => lotStockInUnit(lots, product),
-                        { lots: derivedRaw.lots ?? [], stock: derivedRaw.stock ?? 0 },
+                        { lots: derivedRaw.lots ?? [], stock: derivedRaw.stock ?? 0 }, // [QUOTA-FALLBACK]
                       );
                     } catch (err) {
                       console.error('[수율 자동입고] 파생 원료 로트 생성 실패:', product, err);
@@ -2025,9 +2035,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
               // 출고(SHIPPED) 주문을 예전 주문이력(DELIVERED)으로 이동 + 부자재 차감
               // 차감(부자재/원료 로트)은 부수효과 — 실패해도 이력 이동(DELIVERED)은 반드시 진행한다.
               const deductFailures: string[] = [];
+              // [QUOTA-FALLBACK] 일괄 차감 시 원료 로트를 메모리에서 체이닝(읽기 막혀도 같은 원료 연속 차감 유실 방지)
+              const batchLotCache = new Map<string, import('../../shared/types').RawMaterialLot[]>();
               for (const o of shippedOrders) {
                 try {
-                  await deductSubmaterialsForOrder(o);
+                  await deductSubmaterialsForOrder(o, batchLotCache);
                   await createProductionRecordsForOrder(o);
                 } catch (e) {
                   console.error(`[주문 이력 이동] 차감/생산기록 실패 (주문 ${o.id}, ${o.partnerName}):`, e);
