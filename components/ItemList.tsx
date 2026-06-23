@@ -188,6 +188,7 @@ const ItemList: React.FC<ItemListProps> = ({
     return () => clearTimeout(t);
   }, [toast]);
   const [historyMonth, setHistoryMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [historyPage, setHistoryPage] = useState(1); // 입고이력 페이지네이션
   const [activeCategory, setActiveCategory] = useState<string>('전체');
   const [activeSupplierId, setActiveSupplierId] = useState<string>('전체');
   const [showCategoryFilter, setShowCategoryFilter] = useState(false);
@@ -708,6 +709,10 @@ const ItemList: React.FC<ItemListProps> = ({
             const history = (receivedOrders ?? [])
               .filter(r => (r.receivedAt ?? '').slice(0, 7) === historyMonth)
               .sort((a, b) => (b.receivedAt ?? '').localeCompare(a.receivedAt ?? ''));
+            const HISTORY_PAGE_SIZE = 10;
+            const historyTotalPages = Math.max(1, Math.ceil(history.length / HISTORY_PAGE_SIZE));
+            const historySafePage = Math.min(historyPage, historyTotalPages);
+            const pagedHistory = history.slice((historySafePage - 1) * HISTORY_PAGE_SIZE, historySafePage * HISTORY_PAGE_SIZE);
             return (
               <>
                 {/* ── 발주 예정 목록 (Firestore pending) ── */}
@@ -842,13 +847,14 @@ const ItemList: React.FC<ItemListProps> = ({
                   <div className="flex items-center gap-3 mb-3">
                     <History size={14} className="text-slate-400" />
                     <span className="text-xs font-black text-slate-700 uppercase tracking-wider">입고이력</span>
-                    <input type="month" value={historyMonth} onChange={e => setHistoryMonth(e.target.value)} className="border border-slate-200 rounded-xl px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-teal-400 ml-auto" />
+                    {history.length > 0 && <span className="text-[10px] font-black bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">{history.length}건</span>}
+                    <input type="month" value={historyMonth} onChange={e => { setHistoryMonth(e.target.value); setHistoryPage(1); }} className="border border-slate-200 rounded-xl px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-teal-400 ml-auto" />
                   </div>
                   {history.length === 0 ? (
                     <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 text-sm">해당 월의 입고 이력 없음</div>
                   ) : (
                     <div className="space-y-2">
-                      {history.map(r => (
+                      {pagedHistory.map(r => (
                         <div key={r.id} className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-2">
                           <div className="flex items-start justify-between">
                             <div>
@@ -867,6 +873,18 @@ const ItemList: React.FC<ItemListProps> = ({
                           ))}
                         </div>
                       ))}
+                      {historyTotalPages > 1 && (
+                        <div className="flex items-center justify-center gap-1 pt-2">
+                          <button onClick={() => setHistoryPage(p => Math.max(1, p - 1))} disabled={historySafePage === 1}
+                            className="px-3 h-8 rounded-lg text-xs font-black text-slate-500 bg-white border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-all">이전</button>
+                          {Array.from({ length: historyTotalPages }, (_, i) => i + 1).map(p => (
+                            <button key={p} onClick={() => setHistoryPage(p)}
+                              className={`w-8 h-8 rounded-lg text-xs font-black transition-all ${historySafePage === p ? 'bg-teal-600 text-white shadow' : 'text-slate-400 bg-white border border-slate-200 hover:bg-slate-50'}`}>{p}</button>
+                          ))}
+                          <button onClick={() => setHistoryPage(p => Math.min(historyTotalPages, p + 1))} disabled={historySafePage === historyTotalPages}
+                            className="px-3 h-8 rounded-lg text-xs font-black text-slate-500 bg-white border border-slate-200 disabled:opacity-40 hover:bg-slate-50 transition-all">다음</button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

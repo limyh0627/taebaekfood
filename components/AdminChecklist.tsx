@@ -77,7 +77,8 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
   const partnerIn = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
   const [activeTab, setActiveTab] = useState<TabType>('leave');
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [inboundFilter, setInboundFilter] = useState<'pending_voucher' | 'all'>('all');
+  // 기본: 전표 미발행만 — 발행 완료된 선입고는 숨겨 목록이 끝없이 길어지지 않게. '전체'로 토글 가능.
+  const [inboundFilter, setInboundFilter] = useState<'pending_voucher' | 'all'>('pending_voucher');
 
   const [statementDraft, setStatementDraft] = useState<StatementDraft | null>(null);
   const [statementSaving, setStatementSaving] = useState(false);
@@ -596,9 +597,15 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
 
                 {/* ── 선입고 이력 그룹 ── */}
                 <tr><td colSpan={6} className="px-4 py-2 bg-teal-50 border-y border-teal-100">
-                  <span className="flex items-center gap-1.5 text-[10px] font-black text-teal-600 uppercase tracking-widest">
-                    <History size={11} /> 선입고 이력 {pendingVoucherCount > 0 ? `(전표 미발행 ${pendingVoucherCount}건)` : `(${filteredReceipts.length}건)`}
-                  </span>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="flex items-center gap-1.5 text-[10px] font-black text-teal-600 uppercase tracking-widest">
+                      <History size={11} /> 선입고 이력 {inboundFilter === 'pending_voucher' ? `(전표 미발행 ${pendingVoucherCount}건)` : `(전체 ${filteredReceipts.length}건)`}
+                    </span>
+                    <div className="flex items-center gap-0.5 bg-white rounded-lg p-0.5 border border-teal-100">
+                      <button onClick={() => setInboundFilter('pending_voucher')} className={`px-2 py-1 rounded-md text-[10px] font-black transition-colors ${inboundFilter === 'pending_voucher' ? 'bg-teal-600 text-white' : 'text-teal-600 hover:bg-teal-50'}`}>전표 미발행만</button>
+                      <button onClick={() => setInboundFilter('all')} className={`px-2 py-1 rounded-md text-[10px] font-black transition-colors ${inboundFilter === 'all' ? 'bg-teal-600 text-white' : 'text-teal-600 hover:bg-teal-50'}`}>전체</button>
+                    </div>
+                  </div>
                 </td></tr>
                 {filteredReceipts.length === 0 ? (
                   <tr><td colSpan={6} className="px-6 py-5 text-center text-xs text-slate-300">선입고 이력 없음</td></tr>
