@@ -1888,6 +1888,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
               });
             });
 
+            // 좌측(상단 템플릿 + 하단 참깨·들깨 + 소용량 환산) 어디에도 매칭 안 되는 판매분 → 하단 '기타'로 표기(누락 방지)
+            const matchedKeys = new Set<string>([
+              ...topTemplate.flatMap(t => t.volumes.map(v => `${t.key}||${v}`)),
+              ...bottomTemplate.map(t => `${t.품목}||${t.용량}`),
+              ...mergeIntoKg.map(m => `${m.품목}||${m.소용량}`),
+            ]);
+            const extraSalesRows = Object.entries(agg)
+              .filter(([k, a]) => a.qty > 0 && !matchedKeys.has(k))
+              .map(([k, a]) => { const [품목, 용량] = k.split('||'); return { 품목, 용량, qty: a.qty, 거래처: a.partners.join(', ') }; })
+              .sort((a, b) => a.품목.localeCompare(b.품목) || a.용량.localeCompare(b.용량));
+
             // 제조일자 미입력 완제품 체크
             const missingMfgDate = shippedOrders.flatMap(o =>
               o.items.filter(item => {
@@ -2005,6 +2016,23 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 });
                 ws.addRow([]);
               });
+
+              // 기타 — 좌측 템플릿에 없는 판매분(용량 미설정 등) 누락 방지
+              if (extraSalesRows.length > 0) {
+                ws.addRow([]);
+                const hdr = ws.addRow(['기타 (템플릿 외 판매분)', '', '', '', '']);
+                hdr.getCell(1).font = { bold: true, size: 9 };
+                extraSalesRows.forEach(r => {
+                  const row = ws.addRow([r.품목, r.용량 || '(미설정)', r.qty, '', r.거래처]);
+                  row.height = 16;
+                  [1, 2, 3, 4, 5].forEach(c => {
+                    const cell = row.getCell(c);
+                    cell.border = thinBorder;
+                    cell.font = { bold: c === 1, size: 9 };
+                    cell.alignment = { horizontal: c <= 2 ? 'left' : 'center', vertical: 'middle', wrapText: c === 5 };
+                  });
+                });
+              }
 
               // 파일 저장
               const buf = await wb.xlsx.writeBuffer();
@@ -2629,6 +2657,34 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         </tbody>
                       </table>
                     </div>
+
+                    {/* 기타 — 좌측 템플릿에 없는 판매분(용량 미설정 등). 누락 방지용. */}
+                    {extraSalesRows.length > 0 && (
+                      <div className="bg-white rounded-2xl border border-amber-200 overflow-x-auto">
+                        <table className="text-xs border-collapse min-w-[500px] w-full">
+                          <thead>
+                            <tr>
+                              <th colSpan={4} className="px-3 py-2.5 text-center text-[10px] font-black text-amber-700 bg-amber-50 border border-slate-200">기타 (좌측 템플릿에 없는 판매분 — 용량 미설정 등)</th>
+                            </tr>
+                            <tr className="bg-slate-50">
+                              {['품목(제품명)', '용량', '수량', '거래처'].map(h => (
+                                <th key={h} className="px-3 py-2 text-center text-[9px] font-black text-slate-400 uppercase border border-slate-200 whitespace-nowrap">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {extraSalesRows.map((r, i) => (
+                              <tr key={i} className="hover:bg-amber-50/50">
+                                <td className="px-3 py-1.5 border border-slate-200 font-bold text-slate-800">{r.품목}</td>
+                                <td className={`px-3 py-1.5 border border-slate-200 text-center ${r.용량 ? 'text-slate-600' : 'text-amber-500'}`}>{r.용량 || '(미설정)'}</td>
+                                <td className="px-3 py-1.5 border border-slate-200 text-center font-black text-indigo-700">{r.qty}</td>
+                                <td className="px-3 py-1.5 border border-slate-200 text-slate-500 text-[10px] break-words max-w-[200px]">{r.거래처}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -3732,12 +3788,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 await deleteItem(prevCollection, p.id);
               }
             }
-            // partnerOut 컬렉션에 거래처 매핑 저장
-            const partnerIds = p.partnerIds ?? [];
-            await setProductClients(p.id, partnerIds);
-            // products/submaterials에 저장 시 partnerIds 제외
+            // 품목 저장(순수 쓰기)을 최우선으로 — 거래처 매핑(setProductClients)은 getDocs(읽기)가
+            // 필요해 읽기 한도(429) 시 throw 되는데, 예전엔 그게 품목 저장 자체를 막아 "저장이 안 됨"
+            // 으로 보였다. 품목부터 저장하고 매핑은 부수효과로 분리한다(Blaze 후에도 유지할 순서).
             const { partnerIds: _cids, ...productData } = p;
             await addItem(collectionName, productData);
+            // partnerOut 컬렉션 거래처 매핑 — 실패해도 품목 저장은 유지(읽기 한도 등).
+            try {
+              await setProductClients(p.id, p.partnerIds ?? []);
+            } catch (e) {
+              console.error('[품목 저장] 거래처 매핑 저장 실패 (품목 자체는 저장됨):', e);
+              alert('품목은 저장됐지만, 거래처 연결 저장은 실패했습니다 (읽기 한도 등).\n거래처 연결은 잠시 후 다시 시도해 주세요.');
+            }
             setIsProductModalOpen(false);
             setEditingProduct(null);
           }} 

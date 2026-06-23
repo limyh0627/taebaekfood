@@ -108,7 +108,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const [expandedBoxClient, setExpandedBoxClient] = useState<string | null>(null);
   const [boxClientSearch, setBoxClientSearch] = useState('');
   const [volNum, setVolNum] = useState('');
-  const [volUnit, setVolUnit] = useState<'ml' | 'kg'>('ml');
+  const [volUnit, setVolUnit] = useState<'ml' | 'kg' | 'g'>('ml');
   const [customVols, setCustomVols] = useState<string[]>(initialData?.spec ? [initialData.spec] : []);
   const [bomSearch, setBomSearch] = useState('');
   const [bomPickerOpen, setBomPickerOpen] = useState(false);
@@ -181,6 +181,11 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     const isProductCategory = ['product', 'goods', 'wip', 'raw', 'giftset'].includes(formData.category);
     const hasBoxConfig = formData.defaultBoxConfig.unitsPerBox > 0;
 
+    // 용량 칸에 숫자만 입력하고 '추가'(또는 Enter)를 누르지 않은 채 저장해도 반영 (완제품/반제품)
+    const pendingSpec = (!formData.spec && volNum.trim() && (formData.category === 'product' || formData.category === 'wip'))
+      ? `${volNum.trim()}${volUnit}` : '';
+    const effectiveSpec = formData.spec || pendingSpec;
+
     const finalProduct: Item = {
       id: initialData ? initialData.id : `p-${Date.now()}`,
       name: formData.name,
@@ -197,7 +202,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       ...(formData.category === 'box' && { freightType: formData.freightType, boxSize: formData.boxSize }),
       ...(isProductCategory && hasBoxConfig && { defaultBoxConfig: formData.defaultBoxConfig }),
       ...(isProductCategory && formData.partnerBoxConfigs.length > 0 && { partnerBoxConfigs: formData.partnerBoxConfigs }),
-      ...(formData.spec && { spec: formData.spec }),
+      ...(effectiveSpec && { spec: effectiveSpec }),
       ...(formData.품목 && { 품목: formData.품목 }),
       ...(formData.category === 'product' && formData.partnerIds.length > 0 && { partnerIds: formData.partnerIds }),
       ...(formData.category === 'product' && { isSmartStore: formData.isSmartStore }),
@@ -610,8 +615,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                 />
                 <button
                   type="button"
-                  onClick={() => setVolUnit(prev => prev === 'ml' ? 'kg' : 'ml')}
-                  title="단위 전환 (ml ↔ kg)"
+                  onClick={() => setVolUnit(prev => prev === 'ml' ? 'g' : prev === 'g' ? 'kg' : 'ml')}
+                  title="단위 전환 (ml → g → kg)"
                   className="shrink-0 w-16 px-4 py-3.5 rounded-2xl border border-indigo-200 bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-all"
                 >
                   {volUnit}

@@ -79,6 +79,10 @@ const PalletManager: React.FC<PalletManagerProps> = ({
 
   const ITEMS_PER_PAGE = 5;
 
+  // 주문 파레트는 OrderPallet.type에 PalletStock의 'id'를 저장(OrdersList/AddOrderModal) → 표시·집계는 '이름'으로 통일.
+  // 수동 거래(palletId→이름)와 같은 기준이 되도록 id를 이름으로 변환(레거시로 이름이 들어와도 그대로 사용).
+  const palletNameOf = (t?: string) => (t ? (pallets.find(ps => ps.id === t)?.name ?? t) : '기타');
+
   const partnerPalletStatus = useMemo(() => {
     const stats: Record<string, { name: string; pallets: Record<string, number> }> = {};
     
@@ -95,7 +99,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
         if (!stats[partnerId]) stats[partnerId] = { name: order.partnerName, pallets: {} };
         
         order.pallets?.filter(p => !p.isExchange).forEach(p => {
-          const pType = p.type || '기타';
+          const pType = palletNameOf(p.type);
           const qty = p.quantity || 0;
           if (!stats[partnerId].pallets[pType]) stats[partnerId].pallets[pType] = 0;
           stats[partnerId].pallets[pType] -= qty; // Outbound -> balance down (-)
@@ -187,7 +191,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
             quantity: p.quantity,
             date: o.deliveryDate.split('T')[0],
             note: `주문 출고 (${o.id})`,
-            palletName: p.type
+            palletName: palletNameOf(p.type)
           });
         });
       });
@@ -290,7 +294,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
       .filter(o => o.pallets && o.pallets.length > 0 && (o.status === OrderStatus.SHIPPED || o.status === OrderStatus.DELIVERED))
       .forEach(o => o.pallets?.filter(p => !p.isExchange).forEach((p, i) => rows.push({
         id: `${o.id}-pl-${i}`, date: (o.deliveryDate || '').split('T')[0], partner: o.partnerName,
-        pallet: p.type || '기타', type: 'out', quantity: p.quantity || 0, note: '주문 출고',
+        pallet: palletNameOf(p.type), type: 'out', quantity: p.quantity || 0, note: `주문 출고 (${o.id})`,
       })));
     return rows
       .filter(r => !monthFilter || (r.date ?? '').startsWith(monthFilter))
