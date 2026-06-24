@@ -126,7 +126,9 @@ export const addItem = async (collectionName: string, item: any) => {
 
 export const updateItem = async (collectionName: string, id: string, data: any) => {
   const docRef = doc(db, collectionName, id);
-  await updateDoc(docRef, data);
+  // getFirestore는 ignoreUndefinedProperties가 꺼져 있어 undefined가 있으면 updateDoc이 throw한다.
+  // (예: 전표 items[].accountCode가 빈 값이면 undefined로 들어와 저장이 통째로 실패) → 깊게 제거.
+  await updateDoc(docRef, stripUndefined(data));
 };
 
 export const deleteItem = async (collectionName: string, id: string) => {

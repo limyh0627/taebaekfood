@@ -75,7 +75,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
 }) => {
   // Compute derived variables
   const partnerIn = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
-  const [activeTab, setActiveTab] = useState<TabType>('leave');
+  const [activeTab, setActiveTab] = useState<TabType>('ops'); // 기본: 거래명세서(전표/입고) 탭
   const [expandedId, setExpandedId] = useState<string | null>(null);
   // 기본: 전표 미발행만 — 발행 완료된 선입고는 숨겨 목록이 끝없이 길어지지 않게. '전체'로 토글 가능.
   const [inboundFilter, setInboundFilter] = useState<'pending_voucher' | 'all'>('pending_voucher');

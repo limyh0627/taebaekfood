@@ -123,7 +123,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // ── 기간 필터 (주문 선택) ──
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [orderDateQuick, setOrderDateQuick] = useState<'당일'|'금주'|'당월'|''>('');
+  const [orderDateQuick, setOrderDateQuick] = useState<'당일'|'금주'|'당월'|'전체'|''>('');
 
   // ── 거래 일자 ──
   const [tradeDate, setTradeDate] = useState(today);
@@ -561,9 +561,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         // 매입전표: 매입처 또는 매출+매입처
         return c.partnerType === '매입처' || c.partnerType === '매출+매입처';
       }
-      // 매출전표: 매출처(기본) 또는 매출+매입처, 일반/택배 타입
-      return (c.type === '일반' || c.type === '택배') &&
-        (c.partnerType === undefined || c.partnerType === '매출처' || c.partnerType === '매출+매입처');
+      // 매출전표: 매출처(기본) 또는 매출+매입처 — 채널(일반/택배/스마트스토어)·미설정 무관하게 모두 노출
+      // (예전엔 type==='일반'||'택배'만 허용해 스마트스토어·type 미설정 거래처가 검색에서 누락됐음)
+      return c.partnerType === undefined || c.partnerType === '매출처' || c.partnerType === '매출+매입처';
     });
     if (onlyActive) base = base.filter(c => activeClientIds.has(c.id));
     if (!partnerSearch.trim()) return base;
@@ -804,8 +804,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         isBoxUnit: i.isBoxUnit, boxSize: i.boxSize, accountCode: i.accountCode || undefined,
       })),
     };
-    onUpdateIssuedStatement?.(editingStmt.id, proposed);
-    setIsEditMode(false);
+    // 전표 수정은 즉시 반영이 아니라 '수정 요청' → 확인사항 > 전표 수정에서 승인 시 반영.
+    if (onProposeEdit) {
+      onProposeEdit(editingStmt.id, proposed, editingStmt.type, editingStmt.docNo, selectedClient?.name || editingStmt.partnerName);
+      setIsEditMode(false);
+      closeCreate();
+      alert('전표 수정 요청을 저장했습니다.\n확인사항 > 전표 수정에서 승인하면 반영됩니다.');
+    } else {
+      // 폴백: 수정요청 핸들러가 없으면 직접 반영
+      onUpdateIssuedStatement?.(editingStmt.id, proposed);
+      setIsEditMode(false);
+    }
   }, [editingStmt, tradeDate, selectedClientId, selectedClient, totalSupply, totalTax, totalAmount, lineItems, onProposeEdit, onUpdateIssuedStatement]);
 
   const buildPrintHtml = (items: LineItem[] | IssuedStatement['items'], sup: number, tax: number, amt: number, type: StatementType, partner: string, docNoStr: string, dateString: string) => {
@@ -2688,8 +2697,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   {createMode==='매출' && <span className="text-xs text-slate-400">{partnerOrders.length}건</span>}
                   {createMode==='매출' && (
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      {(['당일','금주','당월'] as const).map(p=>(
+                      {(['당일','금주','당월','전체'] as const).map(p=>(
                         <button key={p} onClick={()=>{
+                          if(p==='전체'){setDateFrom('');setDateTo('');setOrderDateQuick('전체');return;}
                           const t=today();
                           const from=p==='당일'?t:p==='금주'?weekStart():monthStart();
                           setDateFrom(from);setDateTo(t);setOrderDateQuick(p);
