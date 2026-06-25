@@ -142,15 +142,11 @@ export const deleteItem = async (collectionName: string, id: string) => {
  * @param rawItemId  원료 품목 문서 ID (예: 'raw-깨분참기름')
  * @param transform  현재 lots → 새 lots (순수 함수)
  * @param computeStock  새 lots → items.stock에 쓸 값(원료의 운영 단위). 미지정 시 stock은 그대로 둠.
- * @param fallback  읽기 한도(429) 소진 시 트랜잭션 대신 사용할 "메모리상의 현재 로트/재고".
- *   주면: 읽기 막혀도 순수 쓰기로 기록 보존(단일 작업 안전). 단, 같은 품목을 동시에 다른 기기에서
- *   수정하면 마지막 쓰기가 이겨 한쪽이 유실될 수 있음(lost update). 안 주면 한도 소진 시 그대로 실패.
  */
 export const mutateRawMaterialLots = async (
   rawItemId: string,
   transform: (currentLots: RawMaterialLot[], currentStock: number) => RawMaterialLot[],
   computeStock?: (lots: RawMaterialLot[]) => number,
-  fallback?: { lots: RawMaterialLot[]; stock: number },
 ): Promise<RawMaterialLot[]> => {
   // Firestore는 undefined 필드를 거부 → 로트 배열에서 제거 (캔/수동 입고 로트의 미입력 옵션 필드 대비)
   const buildPatch = (next: RawMaterialLot[]): { lots: RawMaterialLot[]; stock?: number } => {
@@ -158,31 +154,16 @@ export const mutateRawMaterialLots = async (
     if (computeStock) patch.stock = computeStock(next);
     return patch;
   };
-  try {
-    return await runTransaction(db, async (tx) => {
-      const ref = doc(db, "items", rawItemId);
-      const snap = await tx.get(ref);
-      if (!snap.exists()) throw new Error(`원료 품목을 찾을 수 없음: ${rawItemId}`);
-      const data = snap.data();
-      const current: RawMaterialLot[] = Array.isArray(data.lots) ? data.lots : [];
-      const next = transform(current, data.stock ?? 0);
-      tx.update(ref, buildPatch(next));
-      return next;
-    });
-  } catch (err) {
-    // [QUOTA-FALLBACK] Blaze 전환 후 이 catch 블록 + fallback 파라미터 제거 가능
-    const code = (err as { code?: string })?.code;
-    const msg = String((err as { message?: string })?.message ?? '');
-    const exhausted = code === 'resource-exhausted' || /resource-exhausted|quota/i.test(msg);
-    if (exhausted && fallback) {
-      // 읽기 한도 소진 → 트랜잭션(읽기) 대신 메모리 로트 기준 순수 쓰기로 기록 보존
-      console.warn(`[mutateRawMaterialLots] 읽기 한도 소진 → 메모리 기준 순수쓰기 폴백 (${rawItemId})`);
-      const next = transform(fallback.lots, fallback.stock);
-      await updateDoc(doc(db, "items", rawItemId), buildPatch(next));
-      return next;
-    }
-    throw err;
-  }
+  return await runTransaction(db, async (tx) => {
+    const ref = doc(db, "items", rawItemId);
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw new Error(`원료 품목을 찾을 수 없음: ${rawItemId}`);
+    const data = snap.data();
+    const current: RawMaterialLot[] = Array.isArray(data.lots) ? data.lots : [];
+    const next = transform(current, data.stock ?? 0);
+    tx.update(ref, buildPatch(next));
+    return next;
+  });
 };
 
 export const subscribeToSubcollection = <T extends { id: string }>(
