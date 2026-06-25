@@ -23,6 +23,21 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // 아이디(username) → { uid, email } 공개 조회용 매핑 컬렉션
+    // 거래처 홈페이지(taebaekfood-web)의 회원가입 중복확인 / 로그인이
+    // 미인증 상태에서도 단일 문서를 조회할 수 있도록 get만 공개한다.
+    // - get  : 누구나 (특정 username을 알아야만 조회 가능)
+    // - list : 차단 (전체 아이디 열거 방지)
+    // - create: 회원가입 직후(인증됨) 본인 uid로만 생성
+    // - update/delete: 금지 (아이디 도용/탈취 방지, 관리는 콘솔/서버에서)
+    match /usernames/{username} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
     match /{document=**} {
       allow read, write: if isAuthenticated();
     }
