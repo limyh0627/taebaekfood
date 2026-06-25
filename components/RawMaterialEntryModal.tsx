@@ -85,6 +85,10 @@ const RawMaterialEntryModal: React.FC<Props> = ({
         originalUnit: unit,  // 'kg' or 'L'
       });
       onClose();
+    } catch (err) {
+      // 저장 실패를 조용히 묻지 않음 — 예전엔 throw 시 모달이 안 닫히고 멈춘 듯 보였다(모바일).
+      console.error('[원료 기록 저장 실패]', err);
+      alert('저장에 실패했습니다. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.');
     } finally {
       setSubmitting(false);
     }
