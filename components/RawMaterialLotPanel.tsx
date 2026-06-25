@@ -1,19 +1,23 @@
 import React, { useState } from 'react';
-import { ArrowUp, ArrowDown, Layers, Truck, Trash2, CornerDownRight, Tag, Check, X } from 'lucide-react';
-import { Item, RawMaterialLot } from '../src/shared/types';
+import { ArrowUp, ArrowDown, Layers, Truck, Trash2, CornerDownRight, Tag, Check, X, History } from 'lucide-react';
+import { Item, RawMaterialLot, RawMaterialEntry } from '../src/shared/types';
 import { mutateRawMaterialLots, updateItem } from '../src/shared/services/firebaseService';
 import { baseRawName, unitOf, kgToUnit, lotKgRemaining, lotStockInUnit } from '../src/constants/formula';
+import RawLedgerList from './RawLedgerList';
 
 interface Props {
   product: Item;        // 로트가 저장된 원료(raw) 품목
   isAdmin?: boolean;
   linkedNote?: string;  // 다른 SKU(캔/반제품)에서 펼친 경우 안내 문구
+  ledgerEntries?: RawMaterialEntry[];        // 이 원료의 입출고(수불) 기록
+  onDeleteEntry?: (id: string) => void;      // 기록 삭제(관리자)
+  currentUserName?: string;
 }
 
 const fmt = (n: number) => (Math.round(n * 10) / 10).toLocaleString();
 
 /** 원료재고 로트 패널 — 배열 순서 = 선입선출(앞=먼저 사용). 기름은 L 표시(괄호 kg 병기). */
-const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linkedNote }) => {
+const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linkedNote, ledgerEntries, onDeleteEntry, currentUserName }) => {
   const material = baseRawName(product.name);
   const isOil = unitOf(material) === 'L';
   const unitLabel = isOil ? 'L' : 'kg';
@@ -269,6 +273,24 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
               {depleted.map((lot, i) => lotRow(lot, i, depleted.length, true))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* 이 원료의 입출고(수불) 기록 — 수동/자동/정정 모두 */}
+      {ledgerEntries && (
+        <div className="pt-1">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <History size={12} className="text-slate-400" />
+            <span className="text-[11px] font-black text-slate-600 uppercase tracking-wide">입출고 기록</span>
+          </div>
+          <RawLedgerList
+            entries={ledgerEntries}
+            isAdmin={isAdmin}
+            currentUserName={currentUserName}
+            onDelete={onDeleteEntry}
+            pageSize={6}
+            emptyText="이 원료의 입출고 기록이 없습니다"
+          />
         </div>
       )}
     </div>

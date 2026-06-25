@@ -31,6 +31,7 @@ import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 import RawMaterialEntryModal from './RawMaterialEntryModal';
 import RawMaterialLotPanel from './RawMaterialLotPanel';
+import RawLedgerList from './RawLedgerList';
 import { RM_LIST, unitOf, baseRawName, lotStockInUnit, unitToKg, lotKgRemaining } from '../src/constants/formula';
 import { mutateRawMaterialLots } from '../src/shared/services/firebaseService';
 import { withCarryOverLot, buildReceiveLot, nextLotNo, deductFromLots } from '../src/shared/lotUtils';
@@ -189,6 +190,7 @@ const ItemList: React.FC<ItemListProps> = ({
   }, [toast]);
   const [historyMonth, setHistoryMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [historyPage, setHistoryPage] = useState(1); // 입고이력 페이지네이션
+  const [ledgerMaterialFilter, setLedgerMaterialFilter] = useState<string>('전체'); // 원료 입출고 기록 필터
   const [activeCategory, setActiveCategory] = useState<string>('전체');
   const [activeSupplierId, setActiveSupplierId] = useState<string>('전체');
   const [showCategoryFilter, setShowCategoryFilter] = useState(false);
@@ -1249,6 +1251,9 @@ const ItemList: React.FC<ItemListProps> = ({
                             product={lotRaw}
                             isAdmin={isAdmin}
                             linkedNote={lotRaw.id !== product.id ? `이 품목은 원료 '${baseRawName(lotRaw.name)}'(으)로 관리됩니다` : undefined}
+                            ledgerEntries={rawMaterialLedger.filter(e => e.material === baseRawName(lotRaw.name))}
+                            onDeleteEntry={onDeleteRawMaterialEntry}
+                            currentUserName={currentUser?.name}
                           />
                         </td>
                       </tr>
@@ -1339,80 +1344,39 @@ const ItemList: React.FC<ItemListProps> = ({
           </div>
         )}
 
-        {/* ── 원료재고 최근 입출고 기록 ── */}
+        {/* ── 원료재고 전체 입출고 기록 (원료 필터 + 유형 필터 + 페이지네이션) ── */}
         {activeTab === 'master' && topTab === 'rawmaterial' && (() => {
-          const recent = [...rawMaterialLedger]
-            .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
-            .slice(0, 10);
+          const materials = Array.from(new Set(rawMaterialLedger.map(e => e.material).filter(Boolean))).sort();
+          const entries = ledgerMaterialFilter === '전체'
+            ? rawMaterialLedger
+            : rawMaterialLedger.filter(e => e.material === ledgerMaterialFilter);
           return (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mt-4">
-              <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
+              <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 gap-2 flex-wrap">
                 <div className="flex items-center gap-2">
                   <History size={14} className="text-slate-400" />
-                  <h3 className="text-xs font-black text-slate-700 uppercase tracking-wider">최근 입출고 기록</h3>
-                  <span className="text-[10px] font-black text-slate-300">최근 10건</span>
+                  <h3 className="text-xs font-black text-slate-700 uppercase tracking-wider">전체 입출고 기록</h3>
                 </div>
+                <select value={ledgerMaterialFilter} onChange={e => setLedgerMaterialFilter(e.target.value)}
+                  className="border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-600 outline-none focus:ring-2 focus:ring-teal-400 bg-white">
+                  <option value="전체">전체 원료</option>
+                  {materials.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
               </div>
-              {recent.length === 0 ? (
-                <div className="px-5 py-8 text-center text-xs font-bold text-slate-300">기록 없음</div>
-              ) : (
-                <ul className="divide-y divide-slate-50">
-                  {recent.map((r) => {
-                    const u = r.unit ?? unitOf(r.material);
-                    const isInbound = (r.received ?? 0) > 0;
-                    const isUsage = (r.used ?? 0) > 0;
-                    const isCorrectionNeg = (r.used ?? 0) < 0;
-                    const amt = isInbound ? r.received : Math.abs(r.used);
-                    const sign = isInbound || isCorrectionNeg ? '+' : '−';
-                    const tone = isInbound
-                      ? 'text-emerald-600'
-                      : isCorrectionNeg
-                        ? 'text-violet-600'
-                        : 'text-rose-500';
-                    const isMine = !!currentUser?.name && r.addedBy === currentUser.name;
-                    const typeBadge = r.type === 'auto'
-                      ? { label: '자동', cls: 'bg-blue-50 text-blue-600' }
-                      : r.type === 'correction'
-                        ? { label: '정정', cls: 'bg-amber-50 text-amber-700' }
-                        : { label: '수동', cls: 'bg-slate-50 text-slate-500' };
-                    const canDelete = !!isAdmin && r.type !== 'auto' && !!r.id;
-                    return (
-                      <li key={r.id} className="px-5 py-3 flex items-center gap-3 hover:bg-slate-50/60 transition-colors">
-                        <div className="w-16 text-[11px] font-bold text-slate-500 shrink-0">{r.date}</div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-xs font-black text-slate-800">{r.material}</span>
-                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${typeBadge.cls}`}>{typeBadge.label}</span>
-                            {isMine && <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600">본인</span>}
-                          </div>
-                          {(r.addedBy || r.note) && (
-                            <p className="text-[10px] text-slate-400 mt-0.5 truncate">
-                              {r.addedBy && <span className="mr-2">{r.addedBy}</span>}
-                              {r.note && <span>{r.note}</span>}
-                            </p>
-                          )}
-                        </div>
-                        <div className={`text-xs font-black ${tone} text-right shrink-0`}>
-                          {sign}{amt}{u}
-                        </div>
-                        {canDelete && (
-                          <button
-                            onClick={() => {
-                              if (confirm(`${r.material} 기록을 삭제할까요?`)) onDeleteRawMaterialEntry(r.id!);
-                            }}
-                            className="ml-1 px-2 py-1 rounded-lg text-[10px] font-black bg-slate-100 text-slate-400 hover:bg-rose-100 hover:text-rose-500 transition-colors shrink-0"
-                          >
-                            삭제
-                          </button>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-              {!isAdmin && recent.length > 0 && (
+              <div className="p-4">
+                <RawLedgerList
+                  entries={entries}
+                  isAdmin={isAdmin}
+                  currentUserName={currentUser?.name}
+                  onDelete={onDeleteRawMaterialEntry}
+                  showMaterial={ledgerMaterialFilter === '전체'}
+                  pageSize={12}
+                  emptyText="입출고 기록 없음"
+                />
+              </div>
+              {!isAdmin && (
                 <p className="px-5 py-2 text-[10px] text-slate-400 border-t border-slate-100">
-                  수정 · 삭제는 관리자만 가능합니다.
+                  삭제는 관리자만 가능합니다.
                 </p>
               )}
             </div>
@@ -1955,6 +1919,7 @@ const ItemList: React.FC<ItemListProps> = ({
           await onAddRawMaterialEntry(entry);
           const rawTarget = items.find((i) => i.category === 'raw' && baseRawName(i.name) === entry.material);
           if (rawTarget) {
+            try {
             if ((entry.received ?? 0) > 0) {
               // 입고: 거래처 입고와 동일하게 로트 생성(+기존재고 이월 보존). stock은 로트 합계로 산정.
               const lot = buildReceiveLot({
@@ -1986,6 +1951,13 @@ const ItemList: React.FC<ItemListProps> = ({
               // 그 외(정정 등 used<=0): stock 직접 조정
               const delta = (entry.received ?? 0) - (entry.used ?? 0);
               if (delta !== 0) onUpdateItem({ ...rawTarget, stock: (rawTarget.stock ?? 0) + delta });
+            }
+            } catch (err) {
+              // 로트/재고 반영 실패(읽기 한도 외 네트워크 오류 등) — 수불부 기록은 이미 저장됨.
+              // 예전엔 여기서 throw되어 모달이 안 닫히고 재시도 시 수불부 중복 기록이 생겼다.
+              console.error('[원료 기록] 로트/재고 반영 실패:', err);
+              setToast({ message: `${entry.material} 기록은 저장됐지만 재고 반영에 실패했습니다. 네트워크/재고를 확인하세요.` });
+              return; // 성공 토스트 생략 (모달은 정상 종료)
             }
           }
           // 저장 완료 토스트
