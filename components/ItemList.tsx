@@ -32,7 +32,7 @@ import PageHeader from './PageHeader';
 import RawMaterialEntryModal from './RawMaterialEntryModal';
 import RawMaterialLotPanel from './RawMaterialLotPanel';
 import RawLedgerList from './RawLedgerList';
-import { RM_LIST, unitOf, baseRawName, lotStockInUnit, unitToKg, lotKgRemaining } from '../src/constants/formula';
+import { RM_LIST, unitOf, baseRawName, lotStockInUnit, unitToKg, lotKgRemaining, parsePackageKg } from '../src/constants/formula';
 import { mutateRawMaterialLots } from '../src/shared/services/firebaseService';
 import { withCarryOverLot, buildReceiveLot, nextLotNo, deductFromLots } from '../src/shared/lotUtils';
 
@@ -982,7 +982,6 @@ const ItemList: React.FC<ItemListProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {pagedProducts.map(product => {
-                  const isCritical = normCat(product.category) !== '완제품' && product.stock < product.minStock;
                   const confInfo = confirmedOrders.find(c => (c.itemId ?? c.id) === product.id);
                   const inCart = cart.some(c => c.id === product.id);
                   const isExpanded = expandedRowId === product.id;
@@ -990,6 +989,15 @@ const ItemList: React.FC<ItemListProps> = ({
                   const lotRaw = product.category === 'raw'
                     ? product
                     : items.find(i => i.category === 'raw' && baseRawName(i.name) === (product.rawMaterialName || baseRawName(product.name)));
+                  // 반제품/매입 캔: 재고를 원료 로트(kg)에서 파생 표시 — '캔 수 = 원료 활성잔량 ÷ 캔용량'.
+                  // 입고/사용이 원료 로트에 반영되므로 캔 수도 자동으로 따라감(캔 품목의 stock 필드는 표시에 쓰지 않음).
+                  const canPackageKg = (lotRaw && lotRaw.id !== product.id && product.category !== 'product')
+                    ? (product.packageKg ?? parsePackageKg(product.spec) ?? parsePackageKg(product.name) ?? null)
+                    : null;
+                  const derivedRawKg = canPackageKg ? lotKgRemaining((lotRaw!.lots ?? []).filter(l => l.status === 'active')) : null;
+                  const derivedCans = (canPackageKg && derivedRawKg != null) ? derivedRawKg / canPackageKg : null;
+                  const effStock = derivedCans != null ? derivedCans : product.stock;
+                  const isCritical = normCat(product.category) !== '완제품' && effStock < product.minStock;
                   const statusBadge = normCat(product.category) === '완제품' ? (
                     <span className="text-[9px] font-black text-slate-300">자체생산</span>
                   ) : confInfo ? (
@@ -1075,7 +1083,16 @@ const ItemList: React.FC<ItemListProps> = ({
                         ) : <span className="text-[10px] text-slate-200">-</span>}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {editingStockId === product.id ? (
+                        {derivedCans != null ? (
+                          // 원료에서 파생된 캔 수 (읽기전용) — 입고/사용에 자동 연동
+                          <div className="flex flex-col items-end leading-tight" onClick={e => e.stopPropagation()}
+                            title={`원료 ${Math.round(derivedRawKg! * 10) / 10}kg ÷ ${canPackageKg}kg = ${Math.round(derivedCans * 10) / 10}캔`}>
+                            <span className={`text-base font-black ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}>
+                              {Math.floor(derivedCans)}<span className="text-[10px] text-slate-400 ml-0.5">{product.unit || '개'}</span>
+                            </span>
+                            <span className="text-[9px] font-bold text-emerald-500">원료 {Math.round(derivedRawKg! * 10) / 10}kg ≈ {Math.round(derivedCans * 10) / 10}캔</span>
+                          </div>
+                        ) : editingStockId === product.id ? (
                           <div className="flex items-center justify-end gap-1">
                             <input
                               autoFocus
@@ -1105,7 +1122,7 @@ const ItemList: React.FC<ItemListProps> = ({
                             {product.subtype === '향미유' ? fmtHamiyou(product.stock) : product.stock}
                           </button>
                         )}
-                        {editingStockId !== product.id && (
+                        {derivedCans == null && editingStockId !== product.id && (
                           <span className="text-[10px] text-slate-400 ml-1">
                             {product.category !== '향미유' && product.unit}
                           </span>
