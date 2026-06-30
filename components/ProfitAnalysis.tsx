@@ -212,21 +212,27 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
     });
   }, [issuedStatements, fixedCosts, periodMonths, codeToGroup]);
 
-  // 기간 합계
-  const summary = useMemo(() => monthlyData.reduce(
-    (a, m) => ({
-      sales: a.sales + m.sales,
-      cogs: a.cogs + m.cogs,
-      sgna: a.sgna + m.sgna,
-      fixed: a.fixed + m.fixed,
-      grossProfit: a.grossProfit + m.grossProfit,
-      operatingProfit: a.operatingProfit + m.operatingProfit,
-      otherIncome: a.otherIncome + m.otherIncome,
-      otherExpense: a.otherExpense + m.otherExpense,
-      netIncome: a.netIncome + m.netIncome,
-    }),
-    { sales: 0, cogs: 0, sgna: 0, fixed: 0, grossProfit: 0, operatingProfit: 0, otherIncome: 0, otherExpense: 0, netIncome: 0 }
-  ), [monthlyData]);
+  // 기간 합계 — 매출원가는 재고 증감 반영(기초 + 매입 − 기말). 스냅샷 있을 때만 조정.
+  const summary = useMemo(() => {
+    const base = monthlyData.reduce(
+      (a, m) => ({
+        sales: a.sales + m.sales,
+        purchases: a.purchases + m.cogs,   // m.cogs = 당기 매입액
+        sgna: a.sgna + m.sgna,
+        fixed: a.fixed + m.fixed,
+        otherIncome: a.otherIncome + m.otherIncome,
+        otherExpense: a.otherExpense + m.otherExpense,
+      }),
+      { sales: 0, purchases: 0, sgna: 0, fixed: 0, otherIncome: 0, otherExpense: 0 }
+    );
+    const cogs = (openingSnapshot || closingSnapshot)
+      ? (openingSnapshot?.value ?? 0) + base.purchases - (closingSnapshot?.value ?? 0)
+      : base.purchases;
+    const grossProfit = base.sales - cogs;
+    const operatingProfit = grossProfit - base.sgna - base.fixed;
+    const netIncome = operatingProfit + base.otherIncome - base.otherExpense;
+    return { ...base, cogs, grossProfit, operatingProfit, netIncome };
+  }, [monthlyData, openingSnapshot, closingSnapshot]);
 
   // 연간 합계 (월별 상세 테이블 합계행용, 항상 selectedYear 기준)
   const annual = useMemo(() => {
@@ -471,7 +477,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           </div>
           <div className="flex items-center justify-between pl-4 text-slate-600 font-bold">
             <span><span className="mr-1.5 text-slate-200">├</span>당기상품매입액 (+)</span>
-            <span>{fmtM(summary.cogs)}</span>
+            <span>{fmtM(summary.purchases)}</span>
           </div>
           {cogsByCode.map((item, idx) => (
             <div key={item.code} className="flex items-center justify-between pl-10 text-slate-500">
@@ -488,13 +494,8 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
               ? <span className="font-bold text-teal-600">{fmtM(closingSnapshot.value)}</span>
               : <span className="text-[10px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-lg">스냅샷 없음</span>}
           </div>
-          {(openingSnapshot || closingSnapshot) && (
-            <div className="flex items-center justify-between mt-1 pt-1 border-t border-slate-100 font-black text-slate-700">
-              <span className="text-[11px]">조정 매출원가</span>
-              <span className="text-[11px] text-slate-900">
-                {fmtM((openingSnapshot?.value ?? 0) + summary.cogs - (closingSnapshot?.value ?? 0))}
-              </span>
-            </div>
+          {!openingSnapshot && !closingSnapshot && (
+            <p className="text-[10px] text-slate-400 pt-1">※ 기초/기말 재고 스냅샷이 없어 매출원가 = 당기 매입액으로 계산됩니다. 재고액 탭에서 기말재고를 기록하세요.</p>
           )}
         </div>
       </div>
@@ -1307,7 +1308,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         const getStock = (p: Item) => p.stock ?? 0;
 
         const rows = products
-          .map(p => ({ ...p, stock: getStock(p), value: getStock(p) * (p.cost ?? 0) }))
+          .map(p => ({ ...p, stock: getStock(p), value: Math.round(getStock(p) * (p.cost ?? 0)) }))
           .filter(p => p.stock > 0 || (p.cost ?? 0) > 0)
           .sort((a, b) => b.value - a.value);
 
