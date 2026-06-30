@@ -28,19 +28,12 @@ interface AdminChecklistProps {
   orderRequests?: PurchaseOrder[];
   items?: Item[];
   partnerItems?: PartnerItem[];
-  onCreatePurchaseStatement?: (_data: { partnerId: string; partnerName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }> }) => void;
+  onCreatePurchaseStatement?: (_data: { partnerId: string; partnerName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }>; poIds?: string[] }) => void;
 }
 
 type TabType = 'leave' | 'adjustment' | 'ops';
 
 interface StatementDraftItem { name: string; qty: string; price: string; unit: string; isTaxExempt: boolean; }
-interface StatementDraft {
-  receipt: PurchaseOrder;     // 표시용 대표 PO (pos[0])
-  pos: PurchaseOrder[];        // 발행 시 일괄 상태전환할 PO들 (단일/묶음 모두)
-  partnerId: string;
-  tradeDate: string;
-  items: StatementDraftItem[];
-}
 interface ReturnStatementDraft {
   returnReq: ReturnRequest;
   partnerId: string;
@@ -80,8 +73,6 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
   // 기본: 전표 미발행만 — 발행 완료된 선입고는 숨겨 목록이 끝없이 길어지지 않게. '전체'로 토글 가능.
   const [inboundFilter, setInboundFilter] = useState<'pending_voucher' | 'all'>('pending_voucher');
 
-  const [statementDraft, setStatementDraft] = useState<StatementDraft | null>(null);
-  const [statementSaving, setStatementSaving] = useState(false);
   const [returnStmtDraft, setReturnStmtDraft] = useState<ReturnStatementDraft | null>(null);
   const [returnStmtSaving, setReturnStmtSaving] = useState(false);
 
@@ -222,106 +213,32 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
     }
   };
 
-  // 라인 → 드래프트 아이템 변환 (단가/세금 자동 채움)
-  const lineToDraftItem = (line: PurchaseOrderItem): StatementDraftItem => {
-    const pi = partnerItems.find(p =>
-      (p.Item_ID ?? (p as any).itemId) === line.itemId && p.Direction === 'in'
-    );
-    const item = items.find(it => it.id === line.itemId);
-    return {
-      name: line.name || item?.name || '',
-      qty: line.quantity.toString(),
-      price: (pi?.Standard_Price ?? pi?.price ?? 0).toString(),
-      unit: line.unit || item?.unit || '',
-      isTaxExempt: pi?.taxType === '면세',
-    };
-  };
-
-  // 단일 PO 모달 (선입고 이력에서 사용)
-  // tradeDate: 선입고는 receivedAt(실제 입고일), 그 외엔 오늘. PO의 createdAt(과거)은 사용하지 않음 —
-  // useAppData가 issuedStatements를 최근 7일치만 구독해서, 과거 날짜로 발행하면 화면에서 누락됨
-  const openStatementModal = (po: PurchaseOrder) => {
+  // 선입고/발주 → 매입전표 발행: TradeStatement 작성 화면으로 라우팅.
+  // 발행(원가/매입단가 동기화 포함)은 TradeStatement 한 곳에서만 처리하고,
+  // poIds를 함께 넘겨 발행 시 해당 PO들이 전표에 연결(linkedStatementId)되고 입고대기로 전환됨.
+  const issueStatementForPos = (pos: PurchaseOrder[], partnerId: string, partnerName: string) => {
+    if (pos.length === 0 || !onCreatePurchaseStatement) return;
     const matchedClient = partners.find(c =>
-      c.id === po.partnerId ||
-      c.name === po.partnerName ||
-      (po.partnerName && (c.name.includes(po.partnerName) || po.partnerName.includes(c.name)))
+      c.id === partnerId || c.name === partnerName ||
+      (partnerName && (c.name.includes(partnerName) || partnerName.includes(c.name)))
     );
-    const lines = poLines(po);
-    setStatementDraft({
-      receipt: po,
-      pos: [po],
-      partnerId: matchedClient?.id ?? po.partnerId ?? '',
-      tradeDate: po.receivedAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
-      items: lines.map(lineToDraftItem),
+    const invoiceItems = pos.flatMap(po => poLines(po)).map(line => {
+      const pi = partnerItems.find(p => (p.Item_ID ?? (p as any).itemId) === line.itemId && p.Direction === 'in');
+      const item = items.find(it => it.id === line.itemId);
+      return {
+        name: line.name || item?.name || '',
+        spec: line.unit || item?.unit || '',
+        qty: line.quantity,
+        price: Number(pi?.price ?? pi?.Standard_Price ?? 0),
+        isBox: false,
+      };
     });
-  };
-
-  // 묶음 PO 모달 (발주 예정에서 같은 거래처를 묶어 한 번에 발행)
-  // tradeDate는 오늘 (발주 등록일 아님). 비즈니스 의미상 매입전표 거래일 = 발행 당일
-  const openStatementModalForGroup = (groupPos: PurchaseOrder[], groupPartnerId: string, groupPartnerName: string) => {
-    if (groupPos.length === 0) return;
-    const matchedClient = partners.find(c =>
-      c.id === groupPartnerId ||
-      c.name === groupPartnerName ||
-      (groupPartnerName && (c.name.includes(groupPartnerName) || groupPartnerName.includes(c.name)))
-    );
-    const allLines = groupPos.flatMap(p => poLines(p));
-    const firstPo = groupPos[0];
-    setStatementDraft({
-      receipt: firstPo,
-      pos: groupPos,
-      partnerId: matchedClient?.id ?? groupPartnerId ?? firstPo.partnerId ?? '',
-      tradeDate: new Date().toISOString().slice(0, 10),
-      items: allLines.map(lineToDraftItem),
+    onCreatePurchaseStatement({
+      partnerId: matchedClient?.id ?? partnerId,
+      partnerName: matchedClient?.name ?? partnerName,
+      items: invoiceItems,
+      poIds: pos.map(p => p.id),
     });
-  };
-
-  const saveStatement = async () => {
-    if (!statementDraft) return;
-    const partner = partners.find(c => c.id === statementDraft.partnerId);
-    if (!partner) { alert('거래처를 선택해주세요.'); return; }
-    const validItems = statementDraft.items.filter(i => Number(i.qty) > 0);
-    if (validItems.length === 0) { alert('수량을 1개 이상 입력해주세요.'); return; }
-    setStatementSaving(true);
-    try {
-      const stmtItems: IssuedStatementItem[] = validItems.map(i => {
-        const qty = Number(i.qty);
-        const price = Number(i.price);
-        const supply = qty * price;
-        const tax = i.isTaxExempt ? 0 : Math.round(supply * 0.1);
-        return { name: i.name, spec: i.unit, qty, price, supply, tax, total: supply + tax, isTaxExempt: i.isTaxExempt };
-      });
-      const totalSupply = stmtItems.reduce((s, i) => s + i.supply, 0);
-      const totalTax = stmtItems.reduce((s, i) => s + i.tax, 0);
-      const docNo = `${statementDraft.tradeDate.slice(0, 7)}-${String(issuedStatements.length + 1).padStart(4, '0')}`;
-      const stmtId = await addItem('issuedStatements', {
-        issuedAt: new Date().toISOString(),
-        tradeDate: statementDraft.tradeDate,
-        type: '매입' as const,
-        partnerId: partner.id,
-        partnerName: partner.name,
-        orderId: statementDraft.receipt.id,
-        docNo,
-        totalSupply,
-        totalTax,
-        totalAmount: totalSupply + totalTax,
-        items: stmtItems,
-      } as Omit<IssuedStatement, 'id'>);
-      // 묶음 발행 시 묶인 모든 PO를 일괄 업데이트
-      // 발주 예정(pending)에서 발행하면 status를 invoiced(입고대기)로 전환
-      // (재고 가산과 received 전환은 별도 "입고확인" 단계에서 handleFinishConfirmedOrder가 처리)
-      const nowIso = new Date().toISOString();
-      await Promise.all(statementDraft.pos.map(po => {
-        const isPending = po.status === 'pending';
-        return updateItem('purchaseOrders', po.id, {
-          linkedStatementId: stmtId,
-          ...(isPending ? { status: 'invoiced', invoicedAt: nowIso } : {}),
-        });
-      }));
-      setStatementDraft(null);
-    } finally {
-      setStatementSaving(false);
-    }
   };
 
   return (
@@ -624,7 +541,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                     <td className="px-3 py-3">
                       <div className="flex items-center justify-center">
                         {!r.linkedStatementId ? (
-                          <button onClick={() => openStatementModal(r)} className="flex items-center gap-1 px-2 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-black transition-all shadow-sm whitespace-nowrap"><FileText size={11} /> 매입전표 발행</button>
+                          <button onClick={() => issueStatementForPos([r], r.partnerId ?? '', r.partnerName ?? '')} className="flex items-center gap-1 px-2 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-black transition-all shadow-sm whitespace-nowrap"><FileText size={11} /> 매입전표 발행</button>
                         ) : (
                           <span className="flex items-center gap-1 text-emerald-600 text-[10px] font-black whitespace-nowrap"><Check size={11} /> 전표 발행됨</span>
                         )}
@@ -715,7 +632,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                       <td className="px-3 py-3">
                         <div className="flex items-center justify-center">
                           <button
-                            onClick={() => openStatementModalForGroup(group.pos, group.partnerId, group.partnerName)}
+                            onClick={() => issueStatementForPos(group.pos, group.partnerId, group.partnerName)}
                             className="flex items-center gap-1 px-2 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-[10px] font-black transition-all shadow-sm whitespace-nowrap">
                             <FileText size={11} /> 매입전표 작성
                           </button>
@@ -848,123 +765,6 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
         </div>
       )}
 
-      {/* 전표 발행 모달 */}
-      {statementDraft && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-end md:items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <div>
-                <p className="font-black text-slate-800">매입 전표 발행</p>
-                <p className="text-xs text-slate-400 mt-0.5">{statementDraft.receipt.partnerName} · {statementDraft.receipt.receivedAt?.slice(0, 10) ?? ''} 선입고</p>
-              </div>
-              <button onClick={() => setStatementDraft(null)} className="p-2 text-slate-400 hover:text-slate-600"><X size={18} /></button>
-            </div>
-
-            <div className="overflow-auto flex-1 px-5 py-4 space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-black text-slate-500 uppercase tracking-wider">거래처 (매입처) *</label>
-                <select
-                  value={statementDraft.partnerId}
-                  onChange={e => setStatementDraft(d => d ? { ...d, partnerId: e.target.value } : null)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-rose-400"
-                >
-                  <option value="">거래처 선택</option>
-                  {partners
-                    .filter(c => c.partnerType === '매입처' || c.partnerType === '매출+매입처' || !c.partnerType)
-                    .map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-black text-slate-500 uppercase tracking-wider">거래일자 *</label>
-                <input
-                  type="date"
-                  value={statementDraft.tradeDate}
-                  onChange={e => setStatementDraft(d => d ? { ...d, tradeDate: e.target.value } : null)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-black text-slate-500 uppercase tracking-wider">품목</label>
-                  <button
-                    onClick={() => setStatementDraft(d => d ? { ...d, items: [...d.items, { name: '', qty: '', price: '', unit: '', isTaxExempt: false }] } : null)}
-                    className="flex items-center gap-1 px-2 py-1 text-xs text-rose-600 border border-rose-200 rounded-lg hover:bg-rose-50"
-                  >
-                    <Plus size={11} /> 품목 추가
-                  </button>
-                </div>
-                <div className="grid grid-cols-12 gap-1 px-1 text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                  <div className="col-span-4">품목명</div>
-                  <div className="col-span-2 text-center">수량</div>
-                  <div className="col-span-1 text-center">단위</div>
-                  <div className="col-span-3 text-center">단가(원)</div>
-                  <div className="col-span-1 text-center">세금</div>
-                  <div className="col-span-1" />
-                </div>
-                {statementDraft.items.map((item, idx) => (
-                  <div key={idx} className="grid grid-cols-12 gap-1 items-center bg-slate-50 rounded-xl p-2">
-                    <div className="col-span-4">
-                      <input value={item.name} onChange={e => setStatementDraft(d => d ? { ...d, items: d.items.map((it, i) => i === idx ? { ...it, name: e.target.value } : it) } : null)}
-                        placeholder="품목명" className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-rose-400" />
-                    </div>
-                    <div className="col-span-2">
-                      <input type="number" min={0} value={item.qty} onChange={e => setStatementDraft(d => d ? { ...d, items: d.items.map((it, i) => i === idx ? { ...it, qty: e.target.value } : it) } : null)}
-                        placeholder="0" className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs text-center focus:outline-none focus:ring-1 focus:ring-rose-400" />
-                    </div>
-                    <div className="col-span-1">
-                      <input value={item.unit} onChange={e => setStatementDraft(d => d ? { ...d, items: d.items.map((it, i) => i === idx ? { ...it, unit: e.target.value } : it) } : null)}
-                        placeholder="개" className="w-full px-1 py-1.5 border border-slate-200 rounded-lg text-xs text-center focus:outline-none focus:ring-1 focus:ring-rose-400" />
-                    </div>
-                    <div className="col-span-3">
-                      <input type="number" min={0} value={item.price} onChange={e => setStatementDraft(d => d ? { ...d, items: d.items.map((it, i) => i === idx ? { ...it, price: e.target.value } : it) } : null)}
-                        placeholder="0" className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs text-right focus:outline-none focus:ring-1 focus:ring-rose-400" />
-                    </div>
-                    <div className="col-span-1 flex justify-center">
-                      <button onClick={() => setStatementDraft(d => d ? { ...d, items: d.items.map((it, i) => i === idx ? { ...it, isTaxExempt: !it.isTaxExempt } : it) } : null)}
-                        className={`px-1 py-1 rounded text-[10px] font-black transition-colors ${item.isTaxExempt ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-400'}`}>
-                        {item.isTaxExempt ? '면세' : '과세'}
-                      </button>
-                    </div>
-                    <div className="col-span-1 flex justify-center">
-                      <button onClick={() => setStatementDraft(d => d ? { ...d, items: d.items.filter((_, i) => i !== idx) } : null)} className="p-1 text-slate-300 hover:text-rose-500">
-                        <X size={13} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {(() => {
-                const supply = statementDraft.items.reduce((s, i) => s + Number(i.qty || 0) * Number(i.price || 0), 0);
-                const tax = statementDraft.items.reduce((s, i) => {
-                  const amt = Number(i.qty || 0) * Number(i.price || 0);
-                  return s + (i.isTaxExempt ? 0 : Math.round(amt * 0.1));
-                }, 0);
-                return (
-                  <div className="bg-rose-50 rounded-xl px-4 py-3 space-y-1">
-                    <div className="flex justify-between text-xs text-slate-500"><span>공급가액</span><span className="font-bold">{supply.toLocaleString()}원</span></div>
-                    <div className="flex justify-between text-xs text-slate-500"><span>세액</span><span className="font-bold">{tax.toLocaleString()}원</span></div>
-                    <div className="flex justify-between text-sm font-black text-slate-800 border-t border-rose-200 pt-1"><span>합계</span><span>{(supply + tax).toLocaleString()}원</span></div>
-                  </div>
-                );
-              })()}
-            </div>
-
-            <div className="px-5 py-4 border-t border-slate-100">
-              <button
-                onClick={saveStatement}
-                disabled={statementSaving || !statementDraft.partnerId}
-                className="w-full flex items-center justify-center gap-2 py-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white rounded-xl font-black text-sm transition-all"
-              >
-                {statementSaving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-                {statementSaving ? '발행 중...' : '매입 전표 발행'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

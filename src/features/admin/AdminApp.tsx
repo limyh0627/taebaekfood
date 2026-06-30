@@ -185,7 +185,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   const { fixedCosts, productionRecords } = adminData;
 
-  const [pendingInvoice, setPendingInvoice] = useState<{ partnerId: string; partnerName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }> } | null>(null);
+  const [pendingInvoice, setPendingInvoice] = useState<{ partnerId: string; partnerName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }>; poIds?: string[] } | null>(null);
   const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부' | '거래명세서' | '생산작업기록부' | '생산작업기록부2' | '벤조피렌' | 'haccp'>('생산판매기록부');
   const [docYearMonth, setDocYearMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [docLogMonth, setDocLogMonth] = useState(() => new Date().toISOString().slice(0, 7));
@@ -3323,8 +3323,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
               }}
               onRemoveConfirmedOrder={(id) => deleteItem('purchaseOrders', id)}
               onRemoveOrderRequest={handleRemoveOrderRequest}
-              onLinkPurchaseOrder={(poId, statementId) =>
-                updateItem('purchaseOrders', poId, { status: 'invoiced', invoicedAt: new Date().toISOString(), linkedStatementId: statementId })}
+              onLinkPurchaseOrder={(poId, statementId) => {
+                // 선입고(received)는 이미 입고완료 → status 유지하고 전표만 연결.
+                // 발주예정(pending) 등은 입고대기(invoiced)로 전환.
+                const po = purchaseOrders.find(p => p.id === poId);
+                const isReceived = po?.status === 'received';
+                updateItem('purchaseOrders', poId, { linkedStatementId: statementId, ...(isReceived ? {} : { status: 'invoiced', invoicedAt: new Date().toISOString() }) });
+              }}
               onCreateInboundPO={(po) =>
                 addItem('purchaseOrders', {
                   id: `po-${Date.now()}`, itemId: '', itemName: '', quantity: 0,

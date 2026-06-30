@@ -26,7 +26,7 @@ interface TradeStatementProps {
   onUpdateIssuedStatement?: (id: string, data: Partial<IssuedStatement>) => void;
   onProposeEdit?: (id: string, data: Partial<IssuedStatement>, stmtType: '매출' | '매입', docNo: string, partnerName: string) => void;
   onDeleteIssuedStatement?: (id: string) => void;
-  pendingInvoice?: { partnerId: string; partnerName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }> } | null;
+  pendingInvoice?: { partnerId: string; partnerName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }>; poIds?: string[] } | null;
   onClearPendingInvoice?: () => void;
   confirmedOrders?: PurchaseOrder[];
   orderRequests?: PurchaseOrder[];
@@ -405,6 +405,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       })),
       { name: '', spec: '', qty: '', price: '', isTaxExempt: false },
     ]);
+    // 선입고/발주에서 넘어온 소스 PO들 — 발행 시 linkedStatementId 연결 + 입고대기 전환
+    setLoadedPoIds(pendingInvoice.poIds ?? []);
     onClearPendingInvoice?.();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingInvoice]);
@@ -804,18 +806,30 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         isBoxUnit: i.isBoxUnit, boxSize: i.boxSize, accountCode: i.accountCode || undefined,
       })),
     };
-    // 전표 수정은 즉시 반영이 아니라 '수정 요청' → 확인사항 > 전표 수정에서 승인 시 반영.
-    if (onProposeEdit) {
-      onProposeEdit(editingStmt.id, proposed, editingStmt.type, editingStmt.docNo, selectedClient?.name || editingStmt.partnerName);
-      setIsEditMode(false);
-      closeCreate();
-      alert('전표 수정 요청을 저장했습니다.\n확인사항 > 전표 수정에서 승인하면 반영됩니다.');
-    } else {
-      // 폴백: 수정요청 핸들러가 없으면 직접 반영
-      onUpdateIssuedStatement?.(editingStmt.id, proposed);
-      setIsEditMode(false);
+    // 거래명세서 탭에서의 수정은 즉시 반영 (확인사항 안 거침)
+    // ※ 입고대기 발주카드 수정 → 연결된 전표 수정요청은 AdminApp.handleRequestPoEdit 경로(별도)
+    onUpdateIssuedStatement?.(editingStmt.id, proposed);
+    // 매입전표면 원가/매입단가 동기화 (markIssued와 동일)
+    if (editingStmt.type === '매입' && onUpsertPartnerItem) {
+      for (const item of lineItems) {
+        if (!item.price || item.price <= 0) continue;
+        const product = allItems.find(p => (p.품목 || p.name) === item.name);
+        if (!product || !selectedClientId) continue;
+        const existing = partnerIn.find(s => (s.Item_ID ?? s.itemId) === product.id && (s.Partner_ID ?? s.partnerId) === selectedClientId);
+        const psId = existing?.id ?? `${product.id}_${selectedClientId}_in`;
+        const prevPrice = existing?.price ?? existing?.Standard_Price;
+        const priceChanged = prevPrice !== item.price;
+        const accountChanged = !!(item.accountCode && existing?.Account_Code !== item.accountCode);
+        if (priceChanged || accountChanged) {
+          onUpsertPartnerItem({ ...(existing ?? {}), id: psId, Item_ID: product.id, Partner_ID: selectedClientId, Direction: 'in' as const, price: item.price, taxType: existing?.taxType, Account_Code: item.accountCode || existing?.Account_Code });
+          if (priceChanged) onUpdateItemCost?.(product.id, item.price);
+        }
+      }
     }
-  }, [editingStmt, tradeDate, selectedClientId, selectedClient, totalSupply, totalTax, totalAmount, lineItems, onProposeEdit, onUpdateIssuedStatement]);
+    setIsEditMode(false);
+    closeCreate();
+    alert('전표가 수정되었습니다.');
+  }, [editingStmt, tradeDate, selectedClientId, selectedClient, totalSupply, totalTax, totalAmount, lineItems, onUpdateIssuedStatement, onUpsertPartnerItem, onUpdateItemCost, allItems, partnerIn]);
 
   const buildPrintHtml = (items: LineItem[] | IssuedStatement['items'], sup: number, tax: number, amt: number, type: StatementType, partner: string, docNoStr: string, dateString: string) => {
     const m = dateString.match(/(\d+)년\s*(\d+)월\s*(\d+)일/);

@@ -428,20 +428,19 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                 {(mainView === 'by-partner' && selectedClientId && partnerScopeTab === 'sales') && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">박스</th>}
                 {(mainView === 'by-partner' && selectedClientId && partnerScopeTab === 'sales') && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">테이프</th>}
                 {isAdmin && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">원가</th>}
-                {isAdmin && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">판매단가</th>}
                 {(isAdmin || (mainView === 'by-partner' && !!selectedClientId)) && <th className="px-2 py-3" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {!selectedClientId && !showAll ? (
                 <tr>
-                  <td colSpan={isAdmin ? 8 : 6} className="px-6 py-16 text-center text-slate-300 font-medium text-sm">
+                  <td colSpan={isAdmin ? 7 : 6} className="px-6 py-16 text-center text-slate-300 font-medium text-sm">
                     거래처를 선택하세요.
                   </td>
                 </tr>
               ) : pagedItems.length === 0 ? (
                 <tr>
-                  <td colSpan={isAdmin ? 8 : 6} className="px-6 py-16 text-center text-slate-400 font-medium text-sm">
+                  <td colSpan={isAdmin ? 7 : 6} className="px-6 py-16 text-center text-slate-400 font-medium text-sm">
                     {showAll ? '등록된 품목이 없습니다.' : '이 거래처에 연결된 품목이 없습니다.'}
                   </td>
                 </tr>
@@ -587,13 +586,6 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                           : <span className="text-[10px] text-slate-200">-</span>}
                       </td>
                     )}
-                    {isAdmin && (
-                      <td className="px-2 py-3 text-right">
-                        {item.price > 0
-                          ? <span className="text-[11px] font-black text-indigo-600 whitespace-nowrap">{item.price.toLocaleString()}원</span>
-                          : <span className="text-[10px] text-slate-200">-</span>}
-                      </td>
-                    )}
                     {(isAdmin || (mainView === 'by-partner' && !!selectedClientId)) && (
                       <td className="px-2 py-3 text-center">
                         {isAdmin && mainView === 'by-partner' && selectedClientId ? (
@@ -653,7 +645,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                     )}
                   </tr>
                   {item.isRawMaterial && expandedPackagingId === item.id && (() => {
-                    const colCount = isAdmin ? 7 : 5;
+                    const colCount = isAdmin ? 6 : 5;
                     // BOM: 이 품목의 구성 부자재 (item_bom)
                     const boms = itemBoms.filter(b => b.parent_id === item.id);
                     const getBomChild = (cat: string) => {
