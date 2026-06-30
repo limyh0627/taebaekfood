@@ -768,6 +768,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       onUpdateOrder(selectedOrderId, { items: updatedItems });
     }
     // 매입전표 발행 시 원가/계정 자동 저장 (partner_item canonical price = 원가, items.cost 동기화)
+    // 가드 없이 항상 동기화 — 구독(partnerIn) 지연으로 직전 저장값과 비교가 빗나가 누락되는 문제 방지
     if (stmtType === '매입' && onUpsertPartnerItem) {
       for (const item of lineItems) {
         if (!item.price || item.price <= 0) continue;
@@ -775,13 +776,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         if (!product || !selectedClientId) continue;
         const existing = partnerIn.find(s => (s.Item_ID ?? s.itemId) === product.id && (s.Partner_ID ?? s.partnerId) === selectedClientId);
         const psId = existing?.id ?? `${product.id}_${selectedClientId}_in`;
-        const prevPrice = existing?.price ?? existing?.Standard_Price;
-        const priceChanged = prevPrice !== item.price;
-        const accountChanged = !!(item.accountCode && existing?.Account_Code !== item.accountCode);
-        if (priceChanged || accountChanged) {
-          onUpsertPartnerItem({ ...(existing ?? {}), id: psId, Item_ID: product.id, Partner_ID: selectedClientId, Direction: 'in' as const, price: item.price, taxType: existing?.taxType, Account_Code: item.accountCode || existing?.Account_Code });
-          if (priceChanged) onUpdateItemCost?.(product.id, item.price);
-        }
+        onUpsertPartnerItem({ ...(existing ?? {}), id: psId, Item_ID: product.id, Partner_ID: selectedClientId, Direction: 'in' as const, price: item.price, taxType: existing?.taxType, Account_Code: item.accountCode || existing?.Account_Code });
+        onUpdateItemCost?.(product.id, item.price);
       }
     }
   }, [manualMode, selectedOrderId, selectedClientId, tradeDate, stmtType, selectedClient, docNo, totalSupply, totalTax, totalAmount, lineItems, onMarkInvoicePrinted, onAddIssuedStatement, onAddConfirmedOrder, onRemoveConfirmedOrder, onRemoveOrderRequest, onCreateInboundPO, onLinkPurchaseOrder, loadedPoIds, allItems, confirmedOrders, orderRequests, partnerOut, partnerIn, onUpsertPartnerItem, onUpdateItemCost, onUpdateOrder, selectedOrder, manualItems]);
@@ -817,13 +813,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         if (!product || !selectedClientId) continue;
         const existing = partnerIn.find(s => (s.Item_ID ?? s.itemId) === product.id && (s.Partner_ID ?? s.partnerId) === selectedClientId);
         const psId = existing?.id ?? `${product.id}_${selectedClientId}_in`;
-        const prevPrice = existing?.price ?? existing?.Standard_Price;
-        const priceChanged = prevPrice !== item.price;
-        const accountChanged = !!(item.accountCode && existing?.Account_Code !== item.accountCode);
-        if (priceChanged || accountChanged) {
-          onUpsertPartnerItem({ ...(existing ?? {}), id: psId, Item_ID: product.id, Partner_ID: selectedClientId, Direction: 'in' as const, price: item.price, taxType: existing?.taxType, Account_Code: item.accountCode || existing?.Account_Code });
-          if (priceChanged) onUpdateItemCost?.(product.id, item.price);
-        }
+        // 가드 없이 항상 동기화 (구독 지연으로 인한 누락 방지)
+        onUpsertPartnerItem({ ...(existing ?? {}), id: psId, Item_ID: product.id, Partner_ID: selectedClientId, Direction: 'in' as const, price: item.price, taxType: existing?.taxType, Account_Code: item.accountCode || existing?.Account_Code });
+        onUpdateItemCost?.(product.id, item.price);
       }
     }
     setIsEditMode(false);

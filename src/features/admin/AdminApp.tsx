@@ -3598,6 +3598,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   }}
                   shippingRules={shippingRules}
                   itemBoms={itemBoms}
+                  onUpsertPartnerItem={(ps) => addItem('partner_item', { ...ps, Partner_ID: ps.partnerId ?? ps.Partner_ID, Item_ID: ps.itemId ?? ps.Item_ID, Direction: ps.Direction ?? 'out' as const })}
                   onSaveItemCustomer={async (ic: Partial<import('../../shared/types').PartnerItem> & { id: string }) => {
                     const { doc: fDoc, updateDoc: fUpdate } = await import('firebase/firestore');
                     const { db: fireDb } = await import('../../shared/firebase');

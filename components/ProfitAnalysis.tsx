@@ -56,6 +56,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   const [mainTab, setMainTab] = useState<MainTab>(initialTab ?? 'analysis');
   const isStandalone = initialTab === 'partners' || initialTab === 'cash-flow';
   const [showAccountSettings, setShowAccountSettings] = useState(false);
+  const [expandedInvCats, setExpandedInvCats] = useState<Set<string>>(new Set());
   const [period, setPeriod] = useState<'3M' | '6M' | '1Y' | 'custom'>('custom');
   const [selectedQuarter, setSelectedQuarter] = useState<1|2|3|4>(() => {
     const cm = new Date().getMonth() + 1;
@@ -1312,13 +1313,33 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
 
         const totalValue = rows.reduce((acc, p) => acc + p.value, 0);
 
-        const categoryOrder = ['완제품', '향미유', '고춧가루', '용기', '마개', '테이프', '박스', '라벨'];
-        const grouped = categoryOrder
-          .map(cat => ({ cat, items: rows.filter(p => p.category === cat) }))
-          .filter(g => g.items.length > 0);
-
-        const otherItems = rows.filter(p => !categoryOrder.includes(p.category));
-        if (otherItems.length > 0) grouped.push({ cat: '기타', items: otherItems });
+        // category(영문/구한글) + subtype → 한글 그룹 라벨
+        const catLabel = (p: Item): string => {
+          const c = p.category as string;
+          const sub = (p as any).subtype as string | undefined;
+          if (c === 'product' || c === '완제품') return '완제품';
+          if (c === 'wip') return '반제품';
+          if (c === 'raw') return '원료';
+          if (c === 'giftset' || c === '선물세트') return '선물세트';
+          if (c === 'goods' || c === '향미유' || c === '고춧가루') return sub || '상품';
+          if (c === 'shipping') return '배송';
+          if (c === 'submaterial') return sub || '부자재';
+          if (['용기', '마개', '라벨', '박스', '테이프'].includes(c)) return c; // 구 한글 부자재
+          return '기타';
+        };
+        const groupOrder = ['완제품', '반제품', '상품', '향미유', '고춧가루', '원료', '선물세트', '배송', '용기', '마개', '라벨', '박스', '테이프', '부자재', '기타'];
+        const byLabel = new Map<string, typeof rows>();
+        for (const p of rows) {
+          const l = catLabel(p);
+          if (!byLabel.has(l)) byLabel.set(l, []);
+          byLabel.get(l)!.push(p);
+        }
+        const grouped = [...byLabel.entries()]
+          .sort((a, b) => {
+            const ai = groupOrder.indexOf(a[0]); const bi = groupOrder.indexOf(b[0]);
+            return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+          })
+          .map(([cat, items]) => ({ cat, items }));
 
         const currentYm = todayYm;
         const existingSnap = inventorySnapshots.find(s => s.yearMonth === currentYm);
@@ -1399,10 +1420,13 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             {/* 카테고리별 테이블 */}
             {grouped.map(({ cat, items }) => {
               const catTotal = items.reduce((acc, p) => acc + p.value, 0);
+              const isExpanded = expandedInvCats.has(cat);
+              const visibleItems = isExpanded ? items : items.slice(0, 10);
+              const hiddenCount = items.length - visibleItems.length;
               return (
                 <div key={cat} className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
                   <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
-                    <span className="text-xs font-black text-slate-600">{cat}</span>
+                    <span className="text-xs font-black text-slate-600">{cat} <span className="text-slate-300 font-bold">{items.length}</span></span>
                     <span className="text-xs font-black text-teal-600">{fmt(catTotal)}원</span>
                   </div>
                   <div className="overflow-x-auto">
@@ -1415,7 +1439,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
-                        {items.map(p => (
+                        {visibleItems.map(p => (
                           <tr key={p.id} className="hover:bg-slate-50 transition-colors">
                             <td className="px-4 py-3 text-xs font-bold text-slate-700">{p.name}</td>
                             <td className="px-4 py-3 text-xs text-right text-slate-600">{p.stock.toLocaleString()} {p.unit}</td>
@@ -1430,6 +1454,14 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                       </tbody>
                     </table>
                   </div>
+                  {items.length > 10 && (
+                    <button
+                      onClick={() => setExpandedInvCats(prev => { const n = new Set(prev); n.has(cat) ? n.delete(cat) : n.add(cat); return n; })}
+                      className="w-full py-2.5 text-[11px] font-black text-teal-600 hover:bg-teal-50 border-t border-slate-100 transition-colors"
+                    >
+                      {isExpanded ? '접기' : `+ ${hiddenCount}개 더 보기`}
+                    </button>
+                  )}
                 </div>
               );
             })}

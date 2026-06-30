@@ -76,6 +76,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     category: (initialData?.category as InventoryCategory) || 'product',
     subtype: (initialData?.subtype as ItemSubtype | '') || '',
     price: initialData?.price || 0,
+    cost: initialData?.cost || 0,
     stock: initialData?.stock || 0,
     minStock: initialData?.minStock || 10,
     unit: initialData?.unit || '개',
@@ -192,6 +193,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       category: formData.category,
       ...(formData.subtype && { subtype: formData.subtype }),
       price: formData.price,
+      ...(formData.cost > 0 ? { cost: formData.cost } : {}),
       stock: initialData?.stock ?? 0,
       minStock: formData.category === 'product' ? 0 : formData.minStock,
       unit: formData.unit,
@@ -360,6 +362,22 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
               placeholder="개, 팩, 롤 등"
               className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
             />
+          </div>
+
+          {/* 원가 (수동 입력 — 매입전표 발행 시 자동 갱신되지만 직접 입력도 가능) */}
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
+              <Box size={14} className="mr-2" /> 원가 (원)
+            </label>
+            <input
+              type="number"
+              min={0}
+              value={formData.cost === 0 ? '' : formData.cost}
+              onChange={(e) => setFormData({...formData, cost: e.target.value === '' ? 0 : Number(e.target.value)})}
+              placeholder="매입원가 직접 입력 (예: 380)"
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+            />
+            <p className="text-[11px] text-slate-400">매입전표 발행/수정 시 자동 갱신됩니다. 직접 입력도 가능.</p>
           </div>
 
 

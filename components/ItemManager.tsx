@@ -20,6 +20,7 @@ interface ItemManagerProps {
   onUnlinkSupplier?: (_productId: string, _supplierId: string) => void;
   onMergeItems?: (_keepId: string, _deleteIds: string[]) => Promise<void>;
   onSaveItemCustomer?: (_ic: Partial<PartnerItem> & { id: string }) => Promise<void>;
+  onUpsertPartnerItem?: (_ps: PartnerItem) => void;
   onSaveShippingRule?: (_rule: Partial<ShippingRule> & { id: string }) => Promise<void>;
   onAddShippingRule?: (_rule: Omit<ShippingRule, 'id'>) => Promise<void>;
   isAdmin?: boolean;
@@ -56,7 +57,7 @@ const SUB_ORDER: Record<string, number> = { '라벨': 0, '용기': 1, '마개': 
 const sortSubs = (subs: { name: string; category: string; subtype?: string }[]) =>
   [...subs].sort((a, b) => (SUB_ORDER[itemSubCat(a)] ?? 9) - (SUB_ORDER[itemSubCat(b)] ?? 9));
 
-const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems = [], shippingRules = [], itemBoms = [], onEditProduct, onAddItem, onDeleteItem, onLinkItem, onUnlinkItem, onLinkSupplier, onUnlinkSupplier, onMergeItems, onSaveItemCustomer, onSaveShippingRule, onAddShippingRule, isAdmin = true }) => {
+const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems = [], shippingRules = [], itemBoms = [], onEditProduct, onAddItem, onDeleteItem, onLinkItem, onUnlinkItem, onLinkSupplier, onUnlinkSupplier, onMergeItems, onSaveItemCustomer, onUpsertPartnerItem, onSaveShippingRule, onAddShippingRule, isAdmin = true }) => {
   const products = items;
   const itemCustomers = partnerItems;
   const partnerOut = partnerItems.filter(pi => pi.Direction === 'out');
@@ -90,6 +91,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
   const [packagingSaving, setPackagingSaving] = useState(false);
   const [partnerTab, setPartnerTab] = useState<'sales' | 'purchase'>('sales');
   const [partnerScopeTab, setClientScopeTab] = useState<'sales' | 'purchase'>('sales');
+  const [salesPriceEdits, setSalesPriceEdits] = useState<Record<string, string>>({});
 
   const TYPE_ORDER: Record<string, number> = { '일반': 0, '택배': 1, '스마트스토어': 2 };
   const salesClients = useMemo(() =>
@@ -428,6 +430,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                 {(mainView === 'by-partner' && selectedClientId && partnerScopeTab === 'sales') && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">박스</th>}
                 {(mainView === 'by-partner' && selectedClientId && partnerScopeTab === 'sales') && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">테이프</th>}
                 {isAdmin && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">원가</th>}
+                {(mainView === 'by-partner' && selectedClientId && partnerScopeTab === 'sales') && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">판매단가</th>}
                 {(isAdmin || (mainView === 'by-partner' && !!selectedClientId)) && <th className="px-2 py-3" />}
               </tr>
             </thead>
@@ -586,6 +589,33 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                           : <span className="text-[10px] text-slate-200">-</span>}
                       </td>
                     )}
+                    {(mainView === 'by-partner' && selectedClientId && partnerScopeTab === 'sales') && (() => {
+                      const psOut = partnerOut.find(ps => (ps.itemId ?? ps.Item_ID) === item.id && (ps.partnerId ?? ps.Partner_ID) === selectedClientId);
+                      const curPrice = psOut?.price ?? psOut?.Standard_Price;
+                      const editKey = `${item.id}_${selectedClientId}`;
+                      const editVal = salesPriceEdits[editKey];
+                      const savePrice = () => {
+                        if (editVal === undefined || !onUpsertPartnerItem) return;
+                        const num = editVal === '' ? 0 : Number(editVal);
+                        if (isNaN(num)) return;
+                        onUpsertPartnerItem({ ...(psOut ?? {}), id: psOut?.id ?? `${item.id}_${selectedClientId}_out`, Item_ID: item.id, Partner_ID: selectedClientId, Direction: 'out', price: num } as PartnerItem);
+                        setSalesPriceEdits(prev => { const n = { ...prev }; delete n[editKey]; return n; });
+                      };
+                      return (
+                        <td className="px-2 py-3 text-right">
+                          <input
+                            type="number"
+                            min={0}
+                            value={editVal ?? (curPrice ?? '')}
+                            onChange={e => setSalesPriceEdits(prev => ({ ...prev, [editKey]: e.target.value }))}
+                            onBlur={savePrice}
+                            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                            placeholder="단가"
+                            className="w-20 text-right bg-white border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold outline-none focus:ring-2 focus:ring-indigo-400"
+                          />
+                        </td>
+                      );
+                    })()}
                     {(isAdmin || (mainView === 'by-partner' && !!selectedClientId)) && (
                       <td className="px-2 py-3 text-center">
                         {isAdmin && mainView === 'by-partner' && selectedClientId ? (
