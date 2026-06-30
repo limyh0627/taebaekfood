@@ -13,7 +13,7 @@ import { Item, PurchaseOrder, PurchaseOrderItem, QrMapping } from '../src/shared
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY ?? '';
 
 interface InboundScanProps {
-  submaterials: Item[];
+  allItems: Item[];
   confirmedOrders: PurchaseOrder[];
   qrMappings: QrMapping[];
   currentUser: { id: string; name: string };
@@ -39,7 +39,7 @@ interface ConfirmItem {
 const qrCache = new Map<string, QrMapping>();
 
 const InboundScan: React.FC<InboundScanProps> = ({
-  submaterials,
+  allItems,
   confirmedOrders,
   qrMappings,
   currentUser,
@@ -56,8 +56,6 @@ const InboundScan: React.FC<InboundScanProps> = ({
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
   const [confirmItems, setConfirmItems] = useState<ConfirmItem[]>([]);
-  const [mappingModal, setMappingModal] = useState<{ qrValue: string } | null>(null);
-  const [mappingSearch, setMappingSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [geminiError, setGeminiError] = useState<string | null>(null);
   const [doneMessage, setDoneMessage] = useState('');
@@ -117,7 +115,7 @@ const InboundScan: React.FC<InboundScanProps> = ({
       }
     }, 300);
     return () => { if (scanIntervalRef.current) clearInterval(scanIntervalRef.current); };
-  }, [scanState, qrMappings, submaterials, confirmedOrders]);
+  }, [scanState, qrMappings, allItems, confirmedOrders]);
 
   // 품목 → 발주 매칭 라우팅
   const routeItem = useCallback((sub: Item): ConfirmItem => {
@@ -137,16 +135,15 @@ const InboundScan: React.FC<InboundScanProps> = ({
 
   const handleQrValue = useCallback((qrValue: string) => {
     const mapping = qrCache.get(qrValue) ?? qrMappings.find(m => m.qrValue === qrValue);
-    if (mapping) {
-      const sub = submaterials.find(s => s.id === mapping.submaterialId);
-      if (sub) {
-        setScanState('confirming');
-        setConfirmItems([routeItem(sub)]);
-        return;
-      }
+    const sub = mapping ? allItems.find(s => s.id === mapping.submaterialId) : undefined;
+    if (sub) {
+      setScanState('confirming');
+      setConfirmItems([routeItem(sub)]);
+      return;
     }
-    setMappingModal({ qrValue });
-  }, [qrMappings, submaterials, routeItem]);
+    // 등록 품목과 매칭 안 되면 무시 + 경고
+    alert(`등록된 품목과 매칭되지 않는 QR입니다. 무시됩니다.\n(${qrValue})\n\n품목 등록/연결 후 다시 스캔해주세요.`);
+  }, [qrMappings, allItems, routeItem]);
 
   // 사진 촬영
   const capturePhoto = useCallback(() => {
@@ -178,7 +175,7 @@ const InboundScan: React.FC<InboundScanProps> = ({
     try {
       const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
       const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-      const subList = submaterials.map(s => s.name).join(', ');
+      const subList = allItems.map(s => s.name).join(', ');
       const base64 = capturedImage.split(',')[1];
       const prompt = `이 사진은 식품 회사의 납품서 또는 포장 박스입니다.
 다음 품목 목록 중 사진에 보이는 품목을 찾아 JSON으로만 응답해주세요.
@@ -199,7 +196,7 @@ const InboundScan: React.FC<InboundScanProps> = ({
       const parsed = JSON.parse(jsonMatch[0]) as { name: string; quantity: number; unit: string; unitPrice?: number; inboundPartner?: string }[];
 
       const items: ConfirmItem[] = parsed.map(p => {
-        const sub = submaterials.find(s => s.name === p.name);
+        const sub = allItems.find(s => s.name === p.name);
         if (!sub) return null;
         const base = routeItem(sub);
         return {
@@ -217,7 +214,7 @@ const InboundScan: React.FC<InboundScanProps> = ({
       setGeminiError(e.message ?? 'AI 인식 실패');
       setScanState('captured');
     }
-  }, [capturedImage, submaterials, routeItem]);
+  }, [capturedImage, allItems, routeItem]);
 
   // 입고 확정 저장
   const confirmSave = async () => {
@@ -233,7 +230,7 @@ const InboundScan: React.FC<InboundScanProps> = ({
       }
 
       for (const item of confirmItems) {
-        const sub = submaterials.find(s => s.id === item.submaterialId);
+        const sub = allItems.find(s => s.id === item.submaterialId);
         if (!sub) continue;
         const qty = Number(item.quantity);
 
@@ -276,22 +273,6 @@ const InboundScan: React.FC<InboundScanProps> = ({
     }
   };
 
-  // QR 매핑 저장 후 확인 단계로
-  const saveMappingAndRoute = async (sub: Item) => {
-    if (!mappingModal) return;
-    const mapping: Omit<QrMapping, 'id'> = {
-      qrValue: mappingModal.qrValue,
-      submaterialId: sub.id,
-      submaterialName: sub.name,
-      createdAt: new Date().toISOString(),
-    };
-    await addItem('qrMappings', mapping);
-    qrCache.set(mappingModal.qrValue, { ...mapping, id: '' });
-    setMappingModal(null);
-    setScanState('confirming');
-    setConfirmItems([routeItem(sub)]);
-  };
-
   const resetScan = () => {
     setScanState('scanning');
     setCapturedImage(null);
@@ -304,10 +285,6 @@ const InboundScan: React.FC<InboundScanProps> = ({
   const updateItem_ = (idx: number, field: keyof ConfirmItem, value: string) => {
     setConfirmItems(prev => prev.map((it, i) => i === idx ? { ...it, [field]: value } : it));
   };
-
-  const filteredSubs = submaterials.filter(s =>
-    !mappingSearch || s.name.toLowerCase().includes(mappingSearch.toLowerCase())
-  );
 
   return (
     <div className="fixed inset-0 z-40 bg-black flex flex-col">
@@ -493,44 +470,6 @@ const InboundScan: React.FC<InboundScanProps> = ({
         </div>
       )}
 
-      {/* QR 매핑 모달 */}
-      {mappingModal && (
-        <div className="absolute inset-0 z-50 bg-black/80 flex items-end">
-          <div className="bg-white rounded-t-3xl w-full max-h-[75vh] flex flex-col">
-            <div className="px-5 py-4 border-b border-slate-100">
-              <div className="flex items-center justify-between mb-1">
-                <p className="font-black text-slate-800">처음 보는 QR</p>
-                <button onClick={() => { setMappingModal(null); resetScan(); }} className="p-1.5 text-slate-400">
-                  <X size={18} />
-                </button>
-              </div>
-              <p className="text-xs text-slate-400 break-all">{mappingModal.qrValue}</p>
-              <p className="text-xs text-slate-500 mt-2">어떤 품목인가요? 한 번 선택하면 다음부터 자동 인식됩니다.</p>
-            </div>
-            <div className="px-4 py-2 border-b border-slate-100">
-              <input
-                value={mappingSearch}
-                onChange={e => setMappingSearch(e.target.value)}
-                placeholder="품목 검색..."
-                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-                autoFocus
-              />
-            </div>
-            <div className="overflow-y-auto flex-1 divide-y divide-slate-50">
-              {filteredSubs.map(sub => (
-                <button
-                  key={sub.id}
-                  onClick={() => saveMappingAndRoute(sub)}
-                  className="w-full flex items-center justify-between px-5 py-3 hover:bg-teal-50 text-left transition-all"
-                >
-                  <span className="text-sm font-bold text-slate-700">{sub.name}</span>
-                  <span className="text-xs text-slate-400">{sub.unit}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

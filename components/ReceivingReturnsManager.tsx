@@ -35,7 +35,6 @@ interface ScanFormItem {
 }
 
 interface ReceivingReturnsManagerProps {
-  submaterials: SubmaterialComponent[];
   items: Item[];
   partners: Partner[];
   partnerItems?: import('../src/shared/types').PartnerItem[];
@@ -49,7 +48,6 @@ interface ReceivingReturnsManagerProps {
 }
 
 const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
-  submaterials,
   items,
   partners,
   partnerItems = [],
@@ -93,8 +91,6 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
   const [qrDetected, setQrDetected] = useState<string | null>(null);
-  const [mappingModal, setMappingModal] = useState<{ qrValue: string } | null>(null);
-  const [mappingSearch, setMappingSearch] = useState('');
   const [geminiLoading, setGeminiLoading] = useState(false);
   const [geminiError, setGeminiError] = useState<string | null>(null);
 
@@ -111,20 +107,9 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   const [inboundPartnerQtys, setSupplierQtys] = useState<Record<string, string>>({});
   const [inboundPartnerPrices, setSupplierPrices] = useState<Record<string, string>>({});
   const [inboundPartnerNote, setSupplierNote] = useState('');
-  const [inboundPartnerExtraItems, setSupplierExtraItems] = useState<ScanFormItem[]>([]);
   const [inboundPartnerSaving, setSupplierSaving] = useState(false);
   // 로컬 제거 (Firestore 반영 전 즉시 숨김용)
   const [removedItemKeys, setRemovedItemKeys] = useState<Set<string>>(new Set());
-
-  // ── 거래처-품목 설정 모달 ──
-  const [showConfigModal, setShowConfigModal] = useState(false);
-  const [configClientId, setConfigClientId] = useState('');
-  const [configSelectedIds, setConfigSelectedIds] = useState<string[]>([]);
-  const [configSaving, setConfigSaving] = useState(false);
-  const [configSearch, setConfigSearch] = useState('');
-  const [configClientSearch, setConfigClientSearch] = useState('');
-  const [showConfigClientDropdown, setShowConfigClientDropdown] = useState(false);
-
 
   // ── 전표 발행 모달 ──
   interface StatementDraftItem { name: string; qty: string; price: string; unit: string; isTaxExempt: boolean; }
@@ -194,16 +179,16 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
 
   const handleQrDetected = useCallback((qrValue: string) => {
     const mapping = qrMappingCache.get(qrValue) ?? qrMappings.find(m => m.qrValue === qrValue);
-    if (mapping) {
-      const sub = submaterials.find(s => s.id === mapping.submaterialId);
-      if (sub) {
-        setScanItems(prev => [...prev, { submaterialId: sub.id, name: sub.name, quantity: '', unit: sub.unit, unitPrice: sub.cost?.toString() ?? '' }]);
-        closeCamera();
-      }
+    const sub = mapping ? items.find(s => s.id === mapping.submaterialId) : undefined;
+    if (sub) {
+      setScanItems(prev => [...prev, { submaterialId: sub.id, name: sub.name, quantity: '', unit: sub.unit, unitPrice: sub.cost?.toString() ?? '' }]);
+      closeCamera();
     } else {
-      setMappingModal({ qrValue });
+      // 매칭되는 등록 품목이 없으면 무시 + 경고
+      alert(`등록된 품목과 매칭되지 않는 QR입니다. 무시됩니다.\n(${qrValue})\n\n품목 등록/연결 후 다시 스캔해주세요.`);
+      setScanMode('scanning');
     }
-  }, [qrMappings, submaterials, closeCamera]);
+  }, [qrMappings, items, closeCamera]);
 
   useEffect(() => {
     if (!cameraOpen || scanMode !== 'scanning') {
@@ -257,7 +242,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     try {
       const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
       const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-      const subList = submaterials.map(s => s.name).join(', ');
+      const subList = items.map(s => s.name).join(', ');
       const base64 = capturedImage.split(',')[1];
       const prompt = `이 사진은 식품 회사의 매입 전표 또는 납품서입니다.
 다음 품목 목록 중 사진에 보이는 품목을 찾아 JSON으로 응답해주세요.
@@ -276,39 +261,30 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
       const jsonMatch = text.match(/\[[\s\S]*\]/);
       if (!jsonMatch) throw new Error('파싱 실패');
       const parsed = JSON.parse(jsonMatch[0]) as { name: string; quantity: number; unit: string; unitPrice?: number; inboundPartner?: string }[];
-      const newItems: ScanFormItem[] = parsed.map(p => {
-        const sub = submaterials.find(s => s.name === p.name);
-        return {
-          submaterialId: sub?.id ?? '',
-          name: p.name,
+      // 등록 품목과 매칭되는 것만 추가, 매칭 안 되는 이름은 무시 + 경고
+      const matched: ScanFormItem[] = [];
+      const unmatched: string[] = [];
+      for (const p of parsed) {
+        const sub = items.find(s => s.name === p.name);
+        if (!sub) { unmatched.push(p.name); continue; }
+        matched.push({
+          submaterialId: sub.id,
+          name: sub.name,
           quantity: p.quantity?.toString() ?? '',
-          unit: p.unit || sub?.unit || '',
-          unitPrice: p.unitPrice?.toString() ?? sub?.cost?.toString() ?? '',
-        };
-      });
+          unit: p.unit || sub.unit || '',
+          unitPrice: p.unitPrice?.toString() ?? sub.cost?.toString() ?? '',
+        });
+      }
       if (parsed[0]?.inboundPartner) { setScanSupplierSearch(parsed[0].inboundPartner); setShowScanSupplierDropdown(true); }
-      setScanItems(prev => [...prev, ...newItems]);
+      setScanItems(prev => [...prev, ...matched]);
       closeCamera();
+      if (unmatched.length > 0) alert(`등록 품목과 매칭되지 않아 제외된 항목 ${unmatched.length}개:\n${unmatched.join(', ')}\n\n품목 등록/연결 후 다시 시도해주세요.`);
     } catch {
       setGeminiError('AI 인식에 실패했습니다. 직접 입력해주세요.');
     } finally {
       setGeminiLoading(false);
     }
-  }, [capturedImage, submaterials, closeCamera]);
-
-  const saveMappingAndAdd = async (sub: SubmaterialComponent) => {
-    if (!mappingModal) return;
-    await addItem('qrMappings', {
-      qrValue: mappingModal.qrValue,
-      submaterialId: sub.id,
-      submaterialName: sub.name,
-      createdAt: new Date().toISOString(),
-    });
-    onUpdateSubmaterial(sub.id, { qrCode: mappingModal.qrValue });
-    setScanItems(prev => [...prev, { submaterialId: sub.id, name: sub.name, quantity: '', unit: sub.unit, unitPrice: sub.cost?.toString() ?? '' }]);
-    setMappingModal(null);
-    closeCamera();
-  };
+  }, [capturedImage, items, closeCamera]);
 
   // ══════════════════════════════════════════
   // Scan inbound save
@@ -352,9 +328,8 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
       const nowIsoScan = new Date().toISOString();
       for (const item of receiptItems) {
         if (!item.itemId) continue;
-        const sub = submaterials.find(s => s.id === item.itemId);
         const product = items.find(p => p.id === item.itemId);
-        const currentStock = sub?.stock ?? product?.stock;
+        const currentStock = product?.stock;
         if (currentStock === undefined) {
           console.warn('[스캔 입고] items에서 품목을 못 찾음:', item);
           continue;
@@ -418,15 +393,10 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     if (partner.purchaseItems && partner.purchaseItems.length > 0) {
       // purchaseItems가 있으면 이것만 사용 (수동 설정이 우선)
       partner.purchaseItems.forEach(pi => {
-        const sub = submaterials.find(s => s.id === pi.id)
-          ?? submaterials.find(s => s.name === pi.name)
-          ?? null;
-        const product = sub ? null : (
-          items.find(p => p.id === pi.id)
+        const product = items.find(p => p.id === pi.id)
           ?? items.find(p => p.name === pi.name)
-          ?? null
-        );
-        push(sub?.name ?? product?.name ?? pi.name, sub, product);
+          ?? null;
+        push(product?.name ?? pi.name, null, product);
       });
     } else {
       // purchaseItems 미설정 → partner_item(Direction=in) 우선, partnerId 폴백
@@ -436,15 +406,9 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
           .map(ps => ps.Item_ID ?? ps.itemId)
           .filter((id): id is string => !!id)
       );
-      const allItems = [
-        ...submaterials.filter(s => inboundPartnerItemIds.has(s.id)),
-        ...items.filter(p => p.category !== '완제품' && (inboundPartnerItemIds.has(p.id) || p.partnerId === partner.id)),
-      ];
-      allItems.forEach(p => {
-        const sub = submaterials.find(s => s.id === p.id) ?? null;
-        const prod = sub ? null : (items.find(pr => pr.id === p.id) ?? null);
-        push(p.name, sub, prod);
-      });
+      items
+        .filter(p => inboundPartnerItemIds.has(p.id) || p.partnerId === partner.id)
+        .forEach(p => push(p.name, null, p));
     }
 
     return result;
@@ -460,79 +424,6 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   const inboundPartnersWithItems = partners.filter(c =>
     getSupplierLinkedItems(c).length > 0 || inboundPartnerClientIds.has(c.id)
   );
-
-  const openConfigModal = (partnerId = '') => {
-    setConfigClientId(partnerId);
-    if (partnerId) {
-      const partner = partners.find(c => c.id === partnerId);
-      const existingIds = getSupplierLinkedItems(partner!)
-        .map(({ sub, product }) => sub?.id ?? product?.id)
-        .filter((id): id is string => !!id);
-      setConfigSelectedIds(existingIds);
-    } else {
-      setConfigSelectedIds([]);
-    }
-    setConfigSearch('');
-    setShowConfigModal(true);
-  };
-
-  const saveConfig = async () => {
-    if (!configClientId) { alert('거래처를 선택해주세요.'); return; }
-    if (configSelectedIds.length === 0) { alert('품목을 1개 이상 선택해주세요.'); return; }
-    setConfigSaving(true);
-    try {
-      const purchaseItems = configSelectedIds.map(id => {
-        const sub = submaterials.find(s => s.id === id);
-        if (sub) return { id: sub.id, name: sub.name };
-        const product = items.find(p => p.id === id);
-        if (product) return { id: product.id, name: product.name };
-        return { id, name: id };
-      });
-
-      // partners 문서에 purchaseItems 저장
-      await updateItem('partners', configClientId, { purchaseItems });
-
-      // partner_item 동기화 (Direction='in')
-      // 이 거래처의 기존 매입 항목
-      const existing = partnerIn.filter(
-        ps => (ps.Partner_ID ?? ps.partnerId) === configClientId
-      );
-      const existingItemIds = new Set(existing.map(ps => ps.Item_ID ?? ps.itemId).filter(Boolean) as string[]);
-
-      // 새로 추가할 항목
-      const toAdd = configSelectedIds.filter(id => !existingItemIds.has(id));
-      // 제거할 항목 (선택에서 빠진 기존 항목)
-      const toRemove = existing.filter(ps => {
-        const itemId = ps.Item_ID ?? ps.itemId;
-        return itemId && !configSelectedIds.includes(itemId);
-      });
-
-      await Promise.all([
-        ...toAdd.map(itemId =>
-          addItem('partner_item', {
-            id: `${itemId}_${configClientId}_in`,
-            Partner_ID: configClientId,
-            Item_ID: itemId,
-            Direction: 'in' as const,
-          })
-        ),
-        ...toRemove.map(ps => deleteItem('partner_item', ps.id)),
-      ]);
-
-      setShowConfigModal(false);
-    } catch (e) {
-      console.error('거래처 품목 설정 저장 실패:', e);
-      alert('저장 중 오류가 발생했습니다: ' + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      setConfigSaving(false);
-    }
-  };
-
-  const toggleConfigItem = (id: string) => {
-    setConfigSelectedIds(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    );
-  };
 
   const handleOpenSupplier = (partner: Partner) => {
     if (activeSupplier === partner.id) {
@@ -553,7 +444,6 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     setSupplierQtys(qtys);
     setSupplierPrices(prices);
     setSupplierNote('');
-    setSupplierExtraItems([]);
     setRemovedItemKeys(new Set());
   };
 
@@ -575,17 +465,6 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         unit,
       });
     }
-    for (const extra of inboundPartnerExtraItems) {
-      const qty = Number(extra.quantity);
-      if (qty <= 0) continue;
-      receiptItems.push({
-        itemId: extra.submaterialId,
-        name: extra.name,
-        quantity: qty,
-        unit: extra.unit,
-      });
-    }
-
     if (receiptItems.length === 0) { alert('수량을 1개 이상 입력해주세요.'); return; }
     setSupplierSaving(true);
     try {
@@ -606,9 +485,8 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
       const nowIso = new Date().toISOString();
       for (const item of receiptItems) {
         if (!item.itemId) continue;
-        const sub = submaterials.find(s => s.id === item.itemId);
         const product = items.find(p => p.id === item.itemId);
-        const currentStock = sub?.stock ?? product?.stock;
+        const currentStock = product?.stock;
         if (currentStock === undefined) {
           console.warn('[선입고] items에서 품목을 못 찾음:', item);
           continue;
@@ -868,9 +746,6 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     .filter(r => r.createdAt.slice(0, 7) === returnFilterMonth)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
-  const filteredMappingResults = submaterials.filter(s =>
-    !mappingSearch || s.name.toLowerCase().includes(mappingSearch.toLowerCase())
-  );
 
   // ══════════════════════════════════════════
   // Render
@@ -952,16 +827,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                 >
                   <Camera size={16} /> QR 스캔 또는 사진으로 추가
                 </button>
-                <button
-                  onClick={() => {
-                    const first = submaterials[0];
-                    if (!first) return;
-                    setScanItems(p => [...p, { submaterialId: first.id, name: first.name, quantity: '', unit: first.unit, unitPrice: first.cost?.toString() ?? '' }]);
-                  }}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 border border-slate-200 rounded-xl text-slate-500 hover:bg-slate-50 transition-all text-xs font-black"
-                >
-                  <Plus size={14} /> 직접 입력으로 추가
-                </button>
+                <p className="text-[11px] text-slate-400 text-center">QR/사진으로 인식된 등록 품목만 추가됩니다.</p>
               </div>
 
               {scanItems.length > 0 && (
@@ -973,13 +839,13 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                         <select
                           value={item.submaterialId}
                           onChange={e => {
-                            const sub = submaterials.find(s => s.id === e.target.value);
+                            const sub = items.find(s => s.id === e.target.value);
                             if (!sub) return;
                             setScanItems(p => p.map((it, i) => i === idx ? { ...it, submaterialId: sub.id, name: sub.name, unit: sub.unit, unitPrice: sub.cost?.toString() ?? '' } : it));
                           }}
                           className="flex-1 mr-2 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
                         >
-                          {submaterials.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          {items.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
                         <button onClick={() => setScanItems(p => p.filter((_, i) => i !== idx))} className="p-1.5 text-slate-400 hover:text-rose-500 transition-colors">
                           <Trash2 size={14} />
@@ -1027,12 +893,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                 <p className="text-xs text-slate-400">
                   {inboundPartners.length > 0 ? `${inboundPartners.length}개 매입거래처` : '매입거래처 없음'}
                 </p>
-                <button
-                  onClick={() => openConfigModal()}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 text-teal-700 rounded-lg text-xs font-black hover:bg-teal-100 transition-colors"
-                >
-                  <Settings2 size={13} /> 거래처 품목 설정
-                </button>
+                <p className="text-[11px] text-slate-300">품목 연결은 품목 관리에서 설정</p>
               </div>
 
               {inboundPartners.length === 0 ? (
@@ -1119,51 +980,6 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                             </div>
                           ) : null;
                         })()}
-
-                        {/* 추가 품목 직접 입력 */}
-                        {inboundPartnerExtraItems.length > 0 && (
-                          <div className="space-y-2">
-                            <p className="text-xs font-black text-slate-500 uppercase tracking-widest">추가 품목</p>
-                            {inboundPartnerExtraItems.map((item, idx) => (
-                              <div key={idx} className="flex items-center gap-2 bg-blue-50 rounded-xl p-3">
-                                <select
-                                  value={item.submaterialId}
-                                  onChange={e => {
-                                    const sub = submaterials.find(s => s.id === e.target.value);
-                                    if (!sub) return;
-                                    setSupplierExtraItems(p => p.map((it, i) => i === idx ? { ...it, submaterialId: sub.id, name: sub.name, unit: sub.unit, unitPrice: sub.cost?.toString() ?? '' } : it));
-                                  }}
-                                  className="flex-1 px-2 py-1.5 border border-blue-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
-                                >
-                                  {submaterials.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                </select>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  placeholder="수량"
-                                  value={item.quantity}
-                                  onChange={e => setSupplierExtraItems(p => p.map((it, i) => i === idx ? { ...it, quantity: e.target.value } : it))}
-                                  className="w-20 px-2 py-1.5 border border-blue-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-400"
-                                />
-                                <span className="text-xs text-slate-400 w-8 shrink-0">{item.unit}</span>
-                                <button onClick={() => setSupplierExtraItems(p => p.filter((_, i) => i !== idx))} className="p-1 text-slate-400 hover:text-rose-500 transition-colors">
-                                  <X size={14} />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        <button
-                          onClick={() => {
-                            const first = submaterials[0];
-                            if (!first) return;
-                            setSupplierExtraItems(p => [...p, { submaterialId: first.id, name: first.name, quantity: '', unit: first.unit, unitPrice: first.cost?.toString() ?? '' }]);
-                          }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-slate-300 text-slate-400 rounded-lg text-xs font-black hover:border-teal-400 hover:text-teal-600 transition-colors"
-                        >
-                          <Plus size={12} /> 추가 품목 입력
-                        </button>
 
                         <div>
                           <p className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">비고</p>
@@ -1436,7 +1252,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                     />
                     {prItemSearch && (
                       <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-auto">
-                        {submaterials
+                        {items
                           .filter(s => !prItems.some(i => i.itemId === s.id) && s.name.toLowerCase().includes(prItemSearch.toLowerCase()))
                           .map(s => (
                             <button
@@ -1447,7 +1263,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                               {s.name}
                             </button>
                           ))}
-                        {submaterials.filter(s => !prItems.some(i => i.itemId === s.id) && s.name.toLowerCase().includes(prItemSearch.toLowerCase())).length === 0 && (
+                        {items.filter(s => !prItems.some(i => i.itemId === s.id) && s.name.toLowerCase().includes(prItemSearch.toLowerCase())).length === 0 && (
                           <p className="px-3 py-3 text-xs text-slate-400 text-center">검색 결과 없음</p>
                         )}
                       </div>
@@ -1609,120 +1425,6 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         </div>
       )}
 
-      {/* ── 거래처 품목 설정 모달 ── */}
-      {showConfigModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-end md:items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm max-h-[85vh] flex flex-col shadow-2xl">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <p className="font-black text-slate-800">거래처 품목 설정</p>
-              <button onClick={() => { setShowConfigModal(false); setConfigClientSearch(''); setShowConfigClientDropdown(false); }} className="p-2 text-slate-400 hover:text-slate-600">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="px-5 py-4 space-y-3 border-b border-slate-100">
-              <div className="space-y-1.5">
-                <label className="text-xs font-black text-slate-500 uppercase tracking-wider">거래처</label>
-                <div className="relative">
-                  <input
-                    value={configClientSearch}
-                    onChange={e => { setConfigClientSearch(e.target.value); setShowConfigClientDropdown(true); }}
-                    onFocus={() => setShowConfigClientDropdown(true)}
-                    placeholder="거래처 검색..."
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-400"
-                  />
-                  {configClientId && !showConfigClientDropdown && (
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full pointer-events-none">선택됨</span>
-                  )}
-                  {showConfigClientDropdown && (
-                    <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
-                      {partners
-                        .filter(c => !configClientSearch.trim() || c.name.includes(configClientSearch))
-                        .map(c => (
-                          <button
-                            key={c.id}
-                            type="button"
-                            onClick={() => { openConfigModal(c.id); setConfigClientSearch(c.name); setShowConfigClientDropdown(false); }}
-                            className={`w-full text-left px-3 py-2.5 text-sm hover:bg-teal-50 transition-colors ${configClientId === c.id ? 'bg-teal-50 font-black text-teal-700' : 'text-slate-700'}`}
-                          >{c.name}</button>
-                        ))}
-                      {partners.filter(c => !configClientSearch.trim() || c.name.includes(configClientSearch)).length === 0 && (
-                        <p className="px-3 py-3 text-sm text-slate-400 text-center">검색 결과 없음</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <input
-                value={configSearch}
-                onChange={e => setConfigSearch(e.target.value)}
-                placeholder="품목 검색..."
-                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-              />
-            </div>
-
-            <div className="overflow-auto flex-1 px-4 py-3 space-y-1">
-              {/* 부자재 */}
-              {submaterials
-                .filter(s => !configSearch || s.name.toLowerCase().includes(configSearch.toLowerCase()))
-                .map(sub => {
-                  const checked = configSelectedIds.includes(sub.id);
-                  return (
-                    <button
-                      key={sub.id}
-                      onClick={() => toggleConfigItem(sub.id)}
-                      className={`w-full flex items-center justify-between px-3 py-3 rounded-xl text-left transition-all ${checked ? 'bg-teal-50 border border-teal-200' : 'hover:bg-slate-50'}`}
-                    >
-                      <div>
-                        <p className="text-sm font-bold text-slate-700">{sub.name}</p>
-                        <p className="text-xs text-slate-400">부자재 · 재고: {(sub.stock ?? 0).toLocaleString()} {sub.unit}</p>
-                      </div>
-                      {checked && <Check size={16} className="text-teal-600 shrink-0" />}
-                    </button>
-                  );
-                })}
-              {/* 상품 (향미유/고춧가루 등 완제품 제외, 부자재 섹션 중복 제거) */}
-              {items
-                .filter(p => {
-                  const subIds = new Set(submaterials.map(s => s.id));
-                  return p.category !== '완제품' &&
-                    p.category !== 'product' &&
-                    !subIds.has(p.id) &&
-                    (!configSearch || p.name.toLowerCase().includes(configSearch.toLowerCase()));
-                })
-                .map(product => {
-                  const checked = configSelectedIds.includes(product.id);
-                  return (
-                    <button
-                      key={product.id}
-                      onClick={() => toggleConfigItem(product.id)}
-                      className={`w-full flex items-center justify-between px-3 py-3 rounded-xl text-left transition-all ${checked ? 'bg-blue-50 border border-blue-200' : 'hover:bg-slate-50'}`}
-                    >
-                      <div>
-                        <p className="text-sm font-bold text-slate-700">{product.name}</p>
-                        <p className="text-xs text-slate-400">{product.category} · 재고: {(product.stock ?? 0).toLocaleString()} {product.unit}</p>
-                      </div>
-                      {checked && <Check size={16} className="text-blue-600 shrink-0" />}
-                    </button>
-                  );
-                })}
-            </div>
-
-            <div className="px-5 py-4 border-t border-slate-100 space-y-2">
-              <p className="text-xs text-slate-400 text-center">{configSelectedIds.length}개 품목 선택됨</p>
-              <button
-                onClick={saveConfig}
-                disabled={configSaving || !configClientId || configSelectedIds.length === 0}
-                className="w-full flex items-center justify-center gap-2 py-3 bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white rounded-xl font-black text-sm transition-all"
-              >
-                {configSaving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-                저장
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ── 전표 발행 모달 ── */}
       {statementDraft && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-end md:items-center justify-center p-4">
@@ -1873,43 +1575,6 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         </div>
       )}
 
-      {/* ── QR 매핑 모달 ── */}
-      {mappingModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-end md:items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm max-h-[80vh] flex flex-col shadow-2xl">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <div>
-                <p className="font-black text-slate-800">처음 보는 QR입니다</p>
-                <p className="text-xs text-slate-400 mt-0.5 break-all">{mappingModal.qrValue}</p>
-              </div>
-              <button onClick={() => { setMappingModal(null); closeCamera(); }} className="p-2 text-slate-400 hover:text-slate-600">
-                <X size={18} />
-              </button>
-            </div>
-            <p className="px-5 py-3 text-xs text-slate-500">어떤 품목인가요? 선택하면 다음부터 자동 인식됩니다.</p>
-            <div className="px-4 pb-2">
-              <input
-                value={mappingSearch}
-                onChange={e => setMappingSearch(e.target.value)}
-                placeholder="품목 검색..."
-                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-              />
-            </div>
-            <div className="overflow-auto flex-1 px-4 pb-4 space-y-1">
-              {filteredMappingResults.map(sub => (
-                <button
-                  key={sub.id}
-                  onClick={() => saveMappingAndAdd(sub)}
-                  className="w-full flex items-center justify-between px-3 py-3 rounded-xl hover:bg-teal-50 text-left transition-all"
-                >
-                  <span className="text-sm font-bold text-slate-700">{sub.name}</span>
-                  <span className="text-xs text-slate-400">{sub.unit}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

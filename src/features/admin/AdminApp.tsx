@@ -1526,7 +1526,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
               inboundContent={
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                   <ReceivingReturnsManager
-                    submaterials={submaterials}
                     items={allItems}
                     partners={partners}
                     partnerItems={partnerItems}
@@ -1544,7 +1543,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
               returnContent={
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                   <ReceivingReturnsManager
-                    submaterials={submaterials}
                     items={allItems}
                     partners={partners}
                     partnerItems={partnerItems}
@@ -1562,7 +1560,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'inbound-scan' && (
             <InboundScan
-              submaterials={submaterials}
+              allItems={allItems}
               confirmedOrders={invoicedPurchaseOrders}
               qrMappings={appData.qrMappings}
               currentUser={{ id: currentUser.id, name: currentUser.name }}
