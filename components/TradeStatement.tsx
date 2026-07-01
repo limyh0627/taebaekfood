@@ -630,8 +630,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         .map((item, idx) => {
           const qty = parseFloat(item.qty) || 0;
           const price = parseFloat(item.price) || 0;
-          const supply = qty * price;
-          const tax = item.isTaxExempt ? 0 : Math.round(supply * 0.1);
+          // 단가는 부가세 포함 → 공급가액 역산 (주문 기반 경로 및 품목행 표시와 동일 규칙)
+          const gross = qty * price;
+          const supply = item.isTaxExempt ? gross : Math.round(gross / 1.1);
+          const tax = item.isTaxExempt ? 0 : gross - supply;
           return { key: `manual-${idx}`, no: idx + 1, name: item.name, spec: item.spec, qty, price, supply, tax, total: supply + tax, isTaxExempt: item.isTaxExempt, isBoxUnit: item.isBoxUnit, boxSize: item.boxSize, accountCode: item.accountCode };
         });
     }
