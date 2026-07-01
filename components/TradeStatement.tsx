@@ -3226,7 +3226,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 <table className="w-full text-left border-collapse table-fixed">
                   <colgroup>
                     <col style={{width:'40px'}}/>
-                    <col style={{width:'24%'}}/>
+                    <col style={{width:'22%'}}/>
                     <col style={{width:'13%'}}/>
                     <col style={{width:'10%'}}/>
                     <col style={{width:'12%'}}/>
@@ -3238,8 +3238,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   </colgroup>
                   <thead className="sticky top-0 z-10 bg-slate-50">
                     <tr className="border-b border-slate-200">
-                      {['No','품목명','규격','수량','단가','공급가액','세액','합계','계정',''].map((h,i)=>(
-                        <th key={i} className="px-3 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
+                      {[
+                        {h:'No',a:'text-center'},
+                        {h:'품목명',a:'text-left'},
+                        {h:'규격',a:'text-left'},
+                        {h:'수량',a:'text-right'},
+                        {h:'단가',a:'text-right'},
+                        {h:'공급가액',a:'text-right'},
+                        {h:'세액',a:'text-center'},
+                        {h:'합계',a:'text-right'},
+                        {h:'계정',a:'text-left'},
+                        {h:'',a:'text-center'},
+                      ].map((c,i)=>(
+                        <th key={i} className={`px-3 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap ${c.a}`}>{c.h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -3429,7 +3440,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       <td className="px-3 py-2.5 text-right text-xs font-black text-slate-700">{fmt(totalSupply)}</td>
                       <td className="px-3 py-2.5 text-right text-xs font-black text-slate-700">{fmt(totalTax)}</td>
                       <td className="px-3 py-2.5 text-right text-xs font-black text-slate-900">{fmt(totalAmount)}</td>
-                      <td colSpan={3}/>
+                      <td colSpan={2}/>
                     </tr>
                   </tbody>
                 </table>
