@@ -640,7 +640,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     let no = 1;
     selectedOrder.items.forEach(item => {
       const product = allItems.find(p => p.id === item.itemId);
-      const displayName = product?.품목 || item.name;
+      const displayName = product?.name ||item.name;
       const spec = item.displaySize || product?.spec || '';
       const key  = `${displayName}||${spec}`;
       const piList = stmtType === '매출' ? partnerOut : partnerIn;
@@ -694,7 +694,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // ── 발행 처리 ──
   const missingAccountCodes = lineItems.filter(i => !i.accountCode);
-  const canIssue = lineItems.length > 0 && !!selectedClientId && (manualMode || !!selectedOrderId) && missingAccountCodes.length === 0;
+  const canIssue = lineItems.length > 0 && !!selectedClientId && (manualMode || !!selectedOrderId);
 
   const markIssued = useCallback(() => {
     if (!selectedClientId || lineItems.length === 0) return;
@@ -735,7 +735,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         loadedPoIds.forEach(poId => onLinkPurchaseOrder?.(poId, stmt.id));
       } else if (selectedClientId) {
         const newItems = lineItems.map(item => {
-          const product = allItems.find(p => (p.품목 || p.name) === item.name);
+          const product = allItems.find(p => p.name === item.name || p.품목 === item.name);
           return { itemId: product?.id || '', itemName: item.name, quantity: item.qty, isBox: item.isBoxUnit, unit: product?.unit || '개' };
         });
         if (newItems.length > 0) {
@@ -747,7 +747,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     if (stmtType === '매출' && onUpsertPartnerItem) {
       for (const item of lineItems) {
         if (!item.price || item.price <= 0) continue;
-        const product = allItems.find(p => (p.품목 || p.name) === item.name);
+        const product = allItems.find(p => p.name === item.name || p.품목 === item.name);
         if (!product || !selectedClientId) continue;
         const pc = partnerOut.find(p => (p.itemId ?? p.Item_ID) === product.id && (p.partnerId ?? p.Partner_ID) === selectedClientId);
         const pcId = pc?.id ?? `${product.id}_${selectedClientId}_out`;
@@ -764,12 +764,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       // 기존 주문 품목 이름 집합 (매칭용)
       const existingItemNames = new Set(selectedOrder.items.map(oi => {
         const product = allItems.find(p => p.id === oi.itemId);
-        return (product?.품목 || oi.name).trim();
+        return (product?.name ||oi.name).trim();
       }));
       // 기존 품목: 수량 업데이트
       const updatedItems = selectedOrder.items.map(oi => {
         const product = allItems.find(p => p.id === oi.itemId);
-        const displayName = product?.품목 || oi.name;
+        const displayName = product?.name ||oi.name;
         const row = manualItems.find(r => r.name.trim() === displayName.trim());
         if (row) return { ...oi, quantity: parseFloat(row.qty) || oi.quantity };
         return oi;
@@ -780,7 +780,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         if (!name || existingItemNames.has(name)) continue;
         const qty = parseFloat(row.qty) || 0;
         if (qty <= 0) continue;
-        const product = allItems.find(p => (p.품목 || p.name) === name);
+        const product = allItems.find(p => p.name === name || p.품목 === name);
         updatedItems.push({
           itemId: product?.id || '',
           name,
@@ -795,7 +795,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     if (stmtType === '매입' && onUpsertPartnerItem) {
       for (const item of lineItems) {
         if (!item.price || item.price <= 0) continue;
-        const product = allItems.find(p => (p.품목 || p.name) === item.name);
+        const product = allItems.find(p => p.name === item.name || p.품목 === item.name);
         if (!product || !selectedClientId) continue;
         const existing = partnerIn.find(s => (s.Item_ID ?? s.itemId) === product.id && (s.Partner_ID ?? s.partnerId) === selectedClientId);
         const psId = existing?.id ?? `${product.id}_${selectedClientId}_in`;
@@ -806,6 +806,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   }, [manualMode, selectedOrderId, selectedClientId, tradeDate, stmtType, selectedClient, docNo, totalSupply, totalTax, totalAmount, lineItems, onMarkInvoicePrinted, onAddIssuedStatement, onAddConfirmedOrder, onRemoveConfirmedOrder, onRemoveOrderRequest, onCreateInboundPO, onLinkPurchaseOrder, loadedPoIds, allItems, confirmedOrders, orderRequests, partnerOut, partnerIn, onUpsertPartnerItem, onUpdateItemCost, onUpdateOrder, selectedOrder, manualItems]);
 
   const handleIssue = () => {
+    if (missingAccountCodes.length > 0) {
+      if (!window.confirm(`계정코드가 입력되지 않은 품목이 ${missingAccountCodes.length}건 있습니다.\n그래도 저장하시겠습니까?`)) return;
+    }
     markIssued();
     closeCreate();
   };
@@ -832,7 +835,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     if (editingStmt.type === '매입' && onUpsertPartnerItem) {
       for (const item of lineItems) {
         if (!item.price || item.price <= 0) continue;
-        const product = allItems.find(p => (p.품목 || p.name) === item.name);
+        const product = allItems.find(p => p.name === item.name || p.품목 === item.name);
         if (!product || !selectedClientId) continue;
         const existing = partnerIn.find(s => (s.Item_ID ?? s.itemId) === product.id && (s.Partner_ID ?? s.partnerId) === selectedClientId);
         const psId = existing?.id ?? `${product.id}_${selectedClientId}_in`;
@@ -1520,7 +1523,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         // 주문 품목을 편집 가능한 형태로 미리 채움
         const rows: ManualRow[] = o.items.map(item => {
           const product = allItems.find(p => p.id === item.itemId);
-          const displayName = product?.품목 || item.name;
+          const displayName = product?.name || item.name;
           const spec = item.displaySize || product?.spec || '';
           const pcEntry = partnerOut.find(pc => pc.itemId === item.itemId && pc.partnerId === o.partnerId);
           const price = pcEntry?.price ?? item.price ?? product?.price ?? 0;
@@ -2229,7 +2232,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             <div className="space-y-3">
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">금액</label>
-                <input type="number" value={payForm.amount}
+                <input type="text" inputMode="decimal" value={payForm.amount}
                   onChange={e => setPayForm(p => ({ ...p, amount: e.target.value }))}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
               </div>
@@ -2304,7 +2307,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             <div className="space-y-3">
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">금액</label>
-                <input type="number" value={editPayForm.amount}
+                <input type="text" inputMode="decimal" value={editPayForm.amount}
                   onChange={e => setEditPayForm(p => ({ ...p, amount: e.target.value }))}
                   disabled={!editPayEditable}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300 disabled:bg-slate-50 disabled:text-slate-500"/>
@@ -2493,7 +2496,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               {/* 금액 */}
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">금액</label>
-                <input type="number" placeholder="0" value={quickPayAmount}
+                <input type="text" inputMode="decimal" placeholder="0" value={quickPayAmount}
                   onChange={e => setQuickPayAmount(e.target.value)}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
               </div>
@@ -2610,7 +2613,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       {createMode && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeCreate}/>
-          <div className="relative w-full max-w-6xl flex flex-col bg-white rounded-3xl shadow-2xl overflow-hidden"
+          <div className="relative w-full max-w-7xl flex flex-col bg-white rounded-3xl shadow-2xl overflow-hidden"
                style={{height:'80vh'}}>
 
             {/* ── 헤더 ── */}
@@ -2720,7 +2723,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     <div key={pc.id} className="flex items-center gap-3 px-5 py-2">
                       <span className="text-xs font-black text-slate-700 flex-1 truncate">{product!.name}</span>
                       {product!.spec && <span className="text-[10px] text-slate-400">{product!.spec}</span>}
-                      <input type="number" placeholder="단가"
+                      <input type="text" inputMode="decimal" placeholder="단가"
                         value={pricePanelEdits[pc.id]??(pc.price!==undefined?String(pc.price):'')}
                         onChange={e=>setPricePanelEdits(prev=>({...prev,[pc.id]:e.target.value}))}
                         className="w-24 text-right bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-violet-300"/>
@@ -2982,12 +2985,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
             {/* ── 빠른 품목 입력 바 ── */}
             {selectedClientId && (selectedOrderId || manualMode || editingStmt) && (!editingStmt || isEditMode) && (() => {
-              const qProduct = searchableRows.find(r=>(r.product!.품목||r.product!.name)===quickName)?.product as any;
+              const qProduct = searchableRows.find(r=>(r.product!.name)===quickName)?.product as any;
               const selRow = selectedItemIdx!==null&&manualMode ? manualItems[selectedItemIdx] : null;
               const selItem = selectedItemIdx!==null&&!manualMode ? lineItems[selectedItemIdx] : null;
               const infoProduct = quickName ? qProduct
-                : selRow ? (searchableRows.find(r=>(r.product!.품목||r.product!.name)===selRow.name)?.product as any)
-                : selItem ? (allItems.find(p=>(p.품목||p.name)===selItem.name) as any)
+                : selRow ? (searchableRows.find(r=>(r.product!.name)===selRow.name)?.product as any)
+                : selItem ? (allItems.find(p=>p.name===selItem.name||p.품목===selItem.name) as any)
                 : null;
               const productCost = infoProduct?.cost ?? 0;
               const salePrice = quickName ? (parseFloat(quickPrice)||0)
@@ -3002,12 +3005,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 if (!quickName.trim()) return [];
                 const q = quickName.toLowerCase();
                 const partnerMatches = searchableRows.filter(r => {
-                  const docN = (r.product!.품목 || r.product!.name).toLowerCase();
+                  const docN = r.product!.name.toLowerCase();
                   return docN.includes(q) || r.product!.name.toLowerCase().includes(q);
                 });
                 if (partnerMatches.length > 0) return partnerMatches;
                 return allItems
-                  .filter(p => (p.품목 || p.name).toLowerCase().includes(q))
+                  .filter(p => (p.name + ' ' + (p.품목 ?? '')).toLowerCase().includes(q))
                   .map(p => {
                     const existingPc = partnerOut.find(pc => pc.itemId === p.id && pc.partnerId === selectedClientId);
                     return {
@@ -3032,7 +3035,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     <div className="relative">
                       <input type="text" value={quickName} placeholder="품목명..."
                         onChange={e=>{setQuickName(e.target.value);setQuickSearchOpen(true);
-                          const match=searchableRows.find(r=>(r.product!.품목||r.product!.name)===e.target.value);
+                          const match=searchableRows.find(r=>(r.product!.name)===e.target.value);
                           if(match){setQuickSpec(match.product!.spec||'');setQuickPrice(String(match.pc.price??match.product!.price??''));setQuickIsTaxExempt(match.pc.taxType==='면세');}
                         }}
                         onFocus={()=>setQuickSearchOpen(true)}
@@ -3044,7 +3047,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                             <span className="text-[10px] font-black text-slate-500">품목 선택</span>
                           </div>
                           {quickResults.slice(0,10).map(r=>{
-                            const docN=r.product!.품목||r.product!.name;
+                            const docN=r.product!.name;
                             const sub = r.product!.submaterials ?? [];
                             const 용기 = sub.find(s=>s.category==='용기')?.name;
                             const 마개 = sub.find(s=>s.category==='마개')?.name;
@@ -3072,9 +3075,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     </div>
                     <input type="text" value={quickSpec} placeholder="규격" onChange={e=>setQuickSpec(e.target.value)}
                       className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300 w-20"/>
-                    <input type="number" value={quickQty} placeholder="수량" onChange={e=>setQuickQty(e.target.value)}
+                    <input type="text" inputMode="decimal" value={quickQty} placeholder="수량" onChange={e=>setQuickQty(e.target.value)}
                       className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300 w-20 text-right"/>
-                    <input type="number" value={quickPrice} placeholder="단가" onChange={e=>setQuickPrice(e.target.value)}
+                    <input type="text" inputMode="decimal" value={quickPrice} placeholder="단가" onChange={e=>setQuickPrice(e.target.value)}
                       className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300 w-24 text-right"/>
                     <input type="text" value={quickNote||''} placeholder="비고" onChange={e=>setQuickNote(e.target.value)}
                       className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300 w-28"/>
@@ -3103,7 +3106,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               const filtered = searchableRows.filter(r=>{
                 if(!pickerSearch.trim()) return true;
                 const q=pickerSearch.toLowerCase();
-                const docN=(r.product!.품목||r.product!.name).toLowerCase();
+                const docN=(r.product!.name).toLowerCase();
                 return docN.includes(q)||r.product!.name.toLowerCase().includes(q);
               });
               const confirmPick = () => {
@@ -3113,7 +3116,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   if(!qty) continue;
                   const row=searchableRows.find(r=>r.product!.id===itemId);
                   if(!row) continue;
-                  const docN=row.product!.품목||row.product!.name;
+                  const docN=row.product!.name;
                   toAdd.push({name:docN,spec:row.product!.spec||'',qty:String(qty),price:String(row.pc.price??row.product!.price??''),isTaxExempt:row.pc.taxType==='면세',note:''});
                 }
                 if(toAdd.length===0){setShowItemPicker(false);return;}
@@ -3157,7 +3160,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                           {filtered.length===0 ? (
                             <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-400">품목이 없습니다</td></tr>
                           ) : filtered.map((r,idx)=>{
-                            const docN=r.product!.품목||r.product!.name;
+                            const docN=r.product!.name;
                             const itemId=r.product!.id;
                             const qty=pickerQtys[itemId]||'';
                             const hasQty=!!parseFloat(qty);
@@ -3178,7 +3181,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                   </span>
                                 </td>
                                 <td className="px-4 py-2.5" onClick={e=>e.stopPropagation()}>
-                                  <input type="number" value={qty}
+                                  <input type="text" inputMode="decimal" value={qty}
                                     onChange={e=>setPickerQtys(prev=>({...prev,[itemId]:e.target.value}))}
                                     placeholder="수량"
                                     className={`w-20 text-right text-xs font-bold border rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-300 ${hasQty?'bg-blue-50 border-blue-200':'bg-white border-slate-200'}`}/>
@@ -3220,10 +3223,22 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             {/* ── 품목 테이블 ── */}
             {selectedClientId && (selectedOrderId || manualMode || editingStmt) ? (
               <div className="flex-1 overflow-y-auto">
-                <table className="w-full text-left border-collapse">
+                <table className="w-full text-left border-collapse table-fixed">
+                  <colgroup>
+                    <col style={{width:'40px'}}/>
+                    <col style={{width:'24%'}}/>
+                    <col style={{width:'13%'}}/>
+                    <col style={{width:'10%'}}/>
+                    <col style={{width:'12%'}}/>
+                    <col style={{width:'12%'}}/>
+                    <col style={{width:'9%'}}/>
+                    <col style={{width:'12%'}}/>
+                    <col style={{width:'10%'}}/>
+                    <col style={{width:'36px'}}/>
+                  </colgroup>
                   <thead className="sticky top-0 z-10 bg-slate-50">
                     <tr className="border-b border-slate-200">
-                      {['No','품목명','규격','수량','단가','공급가액','세액','합계','계정','비고',''].map((h,i)=>(
+                      {['No','품목명','규격','수량','단가','공급가액','세액','합계','계정',''].map((h,i)=>(
                         <th key={i} className="px-3 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -3240,7 +3255,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                           const searchResults = ro ? [] : searchableRows.filter(r => {
                             if (!row.name.trim()) return false;
                             const q = row.name.toLowerCase();
-                            const docN = (r.product!.품목 || r.product!.name).toLowerCase();
+                            const docN = r.product!.name.toLowerCase();
                             return docN.includes(q) || r.product!.name.toLowerCase().includes(q);
                           });
                           const isSel=selectedItemIdx===idx;
@@ -3260,7 +3275,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                   {activeSearchRow===idx && searchResults.length>0 && (
                                     <div className="absolute left-0 top-full z-50 mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
                                       {searchResults.slice(0,8).map(r=>{
-                                        const docN=r.product!.품목||r.product!.name;
+                                        const docN=r.product!.name;
                                         const sub2 = r.product!.submaterials ?? [];
                                         const 용기2 = sub2.find(s=>s.category==='용기')?.name;
                                         const 마개2 = sub2.find(s=>s.category==='마개')?.name;
@@ -3291,7 +3306,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                       {row.isBoxUnit ? `${row.qty}BOX(${parseFloat(row.qty as string)*12}개)` : row.qty}
                                     </span>
                                   : <div className="flex items-center gap-1">
-                                      <input type="number" placeholder="0" value={row.qty}
+                                      <input type="text" inputMode="decimal" placeholder="0" value={row.qty}
                                         onChange={e=>setManualItems(prev=>prev.map((r,i)=>i===idx?{...r,qty:e.target.value}:r))}
                                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-right outline-none focus:ring-2 focus:ring-blue-300"/>
                                       {row.isBoxUnit && <span className="text-[10px] text-blue-600 font-bold whitespace-nowrap">BOX</span>}
@@ -3299,7 +3314,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                               </td>
                               <td className="px-3 py-2 w-24">
                                 {ro ? <span className="block text-right font-bold">{fmt(p)}</span>
-                                  : <input type="number" placeholder="0" value={row.price}
+                                  : <input type="text" inputMode="decimal" placeholder="0" value={row.price}
                                       onChange={e=>setManualItems(prev=>prev.map((r,i)=>i===idx?{...r,price:e.target.value}:r))}
                                       className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-right outline-none focus:ring-2 focus:ring-blue-300"/>}
                               </td>
@@ -3329,12 +3344,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                         <option key={ac.id} value={ac.code}>{ac.code} {ac.name}</option>
                                       ))}
                                     </select>}
-                              </td>
-                              <td className="px-3 py-2 w-24">
-                                {ro ? <span className="text-[10px] text-slate-400">{(row as any).note||''}</span>
-                                  : <input type="text" placeholder="비고" value={(row as ManualRow).note||''}
-                                      onChange={e=>setManualItems(prev=>prev.map((r,i)=>i===idx?{...r,note:e.target.value}:r))}
-                                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[10px] outline-none focus:ring-2 focus:ring-blue-300"/>}
                               </td>
                               <td className="px-3 py-2 w-8 text-center">
                                 {!ro && manualItems.length>1 && (
@@ -3373,7 +3382,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                             <td className="px-3 py-2 text-[11px] text-slate-400">{item.spec}</td>
                             <td className="px-3 py-2 text-right text-[11px] w-12">{fmt(item.qty)}</td>
                             <td className="px-3 py-2 w-28 shrink-0" onClick={e=>e.stopPropagation()}>
-                              <input type="number" placeholder={String(item.price)} value={editablePrices[item.key]??''}
+                              <input type="text" inputMode="decimal" placeholder={String(item.price)} value={editablePrices[item.key]??''}
                                 onChange={e=>setEditablePrices(prev=>({...prev,[item.key]:e.target.value}))}
                                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-right outline-none focus:ring-2 focus:ring-blue-300"/>
                             </td>
@@ -3401,7 +3410,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                 ))}
                               </select>
                             </td>
-                            <td className="px-3 py-2 text-[10px] text-slate-400">{(item as any).note||''}</td>
                             <td className="px-3 py-2 w-8"/>
                           </tr>
                         );
@@ -3510,10 +3518,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       <Printer size={13}/>거래명세서
                     </button>
                   </>)
-                ) : lineItems.length > 0 && selectedClientId && (manualMode || !!selectedOrderId) && missingAccountCodes.length > 0 ? (
-                  <span className="text-[11px] font-black text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-                    ⚠ 계정코드 미입력 {missingAccountCodes.length}건
-                  </span>
                 ) : canIssue ? (<>
                   <button onClick={handleIssue}
                     className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black transition-all ${createMode==='매출'?'bg-blue-600 text-white hover:bg-blue-700':'bg-rose-600 text-white hover:bg-rose-700'}`}>
