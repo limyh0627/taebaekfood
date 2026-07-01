@@ -3553,7 +3553,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             />
           )}
           {currentView === 'item-management' && (
-            <div className="flex flex-col h-full overflow-hidden">
+            <div className="flex flex-col h-full overflow-y-auto">
               {true && (
                 <ItemManager
                   isAdmin={isAdmin}

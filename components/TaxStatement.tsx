@@ -883,7 +883,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
       {previewGroup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
           onClick={() => setHistPreviewGroupKey(null)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden"
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden"
             onClick={e => e.stopPropagation()}>
             {/* 오버레이 헤더 */}
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
@@ -915,7 +915,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
             <div className="flex-1 overflow-y-auto p-6">
               <div ref={previewPrintRef}>
                       {/* 묶음 세금계산서 미리보기 (merged items) */}
-                      <div className="border-2 border-black" style={{fontFamily:"'Malgun Gothic','맑은 고딕',sans-serif",minWidth:640,fontSize:'13px'}}>
+                      <div className="border-2 border-black" style={{fontFamily:"'Malgun Gothic','맑은 고딕',sans-serif",minWidth:800,fontSize:'14px'}}>
                         <div className="flex items-center justify-between border-b-2 border-black px-4 py-3">
                           <h1 style={{fontSize:'20px',fontWeight:900,letterSpacing:'6px'}}>세 금 계 산 서</h1>
                           <div className="text-right" style={{fontSize:'10px',color:'#666'}}>
