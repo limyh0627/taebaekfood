@@ -2166,6 +2166,24 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             </tbody>
           </table>
         )}
+        {/* ── 매출/매입 합계 (현재 필터 기준) ── */}
+        {filteredHistory.some(r => r.kind !== 'pay') && (() => {
+          const stmts = filteredHistory.filter(r => r.kind !== 'pay');
+          const sale = stmts.filter(r => r.data.type === '매출').reduce((s, r) => s + (r.data.totalAmount || 0), 0);
+          const buy  = stmts.filter(r => r.data.type === '매입').reduce((s, r) => s + (r.data.totalAmount || 0), 0);
+          return (
+            <div className="flex items-center justify-end gap-6 px-4 py-3 border-t border-slate-200 bg-slate-50/60">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">매출 합계</span>
+                <span className="font-black text-blue-700 text-sm">{fmt(sale)}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black text-rose-500 uppercase tracking-widest">매입 합계</span>
+                <span className="font-black text-rose-700 text-sm">{fmt(buy)}</span>
+              </div>
+            </div>
+          );
+        })()}
         {/* 페이지네이션 */}
         {filteredHistory.length > HIST_PAGE_SIZE && (
           <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-slate-100 bg-slate-50/40">
