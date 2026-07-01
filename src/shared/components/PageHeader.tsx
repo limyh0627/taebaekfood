@@ -7,12 +7,16 @@ interface PageHeaderProps {
 }
 
 const PageHeader: React.FC<PageHeaderProps> = ({ title, subtitle, right }) => (
-  <div className="flex items-center justify-between pb-4 border-b border-slate-200">
+  <div className="flex flex-col gap-2.5 pb-3 sm:pb-4 border-b border-slate-200 sm:flex-row sm:items-center sm:justify-between">
     <div className="min-w-0">
-      <h2 className="text-lg font-black text-slate-800 leading-tight">{title}</h2>
-      {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
+      <h2 className="text-base sm:text-lg font-black text-slate-800 leading-tight truncate">{title}</h2>
+      {subtitle && <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5 truncate">{subtitle}</p>}
     </div>
-    {right && <div className="flex items-center gap-2 shrink-0 overflow-x-auto">{right}</div>}
+    {right && (
+      <div className="flex items-center gap-2 flex-wrap sm:shrink-0 sm:justify-end -mb-1 pb-1 overflow-x-auto sm:overflow-visible no-scrollbar">
+        {right}
+      </div>
+    )}
   </div>
 );
 
