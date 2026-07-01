@@ -1,17 +1,19 @@
 
 import React, { useState, useMemo } from 'react';
 import { PlusCircle, Trash2, ChevronLeft, ChevronRight, BarChart2, X, ToggleLeft, ToggleRight, Pencil, Check } from 'lucide-react';
-import { FixedCostEntry, FixedCostCategory, FixedCostTemplate, IssuedStatement } from '../types';
+import { FixedCostEntry, FixedCostCategory, FixedCostTemplate, IssuedStatement, AccountCode } from '../types';
 
 interface CostManagerProps {
   fixedCosts: FixedCostEntry[];
   fixedCostTemplates: FixedCostTemplate[];
   issuedStatements: IssuedStatement[];
+  accountCodes?: AccountCode[];
   onAdd: (entry: Omit<FixedCostEntry, 'id' | 'createdAt'>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onAddTemplate?: (data: Omit<FixedCostTemplate, 'id'>) => Promise<void>;
   onUpdateTemplate?: (id: string, data: Partial<FixedCostTemplate>) => Promise<void>;
   onDeleteTemplate?: (id: string) => Promise<void>;
+  onGenerateRecurringCosts?: (yearMonth: string) => Promise<number>; // 생성된 건수 반환
 }
 
 const CATEGORIES: FixedCostCategory[] = ['임차료', '보험료', '감가상각비', '대출이자', '공과금', '인건비', '기타'];
@@ -29,8 +31,8 @@ const CAT_COLOR: Record<FixedCostCategory, string> = {
 const fmt = (n: number) => n.toLocaleString('ko-KR') + '원';
 
 const CostManager: React.FC<CostManagerProps> = ({
-  fixedCosts, fixedCostTemplates, issuedStatements,
-  onAdd, onDelete, onAddTemplate, onUpdateTemplate, onDeleteTemplate,
+  fixedCosts, fixedCostTemplates, issuedStatements, accountCodes = [],
+  onAdd, onDelete, onAddTemplate, onUpdateTemplate, onDeleteTemplate, onGenerateRecurringCosts,
 }) => {
   const today = new Date();
   const [yearMonth, setYearMonth] = useState(
@@ -44,7 +46,8 @@ const CostManager: React.FC<CostManagerProps> = ({
 
   // ── 정기 고정비 (templates) ──
   const [showTplForm, setShowTplForm] = useState(false);
-  const [tplForm, setTplForm] = useState({ name: '', amount: '', category: '임차료' as FixedCostCategory, note: '' });
+  const [tplForm, setTplForm] = useState({ name: '', amount: '', category: '임차료' as FixedCostCategory, note: '', accountCode: '', startYm: '', endYm: '' });
+  const [genMsg, setGenMsg] = useState('');
   const [editingTplId, setEditingTplId] = useState<string | null>(null);
   const [editAmt, setEditAmt] = useState('');
 
@@ -55,9 +58,17 @@ const CostManager: React.FC<CostManagerProps> = ({
 
   const handleAddTemplate = async () => {
     const amount = Number(tplForm.amount.replace(/,/g, ''));
-    if (!tplForm.name.trim() || !amount) return;
-    await onAddTemplate?.({ name: tplForm.name.trim(), amount, category: tplForm.category, active: true, note: tplForm.note.trim() || undefined });
-    setTplForm({ name: '', amount: '', category: '임차료', note: '' });
+    if (!tplForm.accountCode || !amount) return;
+    const ac = accountCodes.find(c => c.code === tplForm.accountCode);
+    const name = tplForm.name.trim() || ac?.name || tplForm.accountCode;
+    await onAddTemplate?.({
+      name, amount, category: '기타', active: true,
+      note: tplForm.note.trim() || undefined,
+      accountCode: tplForm.accountCode,
+      startYm: tplForm.startYm || yearMonth,
+      endYm: tplForm.endYm || undefined,
+    });
+    setTplForm({ name: '', amount: '', category: '임차료', note: '', accountCode: '', startYm: '', endYm: '' });
     setShowTplForm(false);
   };
 
@@ -99,11 +110,9 @@ const CostManager: React.FC<CostManagerProps> = ({
       {/* ── 월 네비 + 합계 ── */}
       <div className="bg-white rounded-2xl border border-slate-200 px-5 py-4 flex items-center justify-between flex-wrap gap-3">
         <div>
-          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{ymLabel} 판관비 합계</div>
-          <div className="text-2xl font-black text-slate-800">{fmt(templateTotal + entryTotal)}</div>
-          <div className="text-[11px] text-slate-400 mt-0.5">
-            정기 {fmt(templateTotal)} + 이번 달 추가 {fmt(entryTotal)}
-          </div>
+          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">정기 고정비 합계 (월)</div>
+          <div className="text-2xl font-black text-slate-800">{fmt(templateTotal)}</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">매월 "전표 생성"으로 손익에 반영</div>
         </div>
         <div className="flex items-center gap-1">
           <button onClick={() => moveMonth(-1)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition"><ChevronLeft size={18}/></button>
@@ -117,48 +126,69 @@ const CostManager: React.FC<CostManagerProps> = ({
         <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
           <div>
             <span className="text-sm font-black text-slate-800">정기 고정비</span>
-            <span className="ml-2 text-[11px] text-slate-400">매달 자동 집계</span>
+            <span className="ml-2 text-[11px] text-slate-400">매월 "정기비용 전표"로 생성 → 손익 반영</span>
           </div>
-          <button onClick={() => setShowTplForm(v => !v)}
-            className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-xl transition">
-            {showTplForm ? <X size={13}/> : <PlusCircle size={13}/>}
-            {showTplForm ? '닫기' : '항목 추가'}
-          </button>
+          <div className="flex items-center gap-1.5">
+            {onGenerateRecurringCosts && (
+              <button onClick={async () => {
+                  const n = await onGenerateRecurringCosts(yearMonth);
+                  setGenMsg(n > 0 ? `${ymLabel} 정기비용 ${n}건 생성됨` : `${ymLabel} 생성할 정기비용 없음(이미 생성/대상 없음)`);
+                  setTimeout(() => setGenMsg(''), 4000);
+                }}
+                className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-xl transition whitespace-nowrap">
+                {ymLabel} 전표 생성
+              </button>
+            )}
+            <button onClick={() => setShowTplForm(v => !v)}
+              className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-xl transition">
+              {showTplForm ? <X size={13}/> : <PlusCircle size={13}/>}
+              {showTplForm ? '닫기' : '항목 추가'}
+            </button>
+          </div>
         </div>
 
+        {genMsg && (
+          <div className="px-5 py-2 bg-emerald-50 border-b border-emerald-100 text-[11px] font-bold text-emerald-700">{genMsg}</div>
+        )}
         {showTplForm && (
           <div className="px-5 py-4 bg-slate-50 border-b border-slate-100 space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">분류</label>
-                <select value={tplForm.category} onChange={e => setTplForm(p => ({ ...p, category: e.target.value as FixedCostCategory }))}
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">계정과목 *</label>
+                <select value={tplForm.accountCode} onChange={e => setTplForm(p => ({ ...p, accountCode: e.target.value }))}
                   className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-indigo-400">
-                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  <option value="">계정과목 선택</option>
+                  {accountCodes.map(ac => <option key={ac.id} value={ac.code}>{ac.code} {ac.name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">항목명</label>
-                <input type="text" placeholder="예: 공장 임대료" value={tplForm.name}
-                  onChange={e => setTplForm(p => ({ ...p, name: e.target.value }))}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-indigo-400"/>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">금액 (원)</label>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">금액 (원) *</label>
                 <input type="text" inputMode="numeric" placeholder="예: 1500000" value={tplForm.amount}
                   onChange={e => setTplForm(p => ({ ...p, amount: e.target.value.replace(/[^0-9]/g, '') }))}
                   className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-indigo-400"/>
                 {tplForm.amount && <p className="text-[11px] text-indigo-500 font-bold mt-1 ml-1">{Number(tplForm.amount).toLocaleString('ko-KR')}원</p>}
               </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">비고 (선택)</label>
-                <input type="text" placeholder="메모" value={tplForm.note}
-                  onChange={e => setTplForm(p => ({ ...p, note: e.target.value }))}
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">시작월</label>
+                <input type="month" value={tplForm.startYm} onChange={e => setTplForm(p => ({ ...p, startYm: e.target.value }))}
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-indigo-400"/>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">종료월(선택)</label>
+                <input type="month" value={tplForm.endYm} onChange={e => setTplForm(p => ({ ...p, endYm: e.target.value }))}
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-indigo-400"/>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">라벨(선택)</label>
+                <input type="text" placeholder="예: 공장 임대료" value={tplForm.name}
+                  onChange={e => setTplForm(p => ({ ...p, name: e.target.value }))}
                   className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-indigo-400"/>
               </div>
             </div>
-            <button onClick={handleAddTemplate} disabled={!tplForm.name.trim() || !tplForm.amount}
+            <p className="text-[11px] text-slate-400">계정과목을 골라 금액만 넣으면 정기비용이 돼요. 시작월 비우면 이번 달부터, 라벨 비우면 계정명으로 표시.</p>
+            <button onClick={handleAddTemplate} disabled={!tplForm.accountCode || !tplForm.amount}
               className="w-full bg-indigo-600 text-white py-2.5 rounded-xl text-sm font-black hover:bg-indigo-700 disabled:opacity-40 transition">
               등록
             </button>
@@ -177,8 +207,8 @@ const CostManager: React.FC<CostManagerProps> = ({
                 <button onClick={() => onUpdateTemplate?.(t.id, { active: !t.active })} className="shrink-0 text-slate-300 hover:text-indigo-500 transition">
                   {t.active ? <ToggleRight size={22} className="text-indigo-500"/> : <ToggleLeft size={22}/>}
                 </button>
-                <span className={`text-[10px] font-black px-2 py-0.5 rounded-lg shrink-0 ${CAT_COLOR[t.category]}`}>{t.category}</span>
-                <span className="text-sm font-bold text-slate-700 flex-1 truncate">{t.name}</span>
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-lg shrink-0 bg-amber-100 text-amber-700">{t.accountCode ? `${t.accountCode} ${accountCodes.find(c => c.code === t.accountCode)?.name ?? ''}` : '계정미지정'}</span>
+                <span className="text-sm font-bold text-slate-700 flex-1 truncate">{t.name}{t.startYm && <span className="ml-1.5 text-[10px] text-slate-400 font-medium">{t.startYm}~{t.endYm ?? ''}</span>}</span>
                 {editingTplId === t.id ? (
                   <div className="flex items-center gap-1.5 shrink-0">
                     <input type="text" inputMode="numeric" value={editAmt}
@@ -199,88 +229,6 @@ const CostManager: React.FC<CostManagerProps> = ({
             <div className="px-5 py-3 flex justify-end bg-slate-50">
               <span className="text-sm font-black text-slate-700">정기 합계 <span className="text-indigo-600 ml-2">{fmt(templateTotal)}</span></span>
             </div>
-          </div>
-        )}
-      </div>
-
-      {/* ── 이번 달 추가 (one-time) ── */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
-          <div>
-            <span className="text-sm font-black text-slate-800">{ymLabel} 추가 비용</span>
-            <span className="ml-2 text-[11px] text-slate-400">이번 달만 적용</span>
-          </div>
-          <button onClick={() => setShowEntryForm(v => !v)}
-            className="flex items-center gap-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-xl transition">
-            {showEntryForm ? <X size={13}/> : <PlusCircle size={13}/>}
-            {showEntryForm ? '닫기' : '추가'}
-          </button>
-        </div>
-
-        {showEntryForm && (
-          <div className="px-5 py-4 bg-slate-50 border-b border-slate-100 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">분류</label>
-                <select value={entryForm.category} onChange={e => setEntryForm(p => ({ ...p, category: e.target.value as FixedCostCategory }))}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-indigo-400">
-                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">항목명</label>
-                <input type="text" placeholder="예: 이번 달 추가 인건비" value={entryForm.label}
-                  onChange={e => setEntryForm(p => ({ ...p, label: e.target.value }))}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-indigo-400"/>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">금액 (원)</label>
-                <input type="text" inputMode="numeric" placeholder="예: 500000" value={entryForm.amount}
-                  onChange={e => setEntryForm(p => ({ ...p, amount: e.target.value.replace(/[^0-9]/g, '') }))}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-indigo-400"/>
-                {entryForm.amount && <p className="text-[11px] text-indigo-500 font-bold mt-1 ml-1">{Number(entryForm.amount).toLocaleString('ko-KR')}원</p>}
-              </div>
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">비고 (선택)</label>
-                <input type="text" placeholder="메모" value={entryForm.note}
-                  onChange={e => setEntryForm(p => ({ ...p, note: e.target.value }))}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:border-indigo-400"/>
-              </div>
-            </div>
-            <button onClick={handleAddEntry} disabled={saving || !entryForm.label.trim() || !entryForm.amount}
-              className="w-full bg-slate-700 text-white py-2.5 rounded-xl text-sm font-black hover:bg-slate-800 disabled:opacity-40 transition">
-              {saving ? '저장 중...' : '저장'}
-            </button>
-          </div>
-        )}
-
-        {monthEntries.length === 0 ? (
-          <div className="py-8 text-center text-slate-300">
-            <p className="text-xs font-bold">이번 달 추가 항목 없음</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-50">
-            {monthEntries.map(e => (
-              <div key={e.id} className="flex items-center gap-3 px-5 py-3 group">
-                <span className={`text-[10px] font-black px-2 py-0.5 rounded-lg shrink-0 ${CAT_COLOR[e.category]}`}>{e.category}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-slate-700 truncate">{e.label}</p>
-                  {e.note && <p className="text-[11px] text-slate-400">{e.note}</p>}
-                </div>
-                <span className="text-sm font-black text-slate-800 tabular-nums shrink-0">{fmt(e.amount)}</span>
-                <button onClick={() => onDelete(e.id)}
-                  className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-200 hover:text-rose-400 hover:bg-rose-50 rounded-lg transition">
-                  <Trash2 size={13}/>
-                </button>
-              </div>
-            ))}
-            {entryTotal > 0 && (
-              <div className="px-5 py-3 flex justify-end bg-slate-50">
-                <span className="text-sm font-black text-slate-700">추가 합계 <span className="text-slate-600 ml-2">{fmt(entryTotal)}</span></span>
-              </div>
-            )}
           </div>
         )}
       </div>

@@ -394,6 +394,11 @@ export interface FixedCostTemplate {
   category: FixedCostCategory;
   active: boolean;             // false면 집계 제외
   note?: string;
+  // 정기분개(정기 비용 전표) 설정
+  accountCode?: string;        // 이 정기비용이 끊길 계정과목 코드 (판관비/영업외)
+  partnerName?: string;        // 거래처(임대인 등) 표시용
+  startYm?: string;            // 'YYYY-MM' 시작월 (이 월부터 생성)
+  endYm?: string;              // 'YYYY-MM' 종료월 (선택, 이 월까지)
 }
 
 export interface IssuedStatementItem {
@@ -414,7 +419,7 @@ export interface IssuedStatement {
   id: string;
   issuedAt: string;       // ISO timestamp (전표일자)
   tradeDate: string;      // YYYY-MM-DD
-  type: '매출' | '매입';
+  type: '매출' | '매입' | '비용';
   partnerId: string;
   partnerName: string;
   orderId: string;

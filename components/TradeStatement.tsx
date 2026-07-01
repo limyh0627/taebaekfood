@@ -44,7 +44,7 @@ interface TradeStatementProps {
   onAddProductClient?: (itemId: string, partnerId: string, price: number, taxType: '과세' | '면세') => void;
 }
 
-type StatementType = '매출' | '매입';
+type StatementType = '매출' | '매입' | '비용';
 
 const STATUS_LABEL: Record<string, string> = {
   [OrderStatus.PENDING]: '대기중', [OrderStatus.PROCESSING]: '작업중',
@@ -60,6 +60,20 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 const ACTIVE_STATUSES = new Set([OrderStatus.PENDING, OrderStatus.PROCESSING, OrderStatus.DISPATCHED, OrderStatus.SHIPPED]);
+
+// 초성 검색: 한글 이름의 초성 추출 + 매칭(부분일치 or 초성일치)
+const CHOSUNG = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+const toChosung = (s: string) => [...s].map(ch => {
+  const c = ch.charCodeAt(0) - 0xAC00;
+  return (c >= 0 && c <= 11171) ? CHOSUNG[Math.floor(c / 588)] : ch;
+}).join('');
+const matchKo = (name: string, q: string) => {
+  const query = q.trim();
+  if (!query) return true;
+  if (name.toLowerCase().includes(query.toLowerCase())) return true;
+  if (/^[ㄱ-ㅎ]+$/.test(query)) return toChosung(name).includes(query);
+  return false;
+};
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
 
@@ -118,7 +132,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [selectedClientId, setSelectedClientId] = useState('');
   const [selectedOrderId, setSelectedOrderId] = useState('');
   const [partnerSearch, setClientSearch] = useState('');
-  const [onlyActive, setOnlyActive] = useState(false);
+  const [onlyActive, setOnlyActive] = useState(false); // 미발행 토글 (ON이면 발행 안 된 것만)
+  const [activeVisible, setActiveVisible] = useState(30);
 
   // ── 기간 필터 (주문 선택) ──
   const [dateFrom, setDateFrom] = useState('');
@@ -370,9 +385,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setTaxExemptOverrides({});
     setTradeDate(today());
     setClientSearch('');
-    setDateFrom(type === '매출' ? monthStart() : '');
-    setDateTo(type === '매출' ? today() : '');
-    setOrderDateQuick(type === '매출' ? '당월' : '');
+    setDateFrom('');
+    setDateTo('');
+    setOrderDateQuick(type === '매출' ? '전체' : '');
     setShowPricePanel(false);
     setSelectedConfirmedIds([]);
     setPurchaseSearch('');
@@ -410,6 +425,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     onClearPendingInvoice?.();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingInvoice]);
+
+  // 매출: 거래처 선택하면 당월 디폴트, 개요(미선택)면 전체
+  useEffect(() => {
+    if (createMode !== '매출' || editingStmt) return;
+    if (selectedClientId) { setDateFrom(monthStart()); setDateTo(today()); setOrderDateQuick('당월'); }
+    else { setDateFrom(''); setDateTo(''); setOrderDateQuick('전체'); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClientId, createMode]);
 
   // editingStmt를 live issuedStatements와 동기화 (수금처리 후 즉시 반영) — 편집 중에는 제외
   useEffect(() => {
@@ -518,7 +541,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // ── 현재 진행 주문 (매출전표 현재 주문만 패널용) ──
   const activeOrders = useMemo(() =>
     orders
-      .filter(o => (ACTIVE_STATUSES.has(o.status as OrderStatus) || !!o.invoicePrinted) && o.partnerName !== '생산기록')
+      .filter(o => ACTIVE_STATUSES.has(o.status as OrderStatus) && o.partnerName !== '생산기록')
       .sort((a, b) => {
         const aP = !!a.invoicePrinted, bP = !!b.invoicePrinted;
         if (aP !== bP) return aP ? 1 : -1;
@@ -569,7 +592,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     });
     if (onlyActive) base = base.filter(c => activeClientIds.has(c.id));
     if (!partnerSearch.trim()) return base;
-    return base.filter(c => c.name.toLowerCase().includes(partnerSearch.toLowerCase()));
+    return base.filter(c => matchKo(c.name, partnerSearch));
   }, [partners, partnerSearch, onlyActive, activeClientIds, createMode]);
 
   // ── 주문 목록 ──
@@ -1396,7 +1419,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         } else {
           running -= e.amount;
           rows.push({ kind: 'pay', partnerId: e.src.partnerId, partnerName: e.src.partnerName,
-            stmtType: e.src.type, date: e.date, amount: e.amount, method: e.method, note: e.note,
+            stmtType: e.src.type as '매출' | '매입', date: e.date, amount: e.amount, method: e.method, note: e.note,
             paymentId: e.paymentId, cumul: running, dateKey: `${e.date}__${e.ts}`, ts: e.ts, src: e.src });
         }
       });
@@ -2585,10 +2608,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
       {/* ══════════════════════════════════════ 전표 생성 모달 ══════════════════════════════════════ */}
       {createMode && (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center pb-2">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeCreate}/>
-          <div className="relative w-full max-w-6xl flex flex-col bg-white rounded-t-3xl shadow-2xl overflow-hidden"
-               style={{height:'calc(100vh - 56px)'}}>
+          <div className="relative w-full max-w-6xl flex flex-col bg-white rounded-3xl shadow-2xl overflow-hidden"
+               style={{height:'80vh'}}>
 
             {/* ── 헤더 ── */}
             <div className="flex items-center gap-3 px-5 py-3 border-b border-slate-100 flex-shrink-0">
@@ -2637,7 +2660,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 {createMode==='매출' && (
                   <button onClick={()=>setOnlyActive(v=>!v)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-black border transition-all ${onlyActive?'bg-blue-600 text-white border-blue-600':'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>
-                    진행 주문만
+                    미발행
                   </button>
                 )}
               </>) : (<>
@@ -2665,6 +2688,26 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 )}
               </>)}
             </div>
+
+            {/* ── 날짜 필터 (거래처 선택 전 개요) — 거래처 선택 시 UI와 통일 ── */}
+            {createMode==='매출' && !selectedClientId && (
+              <div className="flex items-center gap-1.5 px-5 py-2.5 border-b border-slate-100 bg-slate-50 flex-wrap flex-shrink-0">
+                {(['당일','금주','당월','전체'] as const).map(p=>(
+                  <button key={p} onClick={()=>{
+                    if(p==='전체'){setDateFrom('');setDateTo('');setOrderDateQuick('전체');return;}
+                    const t=today();
+                    const from=p==='당일'?t:p==='금주'?weekStart():monthStart();
+                    setDateFrom(from);setDateTo(t);setOrderDateQuick(p);
+                  }}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-black border transition-all ${orderDateQuick===p?'bg-slate-700 text-white border-slate-700':'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>{p}</button>
+                ))}
+                <input type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setOrderDateQuick('');}}
+                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
+                <span className="text-slate-300 text-xs">~</span>
+                <input type="date" value={dateTo} onChange={e=>{setDateTo(e.target.value);setOrderDateQuick('');}}
+                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
+              </div>
+            )}
 
             {/* ── 단가관리 패널 ── */}
             {showPricePanel && selectedClientId && searchableRows.length > 0 && (
@@ -2703,9 +2746,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   {createMode==='매출' && <span className="text-xs text-slate-400">{partnerOrders.length}건</span>}
                   {createMode==='매출' && (
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      {(['당일','금주','당월','전체'] as const).map(p=>(
+                      {(['당일','금주','당월'] as const).map(p=>(
                         <button key={p} onClick={()=>{
-                          if(p==='전체'){setDateFrom('');setDateTo('');setOrderDateQuick('전체');return;}
                           const t=today();
                           const from=p==='당일'?t:p==='금주'?weekStart():monthStart();
                           setDateFrom(from);setDateTo(t);setOrderDateQuick(p);
@@ -2895,34 +2937,47 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             )}
 
             {/* ── 진행 주문 목록 (매출·진행주문만·거래처 미선택) ── */}
-            {createMode==='매출' && onlyActive && !selectedClientId && activeOrders.length > 0 && (
-              <div className="flex-shrink-0 border-b border-slate-100">
-                <div className="px-5 py-2 bg-slate-50 flex items-center gap-2">
-                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">진행 주문</span>
-                  <span className="text-[10px] text-slate-400">{activeOrders.length}건</span>
+            {createMode==='매출' && !selectedClientId && activeOrders.length > 0 && (() => {
+              const listOrders = (onlyActive ? activeOrders.filter(o => !o.invoicePrinted) : activeOrders)
+                .filter(o => matchKo(partners.find(c => c.id === o.partnerId)?.name || '', partnerSearch))
+                .filter(o => { const d = (o.deliveryDate || '').slice(0, 10); return (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo); });
+              return (
+              <div className="flex-1 min-h-0 flex flex-col">
+                <div className="px-5 py-2 bg-slate-50 flex items-center gap-2 flex-shrink-0">
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{onlyActive ? '미발행 주문' : '진행 주문'}</span>
+                  <span className="text-[10px] text-slate-400">{listOrders.length}건</span>
                 </div>
-                <div className="max-h-40 overflow-y-auto divide-y divide-slate-50">
-                  {activeOrders.map(o => {
+                <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
+                  {listOrders.slice(0, activeVisible).map(o => {
                     const cl = partners.find(c => c.id === o.partnerId);
                     return (
                       <button key={o.id}
-                        onClick={() => { setSelectedClientId(o.partnerId ?? ''); setSelectedOrderId(''); setManualMode(false); }}
-                        className="w-full flex items-center gap-3 text-left px-5 py-2 text-xs hover:bg-blue-50 transition-colors">
-                        <span className="font-black text-slate-800 w-28 truncate">{cl?.name || o.partnerId}</span>
-                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${STATUS_COLOR[o.status] || 'bg-slate-100 text-slate-500'}`}>
+                        onClick={() => { setSelectedClientId(o.partnerId ?? ''); setManualMode(false); handleOrderClick(o); }}
+                        className="w-full flex items-center gap-2 text-left px-5 py-2.5 text-xs hover:bg-blue-50 transition-colors">
+                        <span className="font-black text-slate-800 w-32 truncate shrink-0">{cl?.name || o.partnerId}</span>
+                        <span className={`w-16 text-center shrink-0 text-[10px] font-black px-1.5 py-0.5 rounded-full ${STATUS_COLOR[o.status] || 'bg-slate-100 text-slate-500'}`}>
                           {STATUS_LABEL[o.status] || o.status}
                         </span>
-                        <span className="text-slate-400">납품: {o.deliveryDate?.slice(0,10) || '미정'}</span>
-                        {o.invoicePrinted
-                          ? <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">발행완료</span>
-                          : <span className="text-[10px] font-black text-pink-500 bg-pink-100 px-1.5 py-0.5 rounded-full">미발행</span>}
-                        <span className="ml-auto text-slate-400">{o.items.length}품목</span>
+                        <span className="w-28 shrink-0 text-slate-400">납품 {o.deliveryDate?.slice(5,10) || '미정'}</span>
+                        <span className="w-14 shrink-0 text-center">
+                          {o.invoicePrinted
+                            ? <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">발행</span>
+                            : <span className="text-[10px] font-black text-pink-500 bg-pink-100 px-1.5 py-0.5 rounded-full">미발행</span>}
+                        </span>
+                        <span className="ml-auto shrink-0 text-slate-400">{o.items.length}품목</span>
                       </button>
                     );
                   })}
+                  {listOrders.length > activeVisible && (
+                    <button onClick={() => setActiveVisible(v => v + 15)}
+                      className="w-full py-2 text-[11px] font-black text-blue-600 hover:bg-blue-50 transition-colors">
+                      + {listOrders.length - activeVisible}건 더 보기
+                    </button>
+                  )}
                 </div>
               </div>
-            )}
+              );
+            })()}
 
 
             {/* ── 빠른 품목 입력 바 ── */}
@@ -3371,10 +3426,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   </tbody>
                 </table>
               </div>
-            ) : !selectedClientId ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-slate-300 bg-slate-50">
-                <ClipboardList size={40} strokeWidth={1.5} className="mb-3"/>
-                <p className="text-sm font-bold">업체명을 선택하면 전표를 작성할 수 있습니다</p>
+            ) : (!selectedClientId && activeOrders.length === 0) ? (
+              <div className="flex-1 flex items-center justify-center text-slate-200 bg-slate-50">
+                <span className="text-2xl font-black">-</span>
               </div>
             ) : null}
 

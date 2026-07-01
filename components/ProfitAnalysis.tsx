@@ -32,6 +32,7 @@ interface ProfitAnalysisProps {
   onDeleteAccountGroup?: (id: string) => void;
   inventorySnapshots?: InventorySnapshot[];
   onSaveInventorySnapshot?: (data: Omit<InventorySnapshot, 'id'>) => Promise<void>;
+  onGenerateRecurringCosts?: (yearMonth: string) => Promise<number>;
   initialTab?: MainTab;
 }
 
@@ -47,7 +48,7 @@ const MONTHS = 12;
 const COMPUTED_GROUP_IDS = new Set(['ag-gross-profit', 'ag-op-profit']);
 const SGNA_LEGACY_IDS = new Set(['ag-selling', 'ag-admin']);
 
-const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, fixedCostTemplates = [], onAddCost, onDeleteCost, onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, initialTab }) => {
+const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, fixedCostTemplates = [], onAddCost, onDeleteCost, onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, initialTab }) => {
   // 계산결과 그룹 숨김 + 구 판매비/관리비 → 판관비로 통합 표시
   const accountGroups = rawAccountGroups
     .filter(g => !COMPUTED_GROUP_IDS.has(g.id))
@@ -68,6 +69,8 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   const [customEndMonth, setCustomEndMonth] = useState(() => Math.max(1, new Date().getMonth()));
   const [newCodeForm, setNewCodeForm] = useState({ code: '', name: '', groupId: '' });
   const [newGroupForm, setNewGroupForm] = useState({ name: '', type: '수익' as AccountGroup['type'] });
+  const [showAddCode, setShowAddCode] = useState(false);
+  const [showAddGroup, setShowAddGroup] = useState(false);
   const GROUP_TYPES: AccountGroup['type'][] = ['수익', '비용', '자산', '부채', '자본'];
 
   // ── 거래처통계 탭 상태 ──
@@ -199,12 +202,13 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             else if (!pl && group?.type === '비용') cogs += item.total;
             else if (!group) {
               if (s.type === '매출') sales += item.total;
+              else if (s.type === '비용') sgna += item.total;
               else if (s.type === '매입') cogs += item.total;
             }
           });
         });
-      const templateTotal = fixedCostTemplates.filter(t => t.active).reduce((a, t) => a + t.amount, 0);
-      const fixed = fixedCosts.filter(c => c.yearMonth === ym).reduce((a, c) => a + c.amount, 0) + templateTotal;
+      // 정기비용은 이제 '비용' 전표로 끊겨 sgna에 잡히므로 templateTotal 합산 제거(이중계상 방지)
+      const fixed = fixedCosts.filter(c => c.yearMonth === ym).reduce((a, c) => a + c.amount, 0);
       const grossProfit = sales - cogs;
       const operatingProfit = grossProfit - sgna - fixed;
       const netIncome = operatingProfit + otherIncome - otherExpense;
@@ -252,6 +256,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           else if (!pl && group?.type === '비용') cogs += item.total;
           else if (!group) {
             if (s.type === '매출') sales += item.total;
+            else if (s.type === '비용') sgna += item.total;
             else if (s.type === '매입') cogs += item.total;
           }
         });
@@ -259,9 +264,6 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
     fixedCosts
       .filter(c => c.yearMonth.startsWith(String(selectedYear)))
       .forEach(c => { fixed += c.amount; });
-    const templateTotal = fixedCostTemplates.filter(t => t.active).reduce((a, t) => a + t.amount, 0);
-    const monthsApplied = selectedYear < now.getFullYear() ? 12 : selectedYear === now.getFullYear() ? now.getMonth() + 1 : 0;
-    fixed += templateTotal * monthsApplied;
     const grossProfit = sales - cogs;
     const operatingProfit = grossProfit - sgna - fixed;
     const netIncome = operatingProfit + otherIncome - otherExpense;
@@ -1487,11 +1489,73 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
               <span className="text-base font-black text-slate-800">계정 설정</span>
               <span className="text-[11px] text-slate-400">전표 라인별 계정코드 및 고정비 관리</span>
             </div>
-            <button onClick={() => setShowAccountSettings(false)}
-              className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-all">
-              <X size={18}/>
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => { setShowAddGroup(false); setShowAddCode(v => !v); }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${showAddCode ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}>
+                + 계정과목
+              </button>
+              <button onClick={() => { setShowAddCode(false); setShowAddGroup(v => !v); }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${showAddGroup ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}>
+                + 계정그룹
+              </button>
+              <button onClick={() => setShowAccountSettings(false)}
+                className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-all">
+                <X size={18}/>
+              </button>
+            </div>
           </div>
+          {(showAddCode || showAddGroup) && (
+            <div className="bg-white border-b border-slate-200 px-6 py-3 shrink-0">
+              {showAddCode && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-black text-slate-500 mr-1">계정과목 추가</span>
+                  <input type="text" placeholder="코드 (예: 501)" value={newCodeForm.code}
+                    onChange={e => setNewCodeForm(p => ({...p, code: e.target.value}))}
+                    className="w-28 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-300"/>
+                  <input type="text" placeholder="계정명 (예: 부재료매입)" value={newCodeForm.name}
+                    onChange={e => setNewCodeForm(p => ({...p, name: e.target.value}))}
+                    className="w-40 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-300"/>
+                  <select value={newCodeForm.groupId}
+                    onChange={e => setNewCodeForm(p => ({...p, groupId: e.target.value}))}
+                    className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-300">
+                    <option value="">그룹 선택</option>
+                    {accountGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                  </select>
+                  <button
+                    onClick={async () => {
+                      if (!newCodeForm.code.trim() || !newCodeForm.name.trim()) return;
+                      await onAddAccountCode?.({ code: newCodeForm.code.trim(), name: newCodeForm.name.trim(), groupId: newCodeForm.groupId || undefined });
+                      setNewCodeForm({ code: '', name: '', groupId: '' });
+                    }}
+                    className="px-4 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-black hover:bg-amber-600 transition-all flex items-center gap-1">
+                    <Save size={12}/>추가
+                  </button>
+                </div>
+              )}
+              {showAddGroup && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-black text-slate-500 mr-1">계정그룹 추가</span>
+                  <input type="text" placeholder="그룹명 (예: 영업외수익)" value={newGroupForm.name}
+                    onChange={e => setNewGroupForm(p => ({...p, name: e.target.value}))}
+                    className="w-44 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-300"/>
+                  <select value={newGroupForm.type}
+                    onChange={e => setNewGroupForm(p => ({...p, type: e.target.value as AccountGroup['type']}))}
+                    className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-300">
+                    {GROUP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  <button
+                    onClick={async () => {
+                      if (!newGroupForm.name.trim()) return;
+                      await onAddAccountGroup?.({ name: newGroupForm.name.trim(), type: newGroupForm.type });
+                      setNewGroupForm({ name: '', type: '수익' });
+                    }}
+                    className="px-4 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-black hover:bg-amber-600 transition-all flex items-center gap-1">
+                    <Save size={12}/>추가
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           {/* 내용 (스크롤) */}
           <div className="flex-1 overflow-y-auto p-6">
           <div className="space-y-6 max-w-4xl mx-auto">
@@ -1580,67 +1644,18 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
               );
             })()}
 
-            {/* 계정과목 추가 */}
-            <div className="bg-white rounded-2xl border border-slate-100 px-5 py-4">
-              <p className="text-xs font-black text-slate-500 mb-3">계정과목 추가</p>
-              <div className="flex items-center gap-2 flex-wrap">
-                <input type="text" placeholder="코드 (예: 501)" value={newCodeForm.code}
-                  onChange={e => setNewCodeForm(p => ({...p, code: e.target.value}))}
-                  className="w-28 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-300"/>
-                <input type="text" placeholder="계정명 (예: 부재료매입)" value={newCodeForm.name}
-                  onChange={e => setNewCodeForm(p => ({...p, name: e.target.value}))}
-                  className="w-40 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-300"/>
-                <select value={newCodeForm.groupId}
-                  onChange={e => setNewCodeForm(p => ({...p, groupId: e.target.value}))}
-                  className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-300">
-                  <option value="">그룹 선택</option>
-                  {accountGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                </select>
-                <button
-                  onClick={async () => {
-                    if (!newCodeForm.code.trim() || !newCodeForm.name.trim()) return;
-                    await onAddAccountCode?.({ code: newCodeForm.code.trim(), name: newCodeForm.name.trim(), groupId: newCodeForm.groupId || undefined });
-                    setNewCodeForm({ code: '', name: '', groupId: '' });
-                  }}
-                  className="px-4 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-black hover:bg-amber-600 transition-all flex items-center gap-1">
-                  <Save size={12}/>추가
-                </button>
-              </div>
-            </div>
-
-            {/* 계정그룹 추가 */}
-            <div className="bg-white rounded-2xl border border-slate-100 px-5 py-4">
-              <p className="text-xs font-black text-slate-500 mb-3">계정그룹 추가</p>
-              <div className="flex items-center gap-2 flex-wrap">
-                <input type="text" placeholder="그룹명 (예: 영업외수익)" value={newGroupForm.name}
-                  onChange={e => setNewGroupForm(p => ({...p, name: e.target.value}))}
-                  className="w-44 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-300"/>
-                <select value={newGroupForm.type}
-                  onChange={e => setNewGroupForm(p => ({...p, type: e.target.value as AccountGroup['type']}))}
-                  className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-300">
-                  {GROUP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-                <button
-                  onClick={async () => {
-                    if (!newGroupForm.name.trim()) return;
-                    await onAddAccountGroup?.({ name: newGroupForm.name.trim(), type: newGroupForm.type });
-                    setNewGroupForm({ name: '', type: '수익' });
-                  }}
-                  className="px-4 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-black hover:bg-amber-600 transition-all flex items-center gap-1">
-                  <Save size={12}/>추가
-                </button>
-              </div>
-            </div>
             {/* 고정비 입력 */}
             <CostManager
               fixedCosts={fixedCosts}
               fixedCostTemplates={fixedCostTemplates}
               issuedStatements={issuedStatements}
+              accountCodes={accountCodes}
               onAdd={onAddCost}
               onDelete={onDeleteCost}
               onAddTemplate={onAddTemplate}
               onUpdateTemplate={onUpdateTemplate}
               onDeleteTemplate={onDeleteTemplate}
+              onGenerateRecurringCosts={onGenerateRecurringCosts}
             />
           </div>
           </div>

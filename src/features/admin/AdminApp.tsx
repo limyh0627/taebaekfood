@@ -3391,6 +3391,26 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 onDeleteAccountGroup={(id) => { deleteItem('accountGroups', id); refreshStaticData(); }}
                 inventorySnapshots={inventorySnapshots}
                 onSaveInventorySnapshot={async (data) => { await addItem('inventorySnapshots', { ...data, id: `inv-snap-${data.yearMonth}` }); }}
+                onGenerateRecurringCosts={async (ym) => {
+                  // 정기 고정비 → '비용' 전표로 생성 (계정코드·기간 지정된 것만, 중복 방지)
+                  const tpls = appData.fixedCostTemplates.filter(t => t.active && t.accountCode
+                    && (!t.startYm || t.startYm <= ym) && (!t.endYm || ym <= t.endYm));
+                  let created = 0;
+                  for (const t of tpls) {
+                    const rcKey = `RC-${t.id}-${ym}`;
+                    if (issuedStatements.some(s => (s as any).orderId === rcKey)) continue;
+                    const code = appData.accountCodes.find(c => c.code === t.accountCode);
+                    const amt = t.amount;
+                    await addItem('issuedStatements', {
+                      issuedAt: new Date().toISOString(), tradeDate: `${ym}-01`, type: '비용' as const,
+                      partnerId: '', partnerName: t.partnerName || t.name, orderId: rcKey,
+                      docNo: `정기${ym}-${t.id.slice(-4)}`, totalSupply: amt, totalTax: 0, totalAmount: amt,
+                      items: [{ name: code?.name || t.name, spec: '', qty: 1, price: amt, supply: amt, tax: 0, total: amt, isTaxExempt: true, accountCode: t.accountCode }],
+                    } as any);
+                    created++;
+                  }
+                  return created;
+                }}
               />
             </div>
           )}
