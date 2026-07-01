@@ -1301,29 +1301,30 @@ const AdminApp: React.FC<AdminAppProps> = ({
           <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'partners', 'notice', 'pallets', 'confirmation-items', 'shipping', 'production', 'inbound-scan', 'return-management', 'sanitation-checklist'].includes(currentView)) ? '' : 'h-full'}>
           {(currentView === 'dashboard' || currentView === 'ai-consultant') && (
             <div className="h-full flex flex-col overflow-hidden">
-              <div className="shrink-0 space-y-3">
-                {/* 헤더: 제목만 (모바일은 앱바 제목으로 대체 → 숨김) */}
+              <div className="shrink-0">
+                {/* 헤더(제목) + 우측 탭 전환 — 공통 패턴 */}
                 <PageHeader
                   title={currentView === 'dashboard' ? '비즈니스 현황' : 'AI 인사이트'}
                   subtitle={currentView === 'dashboard'
                     ? `${new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })} 기준`
                     : 'AI 기반 비즈니스 분석 기능입니다.'}
+                  right={
+                    <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+                      <button
+                        onClick={() => handleNavClick('dashboard')}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${currentView === 'dashboard' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                      >
+                        <LayoutDashboard size={13} />비즈니스 현황
+                      </button>
+                      <button
+                        onClick={() => handleNavClick('ai-consultant')}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${currentView === 'ai-consultant' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                      >
+                        <Sparkles size={13} />AI 인사이트
+                      </button>
+                    </div>
+                  }
                 />
-                {/* 탭 전환은 헤더 밖(구분선 아래) 별도 줄 */}
-                <div className="flex bg-slate-100 rounded-xl p-1 gap-1 w-fit">
-                  <button
-                    onClick={() => handleNavClick('dashboard')}
-                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${currentView === 'dashboard' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                  >
-                    <LayoutDashboard size={13} />비즈니스 현황
-                  </button>
-                  <button
-                    onClick={() => handleNavClick('ai-consultant')}
-                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${currentView === 'ai-consultant' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                  >
-                    <Sparkles size={13} />AI 인사이트
-                  </button>
-                </div>
               </div>
               <div className="flex-1 overflow-y-auto pt-4">
                 {currentView === 'dashboard' && (

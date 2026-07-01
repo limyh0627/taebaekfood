@@ -1007,40 +1007,42 @@ const OrdersList: React.FC<OrdersListProps> = ({
         title={title}
         subtitle={subtitle}
         right={
-          <>
-            <div className="flex bg-slate-100 p-1 rounded-2xl items-center">
-              {(['delivery','active','history'] as const).map((tab, i) => (
-                <button key={tab} onClick={() => setActiveTab(tab)}
-                  className={`px-3 md:px-4 py-2 rounded-xl text-xs font-black transition-all whitespace-nowrap ${activeTab === tab ? 'bg-white shadow-sm ' + (tab==='delivery'?'text-sky-600':tab==='active'?'text-indigo-600':'text-slate-700') : 'text-slate-400 hover:text-slate-600'}`}>
-                  {['택배','운영','이력'][i]}
-                </button>
-              ))}
-            </div>
-            {onChangeOrdersMonths && (
-              <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-2xl px-3 py-2 shadow-sm" title="Firestore 실시간 구독 범위 — 줄이면 읽기 비용 절감">
-                <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">실시간</span>
-                <select
-                  value={ordersMonths ?? 12}
-                  onChange={(e) => onChangeOrdersMonths(parseInt(e.target.value, 10))}
-                  className="text-xs font-black text-slate-700 bg-transparent outline-none cursor-pointer"
-                >
-                  {[1, 3, 6, 12, 24].map(n => (
-                    <option key={n} value={n}>최근 {n}개월</option>
-                  ))}
-                </select>
-              </div>
-            )}
-            {onPasteClick && (
-              <button onClick={onPasteClick} className="flex items-center gap-1.5 bg-violet-600 text-white px-4 py-2.5 rounded-xl text-sm font-black hover:bg-violet-700 transition-all shadow-sm">
-                <ClipboardPaste size={15} /><span className="hidden sm:inline">복사주문</span>
+          <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+            {(['delivery','active','history'] as const).map((tab, i) => (
+              <button key={tab} onClick={() => setActiveTab(tab)}
+                className={`px-3 py-2 rounded-lg text-xs font-black transition-all whitespace-nowrap ${activeTab === tab ? 'bg-white shadow-sm ' + (tab==='delivery'?'text-sky-600':tab==='active'?'text-indigo-600':'text-slate-700') : 'text-slate-400 hover:text-slate-600'}`}>
+                {['택배','운영','이력'][i]}
               </button>
-            )}
-            <button onClick={onAddClick} className="flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-sm font-black hover:bg-indigo-700 transition-all shadow-sm">
-              <Plus size={15} /><span className="hidden sm:inline">주문 생성</span>
-            </button>
-          </>
+            ))}
+          </div>
         }
       />
+
+      {/* 액션 버튼 줄 (헤더/탭 아래, 우측 정렬) */}
+      <div className="flex items-center gap-2 flex-wrap justify-end">
+        {onChangeOrdersMonths && (
+          <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm" title="Firestore 실시간 구독 범위 — 줄이면 읽기 비용 절감">
+            <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">실시간</span>
+            <select
+              value={ordersMonths ?? 12}
+              onChange={(e) => onChangeOrdersMonths(parseInt(e.target.value, 10))}
+              className="text-xs font-black text-slate-700 bg-transparent outline-none cursor-pointer"
+            >
+              {[1, 3, 6, 12, 24].map(n => (
+                <option key={n} value={n}>최근 {n}개월</option>
+              ))}
+            </select>
+          </div>
+        )}
+        {onPasteClick && (
+          <button onClick={onPasteClick} className="flex items-center gap-1.5 bg-violet-600 text-white px-3 py-2 rounded-xl text-xs font-black hover:bg-violet-700 transition-all shadow-sm">
+            <ClipboardPaste size={13} /><span className="hidden sm:inline">복사주문</span>
+          </button>
+        )}
+        <button onClick={onAddClick} className="flex items-center gap-1.5 bg-indigo-600 text-white px-3 py-2 rounded-xl text-xs font-black hover:bg-indigo-700 transition-all shadow-sm">
+          <Plus size={13} /><span className="hidden sm:inline">주문 생성</span>
+        </button>
+      </div>
 
       <div className="relative max-w-full md:max-w-md">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />

@@ -411,19 +411,23 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="세금계산서" subtitle="발행된 세금계산서를 조회하거나 새로 발행합니다." />
-      {/* 탭 헤더 */}
-      <div className="flex bg-white rounded-2xl border border-slate-200 p-1 gap-1 self-start shadow-sm">
-        {([
-          { id: 'issue' as const, icon: Receipt, label: '발행' },
-          { id: 'history' as const, icon: Eye, label: '조회' },
-        ]).map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)}
-            className={`flex items-center gap-1.5 px-5 py-2 rounded-xl text-sm font-black transition-all ${activeTab === t.id ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-            <t.icon size={14}/>{t.label}
-          </button>
-        ))}
-      </div>
+      <PageHeader
+        title="세금계산서"
+        subtitle="발행된 세금계산서를 조회하거나 새로 발행합니다."
+        right={
+          <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+            {([
+              { id: 'issue' as const, icon: Receipt, label: '발행' },
+              { id: 'history' as const, icon: Eye, label: '조회' },
+            ]).map(t => (
+              <button key={t.id} onClick={() => setActiveTab(t.id)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${activeTab === t.id ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                <t.icon size={13}/>{t.label}
+              </button>
+            ))}
+          </div>
+        }
+      />
 
       {/* ── 발행 탭 ── */}
       {activeTab === 'issue' && (

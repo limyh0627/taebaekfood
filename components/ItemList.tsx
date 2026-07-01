@@ -464,31 +464,33 @@ const ItemList: React.FC<ItemListProps> = ({
         title="재고 관리"
         subtitle="실시간 재고 현황을 파악하고 부족한 자재를 즉시 발주하세요."
         right={
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
             <button
-              onClick={() => setShowClosingModal(true)}
-              className="flex items-center gap-1.5 px-3 py-2 bg-orange-500 text-white rounded-xl text-xs font-black hover:bg-orange-600 transition-colors"
+              onClick={() => setActiveTab('master')}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${activeTab === 'master' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
             >
-              <ClipboardCheck size={13} /> 재고 마감
+              <Box size={13} /><span>재고 현황</span>
             </button>
-            <div className="bg-slate-100 p-1 rounded-2xl flex items-center">
-              <button
-                onClick={() => setActiveTab('master')}
-                className={`px-3 py-2 rounded-xl flex items-center gap-1 transition-all text-xs font-black ${activeTab === 'master' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-              >
-                <Box size={13} /><span>재고 현황</span>
-              </button>
-              <button
-                onClick={() => setActiveTab('inbound')}
-                className={`px-3 py-2 rounded-xl flex items-center gap-1 transition-all text-xs font-black relative ${activeTab === 'inbound' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-              >
-                <Inbox size={13} /><span>입고/반품</span>
-                {(inboundBadge + returnBadge) > 0 && <span className="absolute -top-1 -right-1 bg-amber-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow">{inboundBadge + returnBadge}</span>}
-              </button>
-            </div>
+            <button
+              onClick={() => setActiveTab('inbound')}
+              className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${activeTab === 'inbound' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              <Inbox size={13} /><span>입고/반품</span>
+              {(inboundBadge + returnBadge) > 0 && <span className="absolute -top-1 -right-1 bg-amber-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow">{inboundBadge + returnBadge}</span>}
+            </button>
           </div>
         }
       />
+
+      {/* 액션 버튼 줄 (헤더/탭 아래, 우측 정렬) */}
+      <div className="flex items-center gap-2 flex-wrap justify-end">
+        <button
+          onClick={() => setShowClosingModal(true)}
+          className="flex items-center gap-1.5 px-3 py-2 bg-orange-500 text-white rounded-xl text-xs font-black hover:bg-orange-600 transition-colors shadow-sm"
+        >
+          <ClipboardCheck size={13} /> 재고 마감
+        </button>
+      </div>
 
       <div className="flex flex-col space-y-4">
 

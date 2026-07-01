@@ -834,30 +834,40 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
       <PageHeader
         title="품목 정보 관리"
         subtitle="거래처를 선택하거나 전체 품목을 조회하세요."
-        right={
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowDuplicates(p => !p)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-black text-xs shadow-sm transition-all whitespace-nowrap ${showDuplicates ? 'bg-amber-50 text-amber-600 border border-amber-300' : 'bg-white text-slate-500 border border-slate-200 hover:border-slate-300'}`}
-            >
-              <Copy size={13} />
-              중복 품목
-              {duplicateGroups.length > 0 && (
-                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${showDuplicates ? 'bg-amber-200 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{duplicateGroups.length}</span>
-              )}
-            </button>
-            {isAdmin && (
-              <button
-                onClick={onAddItem}
-                className="lg:hidden flex items-center gap-2 bg-indigo-600 text-white px-3 py-2 rounded-xl font-black text-xs shadow-md whitespace-nowrap"
-              >
-                <Plus size={14} />
-                신규 등록
+        right={isAdmin ? (
+          <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+            {([['flat', '품목 목록'], ['by-partner', '거래처별 품목']] as const).map(([v, label]) => (
+              <button key={v} onClick={() => { setMainView(v); setSelectedClientId(null); setShowAll(true); setPage(1); setSearchTerm(''); }}
+                className={`px-3 py-2 rounded-lg text-xs font-black transition-all whitespace-nowrap ${mainView === v ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                {label}
               </button>
-            )}
+            ))}
           </div>
-        }
+        ) : undefined}
       />
+
+      {/* 액션 버튼 줄 (헤더/탭 아래, 우측 정렬) */}
+      <div className="flex items-center gap-2 flex-wrap justify-end">
+        <button
+          onClick={() => setShowDuplicates(p => !p)}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-black text-xs shadow-sm transition-all whitespace-nowrap ${showDuplicates ? 'bg-amber-50 text-amber-600 border border-amber-300' : 'bg-white text-slate-500 border border-slate-200 hover:border-slate-300'}`}
+        >
+          <Copy size={13} />
+          중복 품목
+          {duplicateGroups.length > 0 && (
+            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${showDuplicates ? 'bg-amber-200 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{duplicateGroups.length}</span>
+          )}
+        </button>
+        {isAdmin && (
+          <button
+            onClick={onAddItem}
+            className="lg:hidden flex items-center gap-1.5 bg-indigo-600 text-white px-3 py-2 rounded-xl font-black text-xs shadow-sm whitespace-nowrap"
+          >
+            <Plus size={14} />
+            신규 등록
+          </button>
+        )}
+      </div>
 
       {/* 중복 품목 패널 */}
       {showDuplicates && (
@@ -1030,17 +1040,6 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
       )}
 
       {/* 뷰 탭 — 관리자만 */}
-      {isAdmin && (
-        <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5 w-fit">
-          {([['flat', '품목 목록'], ['by-partner', '거래처별 품목']] as const).map(([v, label]) => (
-            <button key={v} onClick={() => { setMainView(v); setSelectedClientId(null); setShowAll(true); setPage(1); setSearchTerm(''); }}
-              className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${mainView === v ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
-
       {/* 품목 목록 뷰: 관리자만 */}
       {isAdmin && mainView === 'flat' && productPanel}
 

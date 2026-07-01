@@ -328,19 +328,19 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           <PageHeader
             title="손익 / 비용 관리"
             subtitle="매출 · 매입 · 고정비 기반 영업이익을 분석하고 비용을 관리합니다."
+            right={
+              <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+                <button onClick={() => setMainTab('analysis')}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'analysis' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                  <BarChart2 size={13}/>손익분석
+                </button>
+                <button onClick={() => setMainTab('inventory-value')}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'inventory-value' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                  <Package size={13}/>재고액
+                </button>
+              </div>
+            }
           />
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
-              <button onClick={() => setMainTab('analysis')}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'analysis' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-                <BarChart2 size={13}/>손익분석
-              </button>
-              <button onClick={() => setMainTab('inventory-value')}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${mainTab === 'inventory-value' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-                <Package size={13}/>재고액
-              </button>
-            </div>
-          </div>
         </>
       )}
       {isStandalone && mainTab === 'partners' && (

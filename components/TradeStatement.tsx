@@ -1545,49 +1545,51 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       <PageHeader
         title="거래명세서"
         subtitle="발행된 전표를 조회하거나 새 전표를 생성합니다."
-        right={<div className="flex items-center gap-2">
-          {mainTab === 'history' && <>
-            <button
-              onClick={() => openCreate('매입')}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-rose-600 text-white hover:bg-rose-700 shadow-sm transition-all"
-            >
-              <Plus size={13} strokeWidth={3}/>매입전표
-            </button>
-            <button
-              onClick={() => openCreate('매출')}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-all"
-            >
-              <Plus size={13} strokeWidth={3}/>매출전표
-            </button>
-            <button
-              onClick={() => { setShowQuickPay(true); setQuickPayClientId(''); setQuickPayClientSearch(''); setQuickPayAmount(''); setQuickPayNote(''); setQuickPayDate(new Date().toISOString().slice(0,10)); }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition-all"
-            >
-              <Wallet size={13}/>수금/지불
-            </button>
-          </>}
-          <button
-            onClick={() => { setShowCompanyModal(true); setCompanyForm(companyInfo ?? { name:'',ceoName:'',bizNo:'',bizType:'',bizItem:'',address:'',phone:'',fax:'',email:'' }); }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all"
-            title="회사 정보 설정"
-          >
-            <Save size={13}/>회사정보
-          </button>
-        </div>}
+        right={
+          <div className="flex bg-slate-100 rounded-xl p-1 gap-1 overflow-x-auto no-scrollbar">
+            {([
+              { id: 'history', icon: ClipboardList, label: '전표내역' },
+            ] as const).map(t => (
+              <button key={t.id}
+                onClick={() => setMainTab(t.id)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all whitespace-nowrap ${mainTab === t.id ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                <t.icon size={13}/>{t.label}
+              </button>
+            ))}
+          </div>
+        }
       />
 
-      {/* 탭 네비게이션 */}
-      <div className="flex bg-slate-100 rounded-xl p-1 gap-1 self-start overflow-x-auto no-scrollbar">
-        {([
-          { id: 'history',     icon: ClipboardList, label: '전표내역'   },
-        ] as const).map(t => (
-          <button key={t.id}
-            onClick={() => setMainTab(t.id)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all whitespace-nowrap ${mainTab === t.id ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+      {/* 액션 버튼 줄 (헤더/탭 아래, 우측 정렬) */}
+      <div className="flex items-center gap-2 flex-wrap justify-end">
+        {mainTab === 'history' && <>
+          <button
+            onClick={() => openCreate('매입')}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-rose-600 text-white hover:bg-rose-700 shadow-sm transition-all"
           >
-            <t.icon size={13}/>{t.label}
+            <Plus size={13} strokeWidth={3}/>매입전표
           </button>
-        ))}
+          <button
+            onClick={() => openCreate('매출')}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-all"
+          >
+            <Plus size={13} strokeWidth={3}/>매출전표
+          </button>
+          <button
+            onClick={() => { setShowQuickPay(true); setQuickPayClientId(''); setQuickPayClientSearch(''); setQuickPayAmount(''); setQuickPayNote(''); setQuickPayDate(new Date().toISOString().slice(0,10)); }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition-all"
+          >
+            <Wallet size={13}/>수금/지불
+          </button>
+        </>}
+        <button
+          onClick={() => { setShowCompanyModal(true); setCompanyForm(companyInfo ?? { name:'',ceoName:'',bizNo:'',bizType:'',bizItem:'',address:'',phone:'',fax:'',email:'' }); }}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all"
+          title="회사 정보 설정"
+        >
+          <Save size={13}/>회사정보
+        </button>
       </div>
 
 
