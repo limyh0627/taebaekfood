@@ -7,7 +7,8 @@ interface PageHeaderProps {
 }
 
 const PageHeader: React.FC<PageHeaderProps> = ({ title, subtitle, right }) => (
-  <div>
+  // 버튼(right)이 없으면 모바일에선 헤더 전체를 숨겨 빈 공간이 생기지 않게 한다(제목은 상단 앱바에 있음).
+  <div className={right ? undefined : 'hidden md:block'}>
     {/* 제목 헤더 (구분선은 제목 아래) — 모바일(md 미만)은 상단 앱바에 제목이 있어 숨김 */}
     <div className="min-w-0 hidden md:block pb-3 md:pb-4 border-b border-slate-200">
       <h2 className="text-base md:text-lg font-black text-slate-800 leading-tight truncate">{title}</h2>

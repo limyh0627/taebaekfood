@@ -3370,7 +3370,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             />
           )}
           {(currentView === 'profit-analysis' || currentView === 'cost-management') && (
-            <div className="h-full overflow-y-auto p-6">
+            <div className="h-full overflow-y-auto">
               <ProfitAnalysis
                 issuedStatements={issuedStatements}
                 fixedCosts={fixedCosts}
@@ -3424,7 +3424,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             </div>
           )}
           {currentView === 'partner-stats' && (
-            <div className="h-full overflow-y-auto p-6">
+            <div className="h-full overflow-y-auto">
               <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                 <ProfitAnalysis
                   initialTab="partners"
@@ -3447,7 +3447,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             </div>
           )}
           {currentView === 'cash-flow' && (
-            <div className="h-full overflow-y-auto p-6">
+            <div className="h-full overflow-y-auto">
               <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                 <ProfitAnalysis
                   initialTab="cash-flow"
