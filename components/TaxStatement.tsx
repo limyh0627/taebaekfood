@@ -546,20 +546,20 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                   const isIssued = !!s.taxIssuedAt;
                   return (
                     <button key={s.id} onClick={() => toggleStmt(s.id)}
-                      className={`w-full flex items-center gap-3 px-4 py-2.5 border-b border-slate-50 text-left transition-all ${isSel ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}>
-                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${isSel ? 'bg-emerald-600 border-emerald-600' : 'border-slate-300'}`}>
-                        {isSel && <CheckSquare size={10} className="text-white"/>}
+                      className={`w-full flex items-center gap-3 px-4 py-3.5 border-b border-slate-50 text-left transition-all ${isSel ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}>
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-all ${isSel ? 'bg-emerald-600 border-emerald-600' : 'border-slate-300'}`}>
+                        {isSel && <CheckSquare size={12} className="text-white"/>}
                       </div>
-                      <span className="text-xs font-black text-slate-700">{s.tradeDate}</span>
-                      <span className="text-[10px] text-slate-400 font-mono">{s.docNo}</span>
-                      <span className="text-[10px] text-slate-400 flex-1 truncate">
+                      <span className="text-sm font-black text-slate-700 shrink-0">{s.tradeDate}</span>
+                      <span className="text-[11px] text-slate-400 font-mono shrink-0">{s.docNo}</span>
+                      <span className="text-xs text-slate-400 flex-1 truncate">
                         {s.items.slice(0,2).map(i=>i.name).join(', ')}{s.items.length>2?` 외 ${s.items.length-2}건`:''}
                       </span>
                       {isIssued
-                        ? <span className="text-[9px] font-black bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full shrink-0">발행</span>
-                        : <span className="text-[9px] font-black bg-rose-100 text-rose-500 px-1.5 py-0.5 rounded-full shrink-0">미발행</span>
+                        ? <span className="text-[10px] font-black bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full shrink-0">발행</span>
+                        : <span className="text-[10px] font-black bg-rose-100 text-rose-500 px-2 py-0.5 rounded-full shrink-0">미발행</span>
                       }
-                      <span className={`text-xs font-black shrink-0 ${isSel ? 'text-emerald-700' : 'text-slate-700'}`}>{fmt(s.totalAmount)}원</span>
+                      <span className={`text-sm font-black shrink-0 ${isSel ? 'text-emerald-700' : 'text-slate-700'}`}>{fmt(s.totalAmount)}원</span>
                     </button>
                   );
                 })}
@@ -659,7 +659,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                   </div>
                   <div className="p-4 overflow-x-auto">
                     <div ref={taxPrintRef}>
-                      <div className="wrap border-2 border-black" style={{fontFamily:"'Malgun Gothic','맑은 고딕',sans-serif",minWidth:640,fontSize:'11px'}}>
+                      <div className="wrap border-2 border-black" style={{fontFamily:"'Malgun Gothic','맑은 고딕',sans-serif",minWidth:760,fontSize:'13px'}}>
                         <div className="flex items-center justify-between border-b-2 border-black px-4 py-3">
                           <h1 style={{fontSize:'22px',fontWeight:900,letterSpacing:'6px'}}>세 금 계 산 서</h1>
                           <div className="text-right" style={{fontSize:'10px',color:'#666'}}>
@@ -800,7 +800,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                 </div>
               ) : (
                 <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
-                  <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 grid grid-cols-[1fr_90px_90px_110px_72px] gap-3 min-w-[540px]">
+                  <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 grid grid-cols-[1fr_100px_100px_120px_80px] gap-3 min-w-[580px]">
                     <span className="text-[10px] font-black text-slate-400 uppercase">거래처 / 전표</span>
                     <span className="text-[10px] font-black text-slate-400 uppercase text-center">거래기간</span>
                     <span className="text-[10px] font-black text-slate-400 uppercase text-center">발행일</span>
@@ -817,11 +817,11 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                       : `${tradeDates[0].slice(5)}~${tradeDates[tradeDates.length-1].slice(5)}`;
                     return (
                       <div key={group.key}>
-                        <div className={`grid grid-cols-[1fr_90px_90px_110px_72px] gap-3 items-center px-4 py-3 border-b border-slate-50 transition-all min-w-[540px] ${isSelected ? 'bg-amber-50' : 'hover:bg-slate-50'}`}>
+                        <div className={`grid grid-cols-[1fr_100px_100px_120px_80px] gap-3 items-center px-4 py-3.5 border-b border-slate-50 transition-all min-w-[580px] ${isSelected ? 'bg-amber-50' : 'hover:bg-slate-50'}`}>
                           <div>
                             <div className="flex items-center gap-2 flex-wrap">
-                              <Building2 size={11} className="text-slate-400 shrink-0"/>
-                              <span className="text-xs font-black text-slate-800">{cl?.name ?? group.partnerName ?? '-'}</span>
+                              <Building2 size={13} className="text-slate-400 shrink-0"/>
+                              <span className="text-sm font-black text-slate-800">{cl?.name ?? group.partnerName ?? '-'}</span>
                               <span className="text-[9px] font-black bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full">발행완료</span>
                               {group.isBundle && (
                                 <span className="text-[9px] font-black bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
@@ -846,19 +846,19 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                               </div>
                             )}
                           </div>
-                          <span className="text-[11px] text-slate-600 text-center">{dateRange}</span>
-                          <span className="text-[11px] text-slate-600 text-center">{group.issuedAt.slice(0, 10)}</span>
-                          <span className="text-xs font-black text-slate-800 text-right">{fmt(group.totalAmount)}</span>
+                          <span className="text-xs text-slate-600 text-center">{dateRange}</span>
+                          <span className="text-xs text-slate-600 text-center">{group.issuedAt.slice(0, 10)}</span>
+                          <span className="text-sm font-black text-slate-800 text-right">{fmt(group.totalAmount)}</span>
                           <div className="flex justify-center">
                             <button onClick={() => setHistPreviewGroupKey(isSelected ? null : group.key)}
-                              className={`p-1.5 rounded-lg transition-all ${isSelected ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
-                              <Eye size={13}/>
+                              className={`p-2 rounded-lg transition-all ${isSelected ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                              <Eye size={15}/>
                             </button>
                           </div>
                         </div>
                         {/* 묶음 펼치기 - 개별 전표 */}
                         {group.isBundle && isExpanded && group.stmts.map(s => (
-                          <div key={s.id} className="grid grid-cols-[1fr_90px_90px_110px_72px] gap-3 items-center px-4 py-2 border-b border-slate-50 bg-violet-50/60 pl-10 min-w-[540px]">
+                          <div key={s.id} className="grid grid-cols-[1fr_100px_100px_120px_80px] gap-3 items-center px-4 py-2 border-b border-slate-50 bg-violet-50/60 pl-10 min-w-[580px]">
                             <div className="text-[10px] text-slate-500">
                               {s.docNo} · {s.items.slice(0,2).map(i=>i.name).join(', ')}{s.items.length>2?` 외 ${s.items.length-2}건`:''}
                             </div>
@@ -915,7 +915,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
             <div className="flex-1 overflow-y-auto p-6">
               <div ref={previewPrintRef}>
                       {/* 묶음 세금계산서 미리보기 (merged items) */}
-                      <div className="border-2 border-black" style={{fontFamily:"'Malgun Gothic','맑은 고딕',sans-serif",minWidth:420,fontSize:'11px'}}>
+                      <div className="border-2 border-black" style={{fontFamily:"'Malgun Gothic','맑은 고딕',sans-serif",minWidth:640,fontSize:'13px'}}>
                         <div className="flex items-center justify-between border-b-2 border-black px-4 py-3">
                           <h1 style={{fontSize:'20px',fontWeight:900,letterSpacing:'6px'}}>세 금 계 산 서</h1>
                           <div className="text-right" style={{fontSize:'10px',color:'#666'}}>
