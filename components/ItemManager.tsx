@@ -57,6 +57,21 @@ const SUB_ORDER: Record<string, number> = { '라벨': 0, '용기': 1, '마개': 
 const sortSubs = (subs: { name: string; category: string; subtype?: string }[]) =>
   [...subs].sort((a, b) => (SUB_ORDER[itemSubCat(a)] ?? 9) - (SUB_ORDER[itemSubCat(b)] ?? 9));
 
+// ── 한글 초성 검색 ──
+const CHOSUNG = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+const toChosung = (s: string) => [...s].map(ch => {
+  const code = ch.charCodeAt(0) - 0xAC00;
+  return (code >= 0 && code <= 11171) ? CHOSUNG[Math.floor(code / 588)] : ch;
+}).join('');
+// 이름에 검색어가 포함되거나, 검색어가 전부 초성이면 이름 초성열에서 매칭
+const matchKo = (name: string, query: string) => {
+  const q = query.trim();
+  if (!q) return true;
+  if (name.toLowerCase().includes(q.toLowerCase())) return true;
+  if ([...q].every(ch => CHOSUNG.includes(ch))) return toChosung(name).includes(q);
+  return false;
+};
+
 const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems = [], shippingRules = [], itemBoms = [], onEditProduct, onAddItem, onDeleteItem, onLinkItem, onUnlinkItem, onLinkSupplier, onUnlinkSupplier, onMergeItems, onSaveItemCustomer, onUpsertPartnerItem, onSaveShippingRule, onAddShippingRule, isAdmin = true }) => {
   const products = items;
   const itemCustomers = partnerItems;
@@ -175,7 +190,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
 
   const filteredClients = useMemo(() =>
     activePartnerClients.filter(c =>
-      (!partnerSearch.trim() || c.name.includes(partnerSearch)) &&
+      matchKo(c.name, partnerSearch) &&
       (!partnerTypeFilter || c.type === partnerTypeFilter)
     ),
     [activePartnerClients, partnerSearch, partnerTypeFilter]
