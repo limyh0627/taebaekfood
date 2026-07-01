@@ -1081,29 +1081,26 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                         ? (partnerItemCount.get(c.id) ?? 0)
                         : (inboundPartnerItemCount.get(c.id) ?? 0);
                       const AV = [
-                        { bg: 'bg-indigo-500', soft: 'bg-indigo-50 text-indigo-600', ring: 'group-hover:border-indigo-300' },
-                        { bg: 'bg-emerald-500', soft: 'bg-emerald-50 text-emerald-600', ring: 'group-hover:border-emerald-300' },
-                        { bg: 'bg-amber-500', soft: 'bg-amber-50 text-amber-600', ring: 'group-hover:border-amber-300' },
-                        { bg: 'bg-rose-500', soft: 'bg-rose-50 text-rose-600', ring: 'group-hover:border-rose-300' },
-                        { bg: 'bg-sky-500', soft: 'bg-sky-50 text-sky-600', ring: 'group-hover:border-sky-300' },
-                        { bg: 'bg-violet-500', soft: 'bg-violet-50 text-violet-600', ring: 'group-hover:border-violet-300' },
-                        { bg: 'bg-teal-500', soft: 'bg-teal-50 text-teal-600', ring: 'group-hover:border-teal-300' },
-                        { bg: 'bg-orange-500', soft: 'bg-orange-50 text-orange-600', ring: 'group-hover:border-orange-300' },
+                        { bg: 'bg-indigo-50 border-indigo-100 hover:bg-indigo-100', text: 'text-indigo-800', num: 'text-indigo-500' },
+                        { bg: 'bg-emerald-50 border-emerald-100 hover:bg-emerald-100', text: 'text-emerald-800', num: 'text-emerald-500' },
+                        { bg: 'bg-amber-50 border-amber-100 hover:bg-amber-100', text: 'text-amber-800', num: 'text-amber-500' },
+                        { bg: 'bg-rose-50 border-rose-100 hover:bg-rose-100', text: 'text-rose-800', num: 'text-rose-500' },
+                        { bg: 'bg-sky-50 border-sky-100 hover:bg-sky-100', text: 'text-sky-800', num: 'text-sky-500' },
+                        { bg: 'bg-violet-50 border-violet-100 hover:bg-violet-100', text: 'text-violet-800', num: 'text-violet-500' },
+                        { bg: 'bg-teal-50 border-teal-100 hover:bg-teal-100', text: 'text-teal-800', num: 'text-teal-500' },
+                        { bg: 'bg-orange-50 border-orange-100 hover:bg-orange-100', text: 'text-orange-800', num: 'text-orange-500' },
                       ];
                       const av = AV[[...c.name].reduce((a, ch) => a + ch.charCodeAt(0), 0) % AV.length];
                       return (
                         <button key={c.id} onClick={() => handleSelectClient(c.id)}
-                          className={`group relative flex items-center gap-3 bg-white border border-slate-200 rounded-2xl p-3 text-left transition-all hover:shadow-md hover:-translate-y-0.5 active:scale-95 ${av.ring}`}>
-                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-black text-base shrink-0 shadow-sm ${av.bg}`}>
-                            {c.name.trim().charAt(0) || <Store size={18} />}
-                          </div>
+                          className={`group flex items-center gap-2 rounded-2xl border p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-sm active:scale-95 ${av.bg}`}>
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm font-black text-slate-800 truncate">{c.name}</p>
-                            <span className={`inline-flex items-center gap-1 mt-1 text-[10px] font-black px-1.5 py-0.5 rounded-full ${count > 0 ? av.soft : 'bg-slate-100 text-slate-400'}`}>
-                              <Package size={9} />{count}개 품목
-                            </span>
+                            <p className={`text-sm font-black truncate ${av.text}`}>{c.name}</p>
+                            <p className="text-[11px] font-bold text-slate-500 mt-1.5">
+                              <span className={`font-black ${count > 0 ? av.num : 'text-slate-400'}`}>{count}</span>개 품목
+                            </p>
                           </div>
-                          <ChevronRight size={16} className="text-slate-300 group-hover:text-slate-400 shrink-0 transition-colors" />
+                          <ChevronRight size={16} className={`shrink-0 opacity-50 group-hover:opacity-90 transition-opacity ${av.num}`} />
                         </button>
                       );
                     })}
