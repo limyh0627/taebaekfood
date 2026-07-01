@@ -2067,8 +2067,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             <FileText size={32} className="mx-auto mb-2 opacity-40"/>
             발행된 전표가 없습니다
           </div>
-        ) : (
-          <table className="w-full text-left">
+        ) : (<>
+          <table className="w-full text-left hidden md:table">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
                 <th className="px-4 py-3 text-[10px] font-black text-slate-400 whitespace-nowrap">전표일자</th>
@@ -2165,7 +2165,70 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               })}
             </tbody>
           </table>
-        )}
+
+          {/* ── 모바일 카드 목록 ── */}
+          <div className="md:hidden divide-y divide-slate-100">
+            {pagedHistory.map(row => {
+              if (row.kind === 'pay') {
+                const label = row.stmtType === '매출' ? '수금' : '지불';
+                const cumul = row.cumul;
+                const memo = [row.method, row.note].filter(Boolean).join(' · ');
+                return (
+                  <button key={`m-pay-${row.paymentId}`}
+                    onClick={() => { const p = row.src.payments?.find(p => p.id === row.paymentId); if (p) openEditPay(row.src, p); }}
+                    className={`w-full text-left px-4 py-3 flex flex-col gap-1.5 ${row.stmtType === '매출' ? 'bg-lime-50/70' : 'bg-orange-50/70'}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.stmtType === '매출' ? 'bg-lime-100 text-lime-700' : 'bg-orange-100 text-orange-700'}`}>{label}</span>
+                      <span className="text-[10px] font-mono text-slate-400">{row.date}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-bold text-slate-800 truncate">{row.partnerName}</span>
+                      <span className="text-sm font-black text-slate-800 shrink-0">{fmt(row.amount)}</span>
+                    </div>
+                    {memo && <p className="text-[11px] text-slate-400 truncate">{memo}</p>}
+                  </button>
+                );
+              }
+              const stmt = row.data;
+              const issuedDate = new Date(stmt.issuedAt);
+              const dateLabel = `${stmt.tradeDate} ${String(issuedDate.getHours()).padStart(2,'0')}:${String(issuedDate.getMinutes()).padStart(2,'0')}`;
+              const stmtItems = stmt.items ?? [];
+              const summary = stmtItems.slice(0, 2).map(i => i.name).join(', ') + (stmtItems.length > 2 ? ` 외 ${stmtItems.length - 2}건` : '');
+              const isReturn = stmtItems.some(i => i.qty < 0);
+              const cumul = row.cumul;
+              return (
+                <div key={`m-${stmt.id}`} onClick={() => openEdit(stmt)}
+                  className={`px-4 py-3 flex flex-col gap-1.5 cursor-pointer ${isReturn ? 'bg-rose-50' : ''}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1">
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${stmt.type === '매출' ? 'bg-blue-100 text-blue-700' : 'bg-rose-100 text-rose-700'}`}>{stmt.type}</span>
+                      {isReturn && <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">반품</span>}
+                    </div>
+                    <span className="text-[10px] font-mono text-slate-400">{dateLabel}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-bold text-slate-800 truncate">{stmt.partnerName}</span>
+                    <span className={`text-sm font-black shrink-0 ${isReturn ? 'text-rose-600' : 'text-slate-800'}`}>{fmt(stmt.totalAmount)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-slate-400 truncate flex-1 min-w-0">{summary}</span>
+                    {cumul !== 0 && (
+                      cumul < 0
+                        ? <span className={`text-[11px] font-black shrink-0 ${stmt.type === '매출' ? 'text-rose-600' : 'text-blue-600'}`}>{stmt.type === '매출' ? '줄돈' : '받을돈'} {fmt(Math.abs(cumul))}</span>
+                        : <span className={`text-[11px] font-black shrink-0 ${stmt.type === '매출' ? 'text-blue-600' : 'text-rose-600'}`}>잔액 {fmt(cumul)}</span>
+                    )}
+                  </div>
+                  {getBalance(stmt) > 0 && (
+                    <button onClick={e => { e.stopPropagation(); openPayModal(stmt); }}
+                      className={`self-start mt-0.5 text-[10px] font-black px-2.5 py-1 rounded-lg flex items-center gap-1 ${stmt.type === '매입' ? 'bg-rose-50 text-rose-600' : 'bg-blue-50 text-blue-600'}`}>
+                      <Save size={10}/>{stmt.type === '매입' ? '지불처리' : '수금처리'}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>)}
         {/* ── 매출/매입 합계 (현재 필터 기준) ── */}
         {filteredHistory.some(r => r.kind !== 'pay') && (() => {
           const stmts = filteredHistory.filter(r => r.kind !== 'pay');
@@ -2629,13 +2692,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
       {/* ══════════════════════════════════════ 전표 생성 모달 ══════════════════════════════════════ */}
       {createMode && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-0 sm:p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeCreate}/>
-          <div className="relative w-full max-w-7xl flex flex-col bg-white rounded-3xl shadow-2xl overflow-hidden"
-               style={{height:'80vh'}}>
+          <div className="relative w-full h-[100dvh] sm:h-[80vh] sm:max-w-7xl flex flex-col bg-white sm:rounded-3xl shadow-2xl overflow-hidden">
 
             {/* ── 헤더 ── */}
-            <div className="flex items-center gap-3 px-5 py-3 border-b border-slate-100 flex-shrink-0">
+            <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-5 py-3 border-b border-slate-100 flex-shrink-0 flex-wrap">
               <span className={`text-xs font-black px-2.5 py-1 rounded-full ${createMode==='매출'?'bg-blue-100 text-blue-700':'bg-rose-100 text-rose-700'}`}>
                 {createMode==='매출'?'매출':'매입'}전표
               </span>
@@ -3240,8 +3302,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
             {/* ── 품목 테이블 ── */}
             {selectedClientId && (selectedOrderId || manualMode || editingStmt) ? (
-              <div className="flex-1 overflow-y-auto">
-                <table className="w-full text-left border-collapse table-fixed">
+              <div className="flex-1 overflow-auto">
+                <table className="w-full min-w-[720px] text-left border-collapse table-fixed">
                   <colgroup>
                     <col style={{width:'40px'}}/>
                     <col style={{width:'22%'}}/>
