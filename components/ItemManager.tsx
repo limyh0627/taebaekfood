@@ -316,6 +316,11 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
   }, [products, selectedClientId, linkCategory, linkSearch, partnerScopeTab, partnerIn]);
 
   // 품목 테이블 패널 (공통)
+  // 거래처별 뷰는 위에 헤더(메인탭+거래처명+매출/매입토글)가 더 쌓이므로 데스크톱 고정높이 오프셋을 키운다.
+  // 모바일에서는 고정높이를 주지 않고 페이지 자체가 스크롤되게 한다.
+  const panelHeightClass = (mainView === 'by-partner' && selectedClientId)
+    ? 'lg:h-[calc(100vh-330px)]'
+    : 'lg:h-[calc(100vh-240px)]';
   const productPanel = (
     <div className="flex flex-col gap-3 min-w-0">
       {/* 모바일 신규 등록 버튼 */}
@@ -362,7 +367,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col" style={{ height: 'calc(100vh - 240px)' }}>
+      <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col ${panelHeightClass}`}>
         <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center gap-2">
           <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar flex-1">
             {(isAdmin || (!isAdmin && !selectedClientId)) && (
@@ -416,7 +421,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
           </div>
         </div>
 
-        <div className="overflow-x-auto overflow-y-auto flex-1">
+        <div className="overflow-x-auto lg:overflow-y-auto lg:flex-1">
           <table className="w-full text-left border-collapse">
             <thead className="sticky top-0 z-10">
               <tr className="bg-slate-50/50 border-b border-slate-100">
