@@ -2923,8 +2923,8 @@ export const StaffChecklistView: React.FC<{ currentUser?: { id: string; name: st
             <ShieldAlert size={18} className="text-emerald-600" />
           </div>
           <div>
-            <h1 className="text-base font-black text-slate-800">위생·온도 점검표</h1>
-            <p className="text-xs text-slate-400">HACCP-PRP · 작업장 위생, 개인위생, 온도 기록</p>
+            <h1 className="text-base sm:text-lg font-black text-slate-800 leading-tight">위생·온도 점검표</h1>
+            <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">HACCP-PRP · 작업장 위생, 개인위생, 온도 기록</p>
           </div>
         </div>
       </div>

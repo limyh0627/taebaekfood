@@ -2079,8 +2079,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 <div className="flex flex-col gap-4 pb-4 border-b border-slate-200">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h2 className="text-lg font-black text-slate-800">서류 관리</h2>
-                      <p className="text-xs text-slate-400 mt-0.5">생산·원료·작업 관련 서류를 조회하세요.</p>
+                      <h2 className="text-base sm:text-lg font-black text-slate-800 leading-tight truncate">서류 관리</h2>
+                      <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5 truncate">생산·원료·작업 관련 서류를 조회하세요.</p>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
