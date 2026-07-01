@@ -430,7 +430,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                 {(mainView === 'by-partner' && selectedClientId && partnerScopeTab === 'sales') && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">박스</th>}
                 {(mainView === 'by-partner' && selectedClientId && partnerScopeTab === 'sales') && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">테이프</th>}
                 {isAdmin && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">원가</th>}
-                {(mainView === 'by-partner' && selectedClientId && partnerScopeTab === 'sales') && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">판매단가</th>}
+                {(isAdmin && mainView === 'by-partner' && selectedClientId && partnerScopeTab === 'sales') && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">판매단가</th>}
                 {(isAdmin || (mainView === 'by-partner' && !!selectedClientId)) && <th className="px-2 py-3" />}
               </tr>
             </thead>
@@ -589,7 +589,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                           : <span className="text-[10px] text-slate-200">-</span>}
                       </td>
                     )}
-                    {(mainView === 'by-partner' && selectedClientId && partnerScopeTab === 'sales') && (() => {
+                    {(isAdmin && mainView === 'by-partner' && selectedClientId && partnerScopeTab === 'sales') && (() => {
                       const psOut = partnerOut.find(ps => (ps.itemId ?? ps.Item_ID) === item.id && (ps.partnerId ?? ps.Partner_ID) === selectedClientId);
                       const curPrice = psOut?.price ?? psOut?.Standard_Price;
                       const editKey = `${item.id}_${selectedClientId}`;
