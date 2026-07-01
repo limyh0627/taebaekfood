@@ -1252,20 +1252,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
               } as Record<string, string>)[currentView]) ?? ''}
             </p>
           </div>
-          {(() => {
-            const mobileUnread = appNotifications.filter(n => !n.readBy.includes(currentUser.id) && (!n.targetId || n.targetId === currentUser.id)).length;
-            return (
-              <button
-                onClick={() => setShowNotifPanel(p => !p)}
-                className="relative p-2 rounded-lg hover:bg-slate-100 text-slate-500 shrink-0"
-              >
-                {mobileUnread > 0 ? <BellRing size={20} className="text-amber-500" /> : <Bell size={20} />}
-                {mobileUnread > 0 && (
-                  <span className="absolute top-1 right-1 min-w-[14px] h-[14px] bg-red-500 text-white text-[8px] font-black rounded-full flex items-center justify-center px-0.5">{mobileUnread > 99 ? '99+' : mobileUnread}</span>
-                )}
-              </button>
-            );
-          })()}
         </header>
         
         <div className="flex-1 overflow-auto p-3 md:p-4 lg:p-6 custom-scrollbar">
