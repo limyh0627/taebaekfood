@@ -147,11 +147,6 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, items, partners = [], par
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      <PageHeader
-        title="비즈니스 현황"
-        subtitle={`${today.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })} 기준`}
-      />
-
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
           title="이번 주 주문 상품량"

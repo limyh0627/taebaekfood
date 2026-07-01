@@ -58,6 +58,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, PaymentRecord, ShippingRule, poLines } from '../../shared/types';
+import PageHeader from '../../shared/components/PageHeader';
 import Dashboard from '../../../components/Dashboard';
 import OrdersList from '../../../components/OrdersList';
 import ItemList from '../../../components/ItemList';
@@ -1300,8 +1301,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
           <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'partners', 'notice', 'pallets', 'confirmation-items', 'shipping', 'production', 'inbound-scan', 'return-management', 'sanitation-checklist'].includes(currentView)) ? '' : 'h-full'}>
           {(currentView === 'dashboard' || currentView === 'ai-consultant') && (
             <div className="h-full flex flex-col overflow-hidden">
-              <div className="flex items-center gap-1 px-6 pt-5 pb-0 shrink-0">
-                <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+              <div className="shrink-0 space-y-3">
+                {/* 헤더: 제목만 (모바일은 앱바 제목으로 대체 → 숨김) */}
+                <PageHeader
+                  title={currentView === 'dashboard' ? '비즈니스 현황' : 'AI 인사이트'}
+                  subtitle={currentView === 'dashboard'
+                    ? `${new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })} 기준`
+                    : 'AI 기반 비즈니스 분석 기능입니다.'}
+                />
+                {/* 탭 전환은 헤더 밖(구분선 아래) 별도 줄 */}
+                <div className="flex bg-slate-100 rounded-xl p-1 gap-1 w-fit">
                   <button
                     onClick={() => handleNavClick('dashboard')}
                     className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${currentView === 'dashboard' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
@@ -1316,7 +1325,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   </button>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto pt-4">
                 {currentView === 'dashboard' && (
                   <Dashboard
                     orders={allOrders}
@@ -2076,8 +2085,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
             return (
               <div className="space-y-5 animate-in slide-in-from-right-4 duration-500">
-                <div className="flex flex-col gap-4 pb-3 md:pb-4 md:border-b border-slate-200">
-                  <div className="hidden md:flex items-center justify-between">
+                <div className="flex flex-col gap-4">
+                  <div className="hidden md:flex items-center justify-between pb-3 md:pb-4 border-b border-slate-200">
                     <div>
                       <h2 className="text-base md:text-lg font-black text-slate-800 leading-tight truncate">서류 관리</h2>
                       <p className="text-[11px] md:text-xs text-slate-400 mt-0.5 truncate">생산·원료·작업 관련 서류를 조회하세요.</p>
