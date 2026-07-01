@@ -495,7 +495,7 @@ const ItemList: React.FC<ItemListProps> = ({
         {/* 카테고리 토글 + 검색 행 (입고/반품 탭에서는 숨김) */}
         {!zeroStockOnly && activeTab !== 'inbound' && (
           <div className="flex items-center gap-3 flex-wrap">
-            <div className="bg-slate-100/50 p-1 rounded-2xl flex items-center self-start border border-slate-200">
+            <div className="bg-slate-100/50 p-1 rounded-2xl flex items-center self-start border border-slate-200 max-w-full overflow-x-auto no-scrollbar">
               {([
                 { id: 'finished', label: '완제품', color: 'text-violet-600', icon: <Package size={13}/>, onClick: () => { setTopTab('finished'); setActiveCategory('전체'); setActiveSupplierId('전체'); } },
                 { id: 'goods', label: '상품', color: 'text-orange-500', icon: <Box size={13}/>, onClick: () => { setTopTab('goods'); setActiveCategory('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },

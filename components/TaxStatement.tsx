@@ -427,9 +427,9 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
 
       {/* ── 발행 탭 ── */}
       {activeTab === 'issue' && (
-        <div className="flex gap-4 items-start">
+        <div className="flex flex-col lg:flex-row gap-4 lg:items-start">
           {/* 좌측: 월 선택 + 거래처 */}
-          <div className="w-64 shrink-0 flex flex-col gap-3">
+          <div className="w-full lg:w-64 lg:shrink-0 flex flex-col gap-3">
             {/* 월 선택 */}
             <div className="bg-white rounded-2xl border border-slate-200 p-3">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">발행 월</p>
@@ -501,7 +501,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
               {/* 공급받는자 정보 */}
               <div className="bg-white rounded-2xl border border-slate-200 px-4 py-3">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">공급받는자 정보 (선택)</p>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {[
                     { key: 'bizNo', label: '사업자번호', placeholder: '000-00-00000' },
                     { key: 'ceoName', label: '대표자명', placeholder: '홍길동' },
@@ -748,9 +748,9 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
 
       {/* ── 조회 탭 ── */}
       {activeTab === 'history' && (
-        <div className="flex gap-4 items-start">
+        <div className="flex flex-col lg:flex-row gap-4 lg:items-start">
           {/* 좌측: 거래처 필터 */}
-          <div className="w-56 shrink-0 flex flex-col gap-3 sticky top-0">
+          <div className="w-full lg:w-56 lg:shrink-0 flex flex-col gap-3 lg:sticky lg:top-0">
             <div className="bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden" style={{maxHeight:400}}>
               <div className="px-3 pt-3 pb-2 border-b border-slate-100">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">발행 거래처</p>
@@ -786,17 +786,17 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
           </div>
 
           {/* 우측: 발행 목록 + 상세 */}
-          <div className="flex-1 flex gap-4 min-w-0">
+          <div className="flex-1 flex flex-col lg:flex-row gap-4 min-w-0">
             {/* 목록 */}
-            <div className="flex-1 flex flex-col gap-2">
+            <div className="flex-1 flex flex-col gap-2 min-w-0">
               {histGroups.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full bg-white rounded-2xl border border-dashed border-slate-200 py-20">
                   <Receipt size={36} className="text-slate-200 mb-3"/>
                   <p className="text-slate-400 text-sm font-bold">발행된 세금계산서가 없습니다</p>
                 </div>
               ) : (
-                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-                  <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 grid grid-cols-[1fr_90px_90px_110px_72px] gap-3">
+                <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
+                  <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 grid grid-cols-[1fr_90px_90px_110px_72px] gap-3 min-w-[540px]">
                     <span className="text-[10px] font-black text-slate-400 uppercase">거래처 / 전표</span>
                     <span className="text-[10px] font-black text-slate-400 uppercase text-center">거래기간</span>
                     <span className="text-[10px] font-black text-slate-400 uppercase text-center">발행일</span>
@@ -813,7 +813,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                       : `${tradeDates[0].slice(5)}~${tradeDates[tradeDates.length-1].slice(5)}`;
                     return (
                       <div key={group.key}>
-                        <div className={`grid grid-cols-[1fr_90px_90px_110px_72px] gap-3 items-center px-4 py-3 border-b border-slate-50 transition-all ${isSelected ? 'bg-amber-50' : 'hover:bg-slate-50'}`}>
+                        <div className={`grid grid-cols-[1fr_90px_90px_110px_72px] gap-3 items-center px-4 py-3 border-b border-slate-50 transition-all min-w-[540px] ${isSelected ? 'bg-amber-50' : 'hover:bg-slate-50'}`}>
                           <div>
                             <div className="flex items-center gap-2 flex-wrap">
                               <Building2 size={11} className="text-slate-400 shrink-0"/>
@@ -854,7 +854,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                         </div>
                         {/* 묶음 펼치기 - 개별 전표 */}
                         {group.isBundle && isExpanded && group.stmts.map(s => (
-                          <div key={s.id} className="grid grid-cols-[1fr_90px_90px_110px_72px] gap-3 items-center px-4 py-2 border-b border-slate-50 bg-violet-50/60 pl-10">
+                          <div key={s.id} className="grid grid-cols-[1fr_90px_90px_110px_72px] gap-3 items-center px-4 py-2 border-b border-slate-50 bg-violet-50/60 pl-10 min-w-[540px]">
                             <div className="text-[10px] text-slate-500">
                               {s.docNo} · {s.items.slice(0,2).map(i=>i.name).join(', ')}{s.items.length>2?` 외 ${s.items.length-2}건`:''}
                             </div>
