@@ -482,16 +482,6 @@ const ItemList: React.FC<ItemListProps> = ({
         }
       />
 
-      {/* 액션 버튼 줄 (헤더/탭 아래, 우측 정렬) */}
-      <div className="flex items-center gap-2 flex-wrap justify-end">
-        <button
-          onClick={() => setShowClosingModal(true)}
-          className="flex items-center gap-1.5 px-3 py-2 bg-orange-500 text-white rounded-xl text-xs font-black hover:bg-orange-600 transition-colors shadow-sm"
-        >
-          <ClipboardCheck size={13} /> 재고 마감
-        </button>
-      </div>
-
       <div className="flex flex-col space-y-4">
 
         {/* 카테고리 토글 + 검색 행 (입고/반품 탭에서는 숨김) */}
@@ -523,9 +513,15 @@ const ItemList: React.FC<ItemListProps> = ({
                 />
               </div>
             )}
-            {/* 원료재고 탭 전용: 입고/사용 기록 버튼 */}
-            {activeTab === 'master' && topTab === 'rawmaterial' && (
-              <div className="flex items-center gap-2 ml-auto">
+            {/* 우측 액션: 재고 마감 + (원료재고 탭) 입고/사용 기록 */}
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                onClick={() => setShowClosingModal(true)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-orange-500 text-white rounded-xl text-xs font-black hover:bg-orange-600 transition-colors shadow-sm"
+              >
+                <ClipboardCheck size={13} /> 재고 마감
+              </button>
+              {activeTab === 'master' && topTab === 'rawmaterial' && (<>
                 <button
                   type="button"
                   onClick={() => setRawEntryModal({ mode: 'inbound' })}
@@ -540,8 +536,8 @@ const ItemList: React.FC<ItemListProps> = ({
                 >
                   <FileDown size={13} /><span>사용 기록</span>
                 </button>
-              </div>
-            )}
+              </>)}
+            </div>
           </div>
         )}
 

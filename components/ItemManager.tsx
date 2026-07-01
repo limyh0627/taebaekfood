@@ -847,7 +847,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
       />
 
       {/* 액션 버튼 줄 (헤더/탭 아래, 우측 정렬) */}
-      <div className="flex items-center gap-2 flex-wrap justify-end">
+      <div className="flex items-center gap-2 flex-wrap">
         <button
           onClick={() => setShowDuplicates(p => !p)}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-black text-xs shadow-sm transition-all whitespace-nowrap ${showDuplicates ? 'bg-amber-50 text-amber-600 border border-amber-300' : 'bg-white text-slate-500 border border-slate-200 hover:border-slate-300'}`}

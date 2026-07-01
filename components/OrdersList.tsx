@@ -1018,38 +1018,39 @@ const OrdersList: React.FC<OrdersListProps> = ({
         }
       />
 
-      {/* 액션 버튼 줄 (헤더/탭 아래, 우측 정렬) */}
-      <div className="flex items-center gap-2 flex-wrap justify-end">
-        {onChangeOrdersMonths && (
-          <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm" title="Firestore 실시간 구독 범위 — 줄이면 읽기 비용 절감">
-            <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">실시간</span>
-            <select
-              value={ordersMonths ?? 12}
-              onChange={(e) => onChangeOrdersMonths(parseInt(e.target.value, 10))}
-              className="text-xs font-black text-slate-700 bg-transparent outline-none cursor-pointer"
-            >
-              {[1, 3, 6, 12, 24].map(n => (
-                <option key={n} value={n}>최근 {n}개월</option>
-              ))}
-            </select>
-          </div>
-        )}
-        {onPasteClick && (
-          <button onClick={onPasteClick} className="flex items-center gap-1.5 bg-violet-600 text-white px-3 py-2 rounded-xl text-xs font-black hover:bg-violet-700 transition-all shadow-sm">
-            <ClipboardPaste size={13} /><span className="hidden sm:inline">복사주문</span>
+      {/* 콘텐츠 첫 줄(검색) + 액션 버튼 같은 행 (검색 좌측 · 버튼 우측) */}
+      <div className="flex flex-col md:flex-row md:items-center gap-3">
+        <div className="relative w-full md:max-w-md">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input type="text" placeholder="고객명, 주문번호 검색..." value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full bg-white border border-slate-200 rounded-2xl pl-11 pr-4 py-2.5 md:py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+          />
+        </div>
+        <div className="flex items-center gap-2 flex-wrap shrink-0 md:ml-auto">
+          {onChangeOrdersMonths && (
+            <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm" title="Firestore 실시간 구독 범위 — 줄이면 읽기 비용 절감">
+              <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">실시간</span>
+              <select
+                value={ordersMonths ?? 12}
+                onChange={(e) => onChangeOrdersMonths(parseInt(e.target.value, 10))}
+                className="text-xs font-black text-slate-700 bg-transparent outline-none cursor-pointer"
+              >
+                {[1, 3, 6, 12, 24].map(n => (
+                  <option key={n} value={n}>최근 {n}개월</option>
+                ))}
+              </select>
+            </div>
+          )}
+          {onPasteClick && (
+            <button onClick={onPasteClick} className="flex items-center gap-1.5 bg-violet-600 text-white px-3 py-2 rounded-xl text-xs font-black hover:bg-violet-700 transition-all shadow-sm">
+              <ClipboardPaste size={13} /><span className="hidden sm:inline">복사주문</span>
+            </button>
+          )}
+          <button onClick={onAddClick} className="flex items-center gap-1.5 bg-indigo-600 text-white px-3 py-2 rounded-xl text-xs font-black hover:bg-indigo-700 transition-all shadow-sm">
+            <Plus size={13} /><span className="hidden sm:inline">주문 생성</span>
           </button>
-        )}
-        <button onClick={onAddClick} className="flex items-center gap-1.5 bg-indigo-600 text-white px-3 py-2 rounded-xl text-xs font-black hover:bg-indigo-700 transition-all shadow-sm">
-          <Plus size={13} /><span className="hidden sm:inline">주문 생성</span>
-        </button>
-      </div>
-
-      <div className="relative max-w-full md:max-w-md">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-        <input type="text" placeholder="고객명, 주문번호 검색..." value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full bg-white border border-slate-200 rounded-2xl pl-11 pr-4 py-2.5 md:py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
-        />
+        </div>
       </div>
 
       {activeTab === 'delivery' && (

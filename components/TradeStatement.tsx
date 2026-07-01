@@ -1561,38 +1561,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         }
       />
 
-      {/* 액션 버튼 줄 (헤더/탭 아래, 우측 정렬) */}
-      <div className="flex items-center gap-2 flex-wrap justify-end">
-        {mainTab === 'history' && <>
-          <button
-            onClick={() => openCreate('매입')}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-rose-600 text-white hover:bg-rose-700 shadow-sm transition-all"
-          >
-            <Plus size={13} strokeWidth={3}/>매입전표
-          </button>
-          <button
-            onClick={() => openCreate('매출')}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-all"
-          >
-            <Plus size={13} strokeWidth={3}/>매출전표
-          </button>
-          <button
-            onClick={() => { setShowQuickPay(true); setQuickPayClientId(''); setQuickPayClientSearch(''); setQuickPayAmount(''); setQuickPayNote(''); setQuickPayDate(new Date().toISOString().slice(0,10)); }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition-all"
-          >
-            <Wallet size={13}/>수금/지불
-          </button>
-        </>}
-        <button
-          onClick={() => { setShowCompanyModal(true); setCompanyForm(companyInfo ?? { name:'',ceoName:'',bizNo:'',bizType:'',bizItem:'',address:'',phone:'',fax:'',email:'' }); }}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all"
-          title="회사 정보 설정"
-        >
-          <Save size={13}/>회사정보
-        </button>
-      </div>
-
-
       {/* ── 세금계산서 탭 (TaxStatement 컴포넌트로 이동) ── */}
       {false && (() => {
         const taxClients = partners
@@ -2014,8 +1982,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
       {mainTab === 'history' && <>
 
-      {/* ── 필터 바 ── */}
-      <div className="bg-white rounded-2xl border border-slate-200 px-4 py-3 space-y-2.5">
+      {/* ── 필터 바 + 액션 버튼 (같은 행: 필터 좌측 · 버튼 우측) ── */}
+      <div className="flex flex-col md:flex-row md:items-start gap-3">
+      <div className="flex-1 min-w-0 bg-white rounded-2xl border border-slate-200 px-4 py-3 space-y-2.5">
         {/* 1행: 기간 퀵버튼 + 날짜 직접입력 */}
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-10 shrink-0">기간</span>
@@ -2062,6 +2031,34 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             : <span className="text-[11px] text-slate-400 font-bold shrink-0">{filteredHistory.length}건</span>
           }
         </div>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap shrink-0">
+        <button
+          onClick={() => openCreate('매입')}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-rose-600 text-white hover:bg-rose-700 shadow-sm transition-all"
+        >
+          <Plus size={13} strokeWidth={3}/>매입전표
+        </button>
+        <button
+          onClick={() => openCreate('매출')}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-all"
+        >
+          <Plus size={13} strokeWidth={3}/>매출전표
+        </button>
+        <button
+          onClick={() => { setShowQuickPay(true); setQuickPayClientId(''); setQuickPayClientSearch(''); setQuickPayAmount(''); setQuickPayNote(''); setQuickPayDate(new Date().toISOString().slice(0,10)); }}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition-all"
+        >
+          <Wallet size={13}/>수금/지불
+        </button>
+        <button
+          onClick={() => { setShowCompanyModal(true); setCompanyForm(companyInfo ?? { name:'',ceoName:'',bizNo:'',bizType:'',bizItem:'',address:'',phone:'',fax:'',email:'' }); }}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all"
+          title="회사 정보 설정"
+        >
+          <Save size={13}/>회사정보
+        </button>
+      </div>
       </div>
 
       {/* ── 발행내역 테이블 ── */}
