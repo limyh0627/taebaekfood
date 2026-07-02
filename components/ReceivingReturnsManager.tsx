@@ -390,22 +390,27 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
       result.push({ name, sub, product });
     };
 
+    // 품목관리 거래처에서 물린 매입 연결 (partner_item, Direction=in)
+    const inboundPartnerItemIds = new Set(
+      partnerIn
+        .filter(ps => (ps.Partner_ID ?? ps.partnerId) === partner.id)
+        .map(ps => ps.Item_ID ?? ps.itemId)
+        .filter((id): id is string => !!id)
+    );
+
     if (partner.purchaseItems && partner.purchaseItems.length > 0) {
-      // purchaseItems가 있으면 이것만 사용 (수동 설정이 우선)
+      // purchaseItems(X로 수동 관리한 스냅샷) 우선 표시
       partner.purchaseItems.forEach(pi => {
         const product = items.find(p => p.id === pi.id)
           ?? items.find(p => p.name === pi.name)
           ?? null;
         push(product?.name ?? pi.name, null, product);
       });
+      // + partner_item(in) 연결 병합 — 예전엔 purchaseItems만 배타 사용해서
+      // 품목관리 거래처에서 새로 물린 매입품목이 선입고에 안 보였음 (push가 중복 제거)
+      items.filter(p => inboundPartnerItemIds.has(p.id)).forEach(p => push(p.name, null, p));
     } else {
       // purchaseItems 미설정 → partner_item(Direction=in) 우선, partnerId 폴백
-      const inboundPartnerItemIds = new Set(
-        partnerIn
-          .filter(ps => (ps.Partner_ID ?? ps.partnerId) === partner.id)
-          .map(ps => ps.Item_ID ?? ps.itemId)
-          .filter((id): id is string => !!id)
-      );
       items
         .filter(p => inboundPartnerItemIds.has(p.id) || p.partnerId === partner.id)
         .forEach(p => push(p.name, null, p));
@@ -532,6 +537,13 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         name: sub?.name ?? product?.name ?? name,
       })),
     });
+    // 품목관리 거래처의 partner_item(in) 연결도 함께 해제 — 안 지우면 병합 표시 때문에 다시 나타남
+    // (setProductSuppliers의 문서 ID 규칙: `${itemId}_${partnerId}_in`, 없으면 no-op)
+    try {
+      await deleteItem('partner_item', `${key}_${partner.id}_in`);
+    } catch (err) {
+      console.error('[매입품목 해제] partner_item 삭제 실패:', err);
+    }
   };
 
   // ══════════════════════════════════════════
