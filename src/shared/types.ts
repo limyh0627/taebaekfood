@@ -544,6 +544,7 @@ export interface RawMaterialEntry {
                         // 신규 entry는 모두 'kg'로 저장 (canonical). 'L'은 옛 데이터 또는 정정 시 호환용
   originalAmount?: number;   // 사용자가 친 원본 값 (단위 환산 전)
   originalUnit?: 'kg' | 'L'; // 사용자가 친 원본 단위
+  targetKg?: number;         // 재고실사정정일 때 실사 목표 절대값(kg) — 수불부 잔량을 이 값으로 리셋(앵커)
 }
 
 

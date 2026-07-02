@@ -787,7 +787,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
           let captured: { distribution: { supplierName: string; lotNo?: string; kg: number }[]; shortageKg: number } | null = null;
           await mutateRawMaterialLots(
             rawItem.id,
-            (lots) => { const r = deductFromLots(lots, usedKg, mix); captured = r; return r.lots; },
+            // withCarryOverLot: 로트가 없는데 stock>0인 원료(미연동/소실)는 이월 로트로 보존 후 차감.
+            // 없으면 computeStock이 stock을 로트합계(0)로 덮어써 기존 재고가 증발한다(7/1 재고 소실 사고 원인).
+            (lots, stock) => { const r = deductFromLots(withCarryOverLot(lots, stock, raw), usedKg, mix); captured = r; return r.lots; },
             (lots) => lotStockInUnit(lots, raw),
           );
           if (captured) {
@@ -1497,6 +1499,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     used: 0,
                     note: `${entry.material} 압착 (수율 ${rate * 100}%)`,
                     createdAt: new Date().toISOString(),
+                    type: 'auto', // 자동 파생 — 수불부 표시 파생행과 이중계상 방지 판별에도 사용
                     unit: 'kg', // canonical
                   });
                   // 파생 원료(통깨참기름 등)에도 로트 생성 → 수불부와 로트/재고 일치 (안 만들면 출고 시 로트 부족)
@@ -2690,7 +2693,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 )}
 
                 {docTab === '원료수불부' && (() => {
-                  type UsageRow = { date: string; received: number; used: number; note: string; type: 'auto' | 'manual' | 'correction'; id?: string };
+                  type UsageRow = { date: string; received: number; used: number; note: string; type: 'auto' | 'manual' | 'correction'; id?: string; createdAt?: string; targetKg?: number };
 
                   // 수율: 원재료 사용 → 반제품 입고 자동 파생
                   const YIELD_MAP: Record<string, { product: string; yield: number }> = {
@@ -2706,10 +2709,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     if (!sourceEntry) return rows;
                     const [sourceMaterial, { yield: yieldRate }] = sourceEntry;
                     mergedRawMaterialLedger
-                      .filter(e => e.material === sourceMaterial && e.used > 0 && e.type !== 'auto')
+                      .filter(e => e.material === sourceMaterial && e.used > 0 && e.type !== 'auto' && e.note !== '재고실사정정')
                       .forEach(e => {
                         const derivedKg = Math.round(e.used * yieldRate * 1000) / 1000;
-                        rows.push({ date: e.date, received: derivedKg, used: 0, note: `${sourceMaterial} 압착 (수율 ${yieldRate * 100}%)`, type: 'auto' as const });
+                        // YIELD_AUTO(rm-yield-*)가 DB에 실제 파생입고를 이미 기록한 경우 표시용 파생행을 만들면
+                        // 같은 압착이 두 번 잡힌다(이중계상) → DB에 동일 건이 있으면 건너뜀
+                        const storedExists = mergedRawMaterialLedger.some(x =>
+                          x.material === material && x.date === e.date &&
+                          (x.note ?? '').startsWith(`${sourceMaterial} 압착`) &&
+                          Math.abs((x.received ?? 0) - derivedKg) < 0.005);
+                        if (storedExists) return;
+                        rows.push({ date: e.date, received: derivedKg, used: 0, note: `${sourceMaterial} 압착 (수율 ${yieldRate * 100}%)`, type: 'auto' as const, createdAt: e.createdAt });
                       });
                     return rows;
                   };
@@ -2724,20 +2734,26 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         const isLegacyL = e.unit === 'L' && density !== 1.0;
                         const received = isLegacyL ? Math.round(e.received * density * 1000) / 1000 : e.received;
                         const used     = isLegacyL ? Math.round(e.used     * density * 1000) / 1000 : e.used;
-                        return { date: e.date, received, used, note: e.note, type: (e.type || 'manual') as UsageRow['type'], id: e.id };
+                        return { date: e.date, received, used, note: e.note, type: (e.type || 'manual') as UsageRow['type'], id: e.id, createdAt: e.createdAt, targetKg: e.targetKg };
                       });
                     const derivedEntries = calcDerivedReceived(material);
-                    const allEntries = [...dbEntries, ...derivedEntries].sort((a, b) => a.date.localeCompare(b.date));
+                    // 같은 날짜 안에서는 기록 시각 순 — 실사(targetKg 앵커)와 당일 입출고의 순서가 잔량에 영향
+                    const allEntries = [...dbEntries, ...derivedEntries].sort((a, b) =>
+                      a.date === b.date ? (a.createdAt ?? '').localeCompare(b.createdAt ?? '') : a.date.localeCompare(b.date));
+                    // 잔량 누적: 재고실사정정(targetKg)은 잔량을 실사 절대값으로 리셋(앵커) —
+                    // 과거 장부 오차·이중계상이 있어도 실사 이후 잔량은 실물 기준으로 맞는다
+                    const applyRow = (bal: number, e: UsageRow) =>
+                      e.targetKg != null ? e.targetKg : Math.round((bal + e.received - e.used) * 1000) / 1000;
                     // 전재고 계산 (월 이전 누적)
                     const prevBalance = allEntries
                       .filter(e => e.date < `${docYearMonth}-01`)
-                      .reduce((s, e) => s + e.received - e.used, 0);
+                      .reduce(applyRow, 0);
                     // 월내 행
                     const monthEntries = allEntries.filter(e => e.date.startsWith(docYearMonth));
                     let balance = prevBalance;
                     return monthEntries.map(e => {
                       const prev = balance;
-                      balance = Math.round((balance + e.received - e.used) * 1000) / 1000;
+                      balance = applyRow(balance, e);
                       return { ...e, prevBalance: Math.round(prev * 1000) / 1000, currentBalance: balance };
                     });
                   };
@@ -2900,6 +2916,32 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                               originalAmount: amt,
                                               originalUnit: inputUnit,
                                             });
+                                            // 로트/재고 연동 — 예전엔 수불부 문서만 쓰고 로트를 안 건드려
+                                            // 정정이 실재고에 반영 안 됐음(수불부-재고 괴리 원인 중 하나)
+                                            const rawItem = allItems.find(i => i.category === 'raw' && baseRawName(i.name) === rmActiveMaterial);
+                                            if (rawItem) {
+                                              try {
+                                                if (correctionUsed > 0) {
+                                                  // 사용량 증가 = 재고 차감 (FIFO, 기존재고 이월 보존)
+                                                  await mutateRawMaterialLots(
+                                                    rawItem.id,
+                                                    (lots, stock) => deductFromLots(withCarryOverLot(lots, stock, rmActiveMaterial), correctionUsed).lots,
+                                                    (lots) => lotStockInUnit(lots, rmActiveMaterial),
+                                                  );
+                                                } else if (correctionUsed < 0) {
+                                                  // 사용량 감소 = 재고 복원 (정정 로트 추가)
+                                                  const lot = buildReceiveLot({ material: rmActiveMaterial, supplierName: '수불부 정정', qtyIn: 0, kgIn: -correctionUsed, receivedDate: rmCorrectionForm.date });
+                                                  await mutateRawMaterialLots(
+                                                    rawItem.id,
+                                                    (lots, stock) => { const base = withCarryOverLot(lots, stock, rmActiveMaterial); return [...base, { ...lot, lotNo: nextLotNo(base, lot.receivedDate) }]; },
+                                                    (lots) => lotStockInUnit(lots, rmActiveMaterial),
+                                                  );
+                                                }
+                                              } catch (err) {
+                                                console.error('[수불부 정정] 로트/재고 반영 실패:', err);
+                                                alert('정정 기록은 저장됐지만 재고(로트) 반영에 실패했습니다. 재고를 확인해 주세요.');
+                                              }
+                                            }
                                             setRmCorrectionTargetId(null);
                                             setLedgerReloadKey(k => k + 1);
                                           }}
@@ -3804,7 +3846,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
             // 필요해 읽기 한도(429) 시 throw 되는데, 예전엔 그게 품목 저장 자체를 막아 "저장이 안 됨"
             // 으로 보였다. 품목부터 저장하고 매핑은 부수효과로 분리한다(Blaze 후에도 유지할 순서).
             const { partnerIds: _cids, ...productData } = p;
-            await addItem(collectionName, productData);
+            if (editingProduct) {
+              // 기존 품목은 필드 병합(updateDoc)으로만 수정 — addItem(setDoc 전체교체)을 쓰면
+              // 폼이 모르는 필드(원료 lots·mixEnabled 등)가 통째로 지워진다(6/29 원료 로트 소실 사고 원인).
+              // stock도 모달 열 때 스냅샷이라 저장 시점 값과 다를 수 있어(로트 차감 등) 수정 시엔 건드리지 않는다.
+              const { stock: _staleStock, ...safeData } = productData;
+              await updateItem(collectionName, p.id, safeData);
+            } else {
+              await addItem(collectionName, productData);
+            }
             // partnerOut 컬렉션 거래처 매핑 — 실패해도 품목 저장은 유지(읽기 한도 등).
             try {
               await setProductClients(p.id, p.partnerIds ?? []);

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowUp, ArrowDown, Layers, Truck, Trash2, CornerDownRight, Tag, Check, X, History } from 'lucide-react';
 import { Item, RawMaterialLot, RawMaterialEntry } from '../src/shared/types';
-import { mutateRawMaterialLots, updateItem } from '../src/shared/services/firebaseService';
+import { mutateRawMaterialLots, updateItem, addItem } from '../src/shared/services/firebaseService';
 import { baseRawName, unitOf, kgToUnit, lotKgRemaining, lotStockInUnit } from '../src/constants/formula';
 import RawLedgerList from './RawLedgerList';
 
@@ -92,6 +92,20 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
         (cur) => cur.filter(l => l.id !== lot.id),
         (lots) => lotStockInUnit(lots, material),
       );
+      // 감사추적: 로트 삭제도 수불부에 남긴다 (예전엔 흔적 없이 재고가 빠져 원인 추적이 안 됐음)
+      if (lot.kgRemaining > 0) {
+        await addItem('rawMaterialLedger', {
+          id: `rm-lotdel-${Date.now()}`,
+          material,
+          date: new Date().toISOString().slice(0, 10),
+          received: 0,
+          used: lot.kgRemaining,
+          note: `로트 삭제: ${lot.supplierName}${lot.lotNo ? ` (${lot.lotNo})` : ''}${currentUserName ? ` · ${currentUserName}` : ''}`,
+          createdAt: new Date().toISOString(),
+          type: 'correction',
+          unit: 'kg',
+        });
+      }
     } catch (err) {
       console.error('[로트 삭제 실패]', err);
     } finally {

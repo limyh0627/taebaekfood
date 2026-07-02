@@ -296,6 +296,7 @@ const ItemList: React.FC<ItemListProps> = ({
           note: '재고실사정정',
           createdAt: new Date().toISOString(),
           type: 'correction', unit: 'kg',
+          targetKg, // 실사 절대값(kg) — 수불부 잔량이 이 값으로 리셋(과거 장부 오차와 무관하게 실물 기준)
         } as RawMaterialEntry);
         setToast({ message: `${product.name} 실사조정 ${adjustKg > 0 ? '+' : ''}${Math.round(adjustKg * 10) / 10}kg 반영` });
       }
