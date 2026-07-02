@@ -48,3 +48,14 @@
 
 ### 이전 작업 (읽기 전용 — DB 미변경)
 - `scripts/diagnose-punghoe*.mjs`, `scripts/check-raw-purchasing-skus.mjs`, `scripts/lot-migration.mts --dry`, `scripts/verify-lots.mjs` — 전부 **조회만** 함. 쓰기 없음.
+
+## 2026-07-02 — 매입 SKU 원료 연결 (rawMaterialName 지정)
+
+실행: `node scripts/set-raw-material-name.mjs` (사용자 요청). 이름 변경 대신 rawLotTarget이 우선 참조하는 필드 지정.
+
+| 문서 ID | 품목 | 변경 | 비고 |
+|---|---|---|---|
+| `p-108` | 시골향 볶음검정참깨-벌크/20kg (product) | `rawMaterialName` = "볶음검정참깨" | 입고 시 개수×20kg → 원료 로트 |
+| `p-1780646377919` | 볶음참깨-자루/20kg (product) | `rawMaterialName` = "볶음참깨" | 입고 시 개수×20kg → 원료 로트 |
+
+- 6/29~7/1 로트 소실 사고 복구(restore-lots-260702.mjs)는 **사용자 보류 중** — 아직 미실행.
