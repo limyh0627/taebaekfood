@@ -521,14 +521,7 @@ const ItemList: React.FC<ItemListProps> = ({
               >
                 <ClipboardCheck size={13} /> 재고 마감
               </button>
-              {activeTab === 'master' && topTab === 'rawmaterial' && (<>
-                <button
-                  type="button"
-                  onClick={() => setRawEntryModal({ mode: 'inbound' })}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-all shadow-sm"
-                >
-                  <Inbox size={13} /><span>입고 기록</span>
-                </button>
+              {activeTab === 'master' && topTab === 'rawmaterial' && (
                 <button
                   type="button"
                   onClick={() => setRawEntryModal({ mode: 'usage' })}
@@ -536,7 +529,7 @@ const ItemList: React.FC<ItemListProps> = ({
                 >
                   <FileDown size={13} /><span>사용 기록</span>
                 </button>
-              </>)}
+              )}
             </div>
           </div>
         )}
