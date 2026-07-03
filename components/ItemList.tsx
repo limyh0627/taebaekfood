@@ -1604,7 +1604,7 @@ const ItemList: React.FC<ItemListProps> = ({
                 const product = productMap.get(conf.id);
                 return product && !statementItemNames.has(product.name);
               });
-              const totalCount = confirmedWithoutStatement.length + pendingStatements.length;
+              const totalCount = confirmedWithoutStatement.length;
 
               if (totalCount === 0 && cart.length === 0) return (
                 <div className="bg-white rounded-2xl border border-slate-100 py-20 flex flex-col items-center justify-center gap-3 opacity-30">
@@ -1637,34 +1637,7 @@ const ItemList: React.FC<ItemListProps> = ({
                     </div>
                   </div>
                   <div className="divide-y divide-slate-50">
-                    {/* 전표 기반 입고 대기 */}
-                    {pendingStatements
-                      .filter(stmt => activeSupplierId === '전체' || stmt.partnerId === activeSupplierId)
-                      .map(stmt => (
-                      <div key={stmt.id} className="px-5 py-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[9px] font-black text-sky-600 bg-sky-50 border border-sky-100 px-1.5 py-0.5 rounded-md">전표</span>
-                            <span className="text-xs font-black text-orange-500 bg-orange-50 px-2 py-0.5 rounded-md">{stmt.partnerName}</span>
-                            <span className="text-[10px] text-slate-400">{stmt.tradeDate} · {stmt.docNo}</span>
-                          </div>
-                          <button
-                            onClick={() => onMarkStatementReceived?.(stmt.id)}
-                            className="text-[10px] font-black px-3 py-1.5 rounded-xl bg-slate-800 text-white hover:bg-slate-900 transition-all shrink-0"
-                          >전체 입고확인</button>
-                        </div>
-                        <div className="space-y-1">
-                          {stmt.items.map((item, i) => (
-                            <div key={i} className="flex items-center justify-between text-xs px-1">
-                              <span className="font-bold text-slate-700">{item.name}{item.spec ? ` (${item.spec})` : ''}</span>
-                              <span className="text-slate-500 font-black">
-                                {(item as any).isBoxUnit ? `${item.qty}BOX(${item.qty*(item as any).boxSize||item.qty*12}개)` : `${item.qty.toLocaleString()}개`}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
+                    {/* 전표 기반 입고확인 제거됨 — 매입전표는 발주카드만 생성하고, 재고 반영은 발주카드 '입고확정'(lot)으로 처리 */}
                     {/* 전표 없는 수동 입고 대기 */}
                     {confirmedWithoutStatement
                       .filter(conf => {
