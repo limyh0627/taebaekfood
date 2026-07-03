@@ -621,18 +621,41 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                         onUpsertPartnerItem({ ...(psOut ?? {}), id: psOut?.id ?? `${item.id}_${selectedClientId}_out`, Item_ID: item.id, Partner_ID: selectedClientId, Direction: 'out', price: num } as PartnerItem);
                         setSalesPriceEdits(prev => { const n = { ...prev }; delete n[editKey]; return n; });
                       };
+                      const cancelEdit = () => setSalesPriceEdits(prev => { const n = { ...prev }; delete n[editKey]; return n; });
                       return (
                         <td className="px-2 py-3 text-right">
-                          <input
-                            type="number"
-                            min={0}
-                            value={editVal ?? (curPrice ?? '')}
-                            onChange={e => setSalesPriceEdits(prev => ({ ...prev, [editKey]: e.target.value }))}
-                            onBlur={savePrice}
-                            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                            placeholder="단가"
-                            className="w-20 text-right bg-white border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold outline-none focus:ring-2 focus:ring-indigo-400"
-                          />
+                          {editVal === undefined ? (
+                            <div className="flex items-center justify-end gap-1.5">
+                              <span className={`text-[11px] font-bold whitespace-nowrap ${curPrice != null ? 'text-slate-700' : 'text-slate-300'}`}>
+                                {curPrice != null ? `${Number(curPrice).toLocaleString()}원` : '미설정'}
+                              </span>
+                              <button
+                                onClick={() => setSalesPriceEdits(prev => ({ ...prev, [editKey]: String(curPrice ?? '') }))}
+                                className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all shrink-0"
+                                title="판매단가 수정">
+                                <Edit size={13} />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-end gap-1">
+                              <input
+                                type="number"
+                                min={0}
+                                autoFocus
+                                value={editVal}
+                                onChange={e => setSalesPriceEdits(prev => ({ ...prev, [editKey]: e.target.value }))}
+                                onKeyDown={e => { if (e.key === 'Enter') savePrice(); if (e.key === 'Escape') cancelEdit(); }}
+                                placeholder="단가"
+                                className="w-20 text-right bg-white border border-indigo-300 rounded-lg px-2 py-1 text-[11px] font-bold outline-none focus:ring-2 focus:ring-indigo-400"
+                              />
+                              <button onClick={savePrice} className="p-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-all shrink-0" title="저장">
+                                <Save size={12} />
+                              </button>
+                              <button onClick={cancelEdit} className="p-1 rounded-md text-slate-400 hover:bg-slate-100 transition-all shrink-0" title="취소">
+                                <X size={12} />
+                              </button>
+                            </div>
+                          )}
                         </td>
                       );
                     })()}
