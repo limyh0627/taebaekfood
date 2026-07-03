@@ -29,6 +29,7 @@ export const RM_LIST = [
   '볶음참깨', '볶음들깨', '볶음검정참깨',
   '통깨참기름', '깨분참기름', '통들깨들기름', '수입들기름',
   '생들기름', // 누락돼 있던 원료 — 없으면 거래처 입고가 로트/수불부에 안 잡히고(rawLotTarget null) 차감만 됨
+  '들깨가루(고운)', // 2026-07-02 실사 시 추가한 원료
 ];
 
 /** 원료별 운영 단위 (입고/사용·원료수불부 표기 단위) */
@@ -38,6 +39,7 @@ export const RM_UNITS: Record<string, RawUnit> = {
   '볶음참깨': 'kg', '볶음들깨': 'kg', '볶음검정참깨': 'kg',
   '통깨참기름': 'L', '깨분참기름': 'L', '통들깨들기름': 'L', '수입들기름': 'L',
   '생들기름': 'L',
+  '들깨가루(고운)': 'kg',
 };
 export const unitOf = (material: string): RawUnit => RM_UNITS[material] ?? 'kg';
 

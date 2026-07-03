@@ -447,20 +447,6 @@ const ItemList: React.FC<ItemListProps> = ({
 
   return (
     <div className="space-y-5 animate-in fade-in duration-300 h-full flex flex-col relative">
-
-      {/* 장바구니 FAB */}
-      {activeTab === 'master' && (
-        <button
-          onClick={() => setShowCartPanel(true)}
-          className="fixed bottom-6 right-4 z-30 flex items-center justify-center w-14 h-14 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-full shadow-xl transition-all"
-        >
-          <ShoppingCart size={22} />
-          {cart.length > 0 && (
-            <span className="absolute -top-1 -right-1 bg-amber-400 text-white w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-black shadow">{cart.length}</span>
-          )}
-        </button>
-      )}
-
       <PageHeader
         title="재고 관리"
         subtitle="실시간 재고 현황을 파악하고 부족한 자재를 즉시 발주하세요."
@@ -482,6 +468,19 @@ const ItemList: React.FC<ItemListProps> = ({
           </div>
         }
       />
+
+      {/* 장바구니 FAB (fixed — 위치 무관하므로 헤더 뒤에 두어 space-y 마진 영향 제거) */}
+      {activeTab === 'master' && (
+        <button
+          onClick={() => setShowCartPanel(true)}
+          className="fixed bottom-6 right-4 z-30 flex items-center justify-center w-14 h-14 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-full shadow-xl transition-all"
+        >
+          <ShoppingCart size={22} />
+          {cart.length > 0 && (
+            <span className="absolute -top-1 -right-1 bg-amber-400 text-white w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-black shadow">{cart.length}</span>
+          )}
+        </button>
+      )}
 
       <div className="flex flex-col space-y-4">
 
