@@ -1458,8 +1458,16 @@ const ItemList: React.FC<ItemListProps> = ({
               <div className="p-5 border-t border-slate-100 flex gap-2">
                 <button onClick={() => setRowEditProduct(null)} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm">취소</button>
                 <button
-                  onClick={() => {
-                    onUpdateItem({ ...rowEditProduct, ...rowEditForm } as Item);
+                  onClick={async () => {
+                    const p = rowEditProduct!;
+                    const { stock: newStock, ...meta } = rowEditForm;
+                    if (p.category === 'raw' && newStock !== undefined && newStock !== p.stock) {
+                      // 원료: 메타만 반영하고 재고 변경은 실사조정(lot·수불부)으로
+                      onUpdateItem({ ...p, ...meta } as Item);
+                      await commitStockEdit(p, newStock);
+                    } else {
+                      onUpdateItem({ ...p, ...rowEditForm } as Item);
+                    }
                     setRowEditProduct(null);
                   }}
                   className="flex-1 py-2.5 bg-indigo-600 text-white font-bold rounded-xl text-sm hover:bg-indigo-700 transition-all"
