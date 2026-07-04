@@ -5,6 +5,20 @@ import { ProductionRecord, Item, Order, OrderStatus } from '../types';
 
 const SUB_ONLY_CATS = new Set(['용기', '마개', '테이프', '박스', '라벨', '향미유', '고춧가루']);
 
+// 제품 종류 분류 (참기름/들기름 등) — 생산 요약 그룹핑용
+const TYPE_ORDER = ['참기름', '들기름', '생들기름', '볶음참깨', '검정참깨', '들깨가루', '들깨', '기타'];
+const productType = (name: string): string => {
+  const n = name || '';
+  if (n.includes('생들기름')) return '생들기름';
+  if (n.includes('들기름')) return '들기름';
+  if (n.includes('참기름')) return '참기름';
+  if (n.includes('검정')) return '검정참깨';
+  if (n.includes('들깨가루') || n.includes('탈피들깨')) return '들깨가루';
+  if (n.includes('참깨')) return '볶음참깨';
+  if (n.includes('들깨')) return '들깨';
+  return '기타';
+};
+
 interface ProductionManagerProps {
   records: ProductionRecord[];
   items: Item[];
@@ -39,6 +53,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   const [editingDateVal, setEditingDateVal] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [expandedRecId, setExpandedRecId] = useState<string | null>(null);
+  const [recLimit, setRecLimit] = useState(30);
 
   // 정방향 추적: 주문 문서의 rawConsumedLots 스냅샷 → 생산실적 행에서 조회(추가 읽기 0)
   const consumedByOrderId = useMemo(() => {
@@ -382,11 +397,9 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
 
       {/* 월별 요약 — 카테고리별 리스트 */}
       {monthlySummary.length > 0 && (() => {
-        const CAT_LABEL: Record<string, string> = { product: '완제품', goods: '상품', wip: '반제품', giftset: '선물세트', raw: '원료', submaterial: '부자재', shipping: '배송' };
-        const CAT_ORDER = ['product', 'goods', 'wip', 'giftset', 'raw', 'submaterial', 'shipping'];
         const groups = new Map<string, typeof monthlySummary>();
-        for (const s of monthlySummary) { const k = s.category || '기타'; if (!groups.has(k)) groups.set(k, []); groups.get(k)!.push(s); }
-        const keys = [...groups.keys()].sort((a, b) => ((CAT_ORDER.indexOf(a) + 1) || 99) - ((CAT_ORDER.indexOf(b) + 1) || 99));
+        for (const s of monthlySummary) { const k = productType(s.itemName); if (!groups.has(k)) groups.set(k, []); groups.get(k)!.push(s); }
+        const keys = [...groups.keys()].sort((a, b) => ((TYPE_ORDER.indexOf(a) + 1) || 99) - ((TYPE_ORDER.indexOf(b) + 1) || 99));
         return (
           <div className="bg-white rounded-2xl border border-slate-100 p-5">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
@@ -403,7 +416,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
                 return (
                   <div key={k}>
                     <div className="flex items-center gap-2 mb-1.5">
-                      <span className="text-[11px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">{CAT_LABEL[k] ?? k}</span>
+                      <span className="text-[11px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">{k}</span>
                       <span className="text-[10px] text-slate-400 font-bold">{arr.length}종 · 합계 {subQty.toLocaleString()}개</span>
                     </div>
                     <div className="divide-y divide-slate-50 border border-slate-100 rounded-xl overflow-hidden">
@@ -448,7 +461,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {filteredRecords.map(r => { const trace = traceOf(r); const isExp = expandedRecId === r.id; return (
+                {filteredRecords.slice(0, recLimit).map(r => { const trace = traceOf(r); const isExp = expandedRecId === r.id; return (
                   <React.Fragment key={r.id}>
                   <tr className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3 whitespace-nowrap">
@@ -551,6 +564,19 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
                 ); })}
               </tbody>
             </table>
+            {filteredRecords.length > recLimit && (
+              <div className="flex items-center justify-center gap-2 px-4 py-3 border-t border-slate-100 bg-slate-50/40">
+                <span className="text-[11px] text-slate-400 font-bold">{recLimit} / {filteredRecords.length}건</span>
+                <button
+                  onClick={() => setRecLimit(n => n + 30)}
+                  className="text-[11px] font-black px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 transition-all"
+                >+30건 더 보기</button>
+                <button
+                  onClick={() => setRecLimit(filteredRecords.length)}
+                  className="text-[11px] font-black px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-600 transition-all"
+                >전체 ({filteredRecords.length})</button>
+              </div>
+            )}
           </div>
         )}
       </div>
