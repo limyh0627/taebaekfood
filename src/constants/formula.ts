@@ -12,6 +12,15 @@ export const PRODUCT_FORMULA: Record<string, { raw: string; ratio: number }[]> =
   '시골향들깨가루': [{ raw: '볶음들깨', ratio: 1.0 }],
   '시골향탈피들깨가루': [{ raw: '탈피들깨가루', ratio: 1.0 }],
   '시골향볶음검정참깨': [{ raw: '볶음검정참깨', ratio: 1.0 }],
+  // OEM/타브랜드 (2026-07 추가) — item_formula와 동일
+  '통들깨-낱개/1kg': [{ raw: '볶음들깨', ratio: 1.0 }],
+  '시골집참기름(해내음)': [{ raw: '통깨참기름', ratio: 0.5 }, { raw: '깨분참기름', ratio: 0.5 }],
+  '하남댁들기름': [{ raw: '통들깨들기름', ratio: 0.25 }, { raw: '수입들기름', ratio: 0.75 }],
+  '해달참기름': [{ raw: '통깨참기름', ratio: 0.2 }, { raw: '깨분참기름', ratio: 0.8 }],
+  '해달들기름': [{ raw: '통들깨들기름', ratio: 0.2 }, { raw: '수입들기름', ratio: 0.8 }],
+  '하남댁참기름': [{ raw: '통깨참기름', ratio: 0.2 }, { raw: '깨분참기름', ratio: 0.8 }],
+  '하남댁맑음들기름': [{ raw: '생들기름', ratio: 1.0 }],
+  '가득찬순참기름': [{ raw: '통깨참기름', ratio: 0.2 }, { raw: '깨분참기름', ratio: 0.8 }],
 };
 
 /** 밀도 (kg/L) — 고체류는 용량 단위(g, kg)로 직접 계산 */
