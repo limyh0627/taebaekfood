@@ -197,24 +197,28 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
 
   return (
     <div className="space-y-4 pb-10">
-      <PageHeader title="생산 실적" subtitle="WIP → FINISHED 전환 이력 관리" />
-      <div className="flex gap-2 justify-end">
-        <button
-          onClick={() => { setSyncing(true); handleSyncFromOrders().catch(e => { alert(`오류: ${e}`); setSyncing(false); }); }}
-          disabled={syncing}
-          className="flex items-center gap-2 px-3 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all disabled:opacity-50"
-        >
-          <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-          주문 이력 동기화
-        </button>
-        <button
-          onClick={() => setShowForm(v => !v)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-all"
-        >
-          <Plus size={16} />
-          직접 입력
-        </button>
-      </div>
+      <PageHeader
+        title="생산 실적"
+        subtitle="일자별 생산·출고 실적과 투입 원료(lot) 추적"
+        right={
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setSyncing(true); handleSyncFromOrders().catch(e => { alert(`오류: ${e}`); setSyncing(false); }); }}
+              disabled={syncing}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black border border-slate-200 text-slate-600 hover:bg-slate-50 transition-all disabled:opacity-50 shadow-sm"
+            >
+              <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
+              주문 동기화
+            </button>
+            <button
+              onClick={() => setShowForm(v => !v)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700 transition-all shadow-sm"
+            >
+              <Plus size={14} />직접 입력
+            </button>
+          </div>
+        }
+      />
 
       {/* 입력 폼 */}
       {showForm && (
@@ -378,13 +382,19 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
       {/* 월별 요약 */}
       {monthlySummary.length > 0 && (
         <div className="bg-white rounded-2xl border border-slate-100 p-5">
-          <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">{fmtMonth(filterMonth)} 생산 요약</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">{showAll ? '전체' : fmtMonth(filterMonth)} 생산 요약</p>
+            <div className="flex items-center gap-3 text-[11px] font-bold">
+              <span className="text-slate-500">품목 <b className="text-slate-800">{monthlySummary.length}</b>종</span>
+              <span className="text-slate-500">생산 <b className="text-emerald-700">{filteredRecords.length}</b>건</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
             {monthlySummary.map(s => (
-              <div key={s.itemName} className="bg-emerald-50 rounded-xl p-3">
-                <p className="text-xs text-emerald-600 font-bold truncate">{s.itemName}</p>
-                <p className="text-xl font-black text-slate-800 mt-0.5">{s.qty.toLocaleString()}</p>
-                <p className="text-[10px] text-slate-400">{s.count}회 생산</p>
+              <div key={s.itemName} className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100/70 rounded-xl p-3">
+                <p className="text-[11px] text-emerald-700 font-black truncate">{s.itemName}</p>
+                <p className="text-xl font-black text-slate-800 mt-1">{s.qty.toLocaleString()}<span className="text-[11px] font-bold text-slate-400 ml-0.5">개</span></p>
+                <p className="text-[10px] text-slate-400 mt-0.5">{s.count}회 생산</p>
               </div>
             ))}
           </div>
