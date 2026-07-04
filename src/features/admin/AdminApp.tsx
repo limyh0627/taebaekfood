@@ -98,9 +98,9 @@ const TradeStatement = React.lazy(() => import('../../../components/TradeStateme
 const ProfitAnalysis = React.lazy(() => import('../../../components/ProfitAnalysis'));
 
 import { db } from '../../shared/firebase';
-import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, baseRawName, lotStockInUnit } from '../../constants/formula';
+import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName, lotStockInUnit, lotKgRemaining } from '../../constants/formula';
 import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo } from '../../shared/lotUtils';
-import { rawLotTarget, recordRawMaterialReceipt } from '../../shared/rawReceipt';
+import { rawLotTarget, recordRawMaterialReceipt, adjustRawLots } from '../../shared/rawReceipt';
 import {
   addItem,
   updateItem,
@@ -650,8 +650,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
       if (!item.isResellable) continue;
       const product = allItems.find(p => p.id === item.itemId);
       if (!product) continue;
-      const col = getProductCollection(product.category as string);
-      await updateItem(col, product.id, { stock: product.stock + item.quantity });
+      const target = rawLotTarget(allItems, product, product.name);
+      if (target) {
+        // 원료 반품 재입고: 입고 로트 + 수불부 (stock 직접 X)
+        const nowIso = new Date().toISOString();
+        await recordRawMaterialReceipt({ allItems, product, itemName: product.name, quantity: item.quantity, unit: product.unit, partnerName: '반품', dateStr: nowIso.slice(0, 10), nowIso, addedBy: currentUser?.name });
+      } else {
+        const col = getProductCollection(product.category as string);
+        await updateItem(col, product.id, { stock: product.stock + item.quantity });
+      }
     }
 
     if (req.linkedStatementId && req.totalAmount > 0) {
@@ -1676,7 +1683,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onProcessAdjustment={async (req) => {
                 const product = allItems.find(p => p.id === req.itemId);
                 if (req.type === 'quantity_change' && product && req.requestedQuantity !== undefined) {
-                  await updateItem('items', req.itemId, { stock: req.requestedQuantity });
+                  const target = rawLotTarget(allItems, product, product.name);
+                  if (target) {
+                    // 원료: 목표수량으로 lot 조정 (stock 직접 X)
+                    const deltaKg = unitToKg(req.requestedQuantity, target.baseName) - lotKgRemaining(product.lots);
+                    await adjustRawLots({ material: target.baseName, rawItemId: target.rawItem.id, deltaKg, date: new Date().toISOString().slice(0, 10), note: '재고조정', addedBy: currentUser?.name });
+                  } else {
+                    await updateItem('items', req.itemId, { stock: req.requestedQuantity });
+                  }
                 }
                 await updateItem('adjustmentRequests', req.id, { status: 'processed', processedAt: new Date().toISOString() });
               }}
@@ -3550,7 +3564,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   const collectionName = getProductCollection(product.category);
                   if (req.type === 'quantity_change') {
                     // 수량 변동 승인 시, 요청된 수량만큼 재고에 더함
-                    await updateItem(collectionName, req.itemId, { stock: product.stock + (req.requestedQuantity || 0) });
+                    const target = rawLotTarget(allItems, product, product.name);
+                    if (target) {
+                      await adjustRawLots({ material: target.baseName, rawItemId: target.rawItem.id, deltaKg: unitToKg(req.requestedQuantity || 0, target.baseName), date: new Date().toISOString().slice(0, 10), note: '재고조정', addedBy: currentUser?.name });
+                    } else {
+                      await updateItem(collectionName, req.itemId, { stock: product.stock + (req.requestedQuantity || 0) });
+                    }
                   } else if (req.type === 'cancel_receipt') {
                     // 입고 취소 승인 시, 아무것도 하지 않음 (이미 반영 전이므로 리스트에서만 제거)
                     // 만약 이미 반영된 후에 취소하는 것이라면 stock에서 빼야 함.

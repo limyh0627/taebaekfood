@@ -1926,9 +1926,22 @@ const ItemList: React.FC<ItemListProps> = ({
                 (lots) => lotStockInUnit(lots, entry.material),
               );
             } else {
-              // 그 외(정정 등 used<=0): stock 직접 조정
+              // 그 외(정정): stock 직접 X → 로트로 delta 반영 (수불부는 위 onAddRawMaterialEntry로 이미 기록)
               const delta = (entry.received ?? 0) - (entry.used ?? 0);
-              if (delta !== 0) onUpdateItem({ ...rawTarget, stock: (rawTarget.stock ?? 0) + delta });
+              if (Math.abs(delta) > 0.0001) {
+                await mutateRawMaterialLots(
+                  rawTarget.id,
+                  (lots, stock) => {
+                    const carried = withCarryOverLot(lots, stock, entry.material);
+                    if (delta >= 0) {
+                      const lot = buildReceiveLot({ material: entry.material, supplierName: '정정', qtyIn: 0, kgIn: delta, receivedDate: entry.date });
+                      return [...carried, { ...lot, lotNo: nextLotNo(carried, lot.receivedDate) }];
+                    }
+                    return deductFromLots(carried, -delta).lots;
+                  },
+                  (lots) => lotStockInUnit(lots, entry.material),
+                );
+              }
             }
             } catch (err) {
               // 로트/재고 반영 실패(읽기 한도 외 네트워크 오류 등) — 수불부 기록은 이미 저장됨.

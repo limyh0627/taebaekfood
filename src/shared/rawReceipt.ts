@@ -5,7 +5,7 @@
 import type { Item } from './types';
 import { addItem, mutateRawMaterialLots } from './services/firebaseService';
 import { RM_LIST, DENSITY, baseRawName, parsePackageKg, lotStockInUnit } from '../constants/formula';
-import { withCarryOverLot, buildReceiveLot, receiptToKg, nextLotNo } from './lotUtils';
+import { withCarryOverLot, buildReceiveLot, receiptToKg, nextLotNo, deductFromLots } from './lotUtils';
 
 /**
  * 입고 품목이 어느 원료(raw)에 귀속되는지 해석. RM_LIST에 없거나 대상 raw 품목이 없으면 null.
@@ -83,4 +83,44 @@ export async function recordRawMaterialReceipt(opts: {
   });
 
   return { recorded: true, baseName, kgIn, lotted: true };
+}
+
+/**
+ * 원료(raw) 재고를 kg 단위 delta만큼 조정한다: 양수=조정 로트 추가, 음수=FIFO 차감(기존재고 이월 보존).
+ * 재고조정/정정 경로에서 stock 직접 갱신 대신 사용 → lots·stock·수불부가 항상 함께 움직인다.
+ * @param ledger false면 수불부 전표는 남기지 않는다(호출부에서 이미 기록한 경우).
+ */
+export async function adjustRawLots(opts: {
+  material: string;      // baseName
+  rawItemId: string;
+  deltaKg: number;       // + 추가 / - 차감
+  date: string;
+  note: string;
+  addedBy?: string;
+  ledger?: boolean;      // 기본 true
+}): Promise<void> {
+  const { material, rawItemId, deltaKg, date, note, addedBy, ledger = true } = opts;
+  if (Math.abs(deltaKg) < 0.0001) return;
+  await mutateRawMaterialLots(
+    rawItemId,
+    (lots, stock) => {
+      const carried = withCarryOverLot(lots, stock, material);
+      if (deltaKg >= 0) {
+        const lot = buildReceiveLot({ material, supplierName: note, qtyIn: 0, kgIn: deltaKg, receivedDate: date });
+        return [...carried, { ...lot, lotNo: nextLotNo(carried, lot.receivedDate) }];
+      }
+      return deductFromLots(carried, -deltaKg).lots;
+    },
+    (lots) => lotStockInUnit(lots, material),
+  );
+  if (ledger) {
+    await addItem('rawMaterialLedger', {
+      id: `rm-adj-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      material, date,
+      received: deltaKg > 0 ? deltaKg : 0,
+      used: deltaKg < 0 ? -deltaKg : 0,
+      note, type: 'correction', unit: 'kg', addedBy,
+      createdAt: new Date().toISOString(),
+    });
+  }
 }
