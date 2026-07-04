@@ -87,16 +87,17 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   }, [records, filterMonth, showAll, filterProductId, searchText]);
 
   const monthlySummary = useMemo(() => {
-    const map: Record<string, { itemName: string; qty: number; count: number }> = {};
+    const map: Record<string, { itemName: string; qty: number; count: number; category: string }> = {};
     filteredRecords.forEach(r => {
       if (!map[r.itemId]) {
-        map[r.itemId] = { itemName: r.itemName, qty: 0, count: 0 };
+        const cat = items.find(p => p.id === r.itemId)?.category ?? '';
+        map[r.itemId] = { itemName: r.itemName, qty: 0, count: 0, category: cat };
       }
       map[r.itemId].qty += r.finishedQty;
       map[r.itemId].count += 1;
     });
     return Object.values(map).sort((a, b) => b.qty - a.qty);
-  }, [filteredRecords]);
+  }, [filteredRecords, items]);
 
   const fmtMonth = (ym: string) => {
     const [y, m] = ym.split('-');
@@ -379,27 +380,50 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
         </div>
       </div>
 
-      {/* 월별 요약 */}
-      {monthlySummary.length > 0 && (
-        <div className="bg-white rounded-2xl border border-slate-100 p-5">
-          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">{showAll ? '전체' : fmtMonth(filterMonth)} 생산 요약</p>
-            <div className="flex items-center gap-3 text-[11px] font-bold">
-              <span className="text-slate-500">품목 <b className="text-slate-800">{monthlySummary.length}</b>종</span>
-              <span className="text-slate-500">생산 <b className="text-emerald-700">{filteredRecords.length}</b>건</span>
+      {/* 월별 요약 — 카테고리별 리스트 */}
+      {monthlySummary.length > 0 && (() => {
+        const CAT_LABEL: Record<string, string> = { product: '완제품', goods: '상품', wip: '반제품', giftset: '선물세트', raw: '원료', submaterial: '부자재', shipping: '배송' };
+        const CAT_ORDER = ['product', 'goods', 'wip', 'giftset', 'raw', 'submaterial', 'shipping'];
+        const groups = new Map<string, typeof monthlySummary>();
+        for (const s of monthlySummary) { const k = s.category || '기타'; if (!groups.has(k)) groups.set(k, []); groups.get(k)!.push(s); }
+        const keys = [...groups.keys()].sort((a, b) => ((CAT_ORDER.indexOf(a) + 1) || 99) - ((CAT_ORDER.indexOf(b) + 1) || 99));
+        return (
+          <div className="bg-white rounded-2xl border border-slate-100 p-5">
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <p className="text-xs font-black text-slate-400 uppercase tracking-widest">{showAll ? '전체' : fmtMonth(filterMonth)} 생산 요약</p>
+              <div className="flex items-center gap-3 text-[11px] font-bold">
+                <span className="text-slate-500">품목 <b className="text-slate-800">{monthlySummary.length}</b>종</span>
+                <span className="text-slate-500">생산 <b className="text-emerald-700">{filteredRecords.length}</b>건</span>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {keys.map(k => {
+                const arr = groups.get(k)!;
+                const subQty = arr.reduce((s, x) => s + x.qty, 0);
+                return (
+                  <div key={k}>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="text-[11px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">{CAT_LABEL[k] ?? k}</span>
+                      <span className="text-[10px] text-slate-400 font-bold">{arr.length}종 · 합계 {subQty.toLocaleString()}개</span>
+                    </div>
+                    <div className="divide-y divide-slate-50 border border-slate-100 rounded-xl overflow-hidden">
+                      {arr.map(s => (
+                        <div key={s.itemName} className="flex items-center justify-between px-3 py-2 hover:bg-slate-50 transition-colors">
+                          <span className="text-xs font-bold text-slate-700 truncate mr-2">{s.itemName}</span>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <span className="text-[10px] text-slate-400">{s.count}회</span>
+                            <span className="text-sm font-black text-slate-800 tabular-nums">{s.qty.toLocaleString()}<span className="text-[10px] font-bold text-slate-400 ml-0.5">개</span></span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
-            {monthlySummary.map(s => (
-              <div key={s.itemName} className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100/70 rounded-xl p-3">
-                <p className="text-[11px] text-emerald-700 font-black truncate">{s.itemName}</p>
-                <p className="text-xl font-black text-slate-800 mt-1">{s.qty.toLocaleString()}<span className="text-[11px] font-bold text-slate-400 ml-0.5">개</span></p>
-                <p className="text-[10px] text-slate-400 mt-0.5">{s.count}회 생산</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* 이력 테이블 */}
       <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
