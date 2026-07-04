@@ -136,6 +136,7 @@ export interface Order {
   deliveredAt?: string; // 주문이력으로 이동한 날짜
   documentDate?: string; // 서류 날짜 (원료수불부 기준일)
   rawLotsDeducted?: boolean; // 납품완료 시 원료 로트 선입선출 차감 완료 표시(중복 차감 방지)
+  rawConsumedLots?: { material: string; lotId?: string; lotNo?: string; supplierName: string; receivedDate?: string; kg: number }[]; // 정방향 추적: 이 주문이 소비한 원료 lot 스냅샷
 }
 
 export interface BoxConfig {

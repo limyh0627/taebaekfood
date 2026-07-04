@@ -784,6 +784,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const dateStr = order.deliveredAt?.slice(0, 10) || new Date().toISOString().slice(0, 10);
       const customerName = partners.find(c => c.id === order.partnerId)?.name || order.partnerName || '';
       const alreadyDeducted = !!order.rawLotsDeducted; // 재납품 등 중복 차감 방지
+      // 정방향 추적용: 이 주문이 소비한 원료 lot 스냅샷(주문 문서에 저장 → 조회 시 추가 읽기 0)
+      const consumedLots: { material: string; lotId?: string; lotNo?: string; supplierName: string; receivedDate?: string; kg: number }[] = [];
       for (const raw of rawNames) {
         const usedKg = Math.round(rawUsage[raw] * 1000) / 1000;
         const rawItem = allItems.find(i => i.category === 'raw' && baseRawName(i.name) === raw);
@@ -791,7 +793,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         if (rawItem && !alreadyDeducted) {
           // 혼합 사용 ON이면 상위 2개 로트를 비율대로 배분, 아니면 선입선출
           const mix = rawItem.mixEnabled ? { topPercent: rawItem.mixTopPercent ?? 50 } : undefined;
-          let captured: { distribution: { supplierName: string; lotNo?: string; kg: number }[]; shortageKg: number } | null = null;
+          let captured: { distribution: { lotId?: string; supplierName: string; lotNo?: string; receivedDate?: string; kg: number }[]; shortageKg: number } | null = null;
           await mutateRawMaterialLots(
             rawItem.id,
             // withCarryOverLot: 로트가 없는데 stock>0인 원료(미연동/소실)는 이월 로트로 보존 후 차감.
@@ -800,9 +802,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
             (lots) => lotStockInUnit(lots, raw),
           );
           if (captured) {
-            const result = captured as { distribution: { supplierName: string; lotNo?: string; kg: number }[]; shortageKg: number };
+            const result = captured as { distribution: { lotId?: string; supplierName: string; lotNo?: string; receivedDate?: string; kg: number }[]; shortageKg: number };
             if (result.distribution.length > 0) {
               noteSuffix = ' ▸ ' + result.distribution.map(d => `${d.supplierName} ${Math.round(d.kg * 10) / 10}kg`).join(' + ');
+              for (const d of result.distribution) consumedLots.push({
+                material: raw, supplierName: d.supplierName, kg: d.kg,
+                ...(d.lotId ? { lotId: d.lotId } : {}),
+                ...(d.lotNo ? { lotNo: d.lotNo } : {}),
+                ...(d.receivedDate ? { receivedDate: d.receivedDate } : {}),
+              });
             }
             if (result.shortageKg > 0) {
               console.warn(`[원료 부족] ${raw}: 로트 잔량보다 ${result.shortageKg}kg 더 사용 (주문 ${order.id})`);
@@ -830,7 +838,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           orderId: order.id,
         }, { merge: true });
       }
-      if (!alreadyDeducted) await updateItem('orders', order.id, { rawLotsDeducted: true });
+      if (!alreadyDeducted) await updateItem('orders', order.id, { rawLotsDeducted: true, ...(consumedLots.length > 0 ? { rawConsumedLots: consumedLots } : {}) });
     }
   };
 

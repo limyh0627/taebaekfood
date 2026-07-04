@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Trash2, Factory, ChevronLeft, ChevronRight, Search, X, RefreshCw, Pencil, Check } from 'lucide-react';
+import { Plus, Trash2, Factory, ChevronLeft, ChevronRight, Search, X, RefreshCw, Pencil, Check, Layers } from 'lucide-react';
 import PageHeader from './PageHeader';
 import { ProductionRecord, Item, Order, OrderStatus } from '../types';
 
@@ -38,6 +38,19 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   const [editingDateId, setEditingDateId] = useState<string | null>(null);
   const [editingDateVal, setEditingDateVal] = useState('');
   const [syncing, setSyncing] = useState(false);
+  const [expandedRecId, setExpandedRecId] = useState<string | null>(null);
+
+  // 정방향 추적: 주문 문서의 rawConsumedLots 스냅샷 → 생산실적 행에서 조회(추가 읽기 0)
+  const consumedByOrderId = useMemo(() => {
+    const m = new Map<string, NonNullable<Order['rawConsumedLots']>>();
+    for (const o of orders) if (o.rawConsumedLots && o.rawConsumedLots.length) m.set(o.id, o.rawConsumedLots);
+    return m;
+  }, [orders]);
+  const traceOf = (r: ProductionRecord) => {
+    if (!r.id.startsWith('pr-')) return undefined;
+    const orderId = r.id.slice(3, r.id.length - r.itemId.length - 1);
+    return consumedByOrderId.get(orderId);
+  };
 
   const [form, setForm] = useState({
     date: today,
@@ -401,8 +414,9 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {filteredRecords.map(r => (
-                  <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+                {filteredRecords.map(r => { const trace = traceOf(r); const isExp = expandedRecId === r.id; return (
+                  <React.Fragment key={r.id}>
+                  <tr className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3 whitespace-nowrap">
                       {editingDateId === r.id ? (
                         <div className="flex items-center gap-1">
@@ -454,19 +468,53 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
                       {r.note ?? '—'}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => {
-                          if (window.confirm('이 생산 실적을 삭제하시겠습니까?')) {
-                            onDelete(r.id);
-                          }
-                        }}
-                        className="text-slate-300 hover:text-red-400 transition-colors"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        {trace && trace.length > 0 && (
+                          <button
+                            onClick={() => setExpandedRecId(isExp ? null : r.id)}
+                            className={`text-[10px] font-black px-2 py-1 rounded-lg flex items-center gap-1 transition-all ${isExp ? 'bg-teal-100 text-teal-700' : 'bg-teal-50 text-teal-600 hover:bg-teal-100'}`}
+                            title="투입 원료 lot 추적"
+                          >
+                            <Layers size={11} />원료 {isExp ? '▲' : '▼'}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            if (window.confirm('이 생산 실적을 삭제하시겠습니까?')) {
+                              onDelete(r.id);
+                            }
+                          }}
+                          className="text-slate-300 hover:text-red-400 transition-colors"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
-                ))}
+                  {isExp && trace && (
+                    <tr className="bg-teal-50/40">
+                      <td colSpan={7} className="px-4 py-3">
+                        <p className="text-[10px] font-black text-teal-600 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                          <Layers size={11} />투입 원료 lot (선입선출)
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {trace.map((d, i) => (
+                            <div key={i} className="bg-white border border-teal-100 rounded-xl px-3 py-2 text-xs">
+                              <span className="font-black text-slate-800">{d.material}</span>
+                              <span className="text-slate-300 mx-1.5">·</span>
+                              <span className="font-bold text-slate-600">{d.supplierName}</span>
+                              {d.receivedDate && <span className="text-slate-400"> ({d.receivedDate} 입고)</span>}
+                              {d.lotNo && <span className="text-slate-400"> · lot {d.lotNo}</span>}
+                              <span className="ml-1.5 font-black text-teal-700">{Math.round(d.kg * 10) / 10}kg</span>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-2">※ 주문 단위 투입 원료입니다. (배송완료 시점 FIFO 소비 스냅샷)</p>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
+                ); })}
               </tbody>
             </table>
           </div>

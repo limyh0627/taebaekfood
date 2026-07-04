@@ -81,12 +81,12 @@ export function deductFromLots(
   mix?: { topPercent: number },
 ): {
   lots: RawMaterialLot[];
-  distribution: { supplierName: string; lotNo?: string; kg: number }[];
+  distribution: { lotId?: string; supplierName: string; lotNo?: string; receivedDate?: string; kg: number }[];
   shortageKg: number;
 } {
   let remaining = round3(kgToUse);
   const next = lots.map(l => ({ ...l }));
-  const dist: { idx: number; supplierName: string; lotNo?: string; kg: number }[] = [];
+  const dist: { idx: number; lotId?: string; supplierName: string; lotNo?: string; receivedDate?: string; kg: number }[] = [];
   const activeIdx = next
     .map((l, i) => ({ l, i }))
     .filter(x => x.l.status === 'active' && (x.l.kgRemaining ?? 0) > 0)
@@ -101,7 +101,7 @@ export function deductFromLots(
     if (l.kgRemaining <= 0.0001) { l.kgRemaining = 0; l.status = 'depleted'; }
     const ex = dist.find(d => d.idx === idx);
     if (ex) ex.kg = round3(ex.kg + t);
-    else dist.push({ idx, supplierName: l.supplierName, lotNo: l.lotNo, kg: round3(t) });
+    else dist.push({ idx, lotId: l.id, supplierName: l.supplierName, lotNo: l.lotNo, receivedDate: l.receivedDate, kg: round3(t) });
   };
 
   // 혼합: 상위 2개 로트에 비율 배분 우선
