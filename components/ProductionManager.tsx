@@ -74,9 +74,15 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
     }
     return m;
   }, [ledger]);
+  // 생산기록 id = `pr-{orderId}-{...}` (뒤에 itemId/타임스탬프가 가변적으로 붙음) → 접두어 매칭으로 orderId 확정
+  const orderIdsWithData = useMemo(
+    () => [...new Set([...consumedByOrderId.keys(), ...ledgerByOrderId.keys()])].sort((a, b) => b.length - a.length),
+    [consumedByOrderId, ledgerByOrderId],
+  );
   const traceOf = (r: ProductionRecord): { material: string; kg: number; detail: string }[] | undefined => {
     if (!r.id.startsWith('pr-')) return undefined;
-    const orderId = r.id.slice(3, r.id.length - r.itemId.length - 1);
+    const orderId = orderIdsWithData.find(o => r.id.startsWith('pr-' + o + '-') || r.id === 'pr-' + o);
+    if (!orderId) return undefined;
     const structured = consumedByOrderId.get(orderId);
     if (structured && structured.length) {
       return structured.map(d => ({ material: d.material, kg: d.kg, detail: [d.supplierName, d.receivedDate && `(${d.receivedDate} 입고)`, d.lotNo && `lot ${d.lotNo}`].filter(Boolean).join(' ') }));
