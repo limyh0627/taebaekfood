@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Plus, Trash2, Factory, ChevronLeft, ChevronRight, Search, X, RefreshCw, Pencil, Check, Layers } from 'lucide-react';
 import PageHeader from './PageHeader';
-import { ProductionRecord, Item, Order, OrderStatus } from '../types';
+import { ProductionRecord, Item, Order, OrderStatus, RawMaterialEntry } from '../types';
 
 const SUB_ONLY_CATS = new Set(['용기', '마개', '테이프', '박스', '라벨', '향미유', '고춧가루']);
 
@@ -23,6 +23,7 @@ interface ProductionManagerProps {
   records: ProductionRecord[];
   items: Item[];
   orders: Order[];
+  ledger?: RawMaterialEntry[];
   onAdd: (record: ProductionRecord) => Promise<void>;
   onDelete: (id: string) => void;
   onUpdate: (id: string, updates: Partial<ProductionRecord>) => void;
@@ -36,6 +37,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   records,
   items,
   orders,
+  ledger = [],
   onAdd,
   onDelete,
   onUpdate,
@@ -61,10 +63,29 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
     for (const o of orders) if (o.rawConsumedLots && o.rawConsumedLots.length) m.set(o.id, o.rawConsumedLots);
     return m;
   }, [orders]);
-  const traceOf = (r: ProductionRecord) => {
+  // 폴백: 원료수불부 자동전표(orderId별) — lot 스냅샷이 아직 없는 과거/최근 건에 사용
+  const ledgerByOrderId = useMemo(() => {
+    const m = new Map<string, RawMaterialEntry[]>();
+    for (const e of ledger) {
+      const oid = (e as { orderId?: string }).orderId;
+      if (!oid || !((Number(e.used) || 0) > 0)) continue;
+      if (!m.has(oid)) m.set(oid, []);
+      m.get(oid)!.push(e);
+    }
+    return m;
+  }, [ledger]);
+  const traceOf = (r: ProductionRecord): { material: string; kg: number; detail: string }[] | undefined => {
     if (!r.id.startsWith('pr-')) return undefined;
     const orderId = r.id.slice(3, r.id.length - r.itemId.length - 1);
-    return consumedByOrderId.get(orderId);
+    const structured = consumedByOrderId.get(orderId);
+    if (structured && structured.length) {
+      return structured.map(d => ({ material: d.material, kg: d.kg, detail: [d.supplierName, d.receivedDate && `(${d.receivedDate} 입고)`, d.lotNo && `lot ${d.lotNo}`].filter(Boolean).join(' ') }));
+    }
+    const es = ledgerByOrderId.get(orderId);
+    if (es && es.length) {
+      return es.map(e => ({ material: e.material, kg: Number(e.used) || 0, detail: (e.note || '').split('▸')[1]?.trim() || '' }));
+    }
+    return undefined;
   };
 
   const [form, setForm] = useState({
@@ -548,15 +569,12 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
                           {trace.map((d, i) => (
                             <div key={i} className="bg-white border border-teal-100 rounded-xl px-3 py-2 text-xs">
                               <span className="font-black text-slate-800">{d.material}</span>
-                              <span className="text-slate-300 mx-1.5">·</span>
-                              <span className="font-bold text-slate-600">{d.supplierName}</span>
-                              {d.receivedDate && <span className="text-slate-400"> ({d.receivedDate} 입고)</span>}
-                              {d.lotNo && <span className="text-slate-400"> · lot {d.lotNo}</span>}
+                              {d.detail && <><span className="text-slate-300 mx-1.5">·</span><span className="font-bold text-slate-600">{d.detail}</span></>}
                               <span className="ml-1.5 font-black text-teal-700">{Math.round(d.kg * 10) / 10}kg</span>
                             </div>
                           ))}
                         </div>
-                        <p className="text-[10px] text-slate-400 mt-2">※ 주문 단위 투입 원료입니다. (배송완료 시점 FIFO 소비 스냅샷)</p>
+                        <p className="text-[10px] text-slate-400 mt-2">※ 주문 단위 투입 원료 (FIFO 소비 기준). lot 스냅샷 없으면 원료수불부 기록 표시.</p>
                       </td>
                     </tr>
                   )}
