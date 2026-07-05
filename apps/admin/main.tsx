@@ -1,4 +1,4 @@
-import React, { useState, Component, ErrorInfo, ReactNode } from 'react';
+import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
 
 // 청크 로드 실패(배포 후 구버전 캐시) 시 자동 새로고침
 window.addEventListener('vite:preloadError', () => { window.location.reload(); });
@@ -43,7 +43,10 @@ const AdminRoot: React.FC = () => {
     const saved = localStorage.getItem('tb_user');
     return saved ? JSON.parse(saved) : null;
   });
-  const [currentView, setCurrentView] = useState<ViewType>('orders');
+  const [currentView, setCurrentView] = useState<ViewType>(() => {
+    try { return (localStorage.getItem('tb_admin_view') as ViewType) || 'orders'; } catch { return 'orders'; }
+  });
+  useEffect(() => { try { localStorage.setItem('tb_admin_view', currentView); } catch {} }, [currentView]);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [previewAsStaff, setPreviewAsStaff] = useState(false);
 
