@@ -2,6 +2,9 @@ import React, { useState, useMemo } from 'react';
 import { Plus, Trash2, Factory, ChevronLeft, ChevronRight, Search, X, RefreshCw, Pencil, Check, Layers } from 'lucide-react';
 import PageHeader from './PageHeader';
 import { ProductionRecord, Item, Order, OrderStatus, RawMaterialEntry } from '../types';
+import { PRODUCT_FORMULA, toKg } from '../src/constants/formula';
+
+type ItemFormulaRow = { parent_key: string; child_name: string; ratio: number; yield_rate?: number };
 
 const SUB_ONLY_CATS = new Set(['용기', '마개', '테이프', '박스', '라벨', '향미유', '고춧가루']);
 
@@ -24,6 +27,7 @@ interface ProductionManagerProps {
   items: Item[];
   orders: Order[];
   ledger?: RawMaterialEntry[];
+  itemFormulas?: ItemFormulaRow[];
   onAdd: (record: ProductionRecord) => Promise<void>;
   onDelete: (id: string) => void;
   onUpdate: (id: string, updates: Partial<ProductionRecord>) => void;
@@ -38,6 +42,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   items,
   orders,
   ledger = [],
+  itemFormulas = [],
   onAdd,
   onDelete,
   onUpdate,
@@ -80,18 +85,39 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
     [consumedByOrderId, ledgerByOrderId],
   );
   const traceOf = (r: ProductionRecord): { material: string; kg: number; detail: string }[] | undefined => {
-    if (!r.id.startsWith('pr-')) return undefined;
-    const orderId = orderIdsWithData.find(o => r.id.startsWith('pr-' + o + '-') || r.id === 'pr-' + o);
-    if (!orderId) return undefined;
-    const structured = consumedByOrderId.get(orderId);
-    if (structured && structured.length) {
-      return structured.map(d => ({ material: d.material, kg: d.kg, detail: [d.supplierName, d.receivedDate && `(${d.receivedDate} 입고)`, d.lotNo && `lot ${d.lotNo}`].filter(Boolean).join(' ') }));
+    // 제품(BOM) 단위로 투입 원료 계산 → 같은 주문의 다른 제품 원료가 섞이지 않음
+    const product = items.find(p => p.id === r.itemId);
+    if (!product) return undefined;
+    const prodKey = (product as { 품목?: string }).품목 || product.name;
+    const bomRows = itemFormulas.filter(b => b.parent_key === prodKey);
+    const formula = bomRows.length > 0
+      ? bomRows.map(b => ({ raw: b.child_name, ratio: b.ratio * (b.yield_rate || 1) }))
+      : PRODUCT_FORMULA[prodKey];
+    if (!formula || formula.length === 0) return undefined;
+
+    // 원료별 lot 출처(공급처·입고일) — 주문 단위 소비 스냅샷/수불부에서 material로 매칭
+    const orderId = r.id.startsWith('pr-') ? orderIdsWithData.find(o => r.id.startsWith('pr-' + o + '-') || r.id === 'pr-' + o) : undefined;
+    const lotByMat = new Map<string, string>();
+    if (orderId) {
+      const structured = consumedByOrderId.get(orderId);
+      if (structured && structured.length) {
+        for (const d of structured) {
+          const det = [d.supplierName, d.receivedDate && `(${d.receivedDate})`, d.lotNo && `lot ${d.lotNo}`].filter(Boolean).join(' ');
+          if (det) lotByMat.set(d.material, lotByMat.has(d.material) ? `${lotByMat.get(d.material)} + ${det}` : det);
+        }
+      } else {
+        const es = ledgerByOrderId.get(orderId);
+        if (es) for (const e of es) { const det = (e.note || '').split('▸')[1]?.trim(); if (det) lotByMat.set(e.material, det); }
+      }
     }
-    const es = ledgerByOrderId.get(orderId);
-    if (es && es.length) {
-      return es.map(e => ({ material: e.material, kg: Number(e.used) || 0, detail: (e.note || '').split('▸')[1]?.trim() || '' }));
-    }
-    return undefined;
+
+    return formula
+      .map(f => ({
+        material: f.raw,
+        kg: Math.round(toKg(product.spec || '', f.raw, r.finishedQty) * f.ratio * 10) / 10,
+        detail: lotByMat.get(f.raw) || '',
+      }))
+      .filter(x => x.kg > 0);
   };
 
   const [form, setForm] = useState({
@@ -580,7 +606,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
                             </div>
                           ))}
                         </div>
-                        <p className="text-[10px] text-slate-400 mt-2">※ 주문 단위 투입 원료 (FIFO 소비 기준). lot 스냅샷 없으면 원료수불부 기록 표시.</p>
+                        <p className="text-[10px] text-slate-400 mt-2">※ 이 제품(BOM) 기준 투입 원료. 공급처·lot은 배송완료 시 실제 소비(원료수불부)에서 표시.</p>
                       </td>
                     </tr>
                   )}

@@ -3565,6 +3565,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 items={allItems}
                 orders={allOrders}
                 ledger={mergedRawMaterialLedger}
+                itemFormulas={itemFormulas}
                 onAdd={(record) => addItem('productionRecords', record)}
                 onDelete={(id) => deleteItem('productionRecords', id)}
                 onUpdate={(id, updates) => updateItem('productionRecords', id, updates)}
