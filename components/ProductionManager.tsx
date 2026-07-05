@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Trash2, Factory, ChevronLeft, ChevronRight, Search, X, RefreshCw, Pencil, Check, Layers } from 'lucide-react';
+import { Plus, Trash2, Factory, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Search, X, RefreshCw, Pencil, Check, Layers } from 'lucide-react';
 import PageHeader from './PageHeader';
 import { ProductionRecord, Item, Order, OrderStatus, RawMaterialEntry } from '../types';
 import { PRODUCT_FORMULA, toKg } from '../src/constants/formula';
@@ -61,6 +61,10 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   const [syncing, setSyncing] = useState(false);
   const [expandedRecId, setExpandedRecId] = useState<string | null>(null);
   const [recLimit, setRecLimit] = useState(30);
+  // #5 로트 역추적(리콜)
+  const [recallQuery, setRecallQuery] = useState('');
+  const [recallOpen, setRecallOpen] = useState(false);
+  const [expandedRecallKey, setExpandedRecallKey] = useState<string | null>(null);
 
   // 정방향 추적: 주문 문서의 rawConsumedLots 스냅샷 → 생산실적 행에서 조회(추가 읽기 0)
   const consumedByOrderId = useMemo(() => {
@@ -84,6 +88,28 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
     () => [...new Set([...consumedByOrderId.keys(), ...ledgerByOrderId.keys()])].sort((a, b) => b.length - a.length),
     [consumedByOrderId, ledgerByOrderId],
   );
+  // #5 역추적: 소비된 로트 → 이 로트가 들어간 주문 목록. 주문 rawConsumedLots 스냅샷 재사용(추가 읽기 0).
+  const lotConsumption = useMemo(() => {
+    const map = new Map<string, { key: string; material: string; supplierName: string; lotNo?: string; receivedDate?: string; totalKg: number; entries: { order: Order; kg: number }[] }>();
+    for (const o of orders) {
+      for (const c of (o.rawConsumedLots ?? [])) {
+        const key = c.lotId || `${c.material}|${c.supplierName}|${c.lotNo ?? c.receivedDate ?? ''}`;
+        let g = map.get(key);
+        if (!g) { g = { key, material: c.material, supplierName: c.supplierName, lotNo: c.lotNo, receivedDate: c.receivedDate, totalKg: 0, entries: [] }; map.set(key, g); }
+        g.entries.push({ order: o, kg: c.kg });
+        g.totalKg += c.kg || 0;
+      }
+    }
+    return [...map.values()].sort((a, b) => (b.receivedDate ?? '').localeCompare(a.receivedDate ?? ''));
+  }, [orders]);
+  const recallResults = useMemo(() => {
+    const q = recallQuery.trim().toLowerCase();
+    if (!q) return lotConsumption;
+    return lotConsumption.filter(g =>
+      g.material.toLowerCase().includes(q) ||
+      (g.supplierName ?? '').toLowerCase().includes(q) ||
+      (g.lotNo ?? '').toLowerCase().includes(q));
+  }, [lotConsumption, recallQuery]);
   const traceOf = (r: ProductionRecord): { material: string; kg: number; detail: string }[] | undefined => {
     // 제품(BOM) 단위로 투입 원료 계산 → 같은 주문의 다른 제품 원료가 섞이지 않음
     const product = items.find(p => p.id === r.itemId);
@@ -446,6 +472,76 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
             </button>
           )}
         </div>
+      </div>
+
+      {/* #5 로트 역추적 (리콜) — 소비 로트 → 투입된 주문(거래처·납품일) */}
+      <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+        <button onClick={() => setRecallOpen(v => !v)} className="w-full flex items-center justify-between px-5 py-3 hover:bg-slate-50 transition-colors">
+          <div className="flex items-center gap-2">
+            <Search size={14} className="text-amber-600" />
+            <span className="text-xs font-black text-slate-600 uppercase tracking-widest">로트 역추적 · 리콜</span>
+            <span className="text-[10px] text-slate-400">소비 로트 {lotConsumption.length}건</span>
+          </div>
+          {recallOpen ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
+        </button>
+        {recallOpen && (
+          <div className="px-5 pb-4 space-y-3 border-t border-slate-50 pt-3">
+            <p className="text-[11px] text-slate-400">원료명·공급처·로트번호로 검색 → 그 로트가 투입된 주문(거래처·납품일·투입량)을 보여줍니다. <span className="text-slate-300">(현재 로드된 주문 기준)</span></p>
+            <div className="relative">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                value={recallQuery}
+                onChange={e => setRecallQuery(e.target.value)}
+                placeholder="예: 깨분참기름 / 인천청정식품 / 로트번호"
+                className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-amber-400"
+              />
+              {recallQuery && (
+                <button onClick={() => setRecallQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400"><X size={14} /></button>
+              )}
+            </div>
+            {recallResults.length === 0 ? (
+              <p className="text-xs text-slate-400 py-4 text-center">일치하는 소비 로트가 없습니다.</p>
+            ) : (
+              <div className="space-y-2 max-h-[420px] overflow-y-auto">
+                {recallResults.slice(0, 50).map(g => {
+                  const isExp = expandedRecallKey === g.key;
+                  return (
+                    <div key={g.key} className="border border-slate-100 rounded-xl overflow-hidden">
+                      <button onClick={() => setExpandedRecallKey(isExp ? null : g.key)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-amber-50/50 transition-colors text-left">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black text-slate-800">{g.material}</span>
+                            {g.lotNo && <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-full">{g.lotNo}</span>}
+                          </div>
+                          <span className="text-[10px] text-slate-400">{g.supplierName || '공급처 미상'}{g.receivedDate ? ` · 입고 ${g.receivedDate}` : ''}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[10px] text-slate-500">주문 {g.entries.length}건</span>
+                          <span className="text-xs font-black text-slate-700 tabular-nums">{Math.round(g.totalKg * 10) / 10}kg</span>
+                          {isExp ? <ChevronUp size={14} className="text-slate-400" /> : <ChevronDown size={14} className="text-slate-400" />}
+                        </div>
+                      </button>
+                      {isExp && (
+                        <div className="divide-y divide-slate-50 border-t border-slate-100 bg-slate-50/40">
+                          {[...g.entries].sort((a, b) => (b.order.deliveryDate ?? '').localeCompare(a.order.deliveryDate ?? '')).map(({ order, kg }, i) => (
+                            <div key={order.id + '-' + i} className="flex items-center justify-between px-3 py-1.5">
+                              <div className="min-w-0">
+                                <span className="text-[11px] font-bold text-slate-700">{order.partnerName || order.partnerId}</span>
+                                <span className="text-[10px] text-slate-400 ml-2">납품 {order.deliveryDate?.slice(0, 10) || '미정'}</span>
+                              </div>
+                              <span className="text-[11px] font-black text-slate-600 tabular-nums shrink-0">{Math.round(kg * 10) / 10}kg</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {recallResults.length > 50 && <p className="text-[10px] text-slate-400 text-center py-1">외 {recallResults.length - 50}건…</p>}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 월별 요약 — 카테고리별 리스트 */}

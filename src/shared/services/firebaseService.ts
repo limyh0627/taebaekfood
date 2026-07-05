@@ -22,6 +22,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import type { RawMaterialLot } from "../types";
+import { pruneDepletedLots } from "../lotUtils";
 
 export const subscribeToDocument = <T>(
   collectionName: string,
@@ -160,7 +161,8 @@ export const mutateRawMaterialLots = async (
     if (!snap.exists()) throw new Error(`원료 품목을 찾을 수 없음: ${rawItemId}`);
     const data = snap.data();
     const current: RawMaterialLot[] = Array.isArray(data.lots) ? data.lots : [];
-    const next = transform(current, data.stock ?? 0);
+    // #1 로트 배열 무한 증가 방지 — 오래된 depleted 로트 정리(모든 로트 쓰기 경로가 이 함수를 지남)
+    const next = pruneDepletedLots(transform(current, data.stock ?? 0));
     tx.update(ref, buildPatch(next));
     return next;
   });

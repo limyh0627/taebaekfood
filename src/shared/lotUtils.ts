@@ -142,3 +142,18 @@ export function receiptToKg(params: {
   else kg = params.quantity;
   return round3(kg);
 }
+
+/**
+ * 오래된 소진(depleted) 로트 정리 — 로트 배열 무한 증가에 따른 문서 비대화 방지(#1).
+ * active 로트는 항상 보존. depleted는 receivedDate가 retentionMonths 이전인 것만 제거.
+ * (원료 소비 이력은 주문의 rawConsumedLots 스냅샷에 별도 보존 → 추적성 손실 없음)
+ * 변화가 없으면 원본 배열을 그대로 반환(불필요한 쓰기 방지).
+ */
+export function pruneDepletedLots(lots: RawMaterialLot[], retentionMonths = 6): RawMaterialLot[] {
+  if (!Array.isArray(lots) || lots.length === 0) return lots;
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - retentionMonths);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  const kept = lots.filter(l => l.status !== 'depleted' || (l.receivedDate ?? '9999-99-99') >= cutoffStr);
+  return kept.length === lots.length ? lots : kept;
+}
