@@ -3024,6 +3024,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             {/* ── 진행 주문 목록 (매출·진행주문만·거래처 미선택) ── */}
             {createMode==='매출' && !selectedClientId && activeOrders.length > 0 && (() => {
               const listOrders = (onlyActive ? activeOrders.filter(o => !o.invoicePrinted) : activeOrders)
+                // 스마트스토어 거래처 제외 (전표 발행 대상 아님)
+                .filter(o => (partners.find(c => c.id === o.partnerId)?.type ?? o.source) !== '스마트스토어')
                 .filter(o => matchKo(partners.find(c => c.id === o.partnerId)?.name || '', partnerSearch))
                 .filter(o => { const d = (o.deliveryDate || '').slice(0, 10); return (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo); });
               return (
