@@ -34,6 +34,7 @@ export interface AppData {
   items: Item[];
   // 파트너-품목 매핑 (partner_item 컬렉션)
   partnerItems: PartnerItem[];
+  setPartnerItems: React.Dispatch<React.SetStateAction<PartnerItem[]>>; // 낙관적 갱신용(라이브 구독 아님)
   // 파트너 (partners 컬렉션)
   partners: Partner[];
   employees: Employee[];
@@ -251,6 +252,7 @@ export function useAppData(): AppData {
     orders, purchaseOrders,
     items,
     partnerItems,
+    setPartnerItems,
     partners,
     employees, leaveRequests,
     pallets, palletTransactions, adjustmentRequests,

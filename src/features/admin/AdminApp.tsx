@@ -152,7 +152,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 }) => {
   const {
     orders, purchaseOrders,
-    items, partnerItems,
+    items, partnerItems, setPartnerItems,
     partners, employees, leaveRequests,
     pallets, palletTransactions, adjustmentRequests,
     noticePosts, chatRooms, chatMessages,
@@ -181,6 +181,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // partner_item 컬렉션 Direction 기준 분리
   const partnerIn = useMemo(() => partnerItems.filter(pi => pi.Direction === 'in'),  [partnerItems]);
   const partnerOut   = useMemo(() => partnerItems.filter(pi => pi.Direction === 'out'), [partnerItems]);
+
+  // partner_item upsert — Firestore 쓰기 + 로컬 낙관적 갱신(라이브 구독 아님 → 새로고침 없이 즉시 반영)
+  const handleUpsertPartnerItem = (ps: PartnerItem, defaultDir: 'in' | 'out' = 'out') => {
+    const docData = { ...ps, Partner_ID: ps.partnerId ?? ps.Partner_ID, Item_ID: ps.itemId ?? ps.Item_ID, Direction: ps.Direction ?? defaultDir } as PartnerItem;
+    addItem('partner_item', docData);
+    setPartnerItems(prev => {
+      const merged = { ...docData, partnerId: docData.Partner_ID, itemId: docData.Item_ID } as PartnerItem;
+      const idx = prev.findIndex(p => p.id && p.id === docData.id);
+      if (idx >= 0) { const n = [...prev]; n[idx] = { ...prev[idx], ...merged }; return n; }
+      return [...prev, merged];
+    });
+  };
 
   // partners 컬렉션
 
@@ -3338,7 +3350,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   await updateItem('orders', id, { status });
                 }
               }}
-              onUpsertPartnerItem={(ps) => addItem('partner_item', { ...ps, Partner_ID: ps.partnerId ?? ps.Partner_ID, Item_ID: ps.itemId ?? ps.Item_ID, Direction: ps.Direction ?? 'out' as const })}
+              onUpsertPartnerItem={(ps) => handleUpsertPartnerItem(ps, 'out')}
               onMarkInvoicePrinted={(id, value) => updateItem('orders', id, { invoicePrinted: value })}
               onUpdateOrder={(id, data) => updateItem('orders', id, data)}
               onAddIssuedStatement={(stmt) => addItem('issuedStatements', stmt).catch(e => { console.error('전표 저장 실패:', e); alert('전표 저장 실패: ' + (e?.message ?? String(e))); })}
@@ -3683,7 +3695,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   }}
                   shippingRules={shippingRules}
                   itemBoms={itemBoms}
-                  onUpsertPartnerItem={(ps) => addItem('partner_item', { ...ps, Partner_ID: ps.partnerId ?? ps.Partner_ID, Item_ID: ps.itemId ?? ps.Item_ID, Direction: ps.Direction ?? 'out' as const })}
+                  onUpsertPartnerItem={(ps) => handleUpsertPartnerItem(ps, 'out')}
                   onSaveItemCustomer={async (ic: Partial<import('../../shared/types').PartnerItem> & { id: string }) => {
                     const { doc: fDoc, updateDoc: fUpdate } = await import('firebase/firestore');
                     const { db: fireDb } = await import('../../shared/firebase');
@@ -3853,7 +3865,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             await addDoc(col(fireDb, 'shipping_rule'), rule);
             refreshStaticData();
           }}
-          onUpsertPartnerItem={(ps: PartnerItem) => { addItem('partner_item', { ...ps, Partner_ID: ps.partnerId ?? ps.Partner_ID, Item_ID: ps.itemId ?? ps.Item_ID, Direction: ps.Direction ?? 'in' as const }); refreshStaticData(); }}
+          onUpsertPartnerItem={(ps: PartnerItem) => handleUpsertPartnerItem(ps, 'in')}
           onDeletePartnerItem={(id: string) => { deleteItem('partner_item', id); refreshStaticData(); }}
           onAddSubmaterial={async (name, category) => {
             const unit = category === '라벨' ? '매' : '개';
