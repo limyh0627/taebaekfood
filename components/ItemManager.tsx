@@ -82,6 +82,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
   const [showAll, setShowAll] = useState(true);
   const [showNoClient, setShowNoClient] = useState(false);
   const [activeCategory, setActiveCategory] = useState<InventoryCategory>('product');
+  const [partnerAllCats, setPartnerAllCats] = useState(true); // 거래처별 뷰: 전체 카테고리(연결된 전 품목) 표시
   const [searchTerm, setSearchTerm] = useState('');
   const [partnerSearch, setClientSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -217,7 +218,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
       : selectedClientId
         ? isByClientPurchase
           ? items.filter(p => !p.archived && partnerIn.some(ps => (ps.itemId ?? ps.Item_ID) === p.id && (ps.partnerId ?? ps.Partner_ID) === selectedClientId))
-          : items.filter(p => !p.archived && p.category === activeCategory && (p.partnerIds ?? []).includes(selectedClientId))
+          : items.filter(p => !p.archived && (partnerAllCats || p.category === activeCategory) && (p.partnerIds ?? []).includes(selectedClientId))
         : [];
 
     if (showNoClient) {
@@ -236,7 +237,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
       }
     }
     return [...result].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-  }, [products, activeCategory, selectedClientId, showAll, showNoClient, searchTerm, mainView, partners, partnerScopeTab, partnerItems]);
+  }, [products, activeCategory, selectedClientId, showAll, showNoClient, searchTerm, mainView, partners, partnerScopeTab, partnerItems, partnerAllCats]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -246,6 +247,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
     setSelectedClientId(id);
     setShowAll(false);
     setShowNoClient(false);
+    setPartnerAllCats(true); // 거래처 선택 시 연결된 전체 품목이 기본
     setPage(1);
     setSearchTerm('');
     setClientScopeTab(partnerTab);
@@ -385,20 +387,24 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
       <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col ${panelHeightClass}`}>
         <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center gap-2">
           <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar flex-1">
-            {(isAdmin || (!isAdmin && !selectedClientId)) && (
-              <button
-                onClick={() => { handleShowAll(); setPage(1); }}
-                className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border whitespace-nowrap flex items-center gap-1 ${
-                  showAll && !showNoClient
-                    ? 'bg-indigo-600 border-indigo-600 text-white shadow'
-                    : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
-                }`}
-              >
-                <LayoutGrid size={11} />
-                전체 품목
-              </button>
-            )}
-            {isAdmin && (
+            {(isAdmin || (!isAdmin && !selectedClientId)) && (() => {
+              const inPartner = mainView === 'by-partner' && !!selectedClientId;
+              const active = inPartner ? partnerAllCats : (showAll && !showNoClient);
+              return (
+                <button
+                  onClick={() => { if (inPartner) { setPartnerAllCats(true); } else { handleShowAll(); } setPage(1); }}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border whitespace-nowrap flex items-center gap-1 ${
+                    active
+                      ? 'bg-indigo-600 border-indigo-600 text-white shadow'
+                      : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+                  }`}
+                >
+                  <LayoutGrid size={11} />
+                  전체 품목
+                </button>
+              );
+            })()}
+            {isAdmin && mainView !== 'by-partner' && (
               <button
                 onClick={() => { setShowNoClient(p => !p); setShowAll(true); setSelectedClientId(null); setPage(1); }}
                 className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border whitespace-nowrap flex items-center gap-1 ${
@@ -410,19 +416,23 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                 거래처 없는 것만
               </button>
             )}
-            {isAdmin && CATEGORIES.map(cat => (
-              <button
-                key={cat}
-                onClick={() => { setActiveCategory(cat); setPage(1); }}
-                className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border whitespace-nowrap ${
-                  activeCategory === cat
-                    ? 'bg-indigo-600 border-indigo-600 text-white shadow'
-                    : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
-                }`}
-              >
-                {CATEGORY_LABELS[cat] ?? cat}
-              </button>
-            ))}
+            {isAdmin && CATEGORIES.map(cat => {
+              const inPartner = mainView === 'by-partner' && !!selectedClientId;
+              const active = inPartner ? (!partnerAllCats && activeCategory === cat) : (activeCategory === cat);
+              return (
+                <button
+                  key={cat}
+                  onClick={() => { setPartnerAllCats(false); setActiveCategory(cat); setPage(1); }}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border whitespace-nowrap ${
+                    active
+                      ? 'bg-indigo-600 border-indigo-600 text-white shadow'
+                      : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+                  }`}
+                >
+                  {CATEGORY_LABELS[cat] ?? cat}
+                </button>
+              );
+            })}
           </div>
           <div className="relative shrink-0 w-full sm:w-44">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={13} />
