@@ -1339,13 +1339,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // pc는 PartnerItem 호환 shim (searchableRows 공통 사용을 위해)
   const inboundPartnerItemRows = useMemo(() =>
     allItems
-      .filter(p => psMap.get(p.id) === selectedClientId)
+      // partnerIn 직접 조회 — 한 품목에 매입처가 여러 개여도, 대/소문자 필드 혼재여도 정상 매칭
+      .filter(p => partnerIn.some(ps => (ps.itemId ?? ps.Item_ID) === p.id && (ps.partnerId ?? ps.Partner_ID) === selectedClientId))
       .map(p => {
-        const ps = partnerIn.find(s => s.itemId === p.id && s.partnerId === selectedClientId)
+        const ps = partnerIn.find(s => (s.itemId ?? s.Item_ID) === p.id && (s.partnerId ?? s.Partner_ID) === selectedClientId)
           ?? { id: `${p.id}_${selectedClientId}`, itemId: p.id, partnerId: selectedClientId } as PartnerItem;
         return { pc: ps, ps, product: p };
       }),
-    [allItems, selectedClientId, partnerIn, psMap]
+    [allItems, selectedClientId, partnerIn]
   );
 
   // 현재 모드에 따른 검색 소스
