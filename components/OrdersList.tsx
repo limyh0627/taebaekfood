@@ -29,7 +29,7 @@ import {
   ClipboardPaste,
   Layers
 } from 'lucide-react';
-import { Order, OrderStatus, Partner, OrderSource, OrderItem, Item, OrderPallet, DeliveryBox, PalletStock, ShippingRule, ItemBom } from '../types';
+import { Order, OrderStatus, Partner, OrderSource, OrderItem, Item, OrderPallet, DeliveryBox, PalletStock, ShippingRule, ItemBom, PartnerItem } from '../types';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 
@@ -62,6 +62,7 @@ interface OrdersListProps {
   orders: Order[];
   partners: Partner[];
   items: Item[];
+  partnerItems?: PartnerItem[];
   palletStocks?: PalletStock[];
   shippingRules?: ShippingRule[];
   itemBoms?: ItemBom[];
@@ -93,6 +94,7 @@ interface OrderCardProps {
   order: Order;
   partners: Partner[];
   items: Item[];
+  partnerItems?: PartnerItem[];
   palletStocks?: PalletStock[];
   shippingRules?: ShippingRule[];
   itemBoms?: ItemBom[];
@@ -121,6 +123,7 @@ interface OrderSourceGroupProps {
   onToggleCategory: (colId: string, source: OrderSource) => void;
   partners: Partner[];
   items: Item[];
+  partnerItems?: PartnerItem[];
   editingOrderId: string | null;
   setEditingOrderId: (id: string | null) => void;
   showAddProductSelect: string | null;
@@ -148,7 +151,7 @@ type TabType = 'delivery' | 'active' | 'history';
 // ─── OrderCard ────────────────────────────────────────────────────────────────
 
 export const OrderCard = memo<OrderCardProps>(({
-  order, partners, items,
+  order, partners, items, partnerItems,
   editingOrderId, setEditingOrderId,
   showAddProductSelect, setShowAddProductSelect,
   onUpdateItems, onUpdateDeliveryDate, onUpdateStatus, onUpdatePallets,
@@ -542,8 +545,15 @@ export const OrderCard = memo<OrderCardProps>(({
               >
                 <option value="" disabled>추가할 품목 선택...</option>
                 <optgroup label="완제품">
-                  {products
-                    .filter(p => p.category === '완제품' && p.partnerId === order.partnerId)
+                  {(() => {
+                    // 이 거래처와 연결된 완제품(partner_item Direction 'out')만. 연결 정보 없으면 전체 완제품 표시(폴백).
+                    const linkedIds = new Set(
+                      (partnerItems ?? [])
+                        .filter(pi => pi.Direction === 'out' && (pi.partnerId ?? pi.Partner_ID) === order.partnerId)
+                        .map(pi => pi.itemId ?? pi.Item_ID)
+                    );
+                    return products
+                    .filter(p => p.category === '완제품' && (linkedIds.size === 0 || linkedIds.has(p.id)))
                     .sort((a, b) => {
                       const order = (name: string) => /가루/.test(name) ? 3 : /참기름|참진|참고소|참향/.test(name) ? 0 : /들기름|들향|들진|들고소/.test(name) ? 1 : /깨/.test(name) ? 2 : 4;
                       const diff = order(a.name) - order(b.name);
@@ -551,7 +561,8 @@ export const OrderCard = memo<OrderCardProps>(({
                     })
                     .map(p => (
                       <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
+                    ));
+                  })()}
                 </optgroup>
                 <optgroup label="향미유">
                   {items.filter(p => p.category === '향미유').map(p => (
@@ -872,7 +883,7 @@ const deliveryExtraConfigs = [
 const historyConfig = { id: 'history_col', label: '예전 주문 이력', icon: History, color: 'bg-slate-700', bgColor: 'bg-slate-50/80', borderColor: 'border-slate-200', textColor: 'text-slate-700', statusFilter: [OrderStatus.DELIVERED], targetStatus: undefined };
 
 const OrdersList: React.FC<OrdersListProps> = ({
-  title, subtitle, orders, partners, items, palletStocks, shippingRules = [], itemBoms = [],
+  title, subtitle, orders, partners, items, partnerItems, palletStocks, shippingRules = [], itemBoms = [],
   onUpdateStatus, onUpdateDeliveryDate, onUpdatePallets,
   onUpdateItems, onUpdateDeliveryBoxes,
   onToggleInvoicePrinted, onToggleItemChecked,
@@ -993,7 +1004,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
   // OrderCard/OrderSourceGroup에 공통으로 넘길 props
   const cardSharedProps = {
-    partners, items, palletStocks, shippingRules, itemBoms,
+    partners, items, partnerItems, palletStocks, shippingRules, itemBoms,
     editingOrderId, setEditingOrderId,
     showAddProductSelect, setShowAddProductSelect,
     onUpdateItems, onUpdateDeliveryDate, onUpdateStatus, onUpdatePallets,
@@ -1457,6 +1468,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                   order={order}
                   partners={partners}
                   items={items}
+                  partnerItems={partnerItems}
                   editingOrderId={editingOrderId}
                   setEditingOrderId={setEditingOrderId}
                   showAddProductSelect={showAddProductSelect}

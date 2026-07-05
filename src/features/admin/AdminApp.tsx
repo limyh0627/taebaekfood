@@ -1397,6 +1397,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               orders={allOrders}
               partners={partners}
               items={allItems}
+              partnerItems={partnerItems}
               shippingRules={shippingRules}
               itemBoms={itemBoms}
               isLoadingHistoricalOrders={isLoadingHistoricalOrders}
