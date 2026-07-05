@@ -122,6 +122,13 @@ type MainTab = 'requests' | 'history' | 'master' | 'inbound';
 type InboundSubTab = '입고' | '반품';
 type TopTab = 'finished' | 'goods' | 'submaterial' | 'rawmaterial' | 'wip';
 
+// #2 원료 단일 소스: 표시용 재고 — 원료(raw)이고 로트가 있으면 로트 합계(운영단위=기름 L),
+//   그 외(로트 없는 원료 예: 깻묵, 또는 완제품/상품/부자재)는 stock 필드 사용.
+const displayStockOf = (p: any): number =>
+  (p?.category === 'raw' && (p?.lots ?? []).length > 0)
+    ? lotStockInUnit(p.lots, baseRawName(p.name))
+    : (p?.stock ?? 0);
+
 const ItemList: React.FC<ItemListProps> = ({
   items,
   orderRequests,
@@ -396,16 +403,16 @@ const ItemList: React.FC<ItemListProps> = ({
       });
     }
     if (stockOnly) {
-      result = result.filter(p => p.stock > 0);
+      result = result.filter(p => displayStockOf(p) > 0);
     }
     if (zeroStockOnly) {
-      result = result.filter(p => normCat(p.category) !== '완제품' && p.stock < p.minStock);
+      result = result.filter(p => normCat(p.category) !== '완제품' && displayStockOf(p) < p.minStock);
     }
 
     const CATEGORY_ORDER = ['완제품', '상품', '향미유', '고춧가루', '용기', '마개', '테이프', '박스', '라벨'];
     return [...result].sort((a, b) => {
-      const aCritical = normCat(a.category) !== '완제품' && a.stock < a.minStock ? 0 : 1;
-      const bCritical = normCat(b.category) !== '완제품' && b.stock < b.minStock ? 0 : 1;
+      const aCritical = normCat(a.category) !== '완제품' && displayStockOf(a) < a.minStock ? 0 : 1;
+      const bCritical = normCat(b.category) !== '완제품' && displayStockOf(b) < b.minStock ? 0 : 1;
       if (aCritical !== bCritical) return aCritical - bCritical;
       const aCatIdx = CATEGORY_ORDER.indexOf(normCat(a.category));
       const bCatIdx = CATEGORY_ORDER.indexOf(normCat(b.category));
@@ -746,7 +753,7 @@ const ItemList: React.FC<ItemListProps> = ({
                                 <div key={lineKey} className="px-4 py-3 flex items-center gap-3">
                                   <div className="flex-1 min-w-0">
                                     <p className="text-sm font-bold text-slate-800 truncate">{line.name}</p>
-                                    <p className="text-[10px] text-slate-400 mt-0.5">현재 재고 {product?.stock ?? '-'} {product?.unit ?? ''}</p>
+                                    <p className="text-[10px] text-slate-400 mt-0.5">현재 재고 {product ? displayStockOf(product) : '-'} {product?.unit ?? ''}</p>
                                   </div>
                                   {isEditing ? (
                                     <div className="flex items-center gap-1.5 shrink-0">
@@ -925,7 +932,7 @@ const ItemList: React.FC<ItemListProps> = ({
                       <div className="text-left sm:text-center">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter mb-0.5">현재 재고</p>
                         <p className="text-sm font-black text-slate-900">
-                          {product.subtype === '향미유' ? fmtHamiyou(product.stock) : `${product.stock}${product.unit}`}
+                          {product.subtype === '향미유' ? fmtHamiyou(product.stock) : `${displayStockOf(product)}${product.unit}`}
                         </p>
                       </div>
 
@@ -987,7 +994,13 @@ const ItemList: React.FC<ItemListProps> = ({
                     : null;
                   const derivedRawKg = canPackageKg ? lotKgRemaining((lotRaw!.lots ?? []).filter(l => l.status === 'active')) : null;
                   const derivedCans = (canPackageKg && derivedRawKg != null) ? derivedRawKg / canPackageKg : null;
-                  const effStock = derivedCans != null ? derivedCans : product.stock;
+                  // #2 원료 단일 소스: 원료(raw)는 화면도 로트 합계를 직접 읽어 stock 미러와의 불일치 방지.
+                  //   lot이 하나도 없는 원료(예: 깻묵)는 기존 stock으로 폴백.
+                  const rawLots = product.category === 'raw' ? (product.lots ?? []) : null;
+                  const rawLotStock = rawLots && rawLots.length > 0 ? lotStockInUnit(rawLots, baseRawName(product.name)) : null;
+                  const effStock = derivedCans != null ? derivedCans : (rawLotStock != null ? rawLotStock : product.stock);
+                  // 표시·편집 시드용 재고 (원료는 로트 합계, 그 외는 stock)
+                  const displayStock = rawLotStock != null ? rawLotStock : product.stock;
                   const isCritical = normCat(product.category) !== '완제품' && effStock < product.minStock;
                   const statusBadge = normCat(product.category) === '완제품' ? (
                     <span className="text-[9px] font-black text-slate-300">자체생산</span>
@@ -1106,11 +1119,11 @@ const ItemList: React.FC<ItemListProps> = ({
                           </div>
                         ) : (
                           <button
-                            onClick={e => { e.stopPropagation(); setEditingStockId(product.id); setEditingStockVal(String(product.subtype === '향미유' ? Math.floor(product.stock / 12) : product.stock)); }}
+                            onClick={e => { e.stopPropagation(); setEditingStockId(product.id); setEditingStockVal(String(product.subtype === '향미유' ? Math.floor(product.stock / 12) : displayStock)); }}
                             className={`text-base font-black hover:underline hover:text-indigo-600 transition-colors cursor-pointer ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}
                             title="클릭하여 수량 수정"
                           >
-                            {product.subtype === '향미유' ? fmtHamiyou(product.stock) : product.stock}
+                            {product.subtype === '향미유' ? fmtHamiyou(product.stock) : displayStock}
                           </button>
                         )}
                         {derivedCans == null && editingStockId !== product.id && (
@@ -1508,7 +1521,7 @@ const ItemList: React.FC<ItemListProps> = ({
                             <p className="text-sm font-bold text-slate-800 truncate">{withSpec(product)}</p>
                             <div className="flex items-center gap-2 mt-0.5">
                               <p className="text-[10px] text-slate-400">
-                                현재 재고 {product.subtype === '향미유' ? fmtHamiyou(product.stock) : `${product.stock} ${product.unit}`}
+                                현재 재고 {product.subtype === '향미유' ? fmtHamiyou(product.stock) : `${displayStockOf(product)} ${product.unit}`}
                               </p>
                               {partnerName && (
                                 <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-md">{partnerName}</span>
@@ -1824,7 +1837,7 @@ const ItemList: React.FC<ItemListProps> = ({
                   <div key={item.id} className="bg-slate-50 rounded-2xl border border-slate-100 p-3 flex items-center gap-3">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-slate-800 truncate">{withSpec(product)}</p>
-                      <p className="text-[10px] text-slate-400 font-medium">현재 재고 {product.subtype === '향미유' ? fmtHamiyou(product.stock) : `${product.stock}${product.unit}`}</p>
+                      <p className="text-[10px] text-slate-400 font-medium">현재 재고 {product.subtype === '향미유' ? fmtHamiyou(product.stock) : `${displayStockOf(product)}${product.unit}`}</p>
                       {product.subtype === '향미유' && (
                         <div className="flex rounded-lg border border-indigo-200 overflow-hidden text-[9px] font-black mt-1 w-fit">
                           <button onClick={() => updateCartIsBox(item.id, false)} className={`px-2 py-0.5 transition-all ${!item.isBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>낱개</button>
