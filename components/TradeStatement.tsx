@@ -455,8 +455,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         name: i.name,
         spec: i.spec,
         qty: String(i.qty),
-        // 공급가액÷수량 = 공급단가 (수동입력 모드는 supply=qty*price로 계산하므로)
-        price: String(i.isTaxExempt ? i.price : (i.qty > 0 ? Math.round(i.supply / i.qty) : 0)),
+        // 저장된 단가(부가세 포함)를 그대로 사용 — 수동입력 모드 supply=round(qty*price/1.1)와 일치
+        price: String(i.price || (i.qty > 0 ? Math.round(i.total / i.qty) : 0)),
         isTaxExempt: i.isTaxExempt,
         accountCode: i.accountCode,
         isBoxUnit: i.isBoxUnit,
