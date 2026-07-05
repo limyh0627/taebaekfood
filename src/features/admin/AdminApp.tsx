@@ -184,10 +184,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // partner_item upsert — Firestore 쓰기 + 로컬 낙관적 갱신(라이브 구독 아님 → 새로고침 없이 즉시 반영)
   const handleUpsertPartnerItem = (ps: PartnerItem, defaultDir: 'in' | 'out' = 'out') => {
-    const docData = { ...ps, Partner_ID: ps.partnerId ?? ps.Partner_ID, Item_ID: ps.itemId ?? ps.Item_ID, Direction: ps.Direction ?? defaultDir } as PartnerItem;
+    // canonical camelCase(itemId/partnerId/price)로 정규화 — 레거시 필드는 DB에 저장 안 함
+    const { Item_ID, Partner_ID, Standard_Price, item_id, customer_id, price: _p, ...rest } = ps as any;
+    const itemId = ps.itemId ?? Item_ID;
+    const partnerId = ps.partnerId ?? Partner_ID;
+    const price = ps.price ?? Standard_Price;
+    const docData = { ...rest, itemId, partnerId, Direction: ps.Direction ?? defaultDir,
+      ...(price !== undefined ? { price } : {}) } as PartnerItem;
     addItem('partner_item', docData);
     setPartnerItems(prev => {
-      const merged = { ...docData, partnerId: docData.Partner_ID, itemId: docData.Item_ID } as PartnerItem;
+      // 로컬 state는 읽기 호환 위해 레거시 별칭도 함께 주입(메모리 내 157개 read 대비)
+      const merged = { ...docData, Item_ID: itemId, Partner_ID: partnerId,
+        ...(price !== undefined ? { Standard_Price: price } : {}) } as PartnerItem;
       const idx = prev.findIndex(p => p.id && p.id === docData.id);
       if (idx >= 0) { const n = [...prev]; n[idx] = { ...prev[idx], ...merged }; return n; }
       return [...prev, merged];
@@ -3416,10 +3424,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onAddProductClient={(itemId, partnerId, price, taxType) =>
                 addItem('partner_item', {
                   id: `${itemId}_${partnerId}_out`,
-                  Item_ID: itemId, Partner_ID: partnerId,
+                  itemId, partnerId,
                   Direction: 'out' as const,
                   price, taxType,
-                  itemId, partnerId,
                 })
               }
             />
@@ -3679,15 +3686,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     const batch = wb(fireDb);
 
                     for (const delId of deleteIds) {
-                      const snap = await getDocs(q(col(fireDb, 'partner_item'), where('Item_ID', '==', delId)));
+                      const snap = await getDocs(q(col(fireDb, 'partner_item'), where('itemId', '==', delId)));
                       for (const docSnap of snap.docs) {
                         const data = docSnap.data();
                         const dir = data.Direction ?? 'out';
-                        const newId = `${keepId}_${data.Partner_ID}_${dir}`;
+                        const pId = data.partnerId ?? data.Partner_ID;
+                        const newId = `${keepId}_${pId}_${dir}`;
                         const newRef = d(fireDb, 'partner_item', newId);
-                        const existing = partnerItems.find(pi => pi.Item_ID === keepId && pi.Partner_ID === data.Partner_ID && pi.Direction === dir);
+                        const existing = partnerItems.find(pi => (pi.itemId ?? pi.Item_ID) === keepId && (pi.partnerId ?? pi.Partner_ID) === pId && pi.Direction === dir);
                         if (!existing) {
-                          batch.set(newRef, { ...data, Item_ID: keepId, id: newId });
+                          const { Item_ID, Partner_ID, Standard_Price, ...cleanData } = data as any;
+                          batch.set(newRef, { ...cleanData, itemId: keepId, id: newId });
                         }
                         batch.delete(docSnap.ref);
                       }
@@ -3701,7 +3710,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   onSaveItemCustomer={async (ic: Partial<import('../../shared/types').PartnerItem> & { id: string }) => {
                     const { doc: fDoc, updateDoc: fUpdate } = await import('firebase/firestore');
                     const { db: fireDb } = await import('../../shared/firebase');
-                    const { id, itemId, partnerId, price, item_id, customer_id, ...rest } = ic;
+                    const { id, itemId, partnerId, price, item_id, customer_id, Item_ID, Partner_ID, Standard_Price, ...rest } = ic as any;
                     const data = Object.fromEntries(
                       Object.entries(rest).filter(([, v]) => v !== undefined)
                     );

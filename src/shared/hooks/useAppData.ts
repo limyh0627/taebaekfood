@@ -231,12 +231,13 @@ export function useAppData(): AppData {
         fetchCollection<FixedCostTemplate>('fixedCostTemplates'),
         fetchCollection<QrMapping>('qrMappings'),
       ]).then(([piData, srData, bomData, ifData, agData, acData, fctData, qrData]) => {
-        setPartnerItems(piData.map(pi => ({
-          ...pi,
-          itemId: pi.Item_ID,
-          partnerId: pi.Partner_ID,
-          price: pi.price ?? pi.Standard_Price,
-        })));
+        setPartnerItems(piData.map(pi => {
+          // canonical camelCase 우선, 레거시 별칭도 채워 어느 필드를 읽든 동작하게 정규화
+          const itemId = pi.itemId ?? pi.Item_ID;
+          const partnerId = pi.partnerId ?? pi.Partner_ID;
+          const price = pi.price ?? pi.Standard_Price;
+          return { ...pi, itemId, partnerId, price, Item_ID: itemId, Partner_ID: partnerId, Standard_Price: price };
+        }));
         setShippingRules(srData);
         setItemBoms(bomData);
         setItemFormulas(ifData);
