@@ -285,6 +285,37 @@ export interface FileItem {
   uploader: string;
 }
 
+// 문서함(파일 자료실) — 관리자 전용
+// 대분류(카테고리) 탭으로 파일을 올려 보관/다운로드한다.
+export interface CabinetCategory {
+  id: string;
+  name: string;        // 대분류 예: 직원용, 업무용, 거래처용
+  order: number;       // 탭 정렬 순서
+  createdAt: string;   // ISO
+}
+
+export interface CabinetSubCategory {
+  id: string;
+  category: string;    // 상위 대분류 이름(CabinetCategory.name)
+  name: string;        // 중분류 예: 계약, 매뉴얼, 인증
+  order: number;       // 정렬 순서
+  createdAt: string;   // ISO
+}
+
+export interface CabinetDoc {
+  id: string;
+  category: string;    // 대분류(CabinetCategory.name)
+  subCategory: string; // 중분류(CabinetSubCategory.name), 없으면 ''
+  fileName: string;    // 원본 파일명
+  storagePath: string; // Storage 경로 (삭제용)
+  downloadUrl: string; // 다운로드 URL
+  size: number;        // bytes
+  contentType: string; // MIME
+  note?: string;       // 메모
+  uploadedBy: string;  // 업로더 이름
+  uploadedAt: string;  // ISO
+}
+
 // HR related interfaces
 export type EmployeeStatus = 'working' | 'leave' | 'out';
 
@@ -357,7 +388,7 @@ export interface ChatRoom {
 }
 
 
-export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'partners' | 'partners' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'partner-portal' | 'item-management' | 'item-price-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'tax-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'inbound-scan' | 'smartstore-analytics' | 'haccp-checklist' | 'return-management' | 'inbound-returns' | 'partner-stats' | 'cash-flow' | 'sanitation-checklist' | 'partner-signup';
+export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'partners' | 'partners' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'partner-portal' | 'item-management' | 'item-price-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'tax-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'inbound-scan' | 'smartstore-analytics' | 'haccp-checklist' | 'return-management' | 'inbound-returns' | 'partner-stats' | 'cash-flow' | 'sanitation-checklist' | 'partner-signup' | 'file-cabinet';
 
 // ── 생산 실적 ──────────────────────────────────────────────────────────────────
 export interface ProductionRecord {

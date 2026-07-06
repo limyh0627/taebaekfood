@@ -1,0 +1,28 @@
+rules_version = '2';
+
+/**
+ * Firebase Storage 보안 규칙
+ *
+ * ─ 현재 인증 구조 ─
+ * 이 앱은 Firebase Anonymous Auth를 사용합니다(전원 익명 계정).
+ * 관리자/직원 구분은 Firestore employees 컬렉션에서 인앱 처리하므로,
+ * Storage 규칙 레벨에서는 admin 여부를 알 수 없습니다.
+ *
+ * ─ 현재 정책 (보안 A) ─
+ * 최소한 미인증 접근을 차단합니다(인증된 사용자만 read/write).
+ * "문서함(file-cabinet/**)"의 관리자 전용 제한은 앱 UI에서만 강제됩니다.
+ *
+ * ─ 후속 강화 (보안 B, 미구현) ─
+ * Firebase Auth Custom Claims(isAdmin) 도입 후 아래처럼 강화 권장:
+ *   match /file-cabinet/{allPaths=**} {
+ *     allow read, write: if request.auth.token.isAdmin == true;
+ *   }
+ */
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
