@@ -1523,7 +1523,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   '검정깨': { product: '볶음검정참깨', rate: 0.95 },
                   // 참깨→볶음참깨(0.95), 들깨→볶음들깨(0.95): 직접 볶는 경우 수동 입력
                 };
-                if (entry.used > 0 && YIELD_AUTO[entry.material] && entry.note !== '재고실사정정') {
+                // 수율 자동입고는 '실제 사용(압착)'에만 — 재고실사/조정/로트삭제 등 correction은 제외.
+                // (correction이 다른 품목에 파생 입고를 만들지 않게: 예전엔 note==='재고실사정정'만 막아
+                //  다른 note의 실사조정이 통깨참기름 등에 phantom 입고를 만들었음)
+                if (entry.used > 0 && YIELD_AUTO[entry.material] && entry.type !== 'correction') {
                   const { product, rate } = YIELD_AUTO[entry.material];
                   // entry.used가 이미 kg 단위(modal이 변환해서 저장)이므로 수율 곱한 결과도 kg
                   const derivedKg = Math.round(entry.used * rate * 1000) / 1000;
@@ -2752,7 +2755,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     if (!sourceEntry) return rows;
                     const [sourceMaterial, { yield: yieldRate }] = sourceEntry;
                     mergedRawMaterialLedger
-                      .filter(e => e.material === sourceMaterial && e.used > 0 && e.type !== 'auto' && e.note !== '재고실사정정')
+                      // 수율 파생은 '실제 사용(압착=manual)'에만 — correction(재고실사/조정/로트삭제)은 제외.
+                      // (예전엔 note==='재고실사정정'만 막아, 다른 note의 실사조정이 파생입고를 만들었음)
+                      .filter(e => e.material === sourceMaterial && e.used > 0 && e.type !== 'auto' && e.type !== 'correction')
                       .forEach(e => {
                         const derivedKg = Math.round(e.used * yieldRate * 1000) / 1000;
                         // YIELD_AUTO(rm-yield-*)가 DB에 실제 파생입고를 이미 기록한 경우 표시용 파생행을 만들면

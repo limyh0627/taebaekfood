@@ -294,7 +294,7 @@ const ItemList: React.FC<ItemListProps> = ({
         (lots) => lotStockInUnit(lots, material),
       );
       if (Math.abs(adjustKg) > 0.001) {
-        // note '재고실사정정' = AdminApp의 수율 자동입고 제외 키워드 (실사조정이 수율을 트리거하지 않도록)
+        // type:'correction'이면 AdminApp 수율 자동입고/파생행에서 제외됨 (실사조정이 다른 품목 수율을 트리거하지 않음)
         onAddRawMaterialEntry({
           id: `rm-stocktake-${Date.now()}`,
           material, date: new Date().toISOString().slice(0, 10),
