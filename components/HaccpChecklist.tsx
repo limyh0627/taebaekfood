@@ -634,7 +634,8 @@ export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; is
             </div>
 
             <p className="text-xs text-slate-500 mb-2">※ O: 기준 내 / X: 기준 이탈 (이탈 시 개선조치 기재)</p>
-            <table className="w-full border-collapse text-xs">
+            <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-xs min-w-[500px]">
               <thead>
                 <tr>
                   <th className={TH}>보관장소</th>
@@ -678,6 +679,7 @@ export const TempForm: React.FC<{ currentUser?: { id: string; name: string }; is
                 ))}
               </tbody>
             </table>
+            </div>
             {!isReadOnly && isAdmin && (
               <button onClick={addRow} className="mt-2 flex items-center gap-1 px-3 py-1.5 border border-dashed border-slate-300 rounded-lg text-xs text-slate-400 hover:border-teal-400 hover:text-teal-500">
                 <Plus size={12} /> 행 추가
@@ -1666,11 +1668,17 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
   const isReadOnly = selected ? !isToday : false;
   const allChecked = selected ? selected.rows.every(r => r.result === 'pass' || r.result === 'fail') : false;
 
+  // 템플릿 항목이 추가돼 rows 길이가 부족하면 빈 행으로 채워 인덱스 접근 오류 방지
+  const padRows = (rows: SanitationRow[]): SanitationRow[] =>
+    rows.length >= templateItems.length
+      ? rows
+      : [...rows, ...templateItems.slice(rows.length).map((): SanitationRow => ({ result: '', note: '', inspector: '' }))];
+
   const setRow = (idx: number, field: keyof SanitationRow, val: string) => {
     if (isReadOnly) return;
     setSelected(prev => prev ? {
       ...prev,
-      rows: prev.rows.map((r, i) => i === idx ? { ...r, [field]: val } : r),
+      rows: padRows(prev.rows).map((r, i) => i === idx ? { ...r, [field]: val } : r),
     } : prev);
   };
 
@@ -1679,11 +1687,12 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
     const userName = currentUser?.name ?? '';
     setSelected(prev => {
       if (!prev) return prev;
-      const row = prev.rows[idx];
+      const rows = padRows(prev.rows);
+      const row = rows[idx];
       const newResult = row.result === val ? '' : val;
       return {
         ...prev,
-        rows: prev.rows.map((r, i) => i === idx ? {
+        rows: rows.map((r, i) => i === idx ? {
           ...r,
           result: newResult,
           inspector: r.inspector || (newResult ? userName : ''),
@@ -3192,23 +3201,30 @@ const PeriodicSanitationForm: React.FC<{ currentUser?: { id: string; name: strin
   const actualCurrentPeriod = cycle === 'weekly' ? currentWeekStr() : new Date().toISOString().slice(0, 7);
   const isReadOnly = period !== actualCurrentPeriod;
 
+  // 템플릿 항목이 추가돼 rows 길이가 부족하면 빈 행으로 채워 인덱스 접근 오류 방지
+  const padRows = (rows: PeriodRow[]): PeriodRow[] =>
+    rows.length >= items.length
+      ? rows
+      : [...rows, ...items.slice(rows.length).map((): PeriodRow => ({ result: '', note: '', inspector: '' }))];
+
   const toggleResult = (idx: number, val: 'pass' | 'fail') => {
     if (isReadOnly) return;
     const userName = currentUser?.name ?? '';
     setSelected(prev => {
       if (!prev) return prev;
-      const row = prev.rows[idx];
+      const rows = padRows(prev.rows);
+      const row = rows[idx];
       const newResult = row.result === val ? '' : val;
       return {
         ...prev,
-        rows: prev.rows.map((r, i) => i === idx ? { ...r, result: newResult, inspector: r.inspector || (newResult ? userName : '') } : r),
+        rows: rows.map((r, i) => i === idx ? { ...r, result: newResult, inspector: r.inspector || (newResult ? userName : '') } : r),
       };
     });
   };
 
   const setRow = (idx: number, field: keyof PeriodRow, val: string) => {
     if (isReadOnly) return;
-    setSelected(prev => prev ? { ...prev, rows: prev.rows.map((r, i) => i === idx ? { ...r, [field]: val } : r) } : prev);
+    setSelected(prev => prev ? { ...prev, rows: padRows(prev.rows).map((r, i) => i === idx ? { ...r, [field]: val } : r) } : prev);
   };
 
   const handleSave = async () => {
@@ -3706,23 +3722,30 @@ const ClosingChecklistForm: React.FC<{ currentUser?: { id: string; name: string 
 
   const isReadOnly = checkDate !== todayStr();
 
+  // 템플릿 항목이 추가돼(예: 6·7번) rows 길이가 부족하면 빈 행으로 채워 인덱스 접근 오류 방지
+  const padRows = (rows: PeriodRow[]): PeriodRow[] =>
+    rows.length >= templateItems.length
+      ? rows
+      : [...rows, ...templateItems.slice(rows.length).map((): PeriodRow => ({ result: '', note: '', inspector: '' }))];
+
   const toggleResult = (idx: number, val: 'pass' | 'fail') => {
     if (isReadOnly) return;
     const userName = currentUser?.name ?? '';
     setSelected(prev => {
       if (!prev) return prev;
-      const row = prev.rows[idx];
+      const rows = padRows(prev.rows);
+      const row = rows[idx];
       const newResult = row.result === val ? '' : val;
       return {
         ...prev,
-        rows: prev.rows.map((r, i) => i === idx ? { ...r, result: newResult, inspector: r.inspector || (newResult ? userName : '') } : r),
+        rows: rows.map((r, i) => i === idx ? { ...r, result: newResult, inspector: r.inspector || (newResult ? userName : '') } : r),
       };
     });
   };
 
   const setRow = (idx: number, field: keyof PeriodRow, val: string) => {
     if (isReadOnly) return;
-    setSelected(prev => prev ? { ...prev, rows: prev.rows.map((r, i) => i === idx ? { ...r, [field]: val } : r) } : prev);
+    setSelected(prev => prev ? { ...prev, rows: padRows(prev.rows).map((r, i) => i === idx ? { ...r, [field]: val } : r) } : prev);
   };
 
   const handleSave = async () => {
