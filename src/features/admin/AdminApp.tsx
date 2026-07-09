@@ -63,6 +63,7 @@ import PageHeader from '../../shared/components/PageHeader';
 import Dashboard from '../../../components/Dashboard';
 import OrdersList from '../../../components/OrdersList';
 import ItemList from '../../../components/ItemList';
+import BomIntegrityPanel from '../../../components/BomIntegrityPanel';
 import AIConsultant from '../../../components/AIConsultant';
 import AddOrderModal from '../../../components/AddOrderModal';
 import PasteOrderModal from '../../../components/PasteOrderModal';
@@ -1453,8 +1454,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
             />
           )}
           {currentView === 'inventory' && (
-            <ItemList 
-              items={allItems} 
+            <>
+            <BomIntegrityPanel items={allItems} itemFormulas={itemFormulas} />
+            <ItemList
+              items={allItems}
               onUpdateItem={async (p) => {
                 await updateItem(getProductCollection(p.category), p.id, p);
               }}
@@ -1598,6 +1601,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 </React.Suspense>
               }
             />
+            </>
           )}
           {currentView === 'inbound-scan' && (
             <InboundScan
