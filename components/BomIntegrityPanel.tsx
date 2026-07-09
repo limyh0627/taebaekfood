@@ -44,7 +44,8 @@ const BomIntegrityPanel: React.FC<Props> = ({ items, itemFormulas = [] }) => {
       else for (const s of subs) if (!s.id || !byId.has(s.id)) brokenSub.push({ product: p.name, id: s.id, name: (s as any).name });
     }
     const prodKeys = new Set(prods.map(p => (p as any).품목 || p.name));
-    const orphan = [...new Set(itemFormulas.map(f => f.parent_key))].filter(k => !prodKeys.has(k));
+    // orphan = 완제품도 원료홀더(반제품 수율 BOM의 부모)도 아닌 parent_key
+    const orphan = [...new Set(itemFormulas.map(f => f.parent_key))].filter(k => !prodKeys.has(k) && !holderByRaw[k]);
 
     const total = brokenSub.length + missingRaw.length + noBom.length + orphan.length;
     return { brokenSub, missingRaw, noBom, noSub, orphan, total };

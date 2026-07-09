@@ -331,6 +331,29 @@ const AdminApp: React.FC<AdminAppProps> = ({
     [products, submaterials, productClientMap]
   );
 
+  // 수율(반제품 생산) 규칙 — 원재료(seed) → 파생 반제품 + 수율. item_formula에서 '부모가 원료홀더'인 행을 읽음.
+  //   예: 통깨참기름 ← 참깨(0.45). 데이터가 없으면 기존 하드코딩값으로 폴백(무회귀).
+  const yieldRules = useMemo(() => {
+    const holderNames = new Set(
+      allItems.filter(i => i.category === 'raw' || (i.category === 'wip' && i.unit !== '개'))
+        .map(i => baseRawName(i.name))
+    );
+    const map: Record<string, { product: string; rate: number }> = {};
+    for (const f of itemFormulas) {
+      if (f.parent_key && holderNames.has(f.parent_key) && f.child_name) {
+        map[f.child_name] = { product: f.parent_key, rate: (f.yield_rate ?? f.ratio ?? 1) };
+      }
+    }
+    const fallback: Record<string, { product: string; rate: number }> = {
+      '참깨': { product: '통깨참기름', rate: 0.45 },
+      '깨분': { product: '깨분참기름', rate: 0.45 },
+      '들깨': { product: '통들깨들기름', rate: 0.37 },
+      '검정깨': { product: '볶음검정참깨', rate: 0.95 },
+    };
+    for (const k of Object.keys(fallback)) if (!map[k]) map[k] = fallback[k];
+    return map;
+  }, [itemFormulas, allItems]);
+
   const pendingPurchaseOrders = useMemo(() => purchaseOrders.filter(po => po.status === 'pending'), [purchaseOrders]);
   const invoicedPurchaseOrders = useMemo(() => purchaseOrders.filter(po => po.status === 'invoiced'), [purchaseOrders]);
 
@@ -1522,21 +1545,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
               autoUsageEntries={autoRawMaterialUsage}
               onAddRawMaterialEntry={async (entry) => {
                 await addItem('rawMaterialLedger', entry);
-                // 수율 파생 입고 자동 추가
-                // 참깨/들깨: 주 용도(압착)만 자동 연결. 직접 볶을 때(볶음참깨/볶음들깨)는 수동 입력
-                // 검정깨: 주로 볶음검정참깨로 구매하나 직접 볶을 때 자동 연결
-                const YIELD_AUTO: Record<string, { product: string; rate: number }> = {
-                  '참깨': { product: '통깨참기름', rate: 0.45 },
-                  '깨분': { product: '깨분참기름', rate: 0.45 },
-                  '들깨': { product: '통들깨들기름', rate: 0.37 },
-                  '검정깨': { product: '볶음검정참깨', rate: 0.95 },
-                  // 참깨→볶음참깨(0.95), 들깨→볶음들깨(0.95): 직접 볶는 경우 수동 입력
-                };
+                // 수율 파생 입고 자동 추가 — 규칙은 item_formula 데이터(yieldRules)에서 읽음(하드코딩 폴백).
+                //   참깨/들깨/깨분: 압착 사용 시 파생 오일 자동 생성. 볶음(볶음참깨/볶음들깨)은 수동 입력.
                 // 수율 자동입고는 '실제 사용(압착)'에만 — 재고실사/조정/로트삭제 등 correction은 제외.
-                // (correction이 다른 품목에 파생 입고를 만들지 않게: 예전엔 note==='재고실사정정'만 막아
-                //  다른 note의 실사조정이 통깨참기름 등에 phantom 입고를 만들었음)
-                if (entry.used > 0 && YIELD_AUTO[entry.material] && entry.type !== 'correction') {
-                  const { product, rate } = YIELD_AUTO[entry.material];
+                //   (예전엔 note==='재고실사정정'만 막아 다른 note의 실사조정이 phantom 입고를 만들었음)
+                if (entry.used > 0 && yieldRules[entry.material] && entry.type !== 'correction') {
+                  const { product, rate } = yieldRules[entry.material];
                   // entry.used가 이미 kg 단위(modal이 변환해서 저장)이므로 수율 곱한 결과도 kg
                   const derivedKg = Math.round(entry.used * rate * 1000) / 1000;
                   await addItem('rawMaterialLedger', {
@@ -2752,19 +2766,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 {docTab === '원료수불부' && (() => {
                   type UsageRow = { date: string; received: number; used: number; note: string; type: 'auto' | 'manual' | 'correction'; id?: string; createdAt?: string; targetKg?: number };
 
-                  // 수율: 원재료 사용 → 반제품 입고 자동 파생
-                  const YIELD_MAP: Record<string, { product: string; yield: number }> = {
-                    '참깨': { product: '통깨참기름', yield: 0.45 },
-                    '깨분': { product: '깨분참기름', yield: 0.45 },
-                    '들깨': { product: '통들깨들기름', yield: 0.37 },
-                    '검정깨': { product: '볶음검정참깨', yield: 0.95 },
-                  };
-
+                  // 수율: 원재료 사용 → 반제품 입고 자동 파생 (규칙은 yieldRules = item_formula 데이터)
                   const calcDerivedReceived = (material: string): UsageRow[] => {
                     const rows: UsageRow[] = [];
-                    const sourceEntry = Object.entries(YIELD_MAP).find(([, v]) => v.product === material);
+                    const sourceEntry = Object.entries(yieldRules).find(([, v]) => v.product === material);
                     if (!sourceEntry) return rows;
-                    const [sourceMaterial, { yield: yieldRate }] = sourceEntry;
+                    const [sourceMaterial, { rate: yieldRate }] = sourceEntry;
                     mergedRawMaterialLedger
                       // 수율 파생은 '실제 사용(압착=manual)'에만 — correction(재고실사/조정/로트삭제)은 제외.
                       // (예전엔 note==='재고실사정정'만 막아, 다른 note의 실사조정이 파생입고를 만들었음)
