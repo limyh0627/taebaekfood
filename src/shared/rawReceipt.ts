@@ -14,8 +14,9 @@ import { withCarryOverLot, buildReceiveLot, receiptToKg, nextLotNo, deductFromLo
 export function rawLotTarget(allItems: Item[], product: Item | undefined, itemName: string): { baseName: string; rawItem: Item } | null {
   const baseName = product?.rawMaterialName || baseRawName(itemName);
   if (!RM_LIST.includes(baseName)) return null;
-  const rawItem = allItems.find(i => i.category === 'raw' && baseRawName(i.name) === baseName)
-               ?? (product?.category === 'raw' ? product : undefined);
+  const isHolder = (c?: string, u?: string) => c === 'raw' || (c === 'wip' && u !== '개');
+  const rawItem = allItems.find(i => isHolder(i.category, i.unit) && baseRawName(i.name) === baseName)
+               ?? (isHolder(product?.category, product?.unit) ? product : undefined);
   return rawItem ? { baseName, rawItem } : null;
 }
 

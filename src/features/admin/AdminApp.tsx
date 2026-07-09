@@ -811,7 +811,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const consumedLots: { material: string; lotId?: string; lotNo?: string; supplierName: string; receivedDate?: string; kg: number }[] = [];
       for (const raw of rawNames) {
         const usedKg = Math.round(rawUsage[raw] * 1000) / 1000;
-        const rawItem = allItems.find(i => i.category === 'raw' && baseRawName(i.name) === raw);
+        // 원료 홀더 = raw, 또는 wip(볶음참깨·볶음들깨·볶음검정참깨·들깨가루(고운) 등 벌크 반제품).
+        //   단 wip이라도 unit이 '개'인 캔/포장 SKU(예: 깨분참기름/16.5kg)는 홀더가 아니므로 제외.
+        //   (예전엔 raw만 조회해 wip 벌크 홀더의 로트가 출고 시 차감 안 되던 드리프트)
+        const rawItem = allItems.find(i => (i.category === 'raw' || (i.category === 'wip' && i.unit !== '개')) && baseRawName(i.name) === raw);
         let noteSuffix = '';
         if (rawItem && !alreadyDeducted) {
           // 혼합 사용 ON이면 상위 2개 로트를 비율대로 배분, 아니면 선입선출
@@ -1548,7 +1551,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     unit: 'kg', // canonical
                   });
                   // 파생 원료(통깨참기름 등)에도 로트 생성 → 수불부와 로트/재고 일치 (안 만들면 출고 시 로트 부족)
-                  const derivedRaw = allItems.find(i => i.category === 'raw' && baseRawName(i.name) === product);
+                  const derivedRaw = allItems.find(i => (i.category === 'raw' || (i.category === 'wip' && i.unit !== '개')) && baseRawName(i.name) === product);
                   if (derivedRaw && derivedKg > 0) {
                     const lot = buildReceiveLot({ material: product, supplierName: `${entry.material} 압착`, qtyIn: 0, kgIn: derivedKg, receivedDate: entry.date });
                     try {
@@ -2974,7 +2977,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                             });
                                             // 로트/재고 연동 — 예전엔 수불부 문서만 쓰고 로트를 안 건드려
                                             // 정정이 실재고에 반영 안 됐음(수불부-재고 괴리 원인 중 하나)
-                                            const rawItem = allItems.find(i => i.category === 'raw' && baseRawName(i.name) === rmActiveMaterial);
+                                            const rawItem = allItems.find(i => (i.category === 'raw' || (i.category === 'wip' && i.unit !== '개')) && baseRawName(i.name) === rmActiveMaterial);
                                             if (rawItem) {
                                               try {
                                                 if (correctionUsed > 0) {

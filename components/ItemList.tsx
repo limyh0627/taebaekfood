@@ -122,10 +122,14 @@ type MainTab = 'requests' | 'history' | 'master' | 'inbound';
 type InboundSubTab = '입고' | '반품';
 type TopTab = 'finished' | 'goods' | 'submaterial' | 'rawmaterial' | 'wip';
 
-// #2 원료 단일 소스: 표시용 재고 — 원료(raw)이고 로트가 있으면 로트 합계(운영단위=기름 L),
+// 원료 로트 홀더 판별 — raw, 또는 wip 벌크 반제품(볶음참깨·볶음들깨·볶음검정참깨·들깨가루(고운)).
+//   단 wip이라도 unit이 '개'인 캔/포장 SKU(예: 깨분참기름/16.5kg)는 홀더가 아님.
+const isRawHolder = (p: any): boolean => p?.category === 'raw' || (p?.category === 'wip' && p?.unit !== '개');
+
+// #2 원료 단일 소스: 표시용 재고 — 원료 홀더이고 로트가 있으면 로트 합계(운영단위=기름 L),
 //   그 외(로트 없는 원료 예: 깻묵, 또는 완제품/상품/부자재)는 stock 필드 사용.
 const displayStockOf = (p: any): number =>
-  (p?.category === 'raw' && (p?.lots ?? []).length > 0)
+  (isRawHolder(p) && (p?.lots ?? []).length > 0)
     ? lotStockInUnit(p.lots, baseRawName(p.name))
     : (p?.stock ?? 0);
 
@@ -273,7 +277,7 @@ const ItemList: React.FC<ItemListProps> = ({
   // (원료 stock은 로트 합계가 기준이라 직접 덮어쓰면 다음 로트연산에 사라지므로 반드시 로트로 조정)
   const commitStockEdit = async (product: Item, val: number) => {
     if (isNaN(val) || val < 0) return;
-    if (product.category === 'raw') {
+    if (isRawHolder(product)) {
       const material = baseRawName(product.name);
       const unitLabel = product.unit ?? (unitOf(material) === 'L' ? 'L' : 'kg');
       if (!confirm(`${product.name} 재고를 ${val}${unitLabel}로 맞출까요?\n현재 로트 합계와의 차이가 '실사조정'으로 로트·수불부에 기록됩니다.`)) return;
@@ -984,9 +988,9 @@ const ItemList: React.FC<ItemListProps> = ({
                   const inCart = cart.some(c => c.id === product.id);
                   const isExpanded = expandedRowId === product.id;
                   // 로트가 저장된 원료(raw) 품목 — raw면 자기 자신, 매입 SKU(캔/반제품)면 연결된 원료
-                  const lotRaw = product.category === 'raw'
+                  const lotRaw = isRawHolder(product)
                     ? product
-                    : items.find(i => i.category === 'raw' && baseRawName(i.name) === (product.rawMaterialName || baseRawName(product.name)));
+                    : items.find(i => isRawHolder(i) && baseRawName(i.name) === (product.rawMaterialName || baseRawName(product.name)));
                   // 반제품/매입 캔: 재고를 원료 로트(kg)에서 파생 표시 — '캔 수 = 원료 활성잔량 ÷ 캔용량'.
                   // 입고/사용이 원료 로트에 반영되므로 캔 수도 자동으로 따라감(캔 품목의 stock 필드는 표시에 쓰지 않음).
                   const canPackageKg = (lotRaw && lotRaw.id !== product.id && product.category !== 'product')
@@ -996,7 +1000,7 @@ const ItemList: React.FC<ItemListProps> = ({
                   const derivedCans = (canPackageKg && derivedRawKg != null) ? derivedRawKg / canPackageKg : null;
                   // #2 원료 단일 소스: 원료(raw)는 화면도 로트 합계를 직접 읽어 stock 미러와의 불일치 방지.
                   //   lot이 하나도 없는 원료(예: 깻묵)는 기존 stock으로 폴백.
-                  const rawLots = product.category === 'raw' ? (product.lots ?? []) : null;
+                  const rawLots = isRawHolder(product) ? (product.lots ?? []) : null;
                   const rawLotStock = rawLots && rawLots.length > 0 ? lotStockInUnit(rawLots, baseRawName(product.name)) : null;
                   const effStock = derivedCans != null ? derivedCans : (rawLotStock != null ? rawLotStock : product.stock);
                   // 표시·편집 시드용 재고 (원료는 로트 합계, 그 외는 stock)
@@ -1474,7 +1478,7 @@ const ItemList: React.FC<ItemListProps> = ({
                   onClick={async () => {
                     const p = rowEditProduct!;
                     const { stock: newStock, ...meta } = rowEditForm;
-                    if (p.category === 'raw' && newStock !== undefined && newStock !== p.stock) {
+                    if (isRawHolder(p) && newStock !== undefined && newStock !== p.stock) {
                       // 원료: 메타만 반영하고 재고 변경은 실사조정(lot·수불부)으로
                       onUpdateItem({ ...p, ...meta } as Item);
                       await commitStockEdit(p, newStock);
@@ -1918,7 +1922,7 @@ const ItemList: React.FC<ItemListProps> = ({
         onSubmit={async (entry) => {
           // 원료수불부에 기록 (kg canonical)
           await onAddRawMaterialEntry(entry);
-          const rawTarget = items.find((i) => i.category === 'raw' && baseRawName(i.name) === entry.material);
+          const rawTarget = items.find((i) => isRawHolder(i) && baseRawName(i.name) === entry.material);
           if (rawTarget) {
             try {
             if ((entry.received ?? 0) > 0) {
