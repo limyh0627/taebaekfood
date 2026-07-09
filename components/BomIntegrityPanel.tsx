@@ -25,7 +25,7 @@ const BomIntegrityPanel: React.FC<Props> = ({ items, itemFormulas = [] }) => {
     }
     const prods = items.filter(i => i.category === 'product');
 
-    const brokenSub: { product: string; id: string }[] = [];
+    const brokenSub: { product: string; id: string; name?: string }[] = [];
     const missingRaw: { product: string; raw: string }[] = [];
     const noBom: string[] = [];
     const noSub: string[] = [];
@@ -41,7 +41,7 @@ const BomIntegrityPanel: React.FC<Props> = ({ items, itemFormulas = [] }) => {
       }
       const subs = (p as any).submaterials;
       if (!Array.isArray(subs) || subs.length === 0) noSub.push(p.name);
-      else for (const s of subs) if (!s.id || !byId.has(s.id)) brokenSub.push({ product: p.name, id: s.id });
+      else for (const s of subs) if (!s.id || !byId.has(s.id)) brokenSub.push({ product: p.name, id: s.id, name: (s as any).name });
     }
     const prodKeys = new Set(prods.map(p => (p as any).품목 || p.name));
     const orphan = [...new Set(itemFormulas.map(f => f.parent_key))].filter(k => !prodKeys.has(k));
@@ -78,10 +78,10 @@ const BomIntegrityPanel: React.FC<Props> = ({ items, itemFormulas = [] }) => {
 
           {r.brokenSub.length > 0 && (
             <Section tone="bg-rose-50 text-rose-600" title={`🔴 부자재 끊긴 참조 ${r.brokenSub.length}건 — 이 부자재가 출고 시 차감 안 됨`}>
-              {r.brokenSub.slice(0, 25).map((b, i) => (
-                <div key={i} className="truncate"><b className="text-slate-700">{b.product}</b> → <span className="font-mono text-rose-500">{b.id || '(빈 id)'}</span></div>
+              {r.brokenSub.slice(0, 80).map((b, i) => (
+                <div key={i} className="truncate"><b className="text-slate-700">{b.product}</b> → <span className="text-rose-500 font-bold">{b.name || '(이름없음)'}</span>{!b.name && <span className="font-mono text-slate-400"> {b.id}</span>}</div>
               ))}
-              {r.brokenSub.length > 25 && <div className="text-slate-400">외 {r.brokenSub.length - 25}건</div>}
+              {r.brokenSub.length > 80 && <div className="text-slate-400">외 {r.brokenSub.length - 80}건</div>}
             </Section>
           )}
 
