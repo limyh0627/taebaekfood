@@ -17,16 +17,15 @@ const BomIntegrityPanel: React.FC<Props> = ({ items, itemFormulas = [] }) => {
     const byId = new Map(items.map(i => [i.id, i]));
     const formByKey: Record<string, FormulaRow[]> = {};
     itemFormulas.forEach(f => { (formByKey[f.parent_key] = formByKey[f.parent_key] || []).push(f); });
-    // 원료명 → 로트 보유 가능 홀더(raw/wip 또는 lots 보유)
+    // 원료 홀더 = raw, 또는 wip 벌크 반제품(볶음참깨류·들깨가루). unit='개' 캔/포장 SKU는 제외(엔진과 동일 판별).
+    const isHolder = (c?: string, u?: string) => c === 'raw' || (c === 'wip' && u !== '개');
     const holderByRaw: Record<string, Item> = {};
     for (const it of items) {
-      if (['raw', 'wip'].includes(it.category as string) || (it.lots && it.lots.length)) holderByRaw[baseRawName(it.name)] = it;
+      if (isHolder(it.category as string, (it as any).unit)) holderByRaw[baseRawName(it.name)] = it;
     }
     const prods = items.filter(i => i.category === 'product');
 
     const brokenSub: { product: string; id: string }[] = [];
-    const wipRaws = new Set<string>();
-    const wipProducts = new Set<string>();
     const missingRaw: { product: string; raw: string }[] = [];
     const noBom: string[] = [];
     const noSub: string[] = [];
@@ -38,9 +37,7 @@ const BomIntegrityPanel: React.FC<Props> = ({ items, itemFormulas = [] }) => {
         : (PRODUCT_FORMULA[key]?.map(x => ({ raw: x.raw })) ?? null);
       if (!rows) noBom.push(p.name);
       else for (const { raw } of rows) {
-        const h = holderByRaw[raw];
-        if (!h) missingRaw.push({ product: p.name, raw });
-        else if (h.category === 'wip') { wipRaws.add(raw); wipProducts.add(p.name); }
+        if (!holderByRaw[raw]) missingRaw.push({ product: p.name, raw });
       }
       const subs = (p as any).submaterials;
       if (!Array.isArray(subs) || subs.length === 0) noSub.push(p.name);
@@ -49,8 +46,8 @@ const BomIntegrityPanel: React.FC<Props> = ({ items, itemFormulas = [] }) => {
     const prodKeys = new Set(prods.map(p => (p as any).품목 || p.name));
     const orphan = [...new Set(itemFormulas.map(f => f.parent_key))].filter(k => !prodKeys.has(k));
 
-    const total = brokenSub.length + wipRaws.size + missingRaw.length + noBom.length + orphan.length;
-    return { brokenSub, wipRaws: [...wipRaws], wipProducts: wipProducts.size, missingRaw, noBom, noSub, orphan, total };
+    const total = brokenSub.length + missingRaw.length + noBom.length + orphan.length;
+    return { brokenSub, missingRaw, noBom, noSub, orphan, total };
   }, [items, itemFormulas]);
 
   const clean = r.total === 0;
@@ -85,13 +82,6 @@ const BomIntegrityPanel: React.FC<Props> = ({ items, itemFormulas = [] }) => {
                 <div key={i} className="truncate"><b className="text-slate-700">{b.product}</b> → <span className="font-mono text-rose-500">{b.id || '(빈 id)'}</span></div>
               ))}
               {r.brokenSub.length > 25 && <div className="text-slate-400">외 {r.brokenSub.length - 25}건</div>}
-            </Section>
-          )}
-
-          {r.wipRaws.length > 0 && (
-            <Section tone="bg-rose-50 text-rose-600" title={`🔴 원료 로트 차감 누락 — 완제품 ${r.wipProducts}개 영향`}>
-              <div>원료 <b>{r.wipRaws.join(', ')}</b> 의 홀더가 <b>반제품(wip)</b> 이라, 현재 차감 로직(category==='raw'만 조회)이 못 찾아 <b>로트가 안 빠져요.</b></div>
-              <div className="text-slate-400">→ item_bom(ID 기반) 통합 시 자동 해결.</div>
             </Section>
           )}
 
