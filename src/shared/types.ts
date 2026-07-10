@@ -499,6 +499,7 @@ export interface PurchaseOrder {
   status: 'pending' | 'invoiced' | 'received';
   confirmedByUser?: boolean;
   linkedStatementId?: string;
+  linkedStatementAt?: string;   // 전표 발행(연결) 시각 — 선입고 이력 1일 뒤 자동삭제 기준
   createdAt: string;
   invoicedAt?: string;
   receivedAt?: string;

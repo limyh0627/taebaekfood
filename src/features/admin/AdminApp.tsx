@@ -424,6 +424,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
     });
   }, [adjustmentRequests]);
 
+  // 전표 발행된 선입고 이력은 발행 1일 뒤 자동 삭제 (목록 누적 방지 — 발행 시엔 유지)
+  useEffect(() => {
+    const oneDayAgoMs = Date.now() - 24 * 60 * 60 * 1000;
+    receivedOrders.forEach(po => {
+      if (!po.linkedStatementId) return;
+      const at = po.linkedStatementAt || issuedStatements.find(s => s.id === po.linkedStatementId)?.issuedAt;
+      if (at && new Date(at).getTime() < oneDayAgoMs) deleteItem('purchaseOrders', po.id);
+    });
+  }, [receivedOrders, issuedStatements]);
+
   // 날짜가 바뀐 뒤 첫 접속 시 작업순서 자동 초기화 (주문 데이터는 유지)
   // Firestore에 초기화 날짜를 저장해 모든 기기에서 하루 1회만 실행
   useEffect(() => {
@@ -3432,7 +3442,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 // 발주예정(pending) 등은 입고대기(invoiced)로 전환.
                 const po = purchaseOrders.find(p => p.id === poId);
                 const isReceived = po?.status === 'received';
-                updateItem('purchaseOrders', poId, { linkedStatementId: statementId, ...(isReceived ? {} : { status: 'invoiced', invoicedAt: new Date().toISOString() }) });
+                // 선입고: 상태 유지 + 발행시각 기록(1일 뒤 자동삭제 기준). 발주예정: 입고대기로 전환.
+                updateItem('purchaseOrders', poId, { linkedStatementId: statementId, ...(isReceived ? { linkedStatementAt: new Date().toISOString() } : { status: 'invoiced', invoicedAt: new Date().toISOString() }) });
               }}
               onCreateInboundPO={(po) =>
                 addItem('purchaseOrders', {
