@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileDown, ClipboardList, Thermometer, Bug, CheckSquare, Scan, ShoppingCart, Wrench, ShieldAlert, Save, Trash2, BadgeCheck, User, Plus } from 'lucide-react';
+import { FileDown, ClipboardList, Thermometer, Bug, CheckSquare, Scan, ShoppingCart, Wrench, ShieldAlert, Save, Trash2, BadgeCheck, User, Plus, GripVertical } from 'lucide-react';
 import { db } from '../src/shared/firebase';
 import { collection, addDoc, updateDoc, setDoc, doc, onSnapshot, query, orderBy, deleteDoc } from 'firebase/firestore';
 
@@ -53,6 +53,51 @@ const SignBox: React.FC<{ labels?: string[] }> = ({ labels = ['작성자', '확�
     ))}
   </div>
 );
+
+// ── 드래그 순서 변경 훅 (템플릿 에디터 공용) ──────────────────────────────────
+// 핸들(GripVertical)만 draggable로 두어 행 안 input의 텍스트 선택과 충돌하지 않게 함.
+// 드래그 중 다른 행 위로 진입하면 즉시 순서를 바꿔 실시간 미리보기.
+// 터치 기기는 HTML5 드래그가 동작하지 않으므로 ↑↓ 버튼을 유지한다.
+function useDragReorder(move: (_from: number, _to: number) => void) {
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const dragRef = useRef<number | null>(null);
+
+  const handleProps = (idx: number) => ({
+    draggable: true,
+    onDragStart: (e: React.DragEvent) => {
+      e.dataTransfer.setData('text/plain', ''); // Firefox는 데이터가 있어야 드래그 시작
+      e.dataTransfer.effectAllowed = 'move';
+      dragRef.current = idx;
+      setDragIdx(idx);
+    },
+    onDragEnd: () => {
+      dragRef.current = null;
+      setDragIdx(null);
+    },
+  });
+
+  const rowProps = (idx: number) => ({
+    onDragEnter: () => {
+      const from = dragRef.current;
+      if (from === null || from === idx) return;
+      dragRef.current = idx;
+      setDragIdx(idx);
+      move(from, idx);
+    },
+    onDragOver: (e: React.DragEvent) => e.preventDefault(),
+  });
+
+  return { dragIdx, handleProps, rowProps };
+}
+
+const arrayMove = <T,>(arr: T[], from: number, to: number): T[] => {
+  const next = [...arr];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+};
+
+const DRAG_HANDLE_CLASS = 'cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 shrink-0';
 
 // ── 탭 ID 타입 ─────────────────────────────────────────────────────────────────
 type TabId = 'overview' | 'daily' | 'pest' | 'temp' | 'ccp-heat' | 'ccp-metal' | 'incoming' | 'cleaning' | 'sanitation' | 'personal' | 'weekly-sanitation' | 'closing';
@@ -2845,6 +2890,10 @@ export const PersonalHygieneTemplateEditor: React.FC = () => {
   const updateCol = (idx: number, val: string) =>
     setCols(prev => prev.map((c, i) => i === idx ? val : c));
 
+  const { dragIdx, handleProps, rowProps } = useDragReorder(
+    (from, to) => setCols(prev => arrayMove(prev, from, to))
+  );
+
   if (!editing) {
     return (
       <div className="bg-white border border-slate-200 rounded-xl p-4">
@@ -2887,7 +2936,8 @@ export const PersonalHygieneTemplateEditor: React.FC = () => {
 
       <div className="flex flex-col gap-2 mb-3">
         {cols.map((col, idx) => (
-          <div key={idx} className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2">
+          <div key={idx} {...rowProps(idx)} className={`flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2 ${dragIdx === idx ? 'opacity-60 ring-1 ring-indigo-400' : ''}`}>
+            <span {...handleProps(idx)} className={DRAG_HANDLE_CLASS}><GripVertical size={14} /></span>
             <span className="text-xs text-slate-400 w-5 text-center shrink-0">{idx + 1}</span>
             <input
               value={col}
@@ -2957,6 +3007,10 @@ export const TempZoneTemplateEditor: React.FC = () => {
     setZones(next);
   };
 
+  const { dragIdx, handleProps, rowProps } = useDragReorder(
+    (from, to) => setZones(prev => arrayMove(prev, from, to))
+  );
+
   if (!editing) {
     return (
       <div className="bg-white border border-slate-200 rounded-xl p-4">
@@ -3008,8 +3062,11 @@ export const TempZoneTemplateEditor: React.FC = () => {
           <div className="col-span-2 text-center">관리</div>
         </div>
         {zones.map((z, idx) => (
-          <div key={idx} className="grid grid-cols-12 gap-1 items-center bg-slate-50 rounded-lg p-2">
-            <div className="col-span-1 text-xs text-slate-400 text-center font-bold">{idx + 1}</div>
+          <div key={idx} {...rowProps(idx)} className={`grid grid-cols-12 gap-1 items-center bg-slate-50 rounded-lg p-2 ${dragIdx === idx ? 'opacity-60 ring-1 ring-indigo-400' : ''}`}>
+            <div className="col-span-1 flex items-center justify-center gap-0.5 text-xs text-slate-400 font-bold">
+              <span {...handleProps(idx)} className={DRAG_HANDLE_CLASS}><GripVertical size={12} /></span>
+              {idx + 1}
+            </div>
             <div className="col-span-4">
               <input
                 value={z.name}
@@ -3095,6 +3152,10 @@ export const SanitationTemplateEditor: React.FC = () => {
     setItems(next);
   };
 
+  const { dragIdx, handleProps, rowProps } = useDragReorder(
+    (from, to) => setItems(prev => arrayMove(prev, from, to))
+  );
+
   if (!editing) {
     return (
       <div className="bg-white border border-slate-200 rounded-xl p-4">
@@ -3152,8 +3213,11 @@ export const SanitationTemplateEditor: React.FC = () => {
           <div className="col-span-2 text-center">관리</div>
         </div>
         {items.map((it, idx) => (
-          <div key={idx} className="grid grid-cols-12 gap-1 items-center bg-slate-50 rounded-lg p-2">
-            <div className="col-span-1 text-xs text-slate-400 text-center font-bold">{idx + 1}</div>
+          <div key={idx} {...rowProps(idx)} className={`grid grid-cols-12 gap-1 items-center bg-slate-50 rounded-lg p-2 ${dragIdx === idx ? 'opacity-60 ring-1 ring-indigo-400' : ''}`}>
+            <div className="col-span-1 flex items-center justify-center gap-0.5 text-xs text-slate-400 font-bold">
+              <span {...handleProps(idx)} className={DRAG_HANDLE_CLASS}><GripVertical size={12} /></span>
+              {idx + 1}
+            </div>
             <div className="col-span-4">
               <input
                 value={it.item}
@@ -3357,6 +3421,10 @@ const PeriodicSanitationTemplateEditor: React.FC<{ cycle: PeriodCycle }> = ({ cy
     setItems(next);
   };
 
+  const { dragIdx, handleProps, rowProps } = useDragReorder(
+    (from, to) => setItems(prev => arrayMove(prev, from, to))
+  );
+
   const cycleName = cycle === 'weekly' ? '주간' : '월간';
 
   if (!editing) {
@@ -3399,7 +3467,8 @@ const PeriodicSanitationTemplateEditor: React.FC<{ cycle: PeriodCycle }> = ({ cy
       </div>
       <div className="flex flex-col gap-1.5 mb-3">
         {items.map((it, idx) => (
-          <div key={idx} className="flex items-center gap-2">
+          <div key={idx} {...rowProps(idx)} className={`flex items-center gap-2 rounded ${dragIdx === idx ? 'opacity-60 ring-1 ring-indigo-400' : ''}`}>
+            <span {...handleProps(idx)} className={DRAG_HANDLE_CLASS}><GripVertical size={13} /></span>
             <span className="text-xs text-slate-400 w-5 text-right">{idx + 1}</span>
             <input value={it.item} onChange={e => updateItem(idx, 'item', e.target.value)} placeholder="점검항목" className="flex-1 border border-slate-300 rounded px-2 py-1 text-xs" />
             <input value={it.standard} onChange={e => updateItem(idx, 'standard', e.target.value)} placeholder="기준" className="w-36 border border-slate-300 rounded px-2 py-1 text-xs" />
@@ -3910,6 +3979,10 @@ const ClosingChecklistTemplateEditor: React.FC = () => {
     setItems(next);
   };
 
+  const { dragIdx, handleProps, rowProps } = useDragReorder(
+    (from, to) => setItems(prev => arrayMove(prev, from, to))
+  );
+
   if (!editing) {
     return (
       <div className="bg-white border border-slate-200 rounded-xl p-4">
@@ -3947,7 +4020,8 @@ const ClosingChecklistTemplateEditor: React.FC = () => {
       </div>
       <div className="flex flex-col gap-1.5 mb-3">
         {items.map((it, idx) => (
-          <div key={idx} className="flex items-center gap-2">
+          <div key={idx} {...rowProps(idx)} className={`flex items-center gap-2 rounded ${dragIdx === idx ? 'opacity-60 ring-1 ring-indigo-400' : ''}`}>
+            <span {...handleProps(idx)} className={DRAG_HANDLE_CLASS}><GripVertical size={13} /></span>
             <span className="text-xs text-slate-400 w-5 text-right">{idx + 1}</span>
             <input value={it.item} onChange={e => updateItem(idx, 'item', e.target.value)} placeholder="점검항목" className="flex-1 border border-slate-300 rounded px-2 py-1 text-xs" />
             <input value={it.standard} onChange={e => updateItem(idx, 'standard', e.target.value)} placeholder="기준" className="w-36 border border-slate-300 rounded px-2 py-1 text-xs" />
