@@ -95,6 +95,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     spec: initialData?.spec || '',
     품목: initialData?.품목 || '',
     isSmartStore: initialData?.isSmartStore ?? false,
+    phantom: initialData?.phantom ?? false,
     partnerIds: initialData?.partnerIds ?? (initialData?.partnerId ? [initialData.partnerId] : []),
     inPartnerIds: partnerIn
       .filter(pi => pi.Item_ID === initialData?.id)
@@ -240,6 +241,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       ...(formData.품목 && { 품목: formData.품목 }),
       ...(formData.category === 'product' && formData.partnerIds.length > 0 && { partnerIds: formData.partnerIds }),
       ...(formData.category === 'product' && { isSmartStore: formData.isSmartStore }),
+      ...((formData.category === 'wip' || formData.category === 'raw') && { phantom: !!formData.phantom }),
     };
 
     onSave(finalProduct);
@@ -702,9 +704,31 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Layers size={14} className="mr-2" /> 원료 배합 · 수율
               </label>
+
+              {/* 즉석배합(무재고) 토글 */}
+              <button
+                type="button"
+                onClick={() => setFormData(fd => ({ ...fd, phantom: !fd.phantom }))}
+                className={`w-full flex items-start gap-3 px-3.5 py-3 rounded-2xl border text-left transition-all ${formData.phantom ? 'bg-indigo-50 border-indigo-300' : 'bg-slate-50 border-slate-200'}`}
+              >
+                <span className={`mt-0.5 shrink-0 w-9 h-5 rounded-full relative transition-all ${formData.phantom ? 'bg-indigo-600' : 'bg-slate-300'}`}>
+                  <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${formData.phantom ? 'left-4' : 'left-0.5'}`} />
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[12px] font-black text-slate-700">즉석배합 (무재고)</span>
+                  <span className="block text-[11px] text-slate-400 leading-snug mt-0.5">
+                    {formData.phantom
+                      ? '이 반제품은 재고를 안 만들고, 이걸 쓰는 완제품이 출고될 때 아래 배합비대로 원료가 바로 차감돼요.'
+                      : '끄면 이 반제품을 재고(로트)로 관리해요 (볶음참깨처럼 선제조·재고 보유).'}
+                  </span>
+                </span>
+              </button>
+
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                이 품목을 만들 때 쓰는 원료와 <b className="text-slate-500">수율(%)</b>을 지정합니다. 출고·생산 시 이 비율로 원료가 자동 차감됩니다.<br />
-                예) <b className="text-indigo-500">{formData.name || '통깨참기름'}</b> ← 참깨 <b className="text-indigo-500">45%</b> : 참깨 100kg 사용 → {formData.name || '통깨참기름'} 45kg 생산
+                {formData.phantom ? '배합비(%)' : '수율(%)'}를 지정합니다.<br />
+                {formData.phantom
+                  ? <>예) <b className="text-indigo-500">{formData.name || '혼합참기름원액'}</b> = 통깨참기름 <b className="text-indigo-500">60%</b> + 옥수수유 <b className="text-indigo-500">40%</b> (합 100%)</>
+                  : <>예) <b className="text-indigo-500">{formData.name || '통깨참기름'}</b> ← 참깨 <b className="text-indigo-500">45%</b> : 참깨 100kg 사용 → {formData.name || '통깨참기름'} 45kg 생산</>}
               </p>
 
               {formulaRows.length > 0 && (

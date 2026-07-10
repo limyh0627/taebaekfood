@@ -17,12 +17,14 @@ const BomIntegrityPanel: React.FC<Props> = ({ items, itemFormulas = [] }) => {
     const byId = new Map(items.map(i => [i.id, i]));
     const formByKey: Record<string, FormulaRow[]> = {};
     itemFormulas.forEach(f => { (formByKey[f.parent_key] = formByKey[f.parent_key] || []).push(f); });
-    // 원료 홀더 = raw, 또는 wip 벌크 반제품(볶음참깨류·들깨가루). unit='개' 캔/포장 SKU는 제외(엔진과 동일 판별).
-    const isHolder = (c?: string, u?: string) => c === 'raw' || (c === 'wip' && u !== '개');
+    // 원료 홀더 = raw, 또는 wip 벌크 반제품(볶음참깨류·들깨가루). unit='개' 캔/포장 SKU·phantom은 제외(엔진과 동일 판별).
+    const isHolder = (it: Item) => !it.phantom && (it.category === 'raw' || (it.category === 'wip' && (it as any).unit !== '개'));
     const holderByRaw: Record<string, Item> = {};
     for (const it of items) {
-      if (isHolder(it.category as string, (it as any).unit)) holderByRaw[baseRawName(it.name)] = it;
+      if (isHolder(it)) holderByRaw[baseRawName(it.name)] = it;
     }
+    // phantom 반제품(무재고) — 배합식 전개 대상이므로 홀더가 없어도 정상(끊긴참조/orphan 오탐 방지).
+    const phantomNames = new Set(items.filter(i => i.phantom).map(i => baseRawName(i.name)));
     const prods = items.filter(i => i.category === 'product');
 
     const brokenSub: { product: string; id: string; name?: string }[] = [];
@@ -37,15 +39,15 @@ const BomIntegrityPanel: React.FC<Props> = ({ items, itemFormulas = [] }) => {
         : (PRODUCT_FORMULA[key]?.map(x => ({ raw: x.raw })) ?? null);
       if (!rows) noBom.push(p.name);
       else for (const { raw } of rows) {
-        if (!holderByRaw[raw]) missingRaw.push({ product: p.name, raw });
+        if (!holderByRaw[raw] && !phantomNames.has(raw)) missingRaw.push({ product: p.name, raw });
       }
       const subs = (p as any).submaterials;
       if (!Array.isArray(subs) || subs.length === 0) noSub.push(p.name);
       else for (const s of subs) if (!s.id || !byId.has(s.id)) brokenSub.push({ product: p.name, id: s.id, name: (s as any).name });
     }
     const prodKeys = new Set(prods.map(p => (p as any).품목 || p.name));
-    // orphan = 완제품도 원료홀더(반제품 수율 BOM의 부모)도 아닌 parent_key
-    const orphan = [...new Set(itemFormulas.map(f => f.parent_key))].filter(k => !prodKeys.has(k) && !holderByRaw[k]);
+    // orphan = 완제품도 원료홀더(반제품 수율 BOM의 부모)도 phantom 반제품도 아닌 parent_key
+    const orphan = [...new Set(itemFormulas.map(f => f.parent_key))].filter(k => !prodKeys.has(k) && !holderByRaw[k] && !phantomNames.has(k));
 
     const total = brokenSub.length + missingRaw.length + noBom.length + orphan.length;
     return { brokenSub, missingRaw, noBom, noSub, orphan, total };

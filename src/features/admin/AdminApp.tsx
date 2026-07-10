@@ -335,7 +335,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   //   예: 통깨참기름 ← 참깨(0.45). 데이터가 없으면 기존 하드코딩값으로 폴백(무회귀).
   const yieldRules = useMemo(() => {
     const holderNames = new Set(
-      allItems.filter(i => i.category === 'raw' || (i.category === 'wip' && i.unit !== '개'))
+      allItems.filter(i => !i.phantom && (i.category === 'raw' || (i.category === 'wip' && i.unit !== '개')))
         .map(i => baseRawName(i.name))
     );
     const map: Record<string, { product: string; rate: number }> = {};
@@ -353,6 +353,30 @@ const AdminApp: React.FC<AdminAppProps> = ({
     for (const k of Object.keys(fallback)) if (!map[k]) map[k] = fallback[k];
     return map;
   }, [itemFormulas, allItems]);
+
+  // 배합식 전개(재귀) — child가 phantom 반제품(무재고)이면 그 배합비대로 하위 원료로 전개.
+  //   예: 완제품 → 혼합원액(phantom) → [통깨참기름 0.6, 옥수수유 0.4] ⇒ 통깨참기름·옥수수유로 차감.
+  //   phantom이 아닌 홀더(통깨참기름·볶음참깨 등 선제조 재고)는 그 자체가 종단(재고 로트 차감).
+  //   phantom child가 없으면 기존 단일레벨 결과와 완전히 동일(무회귀).
+  const buildFormula = (prodKey: string): { raw: string; ratio: number }[] => {
+    const rowsFor = (key: string) =>
+      itemFormulas.filter(b => b.parent_key === key).map(b => ({ raw: b.child_name, ratio: (b.ratio ?? 1) * (b.yield_rate || 1) }));
+    const isPhantom = (name: string) => allItems.some(i => i.phantom && baseRawName(i.name) === name);
+    const expand = (key: string, acc: number, depth: number, seen: Set<string>): { raw: string; ratio: number }[] => {
+      if (depth > 6 || seen.has(key)) return [];
+      const rows = rowsFor(key);
+      const base = rows.length > 0 ? rows : (PRODUCT_FORMULA[key] ?? []);
+      const out: { raw: string; ratio: number }[] = [];
+      for (const f of base) {
+        const r = acc * f.ratio;
+        if (isPhantom(f.raw)) out.push(...expand(f.raw, r, depth + 1, new Set([...seen, key])));
+        else out.push({ raw: f.raw, ratio: r });
+      }
+      return out;
+    };
+    const hasTop = itemFormulas.some(b => b.parent_key === prodKey) || !!PRODUCT_FORMULA[prodKey];
+    return hasTop ? expand(prodKey, 1, 0, new Set()) : [];
+  };
 
   const pendingPurchaseOrders = useMemo(() => purchaseOrders.filter(po => po.status === 'pending'), [purchaseOrders]);
   const invoicedPurchaseOrders = useMemo(() => purchaseOrders.filter(po => po.status === 'invoiced'), [purchaseOrders]);
@@ -375,12 +399,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
         const prod = allItems.find(p => p.id === item.itemId);
         if (!prod || prod.category !== 'product') continue;
         const prodKey = prod.품목 || prod.name;
-        // Firestore BOM 우선, 없으면 하드코딩 fallback
-        const bomRows = itemFormulas.filter(b => b.parent_key === prodKey);
-        const formula = bomRows.length > 0
-          ? bomRows.map(b => ({ raw: b.child_name, ratio: b.ratio * (b.yield_rate || 1) }))
-          : PRODUCT_FORMULA[prodKey];
-        if (!formula) continue;
+        // Firestore BOM 우선, 없으면 하드코딩 fallback. phantom 반제품은 원료로 재귀 전개.
+        const formula = buildFormula(prodKey);
+        if (formula.length === 0) continue;
         for (const f of formula) {
           const usedKg = toKg(prod.spec || '', f.raw, item.quantity) * f.ratio;
           if (usedKg <= 0) continue;
@@ -820,13 +841,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
       }
 
       // 원료 사용량 집계 (완제품 한정) — 배합식 출처 통일: Firestore BOM(item_formula) 우선, 없으면 PRODUCT_FORMULA
-      // (화면 표시 autoRawMaterialUsage와 동일 로직 → 표시와 실제 차감이 일치)
+      // (화면 표시 autoRawMaterialUsage와 동일 로직 → 표시와 실제 차감이 일치). phantom 반제품은 원료로 재귀 전개.
       const prodKey = product.품목 || product.name;
-      const bomRows = itemFormulas.filter(b => b.parent_key === prodKey);
-      const formula = bomRows.length > 0
-        ? bomRows.map(b => ({ raw: b.child_name, ratio: b.ratio * (b.yield_rate || 1) }))
-        : PRODUCT_FORMULA[prodKey];
-      if (formula) {
+      const formula = buildFormula(prodKey);
+      if (formula.length > 0) {
         for (const f of formula) {
           const usedKg = toKg(product.spec || '', f.raw, item.quantity) * f.ratio;
           if (usedKg > 0) rawUsage[f.raw] = (rawUsage[f.raw] ?? 0) + usedKg;
@@ -847,7 +865,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         // 원료 홀더 = raw, 또는 wip(볶음참깨·볶음들깨·볶음검정참깨·들깨가루(고운) 등 벌크 반제품).
         //   단 wip이라도 unit이 '개'인 캔/포장 SKU(예: 깨분참기름/16.5kg)는 홀더가 아니므로 제외.
         //   (예전엔 raw만 조회해 wip 벌크 홀더의 로트가 출고 시 차감 안 되던 드리프트)
-        const rawItem = allItems.find(i => (i.category === 'raw' || (i.category === 'wip' && i.unit !== '개')) && baseRawName(i.name) === raw);
+        const rawItem = allItems.find(i => !i.phantom && (i.category === 'raw' || (i.category === 'wip' && i.unit !== '개')) && baseRawName(i.name) === raw);
         let noteSuffix = '';
         if (rawItem && !alreadyDeducted) {
           // 혼합 사용 ON이면 상위 2개 로트를 비율대로 배분, 아니면 선입선출
