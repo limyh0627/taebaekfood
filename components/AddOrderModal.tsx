@@ -129,8 +129,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
   // 현재 선택된 품목 기준 부자재 재고 부족 계산
   const shortages = useMemo(() => {
     const usage: Record<string, { name: string; needed: number; stock: number }> = {};
-    // 테이프는 50박스 누적 차감이므로 먼저 박스 수를 모은 후 계산
-    const tapeBoxCount: Record<string, { name: string; stock: number; accumulated: number; boxes: number }> = {};
+    // (테이프는 재고 차감·부족 경고 대상에서 제외 — 사용자 요청)
     for (const item of selectedItems) {
       const qty = typeof item.quantity === 'number' ? item.quantity : 0;
       if (qty <= 0) continue;
@@ -164,13 +163,6 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
               usage[sub.id].needed += boxesNeeded;
             }
           }
-          if (rule.tape_item_id) {
-            const sub = submaterials.find(sm => sm.id === rule.tape_item_id);
-            if (sub) {
-              if (!usage[sub.id]) usage[sub.id] = { name: sub.name, needed: 0, stock: sub.stock };
-              usage[sub.id].needed += boxesNeeded;
-            }
-          }
         }
         continue;
       }
@@ -186,34 +178,12 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
           usage[sub.id].needed += boxesNeeded;
         }
       }
-      if (pc?.tapeTypeId) {
-        const sub = submaterials.find(sm => sm.id === pc.tapeTypeId);
-        if (sub) {
-          if (!tapeBoxCount[sub.id]) {
-            tapeBoxCount[sub.id] = {
-              name: sub.name,
-              stock: sub.stock,
-              accumulated: (sub as any).accumulatedBoxes ?? 0,
-              boxes: 0,
-            };
-          }
-          tapeBoxCount[sub.id].boxes += boxesNeeded;
-        }
-      }
       for (const s of (product.submaterials || [])) {
         if (s.category === 'box' || s.category === 'tape') continue;
         const sub = submaterials.find(sm => sm.id === s.id);
         if (!sub) continue;
         if (!usage[sub.id]) usage[sub.id] = { name: sub.name, needed: 0, stock: sub.stock };
         usage[sub.id].needed += actualQty;
-      }
-    }
-    // 테이프: 누적 박스 + 이번 주문 박스 합산 후 50박스당 1개 계산
-    for (const [id, { name, stock, accumulated, boxes }] of Object.entries(tapeBoxCount)) {
-      const tapesNeeded = Math.floor((accumulated + boxes) / 50);
-      if (tapesNeeded > 0) {
-        if (!usage[id]) usage[id] = { name, needed: tapesNeeded, stock };
-        else usage[id].needed += tapesNeeded;
       }
     }
     return Object.values(usage).filter(v => v.needed > v.stock);

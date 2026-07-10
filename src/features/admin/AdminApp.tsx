@@ -517,13 +517,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         }
       }
 
-      // 테이프 부족 체크 (shippingRules 기반)
-      if (rule?.tape_item_id && boxesNeeded > 0) {
-        const tapeSub = submaterials.find(sm => sm.id === rule.tape_item_id);
-        if (tapeSub) {
-          usage[tapeSub.id] = { name: tapeSub.name, needed: (usage[tapeSub.id]?.needed ?? 0) + boxesNeeded, unit: '개' };
-        }
-      }
+      // (테이프는 재고 차감·부족 경고 대상에서 제외 — 사용자 요청)
 
       // 박스·테이프 외 부자재 (BOM 기반)
       for (const s of (product.submaterials || [])) {
