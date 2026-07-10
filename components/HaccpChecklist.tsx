@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileDown, ClipboardList, Thermometer, Bug, CheckSquare, Scan, ShoppingCart, Wrench, ShieldAlert, Save, Trash2, BadgeCheck, User, Plus } from 'lucide-react';
+import { FileDown, ClipboardList, Thermometer, Bug, CheckSquare, Scan, ShoppingCart, Wrench, ShieldAlert, Save, Trash2, BadgeCheck, User, Plus, GripVertical } from 'lucide-react';
 import { db } from '../src/shared/firebase';
 import { collection, addDoc, updateDoc, setDoc, doc, onSnapshot, query, orderBy, deleteDoc } from 'firebase/firestore';
 
@@ -53,6 +53,52 @@ const SignBox: React.FC<{ labels?: string[] }> = ({ labels = ['작성자', '확�
     ))}
   </div>
 );
+
+// ── 드래그 순서 변경 훅 (템플릿 에디터 공용) ──────────────────────────────────
+// 핸들(GripVertical)만 draggable로 두어 행 안 input의 텍스트 선택과 충돌하지 않게 함.
+// 드래그 중 다른 행 위로 진입하면 즉시 순서를 바꿔 실시간 미리보기.
+// 터치 기기는 HTML5 드래그가 동작하지 않으므로 ↑↓ 버튼을 유지한다.
+function useDragReorder(move: (_from: number, _to: number) => void, onSettle?: () => void) {
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const dragRef = useRef<number | null>(null);
+
+  const handleProps = (idx: number) => ({
+    draggable: true,
+    onDragStart: (e: React.DragEvent) => {
+      e.dataTransfer.setData('text/plain', ''); // Firefox는 데이터가 있어야 드래그 시작
+      e.dataTransfer.effectAllowed = 'move';
+      dragRef.current = idx;
+      setDragIdx(idx);
+    },
+    onDragEnd: () => {
+      dragRef.current = null;
+      setDragIdx(null);
+      onSettle?.();
+    },
+  });
+
+  const rowProps = (idx: number) => ({
+    onDragEnter: () => {
+      const from = dragRef.current;
+      if (from === null || from === idx) return;
+      dragRef.current = idx;
+      setDragIdx(idx);
+      move(from, idx);
+    },
+    onDragOver: (e: React.DragEvent) => e.preventDefault(),
+  });
+
+  return { dragIdx, handleProps, rowProps };
+}
+
+const arrayMove = <T,>(arr: T[], from: number, to: number): T[] => {
+  const next = [...arr];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+};
+
+const DRAG_HANDLE_CLASS = 'cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 shrink-0';
 
 // ── 탭 ID 타입 ─────────────────────────────────────────────────────────────────
 type TabId = 'overview' | 'daily' | 'pest' | 'temp' | 'ccp-heat' | 'ccp-metal' | 'incoming' | 'cleaning' | 'sanitation' | 'personal' | 'weekly-sanitation' | 'closing';
@@ -1620,6 +1666,154 @@ const emptyRecord = (slot: SlotTime, items = SANITATION_ITEMS): Omit<SanitationR
   revisionCount: -1,
 });
 
+// ── 월별 심사자료(PDF) — 읽기전용 서식 재현 ───────────────────────────────
+const sanSlotLabel = (slot: SlotTime) => slot === '08:30' ? '오전 08:30' : '오후 15:00';
+const sanRevLabel = (r: { revisionCount: number }) => r.revisionCount < 0 ? '미저장' : `Rev.${r.revisionCount}`;
+
+// 단일 점검표 1장(A4 1페이지) — 화면 서식과 동일하게 재현(읽기전용)
+const SanitationPrintable: React.FC<{ record: SanitationRecord; templateItems: { item: string; standard: string }[] }> = ({ record, templateItems }) => (
+  <div style={{ fontFamily: 'Malgun Gothic, sans-serif' }}>
+    <h2 className="text-lg font-black text-center mb-1">HACCP 작업장 위생점검표</h2>
+    <div className="text-center mb-3">
+      {record.confirmedBy
+        ? <span className="inline-block text-[11px] font-bold text-emerald-700 border border-emerald-500 rounded px-2 py-0.5">✔ 관리자 확인완료 · {record.confirmedBy} ({record.confirmedAt?.slice(0, 10)})</span>
+        : <span className="inline-block text-[11px] font-bold text-amber-700 border border-amber-500 rounded px-2 py-0.5">미확인</span>}
+    </div>
+
+    <table className="w-full border-collapse text-xs mb-3">
+      <tbody>
+        <tr>
+          <td className={TH} style={{ width: 84 }}>회사명</td><td className={TD}>태백식품</td>
+          <td className={TH} style={{ width: 84 }}>문서번호</td><td className={TD}>HACCP-PRP-001</td>
+        </tr>
+        <tr>
+          <td className={TH}>점검일자</td><td className={TD}>{record.checkDate}</td>
+          <td className={TH}>점검시간</td><td className={TD}>{sanSlotLabel(record.checkTime)}</td>
+        </tr>
+        <tr>
+          <td className={TH}>작성자</td><td className={TD}>{record.createdBy || '-'}</td>
+          <td className={TH}>개정번호</td><td className={TD}>{sanRevLabel(record)}</td>
+        </tr>
+        <tr>
+          <td className={TH}>점검구역</td><td className={TDL} colSpan={3}>{record.checkZone || '-'}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <table className="w-full border-collapse text-xs mb-3">
+      <thead>
+        <tr>
+          <th className={TH} style={{ width: 28 }}>No</th>
+          <th className={TH}>점검항목</th>
+          <th className={TH}>점검기준</th>
+          <th className={TH} style={{ width: 40 }}>적합</th>
+          <th className={TH} style={{ width: 40 }}>부적합</th>
+          <th className={TH} style={{ width: 72 }}>점검자</th>
+          <th className={TH}>비고사항(조치)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {templateItems.map((item, idx) => {
+          const row = record.rows[idx] ?? { result: '', note: '', inspector: '' };
+          return (
+            <tr key={idx} className={row.result === 'fail' ? 'bg-rose-50' : ''}>
+              <td className={TD}>{idx + 1}</td>
+              <td className={TDL}>{item.item}</td>
+              <td className={TDL}>{item.standard}</td>
+              <td className={TD} style={{ color: '#059669', fontWeight: 700 }}>{row.result === 'pass' ? '●' : ''}</td>
+              <td className={TD} style={{ color: '#e11d48', fontWeight: 700 }}>{row.result === 'fail' ? '●' : ''}</td>
+              <td className={TDL}>{row.inspector || ''}</td>
+              <td className={TDL}>{row.note || ''}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+
+    <div className="text-xs font-bold mb-1">■ 특이사항 및 개선조치</div>
+    <div className="border border-slate-400 p-2 text-xs mb-3" style={{ minHeight: 44 }}>{record.specialNotes || '-'}</div>
+
+    <div className="flex justify-end gap-3 text-xs">
+      <div className="border border-slate-400 text-center" style={{ width: 110 }}>
+        <div className="bg-slate-100 font-bold py-1 border-b border-slate-400">작성자</div>
+        <div className="flex items-center justify-center font-semibold" style={{ height: 36 }}>{record.createdBy || '-'}</div>
+      </div>
+      {record.updatedBy && record.updatedBy !== record.createdBy && (
+        <div className="border border-slate-400 text-center" style={{ width: 110 }}>
+          <div className="bg-slate-100 font-bold py-1 border-b border-slate-400">수정자</div>
+          <div className="flex items-center justify-center font-semibold" style={{ height: 36 }}>{record.updatedBy}</div>
+        </div>
+      )}
+      <div className="border border-slate-400 text-center" style={{ width: 110 }}>
+        <div className="bg-slate-100 font-bold py-1 border-b border-slate-400">확인자</div>
+        <div className="flex items-center justify-center font-semibold" style={{ height: 36 }}>{record.confirmedBy || '미확인'}</div>
+      </div>
+    </div>
+  </div>
+);
+
+// 표지 — 월간 실시 현황 요약
+const SanitationMonthlyCover: React.FC<{ ym: string; monthRecords: SanitationRecord[] }> = ({ ym, monthRecords }) => {
+  const [y, m] = ym.split('-').map(Number);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const total = monthRecords.length;
+  const confirmed = monthRecords.filter(r => r.confirmedBy).length;
+  const failCount = monthRecords.filter(r => r.rows.some(row => row.result === 'fail')).length;
+  const plannedSlots = daysInMonth * 2;
+
+  const cell = (day: number, slot: SlotTime) => {
+    const ds = `${ym}-${String(day).padStart(2, '0')}`;
+    const rec = monthRecords.find(r => r.checkDate === ds && r.checkTime === slot);
+    if (!rec) return <span style={{ color: '#cbd5e1' }}>미점검</span>;
+    const hasFail = rec.rows.some(r => r.result === 'fail');
+    if (rec.confirmedBy) return <span style={{ color: '#059669', fontWeight: 700 }}>확인{hasFail ? '·부적합' : ''}</span>;
+    return <span style={{ color: '#d97706', fontWeight: 700 }}>점검{hasFail ? '·부적합' : ''}</span>;
+  };
+
+  const box = (label: string, value: string, sub?: string) => (
+    <div className="border border-slate-400 rounded-lg p-2 text-center">
+      <div className="text-[11px] text-slate-500">{label}</div>
+      <div className="text-base font-black text-slate-800">{value}</div>
+      {sub && <div className="text-[10px] text-slate-400">{sub}</div>}
+    </div>
+  );
+
+  return (
+    <div style={{ fontFamily: 'Malgun Gothic, sans-serif' }}>
+      <h1 className="text-xl font-black text-center mb-1">작업장 위생점검 실시 현황</h1>
+      <div className="text-center text-sm text-slate-600 mb-4">{y}년 {String(m).padStart(2, '0')}월 · 태백식품 · HACCP-PRP-001</div>
+
+      <div className="grid grid-cols-4 gap-2 mb-4">
+        {box('총 점검', `${total}회`, `계획 ${plannedSlots}회`)}
+        {box('확인완료', `${confirmed}회`)}
+        {box('미확인', `${total - confirmed}회`)}
+        {box('부적합 발생', `${failCount}회`)}
+      </div>
+
+      <div className="text-xs font-bold mb-1">■ 일자별 점검 현황</div>
+      <table className="w-full border-collapse text-xs mb-3">
+        <thead>
+          <tr>
+            <th className={TH} style={{ width: 110 }}>일자</th>
+            <th className={TH}>오전 08:30</th>
+            <th className={TH}>오후 15:00</th>
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => (
+            <tr key={day}>
+              <td className={TD}>{ym}-{String(day).padStart(2, '0')}</td>
+              <td className={TD}>{cell(day, '08:30')}</td>
+              <td className={TD}>{cell(day, '15:00')}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="text-[11px] text-slate-500">※ 점검주기 1일 2회(오전 08:30 / 오후 15:00) · '미점검' = 해당 시간대 기록 없음 · '확인' = 관리자 확인완료 · 개별 점검표는 다음 장부터 날짜순 첨부</div>
+    </div>
+  );
+};
+
 export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean; canConfirm?: boolean }> = ({ currentUser, isAdmin, canConfirm }) => {
   const [records, setRecords] = useState<SanitationRecord[]>([]);
   const [selected, setSelected] = useState<SanitationRecord | null>(null);
@@ -1647,6 +1841,55 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
       }
     });
   }, []);
+
+  // ── 월별 심사자료 PDF 다운로드 (관리자) ──────────────────────────────
+  const bulkRef = useRef<HTMLDivElement>(null);
+  const [bulkMonth, setBulkMonth] = useState(today.slice(0, 7));
+  const [bulkList, setBulkList] = useState<SanitationRecord[] | null>(null);
+  const [bulkProgress, setBulkProgress] = useState<{ cur: number; total: number } | null>(null);
+
+  const monthRecordsSorted = (ym: string) =>
+    records
+      .filter(r => r.checkDate.slice(0, 7) === ym)
+      .sort((a, b) => a.checkDate.localeCompare(b.checkDate) || a.checkTime.localeCompare(b.checkTime));
+
+  const startBulkDownload = () => {
+    const list = monthRecordsSorted(bulkMonth);
+    if (list.length === 0) { alert(`${bulkMonth} 에 저장된 점검표가 없습니다.`); return; }
+    setBulkList(list); // 숨은 영역 렌더 트리거 → useEffect에서 캡처
+  };
+
+  useEffect(() => {
+    if (!bulkList) return;
+    let cancelled = false;
+    (async () => {
+      // 숨은 영역 렌더/레이아웃 완료 대기 (2 프레임)
+      await new Promise<void>(res => requestAnimationFrame(() => requestAnimationFrame(() => res())));
+      if (cancelled || !bulkRef.current) { setBulkList(null); return; }
+      const pages = Array.from(bulkRef.current.querySelectorAll<HTMLElement>('[data-pdf-page]'));
+      if (pages.length === 0) { setBulkList(null); return; }
+      try {
+        const { default: jsPDF } = await import('jspdf') as any;
+        const { default: html2canvas } = await import('html2canvas') as any;
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pageW = 210, pageH = 297;
+        for (let i = 0; i < pages.length; i++) {
+          if (cancelled) return;
+          setBulkProgress({ cur: i + 1, total: pages.length });
+          const canvas = await html2canvas(pages[i], { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+          let w = pageW;
+          let h = (canvas.height * w) / canvas.width;
+          if (h > pageH) { h = pageH; w = (canvas.width * h) / canvas.height; }
+          if (i > 0) pdf.addPage();
+          pdf.addImage(canvas.toDataURL('image/png'), 'PNG', (pageW - w) / 2, 0, w, h);
+        }
+        if (!cancelled) pdf.save(`작업장위생점검표_${bulkMonth}_월별.pdf`);
+      } finally {
+        if (!cancelled) { setBulkProgress(null); setBulkList(null); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [bulkList]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 오늘 슬롯 기존 데이터 조회
   const todayMorning = records.find(r => r.checkDate === today && r.checkTime === '08:30');
@@ -1786,8 +2029,39 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
     return <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-400">미입력</span>;
   };
 
-  // 이전 기록 (오늘 제외)
-  const pastRecords = records.filter(r => r.checkDate !== today);
+  // ── 조회: 월별 그룹 ──────────────────────────────────────────
+  const [historyMonth, setHistoryMonth] = useState(today.slice(0, 7));
+  const monthOptions = Array.from(new Set([...records.map(r => r.checkDate.slice(0, 7)), today.slice(0, 7)])).sort((a, b) => b.localeCompare(a));
+  const historyList = records
+    .filter(r => r.checkDate.slice(0, 7) === historyMonth)
+    .sort((a, b) => b.checkDate.localeCompare(a.checkDate) || a.checkTime.localeCompare(b.checkTime));
+  const historyDates = Array.from(new Set(historyList.map(r => r.checkDate))).sort((a, b) => b.localeCompare(a));
+  const historyConfirmed = historyList.filter(r => r.confirmedBy).length;
+  const historyFail = historyList.filter(r => r.rows.some(row => row.result === 'fail')).length;
+
+  const historySlotChip = (rec: SanitationRecord | undefined, label: string) => {
+    if (!rec) return (
+      <span className="inline-flex items-center px-2 py-1 rounded text-[11px] bg-slate-50 text-slate-400 border border-slate-200">{label} 미점검</span>
+    );
+    const hasFail = rec.rows.some(r => r.result === 'fail');
+    const confirmed = !!rec.confirmedBy;
+    return (
+      <button
+        onClick={() => openHistory(rec)}
+        className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] border transition-colors ${selected?.id === rec.id ? 'ring-2 ring-slate-400 ' : ''}${confirmed
+          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:border-emerald-400'
+          : 'bg-blue-50 text-blue-700 border-blue-200 hover:border-blue-400'}`}
+      >
+        <span className="font-bold">{label}</span>
+        <span>{confirmed ? '✔확인' : '저장'}</span>
+        {hasFail && <span className="text-rose-600 font-bold">·부적합</span>}
+        {isAdmin && (
+          <span role="button" onClick={e => { e.stopPropagation(); rec.id && handleDelete(rec.id); }}
+            className="ml-0.5 text-rose-400 hover:text-rose-600"><Trash2 size={10} /></span>
+        )}
+      </button>
+    );
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -1826,33 +2100,88 @@ export const SanitationForm: React.FC<{ currentUser?: { id: string; name: string
         </div>
       </div>
 
-      {/* ── 이전 기록 토글 ───────────────────────────────────── */}
+      {/* ── 점검 기록 조회 (월별) ─────────────────────────────── */}
       <button
         onClick={() => setShowHistory(v => !v)}
         className="flex items-center justify-between px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-50"
       >
-        <span>이전 점검 기록 ({pastRecords.length}건)</span>
+        <span>점검 기록 조회 (총 {records.length}건)</span>
         <span>{showHistory ? '▲' : '▼'}</span>
       </button>
       {showHistory && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-          {pastRecords.length === 0 && (
-            <p className="col-span-full text-xs text-slate-400 py-4 text-center">이전 기록이 없습니다</p>
+        <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col gap-3">
+          {/* 월 선택 + 요약 */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <select value={historyMonth} onChange={e => setHistoryMonth(e.target.value)}
+              className="border border-slate-300 rounded px-2 py-1.5 text-xs font-medium">
+              {monthOptions.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+            <span className="text-[11px] text-slate-500">
+              점검 <b className="text-slate-700">{historyList.length}</b>회 · 확인 <b className="text-emerald-600">{historyConfirmed}</b>회
+              {historyFail > 0 && <span className="text-rose-600 font-bold"> · 부적합 {historyFail}회</span>}
+            </span>
+          </div>
+
+          {/* 날짜별 행 (오전/오후 슬롯 상태) */}
+          {historyDates.length === 0 ? (
+            <p className="text-xs text-slate-400 py-4 text-center">이 달 점검 기록이 없습니다</p>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {historyDates.map(date => {
+                const morning = historyList.find(r => r.checkDate === date && r.checkTime === '08:30');
+                const afternoon = historyList.find(r => r.checkDate === date && r.checkTime === '15:00');
+                return (
+                  <div key={date} className="flex items-center gap-2 border border-slate-100 rounded-lg px-2.5 py-2 bg-slate-50/50">
+                    <span className="text-xs font-bold text-slate-700 w-24 shrink-0">
+                      {date}{date === today && <span className="text-emerald-500 ml-1">(오늘)</span>}
+                    </span>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {historySlotChip(morning, '오전')}
+                      {historySlotChip(afternoon, '오후')}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
-          {pastRecords.map(r => (
-            <div key={r.id} onClick={() => openHistory(r)}
-              className={`p-3 rounded-lg border cursor-pointer text-xs transition-colors ${
-                selected?.id === r.id ? 'bg-slate-100 border-slate-400' : 'bg-white border-slate-200 hover:border-slate-400'
-              }`}
-            >
-              <div className="font-bold text-slate-700">{r.checkDate}</div>
-              <div className="text-slate-500">{slotLabel(r.checkTime)}</div>
-              <div className="flex items-center justify-between mt-1.5">
-                <span className="text-slate-500">{revLabel(r)}</span>
-                {isAdmin && <button onClick={e => { e.stopPropagation(); r.id && handleDelete(r.id); }}
-                  className="text-rose-400 hover:text-rose-600"><Trash2 size={11} /></button>}
-              </div>
-              {r.createdBy && <div className="text-slate-400 mt-1 truncate">{r.createdBy}</div>}
+          <p className="text-[10px] text-slate-400">🟩 확인완료 · 🟦 저장(미확인) · ⬜ 미점검 · 칩을 누르면 해당 점검표가 열립니다</p>
+        </div>
+      )}
+
+      {/* ── 월별 심사자료 다운로드 (관리자) ───────────────────── */}
+      {isAdmin && (
+        <div className="bg-white border border-indigo-200 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-1.5">
+            <FileDown size={14} className="text-indigo-600" />
+            <span className="text-sm font-bold text-slate-800">월별 심사자료 다운로드</span>
+          </div>
+          <p className="text-[11px] text-slate-500 mb-3">선택한 달의 <b>표지(실시 현황) + 점검표 전체</b>를 PDF 한 파일로 내려받습니다. (심사 제출용)</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <input type="month" value={bulkMonth} max={today.slice(0, 7)} disabled={!!bulkList}
+              onChange={e => setBulkMonth(e.target.value)}
+              className="border border-slate-300 rounded px-2 py-1.5 text-xs disabled:opacity-50" />
+            <button onClick={startBulkDownload} disabled={!!bulkList}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-50">
+              <FileDown size={13} />
+              {bulkList ? (bulkProgress ? `생성 중… ${bulkProgress.cur}/${bulkProgress.total}` : '준비 중…') : '월별 PDF 생성'}
+            </button>
+            <span className="text-[11px] text-slate-400">{bulkMonth} · {monthRecordsSorted(bulkMonth).length}건</span>
+          </div>
+          {bulkList && (
+            <p className="text-[11px] text-amber-600 mt-2">※ 페이지가 많으면 최대 1분가량 걸릴 수 있습니다. 창을 닫지 말고 기다려주세요.</p>
+          )}
+        </div>
+      )}
+
+      {/* ── PDF 생성용 숨은 렌더 영역 (화면에 보이지 않음) ─────── */}
+      {bulkList && (
+        <div ref={bulkRef} aria-hidden style={{ position: 'fixed', left: -10000, top: 0, width: 760, background: '#fff', zIndex: -1, pointerEvents: 'none' }}>
+          <div data-pdf-page style={{ width: 760, padding: 24, boxSizing: 'border-box', background: '#fff' }}>
+            <SanitationMonthlyCover ym={bulkMonth} monthRecords={bulkList} />
+          </div>
+          {bulkList.map(r => (
+            <div key={r.id} data-pdf-page style={{ width: 760, padding: 24, boxSizing: 'border-box', background: '#fff' }}>
+              <SanitationPrintable record={r} templateItems={templateItems} />
             </div>
           ))}
         </div>
@@ -2562,6 +2891,10 @@ export const PersonalHygieneTemplateEditor: React.FC = () => {
   const updateCol = (idx: number, val: string) =>
     setCols(prev => prev.map((c, i) => i === idx ? val : c));
 
+  const { dragIdx, handleProps, rowProps } = useDragReorder(
+    (from, to) => setCols(prev => arrayMove(prev, from, to))
+  );
+
   if (!editing) {
     return (
       <div className="bg-white border border-slate-200 rounded-xl p-4">
@@ -2604,7 +2937,8 @@ export const PersonalHygieneTemplateEditor: React.FC = () => {
 
       <div className="flex flex-col gap-2 mb-3">
         {cols.map((col, idx) => (
-          <div key={idx} className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2">
+          <div key={idx} {...rowProps(idx)} className={`flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2 ${dragIdx === idx ? 'opacity-60 ring-1 ring-indigo-400' : ''}`}>
+            <span {...handleProps(idx)} className={DRAG_HANDLE_CLASS}><GripVertical size={14} /></span>
             <span className="text-xs text-slate-400 w-5 text-center shrink-0">{idx + 1}</span>
             <input
               value={col}
@@ -2674,6 +3008,10 @@ export const TempZoneTemplateEditor: React.FC = () => {
     setZones(next);
   };
 
+  const { dragIdx, handleProps, rowProps } = useDragReorder(
+    (from, to) => setZones(prev => arrayMove(prev, from, to))
+  );
+
   if (!editing) {
     return (
       <div className="bg-white border border-slate-200 rounded-xl p-4">
@@ -2725,8 +3063,11 @@ export const TempZoneTemplateEditor: React.FC = () => {
           <div className="col-span-2 text-center">관리</div>
         </div>
         {zones.map((z, idx) => (
-          <div key={idx} className="grid grid-cols-12 gap-1 items-center bg-slate-50 rounded-lg p-2">
-            <div className="col-span-1 text-xs text-slate-400 text-center font-bold">{idx + 1}</div>
+          <div key={idx} {...rowProps(idx)} className={`grid grid-cols-12 gap-1 items-center bg-slate-50 rounded-lg p-2 ${dragIdx === idx ? 'opacity-60 ring-1 ring-indigo-400' : ''}`}>
+            <div className="col-span-1 flex items-center justify-center gap-0.5 text-xs text-slate-400 font-bold">
+              <span {...handleProps(idx)} className={DRAG_HANDLE_CLASS}><GripVertical size={12} /></span>
+              {idx + 1}
+            </div>
             <div className="col-span-4">
               <input
                 value={z.name}
@@ -2812,6 +3153,10 @@ export const SanitationTemplateEditor: React.FC = () => {
     setItems(next);
   };
 
+  const { dragIdx, handleProps, rowProps } = useDragReorder(
+    (from, to) => setItems(prev => arrayMove(prev, from, to))
+  );
+
   if (!editing) {
     return (
       <div className="bg-white border border-slate-200 rounded-xl p-4">
@@ -2869,8 +3214,11 @@ export const SanitationTemplateEditor: React.FC = () => {
           <div className="col-span-2 text-center">관리</div>
         </div>
         {items.map((it, idx) => (
-          <div key={idx} className="grid grid-cols-12 gap-1 items-center bg-slate-50 rounded-lg p-2">
-            <div className="col-span-1 text-xs text-slate-400 text-center font-bold">{idx + 1}</div>
+          <div key={idx} {...rowProps(idx)} className={`grid grid-cols-12 gap-1 items-center bg-slate-50 rounded-lg p-2 ${dragIdx === idx ? 'opacity-60 ring-1 ring-indigo-400' : ''}`}>
+            <div className="col-span-1 flex items-center justify-center gap-0.5 text-xs text-slate-400 font-bold">
+              <span {...handleProps(idx)} className={DRAG_HANDLE_CLASS}><GripVertical size={12} /></span>
+              {idx + 1}
+            </div>
             <div className="col-span-4">
               <input
                 value={it.item}
@@ -2924,6 +3272,37 @@ export const StaffChecklistView: React.FC<{ currentUser?: { id: string; name: st
     blue:    'bg-blue-50 text-blue-700 font-bold',
     slate:   'bg-slate-200 text-slate-700 font-bold',
   };
+
+  // 탭 순서: 관리자가 드래그로 변경 → Firestore에 저장돼 모든 기기에서 동일하게 표시
+  const [tabOrder, setTabOrder] = useState<string[]>([]);
+  const pendingTabOrder = useRef<string[] | null>(null);
+  useEffect(() => {
+    return onSnapshot(doc(db, 'haccp_templates', 'staff_tab_order'), snap => {
+      const data = snap.exists() ? snap.data().order : null;
+      if (Array.isArray(data)) setTabOrder(data);
+    });
+  }, []);
+
+  // 저장된 순서 우선, 저장에 없는(새로 생긴) 탭은 기본 순서로 뒤에 붙임
+  const tabById = new Map(STAFF_TABS.map(t => [t.id as string, t]));
+  const orderedTabs = [
+    ...tabOrder.map(id => tabById.get(id)).filter((t): t is typeof STAFF_TABS[number] => !!t),
+    ...STAFF_TABS.filter(t => !tabOrder.includes(t.id)),
+  ];
+
+  const { dragIdx, handleProps, rowProps } = useDragReorder(
+    (from, to) => {
+      const next = arrayMove(orderedTabs.map(t => t.id as string), from, to);
+      pendingTabOrder.current = next;
+      setTabOrder(next);
+    },
+    () => {
+      if (!pendingTabOrder.current) return;
+      setDoc(doc(db, 'haccp_templates', 'staff_tab_order'), { order: pendingTabOrder.current });
+      pendingTabOrder.current = null;
+    }
+  );
+
   return (
     <div className="flex flex-col h-full bg-slate-50">
       <div className="bg-white border-b border-slate-200 px-6 py-4">
@@ -2939,11 +3318,13 @@ export const StaffChecklistView: React.FC<{ currentUser?: { id: string; name: st
       </div>
       <div className="bg-white border-b border-slate-200 px-4">
         <div className="flex gap-0.5 py-2 overflow-x-auto">
-          {STAFF_TABS.map(tab => (
+          {orderedTabs.map((tab, idx) => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              {...(isAdmin ? { ...handleProps(idx), ...rowProps(idx) } : {})}
+              title={isAdmin ? '드래그로 탭 순서 변경' : undefined}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
                 activeTab === tab.id ? activeColor[tab.color] : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-              }`}>
+              } ${dragIdx === idx ? 'opacity-60 ring-1 ring-indigo-400' : ''}`}>
               {tab.icon}
               {tab.label}
             </button>
@@ -3074,6 +3455,10 @@ const PeriodicSanitationTemplateEditor: React.FC<{ cycle: PeriodCycle }> = ({ cy
     setItems(next);
   };
 
+  const { dragIdx, handleProps, rowProps } = useDragReorder(
+    (from, to) => setItems(prev => arrayMove(prev, from, to))
+  );
+
   const cycleName = cycle === 'weekly' ? '주간' : '월간';
 
   if (!editing) {
@@ -3116,7 +3501,8 @@ const PeriodicSanitationTemplateEditor: React.FC<{ cycle: PeriodCycle }> = ({ cy
       </div>
       <div className="flex flex-col gap-1.5 mb-3">
         {items.map((it, idx) => (
-          <div key={idx} className="flex items-center gap-2">
+          <div key={idx} {...rowProps(idx)} className={`flex items-center gap-2 rounded ${dragIdx === idx ? 'opacity-60 ring-1 ring-indigo-400' : ''}`}>
+            <span {...handleProps(idx)} className={DRAG_HANDLE_CLASS}><GripVertical size={13} /></span>
             <span className="text-xs text-slate-400 w-5 text-right">{idx + 1}</span>
             <input value={it.item} onChange={e => updateItem(idx, 'item', e.target.value)} placeholder="점검항목" className="flex-1 border border-slate-300 rounded px-2 py-1 text-xs" />
             <input value={it.standard} onChange={e => updateItem(idx, 'standard', e.target.value)} placeholder="기준" className="w-36 border border-slate-300 rounded px-2 py-1 text-xs" />
@@ -3627,6 +4013,10 @@ const ClosingChecklistTemplateEditor: React.FC = () => {
     setItems(next);
   };
 
+  const { dragIdx, handleProps, rowProps } = useDragReorder(
+    (from, to) => setItems(prev => arrayMove(prev, from, to))
+  );
+
   if (!editing) {
     return (
       <div className="bg-white border border-slate-200 rounded-xl p-4">
@@ -3664,7 +4054,8 @@ const ClosingChecklistTemplateEditor: React.FC = () => {
       </div>
       <div className="flex flex-col gap-1.5 mb-3">
         {items.map((it, idx) => (
-          <div key={idx} className="flex items-center gap-2">
+          <div key={idx} {...rowProps(idx)} className={`flex items-center gap-2 rounded ${dragIdx === idx ? 'opacity-60 ring-1 ring-indigo-400' : ''}`}>
+            <span {...handleProps(idx)} className={DRAG_HANDLE_CLASS}><GripVertical size={13} /></span>
             <span className="text-xs text-slate-400 w-5 text-right">{idx + 1}</span>
             <input value={it.item} onChange={e => updateItem(idx, 'item', e.target.value)} placeholder="점검항목" className="flex-1 border border-slate-300 rounded px-2 py-1 text-xs" />
             <input value={it.standard} onChange={e => updateItem(idx, 'standard', e.target.value)} placeholder="기준" className="w-36 border border-slate-300 rounded px-2 py-1 text-xs" />
@@ -4049,6 +4440,36 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode; desc: string }[] 
 const HaccpChecklist: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean }> = ({ currentUser, isAdmin }) => {
   const [activeTab, setActiveTab] = useState<TabId>('overview');
 
+  // 탭 순서: 관리자가 드래그로 변경 → Firestore에 저장돼 모든 기기에서 동일하게 표시
+  const [tabOrder, setTabOrder] = useState<string[]>([]);
+  const pendingTabOrder = useRef<string[] | null>(null);
+  useEffect(() => {
+    return onSnapshot(doc(db, 'haccp_templates', 'haccp_tab_order'), snap => {
+      const data = snap.exists() ? snap.data().order : null;
+      if (Array.isArray(data)) setTabOrder(data);
+    });
+  }, []);
+
+  // 저장된 순서 우선, 저장에 없는(새로 생긴) 탭은 기본 순서로 뒤에 붙임
+  const tabById = new Map(TABS.map(t => [t.id as string, t]));
+  const orderedTabs = [
+    ...tabOrder.map(id => tabById.get(id)).filter((t): t is typeof TABS[number] => !!t),
+    ...TABS.filter(t => !tabOrder.includes(t.id)),
+  ];
+
+  const { dragIdx, handleProps, rowProps } = useDragReorder(
+    (from, to) => {
+      const next = arrayMove(orderedTabs.map(t => t.id as string), from, to);
+      pendingTabOrder.current = next;
+      setTabOrder(next);
+    },
+    () => {
+      if (!pendingTabOrder.current) return;
+      setDoc(doc(db, 'haccp_templates', 'haccp_tab_order'), { order: pendingTabOrder.current });
+      pendingTabOrder.current = null;
+    }
+  );
+
   return (
     <div className="flex flex-col h-full bg-slate-50">
       {/* 헤더 */}
@@ -4067,15 +4488,17 @@ const HaccpChecklist: React.FC<{ currentUser?: { id: string; name: string }; isA
       {/* 탭 네비게이션 */}
       <div className="bg-white border-b border-slate-200 px-4 overflow-x-auto">
         <div className="flex gap-0.5 py-2 min-w-max">
-          {TABS.map(tab => (
+          {orderedTabs.map((tab, idx) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
+              {...(isAdmin ? { ...handleProps(idx), ...rowProps(idx) } : {})}
+              title={isAdmin ? '드래그로 탭 순서 변경' : undefined}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
                 activeTab === tab.id
                   ? 'bg-emerald-50 text-emerald-700 font-bold'
                   : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-              }`}
+              } ${dragIdx === idx ? 'opacity-60 ring-1 ring-indigo-400' : ''}`}
             >
               {tab.icon}
               {tab.label}
