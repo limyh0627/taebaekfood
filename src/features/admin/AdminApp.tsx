@@ -780,137 +780,206 @@ const AdminApp: React.FC<AdminAppProps> = ({
     }
   };
 
-  // 주문이 이력으로 이동할 때 부자재 차감 (완제품 재고는 변동 없음)
-  const deductSubmaterialsForOrder = async (order: Order) => {
-    const rawUsage: Record<string, number> = {}; // 원료별 사용 kg 집계 (같은 원료가 여러 품목에 걸쳐도 합산)
+  // ── 생산/출고 분리 재고 엔진 ─────────────────────────────────────────────
+  //  작업완료(DISPATCHED) = 생산처리: 완제품 원료·부자재 차감 + 완제품 재고 +N (상품은 미변동)
+  //  출고(SHIPPED)        = 완제품/상품 재고 −N
+  //  되돌리기 = 뺀 만큼 그대로 복원(원료는 rawConsumedLots 스냅샷으로 로트에 +).
+  //  reconcileOrderStock(order, target)이 목표 상태에 맞춰 자동 조정 → changeOrderStatus가 진입점.
+
+  const isGoodsItem = (p: Item) =>
+    p.subtype === '향미유' || p.subtype === '고춧가루' ||
+    p.category === '향미유' || p.category === '고춧가루' || p.category === 'goods';
+  const goodsShipQty = (item: OrderItem, product: Item) => {
+    const uPerBox = item.unitsPerBox || product.defaultBoxConfig?.unitsPerBox || product.boxSize || 12;
+    return item.isBoxUnit && item.boxQuantity ? item.boxQuantity * uPerBox : item.quantity;
+  };
+  const addDelta = (m: Map<string, number>, id: string, d: number) => { if (d) m.set(id, (m.get(id) ?? 0) + d); };
+
+  // 품목 재고 델타 일괄 반영 — 한 상태전환에서 같은 품목이 +/−로 겹쳐도(생산+출고 스킵 등) 순변화만 1회 기록.
+  const applyStockDeltas = async (deltas: Map<string, number>) => {
+    for (const [itemId, delta] of deltas) {
+      if (!delta) continue;
+      const it = allItems.find(p => p.id === itemId);
+      if (!it) continue;
+      const newStock = Math.round((it.stock + delta) * 1000) / 1000;
+      await updateItem('items', itemId, { stock: newStock });
+      if (newStock < 0) {
+        console.warn(`[재고 부족] ${it.name}: ${it.stock} → ${newStock}`);
+        await addItem('notifications', {
+          type: 'inventory_shortage', title: '재고 부족 경고',
+          body: `${it.name}: 재고 ${newStock} (부족분 ${Math.abs(newStock)}). 주문 상태변경 반영 확인 필요.`,
+          linkedId: itemId, readBy: [], createdAt: new Date().toISOString(),
+        } as Omit<AppNotification, 'id'>);
+      }
+    }
+  };
+
+  // 완제품 부자재 차감/복원 델타 적재 (박스 포함, 테이프 제외). sign=-1 차감 / +1 복원.
+  const accrueSubmaterialDeltas = (order: Order, product: Item, item: OrderItem, deltas: Map<string, number>, sign: number) => {
+    if (!product.submaterials) return;
+    const boxesUsed = item.isBoxUnit && item.boxQuantity ? item.boxQuantity
+      : item.unitsPerBox ? Math.ceil(item.quantity / item.unitsPerBox) : null;
+    const shippingRule = shippingRules.find(r => r.item_id === product.id && r.partner_id === order.partnerId);
+    const boxSubId = item.boxSubId || shippingRule?.box_item_id;
+    const boxSub = boxSubId ? submaterials.find(sm => sm.id === boxSubId) : null;
+    if (boxSub) { const dq = boxesUsed ?? Math.ceil(item.quantity / (boxSub.boxSize || 1)); if (dq > 0) addDelta(deltas, boxSub.id, sign * dq); }
+    for (const s of product.submaterials) {
+      const sub = submaterials.find(sm => sm.id === s.id);
+      if (!sub) continue;
+      if (sub.category === 'box' || sub.category === 'tape' ||
+          (sub.category === 'submaterial' && (sub.subtype === '박스' || sub.subtype === '테이프'))) continue;
+      addDelta(deltas, sub.id, sign * item.quantity);
+    }
+  };
+
+  // 원료 로트 FIFO 차감 + 수불부 기록 → 소비 로트 스냅샷 반환 (생산처리).
+  const deductRawLotsForOrder = async (order: Order, rawUsage: Record<string, number>) => {
+    const consumedLots: NonNullable<Order['rawConsumedLots']> = [];
+    const rawNames = Object.keys(rawUsage);
+    if (rawNames.length === 0) return consumedLots;
+    const dateStr = order.deliveredAt?.slice(0, 10) || new Date().toISOString().slice(0, 10);
+    const customerName = partners.find(c => c.id === order.partnerId)?.name || order.partnerName || '';
+    for (const raw of rawNames) {
+      const usedKg = Math.round(rawUsage[raw] * 1000) / 1000;
+      // 원료 홀더 = raw, 또는 wip 벌크 반제품(unit≠'개'). phantom(무재고)은 이미 전개돼 여기 오지 않음.
+      const rawItem = allItems.find(i => !i.phantom && (i.category === 'raw' || (i.category === 'wip' && i.unit !== '개')) && baseRawName(i.name) === raw);
+      let noteSuffix = '';
+      if (rawItem) {
+        const mix = rawItem.mixEnabled ? { topPercent: rawItem.mixTopPercent ?? 50 } : undefined;
+        let captured: { distribution: { lotId?: string; supplierName: string; lotNo?: string; receivedDate?: string; kg: number }[]; shortageKg: number } | null = null;
+        await mutateRawMaterialLots(
+          rawItem.id,
+          (lots, stock) => { const r = deductFromLots(withCarryOverLot(lots, stock, raw), usedKg, mix); captured = r; return r.lots; },
+          (lots) => lotStockInUnit(lots, raw),
+        );
+        if (captured) {
+          const result = captured as { distribution: { lotId?: string; supplierName: string; lotNo?: string; receivedDate?: string; kg: number }[]; shortageKg: number };
+          if (result.distribution.length > 0) {
+            noteSuffix = ' ▸ ' + result.distribution.map(d => `${d.supplierName} ${Math.round(d.kg * 10) / 10}kg`).join(' + ');
+            for (const d of result.distribution) consumedLots.push({
+              material: raw, supplierName: d.supplierName, kg: d.kg,
+              ...(d.lotId ? { lotId: d.lotId } : {}), ...(d.lotNo ? { lotNo: d.lotNo } : {}), ...(d.receivedDate ? { receivedDate: d.receivedDate } : {}),
+            });
+          }
+          if (result.shortageKg > 0) {
+            console.warn(`[원료 부족] ${raw}: 로트 잔량보다 ${result.shortageKg}kg 더 사용 (주문 ${order.id})`);
+            await addItem('notifications', { type: 'inventory_shortage', title: '원료 로트 부족', body: `${raw}: 로트 잔량보다 ${result.shortageKg}kg 더 사용됨 (주문 ${order.id}, ${customerName}). 입고/이월 확인 필요.`, linkedId: rawItem.id, readBy: [], createdAt: new Date().toISOString() } as Omit<AppNotification, 'id'>);
+          }
+        }
+      }
+      const entryId = `rm-auto-${order.id}-${raw.replace(/\s/g, '_')}`;
+      await setDoc(doc(db, 'rawMaterialLedger', entryId), { id: entryId, material: raw, date: dateStr, received: 0, used: usedKg, note: `자동: ${customerName}${noteSuffix}`, createdAt: new Date().toISOString(), type: 'auto', orderId: order.id }, { merge: true });
+    }
+    return consumedLots;
+  };
+
+  // 원료 로트 복원 (생산처리 취소) — 소비 스냅샷대로 로트 kg 되돌림 + 수불부 auto 삭제.
+  const restoreRawLotsForOrder = async (order: Order) => {
+    const consumed = order.rawConsumedLots ?? [];
+    const byMat: Record<string, NonNullable<Order['rawConsumedLots']>> = {};
+    for (const c of consumed) (byMat[c.material] = byMat[c.material] || []).push(c);
+    for (const [material, arr] of Object.entries(byMat)) {
+      const rawItem = allItems.find(i => !i.phantom && (i.category === 'raw' || (i.category === 'wip' && i.unit !== '개')) && baseRawName(i.name) === material);
+      if (rawItem) {
+        await mutateRawMaterialLots(
+          rawItem.id,
+          (lots, stock) => {
+            const next = withCarryOverLot(lots, stock, material).map(l => ({ ...l }));
+            for (const c of arr) {
+              const idx = c.lotId ? next.findIndex(l => l.id === c.lotId) : -1;
+              if (idx >= 0) {
+                next[idx].kgRemaining = Math.round(((next[idx].kgRemaining ?? 0) + c.kg) * 1000) / 1000;
+                if (next[idx].kgRemaining > 0) next[idx].status = 'active';
+              } else {
+                next.push(buildReceiveLot({ material, supplierName: c.supplierName || '복원', qtyIn: 0, kgIn: c.kg, receivedDate: c.receivedDate }));
+              }
+            }
+            return next;
+          },
+          (lots) => lotStockInUnit(lots, material),
+        );
+      }
+      await deleteDoc(doc(db, 'rawMaterialLedger', `rm-auto-${order.id}-${material.replace(/\s/g, '_')}`));
+    }
+  };
+
+  // 생산처리(작업완료): 원료·부자재 차감 + 완제품 재고 +N. → 소비 로트 스냅샷 반환.
+  const produceOrder = async (order: Order, deltas: Map<string, number>) => {
+    const rawUsage: Record<string, number> = {};
+    for (const item of order.items) {
+      const product = allItems.find(p => p.id === item.itemId);
+      if (!product || isGoodsItem(product)) continue;
+      if (product.category !== 'product' || !product.submaterials) continue;
+      accrueSubmaterialDeltas(order, product, item, deltas, -1);
+      for (const f of buildFormula(product.품목 || product.name)) {
+        const usedKg = toKg(product.spec || '', f.raw, item.quantity) * f.ratio;
+        if (usedKg > 0) rawUsage[f.raw] = (rawUsage[f.raw] ?? 0) + usedKg;
+      }
+      addDelta(deltas, product.id, item.quantity); // 완제품 재고 +N (생산됨·미출고)
+    }
+    const consumedLots = await deductRawLotsForOrder(order, rawUsage);
+    await createProductionRecordsForOrder(order);
+    return consumedLots;
+  };
+
+  // 생산처리 취소: 부자재·원료 복원 + 완제품 재고 −N.
+  const unProduceOrder = async (order: Order, deltas: Map<string, number>) => {
+    for (const item of order.items) {
+      const product = allItems.find(p => p.id === item.itemId);
+      if (!product || isGoodsItem(product)) continue;
+      if (product.category !== 'product' || !product.submaterials) continue;
+      accrueSubmaterialDeltas(order, product, item, deltas, +1);
+      addDelta(deltas, product.id, -item.quantity); // 완제품 재고 되돌림
+    }
+    await restoreRawLotsForOrder(order);
+  };
+
+  // 출고: 완제품/상품 재고 −N.
+  const shipOrder = (order: Order, deltas: Map<string, number>) => {
     for (const item of order.items) {
       const product = allItems.find(p => p.id === item.itemId);
       if (!product) continue;
-
-      // 향미유/고춧가루: 재고는 낱개 단위로 저장, 낱개 기준으로 차감
-      // category가 'goods'(migration 이후) 또는 구형 '향미유'/'고춧가루'인 경우도 포함
-      if (
-        product.subtype === '향미유' || product.subtype === '고춧가루' ||
-        product.category === '향미유' || product.category === '고춧가루' ||
-        product.category === 'goods'
-      ) {
-        const uPerBox = item.unitsPerBox || product.defaultBoxConfig?.unitsPerBox || product.boxSize || 12;
-        const deductQty = item.isBoxUnit && item.boxQuantity
-          ? item.boxQuantity * uPerBox  // BOX → 낱개 변환
-          : item.quantity;
-        await deductStock('items', product.id, product.stock, deductQty, product.name, product.unit || '개', `주문 ${order.id} 출고`);
-        continue;
-      }
-
-      // 완제품: 부자재만 차감
-      if (product.category !== 'product' || !product.submaterials) continue;
-
-      // 사용한 박스 수 계산
-      const boxesUsed = item.isBoxUnit && item.boxQuantity
-        ? item.boxQuantity
-        : item.unitsPerBox
-          ? Math.ceil(item.quantity / item.unitsPerBox)
-          : null;
-
-      // 박스 차감: shipping_rule 기반 박스 ID (주문 시점 boxSubId 폴백)
-      const shippingRule = shippingRules.find(r => r.item_id === product.id && r.partner_id === order.partnerId);
-      const boxSubId = item.boxSubId || shippingRule?.box_item_id;
-      const boxSubToDeduct = boxSubId ? submaterials.find(sm => sm.id === boxSubId) : null;
-
-      if (boxSubToDeduct) {
-        const deductQty = boxesUsed ?? Math.ceil(item.quantity / (boxSubToDeduct.boxSize || 1));
-        if (deductQty > 0) {
-          await deductStock('items', boxSubToDeduct.id, boxSubToDeduct.stock, deductQty, boxSubToDeduct.name, boxSubToDeduct.unit || '개', `주문 ${order.id} 박스 출고`);
-        }
-      }
-
-
-      // 박스·테이프 외 부자재 차감 (낱개 수량 기준)
-      for (const s of product.submaterials) {
-        const actualSub = submaterials.find(sm => sm.id === s.id);
-        if (!actualSub) continue;
-        if (actualSub.category === 'box' || actualSub.category === 'tape' ||
-            (actualSub.category === 'submaterial' && (actualSub.subtype === '박스' || actualSub.subtype === '테이프'))) continue;
-        await deductStock('items', actualSub.id, actualSub.stock, item.quantity, actualSub.name, actualSub.unit || '개', `주문 ${order.id} ${product.name} 부자재 출고`);
-      }
-
-      // 원료 사용량 집계 (완제품 한정) — 배합식 출처 통일: Firestore BOM(item_formula) 우선, 없으면 PRODUCT_FORMULA
-      // (화면 표시 autoRawMaterialUsage와 동일 로직 → 표시와 실제 차감이 일치). phantom 반제품은 원료로 재귀 전개.
-      const prodKey = product.품목 || product.name;
-      const formula = buildFormula(prodKey);
-      if (formula.length > 0) {
-        for (const f of formula) {
-          const usedKg = toKg(product.spec || '', f.raw, item.quantity) * f.ratio;
-          if (usedKg > 0) rawUsage[f.raw] = (rawUsage[f.raw] ?? 0) + usedKg;
-        }
-      }
+      if (isGoodsItem(product)) addDelta(deltas, product.id, -goodsShipQty(item, product));
+      else if (product.category === 'product') addDelta(deltas, product.id, -item.quantity);
     }
+  };
 
-    // ── 원료별 합산 → 수불부 기록(합산) + 로트 선입선출 차감 ──
-    const rawNames = Object.keys(rawUsage);
-    if (rawNames.length > 0) {
-      const dateStr = order.deliveredAt?.slice(0, 10) || new Date().toISOString().slice(0, 10);
-      const customerName = partners.find(c => c.id === order.partnerId)?.name || order.partnerName || '';
-      const alreadyDeducted = !!order.rawLotsDeducted; // 재납품 등 중복 차감 방지
-      // 정방향 추적용: 이 주문이 소비한 원료 lot 스냅샷(주문 문서에 저장 → 조회 시 추가 읽기 0)
-      const consumedLots: { material: string; lotId?: string; lotNo?: string; supplierName: string; receivedDate?: string; kg: number }[] = [];
-      for (const raw of rawNames) {
-        const usedKg = Math.round(rawUsage[raw] * 1000) / 1000;
-        // 원료 홀더 = raw, 또는 wip(볶음참깨·볶음들깨·볶음검정참깨·들깨가루(고운) 등 벌크 반제품).
-        //   단 wip이라도 unit이 '개'인 캔/포장 SKU(예: 깨분참기름/16.5kg)는 홀더가 아니므로 제외.
-        //   (예전엔 raw만 조회해 wip 벌크 홀더의 로트가 출고 시 차감 안 되던 드리프트)
-        const rawItem = allItems.find(i => !i.phantom && (i.category === 'raw' || (i.category === 'wip' && i.unit !== '개')) && baseRawName(i.name) === raw);
-        let noteSuffix = '';
-        if (rawItem && !alreadyDeducted) {
-          // 혼합 사용 ON이면 상위 2개 로트를 비율대로 배분, 아니면 선입선출
-          const mix = rawItem.mixEnabled ? { topPercent: rawItem.mixTopPercent ?? 50 } : undefined;
-          let captured: { distribution: { lotId?: string; supplierName: string; lotNo?: string; receivedDate?: string; kg: number }[]; shortageKg: number } | null = null;
-          await mutateRawMaterialLots(
-            rawItem.id,
-            // withCarryOverLot: 로트가 없는데 stock>0인 원료(미연동/소실)는 이월 로트로 보존 후 차감.
-            // 없으면 computeStock이 stock을 로트합계(0)로 덮어써 기존 재고가 증발한다(7/1 재고 소실 사고 원인).
-            (lots, stock) => { const r = deductFromLots(withCarryOverLot(lots, stock, raw), usedKg, mix); captured = r; return r.lots; },
-            (lots) => lotStockInUnit(lots, raw),
-          );
-          if (captured) {
-            const result = captured as { distribution: { lotId?: string; supplierName: string; lotNo?: string; receivedDate?: string; kg: number }[]; shortageKg: number };
-            if (result.distribution.length > 0) {
-              noteSuffix = ' ▸ ' + result.distribution.map(d => `${d.supplierName} ${Math.round(d.kg * 10) / 10}kg`).join(' + ');
-              for (const d of result.distribution) consumedLots.push({
-                material: raw, supplierName: d.supplierName, kg: d.kg,
-                ...(d.lotId ? { lotId: d.lotId } : {}),
-                ...(d.lotNo ? { lotNo: d.lotNo } : {}),
-                ...(d.receivedDate ? { receivedDate: d.receivedDate } : {}),
-              });
-            }
-            if (result.shortageKg > 0) {
-              console.warn(`[원료 부족] ${raw}: 로트 잔량보다 ${result.shortageKg}kg 더 사용 (주문 ${order.id})`);
-              await addItem('notifications', {
-                type: 'inventory_shortage',
-                title: '원료 로트 부족',
-                body: `${raw}: 로트 잔량보다 ${result.shortageKg}kg 더 사용됨 (주문 ${order.id}, ${customerName}). 입고/이월 확인 필요.`,
-                linkedId: rawItem.id,
-                readBy: [],
-                createdAt: new Date().toISOString(),
-              } as Omit<AppNotification, 'id'>);
-            }
-          }
-        }
-        const entryId = `rm-auto-${order.id}-${raw.replace(/\s/g, '_')}`;
-        await setDoc(doc(db, 'rawMaterialLedger', entryId), {
-          id: entryId,
-          material: raw,
-          date: dateStr,
-          received: 0,
-          used: usedKg,
-          note: `자동: ${customerName}${noteSuffix}`,
-          createdAt: new Date().toISOString(),
-          type: 'auto',
-          orderId: order.id,
-        }, { merge: true });
-      }
-      if (!alreadyDeducted) await updateItem('orders', order.id, { rawLotsDeducted: true, ...(consumedLots.length > 0 ? { rawConsumedLots: consumedLots } : {}) });
+  // 출고 취소: 완제품/상품 재고 +N.
+  const unShipOrder = (order: Order, deltas: Map<string, number>) => {
+    for (const item of order.items) {
+      const product = allItems.find(p => p.id === item.itemId);
+      if (!product) continue;
+      if (isGoodsItem(product)) addDelta(deltas, product.id, goodsShipQty(item, product));
+      else if (product.category === 'product') addDelta(deltas, product.id, item.quantity);
     }
+  };
+
+  const STATUS_WANT_PRODUCED = new Set<OrderStatus>([OrderStatus.DISPATCHED, OrderStatus.SHIPPED, OrderStatus.DELIVERED]);
+  const STATUS_WANT_SHIPPED = new Set<OrderStatus>([OrderStatus.SHIPPED, OrderStatus.DELIVERED]);
+
+  // 목표 상태에 맞춰 재고 상태를 조정(생산/출고/취소 자동). ON_HOLD은 재고 미변동.
+  const reconcileOrderStock = async (order: Order, target: OrderStatus) => {
+    if (target === OrderStatus.ON_HOLD) return;
+    const wantProduced = STATUS_WANT_PRODUCED.has(target);
+    const wantShipped = STATUS_WANT_SHIPPED.has(target);
+    const deltas = new Map<string, number>();
+    const patch: Partial<Order> = {};
+    // 역방향(되돌리기): 출고취소 → 생산취소
+    if (!wantShipped && order.shippedOut) { unShipOrder(order, deltas); patch.shippedOut = false; }
+    if (!wantProduced && order.producedAt) { await unProduceOrder(order, deltas); patch.producedAt = ''; patch.rawLotsDeducted = false; patch.rawConsumedLots = []; }
+    // 정방향: 생산 → 출고
+    if (wantProduced && !order.producedAt) { const consumed = await produceOrder(order, deltas); patch.producedAt = new Date().toISOString(); patch.rawLotsDeducted = true; if (consumed.length > 0) patch.rawConsumedLots = consumed; }
+    if (wantShipped && !order.shippedOut) { shipOrder(order, deltas); patch.shippedOut = true; }
+    await applyStockDeltas(deltas);
+    if (Object.keys(patch).length > 0) await updateItem('orders', order.id, patch);
+  };
+
+  // 주문 상태 변경 진입점 — 재고 조정 후 상태 저장. 이미 이력(DELIVERED)이면 재고 조정 없이 상태만.
+  const changeOrderStatus = async (id: string, status: OrderStatus) => {
+    const order = allOrders.find(o => o.id === id) || orders.find(o => o.id === id);
+    if (!order) { await updateItem('orders', id, { status }); return; }
+    if (order.status !== OrderStatus.DELIVERED) await reconcileOrderStock(order, status);
+    await updateItem('orders', id, { status, ...(status === OrderStatus.DELIVERED && !order.deliveredAt ? { deliveredAt: new Date().toISOString() } : {}) });
   };
 
   const handleRemoveConfirmedOrder = async (id: string) => {
@@ -1020,7 +1089,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     await updateItem('purchaseOrders', poId, { items: newPoItems, status: 'received', receivedAt: new Date().toISOString() });
   };
 
-  const handleToggleItemChecked = (orderId: string, itemIdx: number, checkedBy?: string) => {
+  const handleToggleItemChecked = async (orderId: string, itemIdx: number, checkedBy?: string) => {
     const order = orders.find(o => o.id === orderId);
     if (!order) return;
     const newItems = [...order.items];
@@ -1032,7 +1101,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
     const allChecked = newItems.every(i => i.checked);
     const wasNotDispatched = order.status !== OrderStatus.DISPATCHED && order.status !== OrderStatus.SHIPPED && order.status !== OrderStatus.ON_HOLD;
     if (allChecked && wasNotDispatched) {
-      updateItem('orders', orderId, { items: newItems, status: OrderStatus.DISPATCHED });
+      // 모두 체크 → 작업완료 자동 이동 + 생산처리(원료·부자재 차감, 완제품 재고 +N).
+      await updateItem('orders', orderId, { items: newItems });
+      await changeOrderStatus(orderId, OrderStatus.DISPATCHED);
     } else {
       updateItem('orders', orderId, { items: newItems });
     }
@@ -1423,18 +1494,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               partners={partners}
               items={allItems}
               onUpdateDeliveryDate={(id, date) => updateItem('orders', id, { deliveryDate: date })}
-              onUpdateStatus={async (id, status) => {
-                if (status === OrderStatus.DELIVERED) {
-                  const order = orders.find(o => o.id === id);
-                  if (order) {
-                    await deductSubmaterialsForOrder(order);
-                    await createProductionRecordsForOrder(order);
-                  }
-                  await updateItem('orders', id, { status, deliveredAt: new Date().toISOString() });
-                } else {
-                  await updateItem('orders', id, { status });
-                }
-              }}
+              onUpdateStatus={(id, status) => changeOrderStatus(id, status)}
               onUpdateItems={handleUpdateItems}
               onToggleItemChecked={handleToggleItemChecked}
               onDeleteOrder={(id) => {
@@ -1467,18 +1527,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               subtitle="전체 주문 현황"
               groupBy="status" 
               allowedStatuses={Object.values(OrderStatus)} 
-              onUpdateStatus={async (id, status) => {
-                if (status === OrderStatus.DELIVERED) {
-                  const order = orders.find(o => o.id === id);
-                  if (order) {
-                    await deductSubmaterialsForOrder(order);
-                    await createProductionRecordsForOrder(order);
-                  }
-                  await updateItem('orders', id, { status, deliveredAt: new Date().toISOString() });
-                } else {
-                  await updateItem('orders', id, { status });
-                }
-              }}
+              onUpdateStatus={(id, status) => changeOrderStatus(id, status)}
               onUpdateDeliveryDate={(id, date) => updateItem('orders', id, { deliveryDate: date })}
               onUpdatePallets={(id, p) => updateItem('orders', id, { pallets: p })}
               palletStocks={pallets}
@@ -2144,18 +2193,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 })),
               });
 
-              // 출고(SHIPPED) 주문을 예전 주문이력(DELIVERED)으로 이동 + 부자재 차감
-              // 차감(부자재/원료 로트)은 부수효과 — 실패해도 이력 이동(DELIVERED)은 반드시 진행한다.
+              // 출고(SHIPPED) 주문을 예전 주문이력(DELIVERED)으로 이동.
+              // 재고 조정(생산/출고)은 이미 각 상태 전환 때 반영됨 — 여기선 상태만 이동하되,
+              // 혹시 생산/출고 미반영 주문(레거시·스킵)이면 changeOrderStatus가 그때 정리한다(부수효과).
               const deductFailures: string[] = [];
               for (const o of shippedOrders) {
                 try {
-                  await deductSubmaterialsForOrder(o);
-                  await createProductionRecordsForOrder(o);
+                  await changeOrderStatus(o.id, OrderStatus.DELIVERED);
                 } catch (e) {
-                  console.error(`[주문 이력 이동] 차감/생산기록 실패 (주문 ${o.id}, ${o.partnerName}):`, e);
+                  console.error(`[주문 이력 이동] 재고 조정 실패 (주문 ${o.id}, ${o.partnerName}):`, e);
                   deductFailures.push(o.partnerName || o.id);
+                  await updateItem('orders', o.id, { status: OrderStatus.DELIVERED, deliveredAt: new Date().toISOString() });
                 }
-                await updateItem('orders', o.id, { status: OrderStatus.DELIVERED, deliveredAt: new Date().toISOString() });
               }
               // 참고: 향미유/고춧가루만 있는 출고 주문도 위 shippedOrders 루프가 이미 처리한다
               // (SUB_ONLY_CATS에 향미유/고춧가루가 없으므로 some(...) 조건을 만족).
@@ -3392,18 +3441,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               partnerItems={partnerItems}
               accountCodes={appData.accountCodes}
               issuedStatements={issuedStatements}
-              onUpdateStatus={async (id, status) => {
-                if (status === OrderStatus.DELIVERED) {
-                  const order = orders.find(o => o.id === id);
-                  if (order) {
-                    await deductSubmaterialsForOrder(order);
-                    await createProductionRecordsForOrder(order);
-                  }
-                  await updateItem('orders', id, { status, deliveredAt: new Date().toISOString() });
-                } else {
-                  await updateItem('orders', id, { status });
-                }
-              }}
+              onUpdateStatus={(id, status) => changeOrderStatus(id, status)}
               onUpsertPartnerItem={(ps) => handleUpsertPartnerItem(ps, 'out')}
               onMarkInvoicePrinted={(id, value) => updateItem('orders', id, { invoicePrinted: value })}
               onUpdateOrder={(id, data) => updateItem('orders', id, data)}

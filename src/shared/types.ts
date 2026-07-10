@@ -135,8 +135,10 @@ export interface Order {
   invoicePrinted?: boolean;
   deliveredAt?: string; // 주문이력으로 이동한 날짜
   documentDate?: string; // 서류 날짜 (원료수불부 기준일)
-  rawLotsDeducted?: boolean; // 납품완료 시 원료 로트 선입선출 차감 완료 표시(중복 차감 방지)
+  rawLotsDeducted?: boolean; // 원료 로트 선입선출 차감 완료 표시(중복 차감 방지) — 생산처리(작업완료) 시 set
   rawConsumedLots?: { material: string; lotId?: string; lotNo?: string; supplierName: string; receivedDate?: string; kg: number }[]; // 정방향 추적: 이 주문이 소비한 원료 lot 스냅샷
+  producedAt?: string;   // 작업완료(생산처리) 완료 시각 — 원료·부자재 차감 + 완제품 재고 +N 반영됨(가드)
+  shippedOut?: boolean;  // 출고 완료 — 완제품/상품 재고 −N 반영됨(가드)
 }
 
 export interface BoxConfig {
