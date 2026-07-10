@@ -3894,6 +3894,19 @@ const AdminApp: React.FC<AdminAppProps> = ({
           initialData={editingProduct || undefined}
           allSubmaterials={submaterials}
           items={products}
+          rawItems={allItems.filter(i => i.category === 'raw' || i.category === 'wip')}
+          itemFormulas={itemFormulas}
+          onSaveItemFormula={async (parentKey, rows, prevKey) => {
+            const batch = writeBatch(db);
+            const keys = new Set([parentKey, prevKey].filter(Boolean) as string[]);
+            itemFormulas.filter(f => keys.has(f.parent_key)).forEach(f => batch.delete(doc(db, 'item_formula', f.id)));
+            rows.forEach(r => {
+              const id = `formula-${parentKey}-${r.child_name}`.replace(/\s/g, '_');
+              batch.set(doc(db, 'item_formula', id), { parent_key: parentKey, child_name: r.child_name, ratio: r.ratio ?? 1, yield_rate: r.yield_rate });
+            });
+            await batch.commit();
+            refreshStaticData();
+          }}
           partners={partners}
           partnerItems={partnerItems}
           shippingRules={shippingRules}

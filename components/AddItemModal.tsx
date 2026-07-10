@@ -1,6 +1,7 @@
 ﻿import React, { useState, useRef, useEffect } from 'react';
 import { X, Package, Tag, Box, Layers, Plus, Building2, Check, Trash2 } from 'lucide-react';
 import { Item, InventoryCategory, ItemSubtype, Partner, ClientBoxConfig, PartnerItem, ShippingRule } from '../types';
+import { baseRawName } from '../src/constants/formula';
 
 interface ProductModalProps {
   initialData?: Item;
@@ -16,6 +17,9 @@ interface ProductModalProps {
   onUpsertPartnerItem?: (ps: PartnerItem) => void;
   onDeletePartnerItem?: (id: string) => void;
   onAddSubmaterial?: (name: string, category: string) => Promise<string>;
+  rawItems?: Item[];
+  itemFormulas?: import('../src/shared/types').ItemFormula[];
+  onSaveItemFormula?: (parentKey: string, rows: { child_name: string; yield_rate: number; ratio: number }[], prevKey?: string) => Promise<void>;
 }
 
 const CAT_NORM: Record<string, string> = {
@@ -67,7 +71,7 @@ const PUMOK_VOLUMES: Record<string, string[]> = {
   '시골향볶음검정참깨': ['1kg','20kg','25kg'],
 };
 
-const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], items, partners = [], partnerItems, shippingRules = [], onClose, onSave, onSaveShippingRule, onAddShippingRule, onUpsertPartnerItem, onDeletePartnerItem, onAddSubmaterial }) => {
+const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], items, partners = [], partnerItems, shippingRules = [], onClose, onSave, onSaveShippingRule, onAddShippingRule, onUpsertPartnerItem, onDeletePartnerItem, onAddSubmaterial, rawItems = [], itemFormulas = [], onSaveItemFormula }) => {
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
   const partnerIn = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
 
@@ -116,6 +120,18 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const [bomCatFilter, setBomCatFilter] = useState<string>('all');
   const [showBoxClientDrop, setShowBoxClientDrop] = useState(false);
 
+  // 원료 배합·수율 (반제품·원료) — item_formula 편집
+  const [formulaRows, setFormulaRows] = useState<{ child_name: string; yield_pct: number }[]>(() => {
+    if (!initialData) return [];
+    const key = baseRawName(initialData.name);
+    return (itemFormulas ?? [])
+      .filter(f => f.parent_key === key)
+      .map(f => ({ child_name: f.child_name, yield_pct: Math.round((f.yield_rate ?? f.ratio ?? 1) * 1000) / 10 }));
+  });
+  const [formulaChildQuery, setFormulaChildQuery] = useState('');
+  const [formulaPickerOpen, setFormulaPickerOpen] = useState(false);
+  const formulaPickerRef = useRef<HTMLDivElement>(null);
+
   // 거래처별 포장 설정 (shipping_rule 기반, partner_item 필드 fallback)
   const [partnerPackagingConfigs, setClientPackagingConfigs] = useState<Record<string, { boxTypeId?: string; qtyPerBox?: number; tapeTypeId?: string }>>(() => {
     const map: Record<string, { boxTypeId?: string; qtyPerBox?: number; tapeTypeId?: string }> = {};
@@ -158,12 +174,28 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (formulaPickerRef.current && !formulaPickerRef.current.contains(e.target as Node))
+        setFormulaPickerOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
   const pumokOptions = [
     ...new Set([
       ...(items ?? []).map(p => p.품목).filter(Boolean) as string[],
       ...PRESET_PUMOK,
     ])
   ].filter(v => !formData.품목 || v.toLowerCase().includes(formData.품목.toLowerCase()));
+
+  // 원료 배합 자식 후보 — 원료·반제품 base 이름(자기 자신·이미 추가된 것 제외)
+  const formulaSelfKey = baseRawName(formData.name);
+  const formulaChildOptions = [...new Set((rawItems ?? []).map(i => baseRawName(i.name)))]
+    .filter(n => n && n !== formulaSelfKey && !formulaRows.some(r => r.child_name === n))
+    .filter(n => !formulaChildQuery.trim() || n.toLowerCase().includes(formulaChildQuery.toLowerCase()))
+    .sort();
 
   const inboundPartners = partners.filter(c =>
     c.partnerType === '매입처' || c.partnerType === '매출+매입처'
@@ -211,6 +243,16 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     };
 
     onSave(finalProduct);
+
+    // 원료 배합·수율 저장 (반제품·원료) — item_formula. parent_key = 이 품목 base 이름.
+    if (onSaveItemFormula && (formData.category === 'wip' || formData.category === 'raw')) {
+      const parentKey = baseRawName(formData.name);
+      const prevKey = initialData ? baseRawName(initialData.name) : undefined;
+      const rows = formulaRows
+        .filter(r => r.child_name)
+        .map(r => ({ child_name: r.child_name, yield_rate: (r.yield_pct || 0) / 100, ratio: 1 }));
+      await onSaveItemFormula(parentKey, rows, prevKey && prevKey !== parentKey ? prevKey : undefined);
+    }
 
     // PartnerItem 다중 upsert/삭제 — partner_item Direction='in'
     if (onUpsertPartnerItem) {
@@ -653,6 +695,67 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             </div>
             );
           })()}
+
+          {/* 원료 배합 · 수율 (반제품·원료) */}
+          {(formData.category === 'wip' || formData.category === 'raw') && (
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
+                <Layers size={14} className="mr-2" /> 원료 배합 · 수율
+              </label>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                이 품목을 만들 때 쓰는 원료와 <b className="text-slate-500">수율(%)</b>을 지정합니다. 출고·생산 시 이 비율로 원료가 자동 차감됩니다.<br />
+                예) <b className="text-indigo-500">{formData.name || '통깨참기름'}</b> ← 참깨 <b className="text-indigo-500">45%</b> : 참깨 100kg 사용 → {formData.name || '통깨참기름'} 45kg 생산
+              </p>
+
+              {formulaRows.length > 0 && (
+                <div className="space-y-1.5">
+                  {formulaRows.map((row, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <span className="flex-1 min-w-0 truncate bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700">{row.child_name}</span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <input
+                          type="number" min={0} max={100} inputMode="decimal"
+                          value={row.yield_pct === 0 ? '' : row.yield_pct}
+                          onChange={e => { const v = e.target.value === '' ? 0 : Number(e.target.value); setFormulaRows(rows => rows.map((r, i) => i === idx ? { ...r, yield_pct: v } : r)); }}
+                          placeholder="0"
+                          className="w-20 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold text-right outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                        />
+                        <span className="text-sm font-bold text-slate-400">%</span>
+                      </div>
+                      <button type="button" onClick={() => setFormulaRows(rows => rows.filter((_, i) => i !== idx))} className="shrink-0 p-2 rounded-xl text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-all">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="relative" ref={formulaPickerRef}>
+                <input
+                  type="text"
+                  value={formulaChildQuery}
+                  onChange={e => { setFormulaChildQuery(e.target.value); setFormulaPickerOpen(true); }}
+                  onFocus={() => setFormulaPickerOpen(true)}
+                  placeholder="원료 검색해서 추가 (예: 참깨)"
+                  className="w-full bg-white border border-dashed border-slate-300 rounded-xl px-4 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400 transition-all"
+                />
+                {formulaPickerOpen && formulaChildOptions.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl z-20 overflow-hidden max-h-48 overflow-y-auto custom-scrollbar">
+                    {formulaChildOptions.slice(0, 30).map(name => (
+                      <button
+                        key={name} type="button"
+                        onMouseDown={e => { e.preventDefault(); setFormulaRows(rows => [...rows, { child_name: name, yield_pct: 0 }]); setFormulaChildQuery(''); setFormulaPickerOpen(false); }}
+                        className="w-full text-left px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-all"
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {!onSaveItemFormula && <p className="text-[10px] font-bold text-amber-500">⚠ 저장 핸들러 미연결 — 배합이 저장되지 않습니다.</p>}
+            </div>
+          )}
 
           {/* 매입거래처 (비완제품) */}
           {formData.category !== 'product' && (
