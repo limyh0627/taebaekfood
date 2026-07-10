@@ -4440,6 +4440,36 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode; desc: string }[] 
 const HaccpChecklist: React.FC<{ currentUser?: { id: string; name: string }; isAdmin?: boolean }> = ({ currentUser, isAdmin }) => {
   const [activeTab, setActiveTab] = useState<TabId>('overview');
 
+  // 탭 순서: 관리자가 드래그로 변경 → Firestore에 저장돼 모든 기기에서 동일하게 표시
+  const [tabOrder, setTabOrder] = useState<string[]>([]);
+  const pendingTabOrder = useRef<string[] | null>(null);
+  useEffect(() => {
+    return onSnapshot(doc(db, 'haccp_templates', 'haccp_tab_order'), snap => {
+      const data = snap.exists() ? snap.data().order : null;
+      if (Array.isArray(data)) setTabOrder(data);
+    });
+  }, []);
+
+  // 저장된 순서 우선, 저장에 없는(새로 생긴) 탭은 기본 순서로 뒤에 붙임
+  const tabById = new Map(TABS.map(t => [t.id as string, t]));
+  const orderedTabs = [
+    ...tabOrder.map(id => tabById.get(id)).filter((t): t is typeof TABS[number] => !!t),
+    ...TABS.filter(t => !tabOrder.includes(t.id)),
+  ];
+
+  const { dragIdx, handleProps, rowProps } = useDragReorder(
+    (from, to) => {
+      const next = arrayMove(orderedTabs.map(t => t.id as string), from, to);
+      pendingTabOrder.current = next;
+      setTabOrder(next);
+    },
+    () => {
+      if (!pendingTabOrder.current) return;
+      setDoc(doc(db, 'haccp_templates', 'haccp_tab_order'), { order: pendingTabOrder.current });
+      pendingTabOrder.current = null;
+    }
+  );
+
   return (
     <div className="flex flex-col h-full bg-slate-50">
       {/* 헤더 */}
@@ -4458,15 +4488,17 @@ const HaccpChecklist: React.FC<{ currentUser?: { id: string; name: string }; isA
       {/* 탭 네비게이션 */}
       <div className="bg-white border-b border-slate-200 px-4 overflow-x-auto">
         <div className="flex gap-0.5 py-2 min-w-max">
-          {TABS.map(tab => (
+          {orderedTabs.map((tab, idx) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
+              {...(isAdmin ? { ...handleProps(idx), ...rowProps(idx) } : {})}
+              title={isAdmin ? '드래그로 탭 순서 변경' : undefined}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
                 activeTab === tab.id
                   ? 'bg-emerald-50 text-emerald-700 font-bold'
                   : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-              }`}
+              } ${dragIdx === idx ? 'opacity-60 ring-1 ring-indigo-400' : ''}`}
             >
               {tab.icon}
               {tab.label}
