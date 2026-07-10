@@ -1,7 +1,7 @@
 ﻿import React, { useState, useRef, useEffect } from 'react';
 import { X, Package, Tag, Box, Layers, Plus, Building2, Check, Trash2 } from 'lucide-react';
 import { Item, InventoryCategory, ItemSubtype, Partner, ClientBoxConfig, PartnerItem, ShippingRule } from '../types';
-import { baseRawName } from '../src/constants/formula';
+import { baseRawName, PRODUCT_FORMULA } from '../src/constants/formula';
 
 interface ProductModalProps {
   initialData?: Item;
@@ -121,13 +121,20 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const [bomCatFilter, setBomCatFilter] = useState<string>('all');
   const [showBoxClientDrop, setShowBoxClientDrop] = useState(false);
 
-  // 원료 배합·수율 (반제품·원료) — item_formula 편집
+  // 원료 배합·수율 (완제품·반제품·원료) — item_formula 편집.
+  //   완제품 parent_key = 품목(규격 공유), 반제품/원료 parent_key = base 이름.
+  //   유효비율 = ratio × yield_rate (buildFormula와 동일). 표시/저장은 이 유효비율(%)로 통일.
   const [formulaRows, setFormulaRows] = useState<{ child_name: string; yield_pct: number }[]>(() => {
     if (!initialData) return [];
-    const key = baseRawName(initialData.name);
-    return (itemFormulas ?? [])
-      .filter(f => f.parent_key === key)
-      .map(f => ({ child_name: f.child_name, yield_pct: Math.round((f.yield_rate ?? f.ratio ?? 1) * 1000) / 10 }));
+    const isProduct = initialData.category === 'product';
+    const key = isProduct ? (initialData.품목 || initialData.name) : baseRawName(initialData.name);
+    const rows = (itemFormulas ?? []).filter(f => f.parent_key === key);
+    if (rows.length > 0)
+      return rows.map(f => ({ child_name: f.child_name, yield_pct: Math.round((f.ratio ?? 1) * (f.yield_rate ?? 1) * 1000) / 10 }));
+    // item_formula 행이 없으면 완제품은 하드코딩 시드(PRODUCT_FORMULA)를 미리 채워 보여줌(실수로 비우는 것 방지).
+    if (isProduct && PRODUCT_FORMULA[key])
+      return PRODUCT_FORMULA[key].map(r => ({ child_name: r.raw, yield_pct: Math.round(r.ratio * 1000) / 10 }));
+    return [];
   });
   const [formulaChildQuery, setFormulaChildQuery] = useState('');
   const [formulaPickerOpen, setFormulaPickerOpen] = useState(false);
@@ -246,10 +253,12 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
 
     onSave(finalProduct);
 
-    // 원료 배합·수율 저장 (반제품·원료) — item_formula. parent_key = 이 품목 base 이름.
-    if (onSaveItemFormula && (formData.category === 'wip' || formData.category === 'raw')) {
-      const parentKey = baseRawName(formData.name);
-      const prevKey = initialData ? baseRawName(initialData.name) : undefined;
+    // 원료 배합·수율 저장 (완제품·반제품·원료) — item_formula.
+    //   완제품 parent_key = 품목(규격 공유), 반제품/원료 = base 이름. 유효비율은 yield_rate에 저장(ratio=1).
+    if (onSaveItemFormula && ['product', 'wip', 'raw'].includes(formData.category)) {
+      const keyOf = (cat: string, pumok: string, nm: string) => cat === 'product' ? (pumok || nm) : baseRawName(nm);
+      const parentKey = keyOf(formData.category, formData.품목, formData.name);
+      const prevKey = initialData ? keyOf(initialData.category, initialData.품목 || '', initialData.name) : undefined;
       const rows = formulaRows
         .filter(r => r.child_name)
         .map(r => ({ child_name: r.child_name, yield_rate: (r.yield_pct || 0) / 100, ratio: 1 }));
@@ -698,14 +707,15 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             );
           })()}
 
-          {/* 원료 배합 · 수율 (반제품·원료) */}
-          {(formData.category === 'wip' || formData.category === 'raw') && (
+          {/* 원료 배합 · 수율 (완제품·반제품·원료) */}
+          {(formData.category === 'product' || formData.category === 'wip' || formData.category === 'raw') && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Layers size={14} className="mr-2" /> 원료 배합 · 수율
+                <Layers size={14} className="mr-2" /> {formData.category === 'product' ? '사용 원료 · 반제품 (배합비)' : '원료 배합 · 수율'}
               </label>
 
-              {/* 즉석배합(무재고) 토글 */}
+              {/* 즉석배합(무재고) 토글 — 반제품/원료만 */}
+              {formData.category !== 'product' && (
               <button
                 type="button"
                 onClick={() => setFormData(fd => ({ ...fd, phantom: !fd.phantom }))}
@@ -723,12 +733,14 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                   </span>
                 </span>
               </button>
+              )}
 
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                {formData.phantom ? '배합비(%)' : '수율(%)'}를 지정합니다.<br />
-                {formData.phantom
-                  ? <>예) <b className="text-indigo-500">{formData.name || '혼합참기름원액'}</b> = 통깨참기름 <b className="text-indigo-500">60%</b> + 옥수수유 <b className="text-indigo-500">40%</b> (합 100%)</>
-                  : <>예) <b className="text-indigo-500">{formData.name || '통깨참기름'}</b> ← 참깨 <b className="text-indigo-500">45%</b> : 참깨 100kg 사용 → {formData.name || '통깨참기름'} 45kg 생산</>}
+                {formData.category === 'product'
+                  ? <>이 완제품이 쓰는 원료·반제품과 <b className="text-slate-500">배합비(%)</b>를 지정합니다. 출고 시 이 비율로 차감돼요.<br />예) <b className="text-indigo-500">시골향참기름2</b> = 통깨참기름 <b className="text-indigo-500">50%</b> + 깨분참기름 <b className="text-indigo-500">50%</b></>
+                  : formData.phantom
+                    ? <>배합비(%)를 지정합니다.<br />예) <b className="text-indigo-500">{formData.name || '혼합참기름원액'}</b> = 통깨참기름 <b className="text-indigo-500">60%</b> + 옥수수유 <b className="text-indigo-500">40%</b> (합 100%)</>
+                    : <>수율(%)를 지정합니다.<br />예) <b className="text-indigo-500">{formData.name || '통깨참기름'}</b> ← 참깨 <b className="text-indigo-500">45%</b> : 참깨 100kg 사용 → {formData.name || '통깨참기름'} 45kg 생산</>}
               </p>
 
               {formulaRows.length > 0 && (
