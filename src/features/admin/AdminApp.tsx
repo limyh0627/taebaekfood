@@ -287,12 +287,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
     const prevYm = `${py}-${String(pm).padStart(2, '0')}`;
     const already = inventorySnapshots.some(s => s.yearMonth === prevYm);
     if (already) return;
-    const totalValue = allItems.reduce((sum, p) => sum + (p.stock ?? 0) * (p.cost ?? 0), 0);
+    const valued = allItems.filter(p => (p.stock ?? 0) > 0 || (p.cost ?? 0) > 0);
+    const totalValue = valued.reduce((sum, p) => sum + (p.stock ?? 0) * (p.cost ?? 0), 0);
     addItem('inventorySnapshots', {
       id: `inv-snap-${prevYm}`,
       yearMonth: prevYm,
       value: totalValue,
       recordedAt: new Date().toISOString(),
+      items: valued.map(p => ({ itemId: p.id, name: p.name, category: p.category as string, qty: p.stock ?? 0, value: Math.round((p.stock ?? 0) * (p.cost ?? 0)) })),
     });
   }, [isDataLoading]);
 

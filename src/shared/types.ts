@@ -698,6 +698,7 @@ export interface InventorySnapshot {
   yearMonth: string;    // 'YYYY-MM'
   value: number;        // 재고총액 (기말재고액, 원)
   recordedAt: string;   // ISO timestamp
+  items?: { itemId: string; name: string; category?: string; qty: number; value: number }[]; // 품목별 기말재고 (수량·평가액) — 월별 상세 재고 분석용
 }
 
 // 현금흐름표(간접법) 월별 수동 입력 — 자동 계산 안 되는 항목(감가상각·선급금·투자·재무·기초현금)

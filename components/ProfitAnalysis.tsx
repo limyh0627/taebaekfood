@@ -61,6 +61,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   const isStandalone = initialTab === 'partners' || initialTab === 'cash-flow';
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [expandedInvCats, setExpandedInvCats] = useState<Set<string>>(new Set());
+  const [expandedSnapId, setExpandedSnapId] = useState<string | null>(null);
   const [period, setPeriod] = useState<'3M' | '6M' | '1Y' | 'custom'>('custom');
   const [selectedQuarter, setSelectedQuarter] = useState<1|2|3|4>(() => {
     const cm = new Date().getMonth() + 1;
@@ -1444,7 +1445,10 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                     <span className="text-xs text-slate-400">현재 재고총액으로 기록합니다</span>
                   )}
                   <button
-                    onClick={() => onSaveInventorySnapshot({ yearMonth: currentYm, value: totalValue, recordedAt: new Date().toISOString() })}
+                    onClick={() => onSaveInventorySnapshot({
+                      yearMonth: currentYm, value: totalValue, recordedAt: new Date().toISOString(),
+                      items: rows.map(p => ({ itemId: p.id, name: p.name, category: catLabel(p), qty: p.stock, value: p.value })),
+                    })}
                     className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black transition-all ${existingSnap ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' : 'bg-teal-600 text-white hover:bg-teal-700'}`}>
                     <Archive size={12}/>{existingSnap ? '덮어쓰기' : '기말재고 기록'}
                   </button>
@@ -1471,20 +1475,33 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                     </thead>
                     <tbody className="divide-y divide-slate-50">
                       {sortedSnapshots.map(snap => {
-                        const [sy, sm] = snap.yearMonth.split('-').map(Number);
-                        let ny = sy, nm = sm + 1;
-                        if (nm > 12) { nm = 1; ny += 1; }
-                        const nextYm = `${ny}-${String(nm).padStart(2, '0')}`;
-                        const isNextMonthOpening = inventorySnapshots.some(s => s.yearMonth === nextYm);
+                        const hasItems = Array.isArray(snap.items) && snap.items.length > 0;
+                        const open = expandedSnapId === snap.id;
+                        const snapItems = hasItems ? [...snap.items!].sort((a, b) => b.value - a.value) : [];
                         return (
-                          <tr key={snap.id} className={`hover:bg-slate-50 transition-colors ${snap.yearMonth === currentYm ? 'bg-teal-50/50' : ''}`}>
+                          <React.Fragment key={snap.id}>
+                          <tr onClick={() => hasItems && setExpandedSnapId(open ? null : snap.id)}
+                            className={`transition-colors ${hasItems ? 'cursor-pointer hover:bg-slate-50' : ''} ${snap.yearMonth === currentYm ? 'bg-teal-50/50' : ''}`}>
                             <td className="px-4 py-3 text-xs font-black text-slate-700">
+                              {hasItems && <span className="mr-1.5 text-slate-300">{open ? '▾' : '▸'}</span>}
                               {snap.yearMonth}
                               {snap.yearMonth === currentYm && <span className="ml-2 text-[9px] bg-teal-100 text-teal-600 px-1.5 py-0.5 rounded-full">이번달</span>}
+                              {hasItems && <span className="ml-2 text-[9px] text-slate-400">{snap.items!.length}품목</span>}
                             </td>
                             <td className="px-4 py-3 text-xs text-right font-black text-teal-700">{fmt(snap.value)}원</td>
                             <td className="px-4 py-3 text-[10px] text-right text-slate-400">{snap.recordedAt.slice(0, 16).replace('T', ' ')}</td>
                           </tr>
+                          {open && snapItems.map((it, i) => (
+                            <tr key={snap.id + '-' + i} className="bg-slate-50/60">
+                              <td className="pl-9 pr-4 py-1.5 text-[11px] text-slate-600">
+                                <span className="text-slate-400 text-[9px] mr-1.5">{it.category}</span>{it.name}
+                                <span className="text-slate-400 ml-1.5">× {it.qty}</span>
+                              </td>
+                              <td className="px-4 py-1.5 text-[11px] text-right font-bold text-slate-600">{fmt(it.value)}원</td>
+                              <td className="px-4 py-1.5"></td>
+                            </tr>
+                          ))}
+                          </React.Fragment>
                         );
                       })}
                     </tbody>
