@@ -8,6 +8,7 @@ import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, BarChart2, Dol
 import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Partner, PaymentRecord, Item, AccountCode, AccountGroup, AccountGroupPlLine, InventorySnapshot, CashFlowManual } from '../types';
 import PageHeader from './PageHeader';
 import CostManager from './CostManager';
+import { makeCodeToGroup, computeMonthPL, SGNA_LEGACY_IDS, COMPUTED_GROUP_IDS } from '../src/features/admin/financials';
 
 type MainTab = 'analysis' | 'costs' | 'partners' | 'inventory-value' | 'account-settings' | 'cash-flow';
 
@@ -47,9 +48,6 @@ const fmtM = (n: number) => {
 };
 
 const MONTHS = 12;
-
-const COMPUTED_GROUP_IDS = new Set(['ag-gross-profit', 'ag-op-profit']);
-const SGNA_LEGACY_IDS = new Set(['ag-selling', 'ag-admin']);
 
 const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, fixedCostTemplates = [], onAddCost, onDeleteCost, onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = [], onSaveCashFlowManual, initialTab }) => {
   // 계산결과 그룹 숨김 + 구 판매비/관리비 → 판관비로 통합 표시
@@ -114,18 +112,10 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
 
   // 계정코드 → AccountGroup 조회 (구 판매비/관리비 ID도 판관비로 매핑)
-  const codeToGroup = useMemo(() => {
-    const codeMap = new Map(accountCodes.map(ac => [ac.code, ac]));
-    const groupMap = new Map(accountGroups.map(g => [g.id, g]));
-    const sgnaGroup = groupMap.get('ag-sgna') ?? rawAccountGroups.find(g => SGNA_LEGACY_IDS.has(g.id));
-    return (code: string | undefined): AccountGroup | undefined => {
-      if (!code) return undefined;
-      const ac = codeMap.get(code);
-      if (!ac?.groupId) return undefined;
-      if (SGNA_LEGACY_IDS.has(ac.groupId)) return sgnaGroup ? { ...sgnaGroup, id: 'ag-sgna', name: '판관비' } : undefined;
-      return groupMap.get(ac.groupId);
-    };
-  }, [accountCodes, accountGroups, rawAccountGroups]);
+  const codeToGroup = useMemo(
+    () => makeCodeToGroup(accountCodes, accountGroups, rawAccountGroups),
+    [accountCodes, accountGroups, rawAccountGroups]
+  );
 
   // 연도 목록 (전표 기준)
   const years = useMemo(() => {
@@ -203,35 +193,10 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   }, [periodMonths, inventorySnapshots]);
 
   // 임의 월(YYYY-MM)의 손익 — monthlyData·현금흐름표 공용. cogs = 당기 매입액(재고 미반영).
-  const monthPL = useCallback((ym: string) => {
-    let sales = 0, cogs = 0, sgna = 0, otherIncome = 0, otherExpense = 0;
-    issuedStatements
-      .filter(s => s.tradeDate.startsWith(ym))
-      .forEach(s => {
-        s.items.forEach(item => {
-          const group = codeToGroup(item.accountCode);
-          const pl = group?.plLine;
-          if (pl === 'revenue') sales += item.total;
-          else if (pl === 'cogs') cogs += item.total;
-          else if (pl === 'sgna') sgna += item.total;
-          else if (pl === 'other-income') otherIncome += item.total;
-          else if (pl === 'other-expense') otherExpense += item.total;
-          else if (!pl && group?.type === '수익') sales += item.total;
-          else if (!pl && group?.type === '비용') cogs += item.total;
-          else if (!group) {
-            if (s.type === '매출') sales += item.total;
-            else if (s.type === '비용') sgna += item.total;
-            else if (s.type === '매입') cogs += item.total;
-          }
-        });
-      });
-    // 정기비용은 이제 '비용' 전표로 끊겨 sgna에 잡히므로 templateTotal 합산 제거(이중계상 방지)
-    const fixed = fixedCosts.filter(c => c.yearMonth === ym).reduce((a, c) => a + c.amount, 0);
-    const grossProfit = sales - cogs;
-    const operatingProfit = grossProfit - sgna - fixed;
-    const netIncome = operatingProfit + otherIncome - otherExpense;
-    return { sales, cogs, sgna, fixed, grossProfit, operatingProfit, otherIncome, otherExpense, netIncome };
-  }, [issuedStatements, fixedCosts, codeToGroup]);
+  const monthPL = useCallback(
+    (ym: string) => computeMonthPL(ym, issuedStatements, fixedCosts, codeToGroup),
+    [issuedStatements, fixedCosts, codeToGroup]
+  );
 
   // 월별 집계
   const monthlyData = useMemo(
