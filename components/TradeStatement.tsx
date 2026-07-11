@@ -195,6 +195,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         { name: '', spec: '', qty: '', price: '', isTaxExempt: false, note: '' }];
     });
   };
+  // ── 비용 전표 발행 모달 (거래처 없이 계정과목+금액) ──
+  const [showExpense, setShowExpense] = useState(false);
+  const [expDate, setExpDate] = useState(today());
+  const [expRows, setExpRows] = useState<ManualRow[]>([{ name: '', spec: '', qty: '1', price: '', isTaxExempt: false }]);
   // ── 전표 추가 필드 ──
   const [tradeNote, setTradeNote] = useState('');       // 전표비고
   const [selectedItemIdx, setSelectedItemIdx] = useState<number | null>(null); // 선택된 품목 행
@@ -2068,6 +2072,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           <Plus size={13} strokeWidth={3}/>매출전표
         </button>
         <button
+          onClick={() => { setShowExpense(true); setExpDate(today()); setExpRows([{ name: '', spec: '', qty: '1', price: '', isTaxExempt: false }]); }}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-slate-600 text-white hover:bg-slate-700 shadow-sm transition-all"
+        >
+          <Plus size={13} strokeWidth={3}/>비용
+        </button>
+        <button
           onClick={() => { setShowQuickPay(true); setQuickPayClientId(''); setQuickPayClientSearch(''); setQuickPayAmount(''); setQuickPayNote(''); setQuickPayDate(new Date().toISOString().slice(0,10)); }}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition-all"
         >
@@ -2472,6 +2482,99 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       )}
 
       {/* ── 빠른 수금/지불 모달 ── */}
+      {showExpense && (() => {
+        const expLines = expRows
+          .filter(r => r.name.trim() && Number(String(r.price).replace(/,/g, '')) > 0)
+          .map(r => {
+            const amt = Number(String(r.price).replace(/,/g, '')) || 0;
+            const supply = r.isTaxExempt ? amt : Math.round(amt / 1.1);
+            const tax = amt - supply;
+            return { name: r.name.trim(), spec: '', qty: 1, price: amt, supply, tax, total: amt, isTaxExempt: r.isTaxExempt, ...(r.accountCode ? { accountCode: r.accountCode } : {}) };
+          });
+        const eSupply = expLines.reduce((s, r) => s + r.supply, 0);
+        const eTax = expLines.reduce((s, r) => s + r.tax, 0);
+        const eTotal = eSupply + eTax;
+        const addRow = () => setExpRows(prev => [...prev, { name: '', spec: '', qty: '1', price: '', isTaxExempt: false }]);
+        const addChip = (p: ExpensePreset) => setExpRows(prev => {
+          const rows = prev.filter(r => r.name.trim());
+          return [...rows,
+            { name: p.name, spec: '', qty: '1', price: p.price ? String(p.price) : '', isTaxExempt: p.taxType === '면세' },
+            { name: '', spec: '', qty: '1', price: '', isTaxExempt: false }];
+        });
+        const issue = () => {
+          if (expLines.length === 0) return;
+          const d = new Date(expDate + 'T00:00:00');
+          const stmt: IssuedStatement = {
+            id: `stmt-${Date.now()}`, issuedAt: new Date().toISOString(), tradeDate: expDate, type: '비용',
+            partnerId: '', partnerName: expLines[0].name || '비용', orderId: '',
+            docNo: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(issuedStatements.length + 1).padStart(4, '0')}`,
+            totalSupply: eSupply, totalTax: eTax, totalAmount: eTotal, items: expLines,
+          };
+          onAddIssuedStatement?.(stmt);
+          setShowExpense(false);
+        };
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setShowExpense(false)}>
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-black text-slate-800">비용 전표 발행 <span className="text-[11px] font-bold text-slate-400">· 거래처 없음</span></h3>
+                <button onClick={() => setShowExpense(false)} className="text-slate-300 hover:text-slate-500"><X size={18} /></button>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-snug">은행이자·카드요금·공과금 등 거래처 없는 경비. 계정과목·금액만 입력하면 돼요. (재고·거래처·발주 영향 없음)</p>
+
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">일자</label>
+                <input type="date" value={expDate} onChange={e => setExpDate(e.target.value)}
+                  className="border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300" />
+              </div>
+
+              {expensePresets.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] font-black text-slate-400">빠른 비용</span>
+                  {expensePresets.map(p => (
+                    <button key={p.id} type="button" onClick={() => addChip(p)}
+                      className="inline-flex items-center gap-1 pl-2.5 pr-2 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-[11px] font-black hover:bg-indigo-100 transition-all">
+                      {p.name}{p.price ? <span className="text-indigo-400 font-bold">{p.price.toLocaleString()}</span> : null}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                {expRows.map((r, idx) => (
+                  <div key={idx} className="flex items-center gap-1.5">
+                    <input value={r.name} onChange={e => setExpRows(prev => prev.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))} placeholder="항목명 (예: 은행이자)"
+                      className="flex-1 min-w-0 border border-slate-200 rounded-lg px-2.5 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300" />
+                    <select value={r.accountCode || ''} onChange={e => setExpRows(prev => prev.map((x, i) => i === idx ? { ...x, accountCode: e.target.value || undefined } : x))}
+                      className="w-24 shrink-0 border border-slate-200 rounded-lg px-1.5 py-2 text-[11px] font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-slate-300">
+                      <option value="">계정-</option>
+                      {accountCodes.map(ac => <option key={ac.id} value={ac.code}>{ac.name}</option>)}
+                    </select>
+                    <input value={r.price} onChange={e => setExpRows(prev => prev.map((x, i) => i === idx ? { ...x, price: e.target.value.replace(/[^\d]/g, '') } : x))} placeholder="금액" inputMode="numeric"
+                      className="w-24 shrink-0 border border-slate-200 rounded-lg px-2 py-2 text-sm font-black text-right outline-none focus:ring-2 focus:ring-slate-300" />
+                    <button type="button" onClick={() => setExpRows(prev => prev.map((x, i) => i === idx ? { ...x, isTaxExempt: !x.isTaxExempt } : x))}
+                      className={`shrink-0 px-2 py-2 rounded-lg text-[10px] font-black border ${r.isTaxExempt ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-blue-50 text-blue-600 border-blue-200'}`}>
+                      {r.isTaxExempt ? '면세' : '과세'}
+                    </button>
+                    {expRows.length > 1 && <button type="button" onClick={() => setExpRows(prev => prev.filter((_, i) => i !== idx))} className="shrink-0 text-slate-300 hover:text-rose-400"><X size={14} /></button>}
+                  </div>
+                ))}
+                <button type="button" onClick={addRow} className="flex items-center gap-1 text-xs font-black text-slate-500 hover:text-slate-700"><Plus size={12} strokeWidth={3} />행 추가</button>
+              </div>
+
+              <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+                <div className="text-[11px] font-bold text-slate-400">공급가 {eSupply.toLocaleString()} · 세액 {eTax.toLocaleString()}</div>
+                <div className="text-base font-black text-slate-800">합계 {eTotal.toLocaleString()}원</div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setShowExpense(false)} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200 transition-all">취소</button>
+                <button onClick={issue} disabled={expLines.length === 0} className="flex-1 py-2.5 rounded-xl bg-slate-700 text-white text-xs font-black hover:bg-slate-800 disabled:opacity-40 transition-all">발행</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {showQuickPay && (() => {
         const stmtTypeForPay = quickPayType === '수금' ? '매출' : '매입';
         const selectedClientObj = quickPayClientId ? partners.find(c => c.id === quickPayClientId) : null;
