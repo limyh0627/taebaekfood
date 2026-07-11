@@ -468,6 +468,7 @@ export interface IssuedStatement {
   taxIssuedAt?: string;   // 세금계산서 발행 일시
   // 수금/결제 추적
   payments?: PaymentRecord[];
+  cashDir?: '입금' | '출금'; // 자금 전표(비용) 방향 — 현금흐름표 투자/재무 부호 판정용(자산·부채·자본 계정). 기본 출금.
 }
 
 export interface PaymentRecord {

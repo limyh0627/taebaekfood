@@ -688,7 +688,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         // 간접법 현금흐름표 — 월별/기간. 계산은 순수 모듈(financials.computeCashFlowMonth)에 위임.
         const addMonth = addMonthStr;
         const manualOf = (ym: string): Partial<CashFlowManual> => ym === cfMonth ? { ...(cashFlowManual.find(m => m.month === ym) ?? {}), ...cfEdit } : (cashFlowManual.find(m => m.month === ym) ?? {});
-        const computeCF = (ym: string) => computeCashFlowMonth(ym, manualOf(ym), { issuedStatements, inventorySnapshots, monthPL });
+        const computeCF = (ym: string) => computeCashFlowMonth(ym, manualOf(ym), { issuedStatements, inventorySnapshots, monthPL, codeToGroup, accountCodes });
         const baseline = [...cashFlowManual].filter(m => m.openingCash != null).map(m => m.month).sort()[0];
         const openingOf = (ym: string): number => {
           if (!baseline || ym <= baseline) return manualOf(ym).openingCash ?? 0;
@@ -819,7 +819,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
               </div>
               <div className="divide-y divide-slate-50">
                 {cfLine('당기순이익', S(r => r.netAdj), '+')}
-                {cfLine('감가상각비', S(r => r.dep), '+', 'depreciation')}
+                {cfLine('감가상각비 (전표 자동)', S(r => r.dep), '+')}
                 {cfLine('재고자산 증가', S(r => r.invInc), '-')}
                 {cfLine('매출채권 증가', S(r => r.arInc), '-')}
                 {cfLine('매입채무 증감', S(r => r.apChg), '±')}
@@ -832,8 +832,8 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                 <span className={`text-sm font-black tabular-nums ${invTotal > 0 ? 'text-emerald-600' : invTotal < 0 ? 'text-rose-600' : 'text-slate-400'}`}>{invTotal === 0 ? '—' : (invTotal > 0 ? '+' : '') + fmt(invTotal) + '원'}</span>
               </div>
               <div className="divide-y divide-slate-50">
-                {cfLine('자산취득', S(r => r.assetBuy), '-', 'assetBuy')}
-                {cfLine('자산매각', S(r => r.assetSell), '+', 'assetSell')}
+                {cfLine('자산취득 (전표 자동)', S(r => r.assetBuy), '-')}
+                {cfLine('자산매각 (전표 자동)', S(r => r.assetSell), '+')}
               </div>
 
               {/* 재무활동 */}
@@ -842,8 +842,8 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                 <span className={`text-sm font-black tabular-nums ${finTotal > 0 ? 'text-emerald-600' : finTotal < 0 ? 'text-rose-600' : 'text-slate-400'}`}>{finTotal === 0 ? '—' : (finTotal > 0 ? '+' : '') + fmt(finTotal) + '원'}</span>
               </div>
               <div className="divide-y divide-slate-50">
-                {cfLine('자본조달 (증자·차입)', S(r => r.finIn), '+', 'financeIn')}
-                {cfLine('부채상환', S(r => r.debtRepay), '-', 'debtRepay')}
+                {cfLine('자본조달 (증자·차입) (전표 자동)', S(r => r.finIn), '+')}
+                {cfLine('부채상환 (전표 자동)', S(r => r.debtRepay), '-')}
               </div>
 
               {/* 총 현금흐름 */}
@@ -869,7 +869,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
 
             {editable ? (
               <div className="flex items-center justify-between gap-3 flex-wrap">
-                <p className="text-[11px] text-slate-400 max-w-md">감가상각·선급금·투자·재무·기초현금은 수동 입력이에요. 저장하면 기말현금이 다음 달 기초로 이어져요.</p>
+                <p className="text-[11px] text-slate-400 max-w-md">투자·재무·감가상각은 <b>전표(비용/자금)로 기록하면 자동 집계</b>돼요(계정과목의 자산/부채/자본 그룹으로 분류). 선급금·기초현금만 여기서 입력. 저장하면 기말현금이 다음 달 기초로 이어져요.</p>
                 <button onClick={saveCf} className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 shadow-sm shrink-0 flex items-center gap-1.5"><Save size={13}/>이 달 저장</button>
               </div>
             ) : (
