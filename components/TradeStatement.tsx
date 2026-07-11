@@ -3259,7 +3259,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                           <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-100">
                             <span className="text-[10px] font-black text-slate-500">품목 선택</span>
                           </div>
-                          {quickResults.slice(0,10).map(r=>{
+                          <div className="h-60 overflow-y-auto">
+                          {quickResults.slice(0,50).map(r=>{
                             const docN=r.product!.name;
                             const sub = r.product!.submaterials ?? [];
                             const 용기 = sub.find(s=>s.category==='용기')?.name;
@@ -3283,6 +3284,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                               </button>
                             );
                           })}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -3504,8 +3506,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                     onBlur={()=>setTimeout(()=>setActiveSearchRow(null),150)}
                                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300 min-w-[120px]"/>
                                   {activeSearchRow===idx && searchResults.length>0 && (
-                                    <div className="absolute left-0 top-full z-50 mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
-                                      {searchResults.slice(0,8).map(r=>{
+                                    <div className="absolute left-0 top-full z-50 mt-1 w-64 h-56 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl">
+                                      {searchResults.slice(0,50).map(r=>{
                                         const docN=r.product!.name;
                                         const sub2 = r.product!.submaterials ?? [];
                                         const 용기2 = sub2.find(s=>s.category==='용기')?.name;
