@@ -2761,7 +2761,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 )}
                 {createMode==='매출' && !editingStmt && (
                   <div className="ml-auto flex bg-slate-200 rounded-lg p-0.5 gap-0.5">
-                    <button onClick={()=>setManualMode(false)}
+                    <button onClick={()=>{
+                        // 주문 불러오기 = 주문 목록으로 복귀 (불러온 주문·수동행·로드상태 초기화, 거래처는 유지)
+                        setManualMode(false);
+                        setSelectedOrderId('');
+                        setLoadedPoIds([]);
+                        setManualItems([{ name: '', spec: '', qty: '', price: '', isTaxExempt: false }]);
+                        setEditablePrices({});
+                        setTaxExemptOverrides({});
+                        setAccountCodeOverrides({});
+                        setSelectedConfirmedIds([]);
+                      }}
                       className={`px-3 py-1 rounded-md text-xs font-black transition-all ${!manualMode?'bg-white text-slate-800 shadow-sm':'text-slate-500 hover:text-slate-700'}`}>
                       주문 불러오기
                     </button>
