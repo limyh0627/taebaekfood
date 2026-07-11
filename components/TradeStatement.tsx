@@ -3496,8 +3496,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                 {expensePresets.map(p => (
                                   <span key={p.id} className="inline-flex items-center">
                                     <button type="button" onClick={()=>addExpenseRow(p)}
-                                      className="inline-flex items-center gap-1 pl-2.5 pr-2 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[11px] font-black hover:bg-amber-100 transition-all">
-                                      {p.name}{p.price ? <span className="text-amber-400 font-bold">{p.price.toLocaleString()}</span> : null}
+                                      className="inline-flex items-center gap-1 pl-2.5 pr-2 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-[11px] font-black hover:bg-indigo-100 transition-all">
+                                      {p.name}{p.price ? <span className="text-indigo-400 font-bold">{p.price.toLocaleString()}</span> : null}
                                     </button>
                                     {manageExpense && (
                                       <button type="button" onClick={()=>onDeleteExpensePreset?.(p.id)}
@@ -3517,7 +3517,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                       const exempt = window.confirm('면세 항목인가요?\n확인=면세, 취소=과세');
                                       await onAddExpensePreset({ name, ...(price ? { price } : {}), taxType: exempt ? '면세' : '과세' });
                                     }}
-                                    className="inline-flex items-center gap-0.5 px-2 py-1 rounded-full border border-dashed border-slate-300 text-slate-400 text-[11px] font-black hover:border-amber-300 hover:text-amber-600 transition-all">
+                                    className="inline-flex items-center gap-0.5 px-2 py-1 rounded-full border border-dashed border-slate-300 text-slate-400 text-[11px] font-black hover:border-indigo-300 hover:text-indigo-600 transition-all">
                                     <Plus size={11} strokeWidth={3}/>항목 저장
                                   </button>
                                 )}
