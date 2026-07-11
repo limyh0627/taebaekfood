@@ -175,7 +175,8 @@ export function useAppData(): AppData {
         subscribeToRecentCollection<{ id: string; type: string; date: string; amount: number }>('sesameInputLedger', 'date', 7, setSesameInputLedger),
         subscribeToCollection<AppNotification>('notifications', setAppNotifications),
         subscribeToCollection<WorkOrderItem>('workOrderItems', (data) => setWorkOrderItems([...data].sort((a, b) => a.sortIndex - b.sortIndex))),
-        subscribeToRecentCollection<IssuedStatement>('issuedStatements', 'tradeDate', 7, (data) => {
+        // 전표는 재무 원장(손익·현금흐름·미수금 원천) → 최근 며칠이 아니라 전체 로딩해야 월별/기간 집계가 맞음
+        subscribeToCollection<IssuedStatement>('issuedStatements', (data) => {
           setIssuedStatements(data.map(s => {
             if (!s.items || !s.tradeDate) {
               console.warn('[useAppData] issuedStatement 필드 누락:', { id: s.id, hasItems: !!s.items, hasTradeDate: !!s.tradeDate });
