@@ -2495,12 +2495,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const eTax = expLines.reduce((s, r) => s + r.tax, 0);
         const eTotal = eSupply + eTax;
         const addRow = () => setExpRows(prev => [...prev, { name: '', spec: '', qty: '1', price: '', isTaxExempt: false }]);
-        const addChip = (p: ExpensePreset) => setExpRows(prev => {
-          const rows = prev.filter(r => r.name.trim());
-          return [...rows,
-            { name: p.name, spec: '', qty: '1', price: p.price ? String(p.price) : '', isTaxExempt: p.taxType === '면세' },
-            { name: '', spec: '', qty: '1', price: '', isTaxExempt: false }];
-        });
         const issue = () => {
           if (expLines.length === 0) return;
           const d = new Date(expDate + 'T00:00:00');
@@ -2527,18 +2521,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 <input type="date" value={expDate} onChange={e => setExpDate(e.target.value)}
                   className="border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300" />
               </div>
-
-              {expensePresets.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] font-black text-slate-400">빠른 비용</span>
-                  {expensePresets.map(p => (
-                    <button key={p.id} type="button" onClick={() => addChip(p)}
-                      className="inline-flex items-center gap-1 pl-2.5 pr-2 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-[11px] font-black hover:bg-indigo-100 transition-all">
-                      {p.name}{p.price ? <span className="text-indigo-400 font-bold">{p.price.toLocaleString()}</span> : null}
-                    </button>
-                  ))}
-                </div>
-              )}
 
               <div className="space-y-2">
                 {expRows.map((r, idx) => (
