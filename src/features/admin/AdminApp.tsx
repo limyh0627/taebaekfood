@@ -3440,6 +3440,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
               partners={partners}
               partnerItems={partnerItems}
               accountCodes={appData.accountCodes}
+              expensePresets={appData.expensePresets}
+              onAddExpensePreset={async (p) => { const id = await addItem('expensePresets', { ...p, id: `exp-${Date.now()}`, createdAt: new Date().toISOString() }); refreshStaticData(); return id as string; }}
+              onDeleteExpensePreset={(id) => { deleteItem('expensePresets', id); refreshStaticData(); }}
               issuedStatements={issuedStatements}
               onUpdateStatus={(id, status) => changeOrderStatus(id, status)}
               onUpsertPartnerItem={(ps) => handleUpsertPartnerItem(ps, 'out')}

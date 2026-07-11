@@ -530,6 +530,15 @@ export interface CompanyInfo {
   adminPassword?: string; // 관리자 인증 비밀번호 (기본값: '0000')
 }
 
+// 자주 쓰는 비용 항목 프리셋 (택배비·상차비·기타 등) — 품목/재고 아님, 전표 직접입력 빠른 추가용
+export interface ExpensePreset {
+  id: string;
+  name: string;                 // 항목명 (예: 택배비)
+  price?: number;               // 기본 단가(선택)
+  taxType?: '과세' | '면세';     // 기본 과세 여부
+  createdAt?: string;
+}
+
 export interface AppNotification {
   id: string;
   type: 'new_order' | 'confirmation' | 'mention' | 'leave_request' | 'inventory_shortage';

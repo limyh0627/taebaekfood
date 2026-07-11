@@ -9,7 +9,7 @@ import {
 import * as ExcelJS from 'exceljs';
 import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentRecord, AccountCode } from '../types';
 import { fetchDateRange } from '../src/shared/services/firebaseService';
-import { PurchaseOrder, poLines } from '../src/shared/types';
+import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
 import PageHeader from './PageHeader';
 
 interface TradeStatementProps {
@@ -42,6 +42,9 @@ interface TradeStatementProps {
   onUpdateOrder?: (id: string, data: Partial<import('../types').Order>) => void;
   defaultTab?: 'history' | 'taxinvoice';
   onAddProductClient?: (itemId: string, partnerId: string, price: number, taxType: '과세' | '면세') => void;
+  expensePresets?: ExpensePreset[];
+  onAddExpensePreset?: (p: Omit<ExpensePreset, 'id' | 'createdAt'>) => Promise<string>;
+  onDeleteExpensePreset?: (id: string) => void;
 }
 
 type StatementType = '매출' | '매입' | '비용';
@@ -121,6 +124,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   onUpdateOrder,
   defaultTab = 'history',
   onAddProductClient,
+  expensePresets = [],
+  onAddExpensePreset,
+  onDeleteExpensePreset,
 }) => {
   const partnerIn = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
@@ -177,6 +183,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [activeSearchRow, setActiveSearchRow] = useState<number | null>(null);
   // ── 주문 불러오기 모드 계정코드 오버라이드 (key → code) ──
   const [accountCodeOverrides, setAccountCodeOverrides] = useState<Record<string, string>>({});
+  // ── 자주 쓰는 비용 항목(택배비·상차비·기타) 프리셋 관리 모드 ──
+  const [manageExpense, setManageExpense] = useState(false);
+  // 프리셋 클릭 → 직접입력 행으로 추가 (품목 아님 → 재고·발주 영향 없음)
+  const addExpenseRow = (p: ExpensePreset) => {
+    setManualMode(true);
+    setManualItems(prev => {
+      const rows = prev.filter(r => r.name.trim());
+      return [...rows,
+        { name: p.name, spec: '', qty: '1', price: p.price ? String(p.price) : '', isTaxExempt: p.taxType === '면세', note: '' },
+        { name: '', spec: '', qty: '', price: '', isTaxExempt: false, note: '' }];
+    });
+  };
   // ── 전표 추가 필드 ──
   const [tradeNote, setTradeNote] = useState('');       // 전표비고
   const [selectedItemIdx, setSelectedItemIdx] = useState<number | null>(null); // 선택된 품목 행
@@ -736,10 +754,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       if (loadedPoIds.length > 0) {
         loadedPoIds.forEach(poId => onLinkPurchaseOrder?.(poId, stmt.id));
       } else if (selectedClientId) {
-        const newItems = lineItems.map(item => {
-          const product = allItems.find(p => p.name === item.name || p.품목 === item.name);
-          return { itemId: product?.id || '', itemName: item.name, quantity: item.qty, isBox: item.isBoxUnit, unit: product?.unit || '개' };
-        });
+        // 품목에 매칭되는 줄만 발주카드로 — 비용 항목(택배비·상차비·기타)은 발주/입고 대상 아님 → 제외
+        const newItems = lineItems
+          .map(item => {
+            const product = allItems.find(p => p.name === item.name || p.품목 === item.name);
+            return product ? { itemId: product.id, itemName: item.name, quantity: item.qty, isBox: item.isBoxUnit, unit: product.unit || '개' } : null;
+          })
+          .filter((it): it is NonNullable<typeof it> => it !== null);
         if (newItems.length > 0) {
           onCreateInboundPO?.({ partnerId: selectedClientId, partnerName: selectedClient?.name || '', statementId: stmt.id, items: newItems });
         }
@@ -3464,10 +3485,49 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                         {!ro && (
                           <tr className="hover:bg-slate-50 transition-colors">
                             <td colSpan={10} className="px-3 py-2">
-                              <button onClick={()=>setManualItems(prev=>[...prev,{name:'',spec:'',qty:'',price:'',isTaxExempt:false}])}
-                                className="flex items-center gap-1.5 text-xs font-black text-blue-500 hover:text-blue-700 transition-colors">
-                                <Plus size={12} strokeWidth={3}/>행 추가
-                              </button>
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                                <button onClick={()=>setManualItems(prev=>[...prev,{name:'',spec:'',qty:'',price:'',isTaxExempt:false}])}
+                                  className="flex items-center gap-1.5 text-xs font-black text-blue-500 hover:text-blue-700 transition-colors">
+                                  <Plus size={12} strokeWidth={3}/>행 추가
+                                </button>
+                                {/* ── 자주 쓰는 비용 (택배비·상차비·기타) ── */}
+                                <span className="text-slate-200">|</span>
+                                <span className="text-[10px] font-black text-slate-400">빠른 비용</span>
+                                {expensePresets.map(p => (
+                                  <span key={p.id} className="inline-flex items-center">
+                                    <button type="button" onClick={()=>addExpenseRow(p)}
+                                      className="inline-flex items-center gap-1 pl-2.5 pr-2 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[11px] font-black hover:bg-amber-100 transition-all">
+                                      {p.name}{p.price ? <span className="text-amber-400 font-bold">{p.price.toLocaleString()}</span> : null}
+                                    </button>
+                                    {manageExpense && (
+                                      <button type="button" onClick={()=>onDeleteExpensePreset?.(p.id)}
+                                        title="삭제" className="ml-0.5 text-slate-300 hover:text-rose-500 transition-colors">
+                                        <X size={12}/>
+                                      </button>
+                                    )}
+                                  </span>
+                                ))}
+                                {onAddExpensePreset && (
+                                  <button type="button"
+                                    onClick={async ()=>{
+                                      const name = window.prompt('비용 항목 이름 (예: 택배비)')?.trim();
+                                      if (!name) return;
+                                      const priceStr = window.prompt(`'${name}' 기본 단가 (없으면 비워두기)`, '')?.replace(/[^\d.]/g,'') ?? '';
+                                      const price = priceStr ? Number(priceStr) : undefined;
+                                      const exempt = window.confirm('면세 항목인가요?\n확인=면세, 취소=과세');
+                                      await onAddExpensePreset({ name, ...(price ? { price } : {}), taxType: exempt ? '면세' : '과세' });
+                                    }}
+                                    className="inline-flex items-center gap-0.5 px-2 py-1 rounded-full border border-dashed border-slate-300 text-slate-400 text-[11px] font-black hover:border-amber-300 hover:text-amber-600 transition-all">
+                                    <Plus size={11} strokeWidth={3}/>항목 저장
+                                  </button>
+                                )}
+                                {expensePresets.length > 0 && onDeleteExpensePreset && (
+                                  <button type="button" onClick={()=>setManageExpense(v=>!v)}
+                                    className={`text-[10px] font-black transition-colors ${manageExpense ? 'text-rose-500' : 'text-slate-300 hover:text-slate-500'}`}>
+                                    {manageExpense ? '완료' : '관리'}
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         )}
