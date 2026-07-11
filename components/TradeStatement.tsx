@@ -1377,6 +1377,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // 현재 모드에 따른 검색 소스
   const searchableRows = createMode === '매입' ? inboundPartnerItemRows : partnerItemRows;
 
+  // 품목 선택 피커 전체 풀 — 거래처에 등록된 품목 + 미등록 전체 품목(반제품·원료·부자재 포함). 검색 시 전품목 대상.
+  const pickerRows = useMemo(() => {
+    const linkedIds = new Set(searchableRows.map(r => r.product!.id));
+    const src = createMode === '매입' ? partnerIn : partnerOut;
+    const extra = allItems
+      .filter(p => !linkedIds.has(p.id))
+      .map(p => {
+        const ex = src.find(pc => (pc.itemId ?? pc.Item_ID) === p.id && (pc.partnerId ?? pc.Partner_ID) === selectedClientId);
+        return { pc: { id: ex?.id ?? p.id, itemId: p.id, partnerId: selectedClientId, price: ex?.price ?? ex?.Standard_Price ?? p.price, taxType: ex?.taxType }, product: p };
+      });
+    return [...searchableRows, ...extra] as unknown as typeof searchableRows;
+  }, [searchableRows, allItems, createMode, partnerIn, partnerOut, selectedClientId]);
+
   // 단가 저장 (매출: price, 매입: Standard_Price)
   const savePcPrice = (pc: PartnerItem) => {
     const val = parseFloat(pricePanelEdits[pc.id] || '');
@@ -3303,18 +3316,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
             {/* ── 품목 선택 팝업 ── */}
             {showItemPicker && (() => {
-              const filtered = searchableRows.filter(r=>{
-                if(!pickerSearch.trim()) return true;
-                const q=pickerSearch.toLowerCase();
-                const docN=(r.product!.name).toLowerCase();
-                return docN.includes(q)||r.product!.name.toLowerCase().includes(q);
-              });
+              // 검색어 없으면 등록 품목만(깔끔), 검색하면 전품목 대상(반제품·원료·부자재 포함)
+              const q=pickerSearch.trim().toLowerCase();
+              const filtered = !q
+                ? searchableRows
+                : pickerRows.filter(r=>((r.product!.name)+' '+(r.product!.품목??'')).toLowerCase().includes(q));
               const confirmPick = () => {
                 const toAdd: ManualRow[] = [];
                 for (const [itemId,qtyStr] of Object.entries(pickerQtys)) {
                   const qty=parseFloat(qtyStr);
                   if(!qty) continue;
-                  const row=searchableRows.find(r=>r.product!.id===itemId);
+                  const row=pickerRows.find(r=>r.product!.id===itemId);
                   if(!row) continue;
                   const docN=row.product!.name;
                   toAdd.push({name:docN,spec:row.product!.spec||'',qty:String(qty),price:String(row.pc.price??row.product!.price??''),isTaxExempt:row.pc.taxType==='면세',note:''});
@@ -3463,12 +3475,20 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                           const q=parseFloat(row.qty)||0,p=parseFloat(row.price)||0;
                           const sup=row.isTaxExempt?q*p:Math.round(q*p/1.1);
                           const tax=row.isTaxExempt?0:q*p-sup;
-                          const searchResults = ro ? [] : searchableRows.filter(r => {
-                            if (!row.name.trim()) return false;
-                            const q = row.name.toLowerCase();
-                            const docN = r.product!.name.toLowerCase();
-                            return docN.includes(q) || r.product!.name.toLowerCase().includes(q);
-                          });
+                          const searchResults = ro ? [] : (() => {
+                            if (!row.name.trim()) return [] as typeof searchableRows;
+                            const qq = row.name.toLowerCase();
+                            const linked = searchableRows.filter(r => r.product!.name.toLowerCase().includes(qq));
+                            if (linked.length > 0) return linked;
+                            // 거래처에 등록 안 된 품목도 전체에서 검색 (반제품·원료·부자재 포함)
+                            const src = createMode === '매입' ? partnerIn : partnerOut;
+                            return allItems
+                              .filter(p => (p.name + ' ' + (p.품목 ?? '')).toLowerCase().includes(qq))
+                              .map(p => {
+                                const ex = src.find(pc => (pc.itemId ?? pc.Item_ID) === p.id && (pc.partnerId ?? pc.Partner_ID) === selectedClientId);
+                                return { pc: { id: ex?.id ?? p.id, itemId: p.id, partnerId: selectedClientId, price: ex?.price ?? ex?.Standard_Price ?? p.price, taxType: ex?.taxType }, product: p };
+                              }) as unknown as typeof searchableRows;
+                          })();
                           const isSel=selectedItemIdx===idx;
                           const isNegQty=(parseFloat(row.qty)||0)<0;
                           return (
