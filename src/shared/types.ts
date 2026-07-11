@@ -700,6 +700,19 @@ export interface InventorySnapshot {
   recordedAt: string;   // ISO timestamp
 }
 
+// 현금흐름표(간접법) 월별 수동 입력 — 자동 계산 안 되는 항목(감가상각·선급금·투자·재무·기초현금)
+export interface CashFlowManual {
+  id: string;             // = month ('YYYY-MM')
+  month: string;          // 'YYYY-MM'
+  depreciation?: number;  // 감가상각비 (+, 비현금비용 가산)
+  prepaidInc?: number;    // 선급금 증가 (영업 −)
+  assetBuy?: number;      // 자산취득 (투자 −)
+  assetSell?: number;     // 자산매각 (투자 +)
+  financeIn?: number;     // 자본조달·차입 (재무 +)
+  debtRepay?: number;     // 부채상환 (재무 −)
+  openingCash?: number;   // 기초현금 (기준월에만 입력 → 이후 자동 이월)
+}
+
 export interface ProductionSalesLog {
   id: string;
   date: string;         // 서류 날짜

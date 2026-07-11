@@ -6,7 +6,7 @@ import {
   AppNotification, IssuedStatement,
   ItemFormula, ItemBom, ShippingRule, CompanyInfo, QrMapping, ReturnRequest,
   AccountCode, AccountGroup, FixedCostTemplate, InventorySnapshot, ProductionSalesLog,
-  PendingStatementEdit, PurchaseOrder, ExpensePreset,
+  PendingStatementEdit, PurchaseOrder, ExpensePreset, CashFlowManual,
 } from '../types';
 import { subscribeToCollection, subscribeToRecentCollection, subscribeToDocument, fetchCollection, fetchDateRange } from '../services/firebaseService';
 import { where } from 'firebase/firestore';
@@ -63,6 +63,7 @@ export interface AppData {
   accountCodes: AccountCode[];
   fixedCostTemplates: FixedCostTemplate[];
   expensePresets: ExpensePreset[];
+  cashFlowManual: CashFlowManual[];
   inventorySnapshots: InventorySnapshot[];
   productionSalesLogs: ProductionSalesLog[];
   pendingStatementEdits: PendingStatementEdit[];
@@ -104,6 +105,7 @@ export function useAppData(): AppData {
   const [accountCodes, setAccountCodes] = useState<AccountCode[]>([]);
   const [fixedCostTemplates, setFixedCostTemplates] = useState<FixedCostTemplate[]>([]);
   const [expensePresets, setExpensePresets] = useState<ExpensePreset[]>([]);
+  const [cashFlowManual, setCashFlowManual] = useState<CashFlowManual[]>([]);
   const [inventorySnapshots, setInventorySnapshots] = useState<InventorySnapshot[]>([]);
   const [productionSalesLogs, setProductionSalesLogs] = useState<ProductionSalesLog[]>([]);
   const [pendingStatementEdits, setPendingStatementEdits] = useState<PendingStatementEdit[]>([]);
@@ -233,7 +235,8 @@ export function useAppData(): AppData {
         fetchCollection<FixedCostTemplate>('fixedCostTemplates'),
         fetchCollection<QrMapping>('qrMappings'),
         fetchCollection<ExpensePreset>('expensePresets'),
-      ]).then(([piData, srData, bomData, ifData, agData, acData, fctData, qrData, epData]) => {
+        fetchCollection<CashFlowManual>('cashFlowManual'),
+      ]).then(([piData, srData, bomData, ifData, agData, acData, fctData, qrData, epData, cfmData]) => {
         setPartnerItems(piData.map(pi => {
           // canonical camelCase 우선, 레거시 별칭도 채워 어느 필드를 읽든 동작하게 정규화
           const itemId = pi.itemId ?? pi.Item_ID;
@@ -249,6 +252,7 @@ export function useAppData(): AppData {
         setFixedCostTemplates(fctData);
         setQrMappings(qrData);
         setExpensePresets(epData);
+        setCashFlowManual(cfmData);
       });
     });
   }, [staticRefreshKey]);
@@ -265,7 +269,7 @@ export function useAppData(): AppData {
     rawMaterialLedger, sesameInputLedger,
     appNotifications, workOrderItems, issuedStatements,
     qrMappings, itemFormulas, itemBoms, shippingRules, returnRequests,
-    companyInfo, accountGroups, accountCodes, fixedCostTemplates, expensePresets, inventorySnapshots,
+    companyInfo, accountGroups, accountCodes, fixedCostTemplates, expensePresets, cashFlowManual, inventorySnapshots,
     productionSalesLogs, pendingStatementEdits,
     isDataLoading,
     refreshStaticData,

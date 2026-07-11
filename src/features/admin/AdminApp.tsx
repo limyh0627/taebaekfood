@@ -3624,6 +3624,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   accountGroups={appData.accountGroups}
                   accountCodes={appData.accountCodes}
                   inventorySnapshots={inventorySnapshots}
+                  cashFlowManual={appData.cashFlowManual}
+                  onSaveCashFlowManual={async (month, data) => {
+                    const clean = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined && v !== null));
+                    await setDocument('cashFlowManual', month, { ...clean, id: month, month });
+                    refreshStaticData();
+                  }}
                 />
               </React.Suspense>
             </div>

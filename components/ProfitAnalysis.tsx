@@ -1,11 +1,11 @@
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, Cell
 } from 'recharts';
 import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, BarChart2, DollarSign, Wallet, Users, ChevronLeft, ChevronRight, Save, Search, Package, X, CreditCard, Download, Archive, Clock, Pencil, Check } from 'lucide-react';
-import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Partner, PaymentRecord, Item, AccountCode, AccountGroup, AccountGroupPlLine, InventorySnapshot } from '../types';
+import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Partner, PaymentRecord, Item, AccountCode, AccountGroup, AccountGroupPlLine, InventorySnapshot, CashFlowManual } from '../types';
 import PageHeader from './PageHeader';
 import CostManager from './CostManager';
 
@@ -34,6 +34,8 @@ interface ProfitAnalysisProps {
   inventorySnapshots?: InventorySnapshot[];
   onSaveInventorySnapshot?: (data: Omit<InventorySnapshot, 'id'>) => Promise<void>;
   onGenerateRecurringCosts?: (yearMonth: string) => Promise<number>;
+  cashFlowManual?: CashFlowManual[];
+  onSaveCashFlowManual?: (month: string, data: Partial<CashFlowManual>) => Promise<void>;
   initialTab?: MainTab;
 }
 
@@ -49,7 +51,7 @@ const MONTHS = 12;
 const COMPUTED_GROUP_IDS = new Set(['ag-gross-profit', 'ag-op-profit']);
 const SGNA_LEGACY_IDS = new Set(['ag-selling', 'ag-admin']);
 
-const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, fixedCostTemplates = [], onAddCost, onDeleteCost, onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, initialTab }) => {
+const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, fixedCostTemplates = [], onAddCost, onDeleteCost, onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = [], onSaveCashFlowManual, initialTab }) => {
   // 계산결과 그룹 숨김 + 구 판매비/관리비 → 판관비로 통합 표시
   const accountGroups = rawAccountGroups
     .filter(g => !COMPUTED_GROUP_IDS.has(g.id))
@@ -72,6 +74,17 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   const [newGroupForm, setNewGroupForm] = useState({ name: '', type: '수익' as AccountGroup['type'] });
   const [showAddCode, setShowAddCode] = useState(false);
   const [showAddGroup, setShowAddGroup] = useState(false);
+  // ── 현금흐름표(간접법): 월별 / 기간 모드 ──
+  const [cfMode, setCfMode] = useState<'month' | 'period'>('month');
+  const [cfMonth, setCfMonth] = useState<string>(() => {
+    const d = new Date(); d.setMonth(d.getMonth() - 1); // 기본: 전월
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [cfEdit, setCfEdit] = useState<Partial<CashFlowManual>>({});
+  useEffect(() => {
+    const doc = cashFlowManual.find(m => m.month === cfMonth);
+    setCfEdit(doc ? { depreciation: doc.depreciation, prepaidInc: doc.prepaidInc, assetBuy: doc.assetBuy, assetSell: doc.assetSell, financeIn: doc.financeIn, debtRepay: doc.debtRepay, openingCash: doc.openingCash } : {});
+  }, [cfMonth, cashFlowManual]);
   // ── 계정그룹/계정과목 인라인 수정 ──
   const [editGroupId, setEditGroupId] = useState<string | null>(null);
   const [editGroupForm, setEditGroupForm] = useState<{ name: string; type: AccountGroup['type'] }>({ name: '', type: '비용' });
@@ -188,39 +201,42 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
     return inventorySnapshots.find(s => s.yearMonth === lastYm) ?? null;
   }, [periodMonths, inventorySnapshots]);
 
-  // 월별 집계
-  const monthlyData = useMemo(() => {
-    return periodMonths.map(ym => {
-      const [, m] = ym.split('-');
-      let sales = 0, cogs = 0, sgna = 0, otherIncome = 0, otherExpense = 0;
-      issuedStatements
-        .filter(s => s.tradeDate.startsWith(ym))
-        .forEach(s => {
-          s.items.forEach(item => {
-            const group = codeToGroup(item.accountCode);
-            const pl = group?.plLine;
-            if (pl === 'revenue') sales += item.total;
-            else if (pl === 'cogs') cogs += item.total;
-            else if (pl === 'sgna') sgna += item.total;
-            else if (pl === 'other-income') otherIncome += item.total;
-            else if (pl === 'other-expense') otherExpense += item.total;
-            else if (!pl && group?.type === '수익') sales += item.total;
-            else if (!pl && group?.type === '비용') cogs += item.total;
-            else if (!group) {
-              if (s.type === '매출') sales += item.total;
-              else if (s.type === '비용') sgna += item.total;
-              else if (s.type === '매입') cogs += item.total;
-            }
-          });
+  // 임의 월(YYYY-MM)의 손익 — monthlyData·현금흐름표 공용. cogs = 당기 매입액(재고 미반영).
+  const monthPL = useCallback((ym: string) => {
+    let sales = 0, cogs = 0, sgna = 0, otherIncome = 0, otherExpense = 0;
+    issuedStatements
+      .filter(s => s.tradeDate.startsWith(ym))
+      .forEach(s => {
+        s.items.forEach(item => {
+          const group = codeToGroup(item.accountCode);
+          const pl = group?.plLine;
+          if (pl === 'revenue') sales += item.total;
+          else if (pl === 'cogs') cogs += item.total;
+          else if (pl === 'sgna') sgna += item.total;
+          else if (pl === 'other-income') otherIncome += item.total;
+          else if (pl === 'other-expense') otherExpense += item.total;
+          else if (!pl && group?.type === '수익') sales += item.total;
+          else if (!pl && group?.type === '비용') cogs += item.total;
+          else if (!group) {
+            if (s.type === '매출') sales += item.total;
+            else if (s.type === '비용') sgna += item.total;
+            else if (s.type === '매입') cogs += item.total;
+          }
         });
-      // 정기비용은 이제 '비용' 전표로 끊겨 sgna에 잡히므로 templateTotal 합산 제거(이중계상 방지)
-      const fixed = fixedCosts.filter(c => c.yearMonth === ym).reduce((a, c) => a + c.amount, 0);
-      const grossProfit = sales - cogs;
-      const operatingProfit = grossProfit - sgna - fixed;
-      const netIncome = operatingProfit + otherIncome - otherExpense;
-      return { month: `${Number(m)}월`, ym, sales, cogs, sgna, fixed, grossProfit, operatingProfit, otherIncome, otherExpense, netIncome };
-    });
-  }, [issuedStatements, fixedCosts, periodMonths, codeToGroup]);
+      });
+    // 정기비용은 이제 '비용' 전표로 끊겨 sgna에 잡히므로 templateTotal 합산 제거(이중계상 방지)
+    const fixed = fixedCosts.filter(c => c.yearMonth === ym).reduce((a, c) => a + c.amount, 0);
+    const grossProfit = sales - cogs;
+    const operatingProfit = grossProfit - sgna - fixed;
+    const netIncome = operatingProfit + otherIncome - otherExpense;
+    return { sales, cogs, sgna, fixed, grossProfit, operatingProfit, otherIncome, otherExpense, netIncome };
+  }, [issuedStatements, fixedCosts, codeToGroup]);
+
+  // 월별 집계
+  const monthlyData = useMemo(
+    () => periodMonths.map(ym => ({ month: `${Number(ym.split('-')[1])}월`, ym, ...monthPL(ym) })),
+    [periodMonths, monthPL]
+  );
 
   // 기간 합계 — 매출원가는 재고 증감 반영(기초 + 매입 − 기말). 스냅샷 있을 때만 조정.
   const summary = useMemo(() => {
@@ -353,7 +369,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         <PageHeader title="거래처 현황" subtitle="거래처별 매출 통계, 미수금 · 미지급금 조회" />
       )}
       {isStandalone && mainTab === 'cash-flow' && (
-        <PageHeader title="현금흐름 분석" subtitle="실제 수금 · 지출 기반 현금흐름을 분석합니다." />
+        <PageHeader title="현금흐름 분석" subtitle="간접법 현금흐름표 — 순이익에서 운전자본·투자·재무를 조정합니다." />
       )}
 
       {mainTab === 'analysis' && <>
@@ -703,44 +719,84 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
 
       {/* ── 현금흐름표 ── */}
       {mainTab === 'cash-flow' && (() => {
-        // periodMonths 재사용 (analysis 탭과 동일한 기간 상태 공유)
-        const cfMonths = periodMonths; // 'YYYY-MM' 배열
-
-        const sumPayments = (type: '매출' | '매입') =>
-          issuedStatements
-            .filter(s => s.type === type)
-            .flatMap(s => s.payments ?? [])
-            .filter(p => cfMonths.includes(p.date.slice(0, 7)))
-            .reduce((a, p) => a + p.amount, 0);
-
-        const opCashIn      = sumPayments('매출');
-        const opPurchaseOut = sumPayments('매입');
-        const opFixedOut    = fixedCosts
-          .filter(c => cfMonths.includes(c.yearMonth ?? ''))
-          .reduce((a, c) => a + c.amount, 0);
-        const opTotal  = opCashIn - opPurchaseOut - opFixedOut;
-        const invTotal = 0;
-        const finTotal = 0;
-        const grandTotal = opTotal + invTotal + finTotal;
-
-        // 기간 라벨
-        const periodLabel = period === '1Y' ? `${selectedYear}년 연간`
-          : period === '3M' ? `${selectedYear}년 ${selectedQuarter}분기`
-          : period === '6M' ? `${selectedYear}년 ${selectedHalf === 1 ? '상반기' : '하반기'}`
-          : `${selectedYear}년 ${customStartMonth}월~${Math.min(customEndMonth, selectedYear === now.getFullYear() ? now.getMonth() + 1 : 12)}월`;
-
-        // 기간별 차트 데이터
-        const maxBar = Math.max(opCashIn, opPurchaseOut + opFixedOut, 1);
+        // 간접법 현금흐름표 — 월별/기간. 순이익→운전자본 조정 + 수동(감가·선급·투자·재무·기초현금).
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const addMonth = (ym: string, d: number) => { const [y, m] = ym.split('-').map(Number); const dt = new Date(y, m - 1 + d, 1); return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}`; };
+        const snapVal = (ym: string) => inventorySnapshots.find(s => s.yearMonth === ym)?.value;
+        const payIn = (ym: string, type: '매출' | '매입') => issuedStatements.filter(s => s.type === type).flatMap(s => s.payments ?? []).filter(p => (p.date || '').startsWith(ym)).reduce((a, p) => a + p.amount, 0);
+        const accrual = (ym: string, type: '매출' | '매입') => issuedStatements.filter(s => s.type === type && s.tradeDate.startsWith(ym)).reduce((a, s) => a + s.totalAmount, 0);
+        const manualOf = (ym: string): Partial<CashFlowManual> => ym === cfMonth ? { ...(cashFlowManual.find(m => m.month === ym) ?? {}), ...cfEdit } : (cashFlowManual.find(m => m.month === ym) ?? {});
+        const computeCF = (ym: string) => {
+          const man = manualOf(ym), pl = monthPL(ym);
+          const sa = snapVal(ym), sp = snapVal(addMonth(ym, -1));
+          const invInc = (sa != null && sp != null) ? sa - sp : 0;
+          const netAdj = pl.netIncome + invInc;                       // 재고 반영 순이익
+          const arInc = accrual(ym, '매출') - payIn(ym, '매출');        // 매출채권 증가
+          const apChg = accrual(ym, '매입') - payIn(ym, '매입');        // 매입채무 증감(+증가)
+          const dep = man.depreciation || 0, prepaid = man.prepaidInc || 0;
+          const op = netAdj + dep - invInc - arInc + apChg - prepaid;
+          const assetBuy = man.assetBuy || 0, assetSell = man.assetSell || 0, inv = assetSell - assetBuy;
+          const finIn = man.financeIn || 0, debtRepay = man.debtRepay || 0, fin = finIn - debtRepay;
+          return { netAdj, dep, invInc, arInc, apChg, prepaid, op, assetBuy, assetSell, inv, finIn, debtRepay, fin, net: op + inv + fin };
+        };
+        const baseline = [...cashFlowManual].filter(m => m.openingCash != null).map(m => m.month).sort()[0];
+        const openingOf = (ym: string): number => {
+          if (!baseline || ym <= baseline) return manualOf(ym).openingCash ?? 0;
+          let cash = manualOf(baseline).openingCash || 0, cur = baseline;
+          while (cur < ym) { cash += computeCF(cur).net; cur = addMonth(cur, 1); }
+          return cash;
+        };
+        const months = cfMode === 'month' ? [cfMonth] : periodMonths;
+        const rows = months.map(computeCF);
+        const S = (sel: (r: typeof rows[number]) => number) => rows.reduce((a, r) => a + sel(r), 0);
+        const opTotal = S(r => r.op), invTotal = S(r => r.inv), finTotal = S(r => r.fin), netTotal = S(r => r.net);
+        const opening = months.length ? openingOf(months[0]) : 0;
+        const closing = opening + netTotal;
+        const cfLabel = cfMode === 'month'
+          ? `${Number(cfMonth.split('-')[0])}년 ${Number(cfMonth.split('-')[1])}월`
+          : (period === '1Y' ? `${selectedYear}년 연간` : period === '3M' ? `${selectedYear}년 ${selectedQuarter}분기` : period === '6M' ? `${selectedYear}년 ${selectedHalf === 1 ? '상반기' : '하반기'}` : `${selectedYear}년 ${customStartMonth}월~${customEndMonth}월`);
+        const editable = cfMode === 'month';
+        const isBaselineMonth = !baseline || cfMonth <= baseline;
+        const mVal = (f: keyof CashFlowManual) => (cfEdit[f] != null ? Number(cfEdit[f]).toLocaleString() : '');
+        const setM = (f: keyof CashFlowManual, v: string) => { const n = v.replace(/[^\d]/g, ''); setCfEdit(prev => ({ ...prev, [f]: n === '' ? undefined : Number(n) })); };
+        const saveCf = () => onSaveCashFlowManual?.(cfMonth, cfEdit);
+        const cfLine = (label: string, amount: number, sign: '+' | '-' | '±', field?: keyof CashFlowManual) => (
+          <div className="flex items-center justify-between px-6 py-2.5">
+            <span className="text-xs text-slate-600">
+              <span className={`mr-2 text-[10px] font-black ${sign === '+' ? 'text-emerald-500' : sign === '-' ? 'text-rose-400' : 'text-slate-400'}`}>({sign})</span>{label}
+            </span>
+            {editable && field ? (
+              <input value={mVal(field)} onChange={e => setM(field, e.target.value)} inputMode="numeric" placeholder="0"
+                className="w-32 border border-slate-200 rounded-lg px-2 py-1 text-xs font-black text-right outline-none focus:ring-2 focus:ring-blue-300" />
+            ) : (
+              <span className={`text-xs font-black tabular-nums ${amount === 0 ? 'text-slate-300' : sign === '+' ? 'text-emerald-700' : sign === '-' ? 'text-rose-700' : 'text-slate-700'}`}>{amount === 0 ? '—' : fmt(amount) + '원'}</span>
+            )}
+          </div>
+        );
 
         return (
           <div className="space-y-4">
-            {/* 기간 컨트롤 — 손익분석과 동일 */}
+            {/* 모드/기간 컨트롤 */}
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
-                <div className="text-base font-black text-slate-800">{periodLabel} 현금흐름</div>
-                <div className="text-[11px] text-slate-400 mt-0.5">실제 수금·지출 기반 현금흐름 분석</div>
+                <div className="text-base font-black text-slate-800">{cfLabel} 현금흐름표 <span className="text-[11px] font-bold text-slate-400">(간접법)</span></div>
+                <div className="text-[11px] text-slate-400 mt-0.5">순이익 → 운전자본 조정 · 투자/재무 반영</div>
               </div>
               <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+                <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
+                  {([['month','월별'],['period','기간']] as const).map(([val,label]) => (
+                    <button key={val} onClick={() => setCfMode(val)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all ${cfMode===val ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400'}`}>{label}</button>
+                  ))}
+                </div>
+                {cfMode === 'month' ? (
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => setCfMonth(m => addMonth(m, -1))} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500"><ChevronLeft size={16}/></button>
+                    <input type="month" value={cfMonth} onChange={e => e.target.value && setCfMonth(e.target.value)}
+                      className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer"/>
+                    <button onClick={() => setCfMonth(m => addMonth(m, 1))} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500"><ChevronRight size={16}/></button>
+                  </div>
+                ) : (<>
                 {period !== 'custom' && (
                   <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))}
                     className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer">
@@ -800,75 +856,86 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                     );
                   })}
                 </div>
+                </>)}
               </div>
             </div>
 
-            {/* 현금흐름표 */}
+            {/* 현금흐름표 (간접법) */}
             <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
               {/* 영업활동 */}
               <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
                 <span className="text-sm font-black text-slate-700">영업활동 현금흐름</span>
-                <span className={`text-sm font-black tabular-nums ${opTotal >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                  {opTotal >= 0 ? '+' : ''}{fmt(opTotal)}원
-                </span>
+                <span className={`text-sm font-black tabular-nums ${opTotal >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{opTotal >= 0 ? '+' : ''}{fmt(opTotal)}원</span>
               </div>
               <div className="divide-y divide-slate-50">
-                {[
-                  { label: '매출 수금',         sign: 1,  value: opCashIn      },
-                  { label: '매입 지급',          sign: -1, value: opPurchaseOut },
-                  { label: '판관비·고정비 지급', sign: -1, value: opFixedOut    },
-                ].map((item, i) => (
-                  <div key={i} className="flex items-center justify-between px-6 py-2.5">
-                    <span className="text-xs text-slate-600">
-                      <span className={`mr-2 text-[10px] font-black ${item.sign > 0 ? 'text-emerald-500' : 'text-rose-400'}`}>{item.sign > 0 ? '(+)' : '(-)'}</span>
-                      {item.label}
-                    </span>
-                    <span className={`text-xs font-black tabular-nums ${item.value === 0 ? 'text-slate-300' : item.sign > 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                      {item.value === 0 ? '—' : fmt(item.value)}원
-                    </span>
-                  </div>
-                ))}
+                {cfLine('당기순이익', S(r => r.netAdj), '+')}
+                {cfLine('감가상각비', S(r => r.dep), '+', 'depreciation')}
+                {cfLine('재고자산 증가', S(r => r.invInc), '-')}
+                {cfLine('매출채권 증가', S(r => r.arInc), '-')}
+                {cfLine('매입채무 증감', S(r => r.apChg), '±')}
+                {cfLine('선급금 증가', S(r => r.prepaid), '-', 'prepaidInc')}
               </div>
 
               {/* 투자활동 */}
               <div className="px-5 py-3 bg-slate-50 border-t border-b border-slate-100 flex items-center justify-between">
                 <span className="text-sm font-black text-slate-700">투자활동 현금흐름</span>
-                <span className="text-sm font-black text-slate-400 tabular-nums">—</span>
+                <span className={`text-sm font-black tabular-nums ${invTotal > 0 ? 'text-emerald-600' : invTotal < 0 ? 'text-rose-600' : 'text-slate-400'}`}>{invTotal === 0 ? '—' : (invTotal > 0 ? '+' : '') + fmt(invTotal) + '원'}</span>
               </div>
-              <div className="px-6 py-3 flex items-center justify-between">
-                <span className="text-xs text-slate-400 italic">설비·보증금 등 — 추후 연동 예정</span>
-                <span className="text-xs font-black text-slate-300">—</span>
+              <div className="divide-y divide-slate-50">
+                {cfLine('자산취득', S(r => r.assetBuy), '-', 'assetBuy')}
+                {cfLine('자산매각', S(r => r.assetSell), '+', 'assetSell')}
               </div>
 
               {/* 재무활동 */}
               <div className="px-5 py-3 bg-slate-50 border-t border-b border-slate-100 flex items-center justify-between">
                 <span className="text-sm font-black text-slate-700">재무활동 현금흐름</span>
-                <span className="text-sm font-black text-slate-400 tabular-nums">—</span>
+                <span className={`text-sm font-black tabular-nums ${finTotal > 0 ? 'text-emerald-600' : finTotal < 0 ? 'text-rose-600' : 'text-slate-400'}`}>{finTotal === 0 ? '—' : (finTotal > 0 ? '+' : '') + fmt(finTotal) + '원'}</span>
               </div>
-              <div className="px-6 py-3 flex items-center justify-between">
-                <span className="text-xs text-slate-400 italic">차입·상환·자본 등 — 추후 연동 예정</span>
-                <span className="text-xs font-black text-slate-300">—</span>
+              <div className="divide-y divide-slate-50">
+                {cfLine('자본조달 (증자·차입)', S(r => r.finIn), '+', 'financeIn')}
+                {cfLine('부채상환', S(r => r.debtRepay), '-', 'debtRepay')}
               </div>
 
               {/* 총 현금흐름 */}
-              <div className="px-5 py-4 flex items-center justify-between border-t-2 border-slate-200 bg-slate-50">
+              <div className="px-5 py-3.5 flex items-center justify-between border-t-2 border-slate-200 bg-slate-50">
                 <span className="text-sm font-black text-slate-700">총 현금흐름</span>
-                <span className={`text-xl font-black ${grandTotal >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                  {grandTotal >= 0 ? '+' : ''}{fmt(grandTotal)}원
-                </span>
+                <span className={`text-lg font-black ${netTotal >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{netTotal >= 0 ? '+' : ''}{fmt(netTotal)}원</span>
+              </div>
+              {/* 기초/기말현금 */}
+              <div className="flex items-center justify-between px-6 py-2.5 border-t border-slate-100">
+                <span className="text-xs text-slate-600">기초현금 {editable && !isBaselineMonth && <span className="text-[10px] text-slate-400">· 전월 이월</span>}</span>
+                {editable && isBaselineMonth ? (
+                  <input value={mVal('openingCash')} onChange={e => setM('openingCash', e.target.value)} inputMode="numeric" placeholder="기초현금 입력"
+                    className="w-32 border border-slate-200 rounded-lg px-2 py-1 text-xs font-black text-right outline-none focus:ring-2 focus:ring-blue-300" />
+                ) : (
+                  <span className="text-xs font-black tabular-nums text-slate-700">{fmt(opening)}원</span>
+                )}
+              </div>
+              <div className="flex items-center justify-between px-6 py-3 bg-blue-50">
+                <span className="text-sm font-black text-blue-800">기말현금</span>
+                <span className="text-base font-black text-blue-700 tabular-nums">{fmt(closing)}원</span>
               </div>
             </div>
 
-            {/* 기간별 월 차트 */}
-            {cfMonths.length > 1 && (
+            {editable ? (
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <p className="text-[11px] text-slate-400 max-w-md">감가상각·선급금·투자·재무·기초현금은 수동 입력이에요. 저장하면 기말현금이 다음 달 기초로 이어져요.</p>
+                <button onClick={saveCf} className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 shadow-sm shrink-0 flex items-center gap-1.5"><Save size={13}/>이 달 저장</button>
+              </div>
+            ) : (
+              <p className="text-[11px] text-slate-400">기간 합계예요. 감가상각·투자·재무 등 수동 항목 입력은 <b>월별 모드</b>에서 하세요.</p>
+            )}
+
+            {/* 기간별 월 차트 (실수금·지출) */}
+            {cfMode === 'period' && periodMonths.length > 1 && (
               <div className="bg-white rounded-2xl border border-slate-200 p-5">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">기간별 수금 · 지출</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">월별 실수금 · 실지출</p>
                 <div className="flex items-end gap-1 h-28">
-                  {cfMonths.map(ym => {
+                  {periodMonths.map(ym => {
                     const inc = issuedStatements.filter(s => s.type === '매출').flatMap(s => s.payments ?? []).filter(p => p.date.startsWith(ym)).reduce((a, p) => a + p.amount, 0);
                     const out = issuedStatements.filter(s => s.type === '매입').flatMap(s => s.payments ?? []).filter(p => p.date.startsWith(ym)).reduce((a, p) => a + p.amount, 0)
                               + fixedCosts.filter(c => c.yearMonth === ym).reduce((a, c) => a + c.amount, 0);
-                    const barMax = Math.max(...cfMonths.map(m => {
+                    const barMax = Math.max(...periodMonths.map(m => {
                       const i2 = issuedStatements.filter(s => s.type === '매출').flatMap(s => s.payments ?? []).filter(p => p.date.startsWith(m)).reduce((a, p) => a + p.amount, 0);
                       const o2 = issuedStatements.filter(s => s.type === '매입').flatMap(s => s.payments ?? []).filter(p => p.date.startsWith(m)).reduce((a, p) => a + p.amount, 0) + fixedCosts.filter(c => c.yearMonth === m).reduce((a, c) => a + c.amount, 0);
                       return Math.max(i2, o2);
