@@ -8,7 +8,7 @@ import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, BarChart2, Dol
 import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Partner, PaymentRecord, Item, AccountCode, AccountGroup, AccountGroupPlLine, InventorySnapshot, CashFlowManual } from '../types';
 import PageHeader from './PageHeader';
 import CostManager from './CostManager';
-import { makeCodeToGroup, computeMonthPL, SGNA_LEGACY_IDS, COMPUTED_GROUP_IDS } from '../src/features/admin/financials';
+import { makeCodeToGroup, computeMonthPL, computeCashFlowMonth, addMonthStr, SGNA_LEGACY_IDS, COMPUTED_GROUP_IDS } from '../src/features/admin/financials';
 
 type MainTab = 'analysis' | 'costs' | 'partners' | 'inventory-value' | 'account-settings' | 'cash-flow';
 
@@ -685,26 +685,10 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
 
       {/* ── 현금흐름표 ── */}
       {mainTab === 'cash-flow' && (() => {
-        // 간접법 현금흐름표 — 월별/기간. 순이익→운전자본 조정 + 수동(감가·선급·투자·재무·기초현금).
-        const pad = (n: number) => String(n).padStart(2, '0');
-        const addMonth = (ym: string, d: number) => { const [y, m] = ym.split('-').map(Number); const dt = new Date(y, m - 1 + d, 1); return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}`; };
-        const snapVal = (ym: string) => inventorySnapshots.find(s => s.yearMonth === ym)?.value;
-        const payIn = (ym: string, type: '매출' | '매입') => issuedStatements.filter(s => s.type === type).flatMap(s => s.payments ?? []).filter(p => (p.date || '').startsWith(ym)).reduce((a, p) => a + p.amount, 0);
-        const accrual = (ym: string, type: '매출' | '매입') => issuedStatements.filter(s => s.type === type && s.tradeDate.startsWith(ym)).reduce((a, s) => a + s.totalAmount, 0);
+        // 간접법 현금흐름표 — 월별/기간. 계산은 순수 모듈(financials.computeCashFlowMonth)에 위임.
+        const addMonth = addMonthStr;
         const manualOf = (ym: string): Partial<CashFlowManual> => ym === cfMonth ? { ...(cashFlowManual.find(m => m.month === ym) ?? {}), ...cfEdit } : (cashFlowManual.find(m => m.month === ym) ?? {});
-        const computeCF = (ym: string) => {
-          const man = manualOf(ym), pl = monthPL(ym);
-          const sa = snapVal(ym), sp = snapVal(addMonth(ym, -1));
-          const invInc = (sa != null && sp != null) ? sa - sp : 0;
-          const netAdj = pl.netIncome + invInc;                       // 재고 반영 순이익
-          const arInc = accrual(ym, '매출') - payIn(ym, '매출');        // 매출채권 증가
-          const apChg = accrual(ym, '매입') - payIn(ym, '매입');        // 매입채무 증감(+증가)
-          const dep = man.depreciation || 0, prepaid = man.prepaidInc || 0;
-          const op = netAdj + dep - invInc - arInc + apChg - prepaid;
-          const assetBuy = man.assetBuy || 0, assetSell = man.assetSell || 0, inv = assetSell - assetBuy;
-          const finIn = man.financeIn || 0, debtRepay = man.debtRepay || 0, fin = finIn - debtRepay;
-          return { netAdj, dep, invInc, arInc, apChg, prepaid, op, assetBuy, assetSell, inv, finIn, debtRepay, fin, net: op + inv + fin };
-        };
+        const computeCF = (ym: string) => computeCashFlowMonth(ym, manualOf(ym), { issuedStatements, inventorySnapshots, monthPL });
         const baseline = [...cashFlowManual].filter(m => m.openingCash != null).map(m => m.month).sort()[0];
         const openingOf = (ym: string): number => {
           if (!baseline || ym <= baseline) return manualOf(ym).openingCash ?? 0;
