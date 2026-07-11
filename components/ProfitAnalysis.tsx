@@ -1573,7 +1573,8 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
               </div>
               <div className="divide-y divide-slate-50">
                 {accountGroups.map(group => {
-                  const codes = accountCodes.filter(c => c.groupId === group.id);
+                  const codes = accountCodes.filter(c => c.groupId === group.id)
+                    .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
                   const typeColor: Record<string, string> = {
                     '수익': 'bg-blue-100 text-blue-700',
                     '비용': 'bg-rose-100 text-rose-700',
@@ -1665,7 +1666,8 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
 
             {/* 그룹에 배정 안 된 코드 */}
             {(() => {
-              const ungrouped = accountCodes.filter(c => !c.groupId || !accountGroups.find(g => g.id === c.groupId));
+              const ungrouped = accountCodes.filter(c => !c.groupId || !accountGroups.find(g => g.id === c.groupId))
+                .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
               if (ungrouped.length === 0) return null;
               return (
                 <div className="bg-white rounded-2xl border border-dashed border-slate-200 px-5 py-4">
