@@ -757,31 +757,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
     });
   };
 
-  // 재고 안전 차감 — 음수가 되면 알림을 자동 생성 (차감 자체는 막지 않음 = 옵션 B)
-  const deductStock = async (
-    collectionName: string,
-    itemId: string,
-    currentStock: number,
-    deductQty: number,
-    itemName: string,
-    unit: string,
-    context: string,
-  ) => {
-    const newStock = currentStock - deductQty;
-    await updateItem(collectionName, itemId, { stock: newStock });
-    if (newStock < 0) {
-      console.warn(`[재고 부족] ${itemName}: ${currentStock}${unit} → ${newStock}${unit} (${context})`);
-      await addItem('notifications', {
-        type: 'inventory_shortage',
-        title: '재고 부족 경고',
-        body: `${itemName}: ${currentStock}${unit} → ${newStock}${unit} (부족분 ${Math.abs(newStock)}${unit}). 사유: ${context}`,
-        linkedId: itemId,
-        readBy: [],
-        createdAt: new Date().toISOString(),
-      } as Omit<AppNotification, 'id'>);
-    }
-  };
-
   // ── 생산/출고 분리 재고 엔진 ─────────────────────────────────────────────
   //  작업완료(DISPATCHED) = 생산처리: 완제품 원료·부자재 차감 + 완제품 재고 +N (상품은 미변동)
   //  출고(SHIPPED)        = 완제품/상품 재고 −N
