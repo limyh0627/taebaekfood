@@ -4,7 +4,7 @@ import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, Cell
 } from 'recharts';
-import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, BarChart2, DollarSign, Wallet, Users, ChevronLeft, ChevronRight, Save, Search, Package, X, CreditCard, Download, Archive, Clock } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, BarChart2, DollarSign, Wallet, Users, ChevronLeft, ChevronRight, Save, Search, Package, X, CreditCard, Download, Archive, Clock, Pencil, Check } from 'lucide-react';
 import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Partner, PaymentRecord, Item, AccountCode, AccountGroup, AccountGroupPlLine, InventorySnapshot } from '../types';
 import PageHeader from './PageHeader';
 import CostManager from './CostManager';
@@ -29,6 +29,7 @@ interface ProfitAnalysisProps {
   onAddAccountCode?: (data: Omit<AccountCode, 'id'>) => Promise<string>;
   onDeleteAccountCode?: (id: string) => void;
   onAddAccountGroup?: (data: Omit<AccountGroup, 'id'>) => Promise<string>;
+  onUpdateAccountGroup?: (id: string, data: Partial<AccountGroup>) => void;
   onDeleteAccountGroup?: (id: string) => void;
   inventorySnapshots?: InventorySnapshot[];
   onSaveInventorySnapshot?: (data: Omit<InventorySnapshot, 'id'>) => Promise<void>;
@@ -48,7 +49,7 @@ const MONTHS = 12;
 const COMPUTED_GROUP_IDS = new Set(['ag-gross-profit', 'ag-op-profit']);
 const SGNA_LEGACY_IDS = new Set(['ag-selling', 'ag-admin']);
 
-const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, fixedCostTemplates = [], onAddCost, onDeleteCost, onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, initialTab }) => {
+const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, fixedCostTemplates = [], onAddCost, onDeleteCost, onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, initialTab }) => {
   // 계산결과 그룹 숨김 + 구 판매비/관리비 → 판관비로 통합 표시
   const accountGroups = rawAccountGroups
     .filter(g => !COMPUTED_GROUP_IDS.has(g.id))
@@ -71,6 +72,11 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   const [newGroupForm, setNewGroupForm] = useState({ name: '', type: '수익' as AccountGroup['type'] });
   const [showAddCode, setShowAddCode] = useState(false);
   const [showAddGroup, setShowAddGroup] = useState(false);
+  // ── 계정그룹/계정과목 인라인 수정 ──
+  const [editGroupId, setEditGroupId] = useState<string | null>(null);
+  const [editGroupForm, setEditGroupForm] = useState<{ name: string; type: AccountGroup['type'] }>({ name: '', type: '비용' });
+  const [editCodeId, setEditCodeId] = useState<string | null>(null);
+  const [editCodeForm, setEditCodeForm] = useState({ code: '', name: '' });
   const GROUP_TYPES: AccountGroup['type'][] = ['수익', '비용', '자산', '부채', '자본'];
 
   // ── 거래처통계 탭 상태 ──
@@ -1578,34 +1584,74 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                   return (
                     <div key={group.id} className="px-5 py-4">
                       <div className="flex items-center gap-2 mb-3">
-                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${typeColor[group.type] ?? 'bg-slate-100 text-slate-600'}`}>{group.type}</span>
-                        <span className="font-black text-slate-800">{group.name}</span>
-                        {onDeleteAccountGroup && (
-                          <button onClick={() => onDeleteAccountGroup(group.id)}
-                            className="ml-auto text-slate-200 hover:text-rose-400 transition-colors">
-                            <X size={14}/>
-                          </button>
+                        {editGroupId === group.id ? (
+                          <>
+                            <select value={editGroupForm.type} onChange={e => setEditGroupForm(f => ({ ...f, type: e.target.value as AccountGroup['type'] }))}
+                              className="text-[11px] font-black bg-white border border-slate-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-300">
+                              {GROUP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                            <input autoFocus value={editGroupForm.name} onChange={e => setEditGroupForm(f => ({ ...f, name: e.target.value }))}
+                              onKeyDown={e => { if (e.key === 'Enter' && editGroupForm.name.trim()) { onUpdateAccountGroup?.(group.id, { name: editGroupForm.name.trim(), type: editGroupForm.type }); setEditGroupId(null); } if (e.key === 'Escape') setEditGroupId(null); }}
+                              className="flex-1 min-w-0 text-sm font-black bg-white border border-slate-200 rounded-lg px-2.5 py-1 outline-none focus:ring-2 focus:ring-blue-300" />
+                            <button onClick={() => { if (editGroupForm.name.trim()) onUpdateAccountGroup?.(group.id, { name: editGroupForm.name.trim(), type: editGroupForm.type }); setEditGroupId(null); }}
+                              className="text-emerald-500 hover:text-emerald-700"><Check size={15} /></button>
+                            <button onClick={() => setEditGroupId(null)} className="text-slate-300 hover:text-slate-500"><X size={15} /></button>
+                          </>
+                        ) : (
+                          <>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${typeColor[group.type] ?? 'bg-slate-100 text-slate-600'}`}>{group.type}</span>
+                            <span className="font-black text-slate-800">{group.name}</span>
+                            {onUpdateAccountGroup && (
+                              <button onClick={() => { setEditGroupId(group.id); setEditGroupForm({ name: group.name, type: group.type }); }}
+                                className="text-slate-200 hover:text-blue-400 transition-colors"><Pencil size={12} /></button>
+                            )}
+                            {onDeleteAccountGroup && (
+                              <button onClick={() => onDeleteAccountGroup(group.id)}
+                                className="ml-auto text-slate-200 hover:text-rose-400 transition-colors">
+                                <X size={14}/>
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {codes.map(ac => (
                           <div key={ac.id} className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
-                            <span className="text-[11px] font-black text-slate-700">{ac.code}</span>
-                            <span className="text-[11px] text-slate-500">{ac.name}</span>
-                            {onUpdateAccountCode && (
-                              <select
-                                value={ac.groupId ?? ''}
-                                onChange={e => onUpdateAccountCode(ac.id, { groupId: e.target.value })}
-                                className="ml-1 text-[10px] bg-white border border-slate-200 rounded px-1 outline-none focus:ring-1 focus:ring-blue-300">
-                                <option value="">그룹 없음</option>
-                                {accountGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                              </select>
-                            )}
-                            {onDeleteAccountCode && (
-                              <button onClick={() => onDeleteAccountCode(ac.id)}
-                                className="text-slate-200 hover:text-rose-400 transition-colors">
-                                <X size={12}/>
-                              </button>
+                            {editCodeId === ac.id ? (
+                              <>
+                                <input autoFocus value={editCodeForm.code} onChange={e => setEditCodeForm(f => ({ ...f, code: e.target.value }))} placeholder="코드"
+                                  className="w-12 text-[11px] font-black bg-white border border-slate-200 rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-blue-300" />
+                                <input value={editCodeForm.name} onChange={e => setEditCodeForm(f => ({ ...f, name: e.target.value }))} placeholder="계정명"
+                                  onKeyDown={e => { if (e.key === 'Enter' && editCodeForm.name.trim()) { onUpdateAccountCode?.(ac.id, { code: editCodeForm.code.trim(), name: editCodeForm.name.trim() }); setEditCodeId(null); } if (e.key === 'Escape') setEditCodeId(null); }}
+                                  className="w-24 text-[11px] bg-white border border-slate-200 rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-blue-300" />
+                                <button onClick={() => { if (editCodeForm.name.trim()) onUpdateAccountCode?.(ac.id, { code: editCodeForm.code.trim(), name: editCodeForm.name.trim() }); setEditCodeId(null); }}
+                                  className="text-emerald-500 hover:text-emerald-700"><Check size={12} /></button>
+                                <button onClick={() => setEditCodeId(null)} className="text-slate-300 hover:text-slate-500"><X size={12} /></button>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-[11px] font-black text-slate-700">{ac.code}</span>
+                                <span className="text-[11px] text-slate-500">{ac.name}</span>
+                                {onUpdateAccountCode && (
+                                  <button onClick={() => { setEditCodeId(ac.id); setEditCodeForm({ code: ac.code, name: ac.name }); }}
+                                    className="text-slate-200 hover:text-blue-400 transition-colors"><Pencil size={11} /></button>
+                                )}
+                                {onUpdateAccountCode && (
+                                  <select
+                                    value={ac.groupId ?? ''}
+                                    onChange={e => onUpdateAccountCode(ac.id, { groupId: e.target.value })}
+                                    className="ml-1 text-[10px] bg-white border border-slate-200 rounded px-1 outline-none focus:ring-1 focus:ring-blue-300">
+                                    <option value="">그룹 없음</option>
+                                    {accountGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                                  </select>
+                                )}
+                                {onDeleteAccountCode && (
+                                  <button onClick={() => onDeleteAccountCode(ac.id)}
+                                    className="text-slate-200 hover:text-rose-400 transition-colors">
+                                    <X size={12}/>
+                                  </button>
+                                )}
+                              </>
                             )}
                           </div>
                         ))}
@@ -1627,15 +1673,40 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                   <div className="flex flex-wrap gap-2">
                     {ungrouped.map(ac => (
                       <div key={ac.id} className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
-                        <span className="text-[11px] font-black text-slate-700">{ac.code}</span>
-                        <span className="text-[11px] text-slate-500">{ac.name}</span>
-                        {onUpdateAccountCode && (
-                          <select value={ac.groupId ?? ''}
-                            onChange={e => onUpdateAccountCode(ac.id, { groupId: e.target.value })}
-                            className="ml-1 text-[10px] bg-white border border-slate-200 rounded px-1 outline-none focus:ring-1 focus:ring-blue-300">
-                            <option value="">그룹 선택</option>
-                            {accountGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                          </select>
+                        {editCodeId === ac.id ? (
+                          <>
+                            <input autoFocus value={editCodeForm.code} onChange={e => setEditCodeForm(f => ({ ...f, code: e.target.value }))} placeholder="코드"
+                              className="w-12 text-[11px] font-black bg-white border border-slate-200 rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-blue-300" />
+                            <input value={editCodeForm.name} onChange={e => setEditCodeForm(f => ({ ...f, name: e.target.value }))} placeholder="계정명"
+                              onKeyDown={e => { if (e.key === 'Enter' && editCodeForm.name.trim()) { onUpdateAccountCode?.(ac.id, { code: editCodeForm.code.trim(), name: editCodeForm.name.trim() }); setEditCodeId(null); } if (e.key === 'Escape') setEditCodeId(null); }}
+                              className="w-24 text-[11px] bg-white border border-slate-200 rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-blue-300" />
+                            <button onClick={() => { if (editCodeForm.name.trim()) onUpdateAccountCode?.(ac.id, { code: editCodeForm.code.trim(), name: editCodeForm.name.trim() }); setEditCodeId(null); }}
+                              className="text-emerald-500 hover:text-emerald-700"><Check size={12} /></button>
+                            <button onClick={() => setEditCodeId(null)} className="text-slate-300 hover:text-slate-500"><X size={12} /></button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-[11px] font-black text-slate-700">{ac.code}</span>
+                            <span className="text-[11px] text-slate-500">{ac.name}</span>
+                            {onUpdateAccountCode && (
+                              <button onClick={() => { setEditCodeId(ac.id); setEditCodeForm({ code: ac.code, name: ac.name }); }}
+                                className="text-slate-200 hover:text-blue-400 transition-colors"><Pencil size={11} /></button>
+                            )}
+                            {onUpdateAccountCode && (
+                              <select value={ac.groupId ?? ''}
+                                onChange={e => onUpdateAccountCode(ac.id, { groupId: e.target.value })}
+                                className="ml-1 text-[10px] bg-white border border-slate-200 rounded px-1 outline-none focus:ring-1 focus:ring-blue-300">
+                                <option value="">그룹 선택</option>
+                                {accountGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                              </select>
+                            )}
+                            {onDeleteAccountCode && (
+                              <button onClick={() => onDeleteAccountCode(ac.id)}
+                                className="text-slate-200 hover:text-rose-400 transition-colors">
+                                <X size={12}/>
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     ))}

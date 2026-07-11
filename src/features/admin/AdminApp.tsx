@@ -3555,6 +3555,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 onAddAccountCode={async (data) => { const id = await addItem('accountCodes', { ...data, id: `ac-${Date.now()}` }); refreshStaticData(); return id; } }
                 onDeleteAccountCode={(id) => { deleteItem('accountCodes', id); refreshStaticData(); }}
                 onAddAccountGroup={async (data) => { const id = await addItem('accountGroups', { ...data, id: `ag-${Date.now()}` }); refreshStaticData(); return id; }}
+                onUpdateAccountGroup={(id, data) => { updateItem('accountGroups', id, data); refreshStaticData(); }}
                 onDeleteAccountGroup={(id) => { deleteItem('accountGroups', id); refreshStaticData(); }}
                 inventorySnapshots={inventorySnapshots}
                 onSaveInventorySnapshot={async (data) => { await addItem('inventorySnapshots', { ...data, id: `inv-snap-${data.yearMonth}` }); }}
