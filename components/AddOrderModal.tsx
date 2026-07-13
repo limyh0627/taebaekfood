@@ -742,7 +742,10 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                 <span className="text-xs font-bold uppercase tracking-widest">팔레트</span>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                {palletStocks.map(ps => {
+                {palletStocks
+                  .filter(ps => !ps.hidden)
+                  .sort((a, b) => (a.name.toLowerCase().includes('kpp') ? 0 : 1) - (b.name.toLowerCase().includes('kpp') ? 0 : 1) || a.name.localeCompare(b.name, 'ko'))
+                  .map(ps => {
                   const current = pallets.find(p => p.type === ps.id)?.quantity ?? 0;
                   const update = (qty: number) => {
                     const next = Math.max(0, qty);

@@ -72,6 +72,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
   const [selectedClientIdForDetail, setSelectedClientIdForDetail] = useState<string | null>(null);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyDateFilter, setHistoryDateFilter] = useState('');
+  const [historySearch, setHistorySearch] = useState(''); // 전체 이력 거래처 검색
   const [monthFilter, setMonthFilter] = useState<string>(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; // 기본값: 이번 달 ('' = 전체 기간)
@@ -83,7 +84,16 @@ const PalletManager: React.FC<PalletManagerProps> = ({
   // 수동 거래(palletId→이름)와 같은 기준이 되도록 id를 이름으로 변환(레거시로 이름이 들어와도 그대로 사용).
   const palletNameOf = (t?: string) => (t ? (pallets.find(ps => ps.id === t)?.name ?? t) : '기타');
 
-  const partnerPalletStatus = useMemo(() => {
+  // 화면·선택 목록용 파레트 — 숨김 제외, kpp 계열 우선 정렬 (이력·잔량 계산은 전체 pallets 사용)
+  const visiblePallets = useMemo(() => {
+    const rank = (p: PalletStock) => (p.name.toLowerCase().includes('kpp') ? 0 : 1);
+    return pallets
+      .filter(p => !p.hidden)
+      .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, 'ko'));
+  }, [pallets]);
+
+  // 거래처별 파레트 잔량 — 원시 집계(검색 필터 전). 주문 출고 + 수동 거래(이동전표 제외)에서 계산.
+  const partnerPalletStatsRaw = useMemo(() => {
     const stats: Record<string, { name: string; pallets: Record<string, number> }> = {};
     
     // Initialize with all partners
@@ -108,6 +118,8 @@ const PalletManager: React.FC<PalletManagerProps> = ({
 
     // Add/Subtract from manual transactions
     palletTransactions.forEach(trans => {
+      // 이동전표는 거래처 잔량과 무관 — 회사 보유 총량만 증감(전체 이력에서만 확인)
+      if (trans.isTransfer) return;
       const partnerId = trans.partnerId;
       if (!stats[partnerId]) {
         const partner = partners.find(c => c.id === partnerId);
@@ -135,7 +147,11 @@ const PalletManager: React.FC<PalletManagerProps> = ({
           pallets: data.pallets,
           total
         };
-      })
+      });
+  }, [orders, partners, palletTransactions, pallets]);
+
+  const partnerPalletStatus = useMemo(() => {
+    return partnerPalletStatsRaw
       .filter(item => {
         if (!item.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
         // 검색어 없을 때는 잔량 있는 거래처만 표시
@@ -151,7 +167,20 @@ const PalletManager: React.FC<PalletManagerProps> = ({
         // Then by total magnitude (most negative/positive first)
         return Math.abs(b.total) - Math.abs(a.total);
       });
-  }, [orders, partners, palletTransactions, pallets, searchTerm]);
+  }, [partnerPalletStatsRaw, searchTerm]);
+
+  // 파레트 종류별 '회수 대기'(거래처 소재) — 거래처 음수 잔량의 합. 저장 카운터(inUse) 대신
+  // 기록(주문+거래)에서 계산해 거래처별 잔량과 항상 일치한다(단일 진실 소스).
+  const outstandingByPallet = useMemo(() => {
+    const m = new Map<string, number>();
+    partnerPalletStatsRaw.forEach(s => {
+      Object.entries(s.pallets).forEach(([pName, q]) => {
+        if (q < 0) m.set(pName, (m.get(pName) ?? 0) - q);
+      });
+    });
+    return m;
+  }, [partnerPalletStatsRaw]);
+  const outstandingOf = (p: PalletStock) => outstandingByPallet.get(p.name) ?? 0;
 
   const CLIENT_PAGE_SIZE = 15;
   const [partnerPage, setClientPage] = useState(1);
@@ -164,9 +193,9 @@ const PalletManager: React.FC<PalletManagerProps> = ({
 
     const history: { id: string; type: 'in' | 'out'; quantity: number; date: string; note: string; palletName: string; txId?: string }[] = [];
 
-    // From manual transactions
+    // From manual transactions (이동전표는 거래처 이력에서 제외 — 전체 이력에서만 조회)
     palletTransactions
-      .filter(t => t.partnerId === selectedClientIdForDetail)
+      .filter(t => t.partnerId === selectedClientIdForDetail && !t.isTransfer)
       .forEach(t => {
         const pallet = pallets.find(p => p.id === t.palletId);
         history.push({
@@ -229,14 +258,17 @@ const PalletManager: React.FC<PalletManagerProps> = ({
         type: 'out', quantity: newQty, date, note: `교체 지급${note ? ' — ' + note : ''}`,
         status: '교체중', exchangeReturnQty: returnQty,
       });
-      const pallet = pallets.find(p => p.id === palletId);
-      if (pallet) onUpdatePallet({ ...pallet, inUse: pallet.inUse + newQty });
     } else {
       const quantity = parseInt(formData.get('quantity') as string) || 0;
       if (quantity <= 0) return;
-      onAddPalletTransaction({ id: `ptrans-${Date.now()}`, partnerId, palletId, type: transType as 'in' | 'out', quantity, date, note });
-      const pallet = pallets.find(p => p.id === palletId);
-      if (pallet) onUpdatePallet({ ...pallet, inUse: transType === 'in' ? Math.max(0, pallet.inUse - quantity) : pallet.inUse + quantity });
+      const isTransfer = formData.get('isTransfer') === 'on';
+      onAddPalletTransaction({ id: `ptrans-${Date.now()}`, partnerId, palletId, type: transType as 'in' | 'out', quantity, date, note, ...(isTransfer ? { isTransfer: true } : {}) });
+      if (isTransfer) {
+        // 이동전표: 거래처 추적 없이 회사 보유 총량만 증감 (지급 −, 입고 +)
+        const pallet = pallets.find(p => p.id === palletId);
+        if (pallet) onUpdatePallet({ ...pallet, total: Math.max(0, pallet.total + (transType === 'in' ? quantity : -quantity)) });
+      }
+      // 일반 지급/입고·교체의 '회수 대기'는 거래 기록에서 자동 계산되므로 재고 문서를 따로 갱신하지 않는다.
     }
 
     setIsTransactionModalOpen(false);
@@ -265,6 +297,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
     const inMonth = (d?: string) => !monthFilter || (d ?? '').startsWith(monthFilter);
     palletTransactions.forEach(t => {
       if (!inMonth(t.date)) return;
+      if (t.isTransfer) return; // 이동전표는 실제 입출고가 아니므로 합계에서 제외
       if (t.type === 'out') totalOut += t.quantity;
       else if (t.type === 'in') totalIn += t.quantity;
       if (t.status === '교체중') exchanging += t.quantity;
@@ -288,7 +321,9 @@ const PalletManager: React.FC<PalletManagerProps> = ({
     const rows: Row[] = palletTransactions.map(t => ({
       id: t.id, date: t.date, partner: pName(t.partnerId),
       pallet: pallets.find(p => p.id === t.palletId)?.name || '기타',
-      type: t.type, quantity: t.quantity, status: t.status, note: t.note || '', txId: t.id,
+      type: t.type, quantity: t.quantity,
+      status: t.isTransfer ? (t.type === 'in' ? '이동입고' : '이동지급') : t.status,
+      note: t.note || '', txId: t.id,
     }));
     orders
       .filter(o => o.pallets && o.pallets.length > 0 && (o.status === OrderStatus.SHIPPED || o.status === OrderStatus.DELIVERED))
@@ -296,10 +331,14 @@ const PalletManager: React.FC<PalletManagerProps> = ({
         id: `${o.id}-pl-${i}`, date: (o.deliveryDate || '').split('T')[0], partner: o.partnerName,
         pallet: palletNameOf(p.type), type: 'out', quantity: p.quantity || 0, note: `주문 출고 (${o.id})`,
       })));
+    // 같은 날짜 안에서는 등록 시각(수동 거래 id의 timestamp)이 최신인 것부터
+    const tsOf = (r: Row) => { const m = /^ptrans-(\d+)/.exec(r.txId ?? ''); return m ? Number(m[1]) : 0; };
+    const q = historySearch.trim().toLowerCase();
     return rows
       .filter(r => !monthFilter || (r.date ?? '').startsWith(monthFilter))
-      .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
-  }, [palletTransactions, orders, partners, pallets, monthFilter]);
+      .filter(r => !q || r.partner.toLowerCase().includes(q))
+      .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || tsOf(b) - tsOf(a));
+  }, [palletTransactions, orders, partners, pallets, monthFilter, historySearch]);
 
   // 교체완료: 헌 파레트 입고 확인 → 원 거래를 교체완료로 표시 + 회수(in) 기록
   const completeExchange = async (tx: PalletTransaction) => {
@@ -310,8 +349,6 @@ const PalletManager: React.FC<PalletManagerProps> = ({
       const date = new Date().toISOString().split('T')[0];
       if (retQty > 0) {
         onAddPalletTransaction({ id: `ptrans-${Date.now()}-exin`, partnerId: tx.partnerId, palletId: tx.palletId, type: 'in', quantity: retQty, date, note: '교체완료 회수' });
-        const pallet = pallets.find(p => p.id === tx.palletId);
-        if (pallet) onUpdatePallet({ ...pallet, inUse: Math.max(0, pallet.inUse - retQty) });
       }
     } catch (e) {
       console.error('[파레트] 교체완료 실패:', e);
@@ -328,11 +365,10 @@ const PalletManager: React.FC<PalletManagerProps> = ({
     if (!confirm(`이 파렛트 ${label} 거래(${tx.quantity}개)를 삭제할까요?\n되돌릴 수 없습니다.`)) return;
     try {
       await deleteItem('palletTransactions', tx.id);
-      // inUse 되돌림: 입고였으면 다시 +, 지급이었으면 −
-      const pallet = pallets.find(p => p.id === tx.palletId);
-      if (pallet) {
-        const delta = tx.type === 'in' ? tx.quantity : -tx.quantity;
-        onUpdatePallet({ ...pallet, inUse: Math.max(0, pallet.inUse + delta) });
+      // 되돌림: 이동전표만 총 재고 복원. 일반/교체 거래의 회수 대기는 기록에서 계산되므로 삭제만으로 반영됨.
+      if (tx.isTransfer) {
+        const pallet = pallets.find(p => p.id === tx.palletId);
+        if (pallet) onUpdatePallet({ ...pallet, total: Math.max(0, pallet.total + (tx.type === 'in' ? -tx.quantity : tx.quantity)) });
       }
       // 라이브 구독(7일)이 즉시 못 지우는 과거 거래 대비 — 로컬 캐시/상태에서도 제거
       setExtraTransactions(prev => prev.filter(t => t.id !== tx.id));
@@ -401,7 +437,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
               </div>
               <div>
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">회수 대기 (거래처 소재)</p>
-                <p className="text-2xl font-black text-slate-900">{pallets.reduce((acc, p) => acc + p.inUse, 0)}개</p>
+                <p className="text-2xl font-black text-slate-900">{visiblePallets.reduce((acc, p) => acc + outstandingOf(p), 0)}개</p>
               </div>
             </div>
             <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center space-x-4">
@@ -410,7 +446,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
               </div>
               <div>
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">공장 내 가용</p>
-                <p className="text-2xl font-black text-slate-900">{pallets.reduce((acc, p) => acc + (p.total - p.inUse - p.damaged), 0)}개</p>
+                <p className="text-2xl font-black text-slate-900">{visiblePallets.reduce((acc, p) => acc + (p.total - outstandingOf(p) - p.damaged), 0)}개</p>
               </div>
             </div>
             <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center space-x-4">
@@ -419,15 +455,16 @@ const PalletManager: React.FC<PalletManagerProps> = ({
               </div>
               <div>
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">파손/수리 필요</p>
-                <p className="text-2xl font-black text-slate-900">{pallets.reduce((acc, p) => acc + p.damaged, 0)}개</p>
+                <p className="text-2xl font-black text-slate-900">{visiblePallets.reduce((acc, p) => acc + p.damaged, 0)}개</p>
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {pallets.map(pallet => {
+            {visiblePallets.map(pallet => {
               const isEditing = editingId === pallet.id;
-              const available = pallet.total - pallet.inUse - pallet.damaged;
+              const outstanding = outstandingOf(pallet);
+              const available = pallet.total - outstanding - pallet.damaged;
 
               return (
                 <div key={pallet.id} className={`bg-white rounded-3xl border transition-all duration-300 overflow-hidden ${isEditing ? 'ring-2 ring-indigo-500 border-indigo-200' : 'border-slate-100 shadow-sm'}`}>
@@ -483,8 +520,8 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                         )}
                       </div>
                       <div className="space-y-1">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">출고(사용 중)</p>
-                        <p className="text-2xl font-black text-indigo-600">{pallet.inUse}</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">회수 대기(거래처)</p>
+                        <p className="text-2xl font-black text-indigo-600">{outstanding}</p>
                       </div>
                       <div className="space-y-1">
                         <p className="text-[10px] font-bold text-slate-400 uppercase">파손/수리</p>
@@ -504,12 +541,12 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                     <div className="mt-8">
                       <div className="flex justify-between items-center mb-2">
                         <span className="text-xs font-bold text-slate-500">가용 리포트</span>
-                        <span className="text-xs font-bold text-emerald-600">{Math.round((available / pallet.total) * 100)}% 가용 가능</span>
+                        <span className="text-xs font-bold text-emerald-600">{pallet.total > 0 ? Math.round((Math.max(0, available) / pallet.total) * 100) : 0}% 가용 가능</span>
                       </div>
                       <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden flex">
-                        <div style={{ width: `${(pallet.inUse / pallet.total) * 100}%` }} className="bg-indigo-500 h-full" />
-                        <div style={{ width: `${(available / pallet.total) * 100}%` }} className="bg-emerald-500 h-full" />
-                        <div style={{ width: `${(pallet.damaged / pallet.total) * 100}%` }} className="bg-rose-500 h-full" />
+                        <div style={{ width: `${pallet.total > 0 ? (Math.min(outstanding, pallet.total) / pallet.total) * 100 : 0}%` }} className="bg-indigo-500 h-full" />
+                        <div style={{ width: `${pallet.total > 0 ? (Math.max(0, available) / pallet.total) * 100 : 0}%` }} className="bg-emerald-500 h-full" />
+                        <div style={{ width: `${pallet.total > 0 ? (pallet.damaged / pallet.total) * 100 : 0}%` }} className="bg-rose-500 h-full" />
                       </div>
                     </div>
                   </div>
@@ -527,16 +564,30 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                 <h3 className="text-xs font-black text-slate-700 uppercase tracking-wider">파렛트 거래 이력</h3>
                 <span className="text-[10px] font-black text-slate-300">{allPalletHistory.length}건</span>
               </div>
-              <select
-                value={monthFilter}
-                onChange={(e) => setMonthFilter(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400"
-              >
-                <option value="">전체 기간</option>
-                {availableMonths.map(m => (
-                  <option key={m} value={m}>{m.slice(0, 4)}년 {m.slice(5)}월</option>
-                ))}
-              </select>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
+                  <Search size={12} className="text-slate-400 shrink-0" />
+                  <input
+                    value={historySearch}
+                    onChange={(e) => setHistorySearch(e.target.value)}
+                    placeholder="거래처 검색"
+                    className="w-24 sm:w-32 bg-transparent text-xs font-bold text-slate-700 outline-none"
+                  />
+                  {historySearch && (
+                    <button onClick={() => setHistorySearch('')} className="shrink-0 text-slate-300 hover:text-slate-500"><X size={12} /></button>
+                  )}
+                </div>
+                <select
+                  value={monthFilter}
+                  onChange={(e) => setMonthFilter(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400"
+                >
+                  <option value="">전체 기간</option>
+                  {availableMonths.map(m => (
+                    <option key={m} value={m}>{m.slice(0, 4)}년 {m.slice(5)}월</option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
               <table className="w-full text-left">
@@ -560,7 +611,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                       <td className="px-3 py-2.5 text-[11px] font-bold text-slate-700">{r.partner}</td>
                       <td className="px-3 py-2.5 text-[11px] text-slate-500">{r.pallet}</td>
                       <td className="px-3 py-2.5 text-center">
-                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${r.status === '교체중' ? 'bg-violet-50 text-violet-600' : r.status === '교체완료' ? 'bg-violet-100 text-violet-700' : r.type === 'in' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${r.status === '교체중' ? 'bg-violet-50 text-violet-600' : r.status === '교체완료' ? 'bg-violet-100 text-violet-700' : r.status?.startsWith('이동') ? 'bg-sky-50 text-sky-600' : r.type === 'in' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
                           {r.status ? r.status : r.type === 'in' ? '입고' : '지급'}
                         </span>
                       </td>
@@ -967,7 +1018,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">파렛트 종류</label>
                 <select name="palletId" required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500">
                   <option value="">종류 선택</option>
-                  {pallets.map(p => (
+                  {visiblePallets.map(p => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </select>
@@ -996,6 +1047,16 @@ const PalletManager: React.FC<PalletManagerProps> = ({
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">비고 (선택)</label>
                 <input name="note" type="text" placeholder="사유 등 입력" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
+
+              {transType !== 'exchange' && (
+                <label className="flex items-start gap-2.5 bg-sky-50 border border-sky-200 rounded-xl px-4 py-3 cursor-pointer">
+                  <input name="isTransfer" type="checkbox" className="mt-0.5 w-4 h-4 accent-sky-600" />
+                  <span className="min-w-0">
+                    <span className="block text-xs font-black text-sky-700">이동전표</span>
+                    <span className="block text-[10px] font-bold text-sky-500 leading-tight mt-0.5">거래처 지급·회수 추적 없이 회사 보유 총 수량만 증감합니다(지급 −, 입고 +). 전체 이력에서만 확인됩니다.</span>
+                  </span>
+                </label>
+              )}
 
               <div className="pt-4 flex space-x-3">
                 <button type="button" onClick={() => setIsTransactionModalOpen(false)} className="flex-1 py-3 rounded-xl font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 transition-all">취소</button>

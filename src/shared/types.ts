@@ -254,8 +254,10 @@ export interface PalletStock {
   id: string;
   name: string;
   total: number;
+  /** @deprecated 회수 대기는 기록(주문+거래)에서 계산 — PalletManager outstandingByPallet. 저장값은 더 이상 사용 안 함 */
   inUse: number;
   damaged: number;
+  hidden?: boolean; // 화면·선택 목록에서 숨김(안 쓰는 종류). 과거 이력·잔량 계산은 유지
 }
 
 export interface PalletTransaction {
@@ -268,6 +270,7 @@ export interface PalletTransaction {
   note?: string;
   status?: '교체중' | '교체완료';  // 교체(exchange) 거래용 — 신 파레트 지급(out) 후 헌 파레트 입고 확인 시 교체완료
   exchangeReturnQty?: number;       // 교체완료 시 회수할 헌 파레트 수량
+  isTransfer?: boolean;             // 이동전표 — 거래처 잔량 추적 없이 보유 총량만 증감(지급 −, 입고 +), 전체 이력에만 기록
 }
 
 // Database related interfaces

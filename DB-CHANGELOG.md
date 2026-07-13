@@ -72,3 +72,15 @@
 
 - 거래처별 오버라이드(shipping_rules·partner_item qtyPerBox) 0건 확인 → 전 거래처 일괄 10개 적용.
 - 기존 주문 문서는 저장 당시 값(12) 유지 — 과거 이력 불변.
+
+## 2026-07-13 — 안 쓰는 파레트 3종 숨김(hidden 플래그)
+
+**작업자:** Claude 에이전트 (사용자 chdwp 요청 "전체 재고에서 삭제")
+**사유:** 목재파렛트는 주문·거래 기록이 있어 문서 삭제 시 거래처 잔량 계산이 깨짐 → 삭제 대신 hidden 플래그로 화면·선택 목록에서만 제거(이력·잔량 계산 유지).
+**스크립트:** `scripts/hide-unused-pallets.mjs` (되돌리기: `--undo`)
+
+| 문서 | 변경 |
+|---|---|
+| `pallets/pal-wood` (목재파렛트) | `hidden: true` |
+| `pallets/pal-plastic` (플라스틱파렛트) | `hidden: true` |
+| `pallets/pal-black` (검정파렛트) | `hidden: true` |
