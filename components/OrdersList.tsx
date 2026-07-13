@@ -1039,7 +1039,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
           />
         </div>
         <div className="flex items-center gap-2 flex-wrap shrink-0 md:ml-auto">
-          {onChangeOrdersMonths && (
+          {activeTab === 'history' && onChangeOrdersMonths && (
             <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm" title="Firestore 실시간 구독 범위 — 줄이면 읽기 비용 절감">
               <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">실시간</span>
               <select

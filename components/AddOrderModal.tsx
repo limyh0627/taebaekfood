@@ -91,6 +91,59 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
     return 4;
   };
 
+  // 품목명 토큰 색상 — 기름 등급(분·특A·A·골드·원액)과 용기(병)를 색으로 구분해 비슷한 이름 헷갈림 방지
+  const NAME_TOKEN_COLORS: Record<string, string> = {
+    '병': 'text-teal-600',
+    '분': 'text-blue-600',
+    '특A': 'text-amber-800',
+    'A': 'text-orange-500',
+    '골드': 'text-yellow-500',
+    '원액': 'text-purple-600',
+  };
+  const renderColoredName = (name: string): React.ReactNode => {
+    const parts = name.split('/');
+    if (parts.length === 1) return name;
+    return parts.map((part, i) => {
+      const color = NAME_TOKEN_COLORS[part.trim()];
+      return (
+        <React.Fragment key={i}>
+          {i > 0 && <span className="text-slate-300">/</span>}
+          {color ? <span className={color}>{part}</span> : part}
+        </React.Fragment>
+      );
+    });
+  };
+
+  // 용량 칩 — 이름 끝 용량(없으면 spec)을 뽑아 카드 오른쪽에 용량별 고정색 배지로 표시
+  const VOLUME_CHIP_COLORS: Record<string, string> = {
+    '180ml': 'bg-pink-100 text-pink-700',
+    '300ml': 'bg-green-100 text-green-700',
+    '350ml': 'bg-sky-100 text-sky-700',
+    '1500ml': 'bg-indigo-100 text-indigo-700',
+    '1750ml': 'bg-violet-100 text-violet-700',
+    '1800ml': 'bg-red-100 text-red-700',
+    '1kg': 'bg-amber-100 text-amber-800',
+    '4kg': 'bg-orange-100 text-orange-700',
+    '16.5kg': 'bg-cyan-100 text-cyan-700',
+    '20kg': 'bg-emerald-100 text-emerald-800',
+  };
+  const VOLUME_RE = /^\d+(\.\d+)?\s*(ml|l|g|kg)$/i;
+  const normVolume = (s: string) => s.trim().toLowerCase().replace(/\s/g, '');
+  // "참기름/병/분/300ml" → { base: "참기름/병/분", vol: "300ml" } / 이름에 없으면 spec 폴백
+  const splitNameVolume = (product: { name: string; spec?: string }): { base: string; vol: string | null } => {
+    const parts = product.name.split('/');
+    const last = parts[parts.length - 1]?.trim() ?? '';
+    if (parts.length > 1 && VOLUME_RE.test(last)) {
+      return { base: parts.slice(0, -1).join('/'), vol: normVolume(last) };
+    }
+    const spec = (product.spec ?? '').trim();
+    if (spec && VOLUME_RE.test(spec)) return { base: product.name, vol: normVolume(spec) };
+    return { base: product.name, vol: null };
+  };
+  const renderVolumeChip = (vol: string | null) => vol ? (
+    <span className={`shrink-0 text-[10px] font-black px-2 py-1 rounded-lg whitespace-nowrap ${VOLUME_CHIP_COLORS[vol] ?? 'bg-slate-100 text-slate-600'}`}>{vol}</span>
+  ) : null;
+
   // 거래처 전용 품목 필터링 적용
   const displayProducts = useMemo(() => {
     if (!selectedClient) return [];
@@ -113,6 +166,23 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
         return diff !== 0 ? diff : a.name.localeCompare(b.name, 'ko');
       });
   }, [products, selectedClient, shippingRules]);
+
+  // 용량 필터 — 거래처 품목에 존재하는 용량들만 버튼으로 노출
+  const [volumeFilter, setVolumeFilter] = useState<string | null>(null);
+  useEffect(() => { setVolumeFilter(null); }, [selectedClient?.id]);
+  const volumeOptions = useMemo(() => {
+    const m = new Map<string, number>();
+    displayProducts.forEach(p => { const { vol } = splitNameVolume(p); if (vol) m.set(vol, (m.get(vol) ?? 0) + 1); });
+    const rank = (v: string) => {
+      const n = parseFloat(v);
+      if (v.endsWith('ml')) return n;
+      if (v.endsWith('kg')) return 1000000 + n * 1000;
+      if (v.endsWith('l')) return n * 1000;
+      return 1000000 + n; // g
+    };
+    return [...m.entries()].sort((a, b) => rank(a[0]) - rank(b[0]));
+  }, [displayProducts]);
+  const shownProducts = volumeFilter ? displayProducts.filter(p => splitNameVolume(p).vol === volumeFilter) : displayProducts;
 
   // 스마트스토어 제외 거래처 → 향미유 목록
   const displayHyangmiyu = useMemo(() => {
@@ -556,21 +626,33 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2 text-slate-400"><ShoppingBag size={16} /><span className="text-xs font-bold uppercase tracking-widest">주문 품목 선택</span></div>
               </div>
+              {volumeOptions.length > 1 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button type="button" onClick={() => setVolumeFilter(null)}
+                    className={`px-2.5 py-1 rounded-full text-[10px] font-black transition-all ${volumeFilter === null ? 'bg-slate-700 text-white' : 'bg-white border border-slate-200 text-slate-500 hover:border-slate-400'}`}>전체</button>
+                  {volumeOptions.map(([vol, cnt]) => (
+                    <button type="button" key={vol} onClick={() => setVolumeFilter(v => v === vol ? null : vol)}
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-black transition-all ${volumeFilter === vol ? `${VOLUME_CHIP_COLORS[vol] ?? 'bg-slate-200 text-slate-700'} ring-2 ring-indigo-400` : 'bg-white border border-slate-200 text-slate-500 hover:border-indigo-300'}`}>
+                      {vol} <span className="opacity-50">{cnt}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-2">
-                {displayProducts.length > 0 ? (
-                  displayProducts.map(product => {
+                {shownProducts.length > 0 ? (
+                  shownProducts.map(product => {
                     const selection = selectedItems.find(i => String(i.itemId).trim() === String(product.id).trim());
                     const isSelected = !!selection;
-                    const isSesameOil = /참기름/.test(product.name);
+                    const nv = splitNameVolume(product);
                     return (
-                      <div key={product.id} onClick={() => toggleProduct(product.id)} className={`p-3 rounded-2xl border-2 transition-all cursor-pointer flex flex-col gap-2 ${isSelected ? 'bg-white border-indigo-500 shadow-md ring-1 ring-indigo-500' : isSesameOil ? 'bg-white border-red-400 hover:border-red-500' : 'bg-white border-slate-100 hover:border-indigo-200'}`}>
+                      <div key={product.id} onClick={() => toggleProduct(product.id)} className={`p-3 rounded-2xl border-2 transition-all cursor-pointer flex flex-col gap-2 ${isSelected ? 'bg-white border-indigo-500 shadow-md ring-1 ring-indigo-500' : 'bg-white border-slate-100 hover:border-indigo-200'}`}>
                         <div className="flex items-center gap-2">
-                          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 ${isSelected ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}>{product.category}</span>
-                          <div className="flex flex-col min-w-0">
-                            <p className="text-xs font-bold text-slate-800 truncate">{product.name}</p>
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <p className="text-xs font-bold text-slate-800 truncate">{renderColoredName(nv.base)}</p>
                             {(() => {
                               const label = product.submaterials?.find(s => s.category === '라벨')?.name;
-                              const vol = product.spec;
+                              // 칩과 중복되는 spec은 아랫줄에서 생략
+                              const vol = product.spec && (!nv.vol || normVolume(product.spec) !== nv.vol) ? product.spec : null;
                               const parts = [label, vol].filter(Boolean);
                               const pc = selectedClient ? partnerOut.find(p => p.itemId === product.id && p.partnerId === selectedClient.id) : null;
                               const boxName = pc?.boxTypeId ? items.find(p => p.id === pc.boxTypeId)?.name : null;
@@ -584,6 +666,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                               );
                             })()}
                           </div>
+                          {renderVolumeChip(nv.vol)}
                         </div>
                         {isSelected && renderItemControls(product)}
                       </div>
@@ -615,8 +698,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                   return (
                     <div key={product.id} onClick={() => toggleProduct(product.id)} className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col gap-2 ${isSelected ? 'bg-white border-indigo-500 shadow-md ring-1 ring-indigo-500' : 'bg-white border-slate-100 hover:border-indigo-200'}`}>
                       <div className="flex items-center gap-2">
-                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 ${isSelected ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}>{product.category}</span>
-                        <p className="text-xs font-bold text-slate-800 truncate">{product.name}</p>
+                        <p className="text-xs font-bold text-slate-800 truncate flex-1 min-w-0">{renderColoredName(splitNameVolume(product).base)}</p>
+                        {renderVolumeChip(splitNameVolume(product).vol)}
                       </div>
                       {isSelected && renderItemControls(product)}
                     </div>
@@ -641,8 +724,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                   return (
                     <div key={product.id} onClick={() => toggleProduct(product.id)} className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col gap-2 ${isSelected ? 'bg-white border-indigo-500 shadow-md ring-1 ring-indigo-500' : 'bg-white border-slate-100 hover:border-indigo-200'}`}>
                       <div className="flex items-center gap-2">
-                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 ${isSelected ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}>{product.category}</span>
-                        <p className="text-xs font-bold text-slate-800 truncate">{product.name}</p>
+                        <p className="text-xs font-bold text-slate-800 truncate flex-1 min-w-0">{renderColoredName(splitNameVolume(product).base)}</p>
+                        {renderVolumeChip(splitNameVolume(product).vol)}
                       </div>
                       {isSelected && renderItemControls(product)}
                     </div>

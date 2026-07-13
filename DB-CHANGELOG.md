@@ -59,3 +59,16 @@
 | `p-1780646377919` | 볶음참깨-자루/20kg (product) | `rawMaterialName` = "볶음참깨" | 입고 시 개수×20kg → 원료 로트 |
 
 - 6/29~7/1 로트 소실 사고 복구(restore-lots-260702.mjs)는 **사용자 보류 중** — 아직 미실행.
+
+## 2026-07-09 — 들향기름골드 기본 박스 수량 12 → 10
+
+**작업자:** Claude 에이전트 (사용자 chdwp 요청)
+**사유:** 들향기름골드 1박스가 실제 10개인데, 품목에 박스 규격이 없어 향미유 코드 폴백(12)이 적용되고 있었음.
+**스크립트:** `scripts/set-deulhyang-gold-box10.mjs` (되돌리기: `--undo` → 필드 삭제, 폴백 12 복귀)
+
+| 문서 | 변경 |
+|---|---|
+| `items/f6` (들향기름골드, goods) | `defaultBoxConfig` 없음(null) → `{ boxType: "", unitsPerBox: 10 }` |
+
+- 거래처별 오버라이드(shipping_rules·partner_item qtyPerBox) 0건 확인 → 전 거래처 일괄 10개 적용.
+- 기존 주문 문서는 저장 당시 값(12) 유지 — 과거 이력 불변.
