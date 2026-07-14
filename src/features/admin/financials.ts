@@ -34,7 +34,8 @@ export function makeCodeToGroup(
  * 계정과목 마스터는 하나로 두되, 고르는 자리에서 성격으로 거른다.
  *
  *  매출: 수익
- *  매입: 비용·자산
+ *  매입: 비용 — 손익 나는 것만. 기계·차량 같은 자산 취득은 손익이 아니라 투자이므로
+ *        자금원장에서 끊는다(손익에 닿는 건 그 자산의 감가상각뿐이다).
  *  자금: 전부 (돈이 나가는 이유는 비용·자산·부채 뭐든 될 수 있다)
  *  대체: 비현금 계정만 (감가상각·퇴직충당금) — 현금도 거래처도 없는 분개라 오용을 원천 차단한다
  *
@@ -47,7 +48,7 @@ export function filterCodesForContext(
 ): AccountCode[] {
   if (context === '자금') return codes;
   if (context === '대체') return codes.filter(c => isNoncashCode(c.code, codes));
-  const allow: AccountGroup['type'][] = context === '매출' ? ['수익'] : ['비용', '자산'];
+  const allow: AccountGroup['type'][] = context === '매출' ? ['수익'] : ['비용'];
   const groupType = new Map(groups.map(g => [g.id, g.type]));
   return codes.filter(c => {
     if (!c.groupId) return true;                 // 그룹 미지정 — 거르지 않고 노출
