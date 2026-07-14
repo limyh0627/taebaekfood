@@ -111,3 +111,107 @@ export function unmatchedCash(entry: CashEntry, settlements: Settlement[]): numb
     .reduce((a, s) => a + s.amount, 0);
   return entry.amount - matched;
 }
+
+// ── 거래처원장 ────────────────────────────────────────────────────────────────
+
+export interface PartnerLedgerRow {
+  kind: '전표' | '결제';
+  id: string;
+  date: string;
+  label: string;          // 적요 (전표=문서번호, 결제=적요/방법)
+  amount: number;         // 전표 = +발생(채권·채무 증가), 결제 = −상계
+  balance: number;        // 이 행 직후 잔액
+  /** 결제가 어디서 왔나 — 구 payments[]인지 자금원장 매칭인지 */
+  source?: 'payments' | 'cash';
+}
+
+export interface PartnerLedger {
+  rows: PartnerLedgerRow[];
+  accrued: number;        // 기간 내 발생 총액
+  paid: number;           // 기간 내 결제 총액
+  balance: number;        // 현재 잔액 (매출=받을돈, 매입=줄돈)
+}
+
+/**
+ * 한 거래처의 채권(매출)·채무(매입) 원장. 전표와 결제를 시간순으로 엮어 잔액을 굴린다.
+ *
+ * 결제는 두 곳에서 온다 — 전표에 매달린 구 payments[]와 자금원장 매칭(settlements).
+ * 둘을 하나의 타임라인으로 합쳐 본다. 같은 결제가 양쪽에 기록되면 이중으로 빠지므로,
+ * 신규 결제는 자금원장 한 곳으로만 들어와야 한다.
+ *
+ * 전체 전표를 넘겨야 잔액이 맞는다 — 기간을 잘라서 넘기면 이월 잔액이 사라진다.
+ */
+export function buildPartnerLedger(
+  partnerId: string,
+  type: '매출' | '매입',
+  statements: IssuedStatement[],
+  cashEntries: CashEntry[],
+  settlements: Settlement[],
+): PartnerLedger {
+  const mine = statements.filter(s => s.partnerId === partnerId && s.type === type);
+  const mineIds = new Set(mine.map(s => s.id));
+  const entryById = new Map(cashEntries.map(e => [e.id, e]));
+
+  type Ev = { row: Omit<PartnerLedgerRow, 'balance'>; ts: string; order: number };
+  const evs: Ev[] = [];
+
+  for (const s of mine) {
+    // 전표: 채권·채무 발생
+    evs.push({
+      row: { kind: '전표', id: s.id, date: s.tradeDate, label: s.docNo || '전표', amount: s.totalAmount },
+      ts: `${s.tradeDate}T${(s.issuedAt || '').slice(11, 19) || '00:00:00'}`,
+      order: 0,   // 같은 시각이면 전표가 먼저 (발생 후 상계)
+    });
+    // 구 payments[]
+    for (const p of s.payments ?? []) {
+      evs.push({
+        row: { kind: '결제', id: p.id, date: p.date, label: p.note || p.method || '결제', amount: -p.amount, source: 'payments' },
+        ts: `${p.date}T${(p.createdAt || '').slice(11, 19) || '00:00:00'}`,
+        order: 1,
+      });
+    }
+  }
+
+  // 자금원장 매칭
+  for (const st of settlements) {
+    if (!mineIds.has(st.statementId)) continue;
+    const e = entryById.get(st.cashEntryId);
+    if (!e) continue;   // 자금 기록이 지워졌으면 상계로 치지 않는다
+    evs.push({
+      row: { kind: '결제', id: st.id, date: e.date, label: e.note || (e.dir === '출금' ? '지불' : '수금'), amount: -st.amount, source: 'cash' },
+      ts: `${e.date}T${(e.createdAt || '').slice(11, 19) || '00:00:00'}`,
+      order: 1,
+    });
+  }
+
+  evs.sort((a, b) => a.ts.localeCompare(b.ts) || a.order - b.order);
+
+  let running = 0, accrued = 0, paid = 0;
+  const rows: PartnerLedgerRow[] = evs.map(({ row }) => {
+    running += row.amount;
+    if (row.amount > 0) accrued += row.amount; else paid += -row.amount;
+    return { ...row, balance: running };
+  });
+
+  return { rows, accrued, paid, balance: running };
+}
+
+/** 거래처별 현재 잔액 — 목록 화면용 */
+export function partnerBalances(
+  type: '매출' | '매입',
+  statements: IssuedStatement[],
+  cashEntries: CashEntry[],
+  settlements: Settlement[],
+): { partnerId: string; partnerName: string; balance: number; count: number }[] {
+  const ids = new Map<string, string>();
+  for (const s of statements) {
+    // 실제 데이터에 partnerName이 비어 있는 전표가 있다 — 빈 문자열로 정규화한다.
+    if (s.type === type && s.partnerId) ids.set(s.partnerId, s.partnerName || '(이름없음)');
+  }
+  return [...ids.entries()]
+    .map(([partnerId, partnerName]) => {
+      const l = buildPartnerLedger(partnerId, type, statements, cashEntries, settlements);
+      return { partnerId, partnerName, balance: l.balance, count: l.rows.filter(r => r.kind === '전표').length };
+    })
+    .sort((a, b) => b.balance - a.balance);
+}

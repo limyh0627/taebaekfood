@@ -103,6 +103,7 @@ const ProductionManager = React.lazy(() => import('../../../components/Productio
 const TradeStatement = React.lazy(() => import('../../../components/TradeStatement'));
 const ProfitAnalysis = React.lazy(() => import('../../../components/ProfitAnalysis'));
 const CashLedger = React.lazy(() => import('../../../components/CashLedger'));
+const PartnerLedger = React.lazy(() => import('../../../components/PartnerLedger'));
 
 import { db } from '../../shared/firebase';
 import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName, lotStockInUnit, lotKgRemaining } from '../../constants/formula';
@@ -418,6 +419,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [editingProduct, setEditingProduct] = useState<Item | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => window.innerWidth < 768);
+  const [ledgerTab, setLedgerTab] = useState<'cash' | 'partner'>('cash');
 
 
   // 완료/반려 후 1일 지난 확인사항 자동 삭제
@@ -3350,15 +3352,39 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   accountGroups={appData.accountGroups}
                   accountCodes={appData.accountCodes}
                   inventorySnapshots={inventorySnapshots}
+                  cashEntries={appData.cashEntries}
+                  settlements={appData.settlements}
                 />
               </React.Suspense>
             </div>
           )}
           {currentView === 'ledger-cash' && (
             <div className="h-full overflow-y-auto">
-              <PageHeader title="장부" subtitle="현금출납장 — 통장·카드·현금의 실제 입출금과 잔액" />
+              <PageHeader
+                title="장부"
+                subtitle={ledgerTab === 'cash'
+                  ? '현금출납장 — 통장·카드·현금의 실제 입출금과 잔액'
+                  : '거래처원장 — 거래처별 채권·채무와 결제 내역'}
+              />
+              <div className="px-6 pt-4">
+                <div className="inline-flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
+                  {([['cash', '현금출납장'], ['partner', '거래처원장']] as const).map(([k, label]) => (
+                    <button key={k} onClick={() => setLedgerTab(k)}
+                      className={`px-4 py-2 rounded-lg text-xs font-black transition-all ${
+                        ledgerTab === k ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'
+                      }`}>{label}</button>
+                  ))}
+                </div>
+              </div>
               <div className="p-6">
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+                  {ledgerTab === 'partner' ? (
+                    <PartnerLedger
+                      issuedStatements={issuedStatements}
+                      cashEntries={appData.cashEntries}
+                      settlements={appData.settlements}
+                    />
+                  ) : (
                   <CashLedger
                     cashAccounts={appData.cashAccounts}
                     cashEntries={appData.cashEntries}
@@ -3374,6 +3400,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     onAddSettlement={(s) => addItem('settlements', s)}
                     onDeleteSettlement={(id) => deleteItem('settlements', id)}
                   />
+                  )}
                 </React.Suspense>
               </div>
             </div>
@@ -3397,6 +3424,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   accountGroups={appData.accountGroups}
                   accountCodes={appData.accountCodes}
                   inventorySnapshots={inventorySnapshots}
+                  cashEntries={appData.cashEntries}
+                  settlements={appData.settlements}
                   cashFlowManual={appData.cashFlowManual}
                   onSaveCashFlowManual={async (month, data) => {
                     const clean = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined && v !== null));

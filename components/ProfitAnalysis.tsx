@@ -5,7 +5,7 @@ import {
   ResponsiveContainer, Legend, Cell
 } from 'recharts';
 import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, BarChart2, DollarSign, Wallet, Users, ChevronLeft, ChevronRight, Save, Search, Package, X, CreditCard, Download, Archive, Clock, Pencil, Check } from 'lucide-react';
-import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Partner, PaymentRecord, Item, AccountCode, AccountGroup, AccountGroupPlLine, InventorySnapshot, CashFlowManual } from '../types';
+import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Partner, PaymentRecord, Item, AccountCode, AccountGroup, AccountGroupPlLine, InventorySnapshot, CashFlowManual, CashEntry, Settlement } from '../types';
 import PageHeader from './PageHeader';
 import CostManager from './CostManager';
 import { makeCodeToGroup, computeMonthPL, computeCashFlowMonth, addMonthStr, SGNA_LEGACY_IDS, COMPUTED_GROUP_IDS } from '../src/features/admin/financials';
@@ -37,6 +37,8 @@ interface ProfitAnalysisProps {
   onGenerateRecurringCosts?: (yearMonth: string) => Promise<number>;
   cashFlowManual?: CashFlowManual[];
   onSaveCashFlowManual?: (month: string, data: Partial<CashFlowManual>) => Promise<void>;
+  cashEntries?: CashEntry[];
+  settlements?: Settlement[];
   initialTab?: MainTab;
 }
 
@@ -49,7 +51,7 @@ const fmtM = (n: number) => {
 
 const MONTHS = 12;
 
-const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, fixedCostTemplates = [], onAddCost, onDeleteCost, onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = [], onSaveCashFlowManual, initialTab }) => {
+const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, fixedCostTemplates = [], onAddCost, onDeleteCost, onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = [], onSaveCashFlowManual, cashEntries = [], settlements = [], initialTab }) => {
   // 계산결과 그룹 숨김 + 구 판매비/관리비 → 판관비로 통합 표시
   const accountGroups = rawAccountGroups
     .filter(g => !COMPUTED_GROUP_IDS.has(g.id))
@@ -688,7 +690,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         // 간접법 현금흐름표 — 월별/기간. 계산은 순수 모듈(financials.computeCashFlowMonth)에 위임.
         const addMonth = addMonthStr;
         const manualOf = (ym: string): Partial<CashFlowManual> => ym === cfMonth ? { ...(cashFlowManual.find(m => m.month === ym) ?? {}), ...cfEdit } : (cashFlowManual.find(m => m.month === ym) ?? {});
-        const computeCF = (ym: string) => computeCashFlowMonth(ym, manualOf(ym), { issuedStatements, inventorySnapshots, monthPL, codeToGroup, accountCodes });
+        const computeCF = (ym: string) => computeCashFlowMonth(ym, manualOf(ym), { issuedStatements, inventorySnapshots, monthPL, codeToGroup, accountCodes, cashEntries, settlements });
         const baseline = [...cashFlowManual].filter(m => m.openingCash != null).map(m => m.month).sort()[0];
         const openingOf = (ym: string): number => {
           if (!baseline || ym <= baseline) return manualOf(ym).openingCash ?? 0;

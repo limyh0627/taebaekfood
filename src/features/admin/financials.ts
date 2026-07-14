@@ -1,4 +1,7 @@
-import { IssuedStatement, FixedCostEntry, AccountCode, AccountGroup, CashFlowManual, InventorySnapshot } from '../../shared/types';
+import {
+  IssuedStatement, FixedCostEntry, AccountCode, AccountGroup, AccountGroupCfSection,
+  CashFlowManual, InventorySnapshot, CashEntry, Settlement,
+} from '../../shared/types';
 
 /**
  * 손익 계산 순수 도메인 모듈 — 부수효과 없음(입력 → 값). 단위 테스트 용이.
@@ -106,10 +109,30 @@ export interface CashFlowMonth {
 }
 
 /**
+ * 계정그룹의 현금흐름표 위치. cfSection이 지정돼 있으면 그걸 쓴다.
+ *
+ * 미지정이면 계정 성격으로 추측하는데(자산→투자, 부채·자본→재무) 이건 정확하지 않다 —
+ * 매입채무는 부채지만 영업이고, 선급금은 자산이지만 영업이다. 영업성 자산·부채는
+ * AccountGroup.cfSection에 'operating'을 박아서 이 추측에서 빼내야 한다.
+ */
+export function cfSectionOf(g?: AccountGroup): AccountGroupCfSection | undefined {
+  if (!g) return undefined;
+  if (g.cfSection) return g.cfSection;
+  if (g.type === '자산') return 'investing';
+  if (g.type === '부채' || g.type === '자본') return 'financing';
+  return 'operating';
+}
+
+/**
  * 특정 월의 간접법 현금흐름 라인. 순수 함수.
- * 투자·재무·감가상각은 전표(비용/자금)에서 자동 집계 — 계정과목의 그룹 타입(자산→투자, 부채·자본→재무),
- *   부호는 전표 cashDir(입금 +/출금 −). 감가상각은 계정명에 '감가상각' 포함 → 영업 가산.
- *   여기에 manual(선급금·기초현금 등 수동값)을 더한다(전표+수동).
+ *
+ * 결제액은 구 payments[]와 신 settlements를 합쳐서 본다 — 두 경로 중 어디에 기록됐든
+ * 매출채권·매입채무가 맞게 떨어진다.
+ *
+ * 투자·재무는 자금원장(cashEntries)의 계정과목 cfSection에서 집계한다. 부호는 dir(입금 +/출금 −).
+ * 구 '비용' 전표(cashDir)도 자금원장 이관 전까지 같은 규칙으로 함께 본다.
+ * 감가상각은 현금이 안 움직이므로 자금원장에 없다 — 전표(계정명에 '감가상각')와 manual에서만 온다.
+ *
  * 영업 = 순이익(재고반영) + 감가상각 − 재고증가 − 매출채권증가 + 매입채무증감 − 선급금증가.
  */
 export function computeCashFlowMonth(
@@ -121,12 +144,32 @@ export function computeCashFlowMonth(
     monthPL: (ym: string) => MonthPL;
     codeToGroup?: (code: string | undefined) => AccountGroup | undefined;
     accountCodes?: AccountCode[];
+    cashEntries?: CashEntry[];
+    settlements?: Settlement[];
   },
 ): CashFlowMonth {
   const { issuedStatements, inventorySnapshots, monthPL, codeToGroup, accountCodes } = deps;
+  const cashEntries = deps.cashEntries ?? [];
+  const settlements = deps.settlements ?? [];
+
   const snapVal = (m: string) => inventorySnapshots.find(s => s.yearMonth === m)?.value;
-  const payIn = (m: string, type: '매출' | '매입') => issuedStatements.filter(s => s.type === type).flatMap(s => s.payments ?? []).filter(p => (p.date || '').startsWith(m)).reduce((a, p) => a + p.amount, 0);
   const accrual = (m: string, type: '매출' | '매입') => issuedStatements.filter(s => s.type === type && s.tradeDate.startsWith(m)).reduce((a, s) => a + s.totalAmount, 0);
+
+  // 결제 = 전표에 매달린 구 payments[] + 자금원장 매칭(settlements). 둘을 합쳐 하나의 결제 소스로 본다.
+  const stmtType = new Map(issuedStatements.map(s => [s.id, s.type]));
+  const entryDate = new Map(cashEntries.map(e => [e.id, e.date]));
+  const payIn = (m: string, type: '매출' | '매입') => {
+    const legacy = issuedStatements
+      .filter(s => s.type === type)
+      .flatMap(s => s.payments ?? [])
+      .filter(p => (p.date || '').startsWith(m))
+      .reduce((a, p) => a + p.amount, 0);
+    const matched = settlements
+      .filter(st => stmtType.get(st.statementId) === type && (entryDate.get(st.cashEntryId) || '').startsWith(m))
+      .reduce((a, st) => a + st.amount, 0);
+    return legacy + matched;
+  };
+
   const pl = monthPL(ym);
   const sa = snapVal(ym), sp = snapVal(addMonthStr(ym, -1));
   const invInc = (sa != null && sp != null) ? sa - sp : 0;      // 재고자산 증가
@@ -134,19 +177,30 @@ export function computeCashFlowMonth(
   const arInc = accrual(ym, '매출') - payIn(ym, '매출');          // 매출채권 증가
   const apChg = accrual(ym, '매입') - payIn(ym, '매입');          // 매입채무 증감(+증가)
 
-  // 전표(비용/자금)에서 투자·재무·감가상각 자동 집계
   const nameOf = (code?: string) => accountCodes?.find(a => a.code === code)?.name;
   let assetOut = 0, assetIn = 0, finInStmt = 0, finOutStmt = 0, depStmt = 0;
+
+  // 자금원장 — 실제로 돈이 움직인 기록에서 투자·재무를 집계
+  if (codeToGroup) {
+    for (const e of cashEntries) {
+      if (!(e.date || '').startsWith(ym)) continue;
+      const section = cfSectionOf(codeToGroup(e.accountCode));
+      const inflow = e.dir === '입금';
+      if (section === 'investing') { if (inflow) assetIn += e.amount; else assetOut += e.amount; }
+      else if (section === 'financing') { if (inflow) finInStmt += e.amount; else finOutStmt += e.amount; }
+    }
+  }
+
+  // 구 '비용'(자금) 전표 — 자금원장으로 이관하기 전까지 같은 규칙으로 함께 집계
   if (codeToGroup) {
     for (const s of issuedStatements) {
       if (s.type !== '비용' || !(s.tradeDate || '').startsWith(ym)) continue;
       const inflow = s.cashDir === '입금';
       for (const it of s.items) {
         if (nameOf(it.accountCode)?.includes('감가상각')) depStmt += it.total;
-        const g = codeToGroup(it.accountCode);
-        if (!g) continue;
-        if (g.type === '자산') { if (inflow) assetIn += it.total; else assetOut += it.total; }
-        else if (g.type === '부채' || g.type === '자본') { if (inflow) finInStmt += it.total; else finOutStmt += it.total; }
+        const section = cfSectionOf(codeToGroup(it.accountCode));
+        if (section === 'investing') { if (inflow) assetIn += it.total; else assetOut += it.total; }
+        else if (section === 'financing') { if (inflow) finInStmt += it.total; else finOutStmt += it.total; }
       }
     }
   }
