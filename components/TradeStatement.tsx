@@ -4,10 +4,10 @@ import {
   FileText, Printer, Search, ChevronDown, CalendarDays,
   Package, ClipboardList, ChevronRight, CheckCircle2, Edit2, Plus, X, ArrowLeft,
   Save, Download, CheckSquare,
-  ChevronLeft, Share2, Check, Wallet
+  ChevronLeft, Share2, Check, Wallet, RotateCw
 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
-import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentRecord, AccountCode, AccountGroup, CashAccount, CashEntry, Settlement } from '../types';
+import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentRecord, AccountCode, AccountGroup, CashAccount, CashEntry, Settlement, FixedCostTemplate } from '../types';
 import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchDateRange } from '../src/shared/services/firebaseService';
 import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
@@ -26,6 +26,9 @@ interface TradeStatementProps {
   settlements?: Settlement[];
   onAddCashEntry?: (e: Omit<CashEntry, 'id'> & { id: string }) => void;
   onAddSettlement?: (s: Omit<Settlement, 'id'> & { id: string }) => void;
+  // 정기 고정비 — 템플릿으로 해당 월 전표를 한 번에 생성 (중복 생성은 핸들러가 막는다)
+  fixedCostTemplates?: FixedCostTemplate[];
+  onGenerateRecurringCosts?: (yearMonth: string) => Promise<number>;
   issuedStatements: IssuedStatement[];
   onUpdateStatus?: (id: string, status: OrderStatus) => void;
   onUpsertPartnerItem?: (ps: PartnerItem) => void;
@@ -118,6 +121,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   settlements = [],
   onAddCashEntry,
   onAddSettlement,
+  fixedCostTemplates = [],
+  onGenerateRecurringCosts,
   issuedStatements, onUpdateStatus, onUpsertPartnerItem,
   onMarkInvoicePrinted, onAddIssuedStatement,
   onUpdateIssuedStatement,
@@ -242,6 +247,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   });
   const [payAccountId, setPayAccountId] = useState('');
   const [quickPayAccountId, setQuickPayAccountId] = useState('');
+
+  // ── 정기 고정비 생성 ──
+  const [showRecurring, setShowRecurring] = useState(false);
+  const [recurringYm, setRecurringYm] = useState(today().slice(0, 7));
+  const [recurringMsg, setRecurringMsg] = useState('');
+  const [recurringBusy, setRecurringBusy] = useState(false);
   const [payOverWarn, setPayOverWarn] = useState(false);
 
   // ── 수금/지불 내역 상세/수정 모달 ──
@@ -2181,6 +2192,15 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         >
           <Plus size={13} strokeWidth={3}/>대체전표
         </button>
+        {onGenerateRecurringCosts && (
+          <button
+            onClick={() => { setShowRecurring(true); setRecurringYm(today().slice(0, 7)); setRecurringMsg(''); }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-violet-600 text-white hover:bg-violet-700 shadow-sm transition-all"
+            title="정기 고정비 템플릿으로 해당 월 전표를 한 번에 생성"
+          >
+            <RotateCw size={13} strokeWidth={3}/>정기비용
+          </button>
+        )}
         <button
           onClick={() => { setShowQuickPay(true); setQuickPayClientId(''); setQuickPayClientSearch(''); setQuickPayAmount(''); setQuickPayNote(''); setQuickPayDate(new Date().toISOString().slice(0,10)); setQuickPayAccountId(prev => prev || activeCashAccounts[0]?.id || ''); }}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition-all"
@@ -2676,6 +2696,103 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               <div className="flex gap-2">
                 <button onClick={() => setShowExpense(false)} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200 transition-all">취소</button>
                 <button onClick={issue} disabled={expLines.length === 0} className="flex-1 py-2.5 rounded-xl bg-slate-700 text-white text-xs font-black hover:bg-slate-800 disabled:opacity-40 transition-all">발행</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── 정기 고정비 생성 모달 ── */}
+      {showRecurring && (() => {
+        // 해당 월에 유효한 활성 템플릿 (계정과목·기간 조건은 핸들러와 동일하게 판정)
+        const due = fixedCostTemplates.filter(t =>
+          t.active && t.accountCode
+          && (!t.startYm || t.startYm <= recurringYm)
+          && (!t.endYm || recurringYm <= t.endYm)
+        );
+        const alreadyDone = (t: FixedCostTemplate) =>
+          issuedStatements.some(s => (s as any).orderId === `RC-${t.id}-${recurringYm}`);
+        const pending = due.filter(t => !alreadyDone(t));
+        const total = pending.reduce((a, t) => a + t.amount, 0);
+
+        const run = async () => {
+          if (!onGenerateRecurringCosts || pending.length === 0) return;
+          setRecurringBusy(true);
+          try {
+            const n = await onGenerateRecurringCosts(recurringYm);
+            setRecurringMsg(n > 0 ? `${n}건 생성했습니다.` : '새로 생성할 게 없습니다.');
+          } catch (e) {
+            setRecurringMsg(`생성 실패: ${(e as Error)?.message ?? String(e)}`);
+          } finally {
+            setRecurringBusy(false);
+          }
+        };
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setShowRecurring(false)}>
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-black text-slate-800">정기 고정비 전표 생성</h3>
+                <button onClick={() => setShowRecurring(false)} className="text-slate-300 hover:text-slate-500"><X size={18} /></button>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-snug">
+                손익/비용 분석 → 정기비용에 등록한 템플릿으로 해당 월 전표를 한 번에 끊습니다.
+                이미 생성된 건 건너뜁니다. 템플릿 추가·금액 수정은 정기비용 화면에서 하세요.
+              </p>
+
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">대상 월</label>
+                <input type="month" value={recurringYm}
+                  onChange={e => { setRecurringYm(e.target.value); setRecurringMsg(''); }}
+                  className="border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-300" />
+              </div>
+
+              {due.length === 0 ? (
+                <p className="text-[11px] font-bold text-amber-700 bg-amber-50 rounded-xl px-4 py-3">
+                  이 달에 해당하는 정기비용 템플릿이 없습니다. 손익/비용 분석 → 정기비용에서 등록하세요.
+                  <br />감가상각비·퇴직급여충당금도 여기에 등록해두면 매달 자동으로 끊을 수 있습니다.
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  {due.map(t => {
+                    const done = alreadyDone(t);
+                    const ac = accountCodes.find(c => c.code === t.accountCode);
+                    return (
+                      <div key={t.id} className={`flex items-center gap-3 rounded-xl px-4 py-2.5 ${done ? 'bg-slate-50 opacity-50' : 'bg-violet-50/60'}`}>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-black text-slate-800 truncate">{t.name}</p>
+                          <p className="text-[10px] text-slate-400">
+                            {t.accountCode} {ac?.name ?? ''}{t.partnerName ? ` · ${t.partnerName}` : ''}
+                          </p>
+                        </div>
+                        <p className="text-xs font-black text-slate-700 tabular-nums shrink-0">{fmt(t.amount)}</p>
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded shrink-0 ${done ? 'bg-slate-200 text-slate-500' : 'bg-violet-600 text-white'}`}>
+                          {done ? '생성됨' : '생성 예정'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {pending.length > 0 && (
+                <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+                  <span className="text-[11px] font-bold text-slate-400">{pending.length}건 생성 예정</span>
+                  <span className="text-base font-black text-slate-800">합계 {fmt(total)}원</span>
+                </div>
+              )}
+
+              {recurringMsg && (
+                <p className="text-[11px] font-black text-emerald-700 bg-emerald-50 rounded-xl px-4 py-2.5">{recurringMsg}</p>
+              )}
+
+              <div className="flex gap-2">
+                <button onClick={() => setShowRecurring(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200 transition-all">닫기</button>
+                <button onClick={run} disabled={pending.length === 0 || recurringBusy}
+                  className="flex-1 py-2.5 rounded-xl bg-violet-600 text-white text-xs font-black hover:bg-violet-700 disabled:opacity-40 transition-all">
+                  {recurringBusy ? '생성 중…' : `${recurringYm} 전표 생성`}
+                </button>
               </div>
             </div>
           </div>
