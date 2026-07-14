@@ -690,7 +690,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         // 간접법 현금흐름표 — 월별/기간. 계산은 순수 모듈(financials.computeCashFlowMonth)에 위임.
         const addMonth = addMonthStr;
         const manualOf = (ym: string): Partial<CashFlowManual> => ym === cfMonth ? { ...(cashFlowManual.find(m => m.month === ym) ?? {}), ...cfEdit } : (cashFlowManual.find(m => m.month === ym) ?? {});
-        const computeCF = (ym: string) => computeCashFlowMonth(ym, manualOf(ym), { issuedStatements, inventorySnapshots, monthPL, codeToGroup, accountCodes, cashEntries, settlements });
+        const computeCF = (ym: string) => computeCashFlowMonth(ym, manualOf(ym), { issuedStatements, inventorySnapshots, monthPL, codeToGroup, accountCodes, cashEntries, settlements, fixedCosts });
         const baseline = [...cashFlowManual].filter(m => m.openingCash != null).map(m => m.month).sort()[0];
         const openingOf = (ym: string): number => {
           if (!baseline || ym <= baseline) return manualOf(ym).openingCash ?? 0;

@@ -202,7 +202,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [showExpense, setShowExpense] = useState(false);
   const [expDate, setExpDate] = useState(today());
   const [expRows, setExpRows] = useState<ManualRow[]>([{ name: '', spec: '', qty: '1', price: '', isTaxExempt: false }]);
-  const [expDir, setExpDir] = useState<'입금' | '출금'>('출금');
   // ── 전표 추가 필드 ──
   const [tradeNote, setTradeNote] = useState('');       // 전표비고
   const [selectedItemIdx, setSelectedItemIdx] = useState<number | null>(null); // 선택된 품목 행
@@ -406,9 +405,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     () => filterCodesForContext(accountCodes, accountGroups, stmtType === '매출' ? '매출' : '매입'),
     [accountCodes, accountGroups, stmtType],
   );
-  // 비용(자금) 전표는 전부 노출 — 돈이 나가는 이유는 비용·자산·부채 뭐든 될 수 있다.
-  const cashCodes = useMemo(
-    () => filterCodesForContext(accountCodes, accountGroups, '자금'),
+  // 대체전표는 비현금 계정만 — 감가상각·퇴직충당금. 현금이 오간 건 자금원장(장부 탭)으로 간다.
+  const expCodes = useMemo(
+    () => filterCodesForContext(accountCodes, accountGroups, '대체'),
     [accountCodes, accountGroups],
   );
 
@@ -2100,10 +2099,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           <Plus size={13} strokeWidth={3}/>매출전표
         </button>
         <button
-          onClick={() => { setShowExpense(true); setExpDate(today()); setExpDir('출금'); setExpRows([{ name: '', spec: '', qty: '1', price: '', isTaxExempt: false }]); }}
+          onClick={() => { setShowExpense(true); setExpDate(today()); setExpRows([{ name: '', spec: '', qty: '1', price: '', isTaxExempt: true }]); }}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-slate-600 text-white hover:bg-slate-700 shadow-sm transition-all"
+          title="현금도 거래처도 없는 손익 계상 — 감가상각비·퇴직급여충당금"
         >
-          <Plus size={13} strokeWidth={3}/>비용
+          <Plus size={13} strokeWidth={3}/>대체전표
         </button>
         <button
           onClick={() => { setShowQuickPay(true); setQuickPayClientId(''); setQuickPayClientSearch(''); setQuickPayAmount(''); setQuickPayNote(''); setQuickPayDate(new Date().toISOString().slice(0,10)); }}
@@ -2511,26 +2511,27 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
       {/* ── 빠른 수금/지불 모달 ── */}
       {showExpense && (() => {
+        // 대체전표 — 현금도 세금계산서도 없다. 계정과목 필수, 부가세 없음(전액 공급가).
         const expLines = expRows
-          .filter(r => r.name.trim() && Number(String(r.price).replace(/,/g, '')) > 0)
+          .filter(r => r.accountCode && Number(String(r.price).replace(/,/g, '')) > 0)
           .map(r => {
             const amt = Number(String(r.price).replace(/,/g, '')) || 0;
-            const supply = r.isTaxExempt ? amt : Math.round(amt / 1.1);
-            const tax = amt - supply;
-            return { name: r.name.trim(), spec: '', qty: 1, price: amt, supply, tax, total: amt, isTaxExempt: r.isTaxExempt, ...(r.accountCode ? { accountCode: r.accountCode } : {}) };
+            const codeName = accountCodes.find(c => c.code === r.accountCode)?.name ?? '';
+            return {
+              name: r.name.trim() || codeName, spec: '', qty: 1, price: amt,
+              supply: amt, tax: 0, total: amt, isTaxExempt: true, accountCode: r.accountCode!,
+            };
           });
-        const eSupply = expLines.reduce((s, r) => s + r.supply, 0);
-        const eTax = expLines.reduce((s, r) => s + r.tax, 0);
-        const eTotal = eSupply + eTax;
-        const addRow = () => setExpRows(prev => [...prev, { name: '', spec: '', qty: '1', price: '', isTaxExempt: false }]);
+        const eTotal = expLines.reduce((s, r) => s + r.total, 0);
+        const addRow = () => setExpRows(prev => [...prev, { name: '', spec: '', qty: '1', price: '', isTaxExempt: true }]);
         const issue = () => {
           if (expLines.length === 0) return;
           const d = new Date(expDate + 'T00:00:00');
           const stmt: IssuedStatement = {
             id: `stmt-${Date.now()}`, issuedAt: new Date().toISOString(), tradeDate: expDate, type: '비용',
-            partnerId: '', partnerName: expLines[0].name || (expDir === '입금' ? '입금' : '비용'), orderId: '',
-            docNo: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(issuedStatements.length + 1).padStart(4, '0')}`,
-            totalSupply: eSupply, totalTax: eTax, totalAmount: eTotal, items: expLines, cashDir: expDir,
+            partnerId: '', partnerName: expLines[0].name, orderId: '',
+            docNo: `대체${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(issuedStatements.length + 1).padStart(4, '0')}`,
+            totalSupply: eTotal, totalTax: 0, totalAmount: eTotal, items: expLines,
           };
           onAddIssuedStatement?.(stmt);
           setShowExpense(false);
@@ -2539,10 +2540,20 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setShowExpense(false)}>
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-black text-slate-800">비용 · 자금 전표 <span className="text-[11px] font-bold text-slate-400">· 거래처 없음</span></h3>
+                <h3 className="text-sm font-black text-slate-800">대체전표 <span className="text-[11px] font-bold text-slate-400">· 현금 없음 · 거래처 없음</span></h3>
                 <button onClick={() => setShowExpense(false)} className="text-slate-300 hover:text-slate-500"><X size={18} /></button>
               </div>
-              <p className="text-[11px] text-slate-400 leading-snug">경비(은행이자·공과금)·감가상각뿐 아니라 <b>자산취득/매각·차입/상환·증자</b>도 여기서. 계정과목으로 현금흐름표에 자동 분류돼요(자산→투자, 부채·자본→재무).</p>
+              <p className="text-[11px] text-slate-400 leading-snug">
+                현금이 오가지 않는 손익 계상 — <b>감가상각비 · 퇴직급여충당금</b>. 손익에는 잡히고, 현금흐름표에서는 순이익에 다시 가산됩니다.
+                <br />
+                실제로 <b>돈이 움직인 건</b>(기계 구입·차입·상환·이자·공과금) <b>장부 → 현금출납장</b>에 적으세요.
+              </p>
+
+              {expCodes.length === 0 && (
+                <p className="text-[11px] font-bold text-amber-700 bg-amber-50 rounded-xl px-4 py-2.5">
+                  비현금 계정과목이 없습니다. 손익/비용 분석 → 계정 설정에서 감가상각비·퇴직급여충당금을 만들어주세요.
+                </p>
+              )}
 
               <div className="flex items-center gap-3 flex-wrap">
                 <div>
@@ -2550,35 +2561,20 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   <input type="date" value={expDate} onChange={e => setExpDate(e.target.value)}
                     className="border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300" />
                 </div>
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">방향</label>
-                  <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
-                    {(['출금', '입금'] as const).map(dir => (
-                      <button key={dir} type="button" onClick={() => setExpDir(dir)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${expDir === dir ? (dir === '출금' ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white') : 'text-slate-400'}`}>
-                        {dir === '출금' ? '출금 (지출·취득·상환)' : '입금 (매각·차입·증자)'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </div>
 
               <div className="space-y-2">
                 {expRows.map((r, idx) => (
                   <div key={idx} className="flex items-center gap-1.5">
-                    <input value={r.name} onChange={e => setExpRows(prev => prev.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))} placeholder="항목명 (예: 은행이자)"
+                    <input value={r.name} onChange={e => setExpRows(prev => prev.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))} placeholder="적요 (비우면 계정명)"
                       className="flex-1 min-w-0 border border-slate-200 rounded-lg px-2.5 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300" />
                     <select value={r.accountCode || ''} onChange={e => setExpRows(prev => prev.map((x, i) => i === idx ? { ...x, accountCode: e.target.value || undefined } : x))}
                       className="w-24 shrink-0 border border-slate-200 rounded-lg px-1.5 py-2 text-[11px] font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-slate-300">
                       <option value="">계정-</option>
-                      {cashCodes.map(ac => <option key={ac.id} value={ac.code}>{ac.name}</option>)}
+                      {expCodes.map(ac => <option key={ac.id} value={ac.code}>{ac.name}</option>)}
                     </select>
                     <input value={r.price} onChange={e => setExpRows(prev => prev.map((x, i) => i === idx ? { ...x, price: e.target.value.replace(/[^\d]/g, '') } : x))} placeholder="금액" inputMode="numeric"
-                      className="w-24 shrink-0 border border-slate-200 rounded-lg px-2 py-2 text-sm font-black text-right outline-none focus:ring-2 focus:ring-slate-300" />
-                    <button type="button" onClick={() => setExpRows(prev => prev.map((x, i) => i === idx ? { ...x, isTaxExempt: !x.isTaxExempt } : x))}
-                      className={`shrink-0 px-2 py-2 rounded-lg text-[10px] font-black border ${r.isTaxExempt ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-blue-50 text-blue-600 border-blue-200'}`}>
-                      {r.isTaxExempt ? '면세' : '과세'}
-                    </button>
+                      className="flex-1 min-w-0 border border-slate-200 rounded-lg px-2 py-2 text-sm font-black text-right outline-none focus:ring-2 focus:ring-slate-300" />
                     {expRows.length > 1 && <button type="button" onClick={() => setExpRows(prev => prev.filter((_, i) => i !== idx))} className="shrink-0 text-slate-300 hover:text-rose-400"><X size={14} /></button>}
                   </div>
                 ))}
@@ -2586,7 +2582,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               </div>
 
               <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-                <div className="text-[11px] font-bold text-slate-400">공급가 {eSupply.toLocaleString()} · 세액 {eTax.toLocaleString()}</div>
+                <div className="text-[11px] font-bold text-slate-400">부가세 없음 · 현금 이동 없음</div>
                 <div className="text-base font-black text-slate-800">합계 {eTotal.toLocaleString()}원</div>
               </div>
               <div className="flex gap-2">

@@ -422,6 +422,7 @@ export interface FixedCostEntry {
   category: FixedCostCategory;
   label: string;               // 세부 항목명 (예: '공장 임대료', '화재보험')
   amount: number;
+  accountCode?: string;        // 계정과목 — 비현금(감가상각·퇴직충당금) 판정에 쓰인다
   note?: string;
   createdAt: string;
 }
@@ -683,6 +684,11 @@ export interface AccountCode {
   code: string;        // 계정코드 문자열
   name: string;        // 계정명 (예: '원료매입')
   groupId?: string;    // 소속 AccountGroup ID
+  /**
+   * 비현금 비용 — 손익에는 잡히지만 현금이 나가지 않는다 (감가상각비, 퇴직급여충당금).
+   * 현금흐름표(간접법)에서 순이익에 다시 가산한다.
+   */
+  noncash?: boolean;
   note?: string;
 }
 

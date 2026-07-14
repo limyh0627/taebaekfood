@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { makeCodeToGroup, computeMonthPL, computeCashFlowMonth, addMonthStr, filterCodesForContext } from './financials';
+import { makeCodeToGroup, computeMonthPL, computeCashFlowMonth, addMonthStr, filterCodesForContext, isNoncashCode } from './financials';
 import type { IssuedStatement, AccountCode, AccountGroup, FixedCostEntry, CashEntry } from '../../shared/types';
 
 describe('filterCodesForContext', () => {
@@ -30,6 +30,19 @@ describe('filterCodesForContext', () => {
   it('그룹 미지정 계정은 감추지 않는다 (기존 전표를 고칠 수 있어야 한다)', () => {
     expect(names('매출')).toContain('605');
     expect(names('매입')).toContain('605');
+  });
+
+  // 대체전표는 현금도 거래처도 없는 분개 — 비현금 계정만 고를 수 있어야 오용이 막힌다.
+  it('대체전표에는 비현금 계정만 뜬다', () => {
+    const withNoncash: AccountCode[] = [
+      ...cs,
+      { id: '818', code: '818', name: '감가상각비', groupId: 'ag-cogs', noncash: true },
+      { id: '535', code: '535', name: '퇴직급여충당금', groupId: 'ag-cogs', noncash: true },
+    ];
+    const out = filterCodesForContext(withNoncash, gs, '대체').map(c => c.code);
+    expect(out).toEqual(['818', '535']);
+    expect(out).not.toContain('520');  // 전기세 — 현금 나감
+    expect(out).not.toContain('260');  // 단기차입금 — 자금원장으로
   });
 });
 
@@ -182,5 +195,53 @@ describe('computeCashFlowMonth — 간접법 라인', () => {
       settlements: [{ id: 's1', cashEntryId: 'c1', statementId: buy.id, amount: 6000, createdAt: '' }],
     });
     expect(cf.apChg).toBe(1000);  // 10000 − (3000 + 6000)
+  });
+});
+
+// 감가상각·퇴직충당금은 손익에선 빠지지만 현금은 안 나간다 → 현금흐름표에서 순이익에 다시 가산.
+describe('비현금 비용 (감가상각 · 퇴직급여충당금)', () => {
+  const noncashCodes: AccountCode[] = [
+    { id: '818', code: '818', name: '감가상각비', groupId: 'g-sgna', noncash: true },
+    { id: '535', code: '535', name: '퇴직급여충당금', groupId: 'g-sgna', noncash: true },
+    { id: '510', code: '510', name: '임대료', groupId: 'g-sgna' },   // 현금 나감
+    { id: '806', code: '806', name: '구감가상각', groupId: 'g-sgna' }, // 플래그 없음 → 이름 폴백
+  ];
+  const gs: AccountGroup[] = [{ id: 'g-sgna', name: '판관비', type: '비용', plLine: 'sgna' } as AccountGroup];
+  const c2g = makeCodeToGroup(noncashCodes, gs, gs);
+  const monthPL = () => ({ sales: 0, cogs: 0, sgna: 0, fixed: 0, grossProfit: 0, operatingProfit: 0, otherIncome: 0, otherExpense: 0, netIncome: -1500 });
+  const fc = (label: string, amount: number, accountCode?: string): FixedCostEntry =>
+    ({ id: label, yearMonth: '2026-07', category: '기타', label, amount, accountCode, createdAt: '' });
+
+  it('noncash 계정인 정기비용을 순이익에 다시 가산한다', () => {
+    const cf = computeCashFlowMonth('2026-07', {}, {
+      issuedStatements: [], inventorySnapshots: [], monthPL, codeToGroup: c2g, accountCodes: noncashCodes,
+      fixedCosts: [fc('감가상각', 1000, '818'), fc('퇴직충당금', 500, '535')],
+    });
+    expect(cf.dep).toBe(1500);
+    expect(cf.op).toBe(0);   // 순이익 −1500 + 비현금 1500 = 0 (현금은 안 움직였다)
+  });
+
+  it('현금이 나가는 정기비용(임대료)은 가산하지 않는다', () => {
+    const cf = computeCashFlowMonth('2026-07', {}, {
+      issuedStatements: [], inventorySnapshots: [], monthPL, codeToGroup: c2g, accountCodes: noncashCodes,
+      fixedCosts: [fc('임대료', 1000, '510')],
+    });
+    expect(cf.dep).toBe(0);
+    expect(cf.op).toBe(-1500);
+  });
+
+  it('계정과목이 없는 정기비용은 현금성으로 본다', () => {
+    const cf = computeCashFlowMonth('2026-07', {}, {
+      issuedStatements: [], inventorySnapshots: [], monthPL, codeToGroup: c2g, accountCodes: noncashCodes,
+      fixedCosts: [fc('뭔가', 1000)],
+    });
+    expect(cf.dep).toBe(0);
+  });
+
+  it('noncash 플래그가 없으면 계정명으로 폴백한다 (구 데이터)', () => {
+    expect(isNoncashCode('806', noncashCodes)).toBe(true);   // 이름에 '감가상각'
+    expect(isNoncashCode('510', noncashCodes)).toBe(false);
+    expect(isNoncashCode('818', noncashCodes)).toBe(true);   // 플래그
+    expect(isNoncashCode(undefined, noncashCodes)).toBe(false);
   });
 });

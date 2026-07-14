@@ -33,15 +33,20 @@ export function makeCodeToGroup(
  * 전표 문맥에 맞는 계정과목만 추린다 — 매출전표에 '단기차입금'이 뜨는 걸 막는다.
  * 계정과목 마스터는 하나로 두되, 고르는 자리에서 성격으로 거른다.
  *
- * 매출: 수익 / 매입: 비용·자산 / 자금: 전부(돈이 나가는 이유는 뭐든 될 수 있다).
+ *  매출: 수익
+ *  매입: 비용·자산
+ *  자금: 전부 (돈이 나가는 이유는 비용·자산·부채 뭐든 될 수 있다)
+ *  대체: 비현금 계정만 (감가상각·퇴직충당금) — 현금도 거래처도 없는 분개라 오용을 원천 차단한다
+ *
  * 그룹이 없는 계정은 감추지 않고 통과시킨다 — 숨겨버리면 기존 전표를 고칠 수도 없다.
  */
 export function filterCodesForContext(
   codes: AccountCode[],
   groups: AccountGroup[],
-  context: '매출' | '매입' | '자금',
+  context: '매출' | '매입' | '자금' | '대체',
 ): AccountCode[] {
   if (context === '자금') return codes;
+  if (context === '대체') return codes.filter(c => isNoncashCode(c.code, codes));
   const allow: AccountGroup['type'][] = context === '매출' ? ['수익'] : ['비용', '자산'];
   const groupType = new Map(groups.map(g => [g.id, g.type]));
   return codes.filter(c => {
@@ -115,6 +120,18 @@ export interface CashFlowMonth {
  * 매입채무는 부채지만 영업이고, 선급금은 자산이지만 영업이다. 영업성 자산·부채는
  * AccountGroup.cfSection에 'operating'을 박아서 이 추측에서 빼내야 한다.
  */
+/**
+ * 비현금 비용인가 — 손익엔 잡히지만 현금이 안 나가는 것(감가상각비, 퇴직급여충당금).
+ * 현금흐름표에서 순이익에 다시 가산해야 한다.
+ * 계정에 noncash 플래그가 있으면 그걸 쓰고, 없으면 계정명으로 폴백(구 데이터).
+ */
+export function isNoncashCode(code: string | undefined, accountCodes: AccountCode[] = []): boolean {
+  if (!code) return false;
+  const ac = accountCodes.find(a => a.code === code);
+  if (ac?.noncash != null) return ac.noncash;
+  return /감가상각|퇴직급여|퇴직충당|충당금/.test(ac?.name ?? '');
+}
+
 export function cfSectionOf(g?: AccountGroup): AccountGroupCfSection | undefined {
   if (!g) return undefined;
   if (g.cfSection) return g.cfSection;
@@ -146,11 +163,13 @@ export function computeCashFlowMonth(
     accountCodes?: AccountCode[];
     cashEntries?: CashEntry[];
     settlements?: Settlement[];
+    fixedCosts?: FixedCostEntry[];
   },
 ): CashFlowMonth {
   const { issuedStatements, inventorySnapshots, monthPL, codeToGroup, accountCodes } = deps;
   const cashEntries = deps.cashEntries ?? [];
   const settlements = deps.settlements ?? [];
+  const fixedCosts = deps.fixedCosts ?? [];
 
   const snapVal = (m: string) => inventorySnapshots.find(s => s.yearMonth === m)?.value;
   const accrual = (m: string, type: '매출' | '매입') => issuedStatements.filter(s => s.type === type && s.tradeDate.startsWith(m)).reduce((a, s) => a + s.totalAmount, 0);
@@ -177,7 +196,6 @@ export function computeCashFlowMonth(
   const arInc = accrual(ym, '매출') - payIn(ym, '매출');          // 매출채권 증가
   const apChg = accrual(ym, '매입') - payIn(ym, '매입');          // 매입채무 증감(+증가)
 
-  const nameOf = (code?: string) => accountCodes?.find(a => a.code === code)?.name;
   let assetOut = 0, assetIn = 0, finInStmt = 0, finOutStmt = 0, depStmt = 0;
 
   // 자금원장 — 실제로 돈이 움직인 기록에서 투자·재무를 집계
@@ -191,13 +209,15 @@ export function computeCashFlowMonth(
     }
   }
 
-  // 구 '비용'(자금) 전표 — 자금원장으로 이관하기 전까지 같은 규칙으로 함께 집계
+  // '비용' 전표 — 정기비용 자동 생성분(대체전표 성격: 감가상각·퇴직충당금)과
+  // 아직 자금원장으로 안 옮긴 구 수동 비용/자금 전표가 섞여 있다.
+  // 비현금 계정은 순이익에 가산하고, 자산·부채 계정은 투자·재무로 보낸다.
   if (codeToGroup) {
     for (const s of issuedStatements) {
       if (s.type !== '비용' || !(s.tradeDate || '').startsWith(ym)) continue;
       const inflow = s.cashDir === '입금';
       for (const it of s.items) {
-        if (nameOf(it.accountCode)?.includes('감가상각')) depStmt += it.total;
+        if (isNoncashCode(it.accountCode, accountCodes)) { depStmt += it.total; continue; }
         const section = cfSectionOf(codeToGroup(it.accountCode));
         if (section === 'investing') { if (inflow) assetIn += it.total; else assetOut += it.total; }
         else if (section === 'financing') { if (inflow) finInStmt += it.total; else finOutStmt += it.total; }
@@ -205,7 +225,12 @@ export function computeCashFlowMonth(
     }
   }
 
-  const dep = depStmt + (manual.depreciation || 0);
+  // 수동 입력한 정기비용(fixedCosts) 중 비현금 계정도 가산 — 손익에서만 빠지고 현금은 안 나갔다.
+  const fixedNoncash = fixedCosts
+    .filter(c => c.yearMonth === ym && isNoncashCode(c.accountCode, accountCodes))
+    .reduce((a, c) => a + c.amount, 0);
+
+  const dep = depStmt + fixedNoncash + (manual.depreciation || 0);
   const prepaid = manual.prepaidInc || 0;
   const op = netAdj + dep - invInc - arInc + apChg - prepaid;
   const assetBuy = assetOut + (manual.assetBuy || 0);
