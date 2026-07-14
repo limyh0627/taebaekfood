@@ -297,9 +297,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       return;
     }
 
+    // 전표의 계정과목을 자금 기록에 물려준다 — 이게 있어야 현금흐름표가 성격을 안다.
+    // 기계 구입(206 기계장치) 지불이면 투자활동으로, 원료 매입(500)이면 영업활동으로 간다.
+    // 여러 계정이 섞인 전표면 성격을 하나로 못 정하므로 비워둔다(= 영업).
+    const allCodes = new Set(
+      allocations.flatMap(({ stmt }) => (stmt.items ?? []).map(i => i.accountCode).filter(Boolean)),
+    );
+    const payCode = allCodes.size === 1 ? [...allCodes][0] : undefined;
+
     const entryId = `cash-${Date.now()}`;
     onAddCashEntry({
       id: entryId,
+      ...(payCode ? { accountCode: payCode } : {}),
       date: opts.date,
       cashAccountId: acctId,
       dir: first.type === '매입' ? '출금' : '입금',

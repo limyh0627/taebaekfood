@@ -172,19 +172,38 @@ export function computeCashFlowMonth(
   const fixedCosts = deps.fixedCosts ?? [];
 
   const snapVal = (m: string) => inventorySnapshots.find(s => s.yearMonth === m)?.value;
-  const accrual = (m: string, type: '매출' | '매입') => issuedStatements.filter(s => s.type === type && s.tradeDate.startsWith(m)).reduce((a, s) => a + s.totalAmount, 0);
+
+  /**
+   * 영업성 거래인가 — 매출채권·매입채무에 넣을 것인가.
+   * 기계 구입처럼 자산 계정만 달린 매입전표는 영업이 아니라 투자다. 여기에 넣으면
+   * 미지급금이 영업활동에 잡히고 자금원장에서 투자활동에도 잡혀 이중계상된다.
+   * 실제 지급액은 자금원장이 투자활동으로 처리한다.
+   */
+  const isOperating = (s: IssuedStatement): boolean => {
+    if (!codeToGroup) return true;
+    const types = (s.items ?? []).map(i => codeToGroup(i.accountCode)?.type).filter(Boolean);
+    if (types.length === 0) return true;                       // 계정 없음 → 영업으로 본다
+    return types.some(t => t === '비용' || t === '수익');        // 손익 계정이 하나라도 있으면 영업
+  };
+  const operating = issuedStatements.filter(isOperating);
+  const opIds = new Set(operating.map(s => s.id));
+
+  const accrual = (m: string, type: '매출' | '매입') =>
+    operating.filter(s => s.type === type && s.tradeDate.startsWith(m)).reduce((a, s) => a + s.totalAmount, 0);
 
   // 결제 = 전표에 매달린 구 payments[] + 자금원장 매칭(settlements). 둘을 합쳐 하나의 결제 소스로 본다.
   const stmtType = new Map(issuedStatements.map(s => [s.id, s.type]));
   const entryDate = new Map(cashEntries.map(e => [e.id, e.date]));
   const payIn = (m: string, type: '매출' | '매입') => {
-    const legacy = issuedStatements
+    const legacy = operating
       .filter(s => s.type === type)
       .flatMap(s => s.payments ?? [])
       .filter(p => (p.date || '').startsWith(m))
       .reduce((a, p) => a + p.amount, 0);
     const matched = settlements
-      .filter(st => stmtType.get(st.statementId) === type && (entryDate.get(st.cashEntryId) || '').startsWith(m))
+      .filter(st => opIds.has(st.statementId)
+        && stmtType.get(st.statementId) === type
+        && (entryDate.get(st.cashEntryId) || '').startsWith(m))
       .reduce((a, st) => a + st.amount, 0);
     return legacy + matched;
   };

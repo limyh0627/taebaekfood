@@ -198,6 +198,62 @@ describe('computeCashFlowMonth — 간접법 라인', () => {
   });
 });
 
+// 기계를 매입전표로 끊고 지불처리하면, 미지급금이 영업활동에 잡히고 자금원장이 투자활동에도
+// 잡아서 이중계상되기 쉽다. 자산만 달린 매입전표는 영업(매입채무)에서 빼야 한다.
+describe('자산 매입 (기계 구입) — 영업/투자 이중계상 방지', () => {
+  const gs: AccountGroup[] = [
+    { id: 'g-asset', name: '자산', type: '자산' } as AccountGroup,
+    { id: 'g-cogs', name: '총매출원가', type: '비용', plLine: 'cogs' } as AccountGroup,
+  ];
+  const cds: AccountCode[] = [
+    { id: '206', code: '206', name: '기계장치', groupId: 'g-asset' },
+    { id: '500', code: '500', name: '원료매입', groupId: 'g-cogs' },
+  ];
+  const c2g = makeCodeToGroup(cds, gs, gs);
+  const monthPL = () => ({ sales: 0, cogs: 0, sgna: 0, fixed: 0, grossProfit: 0, operatingProfit: 0, otherIncome: 0, otherExpense: 0, netIncome: 0 });
+  const cash = (id: string, date: string, dir: '입금' | '출금', amount: number, accountCode?: string): CashEntry =>
+    ({ id, date, cashAccountId: 'a1', dir, amount, accountCode, createdAt: '' });
+
+  it('기계 매입전표 + 지불 → 투자활동 −5000만 한 번만', () => {
+    const machine = stmt('매입', '2026-07-01', 50_000_000, '206');
+    const cf = computeCashFlowMonth('2026-07', {}, {
+      issuedStatements: [machine], inventorySnapshots: [], monthPL, codeToGroup: c2g, accountCodes: cds,
+      cashEntries: [cash('c1', '2026-07-20', '출금', 50_000_000, '206')],
+      settlements: [{ id: 's1', cashEntryId: 'c1', statementId: machine.id, amount: 50_000_000, createdAt: '' }],
+    });
+    expect(cf.apChg).toBe(0);            // 영업 매입채무에 안 잡힘
+    expect(cf.assetBuy).toBe(50_000_000);
+    expect(cf.inv).toBe(-50_000_000);
+    expect(cf.net).toBe(-50_000_000);    // 이중계상이면 −1억이 됐을 것
+  });
+
+  it('외상으로 사고 다음 달 지불해도 이중계상 안 된다', () => {
+    const machine = stmt('매입', '2026-07-01', 50_000_000, '206');
+    const july = computeCashFlowMonth('2026-07', {}, {
+      issuedStatements: [machine], inventorySnapshots: [], monthPL, codeToGroup: c2g, accountCodes: cds,
+    });
+    expect(july.apChg).toBe(0);          // 미지급금이 영업활동을 부풀리지 않는다
+    expect(july.net).toBe(0);
+
+    const aug = computeCashFlowMonth('2026-08', {}, {
+      issuedStatements: [machine], inventorySnapshots: [], monthPL, codeToGroup: c2g, accountCodes: cds,
+      cashEntries: [cash('c1', '2026-08-05', '출금', 50_000_000, '206')],
+      settlements: [{ id: 's1', cashEntryId: 'c1', statementId: machine.id, amount: 50_000_000, createdAt: '' }],
+    });
+    expect(aug.apChg).toBe(0);
+    expect(aug.net).toBe(-50_000_000);   // 실제 나간 달에 투자활동으로 한 번만
+  });
+
+  it('원료 매입은 그대로 영업 매입채무로 잡힌다', () => {
+    const raw = stmt('매입', '2026-07-01', 10_000_000, '500');
+    const cf = computeCashFlowMonth('2026-07', {}, {
+      issuedStatements: [raw], inventorySnapshots: [], monthPL, codeToGroup: c2g, accountCodes: cds,
+    });
+    expect(cf.apChg).toBe(10_000_000);   // 아직 안 갚음 → 매입채무 증가
+    expect(cf.assetBuy).toBe(0);
+  });
+});
+
 // 감가상각·퇴직충당금은 손익에선 빠지지만 현금은 안 나간다 → 현금흐름표에서 순이익에 다시 가산.
 describe('비현금 비용 (감가상각 · 퇴직급여충당금)', () => {
   const noncashCodes: AccountCode[] = [
