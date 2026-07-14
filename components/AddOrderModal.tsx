@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, LayoutGrid, Layers } from 'lucide-react';
 import { Item, PartnerItem, OrderItem, Order, Partner, OrderSource, OrderPallet, PalletStock, ShippingRule } from '../types';
+import { updateItem as updateItemDoc } from '../src/shared/services/firebaseService';
 
 interface AddOrderModalProps {
   items: Item[];
@@ -166,6 +167,25 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
         return diff !== 0 ? diff : a.name.localeCompare(b.name, 'ko');
       });
   }, [products, selectedClient, shippingRules]);
+
+  // 박스 개봉 — 낱개 부족 시 박스 −1 → 낱개 +count (재고는 라이브 구독으로 즉시 갱신)
+  const [unpacking, setUnpacking] = useState(false);
+  const handleUnpack = async (box: Item, target: Item) => {
+    const count = box.unpackTo?.count ?? 0;
+    if (count <= 0 || unpacking) return;
+    if ((box.stock ?? 0) < 1) { alert(`${box.name} 재고(박스)가 없습니다.`); return; }
+    if (!confirm(`${box.name} 1박스를 개봉해 "${target.name}" ${count}개로 전환할까요?\n(${box.name} −1박스, ${target.name} +${count}개)`)) return;
+    setUnpacking(true);
+    try {
+      await updateItemDoc('items', box.id, { stock: (box.stock ?? 0) - 1 });
+      await updateItemDoc('items', target.id, { stock: (target.stock ?? 0) + count });
+    } catch (err) {
+      console.error('[개봉] 실패:', err);
+      alert('개봉 처리에 실패했습니다. 잠시 후 다시 시도해주세요.');
+    } finally {
+      setUnpacking(false);
+    }
+  };
 
   // 용량 필터 — 거래처 품목에 존재하는 용량들만 버튼으로 노출
   const [volumeFilter, setVolumeFilter] = useState<string | null>(null);
@@ -462,6 +482,32 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
             <span className="text-[9px] font-black text-indigo-500">× {uPerBox}개 = {totalUnits}개</span>
           </div>
         )}
+
+        {/* 낱개 재고 부족 → 박스 개봉 안내 (unpackTo로 이 품목을 채우는 박스 품목 중 선택) */}
+        {(() => {
+          const full = items.find(i => i.id === product.id);
+          if (!full) return null;
+          const sources = items.filter(b => !b.archived && b.unpackTo?.itemId === full.id);
+          if (sources.length === 0) return null;
+          const shortBy = totalUnits - (full.stock ?? 0);
+          if (shortBy <= 0) return null;
+          return (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-2.5 py-2 space-y-1.5">
+              <p className="text-[10px] font-black text-amber-700">낱개 재고 {full.stock ?? 0}개 · {shortBy}개 부족 — 박스를 개봉하세요</p>
+              <div className="flex flex-wrap gap-1">
+                {sources.map(box => (
+                  <button
+                    key={box.id} type="button" disabled={unpacking || (box.stock ?? 0) < 1}
+                    onClick={(e) => { e.stopPropagation(); handleUnpack(box, full); }}
+                    className="text-[10px] font-black px-2 py-1 rounded-lg bg-white border border-amber-300 text-amber-700 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {box.name} 개봉 +{box.unpackTo!.count} <span className="opacity-60">(박스 {box.stock ?? 0})</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     );
   };

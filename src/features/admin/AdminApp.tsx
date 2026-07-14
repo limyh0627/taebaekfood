@@ -384,6 +384,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       for (const item of o.items) {
         const prod = allItems.find(p => p.id === item.itemId);
         if (!prod || prod.category !== 'product') continue;
+        if (prod.procureType === '완사입') continue; // 완포장 사입품은 원료 소모 없음
         const prodKey = prod.품목 || prod.name;
         // Firestore BOM 우선, 없으면 하드코딩 fallback. phantom 반제품은 원료로 재귀 전개.
         const formula = buildFormula(prodKey);
@@ -471,6 +472,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // 신규 주문 등록 시 부자재 부족 여부 체크 후 확인사항 등록
   const checkAndAlertShortage = async (orderItems: Order['items'], partnerId?: string) => {
     const usage: Record<string, { name: string; needed: number; unit: string }> = {};
+    const rawUsageKg: Record<string, number> = {}; // 원료식(BOM) 기반 원료 소요량(kg) — 홀더(벌크·1kg포) 재고와 비교
     for (const item of orderItems) {
       const product = allItems.find(p => p.id === item.itemId);
       if (!product) continue;
@@ -488,6 +490,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
       }
 
       if (product.category !== 'product') continue;
+      if (product.procureType === '완사입') continue; // 완포장 사입품 — 원료 소모 없음(자기 재고 차감)
+
+      // 원료식(item_formula/PRODUCT_FORMULA) 기반 원료 kg 소요 집계 — 부자재와 별도 경로
+      for (const f of buildFormula(product.품목 || product.name)) {
+        const kg = toKg(product.spec || '', f.raw, item.quantity) * f.ratio;
+        if (kg > 0) rawUsageKg[f.raw] = (rawUsageKg[f.raw] ?? 0) + kg;
+      }
 
       // 거래처별 포장 설정에서 박스/테이프 조회 (shippingRules 기반)
       const rule = partnerId ? shippingRules.find(r => r.item_id === product.id && r.partner_id === partnerId) : null;
@@ -511,6 +520,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
         const sub = submaterials.find(sm => sm.id === s.id);
         if (!sub || sub.category === 'box' || sub.category === 'tape' ||
             (sub.category === 'submaterial' && (sub.subtype === '박스' || sub.subtype === '테이프'))) continue;
+        // 원료 홀더(raw/wip)는 kg 단위라 '개' 집계가 틀림 → 위 원료식(kg) 경로에서 체크
+        if (sub.category === 'raw' || sub.category === 'wip') continue;
         usage[sub.id] = { name: sub.name, needed: (usage[sub.id]?.needed ?? 0) + item.quantity, unit: '개' };
       }
     }
@@ -538,6 +549,34 @@ const AdminApp: React.FC<AdminAppProps> = ({
         requestedAt: new Date().toISOString(),
       });
       await addItem('notifications', { type: 'confirmation', title: '확인사항 발생', body: `${data.name} ${shortage}${data.unit} 부족 — 발주 필요`, readBy: [], createdAt: new Date().toISOString() } as Omit<AppNotification,'id'>);
+    }
+
+    // 원료 홀더(벌크·1kg포 등) 부족 체크 — 원료식 kg 기준 (로트 합계 우선)
+    const isRawHolderItem = (i: Item) => i.category === 'raw' || (i.category === 'wip' && i.unit !== '개');
+    const round1 = (n: number) => Math.round(n * 10) / 10;
+    for (const [material, neededKg] of Object.entries(rawUsageKg)) {
+      const holder = allItems.find(i => isRawHolderItem(i) && baseRawName(i.name) === material);
+      if (!holder) continue;
+      const stockKg = holder.lots?.length ? lotKgRemaining(holder.lots) : unitToKg(holder.stock ?? 0, material);
+      if (neededKg <= stockKg) continue;
+      const alreadyExists = adjustmentRequests.some(
+        r => r.itemId === holder.id && r.type === 'reorder_alert' && r.status === 'pending'
+      );
+      if (alreadyExists) continue;
+      const shortageKg = round1(neededKg - stockKg);
+      await addItem('adjustmentRequests', {
+        id: `REORDER-${holder.id}-${Date.now()}`,
+        itemId: holder.id,
+        itemName: holder.name,
+        originalQuantity: round1(stockKg),
+        requestedQuantity: shortageKg,
+        type: 'reorder_alert',
+        unit: 'kg',
+        reason: `신규 주문 소요량 ${round1(neededKg)}kg, 재고 ${round1(stockKg)}kg → ${shortageKg}kg 부족. 발주 필요.`,
+        status: 'pending',
+        requestedAt: new Date().toISOString(),
+      });
+      await addItem('notifications', { type: 'confirmation', title: '확인사항 발생', body: `${holder.name} ${shortageKg}kg 부족 — 발주 필요`, readBy: [], createdAt: new Date().toISOString() } as Omit<AppNotification,'id'>);
     }
   };
 
@@ -1417,6 +1456,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     isAdmin={isAdmin}
                     onUpdateSubmaterial={(id, data) => updateItem('items', id, data)}
                     onProcessReturn={handleProcessReturn}
+                    onLinkInbound={(itemId, partnerId) => handleUpsertPartnerItem({ id: `${itemId}_${partnerId}_in`, itemId, partnerId, Direction: 'in' } as PartnerItem, 'in')}
                     initialTab="입고"
                   />
                 </React.Suspense>
@@ -1434,6 +1474,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     isAdmin={isAdmin}
                     onUpdateSubmaterial={(id, data) => updateItem('items', id, data)}
                     onProcessReturn={handleProcessReturn}
+                    onLinkInbound={(itemId, partnerId) => handleUpsertPartnerItem({ id: `${itemId}_${partnerId}_in`, itemId, partnerId, Direction: 'in' } as PartnerItem, 'in')}
                     initialTab="반품"
                   />
                 </React.Suspense>

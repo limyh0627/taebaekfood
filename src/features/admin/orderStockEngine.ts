@@ -33,7 +33,8 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
 
   const isGoodsItem = (p: Item) =>
     p.subtype === '향미유' || p.subtype === '고춧가루' ||
-    p.category === '향미유' || p.category === '고춧가루' || p.category === 'goods';
+    p.category === '향미유' || p.category === '고춧가루' || p.category === 'goods' ||
+    p.procureType === '완사입'; // 완포장 사입품 — 생산 없이 출고 시 자기 재고만 차감
   const goodsShipQty = (item: OrderItem, product: Item) => {
     const uPerBox = item.unitsPerBox || product.defaultBoxConfig?.unitsPerBox || product.boxSize || 12;
     return item.isBoxUnit && item.boxQuantity ? item.boxQuantity * uPerBox : item.quantity;

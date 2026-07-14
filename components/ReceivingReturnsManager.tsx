@@ -9,7 +9,7 @@ import jsQR from 'jsqr';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../src/shared/firebase';
-import { addItem, updateItem, deleteItem, subscribeToCollection } from '../src/shared/services/firebaseService';
+import { addItem, updateItem, deleteItem, subscribeToCollection, setDocument } from '../src/shared/services/firebaseService';
 import {
   SubmaterialComponent, PurchaseOrder, PurchaseOrderItem, QrMapping,
   IssuedStatement, IssuedStatementItem, ReturnRequest, ReturnItem, ReturnReason,
@@ -45,6 +45,8 @@ interface ReceivingReturnsManagerProps {
   onUpdateSubmaterial: (id: string, data: Partial<SubmaterialComponent>) => void;
   onProcessReturn: (req: ReturnRequest) => Promise<void>;
   initialTab?: MainTab;
+  // 선입고 품목추가 연결 — partner_item은 라이브 구독이 아니라 부모의 낙관적 갱신 필요
+  onLinkInbound?: (itemId: string, partnerId: string) => void | Promise<void>;
 }
 
 const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
@@ -58,6 +60,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   onUpdateSubmaterial,
   onProcessReturn,
   initialTab = '입고',
+  onLinkInbound,
 }) => {
   // Compute derived variables
   const partnerIn = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
@@ -110,6 +113,24 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   const [inboundPartnerSaving, setSupplierSaving] = useState(false);
   // 로컬 제거 (Firestore 반영 전 즉시 숨김용)
   const [removedItemKeys, setRemovedItemKeys] = useState<Set<string>>(new Set());
+  const [addItemSearch, setAddItemSearch] = useState(''); // 선입고 패널 품목 추가 검색
+
+  // 선입고 패널에서 품목을 이 거래처의 매입 연결(partner_item, Direction=in)로 추가
+  // partner_item은 라이브 구독이 아니므로 부모(onLinkInbound)의 낙관적 갱신을 우선 사용 — 즉시 목록 반영
+  const linkItemToSupplier = async (partner: Partner, item: Item) => {
+    try {
+      if (onLinkInbound) {
+        await onLinkInbound(item.id, partner.id);
+      } else {
+        const id = `${item.id}_${partner.id}_in`;
+        await setDocument('partner_item', id, { id, itemId: item.id, partnerId: partner.id, Direction: 'in' });
+      }
+      setAddItemSearch('');
+    } catch (e) {
+      console.error('[선입고] 품목 연결 실패:', e);
+      alert('품목 연결에 실패했습니다.');
+    }
+  };
 
   // ── 전표 발행 모달 ──
   interface StatementDraftItem { name: string; qty: string; price: string; unit: string; isTaxExempt: boolean; }
@@ -992,6 +1013,42 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                             </div>
                           ) : null;
                         })()}
+
+                        {/* 품목 추가 — 검색해 선택하면 이 거래처 매입 품목으로 연결됨 */}
+                        <div className="space-y-1.5">
+                          <p className="text-xs font-black text-slate-500 uppercase tracking-widest">품목 추가</p>
+                          <div className="relative">
+                            <input
+                              value={addItemSearch}
+                              onChange={e => setAddItemSearch(e.target.value)}
+                              placeholder="품목명 검색 — 선택하면 이 거래처 매입 품목으로 연결됩니다"
+                              className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                            />
+                            {addItemSearch.trim() && (
+                              <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-auto">
+                                {(() => {
+                                  const linkedIds = new Set(linkedItems.map(li => li.product?.id ?? li.sub?.id).filter(Boolean));
+                                  const q = addItemSearch.trim().toLowerCase();
+                                  const cands = items
+                                    .filter(p => !p.archived && !linkedIds.has(p.id) && p.name.toLowerCase().includes(q))
+                                    .slice(0, 20);
+                                  return cands.length === 0
+                                    ? <p className="px-3 py-2.5 text-sm text-slate-400">검색 결과 없음</p>
+                                    : cands.map(p => (
+                                      <button
+                                        key={p.id}
+                                        onMouseDown={() => linkItemToSupplier(inboundPartner, p)}
+                                        className="w-full px-3 py-2.5 text-left text-sm hover:bg-teal-50 transition-colors flex items-center justify-between gap-2"
+                                      >
+                                        <span className="font-bold text-slate-700 truncate">{p.name}</span>
+                                        <span className="text-[10px] text-slate-400 shrink-0">{p.category}{p.spec ? ` · ${p.spec}` : ''}</span>
+                                      </button>
+                                    ));
+                                })()}
+                              </div>
+                            )}
+                          </div>
+                        </div>
 
                         <div>
                           <p className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">비고</p>
