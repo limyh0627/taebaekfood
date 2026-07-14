@@ -1,6 +1,37 @@
 import { describe, it, expect } from 'vitest';
-import { makeCodeToGroup, computeMonthPL, computeCashFlowMonth, addMonthStr } from './financials';
+import { makeCodeToGroup, computeMonthPL, computeCashFlowMonth, addMonthStr, filterCodesForContext } from './financials';
 import type { IssuedStatement, AccountCode, AccountGroup, FixedCostEntry } from '../../shared/types';
+
+describe('filterCodesForContext', () => {
+  const gs: AccountGroup[] = [
+    { id: 'ag-revenue', name: '총매출', type: '수익' } as AccountGroup,
+    { id: 'ag-cogs', name: '총매출원가', type: '비용' } as AccountGroup,
+    { id: 'ag-asset', name: '자산', type: '자산' } as AccountGroup,
+    { id: 'ag-liability', name: '부채', type: '부채' } as AccountGroup,
+  ];
+  const cs: AccountCode[] = [
+    { id: '800', code: '800', name: '일반매출', groupId: 'ag-revenue' },
+    { id: '520', code: '520', name: '전기세', groupId: 'ag-cogs' },
+    { id: '206', code: '206', name: '기계장치', groupId: 'ag-asset' },
+    { id: '260', code: '260', name: '단기차입금', groupId: 'ag-liability' },
+    { id: '605', code: '605', name: '운임' },                       // 그룹 미지정
+  ];
+  const names = (ctx: '매출' | '매입' | '자금') => filterCodesForContext(cs, gs, ctx).map(c => c.code);
+
+  it('매출전표에는 수익 계정만 (단기차입금·기계장치 안 뜸)', () => {
+    expect(names('매출')).toEqual(['800', '605']);
+  });
+  it('매입전표에는 비용·자산 계정만 (단기차입금 안 뜸)', () => {
+    expect(names('매입')).toEqual(['520', '206', '605']);
+  });
+  it('자금 전표는 전부 — 돈이 나가는 이유는 뭐든 될 수 있다', () => {
+    expect(names('자금')).toEqual(['800', '520', '206', '260', '605']);
+  });
+  it('그룹 미지정 계정은 감추지 않는다 (기존 전표를 고칠 수 있어야 한다)', () => {
+    expect(names('매출')).toContain('605');
+    expect(names('매입')).toContain('605');
+  });
+});
 
 const groups: AccountGroup[] = [
   { id: 'g-rev', name: '총매출', type: '수익', plLine: 'revenue' } as AccountGroup,

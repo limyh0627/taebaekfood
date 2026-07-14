@@ -93,7 +93,6 @@ interface ItemListProps {
   rawMaterialLedger: RawMaterialEntry[];
   onRequestPurchaseInvoice?: (partnerId: string, partnerName: string, items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }>) => void;
   issuedStatements?: IssuedStatement[];
-  onMarkStatementReceived?: (id: string) => void;
   autoUsageEntries?: Array<{ material: string; date: string; used: number; note: string }>;
   onAddRawMaterialEntry: (entry: RawMaterialEntry) => void;
   onDeleteRawMaterialEntry: (id: string) => void;
@@ -160,7 +159,6 @@ const ItemList: React.FC<ItemListProps> = ({
   rawMaterialLedger,
   onRequestPurchaseInvoice,
   issuedStatements = [],
-  onMarkStatementReceived,
   autoUsageEntries = [],
   onAddRawMaterialEntry,
   onDeleteRawMaterialEntry,
@@ -1622,7 +1620,7 @@ const ItemList: React.FC<ItemListProps> = ({
 
             {/* 발주 내역 — 입고 대기 (통합: 수동 발주 + 전표 기반) */}
             {(() => {
-              const pendingStatements = issuedStatements.filter(s => s.type === '매입' && !s.receivedAt);
+              const pendingStatements = issuedStatements.filter(s => s.type === '매입' && !s.taxIssuedAt);
               // 전표에 이미 포함된 품목명 집합 (수동 발주 중복 방지)
               const statementItemNames = new Set(pendingStatements.flatMap(s => s.items.map(i => i.name)));
               const confirmedWithoutStatement = confirmedOrders.filter(conf => {

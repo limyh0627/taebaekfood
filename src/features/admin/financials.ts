@@ -26,6 +26,28 @@ export function makeCodeToGroup(
   };
 }
 
+/**
+ * 전표 문맥에 맞는 계정과목만 추린다 — 매출전표에 '단기차입금'이 뜨는 걸 막는다.
+ * 계정과목 마스터는 하나로 두되, 고르는 자리에서 성격으로 거른다.
+ *
+ * 매출: 수익 / 매입: 비용·자산 / 자금: 전부(돈이 나가는 이유는 뭐든 될 수 있다).
+ * 그룹이 없는 계정은 감추지 않고 통과시킨다 — 숨겨버리면 기존 전표를 고칠 수도 없다.
+ */
+export function filterCodesForContext(
+  codes: AccountCode[],
+  groups: AccountGroup[],
+  context: '매출' | '매입' | '자금',
+): AccountCode[] {
+  if (context === '자금') return codes;
+  const allow: AccountGroup['type'][] = context === '매출' ? ['수익'] : ['비용', '자산'];
+  const groupType = new Map(groups.map(g => [g.id, g.type]));
+  return codes.filter(c => {
+    if (!c.groupId) return true;                 // 그룹 미지정 — 거르지 않고 노출
+    const t = groupType.get(c.groupId);
+    return !t || allow.includes(t);
+  });
+}
+
 export interface MonthPL {
   sales: number; cogs: number; sgna: number; fixed: number;
   grossProfit: number; operatingProfit: number;

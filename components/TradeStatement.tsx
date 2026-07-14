@@ -7,7 +7,8 @@ import {
   ChevronLeft, Share2, Check, Wallet
 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
-import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentRecord, AccountCode } from '../types';
+import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentRecord, AccountCode, AccountGroup } from '../types';
+import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchDateRange } from '../src/shared/services/firebaseService';
 import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
 import PageHeader from './PageHeader';
@@ -18,6 +19,7 @@ interface TradeStatementProps {
   partners: Partner[];
   partnerItems?: import('../src/shared/types').PartnerItem[];
   accountCodes?: AccountCode[];
+  accountGroups?: AccountGroup[];
   issuedStatements: IssuedStatement[];
   onUpdateStatus?: (id: string, status: OrderStatus) => void;
   onUpsertPartnerItem?: (ps: PartnerItem) => void;
@@ -104,6 +106,7 @@ const yearStart  = () => new Date().getFullYear() + '-01-01';
 const TradeStatement: React.FC<TradeStatementProps> = ({
   orders, allItems, partners, partnerItems,
   accountCodes = [],
+  accountGroups = [],
   issuedStatements, onUpdateStatus, onUpsertPartnerItem,
   onMarkInvoicePrinted, onAddIssuedStatement,
   onUpdateIssuedStatement,
@@ -397,6 +400,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // ── 전표 유형 (createMode 파생) ──
   const stmtType: StatementType = createMode || '매출';
+
+  // 전표 타입에 맞는 계정과목만 — 매출전표에 '단기차입금'이 뜨면 안 된다.
+  const stmtCodes = useMemo(
+    () => filterCodesForContext(accountCodes, accountGroups, stmtType === '매출' ? '매출' : '매입'),
+    [accountCodes, accountGroups, stmtType],
+  );
+  // 비용(자금) 전표는 전부 노출 — 돈이 나가는 이유는 비용·자산·부채 뭐든 될 수 있다.
+  const cashCodes = useMemo(
+    () => filterCodesForContext(accountCodes, accountGroups, '자금'),
+    [accountCodes, accountGroups],
+  );
 
   // ── 생성 오버레이 열기/닫기 ──
   const openCreate = (type: StatementType) => {
@@ -1669,7 +1683,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           const yOffset = imgH < pageH ? (pageH - imgH) / 2 : 10;
           pdf.addImage(imgData, 'PNG', 10, yOffset, imgW, imgH);
           pdf.save(`세금계산서_${selectedClient?.name}_${tradeMonth}.pdf`);
-          selectedStmts.forEach(s => onUpdateIssuedStatement?.(s.id, { receivedAt: new Date().toISOString() } as any));
+          selectedStmts.forEach(s => onUpdateIssuedStatement?.(s.id, { taxIssuedAt: new Date().toISOString() }));
         };
 
         const handleTaxShare = async () => {
@@ -2557,7 +2571,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     <select value={r.accountCode || ''} onChange={e => setExpRows(prev => prev.map((x, i) => i === idx ? { ...x, accountCode: e.target.value || undefined } : x))}
                       className="w-24 shrink-0 border border-slate-200 rounded-lg px-1.5 py-2 text-[11px] font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-slate-300">
                       <option value="">계정-</option>
-                      {accountCodes.map(ac => <option key={ac.id} value={ac.code}>{ac.name}</option>)}
+                      {cashCodes.map(ac => <option key={ac.id} value={ac.code}>{ac.name}</option>)}
                     </select>
                     <input value={r.price} onChange={e => setExpRows(prev => prev.map((x, i) => i === idx ? { ...x, price: e.target.value.replace(/[^\d]/g, '') } : x))} placeholder="금액" inputMode="numeric"
                       className="w-24 shrink-0 border border-slate-200 rounded-lg px-2 py-2 text-sm font-black text-right outline-none focus:ring-2 focus:ring-slate-300" />
@@ -3587,7 +3601,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                       onChange={e=>setManualItems(prev=>prev.map((r,i)=>i===idx?{...r,accountCode:e.target.value}:r))}
                                       className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 text-[10px] font-bold outline-none focus:ring-2 focus:ring-blue-300">
                                       <option value="">-</option>
-                                      {accountCodes.map(ac=>(
+                                      {stmtCodes.map(ac=>(
                                         <option key={ac.id} value={ac.code}>{ac.code} {ac.name}</option>
                                       ))}
                                     </select>}
@@ -3691,7 +3705,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                 }}
                                 className={`w-full border rounded-lg px-1.5 py-1 text-[10px] font-bold outline-none focus:ring-2 focus:ring-amber-300 ${!item.accountCode?'bg-amber-50 border-amber-300 text-amber-700':'bg-slate-50 border-slate-200'}`}>
                                 <option value="">계정 선택 ⚠</option>
-                                {accountCodes.map(ac=>(
+                                {stmtCodes.map(ac=>(
                                   <option key={ac.id} value={ac.code}>{ac.code} {ac.name}</option>
                                 ))}
                               </select>

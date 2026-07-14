@@ -57,6 +57,7 @@ import {
   ShieldAlert,
   UserPlus,
   FolderOpen,
+  BookOpen,
 } from 'lucide-react';
 import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, PaymentRecord, ShippingRule, poLines } from '../../shared/types';
 import PageHeader from '../../shared/components/PageHeader';
@@ -101,6 +102,7 @@ const ReceivingReturnsManager = React.lazy(() => import('../../../components/Rec
 const ProductionManager = React.lazy(() => import('../../../components/ProductionManager'));
 const TradeStatement = React.lazy(() => import('../../../components/TradeStatement'));
 const ProfitAnalysis = React.lazy(() => import('../../../components/ProfitAnalysis'));
+const CashLedger = React.lazy(() => import('../../../components/CashLedger'));
 
 import { db } from '../../shared/firebase';
 import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName, lotStockInUnit, lotKgRemaining } from '../../constants/formula';
@@ -900,7 +902,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   const handleNavClick = (view: ViewType) => {
-    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant', 'cost-management', 'profit-analysis', 'production', 'admin-checklist', 'smartstore-analytics', 'haccp-checklist', 'partner-stats', 'cash-flow', 'file-cabinet'];
+    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant', 'cost-management', 'profit-analysis', 'production', 'admin-checklist', 'smartstore-analytics', 'haccp-checklist', 'partner-stats', 'cash-flow', 'file-cabinet', 'ledger-cash'];
     if (adminOnlyViews.includes(view) && !isAdminAuthenticated && !isAdmin) {
       setPendingAdminView(view);
       setIsAdminAuthModalOpen(true);
@@ -1064,6 +1066,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       <NavItem icon={BarChart2} label="손익 / 비용 분석" active={currentView === 'profit-analysis' || currentView === 'cost-management'} onClick={() => handleNavClick('profit-analysis')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={TrendingUp} label="거래처통계" active={currentView === 'partner-stats'} onClick={() => handleNavClick('partner-stats')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={Activity} label="현금흐름 분석" active={currentView === 'cash-flow'} onClick={() => handleNavClick('cash-flow')} collapsed={isSidebarCollapsed} />
+                      <NavItem icon={BookOpen} label="장부" active={currentView === 'ledger-cash'} onClick={() => handleNavClick('ledger-cash')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={Factory} label="생산 실적" active={currentView === 'production'} onClick={() => handleNavClick('production')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={ShoppingBag} label="스마트스토어 분석" active={currentView === 'smartstore-analytics'} onClick={() => handleNavClick('smartstore-analytics')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={ClipboardList} label="HACCP 체크리스트" active={currentView === 'haccp-checklist'} onClick={() => handleNavClick('haccp-checklist')} collapsed={isSidebarCollapsed} />
@@ -1353,23 +1356,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
               currentUser={currentUser}
               isAdmin={isAdmin}
               issuedStatements={issuedStatements}
-              onMarkStatementReceived={async (id) => {
-                const stmt = issuedStatements.find(s => s.id === id);
-                if (stmt && stmt.type === '매입') {
-                  for (const item of stmt.items) {
-                    const product = allItems.find(p => p.name === item.name);
-                    if (product) {
-                      const col = getProductCollection(product.category);
-                      const addQty = item.isBoxUnit ? item.qty * (item.boxSize || 12) : item.qty;
-                      await updateItem(col, product.id, { stock: product.stock + addQty });
-                      // purchaseOrder도 received 상태로 업데이트
-                      const po = purchaseOrders.find(po => po.itemId === product.id && po.status === 'invoiced');
-                      if (po) await updateItem('purchaseOrders', po.id, { status: 'received', receivedAt: new Date().toISOString() });
-                    }
-                  }
-                }
-                await updateItem('issuedStatements', id, { receivedAt: new Date().toISOString() });
-              }}
               onRequestPurchaseInvoice={(partnerId, partnerName, items) => {
                 setPendingInvoice({ partnerId, partnerName, items });
                 setCurrentView('trade-statement');
@@ -3202,6 +3188,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               partners={partners}
               partnerItems={partnerItems}
               accountCodes={appData.accountCodes}
+              accountGroups={appData.accountGroups}
               expensePresets={appData.expensePresets}
               onAddExpensePreset={async (p) => { const id = await addItem('expensePresets', { ...p, id: `exp-${Date.now()}`, createdAt: new Date().toISOString() }); refreshStaticData(); return id as string; }}
               onDeleteExpensePreset={(id) => { deleteItem('expensePresets', id); refreshStaticData(); }}
@@ -3365,6 +3352,30 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   inventorySnapshots={inventorySnapshots}
                 />
               </React.Suspense>
+            </div>
+          )}
+          {currentView === 'ledger-cash' && (
+            <div className="h-full overflow-y-auto">
+              <PageHeader title="장부" subtitle="현금출납장 — 통장·카드·현금의 실제 입출금과 잔액" />
+              <div className="p-6">
+                <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+                  <CashLedger
+                    cashAccounts={appData.cashAccounts}
+                    cashEntries={appData.cashEntries}
+                    accountCodes={appData.accountCodes}
+                    partners={partners}
+                    issuedStatements={issuedStatements}
+                    settlements={appData.settlements}
+                    currentUser={currentUser}
+                    onAddCashAccount={(a) => addItem('cashAccounts', a)}
+                    onUpdateCashAccount={(id, data) => updateItem('cashAccounts', id, data)}
+                    onAddCashEntry={(e) => addItem('cashEntries', e)}
+                    onDeleteCashEntry={(id) => deleteItem('cashEntries', id)}
+                    onAddSettlement={(s) => addItem('settlements', s)}
+                    onDeleteSettlement={(id) => deleteItem('settlements', id)}
+                  />
+                </React.Suspense>
+              </div>
             </div>
           )}
           {currentView === 'cash-flow' && (

@@ -395,7 +395,7 @@ export interface ChatRoom {
 }
 
 
-export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'partners' | 'partners' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'partner-portal' | 'item-management' | 'item-price-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'tax-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'inbound-scan' | 'smartstore-analytics' | 'haccp-checklist' | 'return-management' | 'inbound-returns' | 'partner-stats' | 'cash-flow' | 'sanitation-checklist' | 'partner-signup' | 'file-cabinet';
+export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'partners' | 'partners' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'partner-portal' | 'item-management' | 'item-price-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'tax-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'inbound-scan' | 'smartstore-analytics' | 'haccp-checklist' | 'return-management' | 'inbound-returns' | 'partner-stats' | 'cash-flow' | 'sanitation-checklist' | 'partner-signup' | 'file-cabinet' | 'ledger-cash';
 
 // ── 생산 실적 ──────────────────────────────────────────────────────────────────
 export interface ProductionRecord {
@@ -467,7 +467,6 @@ export interface IssuedStatement {
   totalTax: number;
   totalAmount: number;
   items: IssuedStatementItem[];
-  receivedAt?: string;    // 입고 확인 일시 (매입 전표)
   taxIssuedAt?: string;   // 세금계산서 발행 일시
   // 수금/결제 추적
   payments?: PaymentRecord[];
@@ -689,12 +688,56 @@ export interface AccountCode {
 
 export type AccountGroupPlLine = 'revenue' | 'cogs' | 'sgna' | 'other-income' | 'other-expense';
 
+export type AccountGroupCfSection = 'operating' | 'investing' | 'financing';
+
 export interface AccountGroup {
   id: string;
   name: string;        // 그룹명 (예: '총매출', '총매출원가')
   type: '수익' | '비용' | '자산' | '부채' | '자본';
   plLine?: AccountGroupPlLine; // 손익계산서 위치
+  // 현금흐름표 위치. 계정 성격(자산/부채)만으론 못 가른다 — 매입채무는 부채지만 영업,
+  // 선급금은 자산이지만 영업. 그래서 그룹마다 명시한다. 미지정이면 기존 추측 로직으로 폴백.
+  cfSection?: AccountGroupCfSection;
   note?: string;
+}
+
+// ── 자금 원장 (현금출납장) ────────────────────────────────────────────────────
+// 전표(issuedStatements)가 '거래 발생'이라면, 여기는 '실제 돈의 이동'이다.
+// 통장·카드·현금 각각이 하나의 CashAccount이고, 그 위에 CashEntry가 시간순으로 쌓여
+// 잔액을 굴린다. 현금흐름표는 추측이 아니라 이 원장에서 나온다.
+export interface CashAccount {
+  id: string;
+  name: string;                        // '기업은행 1234-56', '법인카드(신한)', '현금시재'
+  type: '통장' | '카드' | '현금';
+  openingBalance: number;              // 기초 잔액 (openingDate 시점)
+  openingDate: string;                 // 'YYYY-MM-DD' — 이 날짜 이전 거래는 잔액에 미반영
+  active: boolean;                     // false면 신규 입력 목록에서 숨김
+  note?: string;
+  createdAt: string;
+}
+
+export interface CashEntry {
+  id: string;
+  date: string;                        // 'YYYY-MM-DD' 실제 돈이 움직인 날
+  cashAccountId: string;               // 어느 통장/카드/현금에서
+  dir: '입금' | '출금';
+  amount: number;                      // 항상 양수. 부호는 dir이 결정.
+  partnerId?: string;                  // 거래처 (한국전력공사, 은행 등)
+  partnerName?: string;                // 표시용 스냅샷
+  accountCode?: string;                // 계정과목 — 이 돈의 성격(비용/자산/부채)을 결정
+  note?: string;
+  createdAt: string;
+  createdBy?: string;
+}
+
+// 자금 이동(CashEntry) ↔ 거래 전표(IssuedStatement) 매칭.
+// N:M이라 "한 번 이체로 밀린 전표 3건 상계", "한 전표를 나눠서 3번 결제" 둘 다 표현된다.
+export interface Settlement {
+  id: string;
+  cashEntryId: string;
+  statementId: string;
+  amount: number;                      // 이 매칭으로 상계된 금액
+  createdAt: string;
 }
 // ── 재고액 스냅샷 (월말 기말재고액 기록) ───────────────────────────────────────
 export interface InventorySnapshot {

@@ -7,6 +7,7 @@ import {
   ItemFormula, ItemBom, ShippingRule, CompanyInfo, QrMapping, ReturnRequest,
   AccountCode, AccountGroup, FixedCostTemplate, InventorySnapshot, ProductionSalesLog,
   PendingStatementEdit, PurchaseOrder, ExpensePreset, CashFlowManual,
+  CashAccount, CashEntry, Settlement,
 } from '../types';
 import { subscribeToCollection, subscribeToRecentCollection, subscribeToDocument, fetchCollection, fetchDateRange } from '../services/firebaseService';
 import { where } from 'firebase/firestore';
@@ -64,6 +65,9 @@ export interface AppData {
   fixedCostTemplates: FixedCostTemplate[];
   expensePresets: ExpensePreset[];
   cashFlowManual: CashFlowManual[];
+  cashAccounts: CashAccount[];
+  cashEntries: CashEntry[];
+  settlements: Settlement[];
   inventorySnapshots: InventorySnapshot[];
   productionSalesLogs: ProductionSalesLog[];
   pendingStatementEdits: PendingStatementEdit[];
@@ -106,6 +110,9 @@ export function useAppData(): AppData {
   const [fixedCostTemplates, setFixedCostTemplates] = useState<FixedCostTemplate[]>([]);
   const [expensePresets, setExpensePresets] = useState<ExpensePreset[]>([]);
   const [cashFlowManual, setCashFlowManual] = useState<CashFlowManual[]>([]);
+  const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([]);
+  const [cashEntries, setCashEntries] = useState<CashEntry[]>([]);
+  const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [inventorySnapshots, setInventorySnapshots] = useState<InventorySnapshot[]>([]);
   const [productionSalesLogs, setProductionSalesLogs] = useState<ProductionSalesLog[]>([]);
   const [pendingStatementEdits, setPendingStatementEdits] = useState<PendingStatementEdit[]>([]);
@@ -190,6 +197,10 @@ export function useAppData(): AppData {
             };
           }));
         }),
+        // 자금 원장 — 전표와 같은 이유로 전체 로딩. 잔액은 첫 거래부터 누적해야 맞다.
+        subscribeToCollection<CashAccount>('cashAccounts', setCashAccounts),
+        subscribeToCollection<CashEntry>('cashEntries', setCashEntries),
+        subscribeToCollection<Settlement>('settlements', setSettlements),
         subscribeToRecentCollection<ReturnRequest>('returnRequests', 'createdAt', 7, setReturnRequests),
         subscribeToDocument<CompanyInfo>('settings', 'company', setCompanyInfo),
         subscribeToCollection<InventorySnapshot>('inventorySnapshots', setInventorySnapshots),
@@ -271,6 +282,7 @@ export function useAppData(): AppData {
     appNotifications, workOrderItems, issuedStatements,
     qrMappings, itemFormulas, itemBoms, shippingRules, returnRequests,
     companyInfo, accountGroups, accountCodes, fixedCostTemplates, expensePresets, cashFlowManual, inventorySnapshots,
+    cashAccounts, cashEntries, settlements,
     productionSalesLogs, pendingStatementEdits,
     isDataLoading,
     refreshStaticData,
