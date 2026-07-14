@@ -3191,6 +3191,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
               partnerItems={partnerItems}
               accountCodes={appData.accountCodes}
               accountGroups={appData.accountGroups}
+              cashAccounts={appData.cashAccounts}
+              cashEntries={appData.cashEntries}
+              settlements={appData.settlements}
+              onAddCashEntry={(e) => addItem('cashEntries', e)}
+              onAddSettlement={(s) => addItem('settlements', s)}
               expensePresets={appData.expensePresets}
               onAddExpensePreset={async (p) => { const id = await addItem('expensePresets', { ...p, id: `exp-${Date.now()}`, createdAt: new Date().toISOString() }); refreshStaticData(); return id as string; }}
               onDeleteExpensePreset={(id) => { deleteItem('expensePresets', id); refreshStaticData(); }}

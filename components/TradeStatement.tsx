@@ -7,7 +7,7 @@ import {
   ChevronLeft, Share2, Check, Wallet
 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
-import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentRecord, AccountCode, AccountGroup } from '../types';
+import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentRecord, AccountCode, AccountGroup, CashAccount, CashEntry, Settlement } from '../types';
 import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchDateRange } from '../src/shared/services/firebaseService';
 import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
@@ -20,6 +20,12 @@ interface TradeStatementProps {
   partnerItems?: import('../src/shared/types').PartnerItem[];
   accountCodes?: AccountCode[];
   accountGroups?: AccountGroup[];
+  // 자금원장 — 지불/수금처리가 여기에 기록된다. 없으면 구 payments[]로 폴백.
+  cashAccounts?: CashAccount[];
+  cashEntries?: CashEntry[];
+  settlements?: Settlement[];
+  onAddCashEntry?: (e: Omit<CashEntry, 'id'> & { id: string }) => void;
+  onAddSettlement?: (s: Omit<Settlement, 'id'> & { id: string }) => void;
   issuedStatements: IssuedStatement[];
   onUpdateStatus?: (id: string, status: OrderStatus) => void;
   onUpsertPartnerItem?: (ps: PartnerItem) => void;
@@ -107,6 +113,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   orders, allItems, partners, partnerItems,
   accountCodes = [],
   accountGroups = [],
+  cashAccounts = [],
+  cashEntries = [],
+  settlements = [],
+  onAddCashEntry,
+  onAddSettlement,
   issuedStatements, onUpdateStatus, onUpsertPartnerItem,
   onMarkInvoicePrinted, onAddIssuedStatement,
   onUpdateIssuedStatement,
@@ -229,6 +240,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [payForm, setPayForm] = useState<{ amount: string; date: string; method: PaymentRecord['method']; note: string }>({
     amount: '', date: new Date().toISOString().slice(0, 10), method: '계좌이체', note: '',
   });
+  const [payAccountId, setPayAccountId] = useState('');
+  const [quickPayAccountId, setQuickPayAccountId] = useState('');
   const [payOverWarn, setPayOverWarn] = useState(false);
 
   // ── 수금/지불 내역 상세/수정 모달 ──
@@ -250,8 +263,59 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [quickPayDropOpen, setQuickPayDropOpen] = useState(false);
   const [quickPayOverWarn, setQuickPayOverWarn] = useState(false);
 
-  const getPaid = (s: IssuedStatement) => (s.payments ?? []).reduce((a, p) => a + p.amount, 0);
+  const activeCashAccounts = useMemo(() => cashAccounts.filter(a => a.active), [cashAccounts]);
+  const cashEntryById = useMemo(() => new Map(cashEntries.map(e => [e.id, e])), [cashEntries]);
+
+  // 결제는 구 payments[]와 자금원장 매칭(settlements) 양쪽에서 온다. 둘 다 빼야 잔액이 맞는다.
+  const getPaid = (s: IssuedStatement) =>
+    (s.payments ?? []).reduce((a, p) => a + p.amount, 0)
+    + settlements.filter(st => st.statementId === s.id).reduce((a, st) => a + st.amount, 0);
   const getBalance = (s: IssuedStatement) => s.totalAmount - getPaid(s);
+
+  /** 결제 기록 — 자금원장에 출금/입금 1건을 만들고, 전표들에 매칭을 붙인다.
+   *  계좌가 없거나 핸들러가 없으면 구 payments[] 방식으로 폴백한다. */
+  const recordPayment = (
+    allocations: { stmt: IssuedStatement; amount: number }[],
+    opts: { date: string; method?: PaymentRecord['method']; note?: string; cashAccountId?: string },
+  ) => {
+    const total = allocations.reduce((a, x) => a + x.amount, 0);
+    if (total <= 0) return;
+    const acctId = opts.cashAccountId || cashAccounts.find(a => a.active)?.id;
+    const first = allocations[0].stmt;
+
+    if (!acctId || !onAddCashEntry || !onAddSettlement) {
+      // 폴백: 자금 계좌가 없으면 예전처럼 전표에 결제를 매단다
+      allocations.forEach(({ stmt, amount }, i) => {
+        const live = issuedStatements.find(s => s.id === stmt.id) ?? stmt;
+        const p: PaymentRecord = {
+          id: `pay-${Date.now()}-${i}-${stmt.id}`, amount, date: opts.date,
+          method: opts.method, ...(opts.note ? { note: opts.note } : {}),
+          createdAt: new Date().toISOString(),
+        };
+        onUpdateIssuedStatement?.(stmt.id, { payments: [...(live.payments ?? []), p] });
+      });
+      return;
+    }
+
+    const entryId = `cash-${Date.now()}`;
+    onAddCashEntry({
+      id: entryId,
+      date: opts.date,
+      cashAccountId: acctId,
+      dir: first.type === '매입' ? '출금' : '입금',
+      amount: total,
+      ...(first.partnerId ? { partnerId: first.partnerId, partnerName: first.partnerName ?? '' } : {}),
+      note: opts.note || `${first.partnerName ?? ''} ${first.type === '매입' ? '지불' : '수금'}`.trim(),
+      createdAt: new Date().toISOString(),
+    });
+    allocations.forEach(({ stmt, amount }, i) => {
+      onAddSettlement({
+        id: `settle-${Date.now()}-${i}`,
+        cashEntryId: entryId, statementId: stmt.id, amount,
+        createdAt: new Date().toISOString(),
+      });
+    });
+  };
 
   const openPayModal = (stmt: IssuedStatement) => {
     setPayOverWarn(false);
@@ -259,6 +323,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const liveStmt = issuedStatements.find(s => s.id === stmt.id) ?? stmt;
     const bal = getBalance(liveStmt);
     setPayForm({ amount: bal > 0 ? String(bal) : '', date: new Date().toISOString().slice(0, 10), method: '계좌이체', note: '' });
+    setPayAccountId(prev => prev || activeCashAccounts[0]?.id || '');
   };
 
   const savePayment = (forceOver = false) => {
@@ -273,15 +338,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       return;
     }
     setPayOverWarn(false);
-    const newPayment: PaymentRecord = {
-      id: Date.now().toString(),
-      amount,
-      date: payForm.date,
-      createdAt: new Date().toISOString(),
-      method: payForm.method,
-      ...(payForm.note.trim() ? { note: payForm.note.trim() } : {}),
-    };
-    onUpdateIssuedStatement?.(payTarget.id, { payments: [...(liveStmt.payments ?? []), newPayment] });
+    recordPayment([{ stmt: liveStmt, amount }], {
+      date: payForm.date, method: payForm.method, note: payForm.note.trim() || undefined,
+      cashAccountId: payAccountId,
+    });
     setPayTarget(null);
   };
 
@@ -1457,9 +1517,16 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       };
       stmts.forEach(s => {
         evs.push({ kind: 'stmt', s, date: s.tradeDate, ts: `${s.tradeDate}T${timeOf(s.issuedAt)}` });
+        // 구 payments[]
         (s.payments ?? []).forEach(p =>
           evs.push({ kind: 'pay', date: p.date, ts: `${p.date}T${timeOf(p.createdAt)}`, amount: p.amount, method: p.method, note: p.note, paymentId: p.id, src: s })
         );
+        // 자금원장 매칭 — 지불/수금처리가 이제 여기로 들어온다. 자금 기록이 지워졌으면 상계로 치지 않는다.
+        settlements.filter(st => st.statementId === s.id).forEach(st => {
+          const e = cashEntryById.get(st.cashEntryId);
+          if (!e) return;
+          evs.push({ kind: 'pay', date: e.date, ts: `${e.date}T${timeOf(e.createdAt)}`, amount: st.amount, method: '계좌이체', note: e.note, paymentId: st.id, src: s });
+        });
       });
       // 실제 발생시각(ts) 오름차순으로 누적잔액 계산. 동시각이면 전표 먼저(매출 가산 후 수금 차감)
       evs.sort((a, b) => {
@@ -1483,7 +1550,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       });
     });
     return rows;
-  }, [mergedStatements]);
+  }, [mergedStatements, settlements, cashEntryById]);
 
   const filteredHistory = useMemo((): TimelineRow[] => {
     return allTimelineRows
@@ -2106,7 +2173,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           <Plus size={13} strokeWidth={3}/>대체전표
         </button>
         <button
-          onClick={() => { setShowQuickPay(true); setQuickPayClientId(''); setQuickPayClientSearch(''); setQuickPayAmount(''); setQuickPayNote(''); setQuickPayDate(new Date().toISOString().slice(0,10)); }}
+          onClick={() => { setShowQuickPay(true); setQuickPayClientId(''); setQuickPayClientSearch(''); setQuickPayAmount(''); setQuickPayNote(''); setQuickPayDate(new Date().toISOString().slice(0,10)); setQuickPayAccountId(prev => prev || activeCashAccounts[0]?.id || ''); }}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition-all"
         >
           <Wallet size={13}/>수금/지불
@@ -2378,6 +2445,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   onChange={e => setPayForm(p => ({ ...p, amount: e.target.value }))}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
               </div>
+              {activeCashAccounts.length > 0 && (
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">
+                    {payTarget.type === '매입' ? '출금 계좌' : '입금 계좌'}
+                  </label>
+                  <select value={payAccountId} onChange={e => setPayAccountId(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300">
+                    {activeCashAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                  <p className="text-[10px] text-slate-400 mt-1">현금출납장에 자동으로 기록되고 이 전표에 매칭됩니다.</p>
+                </div>
+              )}
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">일자</label>
                 <input type="date" value={payForm.date}
@@ -2616,22 +2695,22 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           // 미수금이 없으면 가장 최근 전표에 기록 (잔액 역전 처리)
           const targets = unpaid.length > 0 ? unpaid : allClientStmts.slice(-1);
           if (targets.length === 0) { setShowQuickPay(false); setQuickPayOverWarn(false); return; }
+          // 한 번의 이체를 오래된 전표부터 배분한다. 통장엔 1건이므로 자금 기록도 1건이다.
+          const allocations: { stmt: IssuedStatement; amount: number }[] = [];
           let remaining = amt;
           for (let i = 0; i < targets.length; i++) {
             if (remaining <= 0) break;
             const s = targets[i];
             const isLast = i === targets.length - 1;
             const apply = isLast ? remaining : Math.min(remaining, getBalance(s));
-            const newPayment: PaymentRecord = {
-              id: `pay-${Date.now()}-${i}-${s.id}`,
-              amount: apply,
-              date: quickPayDate,
-              method: quickPayMethod,
-              ...(quickPayNote.trim() ? { note: quickPayNote.trim() } : {}),
-            };
-            onUpdateIssuedStatement?.(s.id, { payments: [...(s.payments ?? []), newPayment] });
+            if (apply > 0) allocations.push({ stmt: s, amount: apply });
             remaining -= apply;
           }
+          recordPayment(allocations, {
+            date: quickPayDate, method: quickPayMethod,
+            note: quickPayNote.trim() || undefined,
+            cashAccountId: quickPayAccountId,
+          });
           setShowQuickPay(false);
           setQuickPayOverWarn(false);
         };
@@ -2730,6 +2809,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               {/* 결제수단 */}
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">결제수단</label>
+                {activeCashAccounts.length > 0 && (
+                  <div className="mb-3">
+                    <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">
+                      {quickPayType === '수금' ? '입금 계좌' : '출금 계좌'}
+                    </label>
+                    <select value={quickPayAccountId} onChange={e => setQuickPayAccountId(e.target.value)}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300">
+                      {activeCashAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                    <p className="text-[10px] text-slate-400 mt-1">현금출납장에 <b>1건</b>으로 기록되고, 오래된 전표부터 자동 매칭됩니다.</p>
+                  </div>
+                )}
                 <div className="flex gap-1.5 flex-wrap">
                   {(['현금', '계좌이체', '어음', '카드', '기타'] as PaymentRecord['method'][]).map(m => (
                     <button key={String(m)} onClick={() => setQuickPayMethod(m)}
