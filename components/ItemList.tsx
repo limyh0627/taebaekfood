@@ -1,5 +1,5 @@
 ﻿
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Package,
   Edit,
@@ -23,6 +23,8 @@ import {
   History,
   FileText,
   FileDown,
+  Save,
+  Share2,
 } from 'lucide-react';
 import { Item, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, PartnerItem } from '../types';
 import { PurchaseOrder, poLines } from '../src/shared/types';
@@ -33,7 +35,9 @@ import RawMaterialEntryModal from './RawMaterialEntryModal';
 import RawMaterialLotPanel from './RawMaterialLotPanel';
 import RawLedgerList from './RawLedgerList';
 import { RM_LIST, unitOf, baseRawName, lotStockInUnit, unitToKg, lotKgRemaining, parsePackageKg } from '../src/constants/formula';
-import { mutateRawMaterialLots } from '../src/shared/services/firebaseService';
+import { mutateRawMaterialLots, addItem, subscribeToCollection, fetchCollection } from '../src/shared/services/firebaseService';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from '../src/shared/firebase';
 import { withCarryOverLot, buildReceiveLot, nextLotNo, deductFromLots } from '../src/shared/lotUtils';
 
 const normCat = (cat: string): string =>
@@ -45,6 +49,10 @@ const withSpec = (p: { name: string; spec?: string }): string => {
   const spec = (p.spec ?? '').trim();
   return spec && !hasVolumeInName(p.name) ? `${p.name}/${spec}` : p.name;
 };
+
+// 재고 마감(재고 현황판) — 완제품 실물 카운트 스냅샷
+interface StockClosingRow { itemId: string; name: string; spec?: string; boxSize: number; boxes: number; loose: number; total: number; }
+interface StockClosing { id: string; date: string; closedBy: string; createdAt: string; items: StockClosingRow[]; totalStock: number; }
 
 const inferSubtype = (item: { subtype?: string; name: string; category: string }): string => {
   if (item.subtype) return item.subtype;
@@ -182,6 +190,146 @@ const ItemList: React.FC<ItemListProps> = ({
 
   const [showClosingModal, setShowClosingModal] = useState(false);
   const closingRef = useRef<HTMLDivElement>(null);
+
+  // ── 재고 마감(완제품 실물 카운트) ──
+  const [closingCounts, setClosingCounts] = useState<Record<string, { boxes: string; loose: string }>>({});
+  const [closingDate, setClosingDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [closingSaving, setClosingSaving] = useState(false);
+  const [closingSavedAt, setClosingSavedAt] = useState('');
+  const [pastClosings, setPastClosings] = useState<StockClosing[]>([]);
+  const [showClosingHistory, setShowClosingHistory] = useState(false);
+  const [viewingClosing, setViewingClosing] = useState<StockClosing | null>(null);
+  const [closingSearch, setClosingSearch] = useState('');
+  const [closingPage, setClosingPage] = useState(0);
+  const CLOSING_PAGE_SIZE = 8;
+
+  const boxSizeOf = (p: Item) => (p as any).defaultBoxConfig?.unitsPerBox || (p as any).boxSize || 12;
+  // 전체 완제품(검색 대상)
+  const allClosingItems = useMemo(
+    () => items.filter(p => !p.archived && normCat(p.category) === '완제품'),
+    [items],
+  );
+  // 저장/표시 대상: 재고 있는 것 + 사용자가 수량을 입력한 것 (재고 0은 기본 숨김, 검색으로 찾아 입력 가능)
+  const closingItems = useMemo(
+    () => allClosingItems.filter(p => (p.stock || 0) > 0 || !!(closingCounts[p.id]?.boxes || closingCounts[p.id]?.loose)),
+    [allClosingItems, closingCounts],
+  );
+
+  useEffect(() => subscribeToCollection<StockClosing>('stockClosings', setPastClosings), []);
+
+  // 마감 모달 열 때: 초기화 + 앱 계산 재고로 미리 채움(직원은 실물과 다른 것만 수정)
+  useEffect(() => {
+    if (!showClosingModal) return;
+    setViewingClosing(null);
+    setClosingSavedAt('');
+    setClosingSearch('');
+    setClosingPage(0);
+    const init: Record<string, { boxes: string; loose: string }> = {};
+    allClosingItems.forEach(p => {
+      const bsz = boxSizeOf(p);
+      const b = Math.floor((p.stock || 0) / bsz);
+      const r = (p.stock || 0) % bsz;
+      init[p.id] = { boxes: b ? String(b) : '', loose: r ? String(r) : '' };
+    });
+    setClosingCounts(init);
+  }, [showClosingModal]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const setCount = (id: string, field: 'boxes' | 'loose', v: string) => {
+    const val = v.replace(/[^\d]/g, '');
+    setClosingCounts(prev => ({ ...prev, [id]: { boxes: prev[id]?.boxes ?? '', loose: prev[id]?.loose ?? '', [field]: val } }));
+  };
+  const closingTotalOf = (id: string) => {
+    const p = allClosingItems.find(x => x.id === id);
+    if (!p) return 0;
+    const bsz = boxSizeOf(p);
+    return (parseInt(closingCounts[id]?.boxes || '0') || 0) * bsz + (parseInt(closingCounts[id]?.loose || '0') || 0);
+  };
+
+  // 숨김 보드(closingRef)를 PNG blob으로 캡처 — 공유·문서함 업로드 공용
+  const captureClosingBlob = async (): Promise<Blob | null> => {
+    if (!closingRef.current) return null;
+    const { default: html2canvas } = await import('html2canvas') as any;
+    const canvas = await html2canvas(closingRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+    return await new Promise<Blob | null>(res => canvas.toBlob((b: Blob | null) => res(b), 'image/png'));
+  };
+
+  // 문서함 대분류/중분류 보장 (없으면 생성)
+  const ensureCabinetPath = async (cat: string, sub: string) => {
+    const cats = await fetchCollection<{ id: string; name: string }>('fileCabinetCategories');
+    if (!cats.some(c => c.name === cat)) await addItem('fileCabinetCategories', { name: cat, order: cats.length, createdAt: new Date().toISOString() });
+    const subs = await fetchCollection<{ id: string; category: string; name: string }>('fileCabinetSubCategories');
+    if (!subs.some(s => s.category === cat && s.name === sub)) {
+      await addItem('fileCabinetSubCategories', { category: cat, name: sub, order: subs.filter(s => s.category === cat).length, createdAt: new Date().toISOString() });
+    }
+  };
+
+  const saveClosing = async () => {
+    if (!window.confirm('재고마감하시겠습니까?')) return;
+    setClosingSaving(true);
+    try {
+      const rows: StockClosingRow[] = closingItems.map(p => {
+        const bsz = boxSizeOf(p);
+        const boxes = parseInt(closingCounts[p.id]?.boxes || '0') || 0;
+        const loose = parseInt(closingCounts[p.id]?.loose || '0') || 0;
+        return { itemId: p.id, name: p.name, spec: p.spec ?? '', boxSize: bsz, boxes, loose, total: boxes * bsz + loose };
+      });
+      const totalStock = rows.reduce((s, r) => s + r.total, 0);
+      await addItem('stockClosings', {
+        id: `close-${closingDate}-${Date.now()}`,
+        date: closingDate,
+        closedBy: currentUser?.name ?? '',
+        createdAt: new Date().toISOString(),
+        items: rows,
+        totalStock,
+      });
+      // 완제품 재고 반영: 입력한 실물 수량(Box×박스당개수 + 낱개)을 각 완제품 stock에 갱신
+      await Promise.all(rows.map(r => {
+        const p = closingItems.find(x => x.id === r.itemId);
+        return p ? onUpdateItem({ ...p, stock: r.total }) : undefined;
+      }));
+      // 문서함 직원용 > 재고마감에 이미지 자동 업로드
+      const stamp = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+      try {
+        const blob = await captureClosingBlob();
+        if (blob) {
+          await ensureCabinetPath('직원용', '재고마감');
+          const fileName = `재고마감_${closingDate}.png`;
+          const path = `file-cabinet/직원용/재고마감/${Date.now()}_${fileName}`;
+          const sref = storageRef(storage, path);
+          await uploadBytes(sref, blob);
+          const url = await getDownloadURL(sref);
+          await addItem('fileCabinetDocs', {
+            category: '직원용', subCategory: '재고마감', fileName,
+            storagePath: path, downloadUrl: url, size: blob.size, contentType: 'image/png',
+            note: `총 ${totalStock.toLocaleString()}개`, uploadedBy: currentUser?.name ?? '', uploadedAt: new Date().toISOString(),
+          });
+        }
+        setClosingSavedAt(`${stamp} · 문서함 저장됨`);
+      } catch (up) {
+        console.error('[재고마감] 문서함 업로드 실패:', up);
+        setClosingSavedAt(`${stamp} · 저장됨(문서함 업로드 실패)`);
+      }
+    } catch (e) {
+      alert('저장 실패: ' + ((e as any)?.message ?? ''));
+    } finally {
+      setClosingSaving(false);
+    }
+  };
+
+  const shareClosingImage = async () => {
+    try {
+      const blob = await captureClosingBlob();
+      if (!blob) return;
+      const file = new File([blob], `재고현황_${viewingClosing?.date || closingDate}.png`, { type: 'image/png' });
+      const nav = navigator as any;
+      if (nav.canShare && nav.canShare({ files: [file] })) {
+        try { await nav.share({ files: [file], title: `재고 현황 ${viewingClosing?.date || closingDate}` }); return; } catch { /* 취소 시 다운로드로 폴백 */ }
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = file.name; a.click();
+      URL.revokeObjectURL(url);
+    } catch { /* noop */ }
+  };
 
   const [topTab, setTopTab] = useState<TopTab>('finished');
   const [activeTab, setActiveTab] = useState<MainTab>('master');
@@ -2257,122 +2405,171 @@ const ItemList: React.FC<ItemListProps> = ({
 
     {/* ── 재고 마감 모달 ───────────────────────────────────────────── */}
     {showClosingModal && (() => {
-      const today = new Date();
-      const dateStr = `${today.getMonth() + 1}월 ${today.getDate()}일`;
-      const finishedItems = items.filter(p => !p.archived && (normCat(p.category) === '완제품' || normCat(p.category) === '상품' || normCat(p.category) === '향미유' || normCat(p.category) === '고춧가루'));
-      const totalStock = finishedItems.reduce((sum, p) => sum + (p.stock || 0), 0);
-
-      const getBoxInfo = (p: Item) => {
-        const bsz = (p as any).defaultBoxConfig?.unitsPerBox || (p as any).boxSize || 12;
-        const boxes = Math.floor((p.stock || 0) / bsz);
-        const rem = (p.stock || 0) % bsz;
-        return { boxes, rem, bsz };
-      };
-
-      const handlePrint = async () => {
-        if (!closingRef.current) return;
-        try {
-          const { default: html2canvas } = await import('html2canvas') as any;
-          const { default: jsPDF } = await import('jspdf') as any;
-          const canvas = await html2canvas(closingRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-          const imgData = canvas.toDataURL('image/png');
-          const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-          const pageW = pdf.internal.pageSize.getWidth();
-          const pageH = pdf.internal.pageSize.getHeight();
-          const ratio = canvas.height / canvas.width;
-          const imgH = pageW * ratio;
-          if (imgH <= pageH) {
-            pdf.addImage(imgData, 'PNG', 0, 0, pageW, imgH);
-          } else {
-            let posY = 0;
-            while (posY < imgH) {
-              pdf.addImage(imgData, 'PNG', 0, -posY, pageW, imgH);
-              posY += pageH;
-              if (posY < imgH) pdf.addPage();
-            }
-          }
-          pdf.save(`재고마감_${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}.pdf`);
-        } catch (e) {
-          window.print();
-        }
-      };
-
-      // 3열 그리드용으로 나누기
-      const cols: Item[][] = [[], [], []];
-      finishedItems.forEach((p, i) => cols[i % 3].push(p));
-      const rows = Math.ceil(finishedItems.length / 3);
-      const grid: (Item | null)[][] = Array.from({ length: rows }, (_, r) => [
-        cols[0][r] ?? null,
-        cols[1][r] ?? null,
-        cols[2][r] ?? null,
-      ]);
+      const src = viewingClosing;
+      const displayDate = src ? src.date : closingDate;
+      // 그리드 행: 조회면 저장값, 신규면 완제품 목록(입력)
+      type GridRow = { itemId: string; label: string; boxes: string; loose: string; editable: boolean };
+      const toRows = (arr: Item[]): GridRow[] => arr.map(p => ({ itemId: p.id, label: withSpec(p), boxes: closingCounts[p.id]?.boxes ?? '', loose: closingCounts[p.id]?.loose ?? '', editable: true }));
+      // 저장·보드·합계 대상 = 재고있는+입력한 완제품 (조회모드면 저장된 항목)
+      const rowsForGrid: GridRow[] = src
+        ? src.items.map(r => ({ itemId: r.itemId, label: (r.spec && !hasVolumeInName(r.name)) ? `${r.name}${r.spec}` : r.name, boxes: r.boxes ? String(r.boxes) : '', loose: r.loose ? String(r.loose) : '', editable: false }))
+        : toRows(closingItems);
+      const totalStock = src ? src.totalStock : closingItems.reduce((s, p) => s + closingTotalOf(p.id), 0);
+      // 3열 그리드
+      const cols: GridRow[][] = [[], [], []];
+      rowsForGrid.forEach((r, i) => cols[i % 3].push(r));
+      const nRows = Math.max(cols[0].length, cols[1].length, cols[2].length);
+      const bTd: React.CSSProperties = { border: '1px solid #94a3b8', padding: '5px 7px', textAlign: 'center', fontSize: '12px' };
+      const bTh: React.CSSProperties = { ...bTd, background: '#f1f5f9', fontWeight: 700, fontSize: '11px' };
+      // 화면 리스트: 검색 중이면 이름/규격 부분일치 전체 완제품, 아니면 저장대상
+      const term = closingSearch.trim().toLowerCase();
+      const listRows: GridRow[] = (!src && term)
+        ? toRows(allClosingItems.filter(p => `${p.name} ${p.spec ?? ''}`.toLowerCase().includes(term)))
+        : rowsForGrid;
+      // 페이지 나눔(모바일)
+      const pageCount = Math.max(1, Math.ceil(listRows.length / CLOSING_PAGE_SIZE));
+      const page = Math.min(closingPage, pageCount - 1);
+      const pageRows = listRows.slice(page * CLOSING_PAGE_SIZE, page * CLOSING_PAGE_SIZE + CLOSING_PAGE_SIZE);
 
       return (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto p-4">
-          <div className="bg-white rounded-2xl w-full max-w-2xl my-4 shadow-2xl">
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto p-2 sm:p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg my-2 sm:my-4 shadow-2xl">
             {/* 액션 바 */}
-            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200">
-              <div>
-                <span className="text-sm font-black text-slate-800">재고 마감</span>
-                <span className="ml-2 text-xs text-slate-400">{dateStr} 기준</span>
-              </div>
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 flex-wrap gap-2">
               <div className="flex items-center gap-2">
-                <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 text-white rounded-lg text-xs font-bold hover:bg-slate-800">
-                  <FileDown size={12} /> PDF
+                <span className="text-sm font-black text-slate-800">재고 마감</span>
+                {src
+                  ? <span className="text-xs text-slate-400">{src.date} · {src.closedBy || '-'} 마감 (조회)</span>
+                  : <input type="date" value={closingDate} onChange={e => setClosingDate(e.target.value)} className="border border-slate-300 rounded px-2 py-1 text-xs" />}
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button onClick={() => setShowClosingHistory(v => !v)} className="flex items-center gap-1 px-2 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-200">
+                  <History size={12} /> 월별
                 </button>
-                <button onClick={() => setShowClosingModal(false)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
+                {src
+                  ? <button onClick={() => setViewingClosing(null)} className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-bold hover:bg-orange-600">새 마감</button>
+                  : <button onClick={saveClosing} disabled={closingSaving} className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 disabled:opacity-50">
+                      <Save size={12} /> {closingSaving ? '저장 중…' : '저장'}
+                    </button>}
+                <button onClick={shareClosingImage} className="flex items-center gap-1 px-2.5 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700">
+                  <Share2 size={12} /> 공유
+                </button>
+                <button onClick={() => { setShowClosingModal(false); setViewingClosing(null); }} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
                   <X size={16} />
                 </button>
               </div>
             </div>
 
-            {/* 인쇄 영역 */}
-            <div ref={closingRef} className="p-5" style={{ fontFamily: 'Malgun Gothic, sans-serif' }}>
-              <div className="text-center text-sm font-black mb-3">&lt;재고 현황&gt;</div>
-              <div className="text-right text-xs text-slate-500 mb-3">{dateStr}</div>
+            {/* 이전 마감 — 월별 */}
+            {showClosingHistory && (
+              <div className="px-3 py-2 border-b border-slate-200 bg-slate-50 max-h-60 overflow-y-auto">
+                {pastClosings.length === 0
+                  ? <p className="text-xs text-slate-400 py-2 text-center">저장된 마감이 없습니다</p>
+                  : (() => {
+                      const sorted = [...pastClosings].sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || '').localeCompare(a.createdAt || ''));
+                      const byMonth = new Map<string, StockClosing[]>();
+                      sorted.forEach(c => { const m = (c.date || '').slice(0, 7); if (!byMonth.has(m)) byMonth.set(m, []); byMonth.get(m)!.push(c); });
+                      return [...byMonth.entries()].map(([m, list]) => (
+                        <div key={m} className="mb-1.5">
+                          <div className="text-[11px] font-black text-slate-500 px-1 py-1">{m.slice(0, 4)}년 {m.slice(5, 7)}월 <span className="text-slate-300 font-normal">({list.length})</span></div>
+                          {list.map(c => (
+                            <button key={c.id} onClick={() => { setViewingClosing(c); setShowClosingHistory(false); }} className="w-full flex items-center justify-between px-2 py-1.5 text-xs hover:bg-white rounded-lg transition-colors">
+                              <span className="font-bold text-slate-700">{c.date}</span>
+                              <span className="text-slate-400">{c.closedBy || '-'} · {(c.totalStock || 0).toLocaleString()}개</span>
+                            </button>
+                          ))}
+                        </div>
+                      ));
+                    })()}
+              </div>
+            )}
+            {closingSavedAt && !src && <div className="px-4 py-1.5 bg-emerald-50 text-emerald-700 text-xs font-bold text-center">✓ {closingSavedAt}</div>}
+            {!src && <div className="px-4 pt-2 text-[11px] text-slate-400 leading-snug">실물 개수를 Box·낱개로 입력하세요. 앱 계산 재고가 미리 채워져 있어 다른 것만 고치면 됩니다. 저장하면 <b>완제품 재고가 이 수량으로 반영</b>되고, 문서함 <b>직원용 &gt; 재고마감</b>에 이미지가 자동 보관됩니다.</div>}
 
-              <table className="w-full border-collapse text-xs" style={{ borderColor: '#374151' }}>
+            {/* 화면 표시 — 모바일 친화 리스트(입력/조회) */}
+            <div className="p-4">
+              <div className="text-center text-sm font-black">&lt;재고 현황&gt;</div>
+              <div className="text-center text-xs text-slate-500 mb-3">{displayDate}</div>
+
+              {/* 검색: 이름/규격 부분일치로 목록을 걸러 입력(재고 0인 품목도 검색됨) */}
+              {!src && (
+                <div className="relative mb-2">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                  <input value={closingSearch} onChange={e => { setClosingSearch(e.target.value); setClosingPage(0); }} placeholder="품목 검색 (예: 분, 1800, 들기름)"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-8 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-orange-300" />
+                  {closingSearch && (
+                    <button onClick={() => { setClosingSearch(''); setClosingPage(0); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"><X size={14} /></button>
+                  )}
+                </div>
+              )}
+              {!src && term && <div className="text-[11px] text-slate-400 mb-1.5 px-1">검색 결과 {listRows.length}건 — 수량 입력하면 저장에 포함됩니다.</div>}
+
+              <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
+                {pageRows.length === 0 && (
+                  <div className="px-3 py-6 text-center text-xs text-slate-400">{term ? '검색 결과가 없습니다.' : '재고 있는 완제품이 없습니다. 검색해서 입력하세요.'}</div>
+                )}
+                {pageRows.map(r => (
+                  <div key={r.itemId} className="flex items-center gap-2 px-3 py-2">
+                    <span className="flex-1 min-w-0 text-[13px] font-medium text-slate-800 break-keep">{r.label}</span>
+                    {r.editable
+                      ? <div className="flex items-center gap-1 shrink-0">
+                          <input value={r.boxes} onChange={e => setCount(r.itemId, 'boxes', e.target.value)} inputMode="numeric" placeholder="0" className="w-11 text-center text-sm font-bold border border-slate-200 rounded-lg py-1 outline-none focus:ring-2 focus:ring-orange-300" />
+                          <span className="text-[10px] text-slate-400">Box</span>
+                          <input value={r.loose} onChange={e => setCount(r.itemId, 'loose', e.target.value)} inputMode="numeric" placeholder="0" className="w-11 text-center text-sm font-bold border border-slate-200 rounded-lg py-1 outline-none focus:ring-2 focus:ring-orange-300" />
+                          <span className="text-[10px] text-slate-400">개</span>
+                        </div>
+                      : <span className="shrink-0 text-[13px] font-bold text-slate-700">{r.boxes || '0'}<span className="text-[10px] text-slate-400 font-normal"> Box </span>{r.loose || '0'}<span className="text-[10px] text-slate-400 font-normal"> 개</span></span>}
+                  </div>
+                ))}
+                <div className="flex items-center justify-between px-3 py-2 bg-slate-50">
+                  <span className="text-xs font-black text-slate-600">총 재고</span>
+                  <span className="text-sm font-black text-slate-800">{totalStock.toLocaleString()}개</span>
+                </div>
+              </div>
+
+              {/* 페이지 이동 */}
+              {pageCount > 1 && (
+                <div className="flex items-center justify-center gap-3 mt-3">
+                  <button onClick={() => setClosingPage(Math.max(0, page - 1))} disabled={page === 0}
+                    className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold disabled:opacity-40 hover:bg-slate-200">이전</button>
+                  <span className="text-xs font-bold text-slate-500">{page + 1} / {pageCount}</span>
+                  <button onClick={() => setClosingPage(Math.min(pageCount - 1, page + 1))} disabled={page >= pageCount - 1}
+                    className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold disabled:opacity-40 hover:bg-slate-200">다음</button>
+                </div>
+              )}
+            </div>
+
+            {/* 캡처용 숨김 보드 — 공유/문서함 이미지(고정폭 3열, 사진과 동일 모양) */}
+            <div ref={closingRef} aria-hidden="true" style={{ position: 'fixed', left: '-10000px', top: 0, width: '680px', background: '#fff', padding: '24px', fontFamily: 'Malgun Gothic, sans-serif' }}>
+              <div style={{ textAlign: 'center', fontWeight: 900, fontSize: '16px' }}>&lt;재고 현황&gt;</div>
+              <div style={{ textAlign: 'right', fontSize: '12px', color: '#64748b', margin: '2px 0 10px' }}>{displayDate}{src ? ` · ${src.closedBy || ''}` : (currentUser?.name ? ` · ${currentUser.name}` : '')}</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <thead>
-                  <tr>
-                    {[0, 1, 2].map(c => (
-                      <React.Fragment key={c}>
-                        <th className="border border-slate-400 bg-slate-100 px-1.5 py-1.5 font-bold text-center text-[11px]">품목</th>
-                        <th className="border border-slate-400 bg-slate-100 px-1 py-1.5 font-bold text-center text-[11px] w-10">Box</th>
-                        <th className="border border-slate-400 bg-slate-100 px-1 py-1.5 font-bold text-center text-[11px] w-10">△수량</th>
-                      </React.Fragment>
-                    ))}
-                  </tr>
+                  <tr>{[0, 1, 2].map(c => (
+                    <React.Fragment key={c}>
+                      <th style={bTh}>품목</th><th style={{ ...bTh, width: '46px' }}>Box</th><th style={{ ...bTh, width: '46px' }}>낱개</th>
+                    </React.Fragment>
+                  ))}</tr>
                 </thead>
                 <tbody>
-                  {grid.map((row, ri) => (
+                  {Array.from({ length: nRows }).map((_, ri) => (
                     <tr key={ri}>
-                      {row.map((p, ci) => {
-                        if (!p) return (
-                          <React.Fragment key={ci}>
-                            <td className="border border-slate-300 px-1.5 py-1.5" />
-                            <td className="border border-slate-300 px-1 py-1.5" />
-                            <td className="border border-slate-300 px-1 py-1.5" />
-                          </React.Fragment>
-                        );
-                        const { boxes, rem } = getBoxInfo(p);
+                      {[0, 1, 2].map(ci => {
+                        const r = cols[ci][ri];
+                        if (!r) return <React.Fragment key={ci}><td style={bTd} /><td style={bTd} /><td style={bTd} /></React.Fragment>;
                         return (
                           <React.Fragment key={ci}>
-                            <td className="border border-slate-300 px-1.5 py-1.5 text-slate-800 font-medium text-[11px]">{withSpec(p)}</td>
-                            <td className="border border-slate-300 px-1 py-1.5 text-center font-bold text-[11px]">{boxes > 0 ? boxes : '-'}</td>
-                            <td className="border border-slate-300 px-1 py-1.5 text-center text-[11px]">{rem > 0 ? rem : (boxes > 0 ? '-' : p.stock)}</td>
+                            <td style={{ ...bTd, textAlign: 'left' }}>{r.label}</td>
+                            <td style={{ ...bTd, fontWeight: 700 }}>{r.boxes || '-'}</td>
+                            <td style={{ ...bTd, fontWeight: 700 }}>{r.loose || '-'}</td>
                           </React.Fragment>
                         );
                       })}
                     </tr>
                   ))}
-                  {/* 합계 행 */}
-                  <tr className="bg-slate-50">
-                    <td colSpan={8} className="border border-slate-400 px-2 py-1.5 text-right text-xs font-black text-slate-700">
-                      총 재고
-                    </td>
-                    <td className="border border-slate-400 px-2 py-1.5 text-center text-xs font-black text-slate-800">
-                      {totalStock.toLocaleString()}개
-                    </td>
+                  <tr>
+                    <td colSpan={8} style={{ ...bTd, textAlign: 'right', fontWeight: 900, background: '#f8fafc' }}>총 재고</td>
+                    <td style={{ ...bTd, fontWeight: 900, background: '#f8fafc' }}>{totalStock.toLocaleString()}개</td>
                   </tr>
                 </tbody>
               </table>
