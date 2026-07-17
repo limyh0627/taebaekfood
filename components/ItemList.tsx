@@ -462,6 +462,19 @@ const ItemList: React.FC<ItemListProps> = ({
     }
   };
 
+  // 박스 개봉 — 완사입 박스 1개를 까서 낱개 재고로 전환 (예: 볶음참깨 10kg박스 −1 → 낱개 +10)
+  const unpackBox = (product: Item) => {
+    const map = product.unpackTo;
+    if (!map) return;
+    const target = items.find(i => i.id === map.itemId);
+    if (!target) { alert('개봉 대상 품목을 찾을 수 없습니다.'); return; }
+    if ((product.stock ?? 0) < 1) { alert('개봉할 박스 재고가 없습니다.'); return; }
+    if (!confirm(`${product.name} 1박스를 개봉해 "${target.name}" ${map.count}개로 전환할까요?\n(${product.name} −1, ${target.name} +${map.count})`)) return;
+    onUpdateItem({ ...product, stock: (product.stock ?? 0) - 1 });
+    onUpdateItem({ ...target, stock: (target.stock ?? 0) + map.count });
+    setToast({ message: `${product.name} −1박스 → ${target.name} +${map.count}개` });
+  };
+
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -1280,6 +1293,13 @@ const ItemList: React.FC<ItemListProps> = ({
                           <span className="text-[10px] text-slate-400 ml-1">
                             {product.category !== '향미유' && product.unit}
                           </span>
+                        )}
+                        {product.unpackTo && editingStockId !== product.id && (
+                          <button
+                            onClick={e => { e.stopPropagation(); unpackBox(product); }}
+                            className="ml-1.5 text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100 transition-colors align-middle"
+                            title={`1박스 개봉 → 낱개 +${product.unpackTo.count}`}
+                          >개봉 +{product.unpackTo.count}</button>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right hidden sm:table-cell">

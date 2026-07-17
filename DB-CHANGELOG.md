@@ -134,3 +134,35 @@
 | `pallets/pal-wood` (목재파렛트) | `hidden: true` |
 | `pallets/pal-plastic` (플라스틱파렛트) | `hidden: true` |
 | `pallets/pal-black` (검정파렛트) | `hidden: true` |
+
+## 2026-07-13 — 볶음참깨 재고 모델 재편 (박스 카운팅)
+
+**작업자:** Claude 에이전트 (사용자 chdwp 확정안)
+**사유:** 확인사항에 "1KG-볶음참깨(-770)"·"볶음참깨(0)" 이중 알림 — 완포장 사입품이 부자재(용기)로 잘못 모델링돼 유령 재고 누적. 박스 수 그대로 카운팅하는 모델로 재편.
+**스크립트:** `scripts/migrate-bokkeum-model.mjs` (백업 `migrate-bokkeum-model-backup.json`, 되돌리기 `--undo`)
+
+| 문서 | 변경 |
+|---|---|
+| `items/p-1780625531675` (볶음참깨/10kg) | stock 120→0(박스), `procureType:완사입`, `unpackTo:{낱개,10}`, spec 1kg→10kg, 옛 BOM 참조 제거 |
+| `items/p-1780625559322` (볶음참깨/20kg) | stock 0(박스), 완사입, `unpackTo:{낱개,20}`, spec 1kg→20kg, 참조 제거 |
+| `items/PLDhkjOgcPIhO1hhReHm` (낱개/1kg) | stock 20→0(팩), 완사입, 참조 제거 |
+| `items/p-1779069467512` (스마트스토어/1kg) | 완사입 지정 |
+| `items/p-1783918260605` (350g) | raw-볶음참깨 직접참조 제거(원료식으로 대체) |
+| `items/p-1781770117874` (80g) | spec 140g→80g 오타 수정 |
+| `items/p-1781739328648` | 이름 "볶음참깨"→"볶음참깨/500g" |
+| `item_formula/formula-시골향볶음참깨-볶음참깨` | 신규 — 80/140/200/350/500g이 벌크(raw-볶음참깨)에서 spec 기준 kg 차감 |
+| `items/PLYZ-S-1000` (1KG-볶음참깨) | archived, stock -770→0 (유령 재고 폐기) |
+| `adjustmentRequests` 2건 | 유령 발주필요 알림 삭제 (1KG-볶음참깨 810개 / 볶음참깨 20개) |
+
+- 재고 전부 0 시작 — 실사값은 사용자가 직접 입력 예정.
+
+## 2026-07-13 — 볶음참깨 마무리 배선 (#2, 사용자 품목 정리 후)
+
+**작업자:** Claude 에이전트 (사용자 요청)
+**스크립트:** `scripts/wire-bokkeum-final.mjs` (백업 `wire-bokkeum-final-backup.json`, `--undo`)
+
+| 문서 | 변경 |
+|---|---|
+| `items/PLDhkjOgcPIhO1hhReHm` (낱개/1kg) | `isSmartStore: true` — 삭제된 스마트스토어/1kg 품목 대체(낱개 재고로 통합) |
+| `items/p-1779937553909` (볶음참깨(벌크)/20kg) | `rawMaterialName: 볶음참깨`, 자루 20kg — 자루 SKU 삭제로 끊긴 벌크 입고→로트 경로 복구 |
+| `items/p-1780625531675`·`p-1780625559322` | spec 10kg/20kg 정정(표시용) |

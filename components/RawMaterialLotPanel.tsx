@@ -235,6 +235,27 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
         </span>
       </div>
 
+      {/* 포장 종류별 잔량 요약 — 박스/자루 규격이 여럿일 때 (예: 10kg박스 vs 20kg박스 얼마 남았는지) */}
+      {(() => {
+        const byPkg = new Map<number, { kg: number; type: string }>();
+        active.forEach(l => {
+          if (!l.packageKg || (l.kgRemaining ?? 0) <= 0) return;
+          const cur = byPkg.get(l.packageKg) ?? { kg: 0, type: l.packageType ?? '개' };
+          cur.kg += l.kgRemaining ?? 0;
+          byPkg.set(l.packageKg, cur);
+        });
+        if (byPkg.size < 2) return null;
+        return (
+          <div className="flex flex-wrap gap-1.5">
+            {[...byPkg.entries()].sort((a, b) => a[0] - b[0]).map(([pkgKg, v]) => (
+              <span key={pkgKg} className="text-[10px] font-black px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100">
+                {pkgKg}kg{v.type} 잔량 {fmt(v.kg)}kg (≈{Math.floor(v.kg / pkgKg * 10) / 10}{v.type})
+              </span>
+            ))}
+          </div>
+        );
+      })()}
+
       {/* 기름 혼합 사용 — 상위 2개 로트를 비율대로 차감 (관리자, 기름만) */}
       {isOil && isAdmin && (
         <div className="flex items-center gap-2 flex-wrap bg-amber-50/60 border border-amber-100 rounded-xl px-3 py-2">

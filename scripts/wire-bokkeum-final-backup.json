@@ -1,0 +1,79 @@
+{
+  "at": "2026-07-13T08:14:16.334Z",
+  "docs": {
+    "items/PLDhkjOgcPIhO1hhReHm": {
+      "품목": "시골향볶음참깨",
+      "stock": 0,
+      "minStock": 0,
+      "procureType": "완사입",
+      "submaterials": [],
+      "unit": "개",
+      "spec": "1kg",
+      "name": "볶음참깨-낱개/1kg",
+      "price": 0,
+      "image": "",
+      "category": "product",
+      "isSmartStore": false
+    },
+    "items/p-1779937553909": {
+      "isSmartStore": false,
+      "category": "product",
+      "cost": 5280,
+      "price": 0,
+      "image": "",
+      "name": "볶음참깨(벌크)/20kg",
+      "spec": "20kg",
+      "submaterials": [
+        {
+          "category": "용기",
+          "id": "container-bulk-vinyl",
+          "unit": "개",
+          "name": "벌크비닐/20kg",
+          "stock": 1
+        }
+      ],
+      "unit": "개",
+      "minStock": 10,
+      "stock": 20,
+      "품목": "시골향볶음참깨"
+    },
+    "items/p-1780625531675": {
+      "submaterials": [],
+      "unpackTo": {
+        "itemId": "PLDhkjOgcPIhO1hhReHm",
+        "count": 10
+      },
+      "procureType": "완사입",
+      "id": "p-1780625531675",
+      "category": "product",
+      "isSmartStore": false,
+      "name": "볶음참깨/10kg박스",
+      "spec": "1kg",
+      "price": 0,
+      "image": "",
+      "unit": "개",
+      "stock": 0,
+      "품목": "시골향볶음참깨",
+      "minStock": 0
+    },
+    "items/p-1780625559322": {
+      "품목": "시골향볶음참깨",
+      "stock": 0,
+      "minStock": 0,
+      "unit": "개",
+      "unpackTo": {
+        "count": 20,
+        "itemId": "PLDhkjOgcPIhO1hhReHm"
+      },
+      "procureType": "완사입",
+      "submaterials": [],
+      "spec": "1kg",
+      "name": "볶음참깨/20kg박스",
+      "image": "",
+      "price": 0,
+      "category": "product",
+      "id": "p-1780625559322",
+      "isSmartStore": false
+    }
+  }
+}
