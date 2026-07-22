@@ -17,7 +17,8 @@ import {
   Gift, 
   Lock, 
   Unlock,
-  TrendingUp
+  TrendingUp,
+  ChevronRight
 } from 'lucide-react';
 import { Employee, EmployeeStatus, LeaveRequest, LeaveStatus, LeaveType } from '../types';
 import PageHeader from './PageHeader';
@@ -50,8 +51,9 @@ const HRManager: React.FC<HRManagerProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
-  // 연차 상세 오버레이 — 직원 클릭 시 올해 신청·사용 내역
+  // 연차 상세 오버레이 — 직원 클릭 시 올해 신청·사용 내역 (월별 그룹, 클릭 시 펼침)
   const [leaveDetailEmp, setLeaveDetailEmp] = useState<Employee | null>(null);
+  const [openLeaveMonths, setOpenLeaveMonths] = useState<Set<string>>(new Set());
 
   const [formData, setFormData] = useState({
     name: '',
@@ -413,7 +415,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                     <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-8 py-6">
                         <button
-                          onClick={() => setLeaveDetailEmp(emp)}
+                          onClick={() => { setLeaveDetailEmp(emp); setOpenLeaveMonths(new Set()); }}
                           className="text-left group"
                           title="올해 연차 신청·사용 내역 보기"
                         >
@@ -683,41 +685,88 @@ const HRManager: React.FC<HRManagerProps> = ({
                 </div>
               </div>
 
-              {/* 내역 */}
+              {/* 월별 내역 — 헤더 클릭 시 펼침 */}
               <div className="flex-1 overflow-y-auto px-6 py-4">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">{year}년 신청 내역 {mine.length}건</p>
                 {mine.length === 0 ? (
                   <p className="text-center text-sm font-bold text-slate-300 py-16">올해 신청 내역이 없습니다</p>
-                ) : (
-                  <div className="space-y-2">
-                    {mine.map(r => {
-                      const st = STATUS_LABEL[r.status] ?? { text: r.status, cls: 'bg-slate-100 text-slate-500' };
-                      const nonDeduct = NON_DEDUCTIBLE_TYPES.includes(r.type);
-                      return (
-                        <div key={r.id} className="border border-slate-100 rounded-2xl px-4 py-3 flex items-start gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className={`text-[10px] font-black px-2 py-0.5 rounded ${r.type === '연차' ? 'bg-indigo-500 text-white' : 'bg-emerald-500 text-white'}`}>{r.type}</span>
-                              <span className={`text-[10px] font-black px-2 py-0.5 rounded ${st.cls}`}>{st.text}</span>
-                              {nonDeduct && <span className="text-[10px] font-black px-2 py-0.5 rounded bg-slate-100 text-slate-500">미차감</span>}
-                              {r.modifyRequest?.status === 'pending' && <span className="text-[10px] font-black px-2 py-0.5 rounded bg-violet-100 text-violet-700">수정 요청</span>}
-                            </div>
-                            <p className="text-sm font-black text-slate-800 mt-1.5">
-                              {r.startDate}{r.endDate && r.endDate !== r.startDate ? ` ~ ${r.endDate}` : ''}
-                            </p>
-                            {r.reason && <p className="text-[11px] text-slate-400 mt-0.5 break-words">{r.reason}</p>}
-                            <p className="text-[10px] text-slate-300 mt-1">신청 {(r.requestedAt ?? '').slice(0, 10)}</p>
+                ) : (() => {
+                  // 시작일 기준 월별 그룹 (최신 월 먼저)
+                  const byMonth = new Map<string, typeof mine>();
+                  for (const r of mine) {
+                    const m = (r.startDate ?? '').slice(0, 7);
+                    if (!byMonth.has(m)) byMonth.set(m, []);
+                    byMonth.get(m)!.push(r);
+                  }
+                  const months = [...byMonth.keys()].sort((a, b) => b.localeCompare(a));
+                  return (
+                    <div className="space-y-2">
+                      {months.map(m => {
+                        const rows = byMonth.get(m)!;
+                        // 그 달에 실제로 차감된 일수 (승인 + 차감대상만)
+                        const usedDays = rows
+                          .filter(r => r.status === 'approved' && !NON_DEDUCTIBLE_TYPES.includes(r.type))
+                          .reduce((s, r) => s + (r.daysUsed || 0), 0);
+                        const pendingCnt = rows.filter(r => r.status === 'pending' || r.status === 'cancel_pending').length;
+                        const isOpen = openLeaveMonths.has(m);
+                        return (
+                          <div key={m} className="border border-slate-100 rounded-2xl overflow-hidden">
+                            <button
+                              onClick={() => setOpenLeaveMonths(prev => {
+                                const next = new Set(prev);
+                                next.has(m) ? next.delete(m) : next.add(m);
+                                return next;
+                              })}
+                              className={`w-full px-4 py-3 flex items-center gap-3 transition-colors ${isOpen ? 'bg-slate-50' : 'bg-white hover:bg-slate-50/60'}`}
+                            >
+                              <ChevronRight size={14} className={`text-slate-300 shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+                              <span className="font-black text-sm text-slate-800">{Number(m.slice(5, 7))}월</span>
+                              <span className="text-[10px] font-black text-slate-400">{rows.length}건</span>
+                              {pendingCnt > 0 && (
+                                <span className="text-[10px] font-black px-2 py-0.5 rounded bg-amber-100 text-amber-700">대기 {pendingCnt}</span>
+                              )}
+                              <span className="ml-auto text-right shrink-0">
+                                <span className={`text-lg font-black tabular-nums ${usedDays > 0 ? 'text-rose-600' : 'text-slate-300'}`}>{usedDays}</span>
+                                <span className="text-[10px] font-bold text-slate-400 ml-0.5">일 사용</span>
+                              </span>
+                            </button>
+
+                            {isOpen && (
+                              <div className="divide-y divide-slate-50 border-t border-slate-100">
+                                {rows.map(r => {
+                                  const st = STATUS_LABEL[r.status] ?? { text: r.status, cls: 'bg-slate-100 text-slate-500' };
+                                  const nonDeduct = NON_DEDUCTIBLE_TYPES.includes(r.type);
+                                  return (
+                                    <div key={r.id} className="px-4 py-3 flex items-start gap-3 bg-white">
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span className={`text-[10px] font-black px-2 py-0.5 rounded ${r.type === '연차' ? 'bg-indigo-500 text-white' : 'bg-emerald-500 text-white'}`}>{r.type}</span>
+                                          <span className={`text-[10px] font-black px-2 py-0.5 rounded ${st.cls}`}>{st.text}</span>
+                                          {nonDeduct && <span className="text-[10px] font-black px-2 py-0.5 rounded bg-slate-100 text-slate-500">미차감</span>}
+                                          {r.modifyRequest?.status === 'pending' && <span className="text-[10px] font-black px-2 py-0.5 rounded bg-violet-100 text-violet-700">수정 요청</span>}
+                                        </div>
+                                        <p className="text-sm font-black text-slate-800 mt-1.5">
+                                          {r.startDate}{r.endDate && r.endDate !== r.startDate ? ` ~ ${r.endDate}` : ''}
+                                        </p>
+                                        {r.reason && <p className="text-[11px] text-slate-400 mt-0.5 break-words">{r.reason}</p>}
+                                        <p className="text-[10px] text-slate-300 mt-1">신청 {(r.requestedAt ?? '').slice(0, 10)}</p>
+                                      </div>
+                                      <div className="text-right shrink-0">
+                                        <p className={`text-lg font-black tabular-nums ${r.status === 'approved' && !nonDeduct ? 'text-rose-600' : 'text-slate-300'}`}>
+                                          {r.daysUsed}<span className="text-xs ml-0.5">일</span>
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
-                          <div className="text-right shrink-0">
-                            <p className={`text-lg font-black tabular-nums ${r.status === 'approved' && !nonDeduct ? 'text-rose-600' : 'text-slate-300'}`}>
-                              {r.daysUsed}<span className="text-xs ml-0.5">일</span>
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </div>
