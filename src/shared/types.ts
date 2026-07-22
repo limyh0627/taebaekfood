@@ -350,7 +350,8 @@ export interface Employee {
 }
 
 // Leave related interfaces
-export type LeaveType = '연차' | '오전반차' | '오후반차' | '병가' | '경조사' | '기타';
+// '휴가' = 회사 단체 휴가 — 관리자가 기간을 정해 직원 일괄 부여(연차 차감). 개인 신청 대상 아님.
+export type LeaveType = '연차' | '오전반차' | '오후반차' | '병가' | '경조사' | '기타' | '휴가';
 export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancel_pending' | 'cancelled';
 
 export interface LeaveModifyRequest {

@@ -34,6 +34,8 @@ interface HRManagerProps {
   onUpdateLeaveStatus: (_id: string, _status: LeaveStatus) => void;
   onUpdateLeave: (_id: string, _updates: Partial<LeaveRequest>) => void;
   onDeleteLeaveRequest: (_id: string) => void;
+  /** 회사 단체 휴가 일괄 등록 — 선택 직원별로 승인된 '휴가' 신청을 만든다(연차 차감) */
+  onAddLeaveRequests?: (_reqs: LeaveRequest[]) => Promise<void> | void;
 }
 
 const HRManager: React.FC<HRManagerProps> = ({
@@ -44,6 +46,7 @@ const HRManager: React.FC<HRManagerProps> = ({
   onDeleteEmployee,
   onUpdateLeaveStatus,
   onUpdateLeave,
+  onAddLeaveRequests,
 }) => {
   const [activeTab, setActiveTab] = useState<'employees' | 'leave-approval' | 'leave-balance'>('employees');
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
@@ -54,6 +57,28 @@ const HRManager: React.FC<HRManagerProps> = ({
   // 연차 상세 오버레이 — 직원 클릭 시 올해 신청·사용 내역 (월별 그룹, 클릭 시 펼침)
   const [leaveDetailEmp, setLeaveDetailEmp] = useState<Employee | null>(null);
   const [openLeaveMonths, setOpenLeaveMonths] = useState<Set<string>>(new Set());
+  // 회사 단체 휴가 — 기본 전원 포함, 뺄 사람만 체크 해제
+  const [showVacation, setShowVacation] = useState(false);
+  const [vacationExcluded, setVacationExcluded] = useState<Set<string>>(new Set());
+  const [vacationRange, setVacationRange] = useState({ start: '', end: '' });
+  const [vacationReason, setVacationReason] = useState('');
+  const [vacationBusy, setVacationBusy] = useState(false);
+
+  /** 평일 기준 일수 (주말 제외, 최소 1일) — LeaveManager의 계산과 동일 */
+  const countWeekdays = (start: string, end: string) => {
+    if (!start || !end) return 0;
+    const s = new Date(start + 'T00:00:00');
+    const e = new Date(end + 'T00:00:00');
+    if (e < s) return 0;
+    let n = 0;
+    const cur = new Date(s);
+    while (cur <= e) {
+      const d = cur.getDay();
+      if (d !== 0 && d !== 6) n++;
+      cur.setDate(cur.getDate() + 1);
+    }
+    return Math.max(1, n);
+  };
 
   const [formData, setFormData] = useState({
     name: '',
@@ -198,15 +223,28 @@ const HRManager: React.FC<HRManagerProps> = ({
             </button>
           )}
           {activeTab === 'leave-balance' && (
-            <button
-              onClick={() => setIsEditMode(!isEditMode)}
-              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-black shadow-sm transition-all ${
-                isEditMode ? 'bg-rose-500 text-white hover:bg-rose-600' : 'bg-emerald-600 text-white hover:bg-emerald-700'
-              }`}
-            >
-              {isEditMode ? <Lock size={14} /> : <Unlock size={14} />}
-              <span>{isEditMode ? '편집 종료' : '연차 편집'}</span>
-            </button>
+            <>
+              <button
+                onClick={() => setIsEditMode(!isEditMode)}
+                className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-black shadow-sm transition-all ${
+                  isEditMode ? 'bg-rose-500 text-white hover:bg-rose-600' : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                }`}
+              >
+                {isEditMode ? <Lock size={14} /> : <Unlock size={14} />}
+                <span>{isEditMode ? '편집 종료' : '연차 편집'}</span>
+              </button>
+              <button
+                onClick={() => {
+                  setVacationExcluded(new Set());
+                  setVacationRange({ start: today.toISOString().slice(0, 10), end: today.toISOString().slice(0, 10) });
+                  setVacationReason('');
+                  setShowVacation(true);
+                }}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-black shadow-sm bg-indigo-600 text-white hover:bg-indigo-700 transition-all"
+              >
+                <CalendarCheck size={14} /><span>휴가</span>
+              </button>
+            </>
           )}
         </div>}
       />
@@ -320,7 +358,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                       {isModify && <span className="text-[9px] font-black px-1.5 py-0.5 bg-violet-100 text-violet-600 rounded mt-0.5 inline-block">변경 신청</span>}
                     </td>
                     <td className="px-4 sm:px-8 py-4 sm:py-6">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase mb-1 inline-block ${req.type === '연차' ? 'bg-indigo-500 text-white' : 'bg-emerald-500 text-white'}`}>{req.type}</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase mb-1 inline-block ${req.type === '연차' ? 'bg-indigo-500 text-white' : req.type === '휴가' ? 'bg-sky-500 text-white' : 'bg-emerald-500 text-white'}`}>{req.type}</span>
                       {isModify ? (
                         <div className="mt-1 space-y-0.5">
                           <p className="text-[10px] text-slate-400 font-bold">변경 전: {req.startDate} ~ {req.endDate}</p>
@@ -616,6 +654,120 @@ const HRManager: React.FC<HRManagerProps> = ({
           </div>
         </div>
       )}
+      {/* ── 회사 단체 휴가 일괄 등록 ── */}
+      {showVacation && (() => {
+        const targets = employees.filter(e => !vacationExcluded.has(e.id));
+        const days = countWeekdays(vacationRange.start, vacationRange.end);
+        const canSave = targets.length > 0 && days > 0 && !!vacationRange.start && !!vacationRange.end && !vacationBusy;
+
+        const submit = async () => {
+          if (!canSave || !onAddLeaveRequests) return;
+          setVacationBusy(true);
+          try {
+            const now = new Date().toISOString();
+            const reqs: LeaveRequest[] = targets.map((emp, i) => ({
+              id: `leave-vac-${Date.now()}-${i}`,
+              employeeId: emp.id,
+              employeeName: emp.name,
+              type: '휴가',
+              startDate: vacationRange.start,
+              endDate: vacationRange.end,
+              reason: vacationReason.trim() || '회사 단체 휴가',
+              status: 'approved',       // 관리자가 부여하는 것 — 승인 상태로 바로 차감
+              requestedAt: now,
+              daysUsed: days,
+            }));
+            await onAddLeaveRequests(reqs);
+            setShowVacation(false);
+          } catch (e) {
+            alert(`휴가 등록 실패: ${(e as Error)?.message ?? String(e)}`);
+          } finally {
+            setVacationBusy(false);
+          }
+        };
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setShowVacation(false)}>
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
+              <div className="px-6 py-5 border-b border-slate-100 flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-black text-slate-800">회사 단체 휴가</h3>
+                  <p className="text-xs text-slate-400 font-bold">기간을 정하면 선택된 직원의 <b className="text-rose-500">연차가 차감</b>되고, 직원 앱 연차 내역에 '휴가'로 표시됩니다.</p>
+                </div>
+                <button onClick={() => setShowVacation(false)} className="text-slate-300 hover:text-slate-500 shrink-0"><X size={20} /></button>
+              </div>
+
+              {/* 기간 */}
+              <div className="px-6 py-4 border-b border-slate-100 flex items-end gap-3 flex-wrap">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">시작일</label>
+                  <input type="date" value={vacationRange.start}
+                    onChange={e => setVacationRange(v => ({ ...v, start: e.target.value, end: v.end && v.end < e.target.value ? e.target.value : v.end }))}
+                    className="border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-300" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">종료일</label>
+                  <input type="date" value={vacationRange.end} min={vacationRange.start}
+                    onChange={e => setVacationRange(v => ({ ...v, end: e.target.value }))}
+                    className="border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-300" />
+                </div>
+                <div className="bg-indigo-50 rounded-xl px-4 py-2">
+                  <p className="text-[10px] font-black text-indigo-400 uppercase">차감 일수</p>
+                  <p className="text-lg font-black text-indigo-700 tabular-nums">{days}<span className="text-xs ml-0.5">일</span></p>
+                </div>
+                <input value={vacationReason} onChange={e => setVacationReason(e.target.value)} placeholder="사유 (기본: 회사 단체 휴가)"
+                  className="flex-1 min-w-[160px] border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-300" />
+              </div>
+              <p className="px-6 pt-2 text-[10px] text-slate-400">주말은 빼고 셉니다. 공휴일은 자동 제외되지 않으니 필요하면 기간을 나눠 등록하세요.</p>
+
+              {/* 대상 직원 — 기본 전원 포함, 뺄 사람 클릭 */}
+              <div className="px-6 py-3 flex items-center gap-2">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">대상 {targets.length} / {employees.length}명</span>
+                <button onClick={() => setVacationExcluded(new Set())} className="text-[10px] font-black text-indigo-500 hover:underline">전체 선택</button>
+                <button onClick={() => setVacationExcluded(new Set(employees.map(e => e.id)))} className="text-[10px] font-black text-slate-400 hover:underline">전체 해제</button>
+              </div>
+              <div className="flex-1 overflow-y-auto px-6 pb-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {employees.map(emp => {
+                    const on = !vacationExcluded.has(emp.id);
+                    return (
+                      <button key={emp.id}
+                        onClick={() => setVacationExcluded(prev => {
+                          const next = new Set(prev);
+                          next.has(emp.id) ? next.delete(emp.id) : next.add(emp.id);
+                          return next;
+                        })}
+                        className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-left transition-all ${
+                          on ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-slate-200 opacity-50'
+                        }`}>
+                        <span className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${on ? 'bg-indigo-600' : 'bg-slate-200'}`}>
+                          {on && <Check size={11} className="text-white" strokeWidth={3.5} />}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-xs font-black text-slate-800 truncate">{emp.name}</span>
+                          <span className="block text-[10px] text-slate-400 truncate">{emp.department} · {emp.position}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="px-6 py-4 border-t border-slate-100 flex items-center gap-2">
+                <p className="text-[11px] font-bold text-slate-400 flex-1">
+                  {targets.length}명 × {days}일 차감
+                </p>
+                <button onClick={() => setShowVacation(false)} className="px-5 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200">취소</button>
+                <button onClick={submit} disabled={!canSave}
+                  className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-black hover:bg-indigo-700 disabled:opacity-30">
+                  {vacationBusy ? '등록 중…' : '휴가 등록'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── 직원별 연차 상세 (올해 신청·사용 내역) ── */}
       {leaveDetailEmp && (() => {
         const emp = leaveDetailEmp;
@@ -740,7 +892,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                                     <div key={r.id} className="px-4 py-3 flex items-start gap-3 bg-white">
                                       <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-1.5 flex-wrap">
-                                          <span className={`text-[10px] font-black px-2 py-0.5 rounded ${r.type === '연차' ? 'bg-indigo-500 text-white' : 'bg-emerald-500 text-white'}`}>{r.type}</span>
+                                          <span className={`text-[10px] font-black px-2 py-0.5 rounded ${r.type === '연차' ? 'bg-indigo-500 text-white' : r.type === '휴가' ? 'bg-sky-500 text-white' : 'bg-emerald-500 text-white'}`}>{r.type}</span>
                                           <span className={`text-[10px] font-black px-2 py-0.5 rounded ${st.cls}`}>{st.text}</span>
                                           {nonDeduct && <span className="text-[10px] font-black px-2 py-0.5 rounded bg-slate-100 text-slate-500">미차감</span>}
                                           {r.modifyRequest?.status === 'pending' && <span className="text-[10px] font-black px-2 py-0.5 rounded bg-violet-100 text-violet-700">수정 요청</span>}

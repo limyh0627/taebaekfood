@@ -1624,6 +1624,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onUpdateLeaveStatus={(id, status) => updateItem('leaveRequests', id, { status })}
               onUpdateLeave={(id, updates) => updateItem('leaveRequests', id, updates)}
               onDeleteLeaveRequest={(id) => deleteItem('leaveRequests', id)}
+              onAddLeaveRequests={async (reqs) => {
+                for (const r of reqs) await addItem('leaveRequests', r);
+              }}
             />
           )}
           {currentView === 'admin-checklist' && (

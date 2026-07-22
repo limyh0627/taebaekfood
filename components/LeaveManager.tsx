@@ -121,6 +121,7 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
     '경조사': 0,
     '기타': 0,
     '병가': 'days',
+    '휴가': 'days',   // 회사 단체 휴가 — 관리자가 일괄 부여, 연차 차감
   };
 
   const calculateRequestDays = (start: string, end: string, type: LeaveType) => {
@@ -401,7 +402,7 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
                         ) : filteredRequests.map(req => (
                           <tr key={req.id} className="hover:bg-slate-50 transition-colors">
                             <td className="px-3 md:px-5 py-2.5 md:py-3.5">
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${req.type === '연차' ? 'bg-indigo-500 text-white' : 'bg-emerald-500 text-white'}`}>{req.type}</span>
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${req.type === '연차' ? 'bg-indigo-500 text-white' : req.type === '휴가' ? 'bg-sky-500 text-white' : 'bg-emerald-500 text-white'}`}>{req.type}</span>
                               <p className="text-xs text-slate-400 mt-0.5 italic leading-tight">&quot;{req.reason}&quot;</p>
                             </td>
                             <td className="px-3 md:px-5 py-2.5 md:py-3.5 text-xs font-bold text-slate-600 whitespace-nowrap">{req.startDate} ~ {req.endDate}</td>
