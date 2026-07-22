@@ -105,7 +105,6 @@ const TradeStatement = React.lazy(() => import('../../../components/TradeStateme
 const ProfitAnalysis = React.lazy(() => import('../../../components/ProfitAnalysis'));
 const CashLedger = React.lazy(() => import('../../../components/CashLedger'));
 const PartnerLedger = React.lazy(() => import('../../../components/PartnerLedger'));
-const OemManager = React.lazy(() => import('../../../components/OemManager'));
 
 import { db } from '../../shared/firebase';
 import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName, lotStockInUnit, lotKgRemaining } from '../../constants/formula';
@@ -1516,28 +1515,20 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   />
                 </React.Suspense>
               }
-              oemContent={
-                <React.Suspense fallback={null}>
-                  <OemManager
-                    items={allItems}
-                    partners={partners}
-                    purchaseOrders={purchaseOrders}
-                    rawStockKg={rawStockKg}
-                    onIssue={async (v) => {
-                      try { await issueOemBatch({ ...v, addedBy: currentUser?.name }); }
-                      catch (e) { alert(`외주 발주 실패: ${(e as Error)?.message ?? String(e)}`); }
-                    }}
-                    onReceive={async (v) => {
-                      try { await receiveOemBatch({ ...v, addedBy: currentUser?.name }); }
-                      catch (e) { alert(`가공입고 실패: ${(e as Error)?.message ?? String(e)}`); }
-                    }}
-                    onIssueFee={async (v) => {
-                      try { await issueOemFeeStatement(v); }
-                      catch (e) { alert(`가공비 전표 발행 실패: ${(e as Error)?.message ?? String(e)}`); }
-                    }}
-                  />
-                </React.Suspense>
-              }
+              oemEnabled
+              rawStockKg={rawStockKg}
+              onOemIssue={async (v) => {
+                try { await issueOemBatch({ ...v, addedBy: currentUser?.name }); }
+                catch (e) { alert(`외주 발주 실패: ${(e as Error)?.message ?? String(e)}`); }
+              }}
+              onOemReceive={async (v) => {
+                try { await receiveOemBatch({ ...v, addedBy: currentUser?.name }); }
+                catch (e) { alert(`가공입고 실패: ${(e as Error)?.message ?? String(e)}`); }
+              }}
+              onOemIssueFee={async (v) => {
+                try { await issueOemFeeStatement(v); }
+                catch (e) { alert(`가공비 전표 발행 실패: ${(e as Error)?.message ?? String(e)}`); }
+              }}
             />
             </>
           )}

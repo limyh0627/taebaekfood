@@ -25,6 +25,7 @@ import {
   FileDown,
   Save,
   Share2,
+  Factory,
 } from 'lucide-react';
 import { Item, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, PartnerItem } from '../types';
 import { PurchaseOrder, poLines } from '../src/shared/types';
@@ -34,6 +35,7 @@ import PageHeader from './PageHeader';
 import RawMaterialEntryModal from './RawMaterialEntryModal';
 import RawMaterialLotPanel from './RawMaterialLotPanel';
 import RawLedgerList from './RawLedgerList';
+import OemManager from './OemManager';
 import { RM_LIST, unitOf, baseRawName, lotStockInUnit, unitToKg, lotKgRemaining, parsePackageKg } from '../src/constants/formula';
 import { mutateRawMaterialLots, addItem, subscribeToCollection, fetchCollection } from '../src/shared/services/firebaseService';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -112,7 +114,12 @@ interface ItemListProps {
   inboundBadge?: number;
   returnContent?: React.ReactNode;
   returnBadge?: number;
-  oemContent?: React.ReactNode;   // 임가공(OEM) — 입고 화면 상단에 함께 표시
+  // 임가공(OEM) — 발주는 입고대기에, 이력은 입고이력에 함께 표시된다(별도 목록 없음)
+  oemEnabled?: boolean;
+  rawStockKg?: (material: string) => number;
+  onOemIssue?: (input: { oemPartnerId: string; partnerName: string; sent: { material: string; kg: number }[]; date: string; note?: string }) => Promise<void>;
+  onOemReceive?: (input: { po: PurchaseOrder; returns: { itemId: string; qty: number }[]; unitPricePerKg: number; date: string }) => Promise<void>;
+  onOemIssueFee?: (input: { po: PurchaseOrder; unitPricePerKg: number; date: string }) => Promise<void>;
 }
 
 
@@ -180,7 +187,11 @@ const ItemList: React.FC<ItemListProps> = ({
   inboundBadge = 0,
   returnContent,
   returnBadge = 0,
-  oemContent,
+  oemEnabled = false,
+  rawStockKg,
+  onOemIssue,
+  onOemReceive,
+  onOemIssueFee,
 }) => {
   const psMap = useMemo(() => new Map(partnerItems.filter(pi => pi.Direction === 'in').map(pi => [pi.Item_ID, pi.Partner_ID])), [partnerItems]);
   const fmtHamiyou = (stock: number) => {
@@ -338,6 +349,11 @@ const ItemList: React.FC<ItemListProps> = ({
   const [inboundSubTab, setInboundSubTab] = useState<InboundSubTab>('입고');
   const [showInboundOverlay, setShowInboundOverlay] = useState(false);
   const [showReturnOverlay, setShowReturnOverlay] = useState(false);
+  // 임가공(OEM) 모달 — 목록은 입고대기·입고이력에 녹아 있고 여기선 모달만 연다
+  const [oemIssueOpen, setOemIssueOpen] = useState(false);
+  const [oemReceiveTarget, setOemReceiveTarget] = useState<PurchaseOrder | null>(null);
+  const [oemFeeTarget, setOemFeeTarget] = useState<PurchaseOrder | null>(null);
+  const closeOem = () => { setOemIssueOpen(false); setOemReceiveTarget(null); setOemFeeTarget(null); };
   // 원료재고 입고/사용 기록 모달
   const [rawEntryModal, setRawEntryModal] = useState<{ mode: 'inbound' | 'usage' } | null>(null);
   // 저장 완료 토스트 (원료 입출고 기록 등)
@@ -721,6 +737,11 @@ const ItemList: React.FC<ItemListProps> = ({
                 {returnBadge > 0 && <span className="absolute -top-1 -right-1 bg-rose-400 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow">{returnBadge}</span>}
               </button>
             )}
+            {oemEnabled && (
+              <button onClick={() => setOemIssueOpen(true)} className="flex items-center gap-1.5 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-xs font-black transition-all shadow-sm">
+                <Factory size={13} /><span>외주 발주</span>
+              </button>
+            )}
           </div>
         )}
 
@@ -869,8 +890,6 @@ const ItemList: React.FC<ItemListProps> = ({
       {/* 입고/반품 탭 콘텐츠 */}
       {activeTab === 'inbound' && (
         <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-6">
-          {/* 임가공(OEM) — 입고 화면에 함께. 외주 발주·가공입고·가공비 전표 */}
-          {inboundSubTab === '입고' && oemContent}
           {inboundSubTab === '입고' && (() => {
             const history = (receivedOrders ?? [])
               .filter(r => (r.receivedAt ?? '').slice(0, 7) === historyMonth)
@@ -972,7 +991,27 @@ const ItemList: React.FC<ItemListProps> = ({
                         {Array.from(groups.values()).map(group => (
                           <div key={group.partnerName} className="bg-white rounded-2xl border border-amber-100 p-4 shadow-sm space-y-3">
                             <p className="font-black text-slate-800 text-sm">{group.partnerName}</p>
-                            {group.orders.map(po => (
+                            {group.orders.map(po => {
+                              // 임가공 배치 — 우리 원료가 나가 있는 것. 입고확정 대신 가공입고.
+                              if (po.poType === 'oem') return (
+                                <div key={po.id} className="rounded-xl border border-violet-200 bg-violet-50/40 p-2.5 space-y-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-[10px] font-black text-violet-600 bg-violet-100 px-2 py-0.5 rounded">임가공 · 외주 나감</span>
+                                    <button onClick={() => setOemReceiveTarget(po)}
+                                      className="px-3 py-1.5 rounded-lg bg-violet-600 text-white text-[11px] font-black hover:bg-violet-700 transition-all shrink-0">
+                                      가공입고
+                                    </button>
+                                  </div>
+                                  <p className="text-[10px] text-slate-400 font-bold">출고일 {(po.oemSentAt || po.createdAt || '').slice(0, 10)}</p>
+                                  {(po.oemSent ?? []).map((s, idx) => (
+                                    <div key={idx} className="flex justify-between text-xs text-slate-600 bg-white rounded-lg px-3 py-1.5">
+                                      <span>{s.material} <span className="text-slate-400">보냄</span></span>
+                                      <span className="font-bold">{s.kg.toLocaleString()} kg</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              );
+                              return (
                               <div key={po.id} className="rounded-xl border border-slate-100 p-2.5 space-y-2">
                                 <div className="flex items-center justify-between gap-2">
                                   <span className="text-[10px] text-slate-400 font-bold">발주일 {(po.createdAt||'').slice(0,10)}</span>
@@ -1000,7 +1039,8 @@ const ItemList: React.FC<ItemListProps> = ({
                                   );
                                 })}
                               </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         ))}
                       </div>
@@ -1020,16 +1060,33 @@ const ItemList: React.FC<ItemListProps> = ({
                     <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-slate-400 text-sm">해당 월의 입고 이력 없음</div>
                   ) : (
                     <div className="space-y-2">
-                      {pagedHistory.map(r => (
-                        <div key={r.id} className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm space-y-2">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <p className="font-black text-slate-800 text-sm">{r.partnerName}</p>
-                              <p className="text-xs text-slate-400">{(r.receivedAt ?? '').slice(0, 10)} · {r.partnerName ?? ''}</p>
+                      {pagedHistory.map(r => {
+                        const isOem = r.poType === 'oem';
+                        const oemSentTotal = (r.oemSent ?? []).reduce((a, s) => a + (s.kg || 0), 0);
+                        return (
+                        <div key={r.id} className={`bg-white rounded-2xl border p-4 shadow-sm space-y-2 ${isOem ? 'border-violet-200' : 'border-slate-100'}`}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="font-black text-slate-800 text-sm">
+                                {r.partnerName}
+                                {isOem && <span className="ml-1.5 text-[10px] font-black text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">임가공</span>}
+                              </p>
+                              <p className="text-xs text-slate-400">
+                                {(r.receivedAt ?? '').slice(0, 10)}
+                                {isOem && ` · 보낸 원료 ${oemSentTotal.toLocaleString()}kg → 받은 ${(r.oemReceivedKg ?? 0).toLocaleString()}kg (로스 ${Math.max(0, Math.round((oemSentTotal - (r.oemReceivedKg ?? 0)) * 1000) / 1000).toLocaleString()}kg)`}
+                              </p>
                             </div>
-                            <span className={`px-2 py-1 rounded-lg text-[10px] font-black shrink-0 ${r.linkedStatementId ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                              {r.linkedStatementId ? '✓ 전표 연결됨' : '전표 미작성'}
-                            </span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${r.linkedStatementId ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                                {r.linkedStatementId ? '✓ 전표 연결됨' : (isOem ? '가공비 전표 미작성' : '전표 미작성')}
+                              </span>
+                              {isOem && !r.linkedStatementId && onOemIssueFee && (
+                                <button onClick={() => setOemFeeTarget(r)}
+                                  className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-[11px] font-black hover:bg-amber-600 transition-all">
+                                  가공비 전표
+                                </button>
+                              )}
+                            </div>
                           </div>
                           {(r.items ?? []).map((item, i) => (
                             <div key={i} className="flex justify-between text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-1.5">
@@ -1038,7 +1095,8 @@ const ItemList: React.FC<ItemListProps> = ({
                             </div>
                           ))}
                         </div>
-                      ))}
+                        );
+                      })}
                       {historyTotalPages > 1 && (
                         <div className="flex items-center justify-center gap-1 pt-2">
                           <button onClick={() => setHistoryPage(p => Math.max(1, p - 1))} disabled={historySafePage === 1}
@@ -1059,6 +1117,22 @@ const ItemList: React.FC<ItemListProps> = ({
           })()}
           {inboundSubTab === '반품' && returnContent && returnContent}
         </div>
+      )}
+
+      {/* 임가공(OEM) 모달 — 목록은 위 입고대기·입고이력에 녹아 있다 */}
+      {oemEnabled && onOemIssue && onOemReceive && onOemIssueFee && rawStockKg && (
+        <OemManager
+          items={items}
+          partners={(partners ?? []) as any}
+          rawStockKg={rawStockKg}
+          issueOpen={oemIssueOpen}
+          receiveTarget={oemReceiveTarget}
+          feeTarget={oemFeeTarget}
+          onClose={closeOem}
+          onIssue={onOemIssue}
+          onReceive={onOemReceive}
+          onIssueFee={onOemIssueFee}
+        />
       )}
 
       {activeTab !== 'inbound' && (zeroStockOnly || topTab === 'submaterial' || topTab === 'finished' || topTab === 'goods' || topTab === 'rawmaterial' || topTab === 'wip') && <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
