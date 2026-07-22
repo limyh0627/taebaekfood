@@ -50,6 +50,8 @@ const HRManager: React.FC<HRManagerProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
+  // 연차 상세 오버레이 — 직원 클릭 시 올해 신청·사용 내역
+  const [leaveDetailEmp, setLeaveDetailEmp] = useState<Employee | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -410,8 +412,14 @@ const HRManager: React.FC<HRManagerProps> = ({
                   return (
                     <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-8 py-6">
-                        <p className="font-black text-slate-800">{emp.name}</p>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase">{emp.position}</p>
+                        <button
+                          onClick={() => setLeaveDetailEmp(emp)}
+                          className="text-left group"
+                          title="올해 연차 신청·사용 내역 보기"
+                        >
+                          <p className="font-black text-slate-800 group-hover:text-indigo-600 group-hover:underline decoration-indigo-300 underline-offset-2 transition-colors">{emp.name}</p>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase">{emp.position}</p>
+                        </button>
                       </td>
                       {/* 월차 */}
                       <td className="px-4 py-6 text-center">
@@ -606,6 +614,116 @@ const HRManager: React.FC<HRManagerProps> = ({
           </div>
         </div>
       )}
+      {/* ── 직원별 연차 상세 (올해 신청·사용 내역) ── */}
+      {leaveDetailEmp && (() => {
+        const emp = leaveDetailEmp;
+        const year = today.getFullYear();
+        const mine = leaveRequests
+          .filter(r => r.employeeId === emp.id && (r.startDate ?? '').slice(0, 4) === String(year))
+          .sort((a, b) => (b.startDate ?? '').localeCompare(a.startDate ?? ''));
+
+        const underOneYear = isUnderOneYear(emp.joinDate);
+        const monthlyLeave = underOneYear ? calculateMonthlyLeaveThisYear(emp.joinDate) : 0;
+        const annualLeave = calculateAnnualLeave(emp.joinDate);
+        const totalUsable = monthlyLeave + annualLeave + (emp.annualLeave?.carryOverLeave || 0) + (emp.annualLeave?.bonusLeave || 0);
+        const approvedUsed = getApprovedLeaveCount(emp.id);
+        const remaining = totalUsable - approvedUsed - (emp.manualAdjustment || 0);
+
+        // 승인되어 실제로 차감된 것만 집계(경조사·기타는 차감 안 함)
+        const deductible = mine.filter(r => r.status === 'approved' && !NON_DEDUCTIBLE_TYPES.includes(r.type));
+        const pendingMine = mine.filter(r => r.status === 'pending' || r.status === 'cancel_pending');
+
+        const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
+          approved: { text: '승인', cls: 'bg-emerald-100 text-emerald-700' },
+          pending: { text: '대기', cls: 'bg-amber-100 text-amber-700' },
+          rejected: { text: '반려', cls: 'bg-rose-100 text-rose-700' },
+          cancel_pending: { text: '취소 요청', cls: 'bg-orange-100 text-orange-700' },
+          cancelled: { text: '취소됨', cls: 'bg-slate-200 text-slate-500' },
+        };
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setLeaveDetailEmp(null)}>
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
+              {/* 헤더 */}
+              <div className="px-6 py-5 border-b border-slate-100 flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-black text-slate-800">{emp.name}</h3>
+                  <p className="text-xs text-slate-400 font-bold">
+                    {emp.department} · {emp.position} · 입사 {emp.joinDate}
+                    {underOneYear && <span className="ml-1.5 text-[10px] font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">1년 미만</span>}
+                  </p>
+                </div>
+                <button onClick={() => setLeaveDetailEmp(null)} className="text-slate-300 hover:text-slate-500 shrink-0"><X size={20} /></button>
+              </div>
+
+              {/* 요약 */}
+              <div className="px-6 py-4 grid grid-cols-4 gap-3 border-b border-slate-100">
+                <div className="bg-slate-50 rounded-2xl px-4 py-3">
+                  <p className="text-[10px] font-black text-slate-400 uppercase">총 부여</p>
+                  <p className="text-xl font-black text-slate-800 tabular-nums">{totalUsable}<span className="text-xs ml-0.5 text-slate-400">일</span></p>
+                  <p className="text-[9px] text-slate-400 mt-0.5">
+                    {underOneYear ? `월차 ${monthlyLeave}` : `연차 ${annualLeave}`}
+                    {(emp.annualLeave?.carryOverLeave || 0) > 0 && ` +이월 ${emp.annualLeave?.carryOverLeave}`}
+                    {(emp.annualLeave?.bonusLeave || 0) > 0 && ` +보너스 ${emp.annualLeave?.bonusLeave}`}
+                  </p>
+                </div>
+                <div className="bg-rose-50 rounded-2xl px-4 py-3">
+                  <p className="text-[10px] font-black text-rose-400 uppercase">사용</p>
+                  <p className="text-xl font-black text-rose-600 tabular-nums">{approvedUsed}<span className="text-xs ml-0.5 text-rose-300">일</span></p>
+                  <p className="text-[9px] text-rose-400 mt-0.5">승인 {deductible.length}건</p>
+                </div>
+                <div className="bg-amber-50 rounded-2xl px-4 py-3">
+                  <p className="text-[10px] font-black text-amber-500 uppercase">수동 차감</p>
+                  <p className="text-xl font-black text-amber-600 tabular-nums">{emp.manualAdjustment || 0}<span className="text-xs ml-0.5 text-amber-300">일</span></p>
+                </div>
+                <div className="bg-indigo-600 rounded-2xl px-4 py-3">
+                  <p className="text-[10px] font-black text-indigo-200 uppercase">잔여</p>
+                  <p className="text-xl font-black text-white tabular-nums">{remaining}<span className="text-xs ml-0.5 text-indigo-200">일</span></p>
+                  {pendingMine.length > 0 && <p className="text-[9px] text-indigo-200 mt-0.5">대기 {pendingMine.length}건</p>}
+                </div>
+              </div>
+
+              {/* 내역 */}
+              <div className="flex-1 overflow-y-auto px-6 py-4">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">{year}년 신청 내역 {mine.length}건</p>
+                {mine.length === 0 ? (
+                  <p className="text-center text-sm font-bold text-slate-300 py-16">올해 신청 내역이 없습니다</p>
+                ) : (
+                  <div className="space-y-2">
+                    {mine.map(r => {
+                      const st = STATUS_LABEL[r.status] ?? { text: r.status, cls: 'bg-slate-100 text-slate-500' };
+                      const nonDeduct = NON_DEDUCTIBLE_TYPES.includes(r.type);
+                      return (
+                        <div key={r.id} className="border border-slate-100 rounded-2xl px-4 py-3 flex items-start gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className={`text-[10px] font-black px-2 py-0.5 rounded ${r.type === '연차' ? 'bg-indigo-500 text-white' : 'bg-emerald-500 text-white'}`}>{r.type}</span>
+                              <span className={`text-[10px] font-black px-2 py-0.5 rounded ${st.cls}`}>{st.text}</span>
+                              {nonDeduct && <span className="text-[10px] font-black px-2 py-0.5 rounded bg-slate-100 text-slate-500">미차감</span>}
+                              {r.modifyRequest?.status === 'pending' && <span className="text-[10px] font-black px-2 py-0.5 rounded bg-violet-100 text-violet-700">수정 요청</span>}
+                            </div>
+                            <p className="text-sm font-black text-slate-800 mt-1.5">
+                              {r.startDate}{r.endDate && r.endDate !== r.startDate ? ` ~ ${r.endDate}` : ''}
+                            </p>
+                            {r.reason && <p className="text-[11px] text-slate-400 mt-0.5 break-words">{r.reason}</p>}
+                            <p className="text-[10px] text-slate-300 mt-1">신청 {(r.requestedAt ?? '').slice(0, 10)}</p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className={`text-lg font-black tabular-nums ${r.status === 'approved' && !nonDeduct ? 'text-rose-600' : 'text-slate-300'}`}>
+                              {r.daysUsed}<span className="text-xs ml-0.5">일</span>
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {confirmModal && (
         <ConfirmModal
           message={confirmModal.message}
