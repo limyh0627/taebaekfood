@@ -234,7 +234,7 @@ export interface Item {
   isSmartStore?: boolean;
   smartStorePrice?: number;
   submaterials?: SubmaterialComponent[];
-  procureType?: '완사입';     // 완포장 사입품 — 생산(원료차감·완제품생성) 없이 출고 시 자기 재고만 차감 (예: 볶음참깨 10kg·20kg 박스)
+  procureType?: '완사입' | '임가공';  // 완사입=완제품 사옴(원료무관). 임가공(OEM)=우리 원료를 외주가공. 둘 다 판매 시 생산처리 없이 자기재고 −N
   unpackTo?: { itemId: string; count: number }; // 박스 개봉 — 이 품목 1개 개봉 시 대상 품목 재고 +count (예: 10kg박스 → 낱개 +10)
   isRawMaterial?: boolean;    // 원료로도 관리되는 품목 (수불부 자동 연동)
   rawMaterialName?: string;   // 원료 수불부 키 이름 (예: "볶음참깨"). 캔/포대 매입 SKU가 어느 원료(raw)에 귀속되는지 연결
@@ -515,6 +515,14 @@ export interface PurchaseOrder {
   receivedAt?: string;
   items?: PurchaseOrderItem[];  // 멀티품목 발주카드(거래처별 묶음) / 선입고·스캔입고
   photoUrl?: string;            // 입고 납품서 사진
+  // ── OEM(임가공) 배치 ── poType='oem'이면 발주카드가 아니라 외주가공 배치다.
+  //   발주(sent): 내보낸 원료를 oemSent에 기록하며 본재고→외주재고 이동(전표 없음).
+  //   가공입고(received): items[]에 돌아온 완제품/벌크, 외주재고 정리, 가공비 매입전표(linkedStatementId).
+  poType?: 'oem';
+  oemPartnerId?: string;                          // 외주공장 (거래처)
+  oemSent?: { material: string; kg: number }[];   // 내보낸 원료 (로스 계산 기준, 다종 대응)
+  oemSentAt?: string;                             // 외주 출고 시각
+  oemReceivedKg?: number;                         // 받은 볶음참깨 총 kg (로스 = ΣoemSent.kg − 이 값)
 }
 
 // 발주카드의 품목 라인 통일 조회: 묶음(items[])이면 그대로, 단일품목 PO면 1줄로 변환

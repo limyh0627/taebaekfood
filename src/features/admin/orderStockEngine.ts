@@ -34,7 +34,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   const isGoodsItem = (p: Item) =>
     p.subtype === '향미유' || p.subtype === '고춧가루' ||
     p.category === '향미유' || p.category === '고춧가루' || p.category === 'goods' ||
-    p.procureType === '완사입'; // 완포장 사입품 — 생산 없이 출고 시 자기 재고만 차감
+    p.procureType === '완사입' || p.procureType === '임가공'; // 사입·임가공 완제품 — 판매 시 생산 없이 자기 재고만 차감(원료는 완사입=무관/임가공=가공입고 때 소진)
   const goodsShipQty = (item: OrderItem, product: Item) => {
     const uPerBox = item.unitsPerBox || product.defaultBoxConfig?.unitsPerBox || product.boxSize || 12;
     return item.isBoxUnit && item.boxQuantity ? item.boxQuantity * uPerBox : item.quantity;
