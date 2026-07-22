@@ -12,14 +12,17 @@ interface Props {
   rawStockKg: (material: string) => number;
   onIssue: (input: { oemPartnerId: string; partnerName: string; sent: { material: string; kg: number }[]; date: string; note?: string }) => Promise<void>;
   onReceive: (input: { po: PurchaseOrder; returns: { itemId: string; qty: number }[]; unitPricePerKg: number; date: string }) => Promise<void>;
+  onIssueFee: (input: { po: PurchaseOrder; unitPricePerKg: number; date: string }) => Promise<void>;
 }
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
 const today = () => new Date().toISOString().slice(0, 10);
 
-export default function OemManager({ items, partners, purchaseOrders, rawStockKg, onIssue, onReceive }: Props) {
+export default function OemManager({ items, partners, purchaseOrders, rawStockKg, onIssue, onReceive, onIssueFee }: Props) {
   const [showIssue, setShowIssue] = useState(false);
   const [receiveTarget, setReceiveTarget] = useState<PurchaseOrder | null>(null);
+  const [feeTarget, setFeeTarget] = useState<PurchaseOrder | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const batches = useMemo(
@@ -27,8 +30,9 @@ export default function OemManager({ items, partners, purchaseOrders, rawStockKg
       .sort((a, b) => (b.oemSentAt ?? b.createdAt ?? '').localeCompare(a.oemSentAt ?? a.createdAt ?? '')),
     [purchaseOrders],
   );
-  const open = batches.filter(b => b.status !== 'received');
-  const done = batches.filter(b => b.status === 'received');
+  const open = batches.filter(b => b.status !== 'received');                          // 가공 대기
+  const feeWaiting = batches.filter(b => b.status === 'received' && !b.linkedStatementId); // 가공비 전표 대기
+  const done = batches.filter(b => b.status === 'received' && b.linkedStatementId);
   const outstanding = useMemo(() => subcontractStockByMaterial(purchaseOrders), [purchaseOrders]);
 
   // 임가공 완제품 = 가공입고에서 받을 수 있는 품목
@@ -40,55 +44,88 @@ export default function OemManager({ items, partners, purchaseOrders, rawStockKg
   );
 
   return (
-    <div className="space-y-5">
-      {/* 외주재고 현황 */}
-      <div className="flex items-stretch gap-3 flex-wrap">
-        <div className="bg-violet-600 text-white rounded-2xl px-5 py-4 min-w-[180px]">
-          <p className="text-[10px] font-black text-violet-200 uppercase tracking-wide">외주 나가 있는 원료</p>
-          {Object.keys(outstanding).length === 0
-            ? <p className="text-lg font-black mt-1 text-violet-200">없음</p>
-            : Object.entries(outstanding).map(([m, kg]) => (
-                <p key={m} className="text-lg font-black mt-1 tabular-nums">{m} {fmt(kg)}<span className="text-xs ml-1 text-violet-200">kg</span></p>
-              ))}
+    <div className="space-y-4">
+      {/* 임가공 — 버튼 + 대기 건만 노출 */}
+      <div className="bg-white rounded-2xl border border-slate-100 px-5 py-3.5 flex items-center gap-3 flex-wrap">
+        <Factory size={15} className="text-violet-500 shrink-0" />
+        <span className="font-black text-sm text-slate-800 shrink-0">임가공</span>
+        {Object.keys(outstanding).length > 0 && (
+          <span className="text-[11px] font-black text-violet-600 bg-violet-50 px-2.5 py-1 rounded-lg">
+            외주 중 {Object.entries(outstanding).map(([m, kg]) => `${m} ${fmt(kg)}kg`).join(' · ')}
+          </span>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          {done.length > 0 && (
+            <button onClick={() => setShowHistory(v => !v)}
+              className="text-[11px] font-black text-slate-400 hover:text-slate-600">이력 {done.length}건</button>
+          )}
+          <button onClick={() => setShowIssue(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 text-white text-[11px] font-black hover:bg-slate-900 transition-all">
+            <Plus size={13} strokeWidth={3} />외주 발주
+          </button>
         </div>
-        <button onClick={() => setShowIssue(true)}
-          className="flex items-center gap-1.5 px-5 rounded-2xl bg-slate-800 text-white text-xs font-black hover:bg-slate-900 transition-all">
-          <Plus size={14} strokeWidth={3} />외주 발주 (원료 내보내기)
-        </button>
       </div>
 
-      {/* 진행 중 배치 */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-50 flex items-center gap-2">
-          <Factory size={15} className="text-violet-500" />
-          <span className="font-black text-sm text-slate-800">진행 중 (가공 대기)</span>
-          <span className="text-[10px] font-black bg-violet-50 text-violet-600 px-2 py-0.5 rounded-full">{open.length}</span>
-        </div>
-        <div className="divide-y divide-slate-50">
-          {open.length === 0 && (
-            <p className="px-5 py-12 text-center text-xs font-bold text-slate-300">외주 나가 있는 배치가 없습니다</p>
-          )}
-          {open.map(po => (
-            <div key={po.id} className="px-5 py-3.5 flex items-center gap-3 flex-wrap">
-              <div className="flex-1 min-w-[180px]">
-                <p className="text-sm font-black text-slate-800">{po.partnerName || '(외주공장)'}</p>
-                <p className="text-[11px] text-slate-400">
-                  {(po.oemSentAt ?? po.createdAt ?? '').slice(0, 10)} 출고
-                  {' · '}
-                  {(po.oemSent ?? []).map(s => `${s.material} ${fmt(s.kg)}kg`).join(', ')}
-                </p>
+      {/* 가공 대기 (외주 나가 있음) */}
+      {open.length > 0 && (
+        <div className="bg-white rounded-2xl border border-violet-100 overflow-hidden">
+          <div className="px-5 py-2.5 bg-violet-50/60 border-b border-violet-100 flex items-center gap-2">
+            <span className="font-black text-xs text-violet-700">가공 대기</span>
+            <span className="text-[10px] font-black bg-violet-600 text-white px-2 py-0.5 rounded-full">{open.length}</span>
+          </div>
+          <div className="divide-y divide-slate-50">
+            {open.map(po => (
+              <div key={po.id} className="px-5 py-3 flex items-center gap-3 flex-wrap">
+                <div className="flex-1 min-w-[180px]">
+                  <p className="text-sm font-black text-slate-800">{po.partnerName || '(외주공장)'}</p>
+                  <p className="text-[11px] text-slate-400">
+                    {(po.oemSentAt ?? po.createdAt ?? '').slice(0, 10)} 출고 ·{' '}
+                    {(po.oemSent ?? []).map(s => `${s.material} ${fmt(s.kg)}kg`).join(', ')}
+                  </p>
+                </div>
+                <button onClick={() => setReceiveTarget(po)}
+                  className="flex items-center gap-1 px-3 py-2 rounded-xl bg-violet-600 text-white text-[11px] font-black hover:bg-violet-700 shrink-0">
+                  <PackageCheck size={13} />가공입고
+                </button>
               </div>
-              <button onClick={() => setReceiveTarget(po)}
-                className="flex items-center gap-1 px-3 py-2 rounded-xl bg-violet-600 text-white text-[11px] font-black hover:bg-violet-700 transition-all shrink-0">
-                <PackageCheck size={13} />가공입고
-              </button>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* 가공비 전표 대기 — 입고는 됐고 전표만 남음 (사용자 확인 후 발행) */}
+      {feeWaiting.length > 0 && (
+        <div className="bg-white rounded-2xl border border-amber-200 overflow-hidden">
+          <div className="px-5 py-2.5 bg-amber-50 border-b border-amber-100 flex items-center gap-2">
+            <span className="font-black text-xs text-amber-700">가공비 전표 작성 대기</span>
+            <span className="text-[10px] font-black bg-amber-500 text-white px-2 py-0.5 rounded-full">{feeWaiting.length}</span>
+          </div>
+          <div className="divide-y divide-slate-50">
+            {feeWaiting.map(po => {
+              const kg = po.oemReceivedKg ?? 0;
+              const money = processingFee(kg, po.oemFeePerKg ?? OEM_DEFAULT_FEE_PER_KG);
+              return (
+                <div key={po.id} className="px-5 py-3 flex items-center gap-3 flex-wrap">
+                  <div className="flex-1 min-w-[180px]">
+                    <p className="text-sm font-black text-slate-800">{po.partnerName}</p>
+                    <p className="text-[11px] text-slate-400">
+                      {(po.receivedAt ?? '').slice(0, 10)} 입고 · 받은 {fmt(kg)}kg · 로스 {fmt(batchLoss(po.oemSent, kg))}kg
+                    </p>
+                  </div>
+                  <span className="text-xs font-black text-slate-700 tabular-nums shrink-0">{fmt(money.total)}원</span>
+                  <button onClick={() => setFeeTarget(po)}
+                    className="px-3 py-2 rounded-xl bg-amber-500 text-white text-[11px] font-black hover:bg-amber-600 shrink-0">
+                    가공비 전표 발행
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* 완료 이력 */}
-      {done.length > 0 && (
+      {showHistory && done.length > 0 && (
         <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
           <div className="px-5 py-3 border-b border-slate-50">
             <span className="font-black text-sm text-slate-700">가공입고 완료</span>
@@ -137,6 +174,70 @@ export default function OemManager({ items, partners, purchaseOrders, rawStockKg
           onClose={() => setReceiveTarget(null)}
           onSubmit={async (v) => { setBusy(true); try { await onReceive({ po: receiveTarget, ...v }); setReceiveTarget(null); } finally { setBusy(false); } }} />
       )}
+      {feeTarget && (
+        <FeeModal po={feeTarget} busy={busy}
+          onClose={() => setFeeTarget(null)}
+          onSubmit={async (v) => { setBusy(true); try { await onIssueFee({ po: feeTarget, ...v }); setFeeTarget(null); } finally { setBusy(false); } }} />
+      )}
+    </div>
+  );
+}
+
+// ── 가공비 전표 발행 (사용자 확인) ───────────────────────────────────────────
+function FeeModal({ po, busy, onClose, onSubmit }: {
+  po: PurchaseOrder; busy: boolean;
+  onClose: () => void;
+  onSubmit: (v: { unitPricePerKg: number; date: string }) => void;
+}) {
+  const [date, setDate] = useState(today());
+  const [fee, setFee] = useState(String(po.oemFeePerKg ?? OEM_DEFAULT_FEE_PER_KG));
+  const kg = po.oemReceivedKg ?? 0;
+  const money = processingFee(kg, Number(fee) || 0);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-black text-slate-800">가공비 전표 발행</h3>
+          <button onClick={onClose} className="text-slate-300 hover:text-slate-500"><X size={18} /></button>
+        </div>
+        <p className="text-[11px] text-slate-400 leading-snug">
+          입고 내역을 확인하고 발행하세요. <b>가공비만</b> 매입전표로 끊깁니다 — 원료는 우리 것이라 금액에 없습니다.
+        </p>
+
+        <div className="bg-slate-50 rounded-2xl px-4 py-3 space-y-1 text-xs">
+          <div className="flex justify-between"><span className="text-slate-400 font-bold">외주공장</span><span className="font-black">{po.partnerName}</span></div>
+          <div className="flex justify-between"><span className="text-slate-400 font-bold">보낸 원료</span><span className="font-black tabular-nums">{fmt(sentKg(po.oemSent))} kg</span></div>
+          <div className="flex justify-between"><span className="text-slate-400 font-bold">받은 완제품</span><span className="font-black tabular-nums">{fmt(kg)} kg</span></div>
+          <div className="flex justify-between"><span className="text-slate-400 font-bold">로스</span><span className="font-black tabular-nums text-rose-600">{fmt(batchLoss(po.oemSent, kg))} kg</span></div>
+        </div>
+
+        <div className="flex items-end gap-3">
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">가공단가 (원/kg)</label>
+            <input inputMode="numeric" value={fee} onChange={e => setFee(e.target.value.replace(/[^\d]/g, ''))}
+              className="w-28 border border-slate-200 rounded-xl px-3 py-2 text-right text-sm font-black tabular-nums outline-none focus:ring-2 focus:ring-amber-300" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">전표일자</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)}
+              className="border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-amber-300" />
+          </div>
+        </div>
+
+        <div className="border-t border-slate-100 pt-3 flex items-center justify-between">
+          <span className="text-[11px] font-bold text-slate-400">공급가 {fmt(money.supply)} + 세액 {fmt(money.tax)}</span>
+          <span className="text-base font-black text-slate-800">{fmt(money.total)}원</span>
+        </div>
+
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200">취소</button>
+          <button onClick={() => onSubmit({ unitPricePerKg: Number(fee) || 0, date })} disabled={busy || kg <= 0}
+            className="flex-1 py-2.5 rounded-xl bg-amber-500 text-white text-xs font-black hover:bg-amber-600 disabled:opacity-30">
+            {busy ? '발행 중…' : '전표 발행'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -321,7 +422,8 @@ function ReceiveModal({ po, oemItems, busy, onClose, onSubmit }: {
           </div>
         </div>
         <p className="text-[10px] text-slate-400 leading-snug">
-          입고하면 완제품 재고가 늘고, 외주재고가 정리되며, <b>가공비 매입전표</b>가 자동 생성됩니다.
+          입고하면 완제품 재고가 늘고 외주재고가 정리됩니다. <b>가공비 전표는 자동으로 안 끊깁니다</b> —
+          입고 후 '가공비 전표 작성 대기'에서 확인하고 발행하세요.
         </p>
 
         <div className="flex gap-2">

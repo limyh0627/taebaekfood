@@ -72,10 +72,10 @@ describe('receiveOemBatch (가공입고)', () => {
     itemId: '', itemName: '', quantity: 0, createdAt: '',
   };
 
-  it('완제품 박스/낱개 재고 +N, 가공비 전표(과세), 로스 자동', async () => {
+  it('완제품 재고 +N, 배치 닫힘, 로스 자동 — 전표는 안 끊는다', async () => {
     const { deps, updates, adds } = makeDeps();
     const eng = createOemEngine(deps as any);
-    // 10kg박스 20 + 20kg박스 10 + 낱개 5 = 200+200+5 = 405kg 받음 (참깨 1000 보냈으니 로스 595? — 예시값)
+    // 10kg박스 20 + 20kg박스 10 + 낱개 5 = 200+200+5 = 405kg
     const res = await eng.receiveOemBatch({
       po: openPo,
       returns: [{ itemId: 'box10', qty: 20 }, { itemId: 'box20', qty: 10 }, { itemId: 'nakgae', qty: 5 }],
@@ -85,43 +85,76 @@ describe('receiveOemBatch (가공입고)', () => {
     expect(res.receivedKg).toBe(405);
     expect(res.loss).toBe(595);            // 1000 − 405
 
-    // 완제품 3종 재고 가산
     expect(updates.filter(u => u.c === 'items').map(u => [u.id, u.d.stock])).toEqual([
       ['box10', 20], ['box20', 10], ['nakgae', 5],
     ]);
-    // 가공비 전표: 405 × 2000 = 810,000 + 세액 81,000
-    const stmt = adds.find(a => a.c === 'issuedStatements')!.d;
-    expect(stmt).toMatchObject({ type: '매입', totalSupply: 810_000, totalTax: 81_000, totalAmount: 891_000 });
-    expect(stmt.items[0].accountCode).toBe('540');
-    // 배치 닫힘 + 전표 연결
+    // 전표 없음 — 사용자가 확인 후 발행
+    expect(adds.filter(a => a.c === 'issuedStatements')).toHaveLength(0);
     const poUpd = updates.find(u => u.c === 'purchaseOrders')!;
-    expect(poUpd.d).toMatchObject({ status: 'received', oemReceivedKg: 405, linkedStatementId: stmt.id });
+    expect(poUpd.d).toMatchObject({ status: 'received', oemReceivedKg: 405, oemFeePerKg: 2000 });
+    expect(poUpd.d.linkedStatementId).toBeUndefined();   // 전표 작성 대기
   });
 
-  it('면세면 세액 0', async () => {
-    const { deps, adds } = makeDeps();
-    const eng = createOemEngine(deps as any);
-    await eng.receiveOemBatch({
-      po: openPo, returns: [{ itemId: 'nakgae', qty: 100 }], unitPricePerKg: 2000, date: '2026-07-17', taxable: false,
-    });
-    const stmt = adds.find(a => a.c === 'issuedStatements')!.d;
-    expect(stmt.totalTax).toBe(0);
-  });
-
-  it('가공단가 생략 시 기본 500원/kg', async () => {
-    const { deps, adds } = makeDeps();
+  it('가공단가 생략 시 기본 500원/kg가 배치에 저장된다', async () => {
+    const { deps, updates } = makeDeps();
     const eng = createOemEngine(deps as any);
     await eng.receiveOemBatch({ po: openPo, returns: [{ itemId: 'box10', qty: 10 }], date: '2026-07-17' });
-    // 10박스 × 10kg = 100kg × 500 = 50,000 + 세액 5,000
-    const stmt = adds.find(a => a.c === 'issuedStatements')!.d;
-    expect(stmt).toMatchObject({ totalSupply: 50_000, totalTax: 5_000, totalAmount: 55_000 });
+    expect(updates.find(u => u.c === 'purchaseOrders')!.d.oemFeePerKg).toBe(500);
   });
 
   it('이미 받은 배치는 던진다', async () => {
     const { deps } = makeDeps();
     const eng = createOemEngine(deps as any);
     await expect(eng.receiveOemBatch({
-      po: { ...openPo, status: 'received' }, returns: [{ itemId: 'nakgae', qty: 1 }], unitPricePerKg: 2000, date: '2026-07-17',
+      po: { ...openPo, status: 'received' }, returns: [{ itemId: 'nakgae', qty: 1 }], date: '2026-07-17',
     })).rejects.toThrow('이미 가공입고');
+  });
+});
+
+describe('issueOemFeeStatement (가공비 전표 — 사용자 확인 후)', () => {
+  const receivedPo: PurchaseOrder = {
+    id: 'oem-1', poType: 'oem', partnerName: '푸미푸드', oemPartnerId: 'oem1',
+    oemSent: [{ material: '참깨', kg: 1000 }], oemReceivedKg: 405, oemFeePerKg: 2000,
+    status: 'received', itemId: '', itemName: '', quantity: 0, createdAt: '',
+  };
+
+  it('배치에 저장된 단가로 과세 전표 발행 + 연결', async () => {
+    const { deps, updates, adds } = makeDeps();
+    const eng = createOemEngine(deps as any);
+    const r = await eng.issueOemFeeStatement({ po: receivedPo, date: '2026-07-17' });
+
+    expect(r).toMatchObject({ supply: 810_000, tax: 81_000, total: 891_000 });  // 405 × 2000
+    const stmt = adds.find(a => a.c === 'issuedStatements')!.d;
+    expect(stmt).toMatchObject({ type: '매입', partnerName: '푸미푸드', totalAmount: 891_000 });
+    expect(stmt.items[0].accountCode).toBe('540');
+    expect(updates.find(u => u.c === 'purchaseOrders')!.d.linkedStatementId).toBe(stmt.id);
+  });
+
+  it('단가를 바꿔 발행할 수 있다', async () => {
+    const { deps, adds } = makeDeps();
+    const eng = createOemEngine(deps as any);
+    await eng.issueOemFeeStatement({ po: receivedPo, unitPricePerKg: 500, date: '2026-07-17' });
+    expect(adds.find(a => a.c === 'issuedStatements')!.d.totalSupply).toBe(202_500); // 405 × 500
+  });
+
+  it('면세면 세액 0', async () => {
+    const { deps, adds } = makeDeps();
+    const eng = createOemEngine(deps as any);
+    await eng.issueOemFeeStatement({ po: receivedPo, date: '2026-07-17', taxable: false });
+    expect(adds.find(a => a.c === 'issuedStatements')!.d.totalTax).toBe(0);
+  });
+
+  it('가공입고 전이면 던진다', async () => {
+    const { deps } = makeDeps();
+    const eng = createOemEngine(deps as any);
+    await expect(eng.issueOemFeeStatement({ po: { ...receivedPo, status: 'invoiced' }, date: '2026-07-17' }))
+      .rejects.toThrow('가공입고 전');
+  });
+
+  it('이미 전표가 있으면 던진다 (중복 발행 방지)', async () => {
+    const { deps } = makeDeps();
+    const eng = createOemEngine(deps as any);
+    await expect(eng.issueOemFeeStatement({ po: { ...receivedPo, linkedStatementId: 'stmt-x' }, date: '2026-07-17' }))
+      .rejects.toThrow('이미 가공비 전표');
   });
 });

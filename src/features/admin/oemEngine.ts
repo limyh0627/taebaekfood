@@ -81,18 +81,18 @@ export function createOemEngine(deps: OemEngineDeps) {
   }
 
   /**
-   * OEM 가공입고 — 볶음참깨 완제품/벌크가 돌아온다.
-   * 각 규격 재고 +N(완제품) / +kg(raw 벌크), 배치 닫기, 로스 자동, 가공비 매입전표(과세).
-   * @returns { receivedKg, loss, statementId }
+   * OEM 가공입고 — 완제품이 돌아온다. **재고만 반영하고 전표는 끊지 않는다.**
+   * 일반 매입과 같은 규칙: received + linkedStatementId 없음 = 가공비 전표 작성 대기.
+   * 사용자가 확인 후 issueOemFeeStatement로 전표를 발행한다.
+   * @returns { receivedKg, loss }
    */
   async function receiveOemBatch(input: {
     po: PurchaseOrder;
     returns: { itemId: string; qty: number }[];   // 돌아온 규격별 수량
-    unitPricePerKg?: number;                       // 가공단가(원/kg). 없으면 OEM_DEFAULT_FEE_PER_KG
+    unitPricePerKg?: number;                       // 가공단가(원/kg) — 전표 발행 때 쓰려고 배치에 저장
     date: string;
-    taxable?: boolean;                             // 기본 과세
     addedBy?: string;
-  }): Promise<{ receivedKg: number; loss: number; statementId: string }> {
+  }): Promise<{ receivedKg: number; loss: number }> {
     const { po } = input;
     if (po.poType !== 'oem') throw new Error('OEM 배치가 아닙니다.');
     if (po.status === 'received') throw new Error('이미 가공입고된 배치입니다.');
@@ -114,9 +114,36 @@ export function createOemEngine(deps: OemEngineDeps) {
 
     receivedKg = Math.round(receivedKg * 1000) / 1000;
     const loss = batchLoss(po.oemSent, receivedKg);
-    const fee = processingFee(receivedKg, input.unitPricePerKg ?? OEM_DEFAULT_FEE_PER_KG, input.taxable ?? true);
 
-    // 가공비 매입전표 (외주공장, 계정 외주가공비). 원료비 아님 — 가공비만.
+    // 전표는 끊지 않는다 — linkedStatementId 없이 두면 '가공비 전표 작성 대기'가 된다.
+    await updateItem('purchaseOrders', po.id, {
+      status: 'received', receivedAt: new Date().toISOString(),
+      oemReceivedKg: receivedKg, items: poItems,
+      oemFeePerKg: input.unitPricePerKg ?? OEM_DEFAULT_FEE_PER_KG,
+    });
+
+    return { receivedKg, loss };
+  }
+
+  /**
+   * 가공비 매입전표 발행 — 사용자가 가공입고 내역을 확인한 뒤 실행한다.
+   * 원료비 아님(원료는 우리 것). 가공비만, 과세(세금계산서 수취).
+   */
+  async function issueOemFeeStatement(input: {
+    po: PurchaseOrder;
+    unitPricePerKg?: number;   // 없으면 배치에 저장된 값 → 기본값
+    date: string;
+    taxable?: boolean;         // 기본 과세
+  }): Promise<{ statementId: string; supply: number; tax: number; total: number }> {
+    const { po } = input;
+    if (po.poType !== 'oem') throw new Error('OEM 배치가 아닙니다.');
+    if (po.status !== 'received') throw new Error('가공입고 전에는 전표를 끊을 수 없습니다.');
+    if (po.linkedStatementId) throw new Error('이미 가공비 전표가 발행된 배치입니다.');
+
+    const receivedKg = po.oemReceivedKg ?? 0;
+    const perKg = input.unitPricePerKg ?? po.oemFeePerKg ?? OEM_DEFAULT_FEE_PER_KG;
+    const fee = processingFee(receivedKg, perKg, input.taxable ?? true);
+
     const statementId = `stmt-${Date.now()}`;
     const d = new Date(input.date + 'T00:00:00');
     await addItem('issuedStatements', {
@@ -133,13 +160,9 @@ export function createOemEngine(deps: OemEngineDeps) {
       }],
     } as Partial<IssuedStatement>);
 
-    await updateItem('purchaseOrders', po.id, {
-      status: 'received', receivedAt: new Date().toISOString(),
-      oemReceivedKg: receivedKg, items: poItems, linkedStatementId: statementId,
-    });
-
-    return { receivedKg, loss, statementId };
+    await updateItem('purchaseOrders', po.id, { linkedStatementId: statementId, oemFeePerKg: perKg });
+    return { statementId, ...fee };
   }
 
-  return { issueOemBatch, receiveOemBatch };
+  return { issueOemBatch, receiveOemBatch, issueOemFeeStatement };
 }

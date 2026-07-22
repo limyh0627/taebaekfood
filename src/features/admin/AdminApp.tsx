@@ -790,7 +790,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   });
 
   // OEM(임가공) 엔진 — 외주 발주(원료 내보내기) / 가공입고(완제품 받기 + 가공비 전표)
-  const { issueOemBatch, receiveOemBatch } = createOemEngine({
+  const { issueOemBatch, receiveOemBatch, issueOemFeeStatement } = createOemEngine({
     items: allItems, adjustRawLots, updateItem, addItem,
   });
   /** 원료 홀더의 현재 재고(kg) — 로트 합계 우선, 없으면 stock */
@@ -1516,9 +1516,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   />
                 </React.Suspense>
               }
-              oemBadge={purchaseOrders.filter(p => p.poType === 'oem' && p.status !== 'received').length}
               oemContent={
-                <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+                <React.Suspense fallback={null}>
                   <OemManager
                     items={allItems}
                     partners={partners}
@@ -1531,6 +1530,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     onReceive={async (v) => {
                       try { await receiveOemBatch({ ...v, addedBy: currentUser?.name }); }
                       catch (e) { alert(`가공입고 실패: ${(e as Error)?.message ?? String(e)}`); }
+                    }}
+                    onIssueFee={async (v) => {
+                      try { await issueOemFeeStatement(v); }
+                      catch (e) { alert(`가공비 전표 발행 실패: ${(e as Error)?.message ?? String(e)}`); }
                     }}
                   />
                 </React.Suspense>

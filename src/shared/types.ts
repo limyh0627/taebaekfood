@@ -523,6 +523,7 @@ export interface PurchaseOrder {
   oemSent?: { material: string; kg: number }[];   // 내보낸 원료 (로스 계산 기준, 다종 대응)
   oemSentAt?: string;                             // 외주 출고 시각
   oemReceivedKg?: number;                         // 받은 볶음참깨 총 kg (로스 = ΣoemSent.kg − 이 값)
+  oemFeePerKg?: number;                           // 가공단가(원/kg) — 입고 때 입력, 전표 발행에 사용
 }
 
 // 발주카드의 품목 라인 통일 조회: 묶음(items[])이면 그대로, 단일품목 PO면 1줄로 변환
