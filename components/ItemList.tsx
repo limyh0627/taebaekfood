@@ -112,6 +112,8 @@ interface ItemListProps {
   inboundBadge?: number;
   returnContent?: React.ReactNode;
   returnBadge?: number;
+  oemContent?: React.ReactNode;   // 임가공(OEM) 발주·가공입고
+  oemBadge?: number;              // 외주 나가 있는 배치 수
 }
 
 
@@ -126,7 +128,7 @@ const CLIENT_BADGE_COLORS = [
   'bg-indigo-50 text-indigo-500',
 ];
 type MainTab = 'requests' | 'history' | 'master' | 'inbound';
-type InboundSubTab = '입고' | '반품';
+type InboundSubTab = '입고' | '반품' | 'OEM';
 type TopTab = 'finished' | 'goods' | 'submaterial' | 'rawmaterial' | 'wip';
 
 // 원료 로트 홀더 판별 — raw, 또는 wip 벌크 반제품(볶음참깨·볶음들깨·볶음검정참깨·들깨가루(고운)).
@@ -179,6 +181,8 @@ const ItemList: React.FC<ItemListProps> = ({
   inboundBadge = 0,
   returnContent,
   returnBadge = 0,
+  oemContent,
+  oemBadge = 0,
 }) => {
   const psMap = useMemo(() => new Map(partnerItems.filter(pi => pi.Direction === 'in').map(pi => [pi.Item_ID, pi.Partner_ID])), [partnerItems]);
   const fmtHamiyou = (stock: number) => {
@@ -742,6 +746,15 @@ const ItemList: React.FC<ItemListProps> = ({
                 {returnBadge > 0 && <span className="ml-1.5 bg-rose-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">{returnBadge}</span>}
               </button>
             )}
+            {oemContent && (
+              <button
+                onClick={() => setInboundSubTab('OEM')}
+                className={`px-4 py-2 rounded-2xl border text-xs font-black transition-all ${inboundSubTab === 'OEM' ? 'bg-violet-50 border-violet-200 text-violet-700 ring-2 ring-violet-50' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
+              >
+                임가공
+                {oemBadge > 0 && <span className="ml-1.5 bg-violet-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">{oemBadge}</span>}
+              </button>
+            )}
           </div>
         )}
 
@@ -1054,6 +1067,7 @@ const ItemList: React.FC<ItemListProps> = ({
             );
           })()}
           {inboundSubTab === '반품' && returnContent && returnContent}
+          {inboundSubTab === 'OEM' && oemContent && oemContent}
         </div>
       )}
 

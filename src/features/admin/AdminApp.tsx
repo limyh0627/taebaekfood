@@ -77,6 +77,7 @@ import LeaveManager from '../../../components/LeaveManager';
 import ConfirmationItems from '../../../components/ConfirmationItems';
 import ProductModal from '../../../components/AddItemModal';
 import { createOrderStockEngine } from './orderStockEngine';
+import { createOemEngine } from './oemEngine';
 import { buildFormula as buildFormulaBom } from './bom';
 import NoticeBoard from '../../../components/NoticeBoard';
 import ItemManager from '../../../components/ItemManager';
@@ -104,6 +105,7 @@ const TradeStatement = React.lazy(() => import('../../../components/TradeStateme
 const ProfitAnalysis = React.lazy(() => import('../../../components/ProfitAnalysis'));
 const CashLedger = React.lazy(() => import('../../../components/CashLedger'));
 const PartnerLedger = React.lazy(() => import('../../../components/PartnerLedger'));
+const OemManager = React.lazy(() => import('../../../components/OemManager'));
 
 import { db } from '../../shared/firebase';
 import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName, lotStockInUnit, lotKgRemaining } from '../../constants/formula';
@@ -786,6 +788,19 @@ const AdminApp: React.FC<AdminAppProps> = ({
     allItems, shippingRules, submaterials, partners, allOrders, orders, db,
     buildFormula, createProductionRecordsForOrder, mutateRawMaterialLots, updateItem, addItem,
   });
+
+  // OEM(임가공) 엔진 — 외주 발주(원료 내보내기) / 가공입고(완제품 받기 + 가공비 전표)
+  const { issueOemBatch, receiveOemBatch } = createOemEngine({
+    items: allItems, adjustRawLots, updateItem, addItem,
+  });
+  /** 원료 홀더의 현재 재고(kg) — 로트 합계 우선, 없으면 stock */
+  const rawStockKg = (material: string): number => {
+    const holder = allItems.find(i => !i.phantom && !i.archived
+      && (i.category === 'raw' || (i.category === 'wip' && i.unit !== '개'))
+      && baseRawName(i.name) === material);
+    if (!holder) return 0;
+    return holder.lots?.length ? lotKgRemaining(holder.lots) : unitToKg(holder.stock ?? 0, material);
+  };
 
   const handleRemoveConfirmedOrder = async (id: string) => {
     await deleteItem('purchaseOrders', id);
@@ -1498,6 +1513,25 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     onProcessReturn={handleProcessReturn}
                     onLinkInbound={(itemId, partnerId) => handleUpsertPartnerItem({ id: `${itemId}_${partnerId}_in`, itemId, partnerId, Direction: 'in' } as PartnerItem, 'in')}
                     initialTab="반품"
+                  />
+                </React.Suspense>
+              }
+              oemBadge={purchaseOrders.filter(p => p.poType === 'oem' && p.status !== 'received').length}
+              oemContent={
+                <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+                  <OemManager
+                    items={allItems}
+                    partners={partners}
+                    purchaseOrders={purchaseOrders}
+                    rawStockKg={rawStockKg}
+                    onIssue={async (v) => {
+                      try { await issueOemBatch({ ...v, addedBy: currentUser?.name }); }
+                      catch (e) { alert(`외주 발주 실패: ${(e as Error)?.message ?? String(e)}`); }
+                    }}
+                    onReceive={async (v) => {
+                      try { await receiveOemBatch({ ...v, addedBy: currentUser?.name }); }
+                      catch (e) { alert(`가공입고 실패: ${(e as Error)?.message ?? String(e)}`); }
+                    }}
                   />
                 </React.Suspense>
               }
