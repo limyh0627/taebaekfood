@@ -108,6 +108,15 @@ describe('receiveOemBatch (가공입고)', () => {
     expect(stmt.totalTax).toBe(0);
   });
 
+  it('가공단가 생략 시 기본 500원/kg', async () => {
+    const { deps, adds } = makeDeps();
+    const eng = createOemEngine(deps as any);
+    await eng.receiveOemBatch({ po: openPo, returns: [{ itemId: 'box10', qty: 10 }], date: '2026-07-17' });
+    // 10박스 × 10kg = 100kg × 500 = 50,000 + 세액 5,000
+    const stmt = adds.find(a => a.c === 'issuedStatements')!.d;
+    expect(stmt).toMatchObject({ totalSupply: 50_000, totalTax: 5_000, totalAmount: 55_000 });
+  });
+
   it('이미 받은 배치는 던진다', async () => {
     const { deps } = makeDeps();
     const eng = createOemEngine(deps as any);

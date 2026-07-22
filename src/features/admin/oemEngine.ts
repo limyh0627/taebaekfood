@@ -13,6 +13,7 @@ import { batchLoss, processingFee, sentKg } from './oem';
  */
 
 export const OEM_PROCESSING_FEE_CODE = '540'; // 외주가공비 (제조원가) — DB에 신설 필요
+export const OEM_DEFAULT_FEE_PER_KG = 500;    // 가공단가 기본값(원/kg) — 푸미푸드 볶음. 입고 시 변경 가능
 
 export interface OemEngineDeps {
   items: Item[];
@@ -87,7 +88,7 @@ export function createOemEngine(deps: OemEngineDeps) {
   async function receiveOemBatch(input: {
     po: PurchaseOrder;
     returns: { itemId: string; qty: number }[];   // 돌아온 규격별 수량
-    unitPricePerKg: number;                        // 가공단가 (kg당)
+    unitPricePerKg?: number;                       // 가공단가(원/kg). 없으면 OEM_DEFAULT_FEE_PER_KG
     date: string;
     taxable?: boolean;                             // 기본 과세
     addedBy?: string;
@@ -113,7 +114,7 @@ export function createOemEngine(deps: OemEngineDeps) {
 
     receivedKg = Math.round(receivedKg * 1000) / 1000;
     const loss = batchLoss(po.oemSent, receivedKg);
-    const fee = processingFee(receivedKg, input.unitPricePerKg, input.taxable ?? true);
+    const fee = processingFee(receivedKg, input.unitPricePerKg ?? OEM_DEFAULT_FEE_PER_KG, input.taxable ?? true);
 
     // 가공비 매입전표 (외주공장, 계정 외주가공비). 원료비 아님 — 가공비만.
     const statementId = `stmt-${Date.now()}`;
