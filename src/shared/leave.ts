@@ -104,12 +104,16 @@ export function calculateAnnualLeave(joinDate: string, now = new Date()): number
   return g.days;
 }
 
-/** 승인된 신청 중 차감 대상 일수 합계 */
-export function getApprovedLeaveDays(empId: string, leaveRequests: LeaveRequest[]): number {
+/** 승인된 신청 중 차감 대상 일수 합계. ym('YYYY-MM')을 주면 그 달 시작분만. */
+export function getApprovedLeaveDays(empId: string, leaveRequests: LeaveRequest[], ym?: string): number {
   return leaveRequests
     .filter(r => r.employeeId === empId && r.status === 'approved' && !NON_DEDUCTIBLE_TYPES.includes(r.type))
+    .filter(r => !ym || (r.startDate ?? '').slice(0, 7) === ym)
     .reduce((sum, r) => sum + (r.daysUsed || 0), 0);
 }
+
+/** 'YYYY-MM' */
+export const toYearMonth = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 
 export interface LeaveBalance {
   monthly: number;      // 올해 발생 월차
@@ -118,8 +122,9 @@ export interface LeaveBalance {
   bonus: number;        // 보너스
   granted: number;      // 총 부여 = monthly + annual + carryOver + bonus
   usedRequests: number; // 승인된 신청 사용분
-  usedVacation: number; // 회사 단체 휴가 (manualAdjustment)
+  usedVacation: number; // 구 수동 휴가값 (manualAdjustment)
   usedTotal: number;    // 총 사용 = usedRequests + usedVacation
+  usedThisMonth: number;// 당월 사용분 (신청 시작일 기준)
   remaining: number;    // 잔여 = granted − usedTotal
   grant: AnnualGrantInfo;
 }
@@ -142,12 +147,14 @@ export function calculateLeaveBalance(
   const bonus = emp.annualLeave?.bonusLeave || 0;
   const usedRequests = getApprovedLeaveDays(emp.id, leaveRequests);
   const usedVacation = emp.manualAdjustment || 0;
+  // 당월은 신청 기록만 — 구 수동값(manualAdjustment)은 언제 쓴 건지 알 수 없어 제외
+  const usedThisMonth = getApprovedLeaveDays(emp.id, leaveRequests, toYearMonth(now));
 
   const granted = monthly + annual + carryOver + bonus;
   const usedTotal = usedRequests + usedVacation;
   return {
     monthly, annual, carryOver, bonus, granted,
-    usedRequests, usedVacation, usedTotal,
+    usedRequests, usedVacation, usedTotal, usedThisMonth,
     remaining: granted - usedTotal,
     grant: getAnnualGrantInfo(emp.joinDate, now),
   };

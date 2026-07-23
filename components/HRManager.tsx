@@ -388,7 +388,7 @@ const HRManager: React.FC<HRManagerProps> = ({
               <div className="text-xs font-bold text-indigo-700 leading-relaxed">
                 <p>연차 정보는 인사팀에 의해 안전하게 관리됩니다. 우측 상단의 <b>&apos;편집 모드&apos;</b>를 활성화해야 수정이 가능합니다.</p>
                 <p>총 부여 = [월차 + 연차 + 보너스 + 이월], 잔여 = [총 부여 − 사용 개수]. <b>회사 단체 휴가는 위 &apos;휴가&apos; 버튼으로 등록하면 사용 개수에 바로 차감</b>됩니다.</p>
-                <p>월차는 발생분이 잔여에 포함돼 있다가 해가 바뀌면 이월로 넘겨주세요.</p>
+                <p>사용 개수는 <b>총 / 당월</b>로 보여줍니다(당월은 신청 시작일 기준). 월차는 발생분이 잔여에 포함돼 있다가 해가 바뀌면 이월로 넘겨주세요.</p>
                 <p><b>연차는 입사 응당일에 발생</b>합니다. 아직 안 지났으면 <span className="text-amber-600 font-black">MM-DD 예정</span>으로 표시되고 <b>잔여에 더해지지 않습니다</b> — 그때까지는 이월분으로 사용합니다.</p>
               </div>
             </div>
@@ -405,7 +405,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                   <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">이월 (+)</th>
                   <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center text-rose-500">
                     <span className="block">사용 개수</span>
-                    <span className="text-[9px] font-bold text-slate-300 normal-case tracking-normal">연차 · 휴가 포함</span>
+                    <span className="text-[9px] font-bold text-slate-300 normal-case tracking-normal">총 / 당월</span>
                   </th>
                   <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">최종 잔여</th>
                 </tr>
@@ -497,12 +497,16 @@ const HRManager: React.FC<HRManagerProps> = ({
                           <span className="text-sm font-black text-slate-400">{emp.annualLeave?.carryOverLeave || 0}</span>
                         )}
                       </td>
-                      {/* 사용 개수 — 승인된 신청(연차·휴가 등)을 전부 합친 값 */}
+                      {/* 사용 개수 — 총 / 당월 */}
                       <td className="px-6 py-6 text-center">
                         <div className="flex flex-col items-center">
-                          <span className="text-sm font-black text-rose-500">{totalUsedCount}</span>
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-sm font-black text-rose-500">{totalUsedCount}</span>
+                            <span className="text-[10px] font-bold text-slate-300">/</span>
+                            <span className={`text-sm font-black ${bal.usedThisMonth > 0 ? 'text-amber-500' : 'text-slate-300'}`}>{bal.usedThisMonth}</span>
+                          </div>
                           <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">
-                            {(emp.manualAdjustment || 0) > 0 ? `신청 ${approvedUsed} + 구휴가 ${emp.manualAdjustment}` : '승인됨'}
+                            {(emp.manualAdjustment || 0) > 0 ? `신청 ${approvedUsed} + 구휴가 ${emp.manualAdjustment}` : '총 / 당월'}
                           </span>
                         </div>
                       </td>
@@ -810,8 +814,13 @@ const HRManager: React.FC<HRManagerProps> = ({
                   })()}
                 </div>
                 <div className="bg-rose-50 rounded-2xl px-4 py-3">
-                  <p className="text-[10px] font-black text-rose-400 uppercase">사용</p>
-                  <p className="text-xl font-black text-rose-600 tabular-nums">{bal.usedTotal}<span className="text-xs ml-0.5 text-rose-300">일</span></p>
+                  <p className="text-[10px] font-black text-rose-400 uppercase">사용 <span className="text-rose-300 normal-case">총 / 당월</span></p>
+                  <p className="text-xl font-black text-rose-600 tabular-nums">
+                    {bal.usedTotal}
+                    <span className="text-slate-300 mx-1 text-sm">/</span>
+                    <span className={bal.usedThisMonth > 0 ? 'text-amber-600' : 'text-slate-300'}>{bal.usedThisMonth}</span>
+                    <span className="text-xs ml-0.5 text-rose-300">일</span>
+                  </p>
                   <p className="text-[9px] text-rose-400 mt-0.5">
                     {(emp.manualAdjustment || 0) > 0 ? `신청 ${approvedUsed} + 구휴가 ${emp.manualAdjustment}` : `승인 ${deductible.length}건`}
                   </p>

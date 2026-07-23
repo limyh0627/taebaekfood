@@ -130,4 +130,35 @@ describe('calculateLeaveBalance', () => {
     const reqs = [req({ id: 'v', employeeId: 'e9', type: '휴가', daysUsed: 3 })];
     expect(calculateLeaveBalance(e, reqs, NOW).usedRequests).toBe(3);
   });
+
+  describe('당월 사용', () => {
+    it('신청 시작일이 이번 달인 것만 센다', () => {
+      const e = emp({ id: 'e9', joinDate: '2020-01-01' });
+      const reqs = [
+        req({ id: 'a', employeeId: 'e9', startDate: '2026-07-02', endDate: '2026-07-02', daysUsed: 1 }),
+        req({ id: 'b', employeeId: 'e9', startDate: '2026-07-20', endDate: '2026-07-22', daysUsed: 3 }),
+        req({ id: 'c', employeeId: 'e9', startDate: '2026-06-10', endDate: '2026-06-10', daysUsed: 1 }), // 지난달
+      ];
+      const b = calculateLeaveBalance(e, reqs, NOW);   // NOW = 2026-07-23
+      expect(b.usedThisMonth).toBe(4);
+      expect(b.usedRequests).toBe(5);
+    });
+
+    it('구 수동 휴가값은 당월에 안 들어간다 (언제 쓴 건지 모름)', () => {
+      const e = emp({ id: 'e9', joinDate: '2020-01-01', manualAdjustment: 5 });
+      const b = calculateLeaveBalance(e, [], NOW);
+      expect(b.usedThisMonth).toBe(0);
+      expect(b.usedTotal).toBe(5);
+    });
+
+    it('미승인·미차감 유형은 당월에도 빠진다', () => {
+      const e = emp({ id: 'e9', joinDate: '2020-01-01' });
+      const reqs = [
+        req({ id: 'a', employeeId: 'e9', startDate: '2026-07-02', endDate: '2026-07-02', status: 'pending', daysUsed: 1 }),
+        req({ id: 'b', employeeId: 'e9', startDate: '2026-07-03', endDate: '2026-07-03', type: '경조사', daysUsed: 2 }),
+        req({ id: 'c', employeeId: 'e9', startDate: '2026-07-06', endDate: '2026-07-06', daysUsed: 1 }),
+      ];
+      expect(calculateLeaveBalance(e, reqs, NOW).usedThisMonth).toBe(1);
+    });
+  });
 });
