@@ -1,6 +1,8 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { X, Package, Tag, Box, Layers, Plus, Building2, Check, Trash2 } from 'lucide-react';
 import { Item, InventoryCategory, ItemSubtype, Partner, ClientBoxConfig, PartnerItem, ShippingRule } from '../types';
+import { fetchCollection } from '../src/shared/services/firebaseService';
+import { buildTaxonomy, DEFAULT_CATEGORY_LABELS, TaxonomyRow } from '../src/shared/taxonomy';
 import { baseRawName, PRODUCT_FORMULA } from '../src/constants/formula';
 
 interface ProductModalProps {
@@ -28,13 +30,7 @@ const CAT_NORM: Record<string, string> = {
 };
 const normCat = (c?: string) => c ? (CAT_NORM[c] || c) : '';
 
-const CATEGORY_LABELS: Record<string, string> = {
-  product: '완제품', goods: '상품', wip: '반제품', raw: '원료',
-  giftset: '선물세트', submaterial: '부자재', shipping: '배송',
-};
-
-const GOODS_SUBTYPES: ItemSubtype[] = ['향미유', '고춧가루', '참기름', '들기름', '참깨', '들깨', '검정깨'];
-const SUBMATERIAL_SUBTYPES: ItemSubtype[] = ['마개', '용기', '박스', '테이프', '라벨'];
+const CATEGORY_LABELS: Record<string, string> = DEFAULT_CATEGORY_LABELS;
 
 const PRESET_PUMOK = [
   '시골향참기름1', '시골향참기름2', '시골향참기름3', '시골향참기름4',
@@ -106,6 +102,11 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       category: normCat(s.category)
     }))
   }));
+
+  // 분류 체계 — 사용자가 정한 이름·하위 분류(itemTaxonomy). 저장본이 없으면 기본값.
+  const [taxonomyRows, setTaxonomyRows] = useState<TaxonomyRow[]>([]);
+  useEffect(() => { fetchCollection<TaxonomyRow>('itemTaxonomy').then(setTaxonomyRows).catch(() => {}); }, []);
+  const taxo = useMemo(() => buildTaxonomy(taxonomyRows), [taxonomyRows]);
 
   const [partnerSearch, setClientSearch] = useState('');
   const [inboundPartnerSearch, setSupplierSearch] = useState('');
@@ -368,21 +369,21 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                         : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'
                     }`}
                   >
-                    {CATEGORY_LABELS[cat] ?? cat}
+                    {taxo.labelOf(cat)}
                   </button>
                 );
               })}
             </div>
           </div>
 
-          {/* 세부 분류 (subtype) */}
-          {(formData.category === 'goods' || formData.category === 'submaterial') && (
+          {/* 세부 분류 (subtype) — 분류 관리에서 정한 목록 */}
+          {taxo.subtypesOf(formData.category).length > 0 && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Tag size={14} className="mr-2" /> 세부 분류
               </label>
               <div className="flex flex-wrap gap-1.5">
-                {(formData.category === 'goods' ? GOODS_SUBTYPES : SUBMATERIAL_SUBTYPES).map(sub => {
+                {taxo.subtypesOf(formData.category).map((sub: string) => {
                   const isSelected = formData.subtype === sub;
                   return (
                     <button

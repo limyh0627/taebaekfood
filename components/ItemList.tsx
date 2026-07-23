@@ -27,6 +27,7 @@ import {
   Share2,
   Factory,
   Plus,
+  Layers,
 } from 'lucide-react';
 import { Item, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, PartnerItem } from '../types';
 import { PurchaseOrder, poLines } from '../src/shared/types';
@@ -37,6 +38,8 @@ import RawMaterialEntryModal from './RawMaterialEntryModal';
 import RawMaterialLotPanel from './RawMaterialLotPanel';
 import RawLedgerList from './RawLedgerList';
 import OemManager from './OemManager';
+import CategoryManager from './CategoryManager';
+import { buildTaxonomy, TaxonomyRow } from '../src/shared/taxonomy';
 import { RM_LIST, unitOf, baseRawName, lotStockInUnit, unitToKg, lotKgRemaining, parsePackageKg } from '../src/constants/formula';
 import { isSubmaterial } from '../src/shared/types';
 import { matchesSearch } from '../src/shared/hangul';
@@ -498,6 +501,22 @@ const ItemList: React.FC<ItemListProps> = ({
 
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+  // 분류 체계 — 이름·하위 분류는 사용자가 정한다(itemTaxonomy). 저장본이 없으면 기본값.
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
+  const [taxonomyRows, setTaxonomyRows] = useState<TaxonomyRow[]>([]);
+  useEffect(() => { fetchCollection<TaxonomyRow>('itemTaxonomy').then(setTaxonomyRows).catch(() => {}); }, []);
+  const taxo = useMemo(() => buildTaxonomy(taxonomyRows), [taxonomyRows]);
+  // 분류를 쓰는 품목 수 — 지울 때 경고에 쓴다
+  const taxonomyUsage = useMemo(() => {
+    const u: Record<string, number> = {};
+    for (const p of items) {
+      if (p.archived) continue;
+      u[`cat:${p.category}`] = (u[`cat:${p.category}`] ?? 0) + 1;
+      if (p.subtype) u[`${p.category}:${p.subtype}`] = (u[`${p.category}:${p.subtype}`] ?? 0) + 1;
+    }
+    return u;
+  }, [items]);
   // 재고 만들기 — 품목을 골라 만든 수량만큼 재고를 더한다(제조·생산분 반영).
   //   원료(raw)는 대상 아님 — 원료는 입고/실사조정으로만 움직인다.
   const [makeQty, setMakeQty] = useState<Record<string, string>>({});
@@ -515,8 +534,10 @@ const ItemList: React.FC<ItemListProps> = ({
     cart.forEach(c => {
       const product = items.find(p => p.id === c.id);
       if (product) {
-        const nc = normCat(product.category);
-        counts[nc] = (counts[nc] || 0) + 1;
+        // 탭이 subtype 기준이라 둘 다 센다
+        for (const k of new Set([normCat(product.category), product.subtype].filter(Boolean) as string[])) {
+          counts[k] = (counts[k] || 0) + 1;
+        }
       }
     });
     return counts;
@@ -532,17 +553,21 @@ const ItemList: React.FC<ItemListProps> = ({
   const [adjustmentReason, setAdjustmentReason] = useState('');
   const [adjustmentQty, setAdjustmentQty] = useState<number>(0);
 
-  const subCategories: { id: InventoryCategory | '전체' | '상품', label: string, icon: any }[] = [
-    { id: '완제품', label: '완제품', icon: Package },
-    { id: '상품', label: '상품', icon: Tag },
-    { id: '향미유', label: '향미유', icon: Grape },
-    { id: '고춧가루', label: '고춧가루', icon: Tag },
-    { id: '용기', label: '용기', icon: Cylinder },
-    { id: '마개', label: '마개', icon: Disc },
-    { id: '테이프', label: '테이프', icon: StickyNote },
-    { id: '박스', label: '박스', icon: Inbox },
-    { id: '라벨', label: '라벨', icon: Tag },
-  ];
+  // 품목별 필터 탭 — 분류 관리에서 정한 하위 분류를 그대로 따라간다(추가하면 여기 바로 뜬다)
+  const SUB_ICONS: Record<string, any> = {
+    용기: Cylinder, 마개: Disc, 테이프: StickyNote, 박스: Inbox, 라벨: Tag, 향미유: Grape,
+  };
+  const subCategories = useMemo(() => {
+    const key = topTab === 'goods' ? 'goods' : 'submaterial';
+    const subs = taxo.subtypesOf(key);
+    const base = topTab === 'goods'
+      ? [{ id: taxo.labelOf('goods'), label: taxo.labelOf('goods'), icon: Package }]
+      : [];
+    return [
+      ...base,
+      ...subs.map(s => ({ id: s, label: s, icon: SUB_ICONS[s] ?? Tag })),
+    ];
+  }, [taxo, topTab]);
 
   const filteredProducts = useMemo(() => {
     let result: Item[] = [];
@@ -574,8 +599,10 @@ const ItemList: React.FC<ItemListProps> = ({
         result = result.filter(p => p.category === 'raw');
       }
       if (activeCategory !== '전체') {
-        if (activeCategory === '박스') result = result.filter(p => normCat(p.category) === '박스' || p.id.startsWith('GS-'));
-        else result = result.filter(p => normCat(p.category) === activeCategory);
+        // subtype 우선 — 옛 데이터는 카테고리 자리에 '박스'/'라벨'이 들어있어 둘 다 본다
+        const hit = (p: Item) => (p.subtype ?? '') === activeCategory || normCat(p.category) === activeCategory;
+        if (activeCategory === '박스') result = result.filter(p => hit(p) || p.id.startsWith('GS-'));
+        else result = result.filter(hit);
       }
       if (activeSupplierId !== '전체') {
         result = result.filter(p => psMap.get(p.id) === activeSupplierId);
@@ -727,6 +754,16 @@ const ItemList: React.FC<ItemListProps> = ({
                   <FileDown size={13} /><span>사용 기록</span>
                 </button>
               )}
+              {/* 분류 관리 — 분류 이름·하위 분류를 사용자가 정한다 */}
+              {activeTab === 'master' && isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setCategoryManagerOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:border-indigo-300 text-slate-600 hover:text-indigo-600 rounded-xl text-xs font-black transition-all shadow-sm"
+                >
+                  <Layers size={13} /><span>분류 관리</span>
+                </button>
+              )}
               {/* 재고 만들기 — 새 품목 등록 */}
               {activeTab === 'master' && (
                 <button
@@ -798,9 +835,6 @@ const ItemList: React.FC<ItemListProps> = ({
               <span>품목별</span>
             </button>
             {showCategoryFilter && subCategories
-              .filter(s => topTab === 'goods'
-                ? (s.id === '상품' || s.id === '향미유' || s.id === '고춧가루')
-                : (s.id !== '완제품' && s.id !== '상품' && s.id !== '향미유' && s.id !== '고춧가루'))
               .map(sub => {
                 const Icon = sub.icon;
                 const isActive = activeCategory === sub.id;
@@ -2184,6 +2218,20 @@ const ItemList: React.FC<ItemListProps> = ({
             </div>
           </div>
         </>
+      )}
+
+      {/* ── 분류 관리 — 분류 이름·하위 분류를 사용자가 정한다 ── */}
+      {categoryManagerOpen && (
+        <CategoryManager
+          usage={taxonomyUsage}
+          onSaved={setTaxonomyRows}
+          onClose={() => {
+            setCategoryManagerOpen(false);
+            // 이름이 바뀌면 탭도 바뀌니 골라둔 필터는 풀어둔다
+            setActiveCategory('전체');
+            fetchCollection<TaxonomyRow>('itemTaxonomy').then(setTaxonomyRows).catch(() => {});
+          }}
+        />
       )}
 
       {/* ── 재고 만들기 — 품목 골라 만든 수량만큼 재고 +N ── */}
