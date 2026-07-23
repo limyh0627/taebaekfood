@@ -104,11 +104,23 @@ const HRManager: React.FC<HRManagerProps> = ({
     return today < oneYearLater;
   };
 
-  // 월차: 입사일+N개월 기준일이 올해에 해당하고 오늘 이전인 것만 카운트
+  /** 입사 1년 도달일 — 이 날부터 연차(15일~)가 발생하고, 그 전까지는 월차 */
+  const getAnniversary = (joinDate: string) => {
+    const s = new Date(joinDate);
+    const a = new Date(s);
+    a.setFullYear(s.getFullYear() + 1);
+    return a;
+  };
+
+  /**
+   * 올해 발생한 월차. 입사 1년 미만 기간에 매월 1일씩 최대 11일(12번째 달은 1년 도달 =
+   * 연차 15일이 생기는 시점이라 월차로 세지 않는다).
+   * 1년이 지나도 0으로 지우지 않는다 — 올해 그 월차로 쓴 휴가가 있기 때문.
+   */
   const calculateMonthlyLeaveThisYear = (joinDate: string) => {
     const start = new Date(joinDate);
     let count = 0;
-    for (let m = 1; m <= 12; m++) {
+    for (let m = 1; m <= 11; m++) {
       const grantDate = new Date(start.getFullYear(), start.getMonth() + m, start.getDate());
       if (grantDate > today) break;
       if (grantDate.getFullYear() === CURRENT_YEAR) count++;
@@ -129,6 +141,23 @@ const HRManager: React.FC<HRManagerProps> = ({
     return leaveRequests
       .filter(r => r.employeeId === empId && r.status === 'approved' && !NON_DEDUCTIBLE_TYPES.includes(r.type))
       .reduce((sum, r) => sum + r.daysUsed, 0);
+  };
+
+  /**
+   * 사용 일수를 1년 도달일 기준으로 나눈다.
+   * 1년 도달 전에 쓴 건 월차에서, 이후에 쓴 건 연차에서 빠져야 한다.
+   * (예전엔 1년이 지나면 월차를 0으로 지우면서 월차로 쓴 것까지 연차에서 또 차감했다.)
+   */
+  const getUsedSplit = (empId: string, joinDate: string) => {
+    const anni = getAnniversary(joinDate).toISOString().slice(0, 10);
+    const mine = leaveRequests.filter(r =>
+      r.employeeId === empId && r.status === 'approved' && !NON_DEDUCTIBLE_TYPES.includes(r.type));
+    let beforeAnni = 0, afterAnni = 0;
+    for (const r of mine) {
+      if ((r.startDate ?? '') < anni) beforeAnni += r.daysUsed || 0;
+      else afterAnni += r.daysUsed || 0;
+    }
+    return { beforeAnni, afterAnni, total: beforeAnni + afterAnni };
   };
 
   const calculateWorkDays = (joinDate: string) => {
@@ -441,13 +470,21 @@ const HRManager: React.FC<HRManagerProps> = ({
               <tbody className="divide-y divide-slate-50">
                 {employees.map(emp => {
                   const underOneYear = isUnderOneYear(emp.joinDate);
-                  const monthlyLeave = underOneYear ? calculateMonthlyLeaveThisYear(emp.joinDate) : 0;
+                  // 1년이 지나도 올해 발생한 월차는 남긴다(그 월차로 쓴 휴가가 있으므로)
+                  const monthlyLeave = calculateMonthlyLeaveThisYear(emp.joinDate);
                   const annualLeave = calculateAnnualLeave(emp.joinDate);
                   const totalGenerated = monthlyLeave + annualLeave;
-                  const approvedUsed = getApprovedLeaveCount(emp.id);
+                  const used = getUsedSplit(emp.id, emp.joinDate);
+                  const approvedUsed = used.total;
+                  // 1년 도달 전 사용은 월차에서, 이후는 연차에서 — 월차 초과분은 연차로 넘긴다
+                  const monthlyRemain = Math.max(0, monthlyLeave - used.beforeAnni);
+                  const monthlyOverflow = Math.max(0, used.beforeAnni - monthlyLeave);
+                  const annualRemain = annualLeave - used.afterAnni - monthlyOverflow;
                   const finalTotalUsable = totalGenerated + (emp.annualLeave?.carryOverLeave || 0) + (emp.annualLeave?.bonusLeave || 0);
                   const totalUsedCount = approvedUsed + (emp.manualAdjustment || 0);
-                  const remaining = finalTotalUsable - totalUsedCount;
+                  const remaining = monthlyRemain + annualRemain
+                    + (emp.annualLeave?.carryOverLeave || 0) + (emp.annualLeave?.bonusLeave || 0)
+                    - (emp.manualAdjustment || 0);
 
                   return (
                     <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
@@ -461,12 +498,14 @@ const HRManager: React.FC<HRManagerProps> = ({
                           <p className="text-[10px] text-slate-400 font-bold uppercase">{emp.position}</p>
                         </button>
                       </td>
-                      {/* 월차 */}
+                      {/* 월차 — 1년이 지나도 올해 발생분은 표시(그 월차로 쓴 휴가가 있으므로) */}
                       <td className="px-4 py-6 text-center">
-                        {underOneYear ? (
-                          <div className="flex flex-col items-center">
+                        {monthlyLeave > 0 ? (
+                          <div className="flex flex-col items-center" title={`올해 발생 ${monthlyLeave}일 중 ${used.beforeAnni}일 사용`}>
                             <span className="text-sm font-bold text-emerald-600">{monthlyLeave}</span>
-                            <span className="text-[9px] font-bold text-emerald-300 uppercase">올해</span>
+                            <span className="text-[9px] font-bold text-emerald-300 uppercase">
+                              {underOneYear ? '올해' : `잔여 ${monthlyRemain}`}
+                            </span>
                           </div>
                         ) : (
                           <span className="text-[10px] text-slate-200">-</span>
@@ -777,11 +816,17 @@ const HRManager: React.FC<HRManagerProps> = ({
           .sort((a, b) => (b.startDate ?? '').localeCompare(a.startDate ?? ''));
 
         const underOneYear = isUnderOneYear(emp.joinDate);
-        const monthlyLeave = underOneYear ? calculateMonthlyLeaveThisYear(emp.joinDate) : 0;
+        const monthlyLeave = calculateMonthlyLeaveThisYear(emp.joinDate);
         const annualLeave = calculateAnnualLeave(emp.joinDate);
         const totalUsable = monthlyLeave + annualLeave + (emp.annualLeave?.carryOverLeave || 0) + (emp.annualLeave?.bonusLeave || 0);
-        const approvedUsed = getApprovedLeaveCount(emp.id);
-        const remaining = totalUsable - approvedUsed - (emp.manualAdjustment || 0);
+        const usedSplit = getUsedSplit(emp.id, emp.joinDate);
+        const approvedUsed = usedSplit.total;
+        // 표와 같은 기준: 1년 도달 전 사용은 월차에서, 이후는 연차에서(월차 초과분은 연차로)
+        const monthlyRemainDetail = Math.max(0, monthlyLeave - usedSplit.beforeAnni);
+        const annualRemainDetail = annualLeave - usedSplit.afterAnni - Math.max(0, usedSplit.beforeAnni - monthlyLeave);
+        const remaining = monthlyRemainDetail + annualRemainDetail
+          + (emp.annualLeave?.carryOverLeave || 0) + (emp.annualLeave?.bonusLeave || 0)
+          - (emp.manualAdjustment || 0);
 
         // 승인되어 실제로 차감된 것만 집계(경조사·기타는 차감 안 함)
         const deductible = mine.filter(r => r.status === 'approved' && !NON_DEDUCTIBLE_TYPES.includes(r.type));
@@ -816,7 +861,9 @@ const HRManager: React.FC<HRManagerProps> = ({
                   <p className="text-[10px] font-black text-slate-400 uppercase">총 부여</p>
                   <p className="text-xl font-black text-slate-800 tabular-nums">{totalUsable}<span className="text-xs ml-0.5 text-slate-400">일</span></p>
                   <p className="text-[9px] text-slate-400 mt-0.5">
-                    {underOneYear ? `월차 ${monthlyLeave}` : `연차 ${annualLeave}`}
+                    {monthlyLeave > 0 && `월차 ${monthlyLeave}`}
+                    {monthlyLeave > 0 && annualLeave > 0 && ' + '}
+                    {annualLeave > 0 && `연차 ${annualLeave}`}
                     {(emp.annualLeave?.carryOverLeave || 0) > 0 && ` +이월 ${emp.annualLeave?.carryOverLeave}`}
                     {(emp.annualLeave?.bonusLeave || 0) > 0 && ` +보너스 ${emp.annualLeave?.bonusLeave}`}
                   </p>
@@ -824,7 +871,11 @@ const HRManager: React.FC<HRManagerProps> = ({
                 <div className="bg-rose-50 rounded-2xl px-4 py-3">
                   <p className="text-[10px] font-black text-rose-400 uppercase">사용</p>
                   <p className="text-xl font-black text-rose-600 tabular-nums">{approvedUsed}<span className="text-xs ml-0.5 text-rose-300">일</span></p>
-                  <p className="text-[9px] text-rose-400 mt-0.5">승인 {deductible.length}건</p>
+                  <p className="text-[9px] text-rose-400 mt-0.5">
+                    {usedSplit.beforeAnni > 0 && usedSplit.afterAnni > 0
+                      ? `월차 ${usedSplit.beforeAnni} + 연차 ${usedSplit.afterAnni}`
+                      : `승인 ${deductible.length}건`}
+                  </p>
                 </div>
                 <div className="bg-amber-50 rounded-2xl px-4 py-3">
                   <p className="text-[10px] font-black text-amber-500 uppercase">수동 차감</p>
