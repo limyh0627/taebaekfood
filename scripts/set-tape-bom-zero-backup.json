@@ -1,0 +1,2221 @@
+{
+  "at": "2026-07-23T16:10:57.958Z",
+  "items": [
+    {
+      "id": "p-104",
+      "name": "시골향 탈피들깨가루/1kg",
+      "submaterials": [
+        {
+          "stock": 1,
+          "id": "B-02",
+          "category": "박스",
+          "unit": "개",
+          "name": "2호박스"
+        },
+        {
+          "stock": 1,
+          "id": "T-YL",
+          "category": "테이프",
+          "unit": "개",
+          "name": "테이프-노랑"
+        },
+        {
+          "stock": 1,
+          "id": "PLYZ-NP-1000",
+          "category": "용기",
+          "spec": "1kg",
+          "name": "1KG-탈피들깨가루",
+          "unit": "개"
+        }
+      ]
+    },
+    {
+      "id": "p-105",
+      "name": "시골향 들기름/1.75ML",
+      "submaterials": [
+        {
+          "id": "C-LG01",
+          "stock": 1,
+          "unit": "개",
+          "name": "물엿캡-연두",
+          "category": "마개"
+        },
+        {
+          "stock": 1,
+          "id": "PET-N-1750-TR",
+          "category": "용기",
+          "unit": "개",
+          "name": "1750ML-페트병"
+        },
+        {
+          "name": "시골향 들② 1.75L",
+          "unit": "개",
+          "category": "라벨",
+          "id": "label-태백-들2-1-75l",
+          "stock": 1
+        },
+        {
+          "stock": 1,
+          "id": "B-04",
+          "category": "박스",
+          "name": "4호박스",
+          "unit": "개"
+        },
+        {
+          "stock": 1,
+          "id": "T-GN",
+          "category": "테이프",
+          "unit": "개",
+          "name": "테이프-초록"
+        }
+      ]
+    },
+    {
+      "id": "p-106",
+      "name": "시골향 참기름/A/1750ml",
+      "submaterials": [
+        {
+          "id": "C-RD01",
+          "stock": 1,
+          "name": "물엿캡-빨강",
+          "unit": "개",
+          "category": "마개"
+        },
+        {
+          "category": "용기",
+          "name": "1750ML-페트병",
+          "unit": "개",
+          "stock": 1,
+          "id": "PET-N-1750-TR"
+        },
+        {
+          "category": "라벨",
+          "name": "시골향 참② 1.75L",
+          "unit": "1000개",
+          "stock": 1,
+          "id": "label-태백-참2-1-75l"
+        },
+        {
+          "id": "B-02",
+          "stock": 1,
+          "unit": "개",
+          "name": "2호박스",
+          "category": "박스"
+        },
+        {
+          "stock": 1,
+          "id": "T-RD",
+          "category": "테이프",
+          "unit": "개",
+          "name": "테이프-빨강"
+        }
+      ]
+    },
+    {
+      "id": "p-107",
+      "name": "시골향 들깨가루(중간)/1kg",
+      "submaterials": [
+        {
+          "unit": "개",
+          "name": "1KG-실링",
+          "category": "용기",
+          "id": "PLYS-A-1000",
+          "stock": 1
+        },
+        {
+          "stock": 1,
+          "id": "B-02",
+          "category": "박스",
+          "name": "2호박스",
+          "unit": "개"
+        },
+        {
+          "category": "테이프",
+          "unit": "개",
+          "name": "테이프-빨강",
+          "stock": 1,
+          "id": "T-RD"
+        },
+        {
+          "id": "p-1784783101022",
+          "stock": 1,
+          "unit": "개",
+          "name": "시골향 들깨가루",
+          "category": "라벨"
+        }
+      ]
+    },
+    {
+      "id": "p-110",
+      "name": "시골향 참기름/특골드/1750ml",
+      "submaterials": [
+        {
+          "id": "C-GD01",
+          "stock": 1,
+          "name": "물엿캡-골드",
+          "unit": "개",
+          "category": "마개"
+        },
+        {
+          "id": "PET-N-1750-TR",
+          "stock": 1,
+          "name": "1750ML-페트병",
+          "unit": "개",
+          "category": "용기"
+        },
+        {
+          "id": "label-태백-참1-1-75l",
+          "stock": 1,
+          "name": "시골향 참① 1.75L",
+          "unit": "개",
+          "category": "라벨"
+        },
+        {
+          "id": "B-02",
+          "stock": 1,
+          "unit": "개",
+          "name": "2호박스",
+          "category": "박스"
+        },
+        {
+          "unit": "개",
+          "name": "테이프-노랑",
+          "category": "테이프",
+          "id": "T-YL",
+          "stock": 1
+        }
+      ]
+    },
+    {
+      "id": "p-115",
+      "name": "시골향 볶음통들깨/4kg",
+      "submaterials": [
+        {
+          "stock": 1,
+          "id": "PLYS-A-4000",
+          "category": "용기",
+          "unit": "개",
+          "name": "4KG-실링"
+        },
+        {
+          "stock": 1,
+          "id": "B-02",
+          "category": "박스",
+          "name": "2호박스",
+          "unit": "개"
+        },
+        {
+          "category": "테이프",
+          "name": "테이프-하양",
+          "unit": "개",
+          "stock": 1,
+          "id": "T-WT"
+        },
+        {
+          "stock": 1,
+          "id": "p-1784783101022",
+          "category": "라벨",
+          "unit": "개",
+          "name": "시골향 들깨가루"
+        }
+      ]
+    },
+    {
+      "id": "p-116",
+      "name": "시골향 참기름/A/1750ml",
+      "submaterials": [
+        {
+          "stock": 1,
+          "id": "C-YL01",
+          "category": "마개",
+          "name": "물엿캡-노랑",
+          "unit": "개"
+        },
+        {
+          "stock": 1,
+          "id": "PET-N-1750-TR",
+          "category": "용기",
+          "name": "1750ML-페트병",
+          "unit": "개"
+        },
+        {
+          "stock": 1,
+          "id": "label-태백-참2-1-75l",
+          "category": "라벨",
+          "unit": "1000개",
+          "name": "시골향 참② 1.75L"
+        },
+        {
+          "stock": 1,
+          "id": "B-02",
+          "category": "박스",
+          "name": "2호박스",
+          "unit": "개"
+        },
+        {
+          "unit": "개",
+          "name": "테이프-투명",
+          "category": "테이프",
+          "id": "T-TR",
+          "stock": 1
+        }
+      ]
+    },
+    {
+      "id": "p-137",
+      "name": "시골향 들기름/병/350ml",
+      "submaterials": [
+        {
+          "id": "C-YL02",
+          "stock": 1,
+          "name": "병캡-노랑",
+          "unit": "개",
+          "category": "마개"
+        },
+        {
+          "stock": 1,
+          "id": "GLA-R-350-TR",
+          "category": "용기",
+          "unit": "개",
+          "name": "350ML-소주병"
+        },
+        {
+          "stock": 1,
+          "id": "B-05",
+          "category": "박스",
+          "name": "5호박스",
+          "unit": "개"
+        },
+        {
+          "category": "테이프",
+          "name": "테이프-노랑",
+          "unit": "개",
+          "stock": 1,
+          "id": "T-YL"
+        },
+        {
+          "id": "label-태백-들2-흰정사각-350ml",
+          "stock": 1,
+          "name": "시골향 들②-흰정사각 350ml/1.75L",
+          "unit": "장",
+          "category": "라벨"
+        }
+      ]
+    },
+    {
+      "id": "p-139",
+      "name": "시골향 참기름/분/1750ml",
+      "submaterials": [
+        {
+          "stock": 1,
+          "id": "C-YL01",
+          "category": "마개",
+          "unit": "개",
+          "name": "물엿캡-노랑"
+        },
+        {
+          "id": "PET-N-1750-TR",
+          "stock": 1,
+          "name": "1750ML-페트병",
+          "unit": "개",
+          "category": "용기"
+        },
+        {
+          "id": "label-태백-참3-1-75l",
+          "stock": 1,
+          "unit": "개",
+          "name": "시골향 참③ 1.75L",
+          "category": "라벨"
+        },
+        {
+          "category": "박스",
+          "unit": "개",
+          "name": "4호박스",
+          "stock": 1,
+          "id": "B-04"
+        },
+        {
+          "category": "테이프",
+          "name": "테이프-투명",
+          "unit": "개",
+          "stock": 1,
+          "id": "T-TR"
+        }
+      ]
+    },
+    {
+      "id": "p-166",
+      "name": "시골향 참기름/병/골드A/350ml",
+      "submaterials": [
+        {
+          "stock": 1,
+          "id": "C-RD02",
+          "category": "마개",
+          "name": "병캡-빨강",
+          "unit": "개"
+        },
+        {
+          "stock": 1,
+          "id": "GLA-R-350-TR",
+          "category": "용기",
+          "name": "350ML-소주병",
+          "unit": "개"
+        },
+        {
+          "id": "label-태백-참1-흰정사각-350ml",
+          "stock": 1,
+          "name": "시골향 참①-흰정사각 350ml",
+          "unit": "개",
+          "category": "라벨"
+        },
+        {
+          "id": "B-05",
+          "stock": 1,
+          "unit": "개",
+          "name": "5호박스",
+          "category": "박스"
+        },
+        {
+          "stock": 1,
+          "id": "T-RD",
+          "category": "테이프",
+          "unit": "개",
+          "name": "테이프-빨강"
+        }
+      ]
+    },
+    {
+      "id": "p-17",
+      "name": "참기름/특A/대왕/1800ml",
+      "submaterials": [
+        {
+          "id": "C-GD01",
+          "stock": 1,
+          "name": "물엿캡-골드",
+          "unit": "개",
+          "category": "마개"
+        },
+        {
+          "id": "PET-H-1800-GD",
+          "stock": 1,
+          "unit": "개",
+          "name": "1800ML-페트병-골드",
+          "category": "용기"
+        },
+        {
+          "stock": 1,
+          "qty": 1,
+          "id": "label-대왕-참4-1-8l",
+          "category": "라벨",
+          "unit": "개",
+          "name": "대왕 참④ 1.8L"
+        },
+        {
+          "name": "2호박스",
+          "unit": "개",
+          "category": "박스",
+          "id": "B-02",
+          "stock": 1
+        },
+        {
+          "stock": 1,
+          "id": "T-YL",
+          "category": "테이프",
+          "unit": "개",
+          "name": "테이프-노랑"
+        }
+      ]
+    },
+    {
+      "id": "p-1773585416573",
+      "name": "시골향 참기름/병/원액/350ml",
+      "submaterials": [
+        {
+          "unit": "개",
+          "name": "350ML-소주병",
+          "category": "용기",
+          "id": "GLA-R-350-TR",
+          "stock": 1
+        },
+        {
+          "category": "마개",
+          "name": "병캡-빨강",
+          "unit": "개",
+          "stock": 1,
+          "id": "C-RD02"
+        },
+        {
+          "category": "라벨",
+          "name": "시골향 참①-흰정사각 350ml",
+          "unit": "개",
+          "stock": 1,
+          "id": "label-태백-참1-흰정사각-350ml"
+        },
+        {
+          "id": "B-05",
+          "stock": 1,
+          "unit": "개",
+          "name": "5호박스",
+          "category": "박스"
+        },
+        {
+          "stock": 1,
+          "id": "T-RD",
+          "category": "테이프",
+          "unit": "개",
+          "name": "테이프-빨강"
+        }
+      ]
+    },
+    {
+      "id": "p-1773595248560",
+      "name": "들기름/병/특/원조방앗간/300ml",
+      "submaterials": [
+        {
+          "id": "PET-R-300-TR",
+          "stock": 1,
+          "name": "300ML-페트병",
+          "unit": "개",
+          "category": "용기"
+        },
+        {
+          "unit": "개",
+          "name": "물엿캡-노랑",
+          "category": "마개",
+          "id": "C-YL01",
+          "stock": 1
+        },
+        {
+          "stock": 1,
+          "id": "qus0RgvZINX6DFtOjFeH",
+          "category": "박스",
+          "name": "원조방앗간 박스",
+          "unit": "개"
+        },
+        {
+          "category": "테이프",
+          "unit": "개",
+          "name": "테이프-투명",
+          "stock": 1,
+          "id": "T-TR"
+        },
+        {
+          "name": "원조방앗간 들",
+          "unit": "개",
+          "category": "라벨",
+          "id": "p-1784793821500",
+          "stock": 1
+        }
+      ]
+    },
+    {
+      "id": "p-1775030234040",
+      "name": "참기름/병/A/수라간/350ml",
+      "submaterials": [
+        {
+          "id": "GLA-R-350-TR",
+          "stock": 1,
+          "name": "350ML-소주병",
+          "unit": "개",
+          "category": "용기"
+        },
+        {
+          "unit": "개",
+          "name": "병캡-빨강",
+          "category": "마개",
+          "id": "C-RD02",
+          "stock": 1
+        },
+        {
+          "category": "라벨",
+          "name": "해달(수라간) 참 350ml",
+          "unit": "개",
+          "stock": 1,
+          "id": "label-해달-수라간-참-350ml"
+        },
+        {
+          "unit": "개",
+          "name": "5-1호박스",
+          "category": "박스",
+          "id": "B-05-1",
+          "stock": 1
+        },
+        {
+          "unit": "개",
+          "name": "테이프-하양",
+          "category": "테이프",
+          "id": "T-WT",
+          "stock": 1
+        }
+      ]
+    },
+    {
+      "id": "p-1775432881153",
+      "name": "시골향 들깨가루(고운)/1kg",
+      "submaterials": [
+        {
+          "id": "PLYS-A-1000",
+          "stock": 1,
+          "name": "1KG-실링",
+          "unit": "개",
+          "category": "용기"
+        },
+        {
+          "category": "박스",
+          "unit": "개",
+          "name": "6호박스",
+          "stock": 1,
+          "id": "B-06"
+        },
+        {
+          "category": "테이프",
+          "unit": "개",
+          "name": "테이프-초록",
+          "stock": 1,
+          "id": "T-GN"
+        },
+        {
+          "id": "p-1784783101022",
+          "stock": 1,
+          "unit": "개",
+          "name": "시골향 들깨가루",
+          "category": "라벨"
+        }
+      ]
+    },
+    {
+      "id": "p-1775721875724",
+      "name": "시골향 볶음참깨가루/1kg",
+      "submaterials": [
+        {
+          "id": "PLYS-A-1000",
+          "stock": 1,
+          "unit": "개",
+          "name": "1KG-실링",
+          "category": "용기"
+        },
+        {
+          "stock": 1,
+          "id": "T-TR",
+          "category": "테이프",
+          "name": "테이프-투명",
+          "unit": "개"
+        },
+        {
+          "id": "B-01",
+          "stock": 1,
+          "name": "1호박스",
+          "unit": "개",
+          "category": "박스"
+        },
+        {
+          "category": "라벨",
+          "unit": "개",
+          "name": "시골향 볶음참깨",
+          "stock": 1,
+          "id": "p-1784790733491"
+        }
+      ]
+    },
+    {
+      "id": "p-1776672557281",
+      "name": "참기름/병/A/첫느낌/350ml",
+      "submaterials": [
+        {
+          "stock": 1,
+          "id": "GLA-R-350-TR",
+          "category": "용기",
+          "unit": "개",
+          "name": "350ML-소주병"
+        },
+        {
+          "id": "label-해달-첫느낌-참-350ml",
+          "stock": 1,
+          "name": "해달(첫느낌) 참 350ml",
+          "unit": "매",
+          "category": "라벨"
+        },
+        {
+          "id": "B-05-1",
+          "stock": 1,
+          "name": "5-1호박스",
+          "unit": "개",
+          "category": "박스"
+        },
+        {
+          "id": "T-RD",
+          "stock": 1,
+          "name": "테이프-빨강",
+          "unit": "개",
+          "category": "테이프"
+        },
+        {
+          "id": "C-RD02",
+          "stock": 1,
+          "unit": "개",
+          "name": "병캡-빨강",
+          "category": "마개"
+        }
+      ]
+    },
+    {
+      "id": "p-1776672612810",
+      "name": "들기름/병/첫느낌/350ml",
+      "submaterials": [
+        {
+          "name": "350ML-소주병",
+          "unit": "개",
+          "category": "용기",
+          "id": "GLA-R-350-TR",
+          "stock": 1
+        },
+        {
+          "stock": 1,
+          "id": "C-YL02",
+          "category": "마개",
+          "unit": "개",
+          "name": "병캡-노랑"
+        },
+        {
+          "unit": "매",
+          "name": "해달(첫느낌) 들 350ml",
+          "category": "라벨",
+          "id": "label-해달-첫느낌-들-350ml",
+          "stock": 1
+        },
+        {
+          "category": "박스",
+          "unit": "개",
+          "name": "5-2호박스",
+          "stock": 1,
+          "id": "B-05-2"
+        },
+        {
+          "id": "T-YL",
+          "stock": 1,
+          "unit": "개",
+          "name": "테이프-노랑",
+          "category": "테이프"
+        }
+      ]
+    },
+    {
+      "id": "p-1776730100766",
+      "name": "참기름/병/A/조선/350ml",
+      "submaterials": [
+        {
+          "category": "용기",
+          "name": "350ML-소주병",
+          "unit": "개",
+          "stock": 1,
+          "id": "GLA-R-350-TR"
+        },
+        {
+          "id": "C-RD02",
+          "stock": 1,
+          "name": "병캡-빨강",
+          "unit": "개",
+          "category": "마개"
+        },
+        {
+          "id": "B-05-1",
+          "stock": 1,
+          "name": "5-1호박스",
+          "unit": "개",
+          "category": "박스"
+        },
+        {
+          "stock": 1,
+          "id": "T-RD",
+          "category": "테이프",
+          "name": "테이프-빨강",
+          "unit": "개"
+        },
+        {
+          "name": "해달(조선) 참 350ml",
+          "unit": "매",
+          "category": "라벨",
+          "id": "label-해달-조선-참-350ml",
+          "stock": 1
+        }
+      ]
+    },
+    {
+      "id": "p-1776730152085",
+      "name": "들기름/병/조선/350ml",
+      "submaterials": [
+        {
+          "stock": 1,
+          "id": "GLA-R-350-TR",
+          "category": "용기",
+          "name": "350ML-소주병",
+          "unit": "개"
+        },
+        {
+          "name": "병캡-노랑",
+          "unit": "개",
+          "category": "마개",
+          "id": "C-YL02",
+          "stock": 1
+        },
+        {
+          "unit": "매",
+          "name": "해달(조선) 들 350ml",
+          "category": "라벨",
+          "id": "label-해달-조선-들-350ml",
+          "stock": 1
+        },
+        {
+          "category": "박스",
+          "name": "5-2호박스",
+          "unit": "개",
+          "stock": 1,
+          "id": "B-05-2"
+        },
+        {
+          "category": "테이프",
+          "name": "테이프-노랑",
+          "unit": "개",
+          "stock": 1,
+          "id": "T-YL"
+        }
+      ]
+    },
+    {
+      "id": "p-1776730298222",
+      "name": "참기름/병/특A(금빛)/350ml",
+      "submaterials": [
+        {
+          "category": "용기",
+          "name": "350ML-소주병",
+          "unit": "개",
+          "stock": 1,
+          "id": "GLA-R-350-TR"
+        },
+        {
+          "category": "라벨",
+          "name": "해달(금빛) 참 350ml",
+          "unit": "매",
+          "stock": 1,
+          "id": "label-해달-금빛-참-350ml"
+        },
+        {
+          "stock": 1,
+          "id": "B-05-1",
+          "category": "박스",
+          "name": "5-1호박스",
+          "unit": "개"
+        },
+        {
+          "category": "테이프",
+          "name": "테이프-빨강",
+          "unit": "개",
+          "stock": 1,
+          "id": "T-RD"
+        },
+        {
+          "category": "마개",
+          "unit": "개",
+          "name": "병캡-빨강",
+          "stock": 1,
+          "id": "C-RD02"
+        }
+      ]
+    },
+    {
+      "id": "p-1777000226858",
+      "name": "들기름/라이스/1800ml",
+      "submaterials": [
+        {
+          "name": "1800ML-페트병-노랑D",
+          "unit": "개",
+          "category": "용기",
+          "id": "PET-D-1800-YL",
+          "stock": 1
+        },
+        {
+          "id": "C-LG01",
+          "stock": 1,
+          "unit": "개",
+          "name": "물엿캡-연두",
+          "category": "마개"
+        },
+        {
+          "stock": 1,
+          "id": "B-02",
+          "category": "박스",
+          "unit": "개",
+          "name": "2호박스"
+        },
+        {
+          "category": "테이프",
+          "name": "테이프-초록",
+          "unit": "개",
+          "stock": 1,
+          "id": "T-GN"
+        },
+        {
+          "unit": "개",
+          "name": "라이스에그 들② 1.8L",
+          "category": "라벨",
+          "id": "p-1784790843654",
+          "stock": 1
+        }
+      ]
+    },
+    {
+      "id": "p-1777000282172",
+      "name": "참기름/분/라이스/1800ml",
+      "submaterials": [
+        {
+          "stock": 1,
+          "id": "PET-D-1800-YL",
+          "category": "용기",
+          "name": "1800ML-페트병-노랑D",
+          "unit": "개"
+        },
+        {
+          "id": "C-RD01",
+          "stock": 1,
+          "unit": "개",
+          "name": "물엿캡-빨강",
+          "category": "마개"
+        },
+        {
+          "name": "2호박스",
+          "unit": "개",
+          "category": "박스",
+          "id": "B-02",
+          "stock": 1
+        },
+        {
+          "stock": 1,
+          "id": "T-RD",
+          "category": "테이프",
+          "name": "테이프-빨강",
+          "unit": "개"
+        },
+        {
+          "name": "라이스에그 참③ 1.8L",
+          "unit": "개",
+          "category": "라벨",
+          "id": "p-1784790884261",
+          "stock": 1
+        }
+      ]
+    },
+    {
+      "id": "p-1777000396656",
+      "name": "들기름/모란/1750ml",
+      "submaterials": [
+        {
+          "unit": "개",
+          "name": "1750ML-페트병",
+          "category": "용기",
+          "id": "PET-N-1750-TR",
+          "stock": 1
+        },
+        {
+          "category": "마개",
+          "unit": "개",
+          "name": "물엿캡-연두",
+          "stock": 1,
+          "id": "C-LG01"
+        },
+        {
+          "name": "모란 들 1.75L",
+          "unit": "매",
+          "category": "라벨",
+          "id": "label-모란-들-1-75l",
+          "stock": 1
+        },
+        {
+          "stock": 1,
+          "id": "B-04",
+          "category": "박스",
+          "unit": "개",
+          "name": "4호박스"
+        },
+        {
+          "stock": 1,
+          "id": "T-GN",
+          "category": "테이프",
+          "name": "테이프-초록",
+          "unit": "개"
+        }
+      ]
+    },
+    {
+      "id": "p-1777000525177",
+      "name": "들깨가루(중간)/모란/1kg",
+      "submaterials": [
+        {
+          "stock": 1,
+          "id": "PLYS-A-1000",
+          "category": "용기",
+          "name": "1KG-실링",
+          "unit": "개"
+        },
+        {
+          "name": "2호박스",
+          "unit": "개",
+          "category": "박스",
+          "id": "B-02",
+          "stock": 1
+        },
+        {
+          "unit": "개",
+          "name": "테이프-빨강",
+          "category": "테이프",
+          "id": "T-RD",
+          "stock": 1
+        },
+        {
+          "name": "모란 들깨가루",
+          "unit": "개",
+          "category": "라벨",
+          "id": "p-1784788812234",
+          "stock": 1
+        }
+      ]
+    },
+    {
+      "id": "p-1777000621827",
+      "name": "볶음검정참깨/모란/1kg",
+      "submaterials": [
+        {
+          "stock": 1,
+          "id": "PLYS-A-1000",
+          "category": "용기",
+          "name": "1KG-실링",
+          "unit": "개"
+        },
+        {
+          "name": "2호박스",
+          "unit": "개",
+          "category": "박스",
+          "id": "B-02",
+          "stock": 1
+        },
+        {
+          "category": "테이프",
+          "unit": "개",
+          "name": "테이프-검정",
+          "stock": 1,
+          "id": "T-BK"
+        },
+        {
+          "name": "모란 검정참깨",
+          "unit": "개",
+          "category": "라벨",
+          "id": "p-1784790401954",
+          "stock": 1
+        }
+      ]
+    },
+    {
+      "id": "p-1777000727260",
+      "name": "참기름/골드A/모란/1750ml",
+      "submaterials": [
+        {
+          "name": "1750ML-페트병",
+          "unit": "개",
+          "category": "용기",
+          "id": "PET-N-1750-TR",
+          "stock": 1
+        },
+        {
+          "unit": "개",
+          "name": "물엿캡-골드",
+          "category": "마개",
+          "id": "C-GD01",
+          "stock": 1
+        },
+        {
+          "stock": 1,
+          "id": "label-모란-참1-1-75l",
+          "category": "라벨",
+          "name": "모란 참① 1.75L",
+          "unit": "개"
+        },
+        {
+          "category": "박스",
+          "unit": "개",
+          "name": "4호박스",
+          "stock": 1,
+          "id": "B-04"
+        },
+        {
+          "id": "T-YL",
+          "stock": 1,
+          "name": "테이프-노랑",
+          "unit": "개",
+          "category": "테이프"
+        }
+      ]
+    },
+    {
+      "id": "p-1777000947957",
+      "name": "참기름/특/모란/1750ml",
+      "submaterials": [
+        {
+          "category": "용기",
+          "unit": "개",
+          "name": "1750ML-페트병",
+          "stock": 1,
+          "id": "PET-N-1750-TR"
+        },
+        {
+          "name": "물엿캡-빨강",
+          "unit": "개",
+          "category": "마개",
+          "id": "C-RD01",
+          "stock": 1
+        },
+        {
+          "category": "라벨",
+          "unit": "매",
+          "name": "모란 참④ 1.75L",
+          "stock": 1,
+          "id": "label-모란-참4-1-75l"
+        },
+        {
+          "name": "4호박스",
+          "unit": "개",
+          "category": "박스",
+          "id": "B-04",
+          "stock": 1
+        },
+        {
+          "stock": 1,
+          "id": "T-RD",
+          "category": "테이프",
+          "name": "테이프-빨강",
+          "unit": "개"
+        }
+      ]
+    },
+    {
+      "id": "p-1777000996662",
+      "name": "탈피들깨가루/모란/1kg",
+      "submaterials": [
+        {
+          "category": "용기",
+          "unit": "개",
+          "name": "1KG-실링",
+          "stock": 1,
+          "id": "PLYS-A-1000"
+        },
+        {
+          "id": "B-02",
+          "stock": 1,
+          "unit": "개",
+          "name": "2호박스",
+          "category": "박스"
+        },
+        {
+          "stock": 1,
+          "id": "T-YL",
+          "category": "테이프",
+          "unit": "개",
+          "name": "테이프-노랑"
+        },
+        {
+          "id": "Ss53KlDc4ZGRNOueRy2f",
+          "stock": 1,
+          "unit": "매",
+          "name": "모란 탈피들깨가루",
+          "category": "라벨"
+        }
+      ]
+    },
+    {
+      "id": "p-1777001262840",
+      "name": "참기름/골드/반석/1800ml",
+      "submaterials": [
+        {
+          "name": "1800ML-페트병-골드",
+          "unit": "개",
+          "category": "용기",
+          "id": "PET-H-1800-GD",
+          "stock": 1
+        },
+        {
+          "unit": "개",
+          "name": "물엿캡-골드",
+          "category": "마개",
+          "id": "C-GD01",
+          "stock": 1
+        },
+        {
+          "unit": "매",
+          "name": "국수기행 1.8L",
+          "category": "라벨",
+          "id": "label-국수기행-1-8l",
+          "stock": 1
+        },
+        {
+          "id": "B-03",
+          "stock": 1,
+          "unit": "개",
+          "name": "3호박스",
+          "category": "박스"
+        },
+        {
+          "id": "T-YL",
+          "stock": 1,
+          "unit": "개",
+          "name": "테이프-노랑",
+          "category": "테이프"
+        }
+      ]
+    },
+    {
+      "id": "p-1777001566985",
+      "name": "참기름/분/부원/1800ml",
+      "submaterials": [
+        {
+          "category": "용기",
+          "name": "1800ML-페트병-빨강D",
+          "unit": "개",
+          "stock": 1,
+          "id": "PET-D-1800-RD"
+        },
+        {
+          "unit": "개",
+          "name": "물엿캡-빨강",
+          "category": "마개",
+          "id": "C-RD01",
+          "stock": 1
+        },
+        {
+          "stock": 1,
+          "id": "B-02",
+          "category": "박스",
+          "name": "2호박스",
+          "unit": "개"
+        },
+        {
+          "category": "테이프",
+          "name": "테이프-투명",
+          "unit": "개",
+          "stock": 1,
+          "id": "T-TR"
+        },
+        {
+          "stock": 1,
+          "id": "p-1784790910737",
+          "category": "라벨",
+          "name": "부원 참③ 1.8L",
+          "unit": "개"
+        }
+      ]
+    },
+    {
+      "id": "p-1777364661145",
+      "name": "참기름/A/가득찬/1800ml",
+      "submaterials": [
+        {
+          "unit": "개",
+          "name": "1800ML-페트병-빨강n",
+          "category": "용기",
+          "id": "PET-H-1800-RD",
+          "stock": 1
+        },
+        {
+          "category": "마개",
+          "unit": "개",
+          "name": "물엿캡-빨강",
+          "stock": 1,
+          "id": "C-RD01"
+        },
+        {
+          "id": "label-가득찬-순참-1-8l",
+          "stock": 1,
+          "name": "가득찬 순참 1.8L",
+          "unit": "1개",
+          "category": "라벨"
+        },
+        {
+          "id": "B-02",
+          "stock": 1,
+          "unit": "개",
+          "name": "2호박스",
+          "category": "박스"
+        },
+        {
+          "id": "T-TR",
+          "stock": 1,
+          "name": "테이프-투명",
+          "unit": "개",
+          "category": "테이프"
+        }
+      ]
+    },
+    {
+      "id": "p-1777506666378",
+      "name": "시골향 참기름/특A/다싸다마트/1750ml",
+      "submaterials": [
+        {
+          "category": "용기",
+          "name": "1750ML-페트병",
+          "unit": "개",
+          "stock": 1,
+          "id": "PET-N-1750-TR"
+        },
+        {
+          "stock": 1,
+          "id": "C-RD01",
+          "category": "마개",
+          "unit": "개",
+          "name": "물엿캡-빨강"
+        },
+        {
+          "stock": 1,
+          "id": "label-태백-참4-1-75l",
+          "category": "라벨",
+          "name": "시골향 참④ 1.75L",
+          "unit": "장"
+        },
+        {
+          "category": "박스",
+          "unit": "개",
+          "name": "4호박스",
+          "stock": 1,
+          "id": "B-04"
+        },
+        {
+          "stock": 1,
+          "id": "T-RD",
+          "category": "테이프",
+          "unit": "개",
+          "name": "테이프-빨강"
+        }
+      ]
+    },
+    {
+      "id": "p-1777506850191",
+      "name": "시골향 참기름/골드A/1750ml",
+      "submaterials": [
+        {
+          "stock": 1,
+          "id": "PET-N-1750-TR",
+          "category": "용기",
+          "unit": "개",
+          "name": "1750ML-페트병"
+        },
+        {
+          "id": "C-GD01",
+          "stock": 1,
+          "name": "물엿캡-골드",
+          "unit": "개",
+          "category": "마개"
+        },
+        {
+          "stock": 1,
+          "id": "label-태백-참1-1-75l",
+          "category": "라벨",
+          "name": "시골향 참① 1.75L",
+          "unit": "장"
+        },
+        {
+          "stock": 1,
+          "id": "B-04",
+          "category": "박스",
+          "unit": "개",
+          "name": "4호박스"
+        },
+        {
+          "id": "T-YL",
+          "stock": 1,
+          "name": "테이프-노랑",
+          "unit": "개",
+          "category": "테이프"
+        }
+      ]
+    },
+    {
+      "id": "p-1777536360094",
+      "name": "참기름/병/원액/해피유통/300ml",
+      "submaterials": [
+        {
+          "id": "GLA-S-300-TR",
+          "stock": 1,
+          "unit": "개",
+          "name": "300ML-사각병",
+          "category": "용기"
+        },
+        {
+          "category": "마개",
+          "name": "이중캡-골드",
+          "unit": "개",
+          "stock": 1,
+          "id": "C-GD03"
+        },
+        {
+          "id": "label-하남댁-참기름-300ml-옆면",
+          "stock": 1,
+          "unit": "장",
+          "name": "하남댁(참기름) 300ml(옆면)",
+          "category": "라벨"
+        },
+        {
+          "unit": "개",
+          "name": "5-1호박스",
+          "category": "박스",
+          "id": "B-05-1",
+          "stock": 1
+        },
+        {
+          "name": "테이프-빨강",
+          "unit": "개",
+          "category": "테이프",
+          "id": "T-RD",
+          "stock": 1
+        }
+      ]
+    },
+    {
+      "id": "p-1778024315971",
+      "name": "시골향 선물세트 참기름/300ml",
+      "submaterials": [
+        {
+          "category": "용기",
+          "unit": "개",
+          "name": "300ML-사각병",
+          "stock": 1,
+          "id": "GLA-S-300-TR"
+        },
+        {
+          "id": "C-GD03",
+          "stock": 1,
+          "name": "이중캡-골드",
+          "unit": "개",
+          "category": "마개"
+        },
+        {
+          "id": "label-태백-참1-300ml-사각",
+          "stock": 1,
+          "unit": "장",
+          "name": "시골향 참① 300ml(사각)",
+          "category": "라벨"
+        },
+        {
+          "category": "테이프",
+          "unit": "개",
+          "name": "테이프-투명",
+          "stock": 1,
+          "id": "T-TR"
+        }
+      ]
+    },
+    {
+      "id": "p-1778024469902",
+      "name": "시골향 선물세트 들기름/300ml",
+      "submaterials": [
+        {
+          "id": "GLA-S-300-TR",
+          "stock": 1,
+          "name": "300ML-사각병",
+          "unit": "개",
+          "category": "용기"
+        },
+        {
+          "stock": 1,
+          "id": "C-GD03",
+          "category": "마개",
+          "unit": "개",
+          "name": "이중캡-골드"
+        },
+        {
+          "id": "T-TR",
+          "stock": 1,
+          "name": "테이프-투명",
+          "unit": "개",
+          "category": "테이프"
+        },
+        {
+          "category": "라벨",
+          "name": "시골향 들② 300ml(사각)",
+          "unit": "병",
+          "stock": 1,
+          "id": "p-1778024430890"
+        }
+      ]
+    },
+    {
+      "id": "p-1781739328648",
+      "name": "볶음참깨/500g",
+      "submaterials": [
+        {
+          "id": "PLYS-A-500",
+          "stock": 1,
+          "unit": "개",
+          "name": "500G-실링",
+          "category": "용기"
+        },
+        {
+          "unit": "개",
+          "name": "테이프-투명",
+          "category": "테이프",
+          "id": "T-TR",
+          "stock": 1
+        },
+        {
+          "unit": "개",
+          "name": "2호박스",
+          "category": "박스",
+          "id": "B-02",
+          "stock": 1
+        }
+      ]
+    },
+    {
+      "id": "p-179",
+      "name": "들기름/병/수라간/350ml",
+      "submaterials": [
+        {
+          "category": "마개",
+          "unit": "개",
+          "name": "병캡-노랑",
+          "stock": 1,
+          "id": "C-YL02"
+        },
+        {
+          "unit": "개",
+          "name": "350ML-소주병",
+          "category": "용기",
+          "id": "GLA-R-350-TR",
+          "stock": 1
+        },
+        {
+          "unit": "개",
+          "name": "해달(수라간) 들 350ml",
+          "category": "라벨",
+          "id": "label-해달-수라간-들-350ml",
+          "stock": 1
+        },
+        {
+          "category": "박스",
+          "name": "5-2호박스",
+          "unit": "개",
+          "stock": 1,
+          "id": "B-05-2"
+        },
+        {
+          "stock": 1,
+          "id": "T-GN",
+          "category": "테이프",
+          "unit": "개",
+          "name": "테이프-초록"
+        }
+      ]
+    },
+    {
+      "id": "p-20",
+      "name": "시골향 참기름/병/특/350ml",
+      "submaterials": [
+        {
+          "stock": 1,
+          "id": "C-RD02",
+          "category": "마개",
+          "unit": "개",
+          "name": "병캡-빨강"
+        },
+        {
+          "id": "GLA-R-350-TR",
+          "stock": 1,
+          "unit": "개",
+          "name": "350ML-소주병",
+          "category": "용기"
+        },
+        {
+          "stock": 1,
+          "qty": 1,
+          "id": "label-태백-참2-흰정사각-350ml",
+          "category": "라벨",
+          "unit": "개",
+          "name": "시골향 참②-흰정사각 350ml"
+        },
+        {
+          "id": "B-05",
+          "stock": 1,
+          "name": "5호박스",
+          "unit": "개",
+          "category": "박스"
+        },
+        {
+          "id": "T-RD",
+          "stock": 1,
+          "unit": "개",
+          "name": "테이프-빨강",
+          "category": "테이프"
+        }
+      ]
+    },
+    {
+      "id": "p-22",
+      "name": "시골향 참기름/분/1800ml",
+      "submaterials": [
+        {
+          "unit": "개",
+          "name": "물엿캡-빨강",
+          "category": "마개",
+          "id": "C-RD01",
+          "stock": 1
+        },
+        {
+          "category": "박스",
+          "unit": "개",
+          "name": "2호박스",
+          "stock": 1,
+          "id": "B-02"
+        },
+        {
+          "category": "테이프",
+          "unit": "개",
+          "name": "테이프-투명",
+          "stock": 1,
+          "id": "T-TR"
+        },
+        {
+          "unit": "개",
+          "name": "1800ML-페트병-빨강n",
+          "category": "용기",
+          "id": "PET-H-1800-RD",
+          "stock": 1
+        },
+        {
+          "stock": 1,
+          "id": "label-태백-참3-1-8l",
+          "category": "라벨",
+          "unit": "개",
+          "name": "시골향 참③ 1.8L"
+        }
+      ]
+    },
+    {
+      "id": "p-23",
+      "name": "시골향 참기름/A/1800ml",
+      "submaterials": [
+        {
+          "category": "마개",
+          "name": "물엿캡-노랑",
+          "unit": "개",
+          "stock": 1,
+          "id": "C-YL01"
+        },
+        {
+          "category": "라벨",
+          "name": "시골향 참② 1.8L",
+          "unit": "1000개",
+          "qty": 1,
+          "stock": 1,
+          "id": "label-태백-참2-1-8l"
+        },
+        {
+          "unit": "개",
+          "name": "2호박스",
+          "category": "박스",
+          "id": "B-02",
+          "stock": 1
+        },
+        {
+          "stock": 1,
+          "id": "T-YL",
+          "category": "테이프",
+          "unit": "개",
+          "name": "테이프-노랑"
+        },
+        {
+          "id": "PET-H-1800-YL",
+          "stock": 1,
+          "name": "1800ML-페트병-노랑n",
+          "unit": "개",
+          "category": "용기"
+        }
+      ]
+    },
+    {
+      "id": "p-235",
+      "name": "검정참깨가루/1kg",
+      "submaterials": [
+        {
+          "id": "PLYZ-B-1000",
+          "stock": 1,
+          "unit": "개",
+          "name": "1KG-볶음검정깨",
+          "category": "용기"
+        },
+        {
+          "id": "T-BL",
+          "stock": 1,
+          "unit": "개",
+          "name": "테이프-파랑",
+          "category": "테이프"
+        },
+        {
+          "name": "6호박스",
+          "unit": "개",
+          "category": "박스",
+          "id": "B-06",
+          "stock": 1
+        }
+      ]
+    },
+    {
+      "id": "p-25",
+      "name": "시골향 참기름/특A/1750ml",
+      "submaterials": [
+        {
+          "id": "C-RD01",
+          "stock": 1,
+          "name": "물엿캡-빨강",
+          "unit": "개",
+          "category": "마개"
+        },
+        {
+          "unit": "개",
+          "name": "1750ML-페트병",
+          "category": "용기",
+          "id": "PET-N-1750-TR",
+          "stock": 1
+        },
+        {
+          "stock": 1,
+          "id": "B-04",
+          "category": "박스",
+          "unit": "개",
+          "name": "4호박스"
+        },
+        {
+          "unit": "개",
+          "name": "테이프-빨강",
+          "category": "테이프",
+          "id": "T-RD",
+          "stock": 1
+        },
+        {
+          "stock": 1,
+          "id": "label-태백-참4-1-75l",
+          "category": "라벨",
+          "name": "시골향 참④ 1.75L",
+          "unit": "개"
+        }
+      ]
+    },
+    {
+      "id": "p-298",
+      "name": "시골향 들기름/1800ml",
+      "submaterials": [
+        {
+          "stock": 1,
+          "id": "C-LG01",
+          "category": "마개",
+          "unit": "개",
+          "name": "물엿캡-연두"
+        },
+        {
+          "unit": "개",
+          "name": "2호박스",
+          "category": "박스",
+          "id": "B-02",
+          "stock": 1
+        },
+        {
+          "category": "테이프",
+          "name": "테이프-노랑",
+          "unit": "개",
+          "stock": 1,
+          "id": "T-YL"
+        },
+        {
+          "category": "라벨",
+          "unit": "개",
+          "name": "시골향 들② 1.8L",
+          "stock": 1,
+          "id": "label-태백-들2-1-8l"
+        },
+        {
+          "stock": 1,
+          "id": "PET-H-1800-YL",
+          "category": "용기",
+          "name": "1800ML-페트병-노랑n",
+          "unit": "개"
+        }
+      ]
+    },
+    {
+      "id": "p-311",
+      "name": "시골향 들기름/1800ml",
+      "submaterials": [
+        {
+          "id": "C-YL01",
+          "stock": 1,
+          "name": "물엿캡-노랑",
+          "unit": "개",
+          "category": "마개"
+        },
+        {
+          "name": "시골향 들② 1.8L",
+          "unit": "개",
+          "category": "라벨",
+          "id": "label-태백-들2-1-8l",
+          "stock": 1
+        },
+        {
+          "unit": "개",
+          "name": "3호박스",
+          "category": "박스",
+          "id": "B-03",
+          "stock": 1
+        },
+        {
+          "category": "테이프",
+          "unit": "개",
+          "name": "테이프-초록",
+          "stock": 1,
+          "id": "T-GN"
+        },
+        {
+          "category": "용기",
+          "name": "1800ML-페트병-노랑n",
+          "unit": "개",
+          "stock": 1,
+          "id": "PET-H-1800-YL"
+        }
+      ]
+    },
+    {
+      "id": "p-42",
+      "name": "들기름/대왕/1800ml",
+      "submaterials": [
+        {
+          "id": "PET-H-1800-YL",
+          "stock": 1,
+          "unit": "개",
+          "name": "1800ML-페트병-노랑n",
+          "category": "용기"
+        },
+        {
+          "category": "박스",
+          "name": "2호박스",
+          "unit": "개",
+          "stock": 1,
+          "id": "B-02"
+        },
+        {
+          "category": "테이프",
+          "unit": "개",
+          "name": "테이프-노랑",
+          "stock": 1,
+          "id": "T-YL"
+        },
+        {
+          "name": "물엿캡-노랑",
+          "unit": "개",
+          "category": "마개",
+          "id": "C-YL01",
+          "stock": 1
+        },
+        {
+          "category": "라벨",
+          "unit": "개",
+          "name": "대왕 들② 1.8L",
+          "stock": 1,
+          "id": "p-1784789004903"
+        }
+      ]
+    },
+    {
+      "id": "p-43",
+      "name": "들기름/병/대왕/350ml",
+      "submaterials": [
+        {
+          "id": "C-YL02",
+          "stock": 1,
+          "unit": "개",
+          "name": "병캡-노랑",
+          "category": "마개"
+        },
+        {
+          "category": "용기",
+          "unit": "개",
+          "name": "350ML-소주병",
+          "stock": 1,
+          "id": "GLA-R-350-TR"
+        },
+        {
+          "category": "박스",
+          "unit": "개",
+          "name": "2호박스",
+          "stock": 1,
+          "id": "B-02"
+        },
+        {
+          "category": "테이프",
+          "unit": "개",
+          "name": "테이프-노랑",
+          "stock": 1,
+          "id": "T-YL"
+        },
+        {
+          "stock": 1,
+          "id": "p-1784789021178",
+          "category": "라벨",
+          "name": "대왕 들② 350ml",
+          "unit": "개"
+        }
+      ]
+    },
+    {
+      "id": "p-61",
+      "name": "시골향 생들기름/병/300ml",
+      "submaterials": [
+        {
+          "category": "마개",
+          "unit": "개",
+          "name": "이중캡-골드",
+          "stock": 1,
+          "id": "C-GD03"
+        },
+        {
+          "name": "300ML-사각병",
+          "unit": "개",
+          "category": "용기",
+          "id": "GLA-S-300-TR",
+          "stock": 1
+        },
+        {
+          "stock": 1,
+          "id": "label-태백-생들기름-300ml-사각",
+          "category": "라벨",
+          "unit": "개",
+          "name": "시골향 생들기름 300ml(사각)"
+        },
+        {
+          "id": "B-03",
+          "stock": 1,
+          "unit": "개",
+          "name": "3호박스",
+          "category": "박스"
+        },
+        {
+          "stock": 1,
+          "id": "T-YL",
+          "category": "테이프",
+          "name": "테이프-노랑",
+          "unit": "개"
+        }
+      ]
+    },
+    {
+      "id": "p-63",
+      "name": "시골향 생들기름/1800ml",
+      "submaterials": [
+        {
+          "category": "마개",
+          "unit": "개",
+          "name": "물엿캡-노랑",
+          "stock": 1,
+          "id": "C-YL01"
+        },
+        {
+          "id": "PET-H-1800-YL",
+          "stock": 1,
+          "unit": "개",
+          "name": "1800ML-페트병-노랑n",
+          "category": "용기"
+        },
+        {
+          "stock": 1,
+          "id": "B-03",
+          "category": "박스",
+          "name": "3호박스",
+          "unit": "개"
+        },
+        {
+          "stock": 1,
+          "id": "T-GN",
+          "category": "테이프",
+          "unit": "개",
+          "name": "테이프-초록"
+        },
+        {
+          "name": "시골향 생들기름 1.8L",
+          "unit": "개",
+          "category": "라벨",
+          "id": "p-1784793707893",
+          "stock": 1
+        }
+      ]
+    },
+    {
+      "id": "p-64",
+      "name": "시골향 참기름/골드/1800ml",
+      "submaterials": [
+        {
+          "stock": 1,
+          "id": "C-GD01",
+          "category": "마개",
+          "name": "물엿캡-골드",
+          "unit": "개"
+        },
+        {
+          "stock": 1,
+          "id": "PET-H-1800-GD",
+          "category": "용기",
+          "unit": "개",
+          "name": "1800ML-페트병-골드"
+        },
+        {
+          "id": "T-YL",
+          "stock": 1,
+          "name": "테이프-노랑",
+          "unit": "개",
+          "category": "테이프"
+        },
+        {
+          "id": "B-03",
+          "stock": 1,
+          "unit": "개",
+          "name": "3호박스",
+          "category": "박스"
+        },
+        {
+          "stock": 1,
+          "id": "label-태백-참1-1-8l",
+          "category": "라벨",
+          "unit": "개",
+          "name": "시골향 참① 1.8L"
+        }
+      ]
+    },
+    {
+      "id": "p-77",
+      "name": "참기름/특A/라이스/1800ml",
+      "submaterials": [
+        {
+          "stock": 1,
+          "id": "C-LG01",
+          "category": "마개",
+          "unit": "개",
+          "name": "물엿캡-연두"
+        },
+        {
+          "category": "박스",
+          "name": "2호박스",
+          "unit": "개",
+          "stock": 1,
+          "id": "B-02"
+        },
+        {
+          "stock": 1,
+          "id": "T-YL",
+          "category": "테이프",
+          "name": "테이프-노랑",
+          "unit": "개"
+        },
+        {
+          "category": "용기",
+          "unit": "개",
+          "name": "1800ML-페트병-노랑n",
+          "stock": 1,
+          "id": "PET-H-1800-YL"
+        },
+        {
+          "category": "라벨",
+          "unit": "개",
+          "name": "라이스에그 참④ 1.8ml",
+          "stock": 1,
+          "id": "p-1784791088529"
+        }
+      ]
+    },
+    {
+      "id": "p-78",
+      "name": "참기름/A/라이스/1800ml",
+      "submaterials": [
+        {
+          "category": "마개",
+          "unit": "개",
+          "name": "물엿캡-파랑",
+          "stock": 1,
+          "id": "C-BL01"
+        },
+        {
+          "id": "PET-H-1800-YL",
+          "stock": 1,
+          "unit": "개",
+          "name": "1800ML-페트병-노랑n",
+          "category": "용기"
+        },
+        {
+          "name": "2호박스",
+          "unit": "개",
+          "category": "박스",
+          "id": "B-02",
+          "stock": 1
+        },
+        {
+          "stock": 1,
+          "id": "T-BL",
+          "category": "테이프",
+          "unit": "개",
+          "name": "테이프-파랑"
+        },
+        {
+          "stock": 1,
+          "id": "p-1784791147422",
+          "category": "라벨",
+          "name": "라이스에그 참① 1.8ml",
+          "unit": "개"
+        }
+      ]
+    },
+    {
+      "id": "p-80",
+      "name": "들깨가루(고운)/모란/1kg",
+      "submaterials": [
+        {
+          "stock": 1,
+          "id": "B-02",
+          "category": "박스",
+          "unit": "개",
+          "name": "2호박스"
+        },
+        {
+          "unit": "개",
+          "name": "테이프-초록",
+          "category": "테이프",
+          "id": "T-GN",
+          "stock": 1
+        },
+        {
+          "id": "p-1784788812234",
+          "stock": 1,
+          "unit": "개",
+          "name": "모란 들깨가루",
+          "category": "라벨"
+        },
+        {
+          "spec": "1kg",
+          "name": "1KG-실링",
+          "unit": "개",
+          "category": "용기",
+          "id": "PLYS-A-1000",
+          "stock": 1
+        }
+      ]
+    },
+    {
+      "id": "p-83",
+      "name": "참기름/병/특A/모란/350ml",
+      "submaterials": [
+        {
+          "category": "마개",
+          "name": "병캡-주황",
+          "unit": "개",
+          "stock": 1,
+          "id": "C-OR02"
+        },
+        {
+          "stock": 1,
+          "id": "GLA-R-350-TR",
+          "category": "용기",
+          "name": "350ML-소주병",
+          "unit": "개"
+        },
+        {
+          "stock": 1,
+          "id": "label-모란-병참-350ml",
+          "category": "라벨",
+          "unit": "매",
+          "name": "모란 병참 350ml"
+        },
+        {
+          "category": "박스",
+          "name": "5호박스",
+          "unit": "개",
+          "stock": 1,
+          "id": "B-05"
+        },
+        {
+          "id": "T-RD",
+          "stock": 1,
+          "unit": "개",
+          "name": "테이프-빨강",
+          "category": "테이프"
+        }
+      ]
+    },
+    {
+      "id": "p-87",
+      "name": "참기름/분/모란/1750ml",
+      "submaterials": [
+        {
+          "category": "마개",
+          "unit": "개",
+          "name": "병캡-노랑",
+          "stock": 1,
+          "id": "C-YL02"
+        },
+        {
+          "category": "용기",
+          "unit": "개",
+          "name": "1750ML-페트병",
+          "stock": 1,
+          "id": "PET-N-1750-TR"
+        },
+        {
+          "id": "label-모란-참3-1-75l",
+          "stock": 1,
+          "name": "모란 참③ 1.75L",
+          "unit": "매",
+          "category": "라벨"
+        },
+        {
+          "stock": 1,
+          "id": "B-04",
+          "category": "박스",
+          "name": "4호박스",
+          "unit": "개"
+        },
+        {
+          "category": "테이프",
+          "unit": "개",
+          "name": "테이프-투명",
+          "stock": 1,
+          "id": "T-TR"
+        }
+      ]
+    },
+    {
+      "id": "p-91",
+      "name": "볶음검정참깨/1kg",
+      "submaterials": [
+        {
+          "category": "용기",
+          "name": "1KG-볶음검정깨",
+          "unit": "개",
+          "stock": 1,
+          "id": "PLYZ-B-1000"
+        },
+        {
+          "stock": 1,
+          "id": "B-06",
+          "category": "박스",
+          "name": "6호박스",
+          "unit": "개"
+        },
+        {
+          "id": "T-BK",
+          "stock": 1,
+          "name": "테이프-검정",
+          "unit": "개",
+          "category": "테이프"
+        }
+      ]
+    }
+  ]
+}

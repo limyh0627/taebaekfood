@@ -274,7 +274,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
       const unpack = unpackComponent(product);
       const stockQty = unpack ? (item.isBoxUnit ? qty : actualQty / unpack.count) : actualQty;
       for (const s of (product.submaterials || [])) {
-        if (s.category === 'box' || s.category === 'tape') continue;
+        if (s.category === 'box') continue;   // 겉박스는 shipping_rule 경로 · 테이프는 BOM 수량 0으로
         const sub = submaterials.find(sm => sm.id === s.id);
         if (!sub) continue;
         if (!usage[sub.id]) usage[sub.id] = { name: sub.name, needed: 0, stock: sub.stock };

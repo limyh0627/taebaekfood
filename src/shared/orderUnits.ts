@@ -14,11 +14,12 @@ import { bomQty } from './bom';
  * 옛 `unpackTo` 필드는 BOM에 구성품이 없을 때만 본다(이전 데이터 호환).
  */
 export function unpackComponent(product: Pick<Item, 'submaterials' | 'unpackTo'> | undefined): { itemId: string; count: number } | null {
-  const s = (product?.submaterials ?? []).find(x => x.category === 'product' || x.category === '완제품');
-  if (s) {
-    const count = bomQty(s);
-    if (count > 1) return { itemId: s.id, count };
-  }
+  // 완제품 구성품이 **딱 한 종류**이고 수량이 2 이상일 때만 박스로 본다.
+  // 선물세트와 갈라내는 조건 — 세트는 서로 다른 완제품을 하나씩 담으므로 여기 안 걸린다.
+  //   볶음참깨/20kg박스 ← 낱개/1kg ×20        → 박스 (같은 것의 묶음)
+  //   참+들/스마트/300ml ← 참기름 ×1, 들기름 ×1 → 세트 (다른 것을 모음)
+  const comps = (product?.submaterials ?? []).filter(x => x.category === 'product' || x.category === '완제품');
+  if (comps.length === 1 && bomQty(comps[0]) > 1) return { itemId: comps[0].id, count: bomQty(comps[0]) };
   const legacy = product?.unpackTo;
   return legacy && legacy.count > 1 ? { itemId: legacy.itemId, count: legacy.count } : null;
 }

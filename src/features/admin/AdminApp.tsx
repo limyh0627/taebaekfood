@@ -521,13 +521,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
         }
       }
 
-      // (테이프는 재고 차감·부족 경고 대상에서 제외 — 사용자 요청)
-
-      // 박스·테이프 외 부자재 (BOM 기반)
+      // BOM 구성품 — 겉박스만 뺀다(shipping_rule이 따로 차감). 테이프는 BOM 수량 0으로 막는다.
       for (const s of (product.submaterials || [])) {
         const sub = submaterials.find(sm => sm.id === s.id);
-        if (!sub || sub.category === 'box' || sub.category === 'tape' ||
-            (sub.category === 'submaterial' && (sub.subtype === '박스' || sub.subtype === '테이프'))) continue;
+        if (!sub || sub.category === 'box' ||
+            (sub.category === 'submaterial' && sub.subtype === '박스')) continue;
         // 원료 홀더(raw/wip)는 kg 단위라 '개' 집계가 틀림 → 위 원료식(kg) 경로에서 체크
         if (sub.category === 'raw' || sub.category === 'wip') continue;
         // 재고 1단위 × BOM 수량 — 이중캡 ×2, 180ml캡 ×3 같은 것

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, Plus, Trash2, ChevronUp, ChevronDown, Tag, Layers, RotateCcw } from 'lucide-react';
+import { X, Plus, Trash2, ChevronUp, ChevronDown, Tag, Layers, RotateCcw, Eye, EyeOff } from 'lucide-react';
 import { fetchCollection, addItem, updateItem, deleteItem } from '../src/shared/services/firebaseService';
 import {
   buildTaxonomy, defaultTaxonomyRows, CATEGORY_KEYS, DEFAULT_CATEGORY_LABELS, TaxonomyRow,
@@ -72,7 +72,7 @@ const CategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {} }) => {
   };
 
   const moveCategory = async (key: string, dir: -1 | 1) => {
-    const ordered = taxo.categories.map(c => c.key);
+    const ordered = taxo.allCategories.map(c => c.key);
     const i = ordered.indexOf(key);
     const j = i + dir;
     if (i < 0 || j < 0 || j >= ordered.length) return;
@@ -143,6 +143,24 @@ const CategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {} }) => {
     } finally { setBusy(false); }
   };
 
+  // 안 쓰는 분류 숨기기 — 키는 남으므로 옛 품목은 그대로 동작한다
+  const toggleHidden = async (key: string) => {
+    const r = catRow(key);
+    const next = !(r?.hidden);
+    const n = usage[`cat:${key}`] ?? 0;
+    if (next && n > 0 && !confirm(`"${taxo.labelOf(key)}"에 품목이 ${n}개 있습니다.\n숨기면 등록 화면·필터에서 안 보이지만 품목과 재고는 그대로입니다.\n숨길까요?`)) return;
+    setBusy(true);
+    try {
+      if (r && !r.id.startsWith('tmp-')) {
+        await updateItem(COL, r.id, { hidden: next });
+        setRows(rs => rs.map(x => x.id === r.id ? { ...x, hidden: next } : x));
+      } else {
+        const id = await addItem(COL, { kind: 'category', key, label: taxo.labelOf(key), order: CATEGORY_KEYS.indexOf(key as never), hidden: next });
+        setRows(rs => [...rs, { id: String(id), kind: 'category', key, label: taxo.labelOf(key), hidden: next } as TaxonomyRow]);
+      }
+    } finally { setBusy(false); }
+  };
+
   const resetCategoryName = async (key: string) => {
     const r = catRow(key);
     if (!r || r.id.startsWith('tmp-')) return;
@@ -178,7 +196,7 @@ const CategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {} }) => {
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5 mb-2">
                 <Layers size={12} /> 분류
               </p>
-              {taxo.categories.map((c, idx) => {
+              {taxo.allCategories.map((c, idx) => {
                 const r = catRow(c.key);
                 const changed = r && r.label !== DEFAULT_CATEGORY_LABELS[c.key];
                 const n = usage[`cat:${c.key}`] ?? 0;
@@ -186,6 +204,8 @@ const CategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {} }) => {
                   <div key={c.key}
                     onClick={() => setSel(c.key)}
                     className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
+                      c.hidden ? 'opacity-45 ' : ''
+                    }${
                       sel === c.key ? 'border-indigo-300 bg-indigo-50/60 ring-2 ring-indigo-50' : 'border-slate-150 hover:border-slate-300'
                     }`}>
                     <div className="flex items-center gap-1.5">
@@ -200,13 +220,19 @@ const CategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {} }) => {
                         <button title="기본 이름으로" onClick={e => { e.stopPropagation(); resetCategoryName(c.key); }}
                           className="p-1 text-slate-300 hover:text-indigo-500 shrink-0"><RotateCcw size={12} /></button>
                       )}
+                      <button title={c.hidden ? '다시 쓰기' : '안 씀 (목록에서 숨김)'}
+                        onClick={e => { e.stopPropagation(); toggleHidden(c.key); }}
+                        className={`p-1 shrink-0 ${c.hidden ? 'text-indigo-400 hover:text-indigo-600' : 'text-slate-300 hover:text-slate-600'}`}>
+                        {c.hidden ? <Eye size={13} /> : <EyeOff size={13} />}
+                      </button>
                       <button disabled={idx === 0} onClick={e => { e.stopPropagation(); moveCategory(c.key, -1); }}
                         className="p-1 text-slate-300 hover:text-slate-600 disabled:opacity-20 shrink-0"><ChevronUp size={13} /></button>
-                      <button disabled={idx === taxo.categories.length - 1} onClick={e => { e.stopPropagation(); moveCategory(c.key, 1); }}
+                      <button disabled={idx === taxo.allCategories.length - 1} onClick={e => { e.stopPropagation(); moveCategory(c.key, 1); }}
                         className="p-1 text-slate-300 hover:text-slate-600 disabled:opacity-20 shrink-0"><ChevronDown size={13} /></button>
                     </div>
                     <p className="text-[10px] font-bold text-slate-400 px-2 mt-0.5">
                       <span className="text-slate-300">{c.key}</span>
+                      {c.hidden && <span className="text-slate-400"> · 안 씀</span>}
                       {n > 0 && <span> · 품목 {n}개</span>}
                       {taxo.subtypesOf(c.key).length > 0 && <span> · 하위 {taxo.subtypesOf(c.key).length}개</span>}
                     </p>

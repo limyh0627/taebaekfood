@@ -34,10 +34,15 @@ export interface TaxonomyRow {
   parent?: string;   // kind==='subtype'  — 소속 카테고리 키
   label: string;
   order?: number;
+  /** 카테고리 숨김 — 안 쓰는 분류를 목록에서 뺀다. 키는 남으므로 옛 품목은 그대로 동작. */
+  hidden?: boolean;
 }
 
 export interface Taxonomy {
+  /** 숨긴 건 빠진 목록 */
   categories: { key: string; label: string }[];
+  /** 숨긴 것까지 전부 — 분류 관리 화면용 */
+  allCategories: { key: string; label: string; hidden: boolean }[];
   labelOf: (key: string) => string;
   subtypesOf: (categoryKey: string) => string[];
   /** 저장본이 아직 없으면 false — 분류 관리 화면이 기본값을 시딩해야 한다 */
@@ -54,16 +59,19 @@ export function buildTaxonomy(rows: TaxonomyRow[] | undefined): Taxonomy {
 
   const labels: Record<string, string> = { ...DEFAULT_CATEGORY_LABELS };
   const order: Record<string, number> = {};
+  const hidden: Record<string, boolean> = {};
   CATEGORY_KEYS.forEach((k, i) => { order[k] = i; });
   for (const r of catRows) {
     if (!r.key) continue;
     if (r.label) labels[r.key] = r.label;
     if (typeof r.order === 'number') order[r.key] = r.order;
+    if (r.hidden) hidden[r.key] = true;
   }
 
-  const categories = [...CATEGORY_KEYS]
+  const allCategories = [...CATEGORY_KEYS]
     .sort((a, b) => order[a] - order[b])
-    .map(k => ({ key: k as string, label: labels[k] }));
+    .map(k => ({ key: k as string, label: labels[k], hidden: !!hidden[k] }));
+  const categories = allCategories.filter(c => !c.hidden).map(({ key, label }) => ({ key, label }));
 
   // 저장본이 있으면 그것만 쓴다 — 기본값과 섞으면 삭제한 게 되살아난다.
   const seeded = saved.length > 0;
@@ -75,6 +83,7 @@ export function buildTaxonomy(rows: TaxonomyRow[] | undefined): Taxonomy {
 
   return {
     categories,
+    allCategories,
     seeded,
     labelOf: (k: string) => labels[k] ?? k,
     subtypesOf: (k: string) => (seeded ? (subMap[k] ?? []) : (DEFAULT_SUBTYPES[k] ?? [])),

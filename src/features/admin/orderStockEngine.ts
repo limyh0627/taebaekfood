@@ -64,21 +64,64 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     }
   };
 
-  // 완제품 부자재 차감/복원 델타 적재 (박스 포함, 테이프 제외). sign=-1 차감 / +1 복원.
-  const accrueSubmaterialDeltas = (order: Order, product: Item, item: OrderItem, deltas: Map<string, number>, sign: number) => {
-    if (!product.submaterials) return;
+  // 겉박스 — BOM이 아니라 거래처별 배송규칙(shipping_rule)에서 온다. sign=-1 차감 / +1 복원.
+  const accrueShippingBox = (order: Order, product: Item, item: OrderItem, deltas: Map<string, number>, sign: number) => {
     const boxesUsed = item.isBoxUnit && item.boxQuantity ? item.boxQuantity
       : item.unitsPerBox ? Math.ceil(item.quantity / item.unitsPerBox) : null;
     const shippingRule = shippingRules.find(r => r.item_id === product.id && r.partner_id === order.partnerId);
     const boxSubId = item.boxSubId || shippingRule?.box_item_id;
     const boxSub = boxSubId ? submaterials.find(sm => sm.id === boxSubId) : null;
-    if (boxSub) { const dq = boxesUsed ?? Math.ceil(item.quantity / (boxSub.boxSize || 1)); if (dq > 0) addDelta(deltas, boxSub.id, sign * dq); }
-    for (const s of product.submaterials) {
-      const sub = submaterials.find(sm => sm.id === s.id);
-      if (!sub) continue;
-      if (sub.category === 'box' || sub.category === 'tape' ||
-          (sub.category === 'submaterial' && (sub.subtype === '박스' || sub.subtype === '테이프'))) continue;
-      addDelta(deltas, sub.id, sign * stockUnits(item, product) * bomQty(s));  // 재고 1단위 × BOM 수량
+    if (!boxSub) return;
+    const dq = boxesUsed ?? Math.ceil(item.quantity / (boxSub.boxSize || 1));
+    if (dq > 0) addDelta(deltas, boxSub.id, sign * dq);
+  };
+
+  // 겉박스는 shipping_rule이 따로 차감하므로 BOM에서는 건너뛴다(이중 차감 방지).
+  // 테이프는 코드로 막지 않는다 — 안 깎으려면 BOM 수량을 0으로 둔다.
+  const isShippingBox = (i: Item) =>
+    i.category === 'box' || (i.category === 'submaterial' && i.subtype === '박스');
+
+  // 원료식(BOM) → 원료 kg 적재. 품목키에 원료식이 없으면 아무것도 안 탄다.
+  const accrueRaw = (product: Item, units: number, rawUsage: Record<string, number>) => {
+    for (const f of buildFormula(product.품목 || product.name)) {
+      const kg = toKg(product.spec || '', f.raw, units) * f.ratio;
+      if (kg > 0) rawUsage[f.raw] = (rawUsage[f.raw] ?? 0) + kg;
+    }
+  };
+
+  /**
+   * BOM 차감/복원 — **구성품 × 수량**만큼 그 품목 재고에서 뺀다. 부자재·완제품 구분 없다.
+   *
+   * 완제품 구성품(선물세트에 든 병 등)이 모자라면 그만큼 **먼저 만든다**: 재고를 채우고
+   * 그 병의 BOM·원료까지 재귀로 내려간다. 만든 수량은 autoBuilt에 남겨 되돌리기 때 쓴다.
+   * 겉박스·테이프는 BOM 밖(shipping_rule)이라 여기서 제외한다.
+   * sign=-1 차감 / +1 복원.
+   */
+  const accrueBom = (
+    order: Order, product: Item, units: number,
+    deltas: Map<string, number>, rawUsage: Record<string, number>,
+    sign: number, autoBuilt: { itemId: string; qty: number }[], depth = 0,
+  ) => {
+    if (units <= 0 || depth > 4) return;   // depth — BOM 순환 방어
+    for (const s of (product.submaterials ?? [])) {
+      const comp = allItems.find(p => p.id === s.id);
+      if (!comp || isShippingBox(comp)) continue;
+      if (comp.category === 'raw' || comp.category === 'wip') continue;  // 원료는 kg — 원료식 경로에서
+      const need = Math.round(units * bomQty(s) * 1000) / 1000;
+      if (need <= 0) continue;
+
+      // 완제품 구성품이 모자라면 먼저 만든다
+      if (sign < 0 && comp.category === 'product' && !isGoodsItem(comp)) {
+        const have = (comp.stock ?? 0) + (deltas.get(comp.id) ?? 0);
+        const short = Math.round((need - have) * 1000) / 1000;
+        if (short > 0) {
+          addDelta(deltas, comp.id, short);
+          autoBuilt.push({ itemId: comp.id, qty: short });
+          accrueBom(order, comp, short, deltas, rawUsage, sign, autoBuilt, depth + 1);
+          accrueRaw(comp, short, rawUsage);
+        }
+      }
+      addDelta(deltas, comp.id, sign * need);
     }
   };
 
@@ -179,6 +222,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   const produceOrder = async (order: Order, deltas: Map<string, number>) => {
     const rawUsage: Record<string, number> = {};
     const rawUsageLedgerOnly: Record<string, number> = {};   // 임가공 — 수불부에만
+    const autoBuilt: { itemId: string; qty: number }[] = []; // 모자라서 먼저 만든 구성품
     for (const item of order.items) {
       const product = allItems.find(p => p.id === item.itemId);
       if (!product) continue;
@@ -195,28 +239,35 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
         continue;
       }
 
-      if (isGoodsItem(product) || !product.submaterials) continue;
-      accrueSubmaterialDeltas(order, product, item, deltas, -1);
-      for (const f of buildFormula(product.품목 || product.name)) {
-        const usedKg = toKg(product.spec || '', f.raw, units) * f.ratio;
-        if (usedKg > 0) rawUsage[f.raw] = (rawUsage[f.raw] ?? 0) + usedKg;
-      }
+      if (isGoodsItem(product)) continue;
+      accrueShippingBox(order, product, item, deltas, -1);
+      accrueBom(order, product, units, deltas, rawUsage, -1, autoBuilt);
+      accrueRaw(product, units, rawUsage);
       addDelta(deltas, product.id, units); // 완제품 재고 +N (생산됨·미출고)
     }
     const consumedLots = await deductRawLotsForOrder(order, rawUsage, rawUsageLedgerOnly);
     await createProductionRecordsForOrder(order);
-    return consumedLots;
+    return { consumedLots, autoBuilt };
   };
 
-  // 생산처리 취소: 부자재·원료 복원 + 완제품 재고 −N.
+  // 생산처리 취소: BOM 구성품·원료 복원 + 완제품 재고 −N. 먼저 만든 것도 되돌린다.
   const unProduceOrder = async (order: Order, deltas: Map<string, number>) => {
+    const drop: Record<string, number> = {};   // 복원 경로에선 원료를 다시 안 센다
     for (const item of order.items) {
       const product = allItems.find(p => p.id === item.itemId);
       if (!product || product.category !== 'product') continue;
       if (product.procureType === '임가공') continue;   // 재고 미변동 — 수불부만 restore에서 지운다
-      if (isGoodsItem(product) || !product.submaterials) continue;
-      accrueSubmaterialDeltas(order, product, item, deltas, +1);
+      if (isGoodsItem(product)) continue;
+      accrueShippingBox(order, product, item, deltas, +1);
+      accrueBom(order, product, stockUnits(item, product), deltas, drop, +1, []);
       addDelta(deltas, product.id, -stockUnits(item, product)); // 완제품 재고 되돌림
+    }
+    // 모자라서 먼저 만들었던 구성품 — 만든 만큼 빼고 그것의 BOM도 되돌린다
+    for (const b of (order.autoBuilt ?? [])) {
+      const comp = allItems.find(p => p.id === b.itemId);
+      if (!comp) continue;
+      addDelta(deltas, comp.id, -b.qty);
+      accrueBom(order, comp, b.qty, deltas, drop, +1, [], 1);
     }
     await restoreRawLotsForOrder(order);
   };
@@ -253,9 +304,14 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     const patch: Partial<Order> = {};
     // 역방향(되돌리기): 출고취소 → 생산취소
     if (!wantShipped && order.shippedOut) { unShipOrder(order, deltas); patch.shippedOut = false; }
-    if (!wantProduced && order.producedAt) { await unProduceOrder(order, deltas); patch.producedAt = ''; patch.rawLotsDeducted = false; patch.rawConsumedLots = []; }
+    if (!wantProduced && order.producedAt) { await unProduceOrder(order, deltas); patch.producedAt = ''; patch.rawLotsDeducted = false; patch.rawConsumedLots = []; patch.autoBuilt = []; }
     // 정방향: 생산 → 출고
-    if (wantProduced && !order.producedAt) { const consumed = await produceOrder(order, deltas); patch.producedAt = new Date().toISOString(); patch.rawLotsDeducted = true; if (consumed.length > 0) patch.rawConsumedLots = consumed; }
+    if (wantProduced && !order.producedAt) {
+      const { consumedLots, autoBuilt } = await produceOrder(order, deltas);
+      patch.producedAt = new Date().toISOString(); patch.rawLotsDeducted = true;
+      if (consumedLots.length > 0) patch.rawConsumedLots = consumedLots;
+      if (autoBuilt.length > 0) patch.autoBuilt = autoBuilt;
+    }
     if (wantShipped && !order.shippedOut) { shipOrder(order, deltas); patch.shippedOut = true; }
     await applyStockDeltas(deltas);
     if (Object.keys(patch).length > 0) await updateItem('orders', order.id, patch);

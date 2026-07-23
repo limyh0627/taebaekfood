@@ -7,10 +7,12 @@ describe('bomQty', () => {
     expect(bomQty({ stock: 3 })).toBe(3);    // 180ml캡-골드 ×3
     expect(bomQty({ stock: 20 })).toBe(20);  // 20kg박스 ← 낱개 ×20
   });
-  it('없거나 0 이하면 1', () => {
+  it('0은 0 — BOM에 두되 차감은 안 한다(테이프)', () => {
+    expect(bomQty({ stock: 0 })).toBe(0);
+    expect(bomQty({ stock: -5 })).toBe(0);
+  });
+  it('값이 안 박힌 옛 데이터는 1', () => {
     expect(bomQty({ stock: 1 })).toBe(1);
-    expect(bomQty({ stock: 0 })).toBe(1);
-    expect(bomQty({ stock: -5 })).toBe(1);
     expect(bomQty({} as { stock: number })).toBe(1);
     expect(bomQty(undefined as unknown as { stock: number })).toBe(1);
   });

@@ -2242,7 +2242,8 @@ const ItemList: React.FC<ItemListProps> = ({
         // 원료·부자재는 제외 — 만드는 게 아니라 사오는 것, 입고/실사조정으로만 움직인다
         const base = items.filter(p => !p.archived && !p.phantom && !isRawHolder(p) && !isSubmaterial(p.category));
         // 분류 — 완제품은 subtype이 없고 이름/품목키로 갈리므로 품명 기준으로 묶는다
-        const isGiftset = (p: Item) => p.category === 'giftset' || normCat(p.category) === '선물세트';
+        const isGiftset = (p: Item) =>
+          p.subtype === '선물세트' || p.category === 'giftset' || normCat(p.category) === '선물세트';
         const nameOf = (p: Item) => `${p.품목 ?? ''} ${p.name}`;
         const inCat = (p: Item, c: string): boolean => {
           if (isGiftset(p)) return c === '선물세트';
