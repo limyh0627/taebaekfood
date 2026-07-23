@@ -14,7 +14,15 @@ import {
 import { Employee, LeaveRequest, LeaveType, LeaveStatus } from '../types';
 import PageHeader from './PageHeader';
 
-const NON_DEDUCTIBLE_TYPES: LeaveType[] = ['경조사', '기타'];
+// 연차 계산은 공용 모듈(src/shared/leave.ts) — 관리자 화면과 같은 함수를 쓴다
+import {
+  NON_DEDUCTIBLE_TYPES,
+  LEAVE_DEDUCTION,
+  calculateRequestDays as calcRequestDays,
+  calculateMonthlyLeave,
+  calculateAnnualLeave,
+  getAnnualGrantInfo,
+} from '../src/shared/leave';
 
 interface LeaveManagerProps {
   currentUser: Employee;
@@ -87,20 +95,9 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
     reason: ''
   });
 
-  const calculateStatutoryLeave = (joinDate: string) => {
-    const start = new Date(joinDate);
-    const today = new Date();
-    let months = (today.getFullYear() - start.getFullYear()) * 12 + (today.getMonth() - start.getMonth());
-    if (today.getDate() < start.getDate()) months--;
-    const oneYearLater = new Date(start);
-    oneYearLater.setFullYear(start.getFullYear() + 1);
-    if (today < oneYearLater) {
-      return Math.max(0, Math.min(11, months));
-    } else {
-      const years = today.getFullYear() - start.getFullYear();
-      return Math.min(25, 15 + Math.floor((years - 1) / 2));
-    }
-  };
+  /** 당해 발생 월차/연차 — 공용 모듈. 1년 미만이면 월차, 이상이면 응당일에 발생한 연차. */
+  const calculateStatutoryLeave = (joinDate: string) =>
+    calculateMonthlyLeave(joinDate) + calculateAnnualLeave(joinDate);
 
   const calculateUsedPersonalLeave = (empId: string) => {
     const today = new Date();
@@ -114,32 +111,8 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
       .reduce((sum, r) => sum + r.daysUsed, 0);
   };
 
-  const LEAVE_DEDUCTION: Record<LeaveType, number | 'days'> = {
-    '연차': 'days',
-    '오전반차': 0.5,
-    '오후반차': 0.5,
-    '경조사': 0,
-    '기타': 0,
-    '병가': 'days',
-    '휴가': 'days',   // 회사 단체 휴가 — 관리자가 일괄 부여, 연차 차감
-  };
-
-  const calculateRequestDays = (start: string, end: string, type: LeaveType) => {
-    const rule = LEAVE_DEDUCTION[type];
-    if (rule === 0) return 0;
-    if (typeof rule === 'number') return rule;
-    // 'days' — 평일 기준 일수 계산 (최소 1일)
-    const s = parseLocal(start);
-    const e = parseLocal(end);
-    let count = 0;
-    const cur = new Date(s);
-    while (cur <= e) {
-      const dow = cur.getDay();
-      if (dow !== 0 && dow !== 6) count++;
-      cur.setDate(cur.getDate() + 1);
-    }
-    return Math.max(1, count);
-  };
+  /** 신청 일수 — 공용 모듈 (평일 기준, 반차 0.5, 경조사·기타 0) */
+  const calculateRequestDays = calcRequestDays;
 
   const handleApply = (e: React.FormEvent) => {
     e.preventDefault();
@@ -308,6 +281,25 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
                       <span className="text-slate-300">+</span>
                       <span className="bg-emerald-50 border border-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded">보너스 {bonus}일</span>
                     </div>
+                    {/* 올해 연차 발생 여부 */}
+                    {(() => {
+                      const g = getAnnualGrantInfo(emp.joinDate);
+                      if (g.underOneYear) return (
+                        <p className="mt-2 pt-2 border-t border-slate-200 text-[10px] font-bold text-slate-400">
+                          입사 1년 미만 — 매월 1일씩 월차가 생깁니다 (현재 {statutory}일)
+                        </p>
+                      );
+                      return g.granted ? (
+                        <p className="mt-2 pt-2 border-t border-slate-200 text-[10px] font-black text-emerald-600">
+                          ✓ 올해 연차 {g.days}일 발생 완료 ({g.anniversary})
+                        </p>
+                      ) : (
+                        <p className="mt-2 pt-2 border-t border-slate-200 text-[10px] font-black text-amber-600">
+                          올해 연차 미발생 — {g.anniversary}에 {g.days}일 발생 예정
+                          <span className="block font-bold text-slate-400 mt-0.5">그때까지는 이월분({carryOver}일)으로 사용합니다</span>
+                        </p>
+                      );
+                    })()}
                   </div>
 
                   {/* 3칸: 휴가 | 개인연차 | 잔여 */}

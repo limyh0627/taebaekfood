@@ -23,7 +23,14 @@ import {
 import { Employee, EmployeeStatus, LeaveRequest, LeaveStatus, LeaveType } from '../types';
 import PageHeader from './PageHeader';
 
-const NON_DEDUCTIBLE_TYPES: LeaveType[] = ['경조사', '기타'];
+// 연차 계산은 공용 모듈(src/shared/leave.ts) — 직원 앱과 같은 함수를 쓴다
+import {
+  NON_DEDUCTIBLE_TYPES,
+  calculateRequestDays as calcRequestDays,
+  isUnderOneYear as isUnderOneYearShared,
+  getAnnualGrantInfo as getGrantInfo,
+  calculateLeaveBalance,
+} from '../src/shared/leave';
 
 interface HRManagerProps {
   employees: Employee[];
@@ -64,21 +71,9 @@ const HRManager: React.FC<HRManagerProps> = ({
   const [vacationReason, setVacationReason] = useState('');
   const [vacationBusy, setVacationBusy] = useState(false);
 
-  /** 평일 기준 일수 (주말 제외, 최소 1일) — LeaveManager의 계산과 동일 */
-  const countWeekdays = (start: string, end: string) => {
-    if (!start || !end) return 0;
-    const s = new Date(start + 'T00:00:00');
-    const e = new Date(end + 'T00:00:00');
-    if (e < s) return 0;
-    let n = 0;
-    const cur = new Date(s);
-    while (cur <= e) {
-      const d = cur.getDay();
-      if (d !== 0 && d !== 6) n++;
-      cur.setDate(cur.getDate() + 1);
-    }
-    return Math.max(1, n);
-  };
+  /** 단체 휴가 일수 — 신청과 같은 평일 기준(공용 모듈) */
+  const countWeekdays = (start: string, end: string) =>
+    (start && end) ? calcRequestDays(start, end, '휴가') : 0;
 
   const [formData, setFormData] = useState({
     name: '',
@@ -94,49 +89,13 @@ const HRManager: React.FC<HRManagerProps> = ({
   });
 
   const today = new Date();
-  const CURRENT_YEAR = today.getFullYear();
 
-  // 1년 미만 여부 판단
-  const isUnderOneYear = (joinDate: string) => {
-    const start = new Date(joinDate);
-    const oneYearLater = new Date(start);
-    oneYearLater.setFullYear(start.getFullYear() + 1);
-    return today < oneYearLater;
-  };
-
-  /**
-   * 올해 발생한 월차. 입사 1년 미만 기간에 매월 1일씩 최대 11일
-   * (12번째 달은 1년 도달 = 연차 15일이 생기는 시점이라 월차로 세지 않는다).
-   *
-   * 1년이 지나도 0으로 지우지 않는다 — 발생한 월차는 잔여에 그대로 포함돼 있다가
-   * 해가 바뀔 때 이월(carryOverLeave)로 넘어가는 개념이다.
-   * 예전엔 1년이 지나면 월차를 0으로 만들면서, 그 월차로 쓴 휴가는 연차에서
-   * 그대로 차감해 잔여가 실제보다 적게 나왔다.
-   */
-  const calculateMonthlyLeaveThisYear = (joinDate: string) => {
-    const start = new Date(joinDate);
-    let count = 0;
-    for (let m = 1; m <= 11; m++) {
-      const grantDate = new Date(start.getFullYear(), start.getMonth() + m, start.getDate());
-      if (grantDate > today) break;
-      if (grantDate.getFullYear() === CURRENT_YEAR) count++;
-    }
-    return count;
-  };
-
-  // 연차: 1년 미만이면 0, 이상이면 15일 + 가산
-  const calculateAnnualLeave = (joinDate: string) => {
-    if (isUnderOneYear(joinDate)) return 0;
-    const start = new Date(joinDate);
-    const diffYears = today.getFullYear() - start.getFullYear();
-    const seniorYears = Math.floor((diffYears - 1) / 2);
-    return Math.min(25, 15 + seniorYears);
-  };
-
-  const getApprovedLeaveCount = (empId: string) => {
-    return leaveRequests
-      .filter(r => r.employeeId === empId && r.status === 'approved' && !NON_DEDUCTIBLE_TYPES.includes(r.type))
-      .reduce((sum, r) => sum + r.daysUsed, 0);
+  // ── 연차 계산은 전부 공용 모듈(src/shared/leave.ts). 직원 앱과 같은 함수를 쓴다. ──
+  const isUnderOneYear = (joinDate: string) => isUnderOneYearShared(joinDate, today);
+  /** 올해 연차 발생 여부 + 응당일(MM-DD) + 발생 시 일수 — 표시용 */
+  const getAnnualGrantInfo = (joinDate: string) => {
+    const g = getGrantInfo(joinDate, today);
+    return { granted: g.granted, dateStr: g.anniversary.slice(5), pendingDays: g.days };
   };
 
 
@@ -428,7 +387,9 @@ const HRManager: React.FC<HRManagerProps> = ({
               <AlertCircle className="text-indigo-500 shrink-0 mt-0.5 sm:mt-0" size={20} />
               <div className="text-xs font-bold text-indigo-700 leading-relaxed">
                 <p>연차 정보는 인사팀에 의해 안전하게 관리됩니다. 우측 상단의 <b>&apos;편집 모드&apos;</b>를 활성화해야 수정이 가능합니다.</p>
-                <p>1년 미만 직원은 올해 발생한 월차만 표시됩니다. 총 부여 = [월차/연차 + 보너스 + 이월], 실 잔여 = [총 부여 - (사용 + 수동 차감)]</p>
+                <p>총 부여 = [월차 + 연차 + 보너스 + 이월], 잔여 = [총 부여 − 사용 개수]. 사용 개수에는 <b>승인된 신청 + 휴가</b>가 다 들어갑니다.</p>
+                <p><b>휴가</b>는 회사 단체 휴가로 쓴 일수입니다 — 직원 앱 연차 화면에도 &apos;휴가&apos;로 표시됩니다. 월차는 발생분이 잔여에 포함돼 있다가 해가 바뀌면 이월로 넘겨주세요.</p>
+                <p><b>연차는 입사 응당일에 발생</b>합니다. 아직 안 지났으면 <span className="text-amber-600 font-black">MM-DD 예정</span>으로 표시되고 <b>잔여에 더해지지 않습니다</b> — 그때까지는 이월분으로 사용합니다.</p>
               </div>
             </div>
             <table className="w-full text-left min-w-[640px]">
@@ -442,22 +403,25 @@ const HRManager: React.FC<HRManagerProps> = ({
                   </th>
                   <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center bg-indigo-50/30">보너스 (+)</th>
                   <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">이월 (+)</th>
-                  <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center text-rose-500">사용 개수</th>
-                  <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">수동 차감 (-)</th>
+                  <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center text-rose-500">
+                    <span className="block">사용 개수</span>
+                    <span className="text-[9px] font-bold text-slate-300 normal-case tracking-normal">신청 + 휴가</span>
+                  </th>
+                  <th className="px-6 py-5 text-[10px] font-black text-amber-500 uppercase tracking-widest text-center">휴가 (-)</th>
                   <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">최종 잔여</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {employees.map(emp => {
-                  const underOneYear = isUnderOneYear(emp.joinDate);
-                  // 1년이 지나도 올해 발생한 월차는 잔여에 그대로 포함된다(연말에 이월로 넘어감)
-                  const monthlyLeave = calculateMonthlyLeaveThisYear(emp.joinDate);
-                  const annualLeave = calculateAnnualLeave(emp.joinDate);
-                  const totalGenerated = monthlyLeave + annualLeave;
-                  const approvedUsed = getApprovedLeaveCount(emp.id);
-                  const finalTotalUsable = totalGenerated + (emp.annualLeave?.carryOverLeave || 0) + (emp.annualLeave?.bonusLeave || 0);
-                  const totalUsedCount = approvedUsed + (emp.manualAdjustment || 0);
-                  const remaining = finalTotalUsable - totalUsedCount;
+                  // 계산은 전부 공용 모듈 — 직원 앱과 같은 결과
+                  const bal = calculateLeaveBalance(emp, leaveRequests, today);
+                  const underOneYear = bal.grant.underOneYear;
+                  const monthlyLeave = bal.monthly;
+                  const annualLeave = bal.annual;
+                  const approvedUsed = bal.usedRequests;
+                  const finalTotalUsable = bal.granted;
+                  const totalUsedCount = bal.usedTotal;
+                  const remaining = bal.remaining;
 
                   return (
                     <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
@@ -482,12 +446,28 @@ const HRManager: React.FC<HRManagerProps> = ({
                           <span className="text-[10px] text-slate-200">-</span>
                         )}
                       </td>
-                      {/* 연차 */}
+                      {/* 연차 — 입사 응당일에 발생. 발생 전이면 0이고 잔여에도 안 더해진다 */}
                       <td className="px-4 py-6 text-center">
-                        <div className="flex flex-col items-center">
-                          <span className="text-sm font-bold text-slate-500">{annualLeave}</span>
-                          {underOneYear && <span className="text-[9px] font-bold text-slate-300 uppercase">입사일 기준</span>}
-                        </div>
+                        {(() => {
+                          const g = getAnnualGrantInfo(emp.joinDate);
+                          if (underOneYear) return (
+                            <div className="flex flex-col items-center">
+                              <span className="text-sm font-bold text-slate-300">0</span>
+                              <span className="text-[9px] font-bold text-slate-300 uppercase">1년 미만</span>
+                            </div>
+                          );
+                          return g.granted ? (
+                            <div className="flex flex-col items-center">
+                              <span className="text-sm font-bold text-slate-600">{annualLeave}</span>
+                              <span className="text-[9px] font-black text-emerald-500">✓ {g.dateStr} 발생</span>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center" title={`${g.dateStr}에 ${g.pendingDays}일 발생 예정 — 그때까지는 이월분으로만 사용`}>
+                              <span className="text-sm font-bold text-slate-300">0</span>
+                              <span className="text-[9px] font-black text-amber-500">{g.dateStr} 예정 ({g.pendingDays})</span>
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-6 py-6 text-center bg-indigo-50/20">
                         {isEditMode ? (
@@ -518,22 +498,26 @@ const HRManager: React.FC<HRManagerProps> = ({
                           <span className="text-sm font-black text-slate-400">{emp.annualLeave?.carryOverLeave || 0}</span>
                         )}
                       </td>
+                      {/* 사용 개수 = 승인된 신청 + 휴가(수동) */}
                       <td className="px-6 py-6 text-center">
                         <div className="flex flex-col items-center">
-                          <span className="text-sm font-black text-rose-500">{approvedUsed}</span>
-                          <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">승인됨</span>
+                          <span className="text-sm font-black text-rose-500">{totalUsedCount}</span>
+                          <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">
+                            {(emp.manualAdjustment || 0) > 0 ? `신청 ${approvedUsed} + 휴가 ${emp.manualAdjustment}` : '승인됨'}
+                          </span>
                         </div>
                       </td>
+                      {/* 휴가 — 직원 앱에도 '휴가'로 표시되는 값 */}
                       <td className="px-6 py-6 text-center">
                         {isEditMode ? (
-                          <input 
+                          <input
                             type="number" step="0.5"
                             value={emp.manualAdjustment || 0}
                             onChange={(e) => handleBalanceUpdate(emp, 'manualAdjustment', e.target.value)}
-                            className="w-16 text-center bg-rose-50 border border-rose-200 rounded-lg py-1.5 text-sm font-black text-rose-700 outline-none focus:ring-2 focus:ring-rose-500"
+                            className="w-16 text-center bg-amber-50 border border-amber-200 rounded-lg py-1.5 text-sm font-black text-amber-700 outline-none focus:ring-2 focus:ring-amber-500"
                           />
                         ) : (
-                          <span className="text-sm font-black text-slate-300">{emp.manualAdjustment || 0}</span>
+                          <span className="text-sm font-black text-amber-500">{emp.manualAdjustment || 0}</span>
                         )}
                       </td>
                       <td className="px-8 py-6 text-right">
@@ -624,9 +608,9 @@ const HRManager: React.FC<HRManagerProps> = ({
                     </div>
                   </div>
                   <div className="space-y-1.5 pt-2 border-t border-slate-200">
-                    <label className="text-[10px] font-bold text-rose-400 uppercase tracking-widest">수동 차감</label>
-                    <p className="text-[10px] text-slate-300">승인 절차 없이 직접 차감 — 시스템 도입 전 사용분, 수동 보정 등</p>
-                    <input type="number" step="0.5" value={formData.manualAdjustment} onChange={(e) => setFormData({...formData, manualAdjustment: parseFloat(e.target.value) || 0})} className="w-full bg-rose-50 border border-rose-100 rounded-xl px-4 py-3 text-sm font-bold outline-none text-rose-700 focus:border-rose-400" />
+                    <label className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">휴가</label>
+                    <p className="text-[10px] text-slate-300">회사 단체 휴가로 쓴 일수 — 사용 개수에 포함되고, 직원 앱에도 &apos;휴가&apos;로 표시됩니다</p>
+                    <input type="number" step="0.5" value={formData.manualAdjustment} onChange={(e) => setFormData({...formData, manualAdjustment: parseFloat(e.target.value) || 0})} className="w-full bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-sm font-bold outline-none text-amber-700 focus:border-amber-400" />
                   </div>
                 </div>
               </div>
@@ -786,12 +770,13 @@ const HRManager: React.FC<HRManagerProps> = ({
           .filter(r => r.employeeId === emp.id && (r.startDate ?? '').slice(0, 4) === String(year))
           .sort((a, b) => (b.startDate ?? '').localeCompare(a.startDate ?? ''));
 
-        const underOneYear = isUnderOneYear(emp.joinDate);
-        const monthlyLeave = calculateMonthlyLeaveThisYear(emp.joinDate);
-        const annualLeave = calculateAnnualLeave(emp.joinDate);
-        const totalUsable = monthlyLeave + annualLeave + (emp.annualLeave?.carryOverLeave || 0) + (emp.annualLeave?.bonusLeave || 0);
-        const approvedUsed = getApprovedLeaveCount(emp.id);
-        const remaining = totalUsable - approvedUsed - (emp.manualAdjustment || 0);
+        const bal = calculateLeaveBalance(emp, leaveRequests, today);
+        const underOneYear = bal.grant.underOneYear;
+        const monthlyLeave = bal.monthly;
+        const annualLeave = bal.annual;
+        const totalUsable = bal.granted;
+        const approvedUsed = bal.usedRequests;
+        const remaining = bal.remaining;
 
         // 승인되어 실제로 차감된 것만 집계(경조사·기타는 차감 안 함)
         const deductible = mine.filter(r => r.status === 'approved' && !NON_DEDUCTIBLE_TYPES.includes(r.type));
@@ -832,15 +817,23 @@ const HRManager: React.FC<HRManagerProps> = ({
                     {(emp.annualLeave?.carryOverLeave || 0) > 0 && ` +이월 ${emp.annualLeave?.carryOverLeave}`}
                     {(emp.annualLeave?.bonusLeave || 0) > 0 && ` +보너스 ${emp.annualLeave?.bonusLeave}`}
                   </p>
+                  {(() => {
+                    const g = getAnnualGrantInfo(emp.joinDate);
+                    if (underOneYear || g.granted) return null;
+                    return <p className="text-[9px] font-black text-amber-500 mt-1">연차 {g.dateStr} 발생 예정 ({g.pendingDays}일) — 아직 미포함</p>;
+                  })()}
                 </div>
                 <div className="bg-rose-50 rounded-2xl px-4 py-3">
                   <p className="text-[10px] font-black text-rose-400 uppercase">사용</p>
-                  <p className="text-xl font-black text-rose-600 tabular-nums">{approvedUsed}<span className="text-xs ml-0.5 text-rose-300">일</span></p>
-                  <p className="text-[9px] text-rose-400 mt-0.5">승인 {deductible.length}건</p>
+                  <p className="text-xl font-black text-rose-600 tabular-nums">{approvedUsed + (emp.manualAdjustment || 0)}<span className="text-xs ml-0.5 text-rose-300">일</span></p>
+                  <p className="text-[9px] text-rose-400 mt-0.5">
+                    {(emp.manualAdjustment || 0) > 0 ? `신청 ${approvedUsed} + 휴가 ${emp.manualAdjustment}` : `승인 ${deductible.length}건`}
+                  </p>
                 </div>
                 <div className="bg-amber-50 rounded-2xl px-4 py-3">
-                  <p className="text-[10px] font-black text-amber-500 uppercase">수동 차감</p>
+                  <p className="text-[10px] font-black text-amber-500 uppercase">휴가</p>
                   <p className="text-xl font-black text-amber-600 tabular-nums">{emp.manualAdjustment || 0}<span className="text-xs ml-0.5 text-amber-300">일</span></p>
+                  <p className="text-[9px] text-amber-400 mt-0.5">회사 단체 휴가</p>
                 </div>
                 <div className="bg-indigo-600 rounded-2xl px-4 py-3">
                   <p className="text-[10px] font-black text-indigo-200 uppercase">잔여</p>
