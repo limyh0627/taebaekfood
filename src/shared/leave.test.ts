@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   calculateRequestDays, isUnderOneYear, calculateMonthlyLeave,
-  getAnnualGrantInfo, calculateAnnualLeave, calculateLeaveBalance,
+  getAnnualGrantInfo, calculateAnnualLeave, calculateLeaveBalance, isDeductible,
 } from './leave';
 import type { Employee, LeaveRequest } from './types';
 
@@ -33,6 +33,20 @@ describe('calculateRequestDays', () => {
   });
   it('주말만이면 최소 1일', () => {
     expect(calculateRequestDays('2026-07-25', '2026-07-26', '연차')).toBe(1);
+  });
+});
+
+describe('isDeductible', () => {
+  it('유형 기본값 — 경조사·기타만 미차감', () => {
+    expect(isDeductible({ type: '연차' })).toBe(true);
+    expect(isDeductible({ type: '휴가' })).toBe(true);
+    expect(isDeductible({ type: '병가' })).toBe(true);
+    expect(isDeductible({ type: '경조사' })).toBe(false);
+    expect(isDeductible({ type: '기타' })).toBe(false);
+  });
+  it('건별 지정이 유형 기본값을 이긴다', () => {
+    expect(isDeductible({ type: '휴가', deductsLeave: false })).toBe(false);   // 창립기념일 등
+    expect(isDeductible({ type: '경조사', deductsLeave: true })).toBe(true);
   });
 });
 
@@ -130,10 +144,19 @@ describe('calculateLeaveBalance', () => {
     expect(calculateLeaveBalance(e, reqs, NOW).usedTotal).toBe(1);
   });
 
-  it('단체 휴가(휴가 유형)도 차감된다', () => {
+  it('단체 휴가(휴가 유형)도 기본은 차감', () => {
     const e = emp({ id: 'e9', joinDate: '2020-01-01' });
     const reqs = [req({ id: 'v', employeeId: 'e9', type: '휴가', daysUsed: 3 })];
     expect(calculateLeaveBalance(e, reqs, NOW).usedTotal).toBe(3);
+  });
+
+  it('단체 휴가를 미차감으로 지정하면 사용에 안 잡힌다', () => {
+    const e = emp({ id: 'e9', joinDate: '2020-01-01' });
+    const reqs = [
+      req({ id: 'v1', employeeId: 'e9', type: '휴가', daysUsed: 3, deductsLeave: false }),  // 창립기념일 등
+      req({ id: 'v2', employeeId: 'e9', type: '휴가', daysUsed: 2 }),                        // 집단 연차소진
+    ];
+    expect(calculateLeaveBalance(e, reqs, NOW).usedTotal).toBe(2);
   });
 
   describe('당월 사용', () => {

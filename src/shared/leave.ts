@@ -6,8 +6,18 @@ import { Employee, LeaveRequest, LeaveType } from './types';
  * 부수효과 없음(입력 → 값).
  */
 
-/** 승인돼도 연차에서 차감하지 않는 유형 */
+/** 유형 자체가 연차를 차감하지 않는 것 */
 export const NON_DEDUCTIBLE_TYPES: LeaveType[] = ['경조사', '기타'];
+
+/**
+ * 이 신청이 연차를 차감하는가 — 차감 판정은 전부 이 함수를 거친다.
+ *  1) 건별 지정(deductsLeave)이 있으면 그걸 따른다 — 단체 휴가의 차감/미차감이 여기로 갈린다
+ *  2) 없으면 유형 기본값(경조사·기타만 미차감)
+ */
+export function isDeductible(r: Pick<LeaveRequest, 'type' | 'deductsLeave'>): boolean {
+  if (r.deductsLeave !== undefined) return r.deductsLeave;
+  return !NON_DEDUCTIBLE_TYPES.includes(r.type);
+}
 
 /** 유형별 차감 규칙. 'days' = 기간(평일) 기준 */
 export const LEAVE_DEDUCTION: Record<LeaveType, number | 'days'> = {
@@ -107,7 +117,7 @@ export function calculateAnnualLeave(joinDate: string, now = new Date()): number
 /** 승인된 신청 중 차감 대상 일수 합계. ym('YYYY-MM')을 주면 그 달 시작분만. */
 export function getApprovedLeaveDays(empId: string, leaveRequests: LeaveRequest[], ym?: string): number {
   return leaveRequests
-    .filter(r => r.employeeId === empId && r.status === 'approved' && !NON_DEDUCTIBLE_TYPES.includes(r.type))
+    .filter(r => r.employeeId === empId && r.status === 'approved' && isDeductible(r))
     .filter(r => !ym || (r.startDate ?? '').slice(0, 7) === ym)
     .reduce((sum, r) => sum + (r.daysUsed || 0), 0);
 }

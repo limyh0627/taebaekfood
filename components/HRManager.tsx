@@ -25,7 +25,7 @@ import PageHeader from './PageHeader';
 
 // 연차 계산은 공용 모듈(src/shared/leave.ts) — 직원 앱과 같은 함수를 쓴다
 import {
-  NON_DEDUCTIBLE_TYPES,
+  isDeductible,
   calculateRequestDays as calcRequestDays,
   isUnderOneYear as isUnderOneYearShared,
   getAnnualGrantInfo as getGrantInfo,
@@ -70,6 +70,8 @@ const HRManager: React.FC<HRManagerProps> = ({
   const [vacationRange, setVacationRange] = useState({ start: '', end: '' });
   const [vacationReason, setVacationReason] = useState('');
   const [vacationBusy, setVacationBusy] = useState(false);
+  /** 단체 휴가가 연차를 차감하는가 — 창립기념일·명절 추가휴무는 미차감, 집단 연차소진은 차감 */
+  const [vacationDeducts, setVacationDeducts] = useState(true);
 
   /** 단체 휴가 일수 — 신청과 같은 평일 기준(공용 모듈) */
   const countWeekdays = (start: string, end: string) =>
@@ -201,6 +203,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                   setVacationExcluded(new Set());
                   setVacationRange({ start: today.toISOString().slice(0, 10), end: today.toISOString().slice(0, 10) });
                   setVacationReason('');
+                  setVacationDeducts(true);
                   setShowVacation(true);
                 }}
                 className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-black shadow-sm bg-indigo-600 text-white hover:bg-indigo-700 transition-all"
@@ -643,10 +646,11 @@ const HRManager: React.FC<HRManagerProps> = ({
               type: '휴가',
               startDate: vacationRange.start,
               endDate: vacationRange.end,
-              reason: vacationReason.trim() || '회사 단체 휴가',
-              status: 'approved',       // 관리자가 부여하는 것 — 승인 상태로 바로 차감
+              reason: vacationReason.trim() || (vacationDeducts ? '회사 단체 휴가' : '회사 단체 휴가 (연차 미차감)'),
+              status: 'approved',       // 관리자가 부여하는 것 — 승인 상태
               requestedAt: now,
               daysUsed: days,
+              deductsLeave: vacationDeducts,
             }));
             await onAddLeaveRequests(reqs);
             setShowVacation(false);
@@ -663,7 +667,10 @@ const HRManager: React.FC<HRManagerProps> = ({
               <div className="px-6 py-5 border-b border-slate-100 flex items-start justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-black text-slate-800">회사 단체 휴가</h3>
-                  <p className="text-xs text-slate-400 font-bold">기간을 정하면 선택된 직원의 <b className="text-rose-500">연차가 차감</b>되고, 직원 앱 연차 내역에 '휴가'로 표시됩니다.</p>
+                  <p className="text-xs text-slate-400 font-bold">
+                    선택된 직원에게 &apos;휴가&apos;로 기록됩니다. <b className={vacationDeducts ? 'text-rose-500' : 'text-slate-500'}>
+                    {vacationDeducts ? '연차에서 차감' : '연차 차감 없음'}</b> — 직원 앱 연차 내역에도 그대로 표시됩니다.
+                  </p>
                 </div>
                 <button onClick={() => setShowVacation(false)} className="text-slate-300 hover:text-slate-500 shrink-0"><X size={20} /></button>
               </div>
@@ -682,12 +689,29 @@ const HRManager: React.FC<HRManagerProps> = ({
                     onChange={e => setVacationRange(v => ({ ...v, end: e.target.value }))}
                     className="border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-300" />
                 </div>
-                <div className="bg-indigo-50 rounded-xl px-4 py-2">
-                  <p className="text-[10px] font-black text-indigo-400 uppercase">차감 일수</p>
-                  <p className="text-lg font-black text-indigo-700 tabular-nums">{days}<span className="text-xs ml-0.5">일</span></p>
+                <div className={`rounded-xl px-4 py-2 ${vacationDeducts ? 'bg-indigo-50' : 'bg-slate-100'}`}>
+                  <p className={`text-[10px] font-black uppercase ${vacationDeducts ? 'text-indigo-400' : 'text-slate-400'}`}>
+                    {vacationDeducts ? '차감 일수' : '휴무 일수'}
+                  </p>
+                  <p className={`text-lg font-black tabular-nums ${vacationDeducts ? 'text-indigo-700' : 'text-slate-500'}`}>{days}<span className="text-xs ml-0.5">일</span></p>
                 </div>
                 <input value={vacationReason} onChange={e => setVacationReason(e.target.value)} placeholder="사유 (기본: 회사 단체 휴가)"
                   className="flex-1 min-w-[160px] border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-300" />
+              </div>
+
+              {/* 연차 차감 여부 */}
+              <div className="px-6 pb-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">연차 차감</label>
+                <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5 max-w-md">
+                  <button type="button" onClick={() => setVacationDeducts(true)}
+                    className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${vacationDeducts ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}>
+                    차감 <span className="font-bold opacity-70">· 집단 연차소진</span>
+                  </button>
+                  <button type="button" onClick={() => setVacationDeducts(false)}
+                    className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${!vacationDeducts ? 'bg-slate-600 text-white' : 'text-slate-400'}`}>
+                    미차감 <span className="font-bold opacity-70">· 창립일·명절 등</span>
+                  </button>
+                </div>
               </div>
               <p className="px-6 pt-2 text-[10px] text-slate-400">주말은 빼고 셉니다. 공휴일은 자동 제외되지 않으니 필요하면 기간을 나눠 등록하세요.</p>
 
@@ -726,7 +750,7 @@ const HRManager: React.FC<HRManagerProps> = ({
 
               <div className="px-6 py-4 border-t border-slate-100 flex items-center gap-2">
                 <p className="text-[11px] font-bold text-slate-400 flex-1">
-                  {targets.length}명 × {days}일 차감
+                  {targets.length}명 × {days}일 {vacationDeducts ? '연차 차감' : '휴무(연차 미차감)'}
                 </p>
                 <button onClick={() => setShowVacation(false)} className="px-5 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200">취소</button>
                 <button onClick={submit} disabled={!canSave}
@@ -755,7 +779,7 @@ const HRManager: React.FC<HRManagerProps> = ({
         const remaining = bal.remaining;
 
         // 승인되어 실제로 차감된 것만 집계(경조사·기타는 차감 안 함)
-        const deductible = mine.filter(r => r.status === 'approved' && !NON_DEDUCTIBLE_TYPES.includes(r.type));
+        const deductible = mine.filter(r => r.status === 'approved' && isDeductible(r));
         const pendingMine = mine.filter(r => r.status === 'pending' || r.status === 'cancel_pending');
 
         const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
@@ -836,7 +860,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                         const rows = byMonth.get(m)!;
                         // 그 달에 실제로 차감된 일수 (승인 + 차감대상만)
                         const usedDays = rows
-                          .filter(r => r.status === 'approved' && !NON_DEDUCTIBLE_TYPES.includes(r.type))
+                          .filter(r => r.status === 'approved' && isDeductible(r))
                           .reduce((s, r) => s + (r.daysUsed || 0), 0);
                         const pendingCnt = rows.filter(r => r.status === 'pending' || r.status === 'cancel_pending').length;
                         const isOpen = openLeaveMonths.has(m);
@@ -866,7 +890,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                               <div className="divide-y divide-slate-50 border-t border-slate-100">
                                 {rows.map(r => {
                                   const st = STATUS_LABEL[r.status] ?? { text: r.status, cls: 'bg-slate-100 text-slate-500' };
-                                  const nonDeduct = NON_DEDUCTIBLE_TYPES.includes(r.type);
+                                  const nonDeduct = !isDeductible(r);
                                   return (
                                     <div key={r.id} className="px-4 py-3 flex items-start gap-3 bg-white">
                                       <div className="flex-1 min-w-0">

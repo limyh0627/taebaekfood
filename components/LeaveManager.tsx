@@ -16,7 +16,7 @@ import PageHeader from './PageHeader';
 
 // 연차 계산은 공용 모듈(src/shared/leave.ts) — 관리자 화면과 같은 함수를 쓴다
 import {
-  NON_DEDUCTIBLE_TYPES,
+  isDeductible,
   LEAVE_DEDUCTION,
   calculateRequestDays as calcRequestDays,
   calculateMonthlyLeave,
@@ -105,7 +105,7 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
       .filter(r =>
         r.employeeId === empId &&
         r.status === 'approved' &&
-        !NON_DEDUCTIBLE_TYPES.includes(r.type) &&
+        isDeductible(r) &&
         new Date(r.endDate) < today
       )
       .reduce((sum, r) => sum + r.daysUsed, 0);
@@ -251,7 +251,7 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
             const total = statutory + carryOver + bonus;
             // 회사 단체 휴가 = '휴가' 유형 신청, 개인연차 = 그 외. 둘 다 승인분만.
             const mineApproved = leaveRequests.filter(r =>
-              r.employeeId === emp.id && r.status === 'approved' && !NON_DEDUCTIBLE_TYPES.includes(r.type));
+              r.employeeId === emp.id && r.status === 'approved' && isDeductible(r));
             const usedVacation = mineApproved.filter(r => r.type === '휴가').reduce((s, r) => s + (r.daysUsed || 0), 0);
             const usedPersonal = mineApproved.filter(r => r.type !== '휴가').reduce((s, r) => s + (r.daysUsed || 0), 0);
             const totalUsed = usedVacation + usedPersonal;

@@ -372,6 +372,12 @@ export interface LeaveRequest {
   status: LeaveStatus;
   requestedAt: string;
   daysUsed: number;
+  /**
+   * 연차 차감 여부. 미지정(undefined)이면 유형 기본값(경조사·기타만 미차감).
+   * 회사 단체 휴가처럼 같은 유형이라도 건별로 차감/미차감이 갈릴 때 false로 지정한다.
+   * (예: 창립기념일·명절 추가휴무 = 미차감 / 집단 연차소진 = 차감)
+   */
+  deductsLeave?: boolean;
   modifyRequest?: LeaveModifyRequest;
 }
 
