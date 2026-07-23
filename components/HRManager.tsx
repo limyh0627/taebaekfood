@@ -387,8 +387,8 @@ const HRManager: React.FC<HRManagerProps> = ({
               <AlertCircle className="text-indigo-500 shrink-0 mt-0.5 sm:mt-0" size={20} />
               <div className="text-xs font-bold text-indigo-700 leading-relaxed">
                 <p>연차 정보는 인사팀에 의해 안전하게 관리됩니다. 우측 상단의 <b>&apos;편집 모드&apos;</b>를 활성화해야 수정이 가능합니다.</p>
-                <p>총 부여 = [월차 + 연차 + 보너스 + 이월], 잔여 = [총 부여 − 사용 개수]. 사용 개수에는 <b>승인된 신청 + 휴가</b>가 다 들어갑니다.</p>
-                <p><b>휴가</b>는 회사 단체 휴가로 쓴 일수입니다 — 직원 앱 연차 화면에도 &apos;휴가&apos;로 표시됩니다. 월차는 발생분이 잔여에 포함돼 있다가 해가 바뀌면 이월로 넘겨주세요.</p>
+                <p>총 부여 = [월차 + 연차 + 보너스 + 이월], 잔여 = [총 부여 − 사용 개수]. <b>회사 단체 휴가는 위 &apos;휴가&apos; 버튼으로 등록하면 사용 개수에 바로 차감</b>됩니다.</p>
+                <p>월차는 발생분이 잔여에 포함돼 있다가 해가 바뀌면 이월로 넘겨주세요.</p>
                 <p><b>연차는 입사 응당일에 발생</b>합니다. 아직 안 지났으면 <span className="text-amber-600 font-black">MM-DD 예정</span>으로 표시되고 <b>잔여에 더해지지 않습니다</b> — 그때까지는 이월분으로 사용합니다.</p>
               </div>
             </div>
@@ -405,9 +405,8 @@ const HRManager: React.FC<HRManagerProps> = ({
                   <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">이월 (+)</th>
                   <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center text-rose-500">
                     <span className="block">사용 개수</span>
-                    <span className="text-[9px] font-bold text-slate-300 normal-case tracking-normal">신청 + 휴가</span>
+                    <span className="text-[9px] font-bold text-slate-300 normal-case tracking-normal">연차 · 휴가 포함</span>
                   </th>
-                  <th className="px-6 py-5 text-[10px] font-black text-amber-500 uppercase tracking-widest text-center">휴가 (-)</th>
                   <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">최종 잔여</th>
                 </tr>
               </thead>
@@ -498,27 +497,14 @@ const HRManager: React.FC<HRManagerProps> = ({
                           <span className="text-sm font-black text-slate-400">{emp.annualLeave?.carryOverLeave || 0}</span>
                         )}
                       </td>
-                      {/* 사용 개수 = 승인된 신청 + 휴가(수동) */}
+                      {/* 사용 개수 — 승인된 신청(연차·휴가 등)을 전부 합친 값 */}
                       <td className="px-6 py-6 text-center">
                         <div className="flex flex-col items-center">
                           <span className="text-sm font-black text-rose-500">{totalUsedCount}</span>
                           <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">
-                            {(emp.manualAdjustment || 0) > 0 ? `신청 ${approvedUsed} + 휴가 ${emp.manualAdjustment}` : '승인됨'}
+                            {(emp.manualAdjustment || 0) > 0 ? `신청 ${approvedUsed} + 구휴가 ${emp.manualAdjustment}` : '승인됨'}
                           </span>
                         </div>
-                      </td>
-                      {/* 휴가 — 직원 앱에도 '휴가'로 표시되는 값 */}
-                      <td className="px-6 py-6 text-center">
-                        {isEditMode ? (
-                          <input
-                            type="number" step="0.5"
-                            value={emp.manualAdjustment || 0}
-                            onChange={(e) => handleBalanceUpdate(emp, 'manualAdjustment', e.target.value)}
-                            className="w-16 text-center bg-amber-50 border border-amber-200 rounded-lg py-1.5 text-sm font-black text-amber-700 outline-none focus:ring-2 focus:ring-amber-500"
-                          />
-                        ) : (
-                          <span className="text-sm font-black text-amber-500">{emp.manualAdjustment || 0}</span>
-                        )}
                       </td>
                       <td className="px-8 py-6 text-right">
                         <div className="flex flex-col items-end">
@@ -608,8 +594,8 @@ const HRManager: React.FC<HRManagerProps> = ({
                     </div>
                   </div>
                   <div className="space-y-1.5 pt-2 border-t border-slate-200">
-                    <label className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">휴가</label>
-                    <p className="text-[10px] text-slate-300">회사 단체 휴가로 쓴 일수 — 사용 개수에 포함되고, 직원 앱에도 &apos;휴가&apos;로 표시됩니다</p>
+                    <label className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">구 휴가 (수동)</label>
+                    <p className="text-[10px] text-slate-300">예전에 손으로 넣던 단체 휴가 일수 — 사용 개수에 포함됩니다. 지금은 &apos;휴가&apos; 버튼을 쓰세요(기록이 남습니다)</p>
                     <input type="number" step="0.5" value={formData.manualAdjustment} onChange={(e) => setFormData({...formData, manualAdjustment: parseFloat(e.target.value) || 0})} className="w-full bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-sm font-bold outline-none text-amber-700 focus:border-amber-400" />
                   </div>
                 </div>
@@ -806,7 +792,7 @@ const HRManager: React.FC<HRManagerProps> = ({
               </div>
 
               {/* 요약 */}
-              <div className="px-6 py-4 grid grid-cols-4 gap-3 border-b border-slate-100">
+              <div className="px-6 py-4 grid grid-cols-3 gap-3 border-b border-slate-100">
                 <div className="bg-slate-50 rounded-2xl px-4 py-3">
                   <p className="text-[10px] font-black text-slate-400 uppercase">총 부여</p>
                   <p className="text-xl font-black text-slate-800 tabular-nums">{totalUsable}<span className="text-xs ml-0.5 text-slate-400">일</span></p>
@@ -825,15 +811,10 @@ const HRManager: React.FC<HRManagerProps> = ({
                 </div>
                 <div className="bg-rose-50 rounded-2xl px-4 py-3">
                   <p className="text-[10px] font-black text-rose-400 uppercase">사용</p>
-                  <p className="text-xl font-black text-rose-600 tabular-nums">{approvedUsed + (emp.manualAdjustment || 0)}<span className="text-xs ml-0.5 text-rose-300">일</span></p>
+                  <p className="text-xl font-black text-rose-600 tabular-nums">{bal.usedTotal}<span className="text-xs ml-0.5 text-rose-300">일</span></p>
                   <p className="text-[9px] text-rose-400 mt-0.5">
-                    {(emp.manualAdjustment || 0) > 0 ? `신청 ${approvedUsed} + 휴가 ${emp.manualAdjustment}` : `승인 ${deductible.length}건`}
+                    {(emp.manualAdjustment || 0) > 0 ? `신청 ${approvedUsed} + 구휴가 ${emp.manualAdjustment}` : `승인 ${deductible.length}건`}
                   </p>
-                </div>
-                <div className="bg-amber-50 rounded-2xl px-4 py-3">
-                  <p className="text-[10px] font-black text-amber-500 uppercase">휴가</p>
-                  <p className="text-xl font-black text-amber-600 tabular-nums">{emp.manualAdjustment || 0}<span className="text-xs ml-0.5 text-amber-300">일</span></p>
-                  <p className="text-[9px] text-amber-400 mt-0.5">회사 단체 휴가</p>
                 </div>
                 <div className="bg-indigo-600 rounded-2xl px-4 py-3">
                   <p className="text-[10px] font-black text-indigo-200 uppercase">잔여</p>
