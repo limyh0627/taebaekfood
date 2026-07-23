@@ -3,6 +3,7 @@ import { Order, OrderItem, Item, OrderStatus, AppNotification, ShippingRule, Par
 import { toKg, baseRawName, lotStockInUnit } from '../../constants/formula';
 import { deductFromLots, withCarryOverLot, buildReceiveLot } from '../../shared/lotUtils';
 import { bomQty } from '../../shared/bom';
+import { stockUnits, isBoxStockItem } from '../../shared/orderUnits';
 
 /**
  * 생산/출고 분리 재고 엔진 (도메인 모듈).
@@ -37,6 +38,8 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     p.category === '향미유' || p.category === '고춧가루' || p.category === 'goods' ||
     p.procureType === '완사입' || p.procureType === '임가공'; // 사입·임가공 완제품 — 판매 시 생산 없이 자기 재고만 차감(원료는 완사입=무관/임가공=가공입고 때 소진)
   const goodsShipQty = (item: OrderItem, product: Item) => {
+    // 박스 품목(BOM에 낱개가 물린 것)은 재고 단위가 박스 → 박스 개수로 뺀다.
+    if (isBoxStockItem(product)) return stockUnits(item, product);
     const uPerBox = item.unitsPerBox || product.defaultBoxConfig?.unitsPerBox || product.boxSize || 12;
     return item.isBoxUnit && item.boxQuantity ? item.boxQuantity * uPerBox : item.quantity;
   };
@@ -75,17 +78,30 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       if (!sub) continue;
       if (sub.category === 'box' || sub.category === 'tape' ||
           (sub.category === 'submaterial' && (sub.subtype === '박스' || sub.subtype === '테이프'))) continue;
-      addDelta(deltas, sub.id, sign * item.quantity * bomQty(s));  // BOM 수량(1개당 몇 개) 반영
+      addDelta(deltas, sub.id, sign * stockUnits(item, product) * bomQty(s));  // 재고 1단위 × BOM 수량
     }
   };
 
   // 원료 로트 FIFO 차감 + 수불부 기록 → 소비 로트 스냅샷 반환 (생산처리).
-  const deductRawLotsForOrder = async (order: Order, rawUsage: Record<string, number>) => {
+  const deductRawLotsForOrder = async (order: Order, rawUsage: Record<string, number>, ledgerOnly: Record<string, number> = {}) => {
     const consumedLots: NonNullable<Order['rawConsumedLots']> = [];
     const rawNames = Object.keys(rawUsage);
-    if (rawNames.length === 0) return consumedLots;
+    const ledgerOnlyNames = Object.keys(ledgerOnly);
+    if (rawNames.length === 0 && ledgerOnlyNames.length === 0) return consumedLots;
     const dateStr = order.deliveredAt?.slice(0, 10) || new Date().toISOString().slice(0, 10);
     const customerName = partners.find(c => c.id === order.partnerId)?.name || order.partnerName || '';
+
+    // 임가공(OEM) 원료 — 우리 로트로 들고 있지 않으니 재고·로트는 건드리지 않고 수불부에만 남긴다.
+    for (const raw of ledgerOnlyNames) {
+      const usedKg = Math.round(ledgerOnly[raw] * 1000) / 1000;
+      if (usedKg <= 0) continue;
+      const entryId = `rm-auto-${order.id}-${raw.replace(/\s/g, '_')}`;
+      await setDoc(doc(db, 'rawMaterialLedger', entryId), {
+        id: entryId, material: raw, date: dateStr, received: 0, used: usedKg,
+        note: `자동: ${customerName}`, createdAt: new Date().toISOString(), type: 'auto', unit: 'kg', orderId: order.id,
+      }, { merge: true });
+    }
+
     for (const raw of rawNames) {
       const usedKg = Math.round(rawUsage[raw] * 1000) / 1000;
       // 원료 홀더 = raw, 또는 wip 벌크 반제품(unit≠'개'). phantom(무재고)은 이미 전개돼 여기 오지 않음.
@@ -148,23 +164,46 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       }
       await deleteDoc(doc(db, 'rawMaterialLedger', `rm-auto-${order.id}-${material.replace(/\s/g, '_')}`));
     }
+    // 임가공은 소비 로트 스냅샷이 없다(로트를 안 씀) → 원료식으로 다시 구해 수불부 기록만 지운다.
+    for (const item of order.items) {
+      const product = allItems.find(p => p.id === item.itemId);
+      if (product?.procureType !== '임가공') continue;
+      for (const f of buildFormula(product.품목 || product.name)) {
+        if (byMat[f.raw]) continue;   // 위에서 이미 지움
+        await deleteDoc(doc(db, 'rawMaterialLedger', `rm-auto-${order.id}-${f.raw.replace(/\s/g, '_')}`));
+      }
+    }
   };
 
   // 생산처리(작업완료): 원료·부자재 차감 + 완제품 재고 +N. → 소비 로트 스냅샷 반환.
   const produceOrder = async (order: Order, deltas: Map<string, number>) => {
     const rawUsage: Record<string, number> = {};
+    const rawUsageLedgerOnly: Record<string, number> = {};   // 임가공 — 수불부에만
     for (const item of order.items) {
       const product = allItems.find(p => p.id === item.itemId);
-      if (!product || isGoodsItem(product)) continue;
-      if (product.category !== 'product' || !product.submaterials) continue;
+      if (!product) continue;
+      if (product.category !== 'product') continue;
+      const units = stockUnits(item, product);   // 박스 품목이면 박스 개수
+
+      // 임가공(OEM): 완제품은 가공입고로 이미 재고에 있고 원료도 우리 로트가 아니다.
+      // 재고는 아무것도 안 건드리되, 원료수불부에는 쓴 만큼 kg으로 남긴다(서류가 흐름을 봐야 함).
+      if (product.procureType === '임가공') {
+        for (const f of buildFormula(product.품목 || product.name)) {
+          const usedKg = toKg(product.spec || '', f.raw, units) * f.ratio;
+          if (usedKg > 0) rawUsageLedgerOnly[f.raw] = (rawUsageLedgerOnly[f.raw] ?? 0) + usedKg;
+        }
+        continue;
+      }
+
+      if (isGoodsItem(product) || !product.submaterials) continue;
       accrueSubmaterialDeltas(order, product, item, deltas, -1);
       for (const f of buildFormula(product.품목 || product.name)) {
-        const usedKg = toKg(product.spec || '', f.raw, item.quantity) * f.ratio;
+        const usedKg = toKg(product.spec || '', f.raw, units) * f.ratio;
         if (usedKg > 0) rawUsage[f.raw] = (rawUsage[f.raw] ?? 0) + usedKg;
       }
-      addDelta(deltas, product.id, item.quantity); // 완제품 재고 +N (생산됨·미출고)
+      addDelta(deltas, product.id, units); // 완제품 재고 +N (생산됨·미출고)
     }
-    const consumedLots = await deductRawLotsForOrder(order, rawUsage);
+    const consumedLots = await deductRawLotsForOrder(order, rawUsage, rawUsageLedgerOnly);
     await createProductionRecordsForOrder(order);
     return consumedLots;
   };
@@ -173,10 +212,11 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   const unProduceOrder = async (order: Order, deltas: Map<string, number>) => {
     for (const item of order.items) {
       const product = allItems.find(p => p.id === item.itemId);
-      if (!product || isGoodsItem(product)) continue;
-      if (product.category !== 'product' || !product.submaterials) continue;
+      if (!product || product.category !== 'product') continue;
+      if (product.procureType === '임가공') continue;   // 재고 미변동 — 수불부만 restore에서 지운다
+      if (isGoodsItem(product) || !product.submaterials) continue;
       accrueSubmaterialDeltas(order, product, item, deltas, +1);
-      addDelta(deltas, product.id, -item.quantity); // 완제품 재고 되돌림
+      addDelta(deltas, product.id, -stockUnits(item, product)); // 완제품 재고 되돌림
     }
     await restoreRawLotsForOrder(order);
   };
@@ -187,7 +227,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       const product = allItems.find(p => p.id === item.itemId);
       if (!product) continue;
       if (isGoodsItem(product)) addDelta(deltas, product.id, -goodsShipQty(item, product));
-      else if (product.category === 'product') addDelta(deltas, product.id, -item.quantity);
+      else if (product.category === 'product') addDelta(deltas, product.id, -stockUnits(item, product));
     }
   };
 
@@ -197,7 +237,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       const product = allItems.find(p => p.id === item.itemId);
       if (!product) continue;
       if (isGoodsItem(product)) addDelta(deltas, product.id, goodsShipQty(item, product));
-      else if (product.category === 'product') addDelta(deltas, product.id, item.quantity);
+      else if (product.category === 'product') addDelta(deltas, product.id, stockUnits(item, product));
     }
   };
 

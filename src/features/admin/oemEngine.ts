@@ -20,6 +20,8 @@ export interface OemEngineDeps {
   adjustRawLots: (opts: { material: string; rawItemId: string; deltaKg: number; date: string; note: string; addedBy?: string }) => Promise<void>;
   updateItem: (collection: string, id: string, data: Record<string, any>) => Promise<any>;
   addItem: (collection: string, data: Record<string, any>) => Promise<any>;
+  /** 원료식(BOM) — 가공입고분을 어느 원료 그룹에 kg으로 올릴지 결정 */
+  buildFormula: (prodKey: string) => { raw: string; ratio: number }[];
   processingFeeCode?: string; // 기본 OEM_PROCESSING_FEE_CODE
 }
 
@@ -36,7 +38,7 @@ export function itemKg(item: Item): number {
 }
 
 export function createOemEngine(deps: OemEngineDeps) {
-  const { items, adjustRawLots, updateItem, addItem } = deps;
+  const { items, adjustRawLots, updateItem, addItem, buildFormula } = deps;
   const feeCode = deps.processingFeeCode ?? OEM_PROCESSING_FEE_CODE;
 
   /**
@@ -102,17 +104,35 @@ export function createOemEngine(deps: OemEngineDeps) {
 
     let receivedKg = 0;
     const poItems: PurchaseOrder['items'] = [];
+    const receivedByRaw: Record<string, number> = {};   // 원료수불부에 남길 kg (재고는 안 건드림)
 
     for (const r of lines) {
       const item = items.find(i => i.id === r.itemId);
       if (!item) throw new Error(`품목을 찾을 수 없습니다: ${r.itemId}`);
-      receivedKg += itemKg(item) * r.qty;
+      const kg = itemKg(item) * r.qty;
+      receivedKg += kg;
       poItems.push({ itemId: item.id, name: item.name, quantity: r.qty, unit: item.unit ?? '개' });
-      // 돌아온 완제품(박스/낱개) → 자기 재고 +N. (벌크 흡수는 미결 — 나중에.)
+      // 돌아온 완제품(박스/낱개) → 자기 재고 +N. 다른 품목 재고는 건드리지 않는다.
       await updateItem('items', item.id, { stock: Math.round(((item.stock ?? 0) + r.qty) * 1000) / 1000 });
+      // 원료수불부는 BOM(원료식)으로 집계 — 볶음참깨 그룹에 kg 입고로 잡힌다.
+      for (const f of buildFormula(item.품목 || item.name)) {
+        if (kg * f.ratio > 0) receivedByRaw[f.raw] = (receivedByRaw[f.raw] ?? 0) + kg * f.ratio;
+      }
     }
 
     receivedKg = Math.round(receivedKg * 1000) / 1000;
+
+    // 가공입고 = 원료(볶음참깨)가 들어온 것. 반제품 재고는 올리지 않고 수불부에만 kg으로 남긴다.
+    for (const [raw, rawKg] of Object.entries(receivedByRaw)) {
+      const id = `rm-oem-${po.id}-${raw.replace(/\s/g, '_')}`;
+      await addItem('rawMaterialLedger', {
+        id, material: raw, date: input.date,
+        received: Math.round(rawKg * 1000) / 1000, used: 0,
+        note: `OEM 가공입고 ← ${po.partnerName ?? ''}`,
+        type: 'auto', unit: 'kg', createdAt: new Date().toISOString(),
+        ...(input.addedBy ? { addedBy: input.addedBy } : {}),
+      });
+    }
     const loss = batchLoss(po.oemSent, receivedKg);
 
     // 전표는 끊지 않는다 — linkedStatementId 없이 두면 '가공비 전표 작성 대기'가 된다.

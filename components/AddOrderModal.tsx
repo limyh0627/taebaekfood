@@ -4,6 +4,7 @@ import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, La
 import { Item, PartnerItem, OrderItem, Order, Partner, OrderSource, OrderPallet, PalletStock, ShippingRule } from '../types';
 import { updateItem as updateItemDoc } from '../src/shared/services/firebaseService';
 import { bomQty } from '../src/shared/bom';
+import { unpackComponent } from '../src/shared/orderUnits';
 
 interface AddOrderModalProps {
   items: Item[];
@@ -172,7 +173,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
   // 박스 개봉 — 낱개 부족 시 박스 −1 → 낱개 +count (재고는 라이브 구독으로 즉시 갱신)
   const [unpacking, setUnpacking] = useState(false);
   const handleUnpack = async (box: Item, target: Item) => {
-    const count = box.unpackTo?.count ?? 0;
+    const count = unpackComponent(box)?.count ?? 0;
     if (count <= 0 || unpacking) return;
     if ((box.stock ?? 0) < 1) { alert(`${box.name} 재고(박스)가 없습니다.`); return; }
     if (!confirm(`${box.name} 1박스를 개봉해 "${target.name}" ${count}개로 전환할까요?\n(${box.name} −1박스, ${target.name} +${count}개)`)) return;
@@ -269,12 +270,15 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
           usage[sub.id].needed += boxesNeeded;
         }
       }
+      // 재고 1단위 기준 수량 — 박스 품목은 박스 개수(입력이 박스면 qty가 곧 박스 수)
+      const unpack = unpackComponent(product);
+      const stockQty = unpack ? (item.isBoxUnit ? qty : actualQty / unpack.count) : actualQty;
       for (const s of (product.submaterials || [])) {
         if (s.category === 'box' || s.category === 'tape') continue;
         const sub = submaterials.find(sm => sm.id === s.id);
         if (!sub) continue;
         if (!usage[sub.id]) usage[sub.id] = { name: sub.name, needed: 0, stock: sub.stock };
-        usage[sub.id].needed += actualQty * bomQty(s);  // BOM 수량(1개당 몇 개) 반영
+        usage[sub.id].needed += stockQty * bomQty(s);   // 재고 1단위 × BOM 수량
       }
     }
     return Object.values(usage).filter(v => v.needed > v.stock);
@@ -488,7 +492,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
         {(() => {
           const full = items.find(i => i.id === product.id);
           if (!full) return null;
-          const sources = items.filter(b => !b.archived && b.unpackTo?.itemId === full.id);
+          // 이 낱개를 BOM에 물고 있는 박스 품목들 (옛 unpackTo도 폴백으로 인식)
+          const sources = items.filter(b => !b.archived && unpackComponent(b)?.itemId === full.id);
           if (sources.length === 0) return null;
           const shortBy = totalUnits - (full.stock ?? 0);
           if (shortBy <= 0) return null;
@@ -502,7 +507,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                     onClick={(e) => { e.stopPropagation(); handleUnpack(box, full); }}
                     className="text-[10px] font-black px-2 py-1 rounded-lg bg-white border border-amber-300 text-amber-700 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   >
-                    {box.name} 개봉 +{box.unpackTo!.count} <span className="opacity-60">(박스 {box.stock ?? 0})</span>
+                    {box.name} 개봉 +{unpackComponent(box)!.count} <span className="opacity-60">(박스 {box.stock ?? 0})</span>
                   </button>
                 ))}
               </div>

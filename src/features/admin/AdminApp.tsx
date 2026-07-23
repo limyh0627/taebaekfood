@@ -111,6 +111,7 @@ import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName,
 import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo } from '../../shared/lotUtils';
 import { rawLotTarget, recordRawMaterialReceipt, adjustRawLots } from '../../shared/rawReceipt';
 import { bomQty } from '../../shared/bom';
+import { stockUnits } from '../../shared/orderUnits';
 import {
   addItem,
   updateItem,
@@ -494,11 +495,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
       }
 
       if (product.category !== 'product') continue;
-      if (product.procureType === '완사입') continue; // 완포장 사입품 — 원료 소모 없음(자기 재고 차감)
+      // 완사입=원료 무관, 임가공=외주가 볶아 옴(우리 원료 로트가 아님) → 둘 다 원료 부족 대상이 아니다
+      if (product.procureType === '완사입' || product.procureType === '임가공') continue;
+
+      const units = stockUnits(item, product);   // 박스 품목이면 박스 개수 (spec은 박스 1개 내용량)
 
       // 원료식(item_formula/PRODUCT_FORMULA) 기반 원료 kg 소요 집계 — 부자재와 별도 경로
       for (const f of buildFormula(product.품목 || product.name)) {
-        const kg = toKg(product.spec || '', f.raw, item.quantity) * f.ratio;
+        const kg = toKg(product.spec || '', f.raw, units) * f.ratio;
         if (kg > 0) rawUsageKg[f.raw] = (rawUsageKg[f.raw] ?? 0) + kg;
       }
 
@@ -526,8 +530,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
             (sub.category === 'submaterial' && (sub.subtype === '박스' || sub.subtype === '테이프'))) continue;
         // 원료 홀더(raw/wip)는 kg 단위라 '개' 집계가 틀림 → 위 원료식(kg) 경로에서 체크
         if (sub.category === 'raw' || sub.category === 'wip') continue;
-        // BOM 수량(1개당 몇 개) 반영 — 이중캡 ×2, 180ml캡 ×3 같은 것
-        usage[sub.id] = { name: sub.name, needed: (usage[sub.id]?.needed ?? 0) + item.quantity * bomQty(s), unit: '개' };
+        // 재고 1단위 × BOM 수량 — 이중캡 ×2, 180ml캡 ×3 같은 것
+        usage[sub.id] = { name: sub.name, needed: (usage[sub.id]?.needed ?? 0) + units * bomQty(s), unit: '개' };
       }
     }
 
@@ -794,7 +798,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // OEM(임가공) 엔진 — 외주 발주(원료 내보내기) / 가공입고(완제품 받기 + 가공비 전표)
   const { issueOemBatch, receiveOemBatch, issueOemFeeStatement } = createOemEngine({
-    items: allItems, adjustRawLots, updateItem, addItem,
+    items: allItems, adjustRawLots, updateItem, addItem, buildFormula,
   });
   /** 원료 홀더의 현재 재고(kg) — 로트 합계 우선, 없으면 stock */
   const rawStockKg = (material: string): number => {
