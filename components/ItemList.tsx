@@ -26,6 +26,7 @@ import {
   Save,
   Share2,
   Factory,
+  Plus,
 } from 'lucide-react';
 import { Item, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, PartnerItem } from '../types';
 import { PurchaseOrder, poLines } from '../src/shared/types';
@@ -37,6 +38,7 @@ import RawMaterialLotPanel from './RawMaterialLotPanel';
 import RawLedgerList from './RawLedgerList';
 import OemManager from './OemManager';
 import { RM_LIST, unitOf, baseRawName, lotStockInUnit, unitToKg, lotKgRemaining, parsePackageKg } from '../src/constants/formula';
+import { isSubmaterial } from '../src/shared/types';
 import { mutateRawMaterialLots, addItem, subscribeToCollection, fetchCollection } from '../src/shared/services/firebaseService';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../src/shared/firebase';
@@ -716,6 +718,16 @@ const ItemList: React.FC<ItemListProps> = ({
                   className="flex items-center gap-1.5 px-3 py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-xs font-black transition-all shadow-sm"
                 >
                   <FileDown size={13} /><span>사용 기록</span>
+                </button>
+              )}
+              {/* 재고 만들기 — 새 품목 등록 */}
+              {activeTab === 'master' && (
+                <button
+                  type="button"
+                  onClick={() => setIsAddModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black transition-all shadow-sm"
+                >
+                  <Plus size={13} strokeWidth={3} /><span>재고 만들기</span>
                 </button>
               )}
             </div>
@@ -1429,7 +1441,7 @@ const ItemList: React.FC<ItemListProps> = ({
                           <button
                             onClick={e => { e.stopPropagation(); setRowEditProduct(product); setRowEditForm({ name: product.name, category: product.category, stock: product.stock, minStock: product.minStock, unit: product.unit }); }}
                             className="text-[10px] font-black px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-500 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition-all border border-slate-200"
-                          >수정</button>
+                          >{isAdmin ? '수정' : '실사조정'}</button>
                         </div>
                       </td>
                     </tr>
@@ -1586,7 +1598,7 @@ const ItemList: React.FC<ItemListProps> = ({
                               <button
                                 onClick={() => { setRowEditProduct(product); setRowEditForm({ name: product.name, category: product.category, stock: product.stock, minStock: product.minStock, unit: product.unit }); setExpandedRowId(null); }}
                                 className="flex-1 text-[11px] font-black py-2 rounded-xl bg-slate-100 text-slate-500 border border-slate-200"
-                              >수정</button>
+                              >{isAdmin ? '수정' : '실사조정'}</button>
                             </div>
                           </div>
                         </td>
@@ -1657,33 +1669,46 @@ const ItemList: React.FC<ItemListProps> = ({
             <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setRowEditProduct(null)} />
             <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
               <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="text-base font-black text-slate-900">품목 수정</h3>
+                <h3 className="text-base font-black text-slate-900">{isAdmin ? '품목 수정' : '재고 실사조정'}</h3>
                 <button onClick={() => setRowEditProduct(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
               </div>
               <div className="p-5 space-y-4">
-                {/* 카테고리 */}
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">카테고리</label>
-                  <select
-                    value={rowEditForm.category as string || ''}
-                    onChange={e => setRowEditForm(f => ({ ...f, category: e.target.value as any }))}
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-                  >
-                    {['완제품','향미유','고춧가루','용기','마개','테이프','박스','라벨'].map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-                {/* 품목명 */}
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">품목명</label>
-                  <input
-                    type="text"
-                    value={rowEditForm.name || ''}
-                    onChange={e => setRowEditForm(f => ({ ...f, name: e.target.value }))}
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-                  />
-                </div>
+                {/* 품목 정보 — 관리자만 수정 가능. 직원은 실사조정이므로 읽기 전용 */}
+                {isAdmin ? (
+                  <>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">카테고리</label>
+                      <select
+                        value={rowEditForm.category as string || ''}
+                        onChange={e => setRowEditForm(f => ({ ...f, category: e.target.value as any }))}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                      >
+                        {['완제품','향미유','고춧가루','용기','마개','테이프','박스','라벨'].map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">품목명</label>
+                      <input
+                        type="text"
+                        value={rowEditForm.name || ''}
+                        onChange={e => setRowEditForm(f => ({ ...f, name: e.target.value }))}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="bg-slate-50 rounded-2xl px-4 py-3">
+                    <p className="text-sm font-black text-slate-800">{withSpec(rowEditProduct)}</p>
+                    <p className="text-[11px] text-slate-400 font-bold mt-0.5">
+                      {rowEditProduct.category} · 단위 {rowEditProduct.unit || '-'}
+                    </p>
+                    <p className="text-[10px] text-slate-400 mt-1.5">
+                      실물을 세어 보고 <b>현재 재고</b>를 맞춰주세요. 품목명·카테고리·단위는 관리자만 바꿀 수 있습니다.
+                    </p>
+                  </div>
+                )}
                 {/* 현재 재고 + 최소 수량 */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -1694,6 +1719,12 @@ const ItemList: React.FC<ItemListProps> = ({
                       onChange={e => setRowEditForm(f => ({ ...f, stock: parseInt(e.target.value) || 0 }))}
                       className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                     />
+                    {!isAdmin && (rowEditForm.stock ?? 0) !== (rowEditProduct.stock ?? 0) && (
+                      <p className="text-[10px] font-black text-amber-600 mt-1">
+                        앱 재고 {rowEditProduct.stock ?? 0} → {rowEditForm.stock ?? 0}
+                        {' '}({(rowEditForm.stock ?? 0) > (rowEditProduct.stock ?? 0) ? '+' : ''}{(rowEditForm.stock ?? 0) - (rowEditProduct.stock ?? 0)})
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">최소 수량</label>
@@ -1705,34 +1736,38 @@ const ItemList: React.FC<ItemListProps> = ({
                     />
                   </div>
                 </div>
-                {/* 단위 */}
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">단위</label>
-                  <input
-                    type="text"
-                    value={rowEditForm.unit || ''}
-                    onChange={e => setRowEditForm(f => ({ ...f, unit: e.target.value }))}
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-                  />
-                </div>
+                {/* 단위 — 관리자만 */}
+                {isAdmin && (
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">단위</label>
+                    <input
+                      type="text"
+                      value={rowEditForm.unit || ''}
+                      onChange={e => setRowEditForm(f => ({ ...f, unit: e.target.value }))}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                    />
+                  </div>
+                )}
               </div>
               <div className="p-5 border-t border-slate-100 flex gap-2">
                 <button onClick={() => setRowEditProduct(null)} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm">취소</button>
                 <button
                   onClick={async () => {
                     const p = rowEditProduct!;
-                    const { stock: newStock, ...meta } = rowEditForm;
+                    // 직원은 실사조정만 — 카테고리·품목명·단위는 UI뿐 아니라 저장에서도 막는다
+                    const form = isAdmin ? rowEditForm : { stock: rowEditForm.stock, minStock: rowEditForm.minStock };
+                    const { stock: newStock, ...meta } = form;
                     if (isRawHolder(p) && newStock !== undefined && newStock !== p.stock) {
                       // 원료: 메타만 반영하고 재고 변경은 실사조정(lot·수불부)으로
                       onUpdateItem({ ...p, ...meta } as Item);
                       await commitStockEdit(p, newStock);
                     } else {
-                      onUpdateItem({ ...p, ...rowEditForm } as Item);
+                      onUpdateItem({ ...p, ...form } as Item);
                     }
                     setRowEditProduct(null);
                   }}
                   className="flex-1 py-2.5 bg-indigo-600 text-white font-bold rounded-xl text-sm hover:bg-indigo-700 transition-all"
-                >저장</button>
+                >{isAdmin ? '저장' : '실사 반영'}</button>
               </div>
             </div>
           </div>
@@ -2145,7 +2180,14 @@ const ItemList: React.FC<ItemListProps> = ({
       )}
 
       {isAddModalOpen && (
-        <AddItemModal onClose={() => setIsAddModalOpen(false)} onSave={(newProduct) => { onAddItem(newProduct); setIsAddModalOpen(false); }} />
+        <AddItemModal
+          items={items}
+          allSubmaterials={items.filter(i => !i.archived && isSubmaterial(i.category))}
+          rawItems={items.filter(i => !i.archived && isRawHolder(i))}
+          partnerItems={partnerItems}
+          onClose={() => setIsAddModalOpen(false)}
+          onSave={(newProduct) => { onAddItem(newProduct); setIsAddModalOpen(false); }}
+        />
       )}
 
       {confirmModal && (
