@@ -2190,7 +2190,6 @@ const ItemList: React.FC<ItemListProps> = ({
       {isAddModalOpen && (() => {
         const picked = Object.entries(makeQty).filter(([, v]) => (parseFloat(v) || 0) > 0);
         const kw = makeSearch.trim();
-        const pickedIds = new Set(picked.map(([id]) => id));
 
         // 원료·부자재는 제외 — 만드는 게 아니라 사오는 것, 입고/실사조정으로만 움직인다
         const base = items.filter(p => !p.archived && !p.phantom && !isRawHolder(p) && !isSubmaterial(p.category));
@@ -2215,14 +2214,10 @@ const ItemList: React.FC<ItemListProps> = ({
         // 없어진 분류가 골라져 있으면 첫 탭으로
         const cat = MAKE_CATS.some(x => x.c === makeCat) ? makeCat : (MAKE_CATS[0]?.c ?? '');
 
-        const pool = base
+        // 순서는 건드리지 않는다 — 수량 넣었다고 목록이 움직이면 이어서 못 적는다
+        const listed = base
           .filter(p => inCat(p, cat))
           .filter(p => matchesSearch(withSpec(p), kw) || matchesSearch(p.품목 ?? '', kw));
-        // 고른 건 분류·검색과 무관하게 항상 위에 남긴다
-        const listed = [
-          ...base.filter(p => pickedIds.has(p.id)),
-          ...pool.filter(p => !pickedIds.has(p.id)),
-        ];
 
         const commit = async () => {
           if (picked.length === 0 || makeBusy) return;
@@ -2330,6 +2325,25 @@ const ItemList: React.FC<ItemListProps> = ({
                   );
                 })}
               </div>
+
+              {/* 고른 것 — 목록은 안 흔들고, 여기에 모아서 보여준다 */}
+              {picked.length > 0 && (
+                <div className="px-5 py-3 border-t border-slate-100 bg-indigo-50/40 shrink-0 max-h-32 overflow-y-auto">
+                  <div className="flex gap-1.5 flex-wrap">
+                    {picked.map(([id, v]) => {
+                      const p = items.find(x => x.id === id);
+                      return (
+                        <button key={id} onClick={() => setMakeQty(q => { const n = { ...q }; delete n[id]; return n; })}
+                          className="flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 bg-white border border-indigo-200 rounded-lg text-[11px] font-black text-slate-700 hover:border-rose-300 hover:text-rose-500 group">
+                          <span className="truncate max-w-[180px]">{p ? withSpec(p) : id}</span>
+                          <span className="text-indigo-600 tabular-nums group-hover:text-rose-500">+{v}</span>
+                          <X size={11} className="text-slate-300 group-hover:text-rose-400" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div className="p-5 border-t border-slate-100 flex items-center gap-2">
                 <p className="flex-1 text-[11px] font-bold text-slate-400">
