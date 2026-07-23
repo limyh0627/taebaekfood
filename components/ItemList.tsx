@@ -498,9 +498,11 @@ const ItemList: React.FC<ItemListProps> = ({
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   // 재고 만들기 — 품목을 골라 만든 수량만큼 재고를 더한다(제조·생산분 반영).
+  //   원료(raw)는 대상 아님 — 원료는 입고/실사조정으로만 움직인다.
   const [makeQty, setMakeQty] = useState<Record<string, string>>({});
   const [makeSearch, setMakeSearch] = useState('');
   const [makeBusy, setMakeBusy] = useState(false);
+  const [makeCat, setMakeCat] = useState<'완제품' | '상품' | '선물세트' | '반제품' | '부자재' | '배송자재'>('완제품');
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 24;
 
@@ -728,7 +730,7 @@ const ItemList: React.FC<ItemListProps> = ({
               {activeTab === 'master' && (
                 <button
                   type="button"
-                  onClick={() => { setMakeQty({}); setMakeSearch(''); setIsAddModalOpen(true); }}
+                  onClick={() => { setMakeQty({}); setMakeSearch(''); setMakeCat('완제품'); setIsAddModalOpen(true); }}
                   className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black transition-all shadow-sm"
                 >
                   <Plus size={13} strokeWidth={3} /><span>재고 만들기</span>
@@ -2187,13 +2189,40 @@ const ItemList: React.FC<ItemListProps> = ({
       {isAddModalOpen && (() => {
         const picked = Object.entries(makeQty).filter(([, v]) => (parseFloat(v) || 0) > 0);
         const kw = makeSearch.trim();
-        // 현재 탭 품목 중에서 검색. 고른 건 검색과 무관하게 항상 위에 남긴다.
-        const pool = filteredProducts.filter(p => !kw || withSpec(p).includes(kw) || (p.품목 ?? '').includes(kw));
         const pickedIds = new Set(picked.map(([id]) => id));
+
+        // 원료는 제외 — 입고/실사조정으로만 움직인다
+        const base = items.filter(p => !p.archived && !p.phantom && !isRawHolder(p));
+        const isGiftset = (p: Item) => p.category === 'giftset' || normCat(p.category) === '선물세트';
+        const inCat = (p: Item) => {
+          const c = normCat(p.category);
+          switch (makeCat) {
+            case '완제품':   return c === '완제품';
+            case '상품':     return c === '상품' || c === '향미유' || c === '고춧가루';
+            case '선물세트': return isGiftset(p);
+            case '반제품':   return p.category === 'wip';
+            case '배송자재': return p.category === 'shipping';
+            case '부자재':   return isSubmaterial(p.category);
+          }
+        };
+        const pool = base
+          .filter(inCat)
+          .filter(p => !kw || withSpec(p).includes(kw) || (p.품목 ?? '').includes(kw));
+        // 고른 건 분류·검색과 무관하게 항상 위에 남긴다
         const listed = [
-          ...items.filter(p => pickedIds.has(p.id)),
-          ...pool.filter(p => !pickedIds.has(p.id)).slice(0, 60),
+          ...base.filter(p => pickedIds.has(p.id)),
+          ...pool.filter(p => !pickedIds.has(p.id)),
         ];
+        const MAKE_CATS = ['완제품', '상품', '선물세트', '반제품', '부자재', '배송자재'] as const;
+        const catCount = (c: typeof MAKE_CATS[number]) => base.filter(p => {
+          const n = normCat(p.category);
+          if (c === '완제품') return n === '완제품';
+          if (c === '상품') return n === '상품' || n === '향미유' || n === '고춧가루';
+          if (c === '선물세트') return isGiftset(p);
+          if (c === '반제품') return p.category === 'wip';
+          if (c === '배송자재') return p.category === 'shipping';
+          return isSubmaterial(p.category);
+        }).length;
 
         const commit = async () => {
           if (picked.length === 0 || makeBusy) return;
@@ -2201,15 +2230,10 @@ const ItemList: React.FC<ItemListProps> = ({
           try {
             for (const [id, v] of picked) {
               const p = items.find(x => x.id === id);
-              if (!p) continue;
+              if (!p || isRawHolder(p)) continue;   // 원료는 대상 아님
               const add = parseFloat(v) || 0;
               if (add <= 0) continue;
-              if (isRawHolder(p)) {
-                // 원료는 stock을 직접 못 건드림 — 목표치로 실사조정(로트·수불부)
-                await commitStockEdit(p, (displayStockOf(p) ?? 0) + add);
-              } else {
-                onUpdateItem({ ...p, stock: Math.round(((p.stock ?? 0) + add) * 1000) / 1000 });
-              }
+              onUpdateItem({ ...p, stock: Math.round(((p.stock ?? 0) + add) * 1000) / 1000 });
             }
             setToast({ message: `${picked.length}개 품목 재고를 늘렸습니다` });
             setIsAddModalOpen(false);
@@ -2221,16 +2245,29 @@ const ItemList: React.FC<ItemListProps> = ({
         return (
           <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setIsAddModalOpen(false)} />
-            <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[88vh] flex flex-col animate-in zoom-in-95 duration-200">
-              <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+            {/* 크기 고정 — 목록 길이에 따라 창이 늘었다 줄었다 하지 않게 */}
+            <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-xl h-[640px] max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
+              <div className="p-5 border-b border-slate-100 flex items-center justify-between shrink-0">
                 <div>
                   <h3 className="text-base font-black text-slate-900">재고 만들기</h3>
-                  <p className="text-[11px] text-slate-400 font-bold mt-0.5">만든 수량만큼 재고를 더합니다</p>
+                  <p className="text-[11px] text-slate-400 font-bold mt-0.5">만든 수량만큼 재고를 더합니다 · 원료는 입고/실사조정에서</p>
                 </div>
                 <button onClick={() => setIsAddModalOpen(false)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
               </div>
 
-              <div className="px-5 py-3 border-b border-slate-50">
+              {/* 분류 탭 */}
+              <div className="px-5 pt-3 flex gap-1.5 flex-wrap shrink-0">
+                {MAKE_CATS.map(c => (
+                  <button key={c} onClick={() => setMakeCat(c)}
+                    className={`px-3 py-1.5 rounded-xl border text-xs font-black transition-all ${
+                      makeCat === c ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
+                    }`}>
+                    {c} <span className={makeCat === c ? 'text-indigo-200' : 'text-slate-300'}>{catCount(c)}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="px-5 py-3 shrink-0">
                 <div className="relative">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
                   <input
@@ -2240,28 +2277,55 @@ const ItemList: React.FC<ItemListProps> = ({
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
+              <div className="flex-1 overflow-y-auto divide-y divide-slate-50 border-t border-slate-50">
                 {listed.length === 0 && (
-                  <p className="px-5 py-16 text-center text-xs font-bold text-slate-300">품목이 없습니다</p>
+                  <p className="px-5 py-16 text-center text-xs font-bold text-slate-300">
+                    {kw ? '검색 결과가 없습니다' : '이 분류에 품목이 없습니다'}
+                  </p>
                 )}
                 {listed.map(p => {
                   const v = makeQty[p.id] ?? '';
                   const add = parseFloat(v) || 0;
                   const cur = displayStockOf(p) ?? 0;
+                  const low = p.minStock > 0 && cur < p.minStock;
+                  // 완제품이면 만들 때 들어가는 부자재를 같이 보여준다
+                  const subs = (p.submaterials ?? []).slice(0, 4);
                   return (
-                    <div key={p.id} className={`px-5 py-3 flex items-center gap-3 ${add > 0 ? 'bg-indigo-50/40' : ''}`}>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-black text-slate-800 truncate">{withSpec(p)}</p>
-                        <p className="text-[10px] text-slate-400 font-bold">
-                          현재 {cur.toLocaleString()} {p.unit || ''}
-                          {add > 0 && <span className="text-indigo-600 font-black"> → {(cur + add).toLocaleString()}</span>}
-                        </p>
+                    <div key={p.id} className={`px-5 py-3 ${add > 0 ? 'bg-indigo-50/40' : ''}`}>
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-black text-slate-800 truncate">{withSpec(p)}</p>
+                          <p className="text-[10px] font-bold">
+                            <span className={low ? 'text-rose-500' : 'text-slate-400'}>
+                              현재 {cur.toLocaleString()} {p.unit || ''}
+                            </span>
+                            {low && <span className="text-rose-400"> · 최소 {p.minStock}</span>}
+                            {add > 0 && <span className="text-indigo-600 font-black"> → {(cur + add).toLocaleString()}</span>}
+                          </p>
+                        </div>
+                        <input
+                          inputMode="decimal" value={v} placeholder="0"
+                          onChange={e => setMakeQty(q => ({ ...q, [p.id]: e.target.value.replace(/[^\d.]/g, '') }))}
+                          className={`w-24 shrink-0 border rounded-xl px-3 py-2 text-right text-sm font-black tabular-nums outline-none focus:ring-2 focus:ring-indigo-400 ${add > 0 ? 'border-indigo-300 bg-white' : 'border-slate-200'}`}
+                        />
                       </div>
-                      <input
-                        inputMode="decimal" value={v} placeholder="0"
-                        onChange={e => setMakeQty(q => ({ ...q, [p.id]: e.target.value.replace(/[^\d.]/g, '') }))}
-                        className={`w-24 shrink-0 border rounded-xl px-3 py-2 text-right text-sm font-black tabular-nums outline-none focus:ring-2 focus:ring-indigo-400 ${add > 0 ? 'border-indigo-300 bg-white' : 'border-slate-200'}`}
-                      />
+                      {/* 부자재 — 만들 때 쓰이는 것. 재고가 모자라면 빨갛게 */}
+                      {subs.length > 0 && (
+                        <div className="flex gap-1 flex-wrap mt-1.5 pl-0.5">
+                          {subs.map((s, i) => {
+                            const sub = items.find(x => x.id === s.id);
+                            const need = (s.stock || 1) * add;
+                            const short = add > 0 && sub && (sub.stock ?? 0) < need;
+                            return (
+                              <span key={i}
+                                className={`text-[9px] font-black px-1.5 py-0.5 rounded ${short ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-500'}`}
+                                title={sub ? `재고 ${sub.stock ?? 0}${add > 0 ? ` · 필요 ${need}` : ''}` : ''}>
+                                {s.name}{add > 0 && sub ? ` ${sub.stock ?? 0}/${need}` : ''}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
