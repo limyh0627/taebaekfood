@@ -1,0 +1,24 @@
+{
+  "at": "2026-07-23T12:32:30.568Z",
+  "statements": [
+    {
+      "id": "stmt-1784708166070",
+      "totalSupply": 500,
+      "totalTax": 50,
+      "totalAmount": 550,
+      "items": [
+        {
+          "spec": "",
+          "name": "외주가공비 (1kg→1kg)",
+          "price": 500,
+          "tax": 50,
+          "accountCode": "540",
+          "supply": 500,
+          "qty": 1,
+          "total": 550,
+          "isTaxExempt": false
+        }
+      ]
+    }
+  ]
+}

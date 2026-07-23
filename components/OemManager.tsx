@@ -279,7 +279,9 @@ function FeeModal({ po, busy, onClose, onSubmit }: {
 
         <div className="flex items-end gap-3">
           <div>
-            <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">가공단가 (원/kg)</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">
+              가공단가 (원/kg) <span className="text-slate-300 normal-case font-bold">· 부가세 포함</span>
+            </label>
             <input inputMode="numeric" value={fee} onChange={e => setFee(e.target.value.replace(/[^\d]/g, ''))}
               className="w-28 border border-slate-200 rounded-xl px-3 py-2 text-right text-sm font-black tabular-nums outline-none focus:ring-2 focus:ring-amber-300" />
           </div>

@@ -123,9 +123,10 @@ describe('issueOemFeeStatement (가공비 전표 — 사용자 확인 후)', () 
     const eng = createOemEngine(deps as any);
     const r = await eng.issueOemFeeStatement({ po: receivedPo, date: '2026-07-17' });
 
-    expect(r).toMatchObject({ supply: 810_000, tax: 81_000, total: 891_000 });  // 405 × 2000
+    // 단가는 부가세 포함 — 405kg × 2000 = 합계 810,000에서 공급가 역산
+    expect(r).toMatchObject({ supply: 736_364, tax: 73_636, total: 810_000 });
     const stmt = adds.find(a => a.c === 'issuedStatements')!.d;
-    expect(stmt).toMatchObject({ type: '매입', partnerName: '푸미푸드', totalAmount: 891_000 });
+    expect(stmt).toMatchObject({ type: '매입', partnerName: '푸미푸드', totalAmount: 810_000 });
     expect(stmt.items[0].accountCode).toBe('540');
     expect(updates.find(u => u.c === 'purchaseOrders')!.d.linkedStatementId).toBe(stmt.id);
   });
@@ -134,7 +135,7 @@ describe('issueOemFeeStatement (가공비 전표 — 사용자 확인 후)', () 
     const { deps, adds } = makeDeps();
     const eng = createOemEngine(deps as any);
     await eng.issueOemFeeStatement({ po: receivedPo, unitPricePerKg: 500, date: '2026-07-17' });
-    expect(adds.find(a => a.c === 'issuedStatements')!.d.totalSupply).toBe(202_500); // 405 × 500
+    expect(adds.find(a => a.c === 'issuedStatements')!.d.totalAmount).toBe(202_500); // 405 × 500 = 합계
   });
 
   it('면세면 세액 0', async () => {

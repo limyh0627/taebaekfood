@@ -30,19 +30,24 @@ export function yieldRate(sent: { material: string; kg: number }[] | undefined, 
 }
 
 export interface ProcessingFee {
-  supply: number;   // 공급가 = 받은 총 kg × kg단가
-  tax: number;      // 세액 (과세 10%)
-  total: number;    // 합계
+  supply: number;   // 공급가 (합계에서 역산)
+  tax: number;      // 세액
+  total: number;    // 합계 = 받은 총 kg × kg단가
 }
 
 /**
- * 가공비 전표 금액. 외주가공비는 과세(세금계산서 수취) → 공급가 + 세액 분리.
- * @param taxable false면 면세(세액 0) — 기본 과세.
+ * 가공비 전표 금액.
+ *
+ * **단가는 부가세 포함**이다 — 앱의 다른 전표(TradeStatement)와 같은 규칙.
+ * 500원/kg을 넣으면 1kg에 합계 500원이고, 공급가 455 + 세액 45로 쪼개진다.
+ * (전에는 500을 공급가로 보고 세액을 얹어 550이 됐다.)
+ *
+ * @param taxable false면 면세 — 전액 공급가, 세액 0.
  */
 export function processingFee(receivedKg: number, unitPricePerKg: number, taxable = true): ProcessingFee {
-  const supply = Math.round((receivedKg || 0) * (unitPricePerKg || 0));
-  const tax = taxable ? Math.round(supply * 0.1) : 0;
-  return { supply, tax, total: supply + tax };
+  const total = Math.round((receivedKg || 0) * (unitPricePerKg || 0));
+  const supply = taxable ? Math.round(total / 1.1) : total;
+  return { supply, tax: total - supply, total };
 }
 
 /** OEM 배치의 현재 외주 잔량(kg) — status가 sent면 보낸 전량, received면 0. 열린 배치 합이 외주재고. */

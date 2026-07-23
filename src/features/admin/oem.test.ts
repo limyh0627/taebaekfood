@@ -38,15 +38,22 @@ describe('yieldRate', () => {
   });
 });
 
+// 단가는 부가세 포함 — 앱의 다른 전표와 같은 규칙. 넣은 금액이 곧 합계다.
 describe('processingFee', () => {
-  it('과세: 950kg × 2000 = 공급가 1,900,000 + 세액 190,000', () => {
-    expect(processingFee(950, 2000)).toEqual({ supply: 1_900_000, tax: 190_000, total: 2_090_000 });
+  it('500원/kg × 1kg → 합계 500 (550 아님)', () => {
+    expect(processingFee(1, 500)).toEqual({ supply: 455, tax: 45, total: 500 });
   });
-  it('면세: 세액 0', () => {
+  it('과세: 950kg × 2000 = 합계 1,900,000에서 공급가 역산', () => {
+    expect(processingFee(950, 2000)).toEqual({ supply: 1_727_273, tax: 172_727, total: 1_900_000 });
+  });
+  it('면세: 전액 공급가, 세액 0', () => {
     expect(processingFee(950, 2000, false)).toEqual({ supply: 1_900_000, tax: 0, total: 1_900_000 });
   });
-  it('반올림', () => {
-    expect(processingFee(333, 1500)).toEqual({ supply: 499_500, tax: 49_950, total: 549_450 });
+  it('공급가+세액은 항상 합계와 맞는다 (반올림 오차 없음)', () => {
+    for (const [kg, price] of [[333, 1500], [7, 333], [1, 500], [12.5, 777]]) {
+      const f = processingFee(kg, price);
+      expect(f.supply + f.tax).toBe(f.total);
+    }
   });
 });
 
