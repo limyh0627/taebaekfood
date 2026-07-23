@@ -497,6 +497,10 @@ const ItemList: React.FC<ItemListProps> = ({
 
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  // 재고 만들기 — 품목을 골라 만든 수량만큼 재고를 더한다(제조·생산분 반영).
+  const [makeQty, setMakeQty] = useState<Record<string, string>>({});
+  const [makeSearch, setMakeSearch] = useState('');
+  const [makeBusy, setMakeBusy] = useState(false);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 24;
 
@@ -724,7 +728,7 @@ const ItemList: React.FC<ItemListProps> = ({
               {activeTab === 'master' && (
                 <button
                   type="button"
-                  onClick={() => setIsAddModalOpen(true)}
+                  onClick={() => { setMakeQty({}); setMakeSearch(''); setIsAddModalOpen(true); }}
                   className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black transition-all shadow-sm"
                 >
                   <Plus size={13} strokeWidth={3} /><span>재고 만들기</span>
@@ -2179,16 +2183,104 @@ const ItemList: React.FC<ItemListProps> = ({
         </>
       )}
 
-      {isAddModalOpen && (
-        <AddItemModal
-          items={items}
-          allSubmaterials={items.filter(i => !i.archived && isSubmaterial(i.category))}
-          rawItems={items.filter(i => !i.archived && isRawHolder(i))}
-          partnerItems={partnerItems}
-          onClose={() => setIsAddModalOpen(false)}
-          onSave={(newProduct) => { onAddItem(newProduct); setIsAddModalOpen(false); }}
-        />
-      )}
+      {/* ── 재고 만들기 — 품목 골라 만든 수량만큼 재고 +N ── */}
+      {isAddModalOpen && (() => {
+        const picked = Object.entries(makeQty).filter(([, v]) => (parseFloat(v) || 0) > 0);
+        const kw = makeSearch.trim();
+        // 현재 탭 품목 중에서 검색. 고른 건 검색과 무관하게 항상 위에 남긴다.
+        const pool = filteredProducts.filter(p => !kw || withSpec(p).includes(kw) || (p.품목 ?? '').includes(kw));
+        const pickedIds = new Set(picked.map(([id]) => id));
+        const listed = [
+          ...items.filter(p => pickedIds.has(p.id)),
+          ...pool.filter(p => !pickedIds.has(p.id)).slice(0, 60),
+        ];
+
+        const commit = async () => {
+          if (picked.length === 0 || makeBusy) return;
+          setMakeBusy(true);
+          try {
+            for (const [id, v] of picked) {
+              const p = items.find(x => x.id === id);
+              if (!p) continue;
+              const add = parseFloat(v) || 0;
+              if (add <= 0) continue;
+              if (isRawHolder(p)) {
+                // 원료는 stock을 직접 못 건드림 — 목표치로 실사조정(로트·수불부)
+                await commitStockEdit(p, (displayStockOf(p) ?? 0) + add);
+              } else {
+                onUpdateItem({ ...p, stock: Math.round(((p.stock ?? 0) + add) * 1000) / 1000 });
+              }
+            }
+            setToast({ message: `${picked.length}개 품목 재고를 늘렸습니다` });
+            setIsAddModalOpen(false);
+          } finally {
+            setMakeBusy(false);
+          }
+        };
+
+        return (
+          <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setIsAddModalOpen(false)} />
+            <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[88vh] flex flex-col animate-in zoom-in-95 duration-200">
+              <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-black text-slate-900">재고 만들기</h3>
+                  <p className="text-[11px] text-slate-400 font-bold mt-0.5">만든 수량만큼 재고를 더합니다</p>
+                </div>
+                <button onClick={() => setIsAddModalOpen(false)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
+              </div>
+
+              <div className="px-5 py-3 border-b border-slate-50">
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
+                  <input
+                    autoFocus value={makeSearch} onChange={e => setMakeSearch(e.target.value)} placeholder="품목 검색"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
+                {listed.length === 0 && (
+                  <p className="px-5 py-16 text-center text-xs font-bold text-slate-300">품목이 없습니다</p>
+                )}
+                {listed.map(p => {
+                  const v = makeQty[p.id] ?? '';
+                  const add = parseFloat(v) || 0;
+                  const cur = displayStockOf(p) ?? 0;
+                  return (
+                    <div key={p.id} className={`px-5 py-3 flex items-center gap-3 ${add > 0 ? 'bg-indigo-50/40' : ''}`}>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-black text-slate-800 truncate">{withSpec(p)}</p>
+                        <p className="text-[10px] text-slate-400 font-bold">
+                          현재 {cur.toLocaleString()} {p.unit || ''}
+                          {add > 0 && <span className="text-indigo-600 font-black"> → {(cur + add).toLocaleString()}</span>}
+                        </p>
+                      </div>
+                      <input
+                        inputMode="decimal" value={v} placeholder="0"
+                        onChange={e => setMakeQty(q => ({ ...q, [p.id]: e.target.value.replace(/[^\d.]/g, '') }))}
+                        className={`w-24 shrink-0 border rounded-xl px-3 py-2 text-right text-sm font-black tabular-nums outline-none focus:ring-2 focus:ring-indigo-400 ${add > 0 ? 'border-indigo-300 bg-white' : 'border-slate-200'}`}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="p-5 border-t border-slate-100 flex items-center gap-2">
+                <p className="flex-1 text-[11px] font-bold text-slate-400">
+                  {picked.length > 0 ? `${picked.length}개 품목 선택됨` : '수량을 입력하면 선택됩니다'}
+                </p>
+                <button onClick={() => setIsAddModalOpen(false)} className="px-5 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-sm">취소</button>
+                <button onClick={commit} disabled={picked.length === 0 || makeBusy}
+                  className="px-5 py-2.5 bg-indigo-600 text-white font-bold rounded-xl text-sm hover:bg-indigo-700 disabled:opacity-30 transition-all">
+                  {makeBusy ? '반영 중…' : '확정'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {confirmModal && (
         <ConfirmModal
