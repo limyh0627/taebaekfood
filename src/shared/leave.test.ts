@@ -84,25 +84,30 @@ describe('연차 발생 (입사 응당일 기준)', () => {
 });
 
 describe('calculateLeaveBalance', () => {
-  it('박은지 — 월차 유지 + 휴가 포함 → 잔여 14', () => {
-    const e = emp({ id: 'e5', joinDate: '2025-06-26', annualLeave: { carryOverLeave: 3, bonusLeave: 0 }, manualAdjustment: 3 });
-    const reqs = ['2026-04-17', '2026-04-28', '2026-05-15', '2026-06-12', '2026-06-24', '2026-06-30']
-      .map((d, i) => req({ id: `r${i}`, employeeId: 'e5', startDate: d, endDate: d }));
+  it('박은지 — 월차 유지 + 휴가 기록 포함 → 잔여 14', () => {
+    const e = emp({ id: 'e5', joinDate: '2025-06-26', annualLeave: { carryOverLeave: 3, bonusLeave: 0 } });
+    const reqs = [
+      ...['2026-04-17', '2026-04-28', '2026-05-15', '2026-06-12', '2026-06-24', '2026-06-30']
+        .map((d, i) => req({ id: `r${i}`, employeeId: 'e5', startDate: d, endDate: d })),
+      req({ id: 'vac', employeeId: 'e5', type: '휴가', startDate: '2026-01-01', endDate: '2026-01-01', daysUsed: 3 }),
+    ];
     const b = calculateLeaveBalance(e, reqs, NOW);
     expect(b.monthly).toBe(5);
     expect(b.annual).toBe(15);
-    expect(b.usedRequests).toBe(6);
-    expect(b.usedVacation).toBe(3);
-    expect(b.remaining).toBe(14);       // 5+15+3 − 6 − 3
+    expect(b.usedTotal).toBe(9);        // 신청 6 + 휴가 3
+    expect(b.remaining).toBe(14);       // 5+15+3 − 9
   });
 
   it('이지영 — 올해 연차 미발생이면 이월분만 → 잔여 −6', () => {
-    const e = emp({ id: 'e3', joinDate: '2022-08-25', annualLeave: { carryOverLeave: 3, bonusLeave: 0 }, manualAdjustment: 3 });
-    const reqs = Array.from({ length: 6 }, (_, i) => req({ id: `r${i}`, employeeId: 'e3' }));
+    const e = emp({ id: 'e3', joinDate: '2022-08-25', annualLeave: { carryOverLeave: 3, bonusLeave: 0 } });
+    const reqs = [
+      ...Array.from({ length: 6 }, (_, i) => req({ id: `r${i}`, employeeId: 'e3' })),
+      req({ id: 'vac', employeeId: 'e3', type: '휴가', startDate: '2026-01-01', endDate: '2026-01-01', daysUsed: 3 }),
+    ];
     const b = calculateLeaveBalance(e, reqs, NOW);
     expect(b.annual).toBe(0);
     expect(b.grant.granted).toBe(false);
-    expect(b.remaining).toBe(-6);       // 0+0+3 − 6 − 3
+    expect(b.remaining).toBe(-6);       // 0+0+3 − 9
   });
 
   it('경조사·기타는 사용에서 빠진다', () => {
@@ -112,7 +117,7 @@ describe('calculateLeaveBalance', () => {
       req({ id: 'b', employeeId: 'e9', type: '기타', daysUsed: 2 }),
       req({ id: 'c', employeeId: 'e9', type: '연차', daysUsed: 1 }),
     ];
-    expect(calculateLeaveBalance(e, reqs, NOW).usedRequests).toBe(1);
+    expect(calculateLeaveBalance(e, reqs, NOW).usedTotal).toBe(1);
   });
 
   it('대기·반려는 사용에 안 잡힌다', () => {
@@ -122,13 +127,13 @@ describe('calculateLeaveBalance', () => {
       req({ id: 'b', employeeId: 'e9', status: 'rejected', daysUsed: 2 }),
       req({ id: 'c', employeeId: 'e9', status: 'approved', daysUsed: 1 }),
     ];
-    expect(calculateLeaveBalance(e, reqs, NOW).usedRequests).toBe(1);
+    expect(calculateLeaveBalance(e, reqs, NOW).usedTotal).toBe(1);
   });
 
   it('단체 휴가(휴가 유형)도 차감된다', () => {
     const e = emp({ id: 'e9', joinDate: '2020-01-01' });
     const reqs = [req({ id: 'v', employeeId: 'e9', type: '휴가', daysUsed: 3 })];
-    expect(calculateLeaveBalance(e, reqs, NOW).usedRequests).toBe(3);
+    expect(calculateLeaveBalance(e, reqs, NOW).usedTotal).toBe(3);
   });
 
   describe('당월 사용', () => {
@@ -141,12 +146,13 @@ describe('calculateLeaveBalance', () => {
       ];
       const b = calculateLeaveBalance(e, reqs, NOW);   // NOW = 2026-07-23
       expect(b.usedThisMonth).toBe(4);
-      expect(b.usedRequests).toBe(5);
+      expect(b.usedTotal).toBe(5);
     });
 
-    it('구 수동 휴가값은 당월에 안 들어간다 (언제 쓴 건지 모름)', () => {
-      const e = emp({ id: 'e9', joinDate: '2020-01-01', manualAdjustment: 5 });
-      const b = calculateLeaveBalance(e, [], NOW);
+    it('1월에 등록된 단체 휴가는 당월(7월)에 안 들어간다', () => {
+      const e = emp({ id: 'e9', joinDate: '2020-01-01' });
+      const reqs = [req({ id: 'v', employeeId: 'e9', type: '휴가', startDate: '2026-01-01', endDate: '2026-01-01', daysUsed: 5 })];
+      const b = calculateLeaveBalance(e, reqs, NOW);
       expect(b.usedThisMonth).toBe(0);
       expect(b.usedTotal).toBe(5);
     });

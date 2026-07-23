@@ -1,0 +1,50 @@
+{
+  "at": "2026-07-23T11:56:33.020Z",
+  "note": "manualAdjustment → 휴가 기록 이관 (2026-07-23). undo 시 아래 값으로 복원",
+  "employees": [
+    {
+      "id": "e4",
+      "name": "남명숙",
+      "manualAdjustment": 1
+    },
+    {
+      "id": "e5",
+      "name": "박은지",
+      "manualAdjustment": 3
+    },
+    {
+      "id": "e2",
+      "name": "아브라함",
+      "manualAdjustment": 11.5
+    },
+    {
+      "id": "e1",
+      "name": "이지영",
+      "manualAdjustment": 3
+    },
+    {
+      "id": "e3",
+      "name": "이총제",
+      "manualAdjustment": 2
+    },
+    {
+      "id": "admin",
+      "name": "태백식품",
+      "manualAdjustment": 1
+    },
+    {
+      "id": "e6",
+      "name": "황준호",
+      "manualAdjustment": 3
+    }
+  ],
+  "createdLeaveIds": [
+    "leave-legacy-vac-e4",
+    "leave-legacy-vac-e5",
+    "leave-legacy-vac-e2",
+    "leave-legacy-vac-e1",
+    "leave-legacy-vac-e3",
+    "leave-legacy-vac-admin",
+    "leave-legacy-vac-e6"
+  ]
+}

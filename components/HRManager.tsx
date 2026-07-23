@@ -84,7 +84,6 @@ const HRManager: React.FC<HRManagerProps> = ({
     phone: '010-0000-0000',
     status: 'working' as EmployeeStatus,
     annualLeave: { carryOverLeave: 0, bonusLeave: 0 },
-    manualAdjustment: 0,
     healthCertDate: '',
   });
 
@@ -135,13 +134,9 @@ const HRManager: React.FC<HRManagerProps> = ({
     setIsModalOpen(false);
   };
 
-  const handleBalanceUpdate = (emp: Employee, field: 'carryOverLeave' | 'bonusLeave' | 'manualAdjustment', value: string) => {
+  const handleBalanceUpdate = (emp: Employee, field: 'carryOverLeave' | 'bonusLeave', value: string) => {
     const numValue = parseFloat(value) || 0;
-    if (field === 'manualAdjustment') {
-      onUpdateEmployee({ ...emp, manualAdjustment: numValue });
-    } else {
-      onUpdateEmployee({ ...emp, annualLeave: { ...emp.annualLeave, carryOverLeave: emp.annualLeave?.carryOverLeave || 0, bonusLeave: emp.annualLeave?.bonusLeave || 0, [field]: numValue } });
-    }
+    onUpdateEmployee({ ...emp, annualLeave: { ...emp.annualLeave, carryOverLeave: emp.annualLeave?.carryOverLeave || 0, bonusLeave: emp.annualLeave?.bonusLeave || 0, [field]: numValue } });
   };
 
   return (
@@ -180,7 +175,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                   joinDate: new Date().toISOString().split('T')[0],
                   birthDate: '',
                   phone: '010-0000-0000', status: 'working',
-                  annualLeave: { carryOverLeave: 0, bonusLeave: 0 }, manualAdjustment: 0,
+                  annualLeave: { carryOverLeave: 0, bonusLeave: 0 },
                   healthCertDate: '',
                 });
                 setIsModalOpen(true);
@@ -287,7 +282,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                       </td>
                       <td className="px-4 sm:px-8 py-4 sm:py-6 text-right">
                         <div className="flex justify-end space-x-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-all">
-                          <button onClick={() => { setEditingEmployee(emp); setFormData({ name: emp.name, position: emp.position, department: emp.department, joinDate: emp.joinDate, birthDate: emp.birthDate || '', phone: emp.phone, status: emp.status, annualLeave: { carryOverLeave: emp.annualLeave?.carryOverLeave || 0, bonusLeave: emp.annualLeave?.bonusLeave || 0 }, manualAdjustment: emp.manualAdjustment || 0, healthCertDate: emp.healthCertDate || '' }); setIsModalOpen(true); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><Edit2 size={18} /></button>
+                          <button onClick={() => { setEditingEmployee(emp); setFormData({ name: emp.name, position: emp.position, department: emp.department, joinDate: emp.joinDate, birthDate: emp.birthDate || '', phone: emp.phone, status: emp.status, annualLeave: { carryOverLeave: emp.annualLeave?.carryOverLeave || 0, bonusLeave: emp.annualLeave?.bonusLeave || 0 }, healthCertDate: emp.healthCertDate || '' }); setIsModalOpen(true); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><Edit2 size={18} /></button>
                           <button onClick={() => setConfirmModal({
                               message: `'${emp.name}' 직원 정보를 삭제하시겠습니까?`,
                               subMessage: '휴가 기록 등 관련 데이터도 함께 삭제됩니다.',
@@ -417,7 +412,6 @@ const HRManager: React.FC<HRManagerProps> = ({
                   const underOneYear = bal.grant.underOneYear;
                   const monthlyLeave = bal.monthly;
                   const annualLeave = bal.annual;
-                  const approvedUsed = bal.usedRequests;
                   const finalTotalUsable = bal.granted;
                   const totalUsedCount = bal.usedTotal;
                   const remaining = bal.remaining;
@@ -505,9 +499,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                             <span className="text-[10px] font-bold text-slate-300">/</span>
                             <span className={`text-sm font-black ${bal.usedThisMonth > 0 ? 'text-amber-500' : 'text-slate-300'}`}>{bal.usedThisMonth}</span>
                           </div>
-                          <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">
-                            {(emp.manualAdjustment || 0) > 0 ? `신청 ${approvedUsed} + 구휴가 ${emp.manualAdjustment}` : '총 / 당월'}
-                          </span>
+                          <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">총 / 당월</span>
                         </div>
                       </td>
                       <td className="px-8 py-6 text-right">
@@ -596,11 +588,6 @@ const HRManager: React.FC<HRManagerProps> = ({
                       <p className="text-[10px] text-slate-300">포상·특별 부여 연차</p>
                       <input type="number" step="0.5" value={formData.annualLeave.bonusLeave} onChange={(e) => setFormData({...formData, annualLeave: {...formData.annualLeave, bonusLeave: parseFloat(e.target.value) || 0}})} className="w-full bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 text-sm font-bold outline-none text-emerald-700 focus:border-emerald-400" />
                     </div>
-                  </div>
-                  <div className="space-y-1.5 pt-2 border-t border-slate-200">
-                    <label className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">구 휴가 (수동)</label>
-                    <p className="text-[10px] text-slate-300">예전에 손으로 넣던 단체 휴가 일수 — 사용 개수에 포함됩니다. 지금은 &apos;휴가&apos; 버튼을 쓰세요(기록이 남습니다)</p>
-                    <input type="number" step="0.5" value={formData.manualAdjustment} onChange={(e) => setFormData({...formData, manualAdjustment: parseFloat(e.target.value) || 0})} className="w-full bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-sm font-bold outline-none text-amber-700 focus:border-amber-400" />
                   </div>
                 </div>
               </div>
@@ -765,7 +752,6 @@ const HRManager: React.FC<HRManagerProps> = ({
         const monthlyLeave = bal.monthly;
         const annualLeave = bal.annual;
         const totalUsable = bal.granted;
-        const approvedUsed = bal.usedRequests;
         const remaining = bal.remaining;
 
         // 승인되어 실제로 차감된 것만 집계(경조사·기타는 차감 안 함)
@@ -821,9 +807,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                     <span className={bal.usedThisMonth > 0 ? 'text-amber-600' : 'text-slate-300'}>{bal.usedThisMonth}</span>
                     <span className="text-xs ml-0.5 text-rose-300">일</span>
                   </p>
-                  <p className="text-[9px] text-rose-400 mt-0.5">
-                    {(emp.manualAdjustment || 0) > 0 ? `신청 ${approvedUsed} + 구휴가 ${emp.manualAdjustment}` : `승인 ${deductible.length}건`}
-                  </p>
+                  <p className="text-[9px] text-rose-400 mt-0.5">승인 {deductible.length}건</p>
                 </div>
                 <div className="bg-indigo-600 rounded-2xl px-4 py-3">
                   <p className="text-[10px] font-black text-indigo-200 uppercase">잔여</p>

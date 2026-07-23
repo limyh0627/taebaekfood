@@ -345,7 +345,6 @@ export interface Employee {
   phone: string;
   birthDate?: string;
   annualLeave?: AnnualLeave;
-  manualAdjustment?: number;
   healthCertDate?: string;  // 보건증 발급일 (YYYY-MM-DD)
 }
 

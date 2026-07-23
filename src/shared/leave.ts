@@ -121,9 +121,7 @@ export interface LeaveBalance {
   carryOver: number;    // 이월
   bonus: number;        // 보너스
   granted: number;      // 총 부여 = monthly + annual + carryOver + bonus
-  usedRequests: number; // 승인된 신청 사용분
-  usedVacation: number; // 구 수동 휴가값 (manualAdjustment)
-  usedTotal: number;    // 총 사용 = usedRequests + usedVacation
+  usedTotal: number;    // 총 사용 — 승인된 신청(연차·휴가 등) 전부
   usedThisMonth: number;// 당월 사용분 (신청 시작일 기준)
   remaining: number;    // 잔여 = granted − usedTotal
   grant: AnnualGrantInfo;
@@ -145,16 +143,14 @@ export function calculateLeaveBalance(
   const annual = calculateAnnualLeave(emp.joinDate, now);
   const carryOver = emp.annualLeave?.carryOverLeave || 0;
   const bonus = emp.annualLeave?.bonusLeave || 0;
-  const usedRequests = getApprovedLeaveDays(emp.id, leaveRequests);
-  const usedVacation = emp.manualAdjustment || 0;
-  // 당월은 신청 기록만 — 구 수동값(manualAdjustment)은 언제 쓴 건지 알 수 없어 제외
+  // 사용은 신청 기록 하나로만 센다. 회사 단체 휴가도 '휴가' 유형 신청으로 남는다.
+  const usedTotal = getApprovedLeaveDays(emp.id, leaveRequests);
   const usedThisMonth = getApprovedLeaveDays(emp.id, leaveRequests, toYearMonth(now));
 
   const granted = monthly + annual + carryOver + bonus;
-  const usedTotal = usedRequests + usedVacation;
   return {
     monthly, annual, carryOver, bonus, granted,
-    usedRequests, usedVacation, usedTotal, usedThisMonth,
+    usedTotal, usedThisMonth,
     remaining: granted - usedTotal,
     grant: getAnnualGrantInfo(emp.joinDate, now),
   };

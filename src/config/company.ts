@@ -79,7 +79,6 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     status: 'working',
     phone: '010-1111-2222',
     annualLeave: { carryOverLeave: 2, bonusLeave: 0 },
-    manualAdjustment: 0,
   },
   {
     id: 'e2',
@@ -92,7 +91,6 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     status: 'working',
     phone: '010-3333-4444',
     annualLeave: { carryOverLeave: 0, bonusLeave: 1 },
-    manualAdjustment: 0,
   },
 ];
 

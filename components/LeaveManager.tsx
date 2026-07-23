@@ -249,8 +249,11 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
             const carryOver = emp.annualLeave?.carryOverLeave || 0;
             const bonus = emp.annualLeave?.bonusLeave || 0;
             const total = statutory + carryOver + bonus;
-            const usedVacation = emp.manualAdjustment || 0;
-            const usedPersonal = calculateUsedPersonalLeave(emp.id);
+            // 회사 단체 휴가 = '휴가' 유형 신청, 개인연차 = 그 외. 둘 다 승인분만.
+            const mineApproved = leaveRequests.filter(r =>
+              r.employeeId === emp.id && r.status === 'approved' && !NON_DEDUCTIBLE_TYPES.includes(r.type));
+            const usedVacation = mineApproved.filter(r => r.type === '휴가').reduce((s, r) => s + (r.daysUsed || 0), 0);
+            const usedPersonal = mineApproved.filter(r => r.type !== '휴가').reduce((s, r) => s + (r.daysUsed || 0), 0);
             const totalUsed = usedVacation + usedPersonal;
             const remaining = total - totalUsed;
             const usagePercent = total > 0 ? (totalUsed / total) * 100 : 0;
