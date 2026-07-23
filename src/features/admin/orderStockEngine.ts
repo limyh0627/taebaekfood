@@ -2,6 +2,7 @@ import { doc, setDoc, deleteDoc, Firestore } from 'firebase/firestore';
 import { Order, OrderItem, Item, OrderStatus, AppNotification, ShippingRule, Partner, RawMaterialLot } from '../../shared/types';
 import { toKg, baseRawName, lotStockInUnit } from '../../constants/formula';
 import { deductFromLots, withCarryOverLot, buildReceiveLot } from '../../shared/lotUtils';
+import { bomQty } from '../../shared/bom';
 
 /**
  * 생산/출고 분리 재고 엔진 (도메인 모듈).
@@ -74,7 +75,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       if (!sub) continue;
       if (sub.category === 'box' || sub.category === 'tape' ||
           (sub.category === 'submaterial' && (sub.subtype === '박스' || sub.subtype === '테이프'))) continue;
-      addDelta(deltas, sub.id, sign * item.quantity);
+      addDelta(deltas, sub.id, sign * item.quantity * bomQty(s));  // BOM 수량(1개당 몇 개) 반영
     }
   };
 

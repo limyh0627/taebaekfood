@@ -110,6 +110,7 @@ import { db } from '../../shared/firebase';
 import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName, lotStockInUnit, lotKgRemaining } from '../../constants/formula';
 import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo } from '../../shared/lotUtils';
 import { rawLotTarget, recordRawMaterialReceipt, adjustRawLots } from '../../shared/rawReceipt';
+import { bomQty } from '../../shared/bom';
 import {
   addItem,
   updateItem,
@@ -525,7 +526,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
             (sub.category === 'submaterial' && (sub.subtype === '박스' || sub.subtype === '테이프'))) continue;
         // 원료 홀더(raw/wip)는 kg 단위라 '개' 집계가 틀림 → 위 원료식(kg) 경로에서 체크
         if (sub.category === 'raw' || sub.category === 'wip') continue;
-        usage[sub.id] = { name: sub.name, needed: (usage[sub.id]?.needed ?? 0) + item.quantity, unit: '개' };
+        // BOM 수량(1개당 몇 개) 반영 — 이중캡 ×2, 180ml캡 ×3 같은 것
+        usage[sub.id] = { name: sub.name, needed: (usage[sub.id]?.needed ?? 0) + item.quantity * bomQty(s), unit: '개' };
       }
     }
 

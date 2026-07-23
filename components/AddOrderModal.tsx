@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, LayoutGrid, Layers } from 'lucide-react';
 import { Item, PartnerItem, OrderItem, Order, Partner, OrderSource, OrderPallet, PalletStock, ShippingRule } from '../types';
 import { updateItem as updateItemDoc } from '../src/shared/services/firebaseService';
+import { bomQty } from '../src/shared/bom';
 
 interface AddOrderModalProps {
   items: Item[];
@@ -273,7 +274,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
         const sub = submaterials.find(sm => sm.id === s.id);
         if (!sub) continue;
         if (!usage[sub.id]) usage[sub.id] = { name: sub.name, needed: 0, stock: sub.stock };
-        usage[sub.id].needed += actualQty;
+        usage[sub.id].needed += actualQty * bomQty(s);  // BOM 수량(1개당 몇 개) 반영
       }
     }
     return Object.values(usage).filter(v => v.needed > v.stock);
