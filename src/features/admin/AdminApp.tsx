@@ -435,9 +435,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
   }, [adjustmentRequests]);
 
   // 전표 발행된 선입고 이력은 발행 1일 뒤 자동 삭제 (목록 누적 방지 — 발행 시엔 유지)
+  //   OEM 배치는 제외 — 보낸 원료·받은 완제품·로스(수율) 이력을 계속 들고 있어야 한다.
   useEffect(() => {
     const oneDayAgoMs = Date.now() - 24 * 60 * 60 * 1000;
     receivedOrders.forEach(po => {
+      if (po.poType === 'oem') return;
       if (!po.linkedStatementId) return;
       const at = po.linkedStatementAt || issuedStatements.find(s => s.id === po.linkedStatementId)?.issuedAt;
       if (at && new Date(at).getTime() < oneDayAgoMs) deleteItem('purchaseOrders', po.id);
@@ -806,7 +808,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   const handleClearAllConfirmedOrders = async () => {
-    for (const po of invoicedPurchaseOrders) {
+    // OEM 배치는 제외 — 외주에 나가 있는 원료 기록이라 지우면 참깨가 장부에서 증발한다
+    for (const po of invoicedPurchaseOrders.filter(p => p.poType !== 'oem')) {
       await deleteItem('purchaseOrders', po.id);
     }
   };
