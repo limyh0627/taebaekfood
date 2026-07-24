@@ -111,7 +111,7 @@ import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName,
 import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo } from '../../shared/lotUtils';
 import { rawLotTarget, recordRawMaterialReceipt, adjustRawLots } from '../../shared/rawReceipt';
 import { bomQty } from '../../shared/bom';
-import { stockUnits } from '../../shared/orderUnits';
+import { stockUnits, unpackComponent } from '../../shared/orderUnits';
 import {
   addItem,
   updateItem,
@@ -793,6 +793,31 @@ const AdminApp: React.FC<AdminAppProps> = ({
     buildFormula, createProductionRecordsForOrder, mutateRawMaterialLots, updateItem, addItem,
   });
 
+  // 작업완료 진입점 — 박스 품목에 낱개 재고가 있으면 "쓸까요?" 물어본다.
+  //   예=낱개 재고 사용(부족분만 생산) · 아니요=전부 새로 생산(낱개 재고 그대로).
+  const handleOrderStatus = async (id: string, status: import('../../shared/types').OrderStatus) => {
+    if (status !== OrderStatus.DISPATCHED) return changeOrderStatus(id, status);
+    const order = allOrders.find(o => o.id === id) || orders.find(o => o.id === id);
+    const freshItemIds = new Set<string>();
+    if (order && !order.producedAt) {
+      for (const it of order.items) {
+        const box = allItems.find(p => p.id === it.itemId);
+        const loose = box ? allItems.find(p => p.id === unpackComponent(box)?.itemId) : undefined;
+        if (!box || !loose) continue;                       // 박스 품목만
+        const looseStock = loose.stock ?? 0;
+        if (looseStock <= 0) continue;                       // 낱개 재고 없으면 안 물어봄
+        const need = stockUnits(it, box) * (unpackComponent(box)?.count ?? 1);
+        const use = window.confirm(
+          `${box.name} ${stockUnits(it, box)}박스 — 낱개(${loose.name}) ${need}개 필요\n`
+          + `낱개 재고 ${looseStock}개가 있습니다. 사용하시겠습니까?\n\n`
+          + `[확인] 낱개 재고 사용 (부족분만 생산)\n[취소] 전부 새로 생산 (낱개 재고 그대로)`
+        );
+        if (!use) freshItemIds.add(box.id);
+      }
+    }
+    return changeOrderStatus(id, status, freshItemIds.size ? freshItemIds : undefined);
+  };
+
   // OEM(임가공) 엔진 — 외주 발주(원료 내보내기) / 가공입고(완제품 받기 + 가공비 전표)
   const { issueOemBatch, receiveOemBatch, issueOemFeeStatement } = createOemEngine({
     items: allItems, adjustRawLots, updateItem, addItem, buildFormula,
@@ -1342,7 +1367,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               partners={partners}
               items={allItems}
               onUpdateDeliveryDate={(id, date) => updateItem('orders', id, { deliveryDate: date })}
-              onUpdateStatus={(id, status) => changeOrderStatus(id, status)}
+              onUpdateStatus={(id, status) => handleOrderStatus(id, status)}
               onUpdateItems={handleUpdateItems}
               onToggleItemChecked={handleToggleItemChecked}
               onDeleteOrder={(id) => {
@@ -1375,7 +1400,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               subtitle="전체 주문 현황"
               groupBy="status" 
               allowedStatuses={Object.values(OrderStatus)} 
-              onUpdateStatus={(id, status) => changeOrderStatus(id, status)}
+              onUpdateStatus={(id, status) => handleOrderStatus(id, status)}
               onUpdateDeliveryDate={(id, date) => updateItem('orders', id, { deliveryDate: date })}
               onUpdatePallets={(id, p) => updateItem('orders', id, { pallets: p })}
               palletStocks={pallets}
@@ -3302,7 +3327,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onAddExpensePreset={async (p) => { const id = await addItem('expensePresets', { ...p, id: `exp-${Date.now()}`, createdAt: new Date().toISOString() }); refreshStaticData(); return id as string; }}
               onDeleteExpensePreset={(id) => { deleteItem('expensePresets', id); refreshStaticData(); }}
               issuedStatements={issuedStatements}
-              onUpdateStatus={(id, status) => changeOrderStatus(id, status)}
+              onUpdateStatus={(id, status) => handleOrderStatus(id, status)}
               onUpsertPartnerItem={(ps) => handleUpsertPartnerItem(ps, 'out')}
               onMarkInvoicePrinted={(id, value) => updateItem('orders', id, { invoicePrinted: value })}
               onUpdateOrder={(id, data) => updateItem('orders', id, data)}

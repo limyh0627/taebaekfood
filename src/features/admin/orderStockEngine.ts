@@ -103,6 +103,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     order: Order, product: Item, units: number,
     deltas: Map<string, number>, rawUsage: Record<string, number>,
     sign: number, autoBuilt: { itemId: string; qty: number }[], depth = 0,
+    fresh = false,   // 낱개 재고 무시하고 전부 새로 생산 (박스 작업완료 시 사용자가 '아니요')
   ) => {
     if (units <= 0 || depth > 4) return;   // depth — BOM 순환 방어
     const isBox = isBoxStockItem(product);   // 박스 품목이면 겉박스도 자기 BOM에서 깐다
@@ -114,9 +115,9 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       const need = Math.round(units * bomQty(s) * 1000) / 1000;
       if (need <= 0) continue;
 
-      // 완제품 구성품이 모자라면 먼저 만든다
+      // 완제품 구성품이 모자라면 먼저 만든다. fresh면 기존 재고 무시하고 전부 생산.
       if (sign < 0 && comp.category === 'product' && !isGoodsItem(comp)) {
-        const have = (comp.stock ?? 0) + (deltas.get(comp.id) ?? 0);
+        const have = fresh ? 0 : (comp.stock ?? 0) + (deltas.get(comp.id) ?? 0);
         const short = Math.round((need - have) * 1000) / 1000;
         if (short > 0) {
           addDelta(deltas, comp.id, short);
@@ -223,7 +224,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   };
 
   // 생산처리(작업완료): 원료·부자재 차감 + 완제품 재고 +N. → 소비 로트 스냅샷 반환.
-  const produceOrder = async (order: Order, deltas: Map<string, number>) => {
+  const produceOrder = async (order: Order, deltas: Map<string, number>, freshItemIds?: Set<string>) => {
     const rawUsage: Record<string, number> = {};
     const rawUsageLedgerOnly: Record<string, number> = {};   // 임가공 — 수불부에만
     const autoBuilt: { itemId: string; qty: number }[] = []; // 모자라서 먼저 만든 구성품
@@ -245,7 +246,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
 
       if (isGoodsItem(product)) continue;
       accrueShippingBox(order, product, item, deltas, -1);
-      accrueBom(order, product, units, deltas, rawUsage, -1, autoBuilt);
+      accrueBom(order, product, units, deltas, rawUsage, -1, autoBuilt, 0, freshItemIds?.has(product.id) ?? false);
       accrueRaw(product, units, rawUsage);
       addDelta(deltas, product.id, units); // 완제품 재고 +N (생산됨·미출고)
     }
@@ -300,7 +301,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   const STATUS_WANT_SHIPPED = new Set<OrderStatus>([OrderStatus.SHIPPED, OrderStatus.DELIVERED]);
 
   // 목표 상태에 맞춰 재고 상태를 조정(생산/출고/취소 자동). ON_HOLD은 재고 미변동.
-  const reconcileOrderStock = async (order: Order, target: OrderStatus) => {
+  const reconcileOrderStock = async (order: Order, target: OrderStatus, freshItemIds?: Set<string>) => {
     if (target === OrderStatus.ON_HOLD) return;
     const wantProduced = STATUS_WANT_PRODUCED.has(target);
     const wantShipped = STATUS_WANT_SHIPPED.has(target);
@@ -311,7 +312,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     if (!wantProduced && order.producedAt) { await unProduceOrder(order, deltas); patch.producedAt = ''; patch.rawLotsDeducted = false; patch.rawConsumedLots = []; patch.autoBuilt = []; }
     // 정방향: 생산 → 출고
     if (wantProduced && !order.producedAt) {
-      const { consumedLots, autoBuilt } = await produceOrder(order, deltas);
+      const { consumedLots, autoBuilt } = await produceOrder(order, deltas, freshItemIds);
       patch.producedAt = new Date().toISOString(); patch.rawLotsDeducted = true;
       if (consumedLots.length > 0) patch.rawConsumedLots = consumedLots;
       if (autoBuilt.length > 0) patch.autoBuilt = autoBuilt;
@@ -322,10 +323,10 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   };
 
   // 주문 상태 변경 진입점 — 재고 조정 후 상태 저장. 이미 이력(DELIVERED)이면 재고 조정 없이 상태만.
-  const changeOrderStatus = async (id: string, status: OrderStatus) => {
+  const changeOrderStatus = async (id: string, status: OrderStatus, freshItemIds?: Set<string>) => {
     const order = allOrders.find(o => o.id === id) || orders.find(o => o.id === id);
     if (!order) { await updateItem('orders', id, { status }); return; }
-    if (order.status !== OrderStatus.DELIVERED) await reconcileOrderStock(order, status);
+    if (order.status !== OrderStatus.DELIVERED) await reconcileOrderStock(order, status, freshItemIds);
     await updateItem('orders', id, { status, ...(status === OrderStatus.DELIVERED && !order.deliveredAt ? { deliveredAt: new Date().toISOString() } : {}) });
   };
 
