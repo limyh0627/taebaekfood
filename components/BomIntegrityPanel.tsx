@@ -32,7 +32,13 @@ const BomIntegrityPanel: React.FC<Props> = ({ items, itemFormulas = [] }) => {
     const noBom: string[] = [];
     const noSub: string[] = [];
 
+    // 조립품 = BOM에 완제품 구성품이 든 것(박스·선물세트). 원료는 그 구성품에서 나가므로
+    // 자기 원료식이 없는 게 정상 → 원료식 검사 대상에서 뺀다.
+    const isAssembly = (p: Item) =>
+      ((p as any).submaterials ?? []).some((s: any) => byId.get(s.id)?.category === 'product');
+
     for (const p of prods) {
+      if (isAssembly(p)) continue;   // 박스·선물세트 등 조립품은 원료식 안 가짐(정상)
       const key = (p as any).품목 || p.name;
       const rows = formByKey[key]
         ? formByKey[key].map(f => ({ raw: f.child_name }))

@@ -79,7 +79,7 @@ for (const { loose, q, partners: pset, boxVotes } of Object.values(grp)) {
   const bom = [{ id: loose._id, name: loose.name, category: 'product', stock: q, unit: loose.unit ?? '개', ...(loose.spec ? { spec: loose.spec } : {}) }];
   if (boxItem) bom.push({ id: boxItem._id, name: boxItem.name, category: boxItem.category === 'box' ? 'box' : 'submaterial', subtype: '박스', stock: 1, unit: boxItem.unit ?? '개' });
   boxDocs.push({
-    id: boxId, category: 'product', subtype: loose.subtype ?? '', subtype2: '박스',
+    id: boxId, category: 'product', subtype: loose.subtype ?? '', subtype2: '배송',
     품목: '', name: `${loose.name} (${q}개입)`, spec: loose.spec ?? '', unit: '박스', stock: 0, minStock: 0,
     submaterials: bom, createdAt: new Date().toISOString(),
   });
