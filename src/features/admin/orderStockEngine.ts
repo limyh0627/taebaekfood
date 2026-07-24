@@ -64,7 +64,8 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     }
   };
 
-  // 겉박스 — BOM이 아니라 거래처별 배송규칙(shipping_rule)에서 온다. sign=-1 차감 / +1 복원.
+  // 겉박스 — 일반(낱개) 품목은 거래처별 배송규칙(shipping_rule)에서 온다. sign=-1 차감 / +1 복원.
+  // 박스 품목은 겉박스가 자기 BOM에 ×1로 들어있어 accrueBom이 깐다(여기 안 옴).
   const accrueShippingBox = (order: Order, product: Item, item: OrderItem, deltas: Map<string, number>, sign: number) => {
     const boxesUsed = item.isBoxUnit && item.boxQuantity ? item.boxQuantity
       : item.unitsPerBox ? Math.ceil(item.quantity / item.unitsPerBox) : null;
@@ -76,7 +77,8 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     if (dq > 0) addDelta(deltas, boxSub.id, sign * dq);
   };
 
-  // 겉박스는 shipping_rule이 따로 차감하므로 BOM에서는 건너뛴다(이중 차감 방지).
+  // 낱개 품목의 겉박스는 shipping_rule이 따로 깎으므로 BOM에서 건너뛴다(이중 차감 방지).
+  // 박스 품목은 겉박스가 자기 BOM 구성품이라 그건 깎는다 — isBoxStockItem일 때만 허용.
   // 테이프는 코드로 막지 않는다 — 안 깎으려면 BOM 수량을 0으로 둔다.
   const isShippingBox = (i: Item) =>
     i.category === 'box' || (i.category === 'submaterial' && i.subtype === '박스');
@@ -103,9 +105,11 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     sign: number, autoBuilt: { itemId: string; qty: number }[], depth = 0,
   ) => {
     if (units <= 0 || depth > 4) return;   // depth — BOM 순환 방어
+    const isBox = isBoxStockItem(product);   // 박스 품목이면 겉박스도 자기 BOM에서 깐다
     for (const s of (product.submaterials ?? [])) {
       const comp = allItems.find(p => p.id === s.id);
-      if (!comp || isShippingBox(comp)) continue;
+      if (!comp) continue;
+      if (isShippingBox(comp) && !isBox) continue;   // 낱개 품목의 겉박스는 shipping_rule 경로 → 건너뜀
       if (comp.category === 'raw' || comp.category === 'wip') continue;  // 원료는 kg — 원료식 경로에서
       const need = Math.round(units * bomQty(s) * 1000) / 1000;
       if (need <= 0) continue;

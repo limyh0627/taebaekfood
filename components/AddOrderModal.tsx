@@ -317,6 +317,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
     // 박스 변형 품목 자체는 재고 단위가 '박스 1개'다. 배송 포장(shipping_rule)을 얹지 않는다
     // — 수량 = 박스 개수, 그대로 그 품목 재고에서 뺀다.
     if (product && isBoxStockItem(product)) {
+      // 겉박스는 박스 품목 BOM에 들어있어 생산 때 깎인다 — 주문 라인엔 안 싣는다(이중차감 방지)
       return { itemId, quantity: 1, isBoxUnit: false, unitsPerBox: 0, boxType: '' };
     }
     const isHyangmiyu = product?.subtype === '향미유';
@@ -554,7 +555,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
         name: product.name || '알 수 없는 상품',
         quantity: actualQty,
         price: boxPrice ?? product.price ?? 0,
-        ...(item.isBoxUnit && uPerBox > 0 ? { isBoxUnit: true, boxQuantity: item.quantity, unitsPerBox: uPerBox, boxType: item.boxType, ...(item.boxSubId ? { boxSubId: item.boxSubId } : {}) } : {}),
+        ...(item.isBoxUnit && uPerBox > 0 ? { isBoxUnit: true, boxQuantity: item.quantity, unitsPerBox: uPerBox, boxType: item.boxType } : {}),
+        ...(item.boxSubId ? { boxSubId: item.boxSubId } : {}),   // 겉박스 — 박스 품목/일반 공통
         ...(item.displaySize ? { displaySize: item.displaySize } : {}),
       }];
     });
