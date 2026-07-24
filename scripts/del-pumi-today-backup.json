@@ -1,0 +1,157 @@
+{
+  "pos": [
+    {
+      "_id": "uBjMFYPLL7XcelGwraoC",
+      "quantity": 0,
+      "items": [
+        {
+          "itemId": "PLDhkjOgcPIhO1hhReHm",
+          "unit": "개",
+          "quantity": 5,
+          "name": "볶음참깨-낱개/1kg"
+        },
+        {
+          "unit": "개",
+          "itemId": "p-1780625531675",
+          "quantity": 960,
+          "name": "볶음참깨/10kg박스"
+        },
+        {
+          "name": "볶음참깨/20kg박스",
+          "quantity": 460,
+          "itemId": "p-1780625559322",
+          "unit": "개"
+        }
+      ],
+      "itemId": "",
+      "partnerId": "c-1775615990718",
+      "createdAt": "2026-07-24T06:08:02.139Z",
+      "itemName": "",
+      "status": "received",
+      "partnerName": "푸미푸드",
+      "receivedAt": "2026-07-24T06:08:02.139Z"
+    }
+  ],
+  "ledger": [
+    {
+      "_id": "rm-rcv-1784873282418-wz45",
+      "date": "2026-07-24",
+      "material": "볶음참깨",
+      "originalAmount": 960,
+      "note": "푸미푸드 입고",
+      "createdAt": "2026-07-24T06:08:02.237Z",
+      "received": 9600,
+      "type": "manual",
+      "canSize": 10,
+      "originalUnit": "kg",
+      "unit": "kg",
+      "canCount": 960,
+      "addedBy": "태백식품",
+      "used": 0
+    },
+    {
+      "_id": "rm-rcv-1784873282604-cfoz",
+      "used": 0,
+      "addedBy": "태백식품",
+      "unit": "kg",
+      "canCount": 460,
+      "canSize": 20,
+      "type": "manual",
+      "received": 9200,
+      "originalUnit": "kg",
+      "date": "2026-07-24",
+      "material": "볶음참깨",
+      "note": "푸미푸드 입고",
+      "originalAmount": 460,
+      "createdAt": "2026-07-24T06:08:02.237Z"
+    }
+  ],
+  "items": [
+    {
+      "_id": "raw-볶음참깨",
+      "lots": [
+        {
+          "kgRemaining": 0,
+          "status": "depleted",
+          "supplierName": "재고실사(7/2)+7/3반영",
+          "receivedDate": "2026-07-03",
+          "id": "lot-볶음참깨-1783082591860-fata",
+          "createdAt": "2026-07-03T12:43:11.643Z",
+          "kgIn": 350
+        },
+        {
+          "receivedDate": "2026-07-21",
+          "lotNo": "260721-01",
+          "status": "depleted",
+          "id": "lot-볶음참깨-1784616868365-xacp",
+          "createdAt": "2026-07-21T06:54:28.365Z",
+          "kgRemaining": 0,
+          "packageType": "자루",
+          "poId": "qQikuP0iqZt7OcpB6Y2p",
+          "packageKg": 20,
+          "supplierId": "C071",
+          "supplierName": "청정식품",
+          "qtyIn": 12,
+          "kgIn": 240
+        },
+        {
+          "supplierName": "(인천)청정식품",
+          "qtyIn": 12,
+          "kgIn": 240,
+          "kgRemaining": 0,
+          "poId": "eejAzPB3JsZaSBsI1rcx",
+          "packageType": "자루",
+          "packageKg": 20,
+          "supplierId": "c-1779251336139",
+          "status": "depleted",
+          "id": "lot-볶음참깨-1784621956348-r49a",
+          "createdAt": "2026-07-21T08:19:16.348Z",
+          "receivedDate": "2026-07-21",
+          "lotNo": "260721-02"
+        },
+        {
+          "packageType": "캔",
+          "poId": "uBjMFYPLL7XcelGwraoC",
+          "kgRemaining": 9600,
+          "supplierId": "c-1775615990718",
+          "packageKg": 10,
+          "supplierName": "푸미푸드",
+          "kgIn": 9600,
+          "qtyIn": 960,
+          "receivedDate": "2026-07-24",
+          "lotNo": "260724-01",
+          "id": "lot-볶음참깨-1784873282321-tee0",
+          "status": "active",
+          "createdAt": "2026-07-24T06:08:02.321Z"
+        },
+        {
+          "packageKg": 20,
+          "supplierId": "c-1775615990718",
+          "kgRemaining": 9200,
+          "packageType": "캔",
+          "poId": "uBjMFYPLL7XcelGwraoC",
+          "qtyIn": 460,
+          "kgIn": 9200,
+          "supplierName": "푸미푸드",
+          "lotNo": "260724-02",
+          "receivedDate": "2026-07-24",
+          "createdAt": "2026-07-24T06:08:02.494Z",
+          "status": "active",
+          "id": "lot-볶음참깨-1784873282494-vai0"
+        }
+      ],
+      "id": "raw-볶음참깨",
+      "category": "wip",
+      "subtype": "참깨",
+      "submaterials": [],
+      "subtype2": "",
+      "minStock": 10,
+      "name": "볶음참깨",
+      "unit": "kg",
+      "stock": 18800,
+      "price": 0,
+      "image": "",
+      "cost": 5100
+    }
+  ]
+}

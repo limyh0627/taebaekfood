@@ -89,7 +89,9 @@ function IssueModal({ partners, rawItems, rawStockKg, busy, onClose, onSubmit }:
             <select value={partnerId} onChange={e => setPartnerId(e.target.value)}
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-300">
               <option value="">— 선택 —</option>
-              {partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {/* 외주공장으로 표시된 거래처만 (isOemFactory). 없으면 하위호환으로 전체. */}
+              {(partners.some(p => p.isOemFactory) ? partners.filter(p => p.isOemFactory) : partners)
+                .map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
           <div>

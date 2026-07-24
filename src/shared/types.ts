@@ -104,6 +104,7 @@ export interface Partner {
   fax?: string;
   note?: string;
   partnerType?: PartnerType; // undefined = '매출처' (하위 호환)
+  isOemFactory?: boolean;    // 임가공(OEM) 외주공장 — OEM 발주 대상. 켜진 거래처만 외주공장 목록에 뜬다.
   purchaseItems?: PurchaseItem[];
 }
 
