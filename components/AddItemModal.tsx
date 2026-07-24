@@ -94,8 +94,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     phantom: initialData?.phantom ?? false,
     partnerIds: initialData?.partnerIds ?? (initialData?.partnerId ? [initialData.partnerId] : []),
     inPartnerIds: partnerIn
-      .filter(pi => pi.Item_ID === initialData?.id)
-      .map(pi => (pi.partnerId ?? pi.Partner_ID))
+      .filter(pi => pi.itemId === initialData?.id)
+      .map(pi => (pi.partnerId))
       .filter(Boolean) as string[],
     submaterials: (initialData?.submaterials || []).map(s => ({
       ...s,
@@ -145,9 +145,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const [partnerPackagingConfigs, setClientPackagingConfigs] = useState<Record<string, { boxTypeId?: string; qtyPerBox?: number; tapeTypeId?: string }>>(() => {
     const map: Record<string, { boxTypeId?: string; qtyPerBox?: number; tapeTypeId?: string }> = {};
     if (initialData) {
-      partnerOut.filter(pi => pi.Item_ID === initialData.id).forEach(pc => {
-        const rule = shippingRules.find(r => r.item_id === initialData.id && r.partner_id === pc.Partner_ID);
-        map[pc.Partner_ID] = {
+      partnerOut.filter(pi => pi.itemId === initialData.id).forEach(pc => {
+        const rule = shippingRules.find(r => r.item_id === initialData.id && r.partner_id === pc.partnerId);
+        map[pc.partnerId] = {
           boxTypeId: rule?.box_item_id ?? pc.boxTypeId,
           qtyPerBox: rule?.qty_per_box ?? pc.qtyPerBox,
           tapeTypeId: rule?.tape_item_id ?? pc.tapeTypeId,
@@ -269,16 +269,16 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     // PartnerItem 다중 upsert/삭제 — partner_item Direction='in'
     if (onUpsertPartnerItem) {
       const itemId = finalProduct.id;
-      const prevIn = partnerIn.filter(pi => pi.Item_ID === itemId);
+      const prevIn = partnerIn.filter(pi => pi.itemId === itemId);
       // 선택된 매입거래처 upsert (기존 doc/단가 유지)
       for (const partnerId of formData.inPartnerIds) {
-        const existing = prevIn.find(pi => (pi.partnerId ?? pi.Partner_ID) === partnerId);
-        onUpsertPartnerItem({ id: existing?.id ?? `${itemId}_${partnerId}_in`, Partner_ID: partnerId, Item_ID: itemId, Direction: 'in', Standard_Price: existing?.Standard_Price, taxType: existing?.taxType });
+        const existing = prevIn.find(pi => (pi.partnerId) === partnerId);
+        onUpsertPartnerItem({ id: existing?.id ?? `${itemId}_${partnerId}_in`, partnerId: partnerId, itemId: itemId, Direction: 'in', price: existing?.price, taxType: existing?.taxType });
       }
       // 해제된 매입거래처 삭제
       if (onDeletePartnerItem) {
         for (const pi of prevIn) {
-          const pid = pi.partnerId ?? pi.Partner_ID;
+          const pid = pi.partnerId;
           if (pid && !formData.inPartnerIds.includes(pid)) onDeletePartnerItem(pi.id);
         }
       }

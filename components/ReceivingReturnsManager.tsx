@@ -414,8 +414,8 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     // 품목관리 거래처에서 물린 매입 연결 (partner_item, Direction=in)
     const inboundPartnerItemIds = new Set(
       partnerIn
-        .filter(ps => (ps.Partner_ID ?? ps.partnerId) === partner.id)
-        .map(ps => ps.Item_ID ?? ps.itemId)
+        .filter(ps => (ps.partnerId) === partner.id)
+        .map(ps => ps.itemId)
         .filter((id): id is string => !!id)
     );
 
@@ -442,7 +442,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
 
   // partner_item(in) 또는 supplierId로 연결된 거래처 ID 집합 (partnerType 무관)
   const inboundPartnerClientIds = new Set([
-    ...partnerIn.map(ps => ps.Partner_ID ?? ps.partnerId).filter((id): id is string => !!id),
+    ...partnerIn.map(ps => ps.partnerId).filter((id): id is string => !!id),
     ...items.filter(p => p.partnerId && p.category !== '완제품').map(p => p.partnerId!),
   ]);
 
@@ -583,12 +583,12 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
       tradeDate: po.receivedAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
       items: (po.items ?? []).map((item: PurchaseOrderItem) => {
         const pi = partnerItems.find(p =>
-          (p.Item_ID ?? (p as any).itemId) === item.itemId && p.Direction === 'in'
+          (p.itemId ?? (p as any).itemId) === item.itemId && p.Direction === 'in'
         );
         return {
           name: item.name,
           qty: item.quantity.toString(),
-          price: (pi?.Standard_Price ?? pi?.price ?? 0).toString(),
+          price: (pi?.price ?? pi?.price ?? 0).toString(),
           unit: item.unit,
           isTaxExempt: pi?.taxType === '면세',
         };

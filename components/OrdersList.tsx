@@ -549,8 +549,8 @@ export const OrderCard = memo<OrderCardProps>(({
                     // 이 거래처와 연결된 완제품(partner_item Direction 'out')만. 연결 정보 없으면 전체 완제품 표시(폴백).
                     const linkedIds = new Set(
                       (partnerItems ?? [])
-                        .filter(pi => pi.Direction === 'out' && (pi.partnerId ?? pi.Partner_ID) === order.partnerId)
-                        .map(pi => pi.itemId ?? pi.Item_ID)
+                        .filter(pi => pi.Direction === 'out' && (pi.partnerId) === order.partnerId)
+                        .map(pi => pi.itemId)
                     );
                     return products
                     .filter(p => p.category === '완제품' && (linkedIds.size === 0 || linkedIds.has(p.id)))

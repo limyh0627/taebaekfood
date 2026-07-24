@@ -57,31 +57,23 @@ export interface PurchaseItem {
 // Direction: 'in' = 매입(공급), 'out' = 매출(판매)
 export interface PartnerItem {
   id: string;
-  Partner_ID: string;
-  Item_ID: string;
-  Direction: 'in' | 'out';
-  price?: number;              // 거래처별 단가 (canonical)
-  Account_Code?: string;
+  itemId: string;              // 품목 id (canonical)
+  partnerId: string;           // 거래처 id (canonical)
+  Direction: 'in' | 'out';     // 'in' = 매입, 'out' = 매출
+  price?: number;              // 거래처별 단가
+  Account_Code?: string;       // 계정과목
   taxType?: '과세' | '면세';
   isSmartStore?: boolean;      // 스마트스토어 채널 여부
-  // @deprecated → shipping_rule 컬렉션으로 이관 예정
+  // @deprecated → shipping_rule 컬렉션으로 이관 예정 (별도 정리)
   boxTypeId?: string;
   qtyPerBox?: number;
   qty_per_box?: number;
   tapeTypeId?: string;
   displaySize?: string;
   packageType?: string;
-  // @deprecated → item_bom 컬렉션으로 이관 예정
   containerTypeId?: string;
   labelId?: string;
-  // @deprecated → items 컬렉션으로 이관 예정
   weightInKg?: number;
-  // @deprecated backward compat — useAppData에서 자동 주입
-  itemId?: string;
-  partnerId?: string;
-  Standard_Price?: number;     // @deprecated → price 사용
-  item_id?: string;
-  customer_id?: string;
 }
 
 // ── 배송 규칙 (shipping_rule 컬렉션) ─────────────────────────────────────

@@ -194,9 +194,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const poToManualRows = (po: PurchaseOrder): ManualRow[] =>
     poLines(po).map(line => {
       const product = allItems.find(p => p.id === line.itemId);
-      const ps = (partnerItems ?? []).find((s: any) => s.Direction === 'in' && (s.Item_ID === line.itemId || s.itemId === line.itemId) && (s.Partner_ID === selectedClientId || s.partnerId === selectedClientId));
+      const ps = (partnerItems ?? []).find((s: any) => s.Direction === 'in' && (s.itemId === line.itemId || s.itemId === line.itemId) && (s.partnerId === selectedClientId || s.partnerId === selectedClientId));
       const isBox = line.isBox ?? false;
-      return { name: line.name || product?.name || '', spec: product?.spec || line.unit || '', qty: String(line.quantity), price: ps?.price ? String(ps.price) : (ps?.Standard_Price ? String(ps.Standard_Price) : ''), isTaxExempt: ps?.taxType === '면세', isBoxUnit: isBox, boxSize: isBox ? 12 : undefined, accountCode: ps?.Account_Code };
+      return { name: line.name || product?.name || '', spec: product?.spec || line.unit || '', qty: String(line.quantity), price: ps?.price ? String(ps.price) : (ps?.price ? String(ps.price) : ''), isTaxExempt: ps?.taxType === '면세', isBoxUnit: isBox, boxSize: isBox ? 12 : undefined, accountCode: ps?.Account_Code };
     });
   // ── 품목명 드롭다운 검색 ──
   const [activeSearchRow, setActiveSearchRow] = useState<number | null>(null);
@@ -597,9 +597,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     return s;
   }, [issuedStatements]);
 
-  // partnerIn → Item_ID:Partner_ID 빠른 조회 맵
+  // partnerIn → itemId:partnerId 빠른 조회 맵
   const psMap = useMemo(() => new Map(
-    partnerIn.filter(ps => ps.Item_ID && ps.Partner_ID).map(ps => [ps.Item_ID!, ps.Partner_ID!])
+    partnerIn.filter(ps => ps.itemId && ps.partnerId).map(ps => [ps.itemId!, ps.partnerId!])
   ), [partnerIn]);
 
   // ── 발주확정 공급처별 그룹 ──
@@ -622,11 +622,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     for (const req of (orderRequests ?? [])) {
       const product = allItems.find(p => p.id === req.id);
       if (!product) continue;
-      // Item_ID/itemId 모두 확인 (필드명 불일치 대응)
+      // itemId/itemId 모두 확인 (필드명 불일치 대응)
       const ps = partnerIn.find(s =>
-        (s.Item_ID === req.id || (s as any).itemId === req.id) && s.Direction === 'in'
+        (s.itemId === req.id || (s as any).itemId === req.id) && s.Direction === 'in'
       );
-      const partnerId = ps ? (ps.Partner_ID || (ps as any).partnerId || '') : '';
+      const partnerId = ps ? (ps.partnerId || (ps as any).partnerId || '') : '';
       const partnerName = partnerId
         ? (partners.find(c => c.id === partnerId)?.name ?? partnerId)
         : '거래처 미지정';
@@ -642,8 +642,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const term = purchaseSearch.toLowerCase().trim();
     const map = new Map<string, { partnerName: string; items: Item[] }>();
     for (const ps of partnerIn) {
-      const partnerId = ps.Partner_ID;
-      const itemId = ps.Item_ID;
+      const partnerId = ps.partnerId;
+      const itemId = ps.itemId;
       if (!partnerId || !itemId) continue;
       const p = allItems.find(x => x.id === itemId);
       if (!p || (term && !p.name.toLowerCase().includes(term))) continue;
@@ -763,9 +763,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       const key  = `${displayName}||${spec}`;
       const piList = stmtType === '매출' ? partnerOut : partnerIn;
       const pcEntry = piList.find(
-        pc => pc.Item_ID === item.itemId && pc.Partner_ID === selectedClientId
+        pc => pc.itemId === item.itemId && pc.partnerId === selectedClientId
       );
-      const pcPrice   = pcEntry?.Standard_Price ?? pcEntry?.price;
+      const pcPrice   = pcEntry?.price ?? pcEntry?.price;
       const pcTaxType = pcEntry?.taxType; // '과세' | '면세' | undefined(=과세 기본)
       const defaultPrice = pcPrice ?? item.price ?? product?.price ?? 0;
       const unitPrice    = editablePrices[key] !== undefined
@@ -870,12 +870,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         if (!item.price || item.price <= 0) continue;
         const product = allItems.find(p => p.name === item.name || p.품목 === item.name);
         if (!product || !selectedClientId) continue;
-        const pc = partnerOut.find(p => (p.itemId ?? p.Item_ID) === product.id && (p.partnerId ?? p.Partner_ID) === selectedClientId);
+        const pc = partnerOut.find(p => (p.itemId) === product.id && (p.partnerId) === selectedClientId);
         const pcId = pc?.id ?? `${product.id}_${selectedClientId}_out`;
         const priceChanged = !pc || pc.price !== item.price;
         const accountChanged = !!(item.accountCode && pc?.Account_Code !== item.accountCode);
         if (priceChanged || accountChanged) {
-          onUpsertPartnerItem({ ...(pc ?? {}), id: pcId, Item_ID: product.id, Partner_ID: selectedClientId, Direction: 'out' as const, price: item.price, taxType: pc?.taxType, Account_Code: item.accountCode || pc?.Account_Code });
+          onUpsertPartnerItem({ ...(pc ?? {}), id: pcId, itemId: product.id, partnerId: selectedClientId, Direction: 'out' as const, price: item.price, taxType: pc?.taxType, Account_Code: item.accountCode || pc?.Account_Code });
         }
       }
     }
@@ -918,9 +918,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         if (!item.price || item.price <= 0) continue;
         const product = allItems.find(p => p.name === item.name || p.품목 === item.name);
         if (!product || !selectedClientId) continue;
-        const existing = partnerIn.find(s => (s.Item_ID ?? s.itemId) === product.id && (s.Partner_ID ?? s.partnerId) === selectedClientId);
+        const existing = partnerIn.find(s => (s.itemId) === product.id && (s.partnerId) === selectedClientId);
         const psId = existing?.id ?? `${product.id}_${selectedClientId}_in`;
-        onUpsertPartnerItem({ ...(existing ?? {}), id: psId, Item_ID: product.id, Partner_ID: selectedClientId, Direction: 'in' as const, price: item.price, taxType: existing?.taxType, Account_Code: item.accountCode || existing?.Account_Code });
+        onUpsertPartnerItem({ ...(existing ?? {}), id: psId, itemId: product.id, partnerId: selectedClientId, Direction: 'in' as const, price: item.price, taxType: existing?.taxType, Account_Code: item.accountCode || existing?.Account_Code });
         onUpdateItemCost?.(product.id, item.price);
       }
     }
@@ -958,10 +958,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         if (!item.price || item.price <= 0) continue;
         const product = allItems.find(p => p.name === item.name || p.품목 === item.name);
         if (!product || !selectedClientId) continue;
-        const existing = partnerIn.find(s => (s.Item_ID ?? s.itemId) === product.id && (s.Partner_ID ?? s.partnerId) === selectedClientId);
+        const existing = partnerIn.find(s => (s.itemId) === product.id && (s.partnerId) === selectedClientId);
         const psId = existing?.id ?? `${product.id}_${selectedClientId}_in`;
         // 가드 없이 항상 동기화 (구독 지연으로 인한 누락 방지)
-        onUpsertPartnerItem({ ...(existing ?? {}), id: psId, Item_ID: product.id, Partner_ID: selectedClientId, Direction: 'in' as const, price: item.price, taxType: existing?.taxType, Account_Code: item.accountCode || existing?.Account_Code });
+        onUpsertPartnerItem({ ...(existing ?? {}), id: psId, itemId: product.id, partnerId: selectedClientId, Direction: 'in' as const, price: item.price, taxType: existing?.taxType, Account_Code: item.accountCode || existing?.Account_Code });
         onUpdateItemCost?.(product.id, item.price);
       }
     }
@@ -1459,9 +1459,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const inboundPartnerItemRows = useMemo(() =>
     allItems
       // partnerIn 직접 조회 — 한 품목에 매입처가 여러 개여도, 대/소문자 필드 혼재여도 정상 매칭
-      .filter(p => partnerIn.some(ps => (ps.itemId ?? ps.Item_ID) === p.id && (ps.partnerId ?? ps.Partner_ID) === selectedClientId))
+      .filter(p => partnerIn.some(ps => (ps.itemId) === p.id && (ps.partnerId) === selectedClientId))
       .map(p => {
-        const ps = partnerIn.find(s => (s.itemId ?? s.Item_ID) === p.id && (s.partnerId ?? s.Partner_ID) === selectedClientId)
+        const ps = partnerIn.find(s => (s.itemId) === p.id && (s.partnerId) === selectedClientId)
           ?? { id: `${p.id}_${selectedClientId}`, itemId: p.id, partnerId: selectedClientId } as PartnerItem;
         return { pc: ps, ps, product: p };
       }),
@@ -1478,13 +1478,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const extra = allItems
       .filter(p => !linkedIds.has(p.id))
       .map(p => {
-        const ex = src.find(pc => (pc.itemId ?? pc.Item_ID) === p.id && (pc.partnerId ?? pc.Partner_ID) === selectedClientId);
-        return { pc: { id: ex?.id ?? p.id, itemId: p.id, partnerId: selectedClientId, price: ex?.price ?? ex?.Standard_Price ?? p.price, taxType: ex?.taxType }, product: p };
+        const ex = src.find(pc => (pc.itemId) === p.id && (pc.partnerId) === selectedClientId);
+        return { pc: { id: ex?.id ?? p.id, itemId: p.id, partnerId: selectedClientId, price: ex?.price ?? ex?.price ?? p.price, taxType: ex?.taxType }, product: p };
       });
     return [...searchableRows, ...extra] as unknown as typeof searchableRows;
   }, [searchableRows, allItems, createMode, partnerIn, partnerOut, selectedClientId]);
 
-  // 단가 저장 (매출: price, 매입: Standard_Price)
+  // 단가 저장 (매출: price, 매입: price)
   const savePcPrice = (pc: PartnerItem) => {
     const val = parseFloat(pricePanelEdits[pc.id] || '');
     if (!isNaN(val) && val >= 0) onUpsertPartnerItem?.({ ...pc, price: val });
@@ -1492,8 +1492,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   const savePsPrice = (ps: PartnerItem, newPrice: number) => {
     if (isNaN(newPrice) || newPrice < 0) return;
-    onUpsertPartnerItem?.({ ...ps, Standard_Price: newPrice });
-    const itemId = ps.Item_ID ?? ps.itemId;
+    onUpsertPartnerItem?.({ ...ps, price: newPrice });
+    const itemId = ps.itemId;
     if (itemId) onUpdateItemCost?.(itemId, newPrice);
   };
 
@@ -3728,8 +3728,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                             return allItems
                               .filter(p => (p.name + ' ' + (p.품목 ?? '')).toLowerCase().includes(qq))
                               .map(p => {
-                                const ex = src.find(pc => (pc.itemId ?? pc.Item_ID) === p.id && (pc.partnerId ?? pc.Partner_ID) === selectedClientId);
-                                return { pc: { id: ex?.id ?? p.id, itemId: p.id, partnerId: selectedClientId, price: ex?.price ?? ex?.Standard_Price ?? p.price, taxType: ex?.taxType }, product: p };
+                                const ex = src.find(pc => (pc.itemId) === p.id && (pc.partnerId) === selectedClientId);
+                                return { pc: { id: ex?.id ?? p.id, itemId: p.id, partnerId: selectedClientId, price: ex?.price ?? ex?.price ?? p.price, taxType: ex?.taxType }, product: p };
                               }) as unknown as typeof searchableRows;
                           })();
                           const isSel=selectedItemIdx===idx;

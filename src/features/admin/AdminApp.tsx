@@ -195,21 +195,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // partner_item upsert — Firestore 쓰기 + 로컬 낙관적 갱신(라이브 구독 아님 → 새로고침 없이 즉시 반영)
   const handleUpsertPartnerItem = (ps: PartnerItem, defaultDir: 'in' | 'out' = 'out') => {
-    // canonical camelCase(itemId/partnerId/price)로 정규화 — 레거시 필드는 DB에 저장 안 함
-    const { Item_ID, Partner_ID, Standard_Price, item_id, customer_id, price: _p, ...rest } = ps as any;
-    const itemId = ps.itemId ?? Item_ID;
-    const partnerId = ps.partnerId ?? Partner_ID;
-    const price = ps.price ?? Standard_Price;
-    const docData = { ...rest, itemId, partnerId, Direction: ps.Direction ?? defaultDir,
-      ...(price !== undefined ? { price } : {}) } as PartnerItem;
+    // partner_item은 itemId/partnerId/price/Direction/Account_Code/taxType만 저장한다.
+    const { id, itemId, partnerId, price, Direction, Account_Code, taxType } = ps;
+    const docData = { id, itemId, partnerId, Direction: Direction ?? defaultDir,
+      ...(price !== undefined ? { price } : {}),
+      ...(Account_Code !== undefined ? { Account_Code } : {}),
+      ...(taxType !== undefined ? { taxType } : {}) } as PartnerItem;
     addItem('partner_item', docData);
     setPartnerItems(prev => {
-      // 로컬 state는 읽기 호환 위해 레거시 별칭도 함께 주입(메모리 내 157개 read 대비)
-      const merged = { ...docData, Item_ID: itemId, Partner_ID: partnerId,
-        ...(price !== undefined ? { Standard_Price: price } : {}) } as PartnerItem;
       const idx = prev.findIndex(p => p.id && p.id === docData.id);
-      if (idx >= 0) { const n = [...prev]; n[idx] = { ...prev[idx], ...merged }; return n; }
-      return [...prev, merged];
+      if (idx >= 0) { const n = [...prev]; n[idx] = { ...prev[idx], ...docData }; return n; }
+      return [...prev, docData];
     });
   };
 
@@ -320,23 +316,26 @@ const AdminApp: React.FC<AdminAppProps> = ({
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // partnerOut로부터 itemId → partnerIds[] 맵 생성
+  // 품목→매출거래처 맵 — 오직 partner_item(out)에서. 품목의 저장 partnerIds는 죽은 필드라 안 본다.
+  //   필드명이 데이터마다 itemId/itemId·partnerId/partnerId로 섞여 있어 둘 다 받는다(예전 itemId만 읽어 전부 누락되던 버그).
   const productClientMap = useMemo(() => {
     const map = new Map<string, string[]>();
     for (const pc of partnerOut) {
-      if (!pc.Item_ID || !pc.Partner_ID) continue;
-      const arr = map.get(pc.Item_ID) ?? [];
-      arr.push(pc.Partner_ID);
-      map.set(pc.Item_ID, arr);
+      const iid = (pc as any).itemId ?? pc.itemId;
+      const pid = (pc as any).partnerId ?? pc.partnerId;
+      if (!iid || !pid) continue;
+      const arr = map.get(iid) ?? [];
+      if (!arr.includes(pid)) arr.push(pid);
+      map.set(iid, arr);
     }
     return map;
   }, [partnerOut]);
 
-  // Combined products for UI — clientIds를 partnerOut 기반으로 조인
+  // Combined products for UI — 매출거래처는 partner_item(out)에서만 조인(저장 partnerIds fallback 제거)
   const allItems = useMemo(() =>
     [...products, ...submaterials].map(p => ({
       ...p,
-      partnerIds: productClientMap.get(p.id) ?? p.partnerIds ?? [],
+      partnerIds: productClientMap.get(p.id) ?? [],
     })),
     [products, submaterials, productClientMap]
   );
@@ -630,8 +629,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const handleAddOrderRequest = async (id: string, quantity: number, isBox?: boolean) => {
     // append-only: 발주할 때마다 새 발주카드 추가
     const product = allItems.find(p => p.id === id);
-    const ps = partnerIn.find(s => s.Item_ID === id || (s as any).itemId === id);
-    const partnerId = ps?.Partner_ID || (ps as any)?.partnerId;
+    const ps = partnerIn.find(s => s.itemId === id || (s as any).itemId === id);
+    const partnerId = ps?.partnerId || (ps as any)?.partnerId;
     const partnerName = partnerId ? partners.find(c => c.id === partnerId)?.name : undefined;
     await addItem('purchaseOrders', {
       id: `po-${Date.now()}`, itemId: id, itemName: product?.name ?? '',
@@ -684,8 +683,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
     // 거래처별 묶음 (partnerId 없으면 품목별 개별 카드)
     const groups = new Map<string, { partnerId?: string; partnerName?: string; items: typeof items }>();
     items.forEach((item, idx) => {
-      const ps = partnerIn.find(s => s.Item_ID === item.id || (s as any).itemId === item.id);
-      const partnerId = ps?.Partner_ID || (ps as any)?.partnerId;
+      const ps = partnerIn.find(s => s.itemId === item.id || (s as any).itemId === item.id);
+      const partnerId = ps?.partnerId || (ps as any)?.partnerId;
       const partnerName = partnerId ? partners.find(c => c.id === partnerId)?.name : undefined;
       const key = partnerId || `__none_${idx}`;
       if (!groups.has(key)) groups.set(key, { partnerId, partnerName, items: [] });
@@ -711,8 +710,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
     for (const item of items) {
       const po = purchaseOrders.find(po => po.id === item.id);
       if (!po) continue;
-      const ps = partnerIn.find(s => s.Item_ID === (po.itemId ?? po.id) || (s as any).itemId === (po.itemId ?? po.id));
-      const partnerId = ps?.Partner_ID || (ps as any)?.partnerId;
+      const ps = partnerIn.find(s => s.itemId === (po.itemId ?? po.id) || (s as any).itemId === (po.itemId ?? po.id));
+      const partnerId = ps?.partnerId || (ps as any)?.partnerId;
       const partnerName = partnerId ? partners.find(c => c.id === partnerId)?.name : undefined;
       await updateItem('purchaseOrders', item.id, {
         status: 'invoiced', invoicedAt: new Date().toISOString(),
@@ -3643,26 +3642,26 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     deleteItem(inProducts ? 'items' : 'items', id);
                   }}
                   onLinkItem={async (itemId, partnerId) => {
-                    const current = partnerOut.filter(pc => pc.Item_ID === itemId).map(pc => pc.Partner_ID);
+                    const current = partnerOut.filter(pc => pc.itemId === itemId).map(pc => pc.partnerId);
                     if (!current.includes(partnerId)) {
                       await setProductClients(itemId, [...current, partnerId]);
                       refreshStaticData();
                     }
                   }}
                   onUnlinkItem={async (itemId, partnerId) => {
-                    const current = partnerOut.filter(pc => pc.Item_ID === itemId).map(pc => pc.Partner_ID);
+                    const current = partnerOut.filter(pc => pc.itemId === itemId).map(pc => pc.partnerId);
                     await setProductClients(itemId, current.filter(id => id !== partnerId));
                     refreshStaticData();
                   }}
                   onLinkSupplier={async (itemId, partnerId) => {
-                    const current = partnerItems.filter(pi => pi.Item_ID === itemId && pi.Direction === 'in').map(pi => pi.Partner_ID);
+                    const current = partnerItems.filter(pi => pi.itemId === itemId && pi.Direction === 'in').map(pi => pi.partnerId);
                     if (!current.includes(partnerId)) {
                       await setProductSuppliers(itemId, [...current, partnerId]);
                       refreshStaticData();
                     }
                   }}
                   onUnlinkSupplier={async (itemId, partnerId) => {
-                    const current = partnerItems.filter(pi => pi.Item_ID === itemId && pi.Direction === 'in').map(pi => pi.Partner_ID);
+                    const current = partnerItems.filter(pi => pi.itemId === itemId && pi.Direction === 'in').map(pi => pi.partnerId);
                     await setProductSuppliers(itemId, current.filter(id => id !== partnerId));
                     refreshStaticData();
                   }}
@@ -3676,12 +3675,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       for (const docSnap of snap.docs) {
                         const data = docSnap.data();
                         const dir = data.Direction ?? 'out';
-                        const pId = data.partnerId ?? data.Partner_ID;
+                        const pId = data.partnerId;
                         const newId = `${keepId}_${pId}_${dir}`;
                         const newRef = d(fireDb, 'partner_item', newId);
-                        const existing = partnerItems.find(pi => (pi.itemId ?? pi.Item_ID) === keepId && (pi.partnerId ?? pi.Partner_ID) === pId && pi.Direction === dir);
+                        const existing = partnerItems.find(pi => (pi.itemId) === keepId && (pi.partnerId) === pId && pi.Direction === dir);
                         if (!existing) {
-                          const { Item_ID, Partner_ID, Standard_Price, ...cleanData } = data as any;
+                          const { itemId, partnerId, price, ...cleanData } = data as any;
                           batch.set(newRef, { ...cleanData, itemId: keepId, id: newId });
                         }
                         batch.delete(docSnap.ref);
@@ -3696,7 +3695,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   onSaveItemCustomer={async (ic: Partial<import('../../shared/types').PartnerItem> & { id: string }) => {
                     const { doc: fDoc, updateDoc: fUpdate } = await import('firebase/firestore');
                     const { db: fireDb } = await import('../../shared/firebase');
-                    const { id, itemId, partnerId, price, item_id, customer_id, Item_ID, Partner_ID, Standard_Price, ...rest } = ic as any;
+                    // canonical(itemId/partnerId/price)와 id는 저장 데이터에서 빼고 나머지만 업데이트
+                    const { id, itemId, partnerId, price, ...rest } = ic as any;
+                    void itemId; void partnerId; void price;
                     const data = Object.fromEntries(
                       Object.entries(rest).filter(([, v]) => v !== undefined)
                     );

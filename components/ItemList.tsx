@@ -199,7 +199,7 @@ const ItemList: React.FC<ItemListProps> = ({
   onOemReceive,
   onOemIssueFee,
 }) => {
-  const psMap = useMemo(() => new Map(partnerItems.filter(pi => pi.Direction === 'in').map(pi => [pi.Item_ID, pi.Partner_ID])), [partnerItems]);
+  const psMap = useMemo(() => new Map(partnerItems.filter(pi => pi.Direction === 'in').map(pi => [pi.itemId, pi.partnerId])), [partnerItems]);
   const fmtHamiyou = (stock: number) => {
     const boxes = Math.floor(stock / 12);
     const rem = stock % 12;
@@ -423,7 +423,7 @@ const ItemList: React.FC<ItemListProps> = ({
 
   // partner_item Direction='in' 매핑 있는 품목만 발주 가능
   const purchasableIds = useMemo(() =>
-    new Set(partnerItems.filter(pi => pi.Direction === 'in').map(pi => pi.Item_ID).filter(Boolean)),
+    new Set(partnerItems.filter(pi => pi.Direction === 'in').map(pi => pi.itemId).filter(Boolean)),
     [partnerItems]
   );
 
@@ -1488,7 +1488,7 @@ const ItemList: React.FC<ItemListProps> = ({
                     </tr>
                     {/* 볶음참깨 규격별 재고 패널 */}
                     {isExpanded && product.isRawMaterial && (() => {
-                      const ics = partnerItems.filter(pi => pi.Direction === 'out' && pi.Item_ID === product.id);
+                      const ics = partnerItems.filter(pi => pi.Direction === 'out' && pi.itemId === product.id);
                       // 고유 (displaySize, labelId) 조합
                       const variantMap = new Map<string, { displaySize: string; labelId: string; labelName: string; weightInKg: number }>();
                       for (const ic of ics) {

@@ -131,7 +131,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
     const finished = items.filter(p => !p.archived && ['product', 'wip', 'giftset'].includes(p.category));
     const pcByProduct: Record<string, PartnerItem[]> = {};
     for (const pc of partnerOut) {
-      const key = pc.Item_ID;
+      const key = pc.itemId;
       if (!key) continue;
       if (!pcByProduct[key]) pcByProduct[key] = [];
       pcByProduct[key].push(pc);
@@ -172,8 +172,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
   const partnerItemCount = useMemo(() => {
     const map = new Map<string, number>();
     for (const pc of partnerOut) {
-      const cid = pc.Partner_ID ?? (pc as any).partnerId;
-      const iid = pc.Item_ID ?? (pc as any).itemId;
+      const cid = pc.partnerId ?? (pc as any).partnerId;
+      const iid = pc.itemId ?? (pc as any).itemId;
       if (cid && validItemIds.has(iid)) map.set(cid, (map.get(cid) ?? 0) + 1);
     }
     return map;
@@ -182,8 +182,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
   const inboundPartnerItemCount = useMemo(() => {
     const map = new Map<string, number>();
     for (const ps of partnerIn) {
-      const sid = ps.partnerId ?? ps.Partner_ID;
-      const iid = ps.itemId ?? ps.Item_ID;
+      const sid = ps.partnerId;
+      const iid = ps.itemId;
       if (sid && validItemIds.has(iid)) map.set(sid, (map.get(sid) ?? 0) + 1);
     }
     return map;
@@ -217,7 +217,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
       ? items.filter(p => !p.archived && p.category === activeCategory)
       : selectedClientId
         ? isByClientPurchase
-          ? items.filter(p => !p.archived && partnerIn.some(ps => (ps.itemId ?? ps.Item_ID) === p.id && (ps.partnerId ?? ps.Partner_ID) === selectedClientId))
+          ? items.filter(p => !p.archived && partnerIn.some(ps => (ps.itemId) === p.id && (ps.partnerId) === selectedClientId))
           : items.filter(p => !p.archived && (partnerAllCats || p.category === activeCategory) && (p.partnerIds ?? []).includes(selectedClientId))
         : [];
 
@@ -324,7 +324,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
     if (!selectedClientId) return [];
     const term = linkSearch.toLowerCase().trim();
     const alreadyLinked = partnerScopeTab === 'purchase'
-      ? new Set(partnerIn.filter(ps => (ps.partnerId ?? ps.Partner_ID) === selectedClientId).map(ps => ps.itemId ?? ps.Item_ID))
+      ? new Set(partnerIn.filter(ps => (ps.partnerId) === selectedClientId).map(ps => ps.itemId))
       : null;
     return products
       .filter(p => p.category === linkCategory && (alreadyLinked ? !alreadyLinked.has(p.id) : !(p.partnerIds ?? []).includes(selectedClientId)))
@@ -551,8 +551,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                           ];
                           const inIds = [...new Set(
                             partnerIn
-                              .filter(ps => (ps.itemId ?? ps.Item_ID) === item.id)
-                              .map(ps => (ps.partnerId ?? ps.Partner_ID))
+                              .filter(ps => (ps.itemId) === item.id)
+                              .map(ps => (ps.partnerId))
                               .filter(Boolean)
                           )];
                           const matched = inIds.map(id => partners.find(c => c.id === id)).filter(Boolean) as typeof partners;
@@ -620,15 +620,15 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                       </td>
                     )}
                     {(isAdmin && mainView === 'by-partner' && selectedClientId && partnerScopeTab === 'sales') && (() => {
-                      const psOut = partnerOut.find(ps => (ps.itemId ?? ps.Item_ID) === item.id && (ps.partnerId ?? ps.Partner_ID) === selectedClientId);
-                      const curPrice = psOut?.price ?? psOut?.Standard_Price;
+                      const psOut = partnerOut.find(ps => (ps.itemId) === item.id && (ps.partnerId) === selectedClientId);
+                      const curPrice = psOut?.price ?? psOut?.price;
                       const editKey = `${item.id}_${selectedClientId}`;
                       const editVal = salesPriceEdits[editKey];
                       const savePrice = () => {
                         if (editVal === undefined || !onUpsertPartnerItem) return;
                         const num = editVal === '' ? 0 : Number(editVal);
                         if (isNaN(num)) return;
-                        onUpsertPartnerItem({ ...(psOut ?? {}), id: psOut?.id ?? `${item.id}_${selectedClientId}_out`, Item_ID: item.id, Partner_ID: selectedClientId, Direction: 'out', price: num } as PartnerItem);
+                        onUpsertPartnerItem({ ...(psOut ?? {}), id: psOut?.id ?? `${item.id}_${selectedClientId}_out`, itemId: item.id, partnerId: selectedClientId, Direction: 'out', price: num } as PartnerItem);
                         setSalesPriceEdits(prev => { const n = { ...prev }; delete n[editKey]; return n; });
                       };
                       const cancelEdit = () => setSalesPriceEdits(prev => { const n = { ...prev }; delete n[editKey]; return n; });
@@ -781,8 +781,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                                       const boxItem = items.find(p => p.id === rule.box_item_id);
                                       const tapeItem = rule.tape_item_id ? items.find(p => p.id === rule.tape_item_id) : null;
                                       const partnerPrice = partnerItems.find(ic =>
-                                        ic.Item_ID === item.id &&
-                                        ic.Partner_ID === rule.partner_id
+                                        ic.itemId === item.id &&
+                                        ic.partnerId === rule.partner_id
                                       )?.price;
                                       const editing = editingRule[rule.id];
                                       return (

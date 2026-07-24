@@ -28,7 +28,7 @@ const PriceManager: React.FC<PriceManagerProps> = ({
   const [saved, setSaved] = useState(false);
 
   const psMap = useMemo(() =>
-    new Map(partnerIn.map(ps => [ps.itemId ?? ps.Item_ID, ps.partnerId ?? ps.Partner_ID])),
+    new Map(partnerIn.map(ps => [ps.itemId, ps.partnerId])),
     [partnerIn]
   );
 
@@ -42,8 +42,8 @@ const PriceManager: React.FC<PriceManagerProps> = ({
   const selectedPcRows = useMemo(() =>
     partnerId
       ? partnerOut
-          .filter(pc => (pc.partnerId ?? pc.Partner_ID) === partnerId)
-          .map(pc => ({ pc, product: items.find(p => p.id === (pc.itemId ?? pc.Item_ID)) }))
+          .filter(pc => (pc.partnerId) === partnerId)
+          .map(pc => ({ pc, product: items.find(p => p.id === (pc.itemId)) }))
           .filter(r => r.product)
           .sort((a, b) => a.product!.name.localeCompare(b.product!.name))
       : [],
@@ -56,8 +56,8 @@ const PriceManager: React.FC<PriceManagerProps> = ({
           .filter(p => psMap.get(p.id) === partnerId)
           .map(p => {
             const ps = partnerIn.find(s =>
-              (s.itemId ?? s.Item_ID) === p.id && (s.partnerId ?? s.Partner_ID) === partnerId
-            ) ?? { id: `${p.id}_${partnerId}`, itemId: p.id, Item_ID: p.id, partnerId: partnerId, Partner_ID: partnerId, Direction: 'in' as const } as unknown as PartnerItem;
+              (s.itemId) === p.id && (s.partnerId) === partnerId
+            ) ?? { id: `${p.id}_${partnerId}`, itemId: p.id, partnerId: partnerId, Direction: 'in' as const } as unknown as PartnerItem;
             return { ps, product: p };
           })
           .sort((a, b) => a.product.name.localeCompare(b.product.name))
@@ -66,8 +66,8 @@ const PriceManager: React.FC<PriceManagerProps> = ({
   );
 
   const hasMissingPrice = mode === '매출'
-    ? selectedPcRows.some(r => !r.pc.price && !r.pc.Standard_Price)
-    : selectedPsRows.some(r => !r.ps.price && !r.ps.Standard_Price);
+    ? selectedPcRows.some(r => !r.pc.price && !r.pc.price)
+    : selectedPsRows.some(r => !r.ps.price && !r.ps.price);
 
   const hasEdits = Object.keys(priceEdits).length > 0 || Object.keys(taxEdits).length > 0 || Object.keys(costEdits).length > 0;
 
@@ -93,8 +93,8 @@ const PriceManager: React.FC<PriceManagerProps> = ({
         if (isNaN(n) || n < 0) continue;
         const row = selectedPsRows.find(r => r.ps.id === psId);
         if (!row) continue;
-        onUpsertPartnerItem?.({ ...row.ps, Standard_Price: n });
-        const itemId = row.ps.Item_ID ?? row.ps.itemId;
+        onUpsertPartnerItem?.({ ...row.ps, price: n });
+        const itemId = row.ps.itemId ?? row.ps.itemId;
         if (itemId) onUpdateItemCost?.(itemId, n);
       }
       for (const [psId, tax] of Object.entries(taxEdits)) {
@@ -129,11 +129,11 @@ const PriceManager: React.FC<PriceManagerProps> = ({
         <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
           {filteredClients.map(c => {
             const pcCount = mode === '매출'
-              ? partnerOut.filter(pc => (pc.partnerId ?? pc.Partner_ID) === c.id).length
-              : partnerIn.filter(ps => (ps.partnerId ?? ps.Partner_ID) === c.id).length;
+              ? partnerOut.filter(pc => (pc.partnerId) === c.id).length
+              : partnerIn.filter(ps => (ps.partnerId) === c.id).length;
             const missingCount = mode === '매출'
-              ? partnerOut.filter(pc => (pc.partnerId ?? pc.Partner_ID) === c.id && !pc.price && !pc.Standard_Price).length
-              : partnerIn.filter(ps => (ps.partnerId ?? ps.Partner_ID) === c.id && !ps.price && !ps.Standard_Price).length;
+              ? partnerOut.filter(pc => (pc.partnerId) === c.id && !pc.price).length
+              : partnerIn.filter(ps => (ps.partnerId) === c.id && !ps.price).length;
             if (pcCount === 0) return null;
             return (
               <button
@@ -219,11 +219,11 @@ const PriceManager: React.FC<PriceManagerProps> = ({
                       const costEdited = costEdits[product!.id] !== undefined;
                       const taxEdited = taxEdits[pc.id] !== undefined;
                       const currentTax = taxEdits[pc.id] ?? pc.taxType ?? '과세';
-                      const effectivePrice = priceEdits[pc.id] ? parseFloat(priceEdits[pc.id]) : (pc.price ?? pc.Standard_Price ?? 0);
+                      const effectivePrice = priceEdits[pc.id] ? parseFloat(priceEdits[pc.id]) : (pc.price ?? 0);
                       const effectiveCost = costEdits[product!.id] ? parseFloat(costEdits[product!.id]) : (product!.cost ?? 0);
                       const margin = effectivePrice > 0 && effectiveCost > 0
                         ? Math.round((effectivePrice - effectiveCost) / effectivePrice * 100) : null;
-                      const hasNoPrice = !pc.price && !pc.Standard_Price;
+                      const hasNoPrice = !pc.price;
                       return (
                         <tr key={pc.id} className={`hover:bg-slate-50 transition-colors ${hasNoPrice ? 'bg-amber-50/40' : ''}`}>
                           <td className="px-5 py-3">
@@ -273,7 +273,7 @@ const PriceManager: React.FC<PriceManagerProps> = ({
                       const edited = priceEdits[ps.id] !== undefined;
                       const taxEdited = taxEdits[ps.id] !== undefined;
                       const currentTax = taxEdits[ps.id] ?? ps.taxType ?? '과세';
-                      const hasNoPrice = !ps.price && !ps.Standard_Price;
+                      const hasNoPrice = !ps.price;
                       return (
                         <tr key={ps.id} className={`hover:bg-slate-50 transition-colors ${hasNoPrice ? 'bg-amber-50/40' : ''}`}>
                           <td className="px-5 py-3">
@@ -283,7 +283,7 @@ const PriceManager: React.FC<PriceManagerProps> = ({
                           <td className="px-4 py-3 text-[11px] text-slate-400">{product.spec || '-'}</td>
                           <td className="px-4 py-3"><div className="flex justify-end">
                             <input type="number"
-                              placeholder={ps.price ? String(ps.price) : ps.Standard_Price ? String(ps.Standard_Price) : '매입단가'}
+                              placeholder={ps.price ? String(ps.price) : ps.price ? String(ps.price) : '매입단가'}
                               value={priceEdits[ps.id] ?? ''}
                               onChange={e => setPriceEdits(prev => ({ ...prev, [ps.id]: e.target.value }))}
                               className={`w-28 text-right bg-white border rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-rose-300 transition-all ${edited ? 'border-rose-400 bg-rose-50' : 'border-slate-200'}`}/>

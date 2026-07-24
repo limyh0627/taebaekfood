@@ -227,7 +227,7 @@ export const setProductClients = async (itemId: string, partnerIds: string[]) =>
 
   // 기존 레코드 조회 (Direction='out' 필터)
   const existing = await getDocs(q(col(db, 'partner_item'), where('itemId', '==', itemId), where('Direction', '==', 'out')));
-  const existingMap = new Map(existing.docs.map(d => [(d.data().partnerId ?? d.data().Partner_ID) as string, d.ref]));
+  const existingMap = new Map(existing.docs.map(d => [(d.data().partnerId ?? d.data().partnerId) as string, d.ref]));
 
   const batch = writeBatch(db);
 
@@ -253,7 +253,7 @@ export const setProductSuppliers = async (itemId: string, inboundPartnerIds: str
   const { getDocs, query: q, collection: col, where } = await import('firebase/firestore');
 
   const existing = await getDocs(q(col(db, 'partner_item'), where('itemId', '==', itemId), where('Direction', '==', 'in')));
-  const existingMap = new Map(existing.docs.map(d => [(d.data().partnerId ?? d.data().Partner_ID) as string, d.ref]));
+  const existingMap = new Map(existing.docs.map(d => [(d.data().partnerId ?? d.data().partnerId) as string, d.ref]));
 
   const batch = writeBatch(db);
 

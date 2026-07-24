@@ -115,8 +115,8 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
       let resolvedPartnerName: string | undefined = po.partnerName;
       const lines = poLines(po);
       if (!resolvedPartnerId && lines[0]) {
-        const ps = partnerItems.find(s => (s.Item_ID === lines[0].itemId || s.itemId === lines[0].itemId) && s.Direction === 'in');
-        resolvedPartnerId = ps?.Partner_ID ?? ps?.partnerId;
+        const ps = partnerItems.find(s => (s.itemId === lines[0].itemId || s.itemId === lines[0].itemId) && s.Direction === 'in');
+        resolvedPartnerId = ps?.partnerId ?? ps?.partnerId;
         if (resolvedPartnerId && !resolvedPartnerName) {
           resolvedPartnerName = partners.find(c => c.id === resolvedPartnerId)?.name ?? resolvedPartnerId;
         }
@@ -223,13 +223,13 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
       (partnerName && (c.name.includes(partnerName) || partnerName.includes(c.name)))
     );
     const invoiceItems = pos.flatMap(po => poLines(po)).map(line => {
-      const pi = partnerItems.find(p => (p.Item_ID ?? (p as any).itemId) === line.itemId && p.Direction === 'in');
+      const pi = partnerItems.find(p => (p.itemId ?? (p as any).itemId) === line.itemId && p.Direction === 'in');
       const item = items.find(it => it.id === line.itemId);
       return {
         name: line.name || item?.name || '',
         spec: line.unit || item?.unit || '',
         qty: line.quantity,
-        price: Number(pi?.price ?? pi?.Standard_Price ?? 0),
+        price: Number(pi?.price ?? pi?.price ?? 0),
         isBox: false,
       };
     });
