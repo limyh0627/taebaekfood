@@ -148,23 +148,29 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
   ) : null;
 
   // 거래처 전용 품목 필터링 적용
+  // 이 거래처가 이 품목을 주문할 수 있나 (거래처 등록·스마트스토어·통합품목)
+  const orderableForClient = (p: Item): boolean => {
+    if (!selectedClient) return false;
+    if (p.partnerIds?.includes(selectedClient.id)) return true;
+    if (selectedClient.type === '스마트스토어' && p.partnerIds?.includes('SMARTSTORE')) return true;
+    if (selectedClient.type === '스마트스토어' && p.isSmartStore) return true;
+    if (p.isRawMaterial && shippingRules.some(r => r.item_id === p.id && r.partner_id === selectedClient.id)) return true;
+    return false;
+  };
+  // 낱개↔박스가 짝인데 거래처마다 노출 명단이 다르다 — 그룹의 아무 변형이나 주문 가능하면 낱개를 앵커로 띄운다
+  const groupOrderable = (loose: Item): boolean =>
+    orderableForClient(loose) || boxSiblings(loose, items).some(s => orderableForClient(s.item));
+
   const displayProducts = useMemo(() => {
     if (!selectedClient) return [];
     return products
       .filter(p => {
         if (p.archived) return false;
-        // 박스 변형은 목록에서 빼고 낱개 카드의 토글로만 접근 (짝 없이 홀로면 그대로 노출)
-        if (isBoxStockItem(p) && items.some(x => !x.archived && x.id === (unpackComponent(p)?.itemId))) return false;
         const isOrderable = p.category === 'product' || p.category === 'giftset';
         if (!isOrderable || p.subtype === '향미유' || p.subtype === '고춧가루') return false;
-        if (p.partnerIds?.includes(selectedClient.id)) return true;
-        // 스마트스토어 타입 거래처 선택 시 SMARTSTORE 태그 제품도 표시
-        if (selectedClient.type === '스마트스토어' && p.partnerIds?.includes('SMARTSTORE')) return true;
-        // 스마트스토어 전용 체크된 품목도 스마트스토어 거래처에 표시
-        if (selectedClient.type === '스마트스토어' && p.isSmartStore) return true;
-        // 통합 품목(isRawMaterial): shipping_rule 등록 기반으로 표시
-        if (p.isRawMaterial && shippingRules.some(r => r.item_id === p.id && r.partner_id === selectedClient.id)) return true;
-        return false;
+        // 박스 변형은 목록에서 빼고 낱개 카드의 토글로만 접근 (짝 없이 홀로면 그대로 노출)
+        if (isBoxStockItem(p) && items.some(x => !x.archived && x.id === (unpackComponent(p)?.itemId))) return false;
+        return groupOrderable(p);
       })
       .sort((a, b) => {
         const diff = getProductTypeOrder(a.name) - getProductTypeOrder(b.name);
@@ -707,8 +713,12 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                     // 낱개↔박스 변형 — 이 낱개에 짝지어진 박스 품목들. 있으면 카드 안에서 전환.
                     const siblings = boxSiblings(looseProduct, items);
                     const groupIds = [looseProduct.id, ...siblings.map(s => s.item.id)];
+                    // 기본 변형 — 낱개가 이 거래처에 안 팔리면 팔리는 박스로 연다
+                    const defaultId = orderableForClient(looseProduct)
+                      ? looseProduct.id
+                      : (siblings.find(s => orderableForClient(s.item))?.item.id ?? looseProduct.id);
                     const activeId = variantChoice[looseProduct.id] && groupIds.includes(variantChoice[looseProduct.id])
-                      ? variantChoice[looseProduct.id] : looseProduct.id;
+                      ? variantChoice[looseProduct.id] : defaultId;
                     const product = items.find(p => p.id === activeId) ?? looseProduct;
                     const variants = siblings.length > 0
                       ? [{ id: looseProduct.id, label: '낱개' }, ...siblings.map(s => ({ id: s.item.id, label: `${s.count}개입` }))]
