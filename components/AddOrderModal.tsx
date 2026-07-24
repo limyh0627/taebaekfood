@@ -720,10 +720,9 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                     // 낱개 + 이 거래처에 설정된 박스만 (모든 박스 규격을 다 띄우지 않는다)
                     const siblings = boxSiblings(looseProduct, items).filter(s => orderableForClient(s.item));
                     const groupIds = [looseProduct.id, ...siblings.map(s => s.item.id)];
-                    // 기본 변형 — 낱개가 이 거래처에 안 팔리면 팔리는 박스로 연다
-                    const defaultId = orderableForClient(looseProduct)
-                      ? looseProduct.id
-                      : (siblings[0]?.item.id ?? looseProduct.id);
+                    // 기본 변형 — 거의 박스로 주문하니 박스를 기본으로 연다. 박스가 여럿이면
+                    // 가장 작은 개입(첫 번째)으로 과다주문 방지. 짝 박스가 없으면 낱개.
+                    const defaultId = siblings.length > 0 ? siblings[0].item.id : looseProduct.id;
                     const activeId = variantChoice[looseProduct.id] && groupIds.includes(variantChoice[looseProduct.id])
                       ? variantChoice[looseProduct.id] : defaultId;
                     const product = items.find(p => p.id === activeId) ?? looseProduct;
