@@ -428,39 +428,6 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
           </div>
         )}
 
-        {/* 박스 모드 배지 */}
-        {(uPerBox > 0 || isHyangmiyu) && (
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => {
-                const qty = typeof selection.quantity === 'number' && selection.quantity > 0 ? selection.quantity : 1;
-                if (selection.isBoxUnit) {
-                  updateItem(product.id, { isBoxUnit: false, quantity: qty * (uPerBox || 12) });
-                } else {
-                  updateItem(product.id, { isBoxUnit: true, quantity: Math.ceil(qty / (uPerBox || 12)) });
-                }
-              }}
-              className={`text-[10px] font-black px-2.5 py-0.5 rounded-lg border transition-all shrink-0 ${
-                isBoxMode
-                  ? 'bg-indigo-600 text-white border-indigo-600'
-                  : 'bg-white text-slate-400 border-slate-200 hover:border-indigo-300'
-              }`}
-            >
-              BOX
-            </button>
-            {isBoxMode && (
-              <span className="text-[9px] font-black text-indigo-500 bg-indigo-100 px-1.5 py-0.5 rounded">
-                박스 단위
-              </span>
-            )}
-            {!isBoxMode && (
-              <span className="text-[9px] font-black text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
-                낱개 단위
-              </span>
-            )}
-          </div>
-        )}
 
         {/* 박스 종류 선택 (박스 모드 + 여러 configs) */}
         {isBoxMode && availableConfigs.length > 1 && (
