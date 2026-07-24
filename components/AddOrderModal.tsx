@@ -711,17 +711,22 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                 {shownProducts.length > 0 ? (
                   shownProducts.map(looseProduct => {
                     // 낱개↔박스 변형 — 이 낱개에 짝지어진 박스 품목들. 있으면 카드 안에서 전환.
-                    const siblings = boxSiblings(looseProduct, items);
+                    // 낱개 + 이 거래처에 설정된 박스만 (모든 박스 규격을 다 띄우지 않는다)
+                    const siblings = boxSiblings(looseProduct, items).filter(s => orderableForClient(s.item));
                     const groupIds = [looseProduct.id, ...siblings.map(s => s.item.id)];
                     // 기본 변형 — 낱개가 이 거래처에 안 팔리면 팔리는 박스로 연다
                     const defaultId = orderableForClient(looseProduct)
                       ? looseProduct.id
-                      : (siblings.find(s => orderableForClient(s.item))?.item.id ?? looseProduct.id);
+                      : (siblings[0]?.item.id ?? looseProduct.id);
                     const activeId = variantChoice[looseProduct.id] && groupIds.includes(variantChoice[looseProduct.id])
                       ? variantChoice[looseProduct.id] : defaultId;
                     const product = items.find(p => p.id === activeId) ?? looseProduct;
+                    // 낱개도 이 거래처에 팔릴 때만 토글에 (안 팔리면 박스만)
                     const variants = siblings.length > 0
-                      ? [{ id: looseProduct.id, label: '낱개' }, ...siblings.map(s => ({ id: s.item.id, label: `${s.count}개입` }))]
+                      ? [
+                          ...(orderableForClient(looseProduct) ? [{ id: looseProduct.id, label: '낱개' }] : []),
+                          ...siblings.map(s => ({ id: s.item.id, label: `${s.count}개입` })),
+                        ]
                       : [];
 
                     const selection = selectedItems.find(i => String(i.itemId).trim() === String(product.id).trim());
@@ -729,7 +734,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                     const nv = splitNameVolume(product);
                     return (
                       <div key={looseProduct.id} onClick={() => toggleProduct(product.id)} className={`p-3 rounded-2xl border-2 transition-all cursor-pointer flex flex-col gap-2 ${isSelected ? 'bg-white border-indigo-500 shadow-md ring-1 ring-indigo-500' : 'bg-white border-slate-100 hover:border-indigo-200'}`}>
-                        {variants.length > 0 && (
+                        {variants.length > 1 && (
                           <div className="flex gap-1" onClick={e => e.stopPropagation()}>
                             {variants.map(v => (
                               <button key={v.id} type="button"
