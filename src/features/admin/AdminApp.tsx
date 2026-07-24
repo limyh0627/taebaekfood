@@ -1697,6 +1697,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onUpdateAdjustmentStatus={(id, status) => updateItem('adjustmentRequests', id, { status, processedAt: new Date().toISOString() })}
               onDeleteAdjustmentRequest={(id) => deleteItem('adjustmentRequests', id)}
               onProcessAdjustment={async (req) => {
+                // 가공비 전표 — OEM 배치에 외주가공비(540) 매입전표 발행
+                if (req.type === 'oem_fee') {
+                  const po = purchaseOrders.find(p => p.id === (req.oemPoId ?? req.itemId));
+                  if (!po) { alert('OEM 배치를 찾을 수 없습니다.'); return; }
+                  try { await issueOemFeeStatement({ po, unitPricePerKg: req.oemFeePerKg, date: new Date().toISOString().slice(0, 10) }); }
+                  catch (e) { alert(`가공비 전표 발행 실패: ${(e as Error)?.message ?? String(e)}`); return; }
+                  await updateItem('adjustmentRequests', req.id, { status: 'processed', processedAt: new Date().toISOString() });
+                  alert('가공비 전표를 발행했습니다.');
+                  return;
+                }
                 const product = allItems.find(p => p.id === req.itemId);
                 if (req.type === 'quantity_change' && product && req.requestedQuantity !== undefined) {
                   const target = rawLotTarget(allItems, product, product.name);

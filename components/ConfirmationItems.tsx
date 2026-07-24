@@ -33,11 +33,13 @@ const ConfirmationItems: React.FC<ConfirmationItemsProps> = ({
     req.itemName || itemNameById.get(req.itemId) || '(품목명 없음)';
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  // 가공비 전표(oem_fee)는 관리자 확인사항 전용 — 여기(직원도 보는 확인사항)선 뺀다.
+  const visibleRequests = useMemo(() => requests.filter(r => r.type !== 'oem_fee'), [requests]);
   const sortedRequests = useMemo(() => {
-    return [...requests].sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime());
-  }, [requests]);
+    return [...visibleRequests].sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime());
+  }, [visibleRequests]);
 
-  const pendingCount = requests.filter(r => r.status === 'pending').length;
+  const pendingCount = visibleRequests.filter(r => r.status === 'pending').length;
 
   const getTypeLabel = (type: string) => {
     if (type === 'quantity_change') return '수량 변동';

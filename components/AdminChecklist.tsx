@@ -91,13 +91,15 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     [returnRequests]
   );
-  const pendingVoucherCount = receivedOrders.filter(r => !r.linkedStatementId).length;
+  // OEM 배치는 선입고 매입전표에서 제외 — 품목 매입이 아니라 가공비라 별도(oem_fee 확인사항)로 발행한다.
+  const purchaseReceipts = useMemo(() => receivedOrders.filter(r => r.poType !== 'oem'), [receivedOrders]);
+  const pendingVoucherCount = purchaseReceipts.filter(r => !r.linkedStatementId).length;
   const filteredReceipts = useMemo(() => {
     const list = inboundFilter === 'pending_voucher'
-      ? receivedOrders.filter(r => !r.linkedStatementId)
-      : receivedOrders;
+      ? purchaseReceipts.filter(r => !r.linkedStatementId)
+      : purchaseReceipts;
     return [...list].sort((a, b) => (b.receivedAt ?? '').localeCompare(a.receivedAt ?? ''));
-  }, [receivedOrders, inboundFilter]);
+  }, [purchaseReceipts, inboundFilter]);
 
   const pendingStmtEdits = useMemo(() =>
     pendingStatementEdits.filter(e => e.status === 'pending')
@@ -138,12 +140,14 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
     if (type === 'quantity_change') return '수량 변동';
     if (type === 'cancel_receipt') return '입고 취소';
     if (type === 'reorder_alert') return '발주 필요';
+    if (type === 'oem_fee') return '가공비 전표';
     return '채팅 언급';
   };
   const getAdjTypeClass = (type: string) => {
     if (type === 'quantity_change') return 'bg-blue-50 text-blue-600';
     if (type === 'cancel_receipt') return 'bg-rose-50 text-rose-600';
     if (type === 'reorder_alert') return 'bg-rose-50 text-rose-600';
+    if (type === 'oem_fee') return 'bg-violet-50 text-violet-600';
     return 'bg-indigo-50 text-indigo-600';
   };
   const getLeaveStatusBadge = (req: LeaveRequest) => {
@@ -421,6 +425,12 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                       <td className="px-3 py-3">
                         {req.type === 'chat_mention' ? (
                           <span className="text-xs font-bold text-slate-400">-</span>
+                        ) : req.type === 'oem_fee' ? (
+                          <div className="flex items-center space-x-1 whitespace-nowrap">
+                            <span className="text-[10px] font-bold text-slate-400">{req.originalQuantity}kg × {(req.oemFeePerKg ?? 0).toLocaleString()}</span>
+                            <ArrowRight size={10} className="text-slate-300" />
+                            <span className="text-[11px] font-black text-violet-600">{(req.oemTotal ?? 0).toLocaleString()}원</span>
+                          </div>
                         ) : req.type === 'reorder_alert' ? (
                           <div className="flex items-center space-x-1 whitespace-nowrap">
                             <span className="text-[10px] font-bold text-slate-400">{req.originalQuantity}{req.unit || '개'}</span>
@@ -440,9 +450,9 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                         <div className="flex items-center justify-center gap-1">
                           <button
                             onClick={() => { if (req.type === 'chat_mention' || req.type === 'reorder_alert') { onUpdateAdjustmentStatus(req.id, 'processed'); } else { onProcessAdjustment(req); } }}
-                            className={`px-2 py-1.5 text-white rounded-lg text-[10px] font-black transition-all shadow-sm whitespace-nowrap ${req.type === 'reorder_alert' ? 'bg-rose-500 hover:bg-rose-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+                            className={`px-2 py-1.5 text-white rounded-lg text-[10px] font-black transition-all shadow-sm whitespace-nowrap ${req.type === 'reorder_alert' ? 'bg-rose-500 hover:bg-rose-600' : req.type === 'oem_fee' ? 'bg-violet-600 hover:bg-violet-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}
                           >
-                            {req.type === 'chat_mention' ? '확인' : req.type === 'reorder_alert' ? '발주완료' : '승인'}
+                            {req.type === 'chat_mention' ? '확인' : req.type === 'reorder_alert' ? '발주완료' : req.type === 'oem_fee' ? '전표 발행' : '승인'}
                           </button>
                           <button onClick={() => onUpdateAdjustmentStatus(req.id, 'rejected')} className="px-2 py-1.5 bg-white border border-slate-200 text-slate-400 rounded-lg text-[10px] font-black hover:bg-slate-50 transition-all">반려</button>
                           {onDeleteAdjustmentRequest && <button onClick={() => onDeleteAdjustmentRequest(req.id)} className="px-2 py-1.5 bg-white border border-rose-200 text-rose-400 rounded-lg text-[10px] font-black hover:bg-rose-50 transition-all">삭제</button>}
