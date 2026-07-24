@@ -234,8 +234,8 @@ function ReceiveModal({ po, oemItems, busy, onClose, onSubmit }: {
           </div>
         </div>
         <p className="text-[10px] text-slate-400 leading-snug">
-          입고하면 완제품 재고가 늘고 외주재고가 정리됩니다. <b>가공비 전표는 자동으로 안 끊깁니다</b> —
-          입고이력에서 확인하고 발행하세요.
+          입고하면 완제품 재고가 늘고 외주재고가 정리됩니다. <b>가공비 전표는 확인사항으로 넘어갑니다</b> —
+          확인사항에서 발행하세요.
         </p>
 
         <div className="flex gap-2">

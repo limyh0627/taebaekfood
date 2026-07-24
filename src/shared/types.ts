@@ -792,7 +792,7 @@ export interface ProductionSalesLog {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type AdjustmentType = 'quantity_change' | 'cancel_receipt' | 'chat_mention' | 'reorder_alert';
+export type AdjustmentType = 'quantity_change' | 'cancel_receipt' | 'chat_mention' | 'reorder_alert' | 'oem_fee';
 export type AdjustmentStatus = 'pending' | 'processed' | 'rejected';
 
 export interface AdjustmentRequest {
@@ -807,4 +807,8 @@ export interface AdjustmentRequest {
   requestedAt: string;
   processedAt?: string;
   unit?: string; // 수량 단위 (예: 'B', '개')
+  // oem_fee — 가공비 전표 발행 대기. 확인사항에서 발행한다.
+  oemPoId?: string;      // 대상 OEM 배치
+  oemFeePerKg?: number;  // 가공단가(원/kg)
+  oemTotal?: number;     // 가공비 합계(참고 표시용)
 }

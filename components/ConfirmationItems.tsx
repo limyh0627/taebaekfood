@@ -43,6 +43,7 @@ const ConfirmationItems: React.FC<ConfirmationItemsProps> = ({
     if (type === 'quantity_change') return '수량 변동';
     if (type === 'cancel_receipt') return '입고 취소';
     if (type === 'reorder_alert') return '발주 필요';
+    if (type === 'oem_fee') return '가공비 전표';
     return '채팅 언급';
   };
 
@@ -50,6 +51,7 @@ const ConfirmationItems: React.FC<ConfirmationItemsProps> = ({
     if (type === 'quantity_change') return 'bg-blue-50 text-blue-600';
     if (type === 'cancel_receipt') return 'bg-rose-50 text-rose-600';
     if (type === 'reorder_alert') return 'bg-rose-50 text-rose-600';
+    if (type === 'oem_fee') return 'bg-violet-50 text-violet-600';
     return 'bg-indigo-50 text-indigo-600';
   };
 
@@ -122,6 +124,12 @@ const ConfirmationItems: React.FC<ConfirmationItemsProps> = ({
                       <td className="px-3 py-3">
                         {req.type === 'chat_mention' ? (
                           <span className="text-xs font-bold text-slate-400">-</span>
+                        ) : req.type === 'oem_fee' ? (
+                          <div className="flex items-center space-x-1 whitespace-nowrap">
+                            <span className="text-[10px] font-bold text-slate-400">{req.originalQuantity}kg × {(req.oemFeePerKg ?? 0).toLocaleString()}</span>
+                            <ArrowRight size={10} className="text-slate-300" />
+                            <span className="text-[11px] font-black text-violet-600">{(req.oemTotal ?? 0).toLocaleString()}원</span>
+                          </div>
                         ) : req.type === 'reorder_alert' ? (
                           <div className="flex items-center space-x-1 whitespace-nowrap">
                             <span className="text-[10px] font-bold text-slate-400">{req.originalQuantity}{req.unit || '개'}</span>
@@ -174,9 +182,9 @@ const ConfirmationItems: React.FC<ConfirmationItemsProps> = ({
                                   onProcessAdjustment(req);
                                 }
                               }}
-                              className={`px-2 py-1.5 text-white rounded-lg text-[10px] font-black transition-all shadow-sm whitespace-nowrap ${req.type === 'reorder_alert' ? 'bg-rose-500 hover:bg-rose-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+                              className={`px-2 py-1.5 text-white rounded-lg text-[10px] font-black transition-all shadow-sm whitespace-nowrap ${req.type === 'reorder_alert' ? 'bg-rose-500 hover:bg-rose-600' : req.type === 'oem_fee' ? 'bg-violet-600 hover:bg-violet-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}
                             >
-                              {req.type === 'chat_mention' ? '확인' : req.type === 'reorder_alert' ? '발주완료' : '승인'}
+                              {req.type === 'chat_mention' ? '확인' : req.type === 'reorder_alert' ? '발주완료' : req.type === 'oem_fee' ? '전표 발행' : '승인'}
                             </button>
                             <button
                               onClick={() => onUpdateStatus(req.id, 'rejected')}

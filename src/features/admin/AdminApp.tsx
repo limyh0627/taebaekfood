@@ -77,7 +77,7 @@ import LeaveManager from '../../../components/LeaveManager';
 import ConfirmationItems from '../../../components/ConfirmationItems';
 import ProductModal from '../../../components/AddItemModal';
 import { createOrderStockEngine } from './orderStockEngine';
-import { createOemEngine } from './oemEngine';
+import { createOemEngine, OEM_DEFAULT_FEE_PER_KG } from './oemEngine';
 import { buildFormula as buildFormulaBom } from './bom';
 import NoticeBoard from '../../../components/NoticeBoard';
 import ItemManager from '../../../components/ItemManager';
@@ -1553,8 +1553,21 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 catch (e) { alert(`외주 발주 실패: ${(e as Error)?.message ?? String(e)}`); }
               }}
               onOemReceive={async (v) => {
-                try { await receiveOemBatch({ ...v, addedBy: currentUser?.name }); }
-                catch (e) { alert(`가공입고 실패: ${(e as Error)?.message ?? String(e)}`); }
+                try {
+                  const { receivedKg } = await receiveOemBatch({ ...v, addedBy: currentUser?.name });
+                  // 가공비 전표는 여기서 안 끊고 확인사항으로 보낸다 — 거기서 발행.
+                  const perKg = v.unitPricePerKg ?? v.po.oemFeePerKg ?? OEM_DEFAULT_FEE_PER_KG;
+                  const total = Math.round(receivedKg * perKg);
+                  await addItem('adjustmentRequests', {
+                    id: `OEMFEE-${v.po.id}`,
+                    itemId: v.po.id, itemName: `외주가공비 — ${v.po.partnerName ?? ''}`,
+                    originalQuantity: receivedKg, requestedQuantity: receivedKg,
+                    type: 'oem_fee', unit: 'kg',
+                    oemPoId: v.po.id, oemFeePerKg: perKg, oemTotal: total,
+                    reason: `${v.po.partnerName ?? ''} 가공비 ${receivedKg}kg × ${perKg}원 = ${total.toLocaleString()}원 — 전표 발행 필요`,
+                    status: 'pending', requestedAt: new Date().toISOString(),
+                  } as Omit<import('../../shared/types').AdjustmentRequest, ''>);
+                } catch (e) { alert(`가공입고 실패: ${(e as Error)?.message ?? String(e)}`); }
               }}
               onOemIssueFee={async (v) => {
                 try { await issueOemFeeStatement(v); }
@@ -3597,6 +3610,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
               isAdmin={isAdmin}
               onUpdateStatus={(id, status) => updateItem('adjustmentRequests', id, { status, processedAt: new Date().toISOString() })}
               onProcessAdjustment={async (req) => {
+                // 가공비 전표 — 확인사항에서 발행. OEM 배치에 매입전표(외주가공비) 끊고 완료.
+                if (req.type === 'oem_fee') {
+                  const po = purchaseOrders.find(p => p.id === (req.oemPoId ?? req.itemId));
+                  if (!po) { alert('OEM 배치를 찾을 수 없습니다.'); return; }
+                  try {
+                    await issueOemFeeStatement({ po, unitPricePerKg: req.oemFeePerKg, date: new Date().toISOString().slice(0, 10) });
+                  } catch (e) { alert(`가공비 전표 발행 실패: ${(e as Error)?.message ?? String(e)}`); return; }
+                  await updateItem('adjustmentRequests', req.id, { status: 'processed', processedAt: new Date().toISOString() });
+                  alert('가공비 전표를 발행했습니다.');
+                  return;
+                }
                 // 실제 재고 반영 로직
                 const product = allItems.find(p => p.id === req.itemId);
                 if (product) {

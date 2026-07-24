@@ -1131,14 +1131,9 @@ const ItemList: React.FC<ItemListProps> = ({
                             </div>
                             <div className="flex items-center gap-1.5 shrink-0">
                               <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${r.linkedStatementId ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                                {r.linkedStatementId ? '✓ 전표 연결됨' : (isOem ? '가공비 전표 미작성' : '전표 미작성')}
+                                {r.linkedStatementId ? '✓ 전표 연결됨' : (isOem ? '가공비 전표 → 확인사항' : '전표 미작성')}
                               </span>
-                              {isOem && !r.linkedStatementId && onOemIssueFee && (
-                                <button onClick={() => setOemFeeTarget(r)}
-                                  className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-[11px] font-black hover:bg-amber-600 transition-all">
-                                  가공비 전표
-                                </button>
-                              )}
+                              {/* 가공비 전표 발행은 확인사항에서 — 여기 버튼 없음(경로 하나로) */}
                             </div>
                           </div>
                           {(r.items ?? []).map((item, i) => (
