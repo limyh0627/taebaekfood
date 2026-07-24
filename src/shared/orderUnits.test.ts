@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { stockUnits, isBoxStockItem, unpackComponent } from './orderUnits';
+import { stockUnits, isBoxStockItem, unpackComponent, boxSiblings } from './orderUnits';
 import { toKg } from '../constants/formula';
 
 const 낱개ID = 'PLDhkjOgcPIhO1hhReHm';
@@ -61,6 +61,24 @@ describe('원료 kg 환산 — spec은 재고 1단위의 내용량', () => {
   it('일반 완제품은 영향 없음 — 300ml 참기름 100병', () => {
     const q = stockUnits({ quantity: 100 }, 참기름300);
     expect(toKg('300ml', '통깨참기름', q)).toBeCloseTo(27.48, 6);
+  });
+});
+
+describe('boxSiblings — 낱개↔박스 짝', () => {
+  const loose = { id: 낱개ID, submaterials: [] };
+  const box10 = { id: 'box10', submaterials: [bomSub(낱개ID, 10, 'product')] };
+  const box20 = { id: 'box20', submaterials: [bomSub(낱개ID, 20, 'product')] };
+  const other = { id: 'other', submaterials: [bomSub('xxx', 12, 'product')] };
+  it('이 낱개를 가리키는 박스만, count 오름차순', () => {
+    const r = boxSiblings(loose, [box20, box10, other, loose]);
+    expect(r.map(x => x.item.id)).toEqual(['box10', 'box20']);
+    expect(r.map(x => x.count)).toEqual([10, 20]);
+  });
+  it('짝 없으면 빈 배열', () => {
+    expect(boxSiblings({ id: 'zzz' }, [box10, box20])).toEqual([]);
+  });
+  it('archived 박스는 제외', () => {
+    expect(boxSiblings(loose, [{ ...box10, archived: true }, box20])).toHaveLength(1);
   });
 });
 

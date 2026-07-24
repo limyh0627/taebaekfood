@@ -30,6 +30,22 @@ export function isBoxStockItem(product: Pick<Item, 'submaterials' | 'unpackTo'> 
 }
 
 /**
+ * 낱개 품목과 짝지어진 박스 품목들을 찾는다 — 주문 화면 낱개↔박스 토글용.
+ * 박스 품목의 BOM(unpackComponent)이 이 낱개를 가리키면 짝이다.
+ * count 오름차순(10kg박스 < 20kg박스).
+ */
+export function boxSiblings<T extends Pick<Item, 'id' | 'submaterials' | 'unpackTo' | 'archived'>>(
+  loose: Pick<Item, 'id'>, all: T[],
+): { item: T; count: number }[] {
+  return all
+    .filter(p => !p.archived)
+    .map(p => ({ item: p, count: unpackComponent(p)?.count ?? 0, target: unpackComponent(p)?.itemId }))
+    .filter(x => x.count > 1 && x.target === loose.id)
+    .sort((a, b) => a.count - b.count)
+    .map(({ item, count }) => ({ item, count }));
+}
+
+/**
  * 주문 라인이 재고에서 빼는 수량 — **재고 1단위 기준**.
  *
  * 대부분의 품목은 재고 단위가 곧 주문 단위라 quantity 그대로다.

@@ -4,7 +4,7 @@ import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, La
 import { Item, PartnerItem, OrderItem, Order, Partner, OrderSource, OrderPallet, PalletStock, ShippingRule } from '../types';
 import { updateItem as updateItemDoc } from '../src/shared/services/firebaseService';
 import { bomQty } from '../src/shared/bom';
-import { unpackComponent } from '../src/shared/orderUnits';
+import { unpackComponent, isBoxStockItem, boxSiblings } from '../src/shared/orderUnits';
 
 interface AddOrderModalProps {
   items: Item[];
@@ -153,6 +153,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
     return products
       .filter(p => {
         if (p.archived) return false;
+        // 박스 변형은 목록에서 빼고 낱개 카드의 토글로만 접근 (짝 없이 홀로면 그대로 노출)
+        if (isBoxStockItem(p) && items.some(x => !x.archived && x.id === (unpackComponent(p)?.itemId))) return false;
         const isOrderable = p.category === 'product' || p.category === 'giftset';
         if (!isOrderable || p.subtype === '향미유' || p.subtype === '고춧가루') return false;
         if (p.partnerIds?.includes(selectedClient.id)) return true;
@@ -303,36 +305,45 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
     return shippingRules.filter(r => r.item_id === itemId && (r.partner_id === partnerId || !r.partner_id));
   };
 
+  // 선택 1건을 어떻게 초기화할지 — 토글·변형 전환에서 공유
+  const buildSelection = (itemId: string): typeof selectedItems[0] => {
+    const product = items.find(p => p.id === itemId);
+    // 박스 변형 품목 자체는 재고 단위가 '박스 1개'다. 배송 포장(shipping_rule)을 얹지 않는다
+    // — 수량 = 박스 개수, 그대로 그 품목 재고에서 뺀다.
+    if (product && isBoxStockItem(product)) {
+      return { itemId, quantity: 1, isBoxUnit: false, unitsPerBox: 0, boxType: '' };
+    }
+    const isHyangmiyu = product?.subtype === '향미유';
+    if (product?.isRawMaterial && selectedClient) {
+      const rules = getItemCustomerConfigs(itemId, selectedClient.id);
+      if (rules.length >= 1) {
+        const rule = rules[0];
+        const qpb = rule.qty_per_box ?? 0;
+        return { itemId, quantity: 1, isBoxUnit: qpb > 1, unitsPerBox: qpb, boxType: rule.box_item_id ?? '', boxSubId: rule.box_item_id || undefined, displaySize: product?.netContent };
+      }
+    }
+    const configs = getClientBoxConfigs(itemId, selectedClient?.id);
+    const first = configs[0] ?? { unitsPerBox: isHyangmiyu ? 12 : 0, boxType: '', boxSubId: undefined };
+    return { itemId, quantity: 1, isBoxUnit: first.unitsPerBox > 0, unitsPerBox: first.unitsPerBox, boxType: first.boxType, boxSubId: first.boxSubId };
+  };
+
   const toggleProduct = (itemId: string) => {
     setSelectedItems(prev => {
       const exists = prev.find(i => i.itemId === itemId);
       if (exists) return prev.filter(i => i.itemId !== itemId);
+      return [...prev, buildSelection(itemId)];
+    });
+  };
 
-      const product = items.find(p => p.id === itemId);
-      const isHyangmiyu = product?.subtype === '향미유';
-
-      // 통합 품목이면 shipping_rule 우선 참조
-      if (product?.isRawMaterial && selectedClient) {
-        const rules = getItemCustomerConfigs(itemId, selectedClient.id);
-        if (rules.length >= 1) {
-          const rule = rules[0];
-          const qpb = rule.qty_per_box ?? 0;
-          return [...prev, {
-            itemId, quantity: 1,
-            isBoxUnit: qpb > 1,
-            unitsPerBox: qpb,
-            boxType: rule.box_item_id ?? '',
-            boxSubId: rule.box_item_id || undefined,
-            displaySize: items.find(p => p.id === itemId)?.netContent,
-          }];
-        }
-      }
-
-      // 기존 로직 (일반 품목)
-      const configs = getClientBoxConfigs(itemId, selectedClient?.id);
-      const first = configs[0] ?? { unitsPerBox: isHyangmiyu ? 12 : 0, boxType: '', boxSubId: undefined };
-      const defaultBoxUnit = first.unitsPerBox > 0;
-      return [...prev, { itemId, quantity: 1, isBoxUnit: defaultBoxUnit, unitsPerBox: first.unitsPerBox, boxType: first.boxType, boxSubId: first.boxSubId }];
+  // 낱개↔박스 변형 전환 — 카드가 어느 품목(낱개/10kg박스/20kg박스)을 주문하는지 바꾼다.
+  // 같은 그룹의 다른 변형이 골라져 있었으면 그 선택을 새 변형으로 옮긴다.
+  const [variantChoice, setVariantChoice] = useState<Record<string, string>>({});
+  const chooseVariant = (looseId: string, chosenId: string, groupIds: string[]) => {
+    setVariantChoice(prev => ({ ...prev, [looseId]: chosenId }));
+    setSelectedItems(prev => {
+      const had = prev.find(i => groupIds.includes(i.itemId));
+      const rest = prev.filter(i => !groupIds.includes(i.itemId));
+      return had ? [...rest, buildSelection(chosenId)] : prev;
     });
   };
 
@@ -692,12 +703,33 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
               )}
               <div className="grid grid-cols-2 gap-2">
                 {shownProducts.length > 0 ? (
-                  shownProducts.map(product => {
+                  shownProducts.map(looseProduct => {
+                    // 낱개↔박스 변형 — 이 낱개에 짝지어진 박스 품목들. 있으면 카드 안에서 전환.
+                    const siblings = boxSiblings(looseProduct, items);
+                    const groupIds = [looseProduct.id, ...siblings.map(s => s.item.id)];
+                    const activeId = variantChoice[looseProduct.id] && groupIds.includes(variantChoice[looseProduct.id])
+                      ? variantChoice[looseProduct.id] : looseProduct.id;
+                    const product = items.find(p => p.id === activeId) ?? looseProduct;
+                    const variants = siblings.length > 0
+                      ? [{ id: looseProduct.id, label: '낱개' }, ...siblings.map(s => ({ id: s.item.id, label: `${s.count}개입` }))]
+                      : [];
+
                     const selection = selectedItems.find(i => String(i.itemId).trim() === String(product.id).trim());
                     const isSelected = !!selection;
                     const nv = splitNameVolume(product);
                     return (
-                      <div key={product.id} onClick={() => toggleProduct(product.id)} className={`p-3 rounded-2xl border-2 transition-all cursor-pointer flex flex-col gap-2 ${isSelected ? 'bg-white border-indigo-500 shadow-md ring-1 ring-indigo-500' : 'bg-white border-slate-100 hover:border-indigo-200'}`}>
+                      <div key={looseProduct.id} onClick={() => toggleProduct(product.id)} className={`p-3 rounded-2xl border-2 transition-all cursor-pointer flex flex-col gap-2 ${isSelected ? 'bg-white border-indigo-500 shadow-md ring-1 ring-indigo-500' : 'bg-white border-slate-100 hover:border-indigo-200'}`}>
+                        {variants.length > 0 && (
+                          <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                            {variants.map(v => (
+                              <button key={v.id} type="button"
+                                onClick={() => chooseVariant(looseProduct.id, v.id, groupIds)}
+                                className={`px-2 py-0.5 rounded-lg text-[10px] font-black border transition-all ${
+                                  activeId === v.id ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-400 hover:border-indigo-300'
+                                }`}>{v.label}</button>
+                            ))}
+                          </div>
+                        )}
                         <div className="flex items-center gap-2">
                           <div className="flex flex-col min-w-0 flex-1">
                             <p className="text-xs font-bold text-slate-800 truncate">{renderColoredName(nv.base)}</p>
