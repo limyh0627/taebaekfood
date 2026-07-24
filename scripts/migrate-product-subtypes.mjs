@@ -32,10 +32,18 @@ const load = async (c) => (await getDocs(collection(db, c))).docs.map(d => ({ _i
 
 if (undo) {
   const bak = JSON.parse(fs.readFileSync(BACKUP, 'utf8'));
+  let ok = 0, gone = 0;
   for (const b of bak.items) {
-    await updateDoc(doc(db, 'items', b.id), { category: b.category, subtype: b.subtype ?? '' });
-    console.log(`  ✓ ${b.name} 복원 → ${b.category}/${b.subtype ?? '(없음)'}`);
+    try {
+      await updateDoc(doc(db, 'items', b.id), { category: b.category, subtype: b.subtype ?? '' });
+      ok++;
+    } catch (e) {
+      // 그 사이 지워진 품목은 건너뛴다 — 복원할 대상이 없다
+      if (e?.code === 'not-found') { console.log(`  - ${b.name} 없음(삭제됨) — 건너뜀`); gone++; }
+      else throw e;
+    }
   }
+  console.log(`\n복원 ${ok}건${gone ? `, 건너뜀 ${gone}건` : ''}`);
   console.log('\n※ itemTaxonomy에 추가된 하위 분류는 분류 관리 화면에서 직접 지우세요.');
   process.exit(0);
 }

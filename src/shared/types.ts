@@ -211,7 +211,10 @@ export interface Item {
   name: string;
   sku?: string;
   category: InventoryCategory | string;
-  subtype?: ItemSubtype | string; // category 내 세부분류
+  // 분류 3단 — 타입 > 서브타입 > 카테고리. DB 필드는 옛 이름을 그대로 쓴다(shared/itemTaxonomy.ts 참고).
+  //   category = 타입(product/goods/…) · subtype2 = 서브타입(낱개/배송/선물세트) · subtype = 카테고리(참기름/라벨/…)
+  subtype?: ItemSubtype | string;  // 카테고리 — 참기름·들기름·라벨·용기·박스·마개·테이프·향미유…
+  subtype2?: string;               // 서브타입 — 낱개·배송·선물세트. 부자재·원료는 비어 있다.
   itemType?: ProductStage;       // @deprecated → category: 'wip'|'product' 사용
   cost?: number;                 // 원가 (제조/매입원가)
   price: number;

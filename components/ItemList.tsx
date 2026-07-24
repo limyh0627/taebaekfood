@@ -512,8 +512,10 @@ const ItemList: React.FC<ItemListProps> = ({
     const u: Record<string, number> = {};
     for (const p of items) {
       if (p.archived) continue;
-      u[`cat:${p.category}`] = (u[`cat:${p.category}`] ?? 0) + 1;
-      if (p.subtype) u[`${p.category}:${p.subtype}`] = (u[`${p.category}:${p.subtype}`] ?? 0) + 1;
+      const t = p.category, sub = (p as any).subtype2, cat = p.subtype;
+      u[`type:${t}`] = (u[`type:${t}`] ?? 0) + 1;
+      if (sub) u[`sub:${t}:${sub}`] = (u[`sub:${t}:${sub}`] ?? 0) + 1;
+      if (cat) u[`cat:${t}:${cat}`] = (u[`cat:${t}:${cat}`] ?? 0) + 1;
     }
     return u;
   }, [items]);
@@ -559,14 +561,7 @@ const ItemList: React.FC<ItemListProps> = ({
   };
   const subCategories = useMemo(() => {
     const key = topTab === 'goods' ? 'goods' : 'submaterial';
-    const subs = taxo.subtypesOf(key);
-    const base = topTab === 'goods'
-      ? [{ id: taxo.labelOf('goods'), label: taxo.labelOf('goods'), icon: Package }]
-      : [];
-    return [
-      ...base,
-      ...subs.map(s => ({ id: s, label: s, icon: SUB_ICONS[s] ?? Tag })),
-    ];
+    return taxo.categoriesOf(key).map(s => ({ id: s, label: s, icon: SUB_ICONS[s] ?? Tag }));
   }, [taxo, topTab]);
 
   const filteredProducts = useMemo(() => {

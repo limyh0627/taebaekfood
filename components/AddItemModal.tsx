@@ -376,20 +376,20 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             </div>
           </div>
 
-          {/* 세부 분류 (subtype) — 분류 관리에서 정한 목록 */}
+          {/* 서브타입 — 낱개/배송/선물세트. 분류 관리에서 정한 목록 */}
           {taxo.subtypesOf(formData.category).length > 0 && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Tag size={14} className="mr-2" /> 세부 분류
+                <Layers size={14} className="mr-2" /> 서브타입
               </label>
               <div className="flex flex-wrap gap-1.5">
                 {taxo.subtypesOf(formData.category).map((sub: string) => {
-                  const isSelected = formData.subtype === sub;
+                  const isSelected = (formData as any).subtype2 === sub;
                   return (
                     <button
                       key={sub}
                       type="button"
-                      onClick={() => setFormData({...formData, subtype: isSelected ? '' : sub})}
+                      onClick={() => setFormData({ ...formData, subtype2: isSelected ? '' : sub } as any)}
                       className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all ${
                         isSelected
                           ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
@@ -397,6 +397,34 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                       }`}
                     >
                       {sub}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* 카테고리 — 참기름/라벨/용기…. 분류 관리에서 정한 목록 */}
+          {taxo.categoriesOf(formData.category).length > 0 && (
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
+                <Tag size={14} className="mr-2" /> 카테고리
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {taxo.categoriesOf(formData.category).map((c: string) => {
+                  const isSelected = formData.subtype === c;
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, subtype: isSelected ? '' : c })}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all ${
+                        isSelected
+                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                          : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'
+                      }`}
+                    >
+                      {c}
                     </button>
                   );
                 })}
