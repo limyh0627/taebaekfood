@@ -731,14 +731,21 @@ const AdminApp: React.FC<AdminAppProps> = ({
       return p && p.category === 'product';
     });
     for (const item of finishedItems) {
-      const product = allItems.find(p => p.id === item.itemId);
+      let product = allItems.find(p => p.id === item.itemId);
       if (!product) continue;
+      // 박스 품목은 낱개로 기록 — 실제 생산된 건 낱개(볶음참깨 1kg × 개입수).
+      const unpack = unpackComponent(product);
+      let qty = item.quantity;
+      if (unpack) {
+        const loose = allItems.find(p => p.id === unpack.itemId);
+        if (loose) { product = loose; qty = item.quantity * unpack.count; }
+      }
       const record: ProductionRecord = {
-        id: `pr-${order.id}-${item.itemId}-${Date.now()}`,
+        id: `pr-${order.id}-${product.id}-${Date.now()}`,
         date: (order.deliveredAt ?? new Date().toISOString()).slice(0, 10),
-        itemId: item.itemId,
+        itemId: product.id,
         itemName: product.name,
-        finishedQty: item.quantity,
+        finishedQty: qty,
         ...(product.cost !== undefined ? { cost: product.cost } : {}),
         note: `주문 자동 연동 (${order.partnerName})`,
         createdAt: new Date().toISOString(),
@@ -1768,10 +1775,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
               const partner = partners.find(c => c.id === order.partnerId);
               const partnerName = partner?.name || order.partnerName || '';
               return order.items.flatMap((item, itemIdx) => {
-                const product = allItems.find(p => p.id === item.itemId);
+                let product = allItems.find(p => p.id === item.itemId);
                 if (product && SUB_ONLY_CATS.has(product.category)) return [];
+                // 박스 품목은 포장일 뿐 — 판매일지엔 낱개 기준으로(품목·용량은 낱개, 수량 ×개입수).
+                const unpack = unpackComponent(product);
+                let qty = item.quantity;
+                if (unpack) {
+                  const loose = allItems.find(p => p.id === unpack.itemId);
+                  if (loose) { product = loose; qty = item.quantity * unpack.count; }
+                }
                 const 용량 = product?.spec || product?.용량 || item.displaySize || '';
-                return [{ 상호: partnerName, 품목: product?.품목 || item.name, 용량, 수량: item.quantity, 소비기한: calcExpiry(item.mfgDate || ''), 제조일자: item.mfgDate || '', orderId: order.id, itemIdx }];
+                return [{ 상호: partnerName, 품목: product?.품목 || item.name, 용량, 수량: qty, 소비기한: calcExpiry(item.mfgDate || ''), 제조일자: item.mfgDate || '', orderId: order.id, itemIdx }];
               });
             });
             const rightRows: RightRow[] = Object.values(
