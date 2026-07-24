@@ -10,6 +10,7 @@ import * as ExcelJS from 'exceljs';
 import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentRecord, AccountCode, AccountGroup, CashAccount, CashEntry, Settlement, FixedCostTemplate } from '../types';
 import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchDateRange } from '../src/shared/services/firebaseService';
+import { boxDerivedUnitPrice } from '../src/shared/orderUnits';
 import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
 import PageHeader from './PageHeader';
 
@@ -765,7 +766,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       const pcEntry = piList.find(
         pc => pc.itemId === item.itemId && pc.partnerId === selectedClientId
       );
-      const pcPrice   = pcEntry?.price ?? pcEntry?.price;
+      // 박스 품목은 단가를 안 박는다 → 낱개 단가 × 개입수로 파생
+      const pcPrice   = pcEntry?.price ?? boxDerivedUnitPrice(product, selectedClientId, piList);
       const pcTaxType = pcEntry?.taxType; // '과세' | '면세' | undefined(=과세 기본)
       const defaultPrice = pcPrice ?? item.price ?? product?.price ?? 0;
       const unitPrice    = editablePrices[key] !== undefined

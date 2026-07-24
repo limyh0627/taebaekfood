@@ -30,6 +30,22 @@ export function isBoxStockItem(product: Pick<Item, 'submaterials' | 'unpackTo'> 
 }
 
 /**
+ * 박스 품목의 거래처별 단가 = 낱개 단가 × 개입수 (파생, 저장 안 함).
+ * 박스 품목엔 단가를 안 박고 낱개 단가만 관리 → 낱개만 고치면 박스가 따라온다.
+ * 박스가 아니거나 낱개 단가가 없으면 undefined(호출부에서 기존 fallback).
+ */
+export function boxDerivedUnitPrice(
+  product: Pick<Item, 'submaterials' | 'unpackTo'> | undefined,
+  clientId: string,
+  partnerItems: { itemId?: string; partnerId?: string; price?: number }[],
+): number | undefined {
+  const uc = unpackComponent(product);
+  if (!uc) return undefined;
+  const loose = partnerItems.find(pc => pc.itemId === uc.itemId && pc.partnerId === clientId);
+  return typeof loose?.price === 'number' ? loose.price * uc.count : undefined;
+}
+
+/**
  * 낱개 품목과 짝지어진 박스 품목들을 찾는다 — 주문 화면 낱개↔박스 토글용.
  * 박스 품목의 BOM(unpackComponent)이 이 낱개를 가리키면 짝이다.
  * count 오름차순(10kg박스 < 20kg박스).

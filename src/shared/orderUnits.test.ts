@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { stockUnits, isBoxStockItem, unpackComponent, boxSiblings } from './orderUnits';
+import { stockUnits, isBoxStockItem, unpackComponent, boxSiblings, boxDerivedUnitPrice } from './orderUnits';
 import { toKg } from '../constants/formula';
 
 const 낱개ID = 'PLDhkjOgcPIhO1hhReHm';
@@ -79,6 +79,20 @@ describe('boxSiblings — 낱개↔박스 짝', () => {
   });
   it('archived 박스는 제외', () => {
     expect(boxSiblings(loose, [{ ...box10, archived: true }, box20])).toHaveLength(1);
+  });
+});
+
+describe('boxDerivedUnitPrice — 낱개 × 개입수', () => {
+  const pi = [{ itemId: 낱개ID, partnerId: 'C1', price: 7500 }, { itemId: 낱개ID, partnerId: 'C2', price: 8000 }];
+  it('박스 = 낱개 단가 × 개입수', () => {
+    expect(boxDerivedUnitPrice(박스20, 'C1', pi)).toBe(150000); // 7500×20
+    expect(boxDerivedUnitPrice(박스10, 'C2', pi)).toBe(80000);  // 8000×10
+  });
+  it('낱개 단가 없으면 undefined', () => {
+    expect(boxDerivedUnitPrice(박스20, 'C9', pi)).toBeUndefined();
+  });
+  it('박스 아니면 undefined', () => {
+    expect(boxDerivedUnitPrice(참기름300, 'C1', pi)).toBeUndefined();
   });
 });
 

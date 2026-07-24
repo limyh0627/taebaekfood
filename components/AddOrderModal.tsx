@@ -4,7 +4,7 @@ import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, La
 import { Item, PartnerItem, OrderItem, Order, Partner, OrderSource, OrderPallet, PalletStock, ShippingRule } from '../types';
 import { updateItem as updateItemDoc } from '../src/shared/services/firebaseService';
 import { bomQty } from '../src/shared/bom';
-import { unpackComponent, isBoxStockItem, boxSiblings } from '../src/shared/orderUnits';
+import { unpackComponent, isBoxStockItem, boxSiblings, boxDerivedUnitPrice } from '../src/shared/orderUnits';
 
 interface AddOrderModalProps {
   items: Item[];
@@ -547,11 +547,13 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
       if (!product) return [];
       const uPerBox = item.unitsPerBox ?? 0;
       const actualQty = item.isBoxUnit && uPerBox > 0 ? item.quantity * uPerBox : item.quantity;
+      // 박스 품목은 낱개단가×개입수로 파생, 아니면 품목 단가
+      const boxPrice = selectedClient ? boxDerivedUnitPrice(product, selectedClient.id, partnerOut) : undefined;
       return [{
         itemId: item.itemId,
         name: product.name || '알 수 없는 상품',
         quantity: actualQty,
-        price: product.price || 0,
+        price: boxPrice ?? product.price ?? 0,
         ...(item.isBoxUnit && uPerBox > 0 ? { isBoxUnit: true, boxQuantity: item.quantity, unitsPerBox: uPerBox, boxType: item.boxType, ...(item.boxSubId ? { boxSubId: item.boxSubId } : {}) } : {}),
         ...(item.displaySize ? { displaySize: item.displaySize } : {}),
       }];
@@ -560,9 +562,11 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
     const totalAmount = selectedItems.reduce((sum, item) => {
       if (!item.quantity || item.quantity <= 0) return sum;
       const product = items.find(p => String(p.id).trim() === String(item.itemId).trim());
+      if (!product) return sum;
       const uPerBox = item.unitsPerBox ?? 0;
       const actualQty = item.isBoxUnit && uPerBox > 0 ? item.quantity * uPerBox : item.quantity;
-      return sum + (product ? (product.price || 0) * actualQty : 0);
+      const boxPrice = selectedClient ? boxDerivedUnitPrice(product, selectedClient.id, partnerOut) : undefined;
+      return sum + (boxPrice ?? product.price ?? 0) * actualQty;
     }, 0);
 
     onSave({
