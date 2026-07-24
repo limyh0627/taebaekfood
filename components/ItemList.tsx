@@ -409,7 +409,7 @@ const ItemList: React.FC<ItemListProps> = ({
   const [inlineCartIsBox, setInlineCartIsBox] = useState<boolean>(false);
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
   const [expandedClientRowId, setExpandedClientRowId] = useState<string | null>(null);
-  const [finishedFilter, setFinishedFilter] = useState<'all' | 'oil' | 'powder'>('all');
+  const [activeSubtype, setActiveSubtype] = useState<string>('전체');   // 낱개/배송/선물세트
   const [stockOnly, setStockOnly] = useState(false);
   const [zeroStockOnly, setZeroStockOnly] = useState(false);
   const [priorityClientId] = useState<string | null>(null);
@@ -559,10 +559,16 @@ const ItemList: React.FC<ItemListProps> = ({
   const SUB_ICONS: Record<string, any> = {
     용기: Cylinder, 마개: Disc, 테이프: StickyNote, 박스: Inbox, 라벨: Tag, 향미유: Grape,
   };
-  const subCategories = useMemo(() => {
-    const key = topTab === 'goods' ? 'goods' : 'submaterial';
-    return taxo.categoriesOf(key).map(s => ({ id: s, label: s, icon: SUB_ICONS[s] ?? Tag }));
-  }, [taxo, topTab]);
+  // 지금 탭이 어느 타입인가 — 서브타입·카테고리 필터를 여기서 뽑는다
+  const tabTypeKey = topTab === 'finished' ? 'product'
+    : topTab === 'goods' ? 'goods'
+    : topTab === 'wip' ? 'wip'
+    : topTab === 'rawmaterial' ? 'raw' : 'submaterial';
+  const subCategories = useMemo(
+    () => taxo.categoriesOf(tabTypeKey).map(s => ({ id: s, label: s, icon: SUB_ICONS[s] ?? Tag })),
+    [taxo, tabTypeKey],
+  );
+  const subtypeTabs = useMemo(() => taxo.subtypesOf(tabTypeKey), [taxo, tabTypeKey]);
 
   const filteredProducts = useMemo(() => {
     let result: Item[] = [];
@@ -576,14 +582,7 @@ const ItemList: React.FC<ItemListProps> = ({
     // 탭별 분리 — 최소수량 미만 필터 활성화 시 전체 품목 대상
     if (!zeroStockOnly) {
       if (topTab === 'finished') {
-        if (finishedFilter === 'oil') {
-          result = result.filter(p => normCat(p.category) === '향미유' || normCat(p.category) === '완제품');
-          result = result.filter(p => normCat(p.category) === '향미유' || /기름|유/.test(p.name));
-        } else if (finishedFilter === 'powder') {
-          result = result.filter(p => normCat(p.category) === '고춧가루' || (normCat(p.category) === '완제품' && /가루/.test(p.name)));
-        } else {
-          result = result.filter(p => normCat(p.category) === '완제품');
-        }
+        result = result.filter(p => normCat(p.category) === '완제품');
       } else if (topTab === 'goods') {
         result = result.filter(p => normCat(p.category) === '상품' || normCat(p.category) === '향미유' || normCat(p.category) === '고춧가루');
       } else if (topTab === 'wip') {
@@ -593,8 +592,11 @@ const ItemList: React.FC<ItemListProps> = ({
       } else if (topTab === 'rawmaterial') {
         result = result.filter(p => p.category === 'raw');
       }
+      if (activeSubtype !== '전체') {
+        result = result.filter(p => (p.subtype2 ?? '') === activeSubtype);
+      }
       if (activeCategory !== '전체') {
-        // subtype 우선 — 옛 데이터는 카테고리 자리에 '박스'/'라벨'이 들어있어 둘 다 본다
+        // 카테고리(=DB subtype) 우선 — 옛 데이터는 타입 자리에 '박스'/'라벨'이 들어있어 둘 다 본다
         const hit = (p: Item) => (p.subtype ?? '') === activeCategory || normCat(p.category) === activeCategory;
         if (activeCategory === '박스') result = result.filter(p => hit(p) || p.id.startsWith('GS-'));
         else result = result.filter(hit);
@@ -632,7 +634,7 @@ const ItemList: React.FC<ItemListProps> = ({
       const bIdx = bCatIdx === -1 ? 99 : bCatIdx;
       return aIdx - bIdx;
     });
-  }, [items, activeTab, activeCategory, activeSupplierId, searchTerm, orderRequests, confirmedOrders, inboundPartners, partners, topTab, finishedFilter, stockOnly, zeroStockOnly]);
+  }, [items, activeTab, activeCategory, activeSubtype, activeSupplierId, searchTerm, orderRequests, confirmedOrders, inboundPartners, partners, topTab, stockOnly, zeroStockOnly]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -708,11 +710,11 @@ const ItemList: React.FC<ItemListProps> = ({
           <div className="flex items-center gap-3 flex-wrap">
             <div className="bg-slate-100/50 p-1 rounded-2xl flex items-center self-start border border-slate-200 max-w-full overflow-x-auto no-scrollbar">
               {([
-                { id: 'finished', label: '완제품', color: 'text-violet-600', icon: <Package size={13}/>, onClick: () => { setTopTab('finished'); setActiveCategory('전체'); setActiveSupplierId('전체'); } },
-                { id: 'goods', label: '상품', color: 'text-orange-500', icon: <Box size={13}/>, onClick: () => { setTopTab('goods'); setActiveCategory('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
-                { id: 'wip', label: '반제품', color: 'text-sky-600', icon: <Cylinder size={13}/>, onClick: () => { setTopTab('wip'); setActiveCategory('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
-                { id: 'rawmaterial', label: '원료재고', color: 'text-emerald-600', icon: <Grape size={13}/>, onClick: () => { setTopTab('rawmaterial'); setActiveCategory('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
-                { id: 'submaterial', label: '부자재', color: 'text-indigo-600', icon: <Box size={13}/>, onClick: () => { setTopTab('submaterial'); setActiveCategory('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
+                { id: 'finished', label: '완제품', color: 'text-violet-600', icon: <Package size={13}/>, onClick: () => { setTopTab('finished'); setActiveCategory('전체'); setActiveSubtype('전체'); setActiveSupplierId('전체'); } },
+                { id: 'goods', label: '상품', color: 'text-orange-500', icon: <Box size={13}/>, onClick: () => { setTopTab('goods'); setActiveCategory('전체'); setActiveSubtype('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
+                { id: 'wip', label: '반제품', color: 'text-sky-600', icon: <Cylinder size={13}/>, onClick: () => { setTopTab('wip'); setActiveCategory('전체'); setActiveSubtype('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
+                { id: 'rawmaterial', label: '원료재고', color: 'text-emerald-600', icon: <Grape size={13}/>, onClick: () => { setTopTab('rawmaterial'); setActiveCategory('전체'); setActiveSubtype('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
+                { id: 'submaterial', label: '부자재', color: 'text-indigo-600', icon: <Box size={13}/>, onClick: () => { setTopTab('submaterial'); setActiveCategory('전체'); setActiveSubtype('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
               ] as const).map(t => (
                 <button key={t.id} onClick={t.onClick}
                   className={`px-3 py-2 rounded-xl flex items-center gap-1 transition-all text-xs font-black whitespace-nowrap ${topTab === t.id ? `bg-white ${t.color} shadow-sm` : 'text-slate-400 hover:text-slate-600'}`}>
@@ -820,8 +822,20 @@ const ItemList: React.FC<ItemListProps> = ({
         )}
 
         {activeTab !== 'inbound' && (topTab === 'submaterial' || topTab === 'finished' || topTab === 'goods') && <div className="flex flex-col gap-2">
-          {/* 품목별 필터 - 상품·부자재 탭 */}
-          {!zeroStockOnly && (topTab === 'goods' || topTab === 'submaterial') && <div className="flex items-center gap-2 flex-wrap">
+          {/* 서브타입 — 낱개/배송/선물세트 (있는 타입에만) */}
+          {!zeroStockOnly && subtypeTabs.length > 0 && <div className="flex items-center gap-2 flex-wrap">
+            {['전체', ...subtypeTabs].map(s => {
+              const isActive = activeSubtype === s;
+              return (
+                <button key={s}
+                  onClick={() => setActiveSubtype(s)}
+                  className={`px-4 py-2 rounded-2xl border text-[11px] font-black transition-all ${isActive ? 'bg-white border-indigo-200 text-indigo-600 shadow-sm ring-2 ring-indigo-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
+                >{s}</button>
+              );
+            })}
+          </div>}
+          {/* 카테고리 — 참기름/들기름/라벨/용기… */}
+          {!zeroStockOnly && subCategories.length > 0 && <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => setShowCategoryFilter(p => !p)}
               className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl border text-[11px] font-black transition-all ${showCategoryFilter ? 'bg-indigo-50 border-indigo-200 text-indigo-600 ring-2 ring-indigo-50' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
@@ -849,15 +863,6 @@ const ItemList: React.FC<ItemListProps> = ({
           {/* 완제품 탭 전용 필터 */}
           {topTab === 'finished' && (
             <div className="flex items-center gap-2 flex-wrap">
-              {!zeroStockOnly && (['all', 'oil', 'powder'] as const).map(f => (
-                <button key={f}
-                  onClick={() => setFinishedFilter(f)}
-                  className={`px-4 py-2 rounded-2xl border text-[11px] font-black transition-all ${finishedFilter === f ? 'bg-white border-indigo-200 text-indigo-600 shadow-sm ring-2 ring-indigo-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
-                >
-                  {f === 'all' ? '전체' : f === 'oil' ? '기름재고' : '가루재고'}
-                </button>
-              ))}
-              {!zeroStockOnly && <div className="ml-2 h-5 w-px bg-slate-200" />}
               {!zeroStockOnly && (
                 <button
                   onClick={() => { setStockOnly(p => !p); setZeroStockOnly(false); }}
