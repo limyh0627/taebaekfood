@@ -400,7 +400,7 @@ export interface ChatRoom {
 }
 
 
-export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'partners' | 'partners' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'partner-portal' | 'item-management' | 'item-price-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'tax-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'inbound-scan' | 'smartstore-analytics' | 'haccp-checklist' | 'return-management' | 'inbound-returns' | 'partner-stats' | 'cash-flow' | 'sanitation-checklist' | 'partner-signup' | 'file-cabinet' | 'ledger-cash';
+export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'partners' | 'partners' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'partner-portal' | 'item-management' | 'item-price-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'tax-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'inbound-scan' | 'smartstore-analytics' | 'haccp-checklist' | 'return-management' | 'inbound-returns' | 'partner-stats' | 'cash-flow' | 'sanitation-checklist' | 'partner-signup' | 'file-cabinet' | 'ledger-cash' | 'financial-reports';
 
 // ── 생산 실적 ──────────────────────────────────────────────────────────────────
 export interface ProductionRecord {

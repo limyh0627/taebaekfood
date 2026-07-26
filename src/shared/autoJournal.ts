@@ -9,13 +9,14 @@
  *   매출  (차) 외상매출금 [+현금]   (대) 매출계정들 + 부가세예수금
  *   매입  (차) 매입계정들 + 부가세대급금   (대) 외상매입금 [또는 현금]
  */
-import type { IssuedStatement, JournalEntry, JournalLine } from './types';
+import type { IssuedStatement, JournalEntry, JournalLine, CashEntry, PaymentRecord } from './types';
 
-// 채권·채무·부가세 계정코드 (setup-account-codes.mjs와 일치)
+// 채권·채무·부가세·현금 계정코드 (setup-account-codes.mjs와 일치)
 export const AR = '108';   // 외상매출금
 export const AP = '251';   // 외상매입금
 export const VAT_PAYABLE = '255';   // 부가세예수금
 export const VAT_RECEIVABLE = '135'; // 부가세대급금
+export const BANK = '103';  // 보통예금 (기본 현금계정)
 
 const r = (n: number) => Math.round((n ?? 0) * 100) / 100;
 const sum = (xs: number[]) => r(xs.reduce((a, b) => a + b, 0));
@@ -67,4 +68,71 @@ export function journalizeStatement(s: IssuedStatement, opts: AutoJournalOptions
     sourceId: s.id,
     createdAt: new Date().toISOString(),
   };
+}
+
+/**
+ * 수금/지불(전표의 payment) → 분개. 채권/채무를 현금으로 상계(손익 재인식 아님).
+ *   매출전표 수금: (차) 보통예금  (대) 외상매출금 [거래처]
+ *   매입전표 지불: (차) 외상매입금 [거래처]  (대) 보통예금
+ */
+export function journalizePayment(s: IssuedStatement, p: PaymentRecord, cashAccountCode = BANK): JournalEntry | null {
+  const amt = r(p.amount ?? 0);
+  if (!amt) return null;
+  const lines: JournalLine[] = s.type === '매출'
+    ? [{ accountCode: cashAccountCode, debit: amt, credit: 0 }, { accountCode: AR, debit: 0, credit: amt, partnerId: s.partnerId }]
+    : [{ accountCode: AP, debit: amt, credit: 0, partnerId: s.partnerId }, { accountCode: cashAccountCode, debit: 0, credit: amt }];
+  return {
+    id: `je-pay-${p.id}`, date: p.date ?? s.tradeDate, lines,
+    memo: `${s.type === '매출' ? '수금' : '지불'} ${s.partnerName}`, sourceType: '자금', sourceId: p.id,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * 자금원장 CashEntry → 분개. 현금계정 ↔ 성격계정(accountCode).
+ *   입금: (차) 보통예금  (대) accountCode [거래처]
+ *   출금: (차) accountCode [거래처]  (대) 보통예금
+ * cashAccountMap: cashAccountId → 계정코드(통장별). 없으면 BANK.
+ * accountCode 미지정이면 분개 못 만듦(null).
+ */
+export function journalizeCashEntry(e: CashEntry, cashAccountMap: Record<string, string> = {}): JournalEntry | null {
+  const amt = r(e.amount ?? 0);
+  if (!amt || !e.accountCode) return null;
+  const cash = cashAccountMap[e.cashAccountId] ?? BANK;
+  const other = { accountCode: e.accountCode, ...(e.partnerId ? { partnerId: e.partnerId } : {}) };
+  const lines: JournalLine[] = e.dir === '입금'
+    ? [{ accountCode: cash, debit: amt, credit: 0 }, { ...other, debit: 0, credit: amt }]
+    : [{ ...other, debit: amt, credit: 0 }, { accountCode: cash, debit: 0, credit: amt }];
+  return {
+    id: `je-cash-${e.id}`, date: e.date, lines,
+    memo: `${e.dir} ${e.partnerName ?? ''} ${e.note ?? ''}`.trim(), sourceType: '자금', sourceId: e.id,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+/** 기초분개 입력 — 계정별 잔액. 자본은 plug(자산−부채)로 자동 채운다. */
+export interface OpeningBalance {
+  date: string;                                  // 컷오프 (이 날짜의 기초)
+  lines: { accountCode: string; amount: number; partnerId?: string }[]; // 각 계정의 정상방향 잔액
+  capitalAccount?: string;                        // 차액을 담을 자본계정 (기본 331 자본금)
+}
+
+/**
+ * 기초분개 생성 — 각 계정을 normalBalance 방향으로 세우고, 차대 차액을 자본계정에 넣어 균형.
+ * normalOf: 계정코드 → 'debit'|'credit' (계정과목에서). 모르면 debit 취급.
+ */
+export function buildOpeningEntry(ob: OpeningBalance, normalOf: (code: string) => 'debit' | 'credit'): JournalEntry {
+  const lines: JournalLine[] = [];
+  let d = 0, c = 0;
+  for (const l of ob.lines) {
+    const amt = r(l.amount ?? 0);
+    if (!amt) continue;
+    if (normalOf(l.accountCode) === 'debit') { lines.push({ accountCode: l.accountCode, debit: amt, credit: 0, ...(l.partnerId ? { partnerId: l.partnerId } : {}) }); d += amt; }
+    else { lines.push({ accountCode: l.accountCode, debit: 0, credit: amt, ...(l.partnerId ? { partnerId: l.partnerId } : {}) }); c += amt; }
+  }
+  const diff = r(d - c);   // 차변이 크면 자본(대변)으로 메움
+  const cap = ob.capitalAccount ?? '331';
+  if (diff > 0) lines.push({ accountCode: cap, debit: 0, credit: diff });
+  else if (diff < 0) lines.push({ accountCode: cap, debit: -diff, credit: 0 });
+  return { id: 'je-opening', date: ob.date, lines, memo: '기초잔액', sourceType: '수동', sourceId: 'opening', createdAt: new Date().toISOString() };
 }

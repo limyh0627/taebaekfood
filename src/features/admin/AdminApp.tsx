@@ -54,6 +54,7 @@ import {
   RotateCcw,
   TrendingUp,
   Activity,
+  Scale,
   ShieldAlert,
   UserPlus,
   FolderOpen,
@@ -103,6 +104,7 @@ const ReceivingReturnsManager = React.lazy(() => import('../../../components/Rec
 const ProductionManager = React.lazy(() => import('../../../components/ProductionManager'));
 const TradeStatement = React.lazy(() => import('../../../components/TradeStatement'));
 const ProfitAnalysis = React.lazy(() => import('../../../components/ProfitAnalysis'));
+const FinancialReports = React.lazy(() => import('../../../components/FinancialReports'));
 const CashLedger = React.lazy(() => import('../../../components/CashLedger'));
 const PartnerLedger = React.lazy(() => import('../../../components/PartnerLedger'));
 
@@ -1017,7 +1019,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   const handleNavClick = (view: ViewType) => {
-    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant', 'cost-management', 'profit-analysis', 'production', 'admin-checklist', 'smartstore-analytics', 'haccp-checklist', 'partner-stats', 'cash-flow', 'file-cabinet', 'ledger-cash'];
+    const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant', 'cost-management', 'profit-analysis', 'production', 'admin-checklist', 'smartstore-analytics', 'haccp-checklist', 'partner-stats', 'cash-flow', 'file-cabinet', 'ledger-cash', 'financial-reports'];
     if (adminOnlyViews.includes(view) && !isAdminAuthenticated && !isAdmin) {
       setPendingAdminView(view);
       setIsAdminAuthModalOpen(true);
@@ -1181,6 +1183,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       <NavItem icon={BarChart2} label="손익 / 비용 분석" active={currentView === 'profit-analysis' || currentView === 'cost-management'} onClick={() => handleNavClick('profit-analysis')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={TrendingUp} label="거래처통계" active={currentView === 'partner-stats'} onClick={() => handleNavClick('partner-stats')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={Activity} label="현금흐름 분석" active={currentView === 'cash-flow'} onClick={() => handleNavClick('cash-flow')} collapsed={isSidebarCollapsed} />
+                      <NavItem icon={Scale} label="재무제표 (복식부기)" active={currentView === 'financial-reports'} onClick={() => handleNavClick('financial-reports')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={BookOpen} label="장부" active={currentView === 'ledger-cash'} onClick={() => handleNavClick('ledger-cash')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={Factory} label="생산 실적" active={currentView === 'production'} onClick={() => handleNavClick('production')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={ShoppingBag} label="스마트스토어 분석" active={currentView === 'smartstore-analytics'} onClick={() => handleNavClick('smartstore-analytics')} collapsed={isSidebarCollapsed} />
@@ -1281,7 +1284,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 'orders': '주문 관리', 'shipping': '배송 관리', 'inventory': '재고 관리',
                 'pallets': '파렛트 관리', 'hr': '인사 관리', 'partners': '거래처 관리',
                 'notice': '공지사항', 'documents': '서류 관리', 'trade-statement': '거래명세서', 'tax-statement': '세금계산서',
-                'profit-analysis': '손익 / 비용 분석', 'cost-management': '비용 관리', 'partner-stats': '거래처통계', 'cash-flow': '현금흐름 분석',
+                'profit-analysis': '손익 / 비용 분석', 'cost-management': '비용 관리', 'partner-stats': '거래처통계', 'cash-flow': '현금흐름 분석', 'financial-reports': '재무제표 (복식부기)',
                 'production': '생산 실적', 'admin-checklist': '확인사항',
                 'leave-portal': '연차 신청', 'confirmation-items': '확인사항',
                 'item-management': '품목 관리', 'item-price-management': '품목 관리',
@@ -3582,6 +3585,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     await setDocument('cashFlowManual', month, { ...clean, id: month, month });
                     refreshStaticData();
                   }}
+                />
+              </React.Suspense>
+            </div>
+          )}
+          {currentView === 'financial-reports' && (
+            <div className="h-full overflow-y-auto">
+              <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+                <FinancialReports
+                  statements={issuedStatements}
+                  cashEntries={appData.cashEntries}
+                  accounts={appData.accountCodes}
+                  cashAccounts={appData.cashAccounts}
                 />
               </React.Suspense>
             </div>

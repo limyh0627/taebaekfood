@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { journalizeStatement, AR, AP, VAT_PAYABLE, VAT_RECEIVABLE } from './autoJournal';
+import { journalizeStatement, journalizePayment, journalizeCashEntry, buildOpeningEntry, AR, AP, VAT_PAYABLE, VAT_RECEIVABLE, BANK } from './autoJournal';
 import { isBalanced } from './journal';
-import type { IssuedStatement } from './types';
+import type { IssuedStatement, CashEntry } from './types';
 
 const item = (o: Partial<IssuedStatement['items'][0]>): IssuedStatement['items'][0] =>
   ({ name: '', spec: '', qty: 1, price: 0, supply: 0, tax: 0, total: 0, isTaxExempt: false, ...o });
@@ -67,5 +67,58 @@ describe('여러 계정·면세·미지정', () => {
   });
   it('비용 타입 전표는 대상 아님', () => {
     expect(journalizeStatement(stmt({ type: '비용' as any }))).toBeNull();
+  });
+});
+
+describe('수금/지불 (payment) → 분개', () => {
+  it('매출 수금: 차 보통예금 / 대 외상매출금[거래처]', () => {
+    const s = stmt({ type: '매출', partnerId: 'A' });
+    const je = journalizePayment(s, { id: 'p1', amount: 500_000, date: '2026-07-10' })!;
+    expect(isBalanced(je)).toBe(true);
+    expect(je.lines.find(l => l.accountCode === BANK)!.debit).toBe(500_000);
+    const ar = je.lines.find(l => l.accountCode === AR)!;
+    expect(ar.credit).toBe(500_000); expect(ar.partnerId).toBe('A');
+  });
+  it('매입 지불: 차 외상매입금[거래처] / 대 보통예금', () => {
+    const s = stmt({ type: '매입', partnerId: 'B' });
+    const je = journalizePayment(s, { id: 'p2', amount: 300_000, date: '2026-07-11' })!;
+    expect(je.lines.find(l => l.accountCode === AP)!.debit).toBe(300_000);
+    expect(je.lines.find(l => l.accountCode === BANK)!.credit).toBe(300_000);
+  });
+});
+
+describe('자금원장 CashEntry → 분개', () => {
+  const ce = (o: Partial<CashEntry>): CashEntry => ({ id: 'c1', date: '2026-07-09', cashAccountId: 'main', dir: '출금', amount: 0, createdAt: '', ...o });
+  it('출금(전기세): 차 전기세 / 대 보통예금', () => {
+    const je = journalizeCashEntry(ce({ dir: '출금', amount: 1_200_000, accountCode: '520' }))!;
+    expect(isBalanced(je)).toBe(true);
+    expect(je.lines.find(l => l.accountCode === '520')!.debit).toBe(1_200_000);
+    expect(je.lines.find(l => l.accountCode === BANK)!.credit).toBe(1_200_000);
+  });
+  it('입금: 차 보통예금 / 대 성격계정', () => {
+    const je = journalizeCashEntry(ce({ dir: '입금', amount: 3_000_000, accountCode: '800' }))!;
+    expect(je.lines.find(l => l.accountCode === BANK)!.debit).toBe(3_000_000);
+    expect(je.lines.find(l => l.accountCode === '800')!.credit).toBe(3_000_000);
+  });
+  it('통장별 계정 매핑', () => {
+    const je = journalizeCashEntry(ce({ dir: '출금', amount: 100, accountCode: '520', cashAccountId: 'card1' }), { card1: '650' })!;
+    expect(je.lines.find(l => l.accountCode === '650')!.credit).toBe(100);
+  });
+  it('계정 없으면 null', () => {
+    expect(journalizeCashEntry(ce({ amount: 100 }))).toBeNull();
+  });
+});
+
+describe('기초분개', () => {
+  const normalOf = (c: string) => (['103', '108'].includes(c) ? 'debit' : 'credit') as 'debit' | 'credit';
+  it('자산−부채 차액을 자본으로 메워 균형', () => {
+    const je = buildOpeningEntry({ date: '2026-07-01', lines: [
+      { accountCode: '103', amount: 30_000_000 },   // 보통예금(자산)
+      { accountCode: '108', amount: 20_000_000 },   // 외상매출금(자산)
+      { accountCode: '251', amount: 10_000_000 },   // 외상매입금(부채)
+    ] }, normalOf);
+    expect(isBalanced(je)).toBe(true);
+    // 자본 = 자산50 − 부채10 = 40
+    expect(je.lines.find(l => l.accountCode === '331')!.credit).toBe(40_000_000);
   });
 });
