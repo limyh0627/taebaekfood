@@ -213,7 +213,15 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처'
   );
 
-  const categories: InventoryCategory[] = ['product', 'goods', 'wip', 'raw', 'giftset', 'submaterial', 'shipping'];
+  // 타입 목록 — 분류 관리(itemTaxonomy)에서 정한 것. 숨긴 타입(배송·선물세트 등)은 빠진다.
+  // 편집 중 품목의 타입이 숨김이어도 선택이 보이게 포함한다.
+  const typeList = useMemo(() => {
+    const list = taxo.types.map(t => ({ key: t.key, label: t.label }));
+    if (formData.category && !list.some(t => t.key === formData.category)) {
+      return [{ key: formData.category, label: taxo.labelOf(formData.category) }, ...list];
+    }
+    return list;
+  }, [taxo, formData.category]);
 
   const handleSubmit = async (e?: React.SyntheticEvent) => {
     e?.preventDefault();
@@ -350,26 +358,26 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             />
           </div>
 
-          {/* 카테고리 */}
+          {/* 타입 */}
           <div className="space-y-2">
             <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-              <Package size={14} className="mr-2" /> 카테고리
+              <Package size={14} className="mr-2" /> 타입
             </label>
             <div className="grid grid-cols-4 gap-1.5">
-              {categories.map(cat => {
-                const isSelected = formData.category === cat;
+              {typeList.map(({ key, label }) => {
+                const isSelected = formData.category === key;
                 return (
                   <button
-                    key={cat}
+                    key={key}
                     type="button"
-                    onClick={() => setFormData({...formData, category: cat as InventoryCategory, subtype: ''})}
+                    onClick={() => setFormData({...formData, category: key as InventoryCategory, subtype: '', subtype2: '' } as any)}
                     className={`py-2 rounded-xl text-xs font-black border transition-all ${
                       isSelected
                         ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
                         : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'
                     }`}
                   >
-                    {taxo.labelOf(cat)}
+                    {label}
                   </button>
                 );
               })}
