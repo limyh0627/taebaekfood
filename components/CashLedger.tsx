@@ -337,6 +337,7 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, on
   onClose: () => void;
   onAdd: Props['onAddCashEntry'];
 }) {
+  const [mode, setMode] = useState<'일반' | '상환'>('일반');
   const [cashAccountId, setCashAccountId] = useState(account.id);
   const [date, setDate] = useState(today());
   const [dir, setDir] = useState<'입금' | '출금'>('출금');
@@ -344,22 +345,32 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, on
   const [partnerId, setPartnerId] = useState('');
   const [accountCode, setAccountCode] = useState('');
   const [note, setNote] = useState('');
+  // 대출 상환 전용
+  const [loanCode, setLoanCode] = useState('260');   // 260 단기 / 293 장기
+  const [principal, setPrincipal] = useState('');
+  const [interest, setInterest] = useState('');
 
   const amt = Number(amount.replace(/,/g, '')) || 0;
   const partner = partners.find(p => p.id === partnerId);
-  const canSave = amt > 0 && !!accountCode;
+  const prin = Number(principal.replace(/,/g, '')) || 0;
+  const intr = Number(interest.replace(/,/g, '')) || 0;
+  // 차입금 계정(부채·이름에 차입금) — 상환 대상 선택지
+  const loanAccounts = accountCodes.filter(c => c.type === '부채' && /차입금/.test(c.name));
+  const INTEREST_CODE = accountCodes.find(c => /이자비용/.test(c.name))?.code ?? '951';
+  const canSave = mode === '일반' ? (amt > 0 && !!accountCode) : (prin > 0 || intr > 0) && !!loanCode;
+
+  const base = () => ({ date, cashAccountId, createdAt: new Date().toISOString(), ...(currentUser ? { createdBy: currentUser.name } : {}), ...(partnerId ? { partnerId, partnerName: partner?.name ?? '' } : {}) });
 
   const save = () => {
     if (!canSave) return;
-    onAdd({
-      id: `cash-${Date.now()}`,
-      date, cashAccountId, dir, amount: amt,
-      ...(partnerId ? { partnerId, partnerName: partner?.name ?? '' } : {}),
-      accountCode,
-      ...(note.trim() ? { note: note.trim() } : {}),
-      createdAt: new Date().toISOString(),
-      ...(currentUser ? { createdBy: currentUser.name } : {}),
-    });
+    if (mode === '일반') {
+      onAdd({ id: `cash-${Date.now()}`, dir, amount: amt, accountCode, ...(note.trim() ? { note: note.trim() } : {}), ...base() } as any);
+    } else {
+      // 대출 상환 → 원금·이자 두 줄(둘 다 출금). 원금=차입금 감소, 이자=비용.
+      const memo = note.trim() || '대출 상환';
+      if (prin > 0) onAdd({ id: `cash-${Date.now()}-p`, dir: '출금', amount: prin, accountCode: loanCode, note: `${memo} (원금)`, ...base() } as any);
+      if (intr > 0) onAdd({ id: `cash-${Date.now()}-i`, dir: '출금', amount: intr, accountCode: INTEREST_CODE, note: `${memo} (이자)`, ...base() } as any);
+    }
     onClose();
   };
 
@@ -370,8 +381,19 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, on
           <h3 className="text-sm font-black text-slate-800">입출금 기록</h3>
           <button onClick={onClose} className="text-slate-300 hover:text-slate-500"><X size={18} /></button>
         </div>
+        {/* 모드 — 일반 입출금 / 대출 상환(원금·이자 자동 분리) */}
+        <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
+          {(['일반', '상환'] as const).map(m => (
+            <button key={m} type="button" onClick={() => setMode(m)}
+              className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-black transition-all ${mode === m ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400'}`}>
+              {m === '일반' ? '일반 입출금' : '대출 상환'}
+            </button>
+          ))}
+        </div>
         <p className="text-[11px] text-slate-400 leading-snug">
-          실제로 돈이 움직인 사실만 적습니다. 이 돈의 성격(비용·자산·부채)은 <b>계정과목</b>이 정합니다 — 전기요금이면 전력비, 기계 구입이면 기계장치, 대출 받으면 차입금.
+          {mode === '일반'
+            ? <>실제로 돈이 움직인 사실만 적습니다. 이 돈의 성격(비용·자산·부채)은 <b>계정과목</b>이 정합니다 — 전기요금이면 전력비, 기계 구입이면 기계장치, 대출 받으면 차입금.</>
+            : <>원금·이자를 한 번에 넣으면 <b>자금원장에 두 줄</b>로 자동 기록됩니다 — 원금은 차입금 감소, 이자는 비용.</>}
         </p>
 
         <div className="grid grid-cols-2 gap-3">
@@ -389,49 +411,91 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, on
           </div>
         </div>
 
-        <div>
-          <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">방향</label>
-          <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
-            {(['출금', '입금'] as const).map(d => (
-              <button key={d} type="button" onClick={() => setDir(d)}
-                className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${
-                  dir === d ? (d === '출금' ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white') : 'text-slate-400'
-                }`}>{d}</button>
-            ))}
-          </div>
-        </div>
+        {mode === '일반' ? (
+          <>
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">방향</label>
+              <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
+                {(['출금', '입금'] as const).map(d => (
+                  <button key={d} type="button" onClick={() => setDir(d)}
+                    className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${
+                      dir === d ? (d === '출금' ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white') : 'text-slate-400'
+                    }`}>{d}</button>
+                ))}
+              </div>
+            </div>
 
-        <div>
-          <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">금액</label>
-          <input inputMode="numeric" value={amount} placeholder="0"
-            onChange={e => setAmount(e.target.value.replace(/[^\d,]/g, ''))}
-            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-lg font-black tabular-nums outline-none focus:ring-2 focus:ring-slate-300" />
-        </div>
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">금액</label>
+              <input inputMode="numeric" value={amount} placeholder="0"
+                onChange={e => setAmount(e.target.value.replace(/[^\d,]/g, ''))}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-lg font-black tabular-nums outline-none focus:ring-2 focus:ring-slate-300" />
+            </div>
 
-        <div>
-          <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">거래처 <span className="text-slate-300">(선택)</span></label>
-          <select value={partnerId} onChange={e => setPartnerId(e.target.value)}
-            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300">
-            <option value="">— 없음 —</option>
-            {partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        </div>
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">거래처 <span className="text-slate-300">(선택)</span></label>
+              <select value={partnerId} onChange={e => setPartnerId(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300">
+                <option value="">— 없음 —</option>
+                {partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
 
-        <div>
-          <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">계정과목 <span className="text-rose-400">*</span></label>
-          <select value={accountCode} onChange={e => setAccountCode(e.target.value)}
-            className={`w-full border rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300 ${
-              accountCode ? 'border-slate-200' : 'border-amber-300 bg-amber-50'
-            }`}>
-            <option value="">— 선택하세요 —</option>
-            {accountCodes.map(c => <option key={c.id} value={c.code}>{c.code} · {c.name}</option>)}
-          </select>
-          {!accountCode && <p className="text-[10px] font-bold text-amber-600 mt-1">계정과목이 없으면 손익·현금흐름 어디에도 못 잡힙니다.</p>}
-        </div>
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">계정과목 <span className="text-rose-400">*</span></label>
+              <select value={accountCode} onChange={e => setAccountCode(e.target.value)}
+                className={`w-full border rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300 ${
+                  accountCode ? 'border-slate-200' : 'border-amber-300 bg-amber-50'
+                }`}>
+                <option value="">— 선택하세요 —</option>
+                {accountCodes.map(c => <option key={c.id} value={c.code}>{c.code} · {c.name}</option>)}
+              </select>
+              {!accountCode && <p className="text-[10px] font-bold text-amber-600 mt-1">계정과목이 없으면 손익·현금흐름 어디에도 못 잡힙니다.</p>}
+            </div>
+          </>
+        ) : (
+          <>
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">대출 계정 <span className="text-rose-400">*</span></label>
+              <select value={loanCode} onChange={e => setLoanCode(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300">
+                {(loanAccounts.length ? loanAccounts : [{ id: '260', code: '260', name: '단기차입금' }, { id: '293', code: '293', name: '장기차입금' }]).map(c => (
+                  <option key={c.id} value={c.code}>{c.code} · {c.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">원금</label>
+                <input inputMode="numeric" value={principal} placeholder="0"
+                  onChange={e => setPrincipal(e.target.value.replace(/[^\d,]/g, ''))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-slate-300" />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">이자</label>
+                <input inputMode="numeric" value={interest} placeholder="0"
+                  onChange={e => setInterest(e.target.value.replace(/[^\d,]/g, ''))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-slate-300" />
+              </div>
+            </div>
+            <div className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2 text-[11px] font-black text-slate-500">
+              <span>통장에서 나가는 총액</span>
+              <span className="tabular-nums text-slate-800">{fmt(prin + intr)}</span>
+            </div>
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">거래처 <span className="text-slate-300">(선택 · 은행)</span></label>
+              <select value={partnerId} onChange={e => setPartnerId(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300">
+                <option value="">— 없음 —</option>
+                {partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+          </>
+        )}
 
         <div>
           <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">적요 <span className="text-slate-300">(선택)</span></label>
-          <input value={note} onChange={e => setNote(e.target.value)} placeholder="7월분 전기요금 자동이체"
+          <input value={note} onChange={e => setNote(e.target.value)} placeholder={mode === '일반' ? '7월분 전기요금 자동이체' : '기업은행 시설자금 7월 상환'}
             className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300" />
         </div>
 
