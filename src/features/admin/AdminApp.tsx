@@ -1193,7 +1193,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   <div>
                     {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">업무 관리</p>}
                     <nav className="space-y-1">
-                      <NavItem icon={FileText} label="거래명세서" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} />
+                      <NavItem icon={FileText} label="전표" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={Receipt} label="세금계산서" active={currentView === 'tax-statement'} onClick={() => handleNavClick('tax-statement')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={Package} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={UserCheck} label="인사 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} />

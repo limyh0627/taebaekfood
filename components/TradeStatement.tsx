@@ -33,6 +33,8 @@ interface TradeStatementProps {
   onAddFixedCostTemplate?: (data: Omit<FixedCostTemplate, 'id'>) => Promise<void>;
   onUpdateFixedCostTemplate?: (id: string, data: Partial<FixedCostTemplate>) => Promise<void>;
   onDeleteFixedCostTemplate?: (id: string) => Promise<void>;
+  // 전표 탭 모드 — 'trade'=거래명세서(매출/매입/수금지불) · 'adjust'=조정(대체/정기비용) · 'full'=전부(기본)
+  voucherMode?: 'full' | 'trade' | 'adjust';
   issuedStatements: IssuedStatement[];
   onUpdateStatus?: (id: string, status: OrderStatus) => void;
   onUpsertPartnerItem?: (ps: PartnerItem) => void;
@@ -128,6 +130,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   fixedCostTemplates = [],
   onGenerateRecurringCosts,
   onAddFixedCostTemplate, onUpdateFixedCostTemplate, onDeleteFixedCostTemplate,
+  voucherMode = 'full',
   issuedStatements, onUpdateStatus, onUpsertPartnerItem,
   onMarkInvoicePrinted, onAddIssuedStatement,
   onUpdateIssuedStatement,
@@ -402,6 +405,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // ── 메인 탭 ──
   const [mainTab, setMainTab] = useState<'history' | 'taxinvoice'>(defaultTab ?? 'history');
+  // 전표 성격 탭 — 거래명세서(매출/매입/수금지불) ↔ 조정(대체/정기비용). 부모가 강제하면(prop) 탭 숨김.
+  const [vTab, setVTab] = useState<'trade' | 'adjust'>(voucherMode === 'adjust' ? 'adjust' : 'trade');
+  const vMode = voucherMode === 'full' ? vTab : voucherMode;
 
   // ── 회사 설정 모달 ──
   const [showCompanyModal, setShowCompanyModal] = useState(false);
@@ -1592,6 +1598,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const docNo = row.kind === 'stmt' ? row.data.docNo : '';
         if (histFrom && d < histFrom) return false;
         if (histTo   && d > histTo)   return false;
+        // 전표 탭 모드 — 거래명세서는 매출·매입만, 조정은 대체(비용)만
+        if (vMode === 'trade' && type === '비용') return false;
+        if (vMode === 'adjust' && type !== '비용') return false;
         if (histTypeFilter !== '전체' && type !== histTypeFilter) return false;
         if (histSearch.trim()) {
           const q = histSearch.toLowerCase();
@@ -1608,7 +1617,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         if (a.kind === 'pay' && b.kind === 'stmt') return 1;
         return 0;
       }); // 오래된→최신
-  }, [allTimelineRows, histFrom, histTo, histTypeFilter, histSearch]);
+  }, [allTimelineRows, histFrom, histTo, histTypeFilter, histSearch, vMode]);
 
   // 페이지네이션: 필터 변경 시 1페이지로 리셋, 최신 페이지부터 보여줌
   useEffect(() => { setHistoryPage(1); }, [histFrom, histTo, histTypeFilter, histSearch]);
@@ -2183,7 +2192,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           }
         </div>
       </div>
+      {voucherMode === 'full' && mainTab === 'history' && (
+        <div className="inline-flex bg-slate-100 rounded-xl p-0.5 gap-0.5 shrink-0">
+          {([['trade', '거래명세서'], ['adjust', '조정']] as const).map(([k, label]) => (
+            <button key={k} onClick={() => setVTab(k)}
+              className={`px-4 py-2 rounded-lg text-xs font-black transition-all ${vTab === k ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="flex items-center gap-2 flex-wrap shrink-0">
+        {vMode !== 'adjust' && <>
         <button
           onClick={() => openCreate('매입')}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-rose-600 text-white hover:bg-rose-700 shadow-sm transition-all"
@@ -2196,6 +2216,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         >
           <Plus size={13} strokeWidth={3}/>매출전표
         </button>
+        </>}
+        {vMode !== 'trade' && <>
         <button
           onClick={() => { setShowExpense(true); setExpDate(today()); setExpRows([{ name: '', spec: '', qty: '1', price: '', isTaxExempt: true }]); }}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-slate-600 text-white hover:bg-slate-700 shadow-sm transition-all"
@@ -2212,12 +2234,15 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             <RotateCw size={13} strokeWidth={3}/>정기비용
           </button>
         )}
+        </>}
+        {vMode !== 'adjust' && (
         <button
           onClick={() => { setShowQuickPay(true); setQuickPayClientId(''); setQuickPayClientSearch(''); setQuickPayAmount(''); setQuickPayNote(''); setQuickPayDate(new Date().toISOString().slice(0,10)); setQuickPayAccountId(prev => prev || activeCashAccounts[0]?.id || ''); }}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition-all"
         >
           <Wallet size={13}/>수금/지불
         </button>
+        )}
         <button
           onClick={() => { setShowCompanyModal(true); setCompanyForm(companyInfo ?? { name:'',ceoName:'',bizNo:'',bizType:'',bizItem:'',address:'',phone:'',fax:'',email:'' }); }}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all"
