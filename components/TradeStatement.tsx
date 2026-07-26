@@ -4,7 +4,7 @@ import {
   FileText, Printer, Search, ChevronDown, CalendarDays,
   Package, ClipboardList, ChevronRight, CheckCircle2, Edit2, Plus, X, ArrowLeft,
   Save, Download, CheckSquare,
-  ChevronLeft, Share2, Check, Wallet, RotateCw
+  ChevronLeft, Share2, Check, Wallet, RotateCw, Trash2
 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
 import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentRecord, AccountCode, AccountGroup, CashAccount, CashEntry, Settlement, FixedCostTemplate } from '../types';
@@ -30,6 +30,9 @@ interface TradeStatementProps {
   // 정기 고정비 — 템플릿으로 해당 월 전표를 한 번에 생성 (중복 생성은 핸들러가 막는다)
   fixedCostTemplates?: FixedCostTemplate[];
   onGenerateRecurringCosts?: (yearMonth: string) => Promise<number>;
+  onAddFixedCostTemplate?: (data: Omit<FixedCostTemplate, 'id'>) => Promise<void>;
+  onUpdateFixedCostTemplate?: (id: string, data: Partial<FixedCostTemplate>) => Promise<void>;
+  onDeleteFixedCostTemplate?: (id: string) => Promise<void>;
   issuedStatements: IssuedStatement[];
   onUpdateStatus?: (id: string, status: OrderStatus) => void;
   onUpsertPartnerItem?: (ps: PartnerItem) => void;
@@ -124,6 +127,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   onAddSettlement,
   fixedCostTemplates = [],
   onGenerateRecurringCosts,
+  onAddFixedCostTemplate, onUpdateFixedCostTemplate, onDeleteFixedCostTemplate,
   issuedStatements, onUpdateStatus, onUpsertPartnerItem,
   onMarkInvoicePrinted, onAddIssuedStatement,
   onUpdateIssuedStatement,
@@ -254,6 +258,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [recurringYm, setRecurringYm] = useState(today().slice(0, 7));
   const [recurringMsg, setRecurringMsg] = useState('');
   const [recurringBusy, setRecurringBusy] = useState(false);
+  // 정기비용 템플릿 추가 폼 (거래명세서 안에서 바로 관리)
+  const [tplForm, setTplForm] = useState<{ name: string; amount: string; accountCode: string; partnerId: string; startYm: string }>({ name: '', amount: '', accountCode: '', partnerId: '', startYm: '' });
+  const [tplBusy, setTplBusy] = useState(false);
+  const [tplEditId, setTplEditId] = useState<string | null>(null);
+  const [tplEditAmt, setTplEditAmt] = useState('');
   const [payOverWarn, setPayOverWarn] = useState(false);
 
   // ── 수금/지불 내역 상세/수정 모달 ──
@@ -2738,9 +2747,87 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 <button onClick={() => setShowRecurring(false)} className="text-slate-300 hover:text-slate-500"><X size={18} /></button>
               </div>
               <p className="text-[11px] text-slate-400 leading-snug">
-                손익/비용 분석 → 정기비용에 등록한 템플릿으로 해당 월 전표를 한 번에 끊습니다.
-                이미 생성된 건 건너뜁니다. 템플릿 추가·금액 수정은 정기비용 화면에서 하세요.
+                등록한 템플릿으로 해당 월 전표를 한 번에 끊습니다. 이미 생성된 건 건너뜁니다.
+                감가상각비·퇴직급여충당금도 등록해두면 매달 자동으로 끊깁니다.
               </p>
+
+              {/* 템플릿 관리 — 추가/수정/삭제 (거래명세서 안에서) */}
+              {onAddFixedCostTemplate && (
+                <div className="border border-slate-150 rounded-2xl overflow-hidden">
+                  <div className="px-3 py-2 bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">정기비용 항목</div>
+                  <div className="max-h-40 overflow-y-auto divide-y divide-slate-50">
+                    {fixedCostTemplates.length === 0 && <p className="px-3 py-4 text-[11px] font-bold text-slate-300 text-center">등록된 정기비용이 없습니다. 아래에서 추가하세요.</p>}
+                    {fixedCostTemplates.map(t => {
+                      const ac = accountCodes.find(c => c.code === t.accountCode);
+                      const editing = tplEditId === t.id;
+                      return (
+                        <div key={t.id} className={`flex items-center gap-2 px-3 py-2 ${t.active ? '' : 'opacity-45'}`}>
+                          <button onClick={() => onUpdateFixedCostTemplate?.(t.id, { active: !t.active })} title={t.active ? '집계 제외' : '집계 포함'}
+                            className={`w-2 h-2 rounded-full shrink-0 ${t.active ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-black text-slate-800 truncate">{t.name || ac?.name}</p>
+                            <p className="text-[10px] text-slate-400">{t.accountCode} {ac?.name ?? ''}{t.partnerName ? ` · ${t.partnerName}` : ''}{t.startYm ? ` · ${t.startYm}~` : ''}</p>
+                          </div>
+                          {editing ? (
+                            <input autoFocus inputMode="numeric" value={tplEditAmt} onChange={e => setTplEditAmt(e.target.value.replace(/[^\d]/g, ''))}
+                              onKeyDown={e => { if (e.key === 'Enter') { onUpdateFixedCostTemplate?.(t.id, { amount: Number(tplEditAmt) || 0 }); setTplEditId(null); } }}
+                              className="w-24 text-right text-xs font-black tabular-nums border border-indigo-300 rounded-lg px-2 py-1 outline-none" />
+                          ) : (
+                            <button onClick={() => { setTplEditId(t.id); setTplEditAmt(String(t.amount)); }} className="text-xs font-black text-slate-700 tabular-nums shrink-0 hover:text-indigo-600">{fmt(t.amount)}</button>
+                          )}
+                          {editing ? (
+                            <button onClick={() => { onUpdateFixedCostTemplate?.(t.id, { amount: Number(tplEditAmt) || 0 }); setTplEditId(null); }} className="p-1 text-emerald-500 shrink-0"><Check size={13} /></button>
+                          ) : (
+                            <button onClick={() => onDeleteFixedCostTemplate?.(t.id)} className="p-1 text-slate-300 hover:text-rose-500 shrink-0"><Trash2 size={12} /></button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* 추가 폼 */}
+                  <div className="p-2.5 bg-slate-50/60 border-t border-slate-100 space-y-2">
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <input value={tplForm.name} onChange={e => setTplForm(f => ({ ...f, name: e.target.value }))} placeholder="항목명 (예: 공장 임대료)"
+                        className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-violet-300" />
+                      <input inputMode="numeric" value={tplForm.amount} onChange={e => setTplForm(f => ({ ...f, amount: e.target.value.replace(/[^\d]/g, '') }))} placeholder="금액"
+                        className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-black text-right tabular-nums outline-none focus:ring-2 focus:ring-violet-300" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <select value={tplForm.accountCode} onChange={e => setTplForm(f => ({ ...f, accountCode: e.target.value }))}
+                        className={`border rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-violet-300 ${tplForm.accountCode ? 'border-slate-200' : 'border-amber-300 bg-amber-50'}`}>
+                        <option value="">계정과목 *</option>
+                        {accountCodes.filter(c => c.type === '비용').map(c => <option key={c.id} value={c.code}>{c.code} · {c.name}</option>)}
+                      </select>
+                      <select value={tplForm.partnerId} onChange={e => setTplForm(f => ({ ...f, partnerId: e.target.value }))}
+                        className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-violet-300">
+                        <option value="">거래처 (선택)</option>
+                        {partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <input type="month" value={tplForm.startYm} onChange={e => setTplForm(f => ({ ...f, startYm: e.target.value }))} title="시작월(선택)"
+                        className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-violet-300" />
+                      <button
+                        disabled={!tplForm.accountCode || !(Number(tplForm.amount) > 0) || tplBusy}
+                        onClick={async () => {
+                          setTplBusy(true);
+                          try {
+                            const p = tplForm.partnerId ? partners.find(x => x.id === tplForm.partnerId) : null;
+                            const ac = accountCodes.find(c => c.code === tplForm.accountCode);
+                            await onAddFixedCostTemplate!({
+                              name: tplForm.name.trim() || ac?.name || '정기비용', amount: Number(tplForm.amount) || 0,
+                              category: '기타', active: true, accountCode: tplForm.accountCode,
+                              ...(p ? { partnerId: p.id, partnerName: p.name } : {}),
+                              ...(tplForm.startYm ? { startYm: tplForm.startYm } : {}),
+                            } as Omit<FixedCostTemplate, 'id'>);
+                            setTplForm({ name: '', amount: '', accountCode: '', partnerId: '', startYm: '' });
+                          } finally { setTplBusy(false); }
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-black disabled:opacity-30">추가</button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">대상 월</label>
@@ -2751,8 +2838,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
               {due.length === 0 ? (
                 <p className="text-[11px] font-bold text-amber-700 bg-amber-50 rounded-xl px-4 py-3">
-                  이 달에 해당하는 정기비용 템플릿이 없습니다. 손익/비용 분석 → 정기비용에서 등록하세요.
-                  <br />감가상각비·퇴직급여충당금도 여기에 등록해두면 매달 자동으로 끊을 수 있습니다.
+                  이 달에 해당하는 정기비용이 없습니다. 위에서 추가하세요.
                 </p>
               ) : (
                 <div className="space-y-1.5">

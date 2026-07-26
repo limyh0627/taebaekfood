@@ -3363,6 +3363,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onAddSettlement={(s) => addItem('settlements', s)}
               fixedCostTemplates={appData.fixedCostTemplates}
               onGenerateRecurringCosts={generateRecurringCosts}
+              onAddFixedCostTemplate={async (data) => { await addItem('fixedCostTemplates', { ...data, id: `fct-${Date.now()}` }); refreshStaticData(); }}
+              onUpdateFixedCostTemplate={async (id, data) => { await updateItem('fixedCostTemplates', id, data); refreshStaticData(); }}
+              onDeleteFixedCostTemplate={async (id) => { await deleteItem('fixedCostTemplates', id); refreshStaticData(); }}
               expensePresets={appData.expensePresets}
               onAddExpensePreset={async (p) => { const id = await addItem('expensePresets', { ...p, id: `exp-${Date.now()}`, createdAt: new Date().toISOString() }); refreshStaticData(); return id as string; }}
               onDeleteExpensePreset={(id) => { deleteItem('expensePresets', id); refreshStaticData(); }}

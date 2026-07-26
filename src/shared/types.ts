@@ -441,7 +441,8 @@ export interface FixedCostTemplate {
   note?: string;
   // 정기분개(정기 비용 전표) 설정
   accountCode?: string;        // 이 정기비용이 끊길 계정과목 코드 (판관비/영업외)
-  partnerName?: string;        // 거래처(임대인 등) 표시용
+  partnerId?: string;          // 거래처 id (임대인·보험사 등) — 필요한 경우만
+  partnerName?: string;        // 거래처 표시용 스냅샷
   startYm?: string;            // 'YYYY-MM' 시작월 (이 월부터 생성)
   endYm?: string;              // 'YYYY-MM' 종료월 (선택, 이 월까지)
 }
