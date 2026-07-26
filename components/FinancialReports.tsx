@@ -1,10 +1,14 @@
-import React, { useMemo, useState } from 'react';
-import { ShieldCheck, ShieldAlert, ScrollText, TrendingUp, Scale } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ShieldCheck, ShieldAlert, ScrollText, TrendingUp, Scale, Pencil, Save, X } from 'lucide-react';
 import type { IssuedStatement, CashEntry, AccountCode, CashAccount } from '../src/shared/types';
 import { buildJournals } from '../src/shared/buildJournals';
-import { trialBalance, incomeStatement, balanceSheet, inRange } from '../src/shared/journal';
+import { trialBalance, incomeStatement, balanceSheet } from '../src/shared/journal';
 import type { OpeningBalance } from '../src/shared/autoJournal';
 import { BANK } from '../src/shared/autoJournal';
+import { fetchCollection, setDocument } from '../src/shared/services/firebaseService';
+
+const CAPITAL = '331';   // 자본금 (기초 차액 plug)
+interface OpeningDoc { id: string; date: string; amounts: Record<string, number>; }
 
 interface Props {
   statements: IssuedStatement[];
@@ -28,12 +32,56 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
   }, [statements, cashEntries]);
   const [month, setMonth] = useState<string>('전체');
 
-  // 기초잔액 — 통장 openingBalance를 보통예금으로. (나머지 미수/미지급/재고는 나중에 편집)
+  // ── 기초잔액 문서 (openingBalances/main) ──
+  const [openingDoc, setOpeningDoc] = useState<OpeningDoc | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<OpeningDoc | null>(null);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { fetchCollection<OpeningDoc>('openingBalances').then(rows => setOpeningDoc(rows.find(r => r.id === 'main') ?? null)).catch(() => {}); }, []);
+
+  const cashDefault = useMemo(() => cashAccounts.filter(a => a.type !== '카드').reduce((s, a) => s + (a.openingBalance ?? 0), 0), [cashAccounts]);
+  const defaultDate = useMemo(() => cashAccounts.map(a => a.openingDate).filter(Boolean).sort()[0] ?? '2026-07-01', [cashAccounts]);
+
+  // 실제 적용할 기초잔액 — 저장문서 있으면 그것, 없으면 통장만 자동
   const opening: OpeningBalance = useMemo(() => {
-    const cashTotal = cashAccounts.filter(a => a.type !== '카드').reduce((s, a) => s + (a.openingBalance ?? 0), 0);
-    const date = cashAccounts.map(a => a.openingDate).filter(Boolean).sort()[0] ?? '2026-07-01';
-    return { date, lines: cashTotal ? [{ accountCode: BANK, amount: cashTotal }] : [] };
-  }, [cashAccounts]);
+    if (openingDoc) {
+      return { date: openingDoc.date, capitalAccount: CAPITAL,
+        lines: Object.entries(openingDoc.amounts).filter(([, v]) => v).map(([accountCode, amount]) => ({ accountCode, amount })) };
+    }
+    return { date: defaultDate, capitalAccount: CAPITAL, lines: cashDefault ? [{ accountCode: BANK, amount: cashDefault }] : [] };
+  }, [openingDoc, defaultDate, cashDefault]);
+
+  // 편집 대상 계정 — 자산·부채·자본 (자본금 제외, 그건 plug)
+  const openableAccounts = useMemo(
+    () => accounts.filter(a => (a.type === '자산' || a.type === '부채') || (a.type === '자본' && String(a.code) !== CAPITAL))
+      .sort((a, b) => String(a.code).localeCompare(String(b.code))),
+    [accounts]);
+
+  const startEdit = () => {
+    const base: OpeningDoc = openingDoc ?? { id: 'main', date: defaultDate, amounts: cashDefault ? { [BANK]: cashDefault } : {} };
+    setDraft(JSON.parse(JSON.stringify(base))); setEditing(true);
+  };
+  const saveOpening = async () => {
+    if (!draft || saving) return;
+    setSaving(true);
+    try {
+      const clean = { ...draft, id: 'main', amounts: Object.fromEntries(Object.entries(draft.amounts).filter(([, v]) => v)) };
+      await setDocument('openingBalances', 'main', clean);
+      setOpeningDoc(clean); setEditing(false);
+    } finally { setSaving(false); }
+  };
+  // 자본금 plug 미리보기
+  const capitalPreview = useMemo(() => {
+    if (!draft) return 0;
+    let d = 0, c = 0;
+    for (const a of openableAccounts) {
+      const amt = draft.amounts[String(a.code)] ?? 0;
+      if (!amt) continue;
+      const nb = a.normalBalance ?? 'debit';
+      if (nb === 'debit') d += amt; else c += amt;
+    }
+    return Math.round(d - c);   // 차변이 크면 자본금(대변)으로
+  }, [draft, openableAccounts]);
 
   const built = useMemo(() => buildJournals({ statements, cashEntries, accounts, opening }), [statements, cashEntries, accounts, opening]);
 
@@ -75,6 +123,54 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
           분개 못 만든 원본 {built.skipped.length}건 (계정 미지정 등) — 재무제표에서 빠짐
         </div>
       )}
+
+      {/* 기초잔액 편집 */}
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        <div className="px-4 py-3 flex items-center justify-between border-b border-slate-100">
+          <div>
+            <span className="text-xs font-black text-slate-500 uppercase tracking-widest">기초잔액</span>
+            <span className="text-[11px] font-bold text-slate-400 ml-2">
+              {openingDoc ? `${openingDoc.date} 기준` : `미입력 — 통장 ${won(cashDefault)}만 반영 중`}
+            </span>
+          </div>
+          {!editing ? (
+            <button onClick={startEdit} className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-900 text-white text-[11px] font-black"><Pencil size={12} /> 편집</button>
+          ) : (
+            <div className="flex gap-1.5">
+              <button onClick={() => setEditing(false)} className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 text-[11px] font-black"><X size={12} /> 취소</button>
+              <button onClick={saveOpening} disabled={saving} className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-[11px] font-black disabled:opacity-40"><Save size={12} /> 저장</button>
+            </div>
+          )}
+        </div>
+        {editing && draft && (
+          <div className="p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-black text-slate-400">컷오프 날짜</span>
+              <input type="date" value={draft.date} onChange={e => setDraft({ ...draft, date: e.target.value })}
+                className="border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300" />
+              <span className="text-[10px] font-bold text-slate-400">이 날짜의 기초 잔액. 이 값들의 차액이 자본금으로 들어갑니다.</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              {openableAccounts.map(a => (
+                <label key={a.code} className="flex items-center gap-2 border border-slate-150 rounded-xl px-2.5 py-1.5">
+                  <span className="text-[11px] font-bold text-slate-500 flex-1 truncate"><span className="text-slate-300 mr-1">{a.code}</span>{a.name}</span>
+                  <input inputMode="numeric" value={draft.amounts[String(a.code)] || ''} placeholder="0"
+                    onChange={e => setDraft({ ...draft, amounts: { ...draft.amounts, [String(a.code)]: Number(e.target.value.replace(/[^\d]/g, '')) || 0 } })}
+                    className="w-28 text-right text-xs font-black tabular-nums border border-slate-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-indigo-300" />
+                </label>
+              ))}
+            </div>
+            <div className="flex items-center justify-between bg-violet-50 border border-violet-200 rounded-xl px-3 py-2">
+              <span className="text-[11px] font-black text-violet-700">331 자본금 (자동 차액)</span>
+              <span className="text-sm font-black text-violet-700 tabular-nums">{won(capitalPreview)}</span>
+            </div>
+            <p className="text-[10px] font-bold text-slate-400 leading-relaxed">
+              통장 실잔액은 보통예금(103), 못 받은 돈은 외상매출금(108), 갚을 돈은 외상매입금(251)·미지급금(253),
+              대출은 단기·장기차입금에 넣으세요. 재고자산 계정이 없으면 나중에 추가합니다. 언제든 다시 편집 가능합니다.
+            </p>
+          </div>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* 손익계산서 */}
