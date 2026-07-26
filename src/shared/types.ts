@@ -693,17 +693,43 @@ export interface PendingStatementEdit {
 }
 
 // ── 계정과목 ──────────────────────────────────────────────────────────────────
+export type AccountType = '자산' | '부채' | '자본' | '수익' | '비용';
+
 export interface AccountCode {
   id: string;          // 계정코드 (예: '500')
   code: string;        // 계정코드 문자열
   name: string;        // 계정명 (예: '원료매입')
   groupId?: string;    // 소속 AccountGroup ID
+  // 복식부기 — 자동 분개/보고서의 근거. setup-account-codes.mjs로 세팅.
+  type?: AccountType;               // 5분류
+  normalBalance?: 'debit' | 'credit'; // 증가가 차변이냐 대변이냐 (자산·비용=debit, 부채·자본·수익=credit, contra는 반대)
+  isCash?: boolean;                 // 현금성 계정(현금·보통예금) — 현금흐름표 직접법용
   /**
    * 비현금 비용 — 손익에는 잡히지만 현금이 나가지 않는다 (감가상각비, 퇴직급여충당금).
-   * 현금흐름표(간접법)에서 순이익에 다시 가산한다.
+   * 현금흐름표(간접법)에서 순이익에 다시 가산한다. @deprecated 복식부기 전환 후 상대계정으로 대체.
    */
   noncash?: boolean;
   note?: string;
+}
+
+// ── 분개 (복식부기 코어) — 회계의 유일한 진실. 모든 보고서가 여기서 나온다. ──────────
+export interface JournalLine {
+  accountCode: string;
+  debit: number;                 // 차변 (둘 중 하나만 > 0)
+  credit: number;                // 대변
+  partnerId?: string;            // 거래처별 채권·채무 원장용
+  note?: string;
+}
+
+export interface JournalEntry {
+  id: string;
+  date: string;                  // 'YYYY-MM-DD' 회계 발생일
+  lines: JournalLine[];          // 불변식: sum(debit) === sum(credit)
+  memo?: string;
+  sourceType: '매출' | '매입' | '대체' | '자금' | '수동';  // 이 분개를 만든 원본 문서 종류
+  sourceId?: string;             // issuedStatements.id / cashEntries.id — 역추적·재생성용
+  createdAt: string;
+  createdBy?: string;
 }
 
 export type AccountGroupPlLine = 'revenue' | 'cogs' | 'sgna' | 'other-income' | 'other-expense';
