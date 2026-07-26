@@ -337,7 +337,7 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, on
   onClose: () => void;
   onAdd: Props['onAddCashEntry'];
 }) {
-  const [mode, setMode] = useState<'일반' | '상환'>('일반');
+  const [mode, setMode] = useState<'일반' | '상환' | '급여'>('일반');
   const [cashAccountId, setCashAccountId] = useState(account.id);
   const [date, setDate] = useState(today());
   const [dir, setDir] = useState<'입금' | '출금'>('출금');
@@ -349,15 +349,25 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, on
   const [loanCode, setLoanCode] = useState('260');   // 260 단기 / 293 장기
   const [principal, setPrincipal] = useState('');
   const [interest, setInterest] = useState('');
+  // 급여 지급 전용
+  const [gross, setGross] = useState('');
+  const [deduction, setDeduction] = useState('');
 
   const amt = Number(amount.replace(/,/g, '')) || 0;
   const partner = partners.find(p => p.id === partnerId);
   const prin = Number(principal.replace(/,/g, '')) || 0;
   const intr = Number(interest.replace(/,/g, '')) || 0;
-  // 차입금 계정(부채·이름에 차입금) — 상환 대상 선택지
+  const grs = Number(gross.replace(/,/g, '')) || 0;
+  const ded = Number(deduction.replace(/,/g, '')) || 0;
+  const net = grs - ded;
+  // 계정 코드 (이름으로 탐색, 없으면 기본)
   const loanAccounts = accountCodes.filter(c => c.type === '부채' && /차입금/.test(c.name));
   const INTEREST_CODE = accountCodes.find(c => /이자비용/.test(c.name))?.code ?? '951';
-  const canSave = mode === '일반' ? (amt > 0 && !!accountCode) : (prin > 0 || intr > 0) && !!loanCode;
+  const SALARY_CODE = accountCodes.find(c => c.name === '급여')?.code ?? '515';
+  const WITHHOLD_CODE = accountCodes.find(c => c.name === '예수금')?.code ?? '254';
+  const canSave = mode === '일반' ? (amt > 0 && !!accountCode)
+    : mode === '상환' ? ((prin > 0 || intr > 0) && !!loanCode)
+    : (grs > 0 && ded >= 0 && net >= 0);
 
   const base = () => ({ date, cashAccountId, createdAt: new Date().toISOString(), ...(currentUser ? { createdBy: currentUser.name } : {}), ...(partnerId ? { partnerId, partnerName: partner?.name ?? '' } : {}) });
 
@@ -365,11 +375,16 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, on
     if (!canSave) return;
     if (mode === '일반') {
       onAdd({ id: `cash-${Date.now()}`, dir, amount: amt, accountCode, ...(note.trim() ? { note: note.trim() } : {}), ...base() } as any);
-    } else {
+    } else if (mode === '상환') {
       // 대출 상환 → 원금·이자 두 줄(둘 다 출금). 원금=차입금 감소, 이자=비용.
       const memo = note.trim() || '대출 상환';
       if (prin > 0) onAdd({ id: `cash-${Date.now()}-p`, dir: '출금', amount: prin, accountCode: loanCode, note: `${memo} (원금)`, ...base() } as any);
       if (intr > 0) onAdd({ id: `cash-${Date.now()}-i`, dir: '출금', amount: intr, accountCode: INTEREST_CODE, note: `${memo} (이자)`, ...base() } as any);
+    } else {
+      // 급여 → 총급여 출금(급여) + 공제 입금(예수금). 합산하면 급여 비용 전액 + 예수금 + 실지급.
+      const memo = note.trim() || '급여';
+      onAdd({ id: `cash-${Date.now()}-g`, dir: '출금', amount: grs, accountCode: SALARY_CODE, note: `${memo} (총급여)`, ...base() } as any);
+      if (ded > 0) onAdd({ id: `cash-${Date.now()}-w`, dir: '입금', amount: ded, accountCode: WITHHOLD_CODE, note: `${memo} (원천공제 예수)`, ...base() } as any);
     }
     onClose();
   };
@@ -381,19 +396,21 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, on
           <h3 className="text-sm font-black text-slate-800">입출금 기록</h3>
           <button onClick={onClose} className="text-slate-300 hover:text-slate-500"><X size={18} /></button>
         </div>
-        {/* 모드 — 일반 입출금 / 대출 상환(원금·이자 자동 분리) */}
+        {/* 모드 — 일반 / 대출 상환 / 급여 지급 (여러 줄 자동 분리) */}
         <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
-          {(['일반', '상환'] as const).map(m => (
+          {([['일반', '일반 입출금'], ['상환', '대출 상환'], ['급여', '급여 지급']] as const).map(([m, label]) => (
             <button key={m} type="button" onClick={() => setMode(m)}
-              className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-black transition-all ${mode === m ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400'}`}>
-              {m === '일반' ? '일반 입출금' : '대출 상환'}
+              className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-black transition-all ${mode === m ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400'}`}>
+              {label}
             </button>
           ))}
         </div>
         <p className="text-[11px] text-slate-400 leading-snug">
           {mode === '일반'
             ? <>실제로 돈이 움직인 사실만 적습니다. 이 돈의 성격(비용·자산·부채)은 <b>계정과목</b>이 정합니다 — 전기요금이면 전력비, 기계 구입이면 기계장치, 대출 받으면 차입금.</>
-            : <>원금·이자를 한 번에 넣으면 <b>자금원장에 두 줄</b>로 자동 기록됩니다 — 원금은 차입금 감소, 이자는 비용.</>}
+            : mode === '상환'
+            ? <>원금·이자를 한 번에 넣으면 <b>자금원장에 두 줄</b>로 자동 기록됩니다 — 원금은 차입금 감소, 이자는 비용.</>
+            : <>총급여·공제를 넣으면 <b>급여(비용) + 예수금(원천공제) + 실지급</b>으로 자동 분리됩니다. 떼둔 세금·4대보험은 예수금으로 잡혔다가 공단·국세청 납부 때 빠집니다.</>}
         </p>
 
         <div className="grid grid-cols-2 gap-3">
@@ -411,7 +428,36 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, on
           </div>
         </div>
 
-        {mode === '일반' ? (
+        {mode === '급여' ? (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">총급여</label>
+                <input inputMode="numeric" value={gross} placeholder="0"
+                  onChange={e => setGross(e.target.value.replace(/[^\d,]/g, ''))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-slate-300" />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">공제 <span className="text-slate-300">(원천세·4대보험 근로자분)</span></label>
+                <input inputMode="numeric" value={deduction} placeholder="0"
+                  onChange={e => setDeduction(e.target.value.replace(/[^\d,]/g, ''))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-slate-300" />
+              </div>
+            </div>
+            <div className={`flex items-center justify-between rounded-xl px-3 py-2 text-[11px] font-black ${net < 0 ? 'bg-rose-50 text-rose-600' : 'bg-slate-50 text-slate-500'}`}>
+              <span>실지급 (통장에서 나감)</span>
+              <span className="tabular-nums text-slate-800">{fmt(net)}{net < 0 ? ' · 공제가 총급여보다 큼' : ''}</span>
+            </div>
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">거래처 <span className="text-slate-300">(선택 · 직원/급여계좌)</span></label>
+              <select value={partnerId} onChange={e => setPartnerId(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300">
+                <option value="">— 없음 —</option>
+                {partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+          </>
+        ) : mode === '일반' ? (
           <>
             <div>
               <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">방향</label>
