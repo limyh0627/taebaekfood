@@ -35,6 +35,7 @@ interface TradeStatementProps {
   onDeleteFixedCostTemplate?: (id: string) => Promise<void>;
   // 전표 탭 모드 — 'trade'=거래명세서(매출/매입/수금지불) · 'adjust'=조정(대체/정기비용) · 'full'=전부(기본)
   voucherMode?: 'full' | 'trade' | 'adjust';
+  embedded?: boolean;   // 상위(전표 탭)가 헤더·탭을 그림 → 여기선 헤더 생략, 내용만
   issuedStatements: IssuedStatement[];
   onUpdateStatus?: (id: string, status: OrderStatus) => void;
   onUpsertPartnerItem?: (ps: PartnerItem) => void;
@@ -405,9 +406,15 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // ── 메인 탭 ──
   const [mainTab, setMainTab] = useState<'history' | 'taxinvoice'>(defaultTab ?? 'history');
-  // 전표 성격 탭 — 거래명세서(매출/매입/수금지불) ↔ 조정(대체/정기비용). 부모가 강제하면(prop) 탭 숨김.
-  const [vTab, setVTab] = useState<'trade' | 'adjust'>(voucherMode === 'adjust' ? 'adjust' : 'trade');
-  const vMode = voucherMode === 'full' ? vTab : voucherMode;
+  // 거래명세서(매출/매입) 생성 드롭다운
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const createMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!createMenuOpen) return;
+    const h = (e: MouseEvent) => { if (createMenuRef.current && !createMenuRef.current.contains(e.target as Node)) setCreateMenuOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [createMenuOpen]);
 
   // ── 회사 설정 모달 ──
   const [showCompanyModal, setShowCompanyModal] = useState(false);
@@ -425,7 +432,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // ── 발행내역 필터 ──
   const [histFrom, setHistFrom] = useState(monthStart);
   const [histTo, setHistTo]     = useState(today);
-  const [histTypeFilter, setHistTypeFilter] = useState<'전체' | '매출' | '매입'>('전체');
+  const [histTypeFilter, setHistTypeFilter] = useState<'전체' | '매출' | '매입' | '비용'>('전체');
   const [histSearch, setHistSearch] = useState('');
   const [histQuick, setHistQuick] = useState<'당일'|'금주'|'당월'|'당년'|'ALL'|''>('당월');
   // 발행내역 페이지네이션
@@ -1598,9 +1605,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const docNo = row.kind === 'stmt' ? row.data.docNo : '';
         if (histFrom && d < histFrom) return false;
         if (histTo   && d > histTo)   return false;
-        // 전표 탭 모드 — 거래명세서는 매출·매입만, 조정은 대체(비용)만
-        if (vMode === 'trade' && type === '비용') return false;
-        if (vMode === 'adjust' && type !== '비용') return false;
         if (histTypeFilter !== '전체' && type !== histTypeFilter) return false;
         if (histSearch.trim()) {
           const q = histSearch.toLowerCase();
@@ -1617,7 +1621,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         if (a.kind === 'pay' && b.kind === 'stmt') return 1;
         return 0;
       }); // 오래된→최신
-  }, [allTimelineRows, histFrom, histTo, histTypeFilter, histSearch, vMode]);
+  }, [allTimelineRows, histFrom, histTo, histTypeFilter, histSearch]);
 
   // 페이지네이션: 필터 변경 시 1페이지로 리셋, 최신 페이지부터 보여줌
   useEffect(() => { setHistoryPage(1); }, [histFrom, histTo, histTypeFilter, histSearch]);
@@ -2170,15 +2174,16 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         {/* 2행: 유형 + 검색 + 건수 */}
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-10 shrink-0">유형</span>
-          {(['전체','매출','매입'] as const).map(t => (
-            <button key={t} onClick={()=>setHistTypeFilter(t)}
+          {([['전체','전체'],['매출','매출'],['매입','매입'],['비용','대체']] as const).map(([val,label]) => (
+            <button key={val} onClick={()=>setHistTypeFilter(val)}
               className={`px-3.5 py-1.5 rounded-lg text-[11px] font-black border transition-all ${
-                histTypeFilter===t
-                  ? t==='매출' ? 'bg-blue-600 text-white border-blue-600'
-                    : t==='매입' ? 'bg-rose-600 text-white border-rose-600'
+                histTypeFilter===val
+                  ? val==='매출' ? 'bg-blue-600 text-white border-blue-600'
+                    : val==='매입' ? 'bg-rose-600 text-white border-rose-600'
+                    : val==='비용' ? 'bg-slate-500 text-white border-slate-500'
                     : 'bg-slate-700 text-white border-slate-700'
                   : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400 hover:text-slate-600'
-              }`}>{t}</button>
+              }`}>{label}</button>
           ))}
           <div className="relative flex-1 max-w-xs ml-1">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
@@ -2192,32 +2197,22 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           }
         </div>
       </div>
-      {voucherMode === 'full' && mainTab === 'history' && (
-        <div className="inline-flex bg-slate-100 rounded-xl p-0.5 gap-0.5 shrink-0">
-          {([['trade', '거래명세서'], ['adjust', '조정']] as const).map(([k, label]) => (
-            <button key={k} onClick={() => setVTab(k)}
-              className={`px-4 py-2 rounded-lg text-xs font-black transition-all ${vTab === k ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
       <div className="flex items-center gap-2 flex-wrap shrink-0">
-        {vMode !== 'adjust' && <>
-        <button
-          onClick={() => openCreate('매입')}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-rose-600 text-white hover:bg-rose-700 shadow-sm transition-all"
-        >
-          <Plus size={13} strokeWidth={3}/>매입전표
-        </button>
-        <button
-          onClick={() => openCreate('매출')}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-all"
-        >
-          <Plus size={13} strokeWidth={3}/>매출전표
-        </button>
-        </>}
-        {vMode !== 'trade' && <>
+        {/* 거래명세서 — 매출/매입을 한 버튼에서 고른다 */}
+        <div className="relative" ref={createMenuRef}>
+          <button
+            onClick={() => setCreateMenuOpen(v => !v)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-all"
+          >
+            <Plus size={13} strokeWidth={3}/>거래명세서
+          </button>
+          {createMenuOpen && (
+            <div className="absolute left-0 top-full mt-1 z-20 bg-white rounded-xl shadow-xl border border-slate-100 p-1 w-28">
+              <button onClick={() => { setCreateMenuOpen(false); openCreate('매출'); }} className="w-full text-left px-3 py-2 rounded-lg text-xs font-black text-blue-600 hover:bg-blue-50">매출전표</button>
+              <button onClick={() => { setCreateMenuOpen(false); openCreate('매입'); }} className="w-full text-left px-3 py-2 rounded-lg text-xs font-black text-rose-600 hover:bg-rose-50">매입전표</button>
+            </div>
+          )}
+        </div>
         <button
           onClick={() => { setShowExpense(true); setExpDate(today()); setExpRows([{ name: '', spec: '', qty: '1', price: '', isTaxExempt: true }]); }}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-slate-600 text-white hover:bg-slate-700 shadow-sm transition-all"
@@ -2234,15 +2229,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             <RotateCw size={13} strokeWidth={3}/>정기비용
           </button>
         )}
-        </>}
-        {vMode !== 'adjust' && (
         <button
           onClick={() => { setShowQuickPay(true); setQuickPayClientId(''); setQuickPayClientSearch(''); setQuickPayAmount(''); setQuickPayNote(''); setQuickPayDate(new Date().toISOString().slice(0,10)); setQuickPayAccountId(prev => prev || activeCashAccounts[0]?.id || ''); }}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition-all"
         >
           <Wallet size={13}/>수금/지불
         </button>
-        )}
         <button
           onClick={() => { setShowCompanyModal(true); setCompanyForm(companyInfo ?? { name:'',ceoName:'',bizNo:'',bizType:'',bizItem:'',address:'',phone:'',fax:'',email:'' }); }}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all"
