@@ -996,22 +996,32 @@ const AdminApp: React.FC<AdminAppProps> = ({
     alert(`item_formula 시딩 완료: ${count}개 항목`);
   };
 
-  /** 정기 고정비 → '비용' 전표로 생성 (계정코드·기간 지정된 것만, orderId로 중복 방지).
-   *  거래명세서 탭과 정기비용 화면 양쪽에서 호출한다. */
+  /** 정기 고정비 → 자금(출금) 전표로 생성 (계정코드·기간 지정된 것만, id로 중복 방지).
+   *  임대료·전기·통신 등 대부분 자동이체로 돈이 나가는 비용이라 자금(현금 출금)으로 잡는다.
+   *  전표 탭과 정기비용 화면 양쪽에서 호출한다. */
   const generateRecurringCosts = async (ym: string): Promise<number> => {
     const tpls = appData.fixedCostTemplates.filter(t => t.active && t.accountCode
       && (!t.startYm || t.startYm <= ym) && (!t.endYm || ym <= t.endYm));
+    // 기본 출금 계좌 — 활성 통장/현금 우선, 없으면 아무 활성 계좌
+    const defaultAcctId = appData.cashAccounts.find(a => a.active && a.type !== '카드')?.id
+      ?? appData.cashAccounts.find(a => a.active)?.id ?? '';
     let created = 0;
     for (const t of tpls) {
       const rcKey = `RC-${t.id}-${ym}`;
+      // 구버전(비용 전표) + 신버전(자금) 둘 다 중복 체크
       if (issuedStatements.some(s => (s as any).orderId === rcKey)) continue;
+      if (appData.cashEntries.some(e => e.id === rcKey)) continue;
       const code = appData.accountCodes.find(c => c.code === t.accountCode);
-      const amt = t.amount;
-      await addItem('issuedStatements', {
-        issuedAt: new Date().toISOString(), tradeDate: `${ym}-01`, type: '비용' as const,
-        partnerId: '', partnerName: t.partnerName || t.name, orderId: rcKey,
-        docNo: `정기${ym}-${t.id.slice(-4)}`, totalSupply: amt, totalTax: 0, totalAmount: amt,
-        items: [{ name: code?.name || t.name, spec: '', qty: 1, price: amt, supply: amt, tax: 0, total: amt, isTaxExempt: true, accountCode: t.accountCode }],
+      await addItem('cashEntries', {
+        id: rcKey,
+        date: `${ym}-01`,
+        cashAccountId: defaultAcctId,
+        dir: '출금' as const,
+        amount: t.amount,
+        accountCode: t.accountCode,
+        ...(t.partnerId ? { partnerId: t.partnerId, partnerName: t.partnerName ?? '' } : {}),
+        note: `정기비용 · ${code?.name || t.name}${t.partnerName ? ` · ${t.partnerName}` : ''}`,
+        createdAt: new Date().toISOString(),
       } as any);
       created++;
     }
@@ -3365,6 +3375,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
               settlements={appData.settlements}
               onAddCashEntry={(e) => addItem('cashEntries', e)}
               onAddSettlement={(s) => addItem('settlements', s)}
+              onDeleteCashEntry={(id) => deleteItem('cashEntries', id)}
+              onDeleteSettlement={(id) => deleteItem('settlements', id)}
               fixedCostTemplates={appData.fixedCostTemplates}
               onGenerateRecurringCosts={generateRecurringCosts}
               onAddFixedCostTemplate={async (data) => { await addItem('fixedCostTemplates', { ...data, id: `fct-${Date.now()}` }); refreshStaticData(); }}

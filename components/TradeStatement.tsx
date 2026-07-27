@@ -27,6 +27,8 @@ interface TradeStatementProps {
   settlements?: Settlement[];
   onAddCashEntry?: (e: Omit<CashEntry, 'id'> & { id: string }) => void;
   onAddSettlement?: (s: Omit<Settlement, 'id'> & { id: string }) => void;
+  onDeleteCashEntry?: (id: string) => void;
+  onDeleteSettlement?: (id: string) => void;
   // 정기 고정비 — 템플릿으로 해당 월 전표를 한 번에 생성 (중복 생성은 핸들러가 막는다)
   fixedCostTemplates?: FixedCostTemplate[];
   onGenerateRecurringCosts?: (yearMonth: string) => Promise<number>;
@@ -128,6 +130,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   settlements = [],
   onAddCashEntry,
   onAddSettlement,
+  onDeleteCashEntry,
+  onDeleteSettlement,
   fixedCostTemplates = [],
   onGenerateRecurringCosts,
   onAddFixedCostTemplate, onUpdateFixedCostTemplate, onDeleteFixedCostTemplate,
@@ -289,6 +293,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [quickPayOverWarn, setQuickPayOverWarn] = useState(false);
 
   const activeCashAccounts = useMemo(() => cashAccounts.filter(a => a.active), [cashAccounts]);
+  const codeName = useMemo(() => new Map(accountCodes.map(c => [c.code, c.name])), [accountCodes]);
   const cashEntryById = useMemo(() => new Map(cashEntries.map(e => [e.id, e])), [cashEntries]);
 
   // 결제는 구 payments[]와 자금원장 매칭(settlements) 양쪽에서 온다. 둘 다 빼야 잔액이 맞는다.
@@ -432,7 +437,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // ── 발행내역 필터 ──
   const [histFrom, setHistFrom] = useState(monthStart);
   const [histTo, setHistTo]     = useState(today);
-  const [histTypeFilter, setHistTypeFilter] = useState<'전체' | '매출' | '매입' | '비용'>('전체');
+  const [histTypeFilter, setHistTypeFilter] = useState<'전체' | '매출' | '매입' | '비용' | '자금'>('전체');
   const [histSearch, setHistSearch] = useState('');
   const [histQuick, setHistQuick] = useState<'당일'|'금주'|'당월'|'당년'|'ALL'|''>('당월');
   // 발행내역 페이지네이션
@@ -1533,12 +1538,23 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     });
   }, []);
 
-  // ── 전표+수금/지불 통합 타임라인 ──
+  // ── 전표 통합 타임라인 (거래명세서 + 수금/지불 + 자금 입출금) ──
   type StmtRow = { kind: 'stmt'; data: IssuedStatement; cumul: number; dateKey: string; ts: string };
   type PayRow  = { kind: 'pay';  partnerId: string; partnerName: string; stmtType: '매출'|'매입';
                    date: string; amount: number; method?: string; note?: string;
                    paymentId: string; cumul: number; dateKey: string; ts: string; src: IssuedStatement };
-  type TimelineRow = StmtRow | PayRow;
+  // 자금 입출금 전표 — 전표에 상계되지 않은 순수 현금 이동(전기요금·급여·상환·기계구입 등)
+  type CashRow = { kind: 'cash'; entry: CashEntry; dir: '입금'|'출금'; amount: number;
+                   accountCode?: string; note?: string; partnerName?: string;
+                   date: string; ts: string; dateKey: string };
+  type TimelineRow = StmtRow | PayRow | CashRow;
+
+  // 화면 표시값 기준 정렬용 시각 (로컬 HH:MM:SS)
+  const timeOf = (iso?: string) => {
+    if (!iso) return '00:00:00';
+    const d = new Date(iso);
+    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+  };
 
   const allTimelineRows = useMemo((): TimelineRow[] => {
     const rows: TimelineRow[] = [];
@@ -1553,12 +1569,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         | { kind: 'stmt'; s: IssuedStatement; date: string; ts: string }
         | { kind: 'pay';  date: string; ts: string; amount: number; method?: string; note?: string; paymentId: string; src: IssuedStatement };
       const evs: Ev[] = [];
-      // 화면 표시값 기준 정렬: 표시 날짜(전표=tradeDate, 지불=p.date) + 표시 시각(로컬)
-      const timeOf = (iso?: string) => {
-        if (!iso) return '00:00:00';
-        const d = new Date(iso);
-        return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
-      };
       stmts.forEach(s => {
         evs.push({ kind: 'stmt', s, date: s.tradeDate, ts: `${s.tradeDate}T${timeOf(s.issuedAt)}` });
         // 구 payments[]
@@ -1593,22 +1603,37 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         }
       });
     });
+    // ── 자금 입출금 전표 ── 전표에 상계된 부분은 이미 pay 행으로 보이므로, 미상계 잔액만 자금 행으로.
+    const settledByEntry = new Map<string, number>();
+    settlements.forEach(st => settledByEntry.set(st.cashEntryId, (settledByEntry.get(st.cashEntryId) ?? 0) + st.amount));
+    cashEntries.forEach(e => {
+      const settled = settledByEntry.get(e.id) ?? 0;
+      const unmatched = e.amount - settled;
+      if (unmatched <= 0.5) return; // 전액 전표 상계 → pay 행으로만 (부동소수 여유)
+      rows.push({
+        kind: 'cash', entry: e, dir: e.dir, amount: unmatched,
+        accountCode: e.accountCode, note: e.note, partnerName: e.partnerName,
+        date: e.date, ts: `${e.date}T${timeOf(e.createdAt)}`, dateKey: `${e.date}`,
+      });
+    });
     return rows;
-  }, [mergedStatements, settlements, cashEntryById]);
+  }, [mergedStatements, settlements, cashEntryById, cashEntries]);
 
   const filteredHistory = useMemo((): TimelineRow[] => {
     return allTimelineRows
       .filter(row => {
         const d = row.kind === 'stmt' ? row.data.tradeDate : row.date;
-        const name = row.kind === 'stmt' ? row.data.partnerName : row.partnerName;
-        const type = row.kind === 'stmt' ? row.data.type : row.stmtType;
+        const name = (row.kind === 'stmt' ? row.data.partnerName : row.kind === 'pay' ? row.partnerName : (row.partnerName ?? '')) || '';
+        // 필터 유형: 매출/매입 전표, 비용(대체=type '비용'), 자금(입출금 cash 행)
+        const type = row.kind === 'stmt' ? row.data.type : row.kind === 'pay' ? row.stmtType : '자금';
         const docNo = row.kind === 'stmt' ? row.data.docNo : '';
+        const note  = row.kind === 'cash' ? (row.note ?? '') : '';
         if (histFrom && d < histFrom) return false;
         if (histTo   && d > histTo)   return false;
         if (histTypeFilter !== '전체' && type !== histTypeFilter) return false;
         if (histSearch.trim()) {
           const q = histSearch.toLowerCase();
-          if (!name.toLowerCase().includes(q) && !docNo.includes(q)) return false;
+          if (!name.toLowerCase().includes(q) && !docNo.includes(q) && !note.toLowerCase().includes(q)) return false;
         }
         return true;
       })
@@ -2174,12 +2199,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         {/* 2행: 유형 + 검색 + 건수 */}
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-10 shrink-0">유형</span>
-          {([['전체','전체'],['매출','매출'],['매입','매입'],['비용','대체']] as const).map(([val,label]) => (
+          {([['전체','전체'],['매출','매출'],['매입','매입'],['자금','자금'],['비용','대체']] as const).map(([val,label]) => (
             <button key={val} onClick={()=>setHistTypeFilter(val)}
               className={`px-3.5 py-1.5 rounded-lg text-[11px] font-black border transition-all ${
                 histTypeFilter===val
                   ? val==='매출' ? 'bg-blue-600 text-white border-blue-600'
                     : val==='매입' ? 'bg-rose-600 text-white border-rose-600'
+                    : val==='자금' ? 'bg-emerald-600 text-white border-emerald-600'
                     : val==='비용' ? 'bg-slate-500 text-white border-slate-500'
                     : 'bg-slate-700 text-white border-slate-700'
                   : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400 hover:text-slate-600'
@@ -2267,6 +2293,34 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-50">
               {pagedHistory.map(row => {
+                if (row.kind === 'cash') {
+                  // ── 자금 입출금 전표 행 ──
+                  const acct = row.accountCode ? `${codeName.get(row.accountCode) ?? row.accountCode}` : '';
+                  const detail = [acct, row.note].filter(Boolean).join(' · ');
+                  return (
+                    <tr key={`cash__${row.entry.id}`}
+                      className={`transition-colors ${row.dir === '입금' ? 'bg-emerald-50/60 hover:bg-emerald-100/60' : 'bg-slate-50/60 hover:bg-slate-100/60'}`}>
+                      <td className="px-4 py-2 text-[11px] font-mono text-slate-500 whitespace-nowrap">{row.date}{row.entry.createdAt ? ` ${row.entry.createdAt.slice(11,16)}` : ''}</td>
+                      <td className="px-4 py-2">
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.dir === '입금' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{row.dir}</span>
+                      </td>
+                      <td className="px-4 py-2 text-xs font-bold text-slate-700">{row.partnerName || <span className="text-slate-300">—</span>}</td>
+                      <td className={`px-4 py-2 text-xs text-right font-black ${row.dir === '입금' ? 'text-emerald-600' : 'text-rose-600'}`}>{fmt(row.amount)}</td>
+                      <td className="px-4 py-2 text-xs text-right text-slate-300">—</td>
+                      <td className="px-4 py-2 text-[11px] text-slate-500 max-w-[180px] truncate">
+                        {row.accountCode
+                          ? detail
+                          : <span className="text-amber-500 font-bold">계정 미지정{row.note ? ` · ${row.note}` : ''}</span>}
+                      </td>
+                      <td className="px-4 py-2">
+                        {onDeleteCashEntry && (
+                          <button onClick={() => { if (window.confirm('이 자금 전표를 삭제할까요?')) onDeleteCashEntry(row.entry.id); }}
+                            className="text-slate-300 hover:text-rose-500 transition-all"><Trash2 size={13}/></button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                }
                 if (row.kind === 'pay') {
                   // ── 수금/지불 행 ──
                   const label = row.stmtType === '매출' ? '수금' : '지불';
@@ -2354,6 +2408,24 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           {/* ── 모바일 카드 목록 ── */}
           <div className="md:hidden divide-y divide-slate-100">
             {pagedHistory.map(row => {
+              if (row.kind === 'cash') {
+                const acct = row.accountCode ? (codeName.get(row.accountCode) ?? row.accountCode) : '';
+                const detail = [acct, row.note].filter(Boolean).join(' · ');
+                return (
+                  <div key={`m-cash-${row.entry.id}`}
+                    className={`px-4 py-3 flex flex-col gap-1.5 ${row.dir === '입금' ? 'bg-emerald-50/60' : 'bg-slate-50/60'}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.dir === '입금' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{row.dir}</span>
+                      <span className="text-[10px] font-mono text-slate-400">{row.date}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-bold text-slate-700 truncate">{row.partnerName || (acct || '자금')}</span>
+                      <span className={`text-sm font-black shrink-0 ${row.dir === '입금' ? 'text-emerald-600' : 'text-rose-600'}`}>{fmt(row.amount)}</span>
+                    </div>
+                    {detail && <p className="text-[11px] text-slate-400 truncate">{detail}</p>}
+                  </div>
+                );
+              }
               if (row.kind === 'pay') {
                 const label = row.stmtType === '매출' ? '수금' : '지불';
                 const cumul = row.cumul;
@@ -2415,8 +2487,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           </div>
         </>)}
         {/* ── 매출/매입 합계 (현재 필터 기준) ── */}
-        {filteredHistory.some(r => r.kind !== 'pay') && (() => {
-          const stmts = filteredHistory.filter(r => r.kind !== 'pay');
+        {filteredHistory.some(r => r.kind === 'stmt') && (() => {
+          const stmts = filteredHistory.filter((r): r is Extract<TimelineRow, { kind: 'stmt' }> => r.kind === 'stmt');
           const sale = stmts.filter(r => r.data.type === '매출').reduce((s, r) => s + (r.data.totalAmount || 0), 0);
           const buy  = stmts.filter(r => r.data.type === '매입').reduce((s, r) => s + (r.data.totalAmount || 0), 0);
           return (
