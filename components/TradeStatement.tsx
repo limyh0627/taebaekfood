@@ -2253,7 +2253,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         <div className="relative" ref={createMenuRef}>
           <button
             onClick={() => setCreateMenuOpen(v => !v)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-all"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-indigo-600 text-white hover:bg-indigo-500 shadow-sm shadow-indigo-200 transition-all"
           >
             <Plus size={13} strokeWidth={3}/>거래명세서<ChevronDown size={12} strokeWidth={3} className="-ml-0.5 opacity-80"/>
           </button>
@@ -2266,14 +2266,23 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         </div>
         <button
           onClick={() => openCashModal('출금')}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition-all"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-teal-600 text-white hover:bg-teal-500 shadow-sm shadow-teal-200 transition-all"
           title="입출금 — 수금·지불(미수/미지급 상계), 비용·대출상환·급여"
         >
           <Wallet size={13}/>입출금
         </button>
+        {onGenerateRecurringCosts && (
+          <button
+            onClick={() => { setShowRecurring(true); setRecurringYm(today().slice(0, 7)); setRecurringMsg(''); }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-violet-600 text-white hover:bg-violet-500 shadow-sm shadow-violet-200 transition-all"
+            title="정기 고정비 템플릿으로 해당 월 전표를 한 번에 생성"
+          >
+            <RotateCw size={13} strokeWidth={3}/>정기비용
+          </button>
+        )}
         <button
           onClick={() => { setShowExpense(true); setExpDate(today()); setExpRows([{ name: '', spec: '', qty: '1', price: '', isTaxExempt: true }]); }}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-slate-600 text-white hover:bg-slate-700 shadow-sm transition-all"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-slate-700 text-white hover:bg-slate-600 shadow-sm shadow-slate-200 transition-all"
           title="현금도 거래처도 없는 손익 계상 — 감가상각비·퇴직급여충당금"
         >
           <Plus size={13} strokeWidth={3}/>대체전표
@@ -2283,15 +2292,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         <div className="w-px h-6 bg-slate-200 mx-1 self-center"/>
 
         {/* ── 도구 (soft) ── */}
-        {onGenerateRecurringCosts && (
-          <button
-            onClick={() => { setShowRecurring(true); setRecurringYm(today().slice(0, 7)); setRecurringMsg(''); }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-violet-50 text-violet-700 hover:bg-violet-100 transition-all"
-            title="정기 고정비 템플릿으로 해당 월 전표를 한 번에 생성"
-          >
-            <RotateCw size={13} strokeWidth={2.5}/>정기비용
-          </button>
-        )}
         {onAddCashAccount && (
           <button
             onClick={() => setShowAccounts(true)}
