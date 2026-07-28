@@ -246,14 +246,8 @@ const ItemList: React.FC<ItemListProps> = ({
     setClosingSavedAt('');
     setClosingSearch('');
     setClosingPage(0);
-    const init: Record<string, { boxes: string; loose: string }> = {};
-    allClosingItems.forEach(p => {
-      const bsz = boxSizeOf(p);
-      const b = Math.floor((p.stock || 0) / bsz);
-      const r = (p.stock || 0) % bsz;
-      init[p.id] = { boxes: b ? String(b) : '', loose: r ? String(r) : '' };
-    });
-    setClosingCounts(init);
+    // 프리필 안 함 — 현재고는 참고로 표시하고, 입력한 품목만 실사(SET)/만들기(ADD) 반영
+    setClosingCounts({});
   }, [showClosingModal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setCount = (id: string, field: 'boxes' | 'loose', v: string) => {
@@ -285,20 +279,40 @@ const ItemList: React.FC<ItemListProps> = ({
     }
   };
 
+  // 입력한(값 넣은) 품목만 대상 — 안 건드린 품목은 그대로 둔다
+  const touchedClosingItems = () => closingItems.filter(p => (closingCounts[p.id]?.boxes || closingCounts[p.id]?.loose));
+  const enteredQtyOf = (p: Item) => {
+    const bsz = boxSizeOf(p);
+    const boxes = parseInt(closingCounts[p.id]?.boxes || '0') || 0;
+    const loose = parseInt(closingCounts[p.id]?.loose || '0') || 0;
+    return boxes * bsz + loose;
+  };
+  // 실사 반영 — 입력값을 재고로 SET(맞춤)
   const saveClosing = async () => {
-    if (!window.confirm('입력한 수량으로 재고를 반영할까요?')) return;
+    const targets = touchedClosingItems();
+    if (!targets.length) { alert('수량을 입력한 품목이 없습니다.'); return; }
+    if (!window.confirm(`입력한 수량으로 재고를 맞출까요? (실사 조정 · ${targets.length}개 품목)`)) return;
     setClosingSaving(true);
     try {
-      // 실물 수량(Box×박스당개수 + 낱개)을 각 완제품 stock에 반영
-      await Promise.all(closingItems.map(p => {
-        const bsz = boxSizeOf(p);
-        const boxes = parseInt(closingCounts[p.id]?.boxes || '0') || 0;
-        const loose = parseInt(closingCounts[p.id]?.loose || '0') || 0;
-        return onUpdateItem({ ...p, stock: boxes * bsz + loose });
-      }));
+      await Promise.all(targets.map(p => onUpdateItem({ ...p, stock: enteredQtyOf(p) })));
       setShowClosingModal(false);
     } catch (e) {
       alert('재고 반영 실패: ' + ((e as any)?.message ?? ''));
+    } finally {
+      setClosingSaving(false);
+    }
+  };
+  // 만들기 — 입력값만큼 재고에 ADD(생산분 추가)
+  const makeStock = async () => {
+    const targets = touchedClosingItems();
+    if (!targets.length) { alert('수량을 입력한 품목이 없습니다.'); return; }
+    if (!window.confirm(`입력한 수량만큼 재고를 추가할까요? (만들기 · ${targets.length}개 품목)`)) return;
+    setClosingSaving(true);
+    try {
+      await Promise.all(targets.map(p => onUpdateItem({ ...p, stock: (p.stock ?? 0) + enteredQtyOf(p) })));
+      setShowClosingModal(false);
+    } catch (e) {
+      alert('재고 추가 실패: ' + ((e as any)?.message ?? ''));
     } finally {
       setClosingSaving(false);
     }
@@ -2812,7 +2826,9 @@ const ItemList: React.FC<ItemListProps> = ({
                 )}
                 {pageRows.map(r => (
                   <div key={r.itemId} className="flex items-center gap-2 px-3 py-2.5">
-                    <span className="flex-1 min-w-0 text-[13px] font-bold text-slate-800 break-keep">{r.label}</span>
+                    <span className="flex-1 min-w-0 text-[13px] font-bold text-slate-800 break-keep">{r.label}
+                      <span className="ml-1.5 text-[10px] font-black text-slate-400 whitespace-nowrap">현재 {productMap.get(r.itemId)?.stock ?? 0}</span>
+                    </span>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <input value={r.boxes} onChange={e => setCount(r.itemId, 'boxes', e.target.value)} inputMode="numeric" placeholder="0" className="w-12 text-center text-base font-bold border border-slate-200 rounded-lg py-1.5 outline-none focus:ring-2 focus:ring-indigo-300" />
                       <span className="text-[10px] font-bold text-slate-400">Box</span>
@@ -2835,16 +2851,27 @@ const ItemList: React.FC<ItemListProps> = ({
               )}
             </div>
 
-            {/* ── 하단 고정: 총 재고 + 재고 반영 ── */}
-            <div className="shrink-0 border-t border-slate-100 px-4 py-3 flex items-center gap-3" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
-              <div className="flex-1">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wide">총 재고</span>
-                <p className="text-lg font-black text-slate-800 leading-none mt-0.5">{totalStock.toLocaleString()}<span className="text-xs text-slate-400 ml-0.5">개</span></p>
+            {/* ── 하단 고정: 입력 합계 + 실사반영(SET) / 만들기(ADD) ── */}
+            <div className="shrink-0 border-t border-slate-100 px-4 py-3" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wide">입력 합계</span>
+                  <p className="text-lg font-black text-slate-800 leading-none mt-0.5">{totalStock.toLocaleString()}<span className="text-xs text-slate-400 ml-0.5">개</span></p>
+                </div>
+                <button onClick={saveClosing} disabled={closingSaving}
+                  className="px-4 py-3 rounded-xl bg-slate-700 text-white text-sm font-black hover:bg-slate-600 disabled:opacity-50 shrink-0"
+                  title="입력한 수량으로 재고를 맞춤(실사)">
+                  {closingSaving ? '…' : '실사 반영'}
+                </button>
+                <button onClick={makeStock} disabled={closingSaving}
+                  className="px-4 py-3 rounded-xl bg-indigo-600 text-white text-sm font-black hover:bg-indigo-700 disabled:opacity-50 shadow-sm shadow-indigo-200 shrink-0"
+                  title="입력한 수량만큼 재고에 추가(생산분)">
+                  {closingSaving ? '…' : '+ 만들기'}
+                </button>
               </div>
-              <button onClick={saveClosing} disabled={closingSaving}
-                className="px-6 py-3 rounded-xl bg-indigo-600 text-white text-sm font-black hover:bg-indigo-700 disabled:opacity-50 shadow-sm shadow-indigo-200">
-                {closingSaving ? '반영 중…' : '재고 반영'}
-              </button>
+              <p className="text-[10px] text-slate-400 mt-2 leading-snug">
+                <b className="text-slate-500">실사 반영</b> = 재고를 입력값으로 <b>맞춤</b> · <b className="text-indigo-500">+ 만들기</b> = 입력값만큼 <b>추가</b>. 입력한 품목만 반영됩니다.
+              </p>
             </div>
           </div>
         </div>
