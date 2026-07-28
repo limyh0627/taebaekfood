@@ -10,6 +10,7 @@ import {
   CashAccount, CashEntry, Settlement,
 } from '../types';
 import { subscribeToCollection, subscribeToRecentCollection, subscribeToDocument, fetchCollection, fetchDateRange } from '../services/firebaseService';
+import { withDerivedSubmaterials } from '../bomSource';
 import { where } from 'firebase/firestore';
 import { authReady } from '../firebase';
 
@@ -264,9 +265,13 @@ export function useAppData(): AppData {
     });
   }, [staticRefreshKey]);
 
+  // BOM 단일원천 — item_bom을 유일 소스로, submaterials는 파생(로딩 시 계산).
+  // (Phase 4) 이걸로 재고차감·원가·주문이 모두 item_bom을 원천으로 읽는다.
+  const itemsWithBom = useMemo(() => withDerivedSubmaterials(items, itemBoms), [items, itemBoms]);
+
   return {
     orders, purchaseOrders,
-    items,
+    items: itemsWithBom,
     partnerItems,
     setPartnerItems,
     partners,
