@@ -209,10 +209,7 @@ const ItemList: React.FC<ItemListProps> = ({
 
   const [showClosingModal, setShowClosingModal] = useState(false);
   const closingRef = useRef<HTMLDivElement>(null);
-  // 재고 현황 통합 모달 — 재고 마감(A) · 재고 만들기(B)를 탭으로 오간다
-  const openMake = () => { setMakeQty({}); setMakeSearch(''); setMakeCat('참기름'); setIsAddModalOpen(true); };
-  const invGoClosing = () => { setIsAddModalOpen(false); setShowClosingModal(true); };
-  const invGoMake = () => { setShowClosingModal(false); openMake(); };
+  // 재고 현황 — 재고 마감·만들기를 하나로 합친 편집 화면(showClosingModal)
 
   // ── 재고 마감(완제품 실물 카운트) ──
   const [closingCounts, setClosingCounts] = useState<Record<string, { boxes: string; loose: string }>>({});
@@ -287,53 +284,19 @@ const ItemList: React.FC<ItemListProps> = ({
   };
 
   const saveClosing = async () => {
-    if (!window.confirm('재고마감하시겠습니까?')) return;
+    if (!window.confirm('입력한 수량으로 재고를 반영할까요?')) return;
     setClosingSaving(true);
     try {
-      const rows: StockClosingRow[] = closingItems.map(p => {
+      // 실물 수량(Box×박스당개수 + 낱개)을 각 완제품 stock에 반영
+      await Promise.all(closingItems.map(p => {
         const bsz = boxSizeOf(p);
         const boxes = parseInt(closingCounts[p.id]?.boxes || '0') || 0;
         const loose = parseInt(closingCounts[p.id]?.loose || '0') || 0;
-        return { itemId: p.id, name: p.name, spec: p.spec ?? '', boxSize: bsz, boxes, loose, total: boxes * bsz + loose };
-      });
-      const totalStock = rows.reduce((s, r) => s + r.total, 0);
-      await addItem('stockClosings', {
-        id: `close-${closingDate}-${Date.now()}`,
-        date: closingDate,
-        closedBy: currentUser?.name ?? '',
-        createdAt: new Date().toISOString(),
-        items: rows,
-        totalStock,
-      });
-      // 완제품 재고 반영: 입력한 실물 수량(Box×박스당개수 + 낱개)을 각 완제품 stock에 갱신
-      await Promise.all(rows.map(r => {
-        const p = closingItems.find(x => x.id === r.itemId);
-        return p ? onUpdateItem({ ...p, stock: r.total }) : undefined;
+        return onUpdateItem({ ...p, stock: boxes * bsz + loose });
       }));
-      // 문서함 직원용 > 재고마감에 이미지 자동 업로드
-      const stamp = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-      try {
-        const blob = await captureClosingBlob();
-        if (blob) {
-          await ensureCabinetPath('직원용', '재고마감');
-          const fileName = `재고마감_${closingDate}.png`;
-          const path = `file-cabinet/직원용/재고마감/${Date.now()}_${fileName}`;
-          const sref = storageRef(storage, path);
-          await uploadBytes(sref, blob);
-          const url = await getDownloadURL(sref);
-          await addItem('fileCabinetDocs', {
-            category: '직원용', subCategory: '재고마감', fileName,
-            storagePath: path, downloadUrl: url, size: blob.size, contentType: 'image/png',
-            note: `총 ${totalStock.toLocaleString()}개`, uploadedBy: currentUser?.name ?? '', uploadedAt: new Date().toISOString(),
-          });
-        }
-        setClosingSavedAt(`${stamp} · 문서함 저장됨`);
-      } catch (up) {
-        console.error('[재고마감] 문서함 업로드 실패:', up);
-        setClosingSavedAt(`${stamp} · 저장됨(문서함 업로드 실패)`);
-      }
+      setShowClosingModal(false);
     } catch (e) {
-      alert('저장 실패: ' + ((e as any)?.message ?? ''));
+      alert('재고 반영 실패: ' + ((e as any)?.message ?? ''));
     } finally {
       setClosingSaving(false);
     }
@@ -742,7 +705,7 @@ const ItemList: React.FC<ItemListProps> = ({
             {/* 우측 액션: 재고 현황(마감·만들기 통합) + (원료재고 탭) 입고/사용 기록 */}
             <div className="flex items-center gap-2 ml-auto">
               <button
-                onClick={invGoClosing}
+                onClick={() => setShowClosingModal(true)}
                 className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black hover:bg-indigo-700 transition-colors shadow-sm"
               >
                 <Box size={13} /> 재고 현황
@@ -2302,12 +2265,8 @@ const ItemList: React.FC<ItemListProps> = ({
             <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-xl h-[85vh] flex flex-col animate-in zoom-in-95 duration-200">
               <div className="p-5 border-b border-slate-100 flex items-center justify-between shrink-0">
                 <div>
-                  {/* 통합 탭 — 재고 마감(A) · 재고 만들기(B) */}
-                  <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5 w-fit">
-                    <button onClick={invGoClosing} className="px-3 py-1.5 rounded-lg text-xs font-black text-slate-400 hover:text-slate-600">재고 마감</button>
-                    <button onClick={invGoMake} className="px-3 py-1.5 rounded-lg text-xs font-black bg-white text-indigo-600 shadow-sm">재고 만들기</button>
-                  </div>
-                  <p className="text-[11px] text-slate-400 font-bold mt-1.5">만든 수량만큼 재고를 더합니다 · 원료는 입고/실사조정에서</p>
+                  <h3 className="text-base font-black text-slate-900">재고 만들기</h3>
+                  <p className="text-[11px] text-slate-400 font-bold mt-0.5">만든 수량만큼 재고를 더합니다 · 원료는 입고/실사조정에서</p>
                 </div>
                 <button onClick={() => setIsAddModalOpen(false)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
               </div>
@@ -2804,151 +2763,67 @@ const ItemList: React.FC<ItemListProps> = ({
       const pageRows = listRows.slice(page * CLOSING_PAGE_SIZE, page * CLOSING_PAGE_SIZE + CLOSING_PAGE_SIZE);
 
       return (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto p-2 sm:p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg my-2 sm:my-4 shadow-2xl">
-            {/* 액션 바 */}
-            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                {/* 통합 탭 — 재고 마감(A) · 재고 만들기(B) */}
-                <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5 shrink-0">
-                  <button onClick={invGoClosing} className="px-3 py-1.5 rounded-lg text-xs font-black bg-white text-orange-600 shadow-sm">재고 마감</button>
-                  <button onClick={invGoMake} className="px-3 py-1.5 rounded-lg text-xs font-black text-slate-400 hover:text-slate-600">재고 만들기</button>
-                </div>
-                {src
-                  ? <span className="text-xs text-slate-400">{src.date} · {src.closedBy || '-'} 마감 (조회)</span>
-                  : <input type="date" value={closingDate} onChange={e => setClosingDate(e.target.value)} className="border border-slate-300 rounded px-2 py-1 text-xs" />}
-              </div>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <button onClick={() => setShowClosingHistory(v => !v)} className="flex items-center gap-1 px-2 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-200">
-                  <History size={12} /> 월별
-                </button>
-                {src
-                  ? <button onClick={() => setViewingClosing(null)} className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-bold hover:bg-orange-600">새 마감</button>
-                  : <button onClick={saveClosing} disabled={closingSaving} className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 disabled:opacity-50">
-                      <Save size={12} /> {closingSaving ? '저장 중…' : '저장'}
-                    </button>}
-                <button onClick={shareClosingImage} className="flex items-center gap-1 px-2.5 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700">
-                  <Share2 size={12} /> 공유
-                </button>
-                <button onClick={() => { setShowClosingModal(false); setViewingClosing(null); }} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
-                  <X size={16} />
-                </button>
-              </div>
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-lg h-[92dvh] sm:h-auto sm:max-h-[88vh] shadow-2xl flex flex-col overflow-hidden">
+            {/* 헤더 */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 shrink-0">
+              <span className="text-base font-black text-slate-900">재고 현황</span>
+              <button onClick={() => setShowClosingModal(false)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
+                <X size={18} />
+              </button>
             </div>
 
-            {/* 이전 마감 — 월별 */}
-            {showClosingHistory && (
-              <div className="px-3 py-2 border-b border-slate-200 bg-slate-50 max-h-60 overflow-y-auto">
-                {pastClosings.length === 0
-                  ? <p className="text-xs text-slate-400 py-2 text-center">저장된 마감이 없습니다</p>
-                  : (() => {
-                      const sorted = [...pastClosings].sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || '').localeCompare(a.createdAt || ''));
-                      const byMonth = new Map<string, StockClosing[]>();
-                      sorted.forEach(c => { const m = (c.date || '').slice(0, 7); if (!byMonth.has(m)) byMonth.set(m, []); byMonth.get(m)!.push(c); });
-                      return [...byMonth.entries()].map(([m, list]) => (
-                        <div key={m} className="mb-1.5">
-                          <div className="text-[11px] font-black text-slate-500 px-1 py-1">{m.slice(0, 4)}년 {m.slice(5, 7)}월 <span className="text-slate-300 font-normal">({list.length})</span></div>
-                          {list.map(c => (
-                            <button key={c.id} onClick={() => { setViewingClosing(c); setShowClosingHistory(false); }} className="w-full flex items-center justify-between px-2 py-1.5 text-xs hover:bg-white rounded-lg transition-colors">
-                              <span className="font-bold text-slate-700">{c.date}</span>
-                              <span className="text-slate-400">{c.closedBy || '-'} · {(c.totalStock || 0).toLocaleString()}개</span>
-                            </button>
-                          ))}
-                        </div>
-                      ));
-                    })()}
+            {/* ── 본문(스크롤) ── */}
+            <div className="flex-1 overflow-y-auto px-4 pt-3 pb-4">
+              {/* 검색 — 재고 0인 품목도 검색해서 입력 */}
+              <div className="relative mb-2.5">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+                <input value={closingSearch} onChange={e => { setClosingSearch(e.target.value); setClosingPage(0); }} placeholder="품목 검색 (예: 분, 1800, 들기름)"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-9 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-300" />
+                {closingSearch && (
+                  <button onClick={() => { setClosingSearch(''); setClosingPage(0); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"><X size={15} /></button>
+                )}
               </div>
-            )}
-            {closingSavedAt && !src && <div className="px-4 py-1.5 bg-emerald-50 text-emerald-700 text-xs font-bold text-center">✓ {closingSavedAt}</div>}
-            {!src && <div className="px-4 pt-2 text-[11px] text-slate-400 leading-snug">실물 개수를 Box·낱개로 입력하세요. 앱 계산 재고가 미리 채워져 있어 다른 것만 고치면 됩니다. 저장하면 <b>완제품 재고가 이 수량으로 반영</b>되고, 문서함 <b>직원용 &gt; 재고마감</b>에 이미지가 자동 보관됩니다.</div>}
-
-            {/* 화면 표시 — 모바일 친화 리스트(입력/조회) */}
-            <div className="p-4">
-              <div className="text-center text-sm font-black">&lt;재고 현황&gt;</div>
-              <div className="text-center text-xs text-slate-500 mb-3">{displayDate}</div>
-
-              {/* 검색: 이름/규격 부분일치로 목록을 걸러 입력(재고 0인 품목도 검색됨) */}
-              {!src && (
-                <div className="relative mb-2">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                  <input value={closingSearch} onChange={e => { setClosingSearch(e.target.value); setClosingPage(0); }} placeholder="품목 검색 (예: 분, 1800, 들기름)"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-8 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-orange-300" />
-                  {closingSearch && (
-                    <button onClick={() => { setClosingSearch(''); setClosingPage(0); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"><X size={14} /></button>
-                  )}
-                </div>
-              )}
-              {!src && term && <div className="text-[11px] text-slate-400 mb-1.5 px-1">검색 결과 {listRows.length}건 — 수량 입력하면 저장에 포함됩니다.</div>}
 
               <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
                 {pageRows.length === 0 && (
-                  <div className="px-3 py-6 text-center text-xs text-slate-400">{term ? '검색 결과가 없습니다.' : '재고 있는 완제품이 없습니다. 검색해서 입력하세요.'}</div>
+                  <div className="px-3 py-8 text-center text-xs text-slate-400">{term ? '검색 결과가 없습니다.' : '재고 있는 완제품이 없습니다. 검색해서 입력하세요.'}</div>
                 )}
                 {pageRows.map(r => (
-                  <div key={r.itemId} className="flex items-center gap-2 px-3 py-2">
-                    <span className="flex-1 min-w-0 text-[13px] font-medium text-slate-800 break-keep">{r.label}</span>
-                    {r.editable
-                      ? <div className="flex items-center gap-1 shrink-0">
-                          <input value={r.boxes} onChange={e => setCount(r.itemId, 'boxes', e.target.value)} inputMode="numeric" placeholder="0" className="w-11 text-center text-sm font-bold border border-slate-200 rounded-lg py-1 outline-none focus:ring-2 focus:ring-orange-300" />
-                          <span className="text-[10px] text-slate-400">Box</span>
-                          <input value={r.loose} onChange={e => setCount(r.itemId, 'loose', e.target.value)} inputMode="numeric" placeholder="0" className="w-11 text-center text-sm font-bold border border-slate-200 rounded-lg py-1 outline-none focus:ring-2 focus:ring-orange-300" />
-                          <span className="text-[10px] text-slate-400">개</span>
-                        </div>
-                      : <span className="shrink-0 text-[13px] font-bold text-slate-700">{r.boxes || '0'}<span className="text-[10px] text-slate-400 font-normal"> Box </span>{r.loose || '0'}<span className="text-[10px] text-slate-400 font-normal"> 개</span></span>}
+                  <div key={r.itemId} className="flex items-center gap-2 px-3 py-2.5">
+                    <span className="flex-1 min-w-0 text-[13px] font-bold text-slate-800 break-keep">{r.label}</span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <input value={r.boxes} onChange={e => setCount(r.itemId, 'boxes', e.target.value)} inputMode="numeric" placeholder="0" className="w-12 text-center text-base font-bold border border-slate-200 rounded-lg py-1.5 outline-none focus:ring-2 focus:ring-indigo-300" />
+                      <span className="text-[10px] font-bold text-slate-400">Box</span>
+                      <input value={r.loose} onChange={e => setCount(r.itemId, 'loose', e.target.value)} inputMode="numeric" placeholder="0" className="w-12 text-center text-base font-bold border border-slate-200 rounded-lg py-1.5 outline-none focus:ring-2 focus:ring-indigo-300" />
+                      <span className="text-[10px] font-bold text-slate-400">개</span>
+                    </div>
                   </div>
                 ))}
-                <div className="flex items-center justify-between px-3 py-2 bg-slate-50">
-                  <span className="text-xs font-black text-slate-600">총 재고</span>
-                  <span className="text-sm font-black text-slate-800">{totalStock.toLocaleString()}개</span>
-                </div>
               </div>
 
               {/* 페이지 이동 */}
               {pageCount > 1 && (
                 <div className="flex items-center justify-center gap-3 mt-3">
                   <button onClick={() => setClosingPage(Math.max(0, page - 1))} disabled={page === 0}
-                    className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold disabled:opacity-40 hover:bg-slate-200">이전</button>
+                    className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold disabled:opacity-40 hover:bg-slate-200">이전</button>
                   <span className="text-xs font-bold text-slate-500">{page + 1} / {pageCount}</span>
                   <button onClick={() => setClosingPage(Math.min(pageCount - 1, page + 1))} disabled={page >= pageCount - 1}
-                    className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold disabled:opacity-40 hover:bg-slate-200">다음</button>
+                    className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold disabled:opacity-40 hover:bg-slate-200">다음</button>
                 </div>
               )}
             </div>
 
-            {/* 캡처용 숨김 보드 — 공유/문서함 이미지(고정폭 3열, 사진과 동일 모양) */}
-            <div ref={closingRef} aria-hidden="true" style={{ position: 'fixed', left: '-10000px', top: 0, width: '680px', background: '#fff', padding: '24px', fontFamily: 'Malgun Gothic, sans-serif' }}>
-              <div style={{ textAlign: 'center', fontWeight: 900, fontSize: '16px' }}>&lt;재고 현황&gt;</div>
-              <div style={{ textAlign: 'right', fontSize: '12px', color: '#64748b', margin: '2px 0 10px' }}>{displayDate}{src ? ` · ${src.closedBy || ''}` : (currentUser?.name ? ` · ${currentUser.name}` : '')}</div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                <thead>
-                  <tr>{[0, 1, 2].map(c => (
-                    <React.Fragment key={c}>
-                      <th style={bTh}>품목</th><th style={{ ...bTh, width: '46px' }}>Box</th><th style={{ ...bTh, width: '46px' }}>낱개</th>
-                    </React.Fragment>
-                  ))}</tr>
-                </thead>
-                <tbody>
-                  {Array.from({ length: nRows }).map((_, ri) => (
-                    <tr key={ri}>
-                      {[0, 1, 2].map(ci => {
-                        const r = cols[ci][ri];
-                        if (!r) return <React.Fragment key={ci}><td style={bTd} /><td style={bTd} /><td style={bTd} /></React.Fragment>;
-                        return (
-                          <React.Fragment key={ci}>
-                            <td style={{ ...bTd, textAlign: 'left' }}>{r.label}</td>
-                            <td style={{ ...bTd, fontWeight: 700 }}>{r.boxes || '-'}</td>
-                            <td style={{ ...bTd, fontWeight: 700 }}>{r.loose || '-'}</td>
-                          </React.Fragment>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                  <tr>
-                    <td colSpan={8} style={{ ...bTd, textAlign: 'right', fontWeight: 900, background: '#f8fafc' }}>총 재고</td>
-                    <td style={{ ...bTd, fontWeight: 900, background: '#f8fafc' }}>{totalStock.toLocaleString()}개</td>
-                  </tr>
-                </tbody>
-              </table>
+            {/* ── 하단 고정: 총 재고 + 재고 반영 ── */}
+            <div className="shrink-0 border-t border-slate-100 px-4 py-3 flex items-center gap-3" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
+              <div className="flex-1">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wide">총 재고</span>
+                <p className="text-lg font-black text-slate-800 leading-none mt-0.5">{totalStock.toLocaleString()}<span className="text-xs text-slate-400 ml-0.5">개</span></p>
+              </div>
+              <button onClick={saveClosing} disabled={closingSaving}
+                className="px-6 py-3 rounded-xl bg-indigo-600 text-white text-sm font-black hover:bg-indigo-700 disabled:opacity-50 shadow-sm shadow-indigo-200">
+                {closingSaving ? '반영 중…' : '재고 반영'}
+              </button>
             </div>
           </div>
         </div>
