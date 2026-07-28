@@ -30,6 +30,7 @@ import {
   Layers
 } from 'lucide-react';
 import { Order, OrderStatus, Partner, OrderSource, OrderItem, Item, OrderPallet, DeliveryBox, PalletStock, ShippingRule, ItemBom, PartnerItem } from '../types';
+import { isBoxStockItem } from '../src/shared/orderUnits';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 
@@ -426,11 +427,14 @@ export const OrderCard = memo<OrderCardProps>(({
                     </span>
                   </div>
                   {(() => {
-                    // 1. item_bom 기반 구성품 (submaterial 카테고리만)
+                    // 박스 품목이면 카톤/테이프 표시, 낱개(비박스)면 출고 카톤·테이프는 뺀다(박스=품목).
+                    const isBoxProd = isBoxStockItem(productInfo);
+                    const isShipPkg = (p: Item) => p.category === 'box' || p.subtype === '박스' || p.subtype === '테이프';
+                    // 1. item_bom 기반 구성품 (submaterial 카테고리만) — 낱개는 박스/테이프 제외
                     const bomSubs = itemBoms
                       .filter(b => b.parent_id === item.itemId)
                       .map(b => items.find(p => p.id === b.child_id))
-                      .filter((p): p is Item => !!p && p.category === 'submaterial');
+                      .filter((p): p is Item => !!p && p.category === 'submaterial' && (isBoxProd || !isShipPkg(p)));
                     const bomSubIds = new Set(bomSubs.map(p => p.id));
 
                     // 1.5 BOM 라벨이 삭제된 품목을 가리키면 품목 구성품 스냅샷의 라벨로 보완
@@ -439,13 +443,15 @@ export const OrderCard = memo<OrderCardProps>(({
                       .filter(s => (s.category === '라벨' || s.category === 'label') && !bomSubIds.has(s.id))
                       .map(s => ({ id: s.id, name: items.find(p => p.id === s.id)?.name ?? s.name }));
 
-                    // 2. 박스/테이프: item.boxSubId 스냅샷 우선, 없으면 shipping_rule 조회
+                    // 2. 박스/테이프: 박스 품목만. 낱개(비박스)는 출고 카톤·테이프 표시 안 함.
                     const packagingSubs: { id: string; name: string }[] = [];
-                    const rule = shippingRules.find(r => r.item_id === item.itemId && r.partner_id === order.partnerId);
-                    const boxId = item.boxSubId || rule?.box_item_id;
-                    const tapeId = rule?.tape_item_id;
-                    if (boxId) { const b = items.find(p => p.id === boxId); if (b && !bomSubIds.has(b.id)) packagingSubs.push({ id: b.id, name: b.name }); }
-                    if (tapeId) { const t = items.find(p => p.id === tapeId); if (t && !bomSubIds.has(t.id)) packagingSubs.push({ id: t.id, name: t.name }); }
+                    if (isBoxProd) {
+                      const rule = shippingRules.find(r => r.item_id === item.itemId && r.partner_id === order.partnerId);
+                      const boxId = item.boxSubId || rule?.box_item_id;
+                      const tapeId = rule?.tape_item_id;
+                      if (boxId) { const b = items.find(p => p.id === boxId); if (b && !bomSubIds.has(b.id)) packagingSubs.push({ id: b.id, name: b.name }); }
+                      if (tapeId) { const t = items.find(p => p.id === tapeId); if (t && !bomSubIds.has(t.id)) packagingSubs.push({ id: t.id, name: t.name }); }
+                    }
 
                     // 3. 완제품/반제품 구성품 (박스의 낱개 등) — 펼치면 그 완제품의 부자재까지
                     const bomProducts = itemBoms
