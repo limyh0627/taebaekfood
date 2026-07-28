@@ -1194,7 +1194,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       <NavItem icon={TrendingUp} label="거래처통계" active={currentView === 'partner-stats'} onClick={() => handleNavClick('partner-stats')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={Activity} label="현금흐름 분석" active={currentView === 'cash-flow'} onClick={() => handleNavClick('cash-flow')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={Scale} label="재무제표 (복식부기)" active={currentView === 'financial-reports'} onClick={() => handleNavClick('financial-reports')} collapsed={isSidebarCollapsed} />
-                      <NavItem icon={BookOpen} label="장부" active={currentView === 'ledger-cash'} onClick={() => handleNavClick('ledger-cash')} collapsed={isSidebarCollapsed} />
+                      {/* 장부 → 전표로 흡수됨. 자금 입출금·계좌관리는 전표 탭에서. */}
                       <NavItem icon={Factory} label="생산 실적" active={currentView === 'production'} onClick={() => handleNavClick('production')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={ShoppingBag} label="스마트스토어 분석" active={currentView === 'smartstore-analytics'} onClick={() => handleNavClick('smartstore-analytics')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={ClipboardList} label="HACCP 체크리스트" active={currentView === 'haccp-checklist'} onClick={() => handleNavClick('haccp-checklist')} collapsed={isSidebarCollapsed} />
@@ -3377,6 +3377,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onAddSettlement={(s) => addItem('settlements', s)}
               onDeleteCashEntry={(id) => deleteItem('cashEntries', id)}
               onDeleteSettlement={(id) => deleteItem('settlements', id)}
+              onAddCashAccount={(a) => addItem('cashAccounts', a)}
+              onUpdateCashAccount={(id, data) => updateItem('cashAccounts', id, data)}
               fixedCostTemplates={appData.fixedCostTemplates}
               onGenerateRecurringCosts={generateRecurringCosts}
               onAddFixedCostTemplate={async (data) => { await addItem('fixedCostTemplates', { ...data, id: `fct-${Date.now()}` }); refreshStaticData(); }}

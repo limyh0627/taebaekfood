@@ -4,7 +4,7 @@ import {
   FileText, Printer, Search, ChevronDown, CalendarDays,
   Package, ClipboardList, ChevronRight, CheckCircle2, Edit2, Plus, X, ArrowLeft,
   Save, Download, CheckSquare,
-  ChevronLeft, Share2, Check, Wallet, RotateCw, Trash2
+  ChevronLeft, Share2, Check, Wallet, RotateCw, Trash2, Landmark
 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
 import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentRecord, AccountCode, AccountGroup, CashAccount, CashEntry, Settlement, FixedCostTemplate } from '../types';
@@ -12,6 +12,8 @@ import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchDateRange } from '../src/shared/services/firebaseService';
 import { boxDerivedUnitPrice } from '../src/shared/orderUnits';
 import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
+import { totalCashOnHand } from '../src/features/admin/cashLedger';
+import { AccountModal } from './CashLedger';
 import PageHeader from './PageHeader';
 
 interface TradeStatementProps {
@@ -29,6 +31,8 @@ interface TradeStatementProps {
   onAddSettlement?: (s: Omit<Settlement, 'id'> & { id: string }) => void;
   onDeleteCashEntry?: (id: string) => void;
   onDeleteSettlement?: (id: string) => void;
+  onAddCashAccount?: (a: Omit<CashAccount, 'id'> & { id: string }) => void;
+  onUpdateCashAccount?: (id: string, data: Partial<CashAccount>) => void;
   // 정기 고정비 — 템플릿으로 해당 월 전표를 한 번에 생성 (중복 생성은 핸들러가 막는다)
   fixedCostTemplates?: FixedCostTemplate[];
   onGenerateRecurringCosts?: (yearMonth: string) => Promise<number>;
@@ -132,6 +136,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   onAddSettlement,
   onDeleteCashEntry,
   onDeleteSettlement,
+  onAddCashAccount,
+  onUpdateCashAccount,
   fixedCostTemplates = [],
   onGenerateRecurringCosts,
   onAddFixedCostTemplate, onUpdateFixedCostTemplate, onDeleteFixedCostTemplate,
@@ -282,7 +288,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // ── 빠른 수금/지불 모달 ──
   const [showQuickPay, setShowQuickPay] = useState(false);
-  const [quickPayType, setQuickPayType] = useState<'수금' | '지불'>('수금');
   const [quickPayClientId, setQuickPayClientId] = useState('');
   const [quickPayClientSearch, setQuickPayClientSearch] = useState('');
   const [quickPayDate, setQuickPayDate] = useState(new Date().toISOString().slice(0, 10));
@@ -291,6 +296,23 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [quickPayNote, setQuickPayNote] = useState('');
   const [quickPayDropOpen, setQuickPayDropOpen] = useState(false);
   const [quickPayOverWarn, setQuickPayOverWarn] = useState(false);
+  // 입출금 모달 확장 — 일반/상환/급여 + 방향 + 계정과목 (장부 흡수)
+  const [qpMode, setQpMode] = useState<'일반' | '상환' | '급여'>('일반');
+  const [qpDir, setQpDir] = useState<'입금' | '출금'>('출금');
+  const [qpAccountCode, setQpAccountCode] = useState('');
+  const [qpLoanCode, setQpLoanCode] = useState('260');
+  const [qpPrincipal, setQpPrincipal] = useState('');
+  const [qpInterest, setQpInterest] = useState('');
+  const [qpGross, setQpGross] = useState('');
+  const [qpDeduction, setQpDeduction] = useState('');
+  const openCashModal = (dir: '입금' | '출금') => {
+    setQpMode('일반'); setQpDir(dir); setQpAccountCode('');
+    setQpPrincipal(''); setQpInterest(''); setQpGross(''); setQpDeduction(''); setQpLoanCode('260');
+    setShowQuickPay(true); setQuickPayOverWarn(false);
+    setQuickPayClientId(''); setQuickPayClientSearch(''); setQuickPayAmount(''); setQuickPayNote('');
+    setQuickPayDate(new Date().toISOString().slice(0, 10));
+    setQuickPayAccountId(prev => prev || activeCashAccounts[0]?.id || '');
+  };
 
   const activeCashAccounts = useMemo(() => cashAccounts.filter(a => a.active), [cashAccounts]);
   const codeName = useMemo(() => new Map(accountCodes.map(c => [c.code, c.name])), [accountCodes]);
@@ -411,6 +433,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // ── 메인 탭 ──
   const [mainTab, setMainTab] = useState<'history' | 'taxinvoice'>(defaultTab ?? 'history');
+  // 계좌 관리 모달 (장부에서 흡수)
+  const [showAccounts, setShowAccounts] = useState(false);
   // 거래명세서(매출/매입) 생성 드롭다운
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const createMenuRef = useRef<HTMLDivElement>(null);
@@ -2256,11 +2280,28 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           </button>
         )}
         <button
-          onClick={() => { setShowQuickPay(true); setQuickPayClientId(''); setQuickPayClientSearch(''); setQuickPayAmount(''); setQuickPayNote(''); setQuickPayDate(new Date().toISOString().slice(0,10)); setQuickPayAccountId(prev => prev || activeCashAccounts[0]?.id || ''); }}
+          onClick={() => openCashModal('입금')}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition-all"
+          title="입금 — 수금(매출 미수 상계)·대출 수령·기타 입금"
         >
-          <Wallet size={13}/>수금/지불
+          <Wallet size={13}/>입금
         </button>
+        <button
+          onClick={() => openCashModal('출금')}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-teal-700 text-white hover:bg-teal-800 shadow-sm transition-all"
+          title="출금 — 지불(매입 미지급 상계)·비용·대출상환·급여"
+        >
+          <Wallet size={13}/>출금
+        </button>
+        {onAddCashAccount && (
+          <button
+            onClick={() => setShowAccounts(true)}
+            className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-black bg-white text-slate-500 border border-slate-200 hover:border-slate-400 hover:text-slate-700 transition-all"
+            title="자금 계좌 관리 (통장·카드·현금)"
+          >
+            <Landmark size={13}/>계좌
+          </button>
+        )}
         <button
           onClick={() => { setShowCompanyModal(true); setCompanyForm(companyInfo ?? { name:'',ceoName:'',bizNo:'',bizType:'',bizItem:'',address:'',phone:'',fax:'',email:'' }); }}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all"
@@ -2977,7 +3018,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       })()}
 
       {showQuickPay && (() => {
-        const stmtTypeForPay = quickPayType === '수금' ? '매출' : '매입';
+        // 방향으로 상계 대상 전표 유형 결정 — 입금→매출(미수), 출금→매입(미지급)
+        const stmtTypeForPay = qpDir === '입금' ? '매출' : '매입';
         const selectedClientObj = quickPayClientId ? partners.find(c => c.id === quickPayClientId) : null;
         const partnerTotal = quickPayClientId
           ? issuedStatements
@@ -2988,180 +3030,251 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           ? partners.filter(c => c.name.includes(quickPayClientSearch.trim())).slice(0, 8)
           : [];
 
-        const doQuickPaySave = () => {
-          const amt = Number(quickPayAmount);
-          if (!quickPayClientId || amt <= 0) return;
-          const allClientStmts = issuedStatements
-            .filter(s => s.partnerId === quickPayClientId && s.type === stmtTypeForPay)
-            .sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
-          const unpaid = allClientStmts.filter(s => getBalance(s) > 0);
-          // 미수금이 없으면 가장 최근 전표에 기록 (잔액 역전 처리)
-          const targets = unpaid.length > 0 ? unpaid : allClientStmts.slice(-1);
-          if (targets.length === 0) { setShowQuickPay(false); setQuickPayOverWarn(false); return; }
-          // 한 번의 이체를 오래된 전표부터 배분한다. 통장엔 1건이므로 자금 기록도 1건이다.
-          const allocations: { stmt: IssuedStatement; amount: number }[] = [];
-          let remaining = amt;
-          for (let i = 0; i < targets.length; i++) {
-            if (remaining <= 0) break;
-            const s = targets[i];
-            const isLast = i === targets.length - 1;
-            const apply = isLast ? remaining : Math.min(remaining, getBalance(s));
-            if (apply > 0) allocations.push({ stmt: s, amount: apply });
-            remaining -= apply;
+        const amt = Number((quickPayAmount || '').replace(/,/g, '')) || 0;
+        const offsetAmt = quickPayClientId && partnerTotal > 0 ? Math.min(amt, partnerTotal) : 0; // 거래처 미수/미지급 상계분
+        const plainAmt = amt - offsetAmt;   // 상계 후 남는 순수 자금
+        // 상환/급여 파생
+        const prin = Number((qpPrincipal || '').replace(/,/g, '')) || 0;
+        const intr = Number((qpInterest || '').replace(/,/g, '')) || 0;
+        const grs  = Number((qpGross || '').replace(/,/g, '')) || 0;
+        const ded  = Number((qpDeduction || '').replace(/,/g, '')) || 0;
+        const net  = grs - ded;
+        const loanAccounts = accountCodes.filter(c => c.type === '부채' && /차입금/.test(c.name));
+        const INTEREST_CODE = accountCodes.find(c => /이자비용/.test(c.name))?.code ?? '951';
+        const SALARY_CODE = accountCodes.find(c => c.name === '급여')?.code ?? '515';
+        const WITHHOLD_CODE = accountCodes.find(c => c.name === '예수금')?.code ?? '254';
+        const expenseCodes = accountCodes.filter(c => ['비용', '자산', '부채', '자본'].includes(c.type as string));
+
+        const base = () => ({
+          date: quickPayDate, cashAccountId: quickPayAccountId, createdAt: new Date().toISOString(),
+          ...(quickPayClientId ? { partnerId: quickPayClientId, partnerName: selectedClientObj?.name ?? '' } : {}),
+        });
+
+        // 일반 저장 — 거래처 미수/미지급 상계 우선, 남는 금액은 계정과목 자금전표로.
+        const doGeneralSave = () => {
+          if (amt <= 0) return;
+          if (offsetAmt > 0) {
+            const allClientStmts = issuedStatements
+              .filter(s => s.partnerId === quickPayClientId && s.type === stmtTypeForPay)
+              .sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
+            const unpaid = allClientStmts.filter(s => getBalance(s) > 0);
+            const allocations: { stmt: IssuedStatement; amount: number }[] = [];
+            let rem = offsetAmt;
+            for (const s of unpaid) { if (rem <= 0) break; const apply = Math.min(rem, getBalance(s)); if (apply > 0) allocations.push({ stmt: s, amount: apply }); rem -= apply; }
+            if (allocations.length) recordPayment(allocations, { date: quickPayDate, method: quickPayMethod, note: quickPayNote.trim() || undefined, cashAccountId: quickPayAccountId });
           }
-          recordPayment(allocations, {
-            date: quickPayDate, method: quickPayMethod,
-            note: quickPayNote.trim() || undefined,
-            cashAccountId: quickPayAccountId,
-          });
-          setShowQuickPay(false);
-          setQuickPayOverWarn(false);
+          if (plainAmt > 0) {
+            onAddCashEntry?.({ id: `cash-${Date.now()}`, dir: qpDir, amount: plainAmt, ...(qpAccountCode ? { accountCode: qpAccountCode } : {}), ...(quickPayNote.trim() ? { note: quickPayNote.trim() } : {}), ...base() } as any);
+          }
+          setShowQuickPay(false); setQuickPayOverWarn(false);
         };
+        const doLoanSave = () => {
+          const memo = quickPayNote.trim() || '대출 상환';
+          if (prin > 0) onAddCashEntry?.({ id: `cash-${Date.now()}-p`, dir: '출금', amount: prin, accountCode: qpLoanCode, note: `${memo} (원금)`, ...base() } as any);
+          if (intr > 0) onAddCashEntry?.({ id: `cash-${Date.now()}-i`, dir: '출금', amount: intr, accountCode: INTEREST_CODE, note: `${memo} (이자)`, ...base() } as any);
+          setShowQuickPay(false);
+        };
+        const doSalarySave = () => {
+          const memo = quickPayNote.trim() || '급여';
+          onAddCashEntry?.({ id: `cash-${Date.now()}-g`, dir: '출금', amount: grs, accountCode: SALARY_CODE, note: `${memo} (총급여)`, ...base() } as any);
+          if (ded > 0) onAddCashEntry?.({ id: `cash-${Date.now()}-w`, dir: '입금', amount: ded, accountCode: WITHHOLD_CODE, note: `${memo} (원천공제 예수)`, ...base() } as any);
+          setShowQuickPay(false);
+        };
+
+        const canSave = qpMode === '상환' ? (prin > 0 || intr > 0)
+          : qpMode === '급여' ? (grs > 0 && ded >= 0 && net >= 0)
+          : (amt > 0 && (offsetAmt >= amt || !!qpAccountCode)); // 일반: 전액 상계면 계정 불필요, 아니면 계정 필수
+
         const handleQuickPaySave = () => {
-          const amt = Number(quickPayAmount);
-          if (!quickPayClientId || amt <= 0) return;
-          if (amt > partnerTotal && partnerTotal > 0 && !quickPayOverWarn) {
-            setQuickPayOverWarn(true);
-            return;
-          }
-          doQuickPaySave();
+          if (qpMode === '상환') { if (prin > 0 || intr > 0) doLoanSave(); return; }
+          if (qpMode === '급여') { if (grs > 0 && ded >= 0 && net >= 0) doSalarySave(); return; }
+          if (!canSave) return;
+          // 상계 초과분(줄돈/받을돈 전환) 경고 — 거래처 있고 상계보다 많은데 계정도 없으면 canSave가 막음
+          doGeneralSave();
         };
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4" onClick={e => e.stopPropagation()}>
-              <h3 className="text-sm font-black text-slate-800">수금 / 지불 처리</h3>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => { setShowQuickPay(false); setQuickPayOverWarn(false); }}>
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <h3 className="text-sm font-black text-slate-800">입출금 기록</h3>
 
-              {/* 수금 / 지불 선택 */}
-              <div className="flex gap-2">
-                {(['수금', '지불'] as const).map(t => (
-                  <button key={t} onClick={() => { setQuickPayType(t); setQuickPayClientId(''); setQuickPayClientSearch(''); }}
-                    className={`flex-1 py-2 rounded-xl text-xs font-black border transition-all ${quickPayType === t
-                      ? t === '수금' ? 'bg-blue-600 text-white border-blue-600' : 'bg-rose-600 text-white border-rose-600'
-                      : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`}>
-                    {t === '수금' ? '수금 (매출 미수금)' : '지불 (매입 미지급금)'}
+              {/* 모드 — 일반 / 대출 상환 / 급여 지급 */}
+              <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
+                {([['일반', '일반'], ['상환', '대출 상환'], ['급여', '급여']] as const).map(([m, label]) => (
+                  <button key={m} type="button" onClick={() => setQpMode(m)}
+                    className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-black transition-all ${qpMode === m ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400'}`}>
+                    {label}
                   </button>
                 ))}
               </div>
 
-              {/* 거래처 */}
-              <div className="relative">
-                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">거래처</label>
-                <input
-                  type="text"
-                  placeholder="업체명 검색..."
-                  value={selectedClientObj ? selectedClientObj.name : quickPayClientSearch}
-                  onFocus={() => { setQuickPayClientId(''); setQuickPayDropOpen(true); }}
-                  onChange={e => { setQuickPayClientSearch(e.target.value); setQuickPayClientId(''); setQuickPayDropOpen(true); }}
-                  onBlur={() => setTimeout(() => setQuickPayDropOpen(false), 150)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"
-                />
-                {quickPayDropOpen && dropClients.length > 0 && (
-                  <div className="absolute left-0 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl z-10 overflow-hidden">
-                    {dropClients.map(c => {
-                      const bal = issuedStatements
-                        .filter(s => s.partnerId === c.id && s.type === stmtTypeForPay)
-                        .reduce((sum, s) => sum + getBalance(s), 0);
-                      return (
-                        <button key={c.id}
-                          onMouseDown={() => { setQuickPayClientId(c.id); setQuickPayClientSearch(''); setQuickPayDropOpen(false); }}
-                          className="w-full flex items-center justify-between px-3 py-2.5 text-xs hover:bg-emerald-50 transition-colors border-b border-slate-50 last:border-0">
-                          <span className="font-black text-slate-800">{c.name}</span>
-                          {bal > 0 && <span className={`font-black ${quickPayType === '수금' ? 'text-blue-600' : 'text-rose-600'}`}>{fmt(bal)}원</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-                {/* 선택된 거래처 누적잔액 */}
-                {quickPayClientId && (
-                  <div className="mt-2 px-3 py-2 bg-slate-50 rounded-xl flex items-center justify-between">
-                    <span className="text-[11px] text-slate-500">누적잔액</span>
-                    <div className="flex items-center gap-2">
-                      <span className={`text-sm font-black ${partnerTotal > 0 ? (quickPayType === '수금' ? 'text-blue-600' : 'text-rose-600') : 'text-emerald-600'}`}>
-                        {partnerTotal > 0 ? `${fmt(partnerTotal)}원` : '없음'}
-                      </span>
-                      {partnerTotal > 0 && (
-                        <button
-                          onClick={() => setQuickPayAmount(String(partnerTotal))}
-                          className="text-[10px] font-black px-2 py-1 rounded-lg bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition-all">
-                          완불처리
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* 일자 */}
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">일자</label>
-                <input type="date" value={quickPayDate}
-                  onChange={e => setQuickPayDate(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
-              </div>
-
-              {/* 금액 */}
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">금액</label>
-                <input type="text" inputMode="decimal" placeholder="0" value={quickPayAmount}
-                  onChange={e => setQuickPayAmount(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
-              </div>
-
-              {/* 결제수단 */}
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">결제수단</label>
-                {activeCashAccounts.length > 0 && (
-                  <div className="mb-3">
-                    <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">
-                      {quickPayType === '수금' ? '입금 계좌' : '출금 계좌'}
-                    </label>
-                    <select value={quickPayAccountId} onChange={e => setQuickPayAccountId(e.target.value)}
-                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300">
-                      {activeCashAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                    </select>
-                    <p className="text-[10px] text-slate-400 mt-1">현금출납장에 <b>1건</b>으로 기록되고, 오래된 전표부터 자동 매칭됩니다.</p>
-                  </div>
-                )}
-                <div className="flex gap-1.5 flex-wrap">
-                  {(['현금', '계좌이체', '어음', '카드', '기타'] as PaymentRecord['method'][]).map(m => (
-                    <button key={String(m)} onClick={() => setQuickPayMethod(m)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-black border transition-all ${quickPayMethod === m ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>
-                      {m}
-                    </button>
-                  ))}
+              {/* 계좌 + 일자 */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">계좌</label>
+                  <select value={quickPayAccountId} onChange={e => setQuickPayAccountId(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300">
+                    {activeCashAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">일자</label>
+                  <input type="date" value={quickPayDate} onChange={e => setQuickPayDate(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
                 </div>
               </div>
+
+              {qpMode === '일반' ? (
+                <>
+                  {/* 방향 */}
+                  <div className="flex gap-2">
+                    {(['입금', '출금'] as const).map(d => (
+                      <button key={d} onClick={() => { setQpDir(d); setQuickPayClientId(''); setQuickPayClientSearch(''); }}
+                        className={`flex-1 py-2 rounded-xl text-xs font-black border transition-all ${qpDir === d
+                          ? d === '입금' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-rose-600 text-white border-rose-600'
+                          : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`}>
+                        {d === '입금' ? '입금 (수금·기타)' : '출금 (지불·비용)'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* 거래처 (선택) */}
+                  <div className="relative">
+                    <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">거래처 <span className="text-slate-300">(선택 · {qpDir === '입금' ? '매출 미수 상계' : '매입 미지급 상계'})</span></label>
+                    <input type="text" placeholder="업체명 검색..."
+                      value={selectedClientObj ? selectedClientObj.name : quickPayClientSearch}
+                      onFocus={() => { setQuickPayClientId(''); setQuickPayDropOpen(true); }}
+                      onChange={e => { setQuickPayClientSearch(e.target.value); setQuickPayClientId(''); setQuickPayDropOpen(true); }}
+                      onBlur={() => setTimeout(() => setQuickPayDropOpen(false), 150)}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
+                    {quickPayDropOpen && dropClients.length > 0 && (
+                      <div className="absolute left-0 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl z-10 overflow-hidden">
+                        {dropClients.map(c => {
+                          const bal = issuedStatements.filter(s => s.partnerId === c.id && s.type === stmtTypeForPay).reduce((sum, s) => sum + getBalance(s), 0);
+                          return (
+                            <button key={c.id}
+                              onMouseDown={() => { setQuickPayClientId(c.id); setQuickPayClientSearch(''); setQuickPayDropOpen(false); }}
+                              className="w-full flex items-center justify-between px-3 py-2.5 text-xs hover:bg-emerald-50 transition-colors border-b border-slate-50 last:border-0">
+                              <span className="font-black text-slate-800">{c.name}</span>
+                              {bal > 0 && <span className={`font-black ${qpDir === '입금' ? 'text-blue-600' : 'text-rose-600'}`}>{fmt(bal)}원</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {quickPayClientId && (
+                      <div className="mt-2 px-3 py-2 bg-slate-50 rounded-xl flex items-center justify-between">
+                        <span className="text-[11px] text-slate-500">{qpDir === '입금' ? '미수금' : '미지급금'}</span>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-sm font-black ${partnerTotal > 0 ? (qpDir === '입금' ? 'text-blue-600' : 'text-rose-600') : 'text-emerald-600'}`}>
+                            {partnerTotal > 0 ? `${fmt(partnerTotal)}원` : '없음'}
+                          </span>
+                          {partnerTotal > 0 && (
+                            <button onClick={() => setQuickPayAmount(String(partnerTotal))}
+                              className="text-[10px] font-black px-2 py-1 rounded-lg bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition-all">완불처리</button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 금액 */}
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">금액</label>
+                    <input type="text" inputMode="numeric" placeholder="0" value={quickPayAmount}
+                      onChange={e => setQuickPayAmount(e.target.value.replace(/[^\d,]/g, ''))}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-lg font-black tabular-nums outline-none focus:ring-2 focus:ring-emerald-300"/>
+                  </div>
+
+                  {/* 상계 안내 */}
+                  {offsetAmt > 0 && (
+                    <div className="text-[11px] font-bold text-slate-500 bg-slate-50 rounded-xl px-3 py-2 leading-snug">
+                      {fmt(offsetAmt)}원은 {selectedClientObj?.name}의 {qpDir === '입금' ? '미수금' : '미지급금'} 상계.
+                      {plainAmt > 0 && <> 남는 <b className="text-slate-700">{fmt(plainAmt)}원</b>은 아래 계정과목의 자금으로 잡힙니다.</>}
+                    </div>
+                  )}
+
+                  {/* 계정과목 — 상계로 전액 처리되면 불필요 */}
+                  {plainAmt > 0 && (
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">계정과목 <span className="text-rose-400">*</span> <span className="text-slate-300">({qpDir === '입금' ? '이 돈의 성격' : '전기·임대·기계구입 등'})</span></label>
+                      <select value={qpAccountCode} onChange={e => setQpAccountCode(e.target.value)}
+                        className={`w-full border rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300 ${qpAccountCode ? 'border-slate-200' : 'border-amber-300 bg-amber-50'}`}>
+                        <option value="">— 선택하세요 —</option>
+                        {expenseCodes.map(c => <option key={c.id} value={c.code}>{c.code} · {c.name}</option>)}
+                      </select>
+                      {!qpAccountCode && <p className="text-[10px] font-bold text-amber-600 mt-1">계정과목이 없으면 손익·현금흐름 어디에도 못 잡힙니다.</p>}
+                    </div>
+                  )}
+                </>
+              ) : qpMode === '상환' ? (
+                <>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">대출 계정 <span className="text-rose-400">*</span></label>
+                    <select value={qpLoanCode} onChange={e => setQpLoanCode(e.target.value)}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300">
+                      {(loanAccounts.length ? loanAccounts : [{ id: '260', code: '260', name: '단기차입금' }, { id: '293', code: '293', name: '장기차입금' }]).map(c => (
+                        <option key={c.id} value={c.code}>{c.code} · {c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">원금</label>
+                      <input inputMode="numeric" value={qpPrincipal} placeholder="0"
+                        onChange={e => setQpPrincipal(e.target.value.replace(/[^\d,]/g, ''))}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-emerald-300"/>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">이자</label>
+                      <input inputMode="numeric" value={qpInterest} placeholder="0"
+                        onChange={e => setQpInterest(e.target.value.replace(/[^\d,]/g, ''))}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-emerald-300"/>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2 text-[11px] font-black text-slate-500">
+                    <span>통장에서 나가는 총액</span>
+                    <span className="tabular-nums text-slate-800">{fmt(prin + intr)}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-snug">원금은 차입금 감소, 이자는 비용으로 <b>자금 두 줄</b> 자동 기록됩니다.</p>
+                </>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">총급여</label>
+                      <input inputMode="numeric" value={qpGross} placeholder="0"
+                        onChange={e => setQpGross(e.target.value.replace(/[^\d,]/g, ''))}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-emerald-300"/>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">공제 <span className="text-slate-300">(원천·4대보험)</span></label>
+                      <input inputMode="numeric" value={qpDeduction} placeholder="0"
+                        onChange={e => setQpDeduction(e.target.value.replace(/[^\d,]/g, ''))}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-emerald-300"/>
+                    </div>
+                  </div>
+                  <div className={`flex items-center justify-between rounded-xl px-3 py-2 text-[11px] font-black ${net < 0 ? 'bg-rose-50 text-rose-600' : 'bg-slate-50 text-slate-500'}`}>
+                    <span>실지급 (통장에서 나감)</span>
+                    <span className="tabular-nums text-slate-800">{fmt(net)}{net < 0 ? ' · 공제가 총급여보다 큼' : ''}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-snug">급여(비용) + 예수금(원천공제) + 실지급으로 자동 분리됩니다.</p>
+                </>
+              )}
 
               {/* 비고 */}
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">비고</label>
-                <input type="text" placeholder="예: 1차 입금" value={quickPayNote}
-                  onChange={e => setQuickPayNote(e.target.value)}
+                <input type="text" placeholder={qpMode === '일반' ? '예: 7월 전기요금' : qpMode === '상환' ? '예: 기업은행 시설자금' : '예: 7월 급여'}
+                  value={quickPayNote} onChange={e => setQuickPayNote(e.target.value)}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
               </div>
 
-              {quickPayOverWarn && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs space-y-2">
-                  <p className="font-black text-amber-700">
-                    입력금액이 누적잔액({fmt(partnerTotal)}원)을 초과합니다.
-                    초과분은 {quickPayType === '수금' ? '줄돈' : '받을돈'}으로 전환됩니다.
-                  </p>
-                  <div className="flex gap-2">
-                    <button onClick={() => setQuickPayOverWarn(false)}
-                      className="flex-1 py-1.5 rounded-lg bg-slate-200 text-slate-600 font-black">취소</button>
-                    <button onClick={doQuickPaySave}
-                      className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white font-black">계속 진행</button>
-                  </div>
-                </div>
-              )}
               <div className="flex gap-2 pt-1">
                 <button onClick={() => { setShowQuickPay(false); setQuickPayOverWarn(false); }}
                   className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
-                <button onClick={handleQuickPaySave}
-                  disabled={!quickPayClientId || Number(quickPayAmount) <= 0}
-                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-black hover:bg-emerald-700 disabled:opacity-40 flex items-center justify-center gap-1.5">
+                <button onClick={handleQuickPaySave} disabled={!canSave}
+                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-black hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5">
                   <Save size={12}/>저장
                 </button>
               </div>
@@ -3169,6 +3282,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           </div>
         );
       })()}
+
+      {/* ── 계좌 관리 모달 (장부 흡수) ── */}
+      {showAccounts && onAddCashAccount && onUpdateCashAccount && (
+        <AccountModal accounts={cashAccounts} onClose={() => setShowAccounts(false)}
+          onAdd={onAddCashAccount} onUpdate={onUpdateCashAccount} />
+      )}
 
       {/* ── 발행내역 상세 모달 ── */}
       {detailStmt && (

@@ -558,7 +558,7 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, on
 }
 
 // ── 계좌 관리 모달 ────────────────────────────────────────────────────────────
-function AccountModal({ accounts, onClose, onAdd, onUpdate }: {
+export function AccountModal({ accounts, onClose, onAdd, onUpdate }: {
   accounts: CashAccount[];
   onClose: () => void;
   onAdd: Props['onAddCashAccount'];
