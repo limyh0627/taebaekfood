@@ -4,6 +4,7 @@ import {
   Package,
   Edit,
   Box,
+  ChevronRight,
   Grape,
   Cylinder,
   Disc,
@@ -31,6 +32,7 @@ import {
 } from 'lucide-react';
 import { Item, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, PartnerItem } from '../types';
 import { PurchaseOrder, poLines } from '../src/shared/types';
+import { unpackComponent } from '../src/shared/orderUnits';
 import AddItemModal from './AddItemModal';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
@@ -376,6 +378,7 @@ const ItemList: React.FC<ItemListProps> = ({
   const [inlineCartQty, setInlineCartQty] = useState<number>(0);
   const [inlineCartIsBox, setInlineCartIsBox] = useState<boolean>(false);
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+  const [collapsedParents, setCollapsedParents] = useState<Set<string>>(new Set()); // 낱개 밑 박스 접기
   const [expandedClientRowId, setExpandedClientRowId] = useState<string | null>(null);
   const [activeSubtype, setActiveSubtype] = useState<string>('전체');   // 낱개/배송/선물세트
   const [stockOnly, setStockOnly] = useState(false);
@@ -604,9 +607,37 @@ const ItemList: React.FC<ItemListProps> = ({
     });
   }, [items, activeTab, activeCategory, activeSubtype, activeSupplierId, searchTerm, orderRequests, confirmedOrders, inboundPartners, partners, topTab, stockOnly, zeroStockOnly]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
+  // 완제품 탭: 박스 품목을 그 낱개 밑으로 묶는다 (unpackComponent 기준). row = { p, isChild, parentId?, boxCount }
+  type GroupRow = { p: Item; isChild: boolean; parentId?: string; boxCount: number };
+  const groupedRows = useMemo<GroupRow[]>(() => {
+    if (topTab !== 'finished') return filteredProducts.map(p => ({ p, isChild: false, boxCount: 0 }));
+    const boxByParent = new Map<string, Item[]>();
+    const inList = new Set(filteredProducts.map(p => p.id));
+    const looseOrOrphan: Item[] = [];
+    for (const p of filteredProducts) {
+      const uc = unpackComponent(p);
+      if (uc && inList.has(uc.itemId)) {
+        if (!boxByParent.has(uc.itemId)) boxByParent.set(uc.itemId, []);
+        boxByParent.get(uc.itemId)!.push(p);
+      } else {
+        looseOrOrphan.push(p);   // 낱개거나, 낱개가 목록에 없는 박스(orphan)는 단독
+      }
+    }
+    const rows: GroupRow[] = [];
+    for (const p of looseOrOrphan) {
+      const boxes = boxByParent.get(p.id) ?? [];
+      rows.push({ p, isChild: false, boxCount: boxes.length });
+      for (const b of boxes) rows.push({ p: b, isChild: true, parentId: p.id, boxCount: 0 });
+    }
+    return rows;
+  }, [filteredProducts, topTab]);
+  const visibleRows = useMemo(
+    () => groupedRows.filter(r => !(r.isChild && r.parentId && collapsedParents.has(r.parentId))),
+    [groupedRows, collapsedParents],
+  );
+  const totalPages = Math.max(1, Math.ceil(visibleRows.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
-  const pagedProducts = filteredProducts.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pagedRows = visibleRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
 
 
@@ -1226,7 +1257,7 @@ const ItemList: React.FC<ItemListProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {pagedProducts.map(product => {
+                {pagedRows.map(({ p: product, isChild, boxCount }) => {
                   const confInfo = confirmedOrders.find(c => (c.itemId ?? c.id) === product.id);
                   const inCart = cart.some(c => c.id === product.id);
                   const isExpanded = expandedRowId === product.id;
@@ -1320,8 +1351,17 @@ const ItemList: React.FC<ItemListProps> = ({
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold text-slate-800">{withSpec(product)}</span>
+                        <div className={`flex items-center gap-2 ${isChild ? 'pl-5' : ''}`}>
+                          {boxCount > 0 && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setCollapsedParents(prev => { const n = new Set(prev); n.has(product.id) ? n.delete(product.id) : n.add(product.id); return n; }); }}
+                              className="shrink-0 text-slate-400 hover:text-indigo-600" title="박스 규격 접기/펼치기">
+                              <ChevronRight size={14} className={`transition-transform ${collapsedParents.has(product.id) ? '' : 'rotate-90'}`} />
+                            </button>
+                          )}
+                          {isChild && <span className="text-indigo-300 text-xs shrink-0">↳</span>}
+                          <span className={`font-bold ${isChild ? 'text-[13px] text-slate-500' : 'text-sm text-slate-800'}`}>{withSpec(product)}</span>
+                          {boxCount > 0 && <span className="text-[9px] font-black text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded-full shrink-0">박스 {boxCount}</span>}
                           {isCritical && <AlertCircle size={12} className="text-rose-500 shrink-0" />}
                         </div>
                       </td>
@@ -1601,7 +1641,7 @@ const ItemList: React.FC<ItemListProps> = ({
                     </React.Fragment>
                   );
                 })}
-                {pagedProducts.length === 0 && (
+                {pagedRows.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-4 py-16 text-center">
                       <div className="flex flex-col items-center gap-2 text-slate-300">
