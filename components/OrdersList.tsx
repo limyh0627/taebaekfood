@@ -162,6 +162,7 @@ export const OrderCard = memo<OrderCardProps>(({
   const highlighted = isHighlighted || highlightOrderId === order.id;
   const isEditing = editingOrderId === order.id;
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
+  const [expandedItemBom, setExpandedItemBom] = useState<Set<string>>(new Set()); // 박스 완제품 구성 펼치기
 
   // 향미유·고춧가루 제외한 품목만 진행률 및 완료 판단에 사용
   const isSecondary = (cat?: string) => cat === '향미유' || cat === '고춧가루';
@@ -446,14 +447,44 @@ export const OrderCard = memo<OrderCardProps>(({
                     if (boxId) { const b = items.find(p => p.id === boxId); if (b && !bomSubIds.has(b.id)) packagingSubs.push({ id: b.id, name: b.name }); }
                     if (tapeId) { const t = items.find(p => p.id === tapeId); if (t && !bomSubIds.has(t.id)) packagingSubs.push({ id: t.id, name: t.name }); }
 
+                    // 3. 완제품/반제품 구성품 (박스의 낱개 등) — 펼치면 그 완제품의 부자재까지
+                    const bomProducts = itemBoms
+                      .filter(b => b.parent_id === item.itemId)
+                      .map(b => ({ qty: b.quantity, p: items.find(p => p.id === b.child_id) }))
+                      .filter((r): r is { qty: number; p: Item } => !!r.p && (r.p.category === 'product' || r.p.category === 'wip' || r.p.category === '완제품'));
+
                     const allSubs = [...bomSubs.map(p => ({ id: p.id, name: p.name })), ...snapLabels, ...packagingSubs];
-                    if (allSubs.length === 0) return null;
+                    if (allSubs.length === 0 && bomProducts.length === 0) return null;
+                    const rowKey = `${order.id}-${idx}`;
+                    const open = expandedItemBom.has(rowKey);
                     return (
+                      <>
                       <div className={`mt-0.5 ${gridCols >= 2 ? 'grid grid-cols-2 md:flex md:flex-wrap md:items-center gap-x-1 gap-y-0.5 md:gap-1 md:pl-[20px]' : 'flex flex-wrap items-center gap-x-1 gap-y-0.5 pl-[20px]'}`}>
+                        {bomProducts.map(({ p, qty }) => (
+                          <button key={p.id} type="button"
+                            onClick={(e) => { e.stopPropagation(); setExpandedItemBom(prev => { const n = new Set(prev); n.has(rowKey) ? n.delete(rowKey) : n.add(rowKey); return n; }); }}
+                            className="text-[8px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 flex items-center gap-0.5 shrink-0 hover:bg-indigo-100">
+                            <ChevronRight size={9} className={`transition-transform ${open ? 'rotate-90' : ''}`} />{abbrev(p.name)}{qty > 1 ? `×${qty}` : ''}
+                          </button>
+                        ))}
                         {allSubs.map(sm => (
                           <span key={sm.id} className="text-[8px] font-bold text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">{sm.name}</span>
                         ))}
                       </div>
+                      {open && bomProducts.map(({ p }) => {
+                        const cSubs = (p.submaterials ?? []).filter(cs => items.find(x => x.id === cs.id)?.category === 'submaterial');
+                        return (
+                          <div key={`exp-${p.id}`} className="flex flex-wrap items-center gap-1 pl-[28px] mt-0.5" onClick={e => e.stopPropagation()}>
+                            <span className="text-[8px] font-black text-indigo-300">└ {abbrev(p.name)}</span>
+                            {cSubs.length === 0
+                              ? <span className="text-[8px] text-slate-300">부자재 없음</span>
+                              : cSubs.map((cs, i) => (
+                                  <span key={i} className="text-[8px] font-bold text-slate-400 bg-white px-1.5 py-0.5 rounded border border-slate-100">{items.find(x => x.id === cs.id)?.name ?? cs.name}</span>
+                                ))}
+                          </div>
+                        );
+                      })}
+                      </>
                     );
                   })()}
                   <div className="flex flex-wrap items-center gap-1 mt-0.5 pl-[20px]">
