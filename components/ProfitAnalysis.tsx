@@ -712,19 +712,23 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         const mVal = (f: keyof CashFlowManual) => (cfEdit[f] != null ? Number(cfEdit[f]).toLocaleString() : '');
         const setM = (f: keyof CashFlowManual, v: string) => { const n = v.replace(/[^\d]/g, ''); setCfEdit(prev => ({ ...prev, [f]: n === '' ? undefined : Number(n) })); };
         const saveCf = () => onSaveCashFlowManual?.(cfMonth, cfEdit);
-        const cfLine = (label: string, amount: number, sign: '+' | '-' | '±', field?: keyof CashFlowManual) => (
+        const cfLine = (label: string, amount: number, sign: '+' | '-' | '±', field?: keyof CashFlowManual) => {
+          // '±'(양방향) 라인은 실제 금액 부호로 색·기호 결정 — +면 초록, −면 빨강
+          const eff = sign === '±' ? (amount > 0 ? '+' : amount < 0 ? '-' : '±') : sign;
+          return (
           <div className="flex items-center justify-between px-6 py-2.5">
             <span className="text-xs text-slate-600">
-              <span className={`mr-2 text-[10px] font-black ${sign === '+' ? 'text-emerald-500' : sign === '-' ? 'text-rose-400' : 'text-slate-400'}`}>({sign})</span>{label}
+              <span className={`mr-2 text-[10px] font-black ${eff === '+' ? 'text-emerald-500' : eff === '-' ? 'text-rose-400' : 'text-slate-400'}`}>({eff})</span>{label}
             </span>
             {editable && field ? (
               <input value={mVal(field)} onChange={e => setM(field, e.target.value)} inputMode="numeric" placeholder="0"
                 className="w-32 border border-slate-200 rounded-lg px-2 py-1 text-xs font-black text-right outline-none focus:ring-2 focus:ring-blue-300" />
             ) : (
-              <span className={`text-xs font-black tabular-nums ${amount === 0 ? 'text-slate-300' : sign === '+' ? 'text-emerald-700' : sign === '-' ? 'text-rose-700' : 'text-slate-700'}`}>{amount === 0 ? '—' : fmt(amount) + '원'}</span>
+              <span className={`text-xs font-black tabular-nums ${amount === 0 ? 'text-slate-300' : eff === '+' ? 'text-emerald-700' : eff === '-' ? 'text-rose-700' : 'text-slate-700'}`}>{amount === 0 ? '—' : fmt(amount) + '원'}</span>
             )}
           </div>
-        );
+          );
+        };
 
         return (
           <div className="space-y-4">
@@ -824,7 +828,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                 {cfLine('감가상각비 (전표 자동)', S(r => r.dep), '+')}
                 {cfLine('재고자산 증가', S(r => r.invInc), '-')}
                 {cfLine('매출채권 증가', S(r => r.arInc), '-')}
-                {cfLine('매입채무 증감', S(r => r.apChg), '±')}
+                {cfLine('매입채무 증가', S(r => r.apChg), '±')}
                 {cfLine('선급금 증가', S(r => r.prepaid), '-', 'prepaidInc')}
               </div>
 
