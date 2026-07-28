@@ -478,7 +478,7 @@ export const OrderCard = memo<OrderCardProps>(({
                         ))}
                       </div>
                       {open && bomProducts.map(({ p }) => {
-                        const cSubs = (p.submaterials ?? []).filter(cs => items.find(x => x.id === cs.id)?.category === 'submaterial');
+                        const cSubs = (p.submaterials ?? []).filter(cs => { const ci = items.find(x => x.id === cs.id); return ci?.category === 'submaterial' && !isShipPkg(ci); });
                         return (
                           <div key={`exp-${p.id}`} className="flex flex-wrap items-center gap-1 pl-[28px] mt-0.5" onClick={e => e.stopPropagation()}>
                             <span className="text-[8px] font-black text-indigo-300">└ {abbrev(p.name)}</span>
