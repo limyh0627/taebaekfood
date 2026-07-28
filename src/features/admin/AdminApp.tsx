@@ -269,14 +269,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // 최근 변경분은 라이브 7일 구독(rawMaterialLedger)으로 들어와 mergedRawMaterialLedger에 반영됨.
   const ledgerFetchedKeyRef = useRef<number | null>(null);
   useEffect(() => {
-    if (docTab !== '원료수불부') return;
+    if (docTab !== '원료수불부' && currentView !== 'inventory') return;
     if (ledgerFetchedKeyRef.current === ledgerReloadKey) return; // 이미 이 reloadKey로 로드함 → 재조회 생략
     ledgerFetchedKeyRef.current = ledgerReloadKey;
     const to = new Date().toISOString().slice(0, 10);
     fetchDateRange<import('../../shared/types').RawMaterialEntry>('rawMaterialLedger', 'date', '2020-01-01', to)
       .then(setExtraRawMaterialLedger)
       .catch(e => { console.error('[AdminApp] 원료수불부 전체 이력 로드 실패:', e); ledgerFetchedKeyRef.current = null; }); // 실패 시 다음 진입에 재시도
-  }, [docTab, ledgerReloadKey]);
+  }, [docTab, currentView, ledgerReloadKey]);
   const mergedRawMaterialLedger = useMemo(() => {
     const map = new Map<string, import('../../shared/types').RawMaterialEntry>();
     extraRawMaterialLedger.forEach(e => map.set(e.id, e));
@@ -1478,7 +1478,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 setPendingInvoice({ partnerId, partnerName, items });
                 setCurrentView('trade-statement');
               }}
-              rawMaterialLedger={rawMaterialLedger}
+              rawMaterialLedger={mergedRawMaterialLedger}
               autoUsageEntries={autoRawMaterialUsage}
               onAddRawMaterialEntry={async (entry) => {
                 await addItem('rawMaterialLedger', entry);
@@ -2145,12 +2145,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         onClick={() => setDocTab('생산판매기록부')}
                         className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '생산판매기록부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
                       >생산판매기록부</button>
-                      {!isAdmin && (
+                      {!isAdmin && (<>
                         <button
                           onClick={() => setDocTab('haccp')}
                           className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === 'haccp' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
                         >HACCP 체크리스트</button>
-                      )}
+                        <button
+                          onClick={() => setDocTab('벤조피렌')}
+                          className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '벤조피렌' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                        >벤조피렌 검사성적서</button>
+                      </>)}
                       {isAdmin && (<>
                         <button
                           onClick={() => setDocTab('원료수불부')}
@@ -3698,6 +3702,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {currentView === 'leave-portal' && (
             <LeaveManager
               currentUser={currentUser}
+              isAdmin={isAdmin}
               employees={employees}
               leaveRequests={leaveRequests}
               onAddLeaveRequest={async (req) => {

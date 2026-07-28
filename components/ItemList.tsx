@@ -372,6 +372,7 @@ const ItemList: React.FC<ItemListProps> = ({
   const [historyMonth, setHistoryMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [historyPage, setHistoryPage] = useState(1); // 입고이력 페이지네이션
   const [ledgerMaterialFilter, setLedgerMaterialFilter] = useState<string>('전체'); // 원료 입출고 기록 필터
+  const [ledgerPeriod, setLedgerPeriod] = useState<string>('1m'); // 입출고 기록 기간: '1m'(최근 1개월)|'all'(전체)|'YYYY-MM'(월별)
   const [activeCategory, setActiveCategory] = useState<string>('전체');
   const [activeSupplierId, setActiveSupplierId] = useState<string>('전체');
   const [showCategoryFilter, setShowCategoryFilter] = useState(false);
@@ -1663,9 +1664,16 @@ const ItemList: React.FC<ItemListProps> = ({
         {/* ── 원료재고 전체 입출고 기록 (원료 필터 + 유형 필터 + 페이지네이션) ── */}
         {activeTab === 'master' && topTab === 'rawmaterial' && (() => {
           const materials = Array.from(new Set(rawMaterialLedger.map(e => e.material).filter(Boolean))).sort();
-          const entries = ledgerMaterialFilter === '전체'
+          const ledgerMonths = Array.from(new Set(rawMaterialLedger.map(e => (e.date ?? '').slice(0, 7)).filter(Boolean))).sort().reverse();
+          const oneMonthAgo = (() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 10); })();
+          const entries = (ledgerMaterialFilter === '전체'
             ? rawMaterialLedger
-            : rawMaterialLedger.filter(e => e.material === ledgerMaterialFilter);
+            : rawMaterialLedger.filter(e => e.material === ledgerMaterialFilter)
+          ).filter(e => {
+            if (ledgerPeriod === 'all') return true;
+            if (ledgerPeriod === '1m') return (e.date ?? '') >= oneMonthAgo;
+            return (e.date ?? '').slice(0, 7) === ledgerPeriod; // 특정 월(YYYY-MM)
+          });
           return (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mt-4">
               <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 gap-2 flex-wrap">
@@ -1673,11 +1681,23 @@ const ItemList: React.FC<ItemListProps> = ({
                   <History size={14} className="text-slate-400" />
                   <h3 className="text-xs font-black text-slate-700 uppercase tracking-wider">전체 입출고 기록</h3>
                 </div>
-                <select value={ledgerMaterialFilter} onChange={e => setLedgerMaterialFilter(e.target.value)}
-                  className="border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-600 outline-none focus:ring-2 focus:ring-teal-400 bg-white">
-                  <option value="전체">전체 원료</option>
-                  {materials.map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
+                <div className="flex items-center gap-2">
+                  <select value={ledgerPeriod} onChange={e => setLedgerPeriod(e.target.value)}
+                    className="border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-600 outline-none focus:ring-2 focus:ring-teal-400 bg-white">
+                    <option value="1m">최근 1개월</option>
+                    <option value="all">전체 기간</option>
+                    {ledgerMonths.length > 0 && (
+                      <optgroup label="월별">
+                        {ledgerMonths.map(m => <option key={m} value={m}>{m}</option>)}
+                      </optgroup>
+                    )}
+                  </select>
+                  <select value={ledgerMaterialFilter} onChange={e => setLedgerMaterialFilter(e.target.value)}
+                    className="border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-600 outline-none focus:ring-2 focus:ring-teal-400 bg-white">
+                    <option value="전체">전체 원료</option>
+                    {materials.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
               </div>
               <div className="p-4">
                 <RawLedgerList
