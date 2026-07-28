@@ -209,6 +209,10 @@ const ItemList: React.FC<ItemListProps> = ({
 
   const [showClosingModal, setShowClosingModal] = useState(false);
   const closingRef = useRef<HTMLDivElement>(null);
+  // 재고 현황 통합 모달 — 재고 마감(A) · 재고 만들기(B)를 탭으로 오간다
+  const openMake = () => { setMakeQty({}); setMakeSearch(''); setMakeCat('참기름'); setIsAddModalOpen(true); };
+  const invGoClosing = () => { setIsAddModalOpen(false); setShowClosingModal(true); };
+  const invGoMake = () => { setShowClosingModal(false); openMake(); };
 
   // ── 재고 마감(완제품 실물 카운트) ──
   const [closingCounts, setClosingCounts] = useState<Record<string, { boxes: string; loose: string }>>({});
@@ -735,13 +739,13 @@ const ItemList: React.FC<ItemListProps> = ({
                 />
               </div>
             )}
-            {/* 우측 액션: 재고 마감 + (원료재고 탭) 입고/사용 기록 */}
+            {/* 우측 액션: 재고 현황(마감·만들기 통합) + (원료재고 탭) 입고/사용 기록 */}
             <div className="flex items-center gap-2 ml-auto">
               <button
-                onClick={() => setShowClosingModal(true)}
-                className="flex items-center gap-1.5 px-3 py-2 bg-orange-500 text-white rounded-xl text-xs font-black hover:bg-orange-600 transition-colors shadow-sm"
+                onClick={invGoClosing}
+                className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black hover:bg-indigo-700 transition-colors shadow-sm"
               >
-                <ClipboardCheck size={13} /> 재고 마감
+                <Box size={13} /> 재고 현황
               </button>
               {activeTab === 'master' && topTab === 'rawmaterial' && (
                 <button
@@ -760,16 +764,6 @@ const ItemList: React.FC<ItemListProps> = ({
                   className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:border-indigo-300 text-slate-600 hover:text-indigo-600 rounded-xl text-xs font-black transition-all shadow-sm"
                 >
                   <Layers size={13} /><span>분류 관리</span>
-                </button>
-              )}
-              {/* 재고 만들기 — 새 품목 등록 */}
-              {activeTab === 'master' && (
-                <button
-                  type="button"
-                  onClick={() => { setMakeQty({}); setMakeSearch(''); setMakeCat('참기름'); setIsAddModalOpen(true); }}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black transition-all shadow-sm"
-                >
-                  <Plus size={13} strokeWidth={3} /><span>재고 만들기</span>
                 </button>
               )}
             </div>
@@ -2308,8 +2302,12 @@ const ItemList: React.FC<ItemListProps> = ({
             <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-xl h-[85vh] flex flex-col animate-in zoom-in-95 duration-200">
               <div className="p-5 border-b border-slate-100 flex items-center justify-between shrink-0">
                 <div>
-                  <h3 className="text-base font-black text-slate-900">재고 만들기</h3>
-                  <p className="text-[11px] text-slate-400 font-bold mt-0.5">만든 수량만큼 재고를 더합니다 · 원료는 입고/실사조정에서</p>
+                  {/* 통합 탭 — 재고 마감(A) · 재고 만들기(B) */}
+                  <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5 w-fit">
+                    <button onClick={invGoClosing} className="px-3 py-1.5 rounded-lg text-xs font-black text-slate-400 hover:text-slate-600">재고 마감</button>
+                    <button onClick={invGoMake} className="px-3 py-1.5 rounded-lg text-xs font-black bg-white text-indigo-600 shadow-sm">재고 만들기</button>
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-bold mt-1.5">만든 수량만큼 재고를 더합니다 · 원료는 입고/실사조정에서</p>
                 </div>
                 <button onClick={() => setIsAddModalOpen(false)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
               </div>
@@ -2811,7 +2809,11 @@ const ItemList: React.FC<ItemListProps> = ({
             {/* 액션 바 */}
             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 flex-wrap gap-2">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-black text-slate-800">재고 마감</span>
+                {/* 통합 탭 — 재고 마감(A) · 재고 만들기(B) */}
+                <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5 shrink-0">
+                  <button onClick={invGoClosing} className="px-3 py-1.5 rounded-lg text-xs font-black bg-white text-orange-600 shadow-sm">재고 마감</button>
+                  <button onClick={invGoMake} className="px-3 py-1.5 rounded-lg text-xs font-black text-slate-400 hover:text-slate-600">재고 만들기</button>
+                </div>
                 {src
                   ? <span className="text-xs text-slate-400">{src.date} · {src.closedBy || '-'} 마감 (조회)</span>
                   : <input type="date" value={closingDate} onChange={e => setClosingDate(e.target.value)} className="border border-slate-300 rounded px-2 py-1 text-xs" />}
