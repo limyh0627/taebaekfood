@@ -379,6 +379,8 @@ const ItemList: React.FC<ItemListProps> = ({
   const [inlineCartIsBox, setInlineCartIsBox] = useState<boolean>(false);
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
   const [collapsedParents, setCollapsedParents] = useState<Set<string>>(new Set()); // 낱개 밑 박스 접기
+  // 재고관리는 직원 메뉴 단일뷰 — 품목 메타(이름·분류·단위) 편집은 품목관리에서만. 여기선 실사조정만.
+  const productEditable = false;
   const [expandedClientRowId, setExpandedClientRowId] = useState<string | null>(null);
   const [activeSubtype, setActiveSubtype] = useState<string>('전체');   // 낱개/배송/선물세트
   const [stockOnly, setStockOnly] = useState(false);
@@ -750,16 +752,7 @@ const ItemList: React.FC<ItemListProps> = ({
                   <FileDown size={13} /><span>사용 기록</span>
                 </button>
               )}
-              {/* 분류 관리 — 분류 이름·하위 분류를 사용자가 정한다 */}
-              {activeTab === 'master' && isAdmin && (
-                <button
-                  type="button"
-                  onClick={() => setCategoryManagerOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:border-indigo-300 text-slate-600 hover:text-indigo-600 rounded-xl text-xs font-black transition-all shadow-sm"
-                >
-                  <Layers size={13} /><span>분류 관리</span>
-                </button>
-              )}
+              {/* 분류 관리는 품목 관리(관리자)로 이동 */}
             </div>
           </div>
         )}
@@ -1475,7 +1468,7 @@ const ItemList: React.FC<ItemListProps> = ({
                           <button
                             onClick={e => { e.stopPropagation(); setRowEditProduct(product); setRowEditForm({ name: product.name, category: product.category, stock: product.stock, minStock: product.minStock, unit: product.unit }); }}
                             className="text-[10px] font-black px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-500 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition-all border border-slate-200"
-                          >{isAdmin ? '수정' : '실사조정'}</button>
+                          >{productEditable ? '수정' : '실사조정'}</button>
                         </div>
                       </td>
                     </tr>
@@ -1632,7 +1625,7 @@ const ItemList: React.FC<ItemListProps> = ({
                               <button
                                 onClick={() => { setRowEditProduct(product); setRowEditForm({ name: product.name, category: product.category, stock: product.stock, minStock: product.minStock, unit: product.unit }); setExpandedRowId(null); }}
                                 className="flex-1 text-[11px] font-black py-2 rounded-xl bg-slate-100 text-slate-500 border border-slate-200"
-                              >{isAdmin ? '수정' : '실사조정'}</button>
+                              >{productEditable ? '수정' : '실사조정'}</button>
                             </div>
                           </div>
                         </td>
@@ -1722,12 +1715,12 @@ const ItemList: React.FC<ItemListProps> = ({
             <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setRowEditProduct(null)} />
             <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
               <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="text-base font-black text-slate-900">{isAdmin ? '품목 수정' : '재고 실사조정'}</h3>
+                <h3 className="text-base font-black text-slate-900">{productEditable ? '품목 수정' : '재고 실사조정'}</h3>
                 <button onClick={() => setRowEditProduct(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
               </div>
               <div className="p-5 space-y-4">
-                {/* 품목 정보 — 관리자만 수정 가능. 직원은 실사조정이므로 읽기 전용 */}
-                {isAdmin ? (
+                {/* 품목 정보 — 재고관리에선 읽기 전용(실사조정). 편집은 품목관리에서. */}
+                {productEditable ? (
                   <>
                     <div>
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">카테고리</label>
@@ -1772,7 +1765,7 @@ const ItemList: React.FC<ItemListProps> = ({
                       onChange={e => setRowEditForm(f => ({ ...f, stock: parseInt(e.target.value) || 0 }))}
                       className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                     />
-                    {!isAdmin && (rowEditForm.stock ?? 0) !== (rowEditProduct.stock ?? 0) && (
+                    {!productEditable && (rowEditForm.stock ?? 0) !== (rowEditProduct.stock ?? 0) && (
                       <p className="text-[10px] font-black text-amber-600 mt-1">
                         앱 재고 {rowEditProduct.stock ?? 0} → {rowEditForm.stock ?? 0}
                         {' '}({(rowEditForm.stock ?? 0) > (rowEditProduct.stock ?? 0) ? '+' : ''}{(rowEditForm.stock ?? 0) - (rowEditProduct.stock ?? 0)})
@@ -1789,8 +1782,8 @@ const ItemList: React.FC<ItemListProps> = ({
                     />
                   </div>
                 </div>
-                {/* 단위 — 관리자만 */}
-                {isAdmin && (
+                {/* 단위 — 품목관리에서만 */}
+                {productEditable && (
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">단위</label>
                     <input
@@ -1808,7 +1801,7 @@ const ItemList: React.FC<ItemListProps> = ({
                   onClick={async () => {
                     const p = rowEditProduct!;
                     // 직원은 실사조정만 — 카테고리·품목명·단위는 UI뿐 아니라 저장에서도 막는다
-                    const form = isAdmin ? rowEditForm : { stock: rowEditForm.stock, minStock: rowEditForm.minStock };
+                    const form = productEditable ? rowEditForm : { stock: rowEditForm.stock, minStock: rowEditForm.minStock };
                     const { stock: newStock, ...meta } = form;
                     if (isRawHolder(p) && newStock !== undefined && newStock !== p.stock) {
                       // 원료: 메타만 반영하고 재고 변경은 실사조정(lot·수불부)으로
@@ -1820,7 +1813,7 @@ const ItemList: React.FC<ItemListProps> = ({
                     setRowEditProduct(null);
                   }}
                   className="flex-1 py-2.5 bg-indigo-600 text-white font-bold rounded-xl text-sm hover:bg-indigo-700 transition-all"
-                >{isAdmin ? '저장' : '실사 반영'}</button>
+                >{productEditable ? '저장' : '실사 반영'}</button>
               </div>
             </div>
           </div>
@@ -2232,19 +2225,7 @@ const ItemList: React.FC<ItemListProps> = ({
         </>
       )}
 
-      {/* ── 분류 관리 — 분류 이름·하위 분류를 사용자가 정한다 ── */}
-      {categoryManagerOpen && (
-        <CategoryManager
-          usage={taxonomyUsage}
-          onSaved={setTaxonomyRows}
-          onClose={() => {
-            setCategoryManagerOpen(false);
-            // 이름이 바뀌면 탭도 바뀌니 골라둔 필터는 풀어둔다
-            setActiveCategory('전체');
-            fetchCollection<TaxonomyRow>('itemTaxonomy').then(setTaxonomyRows).catch(() => {});
-          }}
-        />
-      )}
+      {/* 분류 관리는 품목 관리(관리자 메뉴)로 이동됨 */}
 
       {/* ── 재고 만들기 — 품목 골라 만든 수량만큼 재고 +N ── */}
       {isAddModalOpen && (() => {

@@ -4,6 +4,7 @@ import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X, Copy, ChevronDown, Che
 import { Item, InventoryCategory, Partner, PartnerItem, ShippingRule, ItemBom } from '../types';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
+import CategoryManager from './CategoryManager';
 
 interface ItemManagerProps {
   items: Item[];
@@ -91,6 +92,19 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
   const [showLinkPanel, setShowLinkPanel] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
   const [linkCategory, setLinkCategory] = useState('product');
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false); // 분류 관리(품목관리로 이동)
+  // 분류를 쓰는 품목 수 — 삭제 경고용
+  const taxonomyUsage = useMemo(() => {
+    const u: Record<string, number> = {};
+    for (const p of items) {
+      if (p.archived) continue;
+      const t = p.category, sub = (p as any).subtype2, cat = p.subtype;
+      u[`type:${t}`] = (u[`type:${t}`] ?? 0) + 1;
+      if (sub) u[`sub:${t}:${sub}`] = (u[`sub:${t}:${sub}`] ?? 0) + 1;
+      if (cat) u[`cat:${t}:${cat}`] = (u[`cat:${t}:${cat}`] ?? 0) + 1;
+    }
+    return u;
+  }, [items]);
   const [partnerTypeFilter, setClientTypeFilter] = useState<string | null>(null);
   const [expandedClientRowId, setExpandedClientRowId] = useState<string | null>(null);
   const [showDuplicates, setShowDuplicates] = useState(false);
@@ -908,6 +922,15 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
         </button>
         {isAdmin && (
           <button
+            onClick={() => setCategoryManagerOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl font-black text-xs shadow-sm whitespace-nowrap bg-white text-slate-500 border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 transition-all"
+          >
+            <Settings size={13} />
+            분류 관리
+          </button>
+        )}
+        {isAdmin && (
+          <button
             onClick={onAddItem}
             className="lg:hidden flex items-center gap-1.5 bg-indigo-600 text-white px-3 py-2 rounded-xl font-black text-xs shadow-sm whitespace-nowrap"
           >
@@ -1282,6 +1305,11 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
           onConfirm={confirmModal.onConfirm}
           onCancel={() => setConfirmModal(null)}
         />
+      )}
+
+      {/* ── 분류 관리 (재고관리에서 이동) ── */}
+      {categoryManagerOpen && (
+        <CategoryManager usage={taxonomyUsage} onClose={() => setCategoryManagerOpen(false)} />
       )}
 
       {/* 포장설정 모달 */}
