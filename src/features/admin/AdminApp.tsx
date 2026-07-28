@@ -4025,6 +4025,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
             } else {
               await addItem(collectionName, productData);
             }
+            // BOM(구성품) → item_bom 동기화. item_bom이 단일원천이므로 편집을 여기에 반영한다.
+            try {
+              const bomBatch = writeBatch(db);
+              itemBoms.filter(b => b.parent_id === p.id).forEach(b => bomBatch.delete(doc(db, 'item_bom', b.id)));
+              (p.submaterials ?? []).forEach(s => {
+                const bid = `bom-${p.id}__${s.id}`.replace(/[/#$[\].]/g, '_');
+                bomBatch.set(doc(db, 'item_bom', bid), { parent_id: p.id, child_id: s.id, quantity: typeof s.stock === 'number' ? s.stock : 1 });
+              });
+              await bomBatch.commit();
+              refreshStaticData();
+            } catch (e) { console.error('[품목 저장] item_bom 동기화 실패:', e); }
             // partnerOut 컬렉션 거래처 매핑 — 실패해도 품목 저장은 유지(읽기 한도 등).
             try {
               await setProductClients(p.id, p.partnerIds ?? []);
