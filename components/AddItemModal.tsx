@@ -1,5 +1,5 @@
 ﻿import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { X, Package, Tag, Box, Layers, Plus, Building2, Check, Trash2 } from 'lucide-react';
+import { X, Package, Tag, Box, Layers, Plus, Building2, Check, Trash2, ChevronRight } from 'lucide-react';
 import { Item, InventoryCategory, ItemSubtype, Partner, ClientBoxConfig, PartnerItem, ShippingRule } from '../types';
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { buildTaxonomy, DEFAULT_CATEGORY_LABELS, TaxonomyRow } from '../src/shared/taxonomy';
@@ -120,6 +120,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const [bomSearch, setBomSearch] = useState('');
   const [bomPickerOpen, setBomPickerOpen] = useState(false);
   const [bomCatFilter, setBomCatFilter] = useState<string>('all');
+  const [expandedBom, setExpandedBom] = useState<Set<string>>(new Set()); // 구성품 완제품 BOM 드릴다운
   const [showBoxClientDrop, setShowBoxClientDrop] = useState(false);
 
   // 원료 배합·수율 (완제품·반제품·원료) — item_formula 편집.
@@ -514,28 +515,68 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
               {/* 추가된 구성품 + 수량 */}
               {formData.submaterials.length > 0 && (
                 <div className="space-y-2">
-                  {formData.submaterials.map((s, idx) => (
-                    <div key={`${s.id}-${idx}`} className="flex items-center gap-2 bg-slate-50 rounded-2xl border border-slate-100 px-4 py-2.5">
-                      <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md shrink-0">{catLabelOf(catKey(s))}</span>
-                      <span className="flex-1 text-sm font-bold text-slate-700 truncate">{s.name}{(s as any).spec && <span className="ml-1.5 text-[11px] font-black text-indigo-400">{(s as any).spec}</span>}</span>
-                      <input
-                        type="number"
-                        min={0}
-                        value={s.stock ?? 1}
-                        onChange={e => {
-                          const qty = e.target.value === '' ? 0 : Number(e.target.value);
-                          setFormData(fd => ({ ...fd, submaterials: fd.submaterials.map((x, i) => i === idx ? { ...x, stock: qty } : x) }));
-                        }}
-                        className="w-16 text-center text-sm font-black bg-white border border-slate-200 rounded-lg py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 shrink-0"
-                      />
-                      <span className="text-[10px] font-bold text-slate-400 w-6 shrink-0">{s.unit || '개'}</span>
-                      <button
-                        type="button"
-                        onClick={() => setFormData(fd => ({ ...fd, submaterials: fd.submaterials.filter((_, i) => i !== idx) }))}
-                        className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all shrink-0"
-                      ><X size={14} /></button>
+                  {formData.submaterials.map((s, idx) => {
+                    // 구성품이 완제품/반제품이면 그 BOM(원료+부자재)을 펼쳐 볼 수 있게
+                    const child = (items ?? []).find(p => p.id === s.id);
+                    const cCat = child ? normCat(child.category) : '';
+                    const isAssembly = !!child && (cCat === 'product' || cCat === 'wip' || child.category === '완제품');
+                    const open = expandedBom.has(s.id);
+                    const childSubs = (child?.submaterials ?? []) as any[];
+                    const childRaw = child ? (itemFormulas ?? []).filter(f => f.parent_key === ((child as any).품목 || child.name)) : [];
+                    return (
+                    <div key={`${s.id}-${idx}`} className="rounded-2xl border border-slate-100 overflow-hidden">
+                      <div className="flex items-center gap-2 bg-slate-50 px-4 py-2.5">
+                        {isAssembly ? (
+                          <button type="button" title="완제품 구성 보기"
+                            onClick={() => setExpandedBom(prev => { const n = new Set(prev); n.has(s.id) ? n.delete(s.id) : n.add(s.id); return n; })}
+                            className="shrink-0 text-slate-400 hover:text-indigo-600">
+                            <ChevronRight size={15} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
+                          </button>
+                        ) : <span className="w-[15px] shrink-0" />}
+                        <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md shrink-0">{catLabelOf(catKey(s))}</span>
+                        <span className="flex-1 text-sm font-bold text-slate-700 truncate">{s.name}{(s as any).spec && <span className="ml-1.5 text-[11px] font-black text-indigo-400">{(s as any).spec}</span>}</span>
+                        <input
+                          type="number"
+                          min={0}
+                          value={s.stock ?? 1}
+                          onChange={e => {
+                            const qty = e.target.value === '' ? 0 : Number(e.target.value);
+                            setFormData(fd => ({ ...fd, submaterials: fd.submaterials.map((x, i) => i === idx ? { ...x, stock: qty } : x) }));
+                          }}
+                          className="w-16 text-center text-sm font-black bg-white border border-slate-200 rounded-lg py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 shrink-0"
+                        />
+                        <span className="text-[10px] font-bold text-slate-400 w-6 shrink-0">{s.unit || '개'}</span>
+                        <button
+                          type="button"
+                          onClick={() => setFormData(fd => ({ ...fd, submaterials: fd.submaterials.filter((_, i) => i !== idx) }))}
+                          className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all shrink-0"
+                        ><X size={14} /></button>
+                      </div>
+                      {isAssembly && open && (
+                        <div className="bg-white px-4 py-2.5 pl-10 border-t border-slate-100 space-y-1">
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{child?.name} 의 BOM</p>
+                          {childRaw.length === 0 && childSubs.length === 0 && (
+                            <p className="text-[11px] text-slate-400">등록된 구성(원료·부자재)이 없습니다.</p>
+                          )}
+                          {childRaw.map((f, i) => (
+                            <div key={`r${i}`} className="flex items-center gap-2 text-[12px]">
+                              <span className="text-[8px] font-black text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded shrink-0">원료</span>
+                              <span className="flex-1 text-slate-600 truncate">{f.child_name}</span>
+                              <span className="text-slate-400 font-bold shrink-0">×{f.ratio ?? 1}</span>
+                            </div>
+                          ))}
+                          {childSubs.map((cs, i) => (
+                            <div key={`s${i}`} className="flex items-center gap-2 text-[12px]">
+                              <span className="text-[8px] font-black text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">{catLabelOf(catKey(cs))}</span>
+                              <span className="flex-1 text-slate-600 truncate">{cs.name}</span>
+                              <span className="text-slate-400 font-bold shrink-0">×{cs.stock ?? 1}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
