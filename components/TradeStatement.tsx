@@ -316,6 +316,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   const activeCashAccounts = useMemo(() => cashAccounts.filter(a => a.active), [cashAccounts]);
   const codeName = useMemo(() => new Map(accountCodes.map(c => [c.code, c.name])), [accountCodes]);
+  // 계좌별 현재 잔액 + 보유자금 총액 (장부 흡수 — 전표 화면에서 잔액 확인)
+  const cashBalances = useMemo(() => {
+    const active = cashAccounts.filter(a => a.active);
+    const perAccount = active.map(a => ({ acct: a, bal: totalCashOnHand([a], cashEntries, today()) }));
+    const total = totalCashOnHand(active.filter(a => a.type !== '카드'), cashEntries, today());
+    return { perAccount, total };
+  }, [cashAccounts, cashEntries]);
   const cashEntryById = useMemo(() => new Map(cashEntries.map(e => [e.id, e])), [cashEntries]);
 
   // 결제는 구 payments[]와 자금원장 매칭(settlements) 양쪽에서 온다. 둘 다 빼야 잔액이 맞는다.
@@ -2194,6 +2201,31 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       )}
 
       {mainTab === 'history' && <>
+
+      {/* ── 계좌 잔액 스트립 (보유자금 + 계좌별 현재잔액) ── */}
+      {cashAccounts.length > 0 && (
+        <div className="flex items-stretch gap-2 overflow-x-auto pb-1 mb-3">
+          <div className="shrink-0 bg-slate-800 text-white rounded-2xl px-4 py-2.5">
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-wide">보유자금 (통장+현금)</p>
+            <p className="text-lg font-black tabular-nums leading-tight mt-0.5">{fmt(cashBalances.total)}<span className="text-[10px] ml-0.5 text-slate-400">원</span></p>
+          </div>
+          {cashBalances.perAccount.map(({ acct, bal }) => (
+            <div key={acct.id} className="shrink-0 bg-white border border-slate-100 rounded-2xl px-4 py-2.5 min-w-[120px]">
+              <p className="text-[9px] font-black text-slate-400 truncate flex items-center gap-1">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300"/>{acct.name}<span className="text-slate-300">· {acct.type}</span>
+              </p>
+              <p className={`text-sm font-black tabular-nums leading-tight mt-0.5 ${bal < 0 ? 'text-rose-600' : 'text-slate-800'}`}>{fmt(bal)}</p>
+            </div>
+          ))}
+          {onAddCashAccount && (
+            <button onClick={() => setShowAccounts(true)}
+              className="shrink-0 rounded-2xl px-3 border border-dashed border-slate-200 text-slate-300 hover:text-slate-500 hover:border-slate-400 transition-all"
+              title="계좌 관리">
+              <Landmark size={15}/>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── 필터 바 + 액션 버튼 (같은 행: 필터 좌측 · 버튼 우측) ── */}
       <div className="flex flex-col md:flex-row md:items-start gap-3">
