@@ -80,6 +80,7 @@ import ProductModal from '../../../components/AddItemModal';
 import { createOrderStockEngine } from './orderStockEngine';
 import { createOemEngine, OEM_DEFAULT_FEE_PER_KG } from './oemEngine';
 import { buildFormula as buildFormulaBom } from './bom';
+import { buildCostFn } from '../../shared/bomCost';
 import NoticeBoard from '../../../components/NoticeBoard';
 import ItemManager from '../../../components/ItemManager';
 import ItemPriceManager from '../../../components/ItemPriceManager';
@@ -367,6 +368,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // 배합식 전개(재귀)는 순수 도메인 모듈(bom.ts)로 분리. 여기선 현재 데이터로 얇게 감싸 호출.
   const buildFormula = (prodKey: string) => buildFormulaBom(prodKey, itemFormulas, allItems);
+
+  // 재고평가·마진용 BOM 롤업 원가 (완제품 제조원가 자동). effectiveCost = 저장 cost 우선, 없으면 롤업.
+  const inventoryCostOf = useMemo(
+    () => buildCostFn({ allItems, formulaOf: (k) => buildFormulaBom(k, itemFormulas, allItems) }).effective,
+    [allItems, itemFormulas],
+  );
 
   const pendingPurchaseOrders = useMemo(() => purchaseOrders.filter(po => po.status === 'pending'), [purchaseOrders]);
   const invoicedPurchaseOrders = useMemo(() => purchaseOrders.filter(po => po.status === 'invoiced'), [purchaseOrders]);
@@ -3492,6 +3499,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 onDeleteTemplate={async (id) => { await deleteItem('fixedCostTemplates', id); refreshStaticData(); }}
                 partners={partners}
                 items={allItems}
+                costOf={inventoryCostOf}
                 onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
                 accountGroups={appData.accountGroups}
                 accountCodes={appData.accountCodes}
@@ -3522,6 +3530,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   onDeleteCost={(id) => deleteItem('fixedCosts', id)}
                   partners={partners}
                   items={allItems}
+                  costOf={inventoryCostOf}
                   onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
                   accountGroups={appData.accountGroups}
                   accountCodes={appData.accountCodes}
@@ -3594,6 +3603,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   onDeleteCost={(id) => deleteItem('fixedCosts', id)}
                   partners={partners}
                   items={allItems}
+                  costOf={inventoryCostOf}
                   onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
                   accountGroups={appData.accountGroups}
                   accountCodes={appData.accountCodes}

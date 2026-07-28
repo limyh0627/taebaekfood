@@ -23,6 +23,8 @@ interface ProfitAnalysisProps {
   onDeleteTemplate?: (id: string) => Promise<void>;
   partners?: Partner[];
   items?: Item[];
+  /** 재고평가 단가 — BOM 롤업 제조원가(effectiveCost). 없으면 item.cost 폴백. */
+  costOf?: (item: Item) => number;
   onUpdateIssuedStatement?: (id: string, data: Partial<IssuedStatement>) => void;
   accountGroups?: AccountGroup[];
   accountCodes?: AccountCode[];
@@ -51,7 +53,7 @@ const fmtM = (n: number) => {
 
 const MONTHS = 12;
 
-const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, fixedCostTemplates = [], onAddCost, onDeleteCost, onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = [], onSaveCashFlowManual, cashEntries = [], settlements = [], initialTab }) => {
+const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, fixedCostTemplates = [], onAddCost, onDeleteCost, onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], costOf, onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = [], onSaveCashFlowManual, cashEntries = [], settlements = [], initialTab }) => {
   // 계산결과 그룹 숨김 + 구 판매비/관리비 → 판관비로 통합 표시
   const accountGroups = rawAccountGroups
     .filter(g => !COMPUTED_GROUP_IDS.has(g.id))
@@ -1337,10 +1339,11 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
       {/* ── 재고액 탭 ── */}
       {mainTab === 'inventory-value' && (() => {
         const getStock = (p: Item) => p.stock ?? 0;
+        const unitCost = (p: Item) => (costOf ? costOf(p) : (p.cost ?? 0));  // BOM 롤업 원가(완제품 자동)
 
         const rows = products
-          .map(p => ({ ...p, stock: getStock(p), value: Math.round(getStock(p) * (p.cost ?? 0)) }))
-          .filter(p => p.stock > 0 || (p.cost ?? 0) > 0)
+          .map(p => { const c = unitCost(p); return { ...p, stock: getStock(p), unitCost: c, value: Math.round(getStock(p) * c) }; })
+          .filter(p => p.stock > 0 || p.unitCost > 0)
           .sort((a, b) => b.value - a.value);
 
         const totalValue = rows.reduce((acc, p) => acc + p.value, 0);
@@ -1492,7 +1495,9 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                             <td className="px-4 py-3 text-xs font-bold text-slate-700">{p.name}</td>
                             <td className="px-4 py-3 text-xs text-right text-slate-600">{p.stock.toLocaleString()} {p.unit}</td>
                             <td className="px-4 py-3 text-xs text-right text-slate-500">
-                              {p.cost ? `${fmt(p.cost)}원` : <span className="text-slate-300">-</span>}
+                              {p.unitCost > 0
+                                ? <>{fmt(Math.round(p.unitCost))}원{(p.cost == null || p.cost === 0) && <span className="ml-1 text-[9px] font-black text-teal-500" title="BOM 롤업 원가">롤업</span>}</>
+                                : <span className="text-slate-300">-</span>}
                             </td>
                             <td className={`px-4 py-3 text-xs text-right font-black ${p.value > 0 ? 'text-teal-700' : 'text-slate-300'}`}>
                               {p.value > 0 ? `${fmt(p.value)}원` : '-'}
