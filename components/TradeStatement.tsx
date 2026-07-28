@@ -2248,13 +2248,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         </div>
       </div>
       <div className="flex items-center gap-2 flex-wrap shrink-0">
+        {/* ── 전표 발행 (solid) ── */}
         {/* 거래명세서 — 매출/매입을 한 버튼에서 고른다 */}
         <div className="relative" ref={createMenuRef}>
           <button
             onClick={() => setCreateMenuOpen(v => !v)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-all"
           >
-            <Plus size={13} strokeWidth={3}/>거래명세서
+            <Plus size={13} strokeWidth={3}/>거래명세서<ChevronDown size={12} strokeWidth={3} className="-ml-0.5 opacity-80"/>
           </button>
           {createMenuOpen && (
             <div className="absolute left-0 top-full mt-1 z-20 bg-white rounded-xl shadow-xl border border-slate-100 p-1 w-28">
@@ -2264,39 +2265,37 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           )}
         </div>
         <button
+          onClick={() => openCashModal('출금')}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition-all"
+          title="입출금 — 수금·지불(미수/미지급 상계), 비용·대출상환·급여"
+        >
+          <Wallet size={13}/>입출금
+        </button>
+        <button
           onClick={() => { setShowExpense(true); setExpDate(today()); setExpRows([{ name: '', spec: '', qty: '1', price: '', isTaxExempt: true }]); }}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-slate-600 text-white hover:bg-slate-700 shadow-sm transition-all"
           title="현금도 거래처도 없는 손익 계상 — 감가상각비·퇴직급여충당금"
         >
           <Plus size={13} strokeWidth={3}/>대체전표
         </button>
+
+        {/* 구분선 */}
+        <div className="w-px h-6 bg-slate-200 mx-1 self-center"/>
+
+        {/* ── 도구 (soft) ── */}
         {onGenerateRecurringCosts && (
           <button
             onClick={() => { setShowRecurring(true); setRecurringYm(today().slice(0, 7)); setRecurringMsg(''); }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-violet-600 text-white hover:bg-violet-700 shadow-sm transition-all"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-violet-50 text-violet-700 hover:bg-violet-100 transition-all"
             title="정기 고정비 템플릿으로 해당 월 전표를 한 번에 생성"
           >
-            <RotateCw size={13} strokeWidth={3}/>정기비용
+            <RotateCw size={13} strokeWidth={2.5}/>정기비용
           </button>
         )}
-        <button
-          onClick={() => openCashModal('입금')}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition-all"
-          title="입금 — 수금(매출 미수 상계)·대출 수령·기타 입금"
-        >
-          <Wallet size={13}/>입금
-        </button>
-        <button
-          onClick={() => openCashModal('출금')}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-teal-700 text-white hover:bg-teal-800 shadow-sm transition-all"
-          title="출금 — 지불(매입 미지급 상계)·비용·대출상환·급여"
-        >
-          <Wallet size={13}/>출금
-        </button>
         {onAddCashAccount && (
           <button
             onClick={() => setShowAccounts(true)}
-            className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-black bg-white text-slate-500 border border-slate-200 hover:border-slate-400 hover:text-slate-700 transition-all"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-all"
             title="자금 계좌 관리 (통장·카드·현금)"
           >
             <Landmark size={13}/>계좌
@@ -2304,7 +2303,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         )}
         <button
           onClick={() => { setShowCompanyModal(true); setCompanyForm(companyInfo ?? { name:'',ceoName:'',bizNo:'',bizType:'',bizItem:'',address:'',phone:'',fax:'',email:'' }); }}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-all"
           title="회사 정보 설정"
         >
           <Save size={13}/>회사정보
