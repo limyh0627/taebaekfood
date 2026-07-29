@@ -216,6 +216,8 @@ const ItemList: React.FC<ItemListProps> = ({
   // ── 재고 마감(완제품 실물 카운트) ──
   const [closingCounts, setClosingCounts] = useState<Record<string, { boxes: string; loose: string }>>({});
   const [showAllClosing, setShowAllClosing] = useState(false); // 재고 0 완제품도 보기(만들기용)
+  const [editClosingId, setEditClosingId] = useState<string | null>(null); // 실사 수정 중인 품목
+  const [editClosingQty, setEditClosingQty] = useState('');
   const [closingDate, setClosingDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [closingSaving, setClosingSaving] = useState(false);
   const [closingSavedAt, setClosingSavedAt] = useState('');
@@ -248,7 +250,8 @@ const ItemList: React.FC<ItemListProps> = ({
     setClosingSearch('');
     setClosingPage(0);
     setShowAllClosing(false);
-    // 프리필 안 함 — 현재고는 참고로 표시하고, 입력한 품목만 실사(SET)/만들기(ADD) 반영
+    setEditClosingId(null);
+    setEditClosingQty('');
     setClosingCounts({});
   }, [showClosingModal]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -319,6 +322,23 @@ const ItemList: React.FC<ItemListProps> = ({
       setClosingSaving(false);
     }
   };
+  // 실사 수정 — 선택 품목의 재고를 입력값으로 SET(맞춤)
+  const applyEditClosing = async () => {
+    if (!editClosingId) return;
+    const p = items.find(x => x.id === editClosingId);
+    if (!p) return;
+    const q = parseInt(editClosingQty || '', 10);
+    if (isNaN(q) || q < 0) { alert('수량을 입력하세요.'); return; }
+    setClosingSaving(true);
+    try {
+      await onUpdateItem({ ...p, stock: q });
+      setEditClosingId(null); setEditClosingQty('');
+    } catch (e) {
+      alert('반영 실패: ' + ((e as any)?.message ?? ''));
+    } finally { setClosingSaving(false); }
+  };
+  // 품목 추가하기 — 만들기 모달(검색·수량·확정으로 재고 ADD) 열기
+  const openMakeModal = () => { setMakeQty({}); setMakeSearch(''); setMakeCat('참기름'); setIsAddModalOpen(true); };
 
   const shareClosingImage = async () => {
     try {
@@ -2302,8 +2322,8 @@ const ItemList: React.FC<ItemListProps> = ({
             <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-xl h-[85vh] flex flex-col animate-in zoom-in-95 duration-200">
               <div className="p-5 border-b border-slate-100 flex items-center justify-between shrink-0">
                 <div>
-                  <h3 className="text-base font-black text-slate-900">재고 만들기</h3>
-                  <p className="text-[11px] text-slate-400 font-bold mt-0.5">만든 수량만큼 재고를 더합니다 · 원료는 입고/실사조정에서</p>
+                  <h3 className="text-base font-black text-slate-900">품목 추가하기</h3>
+                  <p className="text-[11px] text-slate-400 font-bold mt-0.5">전체 품목에서 검색 → 수량 입력 → 확정하면 그만큼 재고가 생깁니다</p>
                 </div>
                 <button onClick={() => setIsAddModalOpen(false)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
               </div>
@@ -2829,23 +2849,28 @@ const ItemList: React.FC<ItemListProps> = ({
                 </button>
               </div>
 
+              {/* 품목 추가하기 — 전체 품목 검색·수량입력·확정으로 재고 생성(ADD) */}
+              <button onClick={openMakeModal}
+                className="w-full mb-2.5 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-black text-indigo-600 border border-dashed border-indigo-300 hover:bg-indigo-50 transition-all">
+                <Plus size={16} strokeWidth={3} />품목 추가하기
+              </button>
+
               <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
                 {pageRows.length === 0 && (
                   <div className="px-3 py-8 text-center text-xs text-slate-400">{term ? '검색 결과가 없습니다.' : '완제품이 없습니다. 검색하거나 "전체"를 켜세요.'}</div>
                 )}
-                {pageRows.map(r => (
-                  <div key={r.itemId} className="flex items-center gap-2 px-3 py-2.5">
-                    <span className="flex-1 min-w-0 text-[13px] font-bold text-slate-800 break-keep">{r.label}
-                      <span className="ml-1.5 text-[10px] font-black text-slate-400 whitespace-nowrap">현재 {productMap.get(r.itemId)?.stock ?? 0}</span>
-                    </span>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <input value={r.boxes} onChange={e => setCount(r.itemId, 'boxes', e.target.value)} inputMode="numeric" placeholder="0" className="w-12 text-center text-base font-bold border border-slate-200 rounded-lg py-1.5 outline-none focus:ring-2 focus:ring-indigo-300" />
-                      <span className="text-[10px] font-bold text-slate-400">Box</span>
-                      <input value={r.loose} onChange={e => setCount(r.itemId, 'loose', e.target.value)} inputMode="numeric" placeholder="0" className="w-12 text-center text-base font-bold border border-slate-200 rounded-lg py-1.5 outline-none focus:ring-2 focus:ring-indigo-300" />
-                      <span className="text-[10px] font-bold text-slate-400">개</span>
-                    </div>
-                  </div>
-                ))}
+                {pageRows.map(r => {
+                  const cur = productMap.get(r.itemId)?.stock ?? 0;
+                  const sel = editClosingId === r.itemId;
+                  return (
+                    <button key={r.itemId} type="button"
+                      onClick={() => { const now = sel; setEditClosingId(now ? null : r.itemId); setEditClosingQty(now ? '' : String(cur)); }}
+                      className={`w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors ${sel ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}>
+                      <span className="flex-1 min-w-0 text-[13px] font-bold text-slate-800 break-keep">{r.label}</span>
+                      <span className={`shrink-0 text-sm font-black ${cur > 0 ? 'text-slate-700' : 'text-slate-300'}`}>{cur}<span className="text-[10px] font-bold text-slate-400 ml-0.5">개</span></span>
+                    </button>
+                  );
+                })}
               </div>
 
               {/* 페이지 이동 */}
@@ -2860,27 +2885,26 @@ const ItemList: React.FC<ItemListProps> = ({
               )}
             </div>
 
-            {/* ── 하단 고정: 입력 합계 + 실사반영(SET) / 만들기(ADD) ── */}
+            {/* ── 하단 고정: 선택 품목 실사 수정(SET) ── */}
             <div className="shrink-0 border-t border-slate-100 px-4 py-3" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
-              <div className="flex items-center gap-2">
-                <div className="flex-1 min-w-0">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wide">입력 합계</span>
-                  <p className="text-lg font-black text-slate-800 leading-none mt-0.5">{totalStock.toLocaleString()}<span className="text-xs text-slate-400 ml-0.5">개</span></p>
+              {editClosingId ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-black text-indigo-400 uppercase tracking-wide">실사 수정</p>
+                    <p className="text-sm font-black text-slate-800 truncate">{(() => { const p = items.find(x => x.id === editClosingId); return p ? withSpec(p) : ''; })()}</p>
+                  </div>
+                  <input value={editClosingQty} onChange={e => setEditClosingQty(e.target.value.replace(/[^\d]/g, ''))}
+                    inputMode="numeric" autoFocus placeholder="0"
+                    className="w-20 text-center text-lg font-black border border-slate-200 rounded-xl py-2 outline-none focus:ring-2 focus:ring-indigo-300 shrink-0" />
+                  <span className="text-xs font-bold text-slate-400 shrink-0">개</span>
+                  <button onClick={applyEditClosing} disabled={closingSaving}
+                    className="px-5 py-3 rounded-xl bg-indigo-600 text-white text-sm font-black hover:bg-indigo-700 disabled:opacity-50 shadow-sm shadow-indigo-200 shrink-0">
+                    {closingSaving ? '…' : '적용'}
+                  </button>
                 </div>
-                <button onClick={saveClosing} disabled={closingSaving}
-                  className="px-4 py-3 rounded-xl bg-slate-700 text-white text-sm font-black hover:bg-slate-600 disabled:opacity-50 shrink-0"
-                  title="입력한 수량으로 재고를 맞춤(실사)">
-                  {closingSaving ? '…' : '실사 반영'}
-                </button>
-                <button onClick={makeStock} disabled={closingSaving}
-                  className="px-4 py-3 rounded-xl bg-indigo-600 text-white text-sm font-black hover:bg-indigo-700 disabled:opacity-50 shadow-sm shadow-indigo-200 shrink-0"
-                  title="입력한 수량만큼 재고에 추가(생산분)">
-                  {closingSaving ? '…' : '+ 만들기'}
-                </button>
-              </div>
-              <p className="text-[10px] text-slate-400 mt-2 leading-snug">
-                <b className="text-slate-500">실사 반영</b> = 재고를 입력값으로 <b>맞춤</b> · <b className="text-indigo-500">+ 만들기</b> = 입력값만큼 <b>추가</b>. 입력한 품목만 반영됩니다.
-              </p>
+              ) : (
+                <p className="text-[11px] text-slate-400 text-center py-1.5">품목을 눌러 재고를 수정하거나, 위 <b className="text-indigo-500">품목 추가하기</b>로 새로 만드세요.</p>
+              )}
             </div>
           </div>
         </div>
