@@ -2861,14 +2861,11 @@ const ItemList: React.FC<ItemListProps> = ({
                 )}
                 {pageRows.map(r => {
                   const cur = productMap.get(r.itemId)?.stock ?? 0;
-                  const sel = editClosingId === r.itemId;
                   return (
-                    <button key={r.itemId} type="button"
-                      onClick={() => { const now = sel; setEditClosingId(now ? null : r.itemId); setEditClosingQty(now ? '' : String(cur)); }}
-                      className={`w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors ${sel ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}>
+                    <div key={r.itemId} className="w-full flex items-center gap-2 px-3 py-2.5">
                       <span className="flex-1 min-w-0 text-[13px] font-bold text-slate-800 break-keep">{r.label}</span>
                       <span className={`shrink-0 text-sm font-black ${cur > 0 ? 'text-slate-700' : 'text-slate-300'}`}>{cur}<span className="text-[10px] font-bold text-slate-400 ml-0.5">개</span></span>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -2885,27 +2882,6 @@ const ItemList: React.FC<ItemListProps> = ({
               )}
             </div>
 
-            {/* ── 하단 고정: 선택 품목 실사 수정(SET) ── */}
-            <div className="shrink-0 border-t border-slate-100 px-4 py-3" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
-              {editClosingId ? (
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] font-black text-indigo-400 uppercase tracking-wide">실사 수정</p>
-                    <p className="text-sm font-black text-slate-800 truncate">{(() => { const p = items.find(x => x.id === editClosingId); return p ? withSpec(p) : ''; })()}</p>
-                  </div>
-                  <input value={editClosingQty} onChange={e => setEditClosingQty(e.target.value.replace(/[^\d]/g, ''))}
-                    inputMode="numeric" autoFocus placeholder="0"
-                    className="w-20 text-center text-lg font-black border border-slate-200 rounded-xl py-2 outline-none focus:ring-2 focus:ring-indigo-300 shrink-0" />
-                  <span className="text-xs font-bold text-slate-400 shrink-0">개</span>
-                  <button onClick={applyEditClosing} disabled={closingSaving}
-                    className="px-5 py-3 rounded-xl bg-indigo-600 text-white text-sm font-black hover:bg-indigo-700 disabled:opacity-50 shadow-sm shadow-indigo-200 shrink-0">
-                    {closingSaving ? '…' : '적용'}
-                  </button>
-                </div>
-              ) : (
-                <p className="text-[11px] text-slate-400 text-center py-1.5">품목을 눌러 재고를 수정하거나, 위 <b className="text-indigo-500">품목 추가하기</b>로 새로 만드세요.</p>
-              )}
-            </div>
           </div>
         </div>
       );
