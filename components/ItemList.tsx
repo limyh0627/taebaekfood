@@ -215,6 +215,7 @@ const ItemList: React.FC<ItemListProps> = ({
 
   // ── 재고 마감(완제품 실물 카운트) ──
   const [closingCounts, setClosingCounts] = useState<Record<string, { boxes: string; loose: string }>>({});
+  const [showAllClosing, setShowAllClosing] = useState(false); // 재고 0 완제품도 보기(만들기용)
   const [closingDate, setClosingDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [closingSaving, setClosingSaving] = useState(false);
   const [closingSavedAt, setClosingSavedAt] = useState('');
@@ -246,6 +247,7 @@ const ItemList: React.FC<ItemListProps> = ({
     setClosingSavedAt('');
     setClosingSearch('');
     setClosingPage(0);
+    setShowAllClosing(false);
     // 프리필 안 함 — 현재고는 참고로 표시하고, 입력한 품목만 실사(SET)/만들기(ADD) 반영
     setClosingCounts({});
   }, [showClosingModal]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2779,7 +2781,7 @@ const ItemList: React.FC<ItemListProps> = ({
       // 저장·보드·합계 대상 = 재고있는+입력한 완제품 (조회모드면 저장된 항목)
       const rowsForGrid: GridRow[] = src
         ? src.items.map(r => ({ itemId: r.itemId, label: (r.spec && !hasVolumeInName(r.name)) ? `${r.name}${r.spec}` : r.name, boxes: r.boxes ? String(r.boxes) : '', loose: r.loose ? String(r.loose) : '', editable: false }))
-        : toRows(closingItems);
+        : toRows(showAllClosing ? allClosingItems : closingItems);
       const totalStock = src ? src.totalStock : closingItems.reduce((s, p) => s + closingTotalOf(p.id), 0);
       // 3열 그리드
       const cols: GridRow[][] = [[], [], []];
@@ -2810,19 +2812,26 @@ const ItemList: React.FC<ItemListProps> = ({
 
             {/* ── 본문(스크롤) ── */}
             <div className="flex-1 overflow-y-auto px-4 pt-3 pb-4">
-              {/* 검색 — 재고 0인 품목도 검색해서 입력 */}
-              <div className="relative mb-2.5">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
-                <input value={closingSearch} onChange={e => { setClosingSearch(e.target.value); setClosingPage(0); }} placeholder="품목 검색 (예: 분, 1800, 들기름)"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-9 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-300" />
-                {closingSearch && (
-                  <button onClick={() => { setClosingSearch(''); setClosingPage(0); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"><X size={15} /></button>
-                )}
+              {/* 검색 + 전체 완제품 토글 (재고 0짜리도 만들기 하려면 켠다) */}
+              <div className="flex items-center gap-2 mb-2.5">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+                  <input value={closingSearch} onChange={e => { setClosingSearch(e.target.value); setClosingPage(0); }} placeholder="품목 검색 (예: 분, 1800, 들기름)"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-9 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-300" />
+                  {closingSearch && (
+                    <button onClick={() => { setClosingSearch(''); setClosingPage(0); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"><X size={15} /></button>
+                  )}
+                </div>
+                <button onClick={() => { setShowAllClosing(v => !v); setClosingPage(0); }}
+                  className={`shrink-0 px-3 py-2.5 rounded-xl text-xs font-black border transition-all ${showAllClosing ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'}`}
+                  title="재고 0인 완제품까지 다 보기 (만들기용)">
+                  전체
+                </button>
               </div>
 
               <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
                 {pageRows.length === 0 && (
-                  <div className="px-3 py-8 text-center text-xs text-slate-400">{term ? '검색 결과가 없습니다.' : '재고 있는 완제품이 없습니다. 검색해서 입력하세요.'}</div>
+                  <div className="px-3 py-8 text-center text-xs text-slate-400">{term ? '검색 결과가 없습니다.' : '완제품이 없습니다. 검색하거나 "전체"를 켜세요.'}</div>
                 )}
                 {pageRows.map(r => (
                   <div key={r.itemId} className="flex items-center gap-2 px-3 py-2.5">
