@@ -1,6 +1,6 @@
 import { doc, setDoc, deleteDoc, Firestore } from 'firebase/firestore';
 import { Order, OrderItem, Item, OrderStatus, AppNotification, ShippingRule, Partner, RawMaterialLot } from '../../shared/types';
-import { toKg, baseRawName, lotStockInUnit } from '../../constants/formula';
+import { toKg, baseRawName, lotStockInUnit, unitToKg } from '../../constants/formula';
 import { deductFromLots, withCarryOverLot, buildReceiveLot } from '../../shared/lotUtils';
 import { bomQty } from '../../shared/bom';
 import { stockUnits, isBoxStockItem } from '../../shared/orderUnits';
@@ -83,8 +83,40 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   const isShippingBox = (i: Item) =>
     i.category === 'box' || (i.category === 'submaterial' && i.subtype === '박스');
 
-  // 원료식(BOM) → 원료 kg 적재. 품목키에 원료식이 없으면 아무것도 안 탄다.
+  // 원료 kg 적재 = **item_bom(BOM) 반제품** 기준(등급). 로트·원장 둘 다 이걸로.
+  //  · phantom 반제품(참기름특A 등) → buildFormula로 통깨/깨분 leaf 전개
+  //  · 홀더(통깨참기름·깨분참기름)   → 직접 차감(비율=BOM 개입수)
+  //  · BOM에 반제품이 없으면 품목 원료식으로 폴백(미이관 품목).
+  //  (원료수불부 '서류'는 docTab에서 품목으로 월별 재계산 → 이 경로와 별개)
   const accrueRaw = (product: Item, units: number, rawUsage: Record<string, number>) => {
+    // 조립 반제품(개 단위 wip = 무라벨 병 등): 오일 구성품 수량은 그 오일의 단위(L)로 직접 입력한 값.
+    // → L×밀도(unitToKg)로 환산. 일반 완제품은 기존대로 용량(spec)이 오일량을 준다.
+    const isAssembly = product.category === 'wip' && product.unit === '개';
+    const oilSubs = (product.submaterials ?? [])
+      .map(s => ({ s, comp: allItems.find(p => p.id === s.id) }))
+      // 개수(개) 단위 반제품은 오일이 아니라 '조립 반제품'(무라벨 병 등) → accrueBom이 생산·차감. 벌크 반제품(L/kg)만 오일.
+      .filter(({ comp }) => comp && (comp.category === 'raw' || (comp.category === 'wip' && comp.unit !== '개')));
+    if (oilSubs.length > 0) {
+      for (const { s, comp } of oilSubs) {
+        const qty = bomQty(s);
+        if (!comp || qty <= 0) continue;
+        if (comp.phantom) {
+          for (const f of buildFormula(comp.name)) {
+            const kg = isAssembly
+              ? unitToKg(qty * units * f.ratio, f.raw)               // qty = L 직접 입력
+              : toKg(product.spec || '', f.raw, units) * f.ratio * qty;
+            if (kg > 0) rawUsage[f.raw] = (rawUsage[f.raw] ?? 0) + kg;
+          }
+        } else {
+          const raw = baseRawName(comp.name);
+          const kg = isAssembly
+            ? unitToKg(qty * units, raw)
+            : toKg(product.spec || '', raw, units) * qty;
+          if (kg > 0) rawUsage[raw] = (rawUsage[raw] ?? 0) + kg;
+        }
+      }
+      return;
+    }
     for (const f of buildFormula(product.품목 || product.name)) {
       const kg = toKg(product.spec || '', f.raw, units) * f.ratio;
       if (kg > 0) rawUsage[f.raw] = (rawUsage[f.raw] ?? 0) + kg;
@@ -111,12 +143,13 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       const comp = allItems.find(p => p.id === s.id);
       if (!comp) continue;
       if (isShippingBox(comp) && !isBox) continue;   // 낱개 품목의 겉박스는 shipping_rule 경로 → 건너뜀
-      if (comp.category === 'raw' || comp.category === 'wip') continue;  // 원료는 kg — 원료식 경로에서
+      // 원료·벌크 반제품(L/kg)은 kg로 원료식 경로에서 처리. 개수(개) 단위 반제품(조립)은 완제품처럼 여기서 생산·차감.
+      if (comp.category === 'raw' || (comp.category === 'wip' && comp.unit !== '개')) continue;
       const need = Math.round(units * bomQty(s) * 1000) / 1000;
       if (need <= 0) continue;
 
-      // 완제품 구성품이 모자라면 먼저 만든다. fresh면 기존 재고 무시하고 전부 생산.
-      if (sign < 0 && comp.category === 'product' && !isGoodsItem(comp)) {
+      // 완제품·개수단위 반제품(조립)이 모자라면 먼저 만든다(그 BOM·오일까지 재귀). fresh면 기존 재고 무시하고 전부 생산.
+      if (sign < 0 && (comp.category === 'product' || (comp.category === 'wip' && comp.unit === '개')) && !isGoodsItem(comp)) {
         const have = fresh ? 0 : (comp.stock ?? 0) + (deltas.get(comp.id) ?? 0);
         const short = Math.round((need - have) * 1000) / 1000;
         if (short > 0) {
@@ -247,7 +280,9 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       if (isGoodsItem(product)) continue;
       accrueShippingBox(order, product, item, deltas, -1);
       accrueBom(order, product, units, deltas, rawUsage, -1, autoBuilt, 0, freshItemIds?.has(product.id) ?? false);
-      accrueRaw(product, units, rawUsage);
+      // 박스 품목(낱개로 풀림)은 accrueBom이 낱개→원료로 이미 깐다 → accrueRaw는 낱개 아닌 완제품만.
+      //   (박스에 품목/원료식이 잘못 달려 있어도 여기서 원료 이중차감을 막는다)
+      if (!isBoxStockItem(product)) accrueRaw(product, units, rawUsage);
       addDelta(deltas, product.id, units); // 완제품 재고 +N (생산됨·미출고)
     }
     const consumedLots = await deductRawLotsForOrder(order, rawUsage, rawUsageLedgerOnly);

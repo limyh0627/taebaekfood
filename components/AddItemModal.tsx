@@ -75,6 +75,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     name: initialData?.name || '',
     category: (initialData?.category as InventoryCategory) || 'product',
     subtype: (initialData?.subtype as ItemSubtype | '') || '',
+    subtype2: initialData?.subtype2 || '',
     price: initialData?.price || 0,
     cost: initialData?.cost || 0,
     stock: initialData?.stock || 0,
@@ -227,7 +228,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const handleSubmit = async (e?: React.SyntheticEvent) => {
     e?.preventDefault();
     if (!formData.name) return;
-    if (formData.category === 'product' && !formData.품목) { setPumokWarn(true); return; }
+    // 배송(박스) 서브타입은 서류용 품목이 없어도 저장 가능 — 낱개로 풀려 서류는 낱개 기준
+    if (formData.category === 'product' && (formData as any).subtype2 !== '배송' && !formData.품목) { setPumokWarn(true); return; }
 
     const isProductCategory = ['product', 'goods', 'wip', 'raw', 'giftset'].includes(formData.category);
     const hasBoxConfig = formData.defaultBoxConfig.unitsPerBox > 0;
@@ -242,13 +244,14 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       name: formData.name,
       category: formData.category,
       ...(formData.subtype && { subtype: formData.subtype }),
+      ...((formData as any).subtype2 && { subtype2: (formData as any).subtype2 }),
       price: formData.price,
       ...(formData.cost > 0 ? { cost: formData.cost } : {}),
       stock: initialData?.stock ?? 0,
       minStock: formData.category === 'product' ? 0 : formData.minStock,
       unit: formData.unit,
       image: initialData?.image || '',
-      submaterials: ['product', 'giftset', 'shipping'].includes(formData.category)
+      submaterials: ['product', 'giftset', 'shipping', 'wip'].includes(formData.category)
         ? formData.submaterials
         : (formData.submaterials.length > 0 ? formData.submaterials : (initialData?.submaterials || [])),
       ...(formData.category === 'box' && { freightType: formData.freightType, boxSize: formData.boxSize }),
@@ -472,8 +475,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
           </div>
 
 
-          {/* 구성품 (BOM) — 완제품/선물세트/배송: 전체 품목 검색·추가 */}
-          {['product', 'giftset', 'shipping'].includes(formData.category) && (() => {
+          {/* 구성품 (BOM) — 완제품/선물세트/배송/반제품: 전체 품목 검색·추가 (반제품=용기·마개·반제품 조립, 무라벨 등) */}
+          {['product', 'giftset', 'shipping', 'wip'].includes(formData.category) && (() => {
             const pool = [...(items ?? []), ...allSubmaterials];
             const addedIds = new Set(formData.submaterials.map(s => s.id));
             const q = bomSearch.trim().toLowerCase();
@@ -681,8 +684,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             </div>
           )}
 
-          {/* 서류용 품목명 (완제품) */}
-          {formData.category === 'product' && (
+          {/* 서류용 품목명 (완제품) — 배송(박스)은 낱개로 풀리므로 숨김 */}
+          {formData.category === 'product' && (formData as any).subtype2 !== '배송' && (
             <div className="space-y-2" ref={pumokRef}>
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Tag size={14} className="mr-2" /> 품목 (서류용)
@@ -715,8 +718,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             </div>
           )}
 
-          {/* 용량 (완제품/반제품) */}
-          {(formData.category === 'product' || formData.category === 'wip') && (() => {
+          {/* 용량 (완제품/반제품) — 배송(박스)은 낱개 용량을 따르므로 숨김 */}
+          {(formData.category === 'product' || formData.category === 'wip') && (formData as any).subtype2 !== '배송' && (() => {
             const presetVols = (formData.품목 && PUMOK_VOLUMES[formData.품목]) || [];
             const allVols = Array.from(new Set([...presetVols, ...customVols]));
             const addVol = () => {

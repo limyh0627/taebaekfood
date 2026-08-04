@@ -179,7 +179,8 @@ export function useAppData(): AppData {
         subscribeToCollection<Partner>('partners', setPartners),
         subscribeToCollection<ChatRoom>('chatRooms', setChatRooms),
         subscribeToRecentCollection<ChatMessage>('chatMessages', 'createdAt', 7, setChatMessages),
-        subscribeToRecentCollection<RawMaterialEntry>('rawMaterialLedger', 'date', 7, setRawMaterialLedger),
+        // rawMaterialLedger: 전역 구독 제거 — 원료수불부/재고관리 화면이 열릴 때만 fetchDateRange로 전체 조회(AdminApp).
+        //   (앱 시작 시 모든 사용자가 7일치를 읽던 낭비 제거. 쓰기 시엔 ledgerReloadKey로 재조회.)
         subscribeToRecentCollection<{ id: string; type: string; date: string; amount: number }>('sesameInputLedger', 'date', 7, setSesameInputLedger),
         subscribeToCollection<AppNotification>('notifications', setAppNotifications),
         subscribeToCollection<WorkOrderItem>('workOrderItems', (data) => setWorkOrderItems([...data].sort((a, b) => a.sortIndex - b.sortIndex))),

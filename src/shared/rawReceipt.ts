@@ -5,7 +5,7 @@
 import type { Item } from './types';
 import { addItem, mutateRawMaterialLots } from './services/firebaseService';
 import { RM_LIST, DENSITY, baseRawName, parsePackageKg, lotStockInUnit } from '../constants/formula';
-import { withCarryOverLot, buildReceiveLot, receiptToKg, nextLotNo, deductFromLots } from './lotUtils';
+import { withCarryOverLot, buildReceiveLot, receiptToKg, nextLotNo, deductFromLots, settleCarryOver } from './lotUtils';
 
 /**
  * 입고 품목이 어느 원료(raw)에 귀속되는지 해석. RM_LIST에 없거나 대상 raw 품목이 없으면 null.
@@ -62,7 +62,8 @@ export async function recordRawMaterialReceipt(opts: {
   });
   await mutateRawMaterialLots(
     rawItem.id,
-    (lots, stock) => [...withCarryOverLot(lots, stock, baseName), { ...newLot, lotNo: nextLotNo(lots, newLot.receivedDate) }],
+    // 입고 로트 추가 후, 음수 이월(미상)이 있으면 이 입고로 먼저 상쇄(net)한다.
+    (lots, stock) => settleCarryOver([...withCarryOverLot(lots, stock, baseName), { ...newLot, lotNo: nextLotNo(lots, newLot.receivedDate) }]),
     (lots) => lotStockInUnit(lots, baseName),
   );
 
@@ -108,7 +109,8 @@ export async function adjustRawLots(opts: {
       const carried = withCarryOverLot(lots, stock, material);
       if (deltaKg >= 0) {
         const lot = buildReceiveLot({ material, supplierName: note, qtyIn: 0, kgIn: deltaKg, receivedDate: date });
-        return [...carried, { ...lot, lotNo: nextLotNo(carried, lot.receivedDate) }];
+        // 조정 입고 후 음수 이월(미상) 상쇄
+        return settleCarryOver([...carried, { ...lot, lotNo: nextLotNo(carried, lot.receivedDate) }]);
       }
       return deductFromLots(carried, -deltaKg).lots;
     },

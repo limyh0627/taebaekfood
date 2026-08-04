@@ -56,11 +56,11 @@ export function buildAccountLedger(
 
   for (const e of mine) {
     running += signedAmount(e);
-    if (e.date < from) {
+    if (from && e.date < from) {
       opening = running;          // 기간 이전 → 이월잔액에만 반영
       continue;
     }
-    if (e.date > to) break;       // 정렬돼 있으므로 이후는 볼 필요 없음
+    if (to && e.date > to) break; // 정렬돼 있으므로 이후는 볼 필요 없음 (to 비면 전체)
     if (e.dir === '입금') totalIn += e.amount; else totalOut += e.amount;
     rows.push({ entry: e, balance: running });
   }

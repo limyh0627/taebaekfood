@@ -31,16 +31,27 @@ export default function CashLedger({
   onAddSettlement, onDeleteSettlement,
 }: Props) {
   const [activeId, setActiveId] = useState<string>('');
-  const [from, setFrom] = useState(monthStart());
+  // 기본 기간 — 최근 자금기록이 이번달보다 과거면 그 달부터 (수금/지불이 이번달 밖이라 안 보이던 문제 방지)
+  const [from, setFrom] = useState(() => {
+    const latest = cashEntries.reduce((m, e) => (e.date && e.date > m ? e.date : m), '');
+    const lm = latest ? latest.slice(0, 7) + '-01' : monthStart();
+    return lm && lm < monthStart() ? lm : monthStart();
+  });
   const [to, setTo] = useState(today());
   const [showEntry, setShowEntry] = useState(false);
   const [showAccounts, setShowAccounts] = useState(false);
   const [matchTarget, setMatchTarget] = useState<CashEntry | null>(null);
 
-  const active = cashAccounts.find(a => a.id === activeId) ?? cashAccounts[0];
+  // 계좌를 안 만들었어도 자금기록을 보여준다 — '현금(미지정)' 가상계좌로 cashAccountId='' 항목 표시
+  const effAccounts = useMemo<CashAccount[]>(
+    () => cashAccounts.length > 0 ? cashAccounts : [{ id: '', name: '현금(미지정)', type: '현금', openingBalance: 0, openingDate: '2020-01-01', active: true } as CashAccount],
+    [cashAccounts],
+  );
+
+  const active = effAccounts.find(a => a.id === activeId) ?? effAccounts[0];
   const totalCash = useMemo(
-    () => totalCashOnHand(cashAccounts.filter(a => a.type !== '카드'), cashEntries, today()),
-    [cashAccounts, cashEntries],
+    () => totalCashOnHand(effAccounts.filter(a => a.type !== '카드'), cashEntries, today()),
+    [effAccounts, cashEntries],
   );
   const ledger = useMemo(
     () => (active ? buildAccountLedger(active, cashEntries, from, to) : null),

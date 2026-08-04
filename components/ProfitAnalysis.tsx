@@ -86,7 +86,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   const [cfEdit, setCfEdit] = useState<Partial<CashFlowManual>>({});
   useEffect(() => {
     const doc = cashFlowManual.find(m => m.month === cfMonth);
-    setCfEdit(doc ? { depreciation: doc.depreciation, prepaidInc: doc.prepaidInc, assetBuy: doc.assetBuy, assetSell: doc.assetSell, financeIn: doc.financeIn, debtRepay: doc.debtRepay, openingCash: doc.openingCash } : {});
+    setCfEdit(doc ? { depreciation: doc.depreciation, prepaidInc: doc.prepaidInc, assetBuy: doc.assetBuy, assetSell: doc.assetSell, financeIn: doc.financeIn, debtRepay: doc.debtRepay, openingCash: doc.openingCash, closingCash: doc.closingCash } : {});
   }, [cfMonth, cashFlowManual]);
   // ── 계정그룹/계정과목 인라인 수정 ──
   const [editGroupId, setEditGroupId] = useState<string | null>(null);
@@ -693,19 +693,28 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         const addMonth = addMonthStr;
         const manualOf = (ym: string): Partial<CashFlowManual> => ym === cfMonth ? { ...(cashFlowManual.find(m => m.month === ym) ?? {}), ...cfEdit } : (cashFlowManual.find(m => m.month === ym) ?? {});
         const computeCF = (ym: string) => computeCashFlowMonth(ym, manualOf(ym), { issuedStatements, inventorySnapshots, monthPL, codeToGroup, accountCodes, cashEntries, settlements, fixedCosts });
-        const baseline = [...cashFlowManual].filter(m => m.openingCash != null).map(m => m.month).sort()[0];
+        const baseline = [...cashFlowManual].filter(m => m.openingCash != null || m.closingCash != null).map(m => m.month).sort()[0];
         const openingOf = (ym: string): number => {
           if (!baseline || ym <= baseline) return manualOf(ym).openingCash ?? 0;
           let cash = manualOf(baseline).openingCash || 0, cur = baseline;
-          while (cur < ym) { cash += computeCF(cur).net; cur = addMonth(cur, 1); }
+          while (cur < ym) {
+            const mc = manualOf(cur).closingCash;   // 그 달 실제 잔액 입력했으면 그걸로 재기준(이월오차 리셋)
+            cash = mc != null ? mc : cash + computeCF(cur).net;
+            cur = addMonth(cur, 1);
+          }
           return cash;
         };
         const months = cfMode === 'month' ? [cfMonth] : periodMonths;
         const rows = months.map(computeCF);
         const S = (sel: (r: typeof rows[number]) => number) => rows.reduce((a, r) => a + sel(r), 0);
-        const opTotal = S(r => r.op), invTotal = S(r => r.inv), finTotal = S(r => r.fin), netTotal = S(r => r.net);
+        const opTotal = S(r => r.op), invTotal = S(r => r.inv), finTotal = S(r => r.fin);
+        const computedNet = S(r => r.net);   // 전표·수동항목으로 계산된 순현금흐름
         const opening = months.length ? openingOf(months[0]) : 0;
-        const closing = opening + netTotal;
+        // 월말 실제 현금·예금 입력값(월별 모드) — 있으면 기말현금·총현금흐름을 이 값 기준으로
+        const actualClosing = cfMode === 'month' ? (manualOf(cfMonth).closingCash ?? null) : null;
+        const closing = actualClosing != null ? actualClosing : opening + computedNet;
+        const netTotal = closing - opening;                 // 총현금흐름 = 기말 − 기초
+        const unclassified = netTotal - computedNet;         // 기타(미분류) = 실제 − 계산
         const cfLabel = cfMode === 'month'
           ? `${Number(cfMonth.split('-')[0])}년 ${Number(cfMonth.split('-')[1])}월`
           : (period === '1Y' ? `${selectedYear}년 연간` : period === '3M' ? `${selectedYear}년 ${selectedQuarter}분기` : period === '6M' ? `${selectedYear}년 ${selectedHalf === 1 ? '상반기' : '하반기'}` : `${selectedYear}년 ${customStartMonth}월~${customEndMonth}월`);
@@ -854,6 +863,13 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                 {cfLine('부채상환 (전표 자동)', S(r => r.debtRepay), '-')}
               </div>
 
+              {/* 기타(미분류) — 실제 현금·예금 입력 시 계산과의 차이 */}
+              {actualClosing != null && Math.abs(unclassified) >= 1 && (
+                <div className="divide-y divide-slate-50 border-t border-slate-100">
+                  {cfLine('기타 (미분류) · 실제 잔액 − 계산 차이', unclassified, '±')}
+                </div>
+              )}
+
               {/* 총 현금흐름 */}
               <div className="px-5 py-3.5 flex items-center justify-between border-t-2 border-slate-200 bg-slate-50">
                 <span className="text-sm font-black text-slate-700">총 현금흐름</span>
@@ -870,14 +886,19 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                 )}
               </div>
               <div className="flex items-center justify-between px-6 py-3 bg-blue-50">
-                <span className="text-sm font-black text-blue-800">기말현금</span>
-                <span className="text-base font-black text-blue-700 tabular-nums">{fmt(closing)}원</span>
+                <span className="text-sm font-black text-blue-800">기말현금 {editable && <span className="text-[10px] font-bold text-blue-400">· 실제 현금·예금 직접 입력(선택)</span>}</span>
+                {editable ? (
+                  <input value={mVal('closingCash')} onChange={e => setM('closingCash', e.target.value)} inputMode="numeric" placeholder={fmt(opening + computedNet)}
+                    className="w-40 border border-blue-300 rounded-lg px-2 py-1.5 text-base font-black text-right text-blue-700 outline-none focus:ring-2 focus:ring-blue-400 bg-white" />
+                ) : (
+                  <span className="text-base font-black text-blue-700 tabular-nums">{fmt(closing)}원</span>
+                )}
               </div>
             </div>
 
             {editable ? (
               <div className="flex items-center justify-between gap-3 flex-wrap">
-                <p className="text-[11px] text-slate-400 max-w-md">투자·재무·감가상각은 <b>전표(비용/자금)로 기록하면 자동 집계</b>돼요(계정과목의 자산/부채/자본 그룹으로 분류). 선급금·기초현금만 여기서 입력. 저장하면 기말현금이 다음 달 기초로 이어져요.</p>
+                <p className="text-[11px] text-slate-400 max-w-md">투자·재무·감가상각은 <b>전표(비용/자금)로 기록하면 자동 집계</b>돼요(계정과목의 자산/부채/자본 그룹으로 분류). <b>월말 실제 현금·예금을 '기말현금'에 직접 입력</b>하면 그 값으로 재기준되고(이월 오차 리셋) 다음 달 기초로 이어져요. 안 넣으면 자동계산. 계산과 차이는 '기타(미분류)'로 표시.</p>
                 <button onClick={saveCf} className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 shadow-sm shrink-0 flex items-center gap-1.5"><Save size={13}/>이 달 저장</button>
               </div>
             ) : (

@@ -46,15 +46,17 @@ export function filterCodesForContext(
   groups: AccountGroup[],
   context: '매출' | '매입' | '자금' | '대체',
 ): AccountCode[] {
-  if (context === '자금') return codes;
-  if (context === '대체') return codes.filter(c => isNoncashCode(c.code, codes));
+  // 계정번호(code) 오름차순 정렬 — 전표 발행 등 드롭다운에서 계정번호대로 보이게
+  const byCode = (list: AccountCode[]) => [...list].sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }));
+  if (context === '자금') return byCode(codes);
+  if (context === '대체') return byCode(codes.filter(c => isNoncashCode(c.code, codes)));
   const allow: AccountGroup['type'][] = context === '매출' ? ['수익'] : ['비용'];
   const groupType = new Map(groups.map(g => [g.id, g.type]));
-  return codes.filter(c => {
+  return byCode(codes.filter(c => {
     if (!c.groupId) return true;                 // 그룹 미지정 — 거르지 않고 노출
     const t = groupType.get(c.groupId);
     return !t || allow.includes(t);
-  });
+  }));
 }
 
 export interface MonthPL {

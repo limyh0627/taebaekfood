@@ -72,8 +72,10 @@ export function buildReceiveLot(params: {
  * - 기본: 선입선출(FIFO) — 앞쪽 active 로트부터.
  * - 혼합(mix) 지정 시: 상위 2개 active 로트에 비율(topPercent: 첫 로트 %)대로 먼저 배분하고,
  *   부족분은 FIFO로 이어서 차감(한쪽 소진 시 다음 순서로). active 로트가 1개뿐이면 FIFO와 동일.
- * 한 로트가 0이 되면 status='depleted'. 잔량보다 많이 쓰면 shortageKg로 반환(음수 재고 안 만듦).
- * @returns lots(차감 후), distribution(로트별 차감량), shortageKg(부족분)
+ * 한 로트가 0이 되면 status='depleted'. 잔량보다 많이 쓰면 실제 공급사 로트는 0에서 정상 소진되고,
+ * 초과분은 '이월(미상)' 버킷이 음수로 흡수한다 → 로트 합계가 실제 사용분을 그대로 따라가 수불부와 어긋나지 않음.
+ * (음수 이월은 이후 입고 시 settleCarryOver로 상쇄됨)
+ * @returns lots(차감 후), distribution(로트별 차감량), shortageKg(이월로 넘어간 초과분)
  */
 export function deductFromLots(
   lots: RawMaterialLot[],
@@ -117,11 +119,59 @@ export function deductFromLots(
     take(idx, remaining);
   }
 
+  // 초과 출고: 실제 공급사 로트는 0에서 정상 소진, 남은 초과분은 '이월(미상)' 버킷이 음수로 흡수한다.
+  //   → 로트 합계가 실제 사용분을 그대로 따라가 원료수불부와 어긋나지 않는다.
+  //   → 다음 입고 시 settleCarryOver로 상쇄되어 재고가 맞으면 이월은 0(소진)으로 사라진다.
+  const overIssued = round3(Math.max(0, remaining));
+  if (overIssued > 0) {
+    let bIdx = next.findIndex(l => l.supplierName === '이월');
+    if (bIdx < 0) {
+      next.push({
+        id: `lot-carry-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        supplierName: '이월', kgIn: 0, kgRemaining: 0,
+        receivedDate: todayStr(), status: 'active', createdAt: new Date().toISOString(),
+      } as RawMaterialLot);
+      bIdx = next.length - 1;
+    }
+    const bucket = next[bIdx];
+    bucket.kgRemaining = round3((bucket.kgRemaining ?? 0) - overIssued);
+    bucket.status = 'active';
+    dist.push({ idx: bIdx, lotId: bucket.id, supplierName: '이월', lotNo: bucket.lotNo, receivedDate: bucket.receivedDate, kg: overIssued });
+    remaining = 0;
+  }
+
   return {
     lots: next,
     distribution: dist.map(({ idx, ...d }) => d),
-    shortageKg: round3(Math.max(0, remaining)),
+    shortageKg: overIssued,
   };
+}
+
+/**
+ * 음수 '이월(미상)' 버킷을 양수 가용 로트로 상쇄(net)한다.
+ * 초과 출고로 생긴 음수 이월을, 이후 입고된 양수 로트가 FIFO로 갚는다 → 재고가 맞으면 이월 0(소진).
+ * 입고·조정 직후 호출한다. 이월이 없거나 양수면 원본을 그대로 반환.
+ */
+export function settleCarryOver(lots: RawMaterialLot[]): RawMaterialLot[] {
+  const debtIdx = (lots ?? []).findIndex(l => l.supplierName === '이월' && (l.kgRemaining ?? 0) < 0);
+  if (debtIdx < 0) return lots;
+  const next = lots.map(l => ({ ...l }));
+  let owe = round3(-(next[debtIdx].kgRemaining ?? 0));   // 갚아야 할 양(양수)
+  const posIdx = next
+    .map((l, i) => ({ l, i }))
+    .filter(x => x.i !== debtIdx && x.l.status === 'active' && (x.l.kgRemaining ?? 0) > 0)
+    .map(x => x.i);
+  for (const idx of posIdx) {
+    if (owe <= 0) break;
+    const avail = next[idx].kgRemaining ?? 0;
+    const pay = Math.min(avail, owe);
+    next[idx].kgRemaining = round3(avail - pay);
+    owe = round3(owe - pay);
+    if (next[idx].kgRemaining <= 0.0001) { next[idx].kgRemaining = 0; next[idx].status = 'depleted'; }
+  }
+  next[debtIdx].kgRemaining = round3(-owe);
+  if ((next[debtIdx].kgRemaining ?? 0) >= -0.0001) { next[debtIdx].kgRemaining = 0; next[debtIdx].status = 'depleted'; }
+  return next;
 }
 
 /**

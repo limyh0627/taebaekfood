@@ -806,6 +806,7 @@ export interface CashFlowManual {
   financeIn?: number;     // 자본조달·차입 (재무 +)
   debtRepay?: number;     // 부채상환 (재무 −)
   openingCash?: number;   // 기초현금 (기준월에만 입력 → 이후 자동 이월)
+  closingCash?: number;   // 월말 실제 현금·예금 잔액 (수동 입력) — 있으면 기말현금·현금흐름을 이 값으로 재기준
 }
 
 export interface ProductionSalesLog {

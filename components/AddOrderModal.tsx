@@ -721,17 +721,23 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                           <div className="flex flex-col min-w-0 flex-1">
                             <p className="text-xs font-bold text-slate-800 truncate">{renderColoredName(nv.base)}</p>
                             {(() => {
-                              const label = product.submaterials?.find(s => s.category === '라벨')?.name;
+                              // 낱개 기준 포장 부자재만 (용기·마개·라벨 등). 내용물(참기름A·통깨참기름 등 반제품/원료/완제품)·겉박스·테이프는 제외.
+                              const EXCL_CATS = ['product', '완제품', 'wip', 'raw', 'goods', 'box', 'tape'];
+                              const EXCL_SUB = ['박스', '테이프', 'box', 'tape'];
+                              const subNames = (looseProduct.submaterials ?? [])
+                                .filter(s => { const c = items.find(x => x.id === s.id); const cat = c?.category ?? s.category; return !EXCL_CATS.includes(cat) && !EXCL_SUB.includes(c?.subtype ?? '') && !(c as any)?.phantom; })
+                                .map(s => (items.find(x => x.id === s.id)?.name) ?? s.name)
+                                .filter((n): n is string => !!n);
                               // 칩과 중복되는 spec은 아랫줄에서 생략
                               const vol = product.spec && (!nv.vol || normVolume(product.spec) !== nv.vol) ? product.spec : null;
-                              const parts = [label, vol].filter(Boolean);
                               const pc = selectedClient ? partnerOut.find(p => p.itemId === product.id && p.partnerId === selectedClient.id) : null;
                               const boxName = pc?.boxTypeId ? items.find(p => p.id === pc.boxTypeId)?.name : null;
                               const tapeName = pc?.tapeTypeId ? items.find(p => p.id === pc.tapeTypeId)?.name : null;
                               const subParts = [boxName, tapeName].filter(Boolean);
                               return (
                                 <>
-                                  {parts.length > 0 && <p className="text-[9px] text-slate-400 font-bold truncate leading-tight">{parts.join(' · ')}</p>}
+                                  {vol && <p className="text-[9px] text-slate-400 font-bold truncate leading-tight">{vol}</p>}
+                                  {subNames.length > 0 && <p className="text-[9px] text-slate-400 font-bold leading-tight truncate" title={`부자재: ${subNames.join(' · ')}`}>부자재: {subNames.join(' · ')}</p>}
                                   {subParts.length > 0 && <p className="text-[9px] text-indigo-400 font-bold truncate leading-tight">{subParts.join(' · ')}</p>}
                                 </>
                               );

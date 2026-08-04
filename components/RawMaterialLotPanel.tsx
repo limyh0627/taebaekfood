@@ -12,12 +12,13 @@ interface Props {
   ledgerEntries?: RawMaterialEntry[];        // 이 원료의 입출고(수불) 기록
   onDeleteEntry?: (id: string) => void;      // 기록 삭제(관리자)
   currentUserName?: string;
+  onLotChanged?: () => void;                 // 로트 삭제 등 원장 쓰기 후 상위 화면 재조회 트리거
 }
 
 const fmt = (n: number) => (Math.round(n * 10) / 10).toLocaleString();
 
 /** 원료재고 로트 패널 — 배열 순서 = 선입선출(앞=먼저 사용). 기름은 L 표시(괄호 kg 병기). */
-const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linkedNote, ledgerEntries, onDeleteEntry, currentUserName }) => {
+const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linkedNote, ledgerEntries, onDeleteEntry, currentUserName, onLotChanged }) => {
   const material = baseRawName(product.name);
   const isOil = unitOf(material) === 'L';
   const unitLabel = isOil ? 'L' : 'kg';
@@ -106,6 +107,7 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
           unit: 'kg',
         });
       }
+      onLotChanged?.();   // 상위(재고관리) 원장 재조회 → 삭제 기록·잔량 즉시 반영
     } catch (err) {
       console.error('[로트 삭제 실패]', err);
     } finally {
