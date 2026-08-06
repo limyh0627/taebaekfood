@@ -53,6 +53,56 @@ const fmtM = (n: number) => {
 
 const MONTHS = 12;
 
+// 전표 한 줄 (매출 미수 / 매입 미지급). 반드시 모듈 레벨 — 렌더 함수 안에서 정의하면
+// 매 렌더마다 컴포넌트 타입이 바뀌어 행이 통째로 remount되고, mousedown~mouseup 사이에
+// 재렌더가 끼면 클릭이 삼켜진다(수금 등록 버튼 무반응).
+const StmtRow: React.FC<{
+  stmt: IssuedStatement;
+  labelColor: string;
+  paid: number;
+  balance: number;
+  onPay: (stmt: IssuedStatement) => void;
+}> = ({ stmt, labelColor, paid, balance, onPay }) => {
+  const isPaid = balance <= 0;
+  return (
+    <div className="px-5 py-3 hover:bg-slate-50 transition-colors">
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-black text-slate-700">{stmt.tradeDate}</span>
+            <span className="text-[10px] font-mono text-slate-400">{stmt.docNo}</span>
+            {isPaid
+              ? <span className="text-[9px] bg-emerald-100 text-emerald-700 font-black px-1.5 py-0.5 rounded">완납</span>
+              : <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${labelColor}`}>{stmt.type === '매출' ? '미수' : '미지급'}</span>}
+          </div>
+          <p className="text-[10px] text-slate-400 mt-0.5">{stmt.items.slice(0, 2).map(i => i.name).join(', ')}{stmt.items.length > 2 ? ` 외 ${stmt.items.length - 2}건` : ''}</p>
+          <p className="text-[10px] text-slate-500 mt-1">
+            청구 {fmt(stmt.totalAmount)}원 · 처리 {fmt(paid)}원
+            {!isPaid && <span className="text-rose-600 font-black"> · 잔액 {fmt(balance)}원</span>}
+          </p>
+          {(stmt.payments ?? []).length > 0 && (
+            <div className="mt-1 space-y-0.5">
+              {stmt.payments!.map(p => (
+                <div key={p.id} className="text-[9px] text-slate-400 flex gap-2">
+                  <span>{p.date}{p.createdAt ? ` ${p.createdAt.slice(11,16)}` : ''}</span><span>{p.method}</span>
+                  <span className="font-black text-emerald-600">+{fmt(p.amount)}원</span>
+                  {p.note && <span>{p.note}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        {!isPaid && (
+          <button onClick={() => onPay(stmt)}
+            className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-[10px] font-black transition-all shrink-0 ml-3 ${stmt.type === '매출' ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-rose-600 text-white hover:bg-rose-700'}`}>
+            <Save size={10}/>{stmt.type === '매출' ? '수금 등록' : '지불 등록'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, fixedCostTemplates = [], onAddCost, onDeleteCost, onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], costOf, onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = [], onSaveCashFlowManual, cashEntries = [], settlements = [], initialTab }) => {
   // 계산결과 그룹 숨김 + 구 판매비/관리비 → 판관비로 통합 표시
   const accountGroups = rawAccountGroups
@@ -179,6 +229,34 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
     }
     return months;
   }, [period, selectedYear, selectedQuarter, selectedHalf, customStartMonth, customEndMonth, todayYm]);
+
+  // ── 월별 실수금·실지불 (결제가 실제로 일어난 달 기준) ──
+  // 결제는 구 payments[]와 자금원장 매칭(settlements) 양쪽에서 온다. 둘 다 세야 실수금이 맞다.
+  // settlement엔 날짜가 없어서 연결된 cashEntry의 날짜를 쓴다. 자금기록이 지워졌으면 상계로 안 친다
+  // (cashLedger.buildPartnerLedger와 같은 규칙).
+  const paidByMonth = useMemo(() => {
+    const entryById = new Map(cashEntries.map(e => [e.id, e]));
+    const stmtById = new Map(issuedStatements.map(s => [s.id, s]));
+    const acc = new Map<string, { inc: number; out: number }>();
+    const bump = (ym: string, type: string, amt: number) => {
+      if (!ym) return;
+      const cur = acc.get(ym) ?? { inc: 0, out: 0 };
+      if (type === '매출') cur.inc += amt; else cur.out += amt;
+      acc.set(ym, cur);
+    };
+    for (const s of issuedStatements) {
+      if (s.type !== '매출' && s.type !== '매입') continue;
+      for (const p of s.payments ?? []) bump((p.date ?? '').slice(0, 7), s.type, p.amount);
+    }
+    for (const st of settlements) {
+      const s = stmtById.get(st.statementId);
+      if (!s || (s.type !== '매출' && s.type !== '매입')) continue;
+      const e = entryById.get(st.cashEntryId);
+      if (!e) continue;
+      bump((e.date ?? '').slice(0, 7), s.type, st.amount);
+    }
+    return acc;
+  }, [issuedStatements, settlements, cashEntries]);
 
   // ── 재고 스냅샷 → 기초/기말재고 (손익분석 COGS 패널용) ──
   const openingSnapshot = useMemo(() => {
@@ -911,14 +989,11 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">월별 실수금 · 실지출</p>
                 <div className="flex items-end gap-1 h-28">
                   {periodMonths.map(ym => {
-                    const inc = issuedStatements.filter(s => s.type === '매출').flatMap(s => s.payments ?? []).filter(p => p.date.startsWith(ym)).reduce((a, p) => a + p.amount, 0);
-                    const out = issuedStatements.filter(s => s.type === '매입').flatMap(s => s.payments ?? []).filter(p => p.date.startsWith(ym)).reduce((a, p) => a + p.amount, 0)
-                              + fixedCosts.filter(c => c.yearMonth === ym).reduce((a, c) => a + c.amount, 0);
-                    const barMax = Math.max(...periodMonths.map(m => {
-                      const i2 = issuedStatements.filter(s => s.type === '매출').flatMap(s => s.payments ?? []).filter(p => p.date.startsWith(m)).reduce((a, p) => a + p.amount, 0);
-                      const o2 = issuedStatements.filter(s => s.type === '매입').flatMap(s => s.payments ?? []).filter(p => p.date.startsWith(m)).reduce((a, p) => a + p.amount, 0) + fixedCosts.filter(c => c.yearMonth === m).reduce((a, c) => a + c.amount, 0);
-                      return Math.max(i2, o2);
-                    }), 1);
+                    const spendOf = (m: string) =>
+                      (paidByMonth.get(m)?.out ?? 0) + fixedCosts.filter(c => c.yearMonth === m).reduce((a, c) => a + c.amount, 0);
+                    const inc = paidByMonth.get(ym)?.inc ?? 0;
+                    const out = spendOf(ym);
+                    const barMax = Math.max(...periodMonths.map(m => Math.max(paidByMonth.get(m)?.inc ?? 0, spendOf(m))), 1);
                     const label = `${Number(ym.slice(5))}월`;
                     return (
                       <div key={ym} className="flex-1 flex flex-col items-center gap-0.5 group relative">
@@ -948,7 +1023,14 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
 
       {/* ── 거래처 통계 탭 (미수금 + 미지급금 + 통계 통합) ── */}
       {mainTab === 'partners' && (() => {
-        const getPaid = (s: IssuedStatement) => (s.payments ?? []).reduce((a, p) => a + p.amount, 0);
+        // 결제는 구 payments[]와 자금원장 매칭(settlements) 양쪽에서 온다. 둘 다 빼야 잔액이 맞는다.
+        // 전표 화면·현금출납장에서 수금하면 settlements로 쌓이므로, 이걸 빼먹으면 완납 건이 계속 미수로 뜬다.
+        const settledByStmt = new Map<string, number>();
+        for (const st of settlements) {
+          settledByStmt.set(st.statementId, (settledByStmt.get(st.statementId) ?? 0) + st.amount);
+        }
+        const getPaid = (s: IssuedStatement) =>
+          (s.payments ?? []).reduce((a, p) => a + p.amount, 0) + (settledByStmt.get(s.id) ?? 0);
         const getBalance = (s: IssuedStatement) => s.totalAmount - getPaid(s);
 
         // ── 전체 거래처 목록 (매출 + 매입 포함) ──
@@ -1013,49 +1095,6 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           setPayTarget(null);
         };
 
-        const StmtRow = ({ stmt, labelColor }: { stmt: IssuedStatement; labelColor: string }) => {
-          const bal = getBalance(stmt);
-          const paid = getPaid(stmt);
-          const isPaid = bal <= 0;
-          return (
-            <div className="px-5 py-3 hover:bg-slate-50 transition-colors">
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-black text-slate-700">{stmt.tradeDate}</span>
-                    <span className="text-[10px] font-mono text-slate-400">{stmt.docNo}</span>
-                    {isPaid
-                      ? <span className="text-[9px] bg-emerald-100 text-emerald-700 font-black px-1.5 py-0.5 rounded">완납</span>
-                      : <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${labelColor}`}>{stmt.type === '매출' ? '미수' : '미지급'}</span>}
-                  </div>
-                  <p className="text-[10px] text-slate-400 mt-0.5">{stmt.items.slice(0, 2).map(i => i.name).join(', ')}{stmt.items.length > 2 ? ` 외 ${stmt.items.length - 2}건` : ''}</p>
-                  <p className="text-[10px] text-slate-500 mt-1">
-                    청구 {fmt(stmt.totalAmount)}원 · 처리 {fmt(paid)}원
-                    {!isPaid && <span className="text-rose-600 font-black"> · 잔액 {fmt(bal)}원</span>}
-                  </p>
-                  {(stmt.payments ?? []).length > 0 && (
-                    <div className="mt-1 space-y-0.5">
-                      {stmt.payments!.map(p => (
-                        <div key={p.id} className="text-[9px] text-slate-400 flex gap-2">
-                          <span>{p.date}{p.createdAt ? ` ${p.createdAt.slice(11,16)}` : ''}</span><span>{p.method}</span>
-                          <span className="font-black text-emerald-600">+{fmt(p.amount)}원</span>
-                          {p.note && <span>{p.note}</span>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {!isPaid && (
-                  <button onClick={() => openPayModal(stmt)}
-                    className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-[10px] font-black transition-all shrink-0 ml-3 ${stmt.type === '매출' ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-rose-600 text-white hover:bg-rose-700'}`}>
-                    <Save size={10}/>{stmt.type === '매출' ? '수금 등록' : '지불 등록'}
-                  </button>
-                )}
-              </div>
-            </div>
-          );
-        };
-
         const generateMonthlySummaryPdf = async () => {
           const month = new Date().toISOString().slice(0, 7);
           const [y, m] = month.split('-');
@@ -1064,9 +1103,18 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           const purchaseTotal = monthStmts.filter(s => s.type === '매입').reduce((a, s) => a + s.totalAmount, 0);
           const allReceivable = allClientList.filter(c => c.receivable > 0);
           const totalReceivableAll = allReceivable.reduce((a, c) => a + c.receivable, 0);
+          // 수금은 구 payments[]와 자금원장 매칭(settlements) 양쪽에서 온다 — 둘 다 봐야 누락이 없다.
+          // settlement엔 날짜가 없으므로 연결된 cashEntry의 날짜로 이번 달인지 판정한다.
+          const entryById = new Map(cashEntries.map(e => [e.id, e]));
+          const settledThisMonth = new Set<string>();
+          for (const st of settlements) {
+            const e = entryById.get(st.cashEntryId);
+            if (e && (e.date ?? '').startsWith(month)) settledThisMonth.add(st.statementId);
+          }
           const paidThisMonth = allClientList.filter(c => {
             const stmts = issuedStatements.filter(s => s.partnerId === c.id && s.type === '매출');
-            return stmts.some(s => (s.payments ?? []).some(p => p.date.startsWith(month)));
+            return stmts.some(s =>
+              (s.payments ?? []).some(p => p.date.startsWith(month)) || settledThisMonth.has(s.id));
           });
           const jsPDF = (await import('jspdf')).default;
           const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -1216,7 +1264,10 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                           {totalReceivable > 0 && <span className="text-xs font-black text-rose-600">잔액 {fmt(totalReceivable)}원</span>}
                         </div>
                         <div className="divide-y divide-slate-50">
-                          {selSalesStmts.map(s => <StmtRow key={s.id} stmt={s} labelColor="bg-blue-100 text-blue-600"/>)}
+                          {selSalesStmts.map(s => (
+                            <StmtRow key={s.id} stmt={s} labelColor="bg-blue-100 text-blue-600"
+                              paid={getPaid(s)} balance={getBalance(s)} onPay={openPayModal}/>
+                          ))}
                         </div>
                       </div>
                     )}
@@ -1229,7 +1280,10 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                           {totalPayable > 0 && <span className="text-xs font-black text-rose-600">잔액 {fmt(totalPayable)}원</span>}
                         </div>
                         <div className="divide-y divide-slate-50">
-                          {selPurchaseStmts.map(s => <StmtRow key={s.id} stmt={s} labelColor="bg-rose-100 text-rose-600"/>)}
+                          {selPurchaseStmts.map(s => (
+                            <StmtRow key={s.id} stmt={s} labelColor="bg-rose-100 text-rose-600"
+                              paid={getPaid(s)} balance={getBalance(s)} onPay={openPayModal}/>
+                          ))}
                         </div>
                       </div>
                     )}

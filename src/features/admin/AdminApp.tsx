@@ -1300,7 +1300,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       <NavItem icon={TrendingUp} label="거래처통계" active={currentView === 'partner-stats'} onClick={() => handleNavClick('partner-stats')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={Activity} label="현금흐름 분석" active={currentView === 'cash-flow'} onClick={() => handleNavClick('cash-flow')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={Scale} label="재무제표 (복식부기)" active={currentView === 'financial-reports'} onClick={() => handleNavClick('financial-reports')} collapsed={isSidebarCollapsed} />
-                      {/* 장부 → 전표로 흡수됨. 자금 입출금·계좌관리는 전표 탭에서. */}
+                      {/* 자금 입출금·계좌관리는 전표 탭에도 있지만, 전표 매칭(수금 취소·재배분)은 여기서만 된다. */}
+                      <NavItem icon={BookOpen} label="장부" active={currentView === 'ledger-cash'} onClick={() => handleNavClick('ledger-cash')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={Factory} label="생산 실적" active={currentView === 'production'} onClick={() => handleNavClick('production')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={ShoppingBag} label="스마트스토어 분석" active={currentView === 'smartstore-analytics'} onClick={() => handleNavClick('smartstore-analytics')} collapsed={isSidebarCollapsed} />
                       <NavItem icon={ClipboardList} label="HACCP 체크리스트" active={currentView === 'haccp-checklist'} onClick={() => handleNavClick('haccp-checklist')} collapsed={isSidebarCollapsed} />
@@ -1401,6 +1402,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 'pallets': '파렛트 관리', 'hr': '인사 관리', 'partners': '거래처 관리',
                 'notice': '공지사항', 'documents': '서류 관리', 'trade-statement': '거래명세서', 'tax-statement': '세금계산서',
                 'profit-analysis': '손익 / 비용 분석', 'cost-management': '비용 관리', 'partner-stats': '거래처통계', 'cash-flow': '현금흐름 분석', 'financial-reports': '재무제표 (복식부기)',
+                'ledger-cash': '장부',
                 'production': '생산 실적', 'admin-checklist': '확인사항',
                 'leave-portal': '연차 신청', 'confirmation-items': '확인사항',
                 'item-management': '품목 관리', 'item-price-management': '품목 관리',
