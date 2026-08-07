@@ -29,13 +29,16 @@ const RawLedgerList: React.FC<Props> = ({
     return true;
   }), [entries, filter]);
 
-  // 같은 날짜는 하나로 통합 (원료수불부처럼). 입고합·사용합, 삭제는 그날 지울 항목이 딱 하나일 때만.
+  // 같은 날짜 + 같은 원료를 하나로 통합 (원료수불부처럼). 입고합·사용합, 삭제는 그날 지울 항목이 딱 하나일 때만.
+  //   날짜만으로 묶으면 안 된다 — 전체 목록(showMaterial)엔 여러 원료가 섞여 들어와서
+  //   서로 다른 원료의 kg/L이 합산되고, 원료명·작성자도 남의 것이 붙는다.
   type DayRow = { date: string; received: number; used: number; material: string; notes: string[]; who: Set<string>; types: Set<string>; delIds: string[]; createdAt: string; mine: boolean };
   const dayRows = useMemo(() => {
     const map = new Map<string, DayRow>();
     for (const e of filtered) {
-      let g = map.get(e.date ?? '');
-      if (!g) { g = { date: e.date ?? '', received: 0, used: 0, material: e.material, notes: [], who: new Set(), types: new Set(), delIds: [], createdAt: e.createdAt ?? e.date ?? '', mine: false }; map.set(e.date ?? '', g); }
+      const key = `${e.date ?? ''}|${e.material ?? ''}`;
+      let g = map.get(key);
+      if (!g) { g = { date: e.date ?? '', received: 0, used: 0, material: e.material, notes: [], who: new Set(), types: new Set(), delIds: [], createdAt: e.createdAt ?? e.date ?? '', mine: false }; map.set(key, g); }
       g.received += e.received ?? 0;
       g.used += e.used ?? 0;
       if (e.note) g.notes.push(e.note);
@@ -45,7 +48,7 @@ const RawLedgerList: React.FC<Props> = ({
       if (isAdmin && e.type !== 'auto' && e.id && onDelete) g.delIds.push(e.id);
       if ((e.createdAt ?? '') > g.createdAt) g.createdAt = e.createdAt ?? g.createdAt;
     }
-    return [...map.values()].sort((a, b) => (b.date).localeCompare(a.date));
+    return [...map.values()].sort((a, b) => (b.date).localeCompare(a.date) || (a.material ?? '').localeCompare(b.material ?? ''));
   }, [filtered, currentUserName, isAdmin, onDelete]);
 
   const totalPages = Math.max(1, Math.ceil(dayRows.length / pageSize));
@@ -81,7 +84,7 @@ const RawLedgerList: React.FC<Props> = ({
             const noteStr = Array.from(new Set(g.notes)).join(', ');
             const canDelete = g.delIds.length === 1;         // 그날 지울 항목이 딱 하나일 때만
             return (
-              <li key={g.date} className="px-3 py-2 flex items-center gap-2 hover:bg-slate-50/60 transition-colors">
+              <li key={`${g.date}|${g.material}`} className="px-3 py-2 flex items-center gap-2 hover:bg-slate-50/60 transition-colors">
                 <span className="w-12 shrink-0 text-[10px] font-bold text-slate-500">{g.date.slice(5)}</span>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1 flex-wrap">
