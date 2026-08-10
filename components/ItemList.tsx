@@ -389,7 +389,7 @@ const ItemList: React.FC<ItemListProps> = ({
     } finally { setClosingSaving(false); }
   };
   // 품목 추가하기 — 만들기 모달(검색·수량·확정으로 재고 ADD) 열기
-  const openMakeModal = () => { setMakeQty({}); setMakeSearch(''); setMakeCat('참기름'); setIsAddModalOpen(true); };
+  const openMakeModal = () => { setMakeQty({}); setMakeSearch(''); setMakeCat('참기름'); setMakeVessel(''); setMakeGrade(''); setIsAddModalOpen(true); };
 
   const shareClosingImage = async () => {
     try {
@@ -588,6 +588,8 @@ const ItemList: React.FC<ItemListProps> = ({
   const [makeSearch, setMakeSearch] = useState('');
   const [makeBusy, setMakeBusy] = useState(false);
   const [makeCat, setMakeCat] = useState<string>('참기름');
+  const [makeVessel, setMakeVessel] = useState('');   // 품목추가 용기 필터(180/300/350/1750/1800)
+  const [makeGrade, setMakeGrade] = useState('');     // 품목추가 등급 필터(골드/A/분/특A)
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 24;
 
@@ -2378,22 +2380,36 @@ const ItemList: React.FC<ItemListProps> = ({
         // 원료·부자재는 제외 — 만드는 게 아니라 사오는 것, 입고/실사조정으로만 움직인다
         const base = items.filter(p => !p.archived && !p.phantom && !isRawHolder(p) && !isSubmaterial(p.category));
         // 분류 — 완제품은 subtype이 없고 이름/품목키로 갈리므로 품명 기준으로 묶는다
-        const isGiftset = (p: Item) =>
-          p.subtype === '선물세트' || p.category === 'giftset' || normCat(p.category) === '선물세트';
         const nameOf = (p: Item) => `${p.품목 ?? ''} ${p.name}`;
         const inCat = (p: Item, c: string): boolean => {
-          if (isGiftset(p)) return c === '선물세트';
           const s = nameOf(p);
-          switch (c) {
-            case '참기름': return /참기름/.test(s);
-            case '들기름': return /들기름/.test(s);
-            case '참깨':   return /참깨|검정참|검정깨/.test(s);
-            case '들깨':   return /들깨/.test(s);
-            default: return false;
-          }
+          if (c === '참기름') return /참기름/.test(s);
+          if (c === '들기름') return /들기름/.test(s);
+          return !/참기름/.test(s) && !/들기름/.test(s);   // 기타 — 참기름·들기름 외 전부(참깨·들깨·선물세트 등)
+        };
+        // 용기(180/300/350/1750/1800) — 품목설정의 용량(spec)을 우선 참고. spec은 "1750ml"처럼 정규화돼
+        //   있어 이름("1.75ML")보다 신뢰도 높고, BOM/부자재가 비어 있어도 안전. spec 없으면 이름 ml로 폴백.
+        const vesselKey = (p: Item): string | null => {
+          const src = `${p.spec ?? ''}`;
+          let m = src.match(/(\d+(?:\.\d+)?)\s*ml/i);
+          if (m) return String(Math.round(parseFloat(m[1])));         // "1500ml" → "1500"
+          m = src.match(/(\d+(?:\.\d+)?)\s*l(?![a-z])/i);
+          if (m) return String(Math.round(parseFloat(m[1]) * 1000));  // "1.75L" → "1750"
+          m = src.match(/(\d+(?:\.\d+)?)\s*kg/i);
+          if (m) return `${parseFloat(m[1])}kg`;                      // "16.5kg" → "16.5kg" (캔)
+          m = `${p.name}`.match(/(\d+(?:\.\d+)?)\s*ml/i);
+          return m ? String(Math.round(parseFloat(m[1]))) : null;
+        };
+        const matchVessel = (p: Item, size: string): boolean => vesselKey(p) === size;
+        // 등급(골드/A/분/특A) — 이름의 '/'·괄호 구분 토큰 기준. A는 정확히 'A' 토큰만(골드A·특A는 제외),
+        //   골드/분/특A는 토큰 부분포함(특골드·골드A는 골드로, 특A는 특A로 잡힘).
+        const matchGrade = (p: Item, g: string): boolean => {
+          const toks = `${p.품목 ?? ''}/${p.name}`.split(/[/()]/).map(s => s.trim());
+          // A·특은 정확일치(골드A·특A·특골드와 안 겹치게), 나머지는 토큰 부분포함
+          return (g === 'A' || g === '특') ? toks.some(t => t === g) : toks.some(t => t.includes(g));
         };
         // 실제 품목이 있는 분류만 탭으로 (빈 탭 안 만듦)
-        const MAKE_CATS = ['참기름', '들기름', '참깨', '들깨', '선물세트']
+        const MAKE_CATS = ['참기름', '들기름', '기타']
           .map(c => ({ c, n: base.filter(p => inCat(p, c)).length }))
           .filter(x => x.n > 0);
         // 없어진 분류가 골라져 있으면 첫 탭으로
@@ -2407,10 +2423,13 @@ const ItemList: React.FC<ItemListProps> = ({
             matchesSearch(withSpec(p), t) || matchesSearch(p.품목 ?? '', t) || matchesSearch(partnerStr, t));
         };
         // 순서는 건드리지 않는다 — 수량 넣었다고 목록이 움직이면 이어서 못 적는다.
-        // 검색 중이면 분류 탭을 무시하고 전체에서 찾는다(거래처 검색 시 다른 탭 품목도 나오게).
+        // 검색 중이면 분류·용기·등급을 무시하고 전체에서 찾는다(거래처 검색 시 다른 탭 품목도 나오게).
+        const showSub = cat === '참기름' || cat === '들기름';   // 용기·등급 필터는 기름류에서만
         const listedItems = makeTokens.length > 0
           ? base.filter(matchMake)
-          : base.filter(p => inCat(p, cat));
+          : base.filter(p => inCat(p, cat)
+              && (!showSub || !makeVessel || matchVessel(p, makeVessel))
+              && (!showSub || !makeGrade || matchGrade(p, makeGrade)));
         // 낱개 밑에 박스 묶어서 표시 (수량과 무관한 고정 정렬이라 입력 중에도 안 움직임)
         const listed = groupLooseBoxRows(listedItems);
 
@@ -2456,6 +2475,34 @@ const ItemList: React.FC<ItemListProps> = ({
                   </button>
                 ))}
               </div>
+
+              {/* 용기·등급 필터 — 참기름·들기름에서만 (검색 중엔 숨김). 가로 스크롤 한 줄로 모바일 정리 */}
+              {showSub && makeTokens.length === 0 && (
+                <div className="px-5 pt-2 space-y-1 shrink-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-7 shrink-0 text-[10px] font-black text-slate-400">용기</span>
+                    <div className="flex gap-1 overflow-x-auto no-scrollbar">
+                      {['', '180', '300', '350', '1500', '1750', '1800'].map(v => (
+                        <button key={v || 'all'} onClick={() => setMakeVessel(v)}
+                          className={`shrink-0 px-2.5 py-1 rounded-lg border text-[11px] font-black transition-all ${makeVessel === v ? 'bg-slate-800 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}>
+                          {v === '' ? '전체' : v}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-7 shrink-0 text-[10px] font-black text-slate-400">등급</span>
+                    <div className="flex gap-1 overflow-x-auto no-scrollbar">
+                      {['', '골드', 'A', '분', '특', '특A', '원액'].map(g => (
+                        <button key={g || 'all'} onClick={() => setMakeGrade(g)}
+                          className={`shrink-0 px-2.5 py-1 rounded-lg border text-[11px] font-black transition-all ${makeGrade === g ? 'bg-amber-500 border-amber-500 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}>
+                          {g === '' ? '전체' : g}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="px-5 py-3 shrink-0">
                 <div className="relative">
