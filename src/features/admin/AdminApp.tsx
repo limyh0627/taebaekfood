@@ -197,15 +197,21 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const partnerOut   = useMemo(() => partnerItems.filter(pi => pi.Direction === 'out'), [partnerItems]);
 
   // partner_item upsert — Firestore 쓰기 + 로컬 낙관적 갱신(라이브 구독 아님 → 새로고침 없이 즉시 반영)
-  const handleUpsertPartnerItem = (ps: PartnerItem, defaultDir: 'in' | 'out' = 'out') => {
+  // 실패하면 throw한다 — 호출부(단가관리 저장 등)가 "저장됨"을 거짓으로 표시하지 않도록.
+  const handleUpsertPartnerItem = async (ps: PartnerItem, defaultDir: 'in' | 'out' = 'out') => {
     // partner_item은 itemId/partnerId/price/Direction/Account_Code/taxType만 저장한다.
     const { id, itemId, partnerId, price, Direction, Account_Code, taxType } = ps;
     const dir = Direction ?? defaultDir;
-    const docData = { id, itemId, partnerId, Direction: dir,
+    if (!itemId || !partnerId) throw new Error('품목/거래처 정보가 없어 저장할 수 없습니다.');
+    // id가 비어 있으면 결정적 id로 만든다 — 없으면 addDoc이 매번 새 문서를 만들어 중복이 쌓인다.
+    const docId = id || `${itemId}_${partnerId}_${dir}`;
+    const docData = { id: docId, itemId, partnerId, Direction: dir,
       ...(price !== undefined ? { price } : {}),
       ...(Account_Code !== undefined ? { Account_Code } : {}),
       ...(taxType !== undefined ? { taxType } : {}) } as PartnerItem;
-    addItem('partner_item', docData);
+    // merge 저장 — setDoc(덮어쓰기)이면 박스/테이프/포장 등 여기서 안 다루는 필드가 통째로 지워진다.
+    const { id: _omit, ...fields } = docData;
+    await setDocument('partner_item', docId, fields);
     setPartnerItems(prev => {
       const idx = prev.findIndex(p => p.id && p.id === docData.id);
       if (idx >= 0) { const n = [...prev]; n[idx] = { ...prev[idx], ...docData }; return n; }
@@ -219,7 +225,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const looseItem = allItems.find(i => i.id === uc.itemId);
       const loosePrice = (typeof price === 'number' && price > 0) ? Math.round(price / uc.count) : undefined;
       alert(`"${boxItem?.name}"은(는) 박스 품목입니다.\n낱개 품목 "${looseItem?.name ?? uc.itemId}"이(가) 이 거래처에 없어 함께 등록합니다.`);
-      handleUpsertPartnerItem({
+      await handleUpsertPartnerItem({
         id: `${uc.itemId}_${partnerId}_${dir}`, itemId: uc.itemId, partnerId, Direction: dir,
         ...(loosePrice !== undefined ? { price: loosePrice } : {}),
         ...(Account_Code !== undefined ? { Account_Code } : {}),
@@ -227,6 +233,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
       } as PartnerItem, dir);
     }
   };
+
+  // 결과를 기다리지 않는 호출부용 래퍼 — 실패를 조용히 삼키지 말고 알린다.
+  const upsertPartnerItemSafe = (ps: PartnerItem, dir: 'in' | 'out' = 'out') =>
+    handleUpsertPartnerItem(ps, dir).catch((e: any) => {
+      console.error('거래처 품목 저장 실패:', e);
+      alert('거래처 품목 저장 실패: ' + (e?.message ?? String(e)));
+    });
 
   // partners 컬렉션
 
@@ -1653,7 +1666,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     isAdmin={isAdmin}
                     onUpdateSubmaterial={(id, data) => updateItem('items', id, data)}
                     onProcessReturn={handleProcessReturn}
-                    onLinkInbound={(itemId, partnerId) => handleUpsertPartnerItem({ id: `${itemId}_${partnerId}_in`, itemId, partnerId, Direction: 'in' } as PartnerItem, 'in')}
+                    onLinkInbound={(itemId, partnerId) => upsertPartnerItemSafe({ id: `${itemId}_${partnerId}_in`, itemId, partnerId, Direction: 'in' } as PartnerItem, 'in')}
                     initialTab="입고"
                   />
                 </React.Suspense>
@@ -1671,7 +1684,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     isAdmin={isAdmin}
                     onUpdateSubmaterial={(id, data) => updateItem('items', id, data)}
                     onProcessReturn={handleProcessReturn}
-                    onLinkInbound={(itemId, partnerId) => handleUpsertPartnerItem({ id: `${itemId}_${partnerId}_in`, itemId, partnerId, Direction: 'in' } as PartnerItem, 'in')}
+                    onLinkInbound={(itemId, partnerId) => upsertPartnerItemSafe({ id: `${itemId}_${partnerId}_in`, itemId, partnerId, Direction: 'in' } as PartnerItem, 'in')}
                     initialTab="반품"
                   />
                 </React.Suspense>
@@ -3991,7 +4004,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   }}
                   shippingRules={shippingRules}
                   itemBoms={itemBoms}
-                  onUpsertPartnerItem={(ps) => handleUpsertPartnerItem(ps, 'out')}
+                  onUpsertPartnerItem={(ps) => upsertPartnerItemSafe(ps, 'out')}
                   onSaveItemCustomer={async (ic: Partial<import('../../shared/types').PartnerItem> & { id: string }) => {
                     const { doc: fDoc, updateDoc: fUpdate } = await import('firebase/firestore');
                     const { db: fireDb } = await import('../../shared/firebase');
@@ -4176,7 +4189,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             await addDoc(col(fireDb, 'shipping_rule'), rule);
             refreshStaticData();
           }}
-          onUpsertPartnerItem={(ps: PartnerItem) => handleUpsertPartnerItem(ps, 'in')}
+          onUpsertPartnerItem={(ps: PartnerItem) => upsertPartnerItemSafe(ps, 'in')}
           onDeletePartnerItem={(id: string) => { deleteItem('partner_item', id); refreshStaticData(); }}
           onAddSubmaterial={async (name, category) => {
             const unit = category === '라벨' ? '매' : '개';
