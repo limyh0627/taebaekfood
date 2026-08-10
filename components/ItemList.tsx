@@ -109,6 +109,8 @@ interface ItemListProps {
   items: Item[];
   orderRequests: PurchaseOrder[];
   confirmedOrders: PurchaseOrder[];
+  // 작업완료(생산됨·미출고) 주문분 — 품목별 수량. 재고 현황 모달의 '작업완료 vs 재고' 쪼개기용.
+  dispatchedQtyByItem?: Record<string, number>;
   onUpdateItem: (product: Item) => void;
   onAddItem: (product: Item) => void;
   onAddOrderRequest: (id: string, qty: number, isBox?: boolean) => void;
@@ -189,6 +191,7 @@ const ItemList: React.FC<ItemListProps> = ({
   items,
   orderRequests,
   confirmedOrders,
+  dispatchedQtyByItem = {},
   onAddItem,
   onUpdateItem,
   onAddOrderRequest,
@@ -269,6 +272,9 @@ const ItemList: React.FC<ItemListProps> = ({
   const [viewingClosing, setViewingClosing] = useState<StockClosing | null>(null);
   const [closingSearch, setClosingSearch] = useState('');
   const [closingPage, setClosingPage] = useState(0);
+  // 재고 현황 모달 필터 — 구분(전체/작업완료/재고) + 분류(전체/참기름/들기름/가루)
+  const [closingView, setClosingView] = useState<'all' | 'dispatched' | 'stock'>('all');
+  const [closingCat, setClosingCat] = useState<'all' | '참기름' | '들기름' | '기타'>('all');
   const CLOSING_PAGE_SIZE = 8;
 
   const boxSizeOf = (p: Item) => (p as any).defaultBoxConfig?.unitsPerBox || (p as any).boxSize || 12;
@@ -293,6 +299,8 @@ const ItemList: React.FC<ItemListProps> = ({
     setClosingSearch('');
     setClosingPage(0);
     setShowAllClosing(false);
+    setClosingView('all');
+    setClosingCat('all');
     setEditClosingId(null);
     setEditClosingQty('');
     setClosingCounts({});
@@ -381,7 +389,7 @@ const ItemList: React.FC<ItemListProps> = ({
     } finally { setClosingSaving(false); }
   };
   // 품목 추가하기 — 만들기 모달(검색·수량·확정으로 재고 ADD) 열기
-  const openMakeModal = () => { setMakeQty({}); setMakeSearch(''); setMakeCat('참기름'); setIsAddModalOpen(true); };
+  const openMakeModal = () => { setMakeQty({}); setMakeSearch(''); setMakeCat('참기름'); setMakeVessel(''); setMakeGrade(''); setIsAddModalOpen(true); };
 
   const shareClosingImage = async () => {
     try {
@@ -586,6 +594,8 @@ const ItemList: React.FC<ItemListProps> = ({
   const [makeSearch, setMakeSearch] = useState('');
   const [makeBusy, setMakeBusy] = useState(false);
   const [makeCat, setMakeCat] = useState<string>('참기름');
+  const [makeVessel, setMakeVessel] = useState('');   // 품목추가 용기 필터(180/300/350/1750/1800)
+  const [makeGrade, setMakeGrade] = useState('');     // 품목추가 등급 필터(골드/A/분/특A)
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 24;
 
@@ -2325,22 +2335,36 @@ const ItemList: React.FC<ItemListProps> = ({
         // 원료·부자재는 제외 — 만드는 게 아니라 사오는 것, 입고/실사조정으로만 움직인다
         const base = items.filter(p => !p.archived && !p.phantom && !isRawHolder(p) && !isSubmaterial(p.category));
         // 분류 — 완제품은 subtype이 없고 이름/품목키로 갈리므로 품명 기준으로 묶는다
-        const isGiftset = (p: Item) =>
-          p.subtype === '선물세트' || p.category === 'giftset' || normCat(p.category) === '선물세트';
         const nameOf = (p: Item) => `${p.품목 ?? ''} ${p.name}`;
         const inCat = (p: Item, c: string): boolean => {
-          if (isGiftset(p)) return c === '선물세트';
           const s = nameOf(p);
-          switch (c) {
-            case '참기름': return /참기름/.test(s);
-            case '들기름': return /들기름/.test(s);
-            case '참깨':   return /참깨|검정참|검정깨/.test(s);
-            case '들깨':   return /들깨/.test(s);
-            default: return false;
-          }
+          if (c === '참기름') return /참기름/.test(s);
+          if (c === '들기름') return /들기름/.test(s);
+          return !/참기름/.test(s) && !/들기름/.test(s);   // 기타 — 참기름·들기름 외 전부(참깨·들깨·선물세트 등)
+        };
+        // 용기(180/300/350/1750/1800) — 품목설정의 용량(spec)을 우선 참고. spec은 "1750ml"처럼 정규화돼
+        //   있어 이름("1.75ML")보다 신뢰도 높고, BOM/부자재가 비어 있어도 안전. spec 없으면 이름 ml로 폴백.
+        const vesselKey = (p: Item): string | null => {
+          const src = `${p.spec ?? ''}`;
+          let m = src.match(/(\d+(?:\.\d+)?)\s*ml/i);
+          if (m) return String(Math.round(parseFloat(m[1])));         // "1500ml" → "1500"
+          m = src.match(/(\d+(?:\.\d+)?)\s*l(?![a-z])/i);
+          if (m) return String(Math.round(parseFloat(m[1]) * 1000));  // "1.75L" → "1750"
+          m = src.match(/(\d+(?:\.\d+)?)\s*kg/i);
+          if (m) return `${parseFloat(m[1])}kg`;                      // "16.5kg" → "16.5kg" (캔)
+          m = `${p.name}`.match(/(\d+(?:\.\d+)?)\s*ml/i);
+          return m ? String(Math.round(parseFloat(m[1]))) : null;
+        };
+        const matchVessel = (p: Item, size: string): boolean => vesselKey(p) === size;
+        // 등급(골드/A/분/특A) — 이름의 '/'·괄호 구분 토큰 기준. A는 정확히 'A' 토큰만(골드A·특A는 제외),
+        //   골드/분/특A는 토큰 부분포함(특골드·골드A는 골드로, 특A는 특A로 잡힘).
+        const matchGrade = (p: Item, g: string): boolean => {
+          const toks = `${p.품목 ?? ''}/${p.name}`.split(/[/()]/).map(s => s.trim());
+          // A·특은 정확일치(골드A·특A·특골드와 안 겹치게), 나머지는 토큰 부분포함
+          return (g === 'A' || g === '특') ? toks.some(t => t === g) : toks.some(t => t.includes(g));
         };
         // 실제 품목이 있는 분류만 탭으로 (빈 탭 안 만듦)
-        const MAKE_CATS = ['참기름', '들기름', '참깨', '들깨', '선물세트']
+        const MAKE_CATS = ['참기름', '들기름', '기타']
           .map(c => ({ c, n: base.filter(p => inCat(p, c)).length }))
           .filter(x => x.n > 0);
         // 없어진 분류가 골라져 있으면 첫 탭으로
@@ -2354,10 +2378,13 @@ const ItemList: React.FC<ItemListProps> = ({
             matchesSearch(withSpec(p), t) || matchesSearch(p.품목 ?? '', t) || matchesSearch(partnerStr, t));
         };
         // 순서는 건드리지 않는다 — 수량 넣었다고 목록이 움직이면 이어서 못 적는다.
-        // 검색 중이면 분류 탭을 무시하고 전체에서 찾는다(거래처 검색 시 다른 탭 품목도 나오게).
+        // 검색 중이면 분류·용기·등급을 무시하고 전체에서 찾는다(거래처 검색 시 다른 탭 품목도 나오게).
+        const showSub = cat === '참기름' || cat === '들기름';   // 용기·등급 필터는 기름류에서만
         const listedItems = makeTokens.length > 0
           ? base.filter(matchMake)
-          : base.filter(p => inCat(p, cat));
+          : base.filter(p => inCat(p, cat)
+              && (!showSub || !makeVessel || matchVessel(p, makeVessel))
+              && (!showSub || !makeGrade || matchGrade(p, makeGrade)));
         // 낱개 밑에 박스 묶어서 표시 (수량과 무관한 고정 정렬이라 입력 중에도 안 움직임)
         const listed = groupLooseBoxRows(listedItems);
 
@@ -2403,6 +2430,34 @@ const ItemList: React.FC<ItemListProps> = ({
                   </button>
                 ))}
               </div>
+
+              {/* 용기·등급 필터 — 참기름·들기름에서만 (검색 중엔 숨김). 가로 스크롤 한 줄로 모바일 정리 */}
+              {showSub && makeTokens.length === 0 && (
+                <div className="px-5 pt-2 space-y-1 shrink-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-7 shrink-0 text-[10px] font-black text-slate-400">용기</span>
+                    <div className="flex gap-1 overflow-x-auto no-scrollbar">
+                      {['', '180', '300', '350', '1500', '1750', '1800'].map(v => (
+                        <button key={v || 'all'} onClick={() => setMakeVessel(v)}
+                          className={`shrink-0 px-2.5 py-1 rounded-lg border text-[11px] font-black transition-all ${makeVessel === v ? 'bg-slate-800 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}>
+                          {v === '' ? '전체' : v}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-7 shrink-0 text-[10px] font-black text-slate-400">등급</span>
+                    <div className="flex gap-1 overflow-x-auto no-scrollbar">
+                      {['', '골드', 'A', '분', '특', '특A', '원액'].map(g => (
+                        <button key={g || 'all'} onClick={() => setMakeGrade(g)}
+                          className={`shrink-0 px-2.5 py-1 rounded-lg border text-[11px] font-black transition-all ${makeGrade === g ? 'bg-amber-500 border-amber-500 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}>
+                          {g === '' ? '전체' : g}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="px-5 py-3 shrink-0">
                 <div className="relative">
@@ -2880,10 +2935,23 @@ const ItemList: React.FC<ItemListProps> = ({
         const hay = `${withSpec(p)} ${p.품목 ?? ''} ${salesPartnerNames.get(p.id) ?? ''}`;
         return tokens.every(t => matchesSearch(hay, t));
       };
-      const listRows: GridRow[] = src
+      // 분류 필터(참기름/들기름/기타) — 이름 기준. 기타 = 참기름·들기름이 아닌 나머지 전부(볶음참깨·가루류 등).
+      const catMatch = (p: Item) => {
+        if (closingCat === 'all') return true;
+        if (closingCat === '참기름') return p.name.includes('참기름');
+        if (closingCat === '들기름') return p.name.includes('들기름');
+        return !p.name.includes('참기름') && !p.name.includes('들기름');
+      };
+      const dispatchedOf = (id: string) => dispatchedQtyByItem[id] ?? 0;
+      const baseClosingItems = (term ? allClosingItems.filter(matchClosing) : (showAllClosing ? allClosingItems : closingItems)).filter(catMatch);
+      let listRows: GridRow[] = src
         ? rowsForGrid
-        : groupLooseBoxRows(term ? allClosingItems.filter(matchClosing) : (showAllClosing ? allClosingItems : closingItems))
+        : groupLooseBoxRows(baseClosingItems)
             .map(({ p, isChild }) => ({ itemId: p.id, label: withSpec(p), boxes: closingCounts[p.id]?.boxes ?? '', loose: closingCounts[p.id]?.loose ?? '', editable: true, isChild }));
+      // 구분=작업완료: 작업완료분이 있는 품목만 남긴다.
+      if (!src && closingView === 'dispatched') listRows = listRows.filter(r => dispatchedOf(r.itemId) > 0);
+      // 구분=재고: 현재고 > 작업완료분(남은 재고>0)인 품목만. 작업완료로 다 빠진 품목은 목록에서 제거.
+      if (!src && closingView === 'stock') listRows = listRows.filter(r => Math.round(((productMap.get(r.itemId)?.stock ?? 0) - dispatchedOf(r.itemId)) * 1000) / 1000 > 0);
       // 페이지 나눔(모바일)
       const pageCount = Math.max(1, Math.ceil(listRows.length / CLOSING_PAGE_SIZE));
       const page = Math.min(closingPage, pageCount - 1);
@@ -2915,9 +2983,35 @@ const ItemList: React.FC<ItemListProps> = ({
                 <button onClick={() => { setShowAllClosing(v => !v); setClosingPage(0); }}
                   className={`shrink-0 px-3 py-2.5 rounded-xl text-xs font-black border transition-all ${showAllClosing ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'}`}
                   title="재고 0인 완제품까지 다 보기 (만들기용)">
-                  전체
+                  0포함
                 </button>
               </div>
+
+              {/* 구분 필터 — 전체(현재고) / 작업완료(미출고 생산분) / 재고(작업완료 제외) */}
+              {!src && (
+                <div className="flex items-center gap-1.5 mb-2">
+                  <span className="shrink-0 w-8 text-[10px] font-black text-slate-400">구분</span>
+                  {([['all', '전체'], ['dispatched', '작업완료'], ['stock', '재고']] as const).map(([v, label]) => (
+                    <button key={v} onClick={() => { setClosingView(v); setClosingPage(0); }}
+                      className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-black border transition-all ${closingView === v ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* 분류 필터 — 전체 / 참기름 / 들기름 / 가루종류 */}
+              {!src && (
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <span className="shrink-0 w-8 text-[10px] font-black text-slate-400">분류</span>
+                  {([['all', '전체'], ['참기름', '참기름'], ['들기름', '들기름'], ['기타', '기타']] as const).map(([v, label]) => (
+                    <button key={v} onClick={() => { setClosingCat(v); setClosingPage(0); }}
+                      className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-black border transition-all ${closingCat === v ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {/* 품목 추가하기 — 전체 품목 검색·수량입력·확정으로 재고 생성(ADD) */}
               <button onClick={openMakeModal}
@@ -2927,15 +3021,23 @@ const ItemList: React.FC<ItemListProps> = ({
 
               <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
                 {pageRows.length === 0 && (
-                  <div className="px-3 py-8 text-center text-xs text-slate-400">{term ? '검색 결과가 없습니다.' : '완제품이 없습니다. 검색하거나 "전체"를 켜세요.'}</div>
+                  <div className="px-3 py-8 text-center text-xs text-slate-400">{term ? '검색 결과가 없습니다.' : closingView === 'dispatched' ? '작업완료(미출고)된 완제품이 없습니다.' : closingView === 'stock' ? '재고로 남은 완제품이 없습니다. (작업완료분 제외)' : '완제품이 없습니다. 검색하거나 "0포함"을 켜세요.'}</div>
                 )}
                 {pageRows.map(r => {
                   const product = productMap.get(r.itemId);
                   const cur = product?.stock ?? 0;
-                  const editing = editingStockId === r.itemId;
+                  const disp = src ? 0 : (dispatchedQtyByItem[r.itemId] ?? 0);      // 작업완료(미출고)분
+                  const base = Math.round((cur - disp) * 1000) / 1000;              // 재고(작업완료 제외)
+                  const shownNum = (!src && closingView === 'dispatched') ? disp : (!src && closingView === 'stock') ? base : cur;
+                  const editable = src ? true : closingView === 'all';             // 쪼갠 뷰(작업완료/재고)는 읽기전용
+                  const editing = editable && editingStockId === r.itemId;
                   return (
                     <div key={r.itemId} className={`w-full flex items-center gap-2 px-3 py-2.5 ${r.isChild ? 'pl-7 bg-slate-50/50' : ''}`}>
                       <span className={`flex-1 min-w-0 text-[13px] break-keep ${r.isChild ? 'font-semibold text-slate-500' : 'font-bold text-slate-800'}`}>{r.isChild && <span className="text-slate-300 mr-1">└</span>}{r.label}</span>
+                      {/* 작업완료(미출고)분 배지 — 전체·작업완료 뷰에만. 재고 뷰는 이미 뺀 순수 재고라 배지 없음. */}
+                      {disp > 0 && closingView !== 'stock' && (
+                        <span className="shrink-0 text-[9px] font-black text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full whitespace-nowrap" title="현재고 중 작업완료(미출고)분">작업완료 {disp}</span>
+                      )}
                       {editing ? (
                         <input autoFocus type="text" inputMode="decimal" value={editingStockVal}
                           onChange={e => setEditingStockVal(e.target.value)}
@@ -2948,17 +3050,23 @@ const ItemList: React.FC<ItemListProps> = ({
                             setEditingStockId(null); stockEditCancelled.current = false;
                           }}
                           className="w-16 shrink-0 border border-indigo-300 rounded-lg px-2 py-1 text-right text-sm font-black outline-none focus:ring-2 focus:ring-indigo-400" />
-                      ) : (
+                      ) : editable ? (
                         <button onClick={() => { if (!product) return; setEditingStockId(r.itemId); setEditingStockVal(String(product.subtype === '향미유' ? Math.floor(cur / 12) : cur)); }}
                           title="눌러서 실사 수정"
                           className={`shrink-0 text-sm font-black ${cur > 0 ? 'text-slate-700' : 'text-slate-300'} hover:text-indigo-600 hover:underline`}>
                           {cur}<span className="text-[10px] font-bold text-slate-400 ml-0.5">개</span>
                         </button>
+                      ) : (
+                        <span className={`shrink-0 text-sm font-black ${shownNum > 0 ? 'text-slate-700' : 'text-slate-300'}`} title={closingView === 'dispatched' ? '작업완료(미출고)분' : '재고(작업완료 제외)'}>
+                          {shownNum}<span className="text-[10px] font-bold text-slate-400 ml-0.5">개</span>
+                        </span>
                       )}
-                      <button onClick={() => { if (product && confirm(`"${product.name}" 재고를 0으로 만들까요?`)) commitStockEdit(product, 0); }}
-                        title="재고 0으로" className="shrink-0 p-1 rounded text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors">
-                        <Trash2 size={13} />
-                      </button>
+                      {editable && (
+                        <button onClick={() => { if (product && confirm(`"${product.name}" 재고를 0으로 만들까요?`)) commitStockEdit(product, 0); }}
+                          title="재고 0으로" className="shrink-0 p-1 rounded text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors">
+                          <Trash2 size={13} />
+                        </button>
+                      )}
                     </div>
                   );
                 })}

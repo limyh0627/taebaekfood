@@ -47,7 +47,7 @@ interface TradeStatementProps {
   embedded?: boolean;   // 상위(전표 탭)가 헤더·탭을 그림 → 여기선 헤더 생략, 내용만
   issuedStatements: IssuedStatement[];
   onUpdateStatus?: (id: string, status: OrderStatus) => void;
-  onUpsertPartnerItem?: (ps: PartnerItem) => void;
+  onUpsertPartnerItem?: (ps: PartnerItem) => void | Promise<void>;
   onMarkInvoicePrinted?: (id: string, value: boolean) => void;
   onAddIssuedStatement?: (stmt: IssuedStatement) => void;
   onUpdateIssuedStatement?: (id: string, data: Partial<IssuedStatement>) => void;
@@ -210,6 +210,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // ── 단가 DB 관리 패널 ──
   const [showPricePanel, setShowPricePanel] = useState(false);
   const [pricePanelEdits, setPricePanelEdits] = useState<Record<string, string>>({});
+  const [priceSaveState, setPriceSaveState] = useState<Record<string, 'saving' | 'done' | 'error'>>({});
 
   // ── 직접 입력 모드 ──
   const [manualMode, setManualMode] = useState(false);
@@ -1734,9 +1735,33 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   }, [searchableRows, allItems, createMode, partnerIn, partnerOut, selectedClientId]);
 
   // 단가 저장 (매출: price, 매입: price)
-  const savePcPrice = (pc: PartnerItem) => {
-    const val = parseFloat(pricePanelEdits[pc.id] || '');
-    if (!isNaN(val) && val >= 0) onUpsertPartnerItem?.({ ...pc, price: val });
+  // 저장은 비동기다 — 성공/실패를 화면에 표시하지 않으면 "눌러도 아무 일도 안 난다"로 보인다.
+  const savePcPrice = async (pc: PartnerItem) => {
+    const raw = (pricePanelEdits[pc.id] ?? (pc.price !== undefined ? String(pc.price) : '')).trim();
+    const val = Number(raw.replace(/[,\s원]/g, ''));   // "12,000" · "12000원" 도 허용
+    if (!raw || !Number.isFinite(val) || val < 0) { alert('단가를 숫자로 입력하세요.'); return; }
+    setPriceSaveState(s => ({ ...s, [pc.id]: 'saving' }));
+    try {
+      await onUpsertPartnerItem?.({ ...pc, Direction: pc.Direction ?? (createMode === '매입' ? 'in' : 'out'), price: val });
+      setPricePanelEdits(prev => ({ ...prev, [pc.id]: String(val) }));
+      setPriceSaveState(s => ({ ...s, [pc.id]: 'done' }));
+      setTimeout(() => setPriceSaveState(s => { const n = { ...s }; if (n[pc.id] === 'done') delete n[pc.id]; return n; }), 1500);
+    } catch (e: any) {
+      setPriceSaveState(s => ({ ...s, [pc.id]: 'error' }));
+      alert('단가 저장 실패: ' + (e?.message ?? String(e)));
+    }
+  };
+
+  // 과세/면세 토글도 같은 경로 — 실패 시 조용히 넘어가지 않는다.
+  const togglePcTax = async (pc: PartnerItem) => {
+    setPriceSaveState(s => ({ ...s, [pc.id]: 'saving' }));
+    try {
+      await onUpsertPartnerItem?.({ ...pc, Direction: pc.Direction ?? (createMode === '매입' ? 'in' : 'out'), taxType: pc.taxType === '면세' ? '과세' : '면세' });
+      setPriceSaveState(s => { const n = { ...s }; delete n[pc.id]; return n; });
+    } catch (e: any) {
+      setPriceSaveState(s => ({ ...s, [pc.id]: 'error' }));
+      alert('과세구분 저장 실패: ' + (e?.message ?? String(e)));
+    }
   };
 
   const savePsPrice = (ps: PartnerItem, newPrice: number) => {
@@ -3995,24 +4020,28 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   <span className="text-[10px] font-black text-violet-600 uppercase tracking-widest">단가·과세 관리 ({searchableRows.length}품목)</span>
                 </div>
                 <div className="divide-y divide-slate-50">
-                  {searchableRows.map(({pc,product})=>(
+                  {searchableRows.map(({pc,product})=>{
+                    const st=priceSaveState[pc.id];
+                    return (
                     <div key={pc.id} className="flex items-center gap-3 px-5 py-2">
                       <span className="text-xs font-black text-slate-700 flex-1 truncate">{product!.name}</span>
                       {product!.spec && <span className="text-[10px] text-slate-400">{product!.spec}</span>}
                       <input type="text" inputMode="decimal" placeholder="단가"
                         value={pricePanelEdits[pc.id]??(pc.price!==undefined?String(pc.price):'')}
-                        onChange={e=>setPricePanelEdits(prev=>({...prev,[pc.id]:e.target.value}))}
+                        onChange={e=>{setPricePanelEdits(prev=>({...prev,[pc.id]:e.target.value}));setPriceSaveState(s=>{const n={...s};delete n[pc.id];return n;});}}
+                        onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();savePcPrice(pc);}}}
                         className="w-24 text-right bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-violet-300"/>
-                      <button onClick={()=>onUpsertPartnerItem?.({...pc,taxType:pc.taxType==='면세'?'과세':'면세'})}
-                        className={`px-2.5 py-1 rounded-lg text-[10px] font-black border transition-all ${pc.taxType==='면세'?'bg-indigo-500 text-white border-indigo-500':'bg-white text-slate-500 border-slate-200 hover:bg-slate-100'}`}>
+                      <button onClick={()=>togglePcTax(pc)} disabled={st==='saving'}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-black border transition-all disabled:opacity-50 ${pc.taxType==='면세'?'bg-indigo-500 text-white border-indigo-500':'bg-white text-slate-500 border-slate-200 hover:bg-slate-100'}`}>
                         {pc.taxType==='면세'?'면세':'과세'}
                       </button>
-                      <button onClick={()=>savePcPrice(pc)}
-                        className="px-2.5 py-1 rounded-lg text-[10px] font-black bg-violet-600 text-white hover:bg-violet-700 transition-all">
-                        저장
+                      <button onClick={()=>savePcPrice(pc)} disabled={st==='saving'}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-black text-white transition-all disabled:opacity-60 ${st==='done'?'bg-emerald-500':st==='error'?'bg-rose-500':'bg-violet-600 hover:bg-violet-700'}`}>
+                        {st==='saving'?'저장중':st==='done'?'저장됨':st==='error'?'실패':'저장'}
                       </button>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

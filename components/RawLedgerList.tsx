@@ -97,7 +97,7 @@ const RawLedgerList: React.FC<Props> = ({
       if ((e.createdAt ?? '') > g.createdAt) g.createdAt = e.createdAt ?? g.createdAt;
     }
     return [...map.values()].sort((a, b) =>
-      b.date.localeCompare(a.date) || a.material.localeCompare(b.material));
+      b.date.localeCompare(a.date) || (a.material ?? '').localeCompare(b.material ?? ''));
   }, [filtered, currentUserName, isAdmin, onDelete]);
 
   const totalPages = Math.max(1, Math.ceil(dayRows.length / pageSize));
