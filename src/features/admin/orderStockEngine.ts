@@ -51,14 +51,13 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       if (!delta) continue;
       const it = allItems.find(p => p.id === itemId);
       if (!it) continue;
-      const raw = Math.round((it.stock + delta) * 1000) / 1000;
-      const newStock = Math.max(0, raw); // 재고는 0 미만으로 저장하지 않음 (최소 0)
+      const newStock = Math.round((it.stock + delta) * 1000) / 1000;
       await updateItem('items', itemId, { stock: newStock });
-      if (raw < 0) {
-        console.warn(`[재고 부족] ${it.name}: ${it.stock} → 0 (실수요 ${raw})`);
+      if (newStock < 0) {
+        console.warn(`[재고 부족] ${it.name}: ${it.stock} → ${newStock}`);
         await addItem('notifications', {
           type: 'inventory_shortage', title: '재고 부족 경고',
-          body: `${it.name}: 재고 0으로 처리 (부족분 ${Math.abs(raw)}). 입고 기록/재고 확인 필요.`,
+          body: `${it.name}: 재고 ${newStock} (부족분 ${Math.abs(newStock)}). 주문 상태변경 반영 확인 필요.`,
           linkedId: itemId, readBy: [], createdAt: new Date().toISOString(),
         } as Omit<AppNotification, 'id'>);
       }
