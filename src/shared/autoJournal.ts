@@ -17,6 +17,8 @@ export const AP = '251';   // 외상매입금
 export const VAT_PAYABLE = '255';   // 부가세예수금
 export const VAT_RECEIVABLE = '135'; // 부가세대급금
 export const BANK = '103';  // 보통예금 (기본 현금계정)
+export const INVENTORY = '146';   // 재고자산
+export const PURCHASE = '500';    // 원료매입 — 실지재고조사법의 재고 대체 상대계정
 
 const r = (n: number) => Math.round((n ?? 0) * 100) / 100;
 const sum = (xs: number[]) => r(xs.reduce((a, b) => a + b, 0));
@@ -97,17 +99,103 @@ export function journalizePayment(s: IssuedStatement, p: PaymentRecord, cashAcco
  */
 export function journalizeCashEntry(e: CashEntry, cashAccountMap: Record<string, string> = {}): JournalEntry | null {
   const amt = r(e.amount ?? 0);
-  if (!amt || !e.accountCode) return null;
+  // 쪼갠 줄이 있으면 그쪽이 우선 — 대출상환이면 원금(차입금)·이자(비용)가 각각 선다.
+  const split = (e.lines ?? []).filter(l => l.accountCode && r(l.amount) > 0);
+  if (!split.length && (!amt || !e.accountCode)) return null;
+  const parts = split.length
+    ? split.map(l => ({ accountCode: l.accountCode, amount: r(l.amount) }))
+    : [{ accountCode: e.accountCode!, amount: amt }];
+  // 통장 쪽은 반드시 줄 합계와 같아야 차·대가 맞는다(amount가 어긋나도 분개는 안 깨진다).
+  const total = sum(parts.map(p => p.amount));
+  if (!total) return null;
   const cash = cashAccountMap[e.cashAccountId] ?? BANK;
-  const other = { accountCode: e.accountCode, ...(e.partnerId ? { partnerId: e.partnerId } : {}) };
+  const partner = e.partnerId ? { partnerId: e.partnerId } : {};
   const lines: JournalLine[] = e.dir === '입금'
-    ? [{ accountCode: cash, debit: amt, credit: 0 }, { ...other, debit: 0, credit: amt }]
-    : [{ ...other, debit: amt, credit: 0 }, { accountCode: cash, debit: 0, credit: amt }];
+    ? [{ accountCode: cash, debit: total, credit: 0 },
+       ...parts.map(p => ({ accountCode: p.accountCode, ...partner, debit: 0, credit: p.amount }))]
+    : [...parts.map(p => ({ accountCode: p.accountCode, ...partner, debit: p.amount, credit: 0 })),
+       { accountCode: cash, debit: 0, credit: total }];
   return {
     id: `je-cash-${e.id}`, date: e.date, lines,
     memo: `${e.dir} ${e.partnerName ?? ''} ${e.note ?? ''}`.trim(), sourceType: '자금', sourceId: e.id,
     createdAt: new Date().toISOString(),
   };
+}
+
+/**
+ * 대체전표('비용' 타입) → 분개. 현금도 세금계산서도 없는 내부 대체 — 감가상각·퇴직급여충당 등.
+ *
+ * 전표는 줄마다 계정 하나만 들고 있으므로 차/대는 **계정의 정상방향(normalBalance)**으로 정한다.
+ *   감가상각: (차) 818 감가상각비[비용=차변]      (대) 203 감가상각누계액[자산차감=대변]
+ *   퇴직급여: (차) 535 퇴직급여충당금[비용=차변]   (대) 295 퇴직급여충당부채[부채=대변]
+ *
+ * 그래서 대체전표는 **양쪽을 다 적어야** 한다. 한쪽만 적으면 차·대가 안 맞아 분개를 만들지 않는다
+ * (반쪽짜리를 분개로 만들면 시산표가 깨진다).
+ */
+export function journalizeTransfer(
+  s: IssuedStatement,
+  normalOf: (code: string) => 'debit' | 'credit',
+): JournalEntry | null {
+  if (s.type !== '비용') return null;
+  const items = s.items ?? [];
+  if (items.some(it => !it.accountCode)) return null;
+  const lines: JournalLine[] = [];
+  let debit = 0, credit = 0;
+  for (const it of items) {
+    const amt = r(it.total ?? 0);
+    if (!amt) continue;
+    const code = it.accountCode!;
+    if (normalOf(code) === 'debit') { lines.push({ accountCode: code, debit: amt, credit: 0 }); debit = r(debit + amt); }
+    else { lines.push({ accountCode: code, debit: 0, credit: amt }); credit = r(credit + amt); }
+  }
+  if (lines.length < 2 || debit !== credit) return null;
+  return {
+    id: `je-${s.id}`, date: s.tradeDate, lines,
+    memo: `대체 ${s.docNo ?? ''} ${s.partnerName ?? ''}`.trim(),
+    sourceType: '대체', sourceId: s.id, createdAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * 월말 재고 조정 분개 — **실지재고조사법**. 매입은 일단 비용(500)으로 털고,
+ * 월말 실사액과 직전 재고액의 차이만큼 재고자산(146)으로 되돌린다.
+ *
+ *   재고 증가: (차) 146 재고자산 / (대) 500 원료매입   ← 안 팔리고 남은 만큼 원가에서 뺀다
+ *   재고 감소: (차) 500 원료매입 / (대) 146 재고자산
+ *
+ * 두 줄이 같은 금액이라 차·대는 구조적으로 항상 맞는다.
+ * baseline은 기초분개의 재고자산 금액이고, 스냅샷을 오래된 순으로 이어 붙인다.
+ * 기초 시점 이전 스냅샷은 이미 기초잔액에 녹아 있으므로 건너뛴다.
+ */
+export function journalizeInventory(
+  snapshots: { id?: string; yearMonth: string; value: number }[],
+  baseline: number,
+  openingYm?: string,
+): JournalEntry[] {
+  const sorted = [...snapshots]
+    .filter(s => /^\d{4}-\d{2}$/.test(s.yearMonth ?? ''))
+    .sort((a, b) => a.yearMonth.localeCompare(b.yearMonth));
+  const out: JournalEntry[] = [];
+  let prev = r(baseline);
+  for (const s of sorted) {
+    if (openingYm && s.yearMonth <= openingYm) { prev = r(s.value ?? 0); continue; }
+    const delta = r((s.value ?? 0) - prev);
+    prev = r(s.value ?? 0);
+    if (!delta) continue;
+    const [y, m] = s.yearMonth.split('-').map(Number);
+    const date = `${s.yearMonth}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
+    const amt = Math.abs(delta);
+    out.push({
+      id: `je-inv-${s.yearMonth}`, date,
+      lines: delta > 0
+        ? [{ accountCode: INVENTORY, debit: amt, credit: 0 }, { accountCode: PURCHASE, debit: 0, credit: amt }]
+        : [{ accountCode: PURCHASE, debit: amt, credit: 0 }, { accountCode: INVENTORY, debit: 0, credit: amt }],
+      memo: `재고 조정 ${s.yearMonth} (실사 ${(s.value ?? 0).toLocaleString()}원)`,
+      sourceType: '대체', sourceId: s.id ?? `inv-${s.yearMonth}`,
+      createdAt: new Date().toISOString(),
+    });
+  }
+  return out;
 }
 
 /** 기초분개 입력 — 계정별 잔액. 자본은 plug(자산−부채)로 자동 채운다. */

@@ -15,7 +15,7 @@
 //   onAdminAuth, currentView, setCurrentView, onLogout, appData, adminData
 // ============================================================
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   LayoutDashboard,
@@ -41,6 +41,7 @@ import {
   MessageSquare,
   ChevronLeft,
   ChevronRight,
+  Tag,
   FileText,
   Receipt,
   Wallet,
@@ -111,6 +112,7 @@ const PartnerLedger = React.lazy(() => import('../../../components/PartnerLedger
 
 import { db } from '../../shared/firebase';
 import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName, lotStockInUnit, lotKgRemaining } from '../../constants/formula';
+import { docPumok, docOilKg, addOilByRaw, docSaleLine, docUnpack, docDateOf, DOC_RECALC_RAWS, DOC_SHEET_GROUPS, DOC_SHEET_CATS, DEFAULT_SHEET_TITLE, mixLabel } from '../../shared/docOil';
 import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo, settleCarryOver } from '../../shared/lotUtils';
 import { rawLotTarget, recordRawMaterialReceipt, adjustRawLots } from '../../shared/rawReceipt';
 import { bomQty } from '../../shared/bom';
@@ -238,6 +240,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [docLogMonth, setDocLogMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [bulkMfgDate, setBulkMfgDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [productionWorkCat, setProductionWorkCat] = useState('시골향참기름1');
+  // 생산작업기록부 시트 — 브랜드 접기 상태와, 사용자가 고친 시트 제목(docSheetTitles)
+  const [openSheetBrand, setOpenSheetBrand] = useState<string | null>('시골향');
+  const [sheetTitles, setSheetTitles] = useState<Record<string, string>>({});
   const [productionWorkMonth, setProductionWorkMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [prodLedger2Month, setProdLedger2Month] = useState(() => new Date().toISOString().slice(0, 7));
   const [showNotifPanel, setShowNotifPanel] = useState(false);
@@ -247,7 +252,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [openChatRoomId, setOpenChatRoomId] = useState<string | null>(null);
   const [rmActiveMaterial, setRmActiveMaterial] = useState('참깨');
   const [rmCorrectionTargetId, setRmCorrectionTargetId] = useState<string | null>(null);
-  const [rmCorrectionForm, setRmCorrectionForm] = useState({ date: new Date().toISOString().slice(0, 10), amount: '', isNegative: true, note: '' });
+  // mode: 'neg'|'pos' = 사용량 정정, 'stocktake' = 실사(잔량을 입력값으로 리셋). 수불부 전용 — 로트·재고는 안 건드림.
+  const [rmCorrectionForm, setRmCorrectionForm] = useState<{ date: string; amount: string; isNegative: boolean; note: string; mode?: 'neg' | 'pos' | 'stocktake' }>(
+    { date: new Date().toISOString().slice(0, 10), amount: '', isNegative: true, note: '', mode: 'neg' });
   const [isMobile, setIsMobile] = useState(false);
   const [showQrLabel, setShowQrLabel] = useState(false);
   const [selectedLog, setSelectedLog] = useState<import('../../shared/types').ProductionSalesLog | null>(null);
@@ -405,9 +412,75 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // 재고평가·마진용 BOM 롤업 원가 (완제품 제조원가 자동). effectiveCost = 저장 cost 우선, 없으면 롤업.
   const inventoryCostOf = useMemo(
-    () => buildCostFn({ allItems, formulaOf: (k) => buildFormulaBom(k, itemFormulas, allItems) }).effective,
-    [allItems, itemFormulas],
+    () => buildCostFn({ allItems, itemBoms, formulaOf: (k) => buildFormulaBom(k, itemFormulas, allItems) }).effective,
+    [allItems, itemBoms, itemFormulas],
   );
+
+  /**
+   * 원가 갱신 — 바뀐 품목의 cost를 저장하고, **그걸 재료로 쓰는 상위 품목 원가도 다시 굴려 저장**한다.
+   * cost는 재고평가·스냅샷 등 여러 곳이 읽으므로 저장해두는데, 저장만 하면 원료 단가가 바뀌어도
+   * 완제품 원가가 옛날 값에 굳는다. 그래서 바뀔 때마다 연쇄로 다시 계산한다.
+   */
+  const recomputeAllCosts = useCallback(async (
+    src: typeof allItems = allItems,
+    formulas: typeof itemFormulas = itemFormulas,
+    boms: typeof itemBoms = itemBoms,
+  ) => {
+    const roll = buildCostFn({ allItems: src, itemBoms: boms, formulaOf: (k) => buildFormulaBom(k, formulas, src) });
+    await Promise.all(src
+      .map(i => ({ i, v: Math.round(roll(i)) }))
+      .filter(({ i, v }) => v > 0 && Math.abs(v - (i.cost ?? 0)) > 0.5)
+      .map(({ i, v }) => updateItem('items', i.id, { cost: v })));
+  }, [allItems, itemFormulas, itemBoms, updateItem]);
+
+  /**
+   * 낱개 → 박스 품목 생성. 품목 + item_bom(낱개×개입수 + 겉박스·테이프)을 함께 만든다.
+   * 이름·id는 기존 규칙을 따른다: '{낱개} (N개입)' / box-{낱개id}-{N}. 단위는 '박스', 규격은 낱개 그대로.
+   * 원가는 BOM 롤업으로 나오므로 저장 직후 재계산해 cost에 박는다.
+   */
+  const createBoxItem = useCallback(async (
+    unit: Item,
+    opts: { name: string; count: number; components: { id: string; qty: number }[] },
+  ) => {
+    const boxId = `box-${unit.id}-${opts.count}`;
+    const box: Item = {
+      ...unit,
+      id: boxId,
+      name: opts.name,
+      unit: '박스',
+      stock: 0,
+      cost: 0,
+      price: 0,
+      minStock: 0,
+      submaterials: [],
+      lots: [],
+    } as Item;
+    await setDoc(doc(db, 'items', boxId), { ...box, id: boxId });
+
+    const rows = [
+      { child_id: unit.id, quantity: opts.count },
+      ...opts.components.map(c => ({ child_id: c.id, quantity: c.qty })),
+    ];
+    const batch = writeBatch(db);
+    for (const r of rows) {
+      const bid = `bom-${boxId}__${r.child_id}`.replace(/[/#$[\].]/g, '_');
+      batch.set(doc(db, 'item_bom', bid), { parent_id: boxId, child_id: r.child_id, quantity: r.quantity });
+    }
+    await batch.commit();
+    refreshStaticData();
+
+    // 방금 만든 구성으로 원가를 굴려 저장 — 구독 갱신을 기다리지 않는다.
+    const nextItems = [...allItems, { ...box, partnerIds: [] as string[] }];
+    const nextBoms = [...itemBoms, ...rows.map(r => ({
+      id: `bom-${boxId}__${r.child_id}`, parent_id: boxId, child_id: r.child_id, quantity: r.quantity,
+    }))] as typeof itemBoms;
+    await recomputeAllCosts(nextItems, itemFormulas, nextBoms);
+  }, [allItems, itemBoms, itemFormulas, recomputeAllCosts, refreshStaticData]);
+
+  const cascadeItemCost = useCallback(async (itemId: string, cost: number) => {
+    await updateItem('items', itemId, { cost });
+    await recomputeAllCosts(allItems.map(i => (i.id === itemId ? { ...i, cost } : i)));
+  }, [allItems, updateItem, recomputeAllCosts]);
 
   const pendingPurchaseOrders = useMemo(() => purchaseOrders.filter(po => po.status === 'pending'), [purchaseOrders]);
   const invoicedPurchaseOrders = useMemo(() => purchaseOrders.filter(po => po.status === 'invoiced'), [purchaseOrders]);
@@ -458,44 +531,30 @@ const AdminApp: React.FC<AdminAppProps> = ({
   //  품목 그룹 배합비(시골향1=통깨100 / 2+해내음=50:50 / 3=깨분100 / 4+가득찬순=20:80 / 하남댁+새싹+해달=통깨100),
   //  캔(kg규격)=그대로, ml/L=×0.92, 서류일(documentDate||deliveryDate), 출고+배송 상태.
   //  원료수불부·생산작업기록부·생산작업기록부2가 전부 이걸 공유해서 숫자가 항상 일치한다.
-  const oilOutflowByDate = useMemo<Record<string, { 통깨참기름: number; 깨분참기름: number }>>(() => {
-    const parseVolL = (vol: string): number => {
-      if (!vol) return 0;
-      const v = vol.toLowerCase();
-      if (v.endsWith('ml')) return parseFloat(v) / 1000;
-      if (v.endsWith('l')) return parseFloat(v);
-      return 0;
-    };
+  // 서류(원료수불부)용 기름 사용량 — 재고(BOM)와 **별개**로 판매분에서 다시 구한다.
+  //   참기름: 아래 하드코딩 비율 (품목 원료식과 다른 값이 있어 손대지 않음)
+  //   들기름: 품목 원료식(item_formula) 그대로 — 시골향들기름1=통들깨 100, 2=수입 9:통들깨 1 …
+  const oilOutflowByDate = useMemo<Record<string, Record<string, number>>>(() => {
     const dayCat: Record<string, Record<string, number>> = {};
     for (const o of allOrders) {
       if (![OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(o.status as OrderStatus)) continue;
-      const docStr = o.documentDate || o.deliveryDate;
-      if (!docStr) continue;
-      const dt = new Date(docStr);   // getOutflow와 동일한 로컬 날짜 기준(자정 경계 일치)
-      const ds = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      const ds = docDateOf(o);   // 판매기록부를 찍은 날 = 네 서류 공통 기준일
+      if (!ds) continue;
       for (const item of o.items) {
         const p = allItems.find(pr => pr.id === item.itemId) || allItems.find(pr => pr.name === item.name);
-        if (!p || !p.품목) continue;
-        const spec = (p.spec || '').toLowerCase();
-        const kg = spec.includes('kg')
-          ? (parseFloat(spec) || 0) * item.quantity                 // 캔 등 kg규격 = 기름량 그대로
-          : parseVolL(p.spec || '') * item.quantity * 0.92;          // ml/L = 밀도 0.92
+        const line = docSaleLine(p, item.quantity, id => allItems.find(x => x.id === id));
+        if (!line) continue;
+        const kg = docOilKg(line.spec, line.qty);
         if (kg <= 0) continue;
-        (dayCat[ds] = dayCat[ds] || {})[p.품목] = (dayCat[ds][p.품목] || 0) + Math.round(kg);
+        (dayCat[ds] = dayCat[ds] || {})[line.품목] = (dayCat[ds][line.품목] || 0) + Math.round(kg);
       }
     }
-    const out: Record<string, { 통깨참기름: number; 깨분참기름: number }> = {};
+    // 품목 → 원료 배분은 docOil(=PRODUCT_FORMULA) 한 곳에서만 온다.
+    const out: Record<string, Record<string, number>> = {};
     for (const ds in dayCat) {
-      const g = (k: string) => dayCat[ds][k] || 0;
-      const kg1 = g('시골향참기름1');
-      const kg50 = g('시골향참기름2') + g('시골집참기름(해내음)');
-      const kg3 = g('시골향참기름3');
-      const kg2080 = g('시골향참기름4') + g('가득찬순참기름');
-      const kgTong100 = g('하남댁참기름') + g('새싹참기름') + g('해달참기름');
-      out[ds] = {
-        통깨참기름: kg1 + kgTong100 + Math.round(kg50 / 2) + Math.round(kg2080 * 0.2),
-        깨분참기름: kg3 + Math.round(kg50 / 2) + Math.round(kg2080 * 0.8),
-      };
+      const row: Record<string, number> = {};
+      for (const [품목, kg] of Object.entries(dayCat[ds])) addOilByRaw(row, 품목, kg);
+      out[ds] = row;
     }
     return out;
   }, [allOrders, allItems]);
@@ -1076,6 +1135,21 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   const handleUpdateItems = (orderId: string, items: OrderItem[]) => {
     updateItem('orders', orderId, { items });
+  };
+
+  // 생산작업기록부 시트 제목 — 기본값은 코드에, 사용자가 고친 것만 docSheetTitles에 남긴다.
+  useEffect(() => {
+    getDocs(collection(db, 'docSheetTitles'))
+      .then(s => setSheetTitles(Object.fromEntries(s.docs.map(d => [d.id, (d.data() as { title?: string }).title ?? '']))))
+      .catch(() => {});
+  }, []);
+  const sheetTitleOf = (cat: string) => sheetTitles[cat] || DEFAULT_SHEET_TITLE[cat] || cat;
+  const renameSheet = async (cat: string) => {
+    const next = window.prompt(`'${cat}' 시트 제목`, sheetTitleOf(cat));
+    if (next == null) return;
+    const title = next.trim();
+    await setDoc(doc(db, 'docSheetTitles', cat), { title }, { merge: true });
+    setSheetTitles(prev => ({ ...prev, [cat]: title }));
   };
 
   // PRODUCT_FORMULA → Firestore item_formula 시딩 (최초 1회)
@@ -1904,15 +1978,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 if (product && SUB_ONLY_CATS.has(product.category)) return [];
                 // 완사입(goods: 향미유·고춧가루)은 우리가 생산한 게 아니므로 생산작업판매일지엔 제외(표시만 — 재고 차감엔 영향 없음)
                 if (product && product.category === 'goods') return [];
-                // 박스 품목은 포장일 뿐 — 판매일지엔 낱개 기준으로(품목·용량은 낱개, 수량 ×개입수).
-                const unpack = unpackComponent(product);
-                let qty = item.quantity;
-                if (unpack) {
-                  const loose = allItems.find(p => p.id === unpack.itemId);
-                  if (loose) { product = loose; qty = item.quantity * unpack.count; }
-                }
-                const 용량 = product?.spec || product?.용량 || item.displaySize || '';
-                return [{ 상호: partnerName, 품목: product?.품목 || item.name, 용량, 수량: qty, 소비기한: calcExpiry(item.mfgDate || ''), 제조일자: item.mfgDate || '', orderId: order.id, itemIdx }];
+                // 박스 품목은 포장일 뿐 — 낱개 기준으로 푼다(수불부·생산작업기록부와 같은 docUnpack).
+                const u = docUnpack(product, item.quantity, id => allItems.find(p => p.id === id));
+                const base = u?.item ?? product;
+                const qty = u?.qty ?? item.quantity;
+                const 용량 = base?.spec || base?.용량 || item.displaySize || '';
+                // 품목이 비면 이름으로 대체 — 판매일지는 줄을 떨어뜨리지 않는다(수량 문서라서)
+                return [{ 상호: partnerName, 품목: docPumok(base?.품목) || item.name, 용량, 수량: qty, 소비기한: calcExpiry(item.mfgDate || ''), 제조일자: item.mfgDate || '', orderId: order.id, itemIdx }];
               });
             });
             const rightRows: RightRow[] = Object.values(
@@ -2238,6 +2310,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
               const deductFailures: string[] = [];
               for (const o of shippedOrders) {
                 try {
+                  // 서류 기준일을 주문에 박는다 — 이 날짜로 원료수불부·생산작업기록부 1·2에도 같이 잡힌다.
+                  //   (예전엔 '미입력 일괄 적용'을 눌러야만 박혀서, 안 누르면 서류마다 날짜가 갈렸다)
+                  await updateItem('orders', o.id, { documentDate: docDate });
                   await changeOrderStatus(o.id, OrderStatus.DELIVERED);
                 } catch (e) {
                   console.error(`[주문 이력 이동] 재고 조정 실패 (주문 ${o.id}, ${o.partnerName}):`, e);
@@ -2388,26 +2463,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                           onClick={async () => {
                             const ExcelJS = (await import('exceljs')).default;
                             const wb = new ExcelJS.Workbook();
-                            const ALL_CATS = [
-                              '시골향참기름1', '시골향참기름2', '시골향참기름3', '시골향참기름4',
-                              '하남댁참기름', '시골향들기름1', '시골향들기름2', '하남댁들기름',
-                            ];
-                            const CATEGORY_DISPLAY: Record<string, string> = {
-                              '시골향참기름1': '시골향참기름① (통깨 100%)',
-                              '시골향참기름2': '시골향참기름② (통깨 100%)',
-                              '시골향참기름3': '시골향참기름③ (통깨 100%)',
-                              '시골향참기름4': '시골향참기름④ (통깨 100%)',
-                              '하남댁참기름': '하남댁참기름',
-                              '시골향들기름1': '시골향들기름①',
-                              '시골향들기름2': '시골향들기름②',
-                              '하남댁들기름': '하남댁들기름',
-                            };
-                            const parseVolumeLiter = (vol: string): number => {
-                              if (vol.endsWith('ml')) return parseFloat(vol) / 1000;
-                              if (vol.endsWith('l')) return parseFloat(vol);
-                              if (vol.endsWith('kg')) return parseFloat(vol);
-                              return 0;
-                            };
+                            // 시트 목록은 화면과 같은 정의를 쓴다(예전엔 엑셀에만 8종이라 5종이 빠졌다)
+                            const ALL_CATS = DOC_SHEET_CATS;
                             const [wy, wm] = productionWorkMonth.split('-').map(Number);
                             const daysInMonth = new Date(wy, wm, 0).getDate();
                             const thin: Partial<ExcelJSType.Borders> = {
@@ -2423,19 +2480,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
                               orders
                                 .filter(o => [OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(o.status as OrderStatus))
                                 .forEach(order => {
-                                  const docStr = order.documentDate || order.deliveryDate;
-                                  if (!docStr) return;
-                                  const d = new Date(docStr);
-                                  if (d.getFullYear() !== wy || d.getMonth() + 1 !== wm) return;
-                                  const day = d.getDate();
+                                  const ds = docDateOf(order);   // 판매기록부와 같은 기준일
+                                  if (ds.slice(0, 7) !== `${wy}-${String(wm).padStart(2, '0')}`) return;
+                                  const day = Number(ds.slice(8, 10));
                                   order.items.forEach(item => {
                                     const p = allItems.find(pr => pr.id === item.itemId);
-                                    const remappedPumok = p?.품목 === '새싹참기름' ? '하남댁참기름' : p?.품목 === '새싹들기름' ? '하남댁들기름' : p?.품목;
-                                    if (!p || remappedPumok !== cat) return;
+                                    // 박스는 낱개로 풀어서 본다(박스 품목엔 품목·규격이 없다)
+                                    const line = docSaleLine(p, item.quantity, id => allItems.find(x => x.id === id));
+                                    if (!line || line.품목 !== cat) return;
                                     if (!dayMap[day]) dayMap[day] = [];
-                                    const existing = dayMap[day].find(r => r.spec === (p.spec || ''));
-                                    if (existing) existing.수량 += item.quantity;
-                                    else dayMap[day].push({ spec: p.spec || '', 수량: item.quantity, mfgDate: item.mfgDate || '' });
+                                    const existing = dayMap[day].find(r => r.spec === line.spec);
+                                    if (existing) existing.수량 += line.qty;
+                                    else dayMap[day].push({ spec: line.spec, 수량: line.qty, mfgDate: item.mfgDate || '' });
                                   });
                                 });
                               const ws = wb.addWorksheet(cat);
@@ -2454,7 +2510,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                               r1.getCell(1).alignment = left; r1.getCell(1).font = { bold: true, size: 9 };
                               r1.getCell(6).alignment = center; r1.getCell(6).font = { bold: true, size: 9 };
 
-                              const r2 = ws.addRow([`품 목 : ${CATEGORY_DISPLAY[cat] || cat}`, '', '', '', '', '', '']);
+                              const r2 = ws.addRow([`품 목 : ${sheetTitleOf(cat)}`, '', '', '', '', '', '']);
                               ws.mergeCells(`A2:G2`);
                               r2.getCell(1).alignment = left; r2.getCell(1).font = { bold: true, size: 9 };
 
@@ -2485,8 +2541,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                   });
                                 } else {
                                   rows.forEach((row, i) => {
-                                    const vol = parseVolumeLiter(row.spec);
-                                    const inputKg = Math.round(vol * row.수량 * 0.92);
+                                    // 서류 공용 환산 — kg 규격(캔)은 그 자체가 기름 무게라 밀도를 곱하지 않는다
+                                    const inputKg = Math.round(docOilKg(row.spec, row.수량));
                                     totalInput += inputKg;
                                     const dv = row.spec.endsWith('ml') && parseFloat(row.spec) >= 1000
                                       ? `${parseFloat(row.spec)/1000}l` : row.spec;
@@ -2921,8 +2977,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     // 당월 행 — 등급 발산 원료(통깨/깨분)만 **품목** 재계산으로 대체, 나머지는 원장 그대로(회귀 없음).
                     //  통깨/깨분은 원장이 등급으로 빠지므로(rm-auto-) 그걸 빼고 oilOutflowByDate(품목)로 넣는다.
                     //  → 원료수불부(서류)=품목, 원장·재고=등급 분리. 입고·실사는 원장 그대로.
-                    const GRADE_SPLIT_MATS = ['통깨참기름', '깨분참기름'];
-                    const isGradeMat = GRADE_SPLIT_MATS.includes(material);
+                    //  들기름도 같은 취급 — 재고는 반제품 '들기름'(8:2)로 통일했지만
+                    //  서류는 품목별 배합(시골향들기름1=통들깨 100 …)으로 나눠야 한다.
+                    //  배합표에 나오는 원료는 전부 판매에서 되계산한다 — 그래야 판매기록부와 같은 날·같은 양이 된다.
+                    //  (원장 자동차감은 생산처리 시점에 찍혀 날짜가 다르다. 입고·실사는 원장 그대로 쓴다)
+                    const isGradeMat = DOC_RECALC_RAWS.has(material);
                     const monthEntries = [
                       ...allEntries.filter(e => e.date.startsWith(docYearMonth) && !(isGradeMat && (e.id ?? '').startsWith('rm-auto-') && e.used > 0)),
                       ...(isGradeMat
@@ -2934,32 +2993,44 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     ].sort((a, b) => a.date === b.date ? (a.createdAt ?? '').localeCompare(b.createdAt ?? '') : a.date.localeCompare(b.date));
                     let balance = prevBalance;
                     const r3 = (n: number) => Math.round(n * 1000) / 1000;
-                    const groups = new Map<string, { date: string; received: number; used: number; prevBalance: number; currentBalance: number; notes: string[]; types: Set<string>; delIds: string[] }>();
+                    const groups = new Map<string, { date: string; received: number; used: number; adj: number; prevBalance: number; currentBalance: number; notes: string[]; types: Set<string>; delIds: string[] }>();
+                    // 같은 날이라도 **정정을 만나면 줄을 끊는다.**
+                    //   정정 전 입고·사용과 정정 후 입고·사용이 한 줄에 섞이면 무엇이 정정 대상이었는지 알 수 없다.
+                    //   → [정정 전 묶음] [정정 줄] [정정 후 묶음] 순으로 따로 남는다.
+                    let seg = 0;
+                    let segDate = '';
                     for (const e of monthEntries) {
                       const prev = balance;
                       balance = applyRow(balance, e);
-                      let g = groups.get(e.date);
-                      if (!g) { g = { date: e.date, received: 0, used: 0, prevBalance: prev, currentBalance: balance, notes: [], types: new Set(), delIds: [] }; groups.set(e.date, g); }
-                      // 정정(정정UI)·재고정정·실사정정은 입고·사용에 안 잡음 — 줄·비고로는 표시되지만 입고/사용 합계엔 미포함
                       const isCorrCol = e.type === 'correction' || isLegacyCorr(e);
+                      if (e.date !== segDate) { segDate = e.date; seg = 0; }
+                      const key = isCorrCol ? `${e.date}#adj${seg}` : `${e.date}#${seg}`;
+                      let g = groups.get(key);
+                      if (!g) { g = { date: e.date, received: 0, used: 0, adj: 0, prevBalance: prev, currentBalance: balance, notes: [], types: new Set(), delIds: [] }; groups.set(key, g); }
                       if (!isCorrCol) {
                         g.received = r3(g.received + e.received);
                         g.used = r3(g.used + e.used);
+                      } else {
+                        // 정정·실사는 입고·사용이 아니다 — '정정' 칸에 실제 잔량 변화량으로 남긴다
+                        const target = (e as { targetKg?: number }).targetKg;
+                        g.adj = r3(g.adj + (target != null ? balance - prev : e.received - e.used));
                       }
-                      g.currentBalance = balance;           // 그날 마지막 잔량 (targetKg 앵커도 순서대로 반영됨)
+                      g.currentBalance = balance;           // 그 묶음 마지막 잔량
                       if (e.note) g.notes.push(e.note);
                       g.types.add(isCorrCol ? 'correction' : e.type);
                       if (e.id && e.type !== 'auto') g.delIds.push(e.id);   // 수동/정정만 삭제 대상
+                      if (isCorrCol) seg++;                 // 정정 뒤부터는 새 묶음
                     }
-                    const rows = Array.from(groups.values()).map(g => ({
+                    const rows = Array.from(groups.entries()).map(([key, g]) => ({
                       date: g.date,
                       received: Math.round(g.received),
                       used: Math.round(g.used),
+                      adj: Math.round(g.adj),
                       prevBalance: Math.round(g.prevBalance),
                       currentBalance: Math.round(g.currentBalance),
                       note: Array.from(new Set(g.notes)).join(', '),
                       type: (g.types.has('correction') ? 'correction' : g.types.has('manual') ? 'manual' : 'auto') as UsageRow['type'],
-                      id: g.date,                                          // 정정 UI 앵커 · React key (날짜 유일)
+                      id: key,                                             // 정정 UI 앵커 · React key (날짜+묶음)
                       delId: g.delIds.length === 1 ? g.delIds[0] : undefined, // 그날 삭제가능 항목이 딱 하나일 때만 삭제 노출
                     }));
                     // 전월이월 = 전달 마지막 현재고(월별 앵커), 당월 총 입고·사용 = 합계행
@@ -2967,7 +3038,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     const closing = rows.length > 0 ? rows[rows.length - 1].currentBalance : opening;
                     const totalIn = rows.reduce((s, r) => s + r.received, 0);
                     const totalOut = rows.reduce((s, r) => s + r.used, 0);
-                    return { rows, opening, closing, totalIn, totalOut };
+                    const totalAdj = rows.reduce((s, r) => s + r.adj, 0);
+                    return { rows, opening, closing, totalIn, totalOut, totalAdj };
                   };
 
                   // 원료수불부 Excel 저장
@@ -3052,6 +3124,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                               <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">전재고(kg)</th>
                               <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">입고량(kg)</th>
                               <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">사용량(kg)</th>
+                              <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">정정(kg)</th>
                               <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">현재고(kg)</th>
                               <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase">비고</th>
                               <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase"></th>
@@ -3062,6 +3135,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                             <tr className="bg-slate-50/70">
                               <td className="px-4 py-2.5 text-[11px] font-bold text-slate-500">{docYearMonth}-01<span className="ml-1 text-[9px] text-slate-400 font-black">전월이월</span></td>
                               <td className="px-4 py-2.5 text-[11px] text-slate-400 text-right">{activeLedger.opening}</td>
+                              <td className="px-4 py-2.5 text-[11px] text-slate-300 text-right">-</td>
                               <td className="px-4 py-2.5 text-[11px] text-slate-300 text-right">-</td>
                               <td className="px-4 py-2.5 text-[11px] text-slate-300 text-right">-</td>
                               <td className="px-4 py-2.5 text-[11px] font-black text-slate-700 text-right">{activeLedger.opening}</td>
@@ -3079,6 +3153,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                   <td className="px-4 py-2.5 text-[11px] text-slate-500 text-right">{row.prevBalance}</td>
                                   <td className="px-4 py-2.5 text-[11px] font-black text-indigo-600 text-right">{row.received > 0 ? `+${row.received}` : '-'}</td>
                                   <td className="px-4 py-2.5 text-[11px] font-black text-rose-500 text-right">{row.used !== 0 ? (row.used > 0 ? `-${row.used}` : `+${Math.abs(row.used)}`) : '-'}</td>
+                                  <td className="px-4 py-2.5 text-[11px] font-black text-amber-600 text-right">{row.adj !== 0 ? (row.adj > 0 ? `+${row.adj}` : `${row.adj}`) : '-'}</td>
                                   <td className="px-4 py-2.5 text-[11px] font-black text-slate-800 text-right">{row.currentBalance}</td>
                                   <td className="px-4 py-2.5 text-[11px] text-slate-500">{row.note || '-'}</td>
                                   <td className="px-3 py-2.5 text-right">
@@ -3100,19 +3175,24 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                 </tr>
                                 {rmCorrectionTargetId === row.id && (
                                   <tr className="bg-amber-50 border-t border-amber-200">
-                                    <td colSpan={7} className="px-4 py-3">
+                                    <td colSpan={8} className="px-4 py-3">
                                       <div className="flex items-center gap-2 flex-wrap">
                                         <span className="text-[11px] font-black text-amber-700">정정 추가</span>
                                         <input type="date" value={rmCorrectionForm.date}
                                           onChange={e => setRmCorrectionForm(f => ({ ...f, date: e.target.value }))}
                                           className="border border-amber-300 rounded-lg px-2 py-1 text-[11px] outline-none focus:border-amber-500" />
-                                        <select value={rmCorrectionForm.isNegative ? 'neg' : 'pos'}
-                                          onChange={e => setRmCorrectionForm(f => ({ ...f, isNegative: e.target.value === 'neg' }))}
+                                        {/* 실사 = 잔량을 실물 값으로 그대로 리셋(앵커). 과거 장부 오차를 따지지 않고 끊는다.
+                                            수불부 전용 — 재고·로트는 안 건드린다(재고관리 화면에서 따로 맞춘다). */}
+                                        <select value={rmCorrectionForm.mode ?? (rmCorrectionForm.isNegative ? 'neg' : 'pos')}
+                                          onChange={e => setRmCorrectionForm(f => ({ ...f, mode: e.target.value as 'neg'|'pos'|'stocktake', isNegative: e.target.value !== 'pos' }))}
                                           className="border border-amber-300 rounded-lg px-2 py-1 text-[11px] outline-none focus:border-amber-500">
                                           <option value="neg">사용량 감소 (−)</option>
                                           <option value="pos">사용량 증가 (+)</option>
+                                          <option value="stocktake">실사 — 잔량을 이 값으로</option>
                                         </select>
-                                        <input type="number" min="0" step="0.001" placeholder={`수량(${unitOf(rmActiveMaterial)})`} value={rmCorrectionForm.amount}
+                                        <input type="number" min="0" step="0.001"
+                                          placeholder={rmCorrectionForm.mode === 'stocktake' ? `실사 잔량(${unitOf(rmActiveMaterial)})` : `수량(${unitOf(rmActiveMaterial)})`}
+                                          value={rmCorrectionForm.amount}
                                           onChange={e => setRmCorrectionForm(f => ({ ...f, amount: e.target.value }))}
                                           className="border border-amber-300 rounded-lg px-2 py-1 text-[11px] w-24 outline-none focus:border-amber-500" />
                                         <input type="text" placeholder="비고" value={rmCorrectionForm.note}
@@ -3126,15 +3206,19 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                             const inputUnit = unitOf(rmActiveMaterial);
                                             const density = DENSITY[rmActiveMaterial] ?? 1.0;
                                             const amtKg = inputUnit === 'L' ? Math.round(amt * density * 1000) / 1000 : amt;
+                                            const isStocktake = rmCorrectionForm.mode === 'stocktake';
                                             const correctionUsed = rmCorrectionForm.isNegative ? -amtKg : amtKg;
-                                            const baseNote = rmCorrectionForm.note || `정정 (원본: ${row.id})`;
                                             const inputTag = inputUnit === 'L' ? ` · 사용자 입력: ${amt}L` : '';
+                                            const baseNote = rmCorrectionForm.note
+                                              || (isStocktake ? '수불부 실사정정' : `정정 (원본: ${row.id})`);
                                             await addItem('rawMaterialLedger', {
-                                              id: `rm-corr-${Date.now()}`,
+                                              id: isStocktake ? `rm-stocktake-${Date.now()}` : `rm-corr-${Date.now()}`,
                                               material: rmActiveMaterial,
                                               date: rmCorrectionForm.date,
                                               received: 0,
-                                              used: correctionUsed,
+                                              // 실사는 잔량을 targetKg로 리셋(앵커)하므로 used는 0 — 입고·사용 합계도 안 건드린다.
+                                              used: isStocktake ? 0 : correctionUsed,
+                                              ...(isStocktake ? { targetKg: amtKg } : {}),
                                               note: baseNote + inputTag,
                                               createdAt: new Date().toISOString(),
                                               type: 'correction',
@@ -3142,31 +3226,34 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                               originalAmount: amt,
                                               originalUnit: inputUnit,
                                             });
-                                            // 로트/재고 연동 — 예전엔 수불부 문서만 쓰고 로트를 안 건드려
-                                            // 정정이 실재고에 반영 안 됐음(수불부-재고 괴리 원인 중 하나)
-                                            const rawItem = allItems.find(i => (i.category === 'raw' || (i.category === 'wip' && i.unit !== '개')) && baseRawName(i.name) === rmActiveMaterial);
-                                            if (rawItem) {
-                                              try {
-                                                if (correctionUsed > 0) {
-                                                  // 사용량 증가 = 재고 차감 (FIFO, 기존재고 이월 보존)
-                                                  await mutateRawMaterialLots(
-                                                    rawItem.id,
-                                                    (lots, stock) => deductFromLots(withCarryOverLot(lots, stock, rmActiveMaterial), correctionUsed).lots,
-                                                    (lots) => lotStockInUnit(lots, rmActiveMaterial),
-                                                  );
-                                                } else if (correctionUsed < 0) {
-                                                  // 사용량 감소 = 재고 복원 (정정 로트 추가)
-                                                  const lot = buildReceiveLot({ material: rmActiveMaterial, supplierName: '수불부 정정', qtyIn: 0, kgIn: -correctionUsed, receivedDate: rmCorrectionForm.date });
-                                                  await mutateRawMaterialLots(
-                                                    rawItem.id,
-                                                    (lots, stock) => { const base = withCarryOverLot(lots, stock, rmActiveMaterial); return settleCarryOver([...base, { ...lot, lotNo: nextLotNo(base, lot.receivedDate) }]); },
-                                                    (lots) => lotStockInUnit(lots, rmActiveMaterial),
-                                                  );
-                                                }
-                                              } catch (err) {
-                                                console.error('[수불부 정정] 로트/재고 반영 실패:', err);
-                                                alert('정정 기록은 저장됐지만 재고(로트) 반영에 실패했습니다. 재고를 확인해 주세요.');
-                                              }
+                                            // 원장(rawMaterialLedger)과 로트는 한 몸이다 — 갈라지면 안 된다.
+                                            // 여기서 정정·실사를 찍으면 로트도 같은 값으로 맞춘다.
+                                            // (서류인 원료수불부만 따로 굴러간다 — 수율 파생·등급 분리는 표시 단계에서 처리)
+                                            const rawHolder = allItems.find(i =>
+                                              (i.category === 'raw' || (i.category === 'wip' && i.unit !== '개'))
+                                              && baseRawName(i.name) === rmActiveMaterial);
+                                            if (rawHolder) {
+                                              await mutateRawMaterialLots(
+                                                rawHolder.id,
+                                                (lots, stock) => {
+                                                  const withCarry = withCarryOverLot(lots, stock, rmActiveMaterial);
+                                                  // 실사 = 목표 절대값으로 맞춤 / 정정 = 그 수량만큼 증감
+                                                  const deltaKg = isStocktake
+                                                    ? Math.round((amtKg - lotKgRemaining(withCarry)) * 1000) / 1000
+                                                    : -correctionUsed;   // used 양수 = 재고 감소
+                                                  if (deltaKg > 0.001) {
+                                                    const lot = buildReceiveLot({
+                                                      material: rmActiveMaterial,
+                                                      supplierName: isStocktake ? '실사조정' : '정정',
+                                                      qtyIn: 0, kgIn: deltaKg, receivedDate: rmCorrectionForm.date,
+                                                    });
+                                                    return settleCarryOver([...withCarry, { ...lot, lotNo: nextLotNo(withCarry, lot.receivedDate) }]);
+                                                  }
+                                                  if (deltaKg < -0.001) return deductFromLots(withCarry, -deltaKg).lots;
+                                                  return withCarry;
+                                                },
+                                                (lots) => lotStockInUnit(lots, rmActiveMaterial),
+                                              );
                                             }
                                             setRmCorrectionTargetId(null);
                                             setLedgerReloadKey(k => k + 1);
@@ -3188,6 +3275,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                               <td className="px-4 py-2.5 text-[11px] text-slate-300 text-right">-</td>
                               <td className="px-4 py-2.5 text-[11px] font-black text-indigo-600 text-right">{activeLedger.totalIn > 0 ? `+${activeLedger.totalIn}` : '-'}</td>
                               <td className="px-4 py-2.5 text-[11px] font-black text-rose-500 text-right">{activeLedger.totalOut !== 0 ? `-${activeLedger.totalOut}` : '-'}</td>
+                              <td className="px-4 py-2.5 text-[11px] font-black text-amber-600 text-right">{activeLedger.totalAdj !== 0 ? (activeLedger.totalAdj > 0 ? `+${activeLedger.totalAdj}` : `${activeLedger.totalAdj}`) : '-'}</td>
                               <td className="px-4 py-2.5 text-[11px] font-black text-slate-800 text-right">{activeLedger.closing}</td>
                               <td className="px-4 py-2.5 text-[11px] text-slate-400 font-bold">당월 총 입고·사용</td>
                               <td className="px-3 py-2.5"></td>
@@ -3201,28 +3289,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
 
                 {docTab === '생산작업기록부' && (() => {
-                  const PRODUCTION_CATEGORIES = [
-                    '시골향참기름1', '시골향참기름2', '시골향참기름3', '시골향참기름4',
-                    '하남댁참기름', '해달참기름', '시골향들기름1', '시골향들기름2', '하남댁들기름', '해달들기름',
-                  ];
-                  const CATEGORY_DISPLAY: Record<string, string> = {
-                    '시골향참기름1': '시골향참기름① (통깨 100%)',
-                    '시골향참기름2': '시골향참기름② (통깨 100%)',
-                    '시골향참기름3': '시골향참기름③ (통깨 100%)',
-                    '시골향참기름4': '시골향참기름④ (통깨 100%)',
-                    '하남댁참기름': '하남댁참기름',
-                    '해달참기름': '해달참기름',
-                    '시골향들기름1': '시골향들기름①',
-                    '시골향들기름2': '시골향들기름②',
-                    '하남댁들기름': '하남댁들기름',
-                    '해달들기름': '해달들기름',
-                  };
-                  const parseVolumeLiter = (vol: string): number => {
-                    if (vol.endsWith('ml')) return parseFloat(vol) / 1000;
-                    if (vol.endsWith('l')) return parseFloat(vol);
-                    if (vol.endsWith('kg')) return parseFloat(vol);
-                    return 0;
-                  };
                   const displayVol = (vol: string) =>
                     vol.endsWith('ml') && parseFloat(vol) >= 1000
                       ? `${parseFloat(vol) / 1000}l` : vol;
@@ -3240,36 +3306,71 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   allOrders
                     .filter(o => [OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(o.status as OrderStatus))
                     .forEach(order => {
-                      const docStr = order.documentDate || order.deliveryDate;
-                      if (!docStr) return;
-                      const d = new Date(docStr);
-                      if (d.getFullYear() !== wy || d.getMonth() + 1 !== wm) return;
-                      const day = d.getDate();
+                      const ds = docDateOf(order);   // 판매기록부와 같은 기준일
+                      if (ds.slice(0, 7) !== `${wy}-${String(wm).padStart(2, '0')}`) return;
+                      const day = Number(ds.slice(8, 10));
                       order.items.forEach(item => {
                         const p = allItems.find(pr => pr.id === item.itemId);
-                        const remappedPumok = p?.품목 === '새싹참기름' ? '하남댁참기름' : p?.품목 === '새싹들기름' ? '하남댁들기름' : p?.품목;
-                        if (!p || remappedPumok !== productionWorkCat) return;
+                        // 박스는 낱개로 풀어서 본다(박스 품목엔 품목·규격이 없다)
+                        const line = docSaleLine(p, item.quantity, id => allItems.find(x => x.id === id));
+                        if (!line || line.품목 !== productionWorkCat) return;
                         if (!dayMap[day]) dayMap[day] = [];
-                        const existing = dayMap[day].find(r => r.spec === (p.spec || ''));
-                        if (existing) existing.수량 += item.quantity;
-                        else dayMap[day].push({ spec: p.spec || '', 수량: item.quantity, mfgDate: item.mfgDate || '' });
+                        const existing = dayMap[day].find(r => r.spec === line.spec);
+                        if (existing) existing.수량 += line.qty;
+                        else dayMap[day].push({ spec: line.spec, 수량: line.qty, mfgDate: item.mfgDate || '' });
                       });
                     });
                   let totalInput = 0;
                   let totalQty = 0;
                   return (
                     <div className="space-y-4">
-                      {/* 카테고리 탭 */}
-                      <div className="flex bg-white p-1 rounded-2xl border border-slate-200 shadow-sm flex-wrap gap-1">
-                        {PRODUCTION_CATEGORIES.map(cat => (
-                          <button
-                            key={cat}
-                            onClick={() => setProductionWorkCat(cat)}
-                            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${productionWorkCat === cat ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
-                          >
-                            {cat}
-                          </button>
-                        ))}
+                      {/* 시트 목록 — 브랜드로 접어둔다. 선택된 시트가 든 그룹만 펼쳐진 채로 시작. */}
+                      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100 overflow-hidden">
+                        {DOC_SHEET_GROUPS.map(({ brand, cats }) => {
+                          const open = openSheetBrand === brand;
+                          const hasActive = cats.includes(productionWorkCat);
+                          return (
+                            <div key={brand}>
+                              <button
+                                onClick={() => setOpenSheetBrand(open ? null : brand)}
+                                className={`w-full flex items-center gap-2 px-4 py-2.5 text-left transition-colors ${open ? 'bg-slate-50' : 'hover:bg-slate-50/60'}`}
+                              >
+                                <ChevronRight size={14} className={`shrink-0 text-slate-400 transition-transform ${open ? 'rotate-90' : ''}`} />
+                                <span className="text-xs font-black text-slate-600">{brand}</span>
+                                <span className="text-[10px] font-bold text-slate-300">{cats.length}</span>
+                                {hasActive && !open && (
+                                  <span className="ml-auto text-[10px] font-black text-indigo-600 truncate">
+                                    {sheetTitleOf(productionWorkCat)}
+                                  </span>
+                                )}
+                              </button>
+                              {open && (
+                                <div className="px-3 pb-3 pt-0.5 space-y-1">
+                                  {cats.map(cat => (
+                                    <div key={cat} className="flex items-center gap-1">
+                                      <button
+                                        onClick={() => setProductionWorkCat(cat)}
+                                        className={`flex-1 min-w-0 text-left px-3 py-2 rounded-xl transition-all ${productionWorkCat === cat ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+                                      >
+                                        <span className="block text-xs font-bold truncate">{sheetTitleOf(cat)}</span>
+                                        <span className={`block text-[10px] font-bold truncate ${productionWorkCat === cat ? 'text-indigo-200' : 'text-slate-300'}`}>
+                                          {mixLabel(cat) || '배합 미설정'}
+                                        </span>
+                                      </button>
+                                      <button
+                                        onClick={() => renameSheet(cat)}
+                                        title="시트 제목 수정"
+                                        className="shrink-0 p-2 rounded-lg text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                      >
+                                        <Tag size={13} />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                       {/* 문서 헤더 */}
                       <div className="bg-white rounded-2xl border border-slate-200 p-6">
@@ -3277,7 +3378,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                           <span className="text-sm font-bold text-slate-700">년 월 : {wy}년 {wm}월</span>
                           <span className="text-sm font-bold text-slate-700">관리자 : 임 기 주</span>
                         </div>
-                        <div className="text-sm font-bold text-slate-700 mb-1">품 목 : {CATEGORY_DISPLAY[productionWorkCat] || productionWorkCat}</div>
+                        <div className="text-sm font-bold text-slate-700 mb-1">품 목 : {sheetTitleOf(productionWorkCat)}</div>
                         <div className="flex justify-between items-start">
                           <span className="text-sm font-bold text-slate-700">담당자 : 이 은 경</span>
                           <span className="text-xs text-slate-400 font-bold">( 단 위 : Kg )</span>
@@ -3310,8 +3411,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                 )];
                               }
                               return rows.map((row, i) => {
-                                const vol = parseVolumeLiter(row.spec);
-                                const inputKg = Math.round(vol * row.수량 * 0.92);
+                                // 서류 공용 환산 — kg 규격(캔)은 그 자체가 기름 무게라 밀도를 곱하지 않는다
+                                const inputKg = Math.round(docOilKg(row.spec, row.수량));
                                 totalInput += inputKg;
                                 const sobiDisp = row.mfgDate ? row.mfgDate.replace(/-/g, '.') : '';
                                 return (
@@ -3362,10 +3463,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     allOrders
                       .filter(o => [OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(o.status as OrderStatus))
                       .forEach(order => {
-                        const docStr = order.documentDate || order.deliveryDate;
-                        if (!docStr) return;
-                        const d = new Date(docStr);
-                        if (d.getFullYear() !== lm2Year || d.getMonth() + 1 !== lm2Month || d.getDate() !== day) return;
+                        const ds = docDateOf(order);   // 판매기록부와 같은 기준일
+                        if (ds !== `${lm2Year}-${String(lm2Month).padStart(2, '0')}-${String(day).padStart(2, '0')}`) return;
                         order.items.forEach(item => {
                           // itemId가 바뀐 옛 주문은 이름으로 폴백 매칭
                           const p = allItems.find(pr => pr.id === item.itemId) || allItems.find(pr => pr.name === item.name);
@@ -3381,17 +3480,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     return total;
                   };
 
-                  const getOutflow = (day: number, type: '통깨참기름' | '깨분참기름'): number => {
-                    const kg1 = getDayKg(day, '시골향참기름1');                 // 통깨 100%
-                    // 통깨 50 : 깨분 50 — 시골향참기름2 + 시골집참기름(해내음)
-                    const kg50 = getDayKg(day, '시골향참기름2') + getDayKg(day, '시골집참기름(해내음)');
-                    const kg3 = getDayKg(day, '시골향참기름3');                 // 깨분 100%
-                    // 통깨 20 : 깨분 80 — 시골향참기름4 + 가득찬순참기름(동일 비율)
-                    const kg2080 = getDayKg(day, '시골향참기름4') + getDayKg(day, '가득찬순참기름');
-                    // 통깨 100% — 하남댁참기름(+새싹참기름 리매핑) + 해달참기름
-                    const kgTong100 = getDayKg(day, '하남댁참기름') + getDayKg(day, '새싹참기름') + getDayKg(day, '해달참기름');
-                    if (type === '통깨참기름') return kg1 + kgTong100 + Math.round(kg50 / 2) + Math.round(kg2080 * 0.2);
-                    return kg3 + Math.round(kg50 / 2) + Math.round(kg2080 * 0.8);
+                  // 화면도 엑셀·원료수불부와 같은 oilOutflowByDate를 본다.
+                  //  (예전엔 여기 배합비가 따로 박혀 있어 표를 고쳐도 화면만 옛 숫자가 남았다)
+                  const getOutflow = (day: number, type: string): number => {
+                    const ds = `${prodLedger2Month}-${String(day).padStart(2, '0')}`;
+                    return (oilOutflowByDate[ds] as Record<string, number> | undefined)?.[type] ?? 0;
                   };
 
                   const getLedgerEntry = (type: string, date: string) =>
@@ -3560,7 +3653,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
               cashEntries={appData.cashEntries}
               settlements={appData.settlements}
               onAddCashEntry={(e) => addItem('cashEntries', e)}
+              onUpdateCashEntry={(id, data) => updateItem('cashEntries', id, data)}
               onAddSettlement={(s) => addItem('settlements', s)}
+              onUpdateSettlement={(id, data) => updateItem('settlements', id, data)}
               onDeleteCashEntry={(id) => deleteItem('cashEntries', id)}
               onDeleteSettlement={(id) => deleteItem('settlements', id)}
               onAddCashAccount={(a) => addItem('cashAccounts', a)}
@@ -3638,7 +3733,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 })}
               companyInfo={companyInfo}
               onSaveCompanyInfo={(info) => setDocument('settings', 'company', info)}
-              onUpdateItemCost={(itemId, cost) => updateItem('items', itemId, { cost })}
+              onUpdateItemCost={(itemId, cost) => cascadeItemCost(itemId, cost)}
               onAddProductClient={(itemId, partnerId, price, taxType) =>
                 addItem('partner_item', {
                   id: `${itemId}_${partnerId}_out`,
@@ -3807,6 +3902,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   cashEntries={appData.cashEntries}
                   accounts={appData.accountCodes}
                   cashAccounts={appData.cashAccounts}
+                  inventorySnapshots={appData.inventorySnapshots}
                 />
               </React.Suspense>
             </div>
@@ -3932,6 +4028,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               {true && (
                 <ItemManager
                   isAdmin={isAdmin}
+                  onCreateBoxItem={createBoxItem}
                   items={allItems}
                   partners={partners}
                   partnerItems={partnerItems}
@@ -4158,6 +4255,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
             });
             await batch.commit();
             refreshStaticData();
+            // 배합식이 바뀌면 그 품목과 이걸 재료로 쓰는 상위 품목 원가를 다시 굴린다.
+            const nextFormulas = [
+              ...itemFormulas.filter(f => !keys.has(f.parent_key)),
+              ...rows.map(r => ({ id: `formula-${parentKey}-${r.child_name}`.replace(/\s/g, '_'),
+                parent_key: parentKey, child_name: r.child_name, ratio: r.ratio ?? 1, yield_rate: r.yield_rate })),
+            ] as typeof itemFormulas;
+            await recomputeAllCosts(allItems, nextFormulas);
           }}
           partners={partners}
           partnerItems={partnerItems}
@@ -4215,6 +4319,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
               });
               await bomBatch.commit();
               refreshStaticData();
+              // BOM이 바뀌면 원가도 바뀐다 — 방금 저장한 item_bom 구성으로 다시 굴린다.
+              await recomputeAllCosts(allItems, itemFormulas, [
+                ...itemBoms.filter(b => b.parent_id !== p.id),
+                ...(p.submaterials ?? []).map(s => ({
+                  id: `bom-${p.id}__${s.id}`.replace(/[/#$[\].]/g, '_'),
+                  parent_id: p.id, child_id: s.id,
+                  quantity: typeof s.stock === 'number' ? s.stock : 1,
+                })),
+              ] as typeof itemBoms);
             } catch (e) { console.error('[품목 저장] item_bom 동기화 실패:', e); }
             // partnerOut 컬렉션 거래처 매핑 — 실패해도 품목 저장은 유지(읽기 한도 등).
             try {

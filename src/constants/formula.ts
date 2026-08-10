@@ -5,7 +5,7 @@ export const PRODUCT_FORMULA: Record<string, { raw: string; ratio: number }[]> =
   '시골향참기름1': [{ raw: '통깨참기름', ratio: 1.0 }],
   '시골향참기름2': [{ raw: '통깨참기름', ratio: 0.5 }, { raw: '깨분참기름', ratio: 0.5 }],
   '시골향참기름3': [{ raw: '깨분참기름', ratio: 1.0 }],
-  '시골향참기름4': [{ raw: '통깨참기름', ratio: 0.25 }, { raw: '깨분참기름', ratio: 0.75 }],
+  '시골향참기름4': [{ raw: '통깨참기름', ratio: 0.1 }, { raw: '깨분참기름', ratio: 0.9 }],
   '시골향들기름1': [{ raw: '통들깨들기름', ratio: 1.0 }],
   '시골향들기름2': [{ raw: '통들깨들기름', ratio: 0.1 }, { raw: '수입들기름', ratio: 0.9 }],
   '시골향볶음참깨': [{ raw: '볶음참깨', ratio: 1.0 }],
@@ -16,9 +16,10 @@ export const PRODUCT_FORMULA: Record<string, { raw: string; ratio: number }[]> =
   '통들깨-낱개/1kg': [{ raw: '볶음들깨', ratio: 1.0 }],
   '시골집참기름(해내음)': [{ raw: '통깨참기름', ratio: 0.5 }, { raw: '깨분참기름', ratio: 0.5 }],
   '하남댁들기름': [{ raw: '통들깨들기름', ratio: 0.25 }, { raw: '수입들기름', ratio: 0.75 }],
-  '해달참기름': [{ raw: '통깨참기름', ratio: 0.2 }, { raw: '깨분참기름', ratio: 0.8 }],
+  '해달참기름': [{ raw: '통깨참기름', ratio: 1.0 }],
+  '새싹참기름': [{ raw: '통깨참기름', ratio: 1.0 }],
   '해달들기름': [{ raw: '통들깨들기름', ratio: 0.2 }, { raw: '수입들기름', ratio: 0.8 }],
-  '하남댁참기름': [{ raw: '통깨참기름', ratio: 0.2 }, { raw: '깨분참기름', ratio: 0.8 }],
+  '하남댁참기름': [{ raw: '통깨참기름', ratio: 1.0 }],
   '하남댁맑음들기름': [{ raw: '생들기름', ratio: 1.0 }],
   '가득찬순참기름': [{ raw: '통깨참기름', ratio: 0.2 }, { raw: '깨분참기름', ratio: 0.8 }],
 };
@@ -83,6 +84,19 @@ export function unitToKg(val: number, material: string): number {
   if (unitOf(material) !== 'L') return val;
   const d = DENSITY[material] ?? 1.0;
   return val * d;
+}
+
+/** 원료 목록을 화면에서 묶는 갈래 — 원료가 많아 종류별로 접어 본다. 표시 순서이기도 하다. */
+export const RAW_GROUPS = ['참기름', '들기름', '참깨', '들깨', '기타'] as const;
+
+/** 원료명 → 갈래. 이름으로 판단하므로 새 원료가 생겨도 어딘가에는 들어간다. */
+export function rawGroupOf(material: string): string {
+  const n = String(material ?? '');
+  if (n.includes('참기름')) return '참기름';
+  if (n.includes('들기름')) return '들기름';
+  if (n.includes('들깨')) return '들깨';
+  if (n.includes('깨')) return '참깨';       // 참깨·깨분·검정깨·볶음참깨…
+  return '기타';
 }
 
 const round3 = (n: number) => Math.round(n * 1000) / 1000;

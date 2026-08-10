@@ -8,7 +8,8 @@ import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, BarChart2, Dol
 import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Partner, PaymentRecord, Item, AccountCode, AccountGroup, AccountGroupPlLine, InventorySnapshot, CashFlowManual, CashEntry, Settlement } from '../types';
 import PageHeader from './PageHeader';
 import CostManager from './CostManager';
-import { makeCodeToGroup, computeMonthPL, computeCashFlowMonth, addMonthStr, SGNA_LEGACY_IDS, COMPUTED_GROUP_IDS } from '../src/features/admin/financials';
+import { makeCodeToGroup, computeMonthPLFromJournals, computeCashFlowMonth, computeCashFlowDirect, addMonthStr, SGNA_LEGACY_IDS, COMPUTED_GROUP_IDS } from '../src/features/admin/financials';
+import { buildJournals } from '../src/shared/buildJournals';
 
 type MainTab = 'analysis' | 'costs' | 'partners' | 'inventory-value' | 'account-settings' | 'cash-flow';
 
@@ -275,9 +276,15 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   }, [periodMonths, inventorySnapshots]);
 
   // 임의 월(YYYY-MM)의 손익 — monthlyData·현금흐름표 공용. cogs = 당기 매입액(재고 미반영).
+  // 손익은 분개에서 파생한다 — 전표든 자금원장이든 분개를 한 번 거치므로 이중계상이 안 생기고,
+  // 부가세는 예수금·대급금으로 빠져 손익에 안 섞인다. 재무제표 탭과 같은 소스라 숫자도 일치한다.
+  const journalEntries = useMemo(
+    () => buildJournals({ statements: issuedStatements, cashEntries, accounts: accountCodes, inventorySnapshots }).entries,
+    [issuedStatements, cashEntries, accountCodes, inventorySnapshots]
+  );
   const monthPL = useCallback(
-    (ym: string) => computeMonthPL(ym, issuedStatements, fixedCosts, codeToGroup),
-    [issuedStatements, fixedCosts, codeToGroup]
+    (ym: string) => computeMonthPLFromJournals(ym, journalEntries, accountCodes, codeToGroup, fixedCosts),
+    [journalEntries, accountCodes, codeToGroup, fixedCosts]
   );
 
   // 월별 집계
@@ -299,9 +306,8 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
       }),
       { sales: 0, purchases: 0, sgna: 0, fixed: 0, otherIncome: 0, otherExpense: 0 }
     );
-    const cogs = (openingSnapshot || closingSnapshot)
-      ? (openingSnapshot?.value ?? 0) + base.purchases - (closingSnapshot?.value ?? 0)
-      : base.purchases;
+    // 재고 조정은 분개(journalizeInventory)가 이미 매출원가에 반영했다 — 여기서 또 빼면 이중이다.
+    const cogs = base.purchases;
     const grossProfit = base.sales - cogs;
     const operatingProfit = grossProfit - base.sgna - base.fixed;
     const netIncome = operatingProfit + base.otherIncome - base.otherExpense;
@@ -770,7 +776,9 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         // 간접법 현금흐름표 — 월별/기간. 계산은 순수 모듈(financials.computeCashFlowMonth)에 위임.
         const addMonth = addMonthStr;
         const manualOf = (ym: string): Partial<CashFlowManual> => ym === cfMonth ? { ...(cashFlowManual.find(m => m.month === ym) ?? {}), ...cfEdit } : (cashFlowManual.find(m => m.month === ym) ?? {});
-        const computeCF = (ym: string) => computeCashFlowMonth(ym, manualOf(ym), { issuedStatements, inventorySnapshots, monthPL, codeToGroup, accountCodes, cashEntries, settlements, fixedCosts });
+        // 직접법 — 분개에서 현금계정이 실제로 움직인 것만. 추정이 없어 통장 증감과 그대로 맞는다.
+        const directOf = (ym: string) => computeCashFlowDirect(ym, journalEntries, accountCodes, codeToGroup);
+        const computeCF = (ym: string) => directOf(ym);
         const baseline = [...cashFlowManual].filter(m => m.openingCash != null || m.closingCash != null).map(m => m.month).sort()[0];
         const openingOf = (ym: string): number => {
           if (!baseline || ym <= baseline) return manualOf(ym).openingCash ?? 0;
@@ -783,10 +791,30 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           return cash;
         };
         const months = cfMode === 'month' ? [cfMonth] : periodMonths;
-        const rows = months.map(computeCF);
-        const S = (sel: (r: typeof rows[number]) => number) => rows.reduce((a, r) => a + sel(r), 0);
-        const opTotal = S(r => r.op), invTotal = S(r => r.inv), finTotal = S(r => r.fin);
-        const computedNet = S(r => r.net);   // 전표·수동항목으로 계산된 순현금흐름
+        const direct = months.map(directOf);
+        const D = (sel: (r: typeof direct[number]) => number) => direct.reduce((a, r) => a + sel(r), 0);
+        const dLines = (() => {
+          const m = new Map<string, { code: string; section: string; inflow: number; outflow: number }>();
+          for (const r of direct) for (const l of r.lines) {
+            const cur = m.get(l.accountCode) ?? { code: l.accountCode, section: l.section, inflow: 0, outflow: 0 };
+            cur.inflow += l.inflow; cur.outflow += l.outflow; m.set(l.accountCode, cur);
+          }
+          return [...m.values()].sort((a, b) => (b.inflow + b.outflow) - (a.inflow + a.outflow));
+        })();
+        const nameOfCode = (c: string) => accountCodes.find(a => a.code === c)?.name ?? c;
+        const dSection = (sec: string) => dLines.filter(l => l.section === sec);
+        const dRow = (l: { code: string; inflow: number; outflow: number }) => {
+          const net = l.inflow - l.outflow;
+          return (
+            <div key={l.code} className="px-5 py-2 flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500">{l.code} {nameOfCode(l.code)}</span>
+              <span className={`text-xs font-black tabular-nums ${net >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                {net >= 0 ? '+' : ''}{fmt(net)}원
+              </span>
+            </div>
+          );
+        };
+        const computedNet = D(r => r.net);   // 분개에서 실제로 움직인 현금
         const opening = months.length ? openingOf(months[0]) : 0;
         // 월말 실제 현금·예금 입력값(월별 모드) — 있으면 기말현금·총현금흐름을 이 값 기준으로
         const actualClosing = cfMode === 'month' ? (manualOf(cfMonth).closingCash ?? null) : null;
@@ -905,49 +933,28 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
               </div>
             </div>
 
-            {/* 현금흐름표 (간접법) */}
-            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-              {/* 영업활동 */}
-              <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-                <span className="text-sm font-black text-slate-700">영업활동 현금흐름</span>
-                <span className={`text-sm font-black tabular-nums ${opTotal >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{opTotal >= 0 ? '+' : ''}{fmt(opTotal)}원</span>
+            {/* 현금흐름표 (직접법) — 분개에서 현금이 실제로 움직인 것만. 추정 없음. */}
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden mb-4">
+              <div className="px-5 py-3 bg-slate-800 flex items-center justify-between">
+                <span className="text-sm font-black text-white">직접법 현금흐름 <span className="text-[10px] font-bold text-slate-400 ml-1">분개 기준 · 추정 없음</span></span>
+                <span className={`text-sm font-black tabular-nums ${D(r => r.net) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {D(r => r.net) >= 0 ? '+' : ''}{fmt(D(r => r.net))}원
+                </span>
               </div>
-              <div className="divide-y divide-slate-50">
-                {cfLine('당기순이익', S(r => r.netAdj), '+')}
-                {cfLine('감가상각비 (전표 자동)', S(r => r.dep), '+')}
-                {cfLine('재고자산 증가', S(r => r.invInc), '-')}
-                {cfLine('매출채권 증가', S(r => r.arInc), '-')}
-                {cfLine('매입채무 증가', S(r => r.apChg), '±')}
-                {cfLine('선급금 증가', S(r => r.prepaid), '-', 'prepaidInc')}
-              </div>
-
-              {/* 투자활동 */}
-              <div className="px-5 py-3 bg-slate-50 border-t border-b border-slate-100 flex items-center justify-between">
-                <span className="text-sm font-black text-slate-700">투자활동 현금흐름</span>
-                <span className={`text-sm font-black tabular-nums ${invTotal > 0 ? 'text-emerald-600' : invTotal < 0 ? 'text-rose-600' : 'text-slate-400'}`}>{invTotal === 0 ? '—' : (invTotal > 0 ? '+' : '') + fmt(invTotal) + '원'}</span>
-              </div>
-              <div className="divide-y divide-slate-50">
-                {cfLine('자산취득 (전표 자동)', S(r => r.assetBuy), '-')}
-                {cfLine('자산매각 (전표 자동)', S(r => r.assetSell), '+')}
-              </div>
-
-              {/* 재무활동 */}
-              <div className="px-5 py-3 bg-slate-50 border-t border-b border-slate-100 flex items-center justify-between">
-                <span className="text-sm font-black text-slate-700">재무활동 현금흐름</span>
-                <span className={`text-sm font-black tabular-nums ${finTotal > 0 ? 'text-emerald-600' : finTotal < 0 ? 'text-rose-600' : 'text-slate-400'}`}>{finTotal === 0 ? '—' : (finTotal > 0 ? '+' : '') + fmt(finTotal) + '원'}</span>
-              </div>
-              <div className="divide-y divide-slate-50">
-                {cfLine('자본조달 (증자·차입) (전표 자동)', S(r => r.finIn), '+')}
-                {cfLine('부채상환 (전표 자동)', S(r => r.debtRepay), '-')}
-              </div>
-
-              {/* 기타(미분류) — 실제 현금·예금 입력 시 계산과의 차이 */}
-              {actualClosing != null && Math.abs(unclassified) >= 1 && (
-                <div className="divide-y divide-slate-50 border-t border-slate-100">
-                  {cfLine('기타 (미분류) · 실제 잔액 − 계산 차이', unclassified, '±')}
-                </div>
-              )}
-
+              {([['operating', '영업활동', D(r => r.op)], ['investing', '투자활동', D(r => r.inv)], ['financing', '재무활동', D(r => r.fin)]] as const).map(([sec, label, total]) => (
+                <React.Fragment key={sec}>
+                  <div className="px-5 py-2.5 bg-slate-50 border-y border-slate-100 flex items-center justify-between">
+                    <span className="text-xs font-black text-slate-600">{label}</span>
+                    <span className={`text-xs font-black tabular-nums ${total > 0 ? 'text-emerald-600' : total < 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+                      {total === 0 ? '—' : `${total > 0 ? '+' : ''}${fmt(total)}원`}
+                    </span>
+                  </div>
+                  <div className="divide-y divide-slate-50">
+                    {dSection(sec).length ? dSection(sec).map(dRow)
+                      : <div className="px-5 py-2 text-[11px] text-slate-300 font-bold">내역 없음</div>}
+                  </div>
+                </React.Fragment>
+              ))}
               {/* 총 현금흐름 */}
               <div className="px-5 py-3.5 flex items-center justify-between border-t-2 border-slate-200 bg-slate-50">
                 <span className="text-sm font-black text-slate-700">총 현금흐름</span>
@@ -1023,15 +1030,34 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
 
       {/* ── 거래처 통계 탭 (미수금 + 미지급금 + 통계 통합) ── */}
       {mainTab === 'partners' && (() => {
-        // 결제는 구 payments[]와 자금원장 매칭(settlements) 양쪽에서 온다. 둘 다 빼야 잔액이 맞는다.
-        // 전표 화면·현금출납장에서 수금하면 settlements로 쌓이므로, 이걸 빼먹으면 완납 건이 계속 미수로 뜬다.
-        const settledByStmt = new Map<string, number>();
-        for (const st of settlements) {
-          settledByStmt.set(st.statementId, (settledByStmt.get(st.statementId) ?? 0) + st.amount);
+        // 수금·지불은 전표에 붙이지 않는다 — 거래처로 오간 채권·채무(108/251) 자금을 거래처 단위로 뺀다.
+        // 전표별 매칭을 안 쓰므로 "어느 청구서를 갚았나"가 어긋날 자리가 없다(분개 108·251 잔액과 같은 규칙).
+        const paidByPartner = new Map<string, { in: number; out: number }>();
+        for (const e of cashEntries) {
+          if (!e.partnerId) continue;
+          const parts = (e.lines ?? []).filter(l => l.accountCode && l.amount > 0);
+          const list = parts.length
+            ? parts.map(l => ({ c: l.accountCode, a: l.amount }))
+            : (e.accountCode ? [{ c: e.accountCode, a: e.amount }] : []);
+          for (const p of list) {
+            if (p.c !== '108' && p.c !== '251') continue;
+            const cur = paidByPartner.get(e.partnerId) ?? { in: 0, out: 0 };
+            if (p.c === '108') cur.in += e.dir === '입금' ? p.a : -p.a;
+            else cur.out += e.dir === '출금' ? p.a : -p.a;
+            paidByPartner.set(e.partnerId, cur);
+          }
         }
-        const getPaid = (s: IssuedStatement) =>
-          (s.payments ?? []).reduce((a, p) => a + p.amount, 0) + (settledByStmt.get(s.id) ?? 0);
+        // 전표 단위 잔액은 구 payments[]만 — 나머지는 거래처 잔액에서 본다.
+        const getPaid = (s: IssuedStatement) => (s.payments ?? []).reduce((a, p) => a + p.amount, 0);
         const getBalance = (s: IssuedStatement) => s.totalAmount - getPaid(s);
+        /** 거래처 잔액 — 미수(매출) / 미지급(매입) */
+        const partnerLeft = (partnerId: string, type: '매출' | '매입') => {
+          const gross = issuedStatements
+            .filter(s => s.partnerId === partnerId && s.type === type)
+            .reduce((a, s) => a + getBalance(s), 0);
+          const paid = paidByPartner.get(partnerId);
+          return gross - (type === '매출' ? (paid?.in ?? 0) : (paid?.out ?? 0));
+        };
 
         // ── 전체 거래처 목록 (매출 + 매입 포함) ──
         const currentYear = new Date().getFullYear();
@@ -1051,8 +1077,9 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           const name = resolveName(id);
           const salesS = issuedStatements.filter(s => s.partnerId === id && s.type === '매출');
           const purchaseS = issuedStatements.filter(s => s.partnerId === id && s.type === '매입');
-          const receivable = salesS.reduce((a, s) => a + getBalance(s), 0);
-          const payable = purchaseS.reduce((a, s) => a + getBalance(s), 0);
+          // 거래처 잔액 기준 — 전표별 매칭이 아니라 "이 거래처에 얼마 남았나"
+          const receivable = partnerLeft(id, '매출');
+          const payable = partnerLeft(id, '매입');
           const yearSales = salesS.filter(s => s.tradeDate.startsWith(String(currentYear))).reduce((a, s) => a + s.totalAmount, 0);
           return { id, name, receivable, payable, yearSales };
         }).filter(c => !recClientSearch || c.name.includes(recClientSearch))
@@ -1064,8 +1091,8 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         const selPurchaseStmts = issuedStatements.filter(s => s.partnerId === selId && s.type === '매입').sort((a, b) => b.tradeDate.localeCompare(a.tradeDate));
         const yearSalesStmts = selSalesStmts.filter(s => s.tradeDate.startsWith(String(statsYear)));
         const yearSalesTotal = yearSalesStmts.reduce((a, s) => a + s.totalAmount, 0);
-        const totalReceivable = selSalesStmts.reduce((a, s) => a + getBalance(s), 0);
-        const totalPayable = selPurchaseStmts.reduce((a, s) => a + getBalance(s), 0);
+        const totalReceivable = selId ? partnerLeft(selId, '매출') : 0;
+        const totalPayable = selId ? partnerLeft(selId, '매입') : 0;
         const months = Array.from({ length: 12 }, (_, i) => {
           const m = String(i + 1).padStart(2, '0');
           const rows = yearSalesStmts.filter(s => s.tradeDate.startsWith(`${statsYear}-${m}`));

@@ -16,10 +16,11 @@ describe('filterCodesForContext', () => {
     { id: '260', code: '260', name: '단기차입금', groupId: 'ag-liability' },
     { id: '605', code: '605', name: '운임' },                       // 그룹 미지정
   ];
+  // 반환 순서는 계정번호 오름차순 — 전표 발행 드롭다운에서 번호대로 보여야 찾기 쉽다.
   const names = (ctx: '매출' | '매입' | '자금') => filterCodesForContext(cs, gs, ctx).map(c => c.code);
 
   it('매출전표에는 수익 계정만 (단기차입금·기계장치 안 뜸)', () => {
-    expect(names('매출')).toEqual(['800', '605']);
+    expect(names('매출')).toEqual(['605', '800']);
   });
   // 기계·차량 취득은 손익이 아니라 투자다 — 자금원장에서 끊는다.
   // 손익에 닿는 건 그 자산의 감가상각뿐이라, 매입전표에 자산 계정이 뜨면 안 된다.
@@ -27,7 +28,7 @@ describe('filterCodesForContext', () => {
     expect(names('매입')).toEqual(['520', '605']);
   });
   it('자금 전표는 전부 — 돈이 나가는 이유는 뭐든 될 수 있다', () => {
-    expect(names('자금')).toEqual(['800', '520', '206', '260', '605']);
+    expect(names('자금')).toEqual(['206', '260', '520', '605', '800']);
   });
   it('그룹 미지정 계정은 감추지 않는다 (기존 전표를 고칠 수 있어야 한다)', () => {
     expect(names('매출')).toContain('605');
@@ -42,7 +43,7 @@ describe('filterCodesForContext', () => {
       { id: '535', code: '535', name: '퇴직급여충당금', groupId: 'ag-cogs', noncash: true },
     ];
     const out = filterCodesForContext(withNoncash, gs, '대체').map(c => c.code);
-    expect(out).toEqual(['818', '535']);
+    expect(out).toEqual(['535', '818']);
     expect(out).not.toContain('520');  // 전기세 — 현금 나감
     expect(out).not.toContain('260');  // 단기차입금 — 자금원장으로
   });

@@ -5,6 +5,7 @@ import { Item, InventoryCategory, Partner, PartnerItem, ShippingRule, ItemBom } 
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 import CategoryManager from './CategoryManager';
+import { isBoxStockItem } from '../src/shared/orderUnits';
 
 interface ItemManagerProps {
   items: Item[];
@@ -24,6 +25,8 @@ interface ItemManagerProps {
   onUpsertPartnerItem?: (_ps: PartnerItem) => void;
   onSaveShippingRule?: (_rule: Partial<ShippingRule> & { id: string }) => Promise<void>;
   onAddShippingRule?: (_rule: Omit<ShippingRule, 'id'>) => Promise<void>;
+  /** 낱개 → 박스 품목 생성. 품목과 item_bom(낱개×개입수 + 겉박스·테이프)을 함께 만든다. */
+  onCreateBoxItem?: (_unit: Item, _opts: { name: string; count: number; components: { id: string; qty: number }[] }) => Promise<void>;
   isAdmin?: boolean;
 }
 
@@ -73,7 +76,34 @@ const matchKo = (name: string, query: string) => {
   return false;
 };
 
-const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems = [], shippingRules = [], itemBoms = [], onEditProduct, onAddItem, onDeleteItem, onLinkItem, onUnlinkItem, onLinkSupplier, onUnlinkSupplier, onMergeItems, onSaveItemCustomer, onUpsertPartnerItem, onSaveShippingRule, onAddShippingRule, isAdmin = true }) => {
+const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems = [], shippingRules = [], itemBoms = [], onEditProduct, onAddItem, onDeleteItem, onLinkItem, onUnlinkItem, onLinkSupplier, onUnlinkSupplier, onMergeItems, onSaveItemCustomer, onUpsertPartnerItem, onSaveShippingRule, onAddShippingRule, onCreateBoxItem, isAdmin = true }) => {
+  // ── 박스 품목 만들기 ──
+  // 낱개에서 'N개입' 박스 품목을 만든다. BOM = 낱개×N + 겉박스·테이프(고르면).
+  // 이름·id는 기존 규칙을 따라 자동으로 채우고('{낱개} (N개입)' / box-{낱개id}-{N}) 편집 가능.
+  const [boxModal, setBoxModal] = useState<Item | null>(null);
+  const [boxForm, setBoxForm] = useState<{ name: string; count: string; comps: { id: string; qty: string }[] }>({ name: '', count: '10', comps: [] });
+  const openBoxModal = (unit: Item) => {
+    setBoxModal(unit);
+    setBoxForm({ name: `${unit.name} (10개입)`, count: '10', comps: [] });
+  };
+  // 개입수를 바꾸면 이름도 따라 바뀐다 — 단, 이름을 직접 고쳤으면 건드리지 않는다.
+  const setBoxCount = (v: string) => setBoxForm(f => {
+    const auto = boxModal ? `${boxModal.name} (${f.count}개입)` : '';
+    return { ...f, count: v, name: f.name !== auto ? f.name : `${boxModal?.name ?? ''} (${v}개입)` };
+  });
+  const saveBoxItem = async () => {
+    if (!boxModal || !onCreateBoxItem) return;
+    const count = parseFloat(boxForm.count) || 0;
+    if (count <= 0) { window.alert('개입수를 입력하세요.'); return; }
+    const name = boxForm.name.trim() || `${boxModal.name} (${count}개입)`;
+    if (items.some(i => !i.archived && i.name === name)) { window.alert('같은 이름의 품목이 이미 있습니다.'); return; }
+    await onCreateBoxItem(boxModal, {
+      name, count,
+      components: boxForm.comps.filter(c => c.id).map(c => ({ id: c.id, qty: parseFloat(c.qty) || 0 })),
+    });
+    setBoxModal(null);
+  };
+
   const products = items;
   const itemCustomers = partnerItems;
   const partnerOut = partnerItems.filter(pi => pi.Direction === 'out');
@@ -719,6 +749,16 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                         ) : isAdmin ? (
                           // 품목 목록 뷰: 품목 수정 / 삭제 버튼
                           <div className="flex items-center justify-end gap-1.5">
+                            {/* 낱개 완제품 → N개입 박스 품목 만들기. 이미 박스인 품목엔 안 띄운다. */}
+                            {onCreateBoxItem && item.category === 'product' && !isBoxStockItem(item) && (
+                              <button
+                                onClick={() => openBoxModal(item)}
+                                className="px-2 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 transition-all text-[10px] font-black"
+                                title="이 낱개로 박스 품목 만들기"
+                              >
+                                + 박스
+                              </button>
+                            )}
                             <button
                               onClick={() => onEditProduct(item)}
                               className="p-1.5 rounded-lg bg-indigo-50 text-indigo-500 hover:bg-indigo-100 hover:text-indigo-700 transition-all"
@@ -1444,6 +1484,74 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
           </div>
         );
       })()}
+
+      {/* ── 박스 품목 만들기 ── */}
+      {boxModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setBoxModal(null)}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-black text-slate-800">박스 품목 만들기</h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">낱개 · {boxModal.name}</p>
+              </div>
+              <button onClick={() => setBoxModal(null)} className="p-1 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={16} /></button>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">개입수 <span className="text-rose-400">*</span></label>
+              <div className="flex items-center gap-2">
+                <input type="number" min="1" step="1" value={boxForm.count} onChange={e => setBoxCount(e.target.value)}
+                  className="w-24 border border-slate-200 rounded-xl px-3 py-2 text-sm font-black text-right outline-none focus:ring-2 focus:ring-emerald-300" />
+                <span className="text-xs text-slate-400">개 / 박스</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">품목명 <span className="text-slate-300">(자동 · 수정 가능)</span></label>
+              <input type="text" value={boxForm.name} onChange={e => setBoxForm(f => ({ ...f, name: e.target.value }))}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300" />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">BOM 구성</label>
+              <div className="bg-emerald-50/60 border border-emerald-100 rounded-xl px-3 py-2 mb-2 flex items-center justify-between">
+                <span className="text-xs font-bold text-emerald-700 truncate">{boxModal.name}</span>
+                <span className="text-xs font-black text-emerald-700 shrink-0">×{boxForm.count || 0}</span>
+              </div>
+              {boxForm.comps.map((c, i) => (
+                <div key={i} className="flex items-center gap-1.5 mb-1.5">
+                  <select value={c.id}
+                    onChange={e => setBoxForm(f => ({ ...f, comps: f.comps.map((x, j) => j === i ? { ...x, id: e.target.value } : x) }))}
+                    className="flex-1 min-w-0 border border-slate-200 rounded-xl px-2 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300 bg-white">
+                    <option value="">— 구성품 선택 —</option>
+                    {items.filter(x => !x.archived && x.category !== 'product' && x.category !== 'raw')
+                      .sort((a, b) => a.name.localeCompare(b.name, 'ko'))
+                      .map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+                  </select>
+                  <input type="number" min="0" step="0.001" value={c.qty}
+                    onChange={e => setBoxForm(f => ({ ...f, comps: f.comps.map((x, j) => j === i ? { ...x, qty: e.target.value } : x) }))}
+                    className="w-16 border border-slate-200 rounded-xl px-2 py-2 text-xs font-black text-right outline-none focus:ring-2 focus:ring-emerald-300" />
+                  <button onClick={() => setBoxForm(f => ({ ...f, comps: f.comps.filter((_, j) => j !== i) }))}
+                    className="text-slate-300 hover:text-rose-500 shrink-0"><X size={14} /></button>
+                </div>
+              ))}
+              <button onClick={() => setBoxForm(f => ({ ...f, comps: [...f.comps, { id: '', qty: '1' }] }))}
+                className="w-full py-2 rounded-xl border border-dashed border-slate-300 text-[11px] font-black text-slate-400 hover:border-emerald-300 hover:text-emerald-500 transition-colors">
+                + 구성품 추가 (겉박스 · 테이프 등)
+              </button>
+              <p className="text-[10px] text-slate-400 mt-1.5">수량 0으로 두면 BOM에는 남고 차감·원가엔 안 들어갑니다.</p>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setBoxModal(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
+              <button onClick={saveBoxItem}
+                className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-black hover:bg-emerald-700 flex items-center justify-center gap-1.5">
+                <Save size={12} />만들기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Plus, X, ArrowRight } from 'lucide-react';
 import { Item, Partner, PurchaseOrder } from '../src/shared/types';
 import { sentKg, batchLoss, processingFee } from '../src/features/admin/oem';
+import { baseRawName } from '../src/constants/formula';
 import { itemKg, OEM_DEFAULT_FEE_PER_KG } from '../src/features/admin/oemEngine';
 
 /**
@@ -17,7 +18,7 @@ interface Props {
   feeTarget: PurchaseOrder | null;
   onClose: () => void;
   onIssue: (input: { oemPartnerId: string; partnerName: string; sent: { material: string; kg: number }[]; date: string; note?: string }) => Promise<void>;
-  onReceive: (input: { po: PurchaseOrder; returns: { itemId: string; qty: number }[]; unitPricePerKg: number; date: string }) => Promise<void>;
+  onReceive: (input: { po: PurchaseOrder; returns: { itemId: string; qty: number }[]; bulk: { material: string; kg: number }[]; unitPricePerKg: number; date: string }) => Promise<void>;
   onIssueFee: (input: { po: PurchaseOrder; unitPricePerKg: number; date: string }) => Promise<void>;
 }
 
@@ -44,7 +45,7 @@ export default function OemManager({
           onClose={onClose} onSubmit={(v) => run(() => onIssue(v))} />
       )}
       {receiveTarget && (
-        <ReceiveModal po={receiveTarget} oemItems={oemItems} busy={busy}
+        <ReceiveModal po={receiveTarget} oemItems={oemItems} bulkItems={rawItems} busy={busy}
           onClose={onClose} onSubmit={(v) => run(() => onReceive({ po: receiveTarget, ...v }))} />
       )}
       {feeTarget && (
@@ -148,24 +149,29 @@ function IssueModal({ partners, rawItems, rawStockKg, busy, onClose, onSubmit }:
 }
 
 // ── 가공입고 (완제품 받기) ───────────────────────────────────────────────────
-function ReceiveModal({ po, oemItems, busy, onClose, onSubmit }: {
-  po: PurchaseOrder; oemItems: Item[]; busy: boolean;
+function ReceiveModal({ po, oemItems, bulkItems, busy, onClose, onSubmit }: {
+  po: PurchaseOrder; oemItems: Item[]; bulkItems: Item[]; busy: boolean;
   onClose: () => void;
-  onSubmit: (v: { returns: { itemId: string; qty: number }[]; unitPricePerKg: number; date: string }) => void;
+  onSubmit: (v: { returns: { itemId: string; qty: number }[]; bulk: { material: string; kg: number }[]; unitPricePerKg: number; date: string }) => void;
 }) {
   const [date, setDate] = useState(today());
   const [fee, setFee] = useState(String(po.oemFeePerKg ?? OEM_DEFAULT_FEE_PER_KG));
   const [rows, setRows] = useState<{ itemId: string; qty: string }[]>([{ itemId: '', qty: '' }]);
+  // 벌크(포장 안 하고 온 몫) — kg으로 받아 원료 로트에 그대로 쌓는다. 소분 품목이 여기서 빼간다.
+  const [bulkRows, setBulkRows] = useState<{ material: string; kg: string }[]>([{ material: '', kg: '' }]);
 
   const returns = rows.filter(r => r.itemId && Number(r.qty) > 0).map(r => ({ itemId: r.itemId, qty: Number(r.qty) }));
-  const receivedKg = returns.reduce((a, r) => {
+  const bulk = bulkRows.filter(b => b.material && Number(b.kg) > 0).map(b => ({ material: b.material, kg: Number(b.kg) }));
+  const packedKg = returns.reduce((a, r) => {
     const it = oemItems.find(i => i.id === r.itemId);
     return a + (it ? itemKg(it) * r.qty : 0);
   }, 0);
+  const bulkKg = bulk.reduce((a, b) => a + b.kg, 0);
+  const receivedKg = packedKg + bulkKg;
   const s = sentKg(po.oemSent);
   const loss = batchLoss(po.oemSent, receivedKg);
   const money = processingFee(receivedKg, Number(fee) || 0);
-  const canSave = returns.length > 0 && !busy;
+  const canSave = (returns.length > 0 || bulk.length > 0) && !busy;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
@@ -219,6 +225,30 @@ function ReceiveModal({ po, oemItems, busy, onClose, onSubmit }: {
             className="flex items-center gap-1 text-xs font-black text-slate-500 hover:text-slate-700"><Plus size={12} strokeWidth={3} />품목 추가</button>
         </div>
 
+        {/* 벌크 — 포장 안 하고 kg으로 돌아온 몫. 원료 로트에 쌓여 소분 품목이 여기서 빼간다. */}
+        <div className="space-y-2">
+          <label className="text-[10px] font-black text-slate-400 uppercase block">벌크로 받은 몫 (kg)</label>
+          {bulkRows.map((b, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              <select value={b.material} onChange={e => setBulkRows(p => p.map((x, j) => j === i ? { ...x, material: e.target.value } : x))}
+                className="flex-1 min-w-0 border border-slate-200 rounded-lg px-2 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-300">
+                <option value="">— 원료 —</option>
+                {bulkItems.map(x => <option key={x.id} value={baseRawName(x.name)}>{baseRawName(x.name)}</option>)}
+              </select>
+              <input inputMode="decimal" value={b.kg} placeholder="kg"
+                onChange={e => setBulkRows(p => p.map((x, j) => j === i ? { ...x, kg: e.target.value.replace(/[^\d.]/g, '') } : x))}
+                className="w-20 shrink-0 border border-slate-200 rounded-lg px-2 py-2 text-sm font-black text-right outline-none focus:ring-2 focus:ring-violet-300" />
+              <span className="text-[10px] font-bold text-slate-400 shrink-0 w-16 text-right">kg</span>
+              {bulkRows.length > 1 && <button onClick={() => setBulkRows(p => p.filter((_, j) => j !== i))} className="text-slate-300 hover:text-rose-400 shrink-0"><X size={14} /></button>}
+            </div>
+          ))}
+          <button onClick={() => setBulkRows(p => [...p, { material: '', kg: '' }])}
+            className="flex items-center gap-1 text-xs font-black text-slate-500 hover:text-slate-700"><Plus size={12} strokeWidth={3} />벌크 추가</button>
+          {bulkKg > 0 && (
+            <p className="text-[10px] font-bold text-violet-600">벌크 {fmt(bulkKg)}kg은 원료 재고(로트)로 들어갑니다.</p>
+          )}
+        </div>
+
         <div>
           <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">가공단가 (원/kg)</label>
           <input inputMode="numeric" value={fee} onChange={e => setFee(e.target.value.replace(/[^\d]/g, ''))}
@@ -240,7 +270,7 @@ function ReceiveModal({ po, oemItems, busy, onClose, onSubmit }: {
 
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200">취소</button>
-          <button onClick={() => onSubmit({ returns, unitPricePerKg: Number(fee) || 0, date })} disabled={!canSave}
+          <button onClick={() => onSubmit({ returns, bulk, unitPricePerKg: Number(fee) || 0, date })} disabled={!canSave}
             className="flex-1 py-2.5 rounded-xl bg-violet-600 text-white text-xs font-black hover:bg-violet-700 disabled:opacity-30">
             {busy ? '처리 중…' : '가공입고'}
           </button>

@@ -155,7 +155,7 @@ interface ItemListProps {
   oemEnabled?: boolean;
   rawStockKg?: (material: string) => number;
   onOemIssue?: (input: { oemPartnerId: string; partnerName: string; sent: { material: string; kg: number }[]; date: string; note?: string }) => Promise<void>;
-  onOemReceive?: (input: { po: PurchaseOrder; returns: { itemId: string; qty: number }[]; unitPricePerKg: number; date: string }) => Promise<void>;
+  onOemReceive?: (input: { po: PurchaseOrder; returns: { itemId: string; qty: number }[]; bulk: { material: string; kg: number }[]; unitPricePerKg: number; date: string }) => Promise<void>;
   onOemIssueFee?: (input: { po: PurchaseOrder; unitPricePerKg: number; date: string }) => Promise<void>;
 }
 
@@ -419,7 +419,8 @@ const ItemList: React.FC<ItemListProps> = ({
   }, [toast]);
   const [historyMonth, setHistoryMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [historyPage, setHistoryPage] = useState(1); // 입고이력 페이지네이션
-  const [ledgerMaterialFilter, setLedgerMaterialFilter] = useState<string>('전체'); // 원료 입출고 기록 필터
+  // 입출고 기록 모달 — 원료명('전체'면 전 원료). null이면 닫힘. 로트 옆 버튼으로 연다.
+  const [ledgerModalMaterial, setLedgerModalMaterial] = useState<string | null>(null);
   const [ledgerPeriod, setLedgerPeriod] = useState<string>('1m'); // 입출고 기록 기간: '1m'(최근 1개월)|'all'(전체)|'YYYY-MM'(월별)
   const [activeCategory, setActiveCategory] = useState<string>('전체');
   const [activeSupplierId, setActiveSupplierId] = useState<string>('전체');
@@ -498,14 +499,15 @@ const ItemList: React.FC<ItemListProps> = ({
     setActiveTab('inbound');
   };
 
-  // 재고 수정 커밋. 원료(raw)는 직접 덮어쓰지 않고 '실사조정'으로 로트를 목표값에 맞춤(+수불부 기록).
+  // 재고 수정 커밋. 원료(raw)는 직접 덮어쓰지 않고 '실사조정'으로 로트를 목표값에 맞춤.
   // (원료 stock은 로트 합계가 기준이라 직접 덮어쓰면 다음 로트연산에 사라지므로 반드시 로트로 조정)
   const commitStockEdit = async (product: Item, val: number) => {
     if (isNaN(val) || val < 0) return;
     if (isRawHolder(product)) {
       const material = baseRawName(product.name);
       const unitLabel = product.unit ?? (unitOf(material) === 'L' ? 'L' : 'kg');
-      if (!confirm(`${product.name} 재고를 ${val}${unitLabel}로 맞출까요?\n현재 로트 합계와의 차이가 '실사조정'으로 로트·수불부에 기록됩니다.`)) return;
+      // 로트와 원장은 한 몸 — 실사하면 둘 다 같은 목표값으로 간다.
+      if (!confirm(`${product.name} 재고를 ${val}${unitLabel}로 맞출까요?\n로트와 입출고 기록(원장)에 '실사조정'으로 함께 반영됩니다.`)) return;
       const targetKg = unitToKg(val, material);
       let adjustKg = 0;
       await mutateRawMaterialLots(
@@ -523,18 +525,22 @@ const ItemList: React.FC<ItemListProps> = ({
         (lots) => lotStockInUnit(lots, material),
       );
       if (Math.abs(adjustKg) > 0.001) {
-        // type:'correction'이면 AdminApp 수율 자동입고/파생행에서 제외됨 (실사조정이 다른 품목 수율을 트리거하지 않음)
-        onAddRawMaterialEntry({
+        // 원장에도 같은 실사를 남긴다 — targetKg를 실어야 원장 잔량이 로트와 같은 값으로 맞춰진다.
+        // type='correction' 이라 수율 파생입고(압착)는 타지 않는다.
+        await onAddRawMaterialEntry({
           id: `rm-stocktake-${Date.now()}`,
-          material, date: new Date().toISOString().slice(0, 10),
+          material,
+          date: new Date().toISOString().slice(0, 10),
           received: adjustKg > 0 ? adjustKg : 0,
           used: adjustKg < 0 ? -adjustKg : 0,
-          note: '재고실사정정',
+          targetKg,
+          note: `재고실사 (${val}${unitLabel}로 맞춤)`,
           createdAt: new Date().toISOString(),
-          type: 'correction', unit: 'kg',
-          targetKg, // 실사 절대값(kg) — 수불부 잔량이 이 값으로 리셋(과거 장부 오차와 무관하게 실물 기준)
+          type: 'correction',
+          unit: 'kg',
+          addedBy: currentUser?.name,
         } as RawMaterialEntry);
-        setToast({ message: `${product.name} 실사조정 ${adjustKg > 0 ? '+' : ''}${Math.round(adjustKg * 10) / 10}kg 반영` });
+        setToast({ message: `${product.name} 실사조정 ${adjustKg > 0 ? '+' : ''}${Math.round(adjustKg * 10) / 10}kg — 로트·원장 반영` });
       }
     } else {
       onUpdateItem({ ...product, stock: product.subtype === '향미유' ? val * 12 : val });
@@ -1256,15 +1262,22 @@ const ItemList: React.FC<ItemListProps> = ({
       {/* ── 로트 탭: 원료 홀더별 로트/수불부 확인 전용 ── */}
       {activeTab === 'lots' && (
         <div className="flex flex-col gap-3 flex-1 min-h-0">
-          <div className="relative w-full sm:w-72 self-start">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={15} />
-            <input
-              type="text"
-              placeholder="원료명 검색..."
-              value={lotSearch}
-              onChange={(e) => setLotSearch(e.target.value)}
-              className="w-full bg-white border border-slate-200 rounded-2xl pl-9 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 shadow-sm transition-all"
-            />
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative w-full sm:w-72">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={15} />
+              <input
+                type="text"
+                placeholder="원료명 검색..."
+                value={lotSearch}
+                onChange={(e) => setLotSearch(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-2xl pl-9 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 shadow-sm transition-all"
+              />
+            </div>
+            {/* 입출고 기록 — 창으로 띄운다. 창 안에서 원료를 골라볼 수 있어 버튼은 하나면 된다. */}
+            <button onClick={() => setLedgerModalMaterial('참깨')}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-white border border-slate-200 text-xs font-black text-slate-500 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 shadow-sm transition-all shrink-0">
+              <History size={13} />입출고 기록
+            </button>
           </div>
           <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar flex flex-col gap-2">
             {items
@@ -1278,18 +1291,16 @@ const ItemList: React.FC<ItemListProps> = ({
                 const isOpen = lotExpandedId === raw.id;
                 return (
                   <div key={raw.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-                    <button
-                      onClick={() => setLotExpandedId(isOpen ? null : raw.id)}
-                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50/60 transition-colors"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50/60 transition-colors gap-2">
+                      <button onClick={() => setLotExpandedId(isOpen ? null : raw.id)}
+                        className="flex items-center gap-2 min-w-0 flex-1 text-left">
                         <ChevronRight size={14} className={`text-slate-300 transition-transform shrink-0 ${isOpen ? 'rotate-90' : ''}`} />
                         <Grape size={14} className="text-emerald-500 shrink-0" />
                         <span className="text-sm font-black text-slate-700 truncate">{material}</span>
                         <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full shrink-0">로트 {activeLotCount}</span>
-                      </div>
-                      <span className={`text-sm font-black shrink-0 tabular-nums ${stock < 0 ? 'text-rose-600' : 'text-slate-800'}`}>{Math.round(stock * 10) / 10} {unitLabel}</span>
-                    </button>
+                      </button>
+                      <span className={`text-sm font-black tabular-nums shrink-0 ${stock < 0 ? 'text-rose-600' : 'text-slate-800'}`}>{Math.round(stock * 10) / 10} {unitLabel}</span>
+                    </div>
                     {isOpen && (
                       <div className="px-4 pb-4 pt-1 bg-emerald-50/40 border-t border-emerald-100">
                         <RawMaterialLotPanel
@@ -1784,63 +1795,7 @@ const ItemList: React.FC<ItemListProps> = ({
           </div>
         )}
 
-        {/* ── 원료재고 전체 입출고 기록 (원료 필터 + 유형 필터 + 페이지네이션) ── */}
-        {activeTab === 'master' && topTab === 'rawmaterial' && (() => {
-          const materials = Array.from(new Set(rawMaterialLedger.map(e => e.material).filter(Boolean))).sort();
-          const ledgerMonths = Array.from(new Set(rawMaterialLedger.map(e => (e.date ?? '').slice(0, 7)).filter(Boolean))).sort().reverse();
-          const oneMonthAgo = (() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 10); })();
-          const entries = (ledgerMaterialFilter === '전체'
-            ? rawMaterialLedger
-            : rawMaterialLedger.filter(e => e.material === ledgerMaterialFilter)
-          ).filter(e => {
-            if (ledgerPeriod === 'all') return true;
-            if (ledgerPeriod === '1m') return (e.date ?? '') >= oneMonthAgo;
-            return (e.date ?? '').slice(0, 7) === ledgerPeriod; // 특정 월(YYYY-MM)
-          });
-          return (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mt-4">
-              <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 gap-2 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <History size={14} className="text-slate-400" />
-                  <h3 className="text-xs font-black text-slate-700 uppercase tracking-wider">전체 입출고 기록</h3>
-                </div>
-                <div className="flex items-center gap-2">
-                  <select value={ledgerPeriod} onChange={e => setLedgerPeriod(e.target.value)}
-                    className="border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-600 outline-none focus:ring-2 focus:ring-teal-400 bg-white">
-                    <option value="1m">최근 1개월</option>
-                    <option value="all">전체 기간</option>
-                    {ledgerMonths.length > 0 && (
-                      <optgroup label="월별">
-                        {ledgerMonths.map(m => <option key={m} value={m}>{m}</option>)}
-                      </optgroup>
-                    )}
-                  </select>
-                  <select value={ledgerMaterialFilter} onChange={e => setLedgerMaterialFilter(e.target.value)}
-                    className="border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-600 outline-none focus:ring-2 focus:ring-teal-400 bg-white">
-                    <option value="전체">전체 원료</option>
-                    {materials.map(m => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="p-4">
-                <RawLedgerList
-                  entries={entries}
-                  isAdmin={isAdmin}
-                  currentUserName={currentUser?.name}
-                  onDelete={onDeleteRawMaterialEntry}
-                  showMaterial={ledgerMaterialFilter === '전체'}
-                  pageSize={12}
-                  emptyText="입출고 기록 없음"
-                />
-              </div>
-              {!isAdmin && (
-                <p className="px-5 py-2 text-[10px] text-slate-400 border-t border-slate-100">
-                  삭제는 관리자만 가능합니다.
-                </p>
-              )}
-            </div>
-          );
-        })()}
+
 
         {/* ── 행 수정 모달 ── */}
         {rowEditProduct && (
@@ -3071,6 +3026,88 @@ const ItemList: React.FC<ItemListProps> = ({
         </div>
       </div>
     )}
+    {/* ── 입출고 기록 모달 ── 원료 목록에 늘 펼쳐두면 화면이 길어져서, 로트 옆 버튼으로 띄운다. */}
+    {ledgerModalMaterial && (() => {
+      // 원료 순서는 원료수불부 탭과 같게(RM_LIST). 기록에만 있고 목록에 없는 원료는 뒤에 붙인다.
+      const inLedger = new Set(rawMaterialLedger.map(e => e.material).filter(Boolean));
+      const materials = [
+        ...RM_LIST.filter(m => inLedger.has(m)),
+        ...Array.from(inLedger).filter(m => !RM_LIST.includes(m)).sort(),
+      ];
+      const ledgerMonths = Array.from(new Set(rawMaterialLedger.map(e => (e.date ?? '').slice(0, 7)).filter(Boolean))).sort().reverse();
+      const oneMonthAgo = (() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 10); })();
+      const mat = ledgerModalMaterial;
+      const entries = rawMaterialLedger.filter(e => e.material === mat).filter(e => {
+        if (ledgerPeriod === 'all') return true;
+        if (ledgerPeriod === '1m') return (e.date ?? '') >= oneMonthAgo;
+        return (e.date ?? '').slice(0, 7) === ledgerPeriod; // 특정 월(YYYY-MM)
+      });
+      // 그 원료의 현재고 — 로트 합계(운영단위). 기록과 재고를 같이 봐야 어긋난 게 보인다.
+      const holder = items.find(p => isRawHolder(p) && baseRawName(p.name) === mat);
+      const stockNow = holder ? displayStockOf(holder) : null;
+      const unitLabel = holder ? (holder.unit ?? (unitOf(mat) === 'L' ? 'L' : 'kg')) : '';
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setLedgerModalMaterial(null)}>
+          {/* 높이를 고정(88vh)해 목록이 항상 같은 크기로 뜬다 — 내용이 적어도 창이 줄었다 늘었다 하지 않는다. */}
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl h-[88vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+          {/* 헤더 — 원료명·현재고·기간 */}
+          <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 gap-3 shrink-0">
+            <div className="flex items-baseline gap-2.5 min-w-0">
+              <h3 className="text-base font-black text-slate-800 truncate">{mat}</h3>
+              <span className="text-[11px] font-bold text-slate-400 shrink-0">입출고 기록</span>
+              {stockNow != null && (
+                <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200 whitespace-nowrap shrink-0">
+                  현재고 {stockNow.toLocaleString()}{unitLabel}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <select value={ledgerPeriod} onChange={e => setLedgerPeriod(e.target.value)}
+                className="border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-600 outline-none focus:ring-2 focus:ring-teal-400 bg-white">
+                <option value="1m">최근 1개월</option>
+                <option value="all">전체 기간</option>
+                {ledgerMonths.length > 0 && (
+                  <optgroup label="월별">
+                    {ledgerMonths.map(m => <option key={m} value={m}>{m}</option>)}
+                  </optgroup>
+                )}
+              </select>
+              <button onClick={() => setLedgerModalMaterial(null)}
+                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={16} /></button>
+            </div>
+          </div>
+          {/* 원료 탭 — 원료수불부와 같은 순서 */}
+          <div className="flex gap-1 px-4 py-2 border-b border-slate-100 overflow-x-auto custom-scrollbar shrink-0">
+            {materials.map(m => (
+              <button key={m} onClick={() => setLedgerModalMaterial(m)}
+                className={`px-3 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap transition-colors ${m === mat ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:bg-slate-100'}`}>
+                {m}
+              </button>
+            ))}
+          </div>
+          {/* flex-1 + min-h-0 이 있어야 남은 높이를 다 쓰고 그 안에서 스크롤된다.
+              (없으면 부모 overflow-hidden에 잘려 목록 몇 줄과 페이지네이션이 안 보인다) */}
+          <div className="p-4 flex-1 min-h-0 overflow-y-auto">
+            <RawLedgerList
+              entries={entries}
+              allEntries={rawMaterialLedger}
+              isAdmin={isAdmin}
+              currentUserName={currentUser?.name}
+              onDelete={onDeleteRawMaterialEntry}
+              showMaterial={false}
+              pageSize={20}
+              emptyText="입출고 기록 없음"
+            />
+          </div>
+          {!isAdmin && (
+            <p className="px-5 py-2 text-[10px] text-slate-400 border-t border-slate-100">
+              삭제는 관리자만 가능합니다.
+            </p>
+          )}
+          </div>
+        </div>
+      );
+    })()}
     </div>
   );
 };

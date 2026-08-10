@@ -772,6 +772,13 @@ export interface CashEntry {
   partnerId?: string;                  // 거래처 (한국전력공사, 은행 등)
   partnerName?: string;                // 표시용 스냅샷
   accountCode?: string;                // 계정과목 — 이 돈의 성격(비용/자산/부채)을 결정
+  /**
+   * 한 번 움직인 돈의 성격이 둘 이상일 때 쪼갠 줄 — 대출상환(원금=차입금 + 이자=비용),
+   * 급여(총급여 + 원천공제) 같은 것. ERP 출금전표와 같은 모양이다: 통장 쪽(대변)은
+   * dir·cashAccountId가 이미 정하므로 반대편만 여러 줄로 적는다.
+   * 있으면 amount는 이 줄들의 합이고 accountCode는 쓰지 않는다. 없으면 기존대로 accountCode 한 줄.
+   */
+  lines?: { accountCode: string; amount: number; note?: string }[];
   note?: string;
   createdAt: string;
   createdBy?: string;

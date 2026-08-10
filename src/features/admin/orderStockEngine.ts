@@ -1,4 +1,4 @@
-import { doc, setDoc, deleteDoc, Firestore } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, getDoc, Firestore } from 'firebase/firestore';
 import { Order, OrderItem, Item, OrderStatus, AppNotification, ShippingRule, Partner, RawMaterialLot } from '../../shared/types';
 import { toKg, baseRawName, lotStockInUnit, unitToKg } from '../../constants/formula';
 import { deductFromLots, withCarryOverLot, buildReceiveLot } from '../../shared/lotUtils';
@@ -28,6 +28,26 @@ export interface OrderStockEngineDeps {
   updateItem: (collection: string, id: string, data: Record<string, any>) => Promise<any>;
   addItem: (collection: string, data: Record<string, any>) => Promise<any>;
 }
+
+/**
+ * 완제품 1개당 오일 kg = **BOM 수량(병당 L) × 밀도**. 오직 BOM만 본다.
+ *
+ * 병 용량(spec)으로 계산하던 경로는 없앴다 — 근거가 둘이면 곱해져서(0.35² 같은) 이중 계산이 나고,
+ * 어느 쪽이 맞는지도 매번 헷갈린다. BOM이 곧 구성이다.
+ * → 그래서 오일 BOM 수량은 반드시 '병당 L'로 들어 있어야 한다(1로 두면 1L로 잡힌다).
+ */
+export const perUnitOilKg = (bomQuantity: number, rawName: string): number =>
+  unitToKg(bomQuantity, rawName);
+
+/** 처리 중인 주문 id — 같은 주문의 상태 변경이 겹쳐 들어오는 것을 막는다(중복 차감 방지).
+ *  엔진은 렌더마다 새로 만들어지므로 모듈 스코프에 둬야 인스턴스 간에도 공유된다. */
+const inFlightOrders = new Set<string>();
+
+/** 구성품에 완제품이 있는가 — 박스·세트·재포장. 그 완제품이 자기 원료를 지니므로
+ *  이런 품목에 품목 원료식을 또 적용하면 원료가 두 번 빠진다. */
+export const hasProductComponent = (
+  product: Pick<Item, 'submaterials'> | undefined,
+): boolean => (product?.submaterials ?? []).some(s => s.category === 'product' || s.category === '완제품');
 
 export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   const { allItems, shippingRules, submaterials, partners, allOrders, orders, db,
@@ -64,24 +84,8 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     }
   };
 
-  // 겉박스 — 일반(낱개) 품목은 거래처별 배송규칙(shipping_rule)에서 온다. sign=-1 차감 / +1 복원.
-  // 박스 품목은 겉박스가 자기 BOM에 ×1로 들어있어 accrueBom이 깐다(여기 안 옴).
-  const accrueShippingBox = (order: Order, product: Item, item: OrderItem, deltas: Map<string, number>, sign: number) => {
-    const boxesUsed = item.isBoxUnit && item.boxQuantity ? item.boxQuantity
-      : item.unitsPerBox ? Math.ceil(item.quantity / item.unitsPerBox) : null;
-    const shippingRule = shippingRules.find(r => r.item_id === product.id && r.partner_id === order.partnerId);
-    const boxSubId = item.boxSubId || shippingRule?.box_item_id;
-    const boxSub = boxSubId ? submaterials.find(sm => sm.id === boxSubId) : null;
-    if (!boxSub) return;
-    const dq = boxesUsed ?? Math.ceil(item.quantity / (boxSub.boxSize || 1));
-    if (dq > 0) addDelta(deltas, boxSub.id, sign * dq);
-  };
-
-  // 낱개 품목의 겉박스는 shipping_rule이 따로 깎으므로 BOM에서 건너뛴다(이중 차감 방지).
-  // 박스 품목은 겉박스가 자기 BOM 구성품이라 그건 깎는다 — isBoxStockItem일 때만 허용.
-  // 테이프는 코드로 막지 않는다 — 안 깎으려면 BOM 수량을 0으로 둔다.
-  const isShippingBox = (i: Item) =>
-    i.category === 'box' || (i.category === 'submaterial' && i.subtype === '박스');
+  // 겉박스·테이프는 BOM으로만 깎는다. 박스 품목을 만들 때 그 BOM에 들어 있고,
+  // 낱개 BOM에는 애초에 두지 않는다 — 거래처별 배송규칙(shipping_rule) 경로는 폐기했다.
 
   // 원료 kg 적재 = **item_bom(BOM) 반제품** 기준(등급). 로트·원장 둘 다 이걸로.
   //  · phantom 반제품(참기름특A 등) → buildFormula로 통깨/깨분 leaf 전개
@@ -100,18 +104,19 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       for (const { s, comp } of oilSubs) {
         const qty = bomQty(s);
         if (!comp || qty <= 0) continue;
+        const perUnitKg = (r: string) => perUnitOilKg(qty, r);
         if (comp.phantom) {
           for (const f of buildFormula(comp.name)) {
             const kg = isAssembly
               ? unitToKg(qty * units * f.ratio, f.raw)               // qty = L 직접 입력
-              : toKg(product.spec || '', f.raw, units) * f.ratio * qty;
+              : perUnitKg(f.raw) * units * f.ratio;
             if (kg > 0) rawUsage[f.raw] = (rawUsage[f.raw] ?? 0) + kg;
           }
         } else {
           const raw = baseRawName(comp.name);
           const kg = isAssembly
             ? unitToKg(qty * units, raw)
-            : toKg(product.spec || '', raw, units) * qty;
+            : perUnitKg(raw) * units;
           if (kg > 0) rawUsage[raw] = (rawUsage[raw] ?? 0) + kg;
         }
       }
@@ -138,11 +143,11 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     fresh = false,   // 낱개 재고 무시하고 전부 새로 생산 (박스 작업완료 시 사용자가 '아니요')
   ) => {
     if (units <= 0 || depth > 4) return;   // depth — BOM 순환 방어
-    const isBox = isBoxStockItem(product);   // 박스 품목이면 겉박스도 자기 BOM에서 깐다
     for (const s of (product.submaterials ?? [])) {
       const comp = allItems.find(p => p.id === s.id);
       if (!comp) continue;
-      if (isShippingBox(comp) && !isBox) continue;   // 낱개 품목의 겉박스는 shipping_rule 경로 → 건너뜀
+      // 겉박스·테이프도 BOM에 있으면 그대로 깎는다 — 낱개 BOM엔 그것들을 안 둔다
+      // (박스 품목을 만들 때 그 BOM으로 잡힌다). BOM이 곧 구성이다.
       // 원료·벌크 반제품(L/kg)은 kg로 원료식 경로에서 처리. 개수(개) 단위 반제품(조립)은 완제품처럼 여기서 생산·차감.
       if (comp.category === 'raw' || (comp.category === 'wip' && comp.unit !== '개')) continue;
       const need = Math.round(units * bomQty(s) * 1000) / 1000;
@@ -278,11 +283,11 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       }
 
       if (isGoodsItem(product)) continue;
-      accrueShippingBox(order, product, item, deltas, -1);
       accrueBom(order, product, units, deltas, rawUsage, -1, autoBuilt, 0, freshItemIds?.has(product.id) ?? false);
-      // 박스 품목(낱개로 풀림)은 accrueBom이 낱개→원료로 이미 깐다 → accrueRaw는 낱개 아닌 완제품만.
-      //   (박스에 품목/원료식이 잘못 달려 있어도 여기서 원료 이중차감을 막는다)
-      if (!isBoxStockItem(product)) accrueRaw(product, units, rawUsage);
+      // 구성품에 완제품이 있으면(박스·세트·재포장) accrueBom이 그 완제품을 따라 내려가며
+      // 거기서 원료를 뺀다 → 여기서 품목 원료식으로 또 빼면 이중 차감이다.
+      //   (품목·규격은 서류용이라 재고 계산에 끌어들이지 않는다. BOM이 곧 구성이다)
+      if (!hasProductComponent(product)) accrueRaw(product, units, rawUsage);
       addDelta(deltas, product.id, units); // 완제품 재고 +N (생산됨·미출고)
     }
     const consumedLots = await deductRawLotsForOrder(order, rawUsage, rawUsageLedgerOnly);
@@ -298,7 +303,6 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       if (!product || product.category !== 'product') continue;
       if (product.procureType === '임가공') continue;   // 재고 미변동 — 수불부만 restore에서 지운다
       if (isGoodsItem(product)) continue;
-      accrueShippingBox(order, product, item, deltas, +1);
       accrueBom(order, product, stockUnits(item, product), deltas, drop, +1, []);
       addDelta(deltas, product.id, -stockUnits(item, product)); // 완제품 재고 되돌림
     }
@@ -349,7 +353,9 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     if (wantProduced && !order.producedAt) {
       const { consumedLots, autoBuilt } = await produceOrder(order, deltas, freshItemIds);
       patch.producedAt = new Date().toISOString(); patch.rawLotsDeducted = true;
-      if (consumedLots.length > 0) patch.rawConsumedLots = consumedLots;
+      // 빈 결과여도 반드시 덮어쓴다 — 안 쓰면 이전 생산의 스냅샷이 남아, 취소 때
+      // 이번에 빼지도 않은 양을 되돌려버린다(유령 복원).
+      patch.rawConsumedLots = consumedLots;
       if (autoBuilt.length > 0) patch.autoBuilt = autoBuilt;
     }
     if (wantShipped && !order.shippedOut) { shipOrder(order, deltas); patch.shippedOut = true; }
@@ -359,10 +365,26 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
 
   // 주문 상태 변경 진입점 — 재고 조정 후 상태 저장. 이미 이력(DELIVERED)이면 재고 조정 없이 상태만.
   const changeOrderStatus = async (id: string, status: OrderStatus, freshItemIds?: Set<string>) => {
-    const order = allOrders.find(o => o.id === id) || orders.find(o => o.id === id);
-    if (!order) { await updateItem('orders', id, { status }); return; }
-    if (order.status !== OrderStatus.DELIVERED) await reconcileOrderStock(order, status, freshItemIds);
-    await updateItem('orders', id, { status, ...(status === OrderStatus.DELIVERED && !order.deliveredAt ? { deliveredAt: new Date().toISOString() } : {}) });
+    // 같은 주문이 동시에 두 번 생산 처리되는 것을 막는다.
+    //  품목 체크가 연달아 들어오면 handleToggleItemChecked가 같은 틱에 작업완료를 여러 번 부르는데,
+    //  producedAt 판정이 React 상태 기준이라 전부 통과해 원료가 배수로 빠졌다(수입들기름 3배).
+    if (inFlightOrders.has(id)) return;
+    inFlightOrders.add(id);
+    try {
+      const order = allOrders.find(o => o.id === id) || orders.find(o => o.id === id);
+      if (!order) { await updateItem('orders', id, { status }); return; }
+      // producedAt·shippedOut은 DB에서 다시 읽는다 — React 상태는 같은 틱에 갱신되지 않아
+      // 직전 호출이 이미 생산했는지 알 수 없다.
+      let live = order;
+      try {
+        const snap = await getDoc(doc(db, 'orders', id));
+        if (snap.exists()) live = { ...order, ...(snap.data() as Partial<Order>) } as Order;
+      } catch { /* 읽기 실패 시 메모리 상태로 진행 */ }
+      if (live.status !== OrderStatus.DELIVERED) await reconcileOrderStock(live, status, freshItemIds);
+      await updateItem('orders', id, { status, ...(status === OrderStatus.DELIVERED && !live.deliveredAt ? { deliveredAt: new Date().toISOString() } : {}) });
+    } finally {
+      inFlightOrders.delete(id);
+    }
   };
 
   return { changeOrderStatus, reconcileOrderStock };

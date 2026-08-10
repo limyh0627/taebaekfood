@@ -90,7 +90,10 @@ export function createOemEngine(deps: OemEngineDeps) {
    */
   async function receiveOemBatch(input: {
     po: PurchaseOrder;
-    returns: { itemId: string; qty: number }[];   // 돌아온 규격별 수량
+    returns: { itemId: string; qty: number }[];   // 완포장으로 돌아온 규격별 수량
+    /** 벌크(포장 안 한 상태)로 돌아온 kg — 원료 홀더 로트에 그대로 쌓는다.
+     *  우리가 소분·포장하는 몫이라 재고가 우리 로트에 있어야 한다. */
+    bulk?: { material: string; kg: number }[];
     unitPricePerKg?: number;                       // 가공단가(원/kg) — 전표 발행 때 쓰려고 배치에 저장
     date: string;
     addedBy?: string;
@@ -100,7 +103,8 @@ export function createOemEngine(deps: OemEngineDeps) {
     if (po.status === 'received') throw new Error('이미 가공입고된 배치입니다.');
 
     const lines = input.returns.filter(r => r.itemId && r.qty > 0);
-    if (lines.length === 0) throw new Error('입고할 품목이 없습니다.');
+    const bulkLines = (input.bulk ?? []).filter(b => b.material && b.kg > 0);
+    if (lines.length === 0 && bulkLines.length === 0) throw new Error('입고할 품목이 없습니다.');
 
     let receivedKg = 0;
     const poItems: PurchaseOrder['items'] = [];
@@ -120,9 +124,23 @@ export function createOemEngine(deps: OemEngineDeps) {
       }
     }
 
+    // 벌크로 돌아온 몫 — 완포장과 달리 **우리 로트에 쌓는다**. 여기서 소분 품목이 BOM으로 빼간다.
+    //   (예전엔 벌크를 받을 방법이 없어, 소분 품목이 입고 없는 빈 홀더에서 빼가 로트가 음수로 갔다)
+    //   adjustRawLots가 로트 생성·음수이월 상쇄·원장 기록까지 함께 처리한다.
+    for (const b of bulkLines) {
+      const holder = findRawHolder(items, b.material);
+      if (!holder) throw new Error(`원료 홀더를 찾을 수 없습니다: ${b.material}`);
+      await adjustRawLots({
+        material: b.material, rawItemId: holder.id, deltaKg: b.kg,
+        date: input.date, note: `OEM 가공입고 ← ${po.partnerName ?? ''}`, addedBy: input.addedBy,
+      });
+      receivedKg += b.kg;
+    }
+
     receivedKg = Math.round(receivedKg * 1000) / 1000;
 
-    // 가공입고 = 원료(볶음참깨)가 들어온 것. 반제품 재고는 올리지 않고 수불부에만 kg으로 남긴다.
+    // 완포장분 = 원료(볶음참깨)가 완제품 안에 들어온 것. 반제품 재고는 안 올리고 수불부에만 kg으로 남긴다.
+    //   (벌크분은 위 adjustRawLots가 이미 원장에 입고를 남겼다 — 여기서 또 쓰면 두 번 잡힌다)
     for (const [raw, rawKg] of Object.entries(receivedByRaw)) {
       const id = `rm-oem-${po.id}-${raw.replace(/\s/g, '_')}`;
       await addItem('rawMaterialLedger', {
@@ -139,6 +157,7 @@ export function createOemEngine(deps: OemEngineDeps) {
     await updateItem('purchaseOrders', po.id, {
       status: 'received', receivedAt: new Date().toISOString(),
       oemReceivedKg: receivedKg, items: poItems,
+      ...(bulkLines.length ? { oemReceivedBulk: bulkLines } : {}),
       oemFeePerKg: input.unitPricePerKg ?? OEM_DEFAULT_FEE_PER_KG,
     });
 

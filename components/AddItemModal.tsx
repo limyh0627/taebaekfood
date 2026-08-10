@@ -1,5 +1,5 @@
 ﻿import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { X, Package, Tag, Box, Layers, Plus, Building2, Check, Trash2, ChevronRight } from 'lucide-react';
+import { X, Package, Tag, Box, Layers, Plus, Building2, Check, Trash2, ChevronRight, FileText } from 'lucide-react';
 import { Item, InventoryCategory, ItemSubtype, Partner, ClientBoxConfig, PartnerItem, ShippingRule } from '../types';
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { buildTaxonomy, DEFAULT_CATEGORY_LABELS, TaxonomyRow } from '../src/shared/taxonomy';
@@ -143,21 +143,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const [formulaPickerOpen, setFormulaPickerOpen] = useState(false);
   const formulaPickerRef = useRef<HTMLDivElement>(null);
 
-  // 거래처별 포장 설정 (shipping_rule 기반, partner_item 필드 fallback)
-  const [partnerPackagingConfigs, setClientPackagingConfigs] = useState<Record<string, { boxTypeId?: string; qtyPerBox?: number; tapeTypeId?: string }>>(() => {
-    const map: Record<string, { boxTypeId?: string; qtyPerBox?: number; tapeTypeId?: string }> = {};
-    if (initialData) {
-      partnerOut.filter(pi => pi.itemId === initialData.id).forEach(pc => {
-        const rule = shippingRules.find(r => r.item_id === initialData.id && r.partner_id === pc.partnerId);
-        map[pc.partnerId] = {
-          boxTypeId: rule?.box_item_id ?? pc.boxTypeId,
-          qtyPerBox: rule?.qty_per_box ?? pc.qtyPerBox,
-          tapeTypeId: rule?.tape_item_id ?? pc.tapeTypeId,
-        };
-      });
-    }
-    return map;
-  });
+  // 거래처별 포장 설정(shipping_rule)은 폐기 — 겉박스·테이프는 박스 품목 BOM으로만 관리한다.
   const boxClientSearchRef = useRef<HTMLDivElement>(null);
   const pumokRef = useRef<HTMLDivElement>(null);
 
@@ -266,9 +252,10 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
 
     onSave(finalProduct);
 
-    // 원료 배합·수율 저장 (완제품·반제품·원료) — item_formula.
-    //   완제품 parent_key = 품목(규격 공유), 반제품/원료 = base 이름. 유효비율은 yield_rate에 저장(ratio=1).
-    if (onSaveItemFormula && ['product', 'wip', 'raw'].includes(formData.category)) {
+    // 원료 배합·수율 저장 — **반제품·원료만**. item_formula.
+    //   완제품은 저장하지 않는다: parent_key가 품목이라 같은 품목을 쓰는 다른 완제품까지 덮어쓰고,
+    //   완제품 배합은 구성품(BOM)이 정하므로 근거가 둘로 갈린다. 위 편집 UI도 완제품엔 없다.
+    if (onSaveItemFormula && ['wip', 'raw'].includes(formData.category)) {
       const keyOf = (cat: string, pumok: string, nm: string) => cat === 'product' ? (pumok || nm) : baseRawName(nm);
       const parentKey = keyOf(formData.category, formData.품목, formData.name);
       const prevKey = initialData ? keyOf(initialData.category, initialData.품목 || '', initialData.name) : undefined;
@@ -296,20 +283,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       }
     }
 
-    // 거래처별 포장 설정 → shipping_rule 컬렉션에 저장
-    if ((onSaveShippingRule || onAddShippingRule) && finalProduct.partnerIds?.length) {
-      const pid = finalProduct.id;
-      for (const partnerId of finalProduct.partnerIds) {
-        const cfg = partnerPackagingConfigs[partnerId] ?? {};
-        if (!cfg.boxTypeId && !cfg.qtyPerBox && !cfg.tapeTypeId) continue;
-        const existing = shippingRules.find(r => r.item_id === pid && r.partner_id === partnerId);
-        if (existing && onSaveShippingRule) {
-          await onSaveShippingRule({ id: existing.id, box_item_id: cfg.boxTypeId ?? '', qty_per_box: cfg.qtyPerBox ?? 0, tape_item_id: cfg.tapeTypeId });
-        } else if (!existing && onAddShippingRule && cfg.boxTypeId) {
-          await onAddShippingRule({ item_id: pid, partner_id: partnerId, box_item_id: cfg.boxTypeId, qty_per_box: cfg.qtyPerBox ?? 0, tape_item_id: cfg.tapeTypeId });
-        }
-      }
-    }
+    // 거래처별 포장 설정(shipping_rule)은 폐기했다 — 겉박스·테이프는 박스 품목의 BOM으로만 잡는다.
   };
 
   return (
@@ -684,119 +658,18 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             </div>
           )}
 
-          {/* 서류용 품목명 (완제품) — 배송(박스)은 낱개로 풀리므로 숨김 */}
-          {formData.category === 'product' && (formData as any).subtype2 !== '배송' && (
-            <div className="space-y-2" ref={pumokRef}>
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Tag size={14} className="mr-2" /> 품목 (서류용)
-              </label>
-              {pumokWarn && <p className="text-xs font-bold text-red-500">서류용 품목을 선택해주세요.</p>}
-              <div className="relative">
-                <input
-                  type="text"
-                  value={formData.품목}
-                  onChange={(e) => { setFormData({...formData, 품목: e.target.value, spec: ''}); setShowPumokDrop(true); setPumokWarn(false); }}
-                  onFocus={() => setShowPumokDrop(true)}
-                  placeholder="예: 시골향참기름1"
-                  className={`w-full bg-slate-50 border rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 transition-all ${pumokWarn ? 'border-red-400 focus:ring-red-400' : 'border-slate-200 focus:ring-indigo-500'}`}
-                />
-                {showPumokDrop && pumokOptions.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl z-20 overflow-hidden max-h-48 overflow-y-auto custom-scrollbar">
-                    {pumokOptions.map(v => (
-                      <button
-                        key={v}
-                        type="button"
-                        onMouseDown={(e) => { e.preventDefault(); setFormData({...formData, 품목: v, spec: ''}); setShowPumokDrop(false); }}
-                        className={`w-full text-left px-5 py-2.5 text-sm font-bold hover:bg-indigo-50 hover:text-indigo-700 transition-all ${formData.품목 === v ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700'}`}
-                      >
-                        {v}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
 
-          {/* 용량 (완제품/반제품) — 배송(박스)은 낱개 용량을 따르므로 숨김 */}
-          {(formData.category === 'product' || formData.category === 'wip') && (formData as any).subtype2 !== '배송' && (() => {
-            const presetVols = (formData.품목 && PUMOK_VOLUMES[formData.품목]) || [];
-            const allVols = Array.from(new Set([...presetVols, ...customVols]));
-            const addVol = () => {
-              const n = volNum.trim();
-              if (!n) return;
-              const vol = `${n}${volUnit}`;
-              if (!presetVols.includes(vol) && !customVols.includes(vol)) setCustomVols(prev => [...prev, vol]);
-              setFormData(fd => ({ ...fd, spec: vol }));
-              setVolNum('');
-            };
-            return (
+          {/* 원료 배합 · 수율 — 반제품·원료만.
+              완제품의 배합은 위 구성품(BOM)이 정한다. 완제품에서 여기를 열어두면 품목 키로
+              원료식이 다시 생기고(같은 품목을 쓰는 다른 완제품까지 덮어씀), 재고 계산 근거가
+              BOM과 원료식 둘로 갈라진다. 서류 비율은 코드의 DOC_MIX 표가 갖는다. */}
+          {(formData.category === 'wip' || formData.category === 'raw') && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Box size={14} className="mr-2" /> 용량 (서류용)
-              </label>
-              {allVols.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {allVols.map(vol => (
-                    <button
-                      key={vol}
-                      type="button"
-                      onClick={() => setFormData(fd => ({...fd, spec: fd.spec === vol ? '' : vol}))}
-                      title={formData.spec === vol ? '클릭하면 선택 해제' : undefined}
-                      className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
-                        formData.spec === vol
-                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
-                          : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'
-                      }`}
-                    >
-                      {vol}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {/* 용량 직접 추가: 숫자 입력 + ml/kg 토글 */}
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  value={volNum}
-                  onChange={(e) => setVolNum(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addVol(); } }}
-                  placeholder="예: 300"
-                  className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                />
-                <button
-                  type="button"
-                  onClick={() => setVolUnit(prev => prev === 'ml' ? 'g' : prev === 'g' ? 'kg' : 'ml')}
-                  title="단위 전환 (ml → g → kg)"
-                  className="shrink-0 w-16 px-4 py-3.5 rounded-2xl border border-indigo-200 bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-all"
-                >
-                  {volUnit}
-                </button>
-                <button
-                  type="button"
-                  onClick={addVol}
-                  className="shrink-0 px-5 py-3.5 rounded-2xl bg-indigo-50 text-indigo-600 text-sm font-bold hover:bg-indigo-100 transition-all"
-                >
-                  추가
-                </button>
-              </div>
-              {formData.spec && (
-                <p className="text-[11px] font-bold text-slate-400">선택된 용량: <span className="text-indigo-600">{formData.spec}</span></p>
-              )}
-            </div>
-            );
-          })()}
-
-          {/* 원료 배합 · 수율 (완제품·반제품·원료) */}
-          {(formData.category === 'product' || formData.category === 'wip' || formData.category === 'raw') && (
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Layers size={14} className="mr-2" /> {formData.category === 'product' ? '사용 원료 · 반제품 (배합비)' : '원료 배합 · 수율'}
+                <Layers size={14} className="mr-2" /> 원료 배합 · 수율
               </label>
 
-              {/* 즉석배합(무재고) 토글 — 반제품/원료만 */}
-              {formData.category !== 'product' && (
+              {/* 즉석배합(무재고) 토글 */}
               <button
                 type="button"
                 onClick={() => setFormData(fd => ({ ...fd, phantom: !fd.phantom }))}
@@ -814,14 +687,11 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                   </span>
                 </span>
               </button>
-              )}
 
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                {formData.category === 'product'
-                  ? <>이 완제품이 쓰는 원료·반제품과 <b className="text-slate-500">배합비(%)</b>를 지정합니다. 출고 시 이 비율로 차감돼요.<br />예) <b className="text-indigo-500">시골향참기름2</b> = 통깨참기름 <b className="text-indigo-500">50%</b> + 깨분참기름 <b className="text-indigo-500">50%</b></>
-                  : formData.phantom
-                    ? <>배합비(%)를 지정합니다.<br />예) <b className="text-indigo-500">{formData.name || '혼합참기름원액'}</b> = 통깨참기름 <b className="text-indigo-500">60%</b> + 옥수수유 <b className="text-indigo-500">40%</b> (합 100%)</>
-                    : <>수율(%)를 지정합니다.<br />예) <b className="text-indigo-500">{formData.name || '통깨참기름'}</b> ← 참깨 <b className="text-indigo-500">45%</b> : 참깨 100kg 사용 → {formData.name || '통깨참기름'} 45kg 생산</>}
+                {formData.phantom
+                  ? <>배합비(%)를 지정합니다.<br />예) <b className="text-indigo-500">{formData.name || '혼합참기름원액'}</b> = 통깨참기름 <b className="text-indigo-500">60%</b> + 옥수수유 <b className="text-indigo-500">40%</b> (합 100%)</>
+                  : <>수율(%)를 지정합니다.<br />예) <b className="text-indigo-500">{formData.name || '통깨참기름'}</b> ← 참깨 <b className="text-indigo-500">45%</b> : 참깨 100kg 사용 → {formData.name || '통깨참기름'} 45kg 생산</>}
               </p>
 
               {formulaRows.length > 0 && (
@@ -953,6 +823,125 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* ── 서류 전용 ─────────────────────────────────────────────
+               여기 두 개는 판매일지·거래명세서 같은 **서류**에만 쓰인다.
+               재고 차감량은 위 구성품(BOM)의 수량이 정하며 이 값들과 무관하다.
+               (원료수불부는 이 품목·용량으로 오일 사용량을 따로 집계한다) ── */}
+          {(formData.category === 'product' || formData.category === 'wip') && (formData as any).subtype2 !== '배송' && (
+            <div className="pt-2 mt-2 border-t-2 border-dashed border-slate-200 space-y-5">
+              <div className="flex items-start gap-2">
+                <FileText size={15} className="text-slate-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs font-black text-slate-500 uppercase tracking-widest">서류 전용</p>
+                  <p className="text-[11px] font-bold text-slate-400 mt-0.5">판매일지·수불부에만 쓰입니다. 재고 차감에는 영향이 없습니다.</p>
+                </div>
+              </div>
+            {/* 서류용 품목명 (완제품) — 배송(박스)은 낱개로 풀리므로 숨김 */}
+            {formData.category === 'product' && (formData as any).subtype2 !== '배송' && (
+              <div className="space-y-2" ref={pumokRef}>
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
+                  <Tag size={14} className="mr-2" /> 품목
+                </label>
+                {pumokWarn && <p className="text-xs font-bold text-red-500">서류용 품목을 선택해주세요.</p>}
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={formData.품목}
+                    onChange={(e) => { setFormData({...formData, 품목: e.target.value, spec: ''}); setShowPumokDrop(true); setPumokWarn(false); }}
+                    onFocus={() => setShowPumokDrop(true)}
+                    placeholder="예: 시골향참기름1"
+                    className={`w-full bg-slate-50 border rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 transition-all ${pumokWarn ? 'border-red-400 focus:ring-red-400' : 'border-slate-200 focus:ring-indigo-500'}`}
+                  />
+                  {showPumokDrop && pumokOptions.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl z-20 overflow-hidden max-h-48 overflow-y-auto custom-scrollbar">
+                      {pumokOptions.map(v => (
+                        <button
+                          key={v}
+                          type="button"
+                          onMouseDown={(e) => { e.preventDefault(); setFormData({...formData, 품목: v, spec: ''}); setShowPumokDrop(false); }}
+                          className={`w-full text-left px-5 py-2.5 text-sm font-bold hover:bg-indigo-50 hover:text-indigo-700 transition-all ${formData.품목 === v ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700'}`}
+                        >
+                          {v}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 용량 (완제품/반제품) — 배송(박스)은 낱개 용량을 따르므로 숨김 */}
+            {(formData.category === 'product' || formData.category === 'wip') && (formData as any).subtype2 !== '배송' && (() => {
+              const presetVols = (formData.품목 && PUMOK_VOLUMES[formData.품목]) || [];
+              const allVols = Array.from(new Set([...presetVols, ...customVols]));
+              const addVol = () => {
+                const n = volNum.trim();
+                if (!n) return;
+                const vol = `${n}${volUnit}`;
+                if (!presetVols.includes(vol) && !customVols.includes(vol)) setCustomVols(prev => [...prev, vol]);
+                setFormData(fd => ({ ...fd, spec: vol }));
+                setVolNum('');
+              };
+              return (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
+                  <Box size={14} className="mr-2" /> 용량
+                </label>
+                {allVols.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {allVols.map(vol => (
+                      <button
+                        key={vol}
+                        type="button"
+                        onClick={() => setFormData(fd => ({...fd, spec: fd.spec === vol ? '' : vol}))}
+                        title={formData.spec === vol ? '클릭하면 선택 해제' : undefined}
+                        className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
+                          formData.spec === vol
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
+                            : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'
+                        }`}
+                      >
+                        {vol}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {/* 용량 직접 추가: 숫자 입력 + ml/kg 토글 */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={volNum}
+                    onChange={(e) => setVolNum(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addVol(); } }}
+                    placeholder="예: 300"
+                    className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setVolUnit(prev => prev === 'ml' ? 'g' : prev === 'g' ? 'kg' : 'ml')}
+                    title="단위 전환 (ml → g → kg)"
+                    className="shrink-0 w-16 px-4 py-3.5 rounded-2xl border border-indigo-200 bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-all"
+                  >
+                    {volUnit}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={addVol}
+                    className="shrink-0 px-5 py-3.5 rounded-2xl bg-indigo-50 text-indigo-600 text-sm font-bold hover:bg-indigo-100 transition-all"
+                  >
+                    추가
+                  </button>
+                </div>
+                {formData.spec && (
+                  <p className="text-[11px] font-bold text-slate-400">선택된 용량: <span className="text-indigo-600">{formData.spec}</span></p>
+                )}
+              </div>
+              );
+            })()}
             </div>
           )}
 

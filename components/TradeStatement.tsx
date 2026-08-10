@@ -12,7 +12,8 @@ import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchDateRange } from '../src/shared/services/firebaseService';
 import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/shared/orderUnits';
 import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
-import { totalCashOnHand } from '../src/features/admin/cashLedger';
+import { totalCashOnHand, unsettledStatements, unmatchedCash } from '../src/features/admin/cashLedger';
+import { AR, AP } from '../src/shared/autoJournal';
 import { AccountModal } from './CashLedger';
 import PageHeader from './PageHeader';
 
@@ -28,7 +29,9 @@ interface TradeStatementProps {
   cashEntries?: CashEntry[];
   settlements?: Settlement[];
   onAddCashEntry?: (e: Omit<CashEntry, 'id'> & { id: string }) => void;
+  onUpdateCashEntry?: (id: string, data: Partial<CashEntry>) => void;
   onAddSettlement?: (s: Omit<Settlement, 'id'> & { id: string }) => void;
+  onUpdateSettlement?: (id: string, data: Partial<Settlement>) => void;
   onDeleteCashEntry?: (id: string) => void;
   onDeleteSettlement?: (id: string) => void;
   onAddCashAccount?: (a: Omit<CashAccount, 'id'> & { id: string }) => void;
@@ -138,7 +141,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   cashEntries = [],
   settlements = [],
   onAddCashEntry,
+  onUpdateCashEntry,
   onAddSettlement,
+  onUpdateSettlement,
   onDeleteCashEntry,
   onDeleteSettlement,
   onAddCashAccount,
@@ -291,6 +296,38 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     amount: '', date: '', method: '계좌이체', note: '',
   });
 
+  // ── 자금(입출금) 전표 수정 모달 ──
+  const [editCash, setEditCash] = useState<CashEntry | null>(null);
+  const [editCashForm, setEditCashForm] = useState<{ amount: string; date: string; dir: '입금'|'출금'; accountCode: string; note: string }>({ amount:'', date:'', dir:'출금', accountCode:'', note:'' });
+  const openEditCash = (e: CashEntry) => { setEditCash(e); setEditCashForm({ amount: String(e.amount), date: e.date, dir: e.dir, accountCode: e.accountCode ?? '', note: e.note ?? '' }); };
+  const saveEditCash = () => {
+    if (!editCash || !onUpdateCashEntry) return;
+    const amt = parseFloat(editCashForm.amount) || 0;
+    if (amt <= 0) return;
+    // 전표에 상계된 자금이면 상계액(settlement)도 같은 폭으로 옮겨야 미수/미지급 잔액이 안 틀어진다.
+    const linked = settlements.filter(s => s.cashEntryId === editCash.id);
+    const delta = amt - editCash.amount;
+    if (linked.length && delta !== 0) {
+      if (linked.length > 1 || !onUpdateSettlement) {
+        window.alert('이 자금은 여러 전표에 나눠 상계돼 있어 금액을 여기서 못 고칩니다.\n수금/지불을 삭제한 뒤 다시 잡아주세요.');
+        return;
+      }
+      const next = linked[0].amount + delta;
+      if (next <= 0) {
+        window.alert(`상계된 금액(${linked[0].amount.toLocaleString()}원)보다 많이 줄일 수 없습니다.\n수금/지불을 삭제한 뒤 다시 입력해 주세요.`);
+        return;
+      }
+      onUpdateSettlement(linked[0].id, { amount: next });
+    }
+    const updated: CashEntry = { ...editCash, amount: amt, date: editCashForm.date, dir: editCashForm.dir,
+      accountCode: editCashForm.accountCode, note: editCashForm.note.trim() };
+    onUpdateCashEntry(editCash.id, { amount: updated.amount, date: updated.date, dir: updated.dir,
+      accountCode: updated.accountCode, note: updated.note });
+    // 상계액을 방금 옮겼으면 settlements가 최신이 아니라 매칭 계산이 어긋난다 → 그때만 건너뛴다.
+    if (!(linked.length && delta !== 0)) autoMatchCashToStatements(updated);
+    setEditCash(null);
+  };
+
   // ── 빠른 수금/지불 모달 ──
   const [showQuickPay, setShowQuickPay] = useState(false);
   const [quickPayClientId, setQuickPayClientId] = useState('');
@@ -321,6 +358,45 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   const activeCashAccounts = useMemo(() => cashAccounts.filter(a => a.active), [cashAccounts]);
   const codeName = useMemo(() => new Map(accountCodes.map(c => [c.code, c.name])), [accountCodes]);
+  // 계정 5분류 — 자금 전표가 비용인지 수익인지 가려 매입/매출 합계에 반영하는 데 쓴다.
+  const codeType = useMemo(() => new Map(accountCodes.map(c => [c.code, c.type])), [accountCodes]);
+
+  /**
+   * 전표 구분 — 축이 둘이고, 한 줄이 양쪽에 걸릴 수도 있다.
+   *
+   *   손익축   수익 ⊃ 매출      비용 ⊃ 매입        (손익계산서에 잡히는 것)
+   *   자금축   입금 ⊃ 수금      출금 ⊃ 지불        (통장이 움직인 것)
+   *
+   * 수금은 **입금 아래지 수익이 아니다.** 매출은 전표를 끊을 때 이미 수익으로 잡혔고,
+   * 수금은 그 채권을 현금으로 턴 것뿐이라 또 세면 매출이 두 번 잡힌다.
+   * 반대로 이자비용처럼 전표 없이 자금으로만 생긴 손익은 두 축에 함께 걸린다
+   * (통장에서 나갔으니 출금이고, 전표가 없었으니 여기서 비용이 발생한 것).
+   */
+  const classifyRow = useCallback((row: TimelineRow): {
+    pl?: '수익' | '비용'; plAmount: number; cash?: '입금' | '출금'; transfer?: boolean;
+  } => {
+    if (row.kind === 'stmt') {
+      if (row.data.type === '매출') return { pl: '수익', plAmount: row.data.totalAmount };
+      if (row.data.type === '매입') return { pl: '비용', plAmount: row.data.totalAmount };
+      return { transfer: true, plAmount: 0 };                       // 대체전표
+    }
+    if (row.kind === 'pay') {
+      return { cash: row.stmtType === '매출' ? '입금' : '출금', plAmount: 0 };
+    }
+    const want = row.dir === '입금' ? '수익' : '비용';
+    const parts = (row.entry.lines ?? []).filter(l => l.accountCode && l.amount > 0);
+    const plAmount = parts.length
+      ? parts.reduce((a, l) => a + (codeType.get(l.accountCode) === want ? l.amount : 0), 0)
+      : (row.accountCode && codeType.get(row.accountCode) === want ? row.amount : 0);
+    return { cash: row.dir, plAmount, ...(plAmount > 0 ? { pl: want } : {}) };
+  }, [codeType]);
+  // 쪼갠 자금(대출상환 원금+이자) 펼침 상태 — 전체 목록에선 접어두고 눌러야 펼친다.
+  const [expandedCash, setExpandedCash] = useState<Set<string>>(new Set());
+  const toggleCash = (id: string) => setExpandedCash(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   // 계좌별 현재 잔액 + 보유자금 총액 (장부 흡수 — 전표 화면에서 잔액 확인)
   const cashBalances = useMemo(() => {
     const active = cashAccounts.filter(a => a.active);
@@ -331,10 +407,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const cashEntryById = useMemo(() => new Map(cashEntries.map(e => [e.id, e])), [cashEntries]);
 
   // 결제는 구 payments[]와 자금원장 매칭(settlements) 양쪽에서 온다. 둘 다 빼야 잔액이 맞는다.
-  const getPaid = (s: IssuedStatement) =>
-    (s.payments ?? []).reduce((a, p) => a + p.amount, 0)
-    + settlements.filter(st => st.statementId === s.id).reduce((a, st) => a + st.amount, 0);
+  // 자금기록이 지워진 상계(고아)는 상계로 치지 않는다 — 근거가 사라졌으니 안 받은 돈이다.
+  // 타임라인·거래처원장은 원래 이 규칙인데 여기만 빠져 있어서, 같은 거래처가 화면마다
+  // 다른 잔액으로 보였다(완도식품: 전표기준 −1,434,200 vs 타임라인 480,000).
+  const getPaid = (s: IssuedStatement) => (s.payments ?? []).reduce((a, p) => a + p.amount, 0);
   const getBalance = (s: IssuedStatement) => s.totalAmount - getPaid(s);
+
 
   /** 결제 기록 — 자금원장에 출금/입금 1건을 만들고, 전표들에 매칭을 붙인다.
    *  계좌가 없거나 핸들러가 없으면 구 payments[] 방식으로 폴백한다. */
@@ -362,13 +440,27 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       return;
     }
 
-    // 전표의 계정과목을 자금 기록에 물려준다 — 이게 있어야 현금흐름표가 성격을 안다.
-    // 기계 구입(206 기계장치) 지불이면 투자활동으로, 원료 매입(500)이면 영업활동으로 간다.
-    // 여러 계정이 섞인 전표면 성격을 하나로 못 정하므로 비워둔다(= 영업).
-    const allCodes = new Set(
-      allocations.flatMap(({ stmt }) => (stmt.items ?? []).map(i => i.accountCode).filter(Boolean)),
-    );
-    const payCode = allCodes.size === 1 ? [...allCodes][0] : undefined;
+    // 수금/지불의 상대계정 — 전표가 이미 매출/매입을 손익에 잡았으므로 결제는 채권·채무 상계다.
+    // 품목 계정(800 일반매출 등)을 그대로 물리면 (차)예금 (대)일반매출 로 분개돼
+    // 매출이 두 번 잡히고 외상매출금은 영영 안 줄어든다.
+    // 다만 기계 구입처럼 손익 계정이 하나도 없는 전표는 자금원장이 투자활동으로 끊어야 하므로
+    // 그 자산 계정을 그대로 물려준다(computeCashFlowMonth.isOperating과 같은 규칙).
+    const groupTypeOf = (code?: string) =>
+      accountGroups.find(g => g.id === accountCodes.find(c => c.code === code)?.groupId)?.type;
+    const itemCodes = allocations.flatMap(({ stmt }) =>
+      (stmt.items ?? []).map(i => i.accountCode).filter(Boolean) as string[]);
+    const groupTypes = itemCodes.map(groupTypeOf).filter(Boolean);
+    // 결제는 원칙적으로 채권·채무 상계다. 예외는 기계 구입처럼 **비유동자산만** 달린 전표뿐 —
+    // 그건 자금원장이 투자활동으로 끊어야 해서 자산계정을 유지한다.
+    // 기초전표(상대변이 375 이월이익잉여금=자본)까지 예외로 빠지면 수금이 자본계정으로 잡힌다.
+    const nonOperating = groupTypes.length > 0
+      && groupTypes.every(t => t === '자산')
+      && !itemCodes.some(c => c === AR || c === AP);
+    const isOperating = !nonOperating;
+    const uniqCodes = new Set(itemCodes);
+    const payCode = isOperating
+      ? (first.type === '매입' ? AP : AR)
+      : (uniqCodes.size === 1 ? [...uniqCodes][0] : undefined);
 
     const entryId = `cash-${Date.now()}`;
     onAddCashEntry({
@@ -382,21 +474,15 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       note: opts.note || `${first.partnerName ?? ''} ${first.type === '매입' ? '지불' : '수금'}`.trim(),
       createdAt: new Date().toISOString(),
     });
-    allocations.forEach(({ stmt, amount }, i) => {
-      onAddSettlement({
-        id: `settle-${Date.now()}-${i}`,
-        cashEntryId: entryId, statementId: stmt.id, amount,
-        createdAt: new Date().toISOString(),
-      });
-    });
+    // 전표 매칭(settlement)은 만들지 않는다 — 잔액은 거래처 단위로만 본다.
+    // 어느 청구서를 갚았는지 연결하지 않으니 매칭이 어긋나거나 고아가 될 자리가 없다.
   };
 
   const openPayModal = (stmt: IssuedStatement) => {
     setPayOverWarn(false);
     setPayTarget(stmt);
-    const liveStmt = issuedStatements.find(s => s.id === stmt.id) ?? stmt;
-    const bal = getBalance(liveStmt);
-    setPayForm({ amount: bal > 0 ? String(bal) : '', date: new Date().toISOString().slice(0, 10), method: '계좌이체', note: '' });
+    // 기본값은 이 전표 금액 — 안 고치면 전표 금액 그대로 수금/지불된다.
+    setPayForm({ amount: String(Math.round(stmt.totalAmount)), date: new Date().toISOString().slice(0, 10), method: '계좌이체', note: '' });
     setPayAccountId(prev => prev || activeCashAccounts[0]?.id || '');
   };
 
@@ -404,9 +490,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     if (!payTarget || !payForm.amount) return;
     const amount = Number(payForm.amount);
     if (amount <= 0) return;
-    // live 데이터로 잔액 계산 (stale payTarget 방지)
+    // 초과 판정은 거래처 잔액 기준 — 돈은 전표가 아니라 거래처 채권·채무에서 빠진다.
     const liveStmt = issuedStatements.find(s => s.id === payTarget.id) ?? payTarget;
-    const bal = getBalance(liveStmt);
+    const pb = partnerBalances.get(liveStmt.partnerId);
+    const bal = liveStmt.type === '매입' ? (pb?.payable ?? 0) : (pb?.receivable ?? 0);
     if (amount > bal && !forceOver) {
       setPayOverWarn(true);
       return;
@@ -444,6 +531,64 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setEditPayInfo(null);
   };
 
+  // 타임라인의 수금/지불 행 삭제 — 구 payments[]면 전표에서 제거, settlement 기반이면
+  // 그 자금기록(cashEntry)과 연결된 settlement를 전부 지운다(잔액이 정확히 되돌려짐).
+  const deletePayTimelineRow = (paymentId: string, src: IssuedStatement) => {
+    if (!window.confirm('이 수금/지불을 삭제할까요?')) return;
+    const legacy = (src.payments ?? []).find(p => p.id === paymentId);
+    if (legacy) {
+      onUpdateIssuedStatement?.(src.id, { payments: (src.payments ?? []).filter(p => p.id !== paymentId) });
+      return;
+    }
+    const st = settlements.find(s => s.id === paymentId);
+    if (st) {
+      const ceId = st.cashEntryId;
+      settlements.filter(s => s.cashEntryId === ceId).forEach(s => onDeleteSettlement?.(s.id));
+      if (ceId) onDeleteCashEntry?.(ceId);
+    }
+  };
+
+  /** 외상매출금(108)·외상매입금(251)으로 잡은 자금은 전표에 붙어야 미수/미지급이 줄어든다.
+   *  계정만 바꾸면 분개만 맞고 잔액은 그대로이므로, 아직 안 붙은 금액을 그 거래처의
+   *  미결제 전표에 오래된 순으로 매칭한다. 붙인 금액을 돌려준다. */
+  const autoMatchCashToStatements = (entry: CashEntry): number => {
+    if (!onAddSettlement || !entry.partnerId) return 0;
+    const type = entry.accountCode === AR ? '매출' : entry.accountCode === AP ? '매입' : null;
+    if (!type) return 0;
+    let left = unmatchedCash(entry, settlements);
+    if (left <= 0) return 0;
+    const targets = unsettledStatements(mergedStatements, settlements, { type, partnerId: entry.partnerId });
+    if (!targets.length) return 0;
+    const willMatch = Math.min(left, targets.reduce((a, t) => a + t.open, 0));
+    if (!window.confirm(
+      `${entry.accountCode === AR ? '외상매출금' : '외상매입금'}으로 잡힌 ${fmt(left)}원을\n` +
+      `이 거래처의 미결제 전표에 오래된 순으로 ${fmt(willMatch)}원 매칭할까요?\n\n` +
+      `매칭해야 미수금/미지급금이 줄어듭니다.`)) return 0;
+    let used = 0;
+    for (const t of targets) {
+      if (left <= 0) break;
+      const amount = Math.min(left, t.open);
+      if (amount <= 0) continue;
+      onAddSettlement({
+        id: `settle-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        cashEntryId: entry.id, statementId: t.stmt.id, amount, createdAt: new Date().toISOString(),
+      });
+      left -= amount; used += amount;
+    }
+    return used;
+  };
+
+  // 타임라인의 수금/지불 행 클릭 — 수금/지불은 결국 자금원장 한 줄이므로 그 뒤의
+  // 자금 전표(cashEntry)를 연다. 구 payments[] 방식만 옛 수금 수정 모달로 간다.
+  const openPayTimelineRow = (paymentId: string, src: IssuedStatement) => {
+    const legacy = (src.payments ?? []).find(p => p.id === paymentId);
+    if (legacy) { openEditPay(src, legacy); return; }
+    if (!onUpdateCashEntry) return;
+    const st = settlements.find(s => s.id === paymentId);
+    const entry = st ? cashEntries.find(c => c.id === st.cashEntryId) : undefined;
+    if (entry) openEditCash(entry);
+  };
+
   // ── 메인 탭 ──
   const [mainTab, setMainTab] = useState<'history' | 'taxinvoice'>(defaultTab ?? 'history');
   // 계좌 관리 모달 (장부에서 흡수)
@@ -472,11 +617,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const taxPrintRef = useRef<HTMLDivElement>(null);
 
   // ── 발행내역 필터 ──
-  const [histFrom, setHistFrom] = useState(monthStart);
+  const [histFrom, setHistFrom] = useState(today);
   const [histTo, setHistTo]     = useState(today);
-  const [histTypeFilter, setHistTypeFilter] = useState<'전체' | '매출' | '매입' | '비용' | '자금'>('전체');
+  const [histTypeFilter, setHistTypeFilter] = useState<'전체' | '수익' | '비용' | '자금' | '대체'>('전체');
   const [histSearch, setHistSearch] = useState('');
-  const [histQuick, setHistQuick] = useState<'당일'|'금주'|'당월'|'당년'|'ALL'|''>('당월');
+  const [histQuick, setHistQuick] = useState<'당일'|'금주'|'당월'|'당년'|'ALL'|''>('당일');
   // 발행내역 페이지네이션
   const HIST_PAGE_SIZE = 50;
   const [historyPage, setHistoryPage] = useState(1);
@@ -524,6 +669,38 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     issuedStatements.forEach(s => map.set(s.id, s));
     return Array.from(map.values());
   }, [issuedStatements, extraStatements]);
+
+  /**
+   * 거래처별 잔액 — 전표 총액에서 그 거래처로 오간 채권·채무(108/251) 자금을 뺀다.
+   * **전표에 안 붙인다.** 받은 돈이 어느 청구서를 갚았는지 따지지 않고 "이 거래처에 얼마 남았나"만 본다.
+   * 분개(108·251 잔액)와 같은 규칙이라 전표화면·거래처통계·재무제표가 저절로 같은 숫자를 낸다.
+   * 마이너스면 더 받은 것 = 선수금.
+   */
+  const partnerBalances = useMemo(() => {
+    const map = new Map<string, { receivable: number; payable: number }>();
+    const bump = (id: string, k: 'receivable' | 'payable', v: number) => {
+      const cur = map.get(id) ?? { receivable: 0, payable: 0 };
+      cur[k] += v; map.set(id, cur);
+    };
+    for (const s of mergedStatements) {
+      if (!s.partnerId) continue;
+      const open = s.totalAmount - (s.payments ?? []).reduce((a, p) => a + p.amount, 0);
+      if (s.type === '매출') bump(s.partnerId, 'receivable', open);
+      else if (s.type === '매입') bump(s.partnerId, 'payable', open);
+    }
+    for (const e of cashEntries) {
+      if (!e.partnerId) continue;
+      const parts = (e.lines ?? []).filter(l => l.accountCode && l.amount > 0);
+      const list = parts.length
+        ? parts.map(l => ({ c: l.accountCode, a: l.amount }))
+        : (e.accountCode ? [{ c: e.accountCode, a: e.amount }] : []);
+      for (const p of list) {
+        if (p.c === AR) bump(e.partnerId, 'receivable', e.dir === '입금' ? -p.a : p.a);
+        else if (p.c === AP) bump(e.partnerId, 'payable', e.dir === '출금' ? -p.a : p.a);
+      }
+    }
+    return map;
+  }, [mergedStatements, cashEntries]);
 
   // ── 발행내역 상세 보기 ──
   const [detailStmt, setDetailStmt] = useState<IssuedStatement | null>(null);
@@ -964,38 +1141,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         }
       }
     }
-    // 주문 기반 전표에서 품목/수량 변경 시 원본 주문 업데이트 (반품=음수 수량이면 주문 카드 영향 없음)
-    const hasReturn = manualItems.some(r => (parseFloat(r.qty) || 0) < 0);
-    if (manualMode && selectedOrderId && onUpdateOrder && selectedOrder && !hasReturn) {
-      // 기존 주문 품목 이름 집합 (매칭용)
-      const existingItemNames = new Set(selectedOrder.items.map(oi => {
-        const product = allItems.find(p => p.id === oi.itemId);
-        return (product?.name ||oi.name).trim();
-      }));
-      // 기존 품목: 수량 업데이트
-      const updatedItems = selectedOrder.items.map(oi => {
-        const product = allItems.find(p => p.id === oi.itemId);
-        const displayName = product?.name ||oi.name;
-        const row = manualItems.find(r => r.name.trim() === displayName.trim());
-        if (row) return { ...oi, quantity: parseFloat(row.qty) || oi.quantity };
-        return oi;
-      });
-      // 새로 추가된 품목: 기존 주문에 없는 항목 추가
-      for (const row of manualItems) {
-        const name = row.name.trim();
-        if (!name || existingItemNames.has(name)) continue;
-        const qty = parseFloat(row.qty) || 0;
-        if (qty <= 0) continue;
-        const product = allItems.find(p => p.name === name || p.품목 === name);
-        updatedItems.push({
-          itemId: product?.id || '',
-          name,
-          quantity: qty,
-          price: parseFloat(row.price) || 0,
-        });
-      }
-      onUpdateOrder(selectedOrderId, { items: updatedItems });
-    }
+    // (원본 주문 자동반영 기능 제거됨 — 전표 편집은 원본 주문을 건드리지 않는다.
+    //  박스→낱개 변환 때문에 낱개가 주문에 이중으로 붙는 문제도 함께 방지.)
     // 매입전표 발행 시 원가/계정 자동 저장 (partner_item canonical price = 원가, items.cost 동기화)
     // 가드 없이 항상 동기화 — 구독(partnerIn) 지연으로 직전 저장값과 비교가 빗나가 누락되는 문제 방지
     if (stmtType === '매입' && onUpsertPartnerItem) {
@@ -1615,7 +1762,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   type StmtRow = { kind: 'stmt'; data: IssuedStatement; cumul: number; dateKey: string; ts: string };
   type PayRow  = { kind: 'pay';  partnerId: string; partnerName: string; stmtType: '매출'|'매입';
                    date: string; amount: number; method?: string; note?: string;
-                   paymentId: string; cumul: number; dateKey: string; ts: string; src: IssuedStatement };
+                   paymentId: string; cumul: number; dateKey: string; ts: string; src: IssuedStatement;
+                   /** 자금기록에서 온 수금·지불이면 그 원본. 구 payments[]면 없다. */
+                   entry?: CashEntry };
   // 자금 입출금 전표 — 전표에 상계되지 않은 순수 현금 이동(전기요금·급여·상환·기계구입 등)
   type CashRow = { kind: 'cash'; entry: CashEntry; dir: '입금'|'출금'; amount: number;
                    accountCode?: string; note?: string; partnerName?: string;
@@ -1640,7 +1789,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     grouped.forEach(stmts => {
       type Ev =
         | { kind: 'stmt'; s: IssuedStatement; date: string; ts: string }
-        | { kind: 'pay';  date: string; ts: string; amount: number; method?: string; note?: string; paymentId: string; src: IssuedStatement };
+        | { kind: 'pay';  date: string; ts: string; amount: number; method?: string; note?: string; paymentId: string; src: IssuedStatement; entry?: CashEntry };
       const evs: Ev[] = [];
       stmts.forEach(s => {
         evs.push({ kind: 'stmt', s, date: s.tradeDate, ts: `${s.tradeDate}T${timeOf(s.issuedAt)}` });
@@ -1648,13 +1797,22 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         (s.payments ?? []).forEach(p =>
           evs.push({ kind: 'pay', date: p.date, ts: `${p.date}T${timeOf(p.createdAt)}`, amount: p.amount, method: p.method, note: p.note, paymentId: p.id, src: s })
         );
-        // 자금원장 매칭 — 지불/수금처리가 이제 여기로 들어온다. 자금 기록이 지워졌으면 상계로 치지 않는다.
-        settlements.filter(st => st.statementId === s.id).forEach(st => {
-          const e = cashEntryById.get(st.cashEntryId);
-          if (!e) return;
-          evs.push({ kind: 'pay', date: e.date, ts: `${e.date}T${timeOf(e.createdAt)}`, amount: st.amount, method: '계좌이체', note: e.note, paymentId: st.id, src: s });
-        });
       });
+      // 수금/지불 — 전표에 붙이지 않는다. 그 거래처로 오간 채권·채무(108/251) 자금을 그대로 뺀다.
+      //  "어느 청구서를 갚았나"를 안 따지므로 매칭이 어긋날 자리가 없다. 분개(108·251 잔액)와 같은 방식.
+      const pid = stmts[0]?.partnerId, ptype = stmts[0]?.type;
+      if (pid) for (const e of cashEntries) {
+        if (e.partnerId !== pid) continue;
+        const want = ptype === '매입' ? AP : AR;
+        if ((ptype === '매입') !== (e.dir === '출금')) continue;
+        const parts = (e.lines ?? []).filter(l => l.accountCode && l.amount > 0);
+        const amt = parts.length
+          ? parts.reduce((a, l) => a + (l.accountCode === want ? l.amount : 0), 0)
+          : (e.accountCode === want ? e.amount : 0);
+        if (amt <= 0.5) continue;
+        evs.push({ kind: 'pay', date: e.date, ts: `${e.date}T${timeOf(e.createdAt)}`,
+          amount: amt, method: '계좌이체', note: e.note, paymentId: e.id, src: stmts[0], entry: e });
+      }
       // 실제 발생시각(ts) 오름차순으로 누적잔액 계산. 동시각이면 전표 먼저(매출 가산 후 수금 차감)
       evs.sort((a, b) => {
         const d = (a.ts ?? '').localeCompare(b.ts ?? '');
@@ -1672,47 +1830,63 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           running -= e.amount;
           rows.push({ kind: 'pay', partnerId: e.src.partnerId, partnerName: e.src.partnerName,
             stmtType: e.src.type as '매출' | '매입', date: e.date, amount: e.amount, method: e.method, note: e.note,
-            paymentId: e.paymentId, cumul: running, dateKey: `${e.date}__${e.ts}`, ts: e.ts, src: e.src });
+            paymentId: e.paymentId, cumul: running, dateKey: `${e.date}__${e.ts}`, ts: e.ts, src: e.src, entry: e.entry });
         }
       });
     });
-    // ── 자금 입출금 전표 ── 전표에 상계된 부분은 이미 pay 행으로 보이므로, 미상계 잔액만 자금 행으로.
-    const settledByEntry = new Map<string, number>();
-    settlements.forEach(st => settledByEntry.set(st.cashEntryId, (settledByEntry.get(st.cashEntryId) ?? 0) + st.amount));
+    // ── 자금 입출금 전표 ── 거래처 채권·채무(108/251)로 나간 부분은 이미 수금/지불 행으로 보였다.
+    // 나머지(계정이 붙은 비용·차입금·선수금 등)만 자금 행으로 띄운다.
     cashEntries.forEach(e => {
-      const settled = settledByEntry.get(e.id) ?? 0;
-      const unmatched = e.amount - settled;
-      if (unmatched <= 0.5) return; // 전액 전표 상계 → pay 행으로만 (부동소수 여유)
+      const parts = (e.lines ?? []).filter(l => l.accountCode && l.amount > 0);
+      const arap = e.partnerId
+        ? (parts.length
+            ? parts.reduce((a, l) => a + (l.accountCode === AR || l.accountCode === AP ? l.amount : 0), 0)
+            : (e.accountCode === AR || e.accountCode === AP ? e.amount : 0))
+        : 0;
+      const rest = e.amount - arap;
+      if (rest <= 0.5) return;            // 전액이 거래처 상계분 → 수금/지불 행으로만
       rows.push({
-        kind: 'cash', entry: e, dir: e.dir, amount: unmatched,
+        kind: 'cash', entry: e, dir: e.dir, amount: rest,
         accountCode: e.accountCode, note: e.note, partnerName: e.partnerName,
         date: e.date, ts: `${e.date}T${timeOf(e.createdAt)}`, dateKey: `${e.date}`,
       });
     });
     return rows;
-  }, [mergedStatements, settlements, cashEntryById, cashEntries]);
+  }, [mergedStatements, cashEntries]);
 
   const filteredHistory = useMemo((): TimelineRow[] => {
     return allTimelineRows
       .filter(row => {
         const d = row.kind === 'stmt' ? row.data.tradeDate : row.date;
         const name = (row.kind === 'stmt' ? row.data.partnerName : row.kind === 'pay' ? row.partnerName : (row.partnerName ?? '')) || '';
-        // 필터 유형: 매출/매입 전표, 비용(대체=type '비용'), 자금(입출금 cash 행)
-        const type = row.kind === 'stmt' ? row.data.type : row.kind === 'pay' ? row.stmtType : '자금';
+        const cashCodes = row.kind === 'cash'
+          ? ((row.entry.lines ?? []).filter(l => l.accountCode && l.amount > 0).map(l => l.accountCode)
+             .concat(row.accountCode ? [row.accountCode] : []))
+          : [];
         const docNo = row.kind === 'stmt' ? row.data.docNo : '';
         const note  = row.kind === 'cash' ? (row.note ?? '') : '';
         if (histFrom && d < histFrom) return false;
         if (histTo   && d > histTo)   return false;
         // 자금 필터 = 실제 돈 이동 전부(수금/지불 pay 행 + 입출금 cash 행). 매출/매입/비용은 기존대로.
         if (histTypeFilter !== '전체') {
-          const ok = histTypeFilter === '자금'
-            ? (row.kind === 'pay' || row.kind === 'cash')
-            : type === histTypeFilter;
+          const c = classifyRow(row);
+          const ok = histTypeFilter === '자금' ? !!c.cash
+            : histTypeFilter === '대체' ? !!c.transfer
+            : c.pl === histTypeFilter;          // '수익' | '비용'
           if (!ok) return false;
         }
         if (histSearch.trim()) {
           const q = histSearch.toLowerCase();
-          if (!name.toLowerCase().includes(q) && !docNo.includes(q) && !note.toLowerCase().includes(q)) return false;
+          // 계정과목·품목까지 검색 대상 — "이자"로 이번 달 이자비용만 뽑아보려면 이게 있어야 한다.
+          // 자금 행은 계정명이 화면에만 있고 적요엔 없어서, 이게 없으면 계정으로 못 찾는다.
+          const acctText = row.kind === 'cash'
+            ? cashCodes.map(c => `${c} ${codeName.get(c) ?? ''}`).join(' ')
+              + ' ' + (row.entry.lines ?? []).map(l => l.note ?? '').join(' ')
+            : row.kind === 'stmt'
+              ? (row.data.items ?? []).map(i => `${i.accountCode ?? ''} ${codeName.get(i.accountCode ?? '') ?? ''} ${i.name ?? ''}`).join(' ')
+              : '';
+          if (!name.toLowerCase().includes(q) && !docNo.includes(q)
+            && !note.toLowerCase().includes(q) && !acctText.toLowerCase().includes(q)) return false;
         }
         return true;
       })
@@ -1725,7 +1899,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         if (a.kind === 'pay' && b.kind === 'stmt') return 1;
         return 0;
       }); // 오래된→최신
-  }, [allTimelineRows, histFrom, histTo, histTypeFilter, histSearch]);
+  }, [allTimelineRows, histFrom, histTo, histTypeFilter, histSearch, codeType, codeName, classifyRow]);
 
   // 페이지네이션: 필터 변경 시 1페이지로 리셋, 최신 페이지부터 보여줌
   useEffect(() => { setHistoryPage(1); }, [histFrom, histTo, histTypeFilter, histSearch]);
@@ -1737,20 +1911,23 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     return reversed.slice(start, start + HIST_PAGE_SIZE);
   }, [filteredHistory, historyPage]);
 
-  // 거래처별 미수금/미지급금 총합 맵 (전체 전표 기준)
-  const partnerBalanceMap = useMemo(() => {
-    const map = new Map<string, { receivable: number; payable: number }>();
-    mergedStatements.forEach(s => {
-      const bal = s.totalAmount - (s.payments ?? []).reduce((a, p) => a + p.amount, 0);
-      if (bal <= 0) return;
-      const key = s.partnerId;
-      const cur = map.get(key) ?? { receivable: 0, payable: 0 };
-      if (s.type === '매출') cur.receivable += bal;
-      else cur.payable += bal;
-      map.set(key, cur);
-    });
-    return map;
-  }, [issuedStatements]);
+  // 하단 합계 — 현재 필터·기간에 걸린 전표/수금/지불 총액 (검색·날짜와 무관하게 항상 합계 표시)
+  const histTotals = useMemo(() => {
+    let stmtSum = 0, stmtCnt = 0, receiveSum = 0, paySum = 0, receiveCnt = 0, payCnt = 0;
+    // 전표 없이 자금원장으로만 나간 손익 — 이자비용·전력비 등. 매입/매출 합계에 같이 세야
+    // "이번 달 얼마 썼나"가 맞는다(대출상환의 이자 줄이 여기로 온다).
+    let costCash = 0, incomeCash = 0;
+    for (const r of filteredHistory) {
+      const c = classifyRow(r);                      // 구분 판정은 한 곳에서만 — 필터와 같은 규칙
+      if (r.kind === 'stmt') { stmtSum += r.data.totalAmount; stmtCnt++; }
+      if (c.cash === '입금') { receiveSum += r.kind === 'cash' ? r.amount : (r as { amount: number }).amount; receiveCnt++; incomeCash += c.plAmount; }
+      else if (c.cash === '출금') { paySum += r.kind === 'cash' ? r.amount : (r as { amount: number }).amount; payCnt++; costCash += c.plAmount; }
+    }
+    return { stmtSum, stmtCnt, receiveSum, paySum, receiveCnt, payCnt, costCash, incomeCash };
+  }, [filteredHistory, classifyRow]);
+
+  // 거래처별 미수금/미지급금 — 전표별 매칭이 아니라 거래처 잔액 기준(partnerBalances).
+  const partnerBalanceMap = partnerBalances;
 
 
   // 전체 미수금/미지급금 (필터 무관, 항상 전체 기준)
@@ -1790,17 +1967,27 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         setShowPreview(false);
         setEditablePrices({});
         setTaxExemptOverrides({});
-        // 주문 품목을 편집 가능한 형태로 미리 채움
+        // 주문 품목을 편집 가능한 형태로 미리 채움. 박스 품목은 낱개로 변환(수량 = 박스개수×개입, 낱개 단가).
         const rows: ManualRow[] = o.items.map(item => {
-          const product = allItems.find(p => p.id === item.itemId);
+          let product = allItems.find(p => p.id === item.itemId);
+          let qty = item.quantity;
+          const uc = unpackComponent(product);
+          if (uc) {
+            const loose = allItems.find(p => p.id === uc.itemId);
+            if (loose) {
+              const boxCount = item.isBoxUnit && item.boxQuantity ? item.boxQuantity : item.quantity;
+              product = loose;
+              qty = boxCount * uc.count;
+            }
+          }
           const displayName = product?.name || item.name;
-          const spec = item.displaySize || product?.spec || '';
-          const pcEntry = partnerOut.find(pc => pc.itemId === item.itemId && pc.partnerId === o.partnerId);
+          const spec = uc ? (product?.spec || item.displaySize || '') : (item.displaySize || product?.spec || '');
+          const pcEntry = partnerOut.find(pc => pc.itemId === product?.id && pc.partnerId === o.partnerId);
           const price = pcEntry?.price ?? item.price ?? product?.price ?? 0;
           const isTaxExempt = pcEntry?.taxType === '면세';
-          return { name: displayName, spec, qty: String(item.quantity), price: String(price), isTaxExempt, note: '', accountCode: pcEntry?.Account_Code };
+          return { name: displayName, spec, qty: String(qty), price: String(price), isTaxExempt, note: '', accountCode: pcEntry?.Account_Code };
         });
-        rows.push({ name: '', spec: '', qty: '', price: '', isTaxExempt: false, note: '' });
+        // 빈 행 자동 추가 안 함 — 주문 품목만 그대로. 더 넣으려면 '+ 행 추가' 사용.
         setManualItems(rows);
         setManualMode(true);
       }
@@ -2303,21 +2490,23 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         {/* 2행: 유형 + 검색 + 건수 */}
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-10 shrink-0">유형</span>
-          {([['전체','전체'],['매출','매출'],['매입','매입'],['자금','자금'],['비용','대체']] as const).map(([val,label]) => (
+          {/* 값과 라벨을 같게 둔다 — 예전엔 값 '매입'에 라벨 '비용', 값 '비용'에 라벨 '대체'라
+              필터 조건을 손볼 때마다 엉뚱한 탭이 걸렸다. classifyRow가 이 값 그대로 판정한다. */}
+          {(['전체','수익','비용','자금','대체'] as const).map(val => (
             <button key={val} onClick={()=>setHistTypeFilter(val)}
               className={`px-3.5 py-1.5 rounded-lg text-[11px] font-black border transition-all ${
                 histTypeFilter===val
-                  ? val==='매출' ? 'bg-blue-600 text-white border-blue-600'
-                    : val==='매입' ? 'bg-rose-600 text-white border-rose-600'
+                  ? val==='수익' ? 'bg-blue-600 text-white border-blue-600'
+                    : val==='비용' ? 'bg-rose-600 text-white border-rose-600'
                     : val==='자금' ? 'bg-emerald-600 text-white border-emerald-600'
-                    : val==='비용' ? 'bg-slate-500 text-white border-slate-500'
+                    : val==='대체' ? 'bg-slate-500 text-white border-slate-500'
                     : 'bg-slate-700 text-white border-slate-700'
                   : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400 hover:text-slate-600'
-              }`}>{label}</button>
+              }`}>{val}</button>
           ))}
           <div className="relative flex-1 max-w-xs ml-1">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
-            <input type="text" placeholder="업체명 또는 문서번호" value={histSearch}
+            <input type="text" placeholder="업체명 · 문서번호 · 계정과목(예: 이자)" value={histSearch}
               onChange={e=>setHistSearch(e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400"/>
           </div>
@@ -2415,40 +2604,131 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               {pagedHistory.map(row => {
                 if (row.kind === 'cash') {
                   // ── 자금 입출금 전표 행 ──
-                  const acct = row.accountCode ? `${codeName.get(row.accountCode) ?? row.accountCode}` : '';
+                  // 쪼갠 줄(대출상환 원금+이자)은 계정 칸에 "원금 차입금 1,000,000 · 이자 …"로 펼친다.
+                  const split = (row.entry.lines ?? []).filter(l => l.accountCode && l.amount > 0);
+                  const acct = split.length
+                    ? split.map(l => `${l.note ? l.note + ' ' : ''}${codeName.get(l.accountCode) ?? l.accountCode} ${fmt(l.amount)}`).join(' · ')
+                    : (row.accountCode ? `${codeName.get(row.accountCode) ?? row.accountCode}` : '');
                   const detail = [acct, row.note].filter(Boolean).join(' · ');
-                  return (
-                    <tr key={`cash__${row.entry.id}`}
-                      className={`transition-colors ${row.dir === '입금' ? 'bg-emerald-50/60 hover:bg-emerald-100/60' : 'bg-slate-50/60 hover:bg-slate-100/60'}`}>
-                      <td className="px-4 py-2 text-[11px] font-mono text-slate-500 whitespace-nowrap">{row.date}{row.entry.createdAt ? ` ${row.entry.createdAt.slice(11,16)}` : ''}</td>
+                  // 손익축 줄 — 전표 없이 자금으로만 생긴 수익·비용(이자비용 등)을 그 성격으로 띄운다.
+                  // 자금축(출금)과는 별개 줄이다: 전체 탭에선 둘 다, 수익·비용 탭에선 이것만 보인다.
+                  const plKind = row.dir === '입금' ? '수익' : '비용';
+                  const plParts = split.length
+                    ? split.filter(l => codeType.get(l.accountCode) === plKind)
+                        .map(l => ({ code: l.accountCode, amount: l.amount }))
+                    : (row.accountCode && codeType.get(row.accountCode) === plKind
+                        ? [{ code: row.accountCode, amount: row.amount }] : []);
+                  // Tailwind은 클래스명을 문자열로 조립하면 못 알아본다 — 정적으로 적는다.
+                  const badgeCls = plKind === '비용' ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700';
+                  const amtCls = plKind === '비용' ? 'text-rose-600' : 'text-blue-600';
+                  const plRows = plParts.map((p, i) => (
+                    <tr key={`cashpl__${row.entry.id}__${i}`}
+                      onClick={() => onUpdateCashEntry && openEditCash(row.entry)}
+                      className={`transition-colors ${onUpdateCashEntry ? 'cursor-pointer' : ''} hover:bg-slate-50`}>
+                      <td className="px-4 py-2 text-[11px] font-mono text-slate-500 whitespace-nowrap">{row.date}</td>
                       <td className="px-4 py-2">
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${badgeCls}`}>{plKind}</span>
+                      </td>
+                      <td className="px-4 py-2 text-xs font-bold text-slate-700">{row.partnerName || <span className="text-slate-300">—</span>}</td>
+                      <td className={`px-4 py-2 text-xs text-right font-black ${amtCls}`}>{fmt(p.amount)}</td>
+                      <td className="px-4 py-2 text-xs text-right text-slate-300">—</td>
+                      <td className="px-4 py-2 text-[11px] text-slate-500 max-w-[180px] truncate">
+                        {[`${p.code} ${codeName.get(p.code) ?? ''}`, row.note].filter(Boolean).join(' · ')}
+                      </td>
+                      <td className="px-4 py-2"></td>
+                    </tr>
+                  ));
+                  if (histTypeFilter === '수익' || histTypeFilter === '비용') {
+                    return plRows.length ? <React.Fragment key={`cash__${row.entry.id}`}>{plRows}</React.Fragment> : null;
+                  }
+                  const isOpen = expandedCash.has(row.entry.id);
+                  // 거래처가 붙은 돈인데 전표 매칭도 계정도 없으면 '미배분' — 받았지만 어느 청구서에
+                  // 넣을지 안 정한 돈이다. 계정이 있으면 성격이 정해진 것이라 정상(이자·차입금 등).
+                  const matchedAmt = settlements
+                    .filter(s => s.cashEntryId === row.entry.id)
+                    .reduce((a, s) => a + s.amount, 0);
+                  const unallocated = row.entry.partnerId && !split.length && !row.accountCode
+                    ? Math.max(0, row.entry.amount - matchedAmt) : 0;
+                  return (
+                  <React.Fragment key={`cash__${row.entry.id}`}>
+                    <tr
+                      onClick={() => onUpdateCashEntry && openEditCash(row.entry)}
+                      className={`transition-colors ${onUpdateCashEntry ? 'cursor-pointer' : ''} ${row.dir === '입금' ? 'bg-emerald-50/60 hover:bg-emerald-100/60' : 'bg-slate-50/60 hover:bg-slate-100/60'}`}>
+                      <td className="px-4 py-2 text-[11px] font-mono text-slate-500 whitespace-nowrap">{row.date}{row.entry.createdAt ? ` ${row.entry.createdAt.slice(11,16)}` : ''}</td>
+                      <td className="px-4 py-2 whitespace-nowrap">
+                        {split.length > 0 && (
+                          <button onClick={e => { e.stopPropagation(); toggleCash(row.entry.id); }}
+                            title={isOpen ? '접기' : `${split.length}개 계정으로 나뉨 — 펼치기`}
+                            className="align-middle mr-1 text-slate-400 hover:text-slate-700 transition-colors">
+                            {isOpen ? <ChevronDown size={13}/> : <ChevronRight size={13}/>}
+                          </button>
+                        )}
                         <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.dir === '입금' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{row.dir}</span>
                       </td>
                       <td className="px-4 py-2 text-xs font-bold text-slate-700">{row.partnerName || <span className="text-slate-300">—</span>}</td>
                       <td className={`px-4 py-2 text-xs text-right font-black ${row.dir === '입금' ? 'text-emerald-600' : 'text-rose-600'}`}>{fmt(row.amount)}</td>
-                      <td className="px-4 py-2 text-xs text-right text-slate-300">—</td>
+                      <td className="px-4 py-2 text-xs text-right">
+                        {/* 거래처는 붙었는데 전표에도 안 붙고 계정도 없는 돈 = 어디 쓸지 안 정한 돈.
+                            완도식품처럼 조용히 떠 있으면 미수금이 안 맞는데 원인을 못 찾는다. */}
+                        {unallocated > 0
+                          ? <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 whitespace-nowrap">
+                              미배분 {fmt(unallocated)}
+                            </span>
+                          : <span className="text-slate-300">—</span>}
+                      </td>
                       <td className="px-4 py-2 text-[11px] text-slate-500 max-w-[180px] truncate">
-                        {row.accountCode
-                          ? detail
+                        {/* 쪼갠 줄로 계정이 붙은 건도 지정된 것 — accountCode만 보면 '미지정'으로 잘못 뜬다 */}
+                        {(split.length || row.accountCode)
+                          ? (split.length ? (row.note ?? '') : detail)
                           : <span className="text-amber-500 font-bold">계정 미지정{row.note ? ` · ${row.note}` : ''}</span>}
                       </td>
                       <td className="px-4 py-2">
                         {onDeleteCashEntry && (
-                          <button onClick={() => { if (window.confirm('이 자금 전표를 삭제할까요?')) onDeleteCashEntry(row.entry.id); }}
+                          <button onClick={(e) => { e.stopPropagation(); if (window.confirm('이 자금 전표를 삭제할까요?')) onDeleteCashEntry(row.entry.id); }}
                             className="text-slate-300 hover:text-rose-500 transition-all"><Trash2 size={13}/></button>
                         )}
                       </td>
                     </tr>
+                    {/* 쪼갠 줄 — 통장에서는 한 번 나갔지만 성격은 둘이다. 원금은 부채 감소, 이자는 비용.
+                        전체 목록에선 접어두고 화살표를 눌러야 펼친다. */}
+                    {isOpen && split.map((l, i) => {
+                      const isCost = codeType.get(l.accountCode) === '비용';
+                      return (
+                        <tr key={`cash__${row.entry.id}__${i}`}
+                          className={row.dir === '입금' ? 'bg-emerald-50/30' : 'bg-slate-50/30'}>
+                          <td className="px-4 py-1"></td>
+                          <td className="px-4 py-1 whitespace-nowrap">
+                            <span className="text-slate-300 mr-1">└</span>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${isCost ? 'bg-rose-100 text-rose-700' : 'bg-slate-200 text-slate-500'}`}>
+                              {isCost ? '비용' : (l.note || '대체')}
+                            </span>
+                          </td>
+                          <td className="px-4 py-1 text-[11px] text-slate-400">{l.note || ''}</td>
+                          <td className={`px-4 py-1 text-[11px] text-right font-black ${isCost ? 'text-rose-500' : 'text-slate-400'}`}>{fmt(l.amount)}</td>
+                          <td className="px-4 py-1"></td>
+                          <td className="px-4 py-1 text-[11px] text-slate-400 truncate">
+                            {l.accountCode} {codeName.get(l.accountCode) ?? ''}
+                          </td>
+                          <td className="px-4 py-1"></td>
+                        </tr>
+                      );
+                    })}
+                    {/* 전체 탭 — 통장 관점(출금)과 손익 관점(비용)을 나눠서 각각 띄운다.
+                        자금 탭에선 출금만, 비용 탭에선 비용만 나오므로 여기서만 둘 다. */}
+                    {histTypeFilter === '전체' && plRows}
+                  </React.Fragment>
                   );
                 }
                 if (row.kind === 'pay') {
                   // ── 수금/지불 행 ──
+                  // 라벨은 수금·지불(무슨 돈인지 알아야 하니까). 다만 분류는 자금(입금·출금)이라
+                  // 수익·비용 탭에는 안 뜬다 — 매출·매입은 전표 끊을 때 이미 잡혔기 때문.
                   const label = row.stmtType === '매출' ? '수금' : '지불';
                   const cumul = row.cumul;
                   return (
                     <tr key={`pay__${row.paymentId}`}
                       className={`cursor-pointer transition-colors ${row.stmtType === '매출' ? 'bg-lime-50/80 hover:bg-lime-100/80' : 'bg-orange-50/80 hover:bg-orange-100/80'}`}
-                      onClick={() => { const p = row.src.payments?.find(p => p.id === row.paymentId); if (p) openEditPay(row.src, p); }}>
+                      onClick={() => openPayTimelineRow(row.paymentId, row.src)}>
                       <td className="px-4 py-2 text-[11px] font-mono text-slate-500 whitespace-nowrap">{row.date}{(() => { const p = row.src.payments?.find(p => p.id === row.paymentId); return p?.createdAt ? ` ${p.createdAt.slice(11,16)}` : ''; })()}</td>
                       <td className="px-4 py-2">
                         <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.stmtType === '매출' ? 'bg-lime-100 text-lime-700' : 'bg-orange-100 text-orange-700'}`}>{label}</span>
@@ -2468,7 +2748,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       <td className="px-4 py-2 text-[11px] text-slate-400 max-w-[180px] truncate">
                         {[row.method, row.note].filter(Boolean).join(' · ')}
                       </td>
-                      <td className="px-4 py-2"></td>
+                      <td className="px-4 py-2">
+                        <button onClick={e => { e.stopPropagation(); deletePayTimelineRow(row.paymentId, row.src); }}
+                          className="text-slate-300 hover:text-rose-500 transition-all" title="수금/지불 삭제"><Trash2 size={13}/></button>
+                      </td>
                     </tr>
                   );
                 }
@@ -2529,14 +2812,53 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           <div className="md:hidden divide-y divide-slate-100">
             {pagedHistory.map(row => {
               if (row.kind === 'cash') {
-                const acct = row.accountCode ? (codeName.get(row.accountCode) ?? row.accountCode) : '';
+                const split = (row.entry.lines ?? []).filter(l => l.accountCode && l.amount > 0);
+                const acct = split.length
+                  ? split.map(l => `${l.note ? l.note + ' ' : ''}${codeName.get(l.accountCode) ?? l.accountCode} ${fmt(l.amount)}`).join(' · ')
+                  : (row.accountCode ? (codeName.get(row.accountCode) ?? row.accountCode) : '');
                 const detail = [acct, row.note].filter(Boolean).join(' · ');
+                // 수익/비용 탭 — 자금 전표가 아니라 그 성격의 금액만 보여준다(표와 같은 규칙).
+                const mPl = histTypeFilter === '비용' ? '비용' : histTypeFilter === '수익' ? '수익' : null;
+                if (mPl) {
+                  const parts = split.length
+                    ? split.filter(l => codeType.get(l.accountCode) === mPl).map(l => ({ code: l.accountCode, amount: l.amount }))
+                    : (row.accountCode && codeType.get(row.accountCode) === mPl
+                        ? [{ code: row.accountCode, amount: row.amount }] : []);
+                  if (!parts.length) return null;
+                  const badge = mPl === '비용' ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700';
+                  const amtC = mPl === '비용' ? 'text-rose-600' : 'text-blue-600';
+                  return (
+                    <React.Fragment key={`m-cash-${row.entry.id}`}>
+                      {parts.map((p, i) => (
+                        <div key={`m-cashpl-${row.entry.id}-${i}`}
+                          onClick={() => onUpdateCashEntry && openEditCash(row.entry)}
+                          className={`px-4 py-3 flex flex-col gap-1.5 ${onUpdateCashEntry ? 'cursor-pointer' : ''}`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${badge}`}>{mPl}</span>
+                            <span className="text-[10px] font-mono text-slate-400">{row.date}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-bold text-slate-700 truncate">{row.partnerName || (codeName.get(p.code) ?? p.code)}</span>
+                            <span className={`text-sm font-black shrink-0 ${amtC}`}>{fmt(p.amount)}</span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 truncate">
+                            {[`${p.code} ${codeName.get(p.code) ?? ''}`, row.note].filter(Boolean).join(' · ')}
+                          </p>
+                        </div>
+                      ))}
+                    </React.Fragment>
+                  );
+                }
                 return (
                   <div key={`m-cash-${row.entry.id}`}
-                    className={`px-4 py-3 flex flex-col gap-1.5 ${row.dir === '입금' ? 'bg-emerald-50/60' : 'bg-slate-50/60'}`}>
+                    onClick={() => onUpdateCashEntry && openEditCash(row.entry)}
+                    className={`px-4 py-3 flex flex-col gap-1.5 ${onUpdateCashEntry ? 'cursor-pointer' : ''} ${row.dir === '입금' ? 'bg-emerald-50/60' : 'bg-slate-50/60'}`}>
                     <div className="flex items-center justify-between gap-2">
                       <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.dir === '입금' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{row.dir}</span>
-                      <span className="text-[10px] font-mono text-slate-400">{row.date}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono text-slate-400">{row.date}</span>
+                        {onDeleteCashEntry && <button onClick={(e)=>{e.stopPropagation(); if(window.confirm('이 자금 전표를 삭제할까요?')) onDeleteCashEntry(row.entry.id);}} className="text-slate-300 hover:text-rose-500" title="삭제"><Trash2 size={13}/></button>}
+                      </div>
                     </div>
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-bold text-slate-700 truncate">{row.partnerName || (acct || '자금')}</span>
@@ -2551,19 +2873,22 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 const cumul = row.cumul;
                 const memo = [row.method, row.note].filter(Boolean).join(' · ');
                 return (
-                  <button key={`m-pay-${row.paymentId}`}
-                    onClick={() => { const p = row.src.payments?.find(p => p.id === row.paymentId); if (p) openEditPay(row.src, p); }}
-                    className={`w-full text-left px-4 py-3 flex flex-col gap-1.5 ${row.stmtType === '매출' ? 'bg-lime-50/70' : 'bg-orange-50/70'}`}>
+                  <div key={`m-pay-${row.paymentId}`}
+                    onClick={() => openPayTimelineRow(row.paymentId, row.src)}
+                    className={`w-full px-4 py-3 flex flex-col gap-1.5 cursor-pointer ${row.stmtType === '매출' ? 'bg-lime-50/70' : 'bg-orange-50/70'}`}>
                     <div className="flex items-center justify-between gap-2">
                       <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.stmtType === '매출' ? 'bg-lime-100 text-lime-700' : 'bg-orange-100 text-orange-700'}`}>{label}</span>
-                      <span className="text-[10px] font-mono text-slate-400">{row.date}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono text-slate-400">{row.date}</span>
+                        <button onClick={e => { e.stopPropagation(); deletePayTimelineRow(row.paymentId, row.src); }} className="text-slate-300 hover:text-rose-500" title="삭제"><Trash2 size={13}/></button>
+                      </div>
                     </div>
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-bold text-slate-800 truncate">{row.partnerName}</span>
                       <span className="text-sm font-black text-slate-800 shrink-0">{fmt(row.amount)}</span>
                     </div>
                     {memo && <p className="text-[11px] text-slate-400 truncate">{memo}</p>}
-                  </button>
+                  </div>
                 );
               }
               const stmt = row.data;
@@ -2606,21 +2931,41 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             })}
           </div>
         </>)}
-        {/* ── 매출/매입 합계 (현재 필터 기준) ── */}
-        {filteredHistory.some(r => r.kind === 'stmt') && (() => {
+        {/* ── 하단 합계 (현재 필터·기간 기준) — 매출·매입·수금·지불 항상 표시 ── */}
+        {filteredHistory.length > 0 && (() => {
           const stmts = filteredHistory.filter((r): r is Extract<TimelineRow, { kind: 'stmt' }> => r.kind === 'stmt');
-          const sale = stmts.filter(r => r.data.type === '매출').reduce((s, r) => s + (r.data.totalAmount || 0), 0);
-          const buy  = stmts.filter(r => r.data.type === '매입').reduce((s, r) => s + (r.data.totalAmount || 0), 0);
+          // 전표분 + 자금원장으로만 나간 손익(이자비용 등). 대출상환의 이자 줄이 매입 합계에 들어온다.
+          const sale = stmts.filter(r => r.data.type === '매출').reduce((s, r) => s + (r.data.totalAmount || 0), 0)
+                     + histTotals.incomeCash;
+          const buy  = stmts.filter(r => r.data.type === '매입').reduce((s, r) => s + (r.data.totalAmount || 0), 0)
+                     + histTotals.costCash;
+          const cell = (label: string, val: number, cls: string) => (
+            <div className="flex items-center gap-2">
+              <span className={`text-[10px] font-black uppercase tracking-widest ${cls}`}>{label}</span>
+              <span className={`font-black text-sm ${cls}`}>{fmt(val)}</span>
+            </div>
+          );
+          // 탭이 보는 축의 합계만 띄운다 — 수익 탭에 지불 합계가 뜨면 뭘 보는 건지 흐려진다.
+          //   전체 → 손익축(수익·비용) + 자금축(수금·지불)
+          //   수익 → 수익만 · 비용 → 비용만 · 자금 → 수금·지불만
+          const showIncome = histTypeFilter === '전체' || histTypeFilter === '수익';
+          const showCost   = histTypeFilter === '전체' || histTypeFilter === '비용';
+          const showCash   = histTypeFilter === '전체' || histTypeFilter === '자금';
+          const anyPl = (showIncome && sale > 0) || (showCost && buy > 0);
+          const anyCash = showCash && (histTotals.receiveSum > 0 || histTotals.paySum > 0);
           return (
-            <div className="flex items-center justify-end gap-6 px-4 py-3 border-t border-slate-200 bg-slate-50/60">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">매출 합계</span>
-                <span className="font-black text-blue-700 text-sm">{fmt(sale)}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black text-rose-500 uppercase tracking-widest">매입 합계</span>
-                <span className="font-black text-rose-700 text-sm">{fmt(buy)}</span>
-              </div>
+            <div className="px-4 py-3 border-t border-slate-200 bg-slate-50/60 flex flex-wrap items-center justify-end gap-x-5 gap-y-1.5">
+              {/* 발생 = 이번 기간에 생긴 손익, 현금 = 이번 기간에 오간 돈. 외상이 있는 한 둘은 안 맞는다. */}
+              {anyPl && histTypeFilter === '전체' && (
+                <span className="text-[9px] font-black text-slate-400 tracking-widest">발생</span>
+              )}
+              {showIncome && sale > 0 && cell('수익', sale, 'text-blue-600')}
+              {showCost && buy > 0 && cell('비용', buy, 'text-rose-600')}
+              {anyCash && histTypeFilter === '전체' && (
+                <span className="text-[9px] font-black text-slate-400 tracking-widest border-l border-slate-200 pl-5">현금</span>
+              )}
+              {showCash && histTotals.receiveSum > 0 && cell('수금', histTotals.receiveSum, 'text-lime-600')}
+              {showCash && histTotals.paySum > 0 && cell('지불', histTotals.paySum, 'text-orange-600')}
             </div>
           );
         })()}
@@ -2672,21 +3017,28 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               {payTarget.type === '매입' ? '지불 처리' : '수금 처리'}
             </h3>
             <div className="text-xs text-slate-400">{payTarget.partnerName} · {payTarget.tradeDate}</div>
-            <div className="bg-slate-50 rounded-xl px-4 py-3 text-xs flex items-center justify-between gap-3">
-              <div>
-                <span className="text-slate-500">잔액 </span>
-                <span className={`font-black text-base ${getBalance(payTarget) <= 0 ? 'text-emerald-600' : 'text-slate-800'}`}>
-                  {getBalance(payTarget) <= 0 ? '완납' : `${fmt(getBalance(payTarget))}원`}
-                </span>
-              </div>
-              {getBalance(payTarget) > 0 && (
-                <button
-                  onClick={() => setPayForm(p => ({ ...p, amount: String(getBalance(payTarget)) }))}
-                  className="text-[10px] font-black px-2 py-1 rounded-lg bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition-all shrink-0">
-                  전액
+            {/* 전표 금액과 거래처 누적잔액을 나란히 — 둘 중 하나를 전액으로 찍어 넣을 수 있다.
+                돈은 전표에 붙지 않고 거래처 잔액에서 빠지므로, 어느 쪽을 골라도 결과는 잔액 차감이다. */}
+            {(() => {
+              const bal = partnerBalances.get(payTarget.partnerId);
+              const partnerLeft = payTarget.type === '매입' ? (bal?.payable ?? 0) : (bal?.receivable ?? 0);
+              const box = (label: string, amount: number, hint: string) => (
+                <button onClick={() => setPayForm(p => ({ ...p, amount: String(Math.round(amount)) }))}
+                  className="flex-1 text-left bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded-xl px-3 py-2.5 transition-all">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</div>
+                  <div className={`font-black text-base ${amount <= 0 ? 'text-emerald-600' : 'text-slate-800'}`}>
+                    {amount <= 0 ? '없음' : `${fmt(Math.round(amount))}원`}
+                  </div>
+                  <div className="text-[10px] text-slate-400">{hint}</div>
                 </button>
-              )}
-            </div>
+              );
+              return (
+                <div className="flex gap-2">
+                  {box('이 전표', payTarget.totalAmount, '눌러서 전액 입력')}
+                  {box('거래처 잔액', partnerLeft, `${payTarget.partnerName} 전체`)}
+                </div>
+              );
+            })()}
             <div className="space-y-3">
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">금액</label>
@@ -2832,6 +3184,67 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700">수정</button>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 자금(입출금) 전표 수정 모달 ── */}
+      {editCash && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setEditCash(null)}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-black text-slate-800">자금 전표 수정</h3>
+              <button onClick={() => setEditCash(null)} className="p-1 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={16}/></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">구분</label>
+                <div className="flex gap-1.5">
+                  {(['입금','출금'] as const).map(d => (
+                    <button key={d} onClick={() => setEditCashForm(p => ({ ...p, dir: d }))}
+                      className={`flex-1 py-2 rounded-xl text-xs font-black border transition-all ${editCashForm.dir === d ? (d==='입금'?'bg-emerald-600 text-white border-emerald-600':'bg-rose-600 text-white border-rose-600') : 'bg-white text-slate-500 border-slate-200'}`}>{d}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">금액</label>
+                <input type="text" inputMode="decimal" value={editCashForm.amount}
+                  onChange={e => setEditCashForm(p => ({ ...p, amount: e.target.value.replace(/[^\d.]/g,'') }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-right outline-none focus:ring-2 focus:ring-blue-300"/>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">일자</label>
+                <input type="date" value={editCashForm.date}
+                  onChange={e => setEditCashForm(p => ({ ...p, date: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">계정과목</label>
+                <select value={editCashForm.accountCode}
+                  onChange={e => setEditCashForm(p => ({ ...p, accountCode: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300 bg-white">
+                  <option value="">계정 미지정(영업)</option>
+                  {[...accountCodes].sort((a,b)=>String(a.code).localeCompare(String(b.code),undefined,{numeric:true})).map(ac => (
+                    <option key={ac.id} value={ac.code}>{ac.code} {ac.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">비고</label>
+                <input type="text" value={editCashForm.note}
+                  onChange={e => setEditCashForm(p => ({ ...p, note: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              {onDeleteCashEntry && (
+                <button onClick={() => { if (window.confirm('이 자금 전표를 삭제할까요?')) { onDeleteCashEntry(editCash.id); setEditCash(null); } }}
+                  className="flex items-center gap-1 px-3 py-2.5 rounded-xl bg-red-50 text-red-600 text-xs font-black hover:bg-red-100 border border-red-200"><Trash2 size={12}/>삭제</button>
+              )}
+              <button onClick={() => setEditCash(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
+              <button onClick={saveEditCash} disabled={!editCashForm.amount || Number(editCashForm.amount) <= 0}
+                className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center gap-1.5"><Save size={12}/>저장</button>
             </div>
           </div>
         </div>
@@ -3147,10 +3560,24 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           }
           setShowQuickPay(false); setQuickPayOverWarn(false);
         };
+        // 통장에서는 한 번 나가도 전표는 두 줄로 끊는다 — 원금은 차입금(부채 감소, 재무상태표),
+        // 이자는 이자비용(손익계산서). 줄마다 계정·금액이 따로 보여야 손익이 깔끔하게 갈린다.
+        // 통장에서 나간 건 원금+이자 합계 한 번. 자금은 그 금액으로 한 건 만들고,
+        // 그 안에서 원금(차입금=부채 감소)과 이자(비용)를 줄로 가른다.
+        // → 지불 합계엔 6만원 전부, 비용 합계엔 이자 3만원만 잡힌다.
         const doLoanSave = () => {
           const memo = quickPayNote.trim() || '대출 상환';
-          if (prin > 0) onAddCashEntry?.({ id: `cash-${Date.now()}-p`, dir: '출금', amount: prin, accountCode: qpLoanCode, note: `${memo} (원금)`, ...base() } as any);
-          if (intr > 0) onAddCashEntry?.({ id: `cash-${Date.now()}-i`, dir: '출금', amount: intr, accountCode: INTEREST_CODE, note: `${memo} (이자)`, ...base() } as any);
+          const lines = [
+            ...(prin > 0 ? [{ accountCode: qpLoanCode, amount: prin, note: '원금' }] : []),
+            ...(intr > 0 ? [{ accountCode: INTEREST_CODE, amount: intr, note: '이자' }] : []),
+          ];
+          if (!lines.length) return;
+          onAddCashEntry?.({
+            id: `cash-${Date.now()}`, dir: '출금', amount: prin + intr,
+            ...(lines.length > 1 ? { lines } : { accountCode: lines[0].accountCode }),
+            note: lines.length > 1 ? memo : `${memo} (${lines[0].note})`,
+            ...base(),
+          } as any);
           setShowQuickPay(false);
         };
         const doSalarySave = () => {
@@ -3288,6 +3715,27 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 </>
               ) : qpMode === '상환' ? (
                 <>
+                  {/* 은행 — 원금·이자 두 줄 모두에 붙는다. 어느 대출인지 나중에 못 찾으면 소용없다. */}
+                  <div className="relative">
+                    <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">은행 <span className="text-slate-300">(선택)</span></label>
+                    <input type="text" placeholder="은행명 검색..."
+                      value={selectedClientObj ? selectedClientObj.name : quickPayClientSearch}
+                      onFocus={() => { setQuickPayClientId(''); setQuickPayDropOpen(true); }}
+                      onChange={e => { setQuickPayClientSearch(e.target.value); setQuickPayClientId(''); setQuickPayDropOpen(true); }}
+                      onBlur={() => setTimeout(() => setQuickPayDropOpen(false), 150)}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
+                    {quickPayDropOpen && dropClients.length > 0 && (
+                      <div className="absolute left-0 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl z-10 overflow-hidden">
+                        {dropClients.map(c => (
+                          <button key={c.id}
+                            onMouseDown={() => { setQuickPayClientId(c.id); setQuickPayClientSearch(''); setQuickPayDropOpen(false); }}
+                            className="w-full text-left px-3 py-2.5 text-xs hover:bg-emerald-50 transition-colors border-b border-slate-50 last:border-0 font-black text-slate-800">
+                            {c.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">대출 계정 <span className="text-rose-400">*</span></label>
                     <select value={qpLoanCode} onChange={e => setQpLoanCode(e.target.value)}
@@ -4047,7 +4495,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               <div className="flex-shrink-0 flex items-center gap-2 px-5 py-2 bg-blue-50 border-b border-blue-100">
                 <CheckCircle2 size={13} className="text-blue-500 shrink-0"/>
                 <span className="text-[11px] font-black text-blue-700">
-                  주문 기반 편집 — 품목 추가·수량 변경이 원본 주문에도 반영됩니다
+                  주문 불러옴 — 박스는 낱개로 변환됨. 여기서 고쳐도 원본 주문은 안 바뀝니다
                 </span>
               </div>
             )}

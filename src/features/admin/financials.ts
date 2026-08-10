@@ -1,6 +1,6 @@
 import {
   IssuedStatement, FixedCostEntry, AccountCode, AccountGroup, AccountGroupCfSection,
-  CashFlowManual, InventorySnapshot, CashEntry, Settlement,
+  CashFlowManual, InventorySnapshot, CashEntry, Settlement, JournalEntry,
 } from '../../shared/types';
 
 /**
@@ -104,6 +104,147 @@ export function computeMonthPL(
   return { sales, cogs, sgna, fixed, grossProfit, operatingProfit, otherIncome, otherExpense, netIncome };
 }
 
+/**
+ * 분개 기반 월별 손익 — 전표·자금원장이 모두 분개를 거쳐 들어오므로 원천이 어디든 한 번만 잡힌다.
+ *
+ * `computeMonthPL`(전표 직접 집계)과 두 가지가 다르다:
+ *  - **부가세가 손익에서 빠진다.** 분개는 공급가만 수익·비용으로 세우고 부가세는
+ *    예수금(부채)·대급금(자산)으로 보낸다. 전표 집계는 부가세 포함 `item.total`을 더했다.
+ *  - **자금원장에만 있는 손익도 잡힌다.** 이자비용처럼 전표 없이 자금으로만 나간 것.
+ *
+ * 계정에 `type`이 없으면 손익에서 조용히 빠진다 — 계정과목 등록 시 5분류를 반드시 채울 것.
+ */
+export function computeMonthPLFromJournals(
+  ym: string,
+  entries: JournalEntry[],
+  accountCodes: AccountCode[],
+  codeToGroup: (code: string | undefined) => AccountGroup | undefined,
+  fixedCosts: FixedCostEntry[],
+): MonthPL {
+  const byCode = new Map(accountCodes.map(a => [String(a.code), a]));
+  const tally = new Map<string, { debit: number; credit: number }>();
+  for (const e of entries) {
+    if (!(e.date ?? '').startsWith(ym)) continue;
+    for (const l of e.lines ?? []) {
+      const cur = tally.get(l.accountCode) ?? { debit: 0, credit: 0 };
+      cur.debit += l.debit ?? 0;
+      cur.credit += l.credit ?? 0;
+      tally.set(l.accountCode, cur);
+    }
+  }
+  let sales = 0, cogs = 0, sgna = 0, otherIncome = 0, otherExpense = 0;
+  for (const [code, t] of tally) {
+    const acc = byCode.get(code);
+    if (acc?.type !== '수익' && acc?.type !== '비용') continue;
+    const normal = acc.normalBalance ?? (acc.type === '수익' ? 'credit' : 'debit');
+    const bal = normal === 'debit' ? t.debit - t.credit : t.credit - t.debit;
+    if (!bal) continue;
+    switch (codeToGroup(code)?.plLine) {
+      case 'revenue':       sales += bal; break;
+      case 'cogs':          cogs += bal; break;
+      case 'sgna':          sgna += bal; break;
+      case 'other-income':  otherIncome += bal; break;
+      case 'other-expense': otherExpense += bal; break;
+      default:              if (acc.type === '수익') sales += bal; else cogs += bal;
+    }
+  }
+  const fixed = fixedCosts.filter(c => c.yearMonth === ym).reduce((a, c) => a + c.amount, 0);
+  const grossProfit = sales - cogs;
+  const operatingProfit = grossProfit - sgna - fixed;
+  const netIncome = operatingProfit + otherIncome - otherExpense;
+  return { sales, cogs, sgna, fixed, grossProfit, operatingProfit, otherIncome, otherExpense, netIncome };
+}
+
+// ── 직접법 현금흐름 ──────────────────────────────────────────────────────────
+
+/**
+ * 영업성 상대계정 — 현금이 이 계정과 오갔으면 영업활동이다.
+ * cfSectionOf는 그룹 성격만 보고 자산=투자·부채=재무로 찍기 때문에, 외상매출금·부가세처럼
+ * '자산/부채인데 영업'인 것들을 여기서 먼저 건져낸다. 차입금(260·293)과 유형자산은 일부러 뺀다.
+ */
+const OPERATING_CODES = new Set([
+  '108', // 외상매출금
+  '251', // 외상매입금
+  '253', // 미지급금
+  '254', // 예수금(원천세)
+  '255', // 부가세예수금
+  '135', // 부가세대급금
+  '262', // 미지급비용
+  '131', // 선급금
+  '146', // 재고자산
+]);
+
+export interface CashFlowDirectLine {
+  accountCode: string;
+  section: AccountGroupCfSection;
+  inflow: number;
+  outflow: number;
+}
+export interface CashFlowDirect {
+  op: number; inv: number; fin: number; net: number;
+  opIn: number; opOut: number;
+  invIn: number; invOut: number;
+  finIn: number; finOut: number;
+  lines: CashFlowDirectLine[];   // 상대계정별 — 금액 큰 순
+}
+
+/**
+ * 직접법 현금흐름 — 분개에서 **현금계정이 움직인 것만** 뽑아 상대계정별로 모은다.
+ *
+ * 간접법(순이익에서 출발해 채권·채무 증감을 추정)과 달리 추정이 없다. 현금이 안 움직인
+ * 거래(대체전표·외상매입)는 아예 안 들어오고, 통장 증감과 원 단위로 맞는다.
+ *
+ * 규칙: 한 분개에서 현금계정 순증감이 0이면(계좌 간 이체) 건너뛴다. 그 외에는 현금이 아닌
+ * 줄마다 (차변−대변)을 본다 — 양수면 그쪽으로 현금이 나간 것, 음수면 그쪽에서 들어온 것.
+ * 그래서 대출상환처럼 한 분개에 원금(재무)과 이자(영업)가 섞여 있어도 정확히 갈린다.
+ */
+export function computeCashFlowDirect(
+  ym: string,
+  entries: JournalEntry[],
+  accountCodes: AccountCode[],
+  codeToGroup: (code: string | undefined) => AccountGroup | undefined,
+): CashFlowDirect {
+  const isCash = new Set(accountCodes.filter(a => a.isCash).map(a => String(a.code)));
+  const agg = new Map<string, CashFlowDirectLine>();
+  const out: CashFlowDirect = {
+    op: 0, inv: 0, fin: 0, net: 0,
+    opIn: 0, opOut: 0, invIn: 0, invOut: 0, finIn: 0, finOut: 0, lines: [],
+  };
+
+  for (const e of entries) {
+    if (!(e.date ?? '').startsWith(ym)) continue;
+    const lines = e.lines ?? [];
+    let cashDelta = 0;
+    for (const l of lines) if (isCash.has(String(l.accountCode))) cashDelta += (l.debit ?? 0) - (l.credit ?? 0);
+    if (Math.abs(cashDelta) < 0.005) continue;         // 현금 안 움직임(대체) 또는 계좌 간 이체
+
+    for (const l of lines) {
+      const code = String(l.accountCode);
+      if (isCash.has(code)) continue;
+      const signed = (l.debit ?? 0) - (l.credit ?? 0);  // + → 현금 유출, − → 현금 유입
+      if (!signed) continue;
+      const section: AccountGroupCfSection = OPERATING_CODES.has(code)
+        ? 'operating'
+        : (cfSectionOf(codeToGroup(code)) ?? 'operating');
+      const cur = agg.get(code) ?? { accountCode: code, section, inflow: 0, outflow: 0 };
+      if (signed > 0) cur.outflow += signed; else cur.inflow += -signed;
+      agg.set(code, cur);
+    }
+  }
+
+  for (const l of agg.values()) {
+    if (l.section === 'investing') { out.invIn += l.inflow; out.invOut += l.outflow; }
+    else if (l.section === 'financing') { out.finIn += l.inflow; out.finOut += l.outflow; }
+    else { out.opIn += l.inflow; out.opOut += l.outflow; }
+  }
+  out.op = out.opIn - out.opOut;
+  out.inv = out.invIn - out.invOut;
+  out.fin = out.finIn - out.finOut;
+  out.net = out.op + out.inv + out.fin;
+  out.lines = [...agg.values()].sort((a, b) => (b.inflow + b.outflow) - (a.inflow + a.outflow));
+  return out;
+}
+
 /** YYYY-MM에 d개월 더한/뺀 YYYY-MM */
 export function addMonthStr(ym: string, d: number): string {
   const [y, m] = ym.split('-').map(Number);
@@ -133,6 +274,17 @@ export function isNoncashCode(code: string | undefined, accountCodes: AccountCod
   const ac = accountCodes.find(a => a.code === code);
   if (ac?.noncash != null) return ac.noncash;
   return /감가상각|퇴직급여|퇴직충당|충당금/.test(ac?.name ?? '');
+}
+
+/**
+ * 영업성 상대계정인가 — 매출채권·매입채무 상계, 그리고 현금계정 간 이동.
+ * 이런 자금 기록은 투자·재무가 아니라 영업이며, 영업 라인(arInc·apChg)이 이미 반영한다.
+ * 그룹 cfSection이 비어 있으면 자산=투자·부채=재무로 추측되기 때문에 명시적으로 걸러야 한다.
+ */
+export function isOperatingCounterCode(code: string | undefined, accountCodes: AccountCode[] = []): boolean {
+  if (!code) return false;
+  if (code === '108' || code === '251') return true;          // 외상매출금 / 외상매입금
+  return accountCodes.find(a => a.code === code)?.isCash === true;  // 계좌 간 이동
 }
 
 export function cfSectionOf(g?: AccountGroup): AccountGroupCfSection | undefined {
@@ -224,10 +376,19 @@ export function computeCashFlowMonth(
   if (codeToGroup) {
     for (const e of cashEntries) {
       if (!(e.date || '').startsWith(ym)) continue;
-      const section = cfSectionOf(codeToGroup(e.accountCode));
       const inflow = e.dir === '입금';
-      if (section === 'investing') { if (inflow) assetIn += e.amount; else assetOut += e.amount; }
-      else if (section === 'financing') { if (inflow) finInStmt += e.amount; else finOutStmt += e.amount; }
+      // 쪼갠 줄이 있으면 줄마다 성격이 다르다 — 대출상환은 원금=재무활동, 이자=영업활동.
+      const parts = (e.lines ?? []).filter(l => l.accountCode && l.amount > 0).length
+        ? e.lines!.filter(l => l.accountCode && l.amount > 0).map(l => ({ code: l.accountCode, amount: l.amount }))
+        : [{ code: e.accountCode, amount: e.amount }];
+      for (const p of parts) {
+        // 채권·채무 상계(수금/지불)는 영업활동이다 — 위 arInc/apChg가 이미 반영했다.
+        // 그룹에 cfSection이 없으면 자산=투자, 부채=재무로 추측되므로 여기서 먼저 걷어낸다.
+        if (isOperatingCounterCode(p.code, accountCodes)) continue;
+        const section = cfSectionOf(codeToGroup(p.code));
+        if (section === 'investing') { if (inflow) assetIn += p.amount; else assetOut += p.amount; }
+        else if (section === 'financing') { if (inflow) finInStmt += p.amount; else finOutStmt += p.amount; }
+      }
     }
   }
 

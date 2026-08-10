@@ -15,6 +15,8 @@ interface Props {
   cashEntries: CashEntry[];
   accounts: AccountCode[];
   cashAccounts: CashAccount[];
+  /** 월말 재고 실사액 — 재고자산을 실사값으로 맞추는 조정분개를 만든다(실지재고조사법). */
+  inventorySnapshots?: { id?: string; yearMonth: string; value: number }[];
 }
 
 const won = (n: number) => `${Math.round(n).toLocaleString('ko-KR')}`;
@@ -23,7 +25,7 @@ const won = (n: number) => `${Math.round(n).toLocaleString('ko-KR')}`;
  * 재무제표 (복식부기 · 병행/대조용). 기존 전표·수금·자금에서 분개를 계산으로 뽑아
  * 시산표·손익계산서·재무상태표를 그린다. 저장 안 함, 읽기 전용. 기존 손익표와 대조하는 화면.
  */
-const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, cashAccounts }) => {
+const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, cashAccounts, inventorySnapshots = [] }) => {
   const months = useMemo(() => {
     const s = new Set<string>();
     for (const st of statements) if (st.tradeDate) s.add(st.tradeDate.slice(0, 7));
@@ -83,7 +85,8 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
     return Math.round(d - c);   // 차변이 크면 자본금(대변)으로
   }, [draft, openableAccounts]);
 
-  const built = useMemo(() => buildJournals({ statements, cashEntries, accounts, opening }), [statements, cashEntries, accounts, opening]);
+  const built = useMemo(() => buildJournals({ statements, cashEntries, accounts, opening, inventorySnapshots }),
+    [statements, cashEntries, accounts, opening, inventorySnapshots]);
 
   const entries = useMemo(() => {
     if (month === '전체') return built.entries;

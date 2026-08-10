@@ -1,7 +1,6 @@
 import { Item } from './types';
 import { toKg, baseRawName, unitToKg } from '../constants/formula';
 import { bomQty } from './bom';
-import { isBoxStockItem } from './orderUnits';
 
 /**
  * BOM 원가 롤업 — 순수 함수(DI).
@@ -22,14 +21,15 @@ export interface BomCostCtx {
   formulaOf: (prodKey: string) => { raw: string; ratio: number }[];
   /** 단위당 가공비(임가공 등). 없으면 0. */
   processingFeeOf?: (item: Item) => number;
+  /**
+   * BOM 단일원천 — item_bom을 그대로 읽는다. 넘기면 `item.submaterials`(레거시 파생)를 안 본다.
+   * 안 넘기면 예전처럼 submaterials로 폴백(구 호출부·테스트 호환).
+   */
+  itemBoms?: { parent_id: string; child_id: string; quantity?: number }[];
 }
 
 /** 종단 품목(자기 cost가 곧 원가, 롤업 안 함) */
 const TERMINAL = new Set(['goods', 'raw', 'wip', 'submaterial', 'box']);
-
-/** 낱개 완제품의 겉박스(출고 시 shipping_rule로 별도 차감)인가 */
-const isShippingBox = (i: Item): boolean =>
-  i.category === 'box' || (i.category === 'submaterial' && i.subtype === '박스');
 
 /**
  * 원료/반제품 1kg당 원가. name=원료명(예 '통깨참기름','볶음참깨').
@@ -65,6 +65,19 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
   const feeOf = ctx.processingFeeOf ?? (() => 0);
   const memo = new Map<string, number>();
 
+  // 구성품 조회 — item_bom을 주면 그걸 단일원천으로 쓰고, 없으면 레거시 submaterials.
+  //   item_bom의 quantity와 submaterials의 stock은 같은 뜻이라 { id, stock }으로 맞춰 돌려준다.
+  const bomByParent = new Map<string, { id: string; stock: number }[]>();
+  for (const b of ctx.itemBoms ?? []) {
+    const arr = bomByParent.get(b.parent_id) ?? [];
+    arr.push({ id: b.child_id, stock: typeof b.quantity === 'number' ? b.quantity : 1 });
+    bomByParent.set(b.parent_id, arr);
+  }
+  const componentsOf = (item: Item): { id: string; stock: number }[] =>
+    ctx.itemBoms
+      ? (bomByParent.get(item.id) ?? [])
+      : ((item.submaterials ?? []) as unknown as { id: string; stock: number }[]);
+
   const cost = (item: Item, seen: Set<string>): number => {
     const cached = memo.get(item.id);
     if (cached != null) return cached;
@@ -74,17 +87,31 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
     // 종단 품목 = 자기 cost가 원가 (매입·선제조 완료값)
     //   goods(완사입)·raw(원료)·wip(반제품)·submaterial(부자재)·box(겉박스)
     if (TERMINAL.has(item.category as string)) {
-      const c = item.cost ?? 0;
-      memo.set(item.id, c);
-      return c;
+      const stored = item.cost ?? 0;
+      if (stored > 0) { memo.set(item.id, stored); return stored; }
+      // **제조 반제품**은 저장 원가가 없으면 원료식으로 굴린다.
+      //   참기름특A = 깨분참기름 0.5 + 통깨참기름 0.5 처럼 사서 오는 게 아니라 섞어 만드는 것.
+      //   (매입 반제품 — 깨분참기름/16.5kg 등 — 은 저장 cost가 종단이라 여기 안 걸린다: stored>0)
+      //   완제품과 달리 용량(spec)이 없으므로 toKg 경로가 아니라 '단위 1당 비율 합'으로 계산한다.
+      if (item.category === 'wip') {
+        const f = ctx.formulaOf(item.품목 || item.name);
+        if (f.length) {
+          const kgPerUnit = unitToKg(1, baseRawName(item.name)) || 1;
+          const blended = f.reduce((s, r) => s + rawCostPerKg(r.raw, byRawName) * r.ratio * kgPerUnit, 0);
+          if (blended > 0) { memo.set(item.id, blended); return blended; }
+        }
+      }
+      memo.set(item.id, stored);
+      return stored;
     }
 
-    const isBox = isBoxStockItem(item);
-    const subs = item.submaterials ?? [];
-    // 조립 구성품(완제품/박스)을 품으면 그 구성품이 원료원가를 이미 지님 → 원료식 중복 skip
+    const subs = componentsOf(item);
+    // 조립 구성품(완제품/박스/반제품)을 품으면 그 구성품이 원료원가를 이미 지님 → 원료식 중복 skip
+    //   참기름 병입은 '참기름특A 1.8L + 병 + 캡'이 실제 공정이다. 여기에 원료식(깨분·통깨)까지
+    //   더하면 기름값이 두 번 잡힌다 — 반제품이 이미 그 기름을 담고 있기 때문.
     const hasAssembled = subs.some(s => {
       const c = byId.get(s.id);
-      return !!c && (c.category === 'product' || c.category === 'box');
+      return !!c && (c.category === 'product' || c.category === 'box' || c.category === 'wip');
     });
 
     let total = 0;
@@ -98,7 +125,8 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
       const comp = byId.get(s.id);
       if (!comp) continue;
       if (comp.category === 'raw') continue;         // 원료는 원료식 경로
-      if (isShippingBox(comp) && !isBox) continue;   // 낱개의 겉박스는 출고 시 shipping_rule
+      // 겉박스·테이프도 BOM에 있으면 그대로 원가에 넣는다 — 예전엔 낱개의 겉박스를 코드로 건너뛰었지만,
+      // 이제 낱개 BOM에 그것들을 안 둔다(박스 품목을 만들 때 그 BOM으로 잡힌다). BOM이 곧 구성이다.
       const q = bomQty(s);
       if (q <= 0) continue;                          // 테이프 등 0 = 원가 산입 안 함
       total += q * cost(comp, s2);

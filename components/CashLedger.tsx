@@ -168,7 +168,16 @@ export default function CashLedger({
                     </td>
                     <td className="px-4 py-2.5 text-slate-500">{entry.partnerName || '-'}</td>
                     <td className="px-4 py-2.5 text-slate-400">
-                      {entry.accountCode
+                      {/* 쪼갠 줄(대출상환 원금+이자)이면 줄마다 계정 배지를 단다 */}
+                      {(entry.lines ?? []).filter(l => l.accountCode && l.amount > 0).length ? (
+                        <span className="flex flex-wrap gap-1">
+                          {entry.lines!.filter(l => l.accountCode && l.amount > 0).map((l, i) => (
+                            <span key={i} className="text-[10px] font-black bg-slate-100 px-1.5 py-0.5 rounded whitespace-nowrap">
+                              {l.note ? `${l.note} ` : ''}{l.accountCode} {codeName.get(l.accountCode) ?? ''} {fmt(l.amount)}
+                            </span>
+                          ))}
+                        </span>
+                      ) : entry.accountCode
                         ? <span className="text-[10px] font-black bg-slate-100 px-1.5 py-0.5 rounded">{entry.accountCode} {codeName.get(entry.accountCode) ?? ''}</span>
                         : <span className="text-[10px] font-black text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded">미지정</span>}
                     </td>
@@ -387,10 +396,18 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, on
     if (mode === '일반') {
       onAdd({ id: `cash-${Date.now()}`, dir, amount: amt, accountCode, ...(note.trim() ? { note: note.trim() } : {}), ...base() } as any);
     } else if (mode === '상환') {
-      // 대출 상환 → 원금·이자 두 줄(둘 다 출금). 원금=차입금 감소, 이자=비용.
+      // 통장에서 나간 건 합계 한 번. 그 안에서 원금(차입금=부채 감소)·이자(비용)를 줄로 가른다.
       const memo = note.trim() || '대출 상환';
-      if (prin > 0) onAdd({ id: `cash-${Date.now()}-p`, dir: '출금', amount: prin, accountCode: loanCode, note: `${memo} (원금)`, ...base() } as any);
-      if (intr > 0) onAdd({ id: `cash-${Date.now()}-i`, dir: '출금', amount: intr, accountCode: INTEREST_CODE, note: `${memo} (이자)`, ...base() } as any);
+      const lines = [
+        ...(prin > 0 ? [{ accountCode: loanCode, amount: prin, note: '원금' }] : []),
+        ...(intr > 0 ? [{ accountCode: INTEREST_CODE, amount: intr, note: '이자' }] : []),
+      ];
+      if (lines.length) onAdd({
+        id: `cash-${Date.now()}`, dir: '출금', amount: prin + intr,
+        ...(lines.length > 1 ? { lines } : { accountCode: lines[0].accountCode }),
+        note: lines.length > 1 ? memo : `${memo} (${lines[0].note})`,
+        ...base(),
+      } as any);
     } else {
       // 급여 → 총급여 출금(급여) + 공제 입금(예수금). 합산하면 급여 비용 전액 + 예수금 + 실지급.
       const memo = note.trim() || '급여';
