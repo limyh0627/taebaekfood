@@ -467,6 +467,25 @@ const AdminApp: React.FC<AdminAppProps> = ({
     return result;
   }, [orders, allItems, partners, itemFormulas]);
 
+  // 작업완료(생산됨·미출고) 주문분 — 지금 현재고에 얹혀 있는 완제품 수량(품목별 합).
+  //   재고 현황 모달에서 '작업완료 vs 재고'를 쪼개 보여주는 데 쓴다(전체 = 현재고, 재고 = 현재고 − 작업완료).
+  //   완사입·임가공은 작업완료 때 재고가 안 늘어나므로 제외 — orderStockEngine.produceOrder의 isGoodsItem/임가공 스킵과 동일 기준.
+  const dispatchedQtyByItem = useMemo<Record<string, number>>(() => {
+    const m: Record<string, number> = {};
+    const isGoods = (p: Item) => p.subtype === '향미유' || p.subtype === '고춧가루' ||
+      p.category === '향미유' || p.category === '고춧가루' || (p.category as string) === 'goods' ||
+      p.procureType === '완사입' || p.procureType === '임가공';
+    for (const o of allOrders) {
+      if (!o.producedAt || o.shippedOut) continue;   // 작업완료 & 미출고만
+      for (const it of o.items) {
+        const product = allItems.find(p => p.id === it.itemId);
+        if (!product || product.category !== 'product' || isGoods(product)) continue;
+        m[it.itemId] = Math.round(((m[it.itemId] ?? 0) + stockUnits(it, product)) * 1000) / 1000;
+      }
+    }
+    return m;
+  }, [allOrders, allItems]);
+
   // 서류용 통깨/깨분 참기름 사용량 — **생산작업기록부 getOutflow 로직 단일 원천**.
   //  품목 그룹 배합비(시골향1=통깨100 / 2+해내음=50:50 / 3=깨분100 / 4+가득찬순=20:80 / 하남댁+새싹+해달=통깨100),
   //  캔(kg규격)=그대로, ml/L=×0.92, 서류일(documentDate||deliveryDate), 출고+배송 상태.
@@ -1575,6 +1594,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onAddItem={(p) => addItem(getProductCollection(p.category), p)} 
               orderRequests={pendingPurchaseOrders}
               confirmedOrders={invoicedPurchaseOrders}
+              dispatchedQtyByItem={dispatchedQtyByItem}
               onAddOrderRequest={handleAddOrderRequest}
               onRemoveOrderRequest={handleRemoveOrderRequest}
               onUpdateOrderRequestQty={handleUpdateOrderRequestQty}
