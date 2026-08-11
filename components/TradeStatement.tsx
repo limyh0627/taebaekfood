@@ -1120,10 +1120,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
       // ── 헤더 (테두리 바깥) ──
       const headerHtml = `
-<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:0.5mm;">
-  <span style="font-size:10px;">[순백지 출력_FA15출]</span>
+<div style="display:flex;align-items:flex-end;margin-bottom:0.5mm;">
+  <span style="flex:1;font-size:10px;"></span>
   <span style="font-size:22px;font-weight:bold;letter-spacing:6px;color:${BC};">거&nbsp;&nbsp;래&nbsp;&nbsp;명&nbsp;&nbsp;세&nbsp;&nbsp;서</span>
-  <span style="font-size:10px;">[재발행]</span>
+  <span style="flex:1;font-size:10px;text-align:right;">[재발행]</span>
 </div>
 <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;margin-bottom:0.5mm;">
   <span>전표일자 : <strong>${dateLabel}</strong></span>
@@ -1133,41 +1133,38 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
       // ── 회사 정보 ──
       const V = (t:string, extra='') =>
-        `<td style="border:1px solid ${BC};padding:1px 4px;font-size:10px;${extra}">${t}</td>`;
+        `<td style="border:1px solid ${BC};padding:1px 4px;font-size:10px;overflow:hidden;white-space:nowrap;${extra}">${t}</td>`;
       const L = (t:string) =>
         `<td style="border:1px solid ${BC};background:${LB};padding:1px 4px;font-size:9.5px;font-weight:bold;white-space:nowrap;text-align:center;">${t}</td>`;
 
       const infoHtml = `
 <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
   <colgroup>
-    <col style="width:5.5mm;"/>
-    <col style="width:13mm;"/><col/>
-    <col style="width:5.5mm;"/>
-    <col style="width:11mm;"/><col style="width:26mm;"/>
-    <col style="width:13mm;"/><col style="width:22mm;"/>
+    <col style="width:6mm;"/><col style="width:18mm;"/><col/>
+    <col style="width:6mm;"/><col style="width:18mm;"/><col/>
   </colgroup>
   <tbody>
     <tr style="height:5.5mm;">
       <td rowspan="5" style="border:1px solid ${BC};background:${LB};text-align:center;vertical-align:middle;writing-mode:vertical-rl;letter-spacing:3px;font-size:10px;font-weight:bold;color:${BC};">공급받는자</td>
       ${L('상&nbsp;&nbsp;호')}${V(buyName,'font-weight:bold;font-size:11px;')}
       <td rowspan="5" style="border:1px solid ${BC};background:${LB};text-align:center;vertical-align:middle;writing-mode:vertical-rl;letter-spacing:3px;font-size:10px;font-weight:bold;color:${BC};">공급자</td>
-      ${L('대&nbsp;&nbsp;표')}${V(supCeo,'font-weight:bold;')}${L('상&nbsp;&nbsp;호')}${V(supName,'font-weight:bold;font-size:11px;')}
+      ${L('상&nbsp;&nbsp;호')}${V(supName,'font-weight:bold;font-size:11px;')}
     </tr>
     <tr style="height:5mm;">
-      ${L('대&nbsp;&nbsp;표')}${V(buyCeo)}
-      ${L('주&nbsp;&nbsp;소')}${V(supAddr,'font-size:9.5px;')} ${L('')}${V('')}
+      ${L('대&nbsp;&nbsp;표')}${V(buyCeo,'font-weight:bold;')}
+      ${L('대&nbsp;&nbsp;표')}${V(supCeo,'font-weight:bold;')}
     </tr>
     <tr style="height:5mm;">
       ${L('사업자번호')}${V(buyBizNo)}
-      ${L('전화번호')}${V(supPhone+(supFax?'&nbsp;&nbsp;FAX:'+supFax:''),'font-size:9.5px;')} ${L('')}${V('')}
+      ${L('사업자번호')}${V(supBizNo)}
     </tr>
     <tr style="height:5mm;">
       ${L('주&nbsp;&nbsp;소')}${V(buyAddr,'font-size:9.5px;')}
-      ${L('사업번호')}${V(supBizNo)}${L('페이지')}${V('1 / 1','text-align:center;')}
+      ${L('주&nbsp;&nbsp;소')}${V(supAddr,'font-size:9.5px;')}
     </tr>
     <tr style="height:5mm;">
       ${L('전화번호')}${V((buyPhone?buyPhone:'')+(buyFax?'&nbsp;&nbsp;FAX:'+buyFax:''),'font-size:9.5px;')}
-      ${L('')}${V('')}${L('')}${V('')}
+      ${L('전화번호')}${V(supPhone+(supFax?'&nbsp;&nbsp;FAX:'+supFax:''),'font-size:9.5px;')}
     </tr>
   </tbody>
 </table>`;
@@ -1180,7 +1177,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const bg = idx%2===0 ? '#ffffff' : SC;
         return `<tr style="height:5.5mm;background:${bg};">
           <td style="border:1px solid ${BC};text-align:center;font-size:10px;padding:0 1px;">${idx+1}</td>
-          <td style="border:1px solid ${BC};font-size:11px;padding:0 3px;overflow:hidden;white-space:nowrap;">${item.name||''}</td>
+          <td style="border:1px solid ${BC};font-size:11px;font-weight:bold;padding:0 3px;overflow:hidden;white-space:nowrap;">${item.name||''}</td>
           <td style="border:1px solid ${BC};text-align:center;font-size:9.5px;padding:0 2px;">${item.spec||''}</td>
           <td style="border:1px solid ${BC};text-align:center;font-size:10px;padding:0 2px;">${(item as any).unit||'개'}</td>
           <td style="border:1px solid ${BC};text-align:right;font-size:10.5px;padding:0 3px;">${(item as any).isBoxUnit ? `${item.qty}BOX(${item.qty*12}개)` : fmt(item.qty)}</td>
@@ -1249,7 +1246,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
       const bottomHtml = `
 <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
-  <colgroup><col/><col style="width:20mm;"/></colgroup>
+  <colgroup><col/><col style="width:28mm;"/></colgroup>
   <tr>
     <td style="border:1px solid ${BC};padding:0;vertical-align:top;">
       <table style="width:100%;border-collapse:collapse;table-layout:fixed;">

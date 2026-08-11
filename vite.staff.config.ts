@@ -11,11 +11,10 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       manifest: false,
       workbox: {
         maximumFileSizeToCacheInBytes: 5000000,
-        skipWaiting: true,
         clientsClaim: true,
       },
     }),
