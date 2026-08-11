@@ -1109,7 +1109,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const buyPhone   = isSale ? (partners.find(c => c.name === partner)?.phone || '') : (ci?.phone || '');
     const buyFax   = isSale ? '' : (ci?.fax||'');
 
-    const MAX_ROWS = 9;
+    const MAX_ROWS = 11;
     const itemList = items as any[];
     const totalQty = itemList.reduce((s,i)=>s+(Number(i.qty)||0),0);
 
@@ -1121,21 +1121,21 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       // ── 헤더 (테두리 바깥) ──
       const headerHtml = `
 <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:0.5mm;">
-  <span style="font-size:8px;">[순백지 출력_FA15출]</span>
-  <span style="font-size:20px;font-weight:bold;letter-spacing:6px;color:${BC};">거&nbsp;&nbsp;래&nbsp;&nbsp;명&nbsp;&nbsp;세&nbsp;&nbsp;서</span>
-  <span style="font-size:8px;">[재발행]</span>
+  <span style="font-size:10px;">[순백지 출력_FA15출]</span>
+  <span style="font-size:22px;font-weight:bold;letter-spacing:6px;color:${BC};">거&nbsp;&nbsp;래&nbsp;&nbsp;명&nbsp;&nbsp;세&nbsp;&nbsp;서</span>
+  <span style="font-size:10px;">[재발행]</span>
 </div>
-<div style="display:flex;justify-content:space-between;align-items:center;font-size:8px;margin-bottom:0.5mm;">
+<div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;margin-bottom:0.5mm;">
   <span>전표일자 : <strong>${dateLabel}</strong></span>
-  <span style="color:${BC};font-weight:bold;">${pageLabel}</span>
+  <span style="color:${BC};font-weight:bold;font-size:12px;">${pageLabel}</span>
   <span>전표NO. : <strong>${docNoStr}</strong></span>
 </div>`;
 
       // ── 회사 정보 ──
       const V = (t:string, extra='') =>
-        `<td style="border:1px solid ${BC};padding:1px 4px;font-size:8px;${extra}">${t}</td>`;
+        `<td style="border:1px solid ${BC};padding:1px 4px;font-size:10px;${extra}">${t}</td>`;
       const L = (t:string) =>
-        `<td style="border:1px solid ${BC};background:${LB};padding:1px 4px;font-size:7.5px;font-weight:bold;white-space:nowrap;text-align:center;">${t}</td>`;
+        `<td style="border:1px solid ${BC};background:${LB};padding:1px 4px;font-size:9.5px;font-weight:bold;white-space:nowrap;text-align:center;">${t}</td>`;
 
       const infoHtml = `
 <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
@@ -1148,25 +1148,25 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   </colgroup>
   <tbody>
     <tr style="height:5.5mm;">
-      <td rowspan="5" style="border:1px solid ${BC};background:${LB};text-align:center;vertical-align:middle;writing-mode:vertical-rl;letter-spacing:3px;font-size:8px;font-weight:bold;color:${BC};">공급받는자</td>
-      ${L('상&nbsp;&nbsp;호')}${V(buyName,'font-weight:bold;font-size:9px;')}
-      <td rowspan="5" style="border:1px solid ${BC};background:${LB};text-align:center;vertical-align:middle;writing-mode:vertical-rl;letter-spacing:3px;font-size:8px;font-weight:bold;color:${BC};">공급자</td>
-      ${L('대&nbsp;&nbsp;표')}${V(supCeo,'font-weight:bold;')}${L('상&nbsp;&nbsp;호')}${V(supName,'font-weight:bold;font-size:9px;')}
+      <td rowspan="5" style="border:1px solid ${BC};background:${LB};text-align:center;vertical-align:middle;writing-mode:vertical-rl;letter-spacing:3px;font-size:10px;font-weight:bold;color:${BC};">공급받는자</td>
+      ${L('상&nbsp;&nbsp;호')}${V(buyName,'font-weight:bold;font-size:11px;')}
+      <td rowspan="5" style="border:1px solid ${BC};background:${LB};text-align:center;vertical-align:middle;writing-mode:vertical-rl;letter-spacing:3px;font-size:10px;font-weight:bold;color:${BC};">공급자</td>
+      ${L('대&nbsp;&nbsp;표')}${V(supCeo,'font-weight:bold;')}${L('상&nbsp;&nbsp;호')}${V(supName,'font-weight:bold;font-size:11px;')}
     </tr>
     <tr style="height:5mm;">
       ${L('대&nbsp;&nbsp;표')}${V(buyCeo)}
-      ${L('주&nbsp;&nbsp;소')}${V(supAddr,'font-size:7.5px;')} ${L('')}${V('')}
+      ${L('주&nbsp;&nbsp;소')}${V(supAddr,'font-size:9.5px;')} ${L('')}${V('')}
     </tr>
     <tr style="height:5mm;">
       ${L('사업자번호')}${V(buyBizNo)}
-      ${L('전화번호')}${V(supPhone+(supFax?'&nbsp;&nbsp;FAX:'+supFax:''),'font-size:7.5px;')} ${L('')}${V('')}
+      ${L('전화번호')}${V(supPhone+(supFax?'&nbsp;&nbsp;FAX:'+supFax:''),'font-size:9.5px;')} ${L('')}${V('')}
     </tr>
     <tr style="height:5mm;">
-      ${L('주&nbsp;&nbsp;소')}${V(buyAddr,'font-size:7.5px;')}
+      ${L('주&nbsp;&nbsp;소')}${V(buyAddr,'font-size:9.5px;')}
       ${L('사업번호')}${V(supBizNo)}${L('페이지')}${V('1 / 1','text-align:center;')}
     </tr>
     <tr style="height:5mm;">
-      ${L('전화번호')}${V((buyPhone?buyPhone:'')+(buyFax?'&nbsp;&nbsp;FAX:'+buyFax:''),'font-size:7.5px;')}
+      ${L('전화번호')}${V((buyPhone?buyPhone:'')+(buyFax?'&nbsp;&nbsp;FAX:'+buyFax:''),'font-size:9.5px;')}
       ${L('')}${V('')}${L('')}${V('')}
     </tr>
   </tbody>
@@ -1174,26 +1174,26 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
       // ── 품목 테이블 ──
       const TH = (t:string) =>
-        `<th style="border:1px solid ${BC};background:${SC};padding:1px 2px;font-size:8px;text-align:center;font-weight:bold;">${t}</th>`;
+        `<th style="border:1px solid ${BC};background:${SC};padding:2px 2px;font-size:10px;text-align:center;font-weight:bold;">${t}</th>`;
 
       const iRows = itemList.map((item:any, idx:number) => {
         const bg = idx%2===0 ? '#ffffff' : SC;
         return `<tr style="height:5.5mm;background:${bg};">
-          <td style="border:1px solid ${BC};text-align:center;font-size:8px;padding:0 1px;">${idx+1}</td>
-          <td style="border:1px solid ${BC};font-size:8px;padding:0 3px;overflow:hidden;white-space:nowrap;">${item.name||''}</td>
-          <td style="border:1px solid ${BC};text-align:center;font-size:7.5px;padding:0 2px;">${item.spec||''}</td>
-          <td style="border:1px solid ${BC};text-align:center;font-size:8px;padding:0 2px;">${(item as any).unit||'개'}</td>
-          <td style="border:1px solid ${BC};text-align:right;font-size:8px;padding:0 3px;">${(item as any).isBoxUnit ? `${item.qty}BOX(${item.qty*12}개)` : fmt(item.qty)}</td>
-          <td style="border:1px solid ${BC};text-align:right;font-size:8px;padding:0 3px;">${fmt(item.price)}</td>
-          <td style="border:1px solid ${BC};text-align:right;font-size:8px;padding:0 3px;">${fmt(item.total)}</td>
+          <td style="border:1px solid ${BC};text-align:center;font-size:10px;padding:0 1px;">${idx+1}</td>
+          <td style="border:1px solid ${BC};font-size:11px;padding:0 3px;overflow:hidden;white-space:nowrap;">${item.name||''}</td>
+          <td style="border:1px solid ${BC};text-align:center;font-size:9.5px;padding:0 2px;">${item.spec||''}</td>
+          <td style="border:1px solid ${BC};text-align:center;font-size:10px;padding:0 2px;">${(item as any).unit||'개'}</td>
+          <td style="border:1px solid ${BC};text-align:right;font-size:10.5px;padding:0 3px;">${(item as any).isBoxUnit ? `${item.qty}BOX(${item.qty*12}개)` : fmt(item.qty)}</td>
+          <td style="border:1px solid ${BC};text-align:right;font-size:10.5px;padding:0 3px;">${fmt(item.price)}</td>
+          <td style="border:1px solid ${BC};text-align:right;font-size:10.5px;padding:0 3px;">${fmt(item.total)}</td>
         </tr>`;
       }).join('');
 
       // **** 이하여백 **** — 마지막 아이템 바로 다음
       const blankBg0 = itemList.length%2===0 ? '#ffffff' : SC;
       const blankRow = `<tr style="height:5.5mm;background:${blankBg0};">
-        <td style="border:1px solid ${BC};text-align:center;font-size:8px;padding:0;"></td>
-        <td colspan="6" style="border:1px solid ${BC};font-size:8px;padding:0 3px;color:${BC};">*&nbsp;*&nbsp;*&nbsp;*&nbsp;&nbsp;이&nbsp;하&nbsp;여&nbsp;백&nbsp;&nbsp;*&nbsp;*&nbsp;*&nbsp;*</td>
+        <td style="border:1px solid ${BC};text-align:center;font-size:10px;padding:0;"></td>
+        <td colspan="6" style="border:1px solid ${BC};font-size:10px;padding:0 3px;color:${BC};">*&nbsp;*&nbsp;*&nbsp;*&nbsp;&nbsp;이&nbsp;하&nbsp;여&nbsp;백&nbsp;&nbsp;*&nbsp;*&nbsp;*&nbsp;*</td>
       </tr>`;
 
       const emptyCount = Math.max(0, MAX_ROWS - itemList.length - 1);
@@ -1220,7 +1220,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   <tbody>${iRows}${blankRow}${eRows}</tbody>
 </table>`;
 
-      // ── 합계 (전표소계 + 합계 2행) ──
+      // ── 합계 (합계 1행) ──
       const totalsHtml = `
 <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
   <colgroup>
@@ -1229,58 +1229,46 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     <col style="width:18mm;"/><col style="width:14mm;"/>
     <col style="width:18mm;"/><col style="width:12mm;"/><col/>
   </colgroup>
-  <tr style="height:5mm;background:${SC};">
-    <td colspan="2" style="border:1px solid ${BC};text-align:center;font-size:7.5px;font-weight:bold;">전표소계&nbsp;수량</td>
-    <td style="border:1px solid ${BC};"></td>
-    <td style="border:1px solid ${BC};text-align:center;font-size:7.5px;font-weight:bold;">공급가</td>
-    <td style="border:1px solid ${BC};"></td>
-    <td style="border:1px solid ${BC};text-align:center;font-size:7.5px;font-weight:bold;">부가세</td>
-    <td style="border:1px solid ${BC};"></td>
-    <td style="border:1px solid ${BC};text-align:center;font-size:7.5px;font-weight:bold;">합&nbsp;계</td>
-    <td style="border:1px solid ${BC};"></td>
-  </tr>
-  <tr style="height:5mm;background:${SC};">
-    <td style="border:1px solid ${BC};text-align:center;font-size:7.5px;font-weight:bold;">합&nbsp;&nbsp;&nbsp;계</td>
-    <td style="border:1px solid ${BC};text-align:center;font-size:7.5px;">수량</td>
-    <td style="border:1px solid ${BC};text-align:right;font-size:8px;font-weight:bold;padding:0 3px;">${fmt(totalQty)}</td>
-    <td style="border:1px solid ${BC};text-align:center;font-size:7.5px;">공급가</td>
-    <td style="border:1px solid ${BC};text-align:right;font-size:8px;font-weight:bold;padding:0 3px;">${fmt(sup)}</td>
-    <td style="border:1px solid ${BC};text-align:center;font-size:7.5px;">부가세</td>
-    <td style="border:1px solid ${BC};text-align:right;font-size:8px;font-weight:bold;padding:0 3px;">${fmt(tax)}</td>
-    <td style="border:1px solid ${BC};text-align:center;font-size:7.5px;">합계</td>
-    <td style="border:1px solid ${BC};text-align:right;font-size:8px;font-weight:bold;padding:0 3px;">${fmt(amt)}</td>
+  <tr style="height:6mm;background:${SC};">
+    <td style="border:1px solid ${BC};text-align:center;font-size:9.5px;font-weight:bold;">합&nbsp;&nbsp;&nbsp;계</td>
+    <td style="border:1px solid ${BC};text-align:center;font-size:9.5px;">수량</td>
+    <td style="border:1px solid ${BC};text-align:right;font-size:11px;font-weight:bold;padding:0 3px;">${fmt(totalQty)}</td>
+    <td style="border:1px solid ${BC};text-align:center;font-size:9.5px;">공급가</td>
+    <td style="border:1px solid ${BC};text-align:right;font-size:11px;font-weight:bold;padding:0 3px;">${fmt(sup)}</td>
+    <td style="border:1px solid ${BC};text-align:center;font-size:9.5px;">부가세</td>
+    <td style="border:1px solid ${BC};text-align:right;font-size:11px;font-weight:bold;padding:0 3px;">${fmt(tax)}</td>
+    <td style="border:1px solid ${BC};text-align:center;font-size:9.5px;">합계</td>
+    <td style="border:1px solid ${BC};text-align:right;font-size:11px;font-weight:bold;padding:0 3px;">${fmt(amt)}</td>
   </tr>
 </table>`;
 
-      // ── 하단: 비고 | 인수 | 미수금 ──
+      // ── 하단: (좌) 미수금 표 + 비고 / (우) 인수확인 ──
       const now = new Date();
       const h = now.getHours(); const mn = now.getMinutes(); const sc2 = now.getSeconds();
       const ampm = h<12?'오전':'오후'; const hh = h%12||12;
 
       const bottomHtml = `
-<table style="width:100%;border-collapse:collapse;">
+<table style="width:100%;border-collapse:collapse;table-layout:fixed;">
+  <colgroup><col/><col style="width:20mm;"/></colgroup>
   <tr>
-    <td style="border:1px solid ${BC};width:5.5mm;text-align:center;vertical-align:top;font-size:9px;font-weight:bold;padding:2px 1px;">비</td>
-    <td rowspan="2" style="border:1px solid ${BC};vertical-align:bottom;padding:2px 4px;font-size:7.5px;min-height:14mm;"></td>
-    <td rowspan="2" style="border:1px solid ${BC};width:18mm;text-align:center;vertical-align:middle;font-size:8px;font-weight:bold;padding:2px;">인<br/><br/>수<br/><br/>확<br/><br/>인</td>
-    <td rowspan="2" style="border:1px solid ${BC};padding:0;vertical-align:top;">
-      <table style="width:100%;border-collapse:collapse;">
-        <tr><td style="border-bottom:1px solid ${BC};border-right:1px solid ${BC};font-size:7.5px;padding:1px 3px;white-space:nowrap;">전일미수</td>
-            <td style="border-bottom:1px solid ${BC};text-align:right;font-size:7.5px;padding:1px 4px;min-width:24mm;">0</td></tr>
-        <tr><td style="border-bottom:1px solid ${BC};border-right:1px solid ${BC};font-size:7.5px;padding:1px 3px;">금일판매</td>
-            <td style="border-bottom:1px solid ${BC};text-align:right;font-size:7.5px;padding:1px 4px;">${fmt(amt)}</td></tr>
-        <tr><td style="border-bottom:1px solid ${BC};border-right:1px solid ${BC};font-size:7.5px;padding:1px 3px;">금일입금</td>
-            <td style="border-bottom:1px solid ${BC};text-align:right;font-size:7.5px;padding:1px 4px;">0</td></tr>
-        <tr><td style="border-right:1px solid ${BC};font-size:7.5px;font-weight:bold;padding:1px 3px;">금일미수</td>
-            <td style="text-align:right;font-size:8px;font-weight:bold;padding:1px 4px;">${fmt(amt)}</td></tr>
+    <td style="border:1px solid ${BC};padding:0;vertical-align:top;">
+      <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
+        <colgroup><col style="width:22mm;"/><col/></colgroup>
+        <tr><td style="border-bottom:1px solid ${BC};border-right:1px solid ${BC};font-size:9.5px;padding:1.5px 4px;white-space:nowrap;">전일미수</td>
+            <td style="border-bottom:1px solid ${BC};text-align:right;font-size:9.5px;padding:1.5px 5px;">0</td></tr>
+        <tr><td style="border-bottom:1px solid ${BC};border-right:1px solid ${BC};font-size:9.5px;padding:1.5px 4px;">금일판매</td>
+            <td style="border-bottom:1px solid ${BC};text-align:right;font-size:9.5px;padding:1.5px 5px;">${fmt(amt)}</td></tr>
+        <tr><td style="border-bottom:1px solid ${BC};border-right:1px solid ${BC};font-size:9.5px;padding:1.5px 4px;">금일입금</td>
+            <td style="border-bottom:1px solid ${BC};text-align:right;font-size:9.5px;padding:1.5px 5px;">0</td></tr>
+        <tr><td style="border-bottom:1px solid ${BC};border-right:1px solid ${BC};font-size:9.5px;font-weight:bold;padding:1.5px 4px;">금일미수</td>
+            <td style="border-bottom:1px solid ${BC};text-align:right;font-size:11px;font-weight:bold;padding:1.5px 5px;">${fmt(amt)}</td></tr>
+        <tr><td colspan="2" style="font-size:9.5px;font-weight:bold;padding:2px 4px;height:10mm;vertical-align:top;">비&nbsp;고</td></tr>
       </table>
     </td>
-  </tr>
-  <tr>
-    <td style="border:1px solid ${BC};width:5.5mm;text-align:center;vertical-align:bottom;font-size:9px;font-weight:bold;padding:2px 1px;">고</td>
+    <td style="border:1px solid ${BC};text-align:center;vertical-align:middle;font-size:11px;font-weight:bold;letter-spacing:3px;">인<br/>수<br/>확<br/>인</td>
   </tr>
 </table>
-<div style="display:flex;justify-content:space-between;font-size:7px;margin-top:0.5mm;color:#555;padding:0 1mm;">
+<div style="display:flex;justify-content:space-between;font-size:9px;margin-top:0.5mm;color:#555;padding:0 1mm;">
   <span>발행일시 : ${dateLabel} ${ampm} ${hh}:${String(mn).padStart(2,'0')}:${String(sc2).padStart(2,'0')}</span>
   <span>${ci?.name||''}&nbsp;/&nbsp;${ci?.phone||''}</span>
 </div>`;
@@ -1293,9 +1281,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     };
 
     return `
-<div style="width:210mm;display:flex;flex-direction:column;gap:3mm;padding:5mm 6mm;box-sizing:border-box;">
-  ${makePage('#cc0000','(공급자용)','#f5d8b0')}
-  ${makePage('#0044cc','(공급받는자용)','#c4d4f0')}
+<div style="width:210mm;height:297mm;overflow:hidden;box-sizing:border-box;padding:5mm 6mm;display:flex;flex-direction:column;font-family:'맑은 고딕',sans-serif;">
+  <div style="flex:1 1 0;min-height:0;display:flex;flex-direction:column;justify-content:center;">
+    ${makePage('#cc0000','(공급자용)','#f5d8b0')}
+  </div>
+  <div style="flex:0 0 auto;display:flex;align-items:center;gap:2mm;padding:1mm 0;color:#666;">
+    <span style="flex:1;border-top:1.2px dashed #999;"></span>
+    <span style="font-size:8px;white-space:nowrap;letter-spacing:2px;">✂&nbsp;&nbsp;절&nbsp;취&nbsp;선</span>
+    <span style="flex:1;border-top:1.2px dashed #999;"></span>
+  </div>
+  <div style="flex:1 1 0;min-height:0;display:flex;flex-direction:column;justify-content:center;">
+    ${makePage('#0044cc','(공급받는자용)','#c4d4f0')}
+  </div>
 </div>`;
   };
 

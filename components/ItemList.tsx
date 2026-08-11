@@ -60,6 +60,31 @@ const withSpec = (p: { name: string; spec?: string }): string => {
   return spec && !hasVolumeInName(p.name) ? `${p.name}/${spec}` : p.name;
 };
 
+// 품목 추가 목록용 — 긴 슬래시 이름을 대표이름 + 구분요소(등급·용량·개입·거래처)로 분해해 배지로 보여준다.
+const MAKE_GRADE_WORDS = ['특골드', '골드A', '특A', '골드', '원액', '특', '분', 'A'];
+const parseMakeLabel = (p: { name: string; spec?: string }): { base: string; grade: string; size: string; pack: string; brand: string; container: string } => {
+  let nm = p.name;
+  const packM = nm.match(/\((\d+)\s*개입\)/);
+  const pack = packM ? `${packM[1]}개입` : '';
+  nm = nm.replace(/\(\s*\d+\s*개입\s*\)/g, '').trim();
+  const sizeM = String(p.spec ?? '').match(/\d+(?:\.\d+)?\s*(?:ml|kg|l)\b/i) || nm.match(/\d+(?:\.\d+)?\s*(?:ml|kg|l)\b/i);
+  const size = sizeM ? sizeM[0].replace(/\s+/g, '') : '';
+  const toks = nm.split('/').map(s => s.trim()).filter(Boolean);
+  const base = toks[0] ?? nm;
+  let grade = '', brand = '';
+  for (const raw of toks.slice(1)) {
+    const t = raw.replace(/\(.*?\)/g, '').trim();                 // "(스마트)" 같은 부기 제거
+    if (!t || t === '병') continue;
+    if (/\d+(?:\.\d+)?\s*(?:ml|kg|l)\b/i.test(t)) continue;       // 용량 토큰은 size로 이미 뽑음
+    if (!grade && (MAKE_GRADE_WORDS.includes(t) || /골드|원액/.test(t))) grade = t;
+    else if (!brand) brand = t;
+  }
+  // 용기 타입 — 180/300/350ml=병, 1500/1750/1800ml=페트, 16.5kg(캔) 등은 표시 안 함
+  const sizeNum = parseFloat(size);
+  const container = (/kg/i.test(size) || !sizeNum) ? '' : sizeNum <= 350 ? '병' : sizeNum >= 1500 ? '페트' : '';
+  return { base, grade, size, pack, brand, container };
+};
+
 // 낱개 밑에 박스 품목을 붙여 정렬 — 박스(unpackComponent)의 낱개가 목록에 있으면 그 아래로.
 // 낱개가 목록에 없는 박스(orphan)는 단독으로 둔다.
 const groupLooseBoxRows = (arr: Item[]): { p: Item; isChild: boolean }[] => {
@@ -2452,10 +2477,10 @@ const ItemList: React.FC<ItemListProps> = ({
         };
 
         return (
-          <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[1100] flex items-end sm:items-center justify-center sm:p-4">
             <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setIsAddModalOpen(false)} />
-            {/* 크기 고정 — 목록 길이에 따라 창이 늘었다 줄었다 하지 않게 */}
-            <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-xl h-[85vh] flex flex-col animate-in zoom-in-95 duration-200">
+            {/* 모바일=바텀시트 전체화면, 데스크톱=가운데 카드 (목록 길이 무관 고정 높이) */}
+            <div className="relative bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-xl h-[92dvh] sm:h-[85vh] flex flex-col animate-in zoom-in-95 duration-200">
               <div className="p-5 border-b border-slate-100 flex items-center justify-between shrink-0">
                 <div>
                   <h3 className="text-base font-black text-slate-900">품목 추가하기</h3>
@@ -2527,37 +2552,54 @@ const ItemList: React.FC<ItemListProps> = ({
                   const low = p.minStock > 0 && cur < p.minStock;
                   // 이 품목에 들어가는 부자재 — 재고를 같이 보여준다
                   const subs = p.submaterials ?? [];
+                  const lbl = parseMakeLabel(p);   // 대표이름 + 구분요소(등급·용량·개입·거래처)
                   return (
-                    <div key={p.id} className={`px-5 py-3 ${add > 0 ? 'bg-indigo-50/40' : isChild ? 'bg-slate-50/40' : ''} ${isChild ? 'pl-9' : ''}`}>
+                    <div key={p.id} className={`px-4 sm:px-5 py-3.5 ${add > 0 ? 'bg-indigo-50/40' : isChild ? 'bg-slate-50/40' : ''} ${isChild ? 'pl-8 sm:pl-9' : ''}`}>
                       <div className="flex items-center gap-3">
                         <div className="flex-1 min-w-0">
-                          <p className={`text-sm truncate ${isChild ? 'font-bold text-slate-500' : 'font-black text-slate-800'}`}>{isChild && <span className="text-slate-300 mr-1">└</span>}{withSpec(p)}</p>
-                          <p className="text-[10px] font-bold">
-                            <span className={low ? 'text-rose-500' : 'text-slate-400'}>
-                              현재 {cur.toLocaleString()} {p.unit || ''}
-                            </span>
-                            {low && <span className="text-rose-400"> · 최소 {p.minStock}</span>}
-                            {add > 0 && <span className="text-indigo-600 font-black"> → {(cur + add).toLocaleString()}</span>}
-                          </p>
+                          {/* 이름 + 거래처 + 등급·용량(병/페트)·개입 배지 — 이름 옆 한 줄 그룹(넘치면 줄바꿈) */}
+                          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                            <p className={`text-[15px] leading-tight break-keep ${isChild ? 'font-bold text-slate-500' : 'font-black text-slate-800'}`}>
+                              {isChild && <span className="text-slate-300 mr-1">└</span>}{lbl.base}
+                              {lbl.brand && <span className="ml-1.5 text-[13px] font-black text-violet-600">· {lbl.brand}</span>}
+                            </p>
+                            {lbl.grade && <span className="text-[11px] font-black px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700">{lbl.grade}</span>}
+                            {lbl.size && <span className="text-[11px] font-black px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600">{lbl.size}{lbl.container && <span className="ml-1 text-slate-400">{lbl.container}</span>}</span>}
+                            {lbl.pack && <span className="text-[11px] font-black px-1.5 py-0.5 rounded-md bg-indigo-100 text-indigo-700">{lbl.pack}</span>}
+                          </div>
+                          {/* 품목에 물려있는 거래처(매출처) — 가로 스크롤 한 줄이라 많아도 UI 안 깨짐 */}
+                          {p.partnerIds && p.partnerIds.length > 0 && (
+                            <div className="flex gap-1 mt-1 overflow-x-auto no-scrollbar">
+                              {p.partnerIds.map(cid => {
+                                const cn = partners.find(c => c.id === cid)?.name;
+                                return cn ? <span key={cid} className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-50 text-violet-600">{cn}</span> : null;
+                              })}
+                            </div>
+                          )}
                         </div>
-                        <input
-                          inputMode="decimal" value={v} placeholder="0"
-                          onChange={e => setMakeQty(q => ({ ...q, [p.id]: e.target.value.replace(/[^\d.]/g, '') }))}
-                          className={`w-24 shrink-0 border rounded-xl px-3 py-2 text-right text-sm font-black tabular-nums outline-none focus:ring-2 focus:ring-indigo-400 ${add > 0 ? 'border-indigo-300 bg-white' : 'border-slate-200'}`}
-                        />
+                        {/* 현재고 → 입력칸 바로 왼쪽 */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          <div className="text-right leading-tight">
+                            <p className={`text-[11px] font-bold ${low ? 'text-rose-500' : 'text-slate-400'}`}>현재 {cur.toLocaleString()}{p.unit || ''}</p>
+                            {low && <p className="text-[10px] font-bold text-rose-400">최소 {p.minStock}</p>}
+                            {add > 0 && <p className="text-[12px] font-black text-indigo-600">→ {(cur + add).toLocaleString()}</p>}
+                          </div>
+                          <input
+                            inputMode="decimal" value={v} placeholder="0"
+                            onChange={e => setMakeQty(q => ({ ...q, [p.id]: e.target.value.replace(/[^\d.]/g, '') }))}
+                            className={`w-16 sm:w-20 shrink-0 border rounded-xl px-2.5 py-2.5 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-indigo-400 ${add > 0 ? 'border-indigo-300 bg-white' : 'border-slate-200'}`}
+                          />
+                        </div>
                       </div>
-                      {/* 부자재 — 현재 재고 표시 */}
+                      {/* 부자재 — 이름 비슷할 때 구분용이라 더 크고 잘 보이게 */}
                       {subs.length > 0 && (
-                        <div className="flex gap-1 flex-wrap mt-1.5">
+                        <div className="flex gap-1.5 flex-wrap mt-2">
                           {subs.map((s, i) => {
-                            // 재고는 현재 값을 다시 읽는다 — 품목에 박힌 건 등록 당시 스냅샷이라 낡았다
                             const sub = items.find(x => x.id === s.id);
-                            const st = sub?.stock ?? s.stock ?? 0;
                             return (
                               <span key={i}
-                                className={`text-[9px] font-black px-1.5 py-0.5 rounded ${st <= 0 ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-500'}`}>
+                                className="text-[11px] font-bold px-2 py-1 rounded-lg border bg-slate-50 border-slate-200 text-slate-600">
                                 {sub ? withSpec(sub) : s.name}
-                                <span className={st <= 0 ? 'text-rose-500 ml-1' : 'text-slate-400 ml-1'}>{st.toLocaleString()}</span>
                               </span>
                             );
                           })}
