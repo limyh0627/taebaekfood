@@ -164,6 +164,30 @@ export function createOemEngine(deps: OemEngineDeps) {
     const perKg = input.unitPricePerKg ?? po.oemFeePerKg ?? OEM_DEFAULT_FEE_PER_KG;
     const fee = processingFee(receivedKg, perKg, input.taxable ?? true);
 
+    const taxable = input.taxable ?? true;
+    // 돌아온 완제품을 품목별 가공비 라인으로 — 수량=받은 개수, 규격=품목 spec.
+    //  가공단가(perKg)는 세금포함 기준(processingFee와 동일): 1개 세포함가 = 개당kg × perKg → 공급가 = ÷1.1.
+    const feeLines = (po.items ?? []).map(pi => {
+      const it = items.find(i => i.id === pi.itemId);
+      const unitTotal = Math.round((it ? itemKg(it) : 0) * perKg);       // 1개당 가공비(세포함)
+      const unitSupply = taxable ? Math.round(unitTotal / 1.1) : unitTotal;
+      const unitTax = unitTotal - unitSupply;
+      const q = pi.quantity ?? 0;
+      return {
+        name: pi.name, spec: it?.spec ?? pi.unit ?? '', qty: q,
+        price: unitSupply, supply: unitSupply * q, tax: unitTax * q, total: unitTotal * q,
+        isTaxExempt: !taxable, accountCode: feeCode,
+      };
+    }).filter(l => l.qty > 0 && l.total > 0);
+    // 품목 라인이 없으면(옛 배치 등) 종전처럼 한 줄로 폴백.
+    const lines: IssuedStatement['items'] = feeLines.length > 0 ? feeLines : [{
+      name: `외주가공비 (${sentKg(po.oemSent)}kg→${receivedKg}kg)`, spec: '', qty: 1,
+      price: fee.supply, supply: fee.supply, tax: fee.tax, total: fee.total,
+      isTaxExempt: !taxable, accountCode: feeCode,
+    }];
+    const totalSupply = lines.reduce((s, l) => s + l.supply, 0);
+    const totalTax = lines.reduce((s, l) => s + l.tax, 0);
+
     const statementId = `stmt-${Date.now()}`;
     const d = new Date(input.date + 'T00:00:00');
     await addItem('issuedStatements', {
@@ -172,16 +196,12 @@ export function createOemEngine(deps: OemEngineDeps) {
       partnerId: po.oemPartnerId ?? po.partnerId ?? '', partnerName: po.partnerName ?? '',
       orderId: po.id,
       docNo: `가공${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
-      totalSupply: fee.supply, totalTax: fee.tax, totalAmount: fee.total,
-      items: [{
-        name: `외주가공비 (${sentKg(po.oemSent)}kg→${receivedKg}kg)`, spec: '', qty: 1,
-        price: fee.supply, supply: fee.supply, tax: fee.tax, total: fee.total,
-        isTaxExempt: !(input.taxable ?? true), accountCode: feeCode,
-      }],
+      totalSupply, totalTax, totalAmount: totalSupply + totalTax,
+      items: lines,
     } as Partial<IssuedStatement>);
 
     await updateItem('purchaseOrders', po.id, { linkedStatementId: statementId, oemFeePerKg: perKg });
-    return { statementId, ...fee };
+    return { statementId, supply: totalSupply, tax: totalTax, total: totalSupply + totalTax };
   }
 
   return { issueOemBatch, receiveOemBatch, issueOemFeeStatement };
