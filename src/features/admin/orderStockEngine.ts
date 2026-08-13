@@ -31,14 +31,12 @@ export interface OrderStockEngineDeps {
 }
 
 /**
- * 완제품 1개당 오일 kg = **BOM 수량(병당 L) × 밀도**. 오직 BOM만 본다.
+ * 완제품 1개당 오일 kg = **BOM 수량 그대로**. 오직 BOM만 본다.
  *
- * 병 용량(spec)으로 계산하던 경로는 없앴다 — 근거가 둘이면 곱해져서(0.35² 같은) 이중 계산이 나고,
- * 어느 쪽이 맞는지도 매번 헷갈린다. BOM이 곧 구성이다.
- * → 그래서 오일 BOM 수량은 반드시 '병당 L'로 들어 있어야 한다(1로 두면 1L로 잡힌다).
+ * BOM 수량은 2026-08-14부터 언제나 kg으로 저장한다(기름도 마찬가지). 화면에서만 L로 보여준다.
+ * 병 용량(spec)으로 계산하던 경로는 없앴다 — 근거가 둘이면 곱해져서(0.35² 같은) 이중 계산이 난다.
  */
-export const perUnitOilKg = (bomQuantity: number, rawName: string): number =>
-  unitToKg(bomQuantity, rawName);
+export const perUnitOilKg = (bomQuantity: number): number => bomQuantity;
 
 /** 처리 중인 주문 id — 같은 주문의 상태 변경이 겹쳐 들어오는 것을 막는다(중복 차감 방지).
  *  엔진은 렌더마다 새로 만들어지므로 모듈 스코프에 둬야 인스턴스 간에도 공유된다. */
@@ -105,19 +103,19 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       for (const { s, comp } of oilSubs) {
         const qty = bomQty(s);
         if (!comp || qty <= 0) continue;
-        const perUnitKg = (r: string) => perUnitOilKg(qty, r);
+        const perUnitKg = () => perUnitOilKg(qty);
         if (comp.phantom) {
           for (const f of buildFormula(comp.name)) {
             const kg = isAssembly
-              ? unitToKg(qty * units * f.ratio, f.raw)               // qty = L 직접 입력
-              : perUnitKg(f.raw) * units * f.ratio;
+              ? qty * units * f.ratio                                // qty는 이미 kg
+              : perUnitKg() * units * f.ratio;
             if (kg > 0) rawUsage[f.raw] = (rawUsage[f.raw] ?? 0) + kg;
           }
         } else {
           const raw = baseRawName(comp.name);
           const kg = isAssembly
-            ? unitToKg(qty * units, raw)
-            : perUnitKg(raw) * units;
+            ? qty * units
+            : perUnitKg() * units;
           if (kg > 0) rawUsage[raw] = (rawUsage[raw] ?? 0) + kg;
         }
       }

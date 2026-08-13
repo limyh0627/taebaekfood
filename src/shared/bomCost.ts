@@ -33,13 +33,12 @@ const TERMINAL = new Set(['goods', 'raw', 'wip', 'submaterial', 'box']);
 
 /**
  * 원료/반제품 1kg당 원가. name=원료명(예 '통깨참기름','볶음참깨').
- * 원료 cost는 운영단위(기름=L, 그 외 kg)당 값 → kg당으로 환산.
+ * cost는 2026-08-14부터 **언제나 kg당**이다(기름도 마찬가지) — 재고·BOM과 같은 단위.
+ * 예전엔 기름만 L당이라 여기서 밀도로 나눴다. 재고가 kg인데 단가가 L당이면 재고평가가 9% 어긋난다.
  */
 export function rawCostPerKg(name: string, byRawName: Map<string, Item>): number {
   const it = byRawName.get(name);
-  if (!it || it.cost == null) return 0;
-  const kgPerUnit = unitToKg(1, name); // L이면 밀도(kg/L), kg이면 1
-  return kgPerUnit > 0 ? it.cost / kgPerUnit : it.cost;
+  return it?.cost ?? 0;
 }
 
 export interface CostFn {
@@ -96,8 +95,8 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
       if (item.category === 'wip') {
         const f = ctx.formulaOf(item.품목 || item.name);
         if (f.length) {
-          const kgPerUnit = unitToKg(1, baseRawName(item.name)) || 1;
-          const blended = f.reduce((s, r) => s + rawCostPerKg(r.raw, byRawName) * r.ratio * kgPerUnit, 0);
+          // 배합 반제품 1kg당 원가 = 구성 원료의 kg당 원가를 비율로 섞은 값. 단위 환산 없음(전부 kg).
+          const blended = f.reduce((s, r) => s + rawCostPerKg(r.raw, byRawName) * r.ratio, 0);
           if (blended > 0) { memo.set(item.id, blended); return blended; }
         }
       }

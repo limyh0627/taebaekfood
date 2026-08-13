@@ -8,7 +8,8 @@ const mk = (p: Partial<Item> & { id: string; name: string; category: string }): 
 
 // 원료·반제품
 const 볶음참깨 = mk({ id: 'raw-볶음참깨', name: '볶음참깨', category: 'wip', unit: 'kg', cost: 5100 });
-const 통깨참기름 = mk({ id: 'raw-oil', name: '통깨참기름', category: 'raw', unit: 'L', cost: 9187 });
+// cost는 kg당(2026-08-14~). 예전 9187/L을 kg당으로 옮기면 9187/0.916 = 10029.48
+const 통깨참기름 = mk({ id: 'raw-oil', name: '통깨참기름', category: 'raw', unit: 'L', density: 0.916, cost: 10029.48 });
 const 참깨 = mk({ id: 'raw-참깨', name: '참깨', category: 'raw', unit: 'kg', cost: 4105 });
 
 // 부자재
@@ -51,9 +52,8 @@ describe('bomCost — rawCostPerKg', () => {
   it('kg 원료는 cost 그대로', () => {
     expect(rawCostPerKg('볶음참깨', byRaw)).toBe(5100);
   });
-  it('기름(L)은 밀도로 kg당 환산', () => {
-    // 9187/L ÷ 0.916(kg/L) = 10029.x/kg
-    expect(rawCostPerKg('통깨참기름', byRaw)).toBeCloseTo(9187 / 0.916, 2);
+  it('기름도 cost를 그대로 쓴다 — 이미 kg당', () => {
+    expect(rawCostPerKg('통깨참기름', byRaw)).toBe(10029.48);
   });
   it('없는 원료는 0', () => {
     expect(rawCostPerKg('없는것', byRaw)).toBe(0);
@@ -65,7 +65,7 @@ describe('bomCost — buildCostFn', () => {
 
   it('원료·반제품은 자기 cost', () => {
     expect(cost(볶음참깨)).toBe(5100);
-    expect(cost(통깨참기름)).toBe(9187);
+    expect(cost(통깨참기름)).toBe(10029.48);
   });
 
   it('낱개 완제품 = 원료식(볶음참깨 1kg)', () => {
@@ -79,7 +79,7 @@ describe('bomCost — buildCostFn', () => {
 
   it('기름 완제품 = 원료(1750ml) + 병', () => {
     const oilKg = 1.75 * 0.916;              // toKg('1750ml','통깨참기름',1)
-    const expected = oilKg * (9187 / 0.916) + 300;
+    const expected = oilKg * 10029.48 + 300;   // kg × kg당단가
     expect(cost(참기름)).toBeCloseTo(expected, 2);
   });
 
@@ -97,16 +97,16 @@ describe('bomCost — buildCostFn', () => {
   });
 
   it('원료명 충돌 시 정확한 이름 + raw 우선 (드럼 반제품에 안 걸림)', () => {
-    // '깨분참기름' 벌크원료(7222/L) vs '깨분참기름/16.5kg' 드럼 반제품(120000)
-    const 벌크 = mk({ id: 'bulk', name: '깨분참기름', category: 'raw', unit: 'L', cost: 7222 });
+    // '깨분참기름' 벌크원료(7884.72/kg) vs '깨분참기름/16.5kg' 드럼 반제품(120000)
+    const 벌크 = mk({ id: 'bulk', name: '깨분참기름', category: 'raw', unit: 'L', density: 0.916, cost: 7884.72 });
     const 드럼 = mk({ id: 'drum', name: '깨분참기름/16.5kg', category: 'wip', unit: '개', cost: 120000 });
     const prod = mk({ id: 'p', name: '분참기름', category: 'product', spec: '1800ml', 품목: '분식' });
     const c = buildCostFn({
       allItems: [드럼, 벌크, prod],  // 드럼이 먼저 와도 벌크가 선택돼야
       formulaOf: k => (k === '분식' ? [{ raw: '깨분참기름', ratio: 1 }] : []),
     });
-    // 1.8L × 0.916 kg/L × (7222/0.916 /kg) = 1.8 × 7222 = 12999.6
-    expect(c(prod)).toBeCloseTo(1.8 * 7222, 0);
+    // 1.8L × 0.916 kg/L × 7884.72/kg = 12999.6
+    expect(c(prod)).toBeCloseTo(1.8 * 0.916 * 7884.72, 0);
   });
 
   it('순환 BOM도 무한루프 없이 종료', () => {

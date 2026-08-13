@@ -14,7 +14,7 @@ export function withCarryOverLot(
   material: string,
 ): RawMaterialLot[] {
   if (lots.length > 0) return lots;
-  const carryKg = round3(unitToKg(currentStockUnit, material));
+  const carryKg = round3(currentStockUnit);   // stock은 이미 kg
   if (carryKg <= 0) return lots;
   const now = new Date().toISOString();
   return [{

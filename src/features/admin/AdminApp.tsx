@@ -727,7 +727,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     for (const [material, neededKg] of Object.entries(rawUsageKg)) {
       const holder = allItems.find(i => isRawHolderItem(i) && baseRawName(i.name) === material);
       if (!holder) continue;
-      const stockKg = holder.lots?.length ? lotKgRemaining(holder.lots) : unitToKg(holder.stock ?? 0, material);
+      const stockKg = holder.lots?.length ? lotKgRemaining(holder.lots) : (holder.stock ?? 0);
       if (neededKg <= stockKg) continue;
       const alreadyExists = adjustmentRequests.some(
         r => r.itemId === holder.id && r.type === 'reorder_alert' && r.status === 'pending'
@@ -1000,7 +1000,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       && isBulkItem(i)
       && baseRawName(i.name) === material);
     if (!holder) return 0;
-    return holder.lots?.length ? lotKgRemaining(holder.lots) : unitToKg(holder.stock ?? 0, material);
+    return holder.lots?.length ? lotKgRemaining(holder.lots) : (holder.stock ?? 0);
   };
 
   const handleRemoveConfirmedOrder = async (id: string) => {
@@ -1937,7 +1937,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   const target = rawLotTarget(allItems, product, product.name);
                   if (target) {
                     // 원료: 목표수량으로 lot 조정 (stock 직접 X)
-                    const deltaKg = unitToKg(req.requestedQuantity, target.baseName) - lotKgRemaining(product.lots);
+                    const deltaKg = req.requestedQuantity - lotKgRemaining(product.lots);
                     await adjustRawLots({ material: target.baseName, rawItemId: target.rawItem.id, deltaKg, date: new Date().toISOString().slice(0, 10), note: '재고조정', addedBy: currentUser?.name });
                     setLedgerReloadKey(k => k + 1);
                   } else {
@@ -3978,7 +3978,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     // 수량 변동 승인 시, 요청된 수량만큼 재고에 더함
                     const target = rawLotTarget(allItems, product, product.name);
                     if (target) {
-                      await adjustRawLots({ material: target.baseName, rawItemId: target.rawItem.id, deltaKg: unitToKg(req.requestedQuantity || 0, target.baseName), date: new Date().toISOString().slice(0, 10), note: '재고조정', addedBy: currentUser?.name });
+                      await adjustRawLots({ material: target.baseName, rawItemId: target.rawItem.id, deltaKg: req.requestedQuantity || 0, date: new Date().toISOString().slice(0, 10), note: '재고조정', addedBy: currentUser?.name });
                       setLedgerReloadKey(k => k + 1);
                     } else {
                       await updateItem(collectionName, req.itemId, { stock: product.stock + (req.requestedQuantity || 0) });

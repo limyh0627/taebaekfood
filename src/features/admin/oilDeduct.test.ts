@@ -27,42 +27,35 @@ describe('hasProductComponent — 품목 원료식을 또 적용하면 안 되�
   });
 });
 
-// 참기름 밀도 0.916 (constants/formula DENSITY)
+// 참기름 밀도 0.916 / 들기름 0.924 (constants/formula DENSITY)
 const D = 0.916;
 const near = (a: number, b: number) => expect(a).toBeCloseTo(b, 4);
 
 describe('perUnitOilKg — 완제품 1개당 오일 kg (BOM 수량만 본다)', () => {
-  it('BOM에 적힌 용량(L)이 곧 오일량', () => {
-    near(perUnitOilKg(0.35, '깨분참기름'), 0.35 * D);
-    near(perUnitOilKg(1.8, '통깨참기름'), 1.8 * D);
-    near(perUnitOilKg(1.75, '통깨참기름'), 1.75 * D);
-    near(perUnitOilKg(0.3, '깨분참기름'), 0.3 * D);
+  // 2026-08-14부터 BOM 수량은 kg으로 저장한다. 화면에서만 밀도로 나눠 L로 보여준다.
+  // 그래서 여기서는 곱하지 않고 적힌 값을 그대로 쓴다.
+  it('BOM에 적힌 kg이 곧 오일량', () => {
+    near(perUnitOilKg(0.3206), 0.3206);      // 350ml × 0.916
+    near(perUnitOilKg(1.6488), 1.6488);      // 1800ml × 0.916
+    near(perUnitOilKg(1.6632), 1.6632);      // 1800ml × 0.924 (들기름)
   });
 
-  it('밀도가 원료별로 적용된다', () => {
-    near(perUnitOilKg(1.8, '통들깨들기름'), 1.8 * 0.924);
-    near(perUnitOilKg(1.8, '수입들기름'), 1.8 * 0.924);
+  it('밀도를 다시 곱하지 않는다 — 저장이 이미 kg', () => {
+    expect(perUnitOilKg(1.6488)).not.toBeCloseTo(1.6488 * D, 4);
+    expect(perUnitOilKg(1.6488)).toBe(1.6488);
   });
 
-  it('병 용량(spec)은 계산에 안 쓴다 — 인자가 BOM 수량과 원료명뿐', () => {
-    expect(perUnitOilKg.length).toBe(2);
+  it('인자는 BOM 수량 하나뿐 — 원료명·병 용량(spec)은 계산에 안 쓴다', () => {
+    expect(perUnitOilKg.length).toBe(1);
   });
 
-  it('이중 계산 회귀 방지 — 350ml×0.35 가 0.35²(0.1225L)로 나오면 안 된다', () => {
-    const wrong = 0.35 * D * 0.35;
-    expect(perUnitOilKg(0.35, '깨분참기름')).toBeGreaterThan(wrong);
-    near(perUnitOilKg(0.35, '깨분참기름'), wrong / 0.35);
-  });
-
-  it('이중 계산 회귀 방지 — 1800ml×1.8 이 3.24L로 나오면 안 된다', () => {
-    expect(perUnitOilKg(1.8, '통깨참기름')).toBeLessThan(1.8 * D * 1.8);
+  it('이중 계산 회귀 방지 — 0.3206이 0.3206²으로 나오면 안 된다', () => {
+    expect(perUnitOilKg(0.3206)).toBeGreaterThan(0.3206 * 0.3206);
   });
 
   it('알찬 실사례: 참기름/병/특/알찬/350ml 45개, 참기름특 = 깨분 0.75 / 통깨 0.25', () => {
-    near(perUnitOilKg(0.35, '깨분참기름') * 45 * 0.75, 10.8202);
-    near(perUnitOilKg(0.35, '통깨참기름') * 45 * 0.25, 3.6068);
-    // 버그 시절 스냅샷(DB에 3자리로 반올림돼 있다: 3.787 / 1.262)은 정확히 0.35배였다
-    expect(perUnitOilKg(0.35, '깨분참기름') * 45 * 0.75 * 0.35).toBeCloseTo(3.787, 3);
-    expect(perUnitOilKg(0.35, '통깨참기름') * 45 * 0.25 * 0.35).toBeCloseTo(1.262, 3);
+    const bom = 0.35 * D;                    // BOM에 저장된 kg
+    near(perUnitOilKg(bom) * 45 * 0.75, 10.8202);
+    near(perUnitOilKg(bom) * 45 * 0.25, 3.6068);
   });
 });

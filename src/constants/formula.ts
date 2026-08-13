@@ -75,18 +75,25 @@ export function parsePackageKg(spec?: string): number | undefined {
   return m ? parseFloat(m[1]) : undefined;
 }
 
-/** kg → 해당 원료의 운영 단위 값 (기름이면 L = kg / 밀도, 그 외 kg 그대로) */
+/**
+ * ━━━ 단위 규칙 (2026-08-14) ━━━
+ * **저장은 언제나 kg이다.** items.stock · item_bom.quantity · 로트 · 원료수불부 전부 kg.
+ * L은 **보여줄 때만** 쓴다 — 품목의 density(kg/L)로 나눠서 표시하고, 입력받으면 곱해서 저장한다.
+ *
+ * 예전엔 기름은 L로, 고체는 kg으로 저장해서 "이 숫자가 L이냐 kg이냐"를
+ * 이름·단위·카테고리로 매번 추측했다. 그 추측이 어긋나 BOM 10줄이 틀어져 있었다.
+ */
+
+/** 저장값(kg) → 보여줄 값. 밀도가 있는 원료만 L로 나눈다. */
 export function kgToUnit(kg: number, material: string): number {
-  if (unitOf(material) !== 'L') return kg;
-  const d = DENSITY[material] ?? 1.0;
-  return kg / d;
+  const d = DENSITY[baseRawName(material)];
+  return d ? kg / d : kg;
 }
 
-/** 운영 단위 값 → kg (기름이면 kg = L × 밀도, 그 외 그대로) */
+/** 화면에서 L로 입력받은 값 → 저장할 kg. 밀도가 있는 원료만 곱한다. */
 export function unitToKg(val: number, material: string): number {
-  if (unitOf(material) !== 'L') return val;
-  const d = DENSITY[material] ?? 1.0;
-  return val * d;
+  const d = DENSITY[baseRawName(material)];
+  return d ? val * d : val;
 }
 
 /** 원료 목록을 화면에서 묶는 갈래 — 원료가 많아 종류별로 접어 본다. 표시 순서이기도 하다. */
@@ -111,9 +118,13 @@ export function lotKgRemaining(lots?: RawMaterialLot[]): number {
     .reduce((s, l) => s + (l.kgRemaining ?? 0), 0));
 }
 
-/** active 로트 잔여 합계를 원료 운영 단위(기름=L)로 환산 — items.stock 동기화용 */
-export function lotStockInUnit(lots: RawMaterialLot[] | undefined, material: string): number {
-  return round3(kgToUnit(lotKgRemaining(lots), material));
+/**
+ * items.stock 동기화용 — 로트 잔여를 그대로 kg으로 돌려준다.
+ * 재고는 2026-08-14부터 **언제나 kg**으로 저장한다(기름도 마찬가지). L은 표시할 때만 쓴다.
+ * @deprecated 이름이 옛 뜻(운영단위 환산)을 담고 있다. 새 코드는 lotKgRemaining을 쓸 것.
+ */
+export function lotStockInUnit(lots: RawMaterialLot[] | undefined, _material: string): number {
+  return lotKgRemaining(lots);
 }
 
 /** 제품 용량 문자열 + 원료명 + 수량 → kg 환산 */
