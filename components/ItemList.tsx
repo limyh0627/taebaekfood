@@ -3170,9 +3170,13 @@ const ItemList: React.FC<ItemListProps> = ({
                         <button onClick={() => {
                             if (!product) return;
                             // 재고 뷰에서는 '재고분만' 0으로 — 작업완료분은 주문에 물려 있으니 남긴다.
-                            const msg = stockEdit && disp > 0
-                              ? `"${product.name}" 재고를 0으로 만들까요?\n작업완료 ${disp}개는 남습니다. (현재고 ${cur} → ${disp})`
-                              : `"${product.name}" 재고를 0으로 만들까요?`;
+                            // 전체 뷰에서는 현재고를 통째로 0으로 만들어 작업완료분까지 날아간다 → 미리 경고.
+                            //   (실제로 이 버튼으로 작업완료 900개가 통째로 지워진 사고가 있었음)
+                            const msg = disp <= 0
+                              ? `"${product.name}" 재고를 0으로 만들까요?`
+                              : stockEdit
+                                ? `"${product.name}" 재고를 0으로 만들까요?\n작업완료 ${disp}개는 남습니다. (현재고 ${cur} → ${disp})`
+                                : `"${product.name}" 현재고를 0으로 만들까요?\n\n⚠ 작업완료(미출고) ${disp}개도 함께 사라집니다. (현재고 ${cur} → 0)\n작업완료분을 남기려면 '재고' 뷰에서 지우세요.`;
                             if (confirm(msg)) commitStockEdit(product, 0, stockEdit ? disp : 0);
                           }}
                           title="재고 0으로" className="shrink-0 p-1 rounded text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors">
