@@ -156,7 +156,10 @@ function ReceiveModal({ po, oemItems, bulkItems, busy, onClose, onSubmit }: {
 }) {
   const [date, setDate] = useState(today());
   const [fee, setFee] = useState(String(po.oemFeePerKg ?? OEM_DEFAULT_FEE_PER_KG));
-  const [rows, setRows] = useState<{ itemId: string; qty: string }[]>([{ itemId: '', qty: '' }]);
+  // 임가공 품목이 여러 개면 처음부터 각 행으로 띄운다 — 돌아온 것만 수량 입력(빈 행은 저장 시 무시).
+  const [rows, setRows] = useState<{ itemId: string; qty: string }[]>(
+    () => oemItems.length > 0 ? oemItems.map(it => ({ itemId: it.id, qty: '' })) : [{ itemId: '', qty: '' }],
+  );
   // 벌크(포장 안 하고 온 몫) — kg으로 받아 원료 로트에 그대로 쌓는다. 소분 품목이 여기서 빼간다.
   const [bulkRows, setBulkRows] = useState<{ material: string; kg: string }[]>([{ material: '', kg: '' }]);
 

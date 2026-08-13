@@ -60,6 +60,31 @@ const withSpec = (p: { name: string; spec?: string }): string => {
   return spec && !hasVolumeInName(p.name) ? `${p.name}/${spec}` : p.name;
 };
 
+// 품목 추가 목록용 — 긴 슬래시 이름을 대표이름 + 구분요소(등급·용량·개입·거래처)로 분해해 배지로 보여준다.
+const MAKE_GRADE_WORDS = ['특골드', '골드A', '특A', '골드', '원액', '특', '분', 'A'];
+const parseMakeLabel = (p: { name: string; spec?: string }): { base: string; grade: string; size: string; pack: string; brand: string; container: string } => {
+  let nm = p.name;
+  const packM = nm.match(/\((\d+)\s*개입\)/);
+  const pack = packM ? `${packM[1]}개입` : '';
+  nm = nm.replace(/\(\s*\d+\s*개입\s*\)/g, '').trim();
+  const sizeM = String(p.spec ?? '').match(/\d+(?:\.\d+)?\s*(?:ml|kg|l)\b/i) || nm.match(/\d+(?:\.\d+)?\s*(?:ml|kg|l)\b/i);
+  const size = sizeM ? sizeM[0].replace(/\s+/g, '') : '';
+  const toks = nm.split('/').map(s => s.trim()).filter(Boolean);
+  const base = toks[0] ?? nm;
+  let grade = '', brand = '';
+  for (const raw of toks.slice(1)) {
+    const t = raw.replace(/\(.*?\)/g, '').trim();                 // "(스마트)" 같은 부기 제거
+    if (!t || t === '병') continue;
+    if (/\d+(?:\.\d+)?\s*(?:ml|kg|l)\b/i.test(t)) continue;       // 용량 토큰은 size로 이미 뽑음
+    if (!grade && (MAKE_GRADE_WORDS.includes(t) || /골드|원액/.test(t))) grade = t;
+    else if (!brand) brand = t;
+  }
+  // 용기 타입 — 180/300/350ml=병, 1500/1750/1800ml=페트, 16.5kg(캔) 등은 표시 안 함
+  const sizeNum = parseFloat(size);
+  const container = (/kg/i.test(size) || !sizeNum) ? '' : sizeNum <= 350 ? '병' : sizeNum >= 1500 ? '페트' : '';
+  return { base, grade, size, pack, brand, container };
+};
+
 // 낱개 밑에 박스 품목을 붙여 정렬 — 박스(unpackComponent)의 낱개가 목록에 있으면 그 아래로.
 // 낱개가 목록에 없는 박스(orphan)는 단독으로 둔다.
 const groupLooseBoxRows = (arr: Item[]): { p: Item; isChild: boolean }[] => {
@@ -270,7 +295,11 @@ const ItemList: React.FC<ItemListProps> = ({
   const [closingSearch, setClosingSearch] = useState('');
   const [closingPage, setClosingPage] = useState(0);
   // 재고 현황 모달 필터 — 구분(전체/작업완료/재고) + 분류(전체/참기름/들기름/가루)
-  const [closingView, setClosingView] = useState<'all' | 'dispatched' | 'stock'>('all');
+  // 재고 0 완제품도 보기(만들기용). 토글 UI는 분류·용량 필터 패널로 대체됐지만,
+  // '재고' 뷰에서 0짜리를 걸러내는 조건이 이 값을 본다 — 기본 false = 0짜리는 감춘다.
+  const [showAllClosing] = useState(false);
+  // 기본값 '재고' — 작업완료(주문에 물린 분)를 뺀 실제 가용 재고가 평소 보고 세는 숫자라서.
+  const [closingView, setClosingView] = useState<'all' | 'dispatched' | 'stock'>('stock');
   const [closingCatSel, setClosingCatSel] = useState<Set<string>>(new Set());   // 분류 — 여러 개
   const [closingSpecSel, setClosingSpecSel] = useState<Set<string>>(new Set());   // 용량 — 여러 개
   const [closingFilterOpen, setClosingFilterOpen] = useState(false);
@@ -492,6 +521,11 @@ const ItemList: React.FC<ItemListProps> = ({
   const [draftOrders, setDraftOrders] = useState<{ id: string, quantity: number }[]>([]);
   const [editingStockId, setEditingStockId] = useState<string | null>(null);
   const [editingStockVal, setEditingStockVal] = useState<string>('');
+  // 재고 현황 모달 전용 편집 상태 — 마스터 목록(editingStockId)과 공유하면 안 된다.
+  //   같은 품목이 모달 뒤 목록에도 렌더되면 autoFocus 입력이 둘 생기고, 포커스를 뺏긴 쪽 onBlur가
+  //   즉시 편집을 닫아버려서 "눌러도 아무 반응 없음"이 된다(뒤 목록에 걸린 품목만 증상).
+  const [editingClosingId, setEditingClosingId] = useState<string | null>(null);
+  const [editingClosingVal, setEditingClosingVal] = useState<string>('');
   const [rowEditProduct, setRowEditProduct] = useState<Item | null>(null);
   const [rowEditForm, setRowEditForm] = useState<Partial<Item>>({});
 
@@ -544,6 +578,7 @@ const ItemList: React.FC<ItemListProps> = ({
   );
 
   const stockEditCancelled = useRef(false); // 재고 편집 취소(ESC) 여부 — blur 중복 커밋 방지
+  const closingEditCancelled = useRef(false); // 재고 현황 모달 편집 취소(ESC) 여부
   const addToCart = (itemId: string, defaultQty: number, isBox?: boolean) => {
     if (!cart.some(c => c.id === itemId)) {
       setCart(prev => [...prev, { id: itemId, qty: defaultQty, isBox: isBox ?? false }]);
@@ -561,7 +596,9 @@ const ItemList: React.FC<ItemListProps> = ({
 
   // 재고 수정 커밋. 원료(raw)는 직접 덮어쓰지 않고 '실사조정'으로 로트를 목표값에 맞춤.
   // (원료 stock은 로트 합계가 기준이라 직접 덮어쓰면 다음 로트연산에 사라지므로 반드시 로트로 조정)
-  const commitStockEdit = async (product: Item, val: number) => {
+  // addStockUnits: val을 재고단위로 환산한 뒤 더할 수량. 재고 현황 '재고' 뷰에서 작업완료분을 뺀 값을
+  //   실사 입력받을 때, 저장되는 stock은 (입력값 + 작업완료분)이어야 전체 뷰 숫자와 맞아서 쓴다.
+  const commitStockEdit = async (product: Item, val: number, addStockUnits = 0) => {
     if (isNaN(val) || val < 0) return;
     if (isRawHolder(product)) {
       const material = baseRawName(product.name);
@@ -603,7 +640,8 @@ const ItemList: React.FC<ItemListProps> = ({
         setToast({ message: `${product.name} 실사조정 ${adjustKg > 0 ? '+' : ''}${Math.round(adjustKg * 10) / 10}kg — 로트·원장 반영` });
       }
     } else {
-      onUpdateItem({ ...product, stock: product.subtype === '향미유' ? val * 12 : val });
+      const units = product.subtype === '향미유' ? val * 12 : val;
+      onUpdateItem({ ...product, stock: Math.round((units + addStockUnits) * 1000) / 1000 });
     }
   };
 
@@ -921,7 +959,8 @@ const ItemList: React.FC<ItemListProps> = ({
             {/* 우측 액션: 재고 현황(마감·만들기 통합) + (원료재고 탭) 입고/사용 기록 */}
             <div className="flex items-center gap-2 ml-auto">
               <button
-                onClick={() => setShowClosingModal(true)}
+                // 열 때마다 '재고' 뷰로 — 평소 보고 세는 숫자가 작업완료 제외한 가용 재고라서.
+                onClick={() => { setClosingView('stock'); setClosingPage(0); setEditingClosingId(null); setShowClosingModal(true); }}
                 className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black hover:bg-indigo-700 transition-colors shadow-sm"
               >
                 <Box size={13} /> 재고 현황
@@ -2572,10 +2611,10 @@ const ItemList: React.FC<ItemListProps> = ({
         };
 
         return (
-          <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[1100] flex items-end sm:items-center justify-center sm:p-4">
             <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setIsAddModalOpen(false)} />
-            {/* 크기 고정 — 목록 길이에 따라 창이 늘었다 줄었다 하지 않게 */}
-            <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-xl h-[85vh] flex flex-col animate-in zoom-in-95 duration-200">
+            {/* 모바일=바텀시트 전체화면, 데스크톱=가운데 카드 (목록 길이 무관 고정 높이) */}
+            <div className="relative bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-xl h-[92dvh] sm:h-[85vh] flex flex-col animate-in zoom-in-95 duration-200">
               <div className="p-5 border-b border-slate-100 flex items-center justify-between shrink-0">
                 <div>
                   <h3 className="text-base font-black text-slate-900">품목 추가하기</h3>
@@ -2652,54 +2691,54 @@ const ItemList: React.FC<ItemListProps> = ({
                   const low = p.minStock > 0 && cur < p.minStock;
                   // 이 품목에 들어가는 부자재 — 재고를 같이 보여준다
                   const subs = p.submaterials ?? [];
-                  const uc = unpackComponent(p);          // 박스면 { itemId, count }
+                  const lbl = parseMakeLabel(p);   // 대표이름 + 구분요소(등급·용량·개입·거래처)
                   return (
-                    <div key={p.id} className={`px-3 sm:px-5 py-3 ${add > 0 ? 'bg-indigo-50/40' : isChild ? 'bg-slate-50/40' : ''} ${isChild ? 'pl-6 sm:pl-9' : ''}`}>
-                      <div className="flex items-center gap-2 sm:gap-3">
+                    <div key={p.id} className={`px-4 sm:px-5 py-3.5 ${add > 0 ? 'bg-indigo-50/40' : isChild ? 'bg-slate-50/40' : ''} ${isChild ? 'pl-8 sm:pl-9' : ''}`}>
+                      <div className="flex items-center gap-3">
                         <div className="flex-1 min-w-0">
-                          {/* 모바일에서 품목명이 잘리면 규격을 못 읽는다 — 자르지 말고 줄을 넘긴다 */}
-                          <p className={`text-sm break-keep leading-snug ${isChild ? 'font-bold text-slate-500' : 'font-black text-slate-800'}`}>
-                            {isChild && <span className="text-slate-300 mr-1">└</span>}{withSpec(p)}
-                            {/* 박스 품목 — 낱개와 숫자 의미가 다르니 못 박아 둔다 */}
-                            {uc && (
-                              <span className="ml-1.5 align-middle text-[9px] font-black text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">박스</span>
-                            )}
-                          </p>
-                          {(low || add > 0) && (
-                            <p className="text-[10px] font-bold">
-                              {low && <span className="text-rose-400">최소 {p.minStock}</span>}
-                              {add > 0 && <span className="text-indigo-600 font-black">{low ? ' · ' : ''}→ {(cur + add).toLocaleString()}</span>}
+                          {/* 이름 + 거래처 + 등급·용량(병/페트)·개입 배지 — 이름 옆 한 줄 그룹(넘치면 줄바꿈) */}
+                          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                            <p className={`text-[15px] leading-tight break-keep ${isChild ? 'font-bold text-slate-500' : 'font-black text-slate-800'}`}>
+                              {isChild && <span className="text-slate-300 mr-1">└</span>}{lbl.base}
+                              {lbl.brand && <span className="ml-1.5 text-[13px] font-black text-violet-600">· {lbl.brand}</span>}
                             </p>
+                            {lbl.grade && <span className="text-[11px] font-black px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700">{lbl.grade}</span>}
+                            {lbl.size && <span className="text-[11px] font-black px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600">{lbl.size}{lbl.container && <span className="ml-1 text-slate-400">{lbl.container}</span>}</span>}
+                            {lbl.pack && <span className="text-[11px] font-black px-1.5 py-0.5 rounded-md bg-indigo-100 text-indigo-700">{lbl.pack}</span>}
+                          </div>
+                          {/* 품목에 물려있는 거래처(매출처) — 가로 스크롤 한 줄이라 많아도 UI 안 깨짐 */}
+                          {p.partnerIds && p.partnerIds.length > 0 && (
+                            <div className="flex gap-1 mt-1 overflow-x-auto no-scrollbar">
+                              {p.partnerIds.map(cid => {
+                                const cn = partners.find(c => c.id === cid)?.name;
+                                return cn ? <span key={cid} className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-50 text-violet-600">{cn}</span> : null;
+                              })}
+                            </div>
                           )}
                         </div>
-                        {/* 현재 재고 — 작아서 안 보인다길래 숫자를 키워 오른쪽에 세운다 */}
-                        <div className="shrink-0 text-right leading-none">
-                          <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">현재</p>
-                          <p className="flex items-center text-base font-black tabular-nums">
-                            {/* 흐리게 하는 건 0뿐 — 라벨·단위는 진하게 둔다.
-                                숫자는 폭 고정 칸에 오른쪽 정렬, 단위는 옆 칸으로 밀어낸다. */}
-                            <span className={`w-12 text-right ${low ? 'text-rose-500' : cur > 0 ? 'text-slate-800' : 'text-slate-300'}`}>{cur.toLocaleString()}</span>
-                            <span className="w-8 text-left text-[10px] font-black text-slate-500 ml-0.5">{uc ? '박스' : (p.unit || '개')}</span>
-                          </p>
+                        {/* 현재고 → 입력칸 바로 왼쪽 */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          <div className="text-right leading-tight">
+                            <p className={`text-[11px] font-bold ${low ? 'text-rose-500' : 'text-slate-400'}`}>현재 {cur.toLocaleString()}{p.unit || ''}</p>
+                            {low && <p className="text-[10px] font-bold text-rose-400">최소 {p.minStock}</p>}
+                            {add > 0 && <p className="text-[12px] font-black text-indigo-600">→ {(cur + add).toLocaleString()}</p>}
+                          </div>
+                          <input
+                            inputMode="decimal" value={v} placeholder="0"
+                            onChange={e => setMakeQty(q => ({ ...q, [p.id]: e.target.value.replace(/[^\d.]/g, '') }))}
+                            className={`w-16 sm:w-20 shrink-0 border rounded-xl px-2.5 py-2.5 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-indigo-400 ${add > 0 ? 'border-indigo-300 bg-white' : 'border-slate-200'}`}
+                          />
                         </div>
-                        <input
-                          inputMode="decimal" value={v} placeholder="0"
-                          onChange={e => setMakeQty(q => ({ ...q, [p.id]: e.target.value.replace(/[^\d.]/g, '') }))}
-                          className={`w-16 sm:w-24 shrink-0 border rounded-xl px-2 sm:px-3 py-2 text-right text-sm font-black tabular-nums outline-none focus:ring-2 focus:ring-indigo-400 ${add > 0 ? 'border-indigo-300 bg-white' : 'border-slate-200'}`}
-                        />
                       </div>
-                      {/* 부자재 — 현재 재고 표시 */}
+                      {/* 부자재 — 이름 비슷할 때 구분용이라 더 크고 잘 보이게 */}
                       {subs.length > 0 && (
-                        <div className="flex gap-1 flex-wrap mt-1.5">
+                        <div className="flex gap-1.5 flex-wrap mt-2">
                           {subs.map((s, i) => {
-                            // 재고는 현재 값을 다시 읽는다 — 품목에 박힌 건 등록 당시 스냅샷이라 낡았다
                             const sub = items.find(x => x.id === s.id);
-                            const st = sub?.stock ?? s.stock ?? 0;
                             return (
                               <span key={i}
-                                className={`text-[9px] font-black px-1.5 py-0.5 rounded ${st <= 0 ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-500'}`}>
+                                className="text-[11px] font-bold px-2 py-1 rounded-lg border bg-slate-50 border-slate-200 text-slate-600">
                                 {sub ? withSpec(sub) : s.name}
-                                <span className={st <= 0 ? 'text-rose-500 ml-1' : 'text-slate-400 ml-1'}>{st.toLocaleString()}</span>
                               </span>
                             );
                           })}
@@ -3145,7 +3184,8 @@ const ItemList: React.FC<ItemListProps> = ({
       // 구분=작업완료: 작업완료분이 있는 품목만 남긴다.
       if (!src && closingView === 'dispatched') listRows = listRows.filter(r => dispatchedOf(r.itemId) > 0);
       // 구분=재고: 현재고 > 작업완료분(남은 재고>0)인 품목만. 작업완료로 다 빠진 품목은 목록에서 제거.
-      if (!src && closingView === 'stock') listRows = listRows.filter(r => Math.round(((productMap.get(r.itemId)?.stock ?? 0) - dispatchedOf(r.itemId)) * 1000) / 1000 > 0);
+      // 단 검색 중이거나 '0포함'이면 남긴다 — 이 뷰에서 실사 수정을 하므로 0으로 적은 행이 사라지면 다시 못 고친다.
+      if (!src && closingView === 'stock' && !term && !showAllClosing) listRows = listRows.filter(r => Math.round(((productMap.get(r.itemId)?.stock ?? 0) - dispatchedOf(r.itemId)) * 1000) / 1000 > 0);
       // 페이지 나눔(모바일)
       const pageCount = Math.max(1, Math.ceil(listRows.length / CLOSING_PAGE_SIZE));
       const page = Math.min(closingPage, pageCount - 1);
@@ -3157,7 +3197,7 @@ const ItemList: React.FC<ItemListProps> = ({
             {/* 헤더 */}
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 shrink-0">
               <span className="text-base font-black text-slate-900">재고 현황</span>
-              <button onClick={() => setShowClosingModal(false)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
+              <button onClick={() => { setEditingClosingId(null); setShowClosingModal(false); }} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100">
                 <X size={18} />
               </button>
             </div>
@@ -3282,85 +3322,68 @@ const ItemList: React.FC<ItemListProps> = ({
                 {pageRows.length === 0 && (
                   <div className="px-3 py-8 text-center text-xs text-slate-400">{term ? '검색 결과가 없습니다.' : closingView === 'dispatched' ? '작업완료(미출고)된 완제품이 없습니다.' : closingView === 'stock' ? '재고로 남은 완제품이 없습니다. (작업완료분 제외)' : '재고가 있는 완제품이 없습니다. 검색하거나 "품목 추가하기"로 만드세요.'}</div>
                 )}
-                {pageRows.map((r, i) => {
+                {pageRows.map(r => {
                   const product = productMap.get(r.itemId);
                   const cur = product?.stock ?? 0;
                   const disp = src ? 0 : (dispatchedQtyByItem[r.itemId] ?? 0);      // 작업완료(미출고)분
                   const base = Math.round((cur - disp) * 1000) / 1000;              // 재고(작업완료 제외)
                   const shownNum = (!src && closingView === 'dispatched') ? disp : (!src && closingView === 'stock') ? base : cur;
-                  const editable = src ? true : closingView === 'all';             // 쪼갠 뷰(작업완료/재고)는 읽기전용
-                  const editing = editable && editingStockId === r.itemId;
-                  const uc = product ? unpackComponent(product) : null;   // 박스면 { itemId, count }
-                  const unitLbl = uc ? '박스' : '개';
+                  // 재고 뷰 실사 수정 — 입력값은 작업완료를 뺀 순수 재고. 저장 시 작업완료분을 다시 얹어야
+                  //   전체 뷰가 '재고 + 작업완료' 합계로 보인다. 작업완료 뷰는 주문에서 파생된 값이라 읽기전용.
+                  const stockEdit = !src && closingView === 'stock';
+                  const editable = src ? true : closingView !== 'dispatched';
+                  const editing = editable && editingClosingId === r.itemId;
                   return (
-                    <React.Fragment key={r.itemId}>
-                    {/* 분류 머리 — 앞 줄과 분류가 달라지는 지점에만.
-                        색 하나로 통일한다 — 분류마다 색을 달리하면 조잡하다. */}
-                    {r.group && r.group !== pageRows[i - 1]?.group && (
-                      <div className="sticky top-0 z-10 px-3 py-1.5 bg-slate-600 flex items-center gap-2">
-                        <span className="text-[11px] font-black text-white tracking-wide">{r.group}</span>
-                        <span className="px-1.5 py-0.5 rounded-full bg-white/20 text-[10px] font-black text-white tabular-nums">
-                          {listRows.filter(x => x.group === r.group).length}
+                    <div key={r.itemId} className={`w-full flex items-center gap-2 px-3 py-2.5 ${r.isChild ? 'pl-7 bg-slate-50/50' : ''}`}>
+                      <span className={`flex-1 min-w-0 text-[13px] break-keep ${r.isChild ? 'font-semibold text-slate-500' : 'font-bold text-slate-800'}`}>{r.isChild && <span className="text-slate-300 mr-1">└</span>}{r.label}</span>
+                      {/* 작업완료(미출고)분 배지 — 전체·작업완료 뷰에만. 재고 뷰는 이미 뺀 순수 재고라 배지 없음. */}
+                      {disp > 0 && closingView !== 'stock' && (
+                        <span className="shrink-0 text-[9px] font-black text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full whitespace-nowrap"
+                          title={closingView === 'all' ? `재고 ${base} + 작업완료(미출고) ${disp} = 현재고 ${cur}` : '작업완료(미출고)분'}>
+                          {closingView === 'all' ? `재고 ${base} + 작업완료 ${disp}` : `작업완료 ${disp}`}
                         </span>
-                      </div>
-                    )}
-                    <div className={`w-full flex items-center gap-2 px-3 py-2 ${r.isChild ? 'pl-7 bg-indigo-50/40 border-l-2 border-indigo-200' : ''}`}>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-[13px] break-keep leading-snug ${r.isChild ? 'font-semibold text-slate-500' : 'font-bold text-slate-800'}`}>
-                          {r.isChild && <span className="text-indigo-300 mr-1">└</span>}
-                          {r.label}
-                          {/* 박스 품목임을 배지·수량 단위로 못 박는다 — 낱개와 숫자 의미가 다르다.
-                              개입수는 품목명에 이미 들어 있어 배지엔 안 넣는다(같은 말 두 번). */}
-                          {uc && (
-                            <span className="ml-1.5 inline-flex items-center align-middle text-[9px] font-black text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
-                              박스
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                      {/* 재고 숫자 — 주문수량(작업완료·미출고분)은 그 바로 밑에 붙인다 */}
-                      <div className="shrink-0 flex flex-col items-end">
+                      )}
                       {editing ? (
-                        <input autoFocus type="text" inputMode="decimal" value={editingStockVal}
-                          onChange={e => setEditingStockVal(e.target.value)}
+                        <input autoFocus type="text" inputMode="decimal" value={editingClosingVal}
+                          onChange={e => setEditingClosingVal(e.target.value)}
                           onKeyDown={e => {
-                            if (e.key === 'Enter') { stockEditCancelled.current = false; e.currentTarget.blur(); }
-                            if (e.key === 'Escape') { stockEditCancelled.current = true; e.currentTarget.blur(); }
+                            if (e.key === 'Enter') { closingEditCancelled.current = false; e.currentTarget.blur(); }
+                            if (e.key === 'Escape') { closingEditCancelled.current = true; e.currentTarget.blur(); }
                           }}
                           onBlur={() => {
-                            if (product && !stockEditCancelled.current && editingStockVal.trim() !== '') commitStockEdit(product, parseFloat(editingStockVal));
-                            setEditingStockId(null); stockEditCancelled.current = false;
+                            if (product && !closingEditCancelled.current && editingClosingVal.trim() !== '') commitStockEdit(product, parseFloat(editingClosingVal), stockEdit ? disp : 0);
+                            setEditingClosingId(null); closingEditCancelled.current = false;
                           }}
                           className="w-16 shrink-0 border border-indigo-300 rounded-lg px-2 py-1 text-right text-sm font-black outline-none focus:ring-2 focus:ring-indigo-400" />
                       ) : editable ? (
-                        <button onClick={() => { if (!product) return; setEditingStockId(r.itemId); setEditingStockVal(String(product.subtype === '향미유' ? Math.floor(cur / 12) : cur)); }}
-                          title={uc ? `눌러서 실사 수정 — 박스 단위(1박스 = 낱개 ${uc.count}개)` : "눌러서 실사 수정"}
-                          className="shrink-0 flex items-center hover:text-indigo-600">
-                          {/* 숫자는 폭 고정 칸에 오른쪽 정렬 — 자릿수가 달라도 세로로 줄이 맞는다 */}
-                          <span className={`w-10 text-right text-sm font-black tabular-nums hover:underline ${cur > 0 ? 'text-slate-700' : 'text-slate-300'}`}>{cur}</span>
-                          <span className="w-7 text-left text-[10px] font-bold text-slate-400 ml-0.5">{unitLbl}</span>
+                        <button onClick={() => { if (!product) return; setEditingClosingId(r.itemId); setEditingClosingVal(String(product.subtype === '향미유' ? Math.floor(shownNum / 12) : shownNum)); }}
+                          title={stockEdit ? '눌러서 실사 수정 (작업완료 제외한 재고)' : '눌러서 실사 수정'}
+                          className={`shrink-0 text-sm font-black ${shownNum > 0 ? 'text-slate-700' : 'text-slate-300'} hover:text-indigo-600 hover:underline`}>
+                          {shownNum}<span className="text-[10px] font-bold text-slate-400 ml-0.5">개</span>
                         </button>
                       ) : (
-                        <span className="shrink-0 flex items-center" title={closingView === 'dispatched' ? '작업완료(미출고)분' : '재고(작업완료 제외)'}>
-                          <span className={`w-10 text-right text-sm font-black tabular-nums ${shownNum > 0 ? 'text-slate-700' : 'text-slate-300'}`}>{shownNum}</span>
-                          <span className="w-7 text-left text-[10px] font-bold text-slate-400 ml-0.5">{unitLbl}</span>
+                        <span className={`shrink-0 text-sm font-black ${shownNum > 0 ? 'text-slate-700' : 'text-slate-300'}`} title={closingView === 'dispatched' ? '작업완료(미출고)분' : '재고(작업완료 제외)'}>
+                          {shownNum}<span className="text-[10px] font-bold text-slate-400 ml-0.5">개</span>
                         </span>
                       )}
-                      {/* 전체·작업완료 뷰에만. 재고 뷰는 이미 뺀 순수 재고라 안 띄운다. */}
-                      {disp > 0 && closingView !== 'stock' && (
-                        <p className="mt-0.5 text-[10px] font-black text-amber-600 whitespace-nowrap tabular-nums" title="현재고 중 작업완료(미출고)분">
-                          주문수량 {disp}
-                        </p>
-                      )}
-                      </div>
                       {editable && (
-                        <button onClick={() => { if (product && confirm(`"${product.name}" 재고를 0으로 만들까요?`)) commitStockEdit(product, 0); }}
+                        <button onClick={() => {
+                            if (!product) return;
+                            // 재고 뷰에서는 '재고분만' 0으로 — 작업완료분은 주문에 물려 있으니 남긴다.
+                            // 전체 뷰에서는 현재고를 통째로 0으로 만들어 작업완료분까지 날아간다 → 미리 경고.
+                            //   (실제로 이 버튼으로 작업완료 900개가 통째로 지워진 사고가 있었음)
+                            const msg = disp <= 0
+                              ? `"${product.name}" 재고를 0으로 만들까요?`
+                              : stockEdit
+                                ? `"${product.name}" 재고를 0으로 만들까요?\n작업완료 ${disp}개는 남습니다. (현재고 ${cur} → ${disp})`
+                                : `"${product.name}" 현재고를 0으로 만들까요?\n\n⚠ 작업완료(미출고) ${disp}개도 함께 사라집니다. (현재고 ${cur} → 0)\n작업완료분을 남기려면 '재고' 뷰에서 지우세요.`;
+                            if (confirm(msg)) commitStockEdit(product, 0, stockEdit ? disp : 0);
+                          }}
                           title="재고 0으로" className="shrink-0 p-1 rounded text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors">
                           <Trash2 size={13} />
                         </button>
                       )}
                     </div>
-                    </React.Fragment>
                   );
                 })}
               </div>

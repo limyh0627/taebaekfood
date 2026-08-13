@@ -12,6 +12,7 @@ import AuthPage from './components/AuthPage';
 import PartnerPortal from './components/PartnerPortal';
 import AdminApp from './src/features/admin/AdminApp';
 import StaffApp from './src/features/staff/StaffApp';
+import ReloadPrompt from './components/ReloadPrompt';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<Employee | null>(() => {
@@ -41,46 +42,55 @@ const App: React.FC = () => {
     setIsAdminAuthenticated(false);
   };
 
-  if (currentView === 'partner-portal') {
-    return (
-      <PartnerPortal
-        partners={appData.partners}
-        items={appData.items}
-        onOrderSubmit={(o) => addItem('orders', o)}
-        onExit={() => setCurrentView('orders')}
-      />
-    );
-  }
+  const renderContent = () => {
+    if (currentView === 'partner-portal') {
+      return (
+        <PartnerPortal
+          partners={appData.partners}
+          items={appData.items}
+          onOrderSubmit={(o) => addItem('orders', o)}
+          onExit={() => setCurrentView('orders')}
+        />
+      );
+    }
 
-  if (!currentUser) {
-    return (
-      <AuthPage
-        onLogin={handleLogin}
-        registeredEmployees={appData.employees}
-        onRegister={(e) => updateItem('employees', e.id, { username: e.username, password: e.password })}
-      />
-    );
-  }
+    if (!currentUser) {
+      return (
+        <AuthPage
+          onLogin={handleLogin}
+          registeredEmployees={appData.employees}
+          onRegister={(e) => updateItem('employees', e.id, { username: e.username, password: e.password })}
+        />
+      );
+    }
 
-  const sharedProps = {
-    currentUser,
-    isAdminAuthenticated,
-    onAdminAuth: setIsAdminAuthenticated,
-    currentView,
-    setCurrentView,
-    onLogout: handleLogout,
-    appData: {
-      ...appData,
-      companyInfo: appData.companyInfo ?? DEFAULT_COMPANY_INFO,
-    },
-    adminData,
+    const sharedProps = {
+      currentUser,
+      isAdminAuthenticated,
+      onAdminAuth: setIsAdminAuthenticated,
+      currentView,
+      setCurrentView,
+      onLogout: handleLogout,
+      appData: {
+        ...appData,
+        companyInfo: appData.companyInfo ?? DEFAULT_COMPANY_INFO,
+      },
+      adminData,
+    };
+
+    if (isAdmin && !previewAsStaff) {
+      return <AdminApp {...sharedProps} isAdmin={true} onPreviewStaff={() => setPreviewAsStaff(true)} />;
+    }
+
+    return <StaffApp {...sharedProps} onExitPreview={previewAsStaff ? () => setPreviewAsStaff(false) : undefined} />;
   };
 
-  if (isAdmin && !previewAsStaff) {
-    return <AdminApp {...sharedProps} isAdmin={true} onPreviewStaff={() => setPreviewAsStaff(true)} />;
-  }
-
-  return <StaffApp {...sharedProps} onExitPreview={previewAsStaff ? () => setPreviewAsStaff(false) : undefined} />;
+  return (
+    <>
+      {renderContent()}
+      <ReloadPrompt />
+    </>
+  );
 };
 
 export default App;
