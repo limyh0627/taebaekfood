@@ -205,12 +205,14 @@ type TopTab = 'finished' | 'goods' | 'submaterial' | 'rawmaterial' | 'wip';
 //   단 wip이라도 unit이 '개'인 캔/포장 SKU(예: 깨분참기름/16.5kg)는 홀더가 아님.
 const isRawHolder = (p: any): boolean => isBulkItem(p);
 
-// #2 원료 단일 소스: 표시용 재고 — 원료 홀더이고 로트가 있으면 로트 합계(운영단위=기름 L),
-//   그 외(로트 없는 원료 예: 깻묵, 또는 완제품/상품/부자재)는 stock 필드 사용.
-const displayStockOf = (p: any): number =>
-  (isRawHolder(p) && (p?.lots ?? []).length > 0)
-    ? lotStockInUnit(p.lots, baseRawName(p.name))
+// #2 원료 단일 소스: 표시용 재고 — 원료 홀더이고 로트가 있으면 로트 합계, 그 외는 stock 필드.
+//   저장은 전부 kg이므로, 밀도가 있는 품목(기름)만 나눠서 L로 보여준다.
+const displayStockOf = (p: any): number => {
+  const kg = (isRawHolder(p) && (p?.lots ?? []).length > 0)
+    ? lotKgRemaining(p.lots)
     : (p?.stock ?? 0);
+  return p?.density ? Math.round((kg / p.density) * 1000) / 1000 : kg;
+};
 
 const ItemList: React.FC<ItemListProps> = ({
   items,
@@ -606,7 +608,8 @@ const ItemList: React.FC<ItemListProps> = ({
       const unitLabel = product.unit ?? (unitOf(material) === 'L' ? 'L' : 'kg');
       // 로트와 원장은 한 몸 — 실사하면 둘 다 같은 목표값으로 간다.
       if (!confirm(`${product.name} 재고를 ${val}${unitLabel}로 맞출까요?\n로트와 입출고 기록(원장)에 '실사조정'으로 함께 반영됩니다.`)) return;
-      const targetKg = unitToKg(val, material);
+      // 화면은 L, 저장은 kg — 밀도 있는 품목만 곱한다
+      const targetKg = product.density ? Math.round(val * product.density * 1000) / 1000 : val;
       let adjustKg = 0;
       await mutateRawMaterialLots(
         product.id,
@@ -641,7 +644,10 @@ const ItemList: React.FC<ItemListProps> = ({
         setToast({ message: `${product.name} 실사조정 ${adjustKg > 0 ? '+' : ''}${Math.round(adjustKg * 10) / 10}kg — 로트·원장 반영` });
       }
     } else {
-      const units = product.subtype === '향미유' ? val * 12 : val;
+      // 입력은 표시 단위(밀도 있으면 L) — 저장은 언제나 kg
+      const units = product.subtype === '향미유' ? val * 12
+        : product.density ? val * product.density
+        : val;
       onUpdateItem({ ...product, stock: Math.round((units + addStockUnits) * 1000) / 1000 });
     }
   };
@@ -1503,7 +1509,7 @@ const ItemList: React.FC<ItemListProps> = ({
                         <span className="text-sm font-black text-slate-700 truncate">{material}</span>
                         <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full shrink-0">로트 {activeLotCount}</span>
                       </button>
-                      <span className={`text-sm font-black tabular-nums shrink-0 ${stock < 0 ? 'text-rose-600' : 'text-slate-800'}`}>{Math.round(stock * 10) / 10} {unitLabel}</span>
+                      <span className={`text-sm font-black tabular-nums shrink-0 ${stock < 0 ? 'text-rose-600' : 'text-slate-800'}`}>{Math.round(stock)} {unitLabel}</span>
                     </div>
                     {isOpen && (
                       <div className="px-4 pb-4 pt-1 bg-emerald-50/40 border-t border-emerald-100">
@@ -1630,7 +1636,10 @@ const ItemList: React.FC<ItemListProps> = ({
                   // #2 원료 단일 소스: 원료(raw)는 화면도 로트 합계를 직접 읽어 stock 미러와의 불일치 방지.
                   //   lot이 하나도 없는 원료(예: 깻묵)는 기존 stock으로 폴백.
                   const rawLots = isRawHolder(product) ? (product.lots ?? []) : null;
-                  const rawLotStock = rawLots && rawLots.length > 0 ? lotStockInUnit(rawLots, baseRawName(product.name)) : null;
+                  // 저장은 kg — 밀도 있는 품목(기름)만 나눠서 L로 보여준다
+                  const rawLotStock = rawLots && rawLots.length > 0
+                    ? (product.density ? Math.round((lotKgRemaining(rawLots) / product.density) * 1000) / 1000 : lotKgRemaining(rawLots))
+                    : null;
                   const effStock = derivedCans != null ? derivedCans : (rawLotStock != null ? rawLotStock : product.stock);
                   // 표시·편집 시드용 재고 (원료는 로트 합계, 그 외는 stock)
                   const displayStock = rawLotStock != null ? rawLotStock : product.stock;
@@ -1770,10 +1779,11 @@ const ItemList: React.FC<ItemListProps> = ({
                         ) : (
                           <button
                             onClick={e => { e.stopPropagation(); setEditingStockId(product.id); setEditingStockVal(String(product.subtype === '향미유' ? Math.floor(product.stock / 12) : displayStock)); }}
-                            className={`w-14 text-right text-base font-black tabular-nums hover:underline hover:text-indigo-600 transition-colors cursor-pointer ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}
-                            title="클릭하여 수량 수정"
+                            className={`min-w-14 shrink-0 text-right text-base font-black tabular-nums hover:underline hover:text-indigo-600 transition-colors cursor-pointer ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}
+                            title={`클릭하여 수량 수정 (${displayStock}${product.unit ?? ''})`}
                           >
-                            {product.subtype === '향미유' ? fmtHamiyou(product.stock) : displayStock}
+                            {/* 1의 자리로 반올림 — 소수점을 그대로 두면 옆 단위 칸을 밀어낸다(정확한 값은 title) */}
+                            {product.subtype === '향미유' ? fmtHamiyou(product.stock) : Math.round(displayStock)}
                           </button>
                         )}
                         {derivedCans == null && editingStockId !== product.id && (
@@ -1837,7 +1847,7 @@ const ItemList: React.FC<ItemListProps> = ({
                             )
                           )}
                           <button
-                            onClick={e => { e.stopPropagation(); setRowEditProduct(product); setRowEditForm({ name: product.name, category: product.category, stock: product.stock, minStock: product.minStock, unit: product.unit }); }}
+                            onClick={e => { e.stopPropagation(); setRowEditProduct(product); setRowEditForm({ name: product.name, category: product.category, stock: product.density ? Math.round((product.stock / product.density) * 1000) / 1000 : product.stock, minStock: product.minStock, unit: product.unit }); }}
                             className="text-[10px] font-black px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-500 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition-all border border-slate-200"
                           >{productEditable ? '수정' : '실사조정'}</button>
                         </div>
@@ -1980,7 +1990,7 @@ const ItemList: React.FC<ItemListProps> = ({
                                 )
                               )}
                               <button
-                                onClick={() => { setRowEditProduct(product); setRowEditForm({ name: product.name, category: product.category, stock: product.stock, minStock: product.minStock, unit: product.unit }); setExpandedRowId(null); }}
+                                onClick={() => { setRowEditProduct(product); setRowEditForm({ name: product.name, category: product.category, stock: product.density ? Math.round((product.stock / product.density) * 1000) / 1000 : product.stock, minStock: product.minStock, unit: product.unit }); setExpandedRowId(null); }}
                                 className="flex-1 text-[11px] font-black py-2 rounded-xl bg-slate-100 text-slate-500 border border-slate-200"
                               >{productEditable ? '수정' : '실사조정'}</button>
                             </div>
@@ -2059,13 +2069,28 @@ const ItemList: React.FC<ItemListProps> = ({
                 {/* 현재 재고 + 최소 수량 */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">현재 재고</label>
-                    <input
-                      type="number"
-                      value={rowEditForm.stock ?? ''}
-                      onChange={e => setRowEditForm(f => ({ ...f, stock: parseInt(e.target.value) || 0 }))}
-                      className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-                    />
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
+                      현재 재고 <span className="text-indigo-400">({rowEditProduct.unit || '개'})</span>
+                    </label>
+                    {/* 저장은 kg — 밀도 있는 품목(기름)은 L로 보여주고 L로 받는다 */}
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="any"
+                        value={rowEditForm.stock ?? ''}
+                        onChange={e => setRowEditForm(f => ({ ...f, stock: parseFloat(e.target.value) || 0 }))}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 pr-10 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-black text-slate-400 pointer-events-none">
+                        {rowEditProduct.unit || '개'}
+                      </span>
+                    </div>
+                    {rowEditProduct.density && (
+                      <p className="text-[10px] font-bold text-slate-400 mt-1">
+                        = {Math.round((rowEditForm.stock ?? 0) * rowEditProduct.density * 100) / 100} kg
+                        <span className="text-slate-300"> · 밀도 {rowEditProduct.density}</span>
+                      </p>
+                    )}
                     {!productEditable && (rowEditForm.stock ?? 0) !== (rowEditProduct.stock ?? 0) && (
                       <p className="text-[10px] font-black text-amber-600 mt-1">
                         앱 재고 {rowEditProduct.stock ?? 0} → {rowEditForm.stock ?? 0}
@@ -2111,7 +2136,11 @@ const ItemList: React.FC<ItemListProps> = ({
                       await onUpdateItem(metaOnly as Item);
                       await commitStockEdit(p, newStock);
                     } else {
-                      await onUpdateItem({ ...p, ...form } as Item);
+                      // 입력칸은 표시 단위(밀도 있으면 L) — 저장은 언제나 kg
+                      const stockKg = p.density && newStock !== undefined
+                        ? Math.round(newStock * p.density * 1000) / 1000
+                        : newStock;
+                      await onUpdateItem({ ...p, ...form, ...(newStock !== undefined ? { stock: stockKg } : {}) } as Item);
                     }
                     setRowEditProduct(null);
                   }}
@@ -3328,7 +3357,10 @@ const ItemList: React.FC<ItemListProps> = ({
                   const cur = product?.stock ?? 0;
                   const disp = src ? 0 : (dispatchedQtyByItem[r.itemId] ?? 0);      // 작업완료(미출고)분
                   const base = Math.round((cur - disp) * 1000) / 1000;              // 재고(작업완료 제외)
-                  const shownNum = (!src && closingView === 'dispatched') ? disp : (!src && closingView === 'stock') ? base : cur;
+                  const shownKg = (!src && closingView === 'dispatched') ? disp : (!src && closingView === 'stock') ? base : cur;
+                  // 저장은 kg — 밀도 있는 품목(기름)만 나눠서 L로 보여준다. 단위도 품목 것을 쓴다.
+                  const shownNum = product?.density ? Math.round((shownKg / product.density) * 1000) / 1000 : shownKg;
+                  const unitLbl = product?.subtype === '향미유' ? 'B' : (product?.unit || '개');
                   // 재고 뷰 실사 수정 — 입력값은 작업완료를 뺀 순수 재고. 저장 시 작업완료분을 다시 얹어야
                   //   전체 뷰가 '재고 + 작업완료' 합계로 보인다. 작업완료 뷰는 주문에서 파생된 값이라 읽기전용.
                   const stockEdit = !src && closingView === 'stock';
@@ -3360,11 +3392,11 @@ const ItemList: React.FC<ItemListProps> = ({
                         <button onClick={() => { if (!product) return; setEditingClosingId(r.itemId); setEditingClosingVal(String(product.subtype === '향미유' ? Math.floor(shownNum / 12) : shownNum)); }}
                           title={stockEdit ? '눌러서 실사 수정 (작업완료 제외한 재고)' : '눌러서 실사 수정'}
                           className={`shrink-0 text-sm font-black ${shownNum > 0 ? 'text-slate-700' : 'text-slate-300'} hover:text-indigo-600 hover:underline`}>
-                          {shownNum}<span className="text-[10px] font-bold text-slate-400 ml-0.5">개</span>
+                          {shownNum}<span className="text-[10px] font-bold text-slate-400 ml-0.5">{unitLbl}</span>
                         </button>
                       ) : (
                         <span className={`shrink-0 text-sm font-black ${shownNum > 0 ? 'text-slate-700' : 'text-slate-300'}`} title={closingView === 'dispatched' ? '작업완료(미출고)분' : '재고(작업완료 제외)'}>
-                          {shownNum}<span className="text-[10px] font-bold text-slate-400 ml-0.5">개</span>
+                          {shownNum}<span className="text-[10px] font-bold text-slate-400 ml-0.5">{unitLbl}</span>
                         </span>
                       )}
                       {editable && (

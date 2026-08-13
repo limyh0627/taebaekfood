@@ -209,9 +209,16 @@ export interface Item {
   subtype?: ItemSubtype | string;  // 카테고리 — 참기름·들기름·라벨·용기·박스·마개·테이프·향미유…
   subtype2?: string;               // 서브타입 — 낱개·배송·선물세트. 부자재·원료는 비어 있다.
   itemType?: ProductStage;       // @deprecated → category: 'wip'|'product' 사용
-  cost?: number;                 // 원가 (제조/매입원가)
+  cost?: number;                 // 원가 (제조/매입원가) — **kg당**. 기름도 마찬가지(2026-08-14~)
   price: number;
+  /** 재고 — **언제나 kg**(기름 포함). 화면에 L로 보여줄 때만 density로 나눈다. */
   stock: number;
+  /**
+   * 밀도 kg/L. **이 값이 있으면 화면에 L로 보여준다**(없으면 저장 단위 그대로).
+   * 저장(stock·cost·BOM 수량)은 전부 kg이고, L은 표시·입력에서만 쓴다.
+   * 참기름류 0.916 / 들기름류 0.924.
+   */
+  density?: number;
   wipStock?: number;
   finishedStock?: number;
   minStock: number;

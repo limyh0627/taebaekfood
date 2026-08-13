@@ -1937,7 +1937,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   const target = rawLotTarget(allItems, product, product.name);
                   if (target) {
                     // 원료: 목표수량으로 lot 조정 (stock 직접 X)
-                    const deltaKg = req.requestedQuantity - lotKgRemaining(product.lots);
+                    // 요청 수량은 직원이 화면 단위(기름=L)로 넣은 값 → 저장 단위 kg으로
+                    const reqKg = product.density ? req.requestedQuantity * product.density : req.requestedQuantity;
+                    const deltaKg = reqKg - lotKgRemaining(product.lots);
                     await adjustRawLots({ material: target.baseName, rawItemId: target.rawItem.id, deltaKg, date: new Date().toISOString().slice(0, 10), note: '재고조정', addedBy: currentUser?.name });
                     setLedgerReloadKey(k => k + 1);
                   } else {
@@ -3978,7 +3980,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     // 수량 변동 승인 시, 요청된 수량만큼 재고에 더함
                     const target = rawLotTarget(allItems, product, product.name);
                     if (target) {
-                      await adjustRawLots({ material: target.baseName, rawItemId: target.rawItem.id, deltaKg: req.requestedQuantity || 0, date: new Date().toISOString().slice(0, 10), note: '재고조정', addedBy: currentUser?.name });
+                      // 요청 수량은 화면 단위(기름=L) → 저장 단위 kg으로
+                      const addKg = product.density ? (req.requestedQuantity || 0) * product.density : (req.requestedQuantity || 0);
+                      await adjustRawLots({ material: target.baseName, rawItemId: target.rawItem.id, deltaKg: addKg, date: new Date().toISOString().slice(0, 10), note: '재고조정', addedBy: currentUser?.name });
                       setLedgerReloadKey(k => k + 1);
                     } else {
                       await updateItem(collectionName, req.itemId, { stock: product.stock + (req.requestedQuantity || 0) });
