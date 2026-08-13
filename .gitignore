@@ -15,3 +15,5 @@ node_modules
 # 기타
 .DS_Stored
 scripts/serviceAccountKey.json
+# 업로드 안 하는 폴더 — 엑셀 서류·일지·일회성 스크립트(Firebase 키 포함)
+로컬전용/

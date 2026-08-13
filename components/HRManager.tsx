@@ -18,10 +18,16 @@ import {
   Lock, 
   Unlock,
   TrendingUp,
-  ChevronRight
+  ChevronRight,
+  Wallet,
+  Copy,
+  Printer,
+  Save
 } from 'lucide-react';
-import { Employee, EmployeeStatus, LeaveRequest, LeaveStatus, LeaveType } from '../types';
+import { Employee, EmployeeStatus, LeaveRequest, LeaveStatus, LeaveType, Payroll, PayrollLine } from '../types';
+import { payrollGross, payrollDeduct, payrollNet, payrollTotals } from '../types';
 import PageHeader from './PageHeader';
+import { subscribeToCollection, setDocument } from '../src/shared/services/firebaseService';
 
 // 연차 계산은 공용 모듈(src/shared/leave.ts) — 직원 앱과 같은 함수를 쓴다
 import {
@@ -43,6 +49,11 @@ interface HRManagerProps {
   onDeleteLeaveRequest: (_id: string) => void;
   /** 회사 단체 휴가 일괄 등록 — 선택 직원별로 승인된 '휴가' 신청을 만든다(연차 차감) */
   onAddLeaveRequests?: (_reqs: LeaveRequest[]) => Promise<void> | void;
+  // ── 급여대장 ── 대장 자체는 이 화면이 직접 읽고 쓴다(payrolls). 전표만 밖에 맡긴다.
+  /** 대장 합계로 자금기록 한 건을 만들고 그 id를 돌려준다 */
+  onCreatePayrollEntry?: (_p: {
+    date: string; gross: number; deduct: number; net: number; note: string;
+  }) => Promise<string | undefined>;
 }
 
 const HRManager: React.FC<HRManagerProps> = ({
@@ -54,8 +65,9 @@ const HRManager: React.FC<HRManagerProps> = ({
   onUpdateLeaveStatus,
   onUpdateLeave,
   onAddLeaveRequests,
+  onCreatePayrollEntry,
 }) => {
-  const [activeTab, setActiveTab] = useState<'employees' | 'leave-approval' | 'leave-balance'>('employees');
+  const [activeTab, setActiveTab] = useState<'employees' | 'leave-approval' | 'leave-balance' | 'payroll'>('employees');
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -76,6 +88,94 @@ const HRManager: React.FC<HRManagerProps> = ({
   /** 단체 휴가 일수 — 신청과 같은 평일 기준(공용 모듈) */
   const countWeekdays = (start: string, end: string) =>
     (start && end) ? calcRequestDays(start, end, '휴가') : 0;
+
+  // ── 급여대장 ──────────────────────────────────────────────────────────────
+  // 재직자 명부에서 줄을 깔고 금액만 채운다. 저장은 월 단위 문서 하나(payrolls/pay-YYYY-MM).
+  const thisYm = new Date().toISOString().slice(0, 7);
+  const [payYm, setPayYm] = useState(thisYm);
+  const [payDate, setPayDate] = useState(() => `${thisYm}-25`);
+  const [payLines, setPayLines] = useState<PayrollLine[]>([]);
+  const [paySaving, setPaySaving] = useState(false);
+  const [payMsg, setPayMsg] = useState('');
+  const [paySlipEmp, setPaySlipEmp] = useState<PayrollLine | null>(null);   // 명세서 미리보기
+  const [payrolls, setPayrolls] = useState<Payroll[]>([]);
+  React.useEffect(() => subscribeToCollection<Payroll>('payrolls', setPayrolls), []);
+  const won = (n: number) => (n || 0).toLocaleString('ko-KR');
+  const savedPayroll = payrolls.find(p => p.yearMonth === payYm) ?? null;
+
+  // 월을 바꾸면 저장본을 싣고, 없으면 재직자로 빈 줄을 깐다
+  React.useEffect(() => {
+    if (activeTab !== 'payroll') return;
+    const doc = payrolls.find(p => p.yearMonth === payYm);
+    if (doc) { setPayLines(doc.lines ?? []); setPayDate(doc.payDate || `${payYm}-25`); }
+    else {
+      setPayLines(employees.filter(e => e.status === 'working' && e.id !== 'admin').map(e => ({
+        employeeId: e.id, employeeName: e.name, department: e.department, position: e.position, base: 0,
+      })));
+      setPayDate(`${payYm}-25`);
+    }
+    setPayMsg('');
+  }, [payYm, activeTab, payrolls, employees]);
+
+  const setCell = (i: number, field: keyof PayrollLine, v: string) => {
+    const n = Math.round(parseFloat(v.replace(/[^\d.-]/g, '')) || 0);
+    setPayLines(prev => prev.map((l, idx) => idx === i ? { ...l, [field]: n } : l));
+  };
+  /** 지난달 금액 그대로 — 매달 바뀌는 건 몇 칸뿐이라 복사가 가장 빠르다 */
+  const copyPrevMonth = () => {
+    const [y, m] = payYm.split('-').map(Number);
+    const prevYm = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+    const prev = payrolls.find(p => p.yearMonth === prevYm);
+    if (!prev) { setPayMsg(`${prevYm} 대장이 없습니다`); return; }
+    const byId = new Map(prev.lines.map(l => [l.employeeId, l]));
+    setPayLines(prev2 => prev2.map(l => {
+      const old = byId.get(l.employeeId);
+      return old ? { ...old, employeeId: l.employeeId, employeeName: l.employeeName, department: l.department, position: l.position } : l;
+    }));
+    setPayMsg(`${prevYm} 금액을 불러왔습니다`);
+  };
+  const payTotals = payrollTotals(payLines);
+
+  const savePayroll = async () => {
+    if (paySaving) return;
+    setPaySaving(true);
+    try {
+      await setDocument('payrolls', `pay-${payYm}`, {
+        id: `pay-${payYm}`, yearMonth: payYm, payDate,
+        lines: payLines.filter(l => payrollGross(l) > 0),
+        ...(savedPayroll?.cashEntryId ? { cashEntryId: savedPayroll.cashEntryId } : {}),
+        createdAt: savedPayroll?.createdAt ?? new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      setPayMsg('저장했습니다');
+    } finally { setPaySaving(false); }
+  };
+
+  /** 전표 생성 — 대장 합계로 자금기록 한 건.
+   *  (차) 급여 지급계  (대) 예수금 공제계 + 보통예금 실지급계
+   *  공제는 음수 줄로 넣어 통장에서 나간 돈이 실지급계와 맞는다. */
+  const makePayrollEntry = async () => {
+    if (!onCreatePayrollEntry || paySaving) return;
+    if (payTotals.gross <= 0) { setPayMsg('금액을 먼저 입력하세요'); return; }
+    if (savedPayroll?.cashEntryId && !window.confirm('이미 전표를 끊은 대장입니다. 한 건 더 만들까요?')) return;
+    setPaySaving(true);
+    try {
+      await savePayroll();
+      const id = await onCreatePayrollEntry({
+        date: payDate, gross: payTotals.gross, deduct: payTotals.deduct, net: payTotals.net,
+        note: `${payYm} 급여`,
+      });
+      if (id) {
+        await setDocument('payrolls', `pay-${payYm}`, {
+          id: `pay-${payYm}`, yearMonth: payYm, payDate,
+          lines: payLines.filter(l => payrollGross(l) > 0), cashEntryId: id,
+          createdAt: savedPayroll?.createdAt ?? new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      setPayMsg('전표를 만들었습니다 — 전표내역에서 확인하세요');
+    } finally { setPaySaving(false); }
+  };
 
   const [formData, setFormData] = useState({
     name: '',
@@ -166,6 +266,12 @@ const HRManager: React.FC<HRManagerProps> = ({
               className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${activeTab === 'leave-balance' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
             >
               <Settings2 size={14} /><span>연차 관리</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('payroll')}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${activeTab === 'payroll' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              <Wallet size={14} /><span>급여대장</span>
             </button>
           </div>
           {activeTab === 'employees' && (
@@ -524,7 +630,171 @@ const HRManager: React.FC<HRManagerProps> = ({
             </table>
           </div>
         )}
+
+        {/* ── 급여대장 ── 재직자 명부에서 줄을 깔고 금액만 채운다.
+            [전표 생성]을 누르면 합계로 자금기록 한 건이 나가고, 대장과 전표가 id로 묶인다. */}
+        {activeTab === 'payroll' && (
+          <div className="flex-1 overflow-auto custom-scrollbar">
+            <div className="p-4 flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/60 sticky top-0 z-10">
+              <input type="month" value={payYm} onChange={e => setPayYm(e.target.value)}
+                className="border border-slate-200 rounded-xl px-3 py-2 text-xs font-black outline-none focus:ring-2 focus:ring-violet-300" />
+              <label className="flex items-center gap-1.5 text-[11px] font-black text-slate-400">
+                지급일
+                <input type="date" value={payDate} onChange={e => setPayDate(e.target.value)}
+                  className="border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-black text-slate-700 outline-none focus:ring-2 focus:ring-violet-300" />
+              </label>
+              <button onClick={copyPrevMonth}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-white border border-slate-200 text-slate-500 hover:border-violet-300 hover:text-violet-600 transition-all">
+                <Copy size={13} />지난달 복사
+              </button>
+              <div className="ml-auto flex items-center gap-2">
+                {payMsg && <span className="text-[11px] font-black text-violet-600">{payMsg}</span>}
+                {savedPayroll?.cashEntryId && (
+                  <span className="text-[10px] font-black px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">전표 생성됨</span>
+                )}
+                <button onClick={savePayroll} disabled={paySaving}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-white border border-slate-200 text-slate-600 hover:border-slate-300 disabled:opacity-40 transition-all">
+                  <Save size={13} />저장
+                </button>
+                <button onClick={makePayrollEntry} disabled={paySaving || !onCreatePayrollEntry}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-violet-600 text-white hover:bg-violet-500 disabled:opacity-40 transition-all">
+                  <Wallet size={13} />전표 생성
+                </button>
+              </div>
+            </div>
+
+            {payLines.length === 0 ? (
+              <p className="py-16 text-center text-xs font-bold text-slate-300">재직 중인 임직원이 없습니다</p>
+            ) : (
+              <table className="w-full text-left min-w-[1100px] text-xs">
+                <thead className="bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-400">
+                  <tr>
+                    <th className="px-3 py-2.5">이름</th>
+                    <th className="px-3 py-2.5">부서</th>
+                    <th className="px-2 py-2.5 text-right">기본급</th>
+                    <th className="px-2 py-2.5 text-right">연장수당</th>
+                    <th className="px-2 py-2.5 text-right">기타수당</th>
+                    <th className="px-2 py-2.5 text-right bg-slate-100">지급계</th>
+                    <th className="px-2 py-2.5 text-right">소득세</th>
+                    <th className="px-2 py-2.5 text-right">지방세</th>
+                    <th className="px-2 py-2.5 text-right">국민연금</th>
+                    <th className="px-2 py-2.5 text-right">건강보험</th>
+                    <th className="px-2 py-2.5 text-right">고용보험</th>
+                    <th className="px-2 py-2.5 text-right">기타공제</th>
+                    <th className="px-2 py-2.5 text-right bg-slate-100">공제계</th>
+                    <th className="px-2 py-2.5 text-right bg-violet-50">실지급</th>
+                    <th className="px-2 py-2.5" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {payLines.map((l, i) => {
+                    const cell = (field: keyof PayrollLine) => (
+                      <td className="px-2 py-1.5 text-right">
+                        <input inputMode="numeric" value={(l[field] as number) ? won(l[field] as number) : ''}
+                          onChange={e => setCell(i, field, e.target.value)} placeholder="0"
+                          className="w-20 text-right tabular-nums font-bold border border-transparent hover:border-slate-200 focus:border-violet-300 rounded-lg px-1.5 py-1 outline-none" />
+                      </td>
+                    );
+                    return (
+                      <tr key={l.employeeId} className="hover:bg-slate-50/60">
+                        <td className="px-3 py-1.5 font-black text-slate-800 whitespace-nowrap">{l.employeeName}</td>
+                        <td className="px-3 py-1.5 text-slate-400 whitespace-nowrap">{l.department}</td>
+                        {cell('base')}{cell('overtime')}{cell('allowance')}
+                        <td className="px-2 py-1.5 text-right font-black tabular-nums text-slate-700 bg-slate-50">{won(payrollGross(l))}</td>
+                        {cell('incomeTax')}{cell('localTax')}{cell('pension')}{cell('health')}{cell('employment')}{cell('otherDeduct')}
+                        <td className="px-2 py-1.5 text-right font-black tabular-nums text-rose-500 bg-slate-50">{won(payrollDeduct(l))}</td>
+                        <td className="px-2 py-1.5 text-right font-black tabular-nums text-violet-700 bg-violet-50/60">{won(payrollNet(l))}</td>
+                        <td className="px-2 py-1.5">
+                          <button onClick={() => setPaySlipEmp(l)} title="급여명세서"
+                            className="text-slate-300 hover:text-violet-600 transition-colors"><Printer size={13} /></button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot className="bg-slate-100 border-t-2 border-slate-200">
+                  <tr>
+                    <td className="px-3 py-2.5 font-black text-slate-700" colSpan={2}>합계 {payLines.length}명</td>
+                    <td colSpan={3} />
+                    <td className="px-2 py-2.5 text-right font-black tabular-nums text-slate-800">{won(payTotals.gross)}</td>
+                    <td colSpan={6} />
+                    <td className="px-2 py-2.5 text-right font-black tabular-nums text-rose-600">{won(payTotals.deduct)}</td>
+                    <td className="px-2 py-2.5 text-right font-black tabular-nums text-violet-700">{won(payTotals.net)}</td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+            )}
+
+            <div className="p-4 space-y-2">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">전표 생성 시 분개</p>
+                <div className="text-xs font-bold text-slate-600 space-y-0.5 tabular-nums">
+                  <p>(차) 515 급여 <span className="text-slate-800">{won(payTotals.gross)}</span></p>
+                  <p className="pl-6">(대) 254 예수금 <span className="text-slate-800">{won(payTotals.deduct)}</span></p>
+                  <p className="pl-6">(대) 103 보통예금 <span className="text-slate-800">{won(payTotals.net)}</span></p>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-2">
+                  통장에서 나가는 건 실지급계뿐입니다. 공제분은 <b>예수금(부채)</b>으로 남았다가,
+                  다음 달 원천세·4대보험을 낼 때 <b>입출금 → 일반 → 254 예수금</b> 출금으로 털어야 사라집니다.
+                </p>
+              </div>
+              <p className="text-[11px] text-slate-400 px-1">
+                4대보험 요율은 해마다 바뀌므로 자동계산하지 않습니다 — <b>고지서 금액을 그대로 입력</b>하세요.
+                임금명세서 교부는 법적 의무이니, 줄 끝 인쇄 버튼으로 사원별 명세서를 뽑아 주세요.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* 급여명세서 — 사원 한 명분. 근로기준법상 교부 의무 항목(지급·공제 내역)을 담는다. */}
+      {paySlipEmp && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4" onClick={() => setPaySlipEmp(null)}>
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">급여명세서</p>
+                <h3 className="text-lg font-black text-slate-900">{paySlipEmp.employeeName}</h3>
+                <p className="text-[11px] font-bold text-slate-400">
+                  {paySlipEmp.department} {paySlipEmp.position} · {payYm} · 지급일 {payDate}
+                </p>
+              </div>
+              <button onClick={() => setPaySlipEmp(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="rounded-2xl border border-slate-200 p-3">
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-1.5">지급</p>
+                {([['기본급', paySlipEmp.base], ['연장수당', paySlipEmp.overtime], ['기타수당', paySlipEmp.allowance]] as const)
+                  .filter(([, v]) => v).map(([k, v]) => (
+                    <p key={k} className="flex justify-between font-bold text-slate-600 tabular-nums"><span>{k}</span><span>{won(v as number)}</span></p>
+                  ))}
+                <p className="flex justify-between font-black text-slate-800 tabular-nums border-t border-slate-100 mt-1.5 pt-1.5">
+                  <span>지급계</span><span>{won(payrollGross(paySlipEmp))}</span></p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 p-3">
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-1.5">공제</p>
+                {([['소득세', paySlipEmp.incomeTax], ['지방소득세', paySlipEmp.localTax], ['국민연금', paySlipEmp.pension],
+                   ['건강보험', paySlipEmp.health], ['고용보험', paySlipEmp.employment], ['기타', paySlipEmp.otherDeduct]] as const)
+                  .filter(([, v]) => v).map(([k, v]) => (
+                    <p key={k} className="flex justify-between font-bold text-slate-600 tabular-nums"><span>{k}</span><span>{won(v as number)}</span></p>
+                  ))}
+                <p className="flex justify-between font-black text-rose-600 tabular-nums border-t border-slate-100 mt-1.5 pt-1.5">
+                  <span>공제계</span><span>{won(payrollDeduct(paySlipEmp))}</span></p>
+              </div>
+            </div>
+            <div className="mt-3 rounded-2xl bg-violet-50 px-4 py-3 flex items-center justify-between">
+              <span className="text-xs font-black text-violet-700">실지급액</span>
+              <span className="text-lg font-black text-violet-700 tabular-nums">{won(payrollNet(paySlipEmp))}</span>
+            </div>
+            <button onClick={() => window.print()}
+              className="mt-4 w-full py-2.5 rounded-xl bg-slate-800 text-white text-xs font-black hover:bg-slate-900 transition-all">
+              인쇄
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Employee Add/Edit Modal */}
       {isModalOpen && (

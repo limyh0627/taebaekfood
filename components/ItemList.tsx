@@ -141,7 +141,6 @@ interface ItemListProps {
   rawMaterialLedger: RawMaterialEntry[];
   onRequestPurchaseInvoice?: (partnerId: string, partnerName: string, items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }>) => void;
   issuedStatements?: IssuedStatement[];
-  autoUsageEntries?: Array<{ material: string; date: string; used: number; note: string }>;
   onAddRawMaterialEntry: (entry: RawMaterialEntry) => void;
   onDeleteRawMaterialEntry: (id: string) => void;
   onLedgerChanged?: () => void;   // 원장 쓰기 후 상위(AdminApp) 재조회 트리거
@@ -215,7 +214,6 @@ const ItemList: React.FC<ItemListProps> = ({
   rawMaterialLedger,
   onRequestPurchaseInvoice,
   issuedStatements = [],
-  autoUsageEntries = [],
   onAddRawMaterialEntry,
   onLedgerChanged,
   onDeleteRawMaterialEntry,
@@ -261,7 +259,6 @@ const ItemList: React.FC<ItemListProps> = ({
 
   // ── 재고 마감(완제품 실물 카운트) ──
   const [closingCounts, setClosingCounts] = useState<Record<string, { boxes: string; loose: string }>>({});
-  const [showAllClosing, setShowAllClosing] = useState(false); // 재고 0 완제품도 보기(만들기용)
   const [editClosingId, setEditClosingId] = useState<string | null>(null); // 실사 수정 중인 품목
   const [editClosingQty, setEditClosingQty] = useState('');
   const [closingDate, setClosingDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -274,8 +271,10 @@ const ItemList: React.FC<ItemListProps> = ({
   const [closingPage, setClosingPage] = useState(0);
   // 재고 현황 모달 필터 — 구분(전체/작업완료/재고) + 분류(전체/참기름/들기름/가루)
   const [closingView, setClosingView] = useState<'all' | 'dispatched' | 'stock'>('all');
-  const [closingCat, setClosingCat] = useState<'all' | '참기름' | '들기름' | '기타'>('all');
-  const CLOSING_PAGE_SIZE = 8;
+  const [closingCatSel, setClosingCatSel] = useState<Set<string>>(new Set());   // 분류 — 여러 개
+  const [closingSpecSel, setClosingSpecSel] = useState<Set<string>>(new Set());   // 용량 — 여러 개
+  const [closingFilterOpen, setClosingFilterOpen] = useState(false);
+  const CLOSING_PAGE_SIZE = 30;   // 목록이 스크롤되므로 한 쪽에 넉넉히 담는다
 
   const boxSizeOf = (p: Item) => (p as any).defaultBoxConfig?.unitsPerBox || (p as any).boxSize || 12;
   // 전체 완제품(검색 대상)
@@ -283,6 +282,49 @@ const ItemList: React.FC<ItemListProps> = ({
     () => items.filter(p => !p.archived && normCat(p.category) === '완제품'),
     [items],
   );
+  // 용량 — 규격에서 숫자+단위만 뽑아 '350ml'처럼 맞춘다. 규격이 비면 이름에서 찾는다.
+  // 박스 규격은 '350ml (20개입)'처럼 뒤가 붙어 있어, 이렇게 해야 낱개와 같은 칸에 잡힌다.
+  const volOf = (p: Item) => {
+    const m = `${p.spec ?? ''} ${p.name}`.match(/([\d.]+)\s*(ml|L|kg|g)\b/i);
+    if (!m) return '';
+    const u = m[2].toLowerCase();
+    return `${m[1]}${u === 'l' ? 'L' : u}`;
+  };
+  const closingSpecOptions = useMemo(() => {
+    const rank = (s: string): [number, number] => {
+      const m = s.match(/([\d.]+)(ml|L|kg|g)/);
+      if (!m) return [2, 0];
+      const n = Number(m[1]);
+      return m[2] === 'ml' ? [0, n] : m[2] === 'L' ? [0, n * 1000] : m[2] === 'g' ? [1, n] : [1, n * 1000];
+    };
+    return [...new Set(allClosingItems.map(volOf).filter(Boolean))].sort((a, b) => {
+      const [ka, va] = rank(a); const [kb, vb] = rank(b);
+      return ka !== kb ? ka - kb : va - vb;
+    });
+  }, [allClosingItems]);
+  // 분류 — subtype이 기준. 비어 있는 몇 개만 이름으로 짐작한다(세트를 먼저 걸러야 '깨'에 안 걸린다).
+  const stockGroupOf = (p: Item) => p.subtype
+    || (p.name.includes('세트') ? '선물세트'
+      : p.name.includes('참기름') ? '참기름'
+      : p.name.includes('들기름') ? '들기름'
+      : p.name.includes('들깨') ? '들깨'
+      : (p.name.includes('고춧') || p.name.includes('고추')) ? '고춧가루'
+      : p.name.includes('깨') ? '참깨' : '기타');
+  const STOCK_GROUP_ORDER = ['참기름', '들기름', '참깨', '들깨', '고춧가루', '향미유', '선물세트', '기타'];
+  const stockGroupRank = (g?: string) => {
+    const i = STOCK_GROUP_ORDER.indexOf(g ?? '기타');
+    return i === -1 ? STOCK_GROUP_ORDER.length : i;   // 모르는 분류는 뒤로 — 기타로 합치지 않는다
+  };
+  // 실제로 쓰이는 분류만 목록에 올린다
+  const closingCatOptions = useMemo(
+    () => [...new Set(allClosingItems.map(stockGroupOf))]
+      .sort((a, b) => stockGroupRank(a) - stockGroupRank(b) || a.localeCompare(b)),
+    [allClosingItems],
+  );
+  const closingFilterCount = (closingView !== 'all' ? 1 : 0) + closingCatSel.size + closingSpecSel.size;
+  const clearClosingFilters = () => {
+    setClosingView('all'); setClosingCatSel(new Set()); setClosingSpecSel(new Set()); setClosingPage(0);
+  };
   // 저장/표시 대상: 재고 있는 것 + 사용자가 수량을 입력한 것 (재고 0은 기본 숨김, 검색으로 찾아 입력 가능)
   const closingItems = useMemo(
     () => allClosingItems.filter(p => (p.stock || 0) > 0 || !!(closingCounts[p.id]?.boxes || closingCounts[p.id]?.loose)),
@@ -298,9 +340,10 @@ const ItemList: React.FC<ItemListProps> = ({
     setClosingSavedAt('');
     setClosingSearch('');
     setClosingPage(0);
-    setShowAllClosing(false);
     setClosingView('all');
-    setClosingCat('all');
+    setClosingCatSel(new Set());
+    setClosingSpecSel(new Set());
+    setClosingFilterOpen(false);
     setEditClosingId(null);
     setEditClosingQty('');
     setClosingCounts({});
@@ -430,10 +473,15 @@ const ItemList: React.FC<ItemListProps> = ({
   // 입출고 기록 모달 — 원료명('전체'면 전 원료). null이면 닫힘. 로트 옆 버튼으로 연다.
   const [ledgerModalMaterial, setLedgerModalMaterial] = useState<string | null>(null);
   const [ledgerPeriod, setLedgerPeriod] = useState<string>('1m'); // 입출고 기록 기간: '1m'(최근 1개월)|'all'(전체)|'YYYY-MM'(월별)
-  const [activeCategory, setActiveCategory] = useState<string>('전체');
-  const [activeSupplierId, setActiveSupplierId] = useState<string>('전체');
-  const [showCategoryFilter, setShowCategoryFilter] = useState(false);
-  const [showSupplierFilter, setShowSupplierFilter] = useState(false);
+  // 분류·거래처는 여러 개 고를 수 있다(필터 패널). 비어 있으면 '제한 없음'.
+  const [catSel, setCatSel] = useState<Set<string>>(new Set());
+  const [supSel, setSupSel] = useState<Set<string>>(new Set());
+  const [specSel, setSpecSel] = useState<Set<string>>(new Set());
+  const [supQuery, setSupQuery] = useState('');   // 거래처는 수가 많아 나열 대신 검색으로 고른다
+  const [filterOpen, setFilterOpen] = useState(false);
+  /** Set 상태에서 값 하나를 켜고 끈다 */
+  const toggleIn = (setFn: React.Dispatch<React.SetStateAction<Set<string>>>, v: string) =>
+    setFn(prev => { const n = new Set(prev); if (n.has(v)) n.delete(v); else n.add(v); return n; });
 
   // 볶음참깨 규격별 재고 편집 상태: { [itemId]: { [variantKey]: number } }
   const [editingVariantStocks, setEditingVariantStocks] = useState<Record<string, Record<string, number>>>({});
@@ -474,8 +522,12 @@ const ItemList: React.FC<ItemListProps> = ({
   const productEditable = false;
   const [expandedClientRowId, setExpandedClientRowId] = useState<string | null>(null);
   const [activeSubtype, setActiveSubtype] = useState<string>('전체');   // 낱개/배송/선물세트
+
   const [stockOnly, setStockOnly] = useState(false);
   const [zeroStockOnly, setZeroStockOnly] = useState(false);
+  // 켜진 필터 개수 — 버튼 배지. 서브타입은 항상 보이는 단계라 여기 안 센다.
+  const activeFilterCount = catSel.size + supSel.size + specSel.size + (stockOnly || zeroStockOnly ? 1 : 0);
+  const clearFilters = () => { setCatSel(new Set()); setSupSel(new Set()); setSpecSel(new Set()); setSupQuery(''); setSpecSel(new Set()); setStockOnly(false); setZeroStockOnly(false); };
   const [priorityClientId] = useState<string | null>(null);
   // cart는 로컬 상태 (Firebase 쓰기는 확정 버튼 시에만)
   const [cart, setCart] = useState<{ id: string; qty: number; isBox: boolean }[]>([]);
@@ -594,7 +646,7 @@ const ItemList: React.FC<ItemListProps> = ({
   const [makeSearch, setMakeSearch] = useState('');
   const [makeBusy, setMakeBusy] = useState(false);
   const [makeCat, setMakeCat] = useState<string>('참기름');
-  const [makeVessel, setMakeVessel] = useState('');   // 품목추가 용기 필터(180/300/350/1750/1800)
+  const [makeVessel, setMakeVessel] = useState('');   // 품목추가 용량 필터(180/300/350/1750/1800)
   const [makeGrade, setMakeGrade] = useState('');     // 품목추가 등급 필터(골드/A/분/특A)
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 24;
@@ -640,6 +692,30 @@ const ItemList: React.FC<ItemListProps> = ({
     [taxo, tabTypeKey],
   );
   const subtypeTabs = useMemo(() => taxo.subtypesOf(tabTypeKey), [taxo, tabTypeKey]);
+  // 용량 — 지금 타입에 실제로 쓰이는 규격만 모은다. 다른 필터를 건드려도 목록은 그대로 두어야
+  // 하나 고른 순간 나머지 선택지가 사라지지 않는다. 부피(ml·L)를 먼저, 무게(g·kg)를 뒤에 둔다.
+  const specOptions = useMemo(() => {
+    const inTab = (p: Item) =>
+      topTab === 'finished' ? normCat(p.category) === '완제품'
+      : topTab === 'goods' ? ['상품', '향미유', '고춧가루'].includes(normCat(p.category) as string)
+      : topTab === 'wip' ? p.category === 'wip'
+      : topTab === 'rawmaterial' ? p.category === 'raw'
+      : p.category === 'submaterial' || ['label','cap','container','box','tape','용기','마개','테이프','박스','라벨'].includes(p.category as string);
+    const specs = new Set(items.filter(p => !p.archived && inTab(p)).map(p => (p.spec ?? '').trim()).filter(Boolean));
+    const rank = (s: string): [number, number] => {
+      const m = s.match(/([\d.]+)\s*(ml|l|리터|g|kg)/i);
+      if (!m) return [2, 0];
+      const n = Number(m[1]); const u = m[2].toLowerCase();
+      if (u === 'ml') return [0, n];
+      if (u === 'l' || u === '리터') return [0, n * 1000];
+      if (u === 'g') return [1, n];
+      return [1, n * 1000];
+    };
+    return [...specs].sort((a, b) => {
+      const [ka, va] = rank(a); const [kb, vb] = rank(b);
+      return ka !== kb ? ka - kb : va !== vb ? va - vb : a.localeCompare(b);
+    });
+  }, [items, topTab]);
 
   const filteredProducts = useMemo(() => {
     let result: Item[] = [];
@@ -666,14 +742,17 @@ const ItemList: React.FC<ItemListProps> = ({
       if (activeSubtype !== '전체') {
         result = result.filter(p => (p.subtype2 ?? '') === activeSubtype);
       }
-      if (activeCategory !== '전체') {
-        // 카테고리(=DB subtype) 우선 — 옛 데이터는 타입 자리에 '박스'/'라벨'이 들어있어 둘 다 본다
-        const hit = (p: Item) => (p.subtype ?? '') === activeCategory || normCat(p.category) === activeCategory;
-        if (activeCategory === '박스') result = result.filter(p => hit(p) || p.id.startsWith('GS-'));
-        else result = result.filter(hit);
+      if (specSel.size > 0) {
+        result = result.filter(p => specSel.has(p.spec ?? ''));
       }
-      if (activeSupplierId !== '전체') {
-        result = result.filter(p => psMap.get(p.id) === activeSupplierId);
+      if (supSel.size > 0) {
+        result = result.filter(p => supSel.has(psMap.get(p.id) ?? ''));
+      }
+      if (catSel.size > 0) {
+        // 분류(=DB subtype) 우선 — 옛 데이터는 타입 자리에 '박스'/'라벨'이 들어있어 둘 다 본다
+        const hit = (p: Item) => catSel.has(p.subtype ?? '') || catSel.has(normCat(p.category))
+          || (catSel.has('박스') && p.id.startsWith('GS-'));
+        result = result.filter(hit);
       }
     }
     if (searchTerm.trim()) {
@@ -705,7 +784,7 @@ const ItemList: React.FC<ItemListProps> = ({
       const bIdx = bCatIdx === -1 ? 99 : bCatIdx;
       return aIdx - bIdx;
     });
-  }, [items, activeTab, activeCategory, activeSubtype, activeSupplierId, searchTerm, orderRequests, confirmedOrders, inboundPartners, partners, topTab, stockOnly, zeroStockOnly]);
+  }, [items, activeTab, catSel, supSel, specSel, activeSubtype, searchTerm, orderRequests, confirmedOrders, inboundPartners, partners, topTab, stockOnly, zeroStockOnly]);
 
   // 완제품 탭: 박스 품목을 그 낱개 밑으로 묶는다 (unpackComponent 기준). row = { p, isChild, parentId?, boxCount }
   type GroupRow = { p: Item; isChild: boolean; parentId?: string; boxCount: number };
@@ -815,11 +894,11 @@ const ItemList: React.FC<ItemListProps> = ({
           <div className="flex items-center gap-3 flex-wrap">
             <div className="bg-slate-100/50 p-1 rounded-2xl flex items-center self-start border border-slate-200 max-w-full overflow-x-auto no-scrollbar">
               {([
-                { id: 'finished', label: '완제품', color: 'text-violet-600', icon: <Package size={13}/>, onClick: () => { setTopTab('finished'); setActiveCategory('전체'); setActiveSubtype('전체'); setActiveSupplierId('전체'); } },
-                { id: 'goods', label: '상품', color: 'text-orange-500', icon: <Box size={13}/>, onClick: () => { setTopTab('goods'); setActiveCategory('전체'); setActiveSubtype('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
-                { id: 'wip', label: '반제품', color: 'text-sky-600', icon: <Cylinder size={13}/>, onClick: () => { setTopTab('wip'); setActiveCategory('전체'); setActiveSubtype('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
-                { id: 'rawmaterial', label: '원료재고', color: 'text-emerald-600', icon: <Grape size={13}/>, onClick: () => { setTopTab('rawmaterial'); setActiveCategory('전체'); setActiveSubtype('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
-                { id: 'submaterial', label: '부자재', color: 'text-indigo-600', icon: <Box size={13}/>, onClick: () => { setTopTab('submaterial'); setActiveCategory('전체'); setActiveSubtype('전체'); setActiveSupplierId('전체'); setShowCategoryFilter(false); setShowSupplierFilter(false); } },
+                { id: 'finished', label: '완제품', color: 'text-violet-600', icon: <Package size={13}/>, onClick: () => { setTopTab('finished'); setCatSel(new Set()); setSupSel(new Set()); setSpecSel(new Set()); setActiveSubtype('전체'); } },
+                { id: 'goods', label: '상품', color: 'text-orange-500', icon: <Box size={13}/>, onClick: () => { setTopTab('goods'); setCatSel(new Set()); setSupSel(new Set()); setSpecSel(new Set()); setActiveSubtype('전체'); } },
+                { id: 'wip', label: '반제품', color: 'text-sky-600', icon: <Cylinder size={13}/>, onClick: () => { setTopTab('wip'); setCatSel(new Set()); setSupSel(new Set()); setSpecSel(new Set()); setActiveSubtype('전체'); } },
+                { id: 'rawmaterial', label: '원료재고', color: 'text-emerald-600', icon: <Grape size={13}/>, onClick: () => { setTopTab('rawmaterial'); setCatSel(new Set()); setSupSel(new Set()); setSpecSel(new Set()); setActiveSubtype('전체'); } },
+                { id: 'submaterial', label: '부자재', color: 'text-indigo-600', icon: <Box size={13}/>, onClick: () => { setTopTab('submaterial'); setCatSel(new Set()); setSupSel(new Set()); setSpecSel(new Set()); setActiveSubtype('전체'); } },
               ] as const).map(t => (
                 <button key={t.id} onClick={t.onClick}
                   className={`px-3 py-2 rounded-xl flex items-center gap-1 transition-all text-xs font-black whitespace-nowrap ${topTab === t.id ? `bg-white ${t.color} shadow-sm` : 'text-slate-400 hover:text-slate-600'}`}>
@@ -907,93 +986,168 @@ const ItemList: React.FC<ItemListProps> = ({
           </div>
         )}
 
-        {activeTab !== 'inbound' && activeTab !== 'lots' && (topTab === 'submaterial' || topTab === 'finished' || topTab === 'goods') && <div className="flex flex-col gap-2">
-          {/* 서브타입 — 낱개/배송/선물세트 (있는 타입에만) */}
-          {!zeroStockOnly && subtypeTabs.length > 0 && <div className="flex items-center gap-2 flex-wrap">
-            {['전체', ...subtypeTabs].map(s => {
-              const isActive = activeSubtype === s;
-              return (
-                <button key={s}
-                  onClick={() => setActiveSubtype(s)}
-                  className={`px-4 py-2 rounded-2xl border text-[11px] font-black transition-all ${isActive ? 'bg-white border-indigo-200 text-indigo-600 shadow-sm ring-2 ring-indigo-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
-                >{s}</button>
-              );
-            })}
-          </div>}
-          {/* 카테고리 — 참기름/들기름/라벨/용기… */}
-          {!zeroStockOnly && subCategories.length > 0 && <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={() => setShowCategoryFilter(p => !p)}
-              className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl border text-[11px] font-black transition-all ${showCategoryFilter ? 'bg-indigo-50 border-indigo-200 text-indigo-600 ring-2 ring-indigo-50' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
-            >
-              <LayoutGrid size={14} />
-              <span>품목별</span>
-            </button>
-            {showCategoryFilter && subCategories
-              .map(sub => {
-                const Icon = sub.icon;
-                const isActive = activeCategory === sub.id;
-                const count = categoryCounts[sub.id] || 0;
-                return (
-                  <button key={sub.id}
-                    onClick={() => setActiveCategory(isActive ? '전체' : sub.id)}
-                    className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl transition-all whitespace-nowrap border text-[11px] font-black uppercase relative ${isActive ? 'bg-white border-indigo-200 text-indigo-600 shadow-sm ring-2 ring-indigo-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
-                  >
-                    <Icon size={14} />
-                    <span>{sub.label}</span>
-                    {count > 0 && <span className="absolute -top-1 -right-1 bg-rose-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow-lg border border-white">{count}</span>}
-                  </button>
-                );
-              })}
-          </div>}
-          {/* 완제품 탭 전용 필터 */}
-          {topTab === 'finished' && (
-            <div className="flex items-center gap-2 flex-wrap">
-              {!zeroStockOnly && (
-                <button
-                  onClick={() => { setStockOnly(p => !p); setZeroStockOnly(false); }}
-                  className={`px-4 py-2 rounded-2xl border text-[11px] font-black transition-all flex items-center gap-1.5 ${stockOnly ? 'bg-emerald-50 border-emerald-200 text-emerald-600 ring-2 ring-emerald-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
-                >
-                  <span className={`w-3 h-3 rounded-full border-2 transition-colors ${stockOnly ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'}`} />
-                  재고있는 것만
-                </button>
-              )}
-              <div className="ml-2 h-5 w-px bg-slate-200" />
+        {/* ── 서브타입 — 타입을 누르면 그 아래로 펼쳐지는 단계. 항상 보이는 건 이것뿐이고,
+            나머지 조건(분류·거래처·재고)은 '필터' 버튼 안에서 골라 담는다. ── */}
+        {activeTab !== 'inbound' && activeTab !== 'lots' && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {subtypeTabs.length > 0 && (
+              <div className="flex items-center gap-1 bg-slate-100/70 p-1 rounded-xl border border-slate-200">
+                {['전체', ...subtypeTabs].map(s => (
+                  <button key={s} onClick={() => setActiveSubtype(s)}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${activeSubtype === s ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  >{s}</button>
+                ))}
+              </div>
+            )}
+
+            {/* 필터 버튼 — 켜진 개수를 배지로. 누르면 아래 패널이 열린다. */}
+            <div className="relative">
               <button
-                onClick={() => { setZeroStockOnly(p => !p); setStockOnly(false); }}
-                className={`px-4 py-2 rounded-2xl border text-[11px] font-black transition-all flex items-center gap-1.5 ${zeroStockOnly ? 'bg-rose-50 border-rose-200 text-rose-600 ring-2 ring-rose-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
+                onClick={() => setFilterOpen(o => !o)}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-[11px] font-black transition-all ${filterOpen || activeFilterCount > 0 ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
               >
-                <span className={`w-3 h-3 rounded-full border-2 transition-colors ${zeroStockOnly ? 'bg-rose-500 border-rose-500' : 'border-slate-300'}`} />
-                최소수량 미만만 보기
+                <LayoutGrid size={13} />필터
+                {activeFilterCount > 0 && (
+                  <span className="w-4 h-4 flex items-center justify-center rounded-full bg-indigo-600 text-white text-[9px]">{activeFilterCount}</span>
+                )}
               </button>
-              {zeroStockOnly && (
-                <span className="text-[11px] font-bold text-rose-500">{filteredProducts.length}개 부족</span>
+
+              {filterOpen && (
+                <>
+                  {/* 바깥을 눌러 닫기 */}
+                  <div className="fixed inset-0 z-30" onClick={() => setFilterOpen(false)} />
+                  <div className="absolute left-0 top-full mt-2 z-40 w-[22rem] max-w-[90vw] bg-white rounded-2xl border border-slate-200 shadow-xl p-3 space-y-3 max-h-[70vh] overflow-y-auto custom-scrollbar">
+                    {/* 분류 — 여러 개 고를 수 있다 */}
+                    {subCategories.length > 0 && (
+                      <div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">분류</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {subCategories.map(c => {
+                            const on = catSel.has(c.id);
+                            return (
+                              <button key={c.id} onClick={() => toggleIn(setCatSel, c.id)}
+                                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-all ${on ? 'bg-slate-700 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-400'}`}
+                              >{c.label}</button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 용량 — 같은 품목이 규격만 다르게 여럿이라 분류만으로는 못 좁힌다 */}
+                    {specOptions.length > 0 && (
+                      <div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">용량</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {specOptions.map(sp => {
+                            const on = specSel.has(sp);
+                            return (
+                              <button key={sp} onClick={() => toggleIn(setSpecSel, sp)}
+                                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-all tabular-nums ${on ? 'bg-sky-600 border-sky-600 text-white' : 'bg-white border-slate-200 text-slate-400 hover:border-sky-300'}`}
+                              >{sp}</button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 매입거래처 — 수가 많아 전부 늘어놓지 않고 검색해서 고른다.
+                        완제품은 우리가 만드는 것이라 매입처가 없다. */}
+                    {topTab !== 'finished' && inboundPartners.length > 0 && (
+                      <div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">매입거래처</p>
+                        {/* 고른 거래처는 위에 남겨 검색어를 지워도 안 사라지게 */}
+                        {supSel.size > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mb-1.5">
+                            {[...supSel].map(id => (
+                              <button key={id} onClick={() => toggleIn(setSupSel, id)}
+                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-orange-500 text-[11px] font-black text-white">
+                                {inboundPartnerMap.get(id)?.name ?? id}<X size={11} />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        <div className="relative">
+                          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300" />
+                          <input
+                            value={supQuery} onChange={e => setSupQuery(e.target.value)}
+                            placeholder="거래처 검색"
+                            className="w-full pl-8 pr-2 py-2 rounded-lg border border-slate-200 text-[11px] font-bold placeholder:text-slate-300 focus:outline-none focus:border-orange-300"
+                          />
+                        </div>
+                        {supQuery.trim() && (
+                          <div className="mt-1.5 max-h-40 overflow-y-auto custom-scrollbar rounded-lg border border-slate-100">
+                            {inboundPartners
+                              .filter(sp => sp.name.toLowerCase().includes(supQuery.trim().toLowerCase()))
+                              .slice(0, 30)
+                              .map(sp => (
+                                <button key={sp.id} onClick={() => { toggleIn(setSupSel, sp.id); setSupQuery(''); }}
+                                  className={`w-full text-left px-2.5 py-1.5 text-[11px] font-black transition-colors ${supSel.has(sp.id) ? 'text-orange-600 bg-orange-50' : 'text-slate-500 hover:bg-slate-50'}`}
+                                >{sp.name}</button>
+                              ))}
+                            {inboundPartners.every(sp => !sp.name.toLowerCase().includes(supQuery.trim().toLowerCase())) && (
+                              <p className="px-2.5 py-2 text-[11px] font-bold text-slate-300">해당 거래처 없음</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 재고 — 성격상 하나만 고른다 */}
+                    <div>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">재고</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {([
+                          { id: 'all', label: '전체', on: !stockOnly && !zeroStockOnly, cls: 'bg-slate-700 border-slate-700' },
+                          { id: 'has', label: '재고 있음', on: stockOnly, cls: 'bg-emerald-600 border-emerald-600' },
+                          { id: 'low', label: '최소수량 미만', on: zeroStockOnly, cls: 'bg-rose-600 border-rose-600' },
+                        ] as const).map(f => (
+                          <button key={f.id}
+                            onClick={() => { setStockOnly(f.id === 'has'); setZeroStockOnly(f.id === 'low'); }}
+                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-all ${f.on ? `${f.cls} text-white` : 'bg-white border-slate-200 text-slate-400 hover:border-slate-400'}`}
+                          >{f.label}</button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                      <span className="text-[10px] font-bold text-slate-400">{filteredProducts.length}개 표시 중</span>
+                      <button onClick={clearFilters} disabled={activeFilterCount === 0}
+                        className="px-3 py-1.5 rounded-lg text-[11px] font-black text-slate-500 hover:bg-slate-100 disabled:opacity-30 transition-colors"
+                      >모두 해제</button>
+                    </div>
+                  </div>
+                </>
               )}
             </div>
-          )}
-          {/* 거래처별 필터 - 완제품 탭 제외 */}
-          {!zeroStockOnly && topTab !== 'finished' && <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={() => setShowSupplierFilter(p => !p)}
-              className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl border text-[11px] font-black transition-all ${showSupplierFilter ? 'bg-orange-50 border-orange-200 text-orange-500 ring-2 ring-orange-50' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
-            >
-              <Building2 size={14} />
-              <span>거래처별</span>
-            </button>
-            {showSupplierFilter && inboundPartners.map(inboundPartner => {
-              const isActive = activeSupplierId === inboundPartner.id;
-              return (
-                <button key={inboundPartner.id}
-                  onClick={() => setActiveSupplierId(isActive ? '전체' : inboundPartner.id)}
-                  className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl transition-all whitespace-nowrap border text-[11px] font-black relative ${isActive ? 'bg-white border-orange-200 text-orange-500 shadow-sm ring-2 ring-orange-50' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'}`}
-                >
-                  <Building2 size={14} />
-                  <span>{inboundPartner.name}</span>
-                </button>
-              );
-            })}
-          </div>}
-        </div>}
+
+            {/* 켜진 필터를 칩으로 — 패널을 안 열어도 무엇이 걸렸는지 보이고, 눌러서 바로 뗀다 */}
+            {[...catSel].map(c => (
+              <button key={`c-${c}`} onClick={() => toggleIn(setCatSel, c)}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 text-[11px] font-black text-slate-600 hover:bg-slate-200 transition-colors">
+                {c}<X size={11} />
+              </button>
+            ))}
+            {[...specSel].map(sp => (
+              <button key={`v-${sp}`} onClick={() => toggleIn(setSpecSel, sp)}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-sky-50 text-[11px] font-black text-sky-600 hover:bg-sky-100 transition-colors tabular-nums">
+                {sp}<X size={11} />
+              </button>
+            ))}
+            {[...supSel].map(id => (
+              <button key={`s-${id}`} onClick={() => toggleIn(setSupSel, id)}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-orange-50 text-[11px] font-black text-orange-600 hover:bg-orange-100 transition-colors">
+                {inboundPartners.find(p => p.id === id)?.name ?? id}<X size={11} />
+              </button>
+            ))}
+            {(stockOnly || zeroStockOnly) && (
+              <button onClick={() => { setStockOnly(false); setZeroStockOnly(false); }}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-black transition-colors ${zeroStockOnly ? 'bg-rose-50 text-rose-600 hover:bg-rose-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}>
+                {zeroStockOnly ? `최소수량 미만 ${filteredProducts.length}개` : '재고 있음'}<X size={11} />
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 입고처리 오버레이 */}
@@ -1513,17 +1667,21 @@ const ItemList: React.FC<ItemListProps> = ({
                       </td>
                       <td className="px-4 py-3">
                         <div className={`flex items-center gap-2 ${isChild ? 'pl-5' : ''}`}>
+                          {isChild && <span className="text-indigo-300 text-xs shrink-0">↳</span>}
+                          <span className={`font-bold ${isChild ? 'text-[13px] text-slate-500' : 'text-sm text-slate-800'}`}>{withSpec(product)}</span>
+                          {/* '박스'는 박스 품목 줄에 단다 — 낱개 줄에 붙어 있으면 그 줄이 박스인 줄 안다 */}
+                          {isChild && <span className="text-[9px] font-black text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-full shrink-0">박스</span>}
+                          {isCritical && <AlertCircle size={12} className="text-rose-500 shrink-0" />}
+                          {/* 묶음 펼치기 — 왼쪽 화살표는 이름에 묻혀 안 보여서 오른쪽 끝에 버튼으로 세운다 */}
                           {boxCount > 0 && (
                             <button
                               onClick={(e) => { e.stopPropagation(); setCollapsedParents(prev => { const n = new Set(prev); n.has(product.id) ? n.delete(product.id) : n.add(product.id); return n; }); }}
-                              className="shrink-0 text-slate-400 hover:text-indigo-600" title="박스 규격 접기/펼치기">
+                              className="ml-auto shrink-0 flex items-center gap-1 pl-2 pr-1.5 py-1 rounded-lg border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 transition-colors"
+                              title="박스 규격 접기/펼치기">
+                              <span className="text-[10px] font-black tabular-nums">박스 {boxCount}</span>
                               <ChevronRight size={14} className={`transition-transform ${collapsedParents.has(product.id) ? '' : 'rotate-90'}`} />
                             </button>
                           )}
-                          {isChild && <span className="text-indigo-300 text-xs shrink-0">↳</span>}
-                          <span className={`font-bold ${isChild ? 'text-[13px] text-slate-500' : 'text-sm text-slate-800'}`}>{withSpec(product)}</span>
-                          {boxCount > 0 && <span className="text-[9px] font-black text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded-full shrink-0">박스 {boxCount}</span>}
-                          {isCritical && <AlertCircle size={12} className="text-rose-500 shrink-0" />}
                         </div>
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell">
@@ -1534,13 +1692,17 @@ const ItemList: React.FC<ItemListProps> = ({
                           </div>
                         ) : <span className="text-[10px] text-slate-200">-</span>}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      {/* 재고 — 숫자는 폭 고정 칸에 오른쪽 정렬해 세로로 줄을 맞추고,
+                          단위는 그 옆 자기 칸으로 밀어낸다(숫자 자릿수가 달라도 안 흔들린다). */}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
                         {derivedCans != null ? (
                           // 원료에서 파생된 캔 수 (읽기전용) — 입고/사용에 자동 연동
                           <div className="flex flex-col items-end leading-tight" onClick={e => e.stopPropagation()}
                             title={`원료 ${Math.round(derivedRawKg! * 10) / 10}kg ÷ ${canPackageKg}kg = ${Math.round(derivedCans * 10) / 10}캔`}>
-                            <span className={`text-base font-black ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}>
-                              {Math.floor(derivedCans)}<span className="text-[10px] text-slate-400 ml-0.5">{product.unit || '개'}</span>
+                            <span className="flex items-center">
+                              <span className={`w-14 text-right text-base font-black tabular-nums ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}>{Math.floor(derivedCans)}</span>
+                              <span className="w-7 text-left text-[10px] text-slate-400 ml-0.5">{product.unit || '개'}</span>
                             </span>
                             <span className="text-[9px] font-bold text-emerald-500">원료 {Math.round(derivedRawKg! * 10) / 10}kg ≈ {Math.round(derivedCans * 10) / 10}캔</span>
                           </div>
@@ -1568,24 +1730,25 @@ const ItemList: React.FC<ItemListProps> = ({
                         ) : (
                           <button
                             onClick={e => { e.stopPropagation(); setEditingStockId(product.id); setEditingStockVal(String(product.subtype === '향미유' ? Math.floor(product.stock / 12) : displayStock)); }}
-                            className={`text-base font-black hover:underline hover:text-indigo-600 transition-colors cursor-pointer ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}
+                            className={`w-14 text-right text-base font-black tabular-nums hover:underline hover:text-indigo-600 transition-colors cursor-pointer ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}
                             title="클릭하여 수량 수정"
                           >
                             {product.subtype === '향미유' ? fmtHamiyou(product.stock) : displayStock}
                           </button>
                         )}
                         {derivedCans == null && editingStockId !== product.id && (
-                          <span className="text-[10px] text-slate-400 ml-1">
+                          <span className="w-7 shrink-0 text-left text-[10px] text-slate-400">
                             {product.category !== '향미유' && product.unit}
                           </span>
                         )}
                         {product.unpackTo && editingStockId !== product.id && (
                           <button
                             onClick={e => { e.stopPropagation(); unpackBox(product); }}
-                            className="ml-1.5 text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100 transition-colors align-middle"
+                            className="shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100 transition-colors"
                             title={`1박스 개봉 → 낱개 +${product.unpackTo.count}`}
                           >개봉 +{product.unpackTo.count}</button>
                         )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-right hidden sm:table-cell">
                         {product.category !== '완제품'
@@ -1936,10 +2099,6 @@ const ItemList: React.FC<ItemListProps> = ({
                   </div>
                   <div className="divide-y divide-slate-50">
                     {cart
-                      .filter(item => {
-                        if (activeSupplierId === '전체') return true;
-                        return psMap.get(item.id) === activeSupplierId;
-                      })
                       .map(item => {
                       const product = productMap.get(item.id);
                       if (!product) return null;
@@ -2090,10 +2249,6 @@ const ItemList: React.FC<ItemListProps> = ({
                     {/* 전표 기반 입고확인 제거됨 — 매입전표는 발주카드만 생성하고, 재고 반영은 발주카드 '입고확정'(lot)으로 처리 */}
                     {/* 전표 없는 수동 입고 대기 */}
                     {confirmedWithoutStatement
-                      .filter(conf => {
-                        if (activeSupplierId === '전체') return true;
-                        return psMap.get(conf.id) === activeSupplierId;
-                      })
                       .map(conf => {
                         const product = productMap.get(conf.id);
                         if (!product) return null;
@@ -2332,30 +2487,34 @@ const ItemList: React.FC<ItemListProps> = ({
         const picked = Object.entries(makeQty).filter(([, v]) => (parseFloat(v) || 0) > 0);
         const kw = makeSearch.trim();
 
-        // 원료·부자재는 제외 — 만드는 게 아니라 사오는 것, 입고/실사조정으로만 움직인다
-        const base = items.filter(p => !p.archived && !p.phantom && !isRawHolder(p) && !isSubmaterial(p.category));
-        // 분류 — 완제품은 subtype이 없고 이름/품목키로 갈리므로 품명 기준으로 묶는다
-        const nameOf = (p: Item) => `${p.품목 ?? ''} ${p.name}`;
-        const inCat = (p: Item, c: string): boolean => {
-          const s = nameOf(p);
-          if (c === '참기름') return /참기름/.test(s);
-          if (c === '들기름') return /들기름/.test(s);
-          return !/참기름/.test(s) && !/들기름/.test(s);   // 기타 — 참기름·들기름 외 전부(참깨·들깨·선물세트 등)
-        };
-        // 용기(180/300/350/1750/1800) — 품목설정의 용량(spec)을 우선 참고. spec은 "1750ml"처럼 정규화돼
-        //   있어 이름("1.75ML")보다 신뢰도 높고, BOM/부자재가 비어 있어도 안전. spec 없으면 이름 ml로 폴백.
+        // 완제품만 — 여기서 만드는 건 완제품뿐이다. 상품·반제품은 사오거나 다른 화면에서 움직인다.
+        const base = items.filter(p => !p.archived && !p.phantom && normCat(p.category) === '완제품');
+        // 분류 — 재고 현황과 같은 기준(stockGroupOf). 참깨·들깨·선물세트를 기타로 퉁치지 않는다.
+        // 용량 — 품목설정의 규격(spec)을 우선 참고. spec은 "1750ml"처럼 정규화돼 있어
+        //   이름("1.75ML")보다 믿을 만하고, BOM/부자재가 비어 있어도 안전. spec 없으면 이름으로 폴백.
+        //   기름은 ml, 깨·가루는 g·kg이라 셋 다 잡는다. kg을 g보다 먼저 봐야 "1kg"이 "1g"으로 안 잡힌다.
         const vesselKey = (p: Item): string | null => {
-          const src = `${p.spec ?? ''}`;
-          let m = src.match(/(\d+(?:\.\d+)?)\s*ml/i);
-          if (m) return String(Math.round(parseFloat(m[1])));         // "1500ml" → "1500"
-          m = src.match(/(\d+(?:\.\d+)?)\s*l(?![a-z])/i);
-          if (m) return String(Math.round(parseFloat(m[1]) * 1000));  // "1.75L" → "1750"
-          m = src.match(/(\d+(?:\.\d+)?)\s*kg/i);
-          if (m) return `${parseFloat(m[1])}kg`;                      // "16.5kg" → "16.5kg" (캔)
-          m = `${p.name}`.match(/(\d+(?:\.\d+)?)\s*ml/i);
-          return m ? String(Math.round(parseFloat(m[1]))) : null;
+          const grab = (src: string): string | null => {
+            let m = src.match(/(\d+(?:\.\d+)?)\s*ml/i);
+            if (m) return `${Math.round(parseFloat(m[1]))}ml`;             // "1500ml" → "1500ml"
+            m = src.match(/(\d+(?:\.\d+)?)\s*l(?![a-z])/i);
+            if (m) return `${Math.round(parseFloat(m[1]) * 1000)}ml`;      // "1.75L" → "1750ml"
+            m = src.match(/(\d+(?:\.\d+)?)\s*kg/i);
+            if (m) return `${parseFloat(m[1])}kg`;                         // "16.5kg" → "16.5kg"
+            m = src.match(/(\d+(?:\.\d+)?)\s*g(?![a-z])/i);
+            if (m) return `${parseFloat(m[1])}g`;                          // "500g" → "500g"
+            return null;
+          };
+          return grab(`${p.spec ?? ''}`) ?? grab(`${p.name}`);
         };
         const matchVessel = (p: Item, size: string): boolean => vesselKey(p) === size;
+        // 정렬 — 부피(ml)를 앞, 무게(g·kg)를 뒤에 두고 각각 작은 것부터
+        const vesselRank = (k: string): [number, number] => {
+          const m = k.match(/^([\d.]+)(ml|kg|g)$/);
+          if (!m) return [2, 0];
+          const n = parseFloat(m[1]);
+          return m[2] === 'ml' ? [0, n] : m[2] === 'g' ? [1, n] : [1, n * 1000];
+        };
         // 등급(골드/A/분/특A) — 이름의 '/'·괄호 구분 토큰 기준. A는 정확히 'A' 토큰만(골드A·특A는 제외),
         //   골드/분/특A는 토큰 부분포함(특골드·골드A는 골드로, 특A는 특A로 잡힘).
         const matchGrade = (p: Item, g: string): boolean => {
@@ -2364,9 +2523,11 @@ const ItemList: React.FC<ItemListProps> = ({
           return (g === 'A' || g === '특') ? toks.some(t => t === g) : toks.some(t => t.includes(g));
         };
         // 실제 품목이 있는 분류만 탭으로 (빈 탭 안 만듦)
-        const MAKE_CATS = ['참기름', '들기름', '기타']
-          .map(c => ({ c, n: base.filter(p => inCat(p, c)).length }))
-          .filter(x => x.n > 0);
+        const makeCounts = new Map<string, number>();
+        for (const p of base) { const g = stockGroupOf(p); makeCounts.set(g, (makeCounts.get(g) ?? 0) + 1); }
+        const MAKE_CATS = [...makeCounts.entries()]
+          .map(([c, n]) => ({ c, n }))
+          .sort((a, b) => stockGroupRank(a.c) - stockGroupRank(b.c) || a.c.localeCompare(b.c));
         // 없어진 분류가 골라져 있으면 첫 탭으로
         const cat = MAKE_CATS.some(x => x.c === makeCat) ? makeCat : (MAKE_CATS[0]?.c ?? '');
 
@@ -2378,13 +2539,17 @@ const ItemList: React.FC<ItemListProps> = ({
             matchesSearch(withSpec(p), t) || matchesSearch(p.품목 ?? '', t) || matchesSearch(partnerStr, t));
         };
         // 순서는 건드리지 않는다 — 수량 넣었다고 목록이 움직이면 이어서 못 적는다.
-        // 검색 중이면 분류·용기·등급을 무시하고 전체에서 찾는다(거래처 검색 시 다른 탭 품목도 나오게).
-        const showSub = cat === '참기름' || cat === '들기름';   // 용기·등급 필터는 기름류에서만
-        const listedItems = makeTokens.length > 0
-          ? base.filter(matchMake)
-          : base.filter(p => inCat(p, cat)
-              && (!showSub || !makeVessel || matchVessel(p, makeVessel))
-              && (!showSub || !makeGrade || matchGrade(p, makeGrade)));
+        // 검색 중엔 분류 탭만 무시한다(거래처로 찾으면 다른 분류 품목도 나와야 한다).
+        // 용량·등급은 검색 중에도 그대로 살려 둔다 — 검색하면 사라져 버려 다시 좁힐 수가 없었다.
+        const searching = makeTokens.length > 0;
+        const pool = searching ? base.filter(matchMake) : base.filter(p => stockGroupOf(p) === cat);
+        // 용량 칸은 지금 보이는 품목에서 뽑는다 — 기름은 ml, 깨·가루는 g·kg이 그대로 나온다
+        const vesselOpts = [...new Set(pool.map(vesselKey).filter((k): k is string => !!k))]
+          .sort((a, b) => { const [ka, va] = vesselRank(a), [kb, vb] = vesselRank(b); return ka !== kb ? ka - kb : va - vb; });
+        const vessel = vesselOpts.includes(makeVessel) ? makeVessel : '';   // 탭 옮겨 없어진 용량은 무시
+        const showGrade = searching || cat === '참기름' || cat === '들기름';   // 등급은 기름류·검색 중에만
+        const listedItems = pool.filter(p =>
+          (!vessel || matchVessel(p, vessel)) && (!showGrade || !makeGrade || matchGrade(p, makeGrade)));
         // 낱개 밑에 박스 묶어서 표시 (수량과 무관한 고정 정렬이라 입력 중에도 안 움직임)
         const listed = groupLooseBoxRows(listedItems);
 
@@ -2431,20 +2596,24 @@ const ItemList: React.FC<ItemListProps> = ({
                 ))}
               </div>
 
-              {/* 용기·등급 필터 — 참기름·들기름에서만 (검색 중엔 숨김). 가로 스크롤 한 줄로 모바일 정리 */}
-              {showSub && makeTokens.length === 0 && (
+              {/* 용량·등급 필터 — 가로 스크롤 한 줄로 모바일 정리 */}
+              {(vesselOpts.length > 1 || showGrade) && (
                 <div className="px-5 pt-2 space-y-1 shrink-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-7 shrink-0 text-[10px] font-black text-slate-400">용기</span>
-                    <div className="flex gap-1 overflow-x-auto no-scrollbar">
-                      {['', '180', '300', '350', '1500', '1750', '1800'].map(v => (
-                        <button key={v || 'all'} onClick={() => setMakeVessel(v)}
-                          className={`shrink-0 px-2.5 py-1 rounded-lg border text-[11px] font-black transition-all ${makeVessel === v ? 'bg-slate-800 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}>
-                          {v === '' ? '전체' : v}
-                        </button>
-                      ))}
+                  {/* 용량 — 지금 보이는 품목에서 뽑는다. 깨·가루 탭이면 g·kg이 그대로 뜬다. */}
+                  {vesselOpts.length > 1 && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-7 shrink-0 text-[10px] font-black text-slate-400">용량</span>
+                      <div className="flex gap-1 overflow-x-auto no-scrollbar">
+                        {['', ...vesselOpts].map(v => (
+                          <button key={v || 'all'} onClick={() => setMakeVessel(v)}
+                            className={`shrink-0 px-2.5 py-1 rounded-lg border text-[11px] font-black tabular-nums transition-all ${vessel === v ? 'bg-slate-800 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}>
+                            {v === '' ? '전체' : v}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
+                  {showGrade && (
                   <div className="flex items-center gap-1.5">
                     <span className="w-7 shrink-0 text-[10px] font-black text-slate-400">등급</span>
                     <div className="flex gap-1 overflow-x-auto no-scrollbar">
@@ -2456,6 +2625,7 @@ const ItemList: React.FC<ItemListProps> = ({
                       ))}
                     </div>
                   </div>
+                  )}
                 </div>
               )}
 
@@ -2482,23 +2652,40 @@ const ItemList: React.FC<ItemListProps> = ({
                   const low = p.minStock > 0 && cur < p.minStock;
                   // 이 품목에 들어가는 부자재 — 재고를 같이 보여준다
                   const subs = p.submaterials ?? [];
+                  const uc = unpackComponent(p);          // 박스면 { itemId, count }
                   return (
-                    <div key={p.id} className={`px-5 py-3 ${add > 0 ? 'bg-indigo-50/40' : isChild ? 'bg-slate-50/40' : ''} ${isChild ? 'pl-9' : ''}`}>
-                      <div className="flex items-center gap-3">
+                    <div key={p.id} className={`px-3 sm:px-5 py-3 ${add > 0 ? 'bg-indigo-50/40' : isChild ? 'bg-slate-50/40' : ''} ${isChild ? 'pl-6 sm:pl-9' : ''}`}>
+                      <div className="flex items-center gap-2 sm:gap-3">
                         <div className="flex-1 min-w-0">
-                          <p className={`text-sm truncate ${isChild ? 'font-bold text-slate-500' : 'font-black text-slate-800'}`}>{isChild && <span className="text-slate-300 mr-1">└</span>}{withSpec(p)}</p>
-                          <p className="text-[10px] font-bold">
-                            <span className={low ? 'text-rose-500' : 'text-slate-400'}>
-                              현재 {cur.toLocaleString()} {p.unit || ''}
-                            </span>
-                            {low && <span className="text-rose-400"> · 최소 {p.minStock}</span>}
-                            {add > 0 && <span className="text-indigo-600 font-black"> → {(cur + add).toLocaleString()}</span>}
+                          {/* 모바일에서 품목명이 잘리면 규격을 못 읽는다 — 자르지 말고 줄을 넘긴다 */}
+                          <p className={`text-sm break-keep leading-snug ${isChild ? 'font-bold text-slate-500' : 'font-black text-slate-800'}`}>
+                            {isChild && <span className="text-slate-300 mr-1">└</span>}{withSpec(p)}
+                            {/* 박스 품목 — 낱개와 숫자 의미가 다르니 못 박아 둔다 */}
+                            {uc && (
+                              <span className="ml-1.5 align-middle text-[9px] font-black text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">박스</span>
+                            )}
+                          </p>
+                          {(low || add > 0) && (
+                            <p className="text-[10px] font-bold">
+                              {low && <span className="text-rose-400">최소 {p.minStock}</span>}
+                              {add > 0 && <span className="text-indigo-600 font-black">{low ? ' · ' : ''}→ {(cur + add).toLocaleString()}</span>}
+                            </p>
+                          )}
+                        </div>
+                        {/* 현재 재고 — 작아서 안 보인다길래 숫자를 키워 오른쪽에 세운다 */}
+                        <div className="shrink-0 text-right leading-none">
+                          <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">현재</p>
+                          <p className="flex items-center text-base font-black tabular-nums">
+                            {/* 흐리게 하는 건 0뿐 — 라벨·단위는 진하게 둔다.
+                                숫자는 폭 고정 칸에 오른쪽 정렬, 단위는 옆 칸으로 밀어낸다. */}
+                            <span className={`w-12 text-right ${low ? 'text-rose-500' : cur > 0 ? 'text-slate-800' : 'text-slate-300'}`}>{cur.toLocaleString()}</span>
+                            <span className="w-8 text-left text-[10px] font-black text-slate-500 ml-0.5">{uc ? '박스' : (p.unit || '개')}</span>
                           </p>
                         </div>
                         <input
                           inputMode="decimal" value={v} placeholder="0"
                           onChange={e => setMakeQty(q => ({ ...q, [p.id]: e.target.value.replace(/[^\d.]/g, '') }))}
-                          className={`w-24 shrink-0 border rounded-xl px-3 py-2 text-right text-sm font-black tabular-nums outline-none focus:ring-2 focus:ring-indigo-400 ${add > 0 ? 'border-indigo-300 bg-white' : 'border-slate-200'}`}
+                          className={`w-16 sm:w-24 shrink-0 border rounded-xl px-2 sm:px-3 py-2 text-right text-sm font-black tabular-nums outline-none focus:ring-2 focus:ring-indigo-400 ${add > 0 ? 'border-indigo-300 bg-white' : 'border-slate-200'}`}
                         />
                       </div>
                       {/* 부자재 — 현재 재고 표시 */}
@@ -2915,12 +3102,12 @@ const ItemList: React.FC<ItemListProps> = ({
       const src = viewingClosing;
       const displayDate = src ? src.date : closingDate;
       // 그리드 행: 조회면 저장값, 신규면 완제품 목록(입력)
-      type GridRow = { itemId: string; label: string; boxes: string; loose: string; editable: boolean; isChild?: boolean };
+      type GridRow = { itemId: string; label: string; boxes: string; loose: string; editable: boolean; isChild?: boolean; group?: string };
       const toRows = (arr: Item[]): GridRow[] => arr.map(p => ({ itemId: p.id, label: withSpec(p), boxes: closingCounts[p.id]?.boxes ?? '', loose: closingCounts[p.id]?.loose ?? '', editable: true }));
       // 저장·보드·합계 대상 = 재고있는+입력한 완제품 (조회모드면 저장된 항목)
       const rowsForGrid: GridRow[] = src
         ? src.items.map(r => ({ itemId: r.itemId, label: (r.spec && !hasVolumeInName(r.name)) ? `${r.name}${r.spec}` : r.name, boxes: r.boxes ? String(r.boxes) : '', loose: r.loose ? String(r.loose) : '', editable: false }))
-        : toRows(showAllClosing ? allClosingItems : closingItems);
+        : toRows(closingItems);
       const totalStock = src ? src.totalStock : closingItems.reduce((s, p) => s + closingTotalOf(p.id), 0);
       // 3열 그리드
       const cols: GridRow[][] = [[], [], []];
@@ -2935,19 +3122,26 @@ const ItemList: React.FC<ItemListProps> = ({
         const hay = `${withSpec(p)} ${p.품목 ?? ''} ${salesPartnerNames.get(p.id) ?? ''}`;
         return tokens.every(t => matchesSearch(hay, t));
       };
-      // 분류 필터(참기름/들기름/기타) — 이름 기준. 기타 = 참기름·들기름이 아닌 나머지 전부(볶음참깨·가루류 등).
-      const catMatch = (p: Item) => {
-        if (closingCat === 'all') return true;
-        if (closingCat === '참기름') return p.name.includes('참기름');
-        if (closingCat === '들기름') return p.name.includes('들기름');
-        return !p.name.includes('참기름') && !p.name.includes('들기름');
-      };
+      // 분류 필터 — 목록 머리와 같은 기준(stockGroupOf)이라 고른 분류가 그 띠 그대로다
+      const catMatch = (p: Item) => closingCatSel.size === 0 || closingCatSel.has(stockGroupOf(p));
       const dispatchedOf = (id: string) => dispatchedQtyByItem[id] ?? 0;
-      const baseClosingItems = (term ? allClosingItems.filter(matchClosing) : (showAllClosing ? allClosingItems : closingItems)).filter(catMatch);
+      // 용량 필터 — 낱개·박스가 같은 칸에 잡히도록 volOf로 맞춰 본다.
+      const specMatch = (p: Item) => closingSpecSel.size === 0 || closingSpecSel.has(volOf(p));
+      const baseClosingItems = (term ? allClosingItems.filter(matchClosing) : closingItems)
+        .filter(catMatch).filter(specMatch);
       let listRows: GridRow[] = src
         ? rowsForGrid
-        : groupLooseBoxRows(baseClosingItems)
-            .map(({ p, isChild }) => ({ itemId: p.id, label: withSpec(p), boxes: closingCounts[p.id]?.boxes ?? '', loose: closingCounts[p.id]?.loose ?? '', editable: true, isChild }));
+        : (() => {
+            // 분류로 묶는다 — 필터와 같은 stockGroupOf를 쓴다.
+            // 박스는 자기 분류가 아니라 **낱개(부모)의 분류**를 따라간다(짝이 떨어지면 안 된다).
+            let lastGroup = '기타';
+            const rows: GridRow[] = groupLooseBoxRows(baseClosingItems).map(({ p, isChild }) => {
+              if (!isChild) lastGroup = stockGroupOf(p);
+              return { itemId: p.id, label: withSpec(p), boxes: closingCounts[p.id]?.boxes ?? '', loose: closingCounts[p.id]?.loose ?? '', editable: true, isChild, group: lastGroup };
+            });
+            return rows.sort((a, b) => stockGroupRank(a.group) - stockGroupRank(b.group)
+              || (a.group ?? '').localeCompare(b.group ?? ''));   // 정렬은 안정적 — 낱개·박스 순서 유지
+          })();
       // 구분=작업완료: 작업완료분이 있는 품목만 남긴다.
       if (!src && closingView === 'dispatched') listRows = listRows.filter(r => dispatchedOf(r.itemId) > 0);
       // 구분=재고: 현재고 > 작업완료분(남은 재고>0)인 품목만. 작업완료로 다 빠진 품목은 목록에서 제거.
@@ -2970,60 +3164,125 @@ const ItemList: React.FC<ItemListProps> = ({
 
             {/* ── 본문(스크롤) ── */}
             <div className="flex-1 overflow-y-auto px-4 pt-3 pb-4">
-              {/* 검색 + 전체 완제품 토글 (재고 0짜리도 만들기 하려면 켠다) */}
-              <div className="flex items-center gap-2 mb-2.5">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
-                  <input value={closingSearch} onChange={e => { setClosingSearch(e.target.value); setClosingPage(0); }} placeholder="품목·거래처 검색 (+로 여러개, 예: 참기름+1800)"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-9 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-300" />
-                  {closingSearch && (
-                    <button onClick={() => { setClosingSearch(''); setClosingPage(0); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"><X size={15} /></button>
-                  )}
-                </div>
-                <button onClick={() => { setShowAllClosing(v => !v); setClosingPage(0); }}
-                  className={`shrink-0 px-3 py-2.5 rounded-xl text-xs font-black border transition-all ${showAllClosing ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'}`}
-                  title="재고 0인 완제품까지 다 보기 (만들기용)">
-                  0포함
-                </button>
+              {/* 검색 — 재고 0인 품목은 검색으로 찾거나 '품목 추가하기'로 만든다 */}
+              <div className="relative mb-2.5">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+                <input value={closingSearch} onChange={e => { setClosingSearch(e.target.value); setClosingPage(0); }} placeholder="품목·거래처 검색 (+로 여러개, 예: 참기름+1800)"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-9 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-300" />
+                {closingSearch && (
+                  <button onClick={() => { setClosingSearch(''); setClosingPage(0); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"><X size={15} /></button>
+                )}
               </div>
 
-              {/* 구분 필터 — 전체(현재고) / 작업완료(미출고 생산분) / 재고(작업완료 제외) */}
+              {/* 필터 — 구분·분류·용량을 버튼 하나에 담는다. 거래처는 위 검색창이 이미 훑으므로 여기 없다.
+                  '품목 추가하기'도 같은 크기로 옆에 둔다. */}
               {!src && (
-                <div className="flex items-center gap-1.5 mb-2">
-                  <span className="shrink-0 w-8 text-[10px] font-black text-slate-400">구분</span>
-                  {([['all', '전체'], ['dispatched', '작업완료'], ['stock', '재고']] as const).map(([v, label]) => (
-                    <button key={v} onClick={() => { setClosingView(v); setClosingPage(0); }}
-                      className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-black border transition-all ${closingView === v ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}>
-                      {label}
+                <div className="flex items-center gap-2 flex-wrap mb-2.5">
+                  <div className="relative">
+                    <button onClick={() => setClosingFilterOpen(o => !o)}
+                      className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-black transition-all ${closingFilterOpen || closingFilterCount > 0 ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}>
+                      <LayoutGrid size={13} />필터
+                      {closingFilterCount > 0 && (
+                        <span className="w-4 h-4 flex items-center justify-center rounded-full bg-indigo-600 text-white text-[9px]">{closingFilterCount}</span>
+                      )}
+                    </button>
+
+                    {closingFilterOpen && (
+                      <>
+                        <div className="fixed inset-0 z-30" onClick={() => setClosingFilterOpen(false)} />
+                        <div className="absolute left-0 top-full mt-2 z-40 w-[20rem] max-w-[88vw] bg-white rounded-2xl border border-slate-200 shadow-xl p-3 space-y-3 max-h-[55vh] overflow-y-auto custom-scrollbar">
+                          {/* 구분 — 현재고를 작업완료(미출고)와 순재고로 쪼개 본다 */}
+                          <div>
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">구분</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {([['all', '전체'], ['dispatched', '작업완료'], ['stock', '재고']] as const).map(([v, label]) => (
+                                <button key={v} onClick={() => { setClosingView(v); setClosingPage(0); }}
+                                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-all ${closingView === v ? 'bg-slate-800 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-400'}`}>
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* 분류 — 실제로 있는 분류를 그대로 늘어놓는다. 여러 개 고를 수 있다. */}
+                          <div>
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">분류</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {closingCatOptions.map(g => {
+                                const on = closingCatSel.has(g);
+                                return (
+                                  <button key={g} onClick={() => { toggleIn(setClosingCatSel, g); setClosingPage(0); }}
+                                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-all ${on ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-400 hover:border-indigo-300'}`}>
+                                    {g}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* 용량 — 여러 개 고를 수 있다 */}
+                          {closingSpecOptions.length > 0 && (
+                            <div>
+                              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">용량</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {closingSpecOptions.map(v => {
+                                  const on = closingSpecSel.has(v);
+                                  return (
+                                    <button key={v} onClick={() => { toggleIn(setClosingSpecSel, v); setClosingPage(0); }}
+                                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-all tabular-nums ${on ? 'bg-sky-600 border-sky-600 text-white' : 'bg-white border-slate-200 text-slate-400 hover:border-sky-300'}`}>
+                                      {v}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                            <span className="text-[10px] font-bold text-slate-400">{listRows.length}개 표시 중</span>
+                            <button onClick={clearClosingFilters} disabled={closingFilterCount === 0}
+                              className="px-3 py-1.5 rounded-lg text-[11px] font-black text-slate-500 hover:bg-slate-100 disabled:opacity-30 transition-colors">
+                              모두 해제
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* 품목추가 — 전체 품목 검색·수량입력·확정으로 재고 생성(ADD) */}
+                  <button onClick={openMakeModal}
+                    className="px-3.5 py-2 rounded-xl bg-indigo-600 text-xs font-black text-white hover:bg-indigo-700 transition-all">
+                    품목추가
+                  </button>
+
+                  {/* 켜진 필터를 칩으로 — 패널을 안 열어도 보이고, 눌러서 바로 뗀다 */}
+                  {closingView !== 'all' && (
+                    <button onClick={() => { setClosingView('all'); setClosingPage(0); }}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 text-[11px] font-black text-slate-600 hover:bg-slate-200 transition-colors">
+                      {closingView === 'dispatched' ? '작업완료' : '재고'}<X size={11} />
+                    </button>
+                  )}
+                  {[...closingCatSel].map(g => (
+                    <button key={`cg-${g}`} onClick={() => { toggleIn(setClosingCatSel, g); setClosingPage(0); }}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-indigo-50 text-[11px] font-black text-indigo-600 hover:bg-indigo-100 transition-colors">
+                      {g}<X size={11} />
+                    </button>
+                  ))}
+                  {[...closingSpecSel].map(v => (
+                    <button key={`cv-${v}`} onClick={() => { toggleIn(setClosingSpecSel, v); setClosingPage(0); }}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-sky-50 text-[11px] font-black text-sky-600 hover:bg-sky-100 transition-colors tabular-nums">
+                      {v}<X size={11} />
                     </button>
                   ))}
                 </div>
               )}
-
-              {/* 분류 필터 — 전체 / 참기름 / 들기름 / 가루종류 */}
-              {!src && (
-                <div className="flex items-center gap-1.5 mb-2.5">
-                  <span className="shrink-0 w-8 text-[10px] font-black text-slate-400">분류</span>
-                  {([['all', '전체'], ['참기름', '참기름'], ['들기름', '들기름'], ['기타', '기타']] as const).map(([v, label]) => (
-                    <button key={v} onClick={() => { setClosingCat(v); setClosingPage(0); }}
-                      className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-black border transition-all ${closingCat === v ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'}`}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* 품목 추가하기 — 전체 품목 검색·수량입력·확정으로 재고 생성(ADD) */}
-              <button onClick={openMakeModal}
-                className="w-full mb-2.5 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-black text-indigo-600 border border-dashed border-indigo-300 hover:bg-indigo-50 transition-all">
-                <Plus size={16} strokeWidth={3} />품목 추가하기
-              </button>
 
               <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
                 {pageRows.length === 0 && (
-                  <div className="px-3 py-8 text-center text-xs text-slate-400">{term ? '검색 결과가 없습니다.' : closingView === 'dispatched' ? '작업완료(미출고)된 완제품이 없습니다.' : closingView === 'stock' ? '재고로 남은 완제품이 없습니다. (작업완료분 제외)' : '완제품이 없습니다. 검색하거나 "0포함"을 켜세요.'}</div>
+                  <div className="px-3 py-8 text-center text-xs text-slate-400">{term ? '검색 결과가 없습니다.' : closingView === 'dispatched' ? '작업완료(미출고)된 완제품이 없습니다.' : closingView === 'stock' ? '재고로 남은 완제품이 없습니다. (작업완료분 제외)' : '재고가 있는 완제품이 없습니다. 검색하거나 "품목 추가하기"로 만드세요.'}</div>
                 )}
-                {pageRows.map(r => {
+                {pageRows.map((r, i) => {
                   const product = productMap.get(r.itemId);
                   const cur = product?.stock ?? 0;
                   const disp = src ? 0 : (dispatchedQtyByItem[r.itemId] ?? 0);      // 작업완료(미출고)분
@@ -3031,13 +3290,36 @@ const ItemList: React.FC<ItemListProps> = ({
                   const shownNum = (!src && closingView === 'dispatched') ? disp : (!src && closingView === 'stock') ? base : cur;
                   const editable = src ? true : closingView === 'all';             // 쪼갠 뷰(작업완료/재고)는 읽기전용
                   const editing = editable && editingStockId === r.itemId;
+                  const uc = product ? unpackComponent(product) : null;   // 박스면 { itemId, count }
+                  const unitLbl = uc ? '박스' : '개';
                   return (
-                    <div key={r.itemId} className={`w-full flex items-center gap-2 px-3 py-2.5 ${r.isChild ? 'pl-7 bg-slate-50/50' : ''}`}>
-                      <span className={`flex-1 min-w-0 text-[13px] break-keep ${r.isChild ? 'font-semibold text-slate-500' : 'font-bold text-slate-800'}`}>{r.isChild && <span className="text-slate-300 mr-1">└</span>}{r.label}</span>
-                      {/* 작업완료(미출고)분 배지 — 전체·작업완료 뷰에만. 재고 뷰는 이미 뺀 순수 재고라 배지 없음. */}
-                      {disp > 0 && closingView !== 'stock' && (
-                        <span className="shrink-0 text-[9px] font-black text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full whitespace-nowrap" title="현재고 중 작업완료(미출고)분">작업완료 {disp}</span>
-                      )}
+                    <React.Fragment key={r.itemId}>
+                    {/* 분류 머리 — 앞 줄과 분류가 달라지는 지점에만.
+                        색 하나로 통일한다 — 분류마다 색을 달리하면 조잡하다. */}
+                    {r.group && r.group !== pageRows[i - 1]?.group && (
+                      <div className="sticky top-0 z-10 px-3 py-1.5 bg-slate-600 flex items-center gap-2">
+                        <span className="text-[11px] font-black text-white tracking-wide">{r.group}</span>
+                        <span className="px-1.5 py-0.5 rounded-full bg-white/20 text-[10px] font-black text-white tabular-nums">
+                          {listRows.filter(x => x.group === r.group).length}
+                        </span>
+                      </div>
+                    )}
+                    <div className={`w-full flex items-center gap-2 px-3 py-2 ${r.isChild ? 'pl-7 bg-indigo-50/40 border-l-2 border-indigo-200' : ''}`}>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-[13px] break-keep leading-snug ${r.isChild ? 'font-semibold text-slate-500' : 'font-bold text-slate-800'}`}>
+                          {r.isChild && <span className="text-indigo-300 mr-1">└</span>}
+                          {r.label}
+                          {/* 박스 품목임을 배지·수량 단위로 못 박는다 — 낱개와 숫자 의미가 다르다.
+                              개입수는 품목명에 이미 들어 있어 배지엔 안 넣는다(같은 말 두 번). */}
+                          {uc && (
+                            <span className="ml-1.5 inline-flex items-center align-middle text-[9px] font-black text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                              박스
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      {/* 재고 숫자 — 주문수량(작업완료·미출고분)은 그 바로 밑에 붙인다 */}
+                      <div className="shrink-0 flex flex-col items-end">
                       {editing ? (
                         <input autoFocus type="text" inputMode="decimal" value={editingStockVal}
                           onChange={e => setEditingStockVal(e.target.value)}
@@ -3052,15 +3334,25 @@ const ItemList: React.FC<ItemListProps> = ({
                           className="w-16 shrink-0 border border-indigo-300 rounded-lg px-2 py-1 text-right text-sm font-black outline-none focus:ring-2 focus:ring-indigo-400" />
                       ) : editable ? (
                         <button onClick={() => { if (!product) return; setEditingStockId(r.itemId); setEditingStockVal(String(product.subtype === '향미유' ? Math.floor(cur / 12) : cur)); }}
-                          title="눌러서 실사 수정"
-                          className={`shrink-0 text-sm font-black ${cur > 0 ? 'text-slate-700' : 'text-slate-300'} hover:text-indigo-600 hover:underline`}>
-                          {cur}<span className="text-[10px] font-bold text-slate-400 ml-0.5">개</span>
+                          title={uc ? `눌러서 실사 수정 — 박스 단위(1박스 = 낱개 ${uc.count}개)` : "눌러서 실사 수정"}
+                          className="shrink-0 flex items-center hover:text-indigo-600">
+                          {/* 숫자는 폭 고정 칸에 오른쪽 정렬 — 자릿수가 달라도 세로로 줄이 맞는다 */}
+                          <span className={`w-10 text-right text-sm font-black tabular-nums hover:underline ${cur > 0 ? 'text-slate-700' : 'text-slate-300'}`}>{cur}</span>
+                          <span className="w-7 text-left text-[10px] font-bold text-slate-400 ml-0.5">{unitLbl}</span>
                         </button>
                       ) : (
-                        <span className={`shrink-0 text-sm font-black ${shownNum > 0 ? 'text-slate-700' : 'text-slate-300'}`} title={closingView === 'dispatched' ? '작업완료(미출고)분' : '재고(작업완료 제외)'}>
-                          {shownNum}<span className="text-[10px] font-bold text-slate-400 ml-0.5">개</span>
+                        <span className="shrink-0 flex items-center" title={closingView === 'dispatched' ? '작업완료(미출고)분' : '재고(작업완료 제외)'}>
+                          <span className={`w-10 text-right text-sm font-black tabular-nums ${shownNum > 0 ? 'text-slate-700' : 'text-slate-300'}`}>{shownNum}</span>
+                          <span className="w-7 text-left text-[10px] font-bold text-slate-400 ml-0.5">{unitLbl}</span>
                         </span>
                       )}
+                      {/* 전체·작업완료 뷰에만. 재고 뷰는 이미 뺀 순수 재고라 안 띄운다. */}
+                      {disp > 0 && closingView !== 'stock' && (
+                        <p className="mt-0.5 text-[10px] font-black text-amber-600 whitespace-nowrap tabular-nums" title="현재고 중 작업완료(미출고)분">
+                          주문수량 {disp}
+                        </p>
+                      )}
+                      </div>
                       {editable && (
                         <button onClick={() => { if (product && confirm(`"${product.name}" 재고를 0으로 만들까요?`)) commitStockEdit(product, 0); }}
                           title="재고 0으로" className="shrink-0 p-1 rounded text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors">
@@ -3068,21 +3360,23 @@ const ItemList: React.FC<ItemListProps> = ({
                         </button>
                       )}
                     </div>
+                    </React.Fragment>
                   );
                 })}
               </div>
 
-              {/* 페이지 이동 */}
-              {pageCount > 1 && (
-                <div className="flex items-center justify-center gap-3 mt-3">
-                  <button onClick={() => setClosingPage(Math.max(0, page - 1))} disabled={page === 0}
-                    className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold disabled:opacity-40 hover:bg-slate-200">이전</button>
-                  <span className="text-xs font-bold text-slate-500">{page + 1} / {pageCount}</span>
-                  <button onClick={() => setClosingPage(Math.min(pageCount - 1, page + 1))} disabled={page >= pageCount - 1}
-                    className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold disabled:opacity-40 hover:bg-slate-200">다음</button>
-                </div>
-              )}
             </div>
+
+            {/* 페이지 이동 — 목록 스크롤 밖 고정. 한 쪽에 많이 담아도 아래로 안 밀린다. */}
+            {pageCount > 1 && (
+              <div className="shrink-0 flex items-center justify-center gap-3 px-4 py-2.5 border-t border-slate-100 bg-white">
+                <button onClick={() => setClosingPage(Math.max(0, page - 1))} disabled={page === 0}
+                  className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold disabled:opacity-40 hover:bg-slate-200">이전</button>
+                <span className="text-xs font-bold text-slate-500 tabular-nums">{page + 1} / {pageCount}</span>
+                <button onClick={() => setClosingPage(Math.min(pageCount - 1, page + 1))} disabled={page >= pageCount - 1}
+                  className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold disabled:opacity-40 hover:bg-slate-200">다음</button>
+              </div>
+            )}
 
           </div>
         </div>

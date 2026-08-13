@@ -100,7 +100,12 @@ export function journalizePayment(s: IssuedStatement, p: PaymentRecord, cashAcco
 export function journalizeCashEntry(e: CashEntry, cashAccountMap: Record<string, string> = {}): JournalEntry | null {
   const amt = r(e.amount ?? 0);
   // 쪼갠 줄이 있으면 그쪽이 우선 — 대출상환이면 원금(차입금)·이자(비용)가 각각 선다.
-  const split = (e.lines ?? []).filter(l => l.accountCode && r(l.amount) > 0);
+  //
+  // 줄 금액은 **부호를 가진다**. 음수면 통장과 같은 편에 선다.
+  //   급여 지급: 총급여 +3,000,000 / 예수금 -300,000 → 통장에서 나간 건 2,700,000
+  //     (차) 급여 3,000,000  (대) 예수금 300,000 + 보통예금 2,700,000
+  //   이게 없으면 급여를 전표 두 건(출금·입금)으로 쪼개야 해서 목록에 두 줄로 보인다.
+  const split = (e.lines ?? []).filter(l => l.accountCode && r(l.amount) !== 0);
   if (!split.length && (!amt || !e.accountCode)) return null;
   const parts = split.length
     ? split.map(l => ({ accountCode: l.accountCode, amount: r(l.amount) }))
@@ -110,11 +115,16 @@ export function journalizeCashEntry(e: CashEntry, cashAccountMap: Record<string,
   if (!total) return null;
   const cash = cashAccountMap[e.cashAccountId] ?? BANK;
   const partner = e.partnerId ? { partnerId: e.partnerId } : {};
+  // 입금이면 계정이 대변, 출금이면 차변. 음수 줄은 그 반대편으로 넘긴다.
+  const side = (p: { accountCode: string; amount: number }) => {
+    const a = Math.abs(p.amount);
+    const normal = e.dir === '입금' ? p.amount > 0 : p.amount > 0;   // 부호가 양수면 제자리
+    const asCredit = e.dir === '입금' ? normal : !normal;
+    return { accountCode: p.accountCode, ...partner, debit: asCredit ? 0 : a, credit: asCredit ? a : 0 };
+  };
   const lines: JournalLine[] = e.dir === '입금'
-    ? [{ accountCode: cash, debit: total, credit: 0 },
-       ...parts.map(p => ({ accountCode: p.accountCode, ...partner, debit: 0, credit: p.amount }))]
-    : [...parts.map(p => ({ accountCode: p.accountCode, ...partner, debit: p.amount, credit: 0 })),
-       { accountCode: cash, debit: 0, credit: total }];
+    ? [{ accountCode: cash, debit: total, credit: 0 }, ...parts.map(side)]
+    : [...parts.map(side), { accountCode: cash, debit: 0, credit: total }];
   return {
     id: `je-cash-${e.id}`, date: e.date, lines,
     memo: `${e.dir} ${e.partnerName ?? ''} ${e.note ?? ''}`.trim(), sourceType: '자금', sourceId: e.id,

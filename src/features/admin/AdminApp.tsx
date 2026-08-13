@@ -112,7 +112,7 @@ const PartnerLedger = React.lazy(() => import('../../../components/PartnerLedger
 
 import { db } from '../../shared/firebase';
 import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName, lotStockInUnit, lotKgRemaining } from '../../constants/formula';
-import { docPumok, docOilKg, addOilByRaw, docSaleLine, docUnpack, docDateOf, DOC_RECALC_RAWS, DOC_SHEET_GROUPS, DOC_SHEET_CATS, DEFAULT_SHEET_TITLE, mixLabel } from '../../shared/docOil';
+import { docPumok, docOilKg, addOilByRaw, docSaleLine, docUnpack, docDateOf, findDocDrops, DOC_RECALC_RAWS, DOC_SHEET_GROUPS, DOC_SHEET_CATS, DEFAULT_SHEET_TITLE, mixLabel } from '../../shared/docOil';
 import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo, settleCarryOver } from '../../shared/lotUtils';
 import { rawLotTarget, recordRawMaterialReceipt, adjustRawLots } from '../../shared/rawReceipt';
 import { bomQty } from '../../shared/bom';
@@ -505,40 +505,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // 판매 상품(완제품/향미유/고춧가루)은 products, 부자재는 submaterials
   const getProductCollection = (_category: string) => 'items';
 
-  // 원료 자동 사용량 (DELIVERED 주문 → 원료별·날짜별 집계)
-  // itemFormulas가 있으면 Firestore item_formula 사용, 없으면 PRODUCT_FORMULA fallback
-  const autoRawMaterialUsage = useMemo<Array<{material: string; date: string; used: number; note: string}>>(() => {
-    const dayMap: Record<string, Record<string, { used: number; partners: string[] }>> = {};
-    for (const o of allOrders.filter(o => o.status === OrderStatus.DELIVERED && o.deliveredAt)) {
-      const dateStr = o.deliveredAt!.slice(0, 10);
-      const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '';
-      for (const item of o.items) {
-        const prod = allItems.find(p => p.id === item.itemId);
-        if (!prod || prod.category !== 'product') continue;
-        if (prod.procureType === '완사입') continue; // 완포장 사입품은 원료 소모 없음
-        const prodKey = prod.품목 || prod.name;
-        // Firestore BOM 우선, 없으면 하드코딩 fallback. phantom 반제품은 원료로 재귀 전개.
-        const formula = buildFormula(prodKey);
-        if (formula.length === 0) continue;
-        for (const f of formula) {
-          const usedKg = toKg(prod.spec || '', f.raw, item.quantity) * f.ratio;
-          if (usedKg <= 0) continue;
-          if (!dayMap[f.raw]) dayMap[f.raw] = {};
-          if (!dayMap[f.raw][dateStr]) dayMap[f.raw][dateStr] = { used: 0, partners: [] };
-          dayMap[f.raw][dateStr].used += usedKg;
-          if (partnerName && !dayMap[f.raw][dateStr].partners.includes(partnerName)) dayMap[f.raw][dateStr].partners.push(partnerName);
-        }
-      }
-    }
-    const result: Array<{ material: string; date: string; used: number; note: string }> = [];
-    for (const [mat, dates] of Object.entries(dayMap)) {
-      for (const [date, { used, partners }] of Object.entries(dates)) {
-        const note = partners.length === 0 ? '생산' : partners.length === 1 ? partners[0] : `${partners[0]} 외 ${partners.length - 1}`;
-        result.push({ material: mat, date, used: Math.round(used * 1000) / 1000, note });
-      }
-    }
-    return result;
-  }, [orders, allItems, partners, itemFormulas]);
 
   // 작업완료(생산됨·미출고) 주문분 — 지금 현재고에 얹혀 있는 완제품 수량(품목별 합).
   //   재고 현황 모달에서 '작업완료 vs 재고'를 쪼개 보여주는 데 쓴다(전체 = 현재고, 재고 = 현재고 − 작업완료).
@@ -561,7 +527,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // 서류용 통깨/깨분 참기름 사용량 — **생산작업기록부 getOutflow 로직 단일 원천**.
   //  품목 그룹 배합비(시골향1=통깨100 / 2+해내음=50:50 / 3=깨분100 / 4+가득찬순=20:80 / 하남댁+새싹+해달=통깨100),
-  //  캔(kg규격)=그대로, ml/L=×0.92, 서류일(documentDate||deliveryDate), 출고+배송 상태.
+  //  캔(kg규격)=그대로, ml/L=×0.92, 서류일=배송완료일(deliveredAt), 출고+배송 상태.
   //  원료수불부·생산작업기록부·생산작업기록부2가 전부 이걸 공유해서 숫자가 항상 일치한다.
   // 서류(원료수불부)용 기름 사용량 — 재고(BOM)와 **별개**로 판매분에서 다시 구한다.
   //   참기름: 아래 하드코딩 비율 (품목 원료식과 다른 값이 있어 손대지 않음)
@@ -1704,7 +1670,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 setCurrentView('trade-statement');
               }}
               rawMaterialLedger={mergedRawMaterialLedger}
-              autoUsageEntries={autoRawMaterialUsage}
+              
               onAddRawMaterialEntry={async (entry) => {
                 await addItem('rawMaterialLedger', entry);
                 // 수율 파생 입고 자동 추가 — 규칙은 item_formula 데이터(yieldRules)에서 읽음(하드코딩 폴백).
@@ -1908,6 +1874,25 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onDeleteLeaveRequest={(id) => deleteItem('leaveRequests', id)}
               onAddLeaveRequests={async (reqs) => {
                 for (const r of reqs) await addItem('leaveRequests', r);
+              }}
+              /* 급여대장 → 자금기록 한 건. 공제는 음수 줄이라 통장에서 나간 돈은 실지급액이다.
+                 (차) 515 급여 지급계  (대) 254 예수금 공제계 + 103 보통예금 실지급계 */
+              onCreatePayrollEntry={async ({ date, gross, deduct, net, note }) => {
+                const salaryCode = appData.accountCodes.find(c => c.name === '급여')?.code ?? '515';
+                const withholdCode = appData.accountCodes.find(c => c.name === '예수금')?.code ?? '254';
+                const id = `cash-${Date.now()}`;
+                await addItem('cashEntries', {
+                  id, date, dir: '출금', amount: net,
+                  cashAccountId: appData.cashAccounts?.find(a => a.type === '통장')?.id ?? '',
+                  ...(deduct > 0
+                    ? { lines: [
+                        { accountCode: salaryCode, amount: gross, note: '총급여' },
+                        { accountCode: withholdCode, amount: -deduct, note: '원천공제' },
+                      ] }
+                    : { accountCode: salaryCode }),
+                  note, createdAt: new Date().toISOString(),
+                });
+                return id;
               }}
             />
           )}
@@ -2343,14 +2328,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
               const deductFailures: string[] = [];
               for (const o of shippedOrders) {
                 try {
-                  // 서류 기준일을 주문에 박는다 — 이 날짜로 원료수불부·생산작업기록부 1·2에도 같이 잡힌다.
-                  //   (예전엔 '미입력 일괄 적용'을 눌러야만 박혀서, 안 누르면 서류마다 날짜가 갈렸다)
-                  await updateItem('orders', o.id, { documentDate: docDate });
+                  // 배송완료일을 **서류 날짜로** 박는다 — 이게 네 서류의 공통 기준일(docDateOf)이다.
+                  //   판매기록부에 오른 날 = 물건이 나간 날이므로, 원료수불부·작업기록부 1·2가 같은 날에 잡힌다.
+                  //   먼저 박아 둬야 changeOrderStatus가 '지금 시각'으로 덮어쓰지 않는다
+                  //   (거기선 deliveredAt이 비었을 때만 new Date()를 넣는다).
+                  //   예전엔 새벽에 뽑으면 서류는 8/10인데 deliveredAt은 8/11로 찍혀 하루씩 갈렸다.
+                  await updateItem('orders', o.id, { deliveredAt: `${docDate}T00:00:00.000Z` });
                   await changeOrderStatus(o.id, OrderStatus.DELIVERED);
                 } catch (e) {
                   console.error(`[주문 이력 이동] 재고 조정 실패 (주문 ${o.id}, ${o.partnerName}):`, e);
                   deductFailures.push(o.partnerName || o.id);
-                  await updateItem('orders', o.id, { status: OrderStatus.DELIVERED, deliveredAt: new Date().toISOString() });
+                  await updateItem('orders', o.id, { status: OrderStatus.DELIVERED, deliveredAt: `${docDate}T00:00:00.000Z` });
                 }
               }
               // 참고: 향미유/고춧가루만 있는 출고 주문도 위 shippedOrders 루프가 이미 처리한다
@@ -2406,6 +2394,33 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         >벤조피렌 검사성적서</button>
                       </>)}
                     </div>
+                    {/* 판매기록부 ↔ 원료수불부 대조 — 서류 기준일이 배송완료일 하나뿐이라,
+                        비어 있으면 그 주문의 모든 줄이 네 서류에서 통째로 빠진다.
+                        조용히 빠지면 못 찾으니 서류 화면 맨 위에서 드러낸다. */}
+                    {(() => {
+                      const drops = findDocDrops(allOrders as never[]);
+                      if (drops.length === 0) return null;
+                      const orderCount = new Set(drops.map(d => `${d.partnerName}|${d.itemName}`)).size;
+                      return (
+                        <div className="rounded-2xl border-2 border-rose-300 bg-rose-50 px-4 py-3">
+                          <p className="text-xs font-black text-rose-700">
+                            서류에서 빠지는 판매 {drops.length}줄 — 배송완료일이 없습니다
+                          </p>
+                          <div className="mt-1.5 space-y-0.5 max-h-32 overflow-y-auto">
+                            {drops.slice(0, 12).map((d, i) => (
+                              <p key={i} className="text-[11px] font-bold text-rose-600">
+                                {d.partnerName} · {d.itemName} <span className="text-rose-400">{d.qty}</span>
+                              </p>
+                            ))}
+                            {drops.length > 12 && <p className="text-[11px] font-bold text-rose-400">외 {drops.length - 12}줄</p>}
+                          </div>
+                          <p className="text-[10px] text-rose-400 mt-1.5">
+                            판매기록부·원료수불부·생산작업기록부 1·2 전부에 안 잡힙니다({orderCount}품목).
+                            해당 주문을 배송완료로 다시 처리하면 그 날짜로 들어갑니다.
+                          </p>
+                        </div>
+                      );
+                    })()}
                     {docTab === '생산판매기록부' && (
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-3 py-1.5 shadow-sm">
@@ -2419,58 +2434,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
                             }}
                             className="text-xs font-bold text-slate-700 bg-transparent outline-none cursor-pointer"
                           />
-                          <span className="text-[10px] text-slate-400 whitespace-nowrap">→ 제조 -3일 ±1</span>
-                          {(() => {
-                            const cnt = orders.filter(o => o.status === OrderStatus.SHIPPED && o.partnerName !== '생산기록')
-                              .flatMap(o => o.items.filter(item => allItems.find(p => p.id === item.itemId)?.category === 'product')).length;
-                            return cnt > 0 ? <span className="text-[10px] font-bold text-amber-500 whitespace-nowrap">{cnt}건</span> : null;
-                          })()}
-                          <button
-                            onClick={async () => {
-                              if (!bulkMfgDate) return;
-                              type UnsetItem = { orderId: string; itemIdx: number; itemName: string };
-                              const unset: UnsetItem[] = [];
-                              const targetOrders = orders.filter(o =>
-                                o.status === OrderStatus.SHIPPED && o.partnerName !== '생산기록'
-                              );
-                              for (const o of targetOrders) {
-                                o.items.forEach((item, itemIdx) => {
-                                  const p = allItems.find(pr => pr.id === item.itemId);
-                                  if (p?.category === 'product') {
-                                    unset.push({ orderId: o.id, itemIdx, itemName: p.품목 || item.name });
-                                  }
-                                });
-                              }
-                              if (unset.length === 0) { alert('적용할 항목이 없습니다.'); return; }
-                              const uniqueProducts: string[] = [];
-                              for (const { itemName } of unset) {
-                                if (!uniqueProducts.includes(itemName)) uniqueProducts.push(itemName);
-                              }
-                              // 서류날짜 - 3일 base, 품목별 index % 3 → -1, 0, +1 분산
-                              const offsets = [-1, 0, 1];
-                              const productDateMap: Record<string, string> = {};
-                              uniqueProducts.forEach((name, idx) => {
-                                const d = new Date(bulkMfgDate);
-                                d.setDate(d.getDate() - 3 + offsets[idx % 3]);
-                                productDateMap[name] = d.toISOString().slice(0, 10);
-                              });
-                              const byOrder: Record<string, { itemIdx: number; date: string }[]> = {};
-                              for (const { orderId, itemIdx, itemName } of unset) {
-                                if (!byOrder[orderId]) byOrder[orderId] = [];
-                                byOrder[orderId].push({ itemIdx, date: productDateMap[itemName] });
-                              }
-                              for (const [orderId, updates] of Object.entries(byOrder)) {
-                                const o = orders.find(ord => ord.id === orderId);
-                                if (!o) continue;
-                                const newItems = [...o.items];
-                                for (const { itemIdx, date } of updates) {
-                                  newItems[itemIdx] = { ...newItems[itemIdx], mfgDate: date };
-                                }
-                                await updateItem('orders', orderId, { items: newItems, documentDate: bulkMfgDate });
-                              }
-                            }}
-                            className="text-[11px] font-black text-white bg-amber-500 hover:bg-amber-600 px-3 py-1 rounded-xl transition-all whitespace-nowrap"
-                          >미입력 일괄 적용</button>
                         </div>
                         <button
                           onClick={exportExcel}
@@ -2977,7 +2940,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   const RM_TABS = RM_LIST.filter(m => !Object.values(RM_MERGE).flat().includes(m));
                   // 수불부 행 계산 — DB 데이터만 사용 (auto/manual/correction 모두 포함)
                   // 옛 데이터(unit==='L')는 표시 시점에 ×density 환산 → 모두 kg 단위로 통일
-                  const buildLedger = (material: string) => {
+                  // ── 원료수불부(서류) 한 장 만들기 ── ⚠ 원장(rawMaterialLedger)과 다른 것이다.
+                  //   사용량   : 배합표 원료(DOC_RECALC_RAWS)는 판매에서 되계산 — 원장의 rm-auto는 뺀다
+                  //   입고·실사 : 원장 그대로
+                  //   전월이월  : 원장의 전월말 누적
+                  //   자세한 구분은 src/shared/docOil.ts 맨 위 주석 참고.
+                  const buildRawDocSheet = (material: string) => {
                     const density = DENSITY[material] ?? 1.0;
                     const dbEntries: UsageRow[] = mergedRawMaterialLedger
                       .filter(e => rmAlias(material).includes(e.material))
@@ -3084,17 +3052,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       ws.columns = [
                         { width: 12 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 30 }
                       ];
-                      // 수불부는 모든 원료를 kg로 통일 표시 (L 입력 데이터는 buildLedger에서 환산됨)
+                      // 수불부는 모든 원료를 kg로 통일 표시 (L 입력 데이터는 buildRawDocSheet에서 환산됨)
                       const hRow = ws.addRow(['날짜', '전재고(kg)', '입고량(kg)', '사용량(kg)', '현재고(kg)', '비고']);
                       hRow.font = { bold: true, size: 9 };
                       const border = { top: { style: 'thin' as const }, bottom: { style: 'thin' as const }, left: { style: 'thin' as const }, right: { style: 'thin' as const } };
                       hRow.eachCell(c => { c.border = border; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } }; });
-                      const ledger = buildLedger(mat);
+                      const sheet = buildRawDocSheet(mat);
                       // 전월이월 행 — 전달 마지막 현재고를 전재고로 (매달 1일)
-                      const openRow = ws.addRow([`${docYearMonth}-01 (전월이월)`, ledger.opening, 0, 0, ledger.opening, '전월 말 현재고']);
+                      const openRow = ws.addRow([`${docYearMonth}-01 (전월이월)`, sheet.opening, 0, 0, sheet.opening, '전월 말 현재고']);
                       openRow.font = { size: 9, bold: true };
                       openRow.eachCell(c => { c.border = border; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } }; });
-                      ledger.rows.forEach((row) => {
+                      sheet.rows.forEach((row) => {
                         const r = ws.addRow([
                           row.date,
                           row.prevBalance || 0,
@@ -3109,7 +3077,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         r.getCell(5).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } };
                       });
                       // 합계 행 — 당월 총 입고·사용
-                      const sumRow = ws.addRow(['합계', '', ledger.totalIn, ledger.totalOut, ledger.closing, '당월 총 입고·사용']);
+                      const sumRow = ws.addRow(['합계', '', sheet.totalIn, sheet.totalOut, sheet.closing, '당월 총 입고·사용']);
                       sumRow.font = { size: 9, bold: true };
                       sumRow.eachCell(c => { c.border = border; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }; });
                     }
@@ -3123,7 +3091,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     URL.revokeObjectURL(url);
                   };
 
-                  const activeLedger = buildLedger(rmActiveMaterial);
+                  const activeLedger = buildRawDocSheet(rmActiveMaterial);
 
                   return (
                     <div className="space-y-4">
@@ -3843,6 +3811,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   accountCodes={appData.accountCodes}
                   inventorySnapshots={inventorySnapshots}
                   cashEntries={appData.cashEntries}
+                  onAddCashEntry={(e) => addItem('cashEntries', e)}
                   settlements={appData.settlements}
                 />
               </React.Suspense>

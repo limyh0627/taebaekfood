@@ -67,3 +67,53 @@ describe('journalizeCashEntry — 쪼갠 줄(대출상환)', () => {
     expect(journalizeCashEntry(entry({ amount: 1000 }))).toBeNull();
   });
 });
+
+describe('journalizeCashEntry — 음수 줄(급여 원천공제)', () => {
+  it('총급여는 차변, 원천공제는 대변, 통장은 실지급액', () => {
+    const je = journalizeCashEntry(entry({
+      amount: 2_700_000,                       // 통장에서 실제로 나간 돈
+      lines: [
+        { accountCode: '515', amount: 3_000_000, note: '총급여' },
+        { accountCode: '254', amount: -300_000, note: '원천공제' },
+      ],
+    }))!;
+    expect(je.lines).toEqual([
+      { accountCode: '515', debit: 3_000_000, credit: 0 },
+      { accountCode: '254', debit: 0, credit: 300_000 },
+      { accountCode: '103', debit: 0, credit: 2_700_000 },
+    ]);
+    const d = je.lines.reduce((a, l) => a + l.debit, 0);
+    const c = je.lines.reduce((a, l) => a + l.credit, 0);
+    expect(d).toBe(c);
+    expect(d).toBe(3_000_000);
+  });
+
+  it('공제가 없으면 총급여 = 실지급액', () => {
+    const je = journalizeCashEntry(entry({
+      amount: 3_000_000,
+      lines: [{ accountCode: '515', amount: 3_000_000, note: '총급여' }],
+    }))!;
+    expect(je.lines).toEqual([
+      { accountCode: '515', debit: 3_000_000, credit: 0 },
+      { accountCode: '103', debit: 0, credit: 3_000_000 },
+    ]);
+  });
+
+  it('입금에 음수 줄이면 그 줄만 차변으로 넘어간다', () => {
+    const je = journalizeCashEntry(entry({
+      dir: '입금', amount: 900_000,
+      lines: [
+        { accountCode: '800', amount: 1_000_000, note: '매출' },
+        { accountCode: '831', amount: -100_000, note: '수수료 공제' },
+      ],
+    }))!;
+    expect(je.lines).toEqual([
+      { accountCode: '103', debit: 900_000, credit: 0 },
+      { accountCode: '800', debit: 0, credit: 1_000_000 },
+      { accountCode: '831', debit: 100_000, credit: 0 },
+    ]);
+    const d = je.lines.reduce((a, l) => a + l.debit, 0);
+    const c = je.lines.reduce((a, l) => a + l.credit, 0);
+    expect(d).toBe(c);
+  });
+});

@@ -6,7 +6,8 @@
       "Bash(git add *)",
       "Bash(git commit -q -m ' *)",
       "Bash(git push *)",
-      "Bash(node scripts/_tmp-clean-taxo.mjs)"
+      "Bash(node scripts/_tmp-clean-taxo.mjs)",
+      "Bash(node scripts/fix-hanjeongseong-journal.mjs)"
     ]
   }
 }

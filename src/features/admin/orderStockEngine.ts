@@ -381,7 +381,19 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
         if (snap.exists()) live = { ...order, ...(snap.data() as Partial<Order>) } as Order;
       } catch { /* 읽기 실패 시 메모리 상태로 진행 */ }
       if (live.status !== OrderStatus.DELIVERED) await reconcileOrderStock(live, status, freshItemIds);
-      await updateItem('orders', id, { status, ...(status === OrderStatus.DELIVERED && !live.deliveredAt ? { deliveredAt: new Date().toISOString() } : {}) });
+      // 배송완료일은 **여기서 만들어 넣지 않는다.** 서류 네 종의 유일한 기준일이라,
+      // '지금 시각'으로 채우면 새벽에 처리한 건이 다음 날짜로 새서 서류가 갈린다.
+      // 판매기록부를 뽑는 쪽이 서류 날짜로 미리 박아 준다. 비어 있으면 알림으로 드러낸다.
+      if (status === OrderStatus.DELIVERED && !live.deliveredAt) {
+        console.error(`[배송완료일 없음] 주문 ${id} (${live.partnerName ?? ''}) — 서류에서 빠집니다`);
+        await addItem('notifications', {
+          type: 'inventory_shortage',
+          title: '배송완료일 없는 주문',
+          body: `${live.partnerName ?? id} 주문에 배송완료일이 없어 원료수불부·판매기록부에서 빠집니다. 주문을 열어 날짜를 넣어 주세요.`,
+          linkedId: id, readBy: [], createdAt: new Date().toISOString(),
+        } as Omit<AppNotification, 'id'>);
+      }
+      await updateItem('orders', id, { status });
     } finally {
       inFlightOrders.delete(id);
     }

@@ -169,9 +169,9 @@ export default function CashLedger({
                     <td className="px-4 py-2.5 text-slate-500">{entry.partnerName || '-'}</td>
                     <td className="px-4 py-2.5 text-slate-400">
                       {/* 쪼갠 줄(대출상환 원금+이자)이면 줄마다 계정 배지를 단다 */}
-                      {(entry.lines ?? []).filter(l => l.accountCode && l.amount > 0).length ? (
+                      {(entry.lines ?? []).filter(l => l.accountCode && l.amount !== 0).length ? (
                         <span className="flex flex-wrap gap-1">
-                          {entry.lines!.filter(l => l.accountCode && l.amount > 0).map((l, i) => (
+                          {entry.lines!.filter(l => l.accountCode && l.amount !== 0).map((l, i) => (
                             <span key={i} className="text-[10px] font-black bg-slate-100 px-1.5 py-0.5 rounded whitespace-nowrap">
                               {l.note ? `${l.note} ` : ''}{l.accountCode} {codeName.get(l.accountCode) ?? ''} {fmt(l.amount)}
                             </span>

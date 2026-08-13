@@ -345,6 +345,57 @@ export interface Employee {
   healthCertDate?: string;  // 보건증 발급일 (YYYY-MM-DD)
 }
 
+// ── 급여대장 ────────────────────────────────────────────────────────────────
+// 한 달에 문서 하나. 사원별 지급·공제를 담고, [전표 생성]으로 자금기록 한 건을 만든다.
+//   (차) 급여 지급계   (대) 예수금 공제계 + 보통예금 실지급계
+// 공제를 세목별로 나눠 두는 이유: 납부처와 납부일이 달라서, 나중에 예수금을 털 때 갈라야 한다.
+export interface PayrollLine {
+  employeeId: string;
+  employeeName: string;
+  department?: string;
+  position?: string;
+  base: number;             // 기본급
+  overtime?: number;        // 연장·야간·휴일 수당
+  allowance?: number;       // 식대 등 기타 수당
+  incomeTax?: number;       // 소득세
+  localTax?: number;        // 지방소득세
+  pension?: number;         // 국민연금
+  health?: number;          // 건강보험(장기요양 포함)
+  employment?: number;      // 고용보험
+  otherDeduct?: number;     // 기타 공제
+  note?: string;
+}
+
+export interface Payroll {
+  id: string;               // 'pay-2026-08'
+  yearMonth: string;        // '2026-08'
+  payDate: string;          // 실제 지급일 (전표 일자가 된다)
+  lines: PayrollLine[];
+  cashEntryId?: string;     // 끊은 전표 — 대장과 전표를 묶어 되짚어 갈 수 있게
+  note?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** 지급계 — 기본급 + 수당 */
+export const payrollGross = (l: PayrollLine): number =>
+  (l.base || 0) + (l.overtime || 0) + (l.allowance || 0);
+/** 공제계 — 세목 합 */
+export const payrollDeduct = (l: PayrollLine): number =>
+  (l.incomeTax || 0) + (l.localTax || 0) + (l.pension || 0)
+  + (l.health || 0) + (l.employment || 0) + (l.otherDeduct || 0);
+/** 실지급 = 지급계 − 공제계 */
+export const payrollNet = (l: PayrollLine): number => payrollGross(l) - payrollDeduct(l);
+/** 대장 전체 합계 */
+export const payrollTotals = (lines: PayrollLine[]) => lines.reduce(
+  (a, l) => ({
+    gross: a.gross + payrollGross(l),
+    deduct: a.deduct + payrollDeduct(l),
+    net: a.net + payrollNet(l),
+  }),
+  { gross: 0, deduct: 0, net: 0 },
+);
+
 // Leave related interfaces
 // '휴가' = 회사 단체 휴가 — 관리자가 기간을 정해 직원 일괄 부여(연차 차감). 개인 신청 대상 아님.
 export type LeaveType = '연차' | '오전반차' | '오후반차' | '병가' | '경조사' | '기타' | '휴가';

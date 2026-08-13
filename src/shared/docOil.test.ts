@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { docPumok, docOilKg, addOilByRaw, docSaleLine, docDateOf, DOC_RECALC_RAWS, DOC_DENSITY } from './docOil';
+import { docPumok, docOilKg, addOilByRaw, docSaleLine, docDateOf, reconcileSaleVsRaw, findDocDrops, DOC_RECALC_RAWS, DOC_DENSITY } from './docOil';
 
 describe('docOilKg — 판매 1줄 → 서류상 기름 kg', () => {
   it('ml·L은 부피 × 밀도', () => {
@@ -42,7 +42,7 @@ describe('addOilByRaw — 품목 kg → 원료별 kg', () => {
   it('확정 비율대로 나눈다', () => {
     expect(addOilByRaw({}, '시골향참기름2', 100)).toEqual({ 통깨참기름: 50, 깨분참기름: 50 });
     expect(addOilByRaw({}, '시골향참기름4', 100)).toEqual({ 통깨참기름: 10, 깨분참기름: 90 });
-    expect(addOilByRaw({}, '시골향들기름2', 100)).toEqual({ 통들깨들기름: 10, 수입들기름: 90 });
+    expect(addOilByRaw({}, '시골향들기름2', 100)).toEqual({ 수입들기름: 100 });   // 수입산 100% (2026-08-12)
     expect(addOilByRaw({}, '하남댁들기름', 100)).toEqual({ 통들깨들기름: 25, 수입들기름: 75 });
   });
 
@@ -101,18 +101,20 @@ describe('docSaleLine — 박스는 낱개로 풀어서 집계', () => {
   });
 });
 
-describe('docDateOf — 네 서류의 공통 기준일', () => {
-  it('판매기록부가 박은 documentDate가 최우선', () => {
-    expect(docDateOf({ documentDate: '2026-08-07', deliveredAt: '2026-08-10T05:00:00Z', deliveryDate: '2026-08-13' }))
-      .toBe('2026-08-07');
+describe('docDateOf — 네 서류의 공통 기준일 = 배송완료일', () => {
+  it('배송완료일만 본다', () => {
+    expect(docDateOf({ deliveredAt: '2026-08-10T05:00:00Z' })).toBe('2026-08-10');
   });
-  it('없으면 실제 납품일 → 배송예정일 순', () => {
-    expect(docDateOf({ deliveredAt: '2026-08-10T05:00:00Z', deliveryDate: '2026-08-13' })).toBe('2026-08-10');
-    expect(docDateOf({ deliveryDate: '2026-08-13' })).toBe('2026-08-13');
+  it('전표일자·배송예정일은 안 쓴다 — 실제 나간 날 하나로 못 박는다', () => {
+    expect(docDateOf({ deliveredAt: '2026-08-10T05:00:00Z', documentDate: '2026-08-07', deliveryDate: '2026-08-13' } as any))
+      .toBe('2026-08-10');
+    expect(docDateOf({ documentDate: '2026-08-07', deliveryDate: '2026-08-13' } as any)).toBe('');
+  });
+  it('배송완료일이 없으면 빈 값 — 서류에서 빠진다', () => {
     expect(docDateOf({})).toBe('');
   });
   it('ISO 시각이 붙어 있어도 날짜만 자른다', () => {
-    expect(docDateOf({ documentDate: '2026-08-07T00:00:00.000Z' })).toBe('2026-08-07');
+    expect(docDateOf({ deliveredAt: '2026-08-07T00:00:00.000Z' })).toBe('2026-08-07');
   });
 });
 
@@ -124,5 +126,86 @@ describe('DOC_RECALC_RAWS — 판매에서 되계산하는 원료', () => {
   });
   it('배합표에 없는 원료는 원장을 그대로 쓴다', () => {
     expect(DOC_RECALC_RAWS.has('참깨')).toBe(false);   // 참깨는 압착 투입 — 판매에서 안 나온다
+  });
+});
+
+describe('reconcileSaleVsRaw — 판매기록부 ↔ 원료수불부 대조', () => {
+  it('배합비가 있으면 두 문서의 총 kg이 같다 — 불일치 없음', () => {
+    // 하남댁참기름 = 통깨참기름 100%
+    expect(reconcileSaleVsRaw({ '2026-08-10': { '하남댁참기름': 100 } })).toEqual([]);
+  });
+
+  it('여러 원료로 쪼개져도 합은 같다', () => {
+    // 시골향참기름4 = 통깨 10% + 깨분 90%
+    expect(reconcileSaleVsRaw({ '2026-08-10': { '시골향참기름4': 1000 } })).toEqual([]);
+  });
+
+  it('배합비 없는 품목은 통째로 빠지고 잡아낸다', () => {
+    const [m] = reconcileSaleVsRaw({ '2026-08-10': { '없는품목': 500 } });
+    expect(m.date).toBe('2026-08-10');
+    expect(m.saleKg).toBe(500);
+    expect(m.rawKg).toBe(0);
+    expect(m.diffKg).toBe(500);
+    expect(m.unmapped).toEqual(['없는품목']);
+  });
+
+  it('섞여 있으면 빠진 만큼만 차이로 잡힌다', () => {
+    const [m] = reconcileSaleVsRaw({ '2026-08-10': { '하남댁참기름': 100, '없는품목': 40 } });
+    expect(m.saleKg).toBe(140);
+    expect(m.rawKg).toBe(100);
+    expect(m.diffKg).toBe(40);
+    expect(m.unmapped).toEqual(['없는품목']);
+  });
+
+  it('반올림 오차는 허용치 안이면 넘어간다', () => {
+    // 10%/90% 배분에서 원료별 반올림이 생겨도 몇 kg 이내면 정상으로 본다
+    expect(reconcileSaleVsRaw({ '2026-08-10': { '시골향참기름4': 7 } })).toEqual([]);
+  });
+
+  it('날짜가 여럿이면 문제 있는 날만 돌려주고 날짜순으로 준다', () => {
+    const out = reconcileSaleVsRaw({
+      '2026-08-11': { '없는품목': 10 },
+      '2026-08-09': { '하남댁참기름': 50 },
+      '2026-08-10': { '또없는품목': 20 },
+    });
+    expect(out.map(m => m.date)).toEqual(['2026-08-10', '2026-08-11']);
+  });
+});
+
+describe('findDocDrops — 판매기록부에 있는데 원료수불부에서 빠지는 줄', () => {
+  const order = (over: any = {}) => ({
+    status: 'DELIVERED', deliveredAt: '2026-08-10T00:00:00.000Z', partnerName: '테스트상회',
+    items: [{ itemId: 'p1', name: '시골향참기름/350ml', quantity: 20 }], ...over,
+  });
+
+  it('배송완료일이 있으면 안 걸린다', () => {
+    expect(findDocDrops([order()])).toEqual([]);
+  });
+
+  it('배송완료일이 없으면 그 주문의 모든 줄이 잡힌다', () => {
+    const drops = findDocDrops([order({ deliveredAt: undefined, items: [
+      { itemId: 'p1', name: '참기름/350ml', quantity: 20 },
+      { itemId: 'p2', name: '볶음참깨/1kg', quantity: 5 },
+    ] })]);
+    expect(drops).toHaveLength(2);
+    expect(drops.map(d => d.itemName)).toEqual(['참기름/350ml', '볶음참깨/1kg']);
+    expect(drops.every(d => d.reason === '배송완료일 없음')).toBe(true);
+    expect(drops[0].partnerName).toBe('테스트상회');
+    expect(drops[1].qty).toBe(5);
+  });
+
+  it('기름이 아닌 품목도 똑같이 잡는다 — 전 품목 대상', () => {
+    const drops = findDocDrops([order({ deliveredAt: '', items: [{ itemId: 'p9', name: '탈피들깨가루/1kg', quantity: 3 }] })]);
+    expect(drops).toHaveLength(1);
+    expect(drops[0].itemName).toBe('탈피들깨가루/1kg');
+  });
+
+  it('서류 대상이 아닌 상태는 안 본다', () => {
+    expect(findDocDrops([order({ status: 'PENDING', deliveredAt: undefined })])).toEqual([]);
+    expect(findDocDrops([order({ status: 'DISPATCHED', deliveredAt: undefined })])).toEqual([]);
+  });
+
+  it('출고(SHIPPED)는 안 잡는다 — 아직 배송완료 처리 전이라 날짜가 없는 게 정상', () => {
+    expect(findDocDrops([order({ status: 'SHIPPED', deliveredAt: undefined })])).toEqual([]);
   });
 });

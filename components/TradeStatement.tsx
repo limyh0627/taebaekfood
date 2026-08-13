@@ -13,7 +13,8 @@ import { fetchDateRange } from '../src/shared/services/firebaseService';
 import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/shared/orderUnits';
 import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
 import { totalCashOnHand, unsettledStatements, unmatchedCash } from '../src/features/admin/cashLedger';
-import { AR, AP } from '../src/shared/autoJournal';
+import { AR, AP, journalizeStatement, journalizeTransfer, journalizePayment, journalizeCashEntry } from '../src/shared/autoJournal';
+import type { JournalEntry } from '../src/shared/types';
 import { AccountModal } from './CashLedger';
 import PageHeader from './PageHeader';
 
@@ -221,12 +222,34 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // ── 매입: 선택해서 불러온 발주카드 id 목록. 발행 시 이 PO들의 linkedStatementId에 전표 id 연결 + 입고대기 전환 ──
   const [loadedPoIds, setLoadedPoIds] = useState<string[]>([]);
   // 발주카드(PurchaseOrder) → 직접입력 행들로 변환 (묶음 items[] 펼침, 카드 섹션·재발행 공용)
+  //
+  // 매출(주문 불러오기)과 **같은 규칙으로 박스를 낱개로 푼다** — 전표는 낱개 기준이다.
+  //   20개입 박스 3장 → 낱개 60개, 단가도 낱개 매입단가.
+  // 예전엔 여기서 안 풀고 박스 수량·박스명을 그대로 넣은 뒤 boxSize를 12로 박아 뒀다.
+  // 개입수가 10·20·40인 품목이 전부 12로 잡혀 수량이 어긋났다.
   const poToManualRows = (po: PurchaseOrder): ManualRow[] =>
     poLines(po).map(line => {
-      const product = allItems.find(p => p.id === line.itemId);
-      const ps = (partnerItems ?? []).find((s: any) => s.Direction === 'in' && (s.itemId === line.itemId || s.itemId === line.itemId) && (s.partnerId === selectedClientId || s.partnerId === selectedClientId));
-      const isBox = line.isBox ?? false;
-      return { name: line.name || product?.name || '', spec: product?.spec || line.unit || '', qty: String(line.quantity), price: ps?.price ? String(ps.price) : (ps?.price ? String(ps.price) : ''), isTaxExempt: ps?.taxType === '면세', isBoxUnit: isBox, boxSize: isBox ? 12 : undefined, accountCode: ps?.Account_Code };
+      let product = allItems.find(p => p.id === line.itemId);
+      let qty = line.quantity;
+      const uc = unpackComponent(product);
+      if (uc) {
+        const loose = allItems.find(p => p.id === uc.itemId);
+        if (loose) { product = loose; qty = line.quantity * uc.count; }
+      }
+      // 단가는 바뀐 품목(낱개) 기준으로 다시 찾는다. 없으면 박스 단가 ÷ 개입수로 파생.
+      const ps = (partnerItems ?? []).find((s: any) =>
+        s.Direction === 'in' && s.itemId === (product?.id ?? line.itemId) && s.partnerId === selectedClientId);
+      const boxPs = uc ? (partnerItems ?? []).find((s: any) =>
+        s.Direction === 'in' && s.itemId === line.itemId && s.partnerId === selectedClientId) : undefined;
+      const unitPrice = ps?.price ?? (boxPs?.price && uc ? Math.round(boxPs.price / uc.count) : undefined);
+      return {
+        name: product?.name || line.name || '',
+        spec: product?.spec || line.unit || '',
+        qty: String(qty),
+        price: unitPrice ? String(unitPrice) : '',
+        isTaxExempt: (ps ?? boxPs)?.taxType === '면세',
+        accountCode: (ps ?? boxPs)?.Account_Code,
+      };
     });
   // ── 품목명 드롭다운 검색 ──
   const [activeSearchRow, setActiveSearchRow] = useState<number | null>(null);
@@ -391,13 +414,86 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       : (row.accountCode && codeType.get(row.accountCode) === want ? row.amount : 0);
     return { cash: row.dir, plAmount, ...(plAmount > 0 ? { pl: want } : {}) };
   }, [codeType]);
-  // 쪼갠 자금(대출상환 원금+이자) 펼침 상태 — 전체 목록에선 접어두고 눌러야 펼친다.
-  const [expandedCash, setExpandedCash] = useState<Set<string>>(new Set());
-  const toggleCash = (id: string) => setExpandedCash(prev => {
+  // ── 분개 펼침 ── 목록의 모든 줄(매출·매입·대체·수금/지불·자금)이 같은 방식으로 열린다.
+  // 계산은 재무제표·손익분석이 쓰는 journalize* 함수 그대로라 화면끼리 숫자가 어긋날 수 없다.
+  const [expandedJournal, setExpandedJournal] = useState<Set<string>>(new Set());
+  const toggleJournal = (id: string) => setExpandedJournal(prev => {
     const next = new Set(prev);
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
+  const normalOf = useCallback(
+    (code: string): 'debit' | 'credit' =>
+      accountCodes.find(a => String(a.code) === String(code))?.normalBalance ?? 'debit',
+    [accountCodes]);
+  // 대체전표(type '비용')는 차·대를 직접 세우므로 journalizeTransfer로 간다
+  const journalOfStmt = (s: IssuedStatement): JournalEntry | null =>
+    s.type === '비용' ? journalizeTransfer(s, normalOf) : journalizeStatement(s);
+  /** 분개 미리보기 — 표(compact=false)와 모바일 카드(compact=true) 공용. */
+  const renderJournal = (je: JournalEntry | null, compact = false) => {
+    if (!je) return (
+      <p className={`${compact ? 'px-2.5 py-2' : ''} text-[11px] font-black text-amber-600`}>
+        계정이 지정되지 않아 분개를 만들 수 없습니다 — 손익·재무제표에 안 잡힙니다.
+      </p>
+    );
+    const totalD = je.lines.reduce((a, l) => a + (l.debit ?? 0), 0);
+    const totalC = je.lines.reduce((a, l) => a + (l.credit ?? 0), 0);
+    if (compact) return (
+      <>
+        {je.lines.map((l, i) => (
+          <div key={i} className="flex items-center gap-2 px-2.5 py-1.5 border-b border-white last:border-0 text-[11px]">
+            <span className={`shrink-0 font-black ${l.debit ? 'text-slate-600' : 'text-slate-400'}`}>{l.debit ? '차변' : '대변'}</span>
+            <span className="flex-1 min-w-0 truncate font-bold text-slate-700">
+              <span className="text-slate-400 font-mono mr-1">{l.accountCode}</span>{codeName.get(l.accountCode) ?? ''}
+            </span>
+            <span className="shrink-0 font-black tabular-nums text-slate-700">{fmt(l.debit || l.credit)}</span>
+          </div>
+        ))}
+      </>
+    );
+    return (
+      <div className="inline-block min-w-[380px] rounded-xl border border-slate-200 bg-white overflow-hidden">
+        <div className="grid grid-cols-[46px_1fr_110px_110px] bg-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+          <span className="px-2 py-1.5">구분</span>
+          <span className="px-2 py-1.5">계정</span>
+          <span className="px-2 py-1.5 text-right">차변</span>
+          <span className="px-2 py-1.5 text-right">대변</span>
+        </div>
+        {je.lines.map((l, i) => (
+          <div key={i} className="grid grid-cols-[46px_1fr_110px_110px] border-t border-slate-50 text-[11px]">
+            <span className={`px-2 py-1.5 font-black ${l.debit ? 'text-slate-600' : 'text-slate-400'}`}>{l.debit ? '차변' : '대변'}</span>
+            <span className="px-2 py-1.5 font-bold text-slate-700">
+              <span className="text-slate-400 font-mono mr-1">{l.accountCode}</span>
+              {codeName.get(l.accountCode) ?? ''}
+            </span>
+            <span className="px-2 py-1.5 text-right font-black tabular-nums text-slate-700">{l.debit ? fmt(l.debit) : ''}</span>
+            <span className="px-2 py-1.5 text-right font-black tabular-nums text-slate-700">{l.credit ? fmt(l.credit) : ''}</span>
+          </div>
+        ))}
+        <div className="grid grid-cols-[46px_1fr_110px_110px] border-t-2 border-slate-200 bg-slate-50 text-[11px]">
+          <span className="px-2 py-1.5" />
+          <span className="px-2 py-1.5 font-black text-slate-400">합계</span>
+          <span className="px-2 py-1.5 text-right font-black tabular-nums text-slate-800">{fmt(totalD)}</span>
+          <span className="px-2 py-1.5 text-right font-black tabular-nums text-slate-800">{fmt(totalC)}</span>
+        </div>
+      </div>
+    );
+  };
+  /** 표에서 분개를 담는 줄 — 첫 칸은 비우고 나머지를 통으로 쓴다. */
+  const journalTr = (key: string, je: JournalEntry | null) => (
+    <tr key={key} className="bg-slate-50/80">
+      <td />
+      <td colSpan={6} className="px-4 pt-1 pb-3">{renderJournal(je)}</td>
+    </tr>
+  );
+  /** 펼치기 화살표 — 행 클릭(편집)과 겹치지 않게 이벤트를 끊는다. */
+  const journalToggle = (id: string) => (
+    <button onClick={e => { e.stopPropagation(); toggleJournal(id); }}
+      title={expandedJournal.has(id) ? '분개 접기' : '분개 보기 — 차변/대변'}
+      className="shrink-0 text-slate-300 hover:text-slate-700 transition-colors">
+      {expandedJournal.has(id) ? <ChevronDown size={13}/> : <ChevronRight size={13}/>}
+    </button>
+  );
   // 계좌별 현재 잔액 + 보유자금 총액 (장부 흡수 — 전표 화면에서 잔액 확인)
   const cashBalances = useMemo(() => {
     const active = cashAccounts.filter(a => a.active);
@@ -532,8 +628,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setEditPayInfo(null);
   };
 
-  // 타임라인의 수금/지불 행 삭제 — 구 payments[]면 전표에서 제거, settlement 기반이면
-  // 그 자금기록(cashEntry)과 연결된 settlement를 전부 지운다(잔액이 정확히 되돌려짐).
+  // 타임라인의 수금/지불 행 삭제 — 구 payments[]면 전표에서 제거,
+  // 자금기록 기반이면 그 cashEntry와 거기 붙은 settlement를 전부 지운다(잔액이 정확히 되돌려짐).
+  //
+  // paymentId에는 **자금기록 id**가 들어온다(타임라인이 `paymentId: e.id`로 만든다).
+  // 예전엔 이걸 settlement id로 알고 찾아서 늘 못 찾고 아무것도 안 지웠다 — 삭제가 안 되던 원인.
   const deletePayTimelineRow = (paymentId: string, src: IssuedStatement) => {
     if (!window.confirm('이 수금/지불을 삭제할까요?')) return;
     const legacy = (src.payments ?? []).find(p => p.id === paymentId);
@@ -541,12 +640,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       onUpdateIssuedStatement?.(src.id, { payments: (src.payments ?? []).filter(p => p.id !== paymentId) });
       return;
     }
-    const st = settlements.find(s => s.id === paymentId);
-    if (st) {
-      const ceId = st.cashEntryId;
-      settlements.filter(s => s.cashEntryId === ceId).forEach(s => onDeleteSettlement?.(s.id));
-      if (ceId) onDeleteCashEntry?.(ceId);
-    }
+    // 자금기록 id로 바로 찾고, 못 찾으면 settlement id로도 한 번 더 본다(옛 행 대비)
+    const ceId = cashEntries.some(c => c.id === paymentId)
+      ? paymentId
+      : settlements.find(s => s.id === paymentId)?.cashEntryId;
+    if (!ceId) { alert('이 수금 기록을 찾지 못했습니다. 자금원장에서 지워 주세요.'); return; }
+    settlements.filter(s => s.cashEntryId === ceId).forEach(s => onDeleteSettlement?.(s.id));
+    onDeleteCashEntry?.(ceId);
   };
 
   /** 외상매출금(108)·외상매입금(251)으로 잡은 자금은 전표에 붙어야 미수/미지급이 줄어든다.
@@ -663,13 +763,27 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       .finally(() => setIsFetchingHistory(false));
   }, [histFrom, histTo, sevenDaysAgoCutoff]);
 
-  // props 7일치 + 온디맨드 fetch 데이터 합치기 (id 기준 dedup, props 우선)
+  // 방금 지운 전표 — extraStatements는 한 번 떠온 스냅샷이라 삭제가 안 비친다.
+  // 지운 id를 여기 담아 두고 합칠 때 걸러 낸다(다시 떠와도 안 되살아난다).
+  const [deletedStmtIds, setDeletedStmtIds] = useState<Set<string>>(new Set());
+  /** 전표 삭제 — 서버에 지우고 화면에서도 즉시 뺀다.
+   *  붙어 있던 매칭(settlement)도 같이 지운다. 안 지우면 없는 전표를 가리킨 채 남아
+   *  그 거래처 잔액이 갚은 것으로 계속 깎인다. */
+  const deleteStatement = (id: string) => {
+    settlements.filter(s => s.statementId === id).forEach(s => onDeleteSettlement?.(s.id));
+    onDeleteIssuedStatement?.(id);
+    setDeletedStmtIds(prev => new Set(prev).add(id));
+    setExtraStatements(prev => prev.filter(s => s.id !== id));
+  };
+
+  // props(전체 구독) + 온디맨드 fetch 데이터 합치기 (id 기준 dedup, props 우선)
   const mergedStatements = useMemo(() => {
     const map = new Map<string, IssuedStatement>();
     extraStatements.forEach(s => map.set(s.id, s));
     issuedStatements.forEach(s => map.set(s.id, s));
+    for (const id of deletedStmtIds) map.delete(id);
     return Array.from(map.values());
-  }, [issuedStatements, extraStatements]);
+  }, [issuedStatements, extraStatements, deletedStmtIds]);
 
   /**
    * 거래처별 잔액 — 전표 총액에서 그 거래처로 오간 채권·채무(108/251) 자금을 뺀다.
@@ -984,6 +1098,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     key: string; no: number; name: string; spec: string;
     qty: number; price: number; supply: number; tax: number; total: number;
     isTaxExempt: boolean; isBoxUnit?: boolean; boxSize?: number; accountCode?: string;
+    /** 주문의 품목을 못 찾음 — 박스가 안 풀렸을 수 있어 화면에 경고를 단다 */
+    unknownItem?: boolean;
   };
 
   const lineItems = useMemo((): LineItem[] => {
@@ -1004,7 +1120,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const itemMap: Record<string, LineItem> = {};
     let no = 1;
     selectedOrder.items.forEach(item => {
-      let product = allItems.find(p => p.id === item.itemId);
+      // 품목이 지워졌거나 id가 바뀌면 못 찾는다 → 박스가 안 풀리고 박스 수량 그대로 들어간다.
+      // 이름으로 한 번 더 찾아보고, 그래도 없으면 아래에서 경고 표시를 단다(조용히 넘기지 않는다).
+      let product = allItems.find(p => p.id === item.itemId)
+        ?? (item.name ? allItems.find(p => !p.archived && p.name === item.name) : undefined);
+      const unknownItem = !product;
       // 박스 품목 → 낱개로 변환 (전표는 낱개 기준). 수량 = 박스개수 × 개입 = 낱개 수량으로 환산.
       const uc = unpackComponent(product);
       let qtyUnits = item.quantity;
@@ -1053,7 +1173,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       } else {
         // 우선순위: 이번에 고른 값 > 전에 끊었던 계정(pcEntry) > 매출이면 800 기본. 빈값('')도 800으로.
         const acCode = accountCodeOverrides[key] || pcEntry?.Account_Code || (stmtType === '매출' ? '800' : undefined);
-        itemMap[key] = { key, no: no++, name: displayName, spec, qty: qtyUnits, price: unitPrice, supply, tax, total: supply + tax, isTaxExempt, accountCode: acCode };
+        itemMap[key] = { key, no: no++, name: displayName, spec, qty: qtyUnits, price: unitPrice, supply, tax, total: supply + tax, isTaxExempt, accountCode: acCode, ...(unknownItem ? { unknownItem: true } : {}) };
       }
     });
     return Object.values(itemMap);
@@ -1885,7 +2005,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const d = row.kind === 'stmt' ? row.data.tradeDate : row.date;
         const name = (row.kind === 'stmt' ? row.data.partnerName : row.kind === 'pay' ? row.partnerName : (row.partnerName ?? '')) || '';
         const cashCodes = row.kind === 'cash'
-          ? ((row.entry.lines ?? []).filter(l => l.accountCode && l.amount > 0).map(l => l.accountCode)
+          ? ((row.entry.lines ?? []).filter(l => l.accountCode && l.amount !== 0).map(l => l.accountCode)
              .concat(row.accountCode ? [row.accountCode] : []))
           : [];
         const docNo = row.kind === 'stmt' ? row.data.docNo : '';
@@ -2630,43 +2750,55 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 if (row.kind === 'cash') {
                   // ── 자금 입출금 전표 행 ──
                   // 쪼갠 줄(대출상환 원금+이자)은 계정 칸에 "원금 차입금 1,000,000 · 이자 …"로 펼친다.
-                  const split = (row.entry.lines ?? []).filter(l => l.accountCode && l.amount > 0);
+                  // 줄 금액은 부호를 가진다 — 음수는 통장과 같은 편(급여의 원천공제 등)
+                  const split = (row.entry.lines ?? []).filter(l => l.accountCode && l.amount !== 0);
                   const acct = split.length
-                    ? split.map(l => `${l.note ? l.note + ' ' : ''}${codeName.get(l.accountCode) ?? l.accountCode} ${fmt(l.amount)}`).join(' · ')
+                    ? split.map(l => `${l.note ? l.note + ' ' : ''}${codeName.get(l.accountCode) ?? l.accountCode} ${l.amount < 0 ? '−' : ''}${fmt(Math.abs(l.amount))}`).join(' · ')
                     : (row.accountCode ? `${codeName.get(row.accountCode) ?? row.accountCode}` : '');
                   const detail = [acct, row.note].filter(Boolean).join(' · ');
-                  // 손익축 줄 — 전표 없이 자금으로만 생긴 수익·비용(이자비용 등)을 그 성격으로 띄운다.
-                  // 자금축(출금)과는 별개 줄이다: 전체 탭에선 둘 다, 수익·비용 탭에선 이것만 보인다.
+                  // 자금기록 한 건은 줄도 하나다. 다만 성격이 둘이면 배지를 둘 단다 — [출금][비용].
+                  // 예전엔 자금축·손익축을 별개 줄로 뽑아 대출상환 한 건이 두 줄로 보였다.
                   const plKind = row.dir === '입금' ? '수익' : '비용';
                   const plParts = split.length
                     ? split.filter(l => codeType.get(l.accountCode) === plKind)
                         .map(l => ({ code: l.accountCode, amount: l.amount }))
                     : (row.accountCode && codeType.get(row.accountCode) === plKind
                         ? [{ code: row.accountCode, amount: row.amount }] : []);
-                  // Tailwind은 클래스명을 문자열로 조립하면 못 알아본다 — 정적으로 적는다.
-                  const badgeCls = plKind === '비용' ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700';
-                  const amtCls = plKind === '비용' ? 'text-rose-600' : 'text-blue-600';
-                  const plRows = plParts.map((p, i) => (
-                    <tr key={`cashpl__${row.entry.id}__${i}`}
-                      onClick={() => onUpdateCashEntry && openEditCash(row.entry)}
-                      className={`transition-colors ${onUpdateCashEntry ? 'cursor-pointer' : ''} hover:bg-slate-50`}>
-                      <td className="px-4 py-2 text-[11px] font-mono text-slate-500 whitespace-nowrap">{row.date}</td>
-                      <td className="px-4 py-2">
-                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${badgeCls}`}>{plKind}</span>
-                      </td>
-                      <td className="px-4 py-2 text-xs font-bold text-slate-700">{row.partnerName || <span className="text-slate-300">—</span>}</td>
-                      <td className={`px-4 py-2 text-xs text-right font-black ${amtCls}`}>{fmt(p.amount)}</td>
-                      <td className="px-4 py-2 text-xs text-right text-slate-300">—</td>
-                      <td className="px-4 py-2 text-[11px] text-slate-500 max-w-[180px] truncate">
-                        {[`${p.code} ${codeName.get(p.code) ?? ''}`, row.note].filter(Boolean).join(' · ')}
-                      </td>
-                      <td className="px-4 py-2"></td>
-                    </tr>
-                  ));
-                  if (histTypeFilter === '수익' || histTypeFilter === '비용') {
-                    return plRows.length ? <React.Fragment key={`cash__${row.entry.id}`}>{plRows}</React.Fragment> : null;
-                  }
-                  const isOpen = expandedCash.has(row.entry.id);
+                  const plAmt = plParts.reduce((a, p) => a + p.amount, 0);
+                  const isPlTab = histTypeFilter === '수익' || histTypeFilter === '비용';
+                  // 수익·비용 탭에선 그 성격이 없는 자금기록은 아예 안 나온다
+                  if (isPlTab && !plParts.length) return null;
+                  // 손익 탭에선 그 성격의 금액만(대출상환이면 이자만), 전체 탭에선 통장에서 나간 전액
+                  const shownAmt = isPlTab ? plAmt : row.amount;
+                  // 성격 배지 — 계정의 종류에서 뽑는다. 한 건에 성격이 여럿이면 배지도 여럿.
+                  //   대출상환 = [출금] + 원금(부채↓) [상환] + 이자(비용) [비용]
+                  // Tailwind은 클래스명을 조립하면 못 알아보므로 정적 문자열로 둔다.
+                  const KIND_CLS: Record<string, string> = {
+                    비용: 'bg-rose-100 text-rose-700', 수익: 'bg-blue-100 text-blue-700',
+                    상환: 'bg-violet-100 text-violet-700', 차입: 'bg-violet-100 text-violet-700',
+                    예수: 'bg-amber-100 text-amber-700', 반환: 'bg-amber-100 text-amber-700',
+                    자산: 'bg-teal-100 text-teal-700', 처분: 'bg-teal-100 text-teal-700',
+                  };
+                  // 부채는 줄지 느는지에 따라 말이 다르다 — 줄 금액의 부호로 가른다.
+                  //   대출상환 원금(+, 출금) = 부채 감소 → 상환 / 급여 원천공제(−, 출금) = 부채 증가 → 예수
+                  const kindOf = (code?: string, amount = 1): string | null => {
+                    const t = code ? codeType.get(code) : undefined;
+                    if (t === '비용' || t === '수익') return t;
+                    const shrink = row.dir === '출금' ? amount > 0 : amount < 0;   // 그 계정이 줄어드는가
+                    if (t === '부채') {
+                      const isLoan = /차입금/.test(codeName.get(code!) ?? '');
+                      return shrink ? (isLoan ? '상환' : '반환') : (isLoan ? '차입' : '예수');
+                    }
+                    if (t === '자산') return shrink ? '처분' : '자산';
+                    return null;
+                  };
+                  const kindParts = split.length
+                    ? split.map(l => ({ code: l.accountCode, amount: l.amount }))
+                    : (row.accountCode ? [{ code: row.accountCode, amount: row.amount }] : []);
+                  const kinds = isPlTab
+                    ? [plKind]
+                    : [...new Set(kindParts.map(p => kindOf(p.code, p.amount)).filter((k): k is string => !!k))];
+                  const isOpen = expandedJournal.has(row.entry.id);
                   // 거래처가 붙은 돈인데 전표 매칭도 계정도 없으면 '미배분' — 받았지만 어느 청구서에
                   // 넣을지 안 정한 돈이다. 계정이 있으면 성격이 정해진 것이라 정상(이자·차입금 등).
                   const matchedAmt = settlements
@@ -2681,17 +2813,22 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       className={`transition-colors ${onUpdateCashEntry ? 'cursor-pointer' : ''} ${row.dir === '입금' ? 'bg-emerald-50/60 hover:bg-emerald-100/60' : 'bg-slate-50/60 hover:bg-slate-100/60'}`}>
                       <td className="px-4 py-2 text-[11px] font-mono text-slate-500 whitespace-nowrap">{row.date}{row.entry.createdAt ? ` ${row.entry.createdAt.slice(11,16)}` : ''}</td>
                       <td className="px-4 py-2 whitespace-nowrap">
-                        {split.length > 0 && (
-                          <button onClick={e => { e.stopPropagation(); toggleCash(row.entry.id); }}
-                            title={isOpen ? '접기' : `${split.length}개 계정으로 나뉨 — 펼치기`}
-                            className="align-middle mr-1 text-slate-400 hover:text-slate-700 transition-colors">
-                            {isOpen ? <ChevronDown size={13}/> : <ChevronRight size={13}/>}
-                          </button>
-                        )}
-                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.dir === '입금' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{row.dir}</span>
+                        <span className="inline-flex items-center gap-1 align-middle">
+                          {journalToggle(row.entry.id)}
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.dir === '입금' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{row.dir}</span>
+                          {kinds.map(k => (
+                            <span key={k} className={`text-[10px] font-black px-2 py-0.5 rounded-full ${KIND_CLS[k] ?? 'bg-slate-100 text-slate-500'}`}>{k}</span>
+                          ))}
+                        </span>
                       </td>
                       <td className="px-4 py-2 text-xs font-bold text-slate-700">{row.partnerName || <span className="text-slate-300">—</span>}</td>
-                      <td className={`px-4 py-2 text-xs text-right font-black ${row.dir === '입금' ? 'text-emerald-600' : 'text-rose-600'}`}>{fmt(row.amount)}</td>
+                      <td className={`px-4 py-2 text-xs text-right font-black ${row.dir === '입금' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {fmt(shownAmt)}
+                        {/* 성격이 섞인 건 — 통장에서 나간 전액과 그중 손익분이 다르다 */}
+                        {!isPlTab && plAmt > 0 && plAmt !== row.amount && (
+                          <span className="block text-[10px] font-bold text-rose-400">그중 {plKind} {fmt(plAmt)}</span>
+                        )}
+                      </td>
                       <td className="px-4 py-2 text-xs text-right">
                         {/* 거래처는 붙었는데 전표에도 안 붙고 계정도 없는 돈 = 어디 쓸지 안 정한 돈.
                             완도식품처럼 조용히 떠 있으면 미수금이 안 맞는데 원인을 못 찾는다. */}
@@ -2702,9 +2839,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                           : <span className="text-slate-300">—</span>}
                       </td>
                       <td className="px-4 py-2 text-[11px] text-slate-500 max-w-[180px] truncate">
-                        {/* 쪼갠 줄로 계정이 붙은 건도 지정된 것 — accountCode만 보면 '미지정'으로 잘못 뜬다 */}
+                        {/* 쪼갠 줄로 계정이 붙은 건도 지정된 것 — accountCode만 보면 '미지정'으로 잘못 뜬다.
+                            쪼갠 건은 계정별 금액을 그대로 보여준다 — "원금 차입금 1,000,000 · 이자 이자비용 284,169" */}
                         {(split.length || row.accountCode)
-                          ? (split.length ? (row.note ?? '') : detail)
+                          ? detail
                           : <span className="text-amber-500 font-bold">계정 미지정{row.note ? ` · ${row.note}` : ''}</span>}
                       </td>
                       <td className="px-4 py-2">
@@ -2714,33 +2852,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                         )}
                       </td>
                     </tr>
-                    {/* 쪼갠 줄 — 통장에서는 한 번 나갔지만 성격은 둘이다. 원금은 부채 감소, 이자는 비용.
-                        전체 목록에선 접어두고 화살표를 눌러야 펼친다. */}
-                    {isOpen && split.map((l, i) => {
-                      const isCost = codeType.get(l.accountCode) === '비용';
-                      return (
-                        <tr key={`cash__${row.entry.id}__${i}`}
-                          className={row.dir === '입금' ? 'bg-emerald-50/30' : 'bg-slate-50/30'}>
-                          <td className="px-4 py-1"></td>
-                          <td className="px-4 py-1 whitespace-nowrap">
-                            <span className="text-slate-300 mr-1">└</span>
-                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${isCost ? 'bg-rose-100 text-rose-700' : 'bg-slate-200 text-slate-500'}`}>
-                              {isCost ? '비용' : (l.note || '대체')}
-                            </span>
-                          </td>
-                          <td className="px-4 py-1 text-[11px] text-slate-400">{l.note || ''}</td>
-                          <td className={`px-4 py-1 text-[11px] text-right font-black ${isCost ? 'text-rose-500' : 'text-slate-400'}`}>{fmt(l.amount)}</td>
-                          <td className="px-4 py-1"></td>
-                          <td className="px-4 py-1 text-[11px] text-slate-400 truncate">
-                            {l.accountCode} {codeName.get(l.accountCode) ?? ''}
-                          </td>
-                          <td className="px-4 py-1"></td>
-                        </tr>
-                      );
-                    })}
-                    {/* 전체 탭 — 통장 관점(출금)과 손익 관점(비용)을 나눠서 각각 띄운다.
-                        자금 탭에선 출금만, 비용 탭에선 비용만 나오므로 여기서만 둘 다. */}
-                    {histTypeFilter === '전체' && plRows}
+                    {/* 분개 — 쪼갠 줄(대출상환 원금+이자)도 여기서 계정별로 갈려 보인다.
+                        전에는 쪼갠 줄만 따로 폈는데, 통장 쪽 상대계정이 안 보여 반쪽이었다. */}
+                    {isOpen && journalTr(`je__cash__${row.entry.id}`, journalizeCashEntry(row.entry))}
                   </React.Fragment>
                   );
                 }
@@ -2750,13 +2864,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   // 수익·비용 탭에는 안 뜬다 — 매출·매입은 전표 끊을 때 이미 잡혔기 때문.
                   const label = row.stmtType === '매출' ? '수금' : '지불';
                   const cumul = row.cumul;
+                  const payRec = row.src.payments?.find(p => p.id === row.paymentId);
                   return (
-                    <tr key={`pay__${row.paymentId}`}
+                    <React.Fragment key={`pay__${row.paymentId}`}>
+                    <tr
                       className={`cursor-pointer transition-colors ${row.stmtType === '매출' ? 'bg-lime-50/80 hover:bg-lime-100/80' : 'bg-orange-50/80 hover:bg-orange-100/80'}`}
                       onClick={() => openPayTimelineRow(row.paymentId, row.src)}>
-                      <td className="px-4 py-2 text-[11px] font-mono text-slate-500 whitespace-nowrap">{row.date}{(() => { const p = row.src.payments?.find(p => p.id === row.paymentId); return p?.createdAt ? ` ${p.createdAt.slice(11,16)}` : ''; })()}</td>
+                      <td className="px-4 py-2 text-[11px] font-mono text-slate-500 whitespace-nowrap">{row.date}{payRec?.createdAt ? ` ${payRec.createdAt.slice(11,16)}` : ''}</td>
                       <td className="px-4 py-2">
-                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.stmtType === '매출' ? 'bg-lime-100 text-lime-700' : 'bg-orange-100 text-orange-700'}`}>{label}</span>
+                        <span className="inline-flex items-center gap-1 align-middle">
+                          {journalToggle(row.paymentId)}
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.stmtType === '매출' ? 'bg-lime-100 text-lime-700' : 'bg-orange-100 text-orange-700'}`}>{label}</span>
+                        </span>
                       </td>
                       <td className="px-4 py-2 text-xs font-bold text-slate-800">{row.partnerName}</td>
                       <td className="px-4 py-2 text-xs text-right font-black text-slate-800">{fmt(row.amount)}</td>
@@ -2778,6 +2897,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                           className="text-slate-300 hover:text-rose-500 transition-all" title="수금/지불 삭제"><Trash2 size={13}/></button>
                       </td>
                     </tr>
+                    {/* 수금·지불은 손익이 아니라 채권·채무를 현금으로 상계하는 것 — 분개로 보면 분명하다 */}
+                    {expandedJournal.has(row.paymentId) && payRec &&
+                      journalTr(`je__pay__${row.paymentId}`, journalizePayment(row.src, payRec))}
+                    </React.Fragment>
                   );
                 }
                 // ── 전표 행 ──
@@ -2788,12 +2911,15 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 const summary    = stmtItems.slice(0, 2).map(i => i.name).join(', ') + (stmtItems.length > 2 ? ` 외 ${stmtItems.length - 2}건` : '');
                 const isReturn   = stmtItems.some(i => i.qty < 0);
                 const cumul = row.cumul;
+                const jOpen = expandedJournal.has(stmt.id);
                 return (
-                  <tr key={stmt.id} className={`transition-colors cursor-pointer ${isReturn ? 'bg-rose-50 hover:bg-rose-100' : 'hover:bg-slate-50'}`}
+                  <React.Fragment key={stmt.id}>
+                  <tr className={`transition-colors cursor-pointer ${isReturn ? 'bg-rose-50 hover:bg-rose-100' : 'hover:bg-slate-50'}`}
                     onClick={() => openEdit(stmt)}>
                     <td className="px-4 py-3 text-[11px] font-mono text-slate-600 whitespace-nowrap">{dateLabel}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
+                        {journalToggle(stmt.id)}
                         <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
                           stmt.type === '매출' ? 'bg-blue-100 text-blue-700' : 'bg-rose-100 text-rose-700'
                         }`}>{stmt.type}</span>
@@ -2828,6 +2954,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       </div>
                     </td>
                   </tr>
+                  {/* ── 분개 미리보기 ── 매출 한 건도 채권·매출·부가세로 갈리므로 줄로 편다 */}
+                  {jOpen && journalTr(`je__${stmt.id}`, journalOfStmt(stmt))}
+                  </React.Fragment>
                 );
               })}
             </tbody>
@@ -2837,7 +2966,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           <div className="md:hidden divide-y divide-slate-100">
             {pagedHistory.map(row => {
               if (row.kind === 'cash') {
-                const split = (row.entry.lines ?? []).filter(l => l.accountCode && l.amount > 0);
+                const split = (row.entry.lines ?? []).filter(l => l.accountCode && l.amount !== 0);
                 const acct = split.length
                   ? split.map(l => `${l.note ? l.note + ' ' : ''}${codeName.get(l.accountCode) ?? l.accountCode} ${fmt(l.amount)}`).join(' · ')
                   : (row.accountCode ? (codeName.get(row.accountCode) ?? row.accountCode) : '');
@@ -2859,7 +2988,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                           onClick={() => onUpdateCashEntry && openEditCash(row.entry)}
                           className={`px-4 py-3 flex flex-col gap-1.5 ${onUpdateCashEntry ? 'cursor-pointer' : ''}`}>
                           <div className="flex items-center justify-between gap-2">
-                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${badge}`}>{mPl}</span>
+                            <span className="flex items-center gap-1">
+                              {journalToggle(`${row.entry.id}#pl`)}
+                              <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${badge}`}>{mPl}</span>
+                            </span>
                             <span className="text-[10px] font-mono text-slate-400">{row.date}</span>
                           </div>
                           <div className="flex items-center justify-between gap-2">
@@ -2869,6 +3001,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                           <p className="text-[11px] text-slate-400 truncate">
                             {[`${p.code} ${codeName.get(p.code) ?? ''}`, row.note].filter(Boolean).join(' · ')}
                           </p>
+                          {expandedJournal.has(`${row.entry.id}#pl`) && (
+                            <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50/70 overflow-hidden" onClick={e => e.stopPropagation()}>
+                              {renderJournal(journalizeCashEntry(row.entry), true)}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </React.Fragment>
@@ -2879,7 +3016,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     onClick={() => onUpdateCashEntry && openEditCash(row.entry)}
                     className={`px-4 py-3 flex flex-col gap-1.5 ${onUpdateCashEntry ? 'cursor-pointer' : ''} ${row.dir === '입금' ? 'bg-emerald-50/60' : 'bg-slate-50/60'}`}>
                     <div className="flex items-center justify-between gap-2">
-                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.dir === '입금' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{row.dir}</span>
+                      <span className="flex items-center gap-1">
+                        {journalToggle(row.entry.id)}
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.dir === '입금' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{row.dir}</span>
+                      </span>
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-mono text-slate-400">{row.date}</span>
                         {onDeleteCashEntry && <button onClick={(e)=>{e.stopPropagation(); if(window.confirm('이 자금 전표를 삭제할까요?')) onDeleteCashEntry(row.entry.id);}} className="text-slate-300 hover:text-rose-500" title="삭제"><Trash2 size={13}/></button>}
@@ -2890,6 +3030,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       <span className={`text-sm font-black shrink-0 ${row.dir === '입금' ? 'text-emerald-600' : 'text-rose-600'}`}>{fmt(row.amount)}</span>
                     </div>
                     {detail && <p className="text-[11px] text-slate-400 truncate">{detail}</p>}
+                    {expandedJournal.has(row.entry.id) && (
+                      <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50/70 overflow-hidden" onClick={e => e.stopPropagation()}>
+                        {renderJournal(journalizeCashEntry(row.entry), true)}
+                      </div>
+                    )}
                   </div>
                 );
               }
@@ -2902,7 +3047,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     onClick={() => openPayTimelineRow(row.paymentId, row.src)}
                     className={`w-full px-4 py-3 flex flex-col gap-1.5 cursor-pointer ${row.stmtType === '매출' ? 'bg-lime-50/70' : 'bg-orange-50/70'}`}>
                     <div className="flex items-center justify-between gap-2">
-                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.stmtType === '매출' ? 'bg-lime-100 text-lime-700' : 'bg-orange-100 text-orange-700'}`}>{label}</span>
+                      <span className="flex items-center gap-1">
+                        {journalToggle(row.paymentId)}
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.stmtType === '매출' ? 'bg-lime-100 text-lime-700' : 'bg-orange-100 text-orange-700'}`}>{label}</span>
+                      </span>
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-mono text-slate-400">{row.date}</span>
                         <button onClick={e => { e.stopPropagation(); deletePayTimelineRow(row.paymentId, row.src); }} className="text-slate-300 hover:text-rose-500" title="삭제"><Trash2 size={13}/></button>
@@ -2913,6 +3061,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       <span className="text-sm font-black text-slate-800 shrink-0">{fmt(row.amount)}</span>
                     </div>
                     {memo && <p className="text-[11px] text-slate-400 truncate">{memo}</p>}
+                    {expandedJournal.has(row.paymentId) && (() => {
+                      const p = row.src.payments?.find(x => x.id === row.paymentId);
+                      return p ? (
+                        <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50/70 overflow-hidden" onClick={e => e.stopPropagation()}>
+                          {renderJournal(journalizePayment(row.src, p), true)}
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
                 );
               }
@@ -2923,11 +3079,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               const summary = stmtItems.slice(0, 2).map(i => i.name).join(', ') + (stmtItems.length > 2 ? ` 외 ${stmtItems.length - 2}건` : '');
               const isReturn = stmtItems.some(i => i.qty < 0);
               const cumul = row.cumul;
+              const mJOpen = expandedJournal.has(stmt.id);
               return (
                 <div key={`m-${stmt.id}`} onClick={() => openEdit(stmt)}
                   className={`px-4 py-3 flex flex-col gap-1.5 cursor-pointer ${isReturn ? 'bg-rose-50' : ''}`}>
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1">
+                      {journalToggle(stmt.id)}
                       <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${stmt.type === '매출' ? 'bg-blue-100 text-blue-700' : 'bg-rose-100 text-rose-700'}`}>{stmt.type}</span>
                       {isReturn && <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">반품</span>}
                     </div>
@@ -2950,6 +3108,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       className={`self-start mt-0.5 text-[10px] font-black px-2.5 py-1 rounded-lg flex items-center gap-1 ${stmt.type === '매입' ? 'bg-rose-50 text-rose-600' : 'bg-blue-50 text-blue-600'}`}>
                       <Save size={10}/>{stmt.type === '매입' ? '지불처리' : '수금처리'}
                     </button>
+                  )}
+                  {/* 분개 미리보기 — 표와 같은 내용, 좁은 화면이라 줄만 세로로 쌓는다 */}
+                  {mJOpen && (
+                    <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50/70 overflow-hidden" onClick={e => e.stopPropagation()}>
+                      {renderJournal(journalOfStmt(stmt), true)}
+                    </div>
                   )}
                 </div>
               );
@@ -3605,10 +3769,21 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           } as any);
           setShowQuickPay(false);
         };
+        // 급여도 대출상환과 같은 방식 — 전표는 한 건, 그 안에서 성격을 줄로 가른다.
+        //   총급여는 비용(+), 원천공제는 우리가 맡아둔 돈이라 부채 증가(−).
+        //   통장에서 실제로 나간 건 실지급액(net)이고, 줄 합계도 net으로 맞는다.
+        // 예전엔 출금(총급여)·입금(예수금) 두 건으로 끊어 목록에 두 줄로 보였다.
         const doSalarySave = () => {
           const memo = quickPayNote.trim() || '급여';
-          onAddCashEntry?.({ id: `cash-${Date.now()}-g`, dir: '출금', amount: grs, accountCode: SALARY_CODE, note: `${memo} (총급여)`, ...base() } as any);
-          if (ded > 0) onAddCashEntry?.({ id: `cash-${Date.now()}-w`, dir: '입금', amount: ded, accountCode: WITHHOLD_CODE, note: `${memo} (원천공제 예수)`, ...base() } as any);
+          const lines = [
+            { accountCode: SALARY_CODE, amount: grs, note: '총급여' },
+            ...(ded > 0 ? [{ accountCode: WITHHOLD_CODE, amount: -ded, note: '원천공제' }] : []),
+          ];
+          onAddCashEntry?.({
+            id: `cash-${Date.now()}`, dir: '출금', amount: net,
+            ...(lines.length > 1 ? { lines } : { accountCode: SALARY_CODE }),
+            note: memo, ...base(),
+          } as any);
           setShowQuickPay(false);
         };
 
@@ -3858,7 +4033,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 text-white rounded-xl text-xs font-black hover:bg-slate-800">
                   <Printer size={12}/>인쇄
                 </button>
-                <button onClick={()=>{if(window.confirm('이 전표를 삭제하시겠습니까?')){onDeleteIssuedStatement?.(detailStmt.id);setDetailStmt(null);}}}
+                <button onClick={()=>{if(window.confirm('이 전표를 삭제하시겠습니까?')){deleteStatement(detailStmt.id);setDetailStmt(null);}}}
                   className="flex items-center gap-1.5 px-3 py-2 bg-red-500 text-white rounded-xl text-xs font-black hover:bg-red-600">
                   <X size={12}/>삭제
                 </button>
@@ -4745,6 +4920,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                             <td className="px-3 py-2 text-slate-400 text-center w-8">{item.no}</td>
                             <td className="px-3 py-2 text-[11px] font-black text-slate-800 max-w-[140px]">
                               <span className="block truncate">{item.name}</span>
+                              {/* 품목을 못 찾으면 박스가 안 풀린 채 들어간다 — 발행 전에 알아야 한다 */}
+                              {item.unknownItem && (
+                                <span className="mt-0.5 inline-block text-[9px] font-black text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded-full whitespace-nowrap"
+                                  title="주문의 품목이 삭제됐거나 id가 바뀌었습니다. 박스 품목이면 낱개로 안 풀리니 수량·단가를 확인하세요.">
+                                  품목 없음 — 수량 확인
+                                </span>
+                              )}
                             </td>
                             <td className="px-3 py-2 text-[11px] text-slate-400">{item.spec}</td>
                             <td className="px-3 py-2 text-right text-[11px] w-12">{fmt(item.qty)}</td>
@@ -4872,7 +5054,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       <Printer size={13}/>거래명세서
                     </button>
                   </>) : (<>
-                    <button onClick={()=>{if(window.confirm('이 전표를 삭제하시겠습니까?')){onDeleteIssuedStatement?.(editingStmt!.id);closeCreate();}}}
+                    <button onClick={()=>{if(window.confirm('이 전표를 삭제하시겠습니까?')){deleteStatement(editingStmt!.id);closeCreate();}}}
                       className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-500 text-white text-xs font-black hover:bg-red-600 transition-all">
                       <X size={13}/>삭제
                     </button>
