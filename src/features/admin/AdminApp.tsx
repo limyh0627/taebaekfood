@@ -16,6 +16,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { isBulkItem } from '../../shared/itemTaxonomy';
 import { createPortal } from 'react-dom';
 import {
   LayoutDashboard,
@@ -401,7 +402,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   //   예: 통깨참기름 ← 참깨(0.45). 데이터가 없으면 기존 하드코딩값으로 폴백(무회귀).
   const yieldRules = useMemo(() => {
     const holderNames = new Set(
-      allItems.filter(i => !i.phantom && (i.category === 'raw' || (i.category === 'wip' && i.unit !== '개')))
+      allItems.filter(i => !i.phantom && isBulkItem(i))
         .map(i => baseRawName(i.name))
     );
     const map: Record<string, { product: string; rate: number }> = {};
@@ -468,7 +469,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
       submaterials: [],
       lots: [],
     } as Item;
-    await setDoc(doc(db, 'items', boxId), { ...box, id: boxId });
+    // addItem을 거쳐야 옛 필드 이름이 DB의 새 이름(type/category/subtype)으로 변환된다
+    await addItem('items', { ...box, id: boxId });
 
     const rows = [
       { child_id: unit.id, quantity: opts.count },
@@ -720,7 +722,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     }
 
     // 원료 홀더(벌크·1kg포 등) 부족 체크 — 원료식 kg 기준 (로트 합계 우선)
-    const isRawHolderItem = (i: Item) => i.category === 'raw' || (i.category === 'wip' && i.unit !== '개');
+    const isRawHolderItem = (i: Item) => isBulkItem(i);
     const round1 = (n: number) => Math.round(n * 10) / 10;
     for (const [material, neededKg] of Object.entries(rawUsageKg)) {
       const holder = allItems.find(i => isRawHolderItem(i) && baseRawName(i.name) === material);
@@ -995,7 +997,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   /** 원료 홀더의 현재 재고(kg) — 로트 합계 우선, 없으면 stock */
   const rawStockKg = (material: string): number => {
     const holder = allItems.find(i => !i.phantom && !i.archived
-      && (i.category === 'raw' || (i.category === 'wip' && i.unit !== '개'))
+      && isBulkItem(i)
       && baseRawName(i.name) === material);
     if (!holder) return 0;
     return holder.lots?.length ? lotKgRemaining(holder.lots) : unitToKg(holder.stock ?? 0, material);
@@ -1693,7 +1695,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     unit: 'kg', // canonical
                   });
                   // 파생 원료(통깨참기름 등)에도 로트 생성 → 수불부와 로트/재고 일치 (안 만들면 출고 시 로트 부족)
-                  const derivedRaw = allItems.find(i => (i.category === 'raw' || (i.category === 'wip' && i.unit !== '개')) && baseRawName(i.name) === product);
+                  const derivedRaw = allItems.find(i => isBulkItem(i) && baseRawName(i.name) === product);
                   if (derivedRaw && derivedKg > 0) {
                     const lot = buildReceiveLot({ material: product, supplierName: `${entry.material} 압착`, qtyIn: 0, kgIn: derivedKg, receivedDate: entry.date });
                     try {
@@ -3231,7 +3233,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                             // 여기서 정정·실사를 찍으면 로트도 같은 값으로 맞춘다.
                                             // (서류인 원료수불부만 따로 굴러간다 — 수율 파생·등급 분리는 표시 단계에서 처리)
                                             const rawHolder = allItems.find(i =>
-                                              (i.category === 'raw' || (i.category === 'wip' && i.unit !== '개'))
+                                              isBulkItem(i)
                                               && baseRawName(i.name) === rmActiveMaterial);
                                             if (rawHolder) {
                                               await mutateRawMaterialLots(

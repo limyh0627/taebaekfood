@@ -113,8 +113,27 @@ const stripUndefined = (obj: any): any => {
   return obj;
 };
 
+/**
+ * items 컬렉션만 — 코드가 들고 있는 옛 필드 이름을 DB의 새 이름으로 되돌린다.
+ *   코드:  category(=타입) · subtype(=카테고리) · subtype2(=서브타입)
+ *   DB  :  type          · category           · subtype
+ * 세 필드 중 하나라도 실려 있을 때만 변환한다(부분 갱신 — 예: {cost:123} 은 그대로 통과).
+ */
+const toItemDbFields = (collectionName: string, data: any) => {
+  if (collectionName !== 'items' || !data || typeof data !== 'object') return data;
+  const touches = ['category', 'subtype', 'subtype2'].some(k => k in data);
+  if (!touches) return data;
+  const { category, subtype, subtype2, ...rest } = data;
+  return {
+    ...rest,
+    ...(category !== undefined ? { type: category } : {}),
+    ...(subtype !== undefined ? { category: subtype } : {}),
+    ...(subtype2 !== undefined ? { subtype: subtype2 } : {}),
+  };
+};
+
 export const addItem = async (collectionName: string, item: any) => {
-  const { id, ...raw } = item;
+  const { id, ...raw } = toItemDbFields(collectionName, item);
   const data = stripUndefined(raw);
   if (id) {
     await setDoc(doc(db, collectionName, id), data);
@@ -129,7 +148,7 @@ export const updateItem = async (collectionName: string, id: string, data: any) 
   const docRef = doc(db, collectionName, id);
   // getFirestore는 ignoreUndefinedProperties가 꺼져 있어 undefined가 있으면 updateDoc이 throw한다.
   // (예: 전표 items[].accountCode가 빈 값이면 undefined로 들어와 저장이 통째로 실패) → 깊게 제거.
-  await updateDoc(docRef, stripUndefined(data));
+  await updateDoc(docRef, stripUndefined(toItemDbFields(collectionName, data)));
 };
 
 export const deleteItem = async (collectionName: string, id: string) => {

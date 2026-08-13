@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { isBulkItem } from '../src/shared/itemTaxonomy';
 import { Item } from '../types';
 import { PRODUCT_FORMULA, baseRawName } from '../src/constants/formula';
 import { ShieldAlert, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react';
@@ -18,7 +19,7 @@ const BomIntegrityPanel: React.FC<Props> = ({ items, itemFormulas = [] }) => {
     const formByKey: Record<string, FormulaRow[]> = {};
     itemFormulas.forEach(f => { (formByKey[f.parent_key] = formByKey[f.parent_key] || []).push(f); });
     // 원료 홀더 = raw, 또는 wip 벌크 반제품(볶음참깨류·들깨가루). unit='개' 캔/포장 SKU·phantom은 제외(엔진과 동일 판별).
-    const isHolder = (it: Item) => !it.phantom && (it.category === 'raw' || (it.category === 'wip' && (it as any).unit !== '개'));
+    const isHolder = (it: Item) => !it.phantom && isBulkItem(it);
     const holderByRaw: Record<string, Item> = {};
     for (const it of items) {
       if (isHolder(it)) holderByRaw[baseRawName(it.name)] = it;

@@ -1,4 +1,5 @@
 import { Item, IssuedStatement, PurchaseOrder } from '../../shared/types';
+import { isBulkItem } from '../../shared/itemTaxonomy';
 import { parsePackageKg, baseRawName } from '../../constants/formula';
 import { batchLoss, processingFee, sentKg } from './oem';
 
@@ -28,7 +29,7 @@ export interface OemEngineDeps {
 /** 원료명 → raw 홀더 품목 (category raw, 또는 wip 벌크(unit≠개)). phantom 제외. */
 function findRawHolder(items: Item[], material: string): Item | undefined {
   return items.find(i => !i.phantom && !i.archived
-    && (i.category === 'raw' || (i.category === 'wip' && i.unit !== '개'))
+    && isBulkItem(i)
     && baseRawName(i.name) === material);
 }
 

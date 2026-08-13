@@ -237,9 +237,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       minStock: formData.category === 'product' ? 0 : formData.minStock,
       unit: formData.unit,
       image: initialData?.image || '',
-      submaterials: ['product', 'giftset', 'shipping', 'wip'].includes(formData.category)
-        ? formData.submaterials
-        : (formData.submaterials.length > 0 ? formData.submaterials : (initialData?.submaterials || [])),
+      // 구성품(BOM)은 item_bom에만 저장한다 — 저장 직후 AdminApp이 동기화한다.
+      //   items.submaterials는 로딩 때 withDerivedSubmaterials가 item_bom에서 통째로 다시 만들므로,
+      //   여기에 써 두면 아무도 안 읽는 옛 값이 문서에 남아 나중에 진단할 때 헷갈린다.
       ...(formData.category === 'box' && { freightType: formData.freightType, boxSize: formData.boxSize }),
       ...(isProductCategory && hasBoxConfig && { defaultBoxConfig: formData.defaultBoxConfig }),
       ...(isProductCategory && formData.partnerBoxConfigs.length > 0 && { partnerBoxConfigs: formData.partnerBoxConfigs }),

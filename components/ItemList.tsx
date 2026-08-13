@@ -1,5 +1,6 @@
 ﻿
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { isBulkItem } from '../src/shared/itemTaxonomy';
 import {
   Package,
   Edit,
@@ -202,7 +203,7 @@ type TopTab = 'finished' | 'goods' | 'submaterial' | 'rawmaterial' | 'wip';
 
 // 원료 로트 홀더 판별 — raw, 또는 wip 벌크 반제품(볶음참깨·볶음들깨·볶음검정참깨·들깨가루(고운)).
 //   단 wip이라도 unit이 '개'인 캔/포장 SKU(예: 깨분참기름/16.5kg)는 홀더가 아님.
-const isRawHolder = (p: any): boolean => p?.category === 'raw' || (p?.category === 'wip' && p?.unit !== '개');
+const isRawHolder = (p: any): boolean => isBulkItem(p);
 
 // #2 원료 단일 소스: 표시용 재고 — 원료 홀더이고 로트가 있으면 로트 합계(운영단위=기름 L),
 //   그 외(로트 없는 원료 예: 깻묵, 또는 완제품/상품/부자재)는 stock 필드 사용.

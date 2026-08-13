@@ -1,4 +1,5 @@
 import { doc, setDoc, deleteDoc, getDoc, Firestore } from 'firebase/firestore';
+import { isBulkItem } from '../../shared/itemTaxonomy';
 import { Order, OrderItem, Item, OrderStatus, AppNotification, ShippingRule, Partner, RawMaterialLot } from '../../shared/types';
 import { toKg, baseRawName, lotStockInUnit, unitToKg } from '../../constants/formula';
 import { deductFromLots, withCarryOverLot, buildReceiveLot } from '../../shared/lotUtils';
@@ -99,7 +100,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     const oilSubs = (product.submaterials ?? [])
       .map(s => ({ s, comp: allItems.find(p => p.id === s.id) }))
       // 개수(개) 단위 반제품은 오일이 아니라 '조립 반제품'(무라벨 병 등) → accrueBom이 생산·차감. 벌크 반제품(L/kg)만 오일.
-      .filter(({ comp }) => comp && (comp.category === 'raw' || (comp.category === 'wip' && comp.unit !== '개')));
+      .filter(({ comp }) => comp && isBulkItem(comp));
     if (oilSubs.length > 0) {
       for (const { s, comp } of oilSubs) {
         const qty = bomQty(s);
@@ -149,7 +150,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       // 겉박스·테이프도 BOM에 있으면 그대로 깎는다 — 낱개 BOM엔 그것들을 안 둔다
       // (박스 품목을 만들 때 그 BOM으로 잡힌다). BOM이 곧 구성이다.
       // 원료·벌크 반제품(L/kg)은 kg로 원료식 경로에서 처리. 개수(개) 단위 반제품(조립)은 완제품처럼 여기서 생산·차감.
-      if (comp.category === 'raw' || (comp.category === 'wip' && comp.unit !== '개')) continue;
+      if (isBulkItem(comp)) continue;
       const need = Math.round(units * bomQty(s) * 1000) / 1000;
       if (need <= 0) continue;
 
@@ -191,7 +192,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     for (const raw of rawNames) {
       const usedKg = Math.round(rawUsage[raw] * 1000) / 1000;
       // 원료 홀더 = raw, 또는 wip 벌크 반제품(unit≠'개'). phantom(무재고)은 이미 전개돼 여기 오지 않음.
-      const rawItem = allItems.find(i => !i.phantom && (i.category === 'raw' || (i.category === 'wip' && i.unit !== '개')) && baseRawName(i.name) === raw);
+      const rawItem = allItems.find(i => !i.phantom && isBulkItem(i) && baseRawName(i.name) === raw);
       let noteSuffix = '';
       if (rawItem) {
         const mix = rawItem.mixEnabled ? { topPercent: rawItem.mixTopPercent ?? 50 } : undefined;
@@ -228,7 +229,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     const byMat: Record<string, NonNullable<Order['rawConsumedLots']>> = {};
     for (const c of consumed) (byMat[c.material] = byMat[c.material] || []).push(c);
     for (const [material, arr] of Object.entries(byMat)) {
-      const rawItem = allItems.find(i => !i.phantom && (i.category === 'raw' || (i.category === 'wip' && i.unit !== '개')) && baseRawName(i.name) === material);
+      const rawItem = allItems.find(i => !i.phantom && isBulkItem(i) && baseRawName(i.name) === material);
       if (rawItem) {
         await mutateRawMaterialLots(
           rawItem.id,

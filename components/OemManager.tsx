@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { isBulkItem } from '../src/shared/itemTaxonomy';
 import { Plus, X, ArrowRight } from 'lucide-react';
 import { Item, Partner, PurchaseOrder } from '../src/shared/types';
 import { sentKg, batchLoss, processingFee } from '../src/features/admin/oem';
@@ -32,7 +33,7 @@ export default function OemManager({
 
   const oemItems = useMemo(() => items.filter(i => !i.archived && i.procureType === '임가공'), [items]);
   const rawItems = useMemo(
-    () => items.filter(i => !i.archived && !i.phantom && (i.category === 'raw' || (i.category === 'wip' && i.unit !== '개'))),
+    () => items.filter(i => !i.archived && !i.phantom && isBulkItem(i)),
     [items],
   );
 

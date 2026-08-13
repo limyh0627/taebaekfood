@@ -15,8 +15,8 @@ const item = (over: Partial<Item>): Item =>
   ({ id: 'x', name: 'x', category: 'product', unit: '개', price: 0, stock: 0, minStock: 0, image: '', ...over } as Item);
 
 const items: Item[] = [
-  item({ id: 'raw-참깨', name: '참깨', category: 'raw', unit: 'kg', stock: 2000 }),
-  item({ id: 'wip-볶음참깨', name: '볶음참깨', category: 'wip', unit: 'kg', stock: 0 }),
+  item({ id: 'raw-참깨', name: '참깨', category: 'raw', unit: 'kg', subtype2: '벌크', stock: 2000 }),
+  item({ id: 'wip-볶음참깨', name: '볶음참깨', category: 'wip', unit: 'kg', subtype2: '벌크', stock: 0 }),
   item({ id: 'nakgae', name: '볶음참깨-낱개/1kg', spec: '1kg', procureType: '임가공', 품목: '시골향볶음참깨', stock: 0 }),
   item({ id: 'box10', name: '볶음참깨/1kg (10개입)', spec: '10kg', procureType: '임가공', 품목: '시골향볶음참깨', stock: 0 }),
   item({ id: 'box20', name: '볶음참깨/1kg (20개입)', spec: '20kg', procureType: '임가공', 품목: '시골향볶음참깨', stock: 0 }),
