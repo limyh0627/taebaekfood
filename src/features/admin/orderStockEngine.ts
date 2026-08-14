@@ -4,12 +4,28 @@ import { Order, OrderItem, Item, OrderStatus, AppNotification, ShippingRule, Par
 import { toKg, baseRawName, lotStockInUnit, unitToKg } from '../../constants/formula';
 import { deductFromLots, withCarryOverLot, buildReceiveLot } from '../../shared/lotUtils';
 import { bomQty } from '../../shared/bom';
-import { stockUnits, isBoxStockItem } from '../../shared/orderUnits';
+import { stockUnits, isBoxStockItem, unpackComponent } from '../../shared/orderUnits';
+
+/**
+ * 작업완료 때 "이미 있는 재고를 얼마나 쓸까" — 주문 라인(order.items 인덱스)별 선택.
+ * 화면(StockUseModal)이 만들어 넘긴다. 안 넘기면 쓸 수 있는 만큼 다 쓴다(모달 기본값과 같음).
+ */
+export interface StockUseChoice {
+  /** 주문 품목 자신의 기존 재고에서 쓸 수량 — 재고 단위(박스 품목이면 박스 개수). 0이면 '사용안함' = 전량 생산. */
+  own: number;
+  /** 박스 품목일 때, 부족분 박스를 만드는 데 쓸 낱개 재고 수량(낱개 개수). 없으면 있는 만큼 다 쓴다. */
+  loose?: number;
+}
+export type StockUsePlan = Record<number, StockUseChoice>;
 
 /**
  * 생산/출고 분리 재고 엔진 (도메인 모듈).
- *  작업완료(DISPATCHED) = 생산처리: 완제품 원료·부자재 차감 + 완제품 재고 +N (상품은 미변동)
- *  출고(SHIPPED)        = 완제품/상품 재고 −N
+ *  작업완료(DISPATCHED) = 생산처리: 완제품 원료·부자재 차감 + 완제품 재고 +생산분 (상품은 미변동)
+ *  출고(SHIPPED)        = 완제품/상품 재고 −주문량
+ *
+ *  생산분은 **주문량 − 기존 재고로 충당한 몫**이다. 재고가 넉넉하면 생산이 0이고 출고만 빠져
+ *  재고가 실제로 줄어든다(전에는 +주문량/−주문량이 상쇄돼 박스 재고가 그대로 남았다).
+ *  얼마나 충당할지는 화면에서 사용자가 고른다 → StockUsePlan.
  *  되돌리기 = 뺀 만큼 그대로 복원(원료는 rawConsumedLots 스냅샷으로 로트에 +).
  *  reconcileOrderStock(order, target)이 목표 상태에 맞춰 자동 조정 → changeOrderStatus가 진입점.
  *
@@ -48,14 +64,17 @@ export const hasProductComponent = (
   product: Pick<Item, 'submaterials'> | undefined,
 ): boolean => (product?.submaterials ?? []).some(s => s.category === 'product' || s.category === '완제품');
 
+/** 사입·임가공 완제품 — 판매 시 생산 없이 자기 재고만 차감(원료는 완사입=무관/임가공=가공입고 때 소진).
+ *  생산을 안 하므로 '재고 쓸까요' 물음의 대상도 아니다 → 화면(stockUseRows)도 이걸 본다. */
+export const isGoodsItem = (p: Item) =>
+  p.subtype === '향미유' || p.subtype === '고춧가루' ||
+  p.category === '향미유' || p.category === '고춧가루' || p.category === 'goods' ||
+  p.procureType === '완사입' || p.procureType === '임가공';
+
 export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   const { allItems, shippingRules, submaterials, partners, allOrders, orders, db,
     buildFormula, createProductionRecordsForOrder, mutateRawMaterialLots, updateItem, addItem } = deps;
 
-  const isGoodsItem = (p: Item) =>
-    p.subtype === '향미유' || p.subtype === '고춧가루' ||
-    p.category === '향미유' || p.category === '고춧가루' || p.category === 'goods' ||
-    p.procureType === '완사입' || p.procureType === '임가공'; // 사입·임가공 완제품 — 판매 시 생산 없이 자기 재고만 차감(원료는 완사입=무관/임가공=가공입고 때 소진)
   const goodsShipQty = (item: OrderItem, product: Item) => {
     // 박스 품목(BOM에 낱개가 물린 것)은 재고 단위가 박스 → 박스 개수로 뺀다.
     if (isBoxStockItem(product)) return stockUnits(item, product);
@@ -90,7 +109,8 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   //  · phantom 반제품(참기름특A 등) → buildFormula로 통깨/깨분 leaf 전개
   //  · 홀더(통깨참기름·깨분참기름)   → 직접 차감(비율=BOM 개입수)
   //  · BOM에 반제품이 없으면 품목 원료식으로 폴백(미이관 품목).
-  //  (원료수불부 '서류'는 docTab에서 품목으로 월별 재계산 → 이 경로와 별개)
+  //  여기서 쓰는 건 **실제 원장**(rawMaterialLedger) — 실제로 차감이 일어난 시점의 기록이다.
+  //  관청에 내는 원료수불부는 **서류용 원장**(rawDocEntries)으로 서류 탭에서 따로 만든다(docOil.ts).
   const accrueRaw = (product: Item, units: number, rawUsage: Record<string, number>) => {
     // 조립 반제품(개 단위 wip = 무라벨 병 등): 오일 구성품 수량은 그 오일의 단위(L)로 직접 입력한 값.
     // → L×밀도(unitToKg)로 환산. 일반 완제품은 기존대로 용량(spec)이 오일량을 준다.
@@ -134,12 +154,14 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
    * 그 병의 BOM·원료까지 재귀로 내려간다. 만든 수량은 autoBuilt에 남겨 되돌리기 때 쓴다.
    * 겉박스·테이프는 BOM 밖(shipping_rule)이라 여기서 제외한다.
    * sign=-1 차감 / +1 복원.
+   *
+   * stockCap — 구성품 재고를 이만큼까지만 쓴다(사용자가 모달에서 정한 낱개 사용량). 없으면 있는 대로 다 쓴다.
    */
   const accrueBom = (
     order: Order, product: Item, units: number,
     deltas: Map<string, number>, rawUsage: Record<string, number>,
     sign: number, autoBuilt: { itemId: string; qty: number }[], depth = 0,
-    fresh = false,   // 낱개 재고 무시하고 전부 새로 생산 (박스 작업완료 시 사용자가 '아니요')
+    stockCap?: Map<string, number>,
   ) => {
     if (units <= 0 || depth > 4) return;   // depth — BOM 순환 방어
     for (const s of (product.submaterials ?? [])) {
@@ -152,9 +174,13 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       const need = Math.round(units * bomQty(s) * 1000) / 1000;
       if (need <= 0) continue;
 
-      // 완제품·개수단위 반제품(조립)이 모자라면 먼저 만든다(그 BOM·오일까지 재귀). fresh면 기존 재고 무시하고 전부 생산.
+      // 완제품·개수단위 반제품(조립)이 모자라면 먼저 만든다(그 BOM·오일까지 재귀).
+      // 재고를 얼마나 쓸지는 stockCap이 정한다(0이면 전부 새로 생산). 그래도 차감은 need 전액 —
+      // 먼저 만든 short가 상쇄해서 순변화는 딱 '쓴 재고'만큼이 된다.
       if (sign < 0 && (comp.category === 'product' || (comp.category === 'wip' && comp.unit === '개')) && !isGoodsItem(comp)) {
-        const have = fresh ? 0 : (comp.stock ?? 0) + (deltas.get(comp.id) ?? 0);
+        const onHand = (comp.stock ?? 0) + (deltas.get(comp.id) ?? 0);
+        const cap = stockCap?.get(comp.id);
+        const have = Math.max(0, cap === undefined ? onHand : Math.min(onHand, cap));
         const short = Math.round((need - have) * 1000) / 1000;
         if (short > 0) {
           addDelta(deltas, comp.id, short);
@@ -167,7 +193,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     }
   };
 
-  // 원료 로트 FIFO 차감 + 수불부 기록 → 소비 로트 스냅샷 반환 (생산처리).
+  // 원료 로트 FIFO 차감 + **실제 원장**(rawMaterialLedger) 기록 → 소비 로트 스냅샷 반환 (생산처리).
   const deductRawLotsForOrder = async (order: Order, rawUsage: Record<string, number>, ledgerOnly: Record<string, number> = {}) => {
     const consumedLots: NonNullable<Order['rawConsumedLots']> = [];
     const rawNames = Object.keys(rawUsage);
@@ -260,12 +286,15 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     }
   };
 
-  // 생산처리(작업완료): 원료·부자재 차감 + 완제품 재고 +N. → 소비 로트 스냅샷 반환.
-  const produceOrder = async (order: Order, deltas: Map<string, number>, freshItemIds?: Set<string>) => {
+  // 생산처리(작업완료): 원료·부자재 차감 + 완제품 재고 +(생산분). → 소비 로트 스냅샷 반환.
+  //  **주문량 전량이 아니라 "기존 재고로 못 채우는 몫"만 생산한다.** 출고는 늘 주문량을 빼므로
+  //  순변화 = 쓴 재고만큼. 얼마나 쓸지는 plan(사용자 선택)이 정하고, 없으면 있는 만큼 다 쓴다.
+  const produceOrder = async (order: Order, deltas: Map<string, number>, plan?: StockUsePlan) => {
     const rawUsage: Record<string, number> = {};
     const rawUsageLedgerOnly: Record<string, number> = {};   // 임가공 — 수불부에만
     const autoBuilt: { itemId: string; qty: number }[] = []; // 모자라서 먼저 만든 구성품
-    for (const item of order.items) {
+    const producedByItem = new Map<string, number>();        // 실제 생산량 — 되돌리기용
+    for (const [idx, item] of order.items.entries()) {
       const product = allItems.find(p => p.id === item.itemId);
       if (!product) continue;
       if (product.category !== 'product') continue;
@@ -282,28 +311,53 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       }
 
       if (isGoodsItem(product)) continue;
-      accrueBom(order, product, units, deltas, rawUsage, -1, autoBuilt, 0, freshItemIds?.has(product.id) ?? false);
+
+      // 이 품목 자신의 재고로 충당할 몫. 앞선 라인이 이미 쓴 만큼(deltas)은 빠진 값으로 본다.
+      const onHand = Math.max(0, (product.stock ?? 0) + (deltas.get(product.id) ?? 0));
+      const choice = plan?.[idx];
+      const own = Math.min(choice ? Math.max(0, choice.own) : onHand, onHand, units);
+      const toProduce = Math.round((units - own) * 1000) / 1000;
+      if (toProduce <= 0) continue;   // 재고로 전부 충당 — 생산도 원료도 없다
+
+      // 박스 품목이면 낱개 재고 사용량도 사용자가 정한 만큼으로 묶는다.
+      const looseId = unpackComponent(product)?.itemId;
+      const stockCap = looseId && choice?.loose !== undefined
+        ? new Map([[looseId, Math.max(0, choice.loose)]]) : undefined;
+
+      accrueBom(order, product, toProduce, deltas, rawUsage, -1, autoBuilt, 0, stockCap);
       // 구성품에 완제품이 있으면(박스·세트·재포장) accrueBom이 그 완제품을 따라 내려가며
       // 거기서 원료를 뺀다 → 여기서 품목 원료식으로 또 빼면 이중 차감이다.
       //   (품목·규격은 서류용이라 재고 계산에 끌어들이지 않는다. BOM이 곧 구성이다)
-      if (!hasProductComponent(product)) accrueRaw(product, units, rawUsage);
-      addDelta(deltas, product.id, units); // 완제품 재고 +N (생산됨·미출고)
+      if (!hasProductComponent(product)) accrueRaw(product, toProduce, rawUsage);
+      addDelta(deltas, product.id, toProduce); // 완제품 재고 +생산분 (미출고)
+      producedByItem.set(product.id, (producedByItem.get(product.id) ?? 0) + toProduce);
     }
     const consumedLots = await deductRawLotsForOrder(order, rawUsage, rawUsageLedgerOnly);
     await createProductionRecordsForOrder(order);
-    return { consumedLots, autoBuilt };
+    const producedUnits = [...producedByItem].map(([itemId, qty]) => ({ itemId, qty }));
+    return { consumedLots, autoBuilt, producedUnits };
   };
 
-  // 생산처리 취소: BOM 구성품·원료 복원 + 완제품 재고 −N. 먼저 만든 것도 되돌린다.
+  // 생산처리 취소: BOM 구성품·원료 복원 + 완제품 재고 −(생산분). 먼저 만든 것도 되돌린다.
+  //  **뺄 건 주문량이 아니라 그때 실제로 생산한 양**(producedUnits). 기존 재고로 충당했던 몫은
+  //  애초에 만든 적이 없으니 되돌릴 것도 없다 — 출고취소가 이미 +주문량으로 되돌려 놨다.
   const unProduceOrder = async (order: Order, deltas: Map<string, number>) => {
     const drop: Record<string, number> = {};   // 복원 경로에선 원료를 다시 안 센다
-    for (const item of order.items) {
-      const product = allItems.find(p => p.id === item.itemId);
+    // producedUnits가 없는 옛 주문 = 주문량 전량을 생산하던 시절 → 그때 규칙대로 되돌린다.
+    const produced = Array.isArray(order.producedUnits)
+      ? order.producedUnits
+      : order.items.map(item => {
+          const p = allItems.find(x => x.id === item.itemId);
+          return { itemId: item.itemId, qty: p ? stockUnits(item, p) : 0 };
+        });
+    for (const { itemId, qty } of produced) {
+      const product = allItems.find(p => p.id === itemId);
       if (!product || product.category !== 'product') continue;
       if (product.procureType === '임가공') continue;   // 재고 미변동 — 수불부만 restore에서 지운다
       if (isGoodsItem(product)) continue;
-      accrueBom(order, product, stockUnits(item, product), deltas, drop, +1, []);
-      addDelta(deltas, product.id, -stockUnits(item, product)); // 완제품 재고 되돌림
+      if (qty <= 0) continue;
+      accrueBom(order, product, qty, deltas, drop, +1, []);
+      addDelta(deltas, product.id, -qty); // 완제품 재고 되돌림
     }
     // 모자라서 먼저 만들었던 구성품 — 만든 만큼 빼고 그것의 BOM도 되돌린다
     for (const b of (order.autoBuilt ?? [])) {
@@ -339,7 +393,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   const STATUS_WANT_SHIPPED = new Set<OrderStatus>([OrderStatus.SHIPPED, OrderStatus.DELIVERED]);
 
   // 목표 상태에 맞춰 재고 상태를 조정(생산/출고/취소 자동). ON_HOLD은 재고 미변동.
-  const reconcileOrderStock = async (order: Order, target: OrderStatus, freshItemIds?: Set<string>) => {
+  const reconcileOrderStock = async (order: Order, target: OrderStatus, plan?: StockUsePlan) => {
     if (target === OrderStatus.ON_HOLD) return;
     const wantProduced = STATUS_WANT_PRODUCED.has(target);
     const wantShipped = STATUS_WANT_SHIPPED.has(target);
@@ -347,14 +401,17 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     const patch: Partial<Order> = {};
     // 역방향(되돌리기): 출고취소 → 생산취소
     if (!wantShipped && order.shippedOut) { unShipOrder(order, deltas); patch.shippedOut = false; }
-    if (!wantProduced && order.producedAt) { await unProduceOrder(order, deltas); patch.producedAt = ''; patch.rawLotsDeducted = false; patch.rawConsumedLots = []; patch.autoBuilt = []; }
+    if (!wantProduced && order.producedAt) { await unProduceOrder(order, deltas); patch.producedAt = ''; patch.rawLotsDeducted = false; patch.rawConsumedLots = []; patch.autoBuilt = []; patch.producedUnits = []; }
     // 정방향: 생산 → 출고
     if (wantProduced && !order.producedAt) {
-      const { consumedLots, autoBuilt } = await produceOrder(order, deltas, freshItemIds);
+      const { consumedLots, autoBuilt, producedUnits } = await produceOrder(order, deltas, plan);
       patch.producedAt = new Date().toISOString(); patch.rawLotsDeducted = true;
       // 빈 결과여도 반드시 덮어쓴다 — 안 쓰면 이전 생산의 스냅샷이 남아, 취소 때
       // 이번에 빼지도 않은 양을 되돌려버린다(유령 복원).
       patch.rawConsumedLots = consumedLots;
+      // 생산량도 마찬가지로 항상 쓴다. 빈 배열([])과 없음(undefined)은 뜻이 다르다 —
+      // 없음은 '옛 주문(전량 생산)'이라 되돌리기가 주문량으로 계산한다.
+      patch.producedUnits = producedUnits;
       if (autoBuilt.length > 0) patch.autoBuilt = autoBuilt;
     }
     if (wantShipped && !order.shippedOut) { shipOrder(order, deltas); patch.shippedOut = true; }
@@ -363,7 +420,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   };
 
   // 주문 상태 변경 진입점 — 재고 조정 후 상태 저장. 이미 이력(DELIVERED)이면 재고 조정 없이 상태만.
-  const changeOrderStatus = async (id: string, status: OrderStatus, freshItemIds?: Set<string>) => {
+  const changeOrderStatus = async (id: string, status: OrderStatus, plan?: StockUsePlan) => {
     // 같은 주문이 동시에 두 번 생산 처리되는 것을 막는다.
     //  품목 체크가 연달아 들어오면 handleToggleItemChecked가 같은 틱에 작업완료를 여러 번 부르는데,
     //  producedAt 판정이 React 상태 기준이라 전부 통과해 원료가 배수로 빠졌다(수입들기름 3배).
@@ -379,7 +436,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
         const snap = await getDoc(doc(db, 'orders', id));
         if (snap.exists()) live = { ...order, ...(snap.data() as Partial<Order>) } as Order;
       } catch { /* 읽기 실패 시 메모리 상태로 진행 */ }
-      if (live.status !== OrderStatus.DELIVERED) await reconcileOrderStock(live, status, freshItemIds);
+      if (live.status !== OrderStatus.DELIVERED) await reconcileOrderStock(live, status, plan);
       // 배송완료일은 **여기서 만들어 넣지 않는다.** 서류 네 종의 유일한 기준일이라,
       // '지금 시각'으로 채우면 새벽에 처리한 건이 다음 날짜로 새서 서류가 갈린다.
       // 판매기록부를 뽑는 쪽이 서류 날짜로 미리 박아 준다. 비어 있으면 알림으로 드러낸다.

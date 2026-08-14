@@ -2,7 +2,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, LayoutGrid, Layers } from 'lucide-react';
 import { Item, PartnerItem, OrderItem, Order, Partner, OrderSource, OrderPallet, PalletStock, ShippingRule } from '../types';
-import { updateItem as updateItemDoc } from '../src/shared/services/firebaseService';
 import { bomQty } from '../src/shared/bom';
 import { unpackComponent, isBoxStockItem, boxSiblings, boxDerivedUnitPrice } from '../src/shared/orderUnits';
 
@@ -178,24 +177,9 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
       });
   }, [products, selectedClient, shippingRules]);
 
-  // 박스 개봉 — 낱개 부족 시 박스 −1 → 낱개 +count (재고는 라이브 구독으로 즉시 갱신)
-  const [unpacking, setUnpacking] = useState(false);
-  const handleUnpack = async (box: Item, target: Item) => {
-    const count = unpackComponent(box)?.count ?? 0;
-    if (count <= 0 || unpacking) return;
-    if ((box.stock ?? 0) < 1) { alert(`${box.name} 재고(박스)가 없습니다.`); return; }
-    if (!confirm(`${box.name} 1박스를 개봉해 "${target.name}" ${count}개로 전환할까요?\n(${box.name} −1박스, ${target.name} +${count}개)`)) return;
-    setUnpacking(true);
-    try {
-      await updateItemDoc('items', box.id, { stock: (box.stock ?? 0) - 1 });
-      await updateItemDoc('items', target.id, { stock: (target.stock ?? 0) + count });
-    } catch (err) {
-      console.error('[개봉] 실패:', err);
-      alert('개봉 처리에 실패했습니다. 잠시 후 다시 시도해주세요.');
-    } finally {
-      setUnpacking(false);
-    }
-  };
+  // 개봉은 여기 없다 — 재고관리(재고현황) 화면의 박스 품목 행에서 한다.
+  //  주문을 받는 화면이 창고 재고를 직접 바꾸면, 주문을 취소해도 개봉은 남고
+  //  실제로 박스를 뜯는 시점(출고 작업)보다 한참 앞서 장부만 움직인다.
 
   // 용량 필터 — 거래처 품목에 존재하는 용량들만 버튼으로 노출
   const [volumeFilter, setVolumeFilter] = useState<string | null>(null);
@@ -473,29 +457,23 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
           </div>
         )}
 
-        {/* 낱개 재고 부족 → 박스 개봉 안내 (unpackTo로 이 품목을 채우는 박스 품목 중 선택) */}
+        {/* 낱개 재고 부족 알림 — 알려주기만 한다. 개봉(재고 이동)은 재고관리 화면에서. */}
         {(() => {
           const full = items.find(i => i.id === product.id);
           if (!full) return null;
-          // 이 낱개를 BOM에 물고 있는 박스 품목들 (옛 unpackTo도 폴백으로 인식)
-          const sources = items.filter(b => !b.archived && unpackComponent(b)?.itemId === full.id);
-          if (sources.length === 0) return null;
+          const boxes = items.filter(b => !b.archived && unpackComponent(b)?.itemId === full.id);
+          if (boxes.length === 0) return null;
           const shortBy = totalUnits - (full.stock ?? 0);
           if (shortBy <= 0) return null;
+          const onHand = boxes.filter(b => (b.stock ?? 0) > 0);
           return (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-2.5 py-2 space-y-1.5">
-              <p className="text-[10px] font-black text-amber-700">낱개 재고 {full.stock ?? 0}개 · {shortBy}개 부족 — 박스를 개봉하세요</p>
-              <div className="flex flex-wrap gap-1">
-                {sources.map(box => (
-                  <button
-                    key={box.id} type="button" disabled={unpacking || (box.stock ?? 0) < 1}
-                    onClick={(e) => { e.stopPropagation(); handleUnpack(box, full); }}
-                    className="text-[10px] font-black px-2 py-1 rounded-lg bg-white border border-amber-300 text-amber-700 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {box.name} 개봉 +{unpackComponent(box)!.count} <span className="opacity-60">(박스 {box.stock ?? 0})</span>
-                  </button>
-                ))}
-              </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-2.5 py-2">
+              <p className="text-[10px] font-black text-amber-700">낱개 재고 {full.stock ?? 0}개 · {shortBy}개 부족</p>
+              <p className="text-[10px] font-bold text-amber-600/80 mt-0.5">
+                {onHand.length > 0
+                  ? `재고관리에서 개봉하세요 — ${onHand.map(b => `${b.name} ${b.stock}박스`).join(', ')}`
+                  : '깔 박스 재고도 없습니다'}
+              </p>
             </div>
           );
         })()}

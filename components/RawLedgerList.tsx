@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { RawMaterialEntry } from '../types';
 import { unitOf, kgToUnit, DENSITY } from '../src/constants/formula';
+import { applyLedgerRow } from '../src/shared/rawLedgerBalance';
 import { ChevronRight } from 'lucide-react';
 
 type FilterType = '전체' | '입고' | '사용' | '정정';
@@ -71,11 +72,9 @@ const RawLedgerList: React.FC<Props> = ({
                 notes: [], who: new Set(), types: new Set(), delIds: [], mine: false, rows: [] };
         }
         const prev = bal;
-        // 재고실사(targetKg)는 잔량을 실제로 센 값으로 리셋한다 —
-        // 실사 이후 잔량은 장부 오차와 무관하게 실물 기준이 된다.
-        bal = e.targetKg != null
-          ? Number(e.targetKg)
-          : r3(bal + toKg(e.received ?? 0) - toKg(e.used ?? 0));
+        // 잔량 규칙은 shared/rawLedgerBalance.ts 한 곳에만 둔다 — 화면과 테스트가 같은 함수를 쓴다.
+        // (재고실사(targetKg)는 잔량을 실제로 센 값으로 리셋하는 앵커다)
+        bal = applyLedgerRow(bal, e, density);
         // 정정·실사는 입고·사용이 아니다 — 섞으면 사용량이 부풀려진다
         if (isCorr) g.adj = r3(g.adj + (bal - prev));
         else { g.received = r3(g.received + toKg(e.received ?? 0)); g.used = r3(g.used + toKg(e.used ?? 0)); }
@@ -243,8 +242,17 @@ const RawLedgerList: React.FC<Props> = ({
                         </span>
                         {isAdmin && onDelete && (
                           <span className="shrink-0 w-9 text-right">
+                            {/* 삭제하면 로트·재고도 같이 되돌아간다 — 문구로 분명히 알린다.
+                                실사(targetKg) 줄은 잔량 앵커라 되돌릴 움직임이 없어 줄만 사라진다. */}
                             {e.type !== 'auto' && e.id && (
-                              <button onClick={(ev) => { ev.stopPropagation(); if (confirm('이 기록을 삭제할까요?')) onDelete(e.id!); }}
+                              <button onClick={(ev) => {
+                                ev.stopPropagation();
+                                const kg = (e.received ?? 0) || (e.used ?? 0);
+                                const msg = e.targetKg != null
+                                  ? `이 실사 기록을 삭제할까요?\n\n실사로 맞춘 ${kg}kg만큼 로트·재고를 되돌리고,\n잔량 기준점도 사라져 앞뒤 잔량이 다시 계산됩니다.`
+                                  : `이 기록을 삭제할까요?\n\n${(e.received ?? 0) > 0 ? '입고' : '사용'} ${kg}kg — 로트와 재고도 같이 되돌립니다.`;
+                                if (confirm(msg)) onDelete(e.id!);
+                              }}
                                 className="px-1.5 py-0.5 rounded text-[9px] font-black text-slate-400 hover:bg-rose-100 hover:text-rose-500">삭제</button>
                             )}
                           </span>

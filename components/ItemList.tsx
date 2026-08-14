@@ -625,24 +625,30 @@ const ItemList: React.FC<ItemListProps> = ({
         },
         (lots) => lotStockInUnit(lots, material),
       );
-      if (Math.abs(adjustKg) > 0.001) {
-        // 원장에도 같은 실사를 남긴다 — targetKg를 실어야 원장 잔량이 로트와 같은 값으로 맞춰진다.
-        // type='correction' 이라 수율 파생입고(압착)는 타지 않는다.
-        await onAddRawMaterialEntry({
-          id: `rm-stocktake-${Date.now()}`,
-          material,
-          date: new Date().toISOString().slice(0, 10),
-          received: adjustKg > 0 ? adjustKg : 0,
-          used: adjustKg < 0 ? -adjustKg : 0,
-          targetKg,
-          note: `재고실사 (${val}${unitLabel}로 맞춤)`,
-          createdAt: new Date().toISOString(),
-          type: 'correction',
-          unit: 'kg',
-          addedBy: currentUser?.name,
-        } as RawMaterialEntry);
-        setToast({ message: `${product.name} 실사조정 ${adjustKg > 0 ? '+' : ''}${Math.round(adjustKg * 10) / 10}kg — 로트·원장 반영` });
-      }
+      // 원장에도 같은 실사를 남긴다 — targetKg를 실어야 원장 잔량이 로트와 같은 값으로 맞춰진다.
+      // type='correction' 이라 수율 파생입고(압착)는 타지 않는다.
+      //
+      // **로트가 안 움직여도(adjustKg=0) 반드시 쓴다.** 로트는 이미 실물과 맞는데 원장 잔량만
+      // 틀어져 있는 경우가 있는데, 예전엔 이때 원장 줄을 건너뛰어 실사를 해도 잔량이 안 고쳐졌다.
+      // received/used가 0이어도 targetKg가 실려 있으면 잔량이 그 값으로 앵커된다.
+      await onAddRawMaterialEntry({
+        id: `rm-stocktake-${Date.now()}`,
+        material,
+        date: new Date().toISOString().slice(0, 10),
+        received: adjustKg > 0 ? adjustKg : 0,
+        used: adjustKg < 0 ? -adjustKg : 0,
+        targetKg,
+        note: `재고실사 (${val}${unitLabel}로 맞춤)`,
+        createdAt: new Date().toISOString(),
+        type: 'correction',
+        unit: 'kg',
+        addedBy: currentUser?.name,
+      } as RawMaterialEntry);
+      setToast({
+        message: Math.abs(adjustKg) > 0.001
+          ? `${product.name} 실사조정 ${adjustKg > 0 ? '+' : ''}${Math.round(adjustKg * 10) / 10}kg — 로트·원장 반영`
+          : `${product.name} 실사 — 로트는 그대로, 원장 잔량을 ${val}${unitLabel}로 맞췄습니다`,
+      });
     } else {
       // 입력은 표시 단위(밀도 있으면 L) — 저장은 언제나 kg
       const units = product.subtype === '향미유' ? val * 12
@@ -652,17 +658,31 @@ const ItemList: React.FC<ItemListProps> = ({
     }
   };
 
-  // 박스 개봉 — 완사입 박스 1개를 까서 낱개 재고로 전환 (예: 볶음참깨 10kg박스 −1 → 낱개 +10)
-  const unpackBox = (product: Item) => {
-    const map = product.unpackTo;
-    if (!map) return;
-    const target = items.find(i => i.id === map.itemId);
-    if (!target) { alert('개봉 대상 품목을 찾을 수 없습니다.'); return; }
-    if ((product.stock ?? 0) < 1) { alert('개봉할 박스 재고가 없습니다.'); return; }
-    if (!confirm(`${product.name} 1박스를 개봉해 "${target.name}" ${map.count}개로 전환할까요?\n(${product.name} −1, ${target.name} +${map.count})`)) return;
-    onUpdateItem({ ...product, stock: (product.stock ?? 0) - 1 });
-    onUpdateItem({ ...target, stock: (target.stock ?? 0) + map.count });
-    setToast({ message: `${product.name} −1박스 → ${target.name} +${map.count}개` });
+  // 박스 개봉 — 박스 1개를 까서 낱개 재고로 전환 (볶음참깨/1kg (10개입) −1박스 → 낱개 +10개).
+  //  재고를 만드는 게 아니라 **옮기는 것**이라 임가공·완사입 품목에도 그대로 쓴다.
+  //
+  //  대상은 unpackComponent가 낱개를 찾아주는 박스 품목뿐 — 버튼도 같은 기준으로 건다.
+  //  예전엔 옛 `unpackTo` 필드만 봤는데 BOM으로 옮기면서 그 필드가 전부 지워져
+  //  (박스 품목 137건 중 보유 0건) 버튼이 한 번도 안 떴다.
+  const unpackBox = async (product: Item) => {
+    const uc = unpackComponent(product);
+    if (!uc) return;                                   // 박스 품목이 아니면 아무것도 안 한다
+    const target = items.find(i => i.id === uc.itemId);
+    if (!target) { alert('개봉 대상 낱개 품목을 찾을 수 없습니다.'); return; }
+    const boxStock = product.stock ?? 0;
+    if (boxStock < 1) { alert('개봉할 박스 재고가 없습니다.'); return; }
+    if (!confirm(`${product.name} 1박스를 개봉해 "${target.name}" ${uc.count}개로 전환할까요?\n(${product.name} −1박스, ${target.name} +${uc.count}개)`)) return;
+    // 두 번에 나눠 쓰므로 중간에 끊기면 재고가 사라진다 → 낱개 쓰기가 실패하면 박스를 되돌린다.
+    await onUpdateItem({ ...product, stock: boxStock - 1 });
+    try {
+      await onUpdateItem({ ...target, stock: (target.stock ?? 0) + uc.count });
+    } catch (err) {
+      console.error('[개봉] 낱개 재고 반영 실패 — 박스 재고 되돌림:', err);
+      await onUpdateItem({ ...product, stock: boxStock });
+      alert('개봉에 실패했습니다. 재고는 원래대로 되돌렸습니다.');
+      return;
+    }
+    setToast({ message: `${product.name} −1박스 → ${target.name} +${uc.count}개` });
   };
 
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
@@ -1742,8 +1762,10 @@ const ItemList: React.FC<ItemListProps> = ({
                         ) : <span className="text-[10px] text-slate-200">-</span>}
                       </td>
                       {/* 재고 — 숫자는 폭 고정 칸에 오른쪽 정렬해 세로로 줄을 맞추고,
-                          단위는 그 옆 자기 칸으로 밀어낸다(숫자 자릿수가 달라도 안 흔들린다). */}
+                          단위는 그 옆 자기 칸으로 밀어낸다(숫자 자릿수가 달라도 안 흔들린다).
+                          개봉 버튼은 숫자 아랫줄로 내린다 — 같은 줄에 두면 숫자 칸을 밀어 세로 정렬이 깨진다. */}
                       <td className="px-4 py-3">
+                        <div className="flex flex-col items-end gap-1">
                         <div className="flex items-center justify-end gap-1">
                         {derivedCans != null ? (
                           // 원료에서 파생된 캔 수 (읽기전용) — 입고/사용에 자동 연동
@@ -1791,12 +1813,16 @@ const ItemList: React.FC<ItemListProps> = ({
                             {product.category !== '향미유' && product.unit}
                           </span>
                         )}
-                        {product.unpackTo && editingStockId !== product.id && (
+                        </div>
+                        {/* 개봉 — 현재고 숫자 아랫줄. BOM에 낱개가 물린 '박스 품목' 행에만 뜬다.
+                            재고가 0이면 눌러도 깔 게 없으니 비활성. */}
+                        {unpackComponent(product) && editingStockId !== product.id && (
                           <button
                             onClick={e => { e.stopPropagation(); unpackBox(product); }}
-                            className="shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100 transition-colors"
-                            title={`1박스 개봉 → 낱개 +${product.unpackTo.count}`}
-                          >개봉 +{product.unpackTo.count}</button>
+                            disabled={(product.stock ?? 0) < 1}
+                            className="shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            title={`1박스 개봉 → ${items.find(i => i.id === unpackComponent(product)!.itemId)?.name ?? '낱개'} +${unpackComponent(product)!.count}개`}
+                          >개봉 +{unpackComponent(product)!.count}</button>
                         )}
                         </div>
                       </td>
@@ -3512,6 +3538,8 @@ const ItemList: React.FC<ItemListProps> = ({
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 gap-3 shrink-0">
             <div className="flex items-baseline gap-2.5 min-w-0">
               <h3 className="text-base font-black text-slate-800 truncate">{mat}</h3>
+              {/* 여기 뜨는 건 '실제 원장'(rawMaterialLedger) — 창고에서 실제로 일어난 입출고.
+                  관청에 내는 원료수불부는 '서류용 원장'(rawDocEntries)으로 따로 만든다. docOil.ts 머리말 참고. */}
               <span className="text-[11px] font-bold text-slate-400 shrink-0">입출고 기록</span>
               {stockNow != null && (
                 <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200 whitespace-nowrap shrink-0">

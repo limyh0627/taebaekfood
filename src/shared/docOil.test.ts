@@ -101,9 +101,13 @@ describe('docSaleLine — 박스는 낱개로 풀어서 집계', () => {
   });
 });
 
-describe('docDateOf — 네 서류의 공통 기준일 = 배송완료일', () => {
-  it('배송완료일만 본다', () => {
-    expect(docDateOf({ deliveredAt: '2026-08-10T05:00:00Z' })).toBe('2026-08-10');
+describe('docDateOf — 네 서류의 공통 기준일 = 판매기록부에서 고른 날짜', () => {
+  it('일지에서 고른 날짜가 deliveredAt에 박힌다 — 시각은 언제나 자정', () => {
+    expect(docDateOf({ deliveredAt: '2026-08-12T00:00:00.000Z' })).toBe('2026-08-12');
+  });
+  it('시각이 자정이 아니면 옛 코드가 처리 시각을 찍은 것 — 그 날짜가 그대로 서류일이 된다', () => {
+    // 12일자 서류를 13일 아침에 뽑았는데 13일로 잡힌 반석 케이스. 데이터를 고쳐야 맞는다.
+    expect(docDateOf({ deliveredAt: '2026-08-13T07:58:59.148Z' })).toBe('2026-08-13');
   });
   it('전표일자·배송예정일은 안 쓴다 — 실제 나간 날 하나로 못 박는다', () => {
     expect(docDateOf({ deliveredAt: '2026-08-10T05:00:00Z', documentDate: '2026-08-07', deliveryDate: '2026-08-13' } as any))

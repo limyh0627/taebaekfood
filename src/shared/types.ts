@@ -127,10 +127,12 @@ export interface Order {
   deliveryBoxes?: DeliveryBox[];
   invoicePrinted?: boolean;
   deliveredAt?: string; // 주문이력으로 이동한 날짜
-  documentDate?: string; // 서류 날짜 (원료수불부 기준일)
+  documentDate?: string; // 전표(거래명세서) 일자 — 서류 기준일로는 안 쓴다
   rawLotsDeducted?: boolean; // 원료 로트 선입선출 차감 완료 표시(중복 차감 방지) — 생산처리(작업완료) 시 set
   rawConsumedLots?: { material: string; lotId?: string; lotNo?: string; supplierName: string; receivedDate?: string; kg: number }[]; // 정방향 추적: 이 주문이 소비한 원료 lot 스냅샷
   autoBuilt?: { itemId: string; qty: number }[];  // 구성품이 모자라 생산처리 때 먼저 만든 것 — 되돌리기용
+  producedUnits?: { itemId: string; qty: number }[];  // 주문 품목을 실제로 몇 개 생산했나(기존 재고로 충당한 몫은 빠짐) — 되돌리기용.
+                                                      // 없으면 옛 주문(주문량 전량 생산) → 되돌리기는 주문량으로 계산한다.
   producedAt?: string;   // 작업완료(생산처리) 완료 시각 — 원료·부자재 차감 + 완제품 재고 +N 반영됨(가드)
   shippedOut?: boolean;  // 출고 완료 — 완제품/상품 재고 −N 반영됨(가드)
 }
@@ -649,6 +651,13 @@ export interface RawMaterialLot {
   createdAt: string;
 }
 
+/**
+ * **실제 원장** 한 줄 (rawMaterialLedger 컬렉션) — 창고에서 실제로 일어난 원료 입출고.
+ *
+ * 로트와 한 몸으로 움직이고, 재고관리 > [입출고 기록]에 그대로 뜬다.
+ * 관청에 내는 원료수불부는 이게 아니라 **서류용 원장**(RawDocEntry, rawDocEntries)으로 만든다.
+ * 둘의 차이는 docOil.ts 머리말 참고 — 날짜 기준도 값도 다르다.
+ */
 export interface RawMaterialEntry {
   id: string;
   material: string;  // 원료명
@@ -880,7 +889,15 @@ export interface ProductionSalesLog {
   createdAt: string;    // ISO timestamp
   createdBy: string;    // 작성자
   orderCount: number;   // 처리 주문 수
+  /** 좌측 상단 — 기름 템플릿 */
   productionRows: { groupLabel: string; spec: string; 수량: number; 소비기한: string; 비고: string }[];
+  /** 좌측 하단 — 깨·가루. 2026-08-14 이전 로그엔 없다(그때는 저장을 안 해서 이력 보기에서 통째로 빠졌었다) */
+  seedRows?: { 품목: string; 용량: string; 수량: number; 소비기한: string; 비고: string }[];
+  /** 우측 — 그날 판매(상호/품목/용량/수량/소비기한). 없으면 orderSummaries로 폴백 */
+  salesRows?: { 상호: string; 품목: string; 용량: string; 수량: number; 소비기한: string }[];
+  /** 맨 아래 기타 — 좌측 어느 자리에도 안 붙은 판매분 */
+  extraRows?: { 품목: string; 용량: string; 수량: number; 거래처: string }[];
+  /** 옛 요약 — salesRows가 없는 지난 로그를 보여주기 위해 남겨 둔다 */
   orderSummaries: { partnerName: string; items: { name: string; qty: number }[] }[];
 }
 // ─────────────────────────────────────────────────────────────────────────────

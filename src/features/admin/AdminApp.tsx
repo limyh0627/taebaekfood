@@ -79,7 +79,11 @@ import HRManager from '../../../components/HRManager';
 import LeaveManager from '../../../components/LeaveManager';
 import ConfirmationItems from '../../../components/ConfirmationItems';
 import ProductModal from '../../../components/AddItemModal';
-import { createOrderStockEngine } from './orderStockEngine';
+import { downloadSalesJournal } from '../../shared/salesJournal';
+import { sortLedger } from '../../shared/rawLedgerBalance';
+import { createOrderStockEngine, StockUsePlan } from './orderStockEngine';
+import { buildStockUseRows, StockUseRow } from './stockUseRows';
+import StockUseModal from './StockUseModal';
 import { createOemEngine, OEM_DEFAULT_FEE_PER_KG } from './oemEngine';
 import { buildFormula as buildFormulaBom } from './bom';
 import { buildCostFn } from '../../shared/bomCost';
@@ -965,29 +969,28 @@ const AdminApp: React.FC<AdminAppProps> = ({
     buildFormula, createProductionRecordsForOrder, mutateRawMaterialLots, updateItem, addItem,
   });
 
-  // 작업완료 진입점 — 박스 품목에 낱개 재고가 있으면 "쓸까요?" 물어본다.
-  //   예=낱개 재고 사용(부족분만 생산) · 아니요=전부 새로 생산(낱개 재고 그대로).
-  const handleOrderStatus = async (id: string, status: import('../../shared/types').OrderStatus) => {
-    if (status !== OrderStatus.DISPATCHED) return changeOrderStatus(id, status);
-    const order = allOrders.find(o => o.id === id) || orders.find(o => o.id === id);
-    const freshItemIds = new Set<string>();
-    if (order && !order.producedAt) {
-      for (const it of order.items) {
-        const box = allItems.find(p => p.id === it.itemId);
-        const loose = box ? allItems.find(p => p.id === unpackComponent(box)?.itemId) : undefined;
-        if (!box || !loose) continue;                       // 박스 품목만
-        const looseStock = loose.stock ?? 0;
-        if (looseStock <= 0) continue;                       // 낱개 재고 없으면 안 물어봄
-        const need = stockUnits(it, box) * (unpackComponent(box)?.count ?? 1);
-        const use = window.confirm(
-          `${box.name} ${stockUnits(it, box)}박스 — 낱개(${loose.name}) ${need}개 필요\n`
-          + `낱개 재고 ${looseStock}개가 있습니다. 사용하시겠습니까?\n\n`
-          + `[확인] 낱개 재고 사용 (부족분만 생산)\n[취소] 전부 새로 생산 (낱개 재고 그대로)`
-        );
-        if (!use) freshItemIds.add(box.id);
-      }
+  // 작업완료 진입점 — 쓸 수 있는 재고가 있으면 모달로 사용량을 먼저 받는다(없으면 그대로 진행).
+  //  드롭다운으로 바꾸든 품목 전체 체크로 자동 이동하든 여기 하나를 지난다.
+  const [stockUseAsk, setStockUseAsk] = useState<{ orderId: string; partnerName: string; rows: StockUseRow[] } | null>(null);
+  const requestOrderStatus = async (id: string, status: OrderStatus) => {
+    const cur = allOrders.find(o => o.id === id) || orders.find(o => o.id === id);
+    // 작업완료 이후 → 대기중/작업중으로 되돌리면 품목 체크를 전부 푼다.
+    //  OrdersList가 '전부 체크됨'을 보면 카드가 다시 그려질 때마다 작업완료로 자동 이동시켜서,
+    //  체크를 남겨두면 되돌리는 즉시 원위치돼 되돌리기가 아예 안 되는 것처럼 보인다.
+    const DONE = [OrderStatus.DISPATCHED, OrderStatus.SHIPPED, OrderStatus.DELIVERED];
+    const BACK = [OrderStatus.PENDING, OrderStatus.PROCESSING];
+    if (cur && DONE.includes(cur.status) && BACK.includes(status) && cur.items.some(i => i.checked)) {
+      await updateItem('orders', id, {
+        items: cur.items.map(({ checkedBy: _drop, ...rest }) => ({ ...rest, checked: false })),
+      });
     }
-    return changeOrderStatus(id, status, freshItemIds.size ? freshItemIds : undefined);
+
+    if (status !== OrderStatus.DISPATCHED) return changeOrderStatus(id, status);
+    const order = cur;
+    if (!order || order.producedAt) return changeOrderStatus(id, status);   // 이미 생산됨 — 물을 것 없다
+    const rows = buildStockUseRows(order, allItems);
+    if (rows.length === 0) return changeOrderStatus(id, status);            // 쓸 재고가 없다 → 전량 생산
+    setStockUseAsk({ orderId: id, partnerName: order.partnerName, rows });
   };
 
   // OEM(임가공) 엔진 — 외주 발주(원료 내보내기) / 가공입고(완제품 받기 + 가공비 전표)
@@ -1125,9 +1128,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
     const allChecked = newItems.every(i => i.checked);
     const wasNotDispatched = order.status !== OrderStatus.DISPATCHED && order.status !== OrderStatus.SHIPPED && order.status !== OrderStatus.ON_HOLD;
     if (allChecked && wasNotDispatched) {
-      // 모두 체크 → 작업완료 자동 이동 + 생산처리(원료·부자재 차감, 완제품 재고 +N).
+      // 모두 체크 → 작업완료 자동 이동 + 생산처리(원료·부자재 차감, 완제품 재고 +생산분).
+      // 쓸 재고가 있으면 requestOrderStatus가 모달을 띄우고, 사용량 선택 후에 생산처리된다.
       await updateItem('orders', orderId, { items: newItems });
-      await changeOrderStatus(orderId, OrderStatus.DISPATCHED);
+      await requestOrderStatus(orderId, OrderStatus.DISPATCHED);
     } else {
       updateItem('orders', orderId, { items: newItems });
     }
@@ -1569,7 +1573,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               partners={partners}
               items={allItems}
               onUpdateDeliveryDate={(id, date) => updateItem('orders', id, { deliveryDate: date })}
-              onUpdateStatus={(id, status) => handleOrderStatus(id, status)}
+              onUpdateStatus={(id, status) => requestOrderStatus(id, status)}
               onUpdateItems={handleUpdateItems}
               onToggleItemChecked={handleToggleItemChecked}
               onDeleteOrder={(id) => {
@@ -1602,7 +1606,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               subtitle="전체 주문 현황"
               groupBy="status" 
               allowedStatuses={Object.values(OrderStatus)} 
-              onUpdateStatus={(id, status) => handleOrderStatus(id, status)}
+              onUpdateStatus={(id, status) => requestOrderStatus(id, status)}
               onUpdateDeliveryDate={(id, date) => updateItem('orders', id, { deliveryDate: date })}
               onUpdatePallets={(id, p) => updateItem('orders', id, { pallets: p })}
               palletStocks={pallets}
@@ -1711,7 +1715,41 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 }
                 setLedgerReloadKey(k => k + 1);   // 전역 구독 제거 → 원장 화면 재조회로 반영
               }}
-              onDeleteRawMaterialEntry={(id) => { deleteItem('rawMaterialLedger', id); setLedgerReloadKey(k => k + 1); }}
+              // 실제 원장 줄을 지우면 **로트도 같이 되돌린다.** 한쪽만 지우면 잔량과 로트가 그만큼 영구히 벌어진다.
+              //  (주문 되돌리기는 restoreRawLotsForOrder가 이미 둘을 같이 처리한다 — 손입력 줄만 빠져 있었다)
+              //  실사(targetKg) 줄도 마찬가지다 — targetKg는 잔량 앵커지만 그 줄의 received/used는
+              //  로트를 실제로 움직인 양이다. 앵커라고 건너뛰면 로트만 조정된 채 남아 또 벌어진다.
+              //  단, 그 줄 **뒤에 실사(앵커)가 있으면 로트를 건드리지 않는다.** 실사가 로트를 그 값으로
+              //  이미 덮어썼으니, 그보다 앞선 움직임을 이제 와서 되돌리면 이중으로 반영된다.
+              //  잔량도 앵커에 묶여 안 바뀌므로, 로트를 그대로 두는 쪽이 둘을 같이 유지한다.
+              onDeleteRawMaterialEntry={async (id) => {
+                const entry = mergedRawMaterialLedger.find(e => e.id === id);
+                const ordered = sortLedger(mergedRawMaterialLedger.filter(e => e.material === entry?.material));
+                const at = ordered.findIndex(e => e.id === id);
+                const anchoredLater = at >= 0 && ordered.slice(at + 1).some(e => e.targetKg != null);
+                if (entry && !anchoredLater) {
+                  const deltaKg = (entry.used ?? 0) - (entry.received ?? 0);   // 지우면 반대 방향으로
+                  const holder = allItems.find(i => isBulkItem(i) && !i.phantom && baseRawName(i.name) === entry.material);
+                  if (holder && Math.abs(deltaKg) > 0.0001) {
+                    try {
+                      await adjustRawLots({
+                        material: entry.material, rawItemId: holder.id, deltaKg,
+                        date: new Date().toISOString().slice(0, 10),
+                        note: `원장 기록 삭제 되돌림 (${entry.note ?? ''})`.trim(),
+                        addedBy: currentUser?.name,
+                        ledger: false,   // 원장 줄은 아래에서 지운다 — 여기서 또 쓰면 지운 자리에 새 줄이 생긴다
+                      });
+                    } catch (e) {
+                      // 로트를 못 되돌렸으면 원장도 그대로 둔다 — 지웠다간 둘이 갈린다
+                      console.error('[원장 삭제] 로트 되돌리기 실패 — 삭제를 중단합니다:', id, e);
+                      alert('로트를 되돌리지 못해 기록을 삭제하지 않았습니다.\n재고가 어긋나는 것을 막기 위한 것입니다. 잠시 후 다시 시도해 주세요.');
+                      return;
+                    }
+                  }
+                }
+                await deleteItem('rawMaterialLedger', id);
+                setLedgerReloadKey(k => k + 1);
+              }}
               onLedgerChanged={() => setLedgerReloadKey(k => k + 1)}
               onUpdateSubmaterial={(id, data) => updateItem('items', id, data)}
               receivedOrders={receivedOrders}
@@ -1801,56 +1839,159 @@ const AdminApp: React.FC<AdminAppProps> = ({
               />
             </React.Suspense>
           )}
-          {selectedLog && (
+          {/* 생산판매기록부 이력 보기 — 실물 서류와 같은 배치(좌: 생산 기름/깨·가루, 우: 판매).
+              2026-08-14 이전 로그는 깨·가루·판매표를 저장하지 않아 그 자리에 안내만 뜬다. */}
+          {selectedLog && (() => {
+            const seedRows = selectedLog.seedRows ?? [];
+            const salesRows = selectedLog.salesRows ?? [];
+            const extraRows = selectedLog.extraRows ?? [];
+            const isLegacy = !selectedLog.seedRows && !selectedLog.salesRows;
+            const cell = 'border border-slate-200 px-2.5 py-1';
+            return (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setSelectedLog(null)}>
-              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-                  <div>
-                    <span className="text-base font-black text-slate-800">생산판매기록부</span>
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-6xl max-h-[88vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 gap-3">
+                  <div className="min-w-0">
+                    <span className="text-base font-black text-slate-800">생산작업판매일지</span>
                     <span className="ml-3 text-sm text-slate-500">{selectedLog.date}</span>
-                    <span className="ml-2 text-xs text-slate-400">· {selectedLog.createdBy}</span>
+                    <span className="ml-2 text-xs text-slate-400">· {selectedLog.createdBy} · 주문 {selectedLog.orderCount}건</span>
                   </div>
-                  <button onClick={() => setSelectedLog(null)} className="w-8 h-8 flex items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 text-lg font-black">✕</button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => downloadSalesJournal({
+                        date: selectedLog.date,
+                        oilRows: selectedLog.productionRows,
+                        seedRows, salesRows, extraRows,
+                      })}
+                      className="px-3 py-1.5 bg-emerald-500 text-white rounded-xl text-[11px] font-black hover:bg-emerald-600 transition-colors"
+                    >엑셀로 저장</button>
+                    <button onClick={() => setSelectedLog(null)} className="w-8 h-8 flex items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 text-lg font-black">✕</button>
+                  </div>
                 </div>
-                <div className="overflow-y-auto p-6 space-y-5">
-                  <div>
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">생산 내역</div>
-                    <table className="w-full text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-slate-50">
-                          {['품목', '용량', '수량', '소비기한', '비고'].map(h => (
-                            <th key={h} className="border border-slate-200 px-3 py-2 font-black text-slate-500 text-center">{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedLog.productionRows.map((r, i) => (
-                          <tr key={i} className="hover:bg-blue-50">
-                            <td className="border border-slate-200 px-3 py-1.5 font-bold text-slate-800">{r.groupLabel}</td>
-                            <td className="border border-slate-200 px-3 py-1.5 text-center text-slate-600">{r.spec}</td>
-                            <td className="border border-slate-200 px-3 py-1.5 text-right font-black text-blue-700">{r.수량}</td>
-                            <td className="border border-slate-200 px-3 py-1.5 text-center text-slate-500">{r.소비기한}</td>
-                            <td className="border border-slate-200 px-3 py-1.5 text-slate-400">{r.비고}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+
+                {isLegacy && (
+                  <div className="mx-6 mt-4 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-[11px] font-bold text-amber-700">
+                    이 기록은 옛 방식으로 저장돼 깨·가루 표와 판매표(상호·용량·소비기한)가 남아 있지 않습니다. 아래는 저장된 내용만 보여줍니다.
                   </div>
-                  <div>
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">판매 내역</div>
-                    <div className="space-y-1">
-                      {selectedLog.orderSummaries.map((s, i) => (
-                        <div key={i} className="flex items-center gap-3 px-3 py-2 bg-slate-50 rounded-xl border border-slate-100 text-xs">
-                          <span className="font-black text-slate-800 w-28 shrink-0">{s.partnerName}</span>
-                          <span className="text-slate-500">{s.items.map(it => `${it.name} ${it.qty}개`).join(', ')}</span>
+                )}
+
+                <div className="overflow-auto p-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* 좌측 — 생산 */}
+                    <div className="space-y-5">
+                      <div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">생산 — 기름</div>
+                        <table className="w-full text-[11px] border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50">
+                              {['품목(제품명)', '용량', '수량', '소비기한', '비 고'].map(h => (
+                                <th key={h} className={`${cell} py-2 font-black text-slate-500 text-center whitespace-nowrap`}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {selectedLog.productionRows.map((r, i) => (
+                              <tr key={i} className="hover:bg-blue-50/50">
+                                <td className={`${cell} font-bold text-slate-800 ${r.groupLabel ? 'bg-blue-50/40' : ''}`}>{r.groupLabel}</td>
+                                <td className={`${cell} text-center text-slate-600`}>{r.spec}</td>
+                                <td className={`${cell} text-center font-black ${r.수량 > 0 ? 'text-indigo-700' : 'text-slate-300'}`}>{r.수량}</td>
+                                <td className={`${cell} text-center text-slate-500 whitespace-nowrap`}>{r.소비기한}</td>
+                                <td className={`${cell} text-slate-500 break-words`}>{r.비고}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">생산 — 참깨·들깨</div>
+                        {seedRows.length === 0 ? (
+                          <div className="py-6 text-center text-slate-300 text-[11px] border border-dashed border-slate-200 rounded-xl">저장된 내용 없음</div>
+                        ) : (
+                          <table className="w-full text-[11px] border-collapse">
+                            <thead>
+                              <tr className="bg-slate-50">
+                                {['품목(제품명)', '용량', '수량', '소비기한', '비 고'].map(h => (
+                                  <th key={h} className={`${cell} py-2 font-black text-slate-500 text-center whitespace-nowrap`}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {seedRows.map((r, i) => (
+                                <tr key={i} className="hover:bg-blue-50/50">
+                                  <td className={`${cell} font-bold text-slate-800`}>{r.품목}</td>
+                                  <td className={`${cell} text-slate-600`}>{r.용량}</td>
+                                  <td className={`${cell} text-center font-black ${r.수량 > 0 ? 'text-indigo-700' : 'text-slate-300'}`}>{r.수량}</td>
+                                  <td className={`${cell} text-center text-slate-500 whitespace-nowrap`}>{r.소비기한}</td>
+                                  <td className={`${cell} text-slate-500 break-words`}>{r.비고}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 우측 — 판매 */}
+                    <div>
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">판매</div>
+                      {salesRows.length > 0 ? (
+                        <table className="w-full text-[11px] border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50">
+                              {['상호', '품목', '용량', '수량', '소비기한'].map(h => (
+                                <th key={h} className={`${cell} py-2 font-black text-slate-500 text-center whitespace-nowrap`}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {salesRows.map((r, i) => (
+                              <tr key={i} className="hover:bg-emerald-50/40">
+                                <td className={`${cell} font-bold text-slate-800`}>{r.상호}</td>
+                                <td className={`${cell} text-slate-600`}>{r.품목}</td>
+                                <td className={`${cell} text-center text-slate-600`}>{r.용량}</td>
+                                <td className={`${cell} text-center font-black text-slate-800`}>{r.수량}</td>
+                                <td className={`${cell} text-center text-slate-500 whitespace-nowrap`}>{r.소비기한}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : (
+                        /* 옛 로그 — 거래처별 요약만 남아 있다 */
+                        <div className="space-y-1">
+                          {selectedLog.orderSummaries.map((s, i) => (
+                            <div key={i} className="flex items-start gap-3 px-3 py-2 bg-slate-50 rounded-xl border border-slate-100 text-[11px]">
+                              <span className="font-black text-slate-800 w-28 shrink-0">{s.partnerName}</span>
+                              <span className="text-slate-500">{s.items.map(it => `${it.name} ${it.qty}개`).join(', ')}</span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      )}
+
+                      {extraRows.length > 0 && (
+                        <div className="mt-5">
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">기타 (템플릿 외 판매분)</div>
+                          <table className="w-full text-[11px] border-collapse">
+                            <tbody>
+                              {extraRows.map((r, i) => (
+                                <tr key={i}>
+                                  <td className={`${cell} font-bold text-slate-700`}>{r.품목}</td>
+                                  <td className={`${cell} text-slate-600`}>{r.용량 || '(미설정)'}</td>
+                                  <td className={`${cell} text-center font-black text-slate-800`}>{r.수량}</td>
+                                  <td className={`${cell} text-slate-500 break-words`}>{r.거래처}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-          )}
+            );
+          })()}
           {currentView === 'partners' && <PartnerManager partners={partners} onUpdateClient={(c) => updateItem('partners', c.id, c)} onAddClient={(c) => addItem('partners', c)} onDeleteClient={(id) => deleteItem('partners', id)} />}
           {currentView === 'file-cabinet' && <DocumentManager currentUser={{ id: currentUser.id, name: currentUser.name }} />}
           {currentView === 'notice' && <NoticeBoard posts={noticePosts} onAddPost={(post) => addItem('notices', post)} />}
@@ -2154,6 +2295,19 @@ const AdminApp: React.FC<AdminAppProps> = ({
               });
             });
 
+            // 좌측 하단(깨·가루) rows — 화면·엑셀·저장이 같은 값을 쓴다.
+            //  예전엔 이걸 안 만들고 화면과 엑셀이 따로 계산해서, 저장된 이력엔 통째로 빠져 있었다.
+            const journalSeedRows = bottomTemplate.map(({ 품목, 용량 }) => {
+              const a = agg[`${품목}||${용량}`] || { qty: 0, mfgDates: [], partners: [] };
+              const earliestMfg = a.mfgDates.length ? [...a.mfgDates].sort()[0] : '';
+              return {
+                품목, 용량,
+                수량: getBottomQty(품목, 용량),
+                소비기한: earliestMfg ? calcExpiry(earliestMfg) : '',
+                비고: a.partners.join(', '),
+              };
+            });
+
             // 좌측(상단 템플릿 + 하단 참깨·들깨 + 소용량 환산) 어디에도 매칭 안 되는 판매분 → 하단 '기타'로 표기(누락 방지)
             const matchedKeys = new Set<string>([
               ...topTemplate.flatMap(t => t.volumes.map(v => `${t.key}||${v}`)),
@@ -2180,136 +2334,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 );
                 if (!proceed) return;
               }
-              const ExcelJS = (await import('exceljs')).default;
-              const wb = new ExcelJS.Workbook();
-              const ws = wb.addWorksheet('생산작업판매일지');
-
-              // 열 너비
-              ws.columns = [
-                { width: 18 }, { width: 8 }, { width: 6 }, { width: 18 }, { width: 28 },
-                { width: 2 },
-                { width: 18 }, { width: 16 }, { width: 8 }, { width: 6 }, { width: 18 },
-              ];
-
-              const thinBorder: Partial<ExcelJSType.Borders> = {
-                top: { style: 'thin' }, bottom: { style: 'thin' },
-                left: { style: 'thin' }, right: { style: 'thin' },
-              };
-              const headerFill: ExcelJSType.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
-              const groupFill: ExcelJSType.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
-
-              const applyHeader = (row: ExcelJSType.Row, cols: number[]) => {
-                cols.forEach(c => {
-                  const cell = row.getCell(c);
-                  cell.font = { bold: true, size: 9 };
-                  cell.fill = headerFill;
-                  cell.border = thinBorder;
-                  cell.alignment = { horizontal: 'center', vertical: 'middle' };
-                });
-              };
-
-              // 헤더 행
-              const hRow = ws.addRow(['품목(제품명)', '용량', '수량', '소비기한', '비 고', '', '상호', '품목', '용량', '수량', '소비기한']);
-              hRow.height = 18;
-              applyHeader(hRow, [1,2,3,4,5,7,8,9,10,11]);
-              ws.addRow([]);
-
-              // 좌우 데이터
-              let currentGroup = '';
-              const maxRows = Math.max(leftRows.length, rightRows.length);
-              for (let i = 0; i < maxRows; i++) {
-                const l = leftRows[i];
-                const r = rightRows[i];
-                const row = ws.addRow([
-                  l?.groupLabel ?? '', l?.spec ?? '', l ? (l.수량 || 0) : '', l?.소비기한 ?? '', l?.비고 ?? '',
-                  '',
-                  r?.상호 ?? '', r?.품목 ?? '', r?.spec ?? '', r ? r.수량 : '', r?.소비기한 ?? '',
-                ]);
-                row.height = 16;
-
-                // 좌측 서식
-                if (l) {
-                  const isNewGroup = l.groupLabel !== '' && l.groupLabel !== currentGroup;
-                  if (isNewGroup) currentGroup = l.groupLabel;
-
-                  [1,2,3,4,5].forEach(c => {
-                    const cell = row.getCell(c);
-                    cell.border = thinBorder;
-                    cell.font = { size: 9 };
-                    cell.alignment = { horizontal: c === 1 ? 'left' : 'center', vertical: 'middle', wrapText: c === 5 };
-                    if (c === 1 && l.groupLabel) {
-                      cell.font = { bold: true, size: 9 };
-                      cell.fill = groupFill;
-                    }
-                    if (c === 3) {
-                      cell.font = { bold: l.수량 > 0, size: 9, color: l.수량 > 0 ? { argb: 'FF1E3A5F' } : { argb: 'FF999999' } };
-                    }
-                  });
-                }
-
-                // 우측 서식
-                if (r) {
-                  [7,8,9,10,11].forEach(c => {
-                    const cell = row.getCell(c);
-                    cell.border = thinBorder;
-                    cell.font = { size: 9 };
-                    cell.alignment = { horizontal: c === 10 ? 'center' : 'left', vertical: 'middle' };
-                  });
-                }
-              }
-
-              // 하단 섹션
-              ws.addRow([]);
-              const bHRow = ws.addRow(['품목(제품명)', '용량', '수량', '소비기한', '비 고']);
-              bHRow.height = 18;
-              applyHeader(bHRow, [1,2,3,4,5]);
-              ws.addRow([]);
-
-              bottomTemplate.forEach(({ 품목, 용량 }) => {
-                const a = agg[`${품목}||${용량}`] || { qty: 0, mfgDates: [], partners: [] };
-                const earliestMfg = a.mfgDates.length ? [...a.mfgDates].sort()[0] : '';
-                const expiryStr = earliestMfg ? calcExpiry(earliestMfg) : '';
-                const partnerNote = a.partners.join(', ');
-                const displayQty = getBottomQty(품목, 용량);
-                const row = ws.addRow([품목, 용량, displayQty, expiryStr, partnerNote]);
-                row.height = 16;
-                [1,2,3,4,5].forEach(c => {
-                  const cell = row.getCell(c);
-                  cell.border = thinBorder;
-                  cell.font = { bold: c === 1, size: 9 };
-                  cell.alignment = { horizontal: c <= 2 ? 'left' : 'center', vertical: 'middle', wrapText: c === 5 };
-                  if (c === 3 && displayQty > 0) cell.font = { bold: true, size: 9, color: { argb: 'FF1E3A5F' } };
-                });
-                ws.addRow([]);
-              });
-
-              // 기타 — 좌측 템플릿에 없는 판매분(용량 미설정 등) 누락 방지
-              if (extraSalesRows.length > 0) {
-                ws.addRow([]);
-                const hdr = ws.addRow(['기타 (템플릿 외 판매분)', '', '', '', '']);
-                hdr.getCell(1).font = { bold: true, size: 9 };
-                extraSalesRows.forEach(r => {
-                  const row = ws.addRow([r.품목, r.용량 || '(미설정)', r.qty, '', r.거래처]);
-                  row.height = 16;
-                  [1, 2, 3, 4, 5].forEach(c => {
-                    const cell = row.getCell(c);
-                    cell.border = thinBorder;
-                    cell.font = { bold: c === 1, size: 9 };
-                    cell.alignment = { horizontal: c <= 2 ? 'left' : 'center', vertical: 'middle', wrapText: c === 5 };
-                  });
-                });
-              }
-
-              // 파일 저장
-              const buf = await wb.xlsx.writeBuffer();
-              const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
               const docDate = bulkMfgDate || new Date().toISOString().slice(0, 10);
-              a.download = `생산작업판매일지_${docDate}.xlsx`;
-              a.click();
-              URL.revokeObjectURL(url);
+              // 양식은 shared/salesJournal.ts 한 곳에만 둔다 — 이력 보기의 [엑셀로 저장]도 같은 함수를 쓴다.
+              const journal = {
+                date: docDate,
+                oilRows: leftRows,
+                seedRows: journalSeedRows,
+                salesRows: rightRows.map(r => ({ 상호: r.상호, 품목: r.품목, 용량: r.spec, 수량: r.수량, 소비기한: r.소비기한 })),
+                extraRows: extraSalesRows.map(r => ({ 품목: r.품목, 용량: r.용량, 수량: r.qty, 거래처: r.거래처 })),
+              };
+              await downloadSalesJournal(journal);
 
               // 생산판매기록 로그 저장 (관리자 서류 조회용)
               const logId = `psl-${Date.now()}`;
@@ -2319,7 +2353,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 createdAt: new Date().toISOString(),
                 createdBy: currentUser.name,
                 orderCount: shippedOrders.length,
+                // 서류 네 덩어리를 그대로 남긴다 — 이력 보기가 실물 서류와 같은 모양으로 뜨고,
+                // 거기서 [엑셀로 저장]을 누르면 원본과 같은 파일이 다시 나온다.
                 productionRows: leftRows,
+                seedRows: journalSeedRows,
+                salesRows: rightRows.map(r => ({ 상호: r.상호, 품목: r.품목, 용량: r.spec, 수량: r.수량, 소비기한: r.소비기한 })),
+                extraRows: extraSalesRows.map(r => ({ 품목: r.품목, 용량: r.용량, 수량: r.qty, 거래처: r.거래처 })),
                 orderSummaries: shippedOrders.map(o => ({
                   partnerName: o.partnerName,
                   items: o.items.map(i => ({ name: i.name, qty: i.quantity ?? 1 })),
@@ -2332,8 +2371,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
               const deductFailures: string[] = [];
               for (const o of shippedOrders) {
                 try {
-                  // 배송완료일을 **서류 날짜로** 박는다 — 이게 네 서류의 공통 기준일(docDateOf)이다.
-                  //   판매기록부에 오른 날 = 물건이 나간 날이므로, 원료수불부·작업기록부 1·2가 같은 날에 잡힌다.
+                  // **여기서 고른 날짜(docDate)가 네 서류의 공통 기준일이다.**
+                  //   deliveredAt에 그 날짜를 박으면 원료수불부·작업기록부 1·2가 같은 날에 잡힌다(docDateOf).
+                  //   시각은 언제나 00:00:00.000Z — '처리한 순간'이 아니라 '어느 날짜 서류에 실렸나'를 담는다.
                   //   먼저 박아 둬야 changeOrderStatus가 '지금 시각'으로 덮어쓰지 않는다
                   //   (거기선 deliveredAt이 비었을 때만 new Date()를 넣는다).
                   //   예전엔 새벽에 뽑으면 서류는 8/10인데 deliveredAt은 8/11로 찍혀 하루씩 갈렸다.
@@ -3674,7 +3714,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onAddExpensePreset={async (p) => { const id = await addItem('expensePresets', { ...p, id: `exp-${Date.now()}`, createdAt: new Date().toISOString() }); refreshStaticData(); return id as string; }}
               onDeleteExpensePreset={(id) => { deleteItem('expensePresets', id); refreshStaticData(); }}
               issuedStatements={issuedStatements}
-              onUpdateStatus={(id, status) => handleOrderStatus(id, status)}
+              onUpdateStatus={(id, status) => requestOrderStatus(id, status)}
               onUpsertPartnerItem={(ps) => handleUpsertPartnerItem(ps, 'out')}
               onMarkInvoicePrinted={(id, value) => updateItem('orders', id, { invoicePrinted: value })}
               onUpdateOrder={(id, data) => updateItem('orders', id, data)}
@@ -4347,6 +4387,20 @@ const AdminApp: React.FC<AdminAppProps> = ({
             setIsProductModalOpen(false);
             setEditingProduct(null);
           }} 
+        />
+      )}
+
+      {/* 작업완료 전 재고 사용량 확인 — 확정되면 그 플랜으로 생산처리 */}
+      {stockUseAsk && (
+        <StockUseModal
+          partnerName={stockUseAsk.partnerName}
+          rows={stockUseAsk.rows}
+          onCancel={() => setStockUseAsk(null)}
+          onConfirm={async (plan: StockUsePlan) => {
+            const { orderId } = stockUseAsk;
+            setStockUseAsk(null);
+            await changeOrderStatus(orderId, OrderStatus.DISPATCHED, plan);
+          }}
         />
       )}
 
