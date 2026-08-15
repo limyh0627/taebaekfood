@@ -215,7 +215,15 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     e?.preventDefault();
     if (!formData.name) return;
     // 배송(박스) 서브타입은 서류용 품목이 없어도 저장 가능 — 낱개로 풀려 서류는 낱개 기준
-    if (formData.category === 'product' && (formData as any).subtype2 !== '배송' && !formData.품목) { setPumokWarn(true); return; }
+    // 서류용 품목이 비어 있으면 — 예전엔 조용히 막아서 '저장 버튼이 안 눌린다'로 보였다.
+    // 이제 물어보고, 그대로 진행하겠다면 저장한다(서류에서 이 품목은 빠진다).
+    if (formData.category === 'product' && (formData as any).subtype2 !== '배송' && !formData.품목) {
+      setPumokWarn(true);
+      const go = window.confirm(
+        '서류용 품목이 비어 있습니다.\n\n이대로 저장하면 원료수불부·생산작업기록부에서 이 품목이 빠집니다.\n그래도 저장할까요?',
+      );
+      if (!go) { pumokRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    }
 
     const isProductCategory = ['product', 'goods', 'wip', 'raw', 'giftset'].includes(formData.category);
     const hasBoxConfig = formData.defaultBoxConfig.unitsPerBox > 0;
@@ -512,17 +520,33 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                         ) : <span className="w-[15px] shrink-0" />}
                         <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md shrink-0">{catLabelOf(catKey(s))}</span>
                         <span className="flex-1 text-sm font-bold text-slate-700 truncate">{s.name}{(s as any).spec && <span className="ml-1.5 text-[11px] font-black text-indigo-400">{(s as any).spec}</span>}</span>
-                        <input
-                          type="number"
-                          min={0}
-                          value={s.stock ?? 1}
-                          onChange={e => {
-                            const qty = e.target.value === '' ? 0 : Number(e.target.value);
-                            setFormData(fd => ({ ...fd, submaterials: fd.submaterials.map((x, i) => i === idx ? { ...x, stock: qty } : x) }));
-                          }}
-                          className="w-16 text-center text-sm font-black bg-white border border-slate-200 rounded-lg py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 shrink-0"
-                        />
-                        <span className="text-[10px] font-bold text-slate-400 w-6 shrink-0">{s.unit || '개'}</span>
+                        {/* BOM 수량은 **kg으로 저장**한다. 밀도가 있는 오일은 화면에서만 L로 보여주고
+                            입력받은 L에 밀도를 곱해 되돌린다 — 안 그러면 kg 숫자에 'L' 딱지만 붙는다. */}
+                        {(() => {
+                          const comp = (items ?? []).find(p => p.id === s.id);
+                          const d = comp?.density;
+                          const shown = d ? Math.round(((s.stock ?? 1) / d) * 10000) / 10000 : (s.stock ?? 1);
+                          return (
+                            <>
+                              <input
+                                type="number"
+                                min={0}
+                                step="any"
+                                value={shown}
+                                onChange={e => {
+                                  const v = e.target.value === '' ? 0 : Number(e.target.value);
+                                  const qty = d ? Math.round(v * d * 10000) / 10000 : v;
+                                  setFormData(fd => ({ ...fd, submaterials: fd.submaterials.map((x, i) => i === idx ? { ...x, stock: qty } : x) }));
+                                }}
+                                className="w-16 text-center text-sm font-black bg-white border border-slate-200 rounded-lg py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 shrink-0"
+                              />
+                              <span className="text-[10px] font-bold text-slate-400 w-6 shrink-0"
+                                title={d ? `저장값 ${s.stock ?? 1}kg (밀도 ${d})` : undefined}>
+                                {s.unit || '개'}
+                              </span>
+                            </>
+                          );
+                        })()}
                         <button
                           type="button"
                           onClick={() => setFormData(fd => ({ ...fd, submaterials: fd.submaterials.filter((_, i) => i !== idx) }))}

@@ -7,7 +7,7 @@ import PageHeader from './PageHeader';
 import CategoryManager from './CategoryManager';
 import { isBoxStockItem, unpackComponent, boxSiblings } from '../src/shared/orderUnits';
 import { subChipClass } from '../src/shared/submaterialStyle';
-import { ProductNameRow, ProductSpecChip, ProductCard, renderColoredName, splitNameVolume } from '../src/shared/productChip';
+import { ProductNameRow, ProductSpecChip, ProductCard, renderColoredName, splitNameVolume, catOrder, categoryChipClass } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
 
 interface ItemManagerProps {
@@ -285,7 +285,12 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
         result = result.filter(p => p.name.toLowerCase().includes(term) || p.id.toLowerCase().includes(term));
       }
     }
-    return [...result].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+    // 카테고리 순 → 같은 카테고리 안에서는 이름 순.
+    // 참기름·들기름·깨류 순서가 실제로 보는 순서라 이름 순만으로는 섞여 보인다.
+    return [...result].sort((a, b) => {
+      const d = catOrder(inferSubtype(a)) - catOrder(inferSubtype(b));
+      return d !== 0 ? d : a.name.localeCompare(b.name, 'ko');
+    });
   }, [products, activeCategory, selectedClientId, showAll, showNoClient, searchTerm, mainView, partners, partnerScopeTab, partnerItems, partnerAllCats]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
@@ -641,24 +646,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                   <React.Fragment key={item.id}>
                   <tr className="hover:bg-slate-50/50 transition-colors group">
                     <td className="px-2 py-3">
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-black whitespace-nowrap ${(() => {
-                        const sub = inferSubtype(item);
-                        if (sub === '향미유' || sub === '참기름' || sub === '들기름') return 'bg-purple-50 text-purple-600';
-                        if (sub === '고춧가루') return 'bg-red-50 text-red-500';
-                        if (sub === '참깨' || sub === '들깨' || sub === '검정깨') return 'bg-amber-50 text-amber-700';
-                        if (item.category === 'product') return 'bg-indigo-50 text-indigo-600';
-                        if (item.category === 'goods') return 'bg-orange-50 text-orange-500';
-                        if (sub === '용기') return 'bg-sky-50 text-sky-600';
-                        if (sub === '라벨') return 'bg-amber-50 text-amber-600';
-                        if (sub === '박스') return 'bg-emerald-50 text-emerald-600';
-                        if (sub === '마개') return 'bg-slate-100 text-slate-600';
-                        if (sub === '테이프') return 'bg-teal-50 text-teal-600';
-                        if (item.category === 'wip') return 'bg-violet-50 text-violet-600';
-                        if (item.category === 'raw') return 'bg-lime-50 text-lime-700';
-                        if (item.category === 'giftset') return 'bg-pink-50 text-pink-600';
-                        if (item.category === 'shipping') return 'bg-cyan-50 text-cyan-600';
-                        return 'bg-slate-100 text-slate-500';
-                      })()}`}>
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-black whitespace-nowrap ${categoryChipClass(inferSubtype(item))}`}>
                         {inferSubtype(item)}
                       </span>
                     </td>

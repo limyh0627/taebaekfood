@@ -44,6 +44,8 @@ import OemManager from './OemManager';
 import CategoryManager from './CategoryManager';
 import { buildTaxonomy, TaxonomyRow } from '../src/shared/taxonomy';
 import { RM_LIST, unitOf, baseRawName, lotStockInUnit, unitToKg, lotKgRemaining, parsePackageKg, parseSpecUnit, parseSpecCount } from '../src/constants/formula';
+import { catOrder, CATEGORY_ORDER_LEN, categoryChipClass, ProductSpecChip, splitNameVolume } from '../src/shared/productChip';
+import { subChipClass } from '../src/shared/submaterialStyle';
 import { isSubmaterial } from '../src/shared/types';
 import { matchesSearch } from '../src/shared/hangul';
 import { mutateRawMaterialLots, addItem, subscribeToCollection, fetchCollection } from '../src/shared/services/firebaseService';
@@ -351,10 +353,14 @@ const ItemList: React.FC<ItemListProps> = ({
       : p.name.includes('들깨') ? '들깨'
       : (p.name.includes('고춧') || p.name.includes('고추')) ? '고춧가루'
       : p.name.includes('깨') ? '참깨' : '기타');
-  const STOCK_GROUP_ORDER = ['참기름', '들기름', '참깨', '들깨', '고춧가루', '향미유', '선물세트', '기타'];
+  // 참기름·들기름·깨류 순서는 공용(productChip.catOrder) — 품목관리·주문생성과 같은 순서로 본다.
+  // 그 뒤 갈래(고춧가루·향미유·선물세트)만 여기서 이어 붙인다.
+  const STOCK_GROUP_TAIL = ['고춧가루', '향미유', '선물세트', '기타'];
   const stockGroupRank = (g?: string) => {
-    const i = STOCK_GROUP_ORDER.indexOf(g ?? '기타');
-    return i === -1 ? STOCK_GROUP_ORDER.length : i;   // 모르는 분류는 뒤로 — 기타로 합치지 않는다
+    const head = catOrder(g);
+    if (head < CATEGORY_ORDER_LEN) return head;
+    const i = STOCK_GROUP_TAIL.indexOf(g ?? '기타');
+    return CATEGORY_ORDER_LEN + (i === -1 ? STOCK_GROUP_TAIL.length : i);   // 모르는 분류는 뒤로
   };
   // 실제로 쓰이는 분류만 목록에 올린다
   const closingCatOptions = useMemo(
@@ -1691,20 +1697,11 @@ const ItemList: React.FC<ItemListProps> = ({
                       onClick={() => setExpandedRowId(isExpanded ? null : product.id)}
                     >
                       <td className="px-4 py-3">
-                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${(() => {
-                          const sub = inferSubtype(product);
-                          if (sub === '향미유' || sub === '참기름' || sub === '들기름') return 'bg-purple-50 text-purple-600';
-                          if (sub === '고춧가루') return 'bg-red-50 text-red-500';
-                          if (sub === '참깨' || sub === '들깨' || sub === '검정깨') return 'bg-amber-50 text-amber-700';
-                          if (normCat(product.category) === '완제품') return 'bg-indigo-50 text-indigo-600';
-                          if (normCat(product.category) === '상품') return 'bg-orange-50 text-orange-500';
-                          if (sub === '용기') return 'bg-sky-50 text-sky-600';
-                          if (sub === '라벨') return 'bg-amber-50 text-amber-600';
-                          if (sub === '박스') return 'bg-emerald-50 text-emerald-600';
-                          if (sub === '마개') return 'bg-slate-100 text-slate-600';
-                          if (sub === '테이프') return 'bg-teal-50 text-teal-600';
-                          return 'bg-slate-100 text-slate-500';
-                        })()}`}>{inferSubtype(product)}</span>
+                        {/* 카테고리 색은 공용(productChip.categoryChipClass) — 화면마다 다르면 헷갈린다.
+                            예전엔 참기름·들기름·향미유가 모두 보라라 갈래가 안 갈렸다. */}
+                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${categoryChipClass(inferSubtype(product))}`}>
+                          {inferSubtype(product)}
+                        </span>
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell" onClick={e => e.stopPropagation()}>
                         {normCat(product.category) === '완제품' ? (
@@ -3206,11 +3203,13 @@ const ItemList: React.FC<ItemListProps> = ({
       const src = viewingClosing;
       const displayDate = src ? src.date : closingDate;
       // 그리드 행: 조회면 저장값, 신규면 완제품 목록(입력)
-      type GridRow = { itemId: string; label: string; boxes: string; loose: string; editable: boolean; isChild?: boolean; group?: string };
-      const toRows = (arr: Item[]): GridRow[] => arr.map(p => ({ itemId: p.id, label: withSpec(p), boxes: closingCounts[p.id]?.boxes ?? '', loose: closingCounts[p.id]?.loose ?? '', editable: true }));
+      type GridRow = { itemId: string; label: string; spec?: string; boxes: string; loose: string; editable: boolean; isChild?: boolean; group?: string };
+      // label은 **이름만**(끝의 용량은 뗀다) — 규격은 옆 칩(ProductSpecChip)이 '350ml * 20'으로 보여준다.
+      // withSpec을 쓰면 이름 속 '/350ml'과 칩이 겹쳐 규격이 두 번 뜬다.
+      const toRows = (arr: Item[]): GridRow[] => arr.map(p => ({ itemId: p.id, label: splitNameVolume(p).base, spec: p.spec, boxes: closingCounts[p.id]?.boxes ?? '', loose: closingCounts[p.id]?.loose ?? '', editable: true }));
       // 저장·보드·합계 대상 = 재고있는+입력한 완제품 (조회모드면 저장된 항목)
       const rowsForGrid: GridRow[] = src
-        ? src.items.map(r => ({ itemId: r.itemId, label: (r.spec && !hasVolumeInName(r.name)) ? `${r.name}${r.spec}` : r.name, boxes: r.boxes ? String(r.boxes) : '', loose: r.loose ? String(r.loose) : '', editable: false }))
+        ? src.items.map(r => ({ itemId: r.itemId, label: splitNameVolume({ name: r.name }).base, spec: r.spec, boxes: r.boxes ? String(r.boxes) : '', loose: r.loose ? String(r.loose) : '', editable: false }))
         : toRows(closingItems);
       const totalStock = src ? src.totalStock : closingItems.reduce((s, p) => s + closingTotalOf(p.id), 0);
       // 3열 그리드
@@ -3402,15 +3401,43 @@ const ItemList: React.FC<ItemListProps> = ({
                   const editable = src ? true : closingView !== 'dispatched';
                   const editing = editable && editingClosingId === r.itemId;
                   return (
-                    <div key={r.itemId} className={`w-full flex items-center gap-2 px-3 py-2.5 ${r.isChild ? 'pl-7 bg-slate-50/50' : ''}`}>
-                      <span className={`flex-1 min-w-0 text-[13px] break-keep ${r.isChild ? 'font-semibold text-slate-500' : 'font-bold text-slate-800'}`}>{r.isChild && <span className="text-slate-300 mr-1">└</span>}{r.label}</span>
-                      {/* 작업완료(미출고)분 배지 — 전체·작업완료 뷰에만. 재고 뷰는 이미 뺀 순수 재고라 배지 없음. */}
-                      {disp > 0 && closingView !== 'stock' && (
-                        <span className="shrink-0 text-[9px] font-black text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full whitespace-nowrap"
-                          title={closingView === 'all' ? `재고 ${base} + 작업완료(미출고) ${disp} = 현재고 ${cur}` : '작업완료(미출고)분'}>
-                          {closingView === 'all' ? `재고 ${base} + 작업완료 ${disp}` : `작업완료 ${disp}`}
+                    <div key={r.itemId} className={`w-full flex items-start gap-2 px-3 py-2.5 ${r.isChild ? "pl-7 bg-slate-50/50" : ""}`}>
+                      {/* 카테고리 + 품목명 + 규격을 한 줄, 부자재는 그 아래 한 줄에 쭉 */}
+                      <span className="flex-1 min-w-0">
+                        <span className={`block text-[13px] break-keep ${r.isChild ? 'font-semibold text-slate-500' : 'font-bold text-slate-800'}`}>
+                          {r.isChild && <span className="text-slate-300 mr-1">└</span>}
+                          {product && (
+                            <span className={`mr-1.5 align-middle text-[10px] font-black px-1.5 py-0.5 rounded-md ${categoryChipClass(inferSubtype(product))}`}>
+                              {inferSubtype(product)}
+                            </span>
+                          )}
+                          {r.label}
+                          {/* 규격 칩 — 지금 품목이 있으면 그걸, 없으면(옛 스냅샷) 저장된 규격을 쓴다 */}
+                          {(product ?? (r.spec ? { name: r.label, spec: r.spec } : null)) && (
+                            <span className="ml-1.5 align-middle">
+                              <ProductSpecChip product={product ?? { name: r.label, spec: r.spec! }} />
+                            </span>
+                          )}
                         </span>
-                      )}
+                        {(() => {
+                          // 챙길 물건만 — 내용물(반제품·원료)과 벌크는 통에서 나오므로 뺀다
+                          const chips = (product?.submaterials ?? [])
+                            .map(s => items.find(x => x.id === s.id))
+                            .filter((c): c is Item => !!c && c.category === 'submaterial' && !isBulkItem(c) && !c.phantom);
+                          if (chips.length === 0) return null;
+                          return (
+                            <span className="flex flex-wrap items-center gap-1 mt-5">
+                              {chips.map(c => (
+                                <span key={c.id} className={`text-[10px] font-bold px-1.5 py-0.5 rounded border leading-tight ${subChipClass(c)}`}>
+                                  {c.name}
+                                </span>
+                              ))}
+                            </span>
+                          );
+                        })()}
+                      </span>
+                      {/* 수량 — 작업완료(미출고)분은 아래 '주문수량'으로 따로 적는다(옆 배지는 없앰) */}
+                      <span className="shrink-0 flex flex-col items-end leading-tight">
                       {editing ? (
                         <input autoFocus type="text" inputMode="decimal" value={editingClosingVal}
                           onChange={e => setEditingClosingVal(e.target.value)}
@@ -3426,14 +3453,21 @@ const ItemList: React.FC<ItemListProps> = ({
                       ) : editable ? (
                         <button onClick={() => { if (!product) return; setEditingClosingId(r.itemId); setEditingClosingVal(String(product.subtype === '향미유' ? Math.floor(shownNum / 12) : shownNum)); }}
                           title={stockEdit ? '눌러서 실사 수정 (작업완료 제외한 재고)' : '눌러서 실사 수정'}
-                          className={`shrink-0 text-sm font-black ${shownNum > 0 ? 'text-slate-700' : 'text-slate-300'} hover:text-indigo-600 hover:underline`}>
-                          {shownNum}<span className="text-[10px] font-bold text-slate-400 ml-0.5">{unitLbl}</span>
+                          className={`shrink-0 text-lg font-black ${shownNum > 0 ? 'text-slate-700' : 'text-slate-300'} hover:text-indigo-600 hover:underline`}>
+                          {shownNum}<span className="text-[11px] font-bold text-slate-400 ml-0.5">{unitLbl}</span>
                         </button>
                       ) : (
-                        <span className={`shrink-0 text-sm font-black ${shownNum > 0 ? 'text-slate-700' : 'text-slate-300'}`} title={closingView === 'dispatched' ? '작업완료(미출고)분' : '재고(작업완료 제외)'}>
-                          {shownNum}<span className="text-[10px] font-bold text-slate-400 ml-0.5">{unitLbl}</span>
+                        <span className={`shrink-0 text-lg font-black ${shownNum > 0 ? 'text-slate-700' : 'text-slate-300'}`} title={closingView === 'dispatched' ? '작업완료(미출고)분' : '재고(작업완료 제외)'}>
+                          {shownNum}<span className="text-[11px] font-bold text-slate-400 ml-0.5">{unitLbl}</span>
                         </span>
                       )}
+                      {/* 주문에 물려 있는 분 — 재고 뷰는 이미 뺀 순수 재고라 안 적는다 */}
+                      {disp > 0 && closingView !== 'stock' && (
+                        <span className="text-[10px] font-bold text-amber-600 whitespace-nowrap" title="주문에 물린 작업완료(미출고)분">
+                          주문수량 {disp}
+                        </span>
+                      )}
+                      </span>
                       {editable && (
                         <button onClick={() => {
                             if (!product) return;

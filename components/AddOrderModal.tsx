@@ -4,6 +4,7 @@ import { Item, PartnerItem, OrderItem, Order, Partner, OrderSource, OrderPallet,
 import { bomQty } from '../src/shared/bom';
 import { unpackComponent, isBoxStockItem, boxSiblings, boxDerivedUnitPrice } from '../src/shared/orderUnits';
 import { subChipClass } from '../src/shared/submaterialStyle';
+import { catOrder } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
 
 interface AddOrderModalProps {
@@ -86,12 +87,18 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
     );
   }, [searchTerm, partners]);
 
-  const getProductTypeOrder = (name: string): number => {
-    if (/가루/.test(name)) return 3;
-    if (/참기름|참진|참고소|참향/.test(name)) return 0;
-    if (/들기름|들향|들진|들고소/.test(name)) return 1;
-    if (/깨/.test(name)) return 2;
-    return 4;
+  // 카테고리 순서는 공용(productChip.catOrder) — 품목관리·재고현황과 같은 순서로 본다.
+  // 품목에 카테고리(subtype)가 없으면 이름으로 짐작한다.
+  const catOf = (p: { subtype?: string; name: string }): string => {
+    if (p.subtype) return p.subtype;
+    const n = p.name;
+    if (/들기름|들향|들진|들고소/.test(n)) return '들기름';
+    if (/참기름|참진|참고소|참향/.test(n)) return '참기름';
+    if (/검정깨|검정참깨/.test(n)) return '검정깨';
+    if (/탈피들깨/.test(n)) return '탈피들깨';
+    if (/들깨/.test(n)) return '들깨';
+    if (/참깨/.test(n)) return '참깨';
+    return '';
   };
 
   // 품목명 토큰 색상 — 기름 등급(분·특A·A·골드·원액)과 용기(병)를 색으로 구분해 비슷한 이름 헷갈림 방지
@@ -179,7 +186,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
         return groupOrderable(p);
       })
       .sort((a, b) => {
-        const diff = getProductTypeOrder(a.name) - getProductTypeOrder(b.name);
+        const diff = catOrder(catOf(a)) - catOrder(catOf(b));
         return diff !== 0 ? diff : a.name.localeCompare(b.name, 'ko');
       });
   }, [products, selectedClient, shippingRules]);

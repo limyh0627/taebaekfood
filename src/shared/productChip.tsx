@@ -161,6 +161,18 @@ export function ProductCard({
   );
 }
 
+/**
+ * 카테고리 정렬 순서 — 참기름 › 들기름 › 참깨 › 들깨 › 탈피들깨 › 검정깨.
+ * 실제로 물건을 보는 순서라 이름 순만으로는 섞여 보인다. 목록마다 다르면 헷갈리므로 여기 하나만 둔다.
+ * 목록에 없는 갈래는 뒤로 밀고 그들끼리는 이름 순.
+ */
+const CATEGORY_ORDER = ['참기름', '들기름', '참깨', '들깨', '탈피들깨', '검정깨'];
+export const CATEGORY_ORDER_LEN = CATEGORY_ORDER.length;
+export function catOrder(cat?: string): number {
+  const i = CATEGORY_ORDER.indexOf(String(cat ?? '').trim());
+  return i < 0 ? CATEGORY_ORDER.length : i;
+}
+
 /** 카테고리별 고정색 — 이름 해시라 다른 카테고리는 반드시 다른 색이 된다 */
 const CATEGORY_CHIP_COLORS = [
   'bg-indigo-100 text-indigo-700', 'bg-emerald-100 text-emerald-700', 'bg-amber-100 text-amber-800',
@@ -170,13 +182,23 @@ const CATEGORY_CHIP_COLORS = [
 ];
 /** 자주 쓰는 갈래는 눈에 익은 색으로 고정하고, 나머지는 이름으로 고르게 둔다 */
 const CATEGORY_FIXED: Record<string, string> = {
+  // 완제품 갈래 — 정렬 순서(CATEGORY_ORDER)와 같은 얼굴
   '참기름': 'bg-pink-100 text-pink-700',
   '들기름': 'bg-lime-100 text-lime-700',
   '참깨': 'bg-orange-100 text-orange-700',
   '들깨': 'bg-emerald-100 text-emerald-700',
+  '탈피들깨': 'bg-teal-100 text-teal-700',
   '검정깨': 'bg-slate-200 text-slate-700',
   '향미유': 'bg-violet-100 text-violet-700',
   '고춧가루': 'bg-rose-100 text-rose-700',
+  '선물세트': 'bg-fuchsia-100 text-fuchsia-700',
+  // 부자재 갈래 — 안 넣어두면 해시로 아무 색이나 잡혀 화면마다 달라 보인다
+  '라벨': 'bg-amber-100 text-amber-700',
+  '용기': 'bg-sky-100 text-sky-700',
+  '박스': 'bg-emerald-100 text-emerald-700',
+  '마개': 'bg-indigo-100 text-indigo-700',
+  '테이프': 'bg-cyan-100 text-cyan-700',
+  '케이스': 'bg-stone-200 text-stone-700',
 };
 export function categoryChipClass(cat: string): string {
   if (CATEGORY_FIXED[cat]) return CATEGORY_FIXED[cat];
