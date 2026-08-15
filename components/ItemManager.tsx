@@ -583,13 +583,16 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                             );
                           })()}
                         </div>
-                        <button
-                          onClick={() => {
-                            if (partnerScopeTab === 'purchase' && onUnlinkSupplier) onUnlinkSupplier(item.id, selectedClientId);
-                            else onUnlinkItem(item.id, selectedClientId);
-                          }}
-                          className="shrink-0 text-[11px] font-black text-rose-500 bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded-lg transition-all"
-                        >해제</button>
+                        {/* 연결 해제는 관리자만 — 직원 뷰는 보기 전용 */}
+                        {isAdmin && (
+                          <button
+                            onClick={() => {
+                              if (partnerScopeTab === 'purchase' && onUnlinkSupplier) onUnlinkSupplier(item.id, selectedClientId);
+                              else onUnlinkItem(item.id, selectedClientId);
+                            }}
+                            className="shrink-0 text-[11px] font-black text-rose-500 bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded-lg transition-all"
+                          >해제</button>
+                        )}
                       </div>
                     </ProductCard>
                   );
