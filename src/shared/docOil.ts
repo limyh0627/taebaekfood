@@ -122,13 +122,19 @@ export const docPumok = (품목?: string | null): string =>
  *  (예전 생산작업기록부는 kg 규격에도 ×0.92를 곱해 16.5kg 캔이 15.18kg으로 잡혔다)
  */
 export const docOilKg = (spec: string | undefined, qty: number): number => {
-  const s = String(spec ?? '').trim().toLowerCase();
-  const n = parseFloat(s);
+  // 규격 **앞부분의 숫자+단위**만 본다. 뒤에 개입수가 붙어도('1750ml * 10') 흔들리지 않는다.
+  //   예전엔 endsWith로 판정해서 뒤에 뭐가 붙으면 통째로 0이 됐다 — 서류에서 그 품목이 사라진다.
+  const m = /^\s*([\d.]+)\s*(kg|ml|l|g)\b/i.exec(String(spec ?? ''));
+  if (!m) return 0;
+  const n = parseFloat(m[1]);
   if (!isFinite(n) || n <= 0) return 0;
-  if (s.endsWith('kg')) return n * qty;
-  if (s.endsWith('ml')) return (n / 1000) * qty * DOC_DENSITY;
-  if (s.endsWith('l')) return n * qty * DOC_DENSITY;
-  return 0;
+  switch (m[2].toLowerCase()) {
+    case 'kg': return n * qty;
+    case 'g': return (n / 1000) * qty;
+    case 'ml': return (n / 1000) * qty * DOC_DENSITY;
+    case 'l': return n * qty * DOC_DENSITY;
+    default: return 0;
+  }
 };
 
 /**

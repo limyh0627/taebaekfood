@@ -31,8 +31,15 @@ import {
 } from 'lucide-react';
 import { Order, OrderStatus, Partner, OrderSource, OrderItem, Item, OrderPallet, DeliveryBox, PalletStock, ShippingRule, ItemBom, PartnerItem } from '../types';
 import { isBoxStockItem } from '../src/shared/orderUnits';
+import { splitNameVolume, ProductSpecChip } from '../src/shared/productChip';
+import { isBulkItem } from '../src/shared/itemTaxonomy';
+import { subChipClass } from '../src/shared/submaterialStyle';
+
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
+
+/** 이름 끝 용량은 뗀다 — 규격 칩이 이미 들고 있어 '참기름/병/A/300ml [300ml * 20]'처럼 겹친다. */
+const baseName = (name: string): string => splitNameVolume({ name }).base;
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
 
@@ -417,7 +424,9 @@ export const OrderCard = memo<OrderCardProps>(({
                     <div className={`mr-1.5 shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`}>
                       {isItemChecked ? <CheckSquare size={14} /> : <Square size={14} />}
                     </div>
-                    <span className={`break-words min-w-0 ${isItemChecked ? 'text-emerald-800 line-through opacity-50' : 'text-slate-700'}`}>{abbrev(item.name)}</span>
+                    <span className={`break-words min-w-0 ${isItemChecked ? 'text-emerald-800 line-through opacity-50' : 'text-slate-700'}`}>{abbrev(baseName(item.name))}</span>
+                    {/* 규격 — 용량별 고정색 칩. 옆 배지는 주문량이라 개입수를 알 수 없다 */}
+                    {productInfo && <span className="ml-1.5 shrink-0"><ProductSpecChip product={productInfo} /></span>}
                     <span className={`ml-1.5 px-1 py-0.5 rounded text-[8px] font-black shrink-0 ${isItemChecked ? 'text-emerald-700 bg-emerald-100' : 'text-indigo-600 bg-indigo-50'}`}>
                       {item.isBoxUnit && item.boxQuantity
                         ? item.unitsPerBox
@@ -454,10 +463,12 @@ export const OrderCard = memo<OrderCardProps>(({
                     }
 
                     // 3. 완제품/반제품 구성품 (박스의 낱개 등) — 펼치면 그 완제품의 부자재까지
+                    //    벌크(kg·L로 재는 원료·반제품)는 뺀다 — 작업자가 챙길 물건이 아니라 통에서 나오는 것이다.
                     const bomProducts = itemBoms
                       .filter(b => b.parent_id === item.itemId)
                       .map(b => ({ qty: b.quantity, p: items.find(p => p.id === b.child_id) }))
-                      .filter((r): r is { qty: number; p: Item } => !!r.p && (r.p.category === 'product' || r.p.category === 'wip' || r.p.category === '완제품'));
+                      .filter((r): r is { qty: number; p: Item } =>
+                        !!r.p && !isBulkItem(r.p) && (r.p.category === 'product' || r.p.category === 'wip' || r.p.category === '완제품'));
 
                     const allSubs = [...bomSubs.map(p => ({ id: p.id, name: p.name })), ...snapLabels, ...packagingSubs];
                     if (allSubs.length === 0 && bomProducts.length === 0) return null;
@@ -473,20 +484,34 @@ export const OrderCard = memo<OrderCardProps>(({
                             <ChevronRight size={9} className={`transition-transform ${open ? 'rotate-90' : ''}`} />{abbrev(p.name)}{qty > 1 ? `×${qty}` : ''}
                           </button>
                         ))}
+                        {/* 부자재 — 종류별 색(라벨·용기·마개·박스·테이프). 전엔 전부 회색이라 구분이 안 됐다. */}
                         {allSubs.map(sm => (
-                          <span key={sm.id} className="text-[8px] font-bold text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">{sm.name}</span>
+                          <span key={sm.id}
+                            className={`text-[8px] font-bold px-1.5 py-0.5 rounded border ${subChipClass(items.find(p => p.id === sm.id) ?? { name: sm.name })}`}>
+                            {sm.name}
+                          </span>
                         ))}
                       </div>
                       {open && bomProducts.map(({ p }) => {
-                        const cSubs = (p.submaterials ?? []).filter(cs => { const ci = items.find(x => x.id === cs.id); return ci?.category === 'submaterial' && !isShipPkg(ci); });
+                        // 펼친 낱개의 부자재 — 벌크는 여기서도 뺀다
+                        const cSubs = (p.submaterials ?? []).filter(cs => {
+                          const ci = items.find(x => x.id === cs.id);
+                          return ci?.category === 'submaterial' && !isShipPkg(ci) && !isBulkItem(ci);
+                        });
                         return (
                           <div key={`exp-${p.id}`} className="flex flex-wrap items-center gap-1 pl-[28px] mt-0.5" onClick={e => e.stopPropagation()}>
                             <span className="text-[8px] font-black text-indigo-300">└ {abbrev(p.name)}</span>
                             {cSubs.length === 0
                               ? <span className="text-[8px] text-slate-300">부자재 없음</span>
-                              : cSubs.map((cs, i) => (
-                                  <span key={i} className="text-[8px] font-bold text-slate-400 bg-white px-1.5 py-0.5 rounded border border-slate-100">{items.find(x => x.id === cs.id)?.name ?? cs.name}</span>
-                                ))}
+                              : cSubs.map((cs, i) => {
+                                  const ci = items.find(x => x.id === cs.id);
+                                  return (
+                                    <span key={i}
+                                      className={`text-[8px] font-bold px-1.5 py-0.5 rounded border ${subChipClass(ci ?? { name: cs.name })}`}>
+                                      {ci?.name ?? cs.name}
+                                    </span>
+                                  );
+                                })}
                           </div>
                         );
                       })}
@@ -532,7 +557,8 @@ export const OrderCard = memo<OrderCardProps>(({
                               <div className={`shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`}>
                                 {isItemChecked ? <CheckSquare size={12} /> : <Square size={12} />}
                               </div>
-                              <span className={`${isItemChecked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{abbrev(item.name)}</span>
+                              <span className={`${isItemChecked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{abbrev(baseName(item.name))}</span>
+                              {(() => { const _p = items.find(p => p.id === item.itemId); return _p ? <ProductSpecChip product={_p} /> : null; })()}
                             </div>
                             <span className={`text-[8px] font-black shrink-0 ${isItemChecked ? 'text-emerald-700 bg-emerald-100' : 'text-teal-600 bg-teal-50'} px-1 py-0.5 rounded`}>
                               {item.isBoxUnit && item.boxQuantity ? `${item.boxQuantity}B` : `${item.quantity}개`}
@@ -554,7 +580,8 @@ export const OrderCard = memo<OrderCardProps>(({
                               <div className={`shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`}>
                                 {isItemChecked ? <CheckSquare size={12} /> : <Square size={12} />}
                               </div>
-                              <span className={`${isItemChecked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{item.name}</span>
+                              <span className={`${isItemChecked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{baseName(item.name)}</span>
+                              {(() => { const _p = items.find(p => p.id === item.itemId); return _p ? <ProductSpecChip product={_p} /> : null; })()}
                             </div>
                             <span className={`text-[8px] font-black shrink-0 ${isItemChecked ? 'text-emerald-700 bg-emerald-100' : 'text-orange-600 bg-orange-50'} px-1 py-0.5 rounded`}>
                               {item.isBoxUnit && item.boxQuantity ? `${item.boxQuantity}B` : `${item.quantity}개`}

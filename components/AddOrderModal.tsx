@@ -1,9 +1,10 @@
-﻿
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, LayoutGrid, Layers } from 'lucide-react';
 import { Item, PartnerItem, OrderItem, Order, Partner, OrderSource, OrderPallet, PalletStock, ShippingRule } from '../types';
 import { bomQty } from '../src/shared/bom';
 import { unpackComponent, isBoxStockItem, boxSiblings, boxDerivedUnitPrice } from '../src/shared/orderUnits';
+import { subChipClass } from '../src/shared/submaterialStyle';
+import { isBulkItem } from '../src/shared/itemTaxonomy';
 
 interface AddOrderModalProps {
   items: Item[];
@@ -142,9 +143,15 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
     if (spec && VOLUME_RE.test(spec)) return { base: product.name, vol: normVolume(spec) };
     return { base: product.name, vol: null };
   };
-  const renderVolumeChip = (vol: string | null) => vol ? (
-    <span className={`shrink-0 text-[10px] font-black px-2 py-1 rounded-lg whitespace-nowrap ${VOLUME_CHIP_COLORS[vol] ?? 'bg-slate-100 text-slate-600'}`}>{vol}</span>
-  ) : null;
+  /** 규격 칩 — 품목의 규격을 그대로 띄운다('300ml * 20'). 색만 용량으로 고른다. */
+  const renderVolumeChip = (vol: string | null, product?: { spec?: string }) => {
+    const spec = String(product?.spec ?? '').trim();
+    const text = spec || vol;
+    if (!text) return null;
+    return (
+      <span className={`shrink-0 text-[10px] font-black px-2 py-1 rounded-lg whitespace-nowrap ${VOLUME_CHIP_COLORS[vol ?? ''] ?? 'bg-slate-100 text-slate-600'}`}>{text}</span>
+    );
+  };
 
   // 거래처 전용 품목 필터링 적용
   // 이 거래처가 이 품목을 주문할 수 있나 (거래처 등록·스마트스토어·통합품목)
@@ -658,7 +665,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                   ))}
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2">
                 {shownProducts.length > 0 ? (
                   shownProducts.map(looseProduct => {
                     // 낱개↔박스 변형 — 이 낱개에 짝지어진 박스 품목들. 있으면 카드 안에서 전환.
@@ -697,31 +704,35 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                         )}
                         <div className="flex items-center gap-2">
                           <div className="flex flex-col min-w-0 flex-1">
-                            <p className="text-xs font-bold text-slate-800 truncate">{renderColoredName(nv.base)}</p>
+                            <p className="text-xs font-bold text-slate-800 leading-snug break-keep">{renderColoredName(nv.base)}</p>
                             {(() => {
-                              // 낱개 기준 포장 부자재만 (용기·마개·라벨 등). 내용물(참기름A·통깨참기름 등 반제품/원료/완제품)·겉박스·테이프는 제외.
-                              const EXCL_CATS = ['product', '완제품', 'wip', 'raw', 'goods', 'box', 'tape'];
-                              const EXCL_SUB = ['박스', '테이프', 'box', 'tape'];
-                              const subNames = (looseProduct.submaterials ?? [])
-                                .filter(s => { const c = items.find(x => x.id === s.id); const cat = c?.category ?? s.category; return !EXCL_CATS.includes(cat) && !EXCL_SUB.includes(c?.subtype ?? '') && !(c as any)?.phantom; })
-                                .map(s => (items.find(x => x.id === s.id)?.name) ?? s.name)
-                                .filter((n): n is string => !!n);
-                              // 칩과 중복되는 spec은 아랫줄에서 생략
-                              const vol = product.spec && (!nv.vol || normVolume(product.spec) !== nv.vol) ? product.spec : null;
-                              const pc = selectedClient ? partnerOut.find(p => p.itemId === product.id && p.partnerId === selectedClient.id) : null;
-                              const boxName = pc?.boxTypeId ? items.find(p => p.id === pc.boxTypeId)?.name : null;
-                              const tapeName = pc?.tapeTypeId ? items.find(p => p.id === pc.tapeTypeId)?.name : null;
-                              const subParts = [boxName, tapeName].filter(Boolean);
+                              // 지금 고른 변형(낱개/박스)의 **BOM 그대로** 보여준다.
+                              //  · 낱개를 고르면 라벨·병·캡,  박스를 고르면 겉박스·테이프
+                              //  · 예전엔 언제나 낱개(looseProduct) BOM을 읽고 박스·테이프를 일부러 뺐다
+                              //    → 박스를 골라도 낱개 부자재만 나왔다. 거래처 포장설정(boxTypeId) 경로도 폐기됐다.
+                              // 내용물(반제품·원료·완제품)과 벌크는 뺀다 — 챙길 물건이 아니라 통에서 나온다.
+                              const chips = (product.submaterials ?? [])
+                                .map(s => items.find(x => x.id === s.id))
+                                .filter((c): c is Item => !!c && c.category === 'submaterial' && !isBulkItem(c) && !c.phantom);
                               return (
                                 <>
-                                  {vol && <p className="text-[9px] text-slate-400 font-bold truncate leading-tight">{vol}</p>}
-                                  {subNames.length > 0 && <p className="text-[9px] text-slate-400 font-bold leading-tight truncate" title={`부자재: ${subNames.join(' · ')}`}>부자재: {subNames.join(' · ')}</p>}
-                                  {subParts.length > 0 && <p className="text-[9px] text-indigo-400 font-bold truncate leading-tight">{subParts.join(' · ')}</p>}
+                                  {chips.length > 0 && (
+                                    <div className="flex flex-wrap items-center gap-0.5 mt-0.5"
+                                      title={`부자재: ${chips.map(c => c.name).join(' · ')}`}>
+                                      <span className="text-[9px] text-slate-400 font-bold shrink-0">부자재</span>
+                                      {chips.map(c => (
+                                        <span key={c.id}
+                                          className={`text-[9px] font-bold px-1 py-px rounded border leading-tight ${subChipClass(c)}`}>
+                                          {c.name}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
                                 </>
                               );
                             })()}
                           </div>
-                          {renderVolumeChip(nv.vol)}
+                          {renderVolumeChip(nv.vol, product)}
                         </div>
                         {isSelected && renderItemControls(product)}
                       </div>
@@ -746,15 +757,15 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                 </div>
                 <span className="text-[10px] font-bold">{showHyangmiyu ? '▲' : '▼'}</span>
               </button>
-              {showHyangmiyu && <div className="grid grid-cols-2 gap-2">
+              {showHyangmiyu && <div className="grid grid-cols-1 gap-2">
                 {displayHyangmiyu.map(product => {
                   const selection = selectedItems.find(i => String(i.itemId).trim() === String(product.id).trim());
                   const isSelected = !!selection;
                   return (
                     <div key={product.id} onClick={() => toggleProduct(product.id)} className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col gap-2 ${isSelected ? 'bg-white border-indigo-500 shadow-md ring-1 ring-indigo-500' : 'bg-white border-slate-100 hover:border-indigo-200'}`}>
                       <div className="flex items-center gap-2">
-                        <p className="text-xs font-bold text-slate-800 truncate flex-1 min-w-0">{renderColoredName(splitNameVolume(product).base)}</p>
-                        {renderVolumeChip(splitNameVolume(product).vol)}
+                        <p className="text-xs font-bold text-slate-800 leading-snug break-keep flex-1 min-w-0">{renderColoredName(splitNameVolume(product).base)}</p>
+                        {renderVolumeChip(splitNameVolume(product).vol, product)}
                       </div>
                       {isSelected && renderItemControls(product)}
                     </div>
@@ -773,14 +784,14 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                 </div>
                 <span className="text-[10px] font-bold">{showGochutgaru ? '▲' : '▼'}</span>
               </button>
-              {showGochutgaru && <div className="grid grid-cols-2 gap-2">
+              {showGochutgaru && <div className="grid grid-cols-1 gap-2">
                 {displayGochutgaru.map(product => {
                   const isSelected = selectedItems.some(i => String(i.itemId).trim() === String(product.id).trim());
                   return (
                     <div key={product.id} onClick={() => toggleProduct(product.id)} className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col gap-2 ${isSelected ? 'bg-white border-indigo-500 shadow-md ring-1 ring-indigo-500' : 'bg-white border-slate-100 hover:border-indigo-200'}`}>
                       <div className="flex items-center gap-2">
-                        <p className="text-xs font-bold text-slate-800 truncate flex-1 min-w-0">{renderColoredName(splitNameVolume(product).base)}</p>
-                        {renderVolumeChip(splitNameVolume(product).vol)}
+                        <p className="text-xs font-bold text-slate-800 leading-snug break-keep flex-1 min-w-0">{renderColoredName(splitNameVolume(product).base)}</p>
+                        {renderVolumeChip(splitNameVolume(product).vol, product)}
                       </div>
                       {isSelected && renderItemControls(product)}
                     </div>
@@ -796,7 +807,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                 <Layers size={16} />
                 <span className="text-xs font-bold uppercase tracking-widest">팔레트</span>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2">
                 {palletStocks
                   .filter(ps => !ps.hidden)
                   .sort((a, b) => (a.name.toLowerCase().includes('kpp') ? 0 : 1) - (b.name.toLowerCase().includes('kpp') ? 0 : 1) || a.name.localeCompare(b.name, 'ko'))

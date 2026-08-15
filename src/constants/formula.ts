@@ -128,6 +128,25 @@ export function lotStockInUnit(lots: RawMaterialLot[] | undefined, _material: st
 }
 
 /** 제품 용량 문자열 + 원료명 + 수량 → kg 환산 */
+/**
+ * 규격 문자열의 **앞부분 숫자+단위**만 뽑는다. 뒤에 개입수가 붙어도('1750ml * 10') 안 흔들린다.
+ * 규격은 "낱개 하나의 용량 [* 개입수]" 꼴이므로 앞이 곧 용량이다.
+ */
+export function parseSpecUnit(spec?: string): { value: number; unit: 'ml' | 'l' | 'g' | 'kg' } | null {
+  const m = /^\s*([\d.]+)\s*(ml|l|g|kg)\b/i.exec(String(spec ?? ''));
+  if (!m) return null;
+  const value = parseFloat(m[1]);
+  if (!isFinite(value) || value <= 0) return null;
+  return { value, unit: m[2].toLowerCase() as 'ml' | 'l' | 'g' | 'kg' };
+}
+
+/** 규격에서 개입수를 읽는다 — '1750ml * 10' → 10. 없으면 1(낱개). */
+export function parseSpecCount(spec?: string): number {
+  const m = /[*x×]\s*([\d.]+)/i.exec(String(spec ?? ''));
+  const n = m ? parseFloat(m[1]) : NaN;
+  return isFinite(n) && n > 0 ? n : 1;
+}
+
 export function toKg(용량: string, raw: string, qty: number): number {
   const m = 용량.match(/^([\d.]+)\s*(ml|l|g|kg)/i);
   if (!m) return 0;

@@ -1,11 +1,14 @@
 
 import React, { useState, useMemo } from 'react';
-import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X, Copy, ChevronDown, ChevronUp, ChevronRight, GitMerge, Save, Settings, Store, Package } from 'lucide-react';
+import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X, Copy, ChevronDown, ChevronUp, ChevronRight, GitMerge, Save, Settings, Store, Package, User, Truck } from 'lucide-react';
 import { Item, InventoryCategory, Partner, PartnerItem, ShippingRule, ItemBom } from '../types';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 import CategoryManager from './CategoryManager';
-import { isBoxStockItem } from '../src/shared/orderUnits';
+import { isBoxStockItem, unpackComponent, boxSiblings } from '../src/shared/orderUnits';
+import { subChipClass } from '../src/shared/submaterialStyle';
+import { ProductNameRow, ProductSpecChip, ProductCard, renderColoredName, splitNameVolume } from '../src/shared/productChip';
+import { isBulkItem } from '../src/shared/itemTaxonomy';
 
 interface ItemManagerProps {
   items: Item[];
@@ -152,6 +155,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
   const [partnerTab, setPartnerTab] = useState<'sales' | 'purchase'>('sales');
   const [partnerScopeTab, setClientScopeTab] = useState<'sales' | 'purchase'>('sales');
   const [salesPriceEdits, setSalesPriceEdits] = useState<Record<string, string>>({});
+  // 카드에서 고른 변형(낱개/N개입) — 낱개 id → 보여줄 품목 id
+  const [variantPick, setVariantPick] = useState<Record<string, string>>({});
 
   const TYPE_ORDER: Record<string, number> = { '일반': 0, '택배': 1, '스마트스토어': 2 };
   const salesClients = useMemo(() =>
@@ -384,51 +389,37 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
     : 'lg:h-[calc(100vh-240px)]';
   const productPanel = (
     <div className="flex flex-col gap-3 min-w-0">
-      {/* 모바일 신규 등록 버튼 */}
-      {isAdmin && (
+      {/* 모바일 — 신규 등록은 아래 탭 줄에 이미 있다(중복이라 뺐다).
+          거래처를 고른 상태에서는 여기에 '품목 연결'을 둔다. */}
+      {isAdmin && mainView === 'by-partner' && selectedClientId && (
         <div className="flex items-center justify-end lg:hidden">
           <button
-            onClick={onAddItem}
-            className="flex items-center gap-1.5 bg-indigo-600 text-white px-4 py-2 rounded-xl font-black text-xs shadow-md"
+            onClick={() => { setShowLinkPanel(true); setLinkSearch(''); setLinkCategory('product'); }}
+            className="flex items-center gap-1.5 bg-emerald-600 text-white px-4 py-2 rounded-xl font-black text-xs shadow-md active:scale-95 transition-all"
           >
-            <Plus size={14} />
-            신규 등록
+            <Link size={14} />
+            품목 연결
           </button>
         </div>
       )}
 
       <div className="hidden lg:flex items-center justify-between">
+        {/* 거래처를 고르면 아래 파란 바가 이름·품목수를 이미 보여준다 → 여기선 숨긴다(중복) */}
         <div>
-          <h3 className="text-lg font-black text-slate-900">
-            {showAll ? '전체 품목' : selectedClient?.name ?? ''}
-          </h3>
-          <p className="text-xs text-slate-400 font-medium">
-            {showAll ? '모든 품목' : `${filteredItems.length}개 품목`}
-          </p>
+          {showAll && (
+            <>
+              <h3 className="text-lg font-black text-slate-900">전체 품목</h3>
+              <p className="text-xs text-slate-400 font-medium">모든 품목</p>
+            </>
+          )}
         </div>
         <div className="flex items-center gap-2">
-          {selectedClientId && isAdmin && (
-            <button
-              onClick={() => { setShowLinkPanel(true); setLinkSearch(''); setLinkCategory('product'); }}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-sm shadow-sm transition-all active:scale-95 bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
-            >
-              <Link size={14} />
-              품목 연결
-            </button>
-          )}
-          {isAdmin && (
-            <button
-              onClick={onAddItem}
-              className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-black text-sm shadow-md hover:bg-indigo-700 transition-all active:scale-95"
-            >
-              <Plus size={15} />
-              신규 품목 등록
-            </button>
-          )}
+          {/* 신규 품목은 '분류 관리' 옆으로, 품목 연결은 거래처 바 안으로 모았다.
+              같은 동작을 여러 자리에 두면 어디가 진짜인지 헷갈린다. */}
         </div>
       </div>
 
-      <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col ${panelHeightClass}`}>
+      <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col ${panelHeightClass} ${mainView === 'by-partner' && selectedClientId ? 'lg:w-3/4 lg:mx-auto' : ''}`}>
         <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center gap-2">
           <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar flex-1">
             {(isAdmin || (!isAdmin && !selectedClientId)) && (() => {
@@ -490,6 +481,127 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
           </div>
         </div>
 
+        {/* 거래처별 품목 — 주문 생성 화면과 같은 카드 그리드로 본다.
+            (품목 목록 뷰는 열이 많아 표가 낫다 → 아래 표를 그대로 쓴다) */}
+        {mainView === 'by-partner' && selectedClientId ? (
+          <div className="overflow-y-auto lg:flex-1 px-4 pb-4">
+            {pagedItems.length === 0 ? (
+              <p className="py-16 text-center text-slate-400 font-medium text-sm">이 거래처에 연결된 품목이 없습니다.</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {(() => {
+                  // 낱개 + 그 박스들을 한 카드로 묶는다(주문 생성과 같은 방식).
+                  //   · 박스만 연결돼 있으면 그 박스가 앵커가 된다
+                  //   · 짝이 없으면 낱개 하나만 → 상단 토글 없음
+                  const shown = new Set(pagedItems.map(p => p.id));
+                  const anchors: { anchor: Item; variants: { item: Item; label: string }[] }[] = [];
+                  const taken = new Set<string>();
+                  for (const p of pagedItems) {
+                    if (taken.has(p.id)) continue;
+                    const uc = unpackComponent(p);
+                    // 박스면 그 낱개가 이 거래처에도 연결돼 있을 때만 낱개를 앵커로 삼는다
+                    const loose = uc && shown.has(uc.itemId) ? pagedItems.find(x => x.id === uc.itemId)! : p;
+                    if (taken.has(loose.id)) continue;
+                    const sibs = boxSiblings(loose, pagedItems);
+                    const variants = [
+                      ...(shown.has(loose.id) ? [{ item: loose, label: '낱개' }] : []),
+                      ...sibs.map(s => ({ item: s.item as Item, label: `${s.count}개입` })),
+                    ];
+                    variants.forEach(v => taken.add(v.item.id));
+                    anchors.push({ anchor: loose, variants });
+                  }
+                  return anchors.map(({ anchor, variants }) => {
+                    const activeId = variantPick[anchor.id] && variants.some(v => v.item.id === variantPick[anchor.id])
+                      ? variantPick[anchor.id] : variants[0]?.item.id ?? anchor.id;
+                    const item = variants.find(v => v.item.id === activeId)?.item ?? anchor;
+                    return (
+                <React.Fragment key={anchor.id}>
+                {(() => {
+                  const subs = (item.submaterials ?? [])
+                    .map(s => items.find(x => x.id === s.id))
+                    .filter((c): c is Item => !!c && c.category === 'submaterial' && !isBulkItem(c) && !c.phantom);
+                  const rule = shippingRules.find(r => r.item_id === item.id && r.partner_id === selectedClientId);
+                  const pack = [rule?.box_item_id, rule?.tape_item_id]
+                    .map(id => id ? items.find(p => p.id === id) : null)
+                    .filter((c): c is Item => !!c);
+                  return (
+                    <ProductCard key={item.id} product={item} subs={[...subs, ...pack]}
+                      categoryLabel={inferSubtype(item)}
+                      topChips={<>
+                        {/* 낱개↔박스 전환 — 짝이 없으면 안 뜬다 */}
+                        {variants.length > 1 && variants.map(v => (
+                          <button key={v.item.id} type="button"
+                            onClick={() => setVariantPick(prev => ({ ...prev, [anchor.id]: v.item.id }))}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-black border transition-all ${
+                              activeId === v.item.id ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-400 hover:border-indigo-300'
+                            }`}>{v.label}</button>
+                        ))}
+                      </>}
+                    >
+                      <div className="flex items-center justify-between gap-1 pt-1.5 border-t border-slate-50 flex-wrap">
+                        {/* 원가 · 판매단가 — 표에서 쓰던 것과 같은 동작(관리자만) */}
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {isAdmin && (
+                            <span className="text-[11px] font-bold text-slate-400 whitespace-nowrap">
+                              원가 {item.cost != null ? item.cost.toLocaleString() : '-'}
+                            </span>
+                          )}
+                          {isAdmin && partnerScopeTab === 'sales' && (() => {
+                            const psOut = partnerOut.find(ps => ps.itemId === item.id && ps.partnerId === selectedClientId);
+                            const curPrice = psOut?.price;
+                            const editKey = `${item.id}_${selectedClientId}`;
+                            const editVal = salesPriceEdits[editKey];
+                            const savePrice = () => {
+                              if (editVal === undefined || !onUpsertPartnerItem) return;
+                              const num = editVal === '' ? 0 : Number(editVal);
+                              if (isNaN(num)) return;
+                              onUpsertPartnerItem({ ...(psOut ?? {}), id: psOut?.id ?? `${item.id}_${selectedClientId}_out`, itemId: item.id, partnerId: selectedClientId, Direction: 'out', price: num } as PartnerItem);
+                              setSalesPriceEdits(prev => { const n = { ...prev }; delete n[editKey]; return n; });
+                            };
+                            const cancelEdit = () => setSalesPriceEdits(prev => { const n = { ...prev }; delete n[editKey]; return n; });
+                            return editVal === undefined ? (
+                              <button
+                                onClick={e => { e.stopPropagation(); setSalesPriceEdits(prev => ({ ...prev, [editKey]: String(curPrice ?? '') })); }}
+                                className="flex items-center gap-1 text-[11px] font-black px-1.5 py-0.5 rounded-md hover:bg-indigo-50 transition-all whitespace-nowrap"
+                                title="판매단가 수정">
+                                <span className={curPrice != null ? 'text-slate-700' : 'text-slate-300'}>
+                                  {curPrice != null ? Number(curPrice).toLocaleString() : '미설정'}
+                                </span>
+                                <Edit size={11} className="text-slate-400 shrink-0" />
+                              </button>
+                            ) : (
+                              <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                                <input
+                                  type="number" min={0} autoFocus value={editVal} placeholder="단가"
+                                  onChange={e => setSalesPriceEdits(prev => ({ ...prev, [editKey]: e.target.value }))}
+                                  onKeyDown={e => { if (e.key === 'Enter') savePrice(); if (e.key === 'Escape') cancelEdit(); }}
+                                  className="w-16 text-right bg-white border border-indigo-300 rounded-lg px-2 py-1 text-[11px] font-bold outline-none focus:ring-2 focus:ring-indigo-400"
+                                />
+                                <button onClick={savePrice} className="p-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 shrink-0" title="저장"><Save size={12} /></button>
+                                <button onClick={cancelEdit} className="p-1 rounded-md text-slate-400 hover:bg-slate-100 shrink-0" title="취소"><X size={12} /></button>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                        <button
+                          onClick={() => {
+                            if (partnerScopeTab === 'purchase' && onUnlinkSupplier) onUnlinkSupplier(item.id, selectedClientId);
+                            else onUnlinkItem(item.id, selectedClientId);
+                          }}
+                          className="shrink-0 text-[11px] font-black text-rose-500 bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded-lg transition-all"
+                        >해제</button>
+                      </div>
+                    </ProductCard>
+                  );
+                })()}
+                </React.Fragment>
+                    );
+                  });
+                })()}
+              </div>
+            )}
+          </div>
+        ) : (
         <div className="overflow-x-auto lg:overflow-y-auto lg:flex-1">
           <table className="w-full text-left border-collapse">
             <thead className="sticky top-0 z-10">
@@ -548,9 +660,13 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                       </span>
                     </td>
                     <td className="px-3 py-3">
-                      <div className="flex items-center space-x-1.5">
+                      {/* 주문 생성 화면과 같은 표기 — 이름 토큰 색 + 규격칩 (src/shared/productChip) */}
+                      <div className="flex items-center gap-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-slate-300 shrink-0" />
-                        <p className="text-[11px] font-bold text-slate-600 whitespace-nowrap">{item.name}</p>
+                        <p className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
+                          {renderColoredName(splitNameVolume(item).base)}
+                        </p>
+                        <ProductSpecChip product={item} />
                       </div>
                     </td>
                     {!(mainView === 'by-partner' && selectedClientId) && activeCategory === 'product' && (
@@ -629,8 +745,13 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                             const full = items.find(p => p.id === s.id);
                             return full ? itemSubCat(full) === cat : normalizeCategory(s.category) === cat;
                           });
+                          // 주문 생성 화면과 같은 부자재 색 칩
                           return subs.length > 0
-                            ? <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">{subs.map(s => s.name).join(', ')}</span>
+                            ? <span className="flex flex-wrap gap-1">
+                                {subs.map((s, i) => (
+                                  <span key={`${s.name}-${i}`} className={`text-[10px] font-black px-1.5 py-0.5 rounded-md whitespace-nowrap ${subChipClass(s)}`}>{s.name}</span>
+                                ))}
+                              </span>
                             : <span className="text-[10px] text-slate-200">-</span>;
                         })() : (
                           <span className="text-[10px] text-slate-200">-</span>
@@ -700,7 +821,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                                 onChange={e => setSalesPriceEdits(prev => ({ ...prev, [editKey]: e.target.value }))}
                                 onKeyDown={e => { if (e.key === 'Enter') savePrice(); if (e.key === 'Escape') cancelEdit(); }}
                                 placeholder="단가"
-                                className="w-20 text-right bg-white border border-indigo-300 rounded-lg px-2 py-1 text-[11px] font-bold outline-none focus:ring-2 focus:ring-indigo-400"
+                                className="w-16 text-right bg-white border border-indigo-300 rounded-lg px-2 py-1 text-[11px] font-bold outline-none focus:ring-2 focus:ring-indigo-400"
                               />
                               <button onClick={savePrice} className="p-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-all shrink-0" title="저장">
                                 <Save size={12} />
@@ -907,6 +1028,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
             </tbody>
           </table>
         </div>
+        )}
         <div className="flex flex-col items-center gap-2 px-4 py-3 border-t border-slate-100">
           {totalPages > 1 && (
             <div className="flex items-center gap-1">
@@ -972,10 +1094,10 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
         {isAdmin && (
           <button
             onClick={onAddItem}
-            className="lg:hidden flex items-center gap-1.5 bg-indigo-600 text-white px-3 py-2 rounded-xl font-black text-xs shadow-sm whitespace-nowrap"
+            className="flex items-center gap-1.5 bg-white text-indigo-600 border border-indigo-200 px-3 py-2 rounded-xl font-black text-xs hover:bg-indigo-50 transition-all active:scale-95 whitespace-nowrap"
           >
             <Plus size={14} />
-            신규 등록
+            신규 품목
           </button>
         )}
       </div>
@@ -1202,16 +1324,30 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                         { bg: 'bg-orange-50 border-orange-100 hover:bg-orange-100', text: 'text-orange-800', num: 'text-orange-500' },
                       ];
                       const av = AV[[...c.name].reduce((a, ch) => a + ch.charCodeAt(0), 0) % AV.length];
+                      // 주문 생성의 거래처 카드와 같은 모양 — 흰 바탕 + 타입 아이콘 + 이름 + 타입 배지
+                      const typeConfig = {
+                        '일반': { icon: User, color: 'bg-indigo-100 text-indigo-600' },
+                        '택배': { icon: Truck, color: 'bg-pink-100 text-pink-600' },
+                        '스마트스토어': { icon: Store, color: 'bg-lime-100 text-lime-600' },
+                      }[c.type as string] || { icon: LayoutGrid, color: 'bg-slate-100 text-slate-600' };
+                      const TypeIcon = typeConfig.icon;
                       return (
                         <button key={c.id} onClick={() => handleSelectClient(c.id)}
-                          className={`group flex items-center gap-2 rounded-2xl border p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-sm active:scale-95 ${av.bg}`}>
-                          <div className="min-w-0 flex-1">
-                            <p className={`text-sm font-black truncate ${av.text}`}>{c.name}</p>
-                            <p className="text-[11px] font-bold text-slate-500 mt-1.5">
-                              <span className={`font-black ${count > 0 ? av.num : 'text-slate-400'}`}>{count}</span>개 품목
-                            </p>
+                          className="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-100 transition-all p-4 text-left">
+                          <div className="flex items-center space-x-3 min-w-0">
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${typeConfig.color}`}>
+                              <TypeIcon size={18} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-sm font-bold text-slate-900 truncate">{c.name}</h3>
+                                {c.type && <span className={`px-1.5 py-0.5 rounded text-[9px] font-black flex-shrink-0 ${typeConfig.color}`}>{c.type}</span>}
+                              </div>
+                              <p className="text-[11px] text-slate-400 mt-0.5">
+                                <span className={`font-black ${count > 0 ? av.num : 'text-slate-300'}`}>{count}</span>개 품목
+                              </p>
+                            </div>
                           </div>
-                          <ChevronRight size={16} className={`shrink-0 opacity-50 group-hover:opacity-90 transition-opacity ${av.num}`} />
                         </button>
                       );
                     })}
@@ -1222,35 +1358,44 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
             /* 선택된 거래처 품목 테이블 */
             <div className="space-y-3">
               {/* 거래처 헤더 */}
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => { setSelectedClientId(null); setPage(1); setSearchTerm(''); }}
-                    className="text-[11px] text-slate-400 font-bold hover:text-indigo-500 transition-colors whitespace-nowrap"
-                  >
-                    ← 목록
-                  </button>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-xl font-black text-slate-800">{selectedClient?.name}</h2>
-                    {selectedClient?.type && (
-                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">{selectedClient.type}</span>
+              {/* 선택된 거래처 — 주문 생성의 파란 바와 같은 모양.
+                  카드 패널과 폭을 맞춰야 따로 노는 느낌이 안 난다. */}
+              <div className="lg:w-3/4 lg:mx-auto">
+                <div className="bg-indigo-50 border border-indigo-100 px-4 py-3.5 rounded-2xl">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex flex-col min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="font-black text-indigo-900 text-base truncate">{selectedClient?.name}</h4>
+                        {selectedClient?.type && (
+                          <span className="px-2 py-0.5 rounded-full bg-indigo-600 text-white text-[10px] font-black shrink-0">{selectedClient.type}</span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-indigo-500 font-bold mt-0.5">{filteredItems.length}개 품목</p>
+                    </div>
+                    {/* 매출/매입 품목 토글 */}
+                    <div className="flex bg-white/70 rounded-lg p-0.5 gap-0.5 shrink-0">
+                      <button
+                        onClick={() => { setClientScopeTab('sales'); setPage(1); }}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${partnerScopeTab === 'sales' ? 'bg-indigo-600 text-white shadow-sm' : 'text-indigo-400 hover:text-indigo-600'}`}
+                      >매출 품목</button>
+                      <button
+                        onClick={() => { setClientScopeTab('purchase'); setPage(1); }}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${partnerScopeTab === 'purchase' ? 'bg-indigo-600 text-white shadow-sm' : 'text-indigo-400 hover:text-indigo-600'}`}
+                      >매입 품목</button>
+                    </div>
+                    {isAdmin && (
+                      <button
+                        onClick={() => { setShowLinkPanel(true); setLinkSearch(''); setLinkCategory('product'); }}
+                        className="hidden lg:flex items-center gap-1.5 shrink-0 bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-black shadow-sm hover:bg-emerald-700 transition-all active:scale-95"
+                      >
+                        <Link size={13} /> 품목 연결
+                      </button>
                     )}
+                    <button
+                      onClick={() => { setSelectedClientId(null); setPage(1); setSearchTerm(''); }}
+                      className="text-[11px] font-bold text-indigo-400 hover:text-indigo-600 underline whitespace-nowrap shrink-0"
+                    >변경</button>
                   </div>
-                </div>
-                {/* 매출/매입 품목 토글 */}
-                <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
-                  <button
-                    onClick={() => { setClientScopeTab('sales'); setPage(1); }}
-                    className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${partnerScopeTab === 'sales' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                  >
-                    매출 품목
-                  </button>
-                  <button
-                    onClick={() => { setClientScopeTab('purchase'); setPage(1); }}
-                    className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${partnerScopeTab === 'purchase' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                  >
-                    매입 품목
-                  </button>
                 </div>
               </div>
               {productPanel}
@@ -1311,10 +1456,15 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                 <div className="flex flex-col divide-y divide-slate-50">
                   {linkableProduts.map(p => (
                     <div key={p.id} className="flex items-center justify-between py-2.5 hover:bg-slate-50 -mx-2 px-2 rounded-xl transition-colors">
-                      <div>
-                        <p className="text-xs font-bold text-slate-700">{p.name}</p>
+                      {/* 주문 생성 화면과 같은 표기 — 이름 색 + 규격칩 + 부자재칩 (src/shared/productChip) */}
+                      <div className="min-w-0 flex-1">
+                        <ProductNameRow product={p} />
                         {p.submaterials && p.submaterials.length > 0 && (
-                          <p className="text-[9px] text-slate-400 font-medium mt-0.5">{sortSubs(p.submaterials).map(s => s.name).join(' · ')}</p>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {sortSubs(p.submaterials).map((s, i) => (
+                              <span key={`${s.name}-${i}`} className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${subChipClass(s)}`}>{s.name}</span>
+                            ))}
+                          </div>
                         )}
                       </div>
                       <button

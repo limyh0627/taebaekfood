@@ -4048,7 +4048,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     <tr key={i} className="hover:bg-slate-50">
                       <td className="border border-slate-200 px-3 py-2 text-[11px] text-center">{i+1}</td>
                       <td className="border border-slate-200 px-3 py-2 text-[11px] font-bold">{item.name}</td>
-                      <td className="border border-slate-200 px-3 py-2 text-[11px] text-center">{item.spec}</td>
+                      <td className="border border-slate-200 px-3 py-2 text-[11px] text-center font-bold text-slate-700">{item.spec}</td>
                       <td className="border border-slate-200 px-3 py-2 text-[11px] text-right">{fmt(item.qty)}</td>
                       <td className="border border-slate-200 px-3 py-2 text-[11px] text-right">{fmt(item.price)}</td>
                       <td className="border border-slate-200 px-3 py-2 text-[11px] text-right">{fmt(item.supply)}</td>
@@ -4194,7 +4194,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     return (
                     <div key={pc.id} className="flex items-center gap-3 px-5 py-2">
                       <span className="text-xs font-black text-slate-700 flex-1 truncate">{product!.name}</span>
-                      {product!.spec && <span className="text-[10px] text-slate-400">{product!.spec}</span>}
+                      {product!.spec && <span className="text-[10px] font-bold text-slate-600">{product!.spec}</span>}
                       <input type="text" inputMode="decimal" placeholder="단가"
                         value={pricePanelEdits[pc.id]??(pc.price!==undefined?String(pc.price):'')}
                         onChange={e=>{setPricePanelEdits(prev=>({...prev,[pc.id]:e.target.value}));setPriceSaveState(s=>{const n={...s};delete n[pc.id];return n;});}}
@@ -4649,7 +4649,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                 <td className="px-4 py-2.5">
                                   <span className="text-xs font-black text-slate-800">{docN}</span>
                                 </td>
-                                <td className="px-4 py-2.5 text-[11px] text-slate-400">{r.product!.spec||''}</td>
+                                <td className="px-4 py-2.5 text-[11px] font-bold text-slate-700">{r.product!.spec||''}</td>
                                 <td className="px-4 py-2.5 text-xs text-right font-black text-slate-700">
                                   {r.pc.price!==undefined ? fmt(r.pc.price)+'원' : <span className="text-slate-300 font-normal">미설정</span>}
                                 </td>
@@ -4792,7 +4792,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                 </>)}
                               </td>
                               <td className="px-3 py-2 w-20">
-                                {ro ? <span className="text-slate-500">{row.spec}</span>
+                                {ro ? <span className="font-bold text-slate-700">{row.spec}</span>
                                   : <input type="text" placeholder="규격" value={row.spec}
                                       onChange={e=>setManualItems(prev=>prev.map((r,i)=>i===idx?{...r,spec:e.target.value}:r))}
                                       className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300"/>}
@@ -4922,7 +4922,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                 </span>
                               )}
                             </td>
-                            <td className="px-3 py-2 text-[11px] text-slate-400">{item.spec}</td>
+                            <td className="px-3 py-2 text-[11px] font-bold text-slate-700">{item.spec}</td>
                             <td className="px-3 py-2 text-right text-[11px] w-12">{fmt(item.qty)}</td>
                             <td className="px-3 py-2 w-28 shrink-0" onClick={e=>e.stopPropagation()}>
                               <input type="text" inputMode="decimal" placeholder={String(item.price)} value={editablePrices[item.key]??''}

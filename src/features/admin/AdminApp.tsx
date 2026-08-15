@@ -116,7 +116,7 @@ const CashLedger = React.lazy(() => import('../../../components/CashLedger'));
 const PartnerLedger = React.lazy(() => import('../../../components/PartnerLedger'));
 
 import { db } from '../../shared/firebase';
-import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName, lotStockInUnit, lotKgRemaining } from '../../constants/formula';
+import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName, lotStockInUnit, lotKgRemaining, parseSpecUnit } from '../../constants/formula';
 import { docPumok, docOilKg, addOilByRaw, docSaleLine, docUnpack, docDateOf, findDocDrops, DOC_RECALC_RAWS, DOC_SHEET_GROUPS, DOC_SHEET_CATS, DEFAULT_SHEET_TITLE, mixLabel } from '../../shared/docOil';
 import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo, settleCarryOver } from '../../shared/lotUtils';
 import { rawLotTarget, recordRawMaterialReceipt, adjustRawLots } from '../../shared/rawReceipt';
@@ -2584,8 +2584,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                     // 서류 공용 환산 — kg 규격(캔)은 그 자체가 기름 무게라 밀도를 곱하지 않는다
                                     const inputKg = Math.round(docOilKg(row.spec, row.수량));
                                     totalInput += inputKg;
-                                    const dv = row.spec.endsWith('ml') && parseFloat(row.spec) >= 1000
-                                      ? `${parseFloat(row.spec)/1000}l` : row.spec;
+                                    const sp = parseSpecUnit(row.spec);
+                                    const dv = sp && sp.unit === 'ml' && sp.value >= 1000 ? `${sp.value / 1000}l` : row.spec;
                                     const sobiDisp = row.mfgDate ? row.mfgDate.replace(/-/g, '.') : '';
                                     const r = ws.addRow([i === 0 ? d : '', inputKg, dv, row.수량, inputKg, sobiDisp, '']);
                                     r.eachCell((cell, col) => {
@@ -3334,9 +3334,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
 
                 {docTab === '생산작업기록부' && (() => {
-                  const displayVol = (vol: string) =>
-                    vol.endsWith('ml') && parseFloat(vol) >= 1000
-                      ? `${parseFloat(vol) / 1000}l` : vol;
+                  const displayVol = (vol: string) => {
+                    const sp = parseSpecUnit(vol);
+                    return sp && sp.unit === 'ml' && sp.value >= 1000 ? `${sp.value / 1000}l` : vol;
+                  };
                   const calcExpiry = (mfgDate: string) => {
                     if (!mfgDate) return '';
                     const d = new Date(mfgDate);
@@ -3496,10 +3497,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   const daysInMonth2 = new Date(lm2Year, lm2Month, 0).getDate();
 
                   const parseVolL = (vol: string): number => {
-                    if (!vol) return 0;
-                    const v = vol.toLowerCase();
-                    if (v.endsWith('ml')) return parseFloat(v) / 1000;
-                    if (v.endsWith('l')) return parseFloat(v);
+                    const sp = parseSpecUnit(vol);
+                    if (!sp) return 0;
+                    if (sp.unit === 'ml') return sp.value / 1000;
+                    if (sp.unit === 'l') return sp.value;
                     return 0;
                   };
 

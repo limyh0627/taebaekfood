@@ -43,7 +43,7 @@ import RawLedgerList from './RawLedgerList';
 import OemManager from './OemManager';
 import CategoryManager from './CategoryManager';
 import { buildTaxonomy, TaxonomyRow } from '../src/shared/taxonomy';
-import { RM_LIST, unitOf, baseRawName, lotStockInUnit, unitToKg, lotKgRemaining, parsePackageKg } from '../src/constants/formula';
+import { RM_LIST, unitOf, baseRawName, lotStockInUnit, unitToKg, lotKgRemaining, parsePackageKg, parseSpecUnit, parseSpecCount } from '../src/constants/formula';
 import { isSubmaterial } from '../src/shared/types';
 import { matchesSearch } from '../src/shared/hangul';
 import { mutateRawMaterialLots, addItem, subscribeToCollection, fetchCollection } from '../src/shared/services/firebaseService';
@@ -54,19 +54,28 @@ import { withCarryOverLot, buildReceiveLot, nextLotNo, deductFromLots, settleCar
 const normCat = (cat: string): string =>
   ({ product: '완제품', goods: '상품', container: '용기', cap: '마개', tape: '테이프', box: '박스', label: '라벨' } as Record<string, string>)[cat] ?? cat;
 
-// 품목명 뒤에 용량(spec) 표시 — 이름에 이미 용량 표기(예: "300ML-소주병", "고춧가루 1kg")가 있으면 중복 표시하지 않음
+// 품목명 뒤에 용량(spec) 표시 — 이름에 이미 용량 표기("300ML-소주병")가 있으면 용량은 중복이라 생략.
+// 다만 **개입수는 언제나 붙인다** — 이름에서 '(10개입)'을 뺐으므로(2026-08-14)
+// 이게 없으면 낱개·10개입·12개입이 목록에서 똑같이 보인다.
 const hasVolumeInName = (name: string) => /\d+(\.\d+)?\s*(ml|kg|l|g)(?![a-z])/i.test(name);
 const withSpec = (p: { name: string; spec?: string }): string => {
-  const spec = (p.spec ?? '').trim();
-  return spec && !hasVolumeInName(p.name) ? `${p.name}/${spec}` : p.name;
+  const sp = parseSpecUnit(p.spec);
+  const count = parseSpecCount(p.spec);
+  const base = sp && !hasVolumeInName(p.name)
+    ? `${p.name}/${sp.value}${sp.unit === 'l' ? 'L' : sp.unit}`
+    : p.name;
+  return count > 1 ? `${base} ×${count}` : base;
 };
 
 // 품목 추가 목록용 — 긴 슬래시 이름을 대표이름 + 구분요소(등급·용량·개입·거래처)로 분해해 배지로 보여준다.
 const MAKE_GRADE_WORDS = ['특골드', '골드A', '특A', '골드', '원액', '특', '분', 'A'];
 const parseMakeLabel = (p: { name: string; spec?: string }): { base: string; grade: string; size: string; pack: string; brand: string; container: string } => {
   let nm = p.name;
+  // 개입수는 규격('1750ml * 10')에서 읽는다 — 이름에서 '(10개입)'을 뺐다(2026-08-14).
+  // 옛 이름이 남아 있을 수 있어 이름 쪽도 폴백으로 본다.
   const packM = nm.match(/\((\d+)\s*개입\)/);
-  const pack = packM ? `${packM[1]}개입` : '';
+  const cnt = parseSpecCount(p.spec);
+  const pack = cnt > 1 ? `${cnt}개입` : (packM ? `${packM[1]}개입` : '');
   nm = nm.replace(/\(\s*\d+\s*개입\s*\)/g, '').trim();
   const sizeM = String(p.spec ?? '').match(/\d+(?:\.\d+)?\s*(?:ml|kg|l)\b/i) || nm.match(/\d+(?:\.\d+)?\s*(?:ml|kg|l)\b/i);
   const size = sizeM ? sizeM[0].replace(/\s+/g, '') : '';
