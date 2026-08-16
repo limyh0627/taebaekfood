@@ -14,6 +14,7 @@ import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/sha
 import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
 import { totalCashOnHand, unsettledStatements, unmatchedCash } from '../src/features/admin/cashLedger';
 import { AR, AP, journalizeStatement, journalizeTransfer, journalizeCashEntry, settlementAccountCode } from '../src/shared/autoJournal';
+import { CASH_TEMPLATES } from '../src/shared/cashTemplates';
 import type { JournalEntry } from '../src/shared/types';
 import { AccountModal } from './CashLedger';
 import PageHeader from './PageHeader';
@@ -376,6 +377,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   const activeCashAccounts = useMemo(() => cashAccounts.filter(a => a.active), [cashAccounts]);
   const codeName = useMemo(() => new Map(accountCodes.map(c => [c.code, c.name])), [accountCodes]);
+  // 계정과목이 실제로 있는 템플릿만 띄운다 — 계정을 지웠는데 버튼만 남으면 안 잡히는 전표가 생긴다
+  const qpTemplates = useMemo(() => {
+    const have = new Set(accountCodes.map(c => c.code));
+    return CASH_TEMPLATES.filter(t => have.has(t.accountCode));
+  }, [accountCodes]);
   // 계정 5분류 — 자금 전표가 비용인지 수익인지 가려 매입/매출 합계에 반영하는 데 쓴다.
   const codeType = useMemo(() => new Map(accountCodes.map(c => [c.code, c.type])), [accountCodes]);
 
@@ -2641,9 +2647,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         <button
           onClick={() => openCashModal('출금')}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-teal-600 text-white hover:bg-teal-500 shadow-sm shadow-teal-200 transition-all"
-          title="입출금 — 수금·지불(미수/미지급 상계), 비용·대출상환·급여"
+          title="일반전표 — 돈이 실제로 오간 것. 전기·임대 같은 비용, 수금·지불(미수/미지급 상계), 대출상환·급여"
         >
-          <Wallet size={13}/>입출금
+          <Plus size={13} strokeWidth={3}/>일반전표
         </button>
         {onGenerateRecurringCosts && (
           <button
@@ -3683,7 +3689,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => { setShowQuickPay(false); setQuickPayOverWarn(false); }}>
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-              <h3 className="text-sm font-black text-slate-800">입출금 기록</h3>
+              <h3 className="text-sm font-black text-slate-800">일반전표 발행</h3>
 
               {/* 모드 — 일반 / 대출 상환 / 급여 지급 */}
               <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
@@ -3713,6 +3719,37 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
               {qpMode === '일반' ? (
                 <>
+                  {/* 자주 쓰는 전표 — 방향·계정과목·비고를 한 번에 채운다.
+                      계정과목 목록을 매번 훑는 게 병목이었고, 잘못 고르면 손익이 통째로 어긋난다. */}
+                  {qpTemplates.length > 0 && (
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">자주 쓰는 전표</label>
+                      <div className="flex flex-wrap gap-1">
+                        {qpTemplates.map(t => {
+                          const on = qpAccountCode === t.accountCode && qpDir === t.dir;
+                          return (
+                            <button key={t.id} type="button"
+                              onClick={() => {
+                                setQpDir(t.dir);
+                                setQpAccountCode(t.accountCode);
+                                if (t.note) setQuickPayNote(t.note);
+                                if (!t.wantsPartner) { setQuickPayClientId(''); setQuickPayClientSearch(''); }
+                              }}
+                              title={`${t.dir} · ${t.accountCode} ${codeName.get(t.accountCode) ?? ''}`}
+                              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-all ${
+                                on
+                                  ? t.dir === '입금' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-rose-600 text-white border-rose-600'
+                                  : t.dir === '입금' ? 'bg-emerald-50 text-emerald-700 border-emerald-100 hover:border-emerald-300'
+                                                     : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-400'
+                              }`}>
+                              {t.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {/* 방향 */}
                   <div className="flex gap-2">
                     {(['입금', '출금'] as const).map(d => (

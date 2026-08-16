@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Wallet, Plus, X, Landmark, CreditCard, Coins, Settings2, Trash2, Link2 } from 'lucide-react';
 import { CashAccount, CashEntry, AccountCode, Partner, IssuedStatement, Settlement } from '../src/shared/types';
 import { buildAccountLedger, totalCashOnHand, unsettledStatements, unmatchedCash } from '../src/features/admin/cashLedger';
+import { CASH_TEMPLATES } from '../src/shared/cashTemplates';
 
 interface Props {
   cashAccounts: CashAccount[];
@@ -128,7 +129,7 @@ export default function CashLedger({
               className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-slate-300" />
             <button onClick={() => setShowEntry(true)}
               className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-800 text-white text-[11px] font-black hover:bg-slate-900">
-              <Plus size={12} strokeWidth={3} />입출금 기록
+              <Plus size={12} strokeWidth={3} />일반전표
             </button>
           </div>
         </div>
@@ -381,6 +382,11 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, on
   const ded = Number(deduction.replace(/,/g, '')) || 0;
   const net = grs - ded;
   // 계정 코드 (이름으로 탐색, 없으면 기본)
+  // 계정과목이 실제로 있는 템플릿만 띄운다 — 계정을 지웠는데 버튼만 남으면 안 잡히는 전표가 생긴다
+  const templates = useMemo(() => {
+    const have = new Set(accountCodes.map(c => c.code));
+    return CASH_TEMPLATES.filter(t => have.has(t.accountCode));
+  }, [accountCodes]);
   const loanAccounts = accountCodes.filter(c => c.type === '부채' && /차입금/.test(c.name));
   const INTEREST_CODE = accountCodes.find(c => /이자비용/.test(c.name))?.code ?? '951';
   const SALARY_CODE = accountCodes.find(c => c.name === '급여')?.code ?? '515';
@@ -421,7 +427,7 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, on
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-black text-slate-800">입출금 기록</h3>
+          <h3 className="text-sm font-black text-slate-800">일반전표 발행</h3>
           <button onClick={onClose} className="text-slate-300 hover:text-slate-500"><X size={18} /></button>
         </div>
         {/* 모드 — 일반 / 대출 상환 / 급여 지급 (여러 줄 자동 분리) */}
@@ -487,6 +493,31 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, on
           </>
         ) : mode === '일반' ? (
           <>
+            {/* 자주 쓰는 전표 — 방향·계정과목·비고를 한 번에 채운다(전표 화면과 같은 목록) */}
+            {templates.length > 0 && (
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">자주 쓰는 전표</label>
+                <div className="flex flex-wrap gap-1">
+                  {templates.map(t => {
+                    const on = accountCode === t.accountCode && dir === t.dir;
+                    return (
+                      <button key={t.id} type="button"
+                        onClick={() => { setDir(t.dir); setAccountCode(t.accountCode); if (t.note) setNote(t.note); }}
+                        title={`${t.dir} · ${t.accountCode} ${accountCodes.find(c => c.code === t.accountCode)?.name ?? ''}`}
+                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-all ${
+                          on
+                            ? t.dir === '입금' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-rose-600 text-white border-rose-600'
+                            : t.dir === '입금' ? 'bg-emerald-50 text-emerald-700 border-emerald-100 hover:border-emerald-300'
+                                               : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-400'
+                        }`}>
+                        {t.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">방향</label>
               <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
