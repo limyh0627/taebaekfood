@@ -5,7 +5,7 @@ import {
   ResponsiveContainer, Legend, Cell
 } from 'recharts';
 import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, BarChart2, DollarSign, Wallet, Users, ChevronLeft, ChevronRight, Save, Search, Package, X, CreditCard, Download, Archive, Clock, Pencil, Check } from 'lucide-react';
-import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Partner, PaymentRecord, Item, AccountCode, AccountGroup, AccountGroupPlLine, InventorySnapshot, CashFlowManual, CashEntry, Settlement } from '../types';
+import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Partner, PaymentMethod, Item, AccountCode, AccountGroup, AccountGroupPlLine, InventorySnapshot, CashFlowManual, CashEntry, Settlement } from '../types';
 import PageHeader from './PageHeader';
 import CostManager from './CostManager';
 import { makeCodeToGroup, computeMonthPLFromJournals, computeCashFlowMonth, computeCashFlowDirect, addMonthStr, SGNA_LEGACY_IDS, COMPUTED_GROUP_IDS } from '../src/features/admin/financials';
@@ -124,7 +124,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   const [recClientSearch, setRecClientSearch] = useState('');
   const [showPayModal, setShowPayModal] = useState(false);
   const [payTarget, setPayTarget] = useState<IssuedStatement | null>(null);
-  const [payForm, setPayForm] = useState({ amount: '', date: new Date().toISOString().slice(0, 10), method: '계좌이체' as PaymentRecord['method'], note: '' });
+  const [payForm, setPayForm] = useState({ amount: '', date: new Date().toISOString().slice(0, 10), method: '계좌이체' as PaymentMethod, note: '' });
 
   // ── 미수금 상세 팝업 ──
   const [receivableDetailClient, setReceivableDetailClient] = useState<{ id: string; name: string } | null>(null);
@@ -205,7 +205,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   }, [period, selectedYear, selectedQuarter, selectedHalf, customStartMonth, customEndMonth, todayYm, openingYm]);
 
   // ── 월별 실수금·실지불 (결제가 실제로 일어난 달 기준) ──
-  // 결제는 구 payments[]와 자금원장 매칭(settlements) 양쪽에서 온다. 둘 다 세야 실수금이 맞다.
+  // 결제는 자금원장 매칭(settlements)에서만 온다 — 전표에 매다는 옛 경로는 걷어냈다.
   // settlement엔 날짜가 없어서 연결된 cashEntry의 날짜를 쓴다. 자금기록이 지워졌으면 상계로 안 친다
   // (cashLedger.buildPartnerLedger와 같은 규칙).
   const paidByMonth = useMemo(() => {
@@ -218,10 +218,6 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
       if (type === '매출') cur.inc += amt; else cur.out += amt;
       acc.set(ym, cur);
     };
-    for (const s of issuedStatements) {
-      if (s.type !== '매출' && s.type !== '매입') continue;
-      for (const p of s.payments ?? []) bump((p.date ?? '').slice(0, 7), s.type, p.amount);
-    }
     for (const st of settlements) {
       const s = stmtById.get(st.statementId);
       if (!s || (s.type !== '매출' && s.type !== '매입')) continue;
@@ -991,10 +987,39 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             paidByPartner.set(e.partnerId, cur);
           }
         }
-        // 수금·지불은 전표에 안 붙는다(전부 자금원장) — 전표 잔액은 청구액 그대로다.
-        //   구 payments[]는 자금원장으로 이관했고, 혹시 남은 게 있으면 여기서 빼 준다(안전망).
-        const getPaid = (s: IssuedStatement) => (s.payments ?? []).reduce((a, p) => a + p.amount, 0);
-        const getBalance = (s: IssuedStatement) => s.totalAmount - getPaid(s);
+        /**
+         * 전표 한 장에 남은 금액.
+         *
+         * 수금은 전표가 아니라 거래처 단위로 자금원장에 적힌다. 그래서 "어느 청구서를 갚았나"는
+         * 기록에 없고, 여기서 **오래된 전표부터 채워** 나눠 준다(합계는 거래처 잔액과 같다).
+         * 예전엔 전표에 매달린 payments[]만 보고 잔액을 냈는데, 그 경로를 없앤 뒤로는
+         * 늘 청구액 그대로가 나와 **이미 받은 전표도 '미수 전액'으로 떴다** — 중복 수금의 원인.
+         */
+        const openByStmt = (() => {
+          const left = new Map<string, number>();
+          const groups = new Map<string, IssuedStatement[]>();
+          for (const s of issuedStatements) {
+            if (s.type !== '매출' && s.type !== '매입') continue;
+            left.set(s.id, s.totalAmount);
+            const key = `${s.partnerId}|${s.type}`;
+            const g = groups.get(key); if (g) g.push(s); else groups.set(key, [s]);
+          }
+          for (const [key, list] of groups) {
+            const [pid, type] = key.split('|');
+            const paid = paidByPartner.get(pid);
+            let rem = type === '매출' ? (paid?.in ?? 0) : (paid?.out ?? 0);
+            if (rem <= 0) continue;
+            for (const s of [...list].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate))) {
+              if (rem <= 0) break;
+              const open = left.get(s.id) ?? 0;
+              const apply = Math.min(rem, open);
+              left.set(s.id, open - apply);
+              rem -= apply;
+            }
+          }
+          return left;
+        })();
+        const getBalance = (s: IssuedStatement) => openByStmt.get(s.id) ?? s.totalAmount;
         /** 거래처 잔액 — 미수(매출) / 미지급(매입) */
         const partnerLeft = (partnerId: string, type: '매출' | '매입') => {
           const gross = issuedStatements
@@ -1073,8 +1098,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           return yearCash.filter(p => p.kind === '수금' && p.date.startsWith(ym)).reduce((a, p) => a + p.signed, 0);
         });
         // 전표 목록 — 매출·매입·수금·지불을 한 줄로 섞어 월별로 묶는다(최신 월이 위).
-        //   수금은 두 곳에서 온다: 자금원장(108/251)과 옛 방식으로 전표에 붙은 payments[].
-        //   둘 다 넣어야 과거 기록이 빠지지 않는다.
+        //   수금·지불은 자금원장(108/251) 한 곳에서만 온다.
         const yearStmts = selId
           ? issuedStatements.filter(s => s.partnerId === selId && s.tradeDate.startsWith(String(statsYear)))
           : [];
@@ -1137,7 +1161,6 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           const purchaseTotal = monthStmts.filter(s => s.type === '매입').reduce((a, s) => a + s.totalAmount, 0);
           const allReceivable = allClientList.filter(c => c.receivable > 0);
           const totalReceivableAll = allReceivable.reduce((a, c) => a + c.receivable, 0);
-          // 수금은 구 payments[]와 자금원장 매칭(settlements) 양쪽에서 온다 — 둘 다 봐야 누락이 없다.
           // settlement엔 날짜가 없으므로 연결된 cashEntry의 날짜로 이번 달인지 판정한다.
           const entryById = new Map(cashEntries.map(e => [e.id, e]));
           const settledThisMonth = new Set<string>();
@@ -1147,8 +1170,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           }
           const paidThisMonth = allClientList.filter(c => {
             const stmts = issuedStatements.filter(s => s.partnerId === c.id && s.type === '매출');
-            return stmts.some(s =>
-              (s.payments ?? []).some(p => p.date.startsWith(month)) || settledThisMonth.has(s.id));
+            return stmts.some(s => settledThisMonth.has(s.id));
           });
           const jsPDF = (await import('jspdf')).default;
           const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -1371,10 +1393,15 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                                 <span className="w-14 shrink-0 text-[11px] font-bold text-slate-500 tabular-nums">{t.date.slice(2)}</span>
                                 <span className={`shrink-0 px-2 py-0.5 rounded-full text-[9px] font-black ${style}`}>{t.kind}</span>
                                 <span className="flex-1 min-w-0 text-[11px] text-slate-400 truncate">{t.note || '—'}</span>
+                                {/* 매출은 받을 돈(미수), 매입은 줄 돈(미지급) — 한쪽 말로 뭉뚱그리면 방향을 잘못 읽는다 */}
                                 {t.stmt && bal > 0 && (
                                   <button onClick={() => openPayModal(t.stmt!)}
-                                    className="shrink-0 px-2 py-1 rounded-lg text-[9px] font-black bg-slate-100 text-slate-500 hover:bg-indigo-100 hover:text-indigo-600 transition-colors">
-                                    미수 {fmtS(bal)}
+                                    className={`shrink-0 px-2 py-1 rounded-lg text-[9px] font-black transition-colors ${
+                                      t.kind === '매입'
+                                        ? 'bg-rose-50 text-rose-600 hover:bg-rose-100'
+                                        : 'bg-slate-100 text-slate-500 hover:bg-indigo-100 hover:text-indigo-600'
+                                    }`}>
+                                    {t.kind === '매입' ? '미지급' : '미수'} {fmtS(bal)}
                                   </button>
                                 )}
                                 <span className={`shrink-0 w-24 text-right text-[12px] font-black tabular-nums ${
@@ -1443,7 +1470,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                       )}
                       {unpaidStmts.map(s => {
                         const bal = getBalance(s);
-                        const paid = getPaid(s);
+                        const paid = s.totalAmount - bal;   // 이 전표에 배분된 수금액
                         return (
                           <div key={s.id} className="px-5 py-3.5 flex items-center justify-between gap-3">
                             <div className="min-w-0">
@@ -1533,7 +1560,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                     <div>
                       <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">결제 방법</label>
                       <div className="flex gap-1.5 flex-wrap">
-                        {(['현금', '계좌이체', '어음', '카드', '기타'] as PaymentRecord['method'][]).map(m => (
+                        {(['현금', '계좌이체', '어음', '카드', '기타'] as PaymentMethod[]).map(m => (
                           <button key={String(m)} onClick={() => setPayForm(p => ({ ...p, method: m }))}
                             className={`px-3 py-1.5 rounded-lg text-xs font-black border transition-all ${payForm.method === m ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>
                             {m}

@@ -179,7 +179,7 @@ describe('computeCashFlowMonth — 간접법 라인', () => {
     expect(cf.assetBuy).toBe(5000);
   });
 
-  // 결제 경로가 둘(구 payments[] / 신 settlements)이라도 매입채무는 한 번만 줄어야 한다.
+  // 결제 근거는 자금원장 매칭(settlements) 하나뿐이다 — 전표에 매다는 경로는 없앴다.
   it('결제를 settlements로 기록해도 매입채무가 맞게 떨어진다', () => {
     const buy = stmt('매입', '2026-07-01', 10000);
     const cf = computeCashFlowMonth('2026-07', {}, {
@@ -190,14 +190,17 @@ describe('computeCashFlowMonth — 간접법 라인', () => {
     expect(cf.apChg).toBe(4000);  // 발생 10000 − 결제 6000
   });
 
-  it('구 payments[]와 신 settlements가 섞여 있어도 둘 다 결제로 인정한다', () => {
-    const buy = { ...stmt('매입', '2026-07-01', 10000), payments: [{ id: 'p1', amount: 3000, date: '2026-07-15' }] } as IssuedStatement;
+  it('매칭이 여러 건이면 합쳐서 뺀다', () => {
+    const buy = stmt('매입', '2026-07-01', 10000);
     const cf = computeCashFlowMonth('2026-07', {}, {
       issuedStatements: [buy], inventorySnapshots: [], monthPL, codeToGroup: c2gCf, accountCodes: cdsCf,
-      cashEntries: [cash('c1', '2026-07-20', '출금', 6000, 'AP')],
-      settlements: [{ id: 's1', cashEntryId: 'c1', statementId: buy.id, amount: 6000, createdAt: '' }],
+      cashEntries: [cash('c1', '2026-07-20', '출금', 6000, 'AP'), cash('c2', '2026-07-25', '출금', 3000, 'AP')],
+      settlements: [
+        { id: 's1', cashEntryId: 'c1', statementId: buy.id, amount: 6000, createdAt: '' },
+        { id: 's2', cashEntryId: 'c2', statementId: buy.id, amount: 3000, createdAt: '' },
+      ],
     });
-    expect(cf.apChg).toBe(1000);  // 10000 − (3000 + 6000)
+    expect(cf.apChg).toBe(1000);  // 10000 − (6000 + 3000)
   });
 });
 

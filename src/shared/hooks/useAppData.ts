@@ -194,7 +194,6 @@ export function useAppData(): AppData {
             return {
               ...s,
               items: s.items ?? [],
-              payments: s.payments ?? [],
               tradeDate: s.tradeDate ?? '',
               issuedAt: s.issuedAt ?? '',
             };

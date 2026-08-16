@@ -5,7 +5,7 @@
  *   시산표·손익·재무상태표를 그린다. 기존 손익표와 숫자를 대조하는 게 목적.
  */
 import type { IssuedStatement, CashEntry, AccountCode, JournalEntry } from './types';
-import { journalizeStatement, journalizePayment, journalizeCashEntry, journalizeTransfer, journalizeInventory, buildOpeningEntry, OpeningBalance, INVENTORY } from './autoJournal';
+import { journalizeStatement, journalizeCashEntry, journalizeTransfer, journalizeInventory, buildOpeningEntry, OpeningBalance, INVENTORY } from './autoJournal';
 
 export interface BuildJournalsInput {
   statements: IssuedStatement[];
@@ -42,11 +42,7 @@ export function buildJournals(input: BuildJournalsInput): BuildJournalsResult {
       if (tj) entries.push(tj);
       else skipped.push({ sourceType: '대체', id: s.id, reason: '차·대 불일치 또는 계정 미지정 (상대계정 줄이 빠졌는지 확인)' });
     }
-    // 수금/지불
-    for (const p of s.payments ?? []) {
-      const pj = journalizePayment(s, p);
-      if (pj) entries.push(pj);
-    }
+    // 수금/지불은 전표가 아니라 자금원장에만 있다 — 아래 cashEntries 루프에서 분개된다.
   }
 
   for (const e of cashEntries) {

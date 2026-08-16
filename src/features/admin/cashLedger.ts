@@ -87,8 +87,7 @@ export function settledAmount(statementId: string, settlements: Settlement[]): n
 
 /** 전표의 미결제 잔액. 0 이하면 결제 완료. */
 export function openBalance(stmt: IssuedStatement, settlements: Settlement[]): number {
-  const legacy = (stmt.payments ?? []).reduce((a, p) => a + p.amount, 0);  // 구 payments[]도 상계로 인정
-  return stmt.totalAmount - legacy - settledAmount(stmt.id, settlements);
+  return stmt.totalAmount - settledAmount(stmt.id, settlements);
 }
 
 /** 아직 안 끝난 전표들 — 자금 원장에서 매칭 대상으로 띄울 목록 */
@@ -121,8 +120,8 @@ export interface PartnerLedgerRow {
   label: string;          // 적요 (전표=문서번호, 결제=적요/방법)
   amount: number;         // 전표 = +발생(채권·채무 증가), 결제 = −상계
   balance: number;        // 이 행 직후 잔액
-  /** 결제가 어디서 왔나 — 구 payments[]인지 자금원장 매칭인지 */
-  source?: 'payments' | 'cash';
+  /** 결제 출처 — 자금원장 매칭뿐이다(전표에 매다는 옛 경로는 걷어냈다) */
+  source?: 'cash';
 }
 
 export interface PartnerLedger {
@@ -135,9 +134,8 @@ export interface PartnerLedger {
 /**
  * 한 거래처의 채권(매출)·채무(매입) 원장. 전표와 결제를 시간순으로 엮어 잔액을 굴린다.
  *
- * 결제는 두 곳에서 온다 — 전표에 매달린 구 payments[]와 자금원장 매칭(settlements).
- * 둘을 하나의 타임라인으로 합쳐 본다. 같은 결제가 양쪽에 기록되면 이중으로 빠지므로,
- * 신규 결제는 자금원장 한 곳으로만 들어와야 한다.
+ * 결제는 자금원장 매칭(settlements) 한 곳에서만 온다. 전에는 전표에 매달린 payments[]도
+ * 같이 봤는데, 같은 결제가 양쪽에 남으면 이중으로 빠져 잔액이 어긋났다.
  *
  * 전체 전표를 넘겨야 잔액이 맞는다 — 기간을 잘라서 넘기면 이월 잔액이 사라진다.
  */
@@ -162,14 +160,6 @@ export function buildPartnerLedger(
       ts: `${s.tradeDate}T${(s.issuedAt || '').slice(11, 19) || '00:00:00'}`,
       order: 0,   // 같은 시각이면 전표가 먼저 (발생 후 상계)
     });
-    // 구 payments[]
-    for (const p of s.payments ?? []) {
-      evs.push({
-        row: { kind: '결제', id: p.id, date: p.date, label: p.note || p.method || '결제', amount: -p.amount, source: 'payments' },
-        ts: `${p.date}T${(p.createdAt || '').slice(11, 19) || '00:00:00'}`,
-        order: 1,
-      });
-    }
   }
 
   // 자금원장 매칭

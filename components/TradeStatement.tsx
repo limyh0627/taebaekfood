@@ -7,13 +7,13 @@ import {
   ChevronLeft, Share2, Check, Wallet, RotateCw, Trash2, Landmark
 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
-import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentRecord, AccountCode, AccountGroup, CashAccount, CashEntry, Settlement, FixedCostTemplate } from '../types';
+import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentMethod, AccountCode, AccountGroup, CashAccount, CashEntry, Settlement, FixedCostTemplate } from '../types';
 import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchDateRange } from '../src/shared/services/firebaseService';
 import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/shared/orderUnits';
 import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
 import { totalCashOnHand, unsettledStatements, unmatchedCash } from '../src/features/admin/cashLedger';
-import { AR, AP, journalizeStatement, journalizeTransfer, journalizePayment, journalizeCashEntry } from '../src/shared/autoJournal';
+import { AR, AP, journalizeStatement, journalizeTransfer, journalizeCashEntry, settlementAccountCode } from '../src/shared/autoJournal';
 import type { JournalEntry } from '../src/shared/types';
 import { AccountModal } from './CashLedger';
 import PageHeader from './PageHeader';
@@ -25,7 +25,7 @@ interface TradeStatementProps {
   partnerItems?: import('../src/shared/types').PartnerItem[];
   accountCodes?: AccountCode[];
   accountGroups?: AccountGroup[];
-  // 자금원장 — 지불/수금처리가 여기에 기록된다. 없으면 구 payments[]로 폴백.
+  // 자금원장 — 지불/수금처리가 여기에만 기록된다.
   cashAccounts?: CashAccount[];
   cashEntries?: CashEntry[];
   settlements?: Settlement[];
@@ -295,7 +295,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // ── 지불/수불 처리 모달 ──
   const [payTarget, setPayTarget] = useState<IssuedStatement | null>(null);
-  const [payForm, setPayForm] = useState<{ amount: string; date: string; method: PaymentRecord['method']; note: string }>({
+  const [payForm, setPayForm] = useState<{ amount: string; date: string; method: PaymentMethod; note: string }>({
     amount: '', date: new Date().toISOString().slice(0, 10), method: '계좌이체', note: '',
   });
   const [payAccountId, setPayAccountId] = useState('');
@@ -313,12 +313,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [tplEditAmt, setTplEditAmt] = useState('');
   const [payOverWarn, setPayOverWarn] = useState(false);
 
-  // ── 수금/지불 내역 상세/수정 모달 ──
-  const [editPayInfo, setEditPayInfo] = useState<{ stmt: IssuedStatement; payment: PaymentRecord } | null>(null);
-  const [editPayEditable, setEditPayEditable] = useState(false);
-  const [editPayForm, setEditPayForm] = useState<{ amount: string; date: string; method: PaymentRecord['method']; note: string }>({
-    amount: '', date: '', method: '계좌이체', note: '',
-  });
 
   // ── 자금(입출금) 전표 수정 모달 ──
   const [editCash, setEditCash] = useState<CashEntry | null>(null);
@@ -358,7 +352,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [quickPayClientSearch, setQuickPayClientSearch] = useState('');
   const [quickPayDate, setQuickPayDate] = useState(new Date().toISOString().slice(0, 10));
   const [quickPayAmount, setQuickPayAmount] = useState('');
-  const [quickPayMethod, setQuickPayMethod] = useState<PaymentRecord['method']>('계좌이체');
+  const [quickPayMethod, setQuickPayMethod] = useState<PaymentMethod>('계좌이체');
   const [quickPayNote, setQuickPayNote] = useState('');
   const [quickPayDropOpen, setQuickPayDropOpen] = useState(false);
   const [quickPayOverWarn, setQuickPayOverWarn] = useState(false);
@@ -503,61 +497,71 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   }, [cashAccounts, cashEntries]);
   const cashEntryById = useMemo(() => new Map(cashEntries.map(e => [e.id, e])), [cashEntries]);
 
-  // 결제는 구 payments[]와 자금원장 매칭(settlements) 양쪽에서 온다. 둘 다 빼야 잔액이 맞는다.
-  // 자금기록이 지워진 상계(고아)는 상계로 치지 않는다 — 근거가 사라졌으니 안 받은 돈이다.
-  // 타임라인·거래처원장은 원래 이 규칙인데 여기만 빠져 있어서, 같은 거래처가 화면마다
-  // 다른 잔액으로 보였다(완도식품: 전표기준 −1,434,200 vs 타임라인 480,000).
-  const getPaid = (s: IssuedStatement) => (s.payments ?? []).reduce((a, p) => a + p.amount, 0);
-  const getBalance = (s: IssuedStatement) => s.totalAmount - getPaid(s);
+  // 수금·지불은 **자금원장 한 곳**에만 적힌다. 전표에 매달던 payments[]는 2026-08-16에
+  // 남은 1건까지 이관하고 걷어냈다 — 근거가 두 갈래면 같은 거래처가 화면마다 다른 잔액으로 보인다.
+  //
+  // 전표 한 장의 잔액은 "어느 청구서를 갚았나"가 기록에 없으므로 거래처 수금을 오래된 전표부터
+  // 채워 나눈다(합계는 거래처 잔액과 같다). 자금기록이 지워진 상계는 안 친다 — 근거가 사라졌으니 안 받은 돈이다.
+  const openByStmt = useMemo(() => {
+    const paidBy = new Map<string, { in: number; out: number }>();
+    for (const e of cashEntries) {
+      if (!e.partnerId) continue;
+      const parts = (e.lines ?? []).filter(l => l.accountCode && l.amount > 0);
+      const list = parts.length
+        ? parts.map(l => ({ c: l.accountCode, a: l.amount }))
+        : (e.accountCode ? [{ c: e.accountCode, a: e.amount }] : []);
+      for (const x of list) {
+        if (x.c !== AR && x.c !== AP) continue;
+        const cur = paidBy.get(e.partnerId) ?? { in: 0, out: 0 };
+        if (x.c === AR) cur.in += e.dir === '입금' ? x.a : -x.a;
+        else cur.out += e.dir === '출금' ? x.a : -x.a;
+        paidBy.set(e.partnerId, cur);
+      }
+    }
+    const left = new Map<string, number>();
+    const groups = new Map<string, IssuedStatement[]>();
+    for (const st of issuedStatements) {
+      if (st.type !== '매출' && st.type !== '매입') continue;
+      left.set(st.id, st.totalAmount);
+      const key = `${st.partnerId}|${st.type}`;
+      const g = groups.get(key); if (g) g.push(st); else groups.set(key, [st]);
+    }
+    for (const [key, list] of groups) {
+      const [pid, type] = key.split('|');
+      const paid = paidBy.get(pid);
+      let rem = type === '매출' ? (paid?.in ?? 0) : (paid?.out ?? 0);
+      if (rem <= 0) continue;
+      for (const st of [...list].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate))) {
+        if (rem <= 0) break;
+        const open = left.get(st.id) ?? 0;
+        const apply = Math.min(rem, open);
+        left.set(st.id, open - apply);
+        rem -= apply;
+      }
+    }
+    return left;
+  }, [issuedStatements, cashEntries]);
+  const getBalance = (s: IssuedStatement) => openByStmt.get(s.id) ?? s.totalAmount;
 
 
-  /** 결제 기록 — 자금원장에 출금/입금 1건을 만들고, 전표들에 매칭을 붙인다.
-   *  계좌가 없거나 핸들러가 없으면 구 payments[] 방식으로 폴백한다. */
+  /** 결제 기록 — 자금원장에 출금/입금 1건을 만든다. */
   const recordPayment = (
     allocations: { stmt: IssuedStatement; amount: number }[],
-    opts: { date: string; method?: PaymentRecord['method']; note?: string; cashAccountId?: string },
+    opts: { date: string; method?: PaymentMethod; note?: string; cashAccountId?: string },
   ) => {
     const total = allocations.reduce((a, x) => a + x.amount, 0);
     if (total <= 0) return;
-    // 계좌를 안 쓰기로 함 → 계좌 없어도 cashAccountId=''(미지정)로 자금원장에 기록. 핸들러 없을 때만 구 방식 폴백.
+    if (!onAddCashEntry) return;
+    // 계좌를 안 쓰기로 함 → 계좌 없어도 cashAccountId=''(미지정)로 자금원장에 기록.
     const acctId = opts.cashAccountId || cashAccounts.find(a => a.active)?.id || '';
     const first = allocations[0].stmt;
 
-    if (!onAddCashEntry || !onAddSettlement) {
-      // 폴백: 자금 계좌가 없으면 예전처럼 전표에 결제를 매단다
-      allocations.forEach(({ stmt, amount }, i) => {
-        const live = issuedStatements.find(s => s.id === stmt.id) ?? stmt;
-        const p: PaymentRecord = {
-          id: `pay-${Date.now()}-${i}-${stmt.id}`, amount, date: opts.date,
-          method: opts.method, ...(opts.note ? { note: opts.note } : {}),
-          createdAt: new Date().toISOString(),
-        };
-        onUpdateIssuedStatement?.(stmt.id, { payments: [...(live.payments ?? []), p] });
-      });
-      return;
-    }
-
-    // 수금/지불의 상대계정 — 전표가 이미 매출/매입을 손익에 잡았으므로 결제는 채권·채무 상계다.
-    // 품목 계정(800 일반매출 등)을 그대로 물리면 (차)예금 (대)일반매출 로 분개돼
-    // 매출이 두 번 잡히고 외상매출금은 영영 안 줄어든다.
-    // 다만 기계 구입처럼 손익 계정이 하나도 없는 전표는 자금원장이 투자활동으로 끊어야 하므로
-    // 그 자산 계정을 그대로 물려준다(computeCashFlowMonth.isOperating과 같은 규칙).
-    const groupTypeOf = (code?: string) =>
+    // 상대계정 판정은 settlementAccountCode 한 곳에 있다(테스트로 잠가 뒀다).
+    const groupTypeOf = (code: string) =>
       accountGroups.find(g => g.id === accountCodes.find(c => c.code === code)?.groupId)?.type;
     const itemCodes = allocations.flatMap(({ stmt }) =>
       (stmt.items ?? []).map(i => i.accountCode).filter(Boolean) as string[]);
-    const groupTypes = itemCodes.map(groupTypeOf).filter(Boolean);
-    // 결제는 원칙적으로 채권·채무 상계다. 예외는 기계 구입처럼 **비유동자산만** 달린 전표뿐 —
-    // 그건 자금원장이 투자활동으로 끊어야 해서 자산계정을 유지한다.
-    // 기초전표(상대변이 375 이월이익잉여금=자본)까지 예외로 빠지면 수금이 자본계정으로 잡힌다.
-    const nonOperating = groupTypes.length > 0
-      && groupTypes.every(t => t === '자산')
-      && !itemCodes.some(c => c === AR || c === AP);
-    const isOperating = !nonOperating;
-    const uniqCodes = new Set(itemCodes);
-    const payCode = isOperating
-      ? (first.type === '매입' ? AP : AR)
-      : (uniqCodes.size === 1 ? [...uniqCodes][0] : undefined);
+    const payCode = settlementAccountCode(first.type, itemCodes, groupTypeOf);
 
     const entryId = `cash-${Date.now()}`;
     onAddCashEntry({
@@ -603,43 +607,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setPayTarget(null);
   };
 
-  const openEditPay = (stmt: IssuedStatement, payment: PaymentRecord) => {
-    setEditPayInfo({ stmt, payment });
-    setEditPayForm({ amount: String(payment.amount), date: payment.date, method: payment.method ?? '계좌이체', note: payment.note ?? '' });
-    setEditPayEditable(false);
-  };
-
-  const saveEditPay = () => {
-    if (!editPayInfo || !editPayForm.amount || Number(editPayForm.amount) <= 0) return;
-    const updated = (editPayInfo.stmt.payments ?? []).map(p =>
-      p.id === editPayInfo.payment.id
-        ? { ...p, amount: Number(editPayForm.amount), date: editPayForm.date, method: editPayForm.method, note: editPayForm.note.trim() || undefined }
-        : p
-    );
-    onUpdateIssuedStatement?.(editPayInfo.stmt.id, { payments: updated });
-    setEditPayInfo(null);
-  };
-
-  const deleteEditPay = () => {
-    if (!editPayInfo) return;
-    if (!window.confirm('이 수금/지불 내역을 삭제하시겠습니까?')) return;
-    const updated = (editPayInfo.stmt.payments ?? []).filter(p => p.id !== editPayInfo.payment.id);
-    onUpdateIssuedStatement?.(editPayInfo.stmt.id, { payments: updated });
-    setEditPayInfo(null);
-  };
-
-  // 타임라인의 수금/지불 행 삭제 — 구 payments[]면 전표에서 제거,
-  // 자금기록 기반이면 그 cashEntry와 거기 붙은 settlement를 전부 지운다(잔액이 정확히 되돌려짐).
+  // 타임라인의 수금/지불 행 삭제 — 그 cashEntry와 거기 붙은 settlement를 전부 지운다(잔액이 정확히 되돌려짐).
   //
   // paymentId에는 **자금기록 id**가 들어온다(타임라인이 `paymentId: e.id`로 만든다).
   // 예전엔 이걸 settlement id로 알고 찾아서 늘 못 찾고 아무것도 안 지웠다 — 삭제가 안 되던 원인.
-  const deletePayTimelineRow = (paymentId: string, src: IssuedStatement) => {
+  const deletePayTimelineRow = (paymentId: string, _src: IssuedStatement) => {
     if (!window.confirm('이 수금/지불을 삭제할까요?')) return;
-    const legacy = (src.payments ?? []).find(p => p.id === paymentId);
-    if (legacy) {
-      onUpdateIssuedStatement?.(src.id, { payments: (src.payments ?? []).filter(p => p.id !== paymentId) });
-      return;
-    }
     // 자금기록 id로 바로 찾고, 못 찾으면 settlement id로도 한 번 더 본다(옛 행 대비)
     const ceId = cashEntries.some(c => c.id === paymentId)
       ? paymentId
@@ -680,10 +653,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   };
 
   // 타임라인의 수금/지불 행 클릭 — 수금/지불은 결국 자금원장 한 줄이므로 그 뒤의
-  // 자금 전표(cashEntry)를 연다. 구 payments[] 방식만 옛 수금 수정 모달로 간다.
-  const openPayTimelineRow = (paymentId: string, src: IssuedStatement) => {
-    const legacy = (src.payments ?? []).find(p => p.id === paymentId);
-    if (legacy) { openEditPay(src, legacy); return; }
+  // 자금 전표(cashEntry)를 연다.
+  const openPayTimelineRow = (paymentId: string, _src: IssuedStatement) => {
     if (!onUpdateCashEntry) return;
     const st = settlements.find(s => s.id === paymentId);
     const entry = st ? cashEntries.find(c => c.id === st.cashEntryId) : undefined;
@@ -754,7 +725,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         setExtraStatements(data.map(s => ({
           ...s,
           items: s.items ?? [],
-          payments: s.payments ?? [],
           tradeDate: s.tradeDate ?? '',
           issuedAt: s.issuedAt ?? '',
         })));
@@ -799,7 +769,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     };
     for (const s of mergedStatements) {
       if (!s.partnerId) continue;
-      const open = s.totalAmount - (s.payments ?? []).reduce((a, p) => a + p.amount, 0);
+      const open = getBalance(s);
       if (s.type === '매출') bump(s.partnerId, 'receivable', open);
       else if (s.type === '매입') bump(s.partnerId, 'payable', open);
     }
@@ -1902,7 +1872,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   type PayRow  = { kind: 'pay';  partnerId: string; partnerName: string; stmtType: '매출'|'매입';
                    date: string; amount: number; method?: string; note?: string;
                    paymentId: string; cumul: number; dateKey: string; ts: string; src: IssuedStatement;
-                   /** 자금기록에서 온 수금·지불이면 그 원본. 구 payments[]면 없다. */
+                   /** 이 수금·지불의 자금원장 원본 */
                    entry?: CashEntry };
   // 자금 입출금 전표 — 전표에 상계되지 않은 순수 현금 이동(전기요금·급여·상환·기계구입 등)
   type CashRow = { kind: 'cash'; entry: CashEntry; dir: '입금'|'출금'; amount: number;
@@ -1932,10 +1902,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       const evs: Ev[] = [];
       stmts.forEach(s => {
         evs.push({ kind: 'stmt', s, date: s.tradeDate, ts: `${s.tradeDate}T${timeOf(s.issuedAt)}` });
-        // 구 payments[]
-        (s.payments ?? []).forEach(p =>
-          evs.push({ kind: 'pay', date: p.date, ts: `${p.date}T${timeOf(p.createdAt)}`, amount: p.amount, method: p.method, note: p.note, paymentId: p.id, src: s })
-        );
       });
       // 수금/지불 — 전표에 붙이지 않는다. 그 거래처로 오간 채권·채무(108/251) 자금을 그대로 뺀다.
       //  "어느 청구서를 갚았나"를 안 따지므로 매칭이 어긋날 자리가 없다. 분개(108·251 잔액)와 같은 방식.
@@ -2858,13 +2824,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   // 수익·비용 탭에는 안 뜬다 — 매출·매입은 전표 끊을 때 이미 잡혔기 때문.
                   const label = row.stmtType === '매출' ? '수금' : '지불';
                   const cumul = row.cumul;
-                  const payRec = row.src.payments?.find(p => p.id === row.paymentId);
+                  const payEntry = row.entry;
                   return (
                     <React.Fragment key={`pay__${row.paymentId}`}>
                     <tr
                       className={`cursor-pointer transition-colors ${row.stmtType === '매출' ? 'bg-lime-50/80 hover:bg-lime-100/80' : 'bg-orange-50/80 hover:bg-orange-100/80'}`}
                       onClick={() => openPayTimelineRow(row.paymentId, row.src)}>
-                      <td className="px-4 py-2 text-[11px] font-mono text-slate-500 whitespace-nowrap">{row.date}{payRec?.createdAt ? ` ${payRec.createdAt.slice(11,16)}` : ''}</td>
+                      <td className="px-4 py-2 text-[11px] font-mono text-slate-500 whitespace-nowrap">{row.date}{payEntry?.createdAt ? ` ${payEntry.createdAt.slice(11,16)}` : ''}</td>
                       <td className="px-4 py-2">
                         <span className="inline-flex items-center gap-1 align-middle">
                           {journalToggle(row.paymentId)}
@@ -2892,8 +2858,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       </td>
                     </tr>
                     {/* 수금·지불은 손익이 아니라 채권·채무를 현금으로 상계하는 것 — 분개로 보면 분명하다 */}
-                    {expandedJournal.has(row.paymentId) && payRec &&
-                      journalTr(`je__pay__${row.paymentId}`, journalizePayment(row.src, payRec))}
+                    {expandedJournal.has(row.paymentId) && payEntry &&
+                      journalTr(`je__pay__${row.paymentId}`, journalizeCashEntry(payEntry))}
                     </React.Fragment>
                   );
                 }
@@ -3055,14 +3021,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       <span className="text-sm font-black text-slate-800 shrink-0">{fmt(row.amount)}</span>
                     </div>
                     {memo && <p className="text-[11px] text-slate-400 truncate">{memo}</p>}
-                    {expandedJournal.has(row.paymentId) && (() => {
-                      const p = row.src.payments?.find(x => x.id === row.paymentId);
-                      return p ? (
-                        <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50/70 overflow-hidden" onClick={e => e.stopPropagation()}>
-                          {renderJournal(journalizePayment(row.src, p), true)}
-                        </div>
-                      ) : null;
-                    })()}
+                    {expandedJournal.has(row.paymentId) && row.entry && (
+                      <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50/70 overflow-hidden" onClick={e => e.stopPropagation()}>
+                        {renderJournal(journalizeCashEntry(row.entry), true)}
+                      </div>
+                    )}
                   </div>
                 );
               }
@@ -3250,7 +3213,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">결제 방법</label>
                 <div className="flex gap-1.5 flex-wrap">
-                  {(['현금', '계좌이체', '어음', '카드', '기타'] as PaymentRecord['method'][]).map(m => (
+                  {(['현금', '계좌이체', '어음', '카드', '기타'] as PaymentMethod[]).map(m => (
                     <button key={String(m)} onClick={() => setPayForm(p => ({ ...p, method: m }))}
                       className={`px-3 py-1.5 rounded-lg text-xs font-black border transition-all ${payForm.method === m ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>
                       {m}
@@ -3291,82 +3254,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center gap-1.5">
                 <Save size={12}/>저장
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {editPayInfo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4"
-            onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-black text-slate-800">
-                {editPayInfo.stmt.type === '매입' ? '지불' : '수금'} 내역{editPayEditable ? ' 수정' : ''}
-              </h3>
-              <button onClick={() => setEditPayInfo(null)} className="p-1 text-slate-400 hover:bg-slate-100 rounded-lg">
-                <X size={16}/>
-              </button>
-            </div>
-            <div className="text-xs text-slate-400">{editPayInfo.stmt.partnerName} · {editPayInfo.stmt.tradeDate}</div>
-            <div className="space-y-3">
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">금액</label>
-                <input type="text" inputMode="decimal" value={editPayForm.amount}
-                  onChange={e => setEditPayForm(p => ({ ...p, amount: e.target.value }))}
-                  disabled={!editPayEditable}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300 disabled:bg-slate-50 disabled:text-slate-500"/>
-              </div>
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">일자</label>
-                <input type="date" value={editPayForm.date}
-                  onChange={e => setEditPayForm(p => ({ ...p, date: e.target.value }))}
-                  disabled={!editPayEditable}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300 disabled:bg-slate-50 disabled:text-slate-500"/>
-              </div>
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">결제 방법</label>
-                <div className="flex gap-1.5 flex-wrap">
-                  {(['현금', '계좌이체', '어음', '카드', '기타'] as PaymentRecord['method'][]).map(m => (
-                    <button key={String(m)}
-                      onClick={() => editPayEditable && setEditPayForm(p => ({ ...p, method: m }))}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-black border transition-all ${editPayForm.method === m ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200'} ${editPayEditable ? 'hover:border-slate-400' : 'cursor-default opacity-70'}`}>
-                      {m}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">비고</label>
-                <input type="text" placeholder="예: 1차 분할" value={editPayForm.note}
-                  onChange={e => setEditPayForm(p => ({ ...p, note: e.target.value }))}
-                  disabled={!editPayEditable}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300 disabled:bg-slate-50 disabled:text-slate-500"/>
-              </div>
-            </div>
-            <div className="flex gap-2 pt-1">
-              {editPayEditable ? (
-                <>
-                  <button onClick={deleteEditPay}
-                    className="flex items-center gap-1 px-3 py-2.5 rounded-xl bg-red-50 text-red-600 text-xs font-black hover:bg-red-100 border border-red-200">
-                    <X size={12}/>삭제
-                  </button>
-                  <button onClick={() => setEditPayEditable(false)}
-                    className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
-                  <button onClick={saveEditPay}
-                    disabled={!editPayForm.amount || Number(editPayForm.amount) <= 0}
-                    className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center gap-1.5">
-                    <Save size={12}/>저장
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button onClick={() => setEditPayInfo(null)}
-                    className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">닫기</button>
-                  <button onClick={() => setEditPayEditable(true)}
-                    className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700">수정</button>
-                </>
-              )}
             </div>
           </div>
         </div>
@@ -4985,14 +4872,20 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
             {/* ── 수금/지불 내역 (전표 조회 시) ── */}
             {editingStmt && !isEditMode && (() => {
-              const payments = editingStmt.payments ?? [];
-              const paid = payments.reduce((s, p) => s + p.amount, 0);
-              const bal = editingStmt.totalAmount - paid;
+              // 수금은 거래처 단위로 자금원장에 적힌다 — 전표 한 장에 얼마가 붙었는지는
+              // 오래된 전표부터 채운 결과(getBalance)로 보고, 목록은 그 거래처의 자금 움직임 그대로 띄운다.
+              const bal = getBalance(editingStmt);
+              const paid = editingStmt.totalAmount - bal;
               const label = editingStmt.type === '매출' ? '수금' : '지불';
+              const want = editingStmt.type === '매입' ? AP : AR;
+              const payments = cashEntries
+                .filter(e => e.partnerId && e.partnerId === editingStmt.partnerId
+                  && ((e.lines ?? []).some(l => l.accountCode === want) || e.accountCode === want))
+                .sort((a, b) => a.date.localeCompare(b.date));
               return (
                 <div className="flex-shrink-0 border-t border-slate-100 bg-slate-50 px-5 py-3 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label} 내역</span>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label} 내역 <span className="normal-case text-slate-300">(거래처 기준)</span></span>
                     <div className="flex items-center gap-3 text-xs">
                       <span className="text-slate-500">합계 <b className="text-slate-800">{fmt(editingStmt.totalAmount)}</b></span>
                       <span className="text-slate-500">{label} <b className="text-emerald-700">{fmt(paid)}</b></span>
@@ -5013,9 +4906,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                           <span className="text-[10px] font-mono text-slate-400 shrink-0">
                             {p.date}{p.createdAt ? ` ${p.createdAt.slice(11,16)}` : ''}
                           </span>
-                          <span className="text-xs font-black text-slate-800 flex-1">{fmt(p.amount)}원</span>
-                          <span className="text-[10px] text-slate-400">{[p.method, p.note].filter(Boolean).join(' · ')}</span>
-                          <button onClick={() => openEditPay(editingStmt, p)}
+                          <span className={`text-xs font-black flex-1 ${p.dir === '입금' ? 'text-slate-800' : 'text-rose-600'}`}>
+                            {p.dir === (editingStmt.type === '매입' ? '입금' : '출금') ? '−' : ''}{fmt(p.amount)}원
+                          </span>
+                          <span className="text-[10px] text-slate-400 truncate">{p.note}</span>
+                          <button onClick={() => openEditCash(p)}
                             className="text-[10px] font-black text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded-lg transition-all shrink-0">
                             수정
                           </button>

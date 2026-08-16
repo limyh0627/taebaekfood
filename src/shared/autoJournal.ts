@@ -9,7 +9,7 @@
  *   매출  (차) 외상매출금 [+현금]   (대) 매출계정들 + 부가세예수금
  *   매입  (차) 매입계정들 + 부가세대급금   (대) 외상매입금 [또는 현금]
  */
-import type { IssuedStatement, JournalEntry, JournalLine, CashEntry, PaymentRecord } from './types';
+import type { IssuedStatement, JournalEntry, JournalLine, CashEntry } from './types';
 
 // 채권·채무·부가세·현금 계정코드 (setup-account-codes.mjs와 일치)
 export const AR = '108';   // 외상매출금
@@ -22,6 +22,41 @@ export const PURCHASE = '500';    // 원료매입 — 실지재고조사법의 �
 
 const r = (n: number) => Math.round((n ?? 0) * 100) / 100;
 const sum = (xs: number[]) => r(xs.reduce((a, b) => a + b, 0));
+
+/**
+ * 수금·지불 자금전표가 물릴 계정을 고른다.
+ *
+ * 원칙은 **채권·채무 상계**다(매출→108, 매입→251). 매출·매입은 전표를 끊을 때 이미 손익에
+ * 잡혔으므로, 결제는 그 채권을 현금으로 턴 것뿐이다. 품목 계정을 그대로 물리면
+ * (차)예금 (대)일반매출 로 분개돼 매출이 두 번 잡히고 외상매출금은 영영 안 줄어든다.
+ *
+ * 예외는 하나 — 기계 구입처럼 **비유동자산만** 달린 전표. 자금원장이 투자활동으로 끊어야 해서
+ * 그 자산 계정을 그대로 물려준다(computeCashFlowMonth.isOperating과 같은 규칙).
+ *
+ * 기초전표는 상대변이 375 이월이익잉여금(자본)이라 이 예외에 걸리면 안 된다.
+ * 걸리면 수금이 자본계정으로 잡혀 **미수가 그대로 남는다** — 2026-08-13 논두렁 건이 그랬다.
+ *
+ * @param stmtType   결제 대상 전표의 종류
+ * @param itemCodes  그 전표들의 품목 계정코드
+ * @param groupTypeOf 계정코드 → 그룹 5분류(자산·부채·자본·수익·비용)
+ * @returns 자금전표에 박을 계정코드. undefined면 계정 미지정(영업)으로 둔다.
+ */
+export function settlementAccountCode(
+  stmtType: '매출' | '매입' | string,
+  itemCodes: string[],
+  groupTypeOf: (code: string) => string | undefined,
+): string | undefined {
+  const codes = itemCodes.filter(Boolean);
+  const types = codes.map(groupTypeOf).filter(Boolean) as string[];
+  // 전 품목이 자산이고 채권·채무가 안 섞였을 때만 예외. 자본(375)·수익·비용은 여기서 걸러진다.
+  const nonOperating = types.length > 0
+    && types.length === codes.length
+    && types.every(t => t === '자산')
+    && !codes.some(c => c === AR || c === AP);
+  if (!nonOperating) return stmtType === '매입' ? AP : AR;
+  const uniq = new Set(codes);
+  return uniq.size === 1 ? [...uniq][0] : undefined;
+}
 
 export interface AutoJournalOptions {
   /** 즉시 현금거래면 채권/채무 대신 이 현금계정을 쓴다. 없으면 외상(AR/AP). */
@@ -68,24 +103,6 @@ export function journalizeStatement(s: IssuedStatement, opts: AutoJournalOptions
     memo: `${s.type} ${s.partnerName} ${s.docNo ?? ''}`.trim(),
     sourceType: s.type,
     sourceId: s.id,
-    createdAt: new Date().toISOString(),
-  };
-}
-
-/**
- * 수금/지불(전표의 payment) → 분개. 채권/채무를 현금으로 상계(손익 재인식 아님).
- *   매출전표 수금: (차) 보통예금  (대) 외상매출금 [거래처]
- *   매입전표 지불: (차) 외상매입금 [거래처]  (대) 보통예금
- */
-export function journalizePayment(s: IssuedStatement, p: PaymentRecord, cashAccountCode = BANK): JournalEntry | null {
-  const amt = r(p.amount ?? 0);
-  if (!amt) return null;
-  const lines: JournalLine[] = s.type === '매출'
-    ? [{ accountCode: cashAccountCode, debit: amt, credit: 0 }, { accountCode: AR, debit: 0, credit: amt, partnerId: s.partnerId }]
-    : [{ accountCode: AP, debit: amt, credit: 0, partnerId: s.partnerId }, { accountCode: cashAccountCode, debit: 0, credit: amt }];
-  return {
-    id: `je-pay-${p.id}`, date: p.date ?? s.tradeDate, lines,
-    memo: `${s.type === '매출' ? '수금' : '지불'} ${s.partnerName}`, sourceType: '자금', sourceId: p.id,
     createdAt: new Date().toISOString(),
   };
 }

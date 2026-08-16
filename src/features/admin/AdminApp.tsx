@@ -62,7 +62,7 @@ import {
   FolderOpen,
   BookOpen,
 } from 'lucide-react';
-import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, PaymentRecord, ShippingRule, poLines } from '../../shared/types';
+import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, ShippingRule, poLines } from '../../shared/types';
 import PageHeader from '../../shared/components/PageHeader';
 import Dashboard from '../../../components/Dashboard';
 import OrdersList from '../../../components/OrdersList';
@@ -940,18 +940,23 @@ const AdminApp: React.FC<AdminAppProps> = ({
     }
     setLedgerReloadKey(k => k + 1);   // 반품 재입고로 쓴 원료수불부 반영
 
+    // 반품 차감도 자금원장에 적는다 — 전표에 매달던 옛 경로(payments[])는 걷어냈다.
+    // 방향은 전과 같다: 매출 반품이면 출금(=받은 돈을 되돌림)이라 그만큼 채권이 다시 산다.
     if (req.linkedStatementId && req.totalAmount > 0) {
       const stmt = issuedStatements.find(s => s.id === req.linkedStatementId);
       if (stmt) {
-        const newPayment: PaymentRecord = {
-          id: `return-${req.id}-${Date.now()}`,
-          amount: -req.totalAmount,
+        const isSale = stmt.type !== '매입';
+        await addItem('cashEntries', {
+          id: `cash-return-${req.id}-${Date.now()}`,
           date: new Date().toISOString().slice(0, 10),
-          method: '기타',
+          cashAccountId: '',
+          dir: isSale ? '출금' : '입금',
+          amount: req.totalAmount,
+          partnerId: stmt.partnerId ?? '',
+          partnerName: stmt.partnerName ?? '',
+          accountCode: isSale ? '108' : '251',
           note: `반품 처리 (${req.items.map(i => i.name).join(', ')})`,
-        };
-        await updateItem('issuedStatements', stmt.id, {
-          payments: [...(stmt.payments ?? []), newPayment],
+          createdAt: new Date().toISOString(),
         });
       }
     }

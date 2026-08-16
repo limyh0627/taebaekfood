@@ -85,7 +85,7 @@ describe('openBalance / unsettledStatements', () => {
     expect(openBalance(s1, sets)).toBe(3_000_000);
   });
 
-  // 한 번의 이체로 밀린 전표 여러 건을 상계 — 지금 payments[] 구조로는 못 하던 것
+  // 한 번의 이체로 밀린 전표 여러 건을 상계 — 전표에 결제를 매달던 옛 구조로는 못 하던 것
   it('이체 1건이 전표 2건을 상계할 수 있다', () => {
     const sets = [settle('t1', 'e1', 's1', 5_000_000), settle('t2', 'e1', 's2', 1_000_000)];
     expect(openBalance(s1, sets)).toBe(0);
@@ -94,9 +94,8 @@ describe('openBalance / unsettledStatements', () => {
     expect(open.map(o => o.stmt.id)).toEqual(['s2']);
   });
 
-  it('구 payments[]도 상계로 인정한다(이관 전 병행)', () => {
-    const legacy = { ...s1, payments: [{ id: 'p1', amount: 5_000_000, date: '2026-07-02' }] } as IssuedStatement;
-    expect(openBalance(legacy, [])).toBe(0);
+  it('매칭이 없으면 전액이 미결제로 남는다 — 결제 근거는 자금원장뿐이다', () => {
+    expect(openBalance(s1, [])).toBe(5_000_000);
   });
 });
 
@@ -127,12 +126,11 @@ describe('buildPartnerLedger', () => {
     expect(l.balance).toBe(18_630_000);
   });
 
-  it('구 payments[]와 자금원장 매칭을 한 타임라인으로 합친다', () => {
-    const withPay = { ...s1, payments: [{ id: 'p1', amount: 3_000_000, date: '2026-06-30' }] } as IssuedStatement;
-    const cash = [entry('c1', '2026-07-03', '출금', 2_000_000)];
-    const sets = [settle('t1', 'c1', 's1', 2_000_000)];
-    const l = buildPartnerLedger('p1', '매입', [withPay], cash, sets);
-    expect(l.rows.map(r => r.source)).toEqual([undefined, 'payments', 'cash']);
+  it('결제 행은 전부 자금원장에서 온다 — 전표에 매다는 경로는 없앴다', () => {
+    const cash = [entry('c1', '2026-07-03', '출금', 2_000_000), entry('c2', '2026-07-05', '출금', 3_000_000)];
+    const sets = [settle('t1', 'c1', 's1', 2_000_000), settle('t2', 'c2', 's1', 3_000_000)];
+    const l = buildPartnerLedger('p1', '매입', [s1], cash, sets);
+    expect(l.rows.map(r => r.source)).toEqual([undefined, 'cash', 'cash']);
     expect(l.paid).toBe(5_000_000);
     expect(l.balance).toBe(4_315_000);   // 9,315,000 − 5,000,000
   });

@@ -34,7 +34,6 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
       .then(data => setExtraStatements(data.map(s => ({
         ...s,
         items: s.items ?? [],
-        payments: s.payments ?? [],
         tradeDate: s.tradeDate ?? '',
         issuedAt: s.issuedAt ?? '',
       }))))

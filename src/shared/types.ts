@@ -535,19 +535,17 @@ export interface IssuedStatement {
   totalAmount: number;
   items: IssuedStatementItem[];
   taxIssuedAt?: string;   // 세금계산서 발행 일시
-  // 수금/결제 추적
-  payments?: PaymentRecord[];
   cashDir?: '입금' | '출금'; // 자금 전표(비용) 방향 — 현금흐름표 투자/재무 부호 판정용(자산·부채·자본 계정). 기본 출금.
 }
 
-export interface PaymentRecord {
-  id: string;
-  amount: number;
-  date: string;       // YYYY-MM-DD
-  createdAt?: string; // ISO timestamp
-  method?: '현금' | '계좌이체' | '어음' | '카드' | '기타';
-  note?: string;
-}
+/**
+ * 결제 수단 — 자금원장 비고에 남기는 꼬리표일 뿐, 계산에는 안 쓴다.
+ *
+ * 수금·지불은 **자금원장(cashEntries) 한 곳에만** 적는다. 전에는 전표에 payments[]로도
+ * 매달렸는데, 근거가 두 갈래라 같은 거래처가 화면마다 다른 잔액으로 보였다.
+ * 2026-08-16에 남은 1건까지 자금원장으로 옮기고 그 경로를 걷어냈다.
+ */
+export type PaymentMethod = '현금' | '계좌이체' | '어음' | '카드' | '기타';
 
 // ── 발주 (purchaseOrders 컬렉션) ─────────────────────────────────────────────
 // 매입 플로우: pending → invoiced → received

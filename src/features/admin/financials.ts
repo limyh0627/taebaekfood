@@ -298,8 +298,7 @@ export function cfSectionOf(g?: AccountGroup): AccountGroupCfSection | undefined
 /**
  * 특정 월의 간접법 현금흐름 라인. 순수 함수.
  *
- * 결제액은 구 payments[]와 신 settlements를 합쳐서 본다 — 두 경로 중 어디에 기록됐든
- * 매출채권·매입채무가 맞게 떨어진다.
+ * 결제액은 자금원장 매칭(settlements)에서만 본다 — 수금·지불이 거기 한 곳에만 적히기 때문이다.
  *
  * 투자·재무는 자금원장(cashEntries)의 계정과목 cfSection에서 집계한다. 부호는 dir(입금 +/출금 −).
  * 구 '비용' 전표(cashDir)도 자금원장 이관 전까지 같은 규칙으로 함께 본다.
@@ -346,22 +345,15 @@ export function computeCashFlowMonth(
   const accrual = (m: string, type: '매출' | '매입') =>
     operating.filter(s => s.type === type && s.tradeDate.startsWith(m)).reduce((a, s) => a + s.totalAmount, 0);
 
-  // 결제 = 전표에 매달린 구 payments[] + 자금원장 매칭(settlements). 둘을 합쳐 하나의 결제 소스로 본다.
+  // 결제 = 자금원장 매칭(settlements). 전표에 매다는 옛 경로는 없앴다.
   const stmtType = new Map(issuedStatements.map(s => [s.id, s.type]));
   const entryDate = new Map(cashEntries.map(e => [e.id, e.date]));
-  const payIn = (m: string, type: '매출' | '매입') => {
-    const legacy = operating
-      .filter(s => s.type === type)
-      .flatMap(s => s.payments ?? [])
-      .filter(p => (p.date || '').startsWith(m))
-      .reduce((a, p) => a + p.amount, 0);
-    const matched = settlements
+  const payIn = (m: string, type: '매출' | '매입') =>
+    settlements
       .filter(st => opIds.has(st.statementId)
         && stmtType.get(st.statementId) === type
         && (entryDate.get(st.cashEntryId) || '').startsWith(m))
       .reduce((a, st) => a + st.amount, 0);
-    return legacy + matched;
-  };
 
   const pl = monthPL(ym);
   const sa = snapVal(ym), sp = snapVal(addMonthStr(ym, -1));

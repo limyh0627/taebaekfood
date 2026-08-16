@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { journalizeStatement, journalizePayment, journalizeCashEntry, buildOpeningEntry, AR, AP, VAT_PAYABLE, VAT_RECEIVABLE, BANK } from './autoJournal';
+import { journalizeStatement, journalizeCashEntry, buildOpeningEntry, settlementAccountCode, AR, AP, VAT_PAYABLE, VAT_RECEIVABLE, BANK } from './autoJournal';
 import { isBalanced } from './journal';
 import type { IssuedStatement, CashEntry } from './types';
 
@@ -70,20 +70,31 @@ describe('여러 계정·면세·미지정', () => {
   });
 });
 
-describe('수금/지불 (payment) → 분개', () => {
-  it('매출 수금: 차 보통예금 / 대 외상매출금[거래처]', () => {
-    const s = stmt({ type: '매출', partnerId: 'A' });
-    const je = journalizePayment(s, { id: 'p1', amount: 500_000, date: '2026-07-10' })!;
-    expect(isBalanced(je)).toBe(true);
-    expect(je.lines.find(l => l.accountCode === BANK)!.debit).toBe(500_000);
-    const ar = je.lines.find(l => l.accountCode === AR)!;
-    expect(ar.credit).toBe(500_000); expect(ar.partnerId).toBe('A');
+/**
+ * 수금·지불이 물릴 계정 — 잘못 고르면 "수금했는데 미수가 그대로"가 된다.
+ * 2026-08-13 논두렁 건이 기초전표(375 이월이익잉여금)를 그대로 물어 그렇게 됐다.
+ */
+describe('settlementAccountCode — 수금/지불 상대계정', () => {
+  const G: Record<string, string> = { '800': '수익', '500': '비용', '375': '자본', '208': '자산', '108': '자산', '251': '부채' };
+  const gt = (c: string) => G[c];
+
+  it('매출 수금은 외상매출금, 매입 지불은 외상매입금', () => {
+    expect(settlementAccountCode('매출', ['800'], gt)).toBe(AR);
+    expect(settlementAccountCode('매입', ['500'], gt)).toBe(AP);
   });
-  it('매입 지불: 차 외상매입금[거래처] / 대 보통예금', () => {
-    const s = stmt({ type: '매입', partnerId: 'B' });
-    const je = journalizePayment(s, { id: 'p2', amount: 300_000, date: '2026-07-11' })!;
-    expect(je.lines.find(l => l.accountCode === AP)!.debit).toBe(300_000);
-    expect(je.lines.find(l => l.accountCode === BANK)!.credit).toBe(300_000);
+  it('기초전표(375 자본)도 채권·채무로 상계한다 — 자본계정을 물면 미수가 안 준다', () => {
+    expect(settlementAccountCode('매출', ['375'], gt)).toBe(AR);
+    expect(settlementAccountCode('매입', ['375'], gt)).toBe(AP);
+  });
+  it('비유동자산만 달린 전표(기계 구입)는 그 자산계정을 유지한다 — 투자활동', () => {
+    expect(settlementAccountCode('매입', ['208'], gt)).toBe('208');
+  });
+  it('자산이 섞여 있어도 계정이 여럿이면 미지정으로 둔다', () => {
+    expect(settlementAccountCode('매입', ['208', '108'], gt)).toBe(AP);   // 채권·채무가 섞이면 상계
+    expect(settlementAccountCode('매입', ['208', '146'], gt)).toBe(AP);   // 146은 그룹 미상 → 예외 아님
+  });
+  it('계정을 하나도 모르면 채권·채무로 간다', () => {
+    expect(settlementAccountCode('매출', [], gt)).toBe(AR);
   });
 });
 
