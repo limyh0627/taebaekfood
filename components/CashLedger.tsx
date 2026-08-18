@@ -2,7 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { Wallet, Plus, X, Landmark, CreditCard, Coins, Settings2, Trash2, Link2 } from 'lucide-react';
 import { CashAccount, CashEntry, AccountCode, Partner, IssuedStatement, Settlement } from '../src/shared/types';
 import { buildAccountLedger, totalCashOnHand, unsettledStatements, unmatchedCash } from '../src/features/admin/cashLedger';
-import { CASH_TEMPLATES } from '../src/shared/cashTemplates';
+import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, CashTemplate } from '../src/shared/cashTemplates';
+import { journalizeCashEntry } from '../src/shared/autoJournal';
 
 interface Props {
   cashAccounts: CashAccount[];
@@ -382,11 +383,16 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, on
   const ded = Number(deduction.replace(/,/g, '')) || 0;
   const net = grs - ded;
   // 계정 코드 (이름으로 탐색, 없으면 기본)
-  // 계정과목이 실제로 있는 템플릿만 띄운다 — 계정을 지웠는데 버튼만 남으면 안 잡히는 전표가 생긴다
-  const templates = useMemo(() => {
-    const have = new Set(accountCodes.map(c => c.code));
-    return CASH_TEMPLATES.filter(t => have.has(t.accountCode));
-  }, [accountCodes]);
+  // 고른 방향의 템플릿만. 카드를 누르면 모드·계정과목·비고가 한 번에 채워진다.
+  const templates = useMemo(() => filterTemplates(accountCodes, dir), [accountCodes, dir]);
+  const pickTemplate = (t: CashTemplate) => {
+    setMode(t.mode);
+    setAccountCode(t.accountCode ?? '');
+    if (t.note) setNote(t.note);
+    setPickerOpen(false);
+  };
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const codeName = useMemo(() => new Map(accountCodes.map(c => [c.code, c.name])), [accountCodes]);
   const loanAccounts = accountCodes.filter(c => c.type === '부채' && /차입금/.test(c.name));
   const INTEREST_CODE = accountCodes.find(c => /이자비용/.test(c.name))?.code ?? '951';
   const SALARY_CODE = accountCodes.find(c => c.name === '급여')?.code ?? '515';
@@ -397,48 +403,82 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, on
 
   const base = () => ({ date, cashAccountId, createdAt: new Date().toISOString(), ...(currentUser ? { createdBy: currentUser.name } : {}), ...(partnerId ? { partnerId, partnerName: partner?.name ?? '' } : {}) });
 
-  const save = () => {
-    if (!canSave) return;
+  /**
+   * 저장하면 생길 자금전표. 아래 분개 미리보기가 이걸 그대로 분개한다 —
+   * 저장과 미리보기를 갈라 두면 "보인 것과 저장된 것"이 달라진다.
+   */
+  const buildEntries = (): CashEntry[] => {
     if (mode === '일반') {
-      onAdd({ id: `cash-${Date.now()}`, dir, amount: amt, accountCode, ...(note.trim() ? { note: note.trim() } : {}), ...base() } as any);
-    } else if (mode === '상환') {
+      if (amt <= 0) return [];
+      return [{ id: `cash-${Date.now()}`, dir, amount: amt, accountCode, ...(note.trim() ? { note: note.trim() } : {}), ...base() } as CashEntry];
+    }
+    if (mode === '상환') {
       // 통장에서 나간 건 합계 한 번. 그 안에서 원금(차입금=부채 감소)·이자(비용)를 줄로 가른다.
       const memo = note.trim() || '대출 상환';
       const lines = [
         ...(prin > 0 ? [{ accountCode: loanCode, amount: prin, note: '원금' }] : []),
         ...(intr > 0 ? [{ accountCode: INTEREST_CODE, amount: intr, note: '이자' }] : []),
       ];
-      if (lines.length) onAdd({
+      if (!lines.length) return [];
+      return [{
         id: `cash-${Date.now()}`, dir: '출금', amount: prin + intr,
         ...(lines.length > 1 ? { lines } : { accountCode: lines[0].accountCode }),
         note: lines.length > 1 ? memo : `${memo} (${lines[0].note})`,
         ...base(),
-      } as any);
-    } else {
-      // 급여 → 총급여 출금(급여) + 공제 입금(예수금). 합산하면 급여 비용 전액 + 예수금 + 실지급.
-      const memo = note.trim() || '급여';
-      onAdd({ id: `cash-${Date.now()}-g`, dir: '출금', amount: grs, accountCode: SALARY_CODE, note: `${memo} (총급여)`, ...base() } as any);
-      if (ded > 0) onAdd({ id: `cash-${Date.now()}-w`, dir: '입금', amount: ded, accountCode: WITHHOLD_CODE, note: `${memo} (원천공제 예수)`, ...base() } as any);
+      } as CashEntry];
     }
+    // 급여 → 총급여 출금(급여) + 공제 입금(예수금). 합산하면 급여 비용 전액 + 예수금 + 실지급.
+    if (grs <= 0) return [];
+    const memo = note.trim() || '급여';
+    return [
+      { id: `cash-${Date.now()}-g`, dir: '출금', amount: grs, accountCode: SALARY_CODE, note: `${memo} (총급여)`, ...base() } as CashEntry,
+      ...(ded > 0 ? [{ id: `cash-${Date.now()}-w`, dir: '입금', amount: ded, accountCode: WITHHOLD_CODE, note: `${memo} (원천공제 예수)`, ...base() } as CashEntry] : []),
+    ];
+  };
+
+  const save = () => {
+    if (!canSave) return;
+    for (const e of buildEntries()) onAdd(e as any);
     onClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-black text-slate-800">일반전표 발행</h3>
-          <button onClick={onClose} className="text-slate-300 hover:text-slate-500"><X size={18} /></button>
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+        {/* 방향은 제목 줄에 둔다 — 아래 목록이 통째로 바뀌므로 목록 위에 있어야 한다 */}
+        <div className="flex items-center gap-3 px-8 py-5 border-b border-slate-100 shrink-0">
+          <h3 className="text-base font-black text-slate-800 shrink-0">일반전표 발행</h3>
+          <div className="flex gap-1.5 ml-auto">
+            {(['출금', '입금'] as const).map(d => (
+              <button key={d} type="button" onClick={() => { setDir(d); setMode('일반'); setAccountCode(''); }}
+                className={`px-5 py-2 rounded-xl text-xs font-black border transition-all ${dir === d
+                  ? d === '입금' ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-rose-600 text-white border-rose-600 shadow-sm'
+                  : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`}>
+                {d}
+              </button>
+            ))}
+          </div>
+          <button onClick={onClose} className="p-1.5 text-slate-300 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all shrink-0"><X size={18} /></button>
         </div>
-        {/* 모드 — 일반 / 대출 상환 / 급여 지급 (여러 줄 자동 분리) */}
-        <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
-          {([['일반', '일반 입출금'], ['상환', '대출 상환'], ['급여', '급여 지급']] as const).map(([m, label]) => (
-            <button key={m} type="button" onClick={() => setMode(m)}
-              className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-black transition-all ${mode === m ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400'}`}>
-              {label}
+
+        <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6 space-y-5">
+
+        {/* 기본은 직접입력. 목록은 고를 때만 창을 열어 보여준다(전표 화면과 같다) */}
+        {(() => {
+          const cur = activeTemplate(templates, { mode, accountCode });
+          const picked = !!cur && !cur.id.startsWith('free');
+          return (
+            <button type="button" onClick={() => setPickerOpen(true)}
+              className={`w-full flex items-center gap-2 px-4 py-3 rounded-xl border text-left transition-all ${
+                picked ? 'bg-indigo-50 border-indigo-200 hover:border-indigo-400' : 'bg-slate-50 border-slate-200 hover:border-slate-400'
+              }`}>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest shrink-0">전표</span>
+              <span className={`text-sm font-black truncate ${picked ? 'text-indigo-700' : 'text-slate-600'}`}>{cur?.label ?? '직접입력'}</span>
+              {cur && <span className="text-[10px] font-bold text-slate-400 truncate">{cur.hint ?? `${cur.accountCode} ${accountCodes.find(c => c.code === cur.accountCode)?.name ?? ''}`}</span>}
+              <span className="ml-auto text-[11px] font-black text-indigo-600 shrink-0">자주 쓰는 전표 ▾</span>
             </button>
-          ))}
-        </div>
+          );
+        })()}
         <p className="text-[11px] text-slate-400 leading-snug">
           {mode === '일반'
             ? <>실제로 돈이 움직인 사실만 적습니다. 이 돈의 성격(비용·자산·부채)은 <b>계정과목</b>이 정합니다 — 전기요금이면 전력비, 기계 구입이면 기계장치, 대출 받으면 차입금.</>
@@ -493,48 +533,14 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, on
           </>
         ) : mode === '일반' ? (
           <>
-            {/* 자주 쓰는 전표 — 방향·계정과목·비고를 한 번에 채운다(전표 화면과 같은 목록) */}
-            {templates.length > 0 && (
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">자주 쓰는 전표</label>
-                <div className="flex flex-wrap gap-1">
-                  {templates.map(t => {
-                    const on = accountCode === t.accountCode && dir === t.dir;
-                    return (
-                      <button key={t.id} type="button"
-                        onClick={() => { setDir(t.dir); setAccountCode(t.accountCode); if (t.note) setNote(t.note); }}
-                        title={`${t.dir} · ${t.accountCode} ${accountCodes.find(c => c.code === t.accountCode)?.name ?? ''}`}
-                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-all ${
-                          on
-                            ? t.dir === '입금' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-rose-600 text-white border-rose-600'
-                            : t.dir === '입금' ? 'bg-emerald-50 text-emerald-700 border-emerald-100 hover:border-emerald-300'
-                                               : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-400'
-                        }`}>
-                        {t.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
             <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">방향</label>
-              <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
-                {(['출금', '입금'] as const).map(d => (
-                  <button key={d} type="button" onClick={() => setDir(d)}
-                    className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${
-                      dir === d ? (d === '출금' ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white') : 'text-slate-400'
-                    }`}>{d}</button>
-                ))}
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">금액</label>
+              <div className="relative">
+                <input inputMode="numeric" value={amount} placeholder="0"
+                  onChange={e => setAmount(e.target.value.replace(/[^\d,]/g, ''))}
+                  className="w-full border border-slate-200 rounded-xl pl-3 pr-9 py-3 text-right text-2xl font-black tabular-nums outline-none focus:ring-2 focus:ring-slate-300" />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-300 pointer-events-none">원</span>
               </div>
-            </div>
-
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">금액</label>
-              <input inputMode="numeric" value={amount} placeholder="0"
-                onChange={e => setAmount(e.target.value.replace(/[^\d,]/g, ''))}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-lg font-black tabular-nums outline-none focus:ring-2 focus:ring-slate-300" />
             </div>
 
             <div>
@@ -604,13 +610,74 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, on
             className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300" />
         </div>
 
+        {/* ── 이렇게 분개됩니다 ── 성격계정만 고르면 통장 쪽은 자동이라, 저장 전에는
+            무엇이 어디로 잡히는지 안 보였다. 저장 경로와 같은 함수로 만들어 보여 준다. */}
+        {(() => {
+          const entries = buildEntries();
+          if (!entries.length) return null;
+          return (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 overflow-hidden">
+              <div className="px-4 py-2 border-b border-slate-200 flex items-center gap-2">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">이렇게 분개됩니다</span>
+                {entries.length > 1 && <span className="text-[10px] font-bold text-slate-400">자금전표 {entries.length}건</span>}
+              </div>
+              <div className="divide-y divide-slate-200">
+                {entries.map(e => {
+                  const je = journalizeCashEntry(e);
+                  return (
+                    <div key={e.id} className="px-4 py-2.5">
+                      {je ? (
+                        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                          <div className="grid grid-cols-[42px_1fr_100px_100px] bg-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                            <span className="px-2 py-1.5">구분</span>
+                            <span className="px-2 py-1.5">계정</span>
+                            <span className="px-2 py-1.5 text-right">차변</span>
+                            <span className="px-2 py-1.5 text-right">대변</span>
+                          </div>
+                          {je.lines.map((l, i) => (
+                            <div key={i} className="grid grid-cols-[42px_1fr_100px_100px] border-t border-slate-50 text-[11px]">
+                              <span className={`px-2 py-1.5 font-black ${l.debit ? 'text-slate-600' : 'text-slate-400'}`}>{l.debit ? '차변' : '대변'}</span>
+                              <span className="px-2 py-1.5 font-bold text-slate-700 truncate">
+                                <span className="text-slate-400 font-mono mr-1">{l.accountCode}</span>{codeName.get(l.accountCode) ?? ''}
+                              </span>
+                              <span className="px-2 py-1.5 text-right font-black tabular-nums text-slate-700">{l.debit ? fmt(l.debit) : ''}</span>
+                              <span className="px-2 py-1.5 text-right font-black tabular-nums text-slate-700">{l.credit ? fmt(l.credit) : ''}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] font-black text-amber-600">
+                          계정과목이 없어 분개를 만들 수 없습니다 — 손익·재무제표 어디에도 안 잡힙니다.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
         <div className="flex gap-2 pt-1">
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200">취소</button>
+          <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-500 text-sm font-black hover:bg-slate-200">취소</button>
           <button onClick={save} disabled={!canSave}
-            className="flex-1 py-2.5 rounded-xl bg-slate-800 text-white text-xs font-black hover:bg-slate-900 disabled:opacity-30 disabled:cursor-not-allowed">
+            className="flex-[2] py-3 rounded-xl bg-slate-800 text-white text-sm font-black hover:bg-slate-900 disabled:opacity-30 disabled:cursor-not-allowed">
             저장
           </button>
         </div>
+
+        </div>
+
+        {pickerOpen && (
+          <CashTemplateModal
+            templates={templates} accountCodes={accountCodes}
+            activeId={activeTemplateId(templates, { mode, accountCode })}
+            dir={dir}
+            onDir={d => { setDir(d); setMode('일반'); setAccountCode(''); }}
+            onPick={pickTemplate}
+            onClose={() => setPickerOpen(false)}
+          />
+        )}
       </div>
     </div>
   );

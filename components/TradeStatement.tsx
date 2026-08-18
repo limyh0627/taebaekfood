@@ -14,7 +14,7 @@ import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/sha
 import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
 import { totalCashOnHand, unsettledStatements, unmatchedCash } from '../src/features/admin/cashLedger';
 import { AR, AP, journalizeStatement, journalizeTransfer, journalizeCashEntry, settlementAccountCode } from '../src/shared/autoJournal';
-import { CASH_TEMPLATES } from '../src/shared/cashTemplates';
+import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, CashTemplate } from '../src/shared/cashTemplates';
 import type { JournalEntry } from '../src/shared/types';
 import { AccountModal } from './CashLedger';
 import PageHeader from './PageHeader';
@@ -361,13 +361,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [qpMode, setQpMode] = useState<'일반' | '상환' | '급여'>('일반');
   const [qpDir, setQpDir] = useState<'입금' | '출금'>('출금');
   const [qpAccountCode, setQpAccountCode] = useState('');
+  const [qpPickerOpen, setQpPickerOpen] = useState(false);
   const [qpLoanCode, setQpLoanCode] = useState('260');
   const [qpPrincipal, setQpPrincipal] = useState('');
   const [qpInterest, setQpInterest] = useState('');
   const [qpGross, setQpGross] = useState('');
   const [qpDeduction, setQpDeduction] = useState('');
   const openCashModal = (dir: '입금' | '출금') => {
-    setQpMode('일반'); setQpDir(dir); setQpAccountCode('');
+    setQpMode('일반'); setQpDir(dir); setQpAccountCode(''); setQpPickerOpen(false);
     setQpPrincipal(''); setQpInterest(''); setQpGross(''); setQpDeduction(''); setQpLoanCode('260');
     setShowQuickPay(true); setQuickPayOverWarn(false);
     setQuickPayClientId(''); setQuickPayClientSearch(''); setQuickPayAmount(''); setQuickPayNote('');
@@ -377,11 +378,15 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   const activeCashAccounts = useMemo(() => cashAccounts.filter(a => a.active), [cashAccounts]);
   const codeName = useMemo(() => new Map(accountCodes.map(c => [c.code, c.name])), [accountCodes]);
-  // 계정과목이 실제로 있는 템플릿만 띄운다 — 계정을 지웠는데 버튼만 남으면 안 잡히는 전표가 생긴다
-  const qpTemplates = useMemo(() => {
-    const have = new Set(accountCodes.map(c => c.code));
-    return CASH_TEMPLATES.filter(t => have.has(t.accountCode));
-  }, [accountCodes]);
+  // 고른 방향의 템플릿만. 카드를 누르면 모드·계정과목·비고가 한 번에 채워진다.
+  const qpTemplates = useMemo(() => filterTemplates(accountCodes, qpDir), [accountCodes, qpDir]);
+  const pickTemplate = (t: CashTemplate) => {
+    setQpMode(t.mode);
+    setQpAccountCode(t.accountCode ?? '');
+    if (t.note) setQuickPayNote(t.note);
+    if (!t.wantsPartner) { setQuickPayClientId(''); setQuickPayClientSearch(''); }
+    setQpPickerOpen(false);
+  };
   // 계정 5분류 — 자금 전표가 비용인지 수익인지 가려 매입/매출 합계에 반영하는 데 쓴다.
   const codeType = useMemo(() => new Map(accountCodes.map(c => [c.code, c.type])), [accountCodes]);
 
@@ -662,9 +667,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // 자금 전표(cashEntry)를 연다.
   const openPayTimelineRow = (paymentId: string, _src: IssuedStatement) => {
     if (!onUpdateCashEntry) return;
-    const st = settlements.find(s => s.id === paymentId);
-    const entry = st ? cashEntries.find(c => c.id === st.cashEntryId) : undefined;
+    // paymentId에는 **자금기록 id**가 들어온다(타임라인이 `paymentId: e.id`로 만든다).
+    // 예전엔 settlement id로만 찾아서 늘 못 찾고 아무것도 안 열렸다 — 삭제 쪽은 고쳤는데 여기가 남아 있었다.
+    // 옛 행은 settlement id로 들어올 수 있어 그쪽도 한 번 더 본다.
+    const entry = cashEntries.find(c => c.id === paymentId)
+      ?? cashEntries.find(c => c.id === settlements.find(s => s.id === paymentId)?.cashEntryId);
     if (entry) openEditCash(entry);
+    else alert('이 수금/지불의 자금 전표를 찾지 못했습니다. 자금원장에서 확인해 주세요.');
   };
 
   // ── 메인 탭 ──
@@ -3618,19 +3627,28 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           ...(quickPayClientId ? { partnerId: quickPayClientId, partnerName: selectedClientObj?.name ?? '' } : {}),
         });
 
+        // 상계에 쓸 전표 배분 — 오래된 것부터 채운다. 저장과 미리보기가 같은 값을 봐야 한다.
+        const offsetAllocations = () => {
+          if (offsetAmt <= 0) return [] as { stmt: IssuedStatement; amount: number }[];
+          const unpaid = issuedStatements
+            .filter(s => s.partnerId === quickPayClientId && s.type === stmtTypeForPay && getBalance(s) > 0)
+            .sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
+          const out: { stmt: IssuedStatement; amount: number }[] = [];
+          let rem = offsetAmt;
+          for (const st of unpaid) {
+            if (rem <= 0) break;
+            const apply = Math.min(rem, getBalance(st));
+            if (apply > 0) out.push({ stmt: st, amount: apply });
+            rem -= apply;
+          }
+          return out;
+        };
+
         // 일반 저장 — 거래처 미수/미지급 상계 우선, 남는 금액은 계정과목 자금전표로.
         const doGeneralSave = () => {
           if (amt <= 0) return;
-          if (offsetAmt > 0) {
-            const allClientStmts = issuedStatements
-              .filter(s => s.partnerId === quickPayClientId && s.type === stmtTypeForPay)
-              .sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
-            const unpaid = allClientStmts.filter(s => getBalance(s) > 0);
-            const allocations: { stmt: IssuedStatement; amount: number }[] = [];
-            let rem = offsetAmt;
-            for (const s of unpaid) { if (rem <= 0) break; const apply = Math.min(rem, getBalance(s)); if (apply > 0) allocations.push({ stmt: s, amount: apply }); rem -= apply; }
-            if (allocations.length) recordPayment(allocations, { date: quickPayDate, method: quickPayMethod, note: quickPayNote.trim() || undefined, cashAccountId: quickPayAccountId });
-          }
+          const allocations = offsetAllocations();
+          if (allocations.length) recordPayment(allocations, { date: quickPayDate, method: quickPayMethod, note: quickPayNote.trim() || undefined, cashAccountId: quickPayAccountId });
           if (plainAmt > 0) {
             onAddCashEntry?.({ id: `cash-${Date.now()}`, dir: qpDir, amount: plainAmt, ...(qpAccountCode ? { accountCode: qpAccountCode } : {}), ...(quickPayNote.trim() ? { note: quickPayNote.trim() } : {}), ...base() } as any);
           }
@@ -3641,37 +3659,82 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         // 통장에서 나간 건 원금+이자 합계 한 번. 자금은 그 금액으로 한 건 만들고,
         // 그 안에서 원금(차입금=부채 감소)과 이자(비용)를 줄로 가른다.
         // → 지불 합계엔 6만원 전부, 비용 합계엔 이자 3만원만 잡힌다.
-        const doLoanSave = () => {
+        const loanEntry = (): CashEntry | null => {
           const memo = quickPayNote.trim() || '대출 상환';
           const lines = [
             ...(prin > 0 ? [{ accountCode: qpLoanCode, amount: prin, note: '원금' }] : []),
             ...(intr > 0 ? [{ accountCode: INTEREST_CODE, amount: intr, note: '이자' }] : []),
           ];
-          if (!lines.length) return;
-          onAddCashEntry?.({
+          if (!lines.length) return null;
+          return {
             id: `cash-${Date.now()}`, dir: '출금', amount: prin + intr,
             ...(lines.length > 1 ? { lines } : { accountCode: lines[0].accountCode }),
             note: lines.length > 1 ? memo : `${memo} (${lines[0].note})`,
             ...base(),
-          } as any);
+          } as CashEntry;
+        };
+        const doLoanSave = () => {
+          const e = loanEntry();
+          if (!e) return;
+          onAddCashEntry?.(e as any);
           setShowQuickPay(false);
         };
         // 급여도 대출상환과 같은 방식 — 전표는 한 건, 그 안에서 성격을 줄로 가른다.
         //   총급여는 비용(+), 원천공제는 우리가 맡아둔 돈이라 부채 증가(−).
         //   통장에서 실제로 나간 건 실지급액(net)이고, 줄 합계도 net으로 맞는다.
         // 예전엔 출금(총급여)·입금(예수금) 두 건으로 끊어 목록에 두 줄로 보였다.
-        const doSalarySave = () => {
+        const salaryEntry = (): CashEntry => {
           const memo = quickPayNote.trim() || '급여';
           const lines = [
             { accountCode: SALARY_CODE, amount: grs, note: '총급여' },
             ...(ded > 0 ? [{ accountCode: WITHHOLD_CODE, amount: -ded, note: '원천공제' }] : []),
           ];
-          onAddCashEntry?.({
+          return {
             id: `cash-${Date.now()}`, dir: '출금', amount: net,
             ...(lines.length > 1 ? { lines } : { accountCode: SALARY_CODE }),
             note: memo, ...base(),
-          } as any);
+          } as CashEntry;
+        };
+        const doSalarySave = () => {
+          onAddCashEntry?.(salaryEntry() as any);
           setShowQuickPay(false);
+        };
+
+        /**
+         * 저장하면 어떤 자금전표가 생기는지 — 아래 분개 미리보기가 이걸 그대로 분개한다.
+         * 저장 경로와 같은 함수를 써서 만든다. 갈라 두면 "보인 것과 저장된 것"이 달라진다.
+         */
+        const previewEntries = (): CashEntry[] => {
+          if (qpMode === '상환') { const e = loanEntry(); return e ? [e] : []; }
+          if (qpMode === '급여') return grs > 0 ? [salaryEntry()] : [];
+          if (amt <= 0) return [];
+          const out: CashEntry[] = [];
+          const allocations = offsetAllocations();
+          if (allocations.length) {
+            // recordPayment이 만드는 것과 같은 한 건 — 상대계정도 같은 함수로 고른다
+            const first = allocations[0].stmt;
+            const groupTypeOf = (code: string) =>
+              accountGroups.find(g => g.id === accountCodes.find(c => c.code === code)?.groupId)?.type;
+            const itemCodes = allocations.flatMap(({ stmt }) => (stmt.items ?? []).map(i => i.accountCode).filter(Boolean) as string[]);
+            const payCode = settlementAccountCode(first.type, itemCodes, groupTypeOf);
+            out.push({
+              id: 'preview-offset', ...(payCode ? { accountCode: payCode } : {}),
+              date: quickPayDate, cashAccountId: quickPayAccountId,
+              dir: first.type === '매입' ? '출금' : '입금',
+              amount: allocations.reduce((a, x) => a + x.amount, 0),
+              note: quickPayNote.trim() || `${first.partnerName ?? ''} ${first.type === '매입' ? '지불' : '수금'}`.trim(),
+              createdAt: '',
+            } as CashEntry);
+          }
+          if (plainAmt > 0) {
+            out.push({
+              id: 'preview-plain', dir: qpDir, amount: plainAmt,
+              ...(qpAccountCode ? { accountCode: qpAccountCode } : {}),
+              date: quickPayDate, cashAccountId: quickPayAccountId,
+              note: quickPayNote.trim(), createdAt: '',
+            } as CashEntry);
+          }
+          return out;
         };
 
         const canSave = qpMode === '상환' ? (prin > 0 || intr > 0)
@@ -3688,83 +3751,67 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => { setShowQuickPay(false); setQuickPayOverWarn(false); }}>
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-              <h3 className="text-sm font-black text-slate-800">일반전표 발행</h3>
-
-              {/* 모드 — 일반 / 대출 상환 / 급여 지급 */}
-              <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
-                {([['일반', '일반'], ['상환', '대출 상환'], ['급여', '급여']] as const).map(([m, label]) => (
-                  <button key={m} type="button" onClick={() => setQpMode(m)}
-                    className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-black transition-all ${qpMode === m ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400'}`}>
-                    {label}
-                  </button>
-                ))}
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+              {/* 방향은 제목 줄에 둔다 — 들어오는 돈과 나가는 돈은 쓰는 계정이 아예 달라서
+                  고를 수 있는 전표가 통째로 바뀐다. */}
+              <div className="flex items-center gap-3 px-8 py-5 border-b border-slate-100 shrink-0">
+                <h3 className="text-base font-black text-slate-800 shrink-0">일반전표 발행</h3>
+                <div className="flex gap-1.5 ml-auto">
+                  {(['출금', '입금'] as const).map(d => (
+                    <button key={d} type="button"
+                      onClick={() => { setQpDir(d); setQpMode('일반'); setQpAccountCode(''); setQuickPayClientId(''); setQuickPayClientSearch(''); }}
+                      className={`px-5 py-2 rounded-xl text-xs font-black border transition-all ${qpDir === d
+                        ? d === '입금' ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-rose-600 text-white border-rose-600 shadow-sm'
+                        : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`}>
+                      {d}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={() => { setShowQuickPay(false); setQuickPayOverWarn(false); }}
+                  className="p-1.5 text-slate-300 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all shrink-0"><X size={18}/></button>
               </div>
+
+              <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6 space-y-5">
+
+              {/* 기본은 직접입력. 목록은 고를 때만 창을 열어 보여준다 —
+                  늘 펼쳐 두면 정작 금액 칸이 아래로 밀린다. */}
+              {(() => {
+                const cur = activeTemplate(qpTemplates, { mode: qpMode, accountCode: qpAccountCode });
+                const picked = !!cur && !cur.id.startsWith('free');
+                return (
+                  <button type="button" onClick={() => setQpPickerOpen(true)}
+                    className={`w-full flex items-center gap-2 px-4 py-3 rounded-xl border text-left transition-all ${
+                      picked ? 'bg-indigo-50 border-indigo-200 hover:border-indigo-400' : 'bg-slate-50 border-slate-200 hover:border-slate-400'
+                    }`}>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest shrink-0">전표</span>
+                    <span className={`text-sm font-black truncate ${picked ? 'text-indigo-700' : 'text-slate-600'}`}>{cur?.label ?? '직접입력'}</span>
+                    {cur && <span className="text-[10px] font-bold text-slate-400 truncate">{cur.hint ?? `${cur.accountCode} ${codeName.get(cur.accountCode ?? '') ?? ''}`}</span>}
+                    <span className="ml-auto text-[11px] font-black text-indigo-600 shrink-0">자주 쓰는 전표 ▾</span>
+                  </button>
+                );
+              })()}
 
               {/* 계좌 + 일자 */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">계좌</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">계좌</label>
                   <select value={quickPayAccountId} onChange={e => setQuickPayAccountId(e.target.value)}
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300">
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300">
                     {activeCashAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">일자</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">일자</label>
                   <input type="date" value={quickPayDate} onChange={e => setQuickPayDate(e.target.value)}
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
                 </div>
               </div>
 
               {qpMode === '일반' ? (
                 <>
-                  {/* 자주 쓰는 전표 — 방향·계정과목·비고를 한 번에 채운다.
-                      계정과목 목록을 매번 훑는 게 병목이었고, 잘못 고르면 손익이 통째로 어긋난다. */}
-                  {qpTemplates.length > 0 && (
-                    <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">자주 쓰는 전표</label>
-                      <div className="flex flex-wrap gap-1">
-                        {qpTemplates.map(t => {
-                          const on = qpAccountCode === t.accountCode && qpDir === t.dir;
-                          return (
-                            <button key={t.id} type="button"
-                              onClick={() => {
-                                setQpDir(t.dir);
-                                setQpAccountCode(t.accountCode);
-                                if (t.note) setQuickPayNote(t.note);
-                                if (!t.wantsPartner) { setQuickPayClientId(''); setQuickPayClientSearch(''); }
-                              }}
-                              title={`${t.dir} · ${t.accountCode} ${codeName.get(t.accountCode) ?? ''}`}
-                              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-all ${
-                                on
-                                  ? t.dir === '입금' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-rose-600 text-white border-rose-600'
-                                  : t.dir === '입금' ? 'bg-emerald-50 text-emerald-700 border-emerald-100 hover:border-emerald-300'
-                                                     : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-400'
-                              }`}>
-                              {t.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 방향 */}
-                  <div className="flex gap-2">
-                    {(['입금', '출금'] as const).map(d => (
-                      <button key={d} onClick={() => { setQpDir(d); setQuickPayClientId(''); setQuickPayClientSearch(''); }}
-                        className={`flex-1 py-2 rounded-xl text-xs font-black border transition-all ${qpDir === d
-                          ? d === '입금' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-rose-600 text-white border-rose-600'
-                          : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`}>
-                        {d === '입금' ? '입금 (수금·기타)' : '출금 (지불·비용)'}
-                      </button>
-                    ))}
-                  </div>
-
                   {/* 거래처 (선택) */}
                   <div className="relative">
-                    <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">거래처 <span className="text-slate-300">(선택 · {qpDir === '입금' ? '매출 미수 상계' : '매입 미지급 상계'})</span></label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">거래처 <span className="normal-case text-slate-300">(선택 · {qpDir === '입금' ? '매출 미수 상계' : '매입 미지급 상계'})</span></label>
                     <input type="text" placeholder="업체명 검색..."
                       value={selectedClientObj ? selectedClientObj.name : quickPayClientSearch}
                       onFocus={() => { setQuickPayClientId(''); setQuickPayDropOpen(true); }}
@@ -3802,12 +3849,15 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     )}
                   </div>
 
-                  {/* 금액 */}
+                  {/* 금액 — 이 모달에서 제일 자주 손대는 칸이라 제일 크게 */}
                   <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">금액</label>
-                    <input type="text" inputMode="numeric" placeholder="0" value={quickPayAmount}
-                      onChange={e => setQuickPayAmount(e.target.value.replace(/[^\d,]/g, ''))}
-                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-lg font-black tabular-nums outline-none focus:ring-2 focus:ring-emerald-300"/>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">금액</label>
+                    <div className="relative">
+                      <input type="text" inputMode="numeric" placeholder="0" value={quickPayAmount}
+                        onChange={e => setQuickPayAmount(e.target.value.replace(/[^\d,]/g, ''))}
+                        className="w-full border border-slate-200 rounded-xl pl-3 pr-9 py-3 text-right text-2xl font-black tabular-nums outline-none focus:ring-2 focus:ring-emerald-300"/>
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-300 pointer-events-none">원</span>
+                    </div>
                   </div>
 
                   {/* 상계 안내 */}
@@ -3818,12 +3868,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     </div>
                   )}
 
-                  {/* 계정과목 — 상계로 전액 처리되면 불필요 */}
-                  {plainAmt > 0 && (
+                  {/* 계정과목 — 전액 상계일 때만 자리를 비운다.
+                      전엔 `plainAmt > 0`이라 **금액을 넣기 전에도 숨었다**. 템플릿으로 계정을 고르고도
+                      그게 뭔지 안 보이니 매번 확인이 안 됐다. 금액이 0이면 그냥 빈 채로 보여 준다. */}
+                  {amt > 0 && plainAmt <= 0 ? (
+                    <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2.5 text-[11px] font-bold text-slate-500">
+                      전액 {selectedClientObj?.name} {qpDir === '입금' ? '미수' : '미지급'} 상계라 계정과목이 필요 없습니다
+                      <span className="text-slate-400"> — {qpDir === '입금' ? '외상매출금' : '외상매입금'}이 그만큼 줄어듭니다.</span>
+                    </div>
+                  ) : (
                     <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">계정과목 <span className="text-rose-400">*</span> <span className="text-slate-300">({qpDir === '입금' ? '이 돈의 성격' : '전기·임대·기계구입 등'})</span></label>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">계정과목 <span className="text-rose-400">*</span> <span className="normal-case text-slate-300">({qpDir === '입금' ? '이 돈의 성격' : '전기·임대·기계구입 등'})</span></label>
                       <select value={qpAccountCode} onChange={e => setQpAccountCode(e.target.value)}
-                        className={`w-full border rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300 ${qpAccountCode ? 'border-slate-200' : 'border-amber-300 bg-amber-50'}`}>
+                        className={`w-full border rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300 ${qpAccountCode ? 'border-slate-200' : 'border-amber-300 bg-amber-50'}`}>
                         <option value="">— 선택하세요 —</option>
                         {expenseCodes.map(c => <option key={c.id} value={c.code}>{c.code} · {c.name}</option>)}
                       </select>
@@ -3909,21 +3966,84 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
               {/* 비고 */}
               <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">비고</label>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">비고</label>
                 <input type="text" placeholder={qpMode === '일반' ? '예: 7월 전기요금' : qpMode === '상환' ? '예: 기업은행 시설자금' : '예: 7월 급여'}
                   value={quickPayNote} onChange={e => setQuickPayNote(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
               </div>
+
+              {/* ── 이렇게 분개됩니다 ──
+                  자금전표는 성격계정 하나만 고르면 나머지 한 변(통장)은 자동이라, 무엇이 어디로
+                  잡히는지 저장 전에는 안 보였다. 계정을 잘못 고르면 손익이 통째로 어긋나는 화면이라
+                  **저장 버튼 바로 위에서** 결과를 먼저 보여 준다. 저장 경로와 같은 함수로 만든다. */}
+              {(() => {
+                const entries = previewEntries();
+                if (!entries.length) return null;
+                return (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 overflow-hidden">
+                    <div className="px-4 py-2 border-b border-slate-200 flex items-center gap-2">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">이렇게 분개됩니다</span>
+                      {entries.length > 1 && <span className="text-[10px] font-bold text-slate-400">자금전표 {entries.length}건</span>}
+                    </div>
+                    <div className="divide-y divide-slate-200">
+                      {entries.map(e => {
+                        const je = journalizeCashEntry(e);
+                        return (
+                          <div key={e.id} className="px-4 py-2.5">
+                            {je ? (
+                              <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                                <div className="grid grid-cols-[42px_1fr_100px_100px] bg-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                  <span className="px-2 py-1.5">구분</span>
+                                  <span className="px-2 py-1.5">계정</span>
+                                  <span className="px-2 py-1.5 text-right">차변</span>
+                                  <span className="px-2 py-1.5 text-right">대변</span>
+                                </div>
+                                {je.lines.map((l, i) => (
+                                  <div key={i} className="grid grid-cols-[42px_1fr_100px_100px] border-t border-slate-50 text-[11px]">
+                                    <span className={`px-2 py-1.5 font-black ${l.debit ? 'text-slate-600' : 'text-slate-400'}`}>{l.debit ? '차변' : '대변'}</span>
+                                    <span className="px-2 py-1.5 font-bold text-slate-700 truncate">
+                                      <span className="text-slate-400 font-mono mr-1">{l.accountCode}</span>{codeName.get(l.accountCode) ?? ''}
+                                    </span>
+                                    <span className="px-2 py-1.5 text-right font-black tabular-nums text-slate-700">{l.debit ? fmt(l.debit) : ''}</span>
+                                    <span className="px-2 py-1.5 text-right font-black tabular-nums text-slate-700">{l.credit ? fmt(l.credit) : ''}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-[11px] font-black text-amber-600">
+                                계정과목이 없어 분개를 만들 수 없습니다 — 손익·재무제표 어디에도 안 잡힙니다.
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="flex gap-2 pt-1">
                 <button onClick={() => { setShowQuickPay(false); setQuickPayOverWarn(false); }}
-                  className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
+                  className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-600 text-sm font-black hover:bg-slate-200">취소</button>
                 <button onClick={handleQuickPaySave} disabled={!canSave}
-                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-black hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5">
-                  <Save size={12}/>저장
+                  className="flex-[2] py-3 rounded-xl bg-emerald-600 text-white text-sm font-black hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5">
+                  <Save size={14}/>저장
                 </button>
               </div>
+
+              </div>
             </div>
+
+            {qpPickerOpen && (
+              <CashTemplateModal
+                templates={qpTemplates} accountCodes={accountCodes}
+                activeId={activeTemplateId(qpTemplates, { mode: qpMode, accountCode: qpAccountCode })}
+                dir={qpDir}
+                onDir={d => { setQpDir(d); setQpMode('일반'); setQpAccountCode(''); setQuickPayClientId(''); setQuickPayClientSearch(''); }}
+                onPick={pickTemplate}
+                onClose={() => setQpPickerOpen(false)}
+              />
+            )}
           </div>
         );
       })()}
