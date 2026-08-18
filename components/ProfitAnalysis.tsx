@@ -9,6 +9,7 @@ import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Partner, PaymentMet
 import PageHeader from './PageHeader';
 import CostManager from './CostManager';
 import { makeCodeToGroup, computeMonthPLFromJournals, computeCashFlowMonth, computeCashFlowDirect, addMonthStr, SGNA_LEGACY_IDS, COMPUTED_GROUP_IDS } from '../src/features/admin/financials';
+import { partnerOpenBalance, allocatePartnerCash } from '../src/features/admin/cashLedger';
 import { buildJournals } from '../src/shared/buildJournals';
 import type { OpeningBalance } from '../src/shared/autoJournal';
 import { fetchCollection } from '../src/shared/services/firebaseService';
@@ -45,6 +46,8 @@ interface ProfitAnalysisProps {
   cashEntries?: CashEntry[];
   onAddCashEntry?: (e: CashEntry) => void;
   settlements?: Settlement[];
+  onAddSettlement?: (s: Settlement) => void;
+  onDeleteSettlement?: (id: string) => void;
   initialTab?: MainTab;
 }
 
@@ -57,7 +60,7 @@ const fmtM = (n: number) => {
 
 const MONTHS = 12;
 
-const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, fixedCostTemplates = [], onAddCost, onDeleteCost, onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], costOf, onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = [], onSaveCashFlowManual, cashEntries = [], onAddCashEntry, settlements = [], initialTab }) => {
+const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, fixedCostTemplates = [], onAddCost, onDeleteCost, onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], costOf, onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = [], onSaveCashFlowManual, cashEntries = [], onAddCashEntry, settlements = [], onAddSettlement, onDeleteSettlement, initialTab }) => {
   // 계산결과 그룹 숨김 + 구 판매비/관리비 → 판관비로 통합 표시
   const accountGroups = rawAccountGroups
     .filter(g => !COMPUTED_GROUP_IDS.has(g.id))
@@ -128,6 +131,8 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   const [recClientId, setRecClientId] = useState('');
   const [recClientSearch, setRecClientSearch] = useState('');
   const [showPayModal, setShowPayModal] = useState(false);
+  // 수금을 그 전표에 붙일지 — 끄면 오래된 전표부터 자동 배분(선입선출)
+  const [pinToStmt, setPinToStmt] = useState(true);
   const [payTarget, setPayTarget] = useState<IssuedStatement | null>(null);
   const [payForm, setPayForm] = useState({ amount: '', date: new Date().toISOString().slice(0, 10), method: '계좌이체' as PaymentMethod, note: '' });
 
@@ -993,46 +998,26 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           }
         }
         /**
-         * 전표 한 장에 남은 금액.
-         *
-         * 수금은 전표가 아니라 거래처 단위로 자금원장에 적힌다. 그래서 "어느 청구서를 갚았나"는
-         * 기록에 없고, 여기서 **오래된 전표부터 채워** 나눠 준다(합계는 거래처 잔액과 같다).
-         * 예전엔 전표에 매달린 payments[]만 보고 잔액을 냈는데, 그 경로를 없앤 뒤로는
-         * 늘 청구액 그대로가 나와 **이미 받은 전표도 '미수 전액'으로 떴다** — 중복 수금의 원인.
+         * 전표 한 장에 남은 금액 — 사람이 지정한 매칭 먼저, 나머지는 오래된 전표부터.
+         * 규칙은 cashLedger.allocatePartnerCash 한 곳에 있다(전표 화면도 같은 것을 쓴다).
          */
         const openByStmt = (() => {
-          const left = new Map<string, number>();
-          const groups = new Map<string, IssuedStatement[]>();
-          for (const s of issuedStatements) {
-            if (s.type !== '매출' && s.type !== '매입') continue;
-            left.set(s.id, s.totalAmount);
-            const key = `${s.partnerId}|${s.type}`;
-            const g = groups.get(key); if (g) g.push(s); else groups.set(key, [s]);
-          }
-          for (const [key, list] of groups) {
+          const out = new Map<string, number>();
+          const keys = new Set(issuedStatements
+            .filter(s => s.type === '매출' || s.type === '매입')
+            .map(s => `${s.partnerId}|${s.type}`));
+          for (const key of keys) {
             const [pid, type] = key.split('|');
-            const paid = paidByPartner.get(pid);
-            let rem = type === '매출' ? (paid?.in ?? 0) : (paid?.out ?? 0);
-            if (rem <= 0) continue;
-            for (const s of [...list].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate))) {
-              if (rem <= 0) break;
-              const open = left.get(s.id) ?? 0;
-              const apply = Math.min(rem, open);
-              left.set(s.id, open - apply);
-              rem -= apply;
+            for (const [id, open] of allocatePartnerCash(pid, type as '매출' | '매입', issuedStatements, cashEntries, settlements)) {
+              out.set(id, open);
             }
           }
-          return left;
+          return out;
         })();
         const getBalance = (s: IssuedStatement) => openByStmt.get(s.id) ?? s.totalAmount;
         /** 거래처 잔액 — 미수(매출) / 미지급(매입) */
-        const partnerLeft = (partnerId: string, type: '매출' | '매입') => {
-          const gross = issuedStatements
-            .filter(s => s.partnerId === partnerId && s.type === type)
-            .reduce((a, s) => a + getBalance(s), 0);
-          const paid = paidByPartner.get(partnerId);
-          return gross - (type === '매출' ? (paid?.in ?? 0) : (paid?.out ?? 0));
-        };
+        const partnerLeft = (partnerId: string, type: '매출' | '매입') =>
+          partnerOpenBalance(partnerId, type, issuedStatements, cashEntries);
 
         // ── 전체 거래처 목록 (매출 + 매입 포함) ──
         const currentYear = new Date().getFullYear();
@@ -1105,6 +1090,21 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         };
         const carrySale = carryOver('매출');
         const carryBuy = carryOver('매입');
+        /**
+         * 이월 라벨 — **기간 앞의 실제 근거**를 적는다.
+         *
+         * 기초전표(2026-07-31-기초)는 장부 개시잔액이라 늘 이월로 세는데, 날짜는 2026년 안에 있다.
+         * 그래서 연 2026을 보면서 `statsYear - 1`로 라벨을 만들면 있지도 않은 '2025년말'이 찍힌다.
+         * 이월이 그 기초로 이뤄져 있으면(= 기초 날짜가 이 기간 안이면) '기초이월'이라고 적는다.
+         */
+        const openingInPeriod = !!selId && issuedStatements.some(st =>
+          st.partnerId === selId && isOpening(st) && st.tradeDate.startsWith(periodPrefix));
+        const carryLabel = openingInPeriod ? '기초이월' : statsScope === 'month' ? '전월이월' : '전년이월';
+        const carryHint = openingInPeriod
+          ? '장부 개시잔액'
+          : statsScope === 'month'
+            ? `${statsMonth === 1 ? '전년말' : `${statsMonth - 1}월말`}`
+            : `${statsYear - 1}년말`;
         const selSalesStmts = issuedStatements.filter(s => s.partnerId === selId && s.type === '매출').sort((a, b) => b.tradeDate.localeCompare(a.tradeDate));
         const selPurchaseStmts = issuedStatements.filter(s => s.partnerId === selId && s.type === '매입').sort((a, b) => b.tradeDate.localeCompare(a.tradeDate));
         // 기초전표는 거래가 아니므로 기간 매출에서 뺀다 — 위 이월에 이미 들어가 있다
@@ -1203,6 +1203,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         const openPayModal = (stmt: IssuedStatement) => {
           setPayTarget(stmt);
           setPayForm({ amount: String(getBalance(stmt)), date: new Date().toISOString().slice(0, 10), method: '계좌이체', note: '' });
+          setPinToStmt(true);
           setShowPayModal(true);
         };
         // 수금·지불은 **자금원장에 쓴다** — 전표에 붙이지 않는다.
@@ -1213,8 +1214,9 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           const amt = Number(payForm.amount);
           if (!Number.isFinite(amt) || amt <= 0) { alert('금액을 숫자로 입력하세요.'); return; }
           const isSale = payTarget.type === '매출';
+          const entryId = `cash-${Date.now()}`;
           onAddCashEntry?.({
-            id: `cash-${Date.now()}`,
+            id: entryId,
             date: payForm.date,
             cashAccountId: '',                       // 계좌는 관리하지 않는다(전표화면과 같은 규칙)
             dir: isSale ? '입금' : '출금',
@@ -1226,6 +1228,16 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
               .filter(Boolean).join(' · '),
             createdAt: new Date().toISOString(),
           });
+          // 이 전표를 찍고 연 수금이면 **그 전표에 붙인다**(매칭). 금액이 아니라 연결만 붙는 것이라
+          // 매칭이 틀려도 거래처 잔액은 안 흔들린다 — 어느 청구서냐만 바뀐다.
+          if (pinToStmt && onAddSettlement) {
+            onAddSettlement({
+              id: `settle-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              cashEntryId: entryId, statementId: payTarget.id,
+              amount: Math.min(amt, getBalance(payTarget)),
+              createdAt: new Date().toISOString(),
+            });
+          }
           setShowPayModal(false);
           setPayTarget(null);
         };
@@ -1369,14 +1381,14 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                     {/* 요약 — '판 것 → 받은 것 → 남은 것' 흐름으로 읽히게 한 줄에 세운다.
                         매입이 있는 거래처는 아래 줄에 같은 모양으로 '산 것 → 준 것 → 남은 것'. */}
                     <div className="bg-white rounded-2xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
-                      <div className={`grid ${statsScope === 'month' ? 'grid-cols-4' : 'grid-cols-3'} divide-x divide-slate-100`}>
-                        {statsScope === 'month' && (
-                          <div className="px-5 py-3.5 bg-slate-50/70">
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">전월이월</p>
-                            <p className="text-xl font-black text-slate-500 mt-1 tabular-nums">{fmtS(carrySale)}</p>
-                            <p className="text-[10px] font-bold text-slate-400 mt-0.5">{statsMonth === 1 ? '전년말' : `${statsMonth - 1}월말`} 미수</p>
-                          </div>
-                        )}
+                      {/* 이월 + 기간매출 − 기간수금 = 기간말 미수. 네 칸이 한 줄로 읽히는 식이라
+                          연·월 어느 쪽으로 봐도 전표 합계와 맞는다. 이월을 빼면 기초전표(개시잔액)만큼 어긋난다. */}
+                      <div className="grid grid-cols-4 divide-x divide-slate-100">
+                        <div className="px-5 py-3.5 bg-slate-50/70">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{carryLabel}</p>
+                          <p className="text-xl font-black text-slate-500 mt-1 tabular-nums">{fmtS(carrySale)}</p>
+                          <p className="text-[10px] font-bold text-slate-400 mt-0.5">{openingInPeriod ? carryHint : `${carryHint} 미수`}</p>
+                        </div>
                         <div className="px-5 py-3.5">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">매출</p>
                           <p className="text-xl font-black text-slate-800 mt-1 tabular-nums">{fmtS(yearSalesTotal)}</p>
@@ -1395,22 +1407,20 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                           onClick={() => setReceivableDetailClient({ id: selId, name: selName })}
                           className={`px-5 py-3.5 text-left transition-colors ${totalReceivable > 0 ? 'hover:bg-blue-50/60 cursor-pointer' : 'cursor-default'}`}
                         >
-                          <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">{statsScope === 'month' ? '월말 미수' : '미수금'}</p>
-                          <p className={`text-xl font-black mt-1 tabular-nums ${(statsScope === 'month' ? closingReceivable : totalReceivable) > 0 ? 'text-blue-600' : 'text-slate-300'}`}>
-                            {(statsScope === 'month' ? closingReceivable : totalReceivable) > 0 ? fmtS(statsScope === 'month' ? closingReceivable : totalReceivable) : '없음'}
+                          <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">{statsScope === 'month' ? '월말 미수' : '연말 미수'}</p>
+                          <p className={`text-xl font-black mt-1 tabular-nums ${closingReceivable > 0 ? 'text-blue-600' : 'text-slate-300'}`}>
+                            {closingReceivable > 0 ? fmtS(closingReceivable) : '없음'}
                           </p>
                           <p className="text-[10px] font-bold text-slate-400 mt-0.5">{totalReceivable > 0 ? '눌러서 상세' : '전부 회수'}</p>
                         </button>
                       </div>
-                      {(yearPurchaseTotal > 0 || totalPayable > 0) && (
-                        <div className={`grid ${statsScope === 'month' ? 'grid-cols-4' : 'grid-cols-3'} divide-x divide-slate-100`}>
-                          {statsScope === 'month' && (
-                            <div className="px-5 py-3.5 bg-slate-50/70">
-                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">전월이월</p>
-                              <p className="text-xl font-black text-slate-500 mt-1 tabular-nums">{fmtS(carryBuy)}</p>
-                              <p className="text-[10px] font-bold text-slate-400 mt-0.5">{statsMonth === 1 ? '전년말' : `${statsMonth - 1}월말`} 미지급</p>
-                            </div>
-                          )}
+                      {(yearPurchaseTotal > 0 || totalPayable > 0 || carryBuy > 0) && (
+                        <div className="grid grid-cols-4 divide-x divide-slate-100">
+                          <div className="px-5 py-3.5 bg-slate-50/70">
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{carryLabel}</p>
+                            <p className="text-xl font-black text-slate-500 mt-1 tabular-nums">{fmtS(carryBuy)}</p>
+                            <p className="text-[10px] font-bold text-slate-400 mt-0.5">{openingInPeriod ? carryHint : `${carryHint} 미지급`}</p>
+                          </div>
                           <div className="px-5 py-3.5">
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">매입</p>
                             <p className="text-xl font-black text-slate-800 mt-1 tabular-nums">{fmtS(yearPurchaseTotal)}</p>
@@ -1425,9 +1435,9 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                           </div>
                           {/* 못 받은 돈은 파랑, 줘야 할 돈은 빨강 — 색만 보고 방향을 안다 */}
                           <div className="px-5 py-3.5">
-                            <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest">{statsScope === 'month' ? '월말 미지급' : '미지급금'}</p>
-                            <p className={`text-xl font-black mt-1 tabular-nums ${(statsScope === 'month' ? closingPayable : totalPayable) > 0 ? 'text-rose-600' : 'text-slate-300'}`}>
-                              {(statsScope === 'month' ? closingPayable : totalPayable) > 0 ? fmtS(statsScope === 'month' ? closingPayable : totalPayable) : '없음'}
+                            <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest">{statsScope === 'month' ? '월말 미지급' : '연말 미지급'}</p>
+                            <p className={`text-xl font-black mt-1 tabular-nums ${closingPayable > 0 ? 'text-rose-600' : 'text-slate-300'}`}>
+                              {closingPayable > 0 ? fmtS(closingPayable) : '없음'}
                             </p>
                             <p className="text-[10px] font-bold text-slate-400 mt-0.5">{totalPayable > 0 ? '갚을 돈' : '전부 지급'}</p>
                           </div>
@@ -1604,12 +1614,26 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                       {unpaidStmts.map(s => {
                         const bal = getBalance(s);
                         const paid = s.totalAmount - bal;   // 이 전표에 배분된 수금액
+                        // 이 전표에 사람이 찍어 붙인 매칭 — 근거(자금기록)가 살아 있는 것만
+                        const pins = settlements.filter(st => st.statementId === s.id && cashEntries.some(e => e.id === st.cashEntryId));
+                        const pinned = pins.reduce((a, st) => a + (st.amount ?? 0), 0);
                         return (
                           <div key={s.id} className="px-5 py-3.5 flex items-center justify-between gap-3">
                             <div className="min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-xs font-black text-slate-700">{s.tradeDate}</span>
                                 <span className="text-[10px] font-mono text-slate-400">{s.docNo}</span>
+                                {pinned > 0 && (
+                                  <span className="inline-flex items-center gap-1 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600">
+                                    지정 {fmt(pinned)}
+                                    {onDeleteSettlement && (
+                                      <button
+                                        onClick={() => { if (window.confirm('이 전표에 지정한 수금 연결을 풀까요?\n\n금액은 그대로고, 오래된 전표부터 자동 배분으로 돌아갑니다.')) pins.forEach(st => onDeleteSettlement(st.id)); }}
+                                        title="지정 해제 — 자동 배분으로 되돌린다"
+                                        className="text-indigo-300 hover:text-rose-500">✕</button>
+                                    )}
+                                  </span>
+                                )}
                               </div>
                               <p className="text-[10px] text-slate-400 mt-0.5 truncate">
                                 {s.items.slice(0, 2).map(i => i.name).join(', ')}{s.items.length > 2 ? ` 외 ${s.items.length - 2}건` : ''}
@@ -1760,6 +1784,16 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                         onChange={e => setPayForm(p => ({ ...p, note: e.target.value }))}
                         className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
                     </div>
+                    {/* 끄면 오래된 전표부터 자동으로 채워진다(선입선출) */}
+                    <label className="flex items-start gap-2 cursor-pointer select-none">
+                      <input type="checkbox" checked={pinToStmt} onChange={e => setPinToStmt(e.target.checked)}
+                        className="mt-0.5 w-4 h-4 accent-indigo-600 shrink-0"/>
+                      <span className="text-[11px] font-bold text-slate-500 leading-snug">
+                        이 전표에 지정 <span className="text-slate-400 font-normal">({payTarget.docNo || payTarget.tradeDate})</span>
+                        <br/>
+                        <span className="text-[10px] text-slate-400 font-normal">끄면 오래된 전표부터 자동으로 채워집니다.</span>
+                      </span>
+                    </label>
                   </div>
                   <div className="flex gap-2 pt-1">
                     <button onClick={() => setShowPayModal(false)} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>

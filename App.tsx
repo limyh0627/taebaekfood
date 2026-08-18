@@ -2,7 +2,7 @@
 // App.tsx — 순수 라우터
 // ============================================================
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Employee, ViewType } from './types';
 import { useAppData } from './src/hooks/useAppData';
 import { useAdminData } from './src/hooks/useAdminData';
@@ -13,6 +13,7 @@ import PartnerPortal from './components/PartnerPortal';
 import AdminApp from './src/features/admin/AdminApp';
 import StaffApp from './src/features/staff/StaffApp';
 import ReloadPrompt from './components/ReloadPrompt';
+import { blockNumberWheel } from './src/shared/blockNumberWheel';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<Employee | null>(() => {
@@ -26,6 +27,9 @@ const App: React.FC = () => {
   });
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [previewAsStaff, setPreviewAsStaff] = useState(false);
+
+  // 숫자 칸에 커서를 둔 채 스크롤하면 값이 바뀌던 것을 막는다(수량·금액 전부)
+  useEffect(blockNumberWheel, []);
 
   const appData = useAppData();
   const isAdmin = currentUser?.id === 'admin' || isAdminAuthenticated;

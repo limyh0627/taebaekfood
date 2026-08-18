@@ -187,6 +187,103 @@ export function buildPartnerLedger(
 }
 
 /** 거래처별 현재 잔액 — 목록 화면용 */
+/**
+ * 거래처 잔액 — 미수(매출) / 미지급(매입).
+ *
+ *   청구액 합계 − 그 거래처로 오간 채권·채무(108/251) 자금
+ *
+ * **청구액(totalAmount)을 더해야 한다.** 전표별 잔액(수금이 이미 배분돼 빠진 값)을 더한 뒤
+ * 다시 수금을 빼면 두 번 빠진다 — 실제로 그래서 알이네식품 미수가 −1,469,000이 되어
+ * 거래처 목록에서 통째로 사라졌다(0 이하는 안 그린다).
+ *
+ * 마이너스면 더 받은 것(선수금). 화면 세 곳(거래처통계·전표·재무제표)이 이 함수 하나를 쓴다.
+ */
+export function partnerOpenBalance(
+  partnerId: string,
+  type: '매출' | '매입',
+  statements: IssuedStatement[],
+  cashEntries: CashEntry[],
+): number {
+  const gross = statements
+    .filter(s => s.partnerId === partnerId && s.type === type)
+    .reduce((a, s) => a + (s.totalAmount ?? 0), 0);
+  return gross - partnerPaid(partnerId, type, cashEntries);
+}
+
+/**
+ * 전표별 남은 금액 — 거래처로 들어온 돈을 전표에 나눠 붙인다.
+ *
+ *   1) 사람이 지정한 매칭(settlement)을 **먼저** 채운다 — "이 입금은 이 청구서"라고 찍은 것
+ *   2) 남은 돈은 오래된 전표부터 자동으로 채운다(선입선출)
+ *
+ * **잔액식은 이걸 안 쓴다.** 거래처 잔액은 늘 `partnerOpenBalance`(청구액 − 자금원장)로 낸다.
+ * 그래서 매칭이 틀리거나 고아가 돼도 잔액은 안 흔들리고, "어느 청구서냐"만 틀린다.
+ * 전에 payments[]가 금액까지 들고 있어서 화면마다 잔액이 달랐던 게 그 반대 경우다.
+ *
+ * 근거(cashEntry)가 사라진 매칭은 안 친다 — 근거 없이 갚은 것으로 치면 안 받은 돈이 사라진다.
+ */
+export function allocatePartnerCash(
+  partnerId: string,
+  type: '매출' | '매입',
+  statements: IssuedStatement[],
+  cashEntries: CashEntry[],
+  settlements: Settlement[] = [],
+): Map<string, number> {
+  const mine = statements
+    .filter(s => s.partnerId === partnerId && s.type === type)
+    .sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
+  const left = new Map(mine.map(s => [s.id, s.totalAmount ?? 0]));
+  if (!mine.length) return left;
+
+  const liveCash = new Set(cashEntries.map(e => e.id));
+  const mineIds = new Set(mine.map(s => s.id));
+
+  // 1) 지정 매칭 — 근거가 살아 있는 것만, 전표 잔액을 넘지 않게
+  let pinned = 0;
+  for (const st of settlements) {
+    if (!mineIds.has(st.statementId) || !liveCash.has(st.cashEntryId)) continue;
+    const open = left.get(st.statementId) ?? 0;
+    const apply = Math.min(Math.max(st.amount ?? 0, 0), open);
+    if (apply <= 0) continue;
+    left.set(st.statementId, open - apply);
+    pinned += apply;
+  }
+
+  // 2) 남은 돈은 오래된 순으로
+  let rem = Math.max(0, partnerPaid(partnerId, type, cashEntries) - pinned);
+  for (const s of mine) {
+    if (rem <= 0) break;
+    const open = left.get(s.id) ?? 0;
+    const apply = Math.min(rem, open);
+    if (apply <= 0) continue;
+    left.set(s.id, open - apply);
+    rem -= apply;
+  }
+  return left;
+}
+
+/** 그 거래처로 오간 채권·채무(108/251) 자금 합계. 반대 방향은 되돌림(음수). */
+export function partnerPaid(
+  partnerId: string,
+  type: '매출' | '매입',
+  cashEntries: CashEntry[],
+): number {
+  const want = type === '매출' ? '108' : '251';
+  return cashEntries
+    .filter(e => e.partnerId === partnerId)
+    .reduce((a, e) => {
+      const parts = (e.lines ?? []).filter(l => l.accountCode && l.amount > 0);
+      const list = parts.length
+        ? parts.map(l => ({ c: l.accountCode, a: l.amount }))
+        : (e.accountCode ? [{ c: e.accountCode, a: e.amount }] : []);
+      return a + list.reduce((b, x) => {
+        if (x.c !== want) return b;
+        const inflow = type === '매출' ? e.dir === '입금' : e.dir === '출금';
+        return b + (inflow ? x.a : -x.a);
+      }, 0);
+    }, 0);
+}
+
 export function partnerBalances(
   type: '매출' | '매입',
   statements: IssuedStatement[],

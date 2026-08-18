@@ -12,9 +12,11 @@ import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchDateRange } from '../src/shared/services/firebaseService';
 import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/shared/orderUnits';
 import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
-import { totalCashOnHand, unsettledStatements, unmatchedCash } from '../src/features/admin/cashLedger';
+import { totalCashOnHand, unsettledStatements, unmatchedCash, partnerOpenBalance, allocatePartnerCash } from '../src/features/admin/cashLedger';
 import { AR, AP, journalizeStatement, journalizeTransfer, journalizeCashEntry, settlementAccountCode } from '../src/shared/autoJournal';
 import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, CashTemplate } from '../src/shared/cashTemplates';
+import { canAutoIssue, autoVoucherId } from '../src/shared/autoVoucher';
+import VoucherTemplateManager from './VoucherTemplateManager';
 import type { JournalEntry } from '../src/shared/types';
 import { AccountModal } from './CashLedger';
 import PageHeader from './PageHeader';
@@ -358,7 +360,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [quickPayDropOpen, setQuickPayDropOpen] = useState(false);
   const [quickPayOverWarn, setQuickPayOverWarn] = useState(false);
   // 입출금 모달 확장 — 일반/상환/급여 + 방향 + 계정과목 (장부 흡수)
-  const [qpMode, setQpMode] = useState<'일반' | '상환' | '급여'>('일반');
+  const [qpMode, setQpMode] = useState<'일반' | '상환' | '급여' | '보험'>('일반');
+  // 4대보험 — 회사부담(비용)과 근로자부담(맡아둔 예수금)을 갈라 넣는다
+  const [qpInsCorp, setQpInsCorp] = useState('');
+  const [qpInsEmp, setQpInsEmp] = useState('');
   const [qpDir, setQpDir] = useState<'입금' | '출금'>('출금');
   const [qpAccountCode, setQpAccountCode] = useState('');
   const [qpPickerOpen, setQpPickerOpen] = useState(false);
@@ -369,6 +374,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [qpDeduction, setQpDeduction] = useState('');
   const openCashModal = (dir: '입금' | '출금') => {
     setQpMode('일반'); setQpDir(dir); setQpAccountCode(''); setQpPickerOpen(false);
+    setQpInsCorp(''); setQpInsEmp('');
     setQpPrincipal(''); setQpInterest(''); setQpGross(''); setQpDeduction(''); setQpLoanCode('260');
     setShowQuickPay(true); setQuickPayOverWarn(false);
     setQuickPayClientId(''); setQuickPayClientSearch(''); setQuickPayAmount(''); setQuickPayNote('');
@@ -379,12 +385,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const activeCashAccounts = useMemo(() => cashAccounts.filter(a => a.active), [cashAccounts]);
   const codeName = useMemo(() => new Map(accountCodes.map(c => [c.code, c.name])), [accountCodes]);
   // 고른 방향의 템플릿만. 카드를 누르면 모드·계정과목·비고가 한 번에 채워진다.
-  const qpTemplates = useMemo(() => filterTemplates(accountCodes, qpDir), [accountCodes, qpDir]);
+  const qpTemplates = useMemo(
+    () => filterTemplates(accountCodes, qpDir, fixedCostTemplates),
+    [accountCodes, qpDir, fixedCostTemplates],
+  );
+  // 템플릿을 고르면 계정만이 아니라 **저장해 둔 거래처·금액까지** 채운다.
+  // 매달 같은 곳에 같은 금액을 넣는 전표가 대부분이라, 그게 실제로 시간을 줄인다.
   const pickTemplate = (t: CashTemplate) => {
     setQpMode(t.mode);
     setQpAccountCode(t.accountCode ?? '');
     if (t.note) setQuickPayNote(t.note);
-    if (!t.wantsPartner) { setQuickPayClientId(''); setQuickPayClientSearch(''); }
+    if (t.partnerId) { setQuickPayClientId(t.partnerId); setQuickPayClientSearch(''); }
+    else { setQuickPayClientId(''); setQuickPayClientSearch(''); }
+    if (t.amount && t.amount > 0) setQuickPayAmount(String(t.amount));
     setQpPickerOpen(false);
   };
   // 계정 5분류 — 자금 전표가 비용인지 수익인지 가려 매입/매출 합계에 반영하는 데 쓴다.
@@ -514,44 +527,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // 전표 한 장의 잔액은 "어느 청구서를 갚았나"가 기록에 없으므로 거래처 수금을 오래된 전표부터
   // 채워 나눈다(합계는 거래처 잔액과 같다). 자금기록이 지워진 상계는 안 친다 — 근거가 사라졌으니 안 받은 돈이다.
   const openByStmt = useMemo(() => {
-    const paidBy = new Map<string, { in: number; out: number }>();
-    for (const e of cashEntries) {
-      if (!e.partnerId) continue;
-      const parts = (e.lines ?? []).filter(l => l.accountCode && l.amount > 0);
-      const list = parts.length
-        ? parts.map(l => ({ c: l.accountCode, a: l.amount }))
-        : (e.accountCode ? [{ c: e.accountCode, a: e.amount }] : []);
-      for (const x of list) {
-        if (x.c !== AR && x.c !== AP) continue;
-        const cur = paidBy.get(e.partnerId) ?? { in: 0, out: 0 };
-        if (x.c === AR) cur.in += e.dir === '입금' ? x.a : -x.a;
-        else cur.out += e.dir === '출금' ? x.a : -x.a;
-        paidBy.set(e.partnerId, cur);
-      }
-    }
-    const left = new Map<string, number>();
-    const groups = new Map<string, IssuedStatement[]>();
-    for (const st of issuedStatements) {
-      if (st.type !== '매출' && st.type !== '매입') continue;
-      left.set(st.id, st.totalAmount);
-      const key = `${st.partnerId}|${st.type}`;
-      const g = groups.get(key); if (g) g.push(st); else groups.set(key, [st]);
-    }
-    for (const [key, list] of groups) {
+    const out = new Map<string, number>();
+    const keys = new Set(issuedStatements
+      .filter(st => st.type === '매출' || st.type === '매입')
+      .map(st => `${st.partnerId}|${st.type}`));
+    for (const key of keys) {
       const [pid, type] = key.split('|');
-      const paid = paidBy.get(pid);
-      let rem = type === '매출' ? (paid?.in ?? 0) : (paid?.out ?? 0);
-      if (rem <= 0) continue;
-      for (const st of [...list].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate))) {
-        if (rem <= 0) break;
-        const open = left.get(st.id) ?? 0;
-        const apply = Math.min(rem, open);
-        left.set(st.id, open - apply);
-        rem -= apply;
+      for (const [id, open] of allocatePartnerCash(pid, type as '매출' | '매입', issuedStatements, cashEntries, settlements)) {
+        out.set(id, open);
       }
     }
-    return left;
-  }, [issuedStatements, cashEntries]);
+    return out;
+  }, [issuedStatements, cashEntries, settlements]);
   const getBalance = (s: IssuedStatement) => openByStmt.get(s.id) ?? s.totalAmount;
 
 
@@ -778,26 +765,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    */
   const partnerBalances = useMemo(() => {
     const map = new Map<string, { receivable: number; payable: number }>();
-    const bump = (id: string, k: 'receivable' | 'payable', v: number) => {
-      const cur = map.get(id) ?? { receivable: 0, payable: 0 };
-      cur[k] += v; map.set(id, cur);
-    };
-    for (const s of mergedStatements) {
-      if (!s.partnerId) continue;
-      const open = getBalance(s);
-      if (s.type === '매출') bump(s.partnerId, 'receivable', open);
-      else if (s.type === '매입') bump(s.partnerId, 'payable', open);
-    }
-    for (const e of cashEntries) {
-      if (!e.partnerId) continue;
-      const parts = (e.lines ?? []).filter(l => l.accountCode && l.amount > 0);
-      const list = parts.length
-        ? parts.map(l => ({ c: l.accountCode, a: l.amount }))
-        : (e.accountCode ? [{ c: e.accountCode, a: e.amount }] : []);
-      for (const p of list) {
-        if (p.c === AR) bump(e.partnerId, 'receivable', e.dir === '입금' ? -p.a : p.a);
-        else if (p.c === AP) bump(e.partnerId, 'payable', e.dir === '출금' ? -p.a : p.a);
-      }
+    for (const id of new Set(mergedStatements.map(s => s.partnerId).filter(Boolean))) {
+      map.set(id, {
+        receivable: partnerOpenBalance(id, '매출', mergedStatements, cashEntries),
+        payable: partnerOpenBalance(id, '매입', mergedStatements, cashEntries),
+      });
     }
     return map;
   }, [mergedStatements, cashEntries]);
@@ -2664,9 +2636,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           <button
             onClick={() => { setShowRecurring(true); setRecurringYm(today().slice(0, 7)); setRecurringMsg(''); }}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-violet-600 text-white hover:bg-violet-500 shadow-sm shadow-violet-200 transition-all"
-            title="정기 고정비 템플릿으로 해당 월 전표를 한 번에 생성"
+            title="전표 템플릿 — 자주 쓰는 전표 관리 · 매달 자동 발행 설정"
           >
-            <RotateCw size={13} strokeWidth={3}/>정기비용
+            <RotateCw size={13} strokeWidth={3}/>템플릿
           </button>
         )}
         <button
@@ -3422,14 +3394,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
       {/* ── 정기 고정비 생성 모달 ── */}
       {showRecurring && (() => {
-        // 해당 월에 유효한 활성 템플릿 (계정과목·기간 조건은 핸들러와 동일하게 판정)
-        const due = fixedCostTemplates.filter(t =>
-          t.active && t.accountCode
-          && (!t.startYm || t.startYm <= recurringYm)
-          && (!t.endYm || recurringYm <= t.endYm)
-        );
-        const alreadyDone = (t: FixedCostTemplate) =>
-          issuedStatements.some(s => (s as any).orderId === `RC-${t.id}-${recurringYm}`);
+        // 자동 발행 대상 — AdminApp·스케줄러와 같은 판정(shared/autoVoucher)
+        const due = fixedCostTemplates.filter(t => canAutoIssue(t, recurringYm));
+        const alreadyDone = (t: FixedCostTemplate) => {
+          const key = autoVoucherId(t, recurringYm);
+          return issuedStatements.some(s => s.id === key || (s as any).orderId === key)
+            || cashEntries.some(e => e.id === key);
+        };
         const pending = due.filter(t => !alreadyDone(t));
         const total = pending.reduce((a, t) => a + t.amount, 0);
 
@@ -3448,93 +3419,24 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setShowRecurring(false)}>
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl p-6 space-y-4 max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-black text-slate-800">정기 고정비 전표 생성</h3>
+                <h3 className="text-base font-black text-slate-800">템플릿</h3>
                 <button onClick={() => setShowRecurring(false)} className="text-slate-300 hover:text-slate-500"><X size={18} /></button>
               </div>
               <p className="text-[11px] text-slate-400 leading-snug">
-                등록한 템플릿으로 해당 월 전표를 한 번에 끊습니다. 이미 생성된 건 건너뜁니다.
-                감가상각비·퇴직급여충당금도 등록해두면 매달 자동으로 끊깁니다.
+                일반전표 발행에서 <b>자주 쓰는 전표</b>로 뜨는 목록입니다. 스위치를 켜면 매달 정한 날에
+                저절로 발행됩니다(앱을 안 켜도 됩니다). 새 템플릿은 일반전표 발행에서 <b>[템플릿으로 저장]</b>으로 만듭니다.
               </p>
 
-              {/* 템플릿 관리 — 추가/수정/삭제 (거래명세서 안에서) */}
-              {onAddFixedCostTemplate && (
-                <div className="border border-slate-150 rounded-2xl overflow-hidden">
-                  <div className="px-3 py-2 bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">정기비용 항목</div>
-                  <div className="max-h-40 overflow-y-auto divide-y divide-slate-50">
-                    {fixedCostTemplates.length === 0 && <p className="px-3 py-4 text-[11px] font-bold text-slate-300 text-center">등록된 정기비용이 없습니다. 아래에서 추가하세요.</p>}
-                    {fixedCostTemplates.map(t => {
-                      const ac = accountCodes.find(c => c.code === t.accountCode);
-                      const editing = tplEditId === t.id;
-                      return (
-                        <div key={t.id} className={`flex items-center gap-2 px-3 py-2 ${t.active ? '' : 'opacity-45'}`}>
-                          <button onClick={() => onUpdateFixedCostTemplate?.(t.id, { active: !t.active })} title={t.active ? '집계 제외' : '집계 포함'}
-                            className={`w-2 h-2 rounded-full shrink-0 ${t.active ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-black text-slate-800 truncate">{t.name || ac?.name}</p>
-                            <p className="text-[10px] text-slate-400">{t.accountCode} {ac?.name ?? ''}{t.partnerName ? ` · ${t.partnerName}` : ''}{t.startYm ? ` · ${t.startYm}~` : ''}</p>
-                          </div>
-                          {editing ? (
-                            <input autoFocus inputMode="numeric" value={tplEditAmt} onChange={e => setTplEditAmt(e.target.value.replace(/[^\d]/g, ''))}
-                              onKeyDown={e => { if (e.key === 'Enter') { onUpdateFixedCostTemplate?.(t.id, { amount: Number(tplEditAmt) || 0 }); setTplEditId(null); } }}
-                              className="w-24 text-right text-xs font-black tabular-nums border border-indigo-300 rounded-lg px-2 py-1 outline-none" />
-                          ) : (
-                            <button onClick={() => { setTplEditId(t.id); setTplEditAmt(String(t.amount)); }} className="text-xs font-black text-slate-700 tabular-nums shrink-0 hover:text-indigo-600">{fmt(t.amount)}</button>
-                          )}
-                          {editing ? (
-                            <button onClick={() => { onUpdateFixedCostTemplate?.(t.id, { amount: Number(tplEditAmt) || 0 }); setTplEditId(null); }} className="p-1 text-emerald-500 shrink-0"><Check size={13} /></button>
-                          ) : (
-                            <button onClick={() => onDeleteFixedCostTemplate?.(t.id)} className="p-1 text-slate-300 hover:text-rose-500 shrink-0"><Trash2 size={12} /></button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {/* 추가 폼 */}
-                  <div className="p-2.5 bg-slate-50/60 border-t border-slate-100 space-y-2">
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <input value={tplForm.name} onChange={e => setTplForm(f => ({ ...f, name: e.target.value }))} placeholder="항목명 (예: 공장 임대료)"
-                        className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-violet-300" />
-                      <input inputMode="numeric" value={tplForm.amount} onChange={e => setTplForm(f => ({ ...f, amount: e.target.value.replace(/[^\d]/g, '') }))} placeholder="금액"
-                        className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-black text-right tabular-nums outline-none focus:ring-2 focus:ring-violet-300" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <select value={tplForm.accountCode} onChange={e => setTplForm(f => ({ ...f, accountCode: e.target.value }))}
-                        className={`border rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-violet-300 ${tplForm.accountCode ? 'border-slate-200' : 'border-amber-300 bg-amber-50'}`}>
-                        <option value="">계정과목 *</option>
-                        {accountCodes.filter(c => c.type === '비용').sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true })).map(c => <option key={c.id} value={c.code}>{c.code} · {c.name}</option>)}
-                      </select>
-                      <select value={tplForm.partnerId} onChange={e => setTplForm(f => ({ ...f, partnerId: e.target.value }))}
-                        className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-violet-300">
-                        <option value="">거래처 (선택)</option>
-                        {partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                      </select>
-                    </div>
-                    <div className="flex gap-1.5">
-                      <input type="month" value={tplForm.startYm} onChange={e => setTplForm(f => ({ ...f, startYm: e.target.value }))} title="시작월(선택)"
-                        className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-violet-300" />
-                      <button
-                        disabled={!tplForm.accountCode || !(Number(tplForm.amount) > 0) || tplBusy}
-                        onClick={async () => {
-                          setTplBusy(true);
-                          try {
-                            const p = tplForm.partnerId ? partners.find(x => x.id === tplForm.partnerId) : null;
-                            const ac = accountCodes.find(c => c.code === tplForm.accountCode);
-                            await onAddFixedCostTemplate!({
-                              name: tplForm.name.trim() || ac?.name || '정기비용', amount: Number(tplForm.amount) || 0,
-                              category: '기타', active: true, accountCode: tplForm.accountCode,
-                              ...(p ? { partnerId: p.id, partnerName: p.name } : {}),
-                              ...(tplForm.startYm ? { startYm: tplForm.startYm } : {}),
-                            } as Omit<FixedCostTemplate, 'id'>);
-                            setTplForm({ name: '', amount: '', accountCode: '', partnerId: '', startYm: '' });
-                          } finally { setTplBusy(false); }
-                        }}
-                        className="px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-black disabled:opacity-30">추가</button>
-                    </div>
-                  </div>
-                </div>
-              )}
+              {/* 목록·수정은 한 곳에서만 — 여러 화면에 두면 어느 게 진짜인지 흐려진다 */}
+              <VoucherTemplateManager
+                templates={fixedCostTemplates}
+                accountCodes={accountCodes}
+                onUpdate={onUpdateFixedCostTemplate}
+                onDelete={onDeleteFixedCostTemplate}
+                compact
+              />
 
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">대상 월</label>
@@ -3545,7 +3447,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
               {due.length === 0 ? (
                 <p className="text-[11px] font-bold text-amber-700 bg-amber-50 rounded-xl px-4 py-3">
-                  이 달에 해당하는 정기비용이 없습니다. 위에서 추가하세요.
+                  이 달에 자동 발행할 것이 없습니다. 위 목록에서 스위치를 켜세요.
                 </p>
               ) : (
                 <div className="space-y-1.5">
@@ -3586,7 +3488,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200 transition-all">닫기</button>
                 <button onClick={run} disabled={pending.length === 0 || recurringBusy}
                   className="flex-1 py-2.5 rounded-xl bg-violet-600 text-white text-xs font-black hover:bg-violet-700 disabled:opacity-40 transition-all">
-                  {recurringBusy ? '생성 중…' : `${recurringYm} 전표 생성`}
+                  {recurringBusy ? '발행 중…' : `${recurringYm} 지금 발행`}
                 </button>
               </div>
             </div>
@@ -3683,6 +3585,36 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         //   총급여는 비용(+), 원천공제는 우리가 맡아둔 돈이라 부채 증가(−).
         //   통장에서 실제로 나간 건 실지급액(net)이고, 줄 합계도 net으로 맞는다.
         // 예전엔 출금(총급여)·입금(예수금) 두 건으로 끊어 목록에 두 줄로 보였다.
+        const insCorp = Number((qpInsCorp || '').replace(/,/g, '')) || 0;
+        const insEmp = Number((qpInsEmp || '').replace(/,/g, '')) || 0;
+        const insTotal = insCorp + insEmp;
+        const INS_CODE = accountCodes.find(c => c.name === '사대보험')?.code ?? '530';
+
+        /**
+         * 4대보험 — 통장에서 한 번 나가지만 성격은 둘이다.
+         *   회사부담분    비용(530)
+         *   근로자부담분  급여에서 떼어 맡아둔 돈 → 예수금(254)을 턴다
+         * 전액을 530으로 몰면 비용이 부풀고 예수금이 영영 안 줄어든다.
+         */
+        const insuranceEntry = (): CashEntry => {
+          const memo = quickPayNote.trim() || '4대보험';
+          const lines = [
+            ...(insCorp > 0 ? [{ accountCode: INS_CODE, amount: insCorp, note: '회사부담' }] : []),
+            ...(insEmp > 0 ? [{ accountCode: WITHHOLD_CODE, amount: insEmp, note: '근로자부담(예수금)' }] : []),
+          ];
+          return {
+            id: `cash-${Date.now()}`, dir: '출금', amount: insTotal,
+            ...(lines.length > 1 ? { lines } : { accountCode: lines[0].accountCode }),
+            note: lines.length > 1 ? memo : `${memo} (${lines[0].note})`,
+            ...base(),
+          } as CashEntry;
+        };
+        const doInsuranceSave = () => {
+          if (insTotal <= 0) return;
+          onAddCashEntry?.(insuranceEntry() as any);
+          setShowQuickPay(false);
+        };
+
         const salaryEntry = (): CashEntry => {
           const memo = quickPayNote.trim() || '급여';
           const lines = [
@@ -3707,6 +3639,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const previewEntries = (): CashEntry[] => {
           if (qpMode === '상환') { const e = loanEntry(); return e ? [e] : []; }
           if (qpMode === '급여') return grs > 0 ? [salaryEntry()] : [];
+          if (qpMode === '보험') return insTotal > 0 ? [insuranceEntry()] : [];
           if (amt <= 0) return [];
           const out: CashEntry[] = [];
           const allocations = offsetAllocations();
@@ -3738,11 +3671,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         };
 
         const canSave = qpMode === '상환' ? (prin > 0 || intr > 0)
+          : qpMode === '보험' ? insTotal > 0
           : qpMode === '급여' ? (grs > 0 && ded >= 0 && net >= 0)
           : (amt > 0 && (offsetAmt >= amt || !!qpAccountCode)); // 일반: 전액 상계면 계정 불필요, 아니면 계정 필수
 
         const handleQuickPaySave = () => {
           if (qpMode === '상환') { if (prin > 0 || intr > 0) doLoanSave(); return; }
+          if (qpMode === '보험') { doInsuranceSave(); return; }
           if (qpMode === '급여') { if (grs > 0 && ded >= 0 && net >= 0) doSalarySave(); return; }
           if (!canSave) return;
           // 상계 초과분(줄돈/받을돈 전환) 경고 — 거래처 있고 상계보다 많은데 계정도 없으면 canSave가 막음
@@ -3756,6 +3691,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   고를 수 있는 전표가 통째로 바뀐다. */}
               <div className="flex items-center gap-3 px-8 py-5 border-b border-slate-100 shrink-0">
                 <h3 className="text-base font-black text-slate-800 shrink-0">일반전표 발행</h3>
+                {/* 일자는 제목 옆에 — 전표를 끊을 때 제일 먼저 확인하는 값이라 맨 위에 둔다 */}
+                <input type="date" value={quickPayDate} onChange={e => setQuickPayDate(e.target.value)}
+                  className="shrink-0 border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
                 <div className="flex gap-1.5 ml-auto">
                   {(['출금', '입금'] as const).map(d => (
                     <button key={d} type="button"
@@ -3792,19 +3730,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               })()}
 
               {/* 계좌 + 일자 */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">계좌</label>
-                  <select value={quickPayAccountId} onChange={e => setQuickPayAccountId(e.target.value)}
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300">
-                    {activeCashAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">일자</label>
-                  <input type="date" value={quickPayDate} onChange={e => setQuickPayDate(e.target.value)}
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
-                </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">계좌</label>
+                <select value={quickPayAccountId} onChange={e => setQuickPayAccountId(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300">
+                  {activeCashAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
               </div>
 
               {qpMode === '일반' ? (
@@ -3887,6 +3818,50 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       {!qpAccountCode && <p className="text-[10px] font-bold text-amber-600 mt-1">계정과목이 없으면 손익·현금흐름 어디에도 못 잡힙니다.</p>}
                     </div>
                   )}
+                </>
+              ) : qpMode === '보험' ? (
+                <>
+                  {/* 4대보험 — 통장에서 한 번 나가지만 성격이 둘이다.
+                      회사부담분은 비용(530), 근로자부담분은 급여에서 떼어 맡아둔 예수금(254)을 터는 것.
+                      전액을 530으로 몰면 비용이 부풀고 예수금이 영영 안 줄어든다. */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">회사부담 <span className="normal-case text-slate-300">(비용)</span></label>
+                      <input inputMode="numeric" value={qpInsCorp} placeholder="0"
+                        onChange={e => setQpInsCorp(e.target.value.replace(/[^\d,]/g, ''))}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-emerald-300"/>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">근로자부담 <span className="normal-case text-slate-300">(예수금)</span></label>
+                      <input inputMode="numeric" value={qpInsEmp} placeholder="0"
+                        onChange={e => setQpInsEmp(e.target.value.replace(/[^\d,]/g, ''))}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-emerald-300"/>
+                    </div>
+                  </div>
+                  {/* 아직 안 낸 원천공제 — 근로자부담분은 보통 이 잔액만큼 나간다 */}
+                  {(() => {
+                    const held = cashEntries.reduce((a, e) => {
+                      const parts = (e.lines ?? []).filter(l => l.accountCode === WITHHOLD_CODE);
+                      const v = parts.length ? parts.reduce((b, l) => b + l.amount, 0) : (e.accountCode === WITHHOLD_CODE ? e.amount : 0);
+                      if (!v) return a;
+                      return a + (e.dir === '입금' ? v : -v);
+                    }, 0);
+                    return held > 0 ? (
+                      <button type="button" onClick={() => setQpInsEmp(String(Math.round(held)))}
+                        className="w-full text-left rounded-xl bg-slate-50 hover:bg-indigo-50 px-3 py-2 text-[11px] font-bold text-slate-500 transition-colors">
+                        아직 안 낸 원천공제 <b className="text-slate-800 tabular-nums">{fmt(held)}원</b>
+                        <span className="text-indigo-500 ml-1">— 눌러서 채우기</span>
+                      </button>
+                    ) : null;
+                  })()}
+                  <div className="flex items-center justify-between rounded-xl px-3 py-2 text-[11px] font-black bg-slate-50 text-slate-500">
+                    <span>통장에서 나가는 총액</span>
+                    <span className="tabular-nums text-slate-800">{fmt(insTotal)}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-snug">
+                    회사부담은 <b>비용</b>, 근로자부담은 급여에서 떼어 맡아둔 <b>예수금</b>을 터는 것입니다.
+                    한 건으로 끊고 안에서 두 줄로 갈립니다.
+                  </p>
                 </>
               ) : qpMode === '상환' ? (
                 <>
@@ -4021,6 +3996,36 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   </div>
                 );
               })()}
+
+              {/* 지금 입력한 그대로를 템플릿으로 굳힌다 — 이름·거래처·금액·계정까지.
+                  매달 같은 곳에 같은 금액을 넣는 전표가 대부분이라 다음 달엔 고르기만 하면 된다. */}
+              {onAddFixedCostTemplate && (
+                <button
+                  onClick={async () => {
+                    const cur = activeTemplate(qpTemplates, { mode: qpMode, accountCode: qpAccountCode });
+                    const suggest = quickPayNote.trim()
+                      || (qpAccountCode ? codeName.get(qpAccountCode) ?? '' : '')
+                      || (cur && !(cur.builtin ?? '').startsWith('free') ? cur.label : '');
+                    const name = window.prompt('템플릿 이름을 정하세요.\n\n다음부터 [자주 쓰는 전표]에서 고르면\n계정·거래처·금액이 한 번에 채워집니다.', suggest);
+                    if (name === null) return;
+                    if (!name.trim()) { alert('이름을 입력하세요.'); return; }
+                    const group = window.prompt('묶음 이름(비우면 분류없음)', cur?.group || '');
+                    if (group === null) return;
+                    await onAddFixedCostTemplate({
+                      name: name.trim(), amount: amt > 0 ? amt : 0, category: '기타',
+                      active: false, kind: 'voucher', hidden: false,
+                      group: group.trim() || '분류없음',
+                      dir: qpDir, mode: qpMode,
+                      ...(qpAccountCode ? { accountCode: qpAccountCode } : {}),
+                      ...(quickPayClientId ? { partnerId: quickPayClientId, partnerName: selectedClientObj?.name ?? '' } : {}),
+                      ...(quickPayNote.trim() ? { note: quickPayNote.trim() } : {}),
+                    } as any);
+                    alert(`'${name.trim()}' 템플릿으로 저장했습니다.\n\n정기비용 화면에서 이름·거래처·금액을 고치거나 숨길 수 있습니다.`);
+                  }}
+                  className="w-full py-2.5 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs font-black hover:border-indigo-400 hover:text-indigo-600 transition-all flex items-center justify-center gap-1.5">
+                  <Save size={12}/>지금 입력한 내용을 템플릿으로 저장
+                </button>
+              )}
 
               <div className="flex gap-2 pt-1">
                 <button onClick={() => { setShowQuickPay(false); setQuickPayOverWarn(false); }}

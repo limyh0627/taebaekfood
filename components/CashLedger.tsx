@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Wallet, Plus, X, Landmark, CreditCard, Coins, Settings2, Trash2, Link2 } from 'lucide-react';
-import { CashAccount, CashEntry, AccountCode, Partner, IssuedStatement, Settlement } from '../src/shared/types';
+import { CashAccount, CashEntry, AccountCode, Partner, IssuedStatement, Settlement, FixedCostTemplate } from '../src/shared/types';
 import { buildAccountLedger, totalCashOnHand, unsettledStatements, unmatchedCash } from '../src/features/admin/cashLedger';
 import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, CashTemplate } from '../src/shared/cashTemplates';
 import { journalizeCashEntry } from '../src/shared/autoJournal';
@@ -9,6 +9,7 @@ interface Props {
   cashAccounts: CashAccount[];
   cashEntries: CashEntry[];
   accountCodes: AccountCode[];
+  fixedCostTemplates?: FixedCostTemplate[];
   partners: Partner[];
   issuedStatements: IssuedStatement[];
   settlements: Settlement[];
@@ -28,7 +29,7 @@ const monthStart = () => today().slice(0, 7) + '-01';
 const ACCOUNT_ICON = { 통장: Landmark, 카드: CreditCard, 현금: Coins } as const;
 
 export default function CashLedger({
-  cashAccounts, cashEntries, accountCodes, partners, issuedStatements, settlements, currentUser,
+  cashAccounts, cashEntries, accountCodes, fixedCostTemplates = [], partners, issuedStatements, settlements, currentUser,
   onAddCashAccount, onUpdateCashAccount, onAddCashEntry, onDeleteCashEntry,
   onAddSettlement, onDeleteSettlement,
 }: Props) {
@@ -220,7 +221,7 @@ export default function CashLedger({
       </div>
 
       {showEntry && active && (
-        <EntryModal account={active} accounts={cashAccounts} accountCodes={accountCodes} partners={partners}
+        <EntryModal account={active} accounts={cashAccounts} accountCodes={accountCodes} fixedCostTemplates={fixedCostTemplates} partners={partners}
           currentUser={currentUser} onClose={() => setShowEntry(false)} onAdd={onAddCashEntry} />
       )}
       {showAccounts && (
@@ -350,16 +351,17 @@ function MatchModal({ entry, statements, settlements, onClose, onAdd, onDelete }
 }
 
 // ── 입출금 기록 모달 ──────────────────────────────────────────────────────────
-function EntryModal({ account, accounts, accountCodes, partners, currentUser, onClose, onAdd }: {
+function EntryModal({ account, accounts, accountCodes, partners, currentUser, fixedCostTemplates = [], onClose, onAdd }: {
   account: CashAccount;
   accounts: CashAccount[];
   accountCodes: AccountCode[];
+  fixedCostTemplates?: FixedCostTemplate[];
   partners: Partner[];
   currentUser?: { id: string; name: string } | null;
   onClose: () => void;
   onAdd: Props['onAddCashEntry'];
 }) {
-  const [mode, setMode] = useState<'일반' | '상환' | '급여'>('일반');
+  const [mode, setMode] = useState<'일반' | '상환' | '급여' | '보험'>('일반');
   const [cashAccountId, setCashAccountId] = useState(account.id);
   const [date, setDate] = useState(today());
   const [dir, setDir] = useState<'입금' | '출금'>('출금');
@@ -384,21 +386,30 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, on
   const net = grs - ded;
   // 계정 코드 (이름으로 탐색, 없으면 기본)
   // 고른 방향의 템플릿만. 카드를 누르면 모드·계정과목·비고가 한 번에 채워진다.
-  const templates = useMemo(() => filterTemplates(accountCodes, dir), [accountCodes, dir]);
+  const templates = useMemo(() => filterTemplates(accountCodes, dir, fixedCostTemplates), [accountCodes, dir, fixedCostTemplates]);
   const pickTemplate = (t: CashTemplate) => {
     setMode(t.mode);
+    setInsCorpStr(''); setInsEmpStr('');
     setAccountCode(t.accountCode ?? '');
     if (t.note) setNote(t.note);
     setPickerOpen(false);
   };
   const [pickerOpen, setPickerOpen] = useState(false);
   const codeName = useMemo(() => new Map(accountCodes.map(c => [c.code, c.name])), [accountCodes]);
+  // 4대보험 — 회사부담(비용) + 근로자부담(맡아둔 예수금)
+  const [insCorpStr, setInsCorpStr] = useState('');
+  const [insEmpStr, setInsEmpStr] = useState('');
+  const insCorp = Number((insCorpStr || '').replace(/,/g, '')) || 0;
+  const insEmp = Number((insEmpStr || '').replace(/,/g, '')) || 0;
+  const insTotal = insCorp + insEmp;
+  const INS_CODE = accountCodes.find(c => c.name === '사대보험')?.code ?? '530';
   const loanAccounts = accountCodes.filter(c => c.type === '부채' && /차입금/.test(c.name));
   const INTEREST_CODE = accountCodes.find(c => /이자비용/.test(c.name))?.code ?? '951';
   const SALARY_CODE = accountCodes.find(c => c.name === '급여')?.code ?? '515';
   const WITHHOLD_CODE = accountCodes.find(c => c.name === '예수금')?.code ?? '254';
   const canSave = mode === '일반' ? (amt > 0 && !!accountCode)
     : mode === '상환' ? ((prin > 0 || intr > 0) && !!loanCode)
+    : mode === '보험' ? insTotal > 0
     : (grs > 0 && ded >= 0 && net >= 0);
 
   const base = () => ({ date, cashAccountId, createdAt: new Date().toISOString(), ...(currentUser ? { createdBy: currentUser.name } : {}), ...(partnerId ? { partnerId, partnerName: partner?.name ?? '' } : {}) });
@@ -427,6 +438,22 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, on
         ...base(),
       } as CashEntry];
     }
+    if (mode === '보험') {
+      // 통장에서 한 번 나가지만 성격이 둘 — 회사부담은 비용, 근로자부담은 맡아둔 예수금을 턴다.
+      // 전액을 530으로 몰면 비용이 부풀고 예수금이 영영 안 줄어든다.
+      if (insTotal <= 0) return [];
+      const memo = note.trim() || '4대보험';
+      const lines = [
+        ...(insCorp > 0 ? [{ accountCode: INS_CODE, amount: insCorp, note: '회사부담' }] : []),
+        ...(insEmp > 0 ? [{ accountCode: WITHHOLD_CODE, amount: insEmp, note: '근로자부담(예수금)' }] : []),
+      ];
+      return [{
+        id: `cash-${Date.now()}`, dir: '출금', amount: insTotal,
+        ...(lines.length > 1 ? { lines } : { accountCode: lines[0].accountCode }),
+        note: lines.length > 1 ? memo : `${memo} (${lines[0].note})`,
+        ...base(),
+      } as CashEntry];
+    }
     // 급여 → 총급여 출금(급여) + 공제 입금(예수금). 합산하면 급여 비용 전액 + 예수금 + 실지급.
     if (grs <= 0) return [];
     const memo = note.trim() || '급여';
@@ -448,6 +475,9 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, on
         {/* 방향은 제목 줄에 둔다 — 아래 목록이 통째로 바뀌므로 목록 위에 있어야 한다 */}
         <div className="flex items-center gap-3 px-8 py-5 border-b border-slate-100 shrink-0">
           <h3 className="text-base font-black text-slate-800 shrink-0">일반전표 발행</h3>
+          {/* 일자는 제목 옆에 — 전표를 끊을 때 제일 먼저 확인하는 값이라 맨 위에 둔다 */}
+          <input type="date" value={date} onChange={e => setDate(e.target.value)}
+            className="shrink-0 border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300" />
           <div className="flex gap-1.5 ml-auto">
             {(['출금', '입금'] as const).map(d => (
               <button key={d} type="button" onClick={() => { setDir(d); setMode('일반'); setAccountCode(''); }}
@@ -487,19 +517,12 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, on
             : <>총급여·공제를 넣으면 <b>급여(비용) + 예수금(원천공제) + 실지급</b>으로 자동 분리됩니다. 떼둔 세금·4대보험은 예수금으로 잡혔다가 공단·국세청 납부 때 빠집니다.</>}
         </p>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">계좌</label>
-            <select value={cashAccountId} onChange={e => setCashAccountId(e.target.value)}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300">
-              {accounts.filter(a => a.active).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">일자</label>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300" />
-          </div>
+        <div>
+          <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">계좌</label>
+          <select value={cashAccountId} onChange={e => setCashAccountId(e.target.value)}
+            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300">
+            {accounts.filter(a => a.active).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
         </div>
 
         {mode === '급여' ? (
@@ -530,6 +553,31 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, on
                 {partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
+          </>
+        ) : mode === '보험' ? (
+          <>
+            {/* 통장에서 한 번 나가지만 성격이 둘 — 회사부담은 비용, 근로자부담은 맡아둔 예수금을 턴다 */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">회사부담 <span className="text-slate-300">(비용)</span></label>
+                <input inputMode="numeric" value={insCorpStr} placeholder="0"
+                  onChange={e => setInsCorpStr(e.target.value.replace(/[^\d,]/g, ''))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-slate-300" />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">근로자부담 <span className="text-slate-300">(예수금)</span></label>
+                <input inputMode="numeric" value={insEmpStr} placeholder="0"
+                  onChange={e => setInsEmpStr(e.target.value.replace(/[^\d,]/g, ''))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-slate-300" />
+              </div>
+            </div>
+            <div className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2 text-[11px] font-black text-slate-500">
+              <span>통장에서 나가는 총액</span>
+              <span className="tabular-nums text-slate-800">{fmt(insTotal)}</span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-snug">
+              회사부담은 <b>비용</b>, 근로자부담은 급여에서 떼어 맡아둔 <b>예수금</b>을 터는 것입니다.
+            </p>
           </>
         ) : mode === '일반' ? (
           <>

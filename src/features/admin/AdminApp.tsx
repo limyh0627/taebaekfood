@@ -63,6 +63,7 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, ShippingRule, poLines } from '../../shared/types';
+import { canAutoIssue, autoVoucherId, buildCashVoucher, buildPurchaseVoucher } from '../../shared/autoVoucher';
 import PageHeader from '../../shared/components/PageHeader';
 import Dashboard from '../../../components/Dashboard';
 import OrdersList from '../../../components/OrdersList';
@@ -1188,30 +1189,33 @@ const AdminApp: React.FC<AdminAppProps> = ({
   /** 정기 고정비 → 자금(출금) 전표로 생성 (계정코드·기간 지정된 것만, id로 중복 방지).
    *  임대료·전기·통신 등 대부분 자동이체로 돈이 나가는 비용이라 자금(현금 출금)으로 잡는다.
    *  전표 탭과 정기비용 화면 양쪽에서 호출한다. */
+  /**
+   * 그 달 정기 전표를 만든다 — 스케줄러(functions)와 **같은 규칙**(shared/autoVoucher)을 쓴다.
+   *
+   *   합침 → 출금 자금전표 하나
+   *   분리 → 매입전표(채무만 세움). 지불은 거래처 미지급금에서 따로 처리한다.
+   *
+   * 같은 달에 두 번 돌려도 id가 같아서 한 건이다. 옛 키(RC-…)로 만든 것도 중복으로 친다.
+   */
   const generateRecurringCosts = async (ym: string): Promise<number> => {
-    const tpls = appData.fixedCostTemplates.filter(t => t.active && t.accountCode
-      && (!t.startYm || t.startYm <= ym) && (!t.endYm || ym <= t.endYm));
-    // 기본 출금 계좌 — 활성 통장/현금 우선, 없으면 아무 활성 계좌
+    const tpls = appData.fixedCostTemplates.filter(t => canAutoIssue(t, ym));
     const defaultAcctId = appData.cashAccounts.find(a => a.active && a.type !== '카드')?.id
       ?? appData.cashAccounts.find(a => a.active)?.id ?? '';
     let created = 0;
+    let seq = issuedStatements.length;
     for (const t of tpls) {
-      const rcKey = `RC-${t.id}-${ym}`;
-      // 구버전(비용 전표) + 신버전(자금) 둘 다 중복 체크
-      if (issuedStatements.some(s => (s as any).orderId === rcKey)) continue;
-      if (appData.cashEntries.some(e => e.id === rcKey)) continue;
-      const code = appData.accountCodes.find(c => c.code === t.accountCode);
-      await addItem('cashEntries', {
-        id: rcKey,
-        date: `${ym}-01`,
-        cashAccountId: defaultAcctId,
-        dir: '출금' as const,
-        amount: t.amount,
-        accountCode: t.accountCode,
-        ...(t.partnerId ? { partnerId: t.partnerId, partnerName: t.partnerName ?? '' } : {}),
-        note: `정기비용 · ${code?.name || t.name}${t.partnerName ? ` · ${t.partnerName}` : ''}`,
-        createdAt: new Date().toISOString(),
-      } as any);
+      const key = autoVoucherId(t, ym);
+      const legacyKey = `RC-${t.id}-${ym}`;
+      if (appData.cashEntries.some(e => e.id === key || e.id === legacyKey)) continue;
+      if (issuedStatements.some(s => s.id === key || (s as any).orderId === key || (s as any).orderId === legacyKey)) continue;
+      const accountName = appData.accountCodes.find(c => c.code === t.accountCode)?.name;
+      if ((t.postMode ?? '합침') === '분리') {
+        seq++;
+        const docNo = `${ym}-${String(seq).padStart(4, '0')}`;
+        await addItem('issuedStatements', buildPurchaseVoucher(t, ym, { docNo, accountName }) as any);
+      } else {
+        await addItem('cashEntries', buildCashVoucher(t, ym, { cashAccountId: defaultAcctId, accountName }) as any);
+      }
       created++;
     }
     return created;
@@ -3863,6 +3867,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   cashEntries={appData.cashEntries}
                   onAddCashEntry={(e) => addItem('cashEntries', e)}
                   settlements={appData.settlements}
+                  onAddSettlement={(s) => addItem('settlements', s)}
+                  onDeleteSettlement={(id) => deleteItem('settlements', id)}
                 />
               </React.Suspense>
             </div>
@@ -3898,6 +3904,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     cashAccounts={appData.cashAccounts}
                     cashEntries={appData.cashEntries}
                     accountCodes={appData.accountCodes}
+                    fixedCostTemplates={appData.fixedCostTemplates}
                     partners={partners}
                     issuedStatements={issuedStatements}
                     settlements={appData.settlements}
@@ -3936,6 +3943,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   inventorySnapshots={inventorySnapshots}
                   cashEntries={appData.cashEntries}
                   settlements={appData.settlements}
+                  onAddSettlement={(s) => addItem('settlements', s)}
+                  onDeleteSettlement={(id) => deleteItem('settlements', id)}
                   cashFlowManual={appData.cashFlowManual}
                   onSaveCashFlowManual={async (month, data) => {
                     const clean = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined && v !== null));

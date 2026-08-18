@@ -1,5 +1,5 @@
 import React from 'react';
-import type { AccountCode } from './types';
+import type { AccountCode, FixedCostTemplate } from './types';
 
 /**
  * 일반전표 템플릿 — 자주 끊는 자금전표를 한 번에 채운다.
@@ -21,8 +21,8 @@ export interface CashTemplate {
   id: string;
   label: string;
   dir: '입금' | '출금';
-  /** 어느 입력 화면을 쓰는지 — 상환·급여는 줄이 여러 개라 전용 입력이 따로 있다 */
-  mode: '일반' | '상환' | '급여';
+  /** 어느 입력 화면을 쓰는지 — 상환·급여·보험은 줄이 여러 개라 전용 입력이 따로 있다 */
+  mode: '일반' | '상환' | '급여' | '보험';
   accountCode?: string;
   /** 비고 기본값 — 비워 두면 사용자가 적는다 */
   note?: string;
@@ -30,6 +30,16 @@ export interface CashTemplate {
   wantsPartner?: boolean;
   /** 카드 아래 설명. 없으면 계정과목 이름을 쓴다. */
   hint?: string;
+  /** 저장해 둔 금액 — 고르면 금액 칸이 채워진다(0이면 안 채운다) */
+  amount?: number;
+  partnerId?: string;
+  partnerName?: string;
+  /** 기본 템플릿 표식 — 있으면 삭제 못 하고 숨기기만 된다 */
+  builtin?: string;
+  /** 묶음 이름 — 목록이 길어서 이름만으로는 못 찾는다 */
+  group?: string;
+  /** 즐겨찾기 — 목록 맨 위 */
+  favorite?: boolean;
 }
 
 export const CASH_TEMPLATES: CashTemplate[] = [
@@ -46,7 +56,7 @@ export const CASH_TEMPLATES: CashTemplate[] = [
   { id: 'elec',    label: '전기세',   dir: '출금', mode: '일반', accountCode: '520' },
   { id: 'water',   label: '수도세',   dir: '출금', mode: '일반', accountCode: '525' },
   { id: 'rent',    label: '임대료',   dir: '출금', mode: '일반', accountCode: '510' },
-  { id: 'ins4',    label: '4대보험',  dir: '출금', mode: '일반', accountCode: '530' },
+  { id: 'ins4',    label: '4대보험',  dir: '출금', mode: '보험', accountCode: '530', hint: '회사부담 + 예수금' },
   { id: 'ins',     label: '보험료',   dir: '출금', mode: '일반', accountCode: '590' },
   { id: 'cesco',   label: '세스코',   dir: '출금', mode: '일반', accountCode: '595' },
   { id: 'lease',   label: '리스료',   dir: '출금', mode: '일반', accountCode: '819' },
@@ -77,26 +87,64 @@ export const CASH_TEMPLATES: CashTemplate[] = [
   { id: 'depBack', label: '보증금회수', dir: '입금', mode: '일반', accountCode: '232' },
 ];
 
-/** 그 방향의, 계정과목이 실제로 있는 템플릿만. 계정이 안 걸린 것(상환·급여·직접입력)은 늘 뜬다. */
-export function filterTemplates(accountCodes: AccountCode[], dir: '입금' | '출금'): CashTemplate[] {
+/**
+ * 화면에 띄울 템플릿 — **DB(fixedCostTemplates)가 원천**이고, 위 CASH_TEMPLATES는 시드다.
+ * (seed-voucher-templates.mjs로 한 번 넣었다. DB가 비어 있으면 코드 목록으로 버틴다.)
+ *
+ * 사용자가 이름·거래처·금액을 고치고 숨길 수 있어야 해서 DB로 옮겼다 — 코드에 있으면 배포해야 바뀐다.
+ *
+ * 계정과목 번호 순으로 세운다 — 계정과목 드롭다운도 같은 순서라 두 곳을 오갈 때 눈이 안 헤맨다.
+ * 계정이 안 붙은 것(직접입력·대출상환·급여)은 번호가 없으니 위에 그대로 둔다.
+ * 계정이 사라진 템플릿은 안 띄운다 — 죽은 버튼을 남기면 어디에도 안 잡히는 전표가 생긴다.
+ */
+export function filterTemplates(
+  accountCodes: AccountCode[],
+  dir: '입금' | '출금',
+  saved: FixedCostTemplate[] = [],
+): CashTemplate[] {
   const have = new Set(accountCodes.map(c => c.code));
-  return CASH_TEMPLATES.filter(t => t.dir === dir && (!t.accountCode || have.has(t.accountCode)));
+  const fromDb = saved
+    .filter(t => t.kind === 'voucher' && !t.hidden && (t.dir ?? '출금') === dir)
+    .map((t): CashTemplate => ({
+      id: t.id,
+      label: t.name,
+      dir: (t.dir ?? '출금') as '입금' | '출금',
+      mode: (t.mode ?? '일반') as '일반' | '상환' | '급여' | '보험',
+      accountCode: t.accountCode,
+      note: t.note,
+      amount: t.amount || undefined,
+      partnerId: t.partnerId,
+      partnerName: t.partnerName,
+      builtin: t.builtin,
+      group: t.group,
+      favorite: t.favorite,
+      ...(t.builtin?.startsWith('free') ? { hint: '계정 직접 선택' } : {}),
+      ...(t.mode === '상환' ? { hint: '원금 + 이자' } : {}),
+      ...(t.mode === '급여' ? { hint: '총급여 − 공제' } : {}),
+      ...(t.mode === '보험' ? { hint: '회사부담 + 예수금' } : {}),
+    }));
+  const mine = (fromDb.length ? fromDb : CASH_TEMPLATES.filter(t => t.dir === dir))
+    .filter(t => !t.accountCode || have.has(t.accountCode));
+  const noCode = mine.filter(t => !t.accountCode);
+  const coded = mine.filter(t => t.accountCode)
+    .sort((a, b) => String(a.accountCode).localeCompare(String(b.accountCode), undefined, { numeric: true }));
+  return [...noCode, ...coded];
 }
 
 /** 지금 폼 상태가 어느 카드인지 — 고른 것이 눌린 채로 보여야 무슨 전표를 쓰는 중인지 안다 */
 export function activeTemplateId(
   templates: CashTemplate[],
-  state: { mode: '일반' | '상환' | '급여'; accountCode?: string },
+  state: { mode: '일반' | '상환' | '급여' | '보험'; accountCode?: string },
 ): string | null {
   if (state.mode !== '일반') return templates.find(t => t.mode === state.mode)?.id ?? null;
-  if (!state.accountCode) return templates.find(t => t.id.startsWith('free'))?.id ?? null;
+  if (!state.accountCode) return templates.find(t => (t.builtin ?? t.id).startsWith('free'))?.id ?? null;
   return templates.find(t => t.mode === '일반' && t.accountCode === state.accountCode)?.id ?? null;
 }
 
 /** 지금 고른 템플릿(없으면 그 방향의 직접입력) */
 export function activeTemplate(
   templates: CashTemplate[],
-  state: { mode: '일반' | '상환' | '급여'; accountCode?: string },
+  state: { mode: '일반' | '상환' | '급여' | '보험'; accountCode?: string },
 ): CashTemplate | undefined {
   const id = activeTemplateId(templates, state);
   return templates.find(t => t.id === id);
@@ -154,11 +202,20 @@ export function CashTemplatePicker({
   onPick: (t: CashTemplate) => void;
 }) {
   const nameOf = (code?: string) => accountCodes.find(c => c.code === code)?.name ?? '';
-  return (
-    // 한 행에 하나 — 이름과 계정이 한눈에 같이 읽혀야 잘못 고르지 않는다
-    <div className="flex flex-col gap-1">
-      {templates.map(t => {
-        const on = activeId === t.id;
+  // 묶음별로 갈라 그린다 — 30개가 한 줄로 이어지면 눈으로 못 찾는다.
+  // 즐겨찾기는 묶음과 상관없이 맨 위로 모은다 — 매일 쓰는 서너 개를 찾아 내려가는 게 병목이라서.
+  const groups: { name: string; items: CashTemplate[] }[] = [];
+  const favs = templates.filter(t => t.favorite);
+  if (favs.length) groups.push({ name: '★ 즐겨찾기', items: favs });
+  for (const t of templates) {
+    if (t.favorite) continue;
+    const g = t.group?.trim() || '분류없음';
+    const last = groups.find(x => x.name === g);
+    if (last) last.items.push(t); else groups.push({ name: g, items: [t] });
+  }
+  const card = (t: CashTemplate) => {
+    const on = activeId === t.id;
+    {
         // 전용 입력을 쓰는 것(상환·급여)은 색을 달리한다 — 아래 폼이 통째로 바뀌기 때문
         const special = t.mode !== '일반';
         const cls = on
@@ -171,14 +228,27 @@ export function CashTemplatePicker({
         return (
           <button key={t.id} type="button" onClick={() => onPick(t)}
             title={t.accountCode ? `${t.dir} · ${t.accountCode} ${nameOf(t.accountCode)}` : t.hint}
-            className={`px-3 py-2.5 rounded-xl border text-left transition-all flex items-baseline justify-between gap-2 ${cls}`}>
-            <span className="text-sm font-black leading-tight truncate">{t.label}</span>
+            className={`w-full px-3 py-2.5 rounded-xl border text-left transition-all flex items-baseline justify-between gap-2 ${cls}`}>
+            <span className="text-sm font-black leading-tight truncate">
+              {t.label}
+              {t.partnerName && <span className="ml-1.5 text-[10px] font-bold opacity-60">{t.partnerName}</span>}
+            </span>
             <span className={`text-[10px] font-bold leading-tight truncate shrink-0 ${subCls}`}>
-              {t.hint ?? `${t.accountCode} ${nameOf(t.accountCode)}`}
+              {t.amount ? `${t.amount.toLocaleString('ko-KR')}원` : (t.hint ?? `${t.accountCode} ${nameOf(t.accountCode)}`)}
             </span>
           </button>
         );
-      })}
+    }
+  };
+  return (
+    // 한 행에 하나 — 이름과 계정이 한눈에 같이 읽혀야 잘못 고르지 않는다
+    <div className="flex flex-col gap-3">
+      {groups.map(g => (
+        <div key={g.name} className="flex flex-col gap-1">
+          <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest px-1">{g.name}</span>
+          {g.items.map(t => <React.Fragment key={t.id}>{card(t)}</React.Fragment>)}
+        </div>
+      ))}
     </div>
   );
 }

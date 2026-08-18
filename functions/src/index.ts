@@ -113,3 +113,99 @@ export const monthlyInventorySnapshot = onSchedule(
     console.log(`Inventory snapshot saved: ${yearMonth} = ${totalValue}원`);
   }
 );
+
+// ─────────────────────────────────────────────────────────────────────────
+// 정기 전표 자동 발행 — 매일 07:00 KST(= 22:00 UTC 전날) 실행.
+//
+// 템플릿에 발행일(issueDay)을 정해 두면 그날 전표가 저절로 생긴다. 앱을 안 켜도 된다.
+//   합침  출금 자금전표 하나          (차) 비용 / (대) 보통예금
+//   분리  매입전표로 채무만 세운다     (차) 비용 / (대) 외상매입금 → 지불은 사람이 따로
+//
+// **금액이 정해진 것만** 나간다(amount > 0). 매달 다른 전기세를 자동으로 만들면
+// 틀린 숫자가 장부에 남는다 — 그런 건 템플릿만 두고 손으로 발행한다.
+//
+// 규칙은 앱과 같아야 해서 src/shared/autoVoucher.ts와 같은 판정을 여기 옮겨 적었다.
+// (functions는 별도 빌드라 앱 소스를 import 못 한다. 고칠 땐 양쪽을 같이 고쳐야 한다.)
+// ─────────────────────────────────────────────────────────────────────────
+export const dailyAutoVoucher = onSchedule(
+  { schedule: '0 22 * * *', timeZone: 'UTC', region: REGION },
+  async () => {
+    const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const y = kst.getUTCFullYear();
+    const m = kst.getUTCMonth() + 1;
+    const d = kst.getUTCDate();
+    const ym = `${y}-${String(m).padStart(2, '0')}`;
+    const today = `${ym}-${String(d).padStart(2, '0')}`;
+    const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+
+    const tplSnap = await db.collection('fixedCostTemplates').get();
+    let created = 0;
+
+    for (const doc of tplSnap.docs) {
+      const t = doc.data() as Record<string, any>;
+      const id = doc.id;
+      if (!t.autoIssue || !t.accountCode) continue;
+      if (!(Number(t.amount) > 0)) continue;
+      if (t.startYm && ym < t.startYm) continue;
+      if (t.endYm && ym > t.endYm) continue;
+
+      const day = Math.min(Math.max(Number(t.issueDay ?? 1), 1), lastDay);
+      if (`${ym}-${String(day).padStart(2, '0')}` !== today) continue;
+
+      const split = (t.postMode ?? '합침') === '분리';
+      if (split && !t.partnerId) {
+        console.warn(`[autoVoucher] ${t.name}: 분리 발행인데 거래처가 없어 건너뜀`);
+        continue;
+      }
+
+      const key = `AUTO-${id}-${ym}`;
+      const amount = Number(t.amount);
+
+      if (split) {
+        const ref = db.collection('issuedStatements').doc(key);
+        if ((await ref.get()).exists) continue;
+        const exempt = !!t.taxExempt;
+        const supply = exempt ? amount : Math.round(amount / 1.1);
+        const tax = exempt ? 0 : amount - supply;
+        // 문서번호는 그 달 발행 건수 + 1 — 사람이 끊은 것과 형식을 맞춘다
+        const monthCount = (await db.collection('issuedStatements').where('tradeDate', '>=', `${ym}-01`).where('tradeDate', '<=', `${ym}-31`).get()).size;
+        await ref.set({
+          id: key,
+          issuedAt: new Date().toISOString(),
+          tradeDate: today,
+          type: '매입',
+          partnerId: t.partnerId,
+          partnerName: t.partnerName ?? '',
+          orderId: key,
+          docNo: `${ym}-${String(monthCount + 1).padStart(4, '0')}`,
+          totalSupply: supply,
+          totalTax: tax,
+          totalAmount: amount,
+          items: [{
+            name: t.name, spec: '', qty: 1, price: amount,
+            supply, tax, total: amount,
+            isTaxExempt: exempt,
+            accountCode: t.accountCode,
+          }],
+        });
+      } else {
+        const ref = db.collection('cashEntries').doc(key);
+        if ((await ref.get()).exists) continue;
+        await ref.set({
+          id: key,
+          date: today,
+          cashAccountId: '',
+          dir: t.dir ?? '출금',
+          amount,
+          accountCode: t.accountCode,
+          ...(t.partnerId ? { partnerId: t.partnerId, partnerName: t.partnerName ?? '' } : {}),
+          note: `정기 · ${t.name}${t.partnerName ? ` · ${t.partnerName}` : ''}`,
+          createdAt: new Date().toISOString(),
+        });
+      }
+      created++;
+      console.log(`[autoVoucher] ${today} ${t.name} ${amount}원 (${split ? '매입전표' : '출금전표'})`);
+    }
+    console.log(`[autoVoucher] ${today} — ${created}건 발행`);
+  }
+);

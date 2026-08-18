@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildAccountLedger, totalCashOnHand, openBalance, unsettledStatements, unmatchedCash,
-  buildPartnerLedger, partnerBalances,
+  buildPartnerLedger, partnerBalances, partnerOpenBalance, allocatePartnerCash,
 } from './cashLedger';
 import type { CashAccount, CashEntry, IssuedStatement, Settlement } from '../../shared/types';
 
@@ -165,5 +165,104 @@ describe('partnerBalances', () => {
     const rows = partnerBalances('매입', [nameless], [], []);
     expect(rows[0].partnerName).toBe('(이름없음)');
     expect(() => rows[0].partnerName.includes('x')).not.toThrow();
+  });
+});
+
+/**
+ * 거래처 잔액 — 화면 세 곳이 같은 값을 내야 한다.
+ * 전표별 잔액을 더한 뒤 수금을 또 빼서 알이네식품 미수가 음수가 되고
+ * 목록에서 사라진 적이 있다(2026-08-16).
+ */
+describe('partnerOpenBalance', () => {
+  const sale = (id: string, total: number) => stmt(id, '매출', '2026-08-01', total);
+  const cash = (id: string, amount: number, code: string, dir: '입금' | '출금' = '입금') =>
+    entry(id, '2026-08-05', dir, amount, { partnerId: 'p1', accountCode: code });
+
+  it('청구액 합계 − 수금. 수금을 두 번 빼면 안 된다', () => {
+    // 알이네식품: 청구 10,321,000 / 수금 5,895,000 → 미수 4,426,000
+    const st = [sale('s1', 5_895_000), sale('s2', 500_000), sale('s3', 3_926_000)];
+    const ce = [cash('c1', 4_000_000, '108'), cash('c2', 1_895_000, '108')];
+    expect(partnerOpenBalance('p1', '매출', st, ce)).toBe(4_426_000);
+  });
+
+  it('108/251이 아닌 자금은 잔액을 안 건드린다 — 계정이 틀리면 미수가 안 준다', () => {
+    const st = [sale('s1', 1_000_000)];
+    expect(partnerOpenBalance('p1', '매출', st, [cash('c1', 400_000, '375')])).toBe(1_000_000);
+    expect(partnerOpenBalance('p1', '매출', st, [cash('c1', 400_000, '108')])).toBe(600_000);
+  });
+
+  it('반대 방향은 되돌림으로 친다(반품·환불)', () => {
+    const st = [sale('s1', 1_000_000)];
+    const ce = [cash('c1', 400_000, '108'), cash('c2', 100_000, '108', '출금')];
+    expect(partnerOpenBalance('p1', '매출', st, ce)).toBe(700_000);
+  });
+
+  it('매입은 251·출금으로 본다', () => {
+    const st = [stmt('b1', '매입', '2026-08-01', 3_000_000)];
+    const ce = [cash('c1', 1_000_000, '251', '출금'), cash('c2', 500_000, '108')];
+    expect(partnerOpenBalance('p1', '매입', st, ce)).toBe(2_000_000);
+  });
+
+  it('더 받았으면 음수 — 선수금', () => {
+    expect(partnerOpenBalance('p1', '매출', [sale('s1', 100_000)], [cash('c1', 300_000, '108')])).toBe(-200_000);
+  });
+
+  it('여러 줄(lines) 자금도 해당 계정 줄만 본다', () => {
+    const st = [sale('s1', 1_000_000)];
+    const ce = [entry('c1', '2026-08-05', '입금', 500_000, {
+      partnerId: 'p1',
+      lines: [{ accountCode: '108', amount: 300_000 }, { accountCode: '259', amount: 200_000 }],
+    })];
+    expect(partnerOpenBalance('p1', '매출', st, ce)).toBe(700_000);
+  });
+});
+
+/**
+ * 전표별 배분 — 지정 매칭이 먼저, 나머지는 오래된 순.
+ * 어느 청구서를 갚았는지가 틀려도 **거래처 잔액은 안 흔들려야 한다**(그게 payments[]의 교훈).
+ */
+describe('allocatePartnerCash', () => {
+  const s1 = stmt('s1', '매출', '2026-07-01', 1_000_000);
+  const s2 = stmt('s2', '매출', '2026-08-01', 2_000_000);
+  const cash = (id: string, amount: number, over = {}) =>
+    entry(id, '2026-08-05', '입금', amount, { partnerId: 'p1', accountCode: '108', ...over });
+
+  it('지정이 없으면 오래된 전표부터 채운다', () => {
+    const m = allocatePartnerCash('p1', '매출', [s1, s2], [cash('c1', 1_500_000)], []);
+    expect(m.get('s1')).toBe(0);
+    expect(m.get('s2')).toBe(1_500_000);
+  });
+
+  it('지정한 전표를 먼저 채우고 남는 돈만 오래된 순으로 간다', () => {
+    const m = allocatePartnerCash('p1', '매출', [s1, s2], [cash('c1', 1_500_000)],
+      [settle('t1', 'c1', 's2', 1_200_000)]);
+    expect(m.get('s2')).toBe(800_000);    // 지정 1,200,000
+    expect(m.get('s1')).toBe(700_000);    // 남은 300,000이 오래된 것으로
+  });
+
+  it('배분 합계는 늘 거래처 잔액과 같다 — 지정을 해도 총액은 안 변한다', () => {
+    const ce = [cash('c1', 1_500_000)];
+    const sum = (sets: ReturnType<typeof settle>[]) =>
+      [...allocatePartnerCash('p1', '매출', [s1, s2], ce, sets).values()].reduce((a, b) => a + b, 0);
+    const bal = partnerOpenBalance('p1', '매출', [s1, s2], ce);
+    expect(sum([])).toBe(bal);
+    expect(sum([settle('t1', 'c1', 's2', 1_200_000)])).toBe(bal);
+  });
+
+  it('근거(자금기록)가 사라진 매칭은 안 친다 — 안 받은 돈이 사라지면 안 된다', () => {
+    const m = allocatePartnerCash('p1', '매출', [s1, s2], [], [settle('t1', 'ghost', 's1', 1_000_000)]);
+    expect(m.get('s1')).toBe(1_000_000);
+  });
+
+  it('지정이 전표 금액을 넘어도 전표 잔액이 음수가 되지 않는다', () => {
+    const m = allocatePartnerCash('p1', '매출', [s1], [cash('c1', 1_000_000)],
+      [settle('t1', 'c1', 's1', 9_999_999)]);
+    expect(m.get('s1')).toBe(0);
+  });
+
+  it('수금이 없으면 전부 청구액 그대로', () => {
+    const m = allocatePartnerCash('p1', '매출', [s1, s2], [], []);
+    expect(m.get('s1')).toBe(1_000_000);
+    expect(m.get('s2')).toBe(2_000_000);
   });
 });

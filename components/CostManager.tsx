@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { PlusCircle, Trash2, ChevronLeft, ChevronRight, BarChart2, X, ToggleLeft, ToggleRight, Pencil, Check } from 'lucide-react';
+import { PlusCircle, Trash2, ChevronLeft, ChevronRight, BarChart2, X, ToggleLeft, ToggleRight, Pencil, Check, Eye, EyeOff, Lock } from 'lucide-react';
 import { FixedCostEntry, FixedCostCategory, FixedCostTemplate, IssuedStatement, AccountCode } from '../types';
 
 interface CostManagerProps {
@@ -52,9 +52,39 @@ const CostManager: React.FC<CostManagerProps> = ({
   const [editAmt, setEditAmt] = useState('');
 
   const templateTotal = useMemo(
-    () => fixedCostTemplates.filter(t => t.active).reduce((a, t) => a + t.amount, 0),
+    () => fixedCostTemplates.filter(t => t.active && t.kind !== 'voucher').reduce((a, t) => a + t.amount, 0),
     [fixedCostTemplates]
   );
+  // 자동발행을 켠 것만 위에 따로 보여준다 — 저절로 나가는 것은 눈에 띄어야 한다.
+  const recurringTpls = useMemo(
+    () => fixedCostTemplates.filter(t => t.autoIssue).sort((a, b) => (a.issueDay ?? 1) - (b.issueDay ?? 1)),
+    [fixedCostTemplates],
+  );
+  // 목록 보기 — 검색 + 갈래(전체/자동/숨김). 29개라 눈으로만 찾기 어렵다.
+  const [tplSearch, setTplSearch] = useState('');
+  const [tplFilter, setTplFilter] = useState<'all' | 'auto' | 'hidden'>('all');
+  const shownTpls = useMemo(() => {
+    const q = tplSearch.trim();
+    return [...fixedCostTemplates]
+      .filter(t => tplFilter === 'auto' ? t.autoIssue : tplFilter === 'hidden' ? t.hidden : true)
+      .filter(t => !q || t.name.includes(q) || (t.partnerName ?? '').includes(q) || (t.accountCode ?? '').includes(q))
+      .sort((a, b) => (a.group ?? '기타').localeCompare(b.group ?? '기타') || a.name.localeCompare(b.name));
+  }, [fixedCostTemplates, tplSearch, tplFilter]);
+  // 묶음별로 갈라 그린다 — 목록 순서를 그대로 따라간다
+  const tplGroups = useMemo(() => {
+    const out: { name: string; items: FixedCostTemplate[] }[] = [];
+    for (const t of shownTpls) {
+      const g = t.group?.trim() || '기타';
+      const last = out.find(x => x.name === g);
+      if (last) last.items.push(t); else out.push({ name: g, items: [t] });
+    }
+    return out;
+  }, [shownTpls]);
+  const [editTpl, setEditTpl] = useState<FixedCostTemplate | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: '', group: '', amount: '', partnerName: '',
+    postMode: '합침' as '합침' | '분리', autoIssue: false, issueDay: '1', taxExempt: false,
+  });
 
   const handleAddTemplate = async () => {
     const amount = Number(tplForm.amount.replace(/,/g, ''));
@@ -195,43 +225,31 @@ const CostManager: React.FC<CostManagerProps> = ({
           </div>
         )}
 
-        {fixedCostTemplates.length === 0 ? (
-          <div className="py-10 text-center text-slate-300">
-            <BarChart2 size={28} className="mx-auto mb-2 opacity-40"/>
-            <p className="text-xs font-bold">등록된 정기 항목이 없습니다</p>
+        {/* 자동으로 나가는 것 요약 — 목록은 아래 한 곳에서만 관리한다(두 군데 두면 어느 게 진짜인지 흐려진다) */}
+        {recurringTpls.length === 0 ? (
+          <div className="px-5 py-6 text-center text-slate-300">
+            <p className="text-xs font-bold">자동으로 나가는 전표가 없습니다</p>
+            <p className="text-[11px] mt-1">전표 화면의 <b>[템플릿]</b>에서 스위치를 켜면 매달 그날 저절로 발행됩니다</p>
           </div>
         ) : (
-          <div className="divide-y divide-slate-50">
-            {fixedCostTemplates.map(t => (
-              <div key={t.id} className={`flex items-center gap-3 px-5 py-3.5 transition ${t.active ? '' : 'opacity-40'}`}>
-                <button onClick={() => onUpdateTemplate?.(t.id, { active: !t.active })} className="shrink-0 text-slate-300 hover:text-indigo-500 transition">
-                  {t.active ? <ToggleRight size={22} className="text-indigo-500"/> : <ToggleLeft size={22}/>}
-                </button>
-                <span className="text-[10px] font-black px-2 py-0.5 rounded-lg shrink-0 bg-amber-100 text-amber-700">{t.accountCode ? `${t.accountCode} ${accountCodes.find(c => c.code === t.accountCode)?.name ?? ''}` : '계정미지정'}</span>
-                <span className="text-sm font-bold text-slate-700 flex-1 truncate">{t.name}{t.startYm && <span className="ml-1.5 text-[10px] text-slate-400 font-medium">{t.startYm}~{t.endYm ?? ''}</span>}</span>
-                {editingTplId === t.id ? (
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <input type="text" inputMode="numeric" value={editAmt}
-                      onChange={e => setEditAmt(e.target.value.replace(/[^0-9]/g, ''))}
-                      className="w-28 border border-indigo-300 rounded-lg px-2 py-1 text-sm font-bold text-right outline-none focus:ring-2 focus:ring-indigo-300"/>
-                    <button onClick={() => saveEditAmt(t.id)} className="p-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"><Check size={13}/></button>
-                    <button onClick={() => setEditingTplId(null)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400"><X size={13}/></button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-sm font-black text-slate-800 tabular-nums">{fmt(t.amount)}</span>
-                    <button onClick={() => startEditAmt(t)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-300 hover:text-slate-600"><Pencil size={13}/></button>
-                    <button onClick={() => onDeleteTemplate?.(t.id)} className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-200 hover:text-rose-400"><Trash2 size={13}/></button>
-                  </div>
-                )}
-              </div>
-            ))}
-            <div className="px-5 py-3 flex justify-end bg-slate-50">
-              <span className="text-sm font-black text-slate-700">정기 합계 <span className="text-indigo-600 ml-2">{fmt(templateTotal)}</span></span>
+          <div className="px-5 py-4 flex items-center gap-3 flex-wrap bg-indigo-50/50">
+            <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest shrink-0">자동 발행</span>
+            <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
+              {recurringTpls.map(t => (
+                <span key={t.id} className="text-[11px] font-black px-2 py-1 rounded-lg bg-white border border-indigo-200 text-slate-600">
+                  {(t.issueDay ?? 1) === 31 ? '말일' : `${t.issueDay ?? 1}일`}
+                  <span className="mx-1 text-slate-800">{t.name}</span>
+                  <span className="text-slate-400 tabular-nums">{fmt(t.amount)}</span>
+                </span>
+              ))}
             </div>
+            <span className="text-sm font-black text-slate-700 shrink-0">
+              합계 <span className="text-indigo-600 ml-1">{fmt(recurringTpls.reduce((a, t) => a + t.amount, 0))}</span>
+            </span>
           </div>
         )}
       </div>
+
 
     </div>
   );
