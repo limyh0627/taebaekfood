@@ -72,6 +72,8 @@ export interface CashTemplate {
   group?: string;
   /** 즐겨찾기 — 목록 맨 위 */
   favorite?: boolean;
+  /** 전표 품목란에 들어갈 이름. 비우면 계정과목 이름을 쓴다. */
+  itemName?: string;
 }
 
 export const CASH_TEMPLATES: CashTemplate[] = [
@@ -148,6 +150,7 @@ export function filterTemplates(
       builtin: t.builtin,
       group: t.group,
       favorite: t.favorite,
+      itemName: t.itemName,
       ...(t.mode === '상환' ? { hint: '원금 + 이자' } : {}),
       ...(t.mode === '급여' ? { hint: '총급여 − 공제' } : {}),
       ...(t.mode === '보험' ? { hint: '회사부담 + 예수금' } : {}),
@@ -212,7 +215,7 @@ export function CashTemplateModal({
   }, [templates, q, tab, accountCodes]);
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md h-[80vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
         {/* 방향(출금·입금·발생)은 고른 템플릿이 정한다 — 여기서 먼저 고르게 하면
             템플릿 화면과 목록이 달라 보이고, 방향을 잘못 잡으면 찾던 게 안 뜬다. */}
         <div className="px-5 py-4 border-b border-slate-100 shrink-0 space-y-2.5">
@@ -251,7 +254,7 @@ export function CashTemplateModal({
             </span>
           </button>
           {shown.length === 0 ? (
-            <p className="py-8 text-center text-xs font-bold text-slate-300">찾는 템플릿이 없습니다</p>
+            <p className="h-full flex items-center justify-center text-xs font-bold text-slate-300">찾는 템플릿이 없습니다</p>
           ) : (
             <CashTemplatePicker templates={shown} accountCodes={accountCodes} activeId={activeId} onPick={onPick} />
           )}

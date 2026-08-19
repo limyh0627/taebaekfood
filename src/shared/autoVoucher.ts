@@ -93,7 +93,8 @@ export function buildStatementVoucher(
   const supply = exempt ? total : Math.round(total / 1.1);
   const tax = exempt ? 0 : total - supply;
   const item: IssuedStatementItem = {
-    name: opts.accountName || t.name,
+    // 품목명 → 계정과목 이름 → 템플릿 이름 순. 비워 두면 계정 이름이 그대로 들어간다.
+    name: t.itemName?.trim() || opts.accountName || t.name,
     spec: '', qty: 1, price: total,
     supply, tax, total,
     isTaxExempt: exempt,

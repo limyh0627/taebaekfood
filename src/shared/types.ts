@@ -541,6 +541,11 @@ export interface FixedCostTemplate {
   issueDay?: number;
   /** 면세면 부가세를 안 뗀다(기본 과세). '분리'로 매입전표를 끊을 때 쓴다. */
   taxExempt?: boolean;
+  /**
+   * 전표 품목란에 들어갈 이름. 비우면 **계정과목 이름**을 쓴다.
+   * '임대료' 계정으로 끊는데 전표에는 '공장 임대료 8월분'이라 적고 싶을 때 쓴다.
+   */
+  itemName?: string;
 }
 
 export interface IssuedStatementItem {
@@ -647,6 +652,8 @@ export const COMPANIES: { id: CompanyId; name: string; short: string }[] = [
 ];
 /** 회사가 안 붙은 기록은 태백 것으로 본다 */
 export const companyOf = (x: { companyId?: CompanyId } | undefined): CompanyId => x?.companyId ?? TAEBAEK;
+/** 회사별 기초잔액 문서 id. 태백은 옛 문서('main')를 그대로 쓴다. */
+export const openingDocId = (c: CompanyId): string => (c === TAEBAEK ? 'main' : `main-${c}`);
 
 export interface CompanyInfo {
   name: string;           // 상호
@@ -919,6 +926,9 @@ export interface Settlement {
 // ── 재고액 스냅샷 (월말 기말재고액 기록) ───────────────────────────────────────
 export interface InventorySnapshot {
   id: string;
+  /** 어느 회사 재고인가. 없으면 태백(옛 기록).
+   *  회사별로 안 거르면 태백 재고 증감이 풍회 손익에 500 원료매입으로 잡힌다. */
+  companyId?: CompanyId;
   yearMonth: string;    // 'YYYY-MM'
   value: number;        // 재고총액 (기말재고액, 원)
   recordedAt: string;   // ISO timestamp

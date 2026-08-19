@@ -116,6 +116,12 @@ const matchKo = (name: string, q: string) => {
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
 
+/**
+ * 잔액이 뒤집혔을 때의 이름 — 매출인데 더 받았으면 **선수금**, 매입인데 더 냈으면 **선급금**.
+ * 전엔 '줄돈'·'받을돈'이라 적었는데 잔액 칸에 말이 섞여 지저분하고 회계 용어도 아니었다.
+ */
+const overLabelOf = (type?: string) => (type === '매출' ? '선수금' : '선급금');
+
 function buildSupplierGroups<T extends { id: string }>(
   orders: T[], allItems: Item[], partners: Partner[], psMap: Map<string, string>
 ): { partnerId: string; partnerName: string; items: { product: Item; item: T }[] }[] {
@@ -410,7 +416,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setQpDir(t.dir);          // 방향은 템플릿이 정한다
     setQpMode(t.mode);
     setQpAccountCode(t.accountCode ?? '');
-    if (t.note) setQuickPayNote(t.note);
+    // 비고는 품목명 > 템플릿 비고 순 — 전표에 그대로 남는 글이라 품목명이 먼저다
+    if (t.itemName || t.note) setQuickPayNote(t.itemName || t.note || '');
     if (t.partnerId) { setQuickPayClientId(t.partnerId); setQuickPayClientSearch(''); }
     else { setQuickPayClientId(''); setQuickPayClientSearch(''); }
     if (t.amount && t.amount > 0) setQuickPayAmount(String(t.amount));
@@ -709,7 +716,34 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // ── 발행내역 필터 ──
   const [histFrom, setHistFrom] = useState(today);
   const [histTo, setHistTo]     = useState(today);
-  const [histTypeFilter, setHistTypeFilter] = useState<'전체' | '수익' | '비용' | '자금' | '대체'>('전체');
+  /**
+   * 유형 필터 — **전표 종류 한 축**이다. 전표 하나가 정확히 한 곳에만 속한다.
+   *
+   * 전엔 수익·비용(손익축) + 자금(자금축) + 대체(전표종류)를 섞어 놨다. 그래서
+   * 전기세 출금이 비용에도 자금에도 뜨고, 기계구입·대출상환은 어느 손익 탭에도
+   * 안 잡혀 사각지대가 됐다. 손익으로 보고 싶으면 손익분석·재무제표 화면이 따로 있다.
+   */
+  /**
+   * 행 하나가 어느 유형인가 — **정확히 하나**에만 속한다(겹치지도 빠지지도 않는다).
+   *
+   *   매출·매입·대체   전표(issuedStatement)
+   *   수금·지불        거래처 채권·채무를 턴 자금(108/251)
+   *   이체             회사 간 대여·차입(137/267)
+   *   입금·출금        그 밖의 자금
+   */
+  const rowKind = useCallback((row: TimelineRow): string => {
+    if (row.kind === 'stmt') {
+      return row.data.type === '매출' ? '매출' : row.data.type === '매입' ? '매입' : '대체';
+    }
+    if (row.kind === 'pay') return row.stmtType === '매출' ? '수금' : '지불';
+    const codes = (row.entry.lines ?? []).map(l => l.accountCode);
+    const all = codes.length ? codes : [row.accountCode ?? ''];
+    if (all.some(c => c === '137' || c === '267')) return '이체';
+    return row.dir === '입금' ? '입금' : '출금';
+  }, []);
+
+  const [histTypeFilter, setHistTypeFilter] = useState<
+    '전체' | '매출' | '매입' | '입금' | '출금' | '이체' | '대체'>('전체');
   const [histSearch, setHistSearch] = useState('');
   const [histQuick, setHistQuick] = useState<'당일'|'금주'|'당월'|'당년'|'ALL'|''>('당일');
   // 발행내역 페이지네이션
@@ -1979,13 +2013,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const note  = row.kind === 'cash' ? (row.note ?? '') : '';
         if (histFrom && d < histFrom) return false;
         if (histTo   && d > histTo)   return false;
-        // 자금 필터 = 실제 돈 이동 전부(수금/지불 pay 행 + 입출금 cash 행). 매출/매입/비용은 기존대로.
         if (histTypeFilter !== '전체') {
-          const c = classifyRow(row);
-          const ok = histTypeFilter === '자금' ? !!c.cash
-            : histTypeFilter === '대체' ? !!c.transfer
-            : c.pl === histTypeFilter;          // '수익' | '비용'
-          if (!ok) return false;
+          // 수금은 입금에, 지불은 출금에 포함된다 — 돈이 오간 방향은 같고 성격만 다르다.
+          // 행에는 수금·지불로 따로 표시되므로 목록에서는 구분이 그대로 보인다.
+          const k = rowKind(row);
+          const tab = k === '수금' ? '입금' : k === '지불' ? '출금' : k;
+          if (tab !== histTypeFilter) return false;
         }
         if (histSearch.trim()) {
           const q = histSearch.toLowerCase();
@@ -2011,7 +2044,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         if (a.kind === 'pay' && b.kind === 'stmt') return 1;
         return 0;
       }); // 오래된→최신
-  }, [allTimelineRows, histFrom, histTo, histTypeFilter, histSearch, codeType, codeName, classifyRow]);
+  }, [allTimelineRows, histFrom, histTo, histTypeFilter, histSearch, codeType, codeName, classifyRow, rowKind]);
 
   // 페이지네이션: 필터 변경 시 1페이지로 리셋, 최신 페이지부터 보여줌
   useEffect(() => { setHistoryPage(1); }, [histFrom, histTo, histTypeFilter, histSearch]);
@@ -2604,14 +2637,16 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-10 shrink-0">유형</span>
           {/* 값과 라벨을 같게 둔다 — 예전엔 값 '매입'에 라벨 '비용', 값 '비용'에 라벨 '대체'라
               필터 조건을 손볼 때마다 엉뚱한 탭이 걸렸다. classifyRow가 이 값 그대로 판정한다. */}
-          {(['전체','수익','비용','자금','대체'] as const).map(val => (
+          {(['전체','매출','매입','입금','출금','이체','대체'] as const).map(val => (
             <button key={val} onClick={()=>setHistTypeFilter(val)}
               className={`px-3.5 py-1.5 rounded-lg text-[11px] font-black border transition-all ${
                 histTypeFilter===val
-                  ? val==='수익' ? 'bg-blue-600 text-white border-blue-600'
-                    : val==='비용' ? 'bg-rose-600 text-white border-rose-600'
-                    : val==='자금' ? 'bg-emerald-600 text-white border-emerald-600'
-                    : val==='대체' ? 'bg-slate-500 text-white border-slate-500'
+                  ? val==='매출' ? 'bg-blue-600 text-white border-blue-600'
+                    : val==='매입' ? 'bg-rose-600 text-white border-rose-600'
+                    : val==='입금' ? 'bg-emerald-600 text-white border-emerald-600'
+                    : val==='출금' ? 'bg-slate-600 text-white border-slate-600'
+                    : val==='이체' ? 'bg-purple-600 text-white border-purple-600'
+                    : val==='대체' ? 'bg-amber-500 text-white border-amber-500'
                     : 'bg-slate-700 text-white border-slate-700'
                   : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400 hover:text-slate-600'
               }`}>{val}</button>
@@ -2725,11 +2760,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     : (row.accountCode && codeType.get(row.accountCode) === plKind
                         ? [{ code: row.accountCode, amount: row.amount }] : []);
                   const plAmt = plParts.reduce((a, p) => a + p.amount, 0);
-                  const isPlTab = histTypeFilter === '수익' || histTypeFilter === '비용';
-                  // 수익·비용 탭에선 그 성격이 없는 자금기록은 아예 안 나온다
-                  if (isPlTab && !plParts.length) return null;
-                  // 손익 탭에선 그 성격의 금액만(대출상환이면 이자만), 전체 탭에선 통장에서 나간 전액
-                  const shownAmt = isPlTab ? plAmt : row.amount;
+                  // 자금 행은 언제나 통장에서 오간 전액을 보여준다.
+                  // (예전엔 손익 탭에서 그 성격의 금액만 보여줬는데, 이제 자금전표는
+                  //  매출·매입 탭에 아예 안 오므로 가릴 이유가 없다.)
+                  const shownAmt = row.amount;
                   // 성격 배지 — 계정의 종류에서 뽑는다. 한 건에 성격이 여럿이면 배지도 여럿.
                   //   대출상환 = [출금] + 원금(부채↓) [상환] + 이자(비용) [비용]
                   // Tailwind은 클래스명을 조립하면 못 알아보므로 정적 문자열로 둔다.
@@ -2755,9 +2789,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   const kindParts = split.length
                     ? split.map(l => ({ code: l.accountCode, amount: l.amount }))
                     : (row.accountCode ? [{ code: row.accountCode, amount: row.amount }] : []);
-                  const kinds = isPlTab
-                    ? [plKind]
-                    : [...new Set(kindParts.map(p => kindOf(p.code, p.amount)).filter((k): k is string => !!k))];
+                  const kinds = [...new Set(kindParts.map(p => kindOf(p.code, p.amount)).filter((k): k is string => !!k))];
                   const isOpen = expandedJournal.has(row.entry.id);
                   // 거래처가 붙은 돈인데 전표 매칭도 계정도 없으면 '미배분' — 받았지만 어느 청구서에
                   // 넣을지 안 정한 돈이다. 계정이 있으면 성격이 정해진 것이라 정상(이자·차입금 등).
@@ -2775,7 +2807,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       <td className="px-4 py-2 whitespace-nowrap">
                         <span className="inline-flex items-center gap-1 align-middle">
                           {journalToggle(row.entry.id)}
-                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.dir === '입금' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{row.dir}</span>
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${rowKind(row) === '이체' ? 'bg-purple-100 text-purple-700' : row.dir === '입금' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{rowKind(row)}</span>
                           {kinds.map(k => (
                             <span key={k} className={`text-[10px] font-black px-2 py-0.5 rounded-full ${KIND_CLS[k] ?? 'bg-slate-100 text-slate-500'}`}>{k}</span>
                           ))}
@@ -2785,7 +2817,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       <td className={`px-4 py-2 text-xs text-right font-black ${row.dir === '입금' ? 'text-emerald-600' : 'text-rose-600'}`}>
                         {fmt(shownAmt)}
                         {/* 성격이 섞인 건 — 통장에서 나간 전액과 그중 손익분이 다르다 */}
-                        {!isPlTab && plAmt > 0 && plAmt !== row.amount && (
+                        {plAmt > 0 && plAmt !== row.amount && (
                           <span className="block text-[10px] font-bold text-rose-400">그중 {plKind} {fmt(plAmt)}</span>
                         )}
                       </td>
@@ -2843,9 +2875,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                         {cumul === 0
                           ? <span className="font-black text-slate-400">0</span>
                           : cumul < 0
-                            ? row.stmtType === '매출'
-                              ? <span className="font-black text-rose-600">줄돈 {fmt(Math.abs(cumul))}</span>
-                              : <span className="font-black text-blue-600">받을돈 {fmt(Math.abs(cumul))}</span>
+                            ? <span className="font-black text-slate-500 whitespace-nowrap">
+                              −{fmt(Math.abs(cumul))}
+                              <span className="ml-1 text-[9px] font-black px-1 py-0.5 rounded bg-slate-100 text-slate-500 align-middle">{overLabelOf(row.stmtType)}</span>
+                            </span>
                             : <span className={`font-black ${row.stmtType === '매출' ? 'text-blue-600' : 'text-rose-600'}`}>{fmt(cumul)}</span>
                         }
                       </td>
@@ -2892,9 +2925,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       {cumul === 0
                         ? <span className="font-black text-slate-400">0</span>
                         : cumul < 0
-                          ? stmt.type === '매출'
-                            ? <span className="font-black text-rose-600">줄돈 {fmt(Math.abs(cumul))}</span>
-                            : <span className="font-black text-blue-600">받을돈 {fmt(Math.abs(cumul))}</span>
+                          ? <span className="font-black text-slate-500 whitespace-nowrap">
+                              −{fmt(Math.abs(cumul))}
+                              <span className="ml-1 text-[9px] font-black px-1 py-0.5 rounded bg-slate-100 text-slate-500 align-middle">{overLabelOf(stmt.type)}</span>
+                            </span>
                           : <span className={`font-black ${stmt.type === '매출' ? 'text-blue-600' : 'text-rose-600'}`}>{fmt(cumul)}</span>
                       }
                     </td>
@@ -2931,8 +2965,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   ? split.map(l => `${l.note ? l.note + ' ' : ''}${codeName.get(l.accountCode) ?? l.accountCode} ${fmt(l.amount)}`).join(' · ')
                   : (row.accountCode ? (codeName.get(row.accountCode) ?? row.accountCode) : '');
                 const detail = [acct, row.note].filter(Boolean).join(' · ');
-                // 수익/비용 탭 — 자금 전표가 아니라 그 성격의 금액만 보여준다(표와 같은 규칙).
-                const mPl = histTypeFilter === '비용' ? '비용' : histTypeFilter === '수익' ? '수익' : null;
+                // 자금 행은 언제나 전액. 매출·매입 탭에는 자금전표가 안 온다.
+                const mPl: '수익' | '비용' | null = null;
                 if (mPl) {
                   const parts = split.length
                     ? split.filter(l => codeType.get(l.accountCode) === mPl).map(l => ({ code: l.accountCode, amount: l.amount }))
@@ -2978,7 +3012,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     <div className="flex items-center justify-between gap-2">
                       <span className="flex items-center gap-1">
                         {journalToggle(row.entry.id)}
-                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.dir === '입금' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{row.dir}</span>
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${rowKind(row) === '이체' ? 'bg-purple-100 text-purple-700' : row.dir === '입금' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{rowKind(row)}</span>
                       </span>
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-mono text-slate-400">{row.date}</span>
@@ -3056,7 +3090,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     <span className="text-[11px] text-slate-400 truncate flex-1 min-w-0">{summary}</span>
                     {cumul !== 0 && (
                       cumul < 0
-                        ? <span className={`text-[11px] font-black shrink-0 ${stmt.type === '매출' ? 'text-rose-600' : 'text-blue-600'}`}>{stmt.type === '매출' ? '줄돈' : '받을돈'} {fmt(Math.abs(cumul))}</span>
+                        ? <span className="text-[11px] font-black shrink-0 text-slate-500 whitespace-nowrap">
+                            −{fmt(Math.abs(cumul))}
+                            <span className="ml-1 text-[9px] px-1 py-0.5 rounded bg-slate-100 align-middle">{overLabelOf(stmt.type)}</span>
+                          </span>
                         : <span className={`text-[11px] font-black shrink-0 ${stmt.type === '매출' ? 'text-blue-600' : 'text-rose-600'}`}>잔액 {fmt(cumul)}</span>
                     )}
                   </div>
@@ -3091,12 +3128,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               <span className={`font-black text-sm ${cls}`}>{fmt(val)}</span>
             </div>
           );
-          // 탭이 보는 축의 합계만 띄운다 — 수익 탭에 지불 합계가 뜨면 뭘 보는 건지 흐려진다.
-          //   전체 → 손익축(수익·비용) + 자금축(수금·지불)
-          //   수익 → 수익만 · 비용 → 비용만 · 자금 → 수금·지불만
-          const showIncome = histTypeFilter === '전체' || histTypeFilter === '수익';
-          const showCost   = histTypeFilter === '전체' || histTypeFilter === '비용';
-          const showCash   = histTypeFilter === '전체' || histTypeFilter === '자금';
+          // 탭이 보는 것의 합계만 띄운다 — 매출 탭에 지불 합계가 뜨면 뭘 보는 건지 흐려진다.
+          const showIncome = histTypeFilter === '전체' || histTypeFilter === '매출';
+          const showCost   = histTypeFilter === '전체' || histTypeFilter === '매입';
+          const showCash   = histTypeFilter === '전체' || histTypeFilter === '입금'
+            || histTypeFilter === '출금' || histTypeFilter === '이체';
           const anyPl = (showIncome && sale > 0) || (showCost && buy > 0);
           const anyCash = showCash && (histTotals.receiveSum > 0 || histTotals.paySum > 0);
           return (
@@ -3231,7 +3267,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             {payOverWarn && (() => {
               const liveStmt = issuedStatements.find(s => s.id === payTarget?.id) ?? payTarget;
               const bal = liveStmt ? getBalance(liveStmt) : 0;
-              const overLabel = payTarget?.type === '매출' ? '줄돈' : '받을돈';
+              const overLabel = overLabelOf(payTarget?.type);
               return (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs space-y-2">
                   <p className="font-black text-amber-700">
@@ -3713,11 +3749,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => { setShowQuickPay(false); setQuickPayOverWarn(false); }}>
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
               {/* 방향은 제목 줄에 둔다 — 들어오는 돈과 나가는 돈은 쓰는 계정이 아예 달라서
                   고를 수 있는 전표가 통째로 바뀐다. */}
-              <div className="flex items-center gap-3 px-8 py-5 border-b border-slate-100 shrink-0">
-                <h3 className="text-base font-black text-slate-800 shrink-0">일반전표 발행</h3>
+              <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 shrink-0">
+                <h3 className="text-sm font-black text-slate-800 shrink-0">일반전표 발행</h3>
                 {/* 일자는 제목 옆에 — 전표를 끊을 때 제일 먼저 확인하는 값이라 맨 위에 둔다 */}
                 <input type="date" value={quickPayDate} onChange={e => setQuickPayDate(e.target.value)}
                   className="shrink-0 border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
@@ -3728,7 +3764,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     <button key={d} type="button"
                       onClick={() => { setQpDir(d); setQpMode('일반'); setQpAccountCode(''); setQuickPayClientId(''); setQuickPayClientSearch(''); }}
                       title={DIR_HINT[d]}
-                      className={`px-3 py-2 rounded-xl text-xs font-black border transition-all ${qpDir === d
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black border transition-all ${qpDir === d
                         ? `${DIR_CHIP[d]} border-transparent shadow-sm`
                         : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`}>
                       {d}
@@ -3739,7 +3775,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   className="p-1.5 text-slate-300 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all shrink-0"><X size={18}/></button>
               </div>
 
-              <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6 space-y-5">
+              <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 space-y-4">
 
               {/* 기본은 직접입력. 목록은 고를 때만 창을 열어 보여준다 —
                   늘 펼쳐 두면 정작 금액 칸이 아래로 밀린다. */}
@@ -3762,7 +3798,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               {/* 계좌 + 일자 */}
               {/* 비현금 갈래는 통장이 안 움직이므로 계좌 칸을 안 띄운다 */}
               {isCashDir(qpDir) && (
-                <div>
+                <div className="w-1/2 pr-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">계좌</label>
                   <select value={quickPayAccountId} onChange={e => setQuickPayAccountId(e.target.value)}
                     className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300">
@@ -3941,8 +3977,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     )}
                   </div>
 
-                  {/* 금액 — 이 모달에서 제일 자주 손대는 칸이라 제일 크게 */}
-                  <div>
+                  {/* 금액 — 제일 자주 손대는 칸이라 글씨는 크게, 대신 폭은 절반만.
+                      칸이 화면 끝까지 늘어나면 숫자와 단위가 멀어져 오히려 읽기 나쁘다. */}
+                  <div className="w-1/2 pr-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">금액</label>
                     <div className="relative">
                       <input type="text" inputMode="numeric" placeholder="0" value={quickPayAmount}
@@ -4187,6 +4224,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
               {/* 지금 입력한 그대로를 템플릿으로 굳힌다 — 이름·거래처·금액·계정까지.
                   매달 같은 곳에 같은 금액을 넣는 전표가 대부분이라 다음 달엔 고르기만 하면 된다. */}
+
+              <div className="flex gap-2 pt-1">
               {onAddFixedCostTemplate && (
                 <button
                   onClick={async () => {
@@ -4210,17 +4249,15 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     } as any);
                     alert(`'${name.trim()}' 템플릿으로 저장했습니다.\n\n정기비용 화면에서 이름·거래처·금액을 고치거나 숨길 수 있습니다.`);
                   }}
-                  className="w-full py-2.5 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs font-black hover:border-indigo-400 hover:text-indigo-600 transition-all flex items-center justify-center gap-1.5">
-                  <Save size={12}/>지금 입력한 내용을 템플릿으로 저장
+                  className="shrink-0 px-3 py-2 rounded-lg border border-dashed border-slate-300 text-slate-500 text-[11px] font-black whitespace-nowrap hover:border-indigo-400 hover:text-indigo-600 transition-all flex items-center justify-center gap-1">
+                  <Save size={11}/>템플릿 저장
                 </button>
               )}
-
-              <div className="flex gap-2 pt-1">
                 <button onClick={() => { setShowQuickPay(false); setQuickPayOverWarn(false); }}
-                  className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-600 text-sm font-black hover:bg-slate-200">취소</button>
+                  className="shrink-0 px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
                 <button onClick={handleQuickPaySave} disabled={!canSave}
-                  className="flex-[2] py-3 rounded-xl bg-emerald-600 text-white text-sm font-black hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5">
-                  <Save size={14}/>저장
+                  className="flex-1 py-2 rounded-lg bg-emerald-600 text-white text-xs font-black hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5">
+                  <Save size={12}/>저장
                 </button>
               </div>
 
@@ -5240,7 +5277,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       <span className="text-slate-500">{label} <b className="text-emerald-700">{fmt(paid)}</b></span>
                       <span className={`font-black ${bal < 0 ? (editingStmt.type === '매출' ? 'text-rose-600' : 'text-blue-600') : bal === 0 ? 'text-slate-400' : (editingStmt.type === '매출' ? 'text-blue-600' : 'text-rose-600')}`}>
                         {bal < 0
-                          ? `${editingStmt.type === '매출' ? '줄돈' : '받을돈'} ${fmt(Math.abs(bal))}`
+                          ? `${overLabelOf(editingStmt.type)} ${fmt(Math.abs(bal))}`
                           : `잔액 ${fmt(bal)}`}
                       </span>
                     </div>

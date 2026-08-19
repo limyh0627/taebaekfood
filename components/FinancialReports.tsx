@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ShieldCheck, ShieldAlert, ScrollText, TrendingUp, Scale, Pencil, Save, X } from 'lucide-react';
-import type { IssuedStatement, CashEntry, AccountCode, CashAccount } from '../src/shared/types';
+import type { IssuedStatement, CashEntry, AccountCode, CashAccount, CompanyId } from '../src/shared/types';
+import { openingDocId } from '../src/shared/types';
 import { buildJournals } from '../src/shared/buildJournals';
 import { trialBalance, incomeStatement, balanceSheet } from '../src/shared/journal';
 import type { OpeningBalance } from '../src/shared/autoJournal';
@@ -11,6 +12,8 @@ const CAPITAL = '331';   // 자본금 (기초 차액 plug)
 interface OpeningDoc { id: string; date: string; amounts: Record<string, number>; }
 
 interface Props {
+  /** 보고 있는 회사 — 기초잔액 문서가 회사별로 다르다 */
+  companyId?: CompanyId;
   statements: IssuedStatement[];
   cashEntries: CashEntry[];
   accounts: AccountCode[];
@@ -25,7 +28,7 @@ const won = (n: number) => `${Math.round(n).toLocaleString('ko-KR')}`;
  * 재무제표 (복식부기 · 병행/대조용). 기존 전표·수금·자금에서 분개를 계산으로 뽑아
  * 시산표·손익계산서·재무상태표를 그린다. 저장 안 함, 읽기 전용. 기존 손익표와 대조하는 화면.
  */
-const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, cashAccounts, inventorySnapshots = [] }) => {
+const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, cashAccounts, inventorySnapshots = [], companyId = 'taebaek' }) => {
   const months = useMemo(() => {
     const s = new Set<string>();
     for (const st of statements) if (st.tradeDate) s.add(st.tradeDate.slice(0, 7));
@@ -39,7 +42,12 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<OpeningDoc | null>(null);
   const [saving, setSaving] = useState(false);
-  useEffect(() => { fetchCollection<OpeningDoc>('openingBalances').then(rows => setOpeningDoc(rows.find(r => r.id === 'main') ?? null)).catch(() => {}); }, []);
+  // 회사별로 다른 문서를 읽는다 — 안 나누면 태백 기초잔액이 풍회 재무제표에 그대로 선다
+  useEffect(() => {
+    fetchCollection<OpeningDoc>('openingBalances')
+      .then(rows => setOpeningDoc(rows.find(r => r.id === openingDocId(companyId)) ?? null))
+      .catch(() => {});
+  }, [companyId]);
 
   const cashDefault = useMemo(() => cashAccounts.filter(a => a.type !== '카드').reduce((s, a) => s + (a.openingBalance ?? 0), 0), [cashAccounts]);
   const defaultDate = useMemo(() => cashAccounts.map(a => a.openingDate).filter(Boolean).sort()[0] ?? '2026-07-01', [cashAccounts]);
@@ -68,7 +76,7 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
     setSaving(true);
     try {
       const clean = { ...draft, id: 'main', amounts: Object.fromEntries(Object.entries(draft.amounts).filter(([, v]) => v)) };
-      await setDocument('openingBalances', 'main', clean);
+      await setDocument('openingBalances', openingDocId(companyId), clean);
       setOpeningDoc(clean); setEditing(false);
     } finally { setSaving(false); }
   };

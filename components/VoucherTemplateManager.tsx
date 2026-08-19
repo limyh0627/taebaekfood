@@ -32,7 +32,7 @@ export default function VoucherTemplateManager({
   const [editTpl, setEditTpl] = useState<FixedCostTemplate | null>(null);
   const [form, setForm] = useState({
     name: '', group: '', amount: '', partnerId: '', partnerName: '',
-    dir: '출금' as VoucherDir, autoIssue: false, issueDay: '1', taxExempt: false,
+    dir: '출금' as VoucherDir, autoIssue: false, issueDay: '1', taxExempt: false, itemName: '',
   });
   /** 옛 postMode를 새 갈래로 읽는다 — '분리'는 채무를 세우는 것이니 '줄돈' */
   const dirOf = (t: FixedCostTemplate): VoucherDir => t.dir ?? (t.postMode === '분리' ? '줄돈' : '출금');
@@ -82,6 +82,7 @@ export default function VoucherTemplateManager({
       name: t.name, group: t.group ?? '', amount: t.amount ? String(t.amount) : '',
       partnerId: t.partnerId ?? '', partnerName: t.partnerName ?? '',
       dir: dirOf(t), autoIssue: !!t.autoIssue, issueDay: String(t.issueDay ?? 1), taxExempt: !!t.taxExempt,
+      itemName: t.itemName ?? '',
     });
     setPartnerQuery(''); setPartnerOpen(false);
   };
@@ -107,12 +108,13 @@ export default function VoucherTemplateManager({
       </div>
 
       {shown.length === 0 ? (
-        <div className="py-8 text-center text-slate-300">
+        <div className={`text-center text-slate-300 ${compact ? 'h-[42vh] flex flex-col items-center justify-center' : 'py-8'}`}>
           <BarChart2 size={24} className="mx-auto mb-2 opacity-40"/>
           <p className="text-xs font-bold">해당하는 템플릿이 없습니다</p>
         </div>
       ) : (
-        <div className={compact ? 'max-h-[42vh] overflow-y-auto' : ''}>
+        // 검색으로 걸러져도 높이가 안 변해야 한다 — max-h면 결과가 줄 때마다 창이 뛴다
+        <div className={compact ? 'h-[42vh] overflow-y-auto' : ''}>
           {groups.map(g => (
             <div key={g.name}>
               <div className="px-4 py-1 bg-slate-50/70 border-y border-slate-100 flex items-center gap-2">
@@ -257,6 +259,15 @@ export default function VoucherTemplateManager({
               </div>
             </div>
             <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
+                품목명 <span className="normal-case text-slate-300">(비우면 계정과목 이름)</span>
+              </label>
+              <input value={form.itemName} placeholder={accountCodes.find(c => c.code === editTpl.accountCode)?.name ?? '계정과목 이름'}
+                onChange={e => setForm(f => ({ ...f, itemName: e.target.value }))}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
+              <p className="text-[10px] font-bold text-slate-400 mt-1">전표 품목란에 이대로 찍힙니다.</p>
+            </div>
+            <div>
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">금액 <span className="normal-case text-slate-300">(0이면 안 채움)</span></label>
               <input inputMode="numeric" value={form.amount}
                 onChange={e => setForm(f => ({ ...f, amount: e.target.value.replace(/[^0-9]/g, '') }))}
@@ -270,10 +281,10 @@ export default function VoucherTemplateManager({
               <div className="grid grid-cols-3 gap-1.5">
                 {VOUCHER_DIRS.map(d => (
                   <button key={d} type="button" onClick={() => setForm(f => ({ ...f, dir: d }))}
-                    className={`px-2 py-2 rounded-xl border text-left transition-all ${form.dir === d
+                    title={DIR_HINT[d]}
+                    className={`px-2 py-2 rounded-xl border text-center text-xs font-black transition-all ${form.dir === d
                       ? `${DIR_CHIP[d]} border-transparent` : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'}`}>
-                    <div className="text-xs font-black">{d}</div>
-                    <div className={`text-[9px] font-bold leading-tight mt-0.5 ${form.dir === d ? 'opacity-70' : 'opacity-50'}`}>{DIR_HINT[d]}</div>
+                    {d}
                   </button>
                 ))}
               </div>
@@ -337,6 +348,7 @@ export default function VoucherTemplateManager({
                     amount,
                     partnerId: form.partnerId,
                     partnerName: form.partnerName.trim(),
+                    itemName: form.itemName.trim(),
                     dir: form.dir,
                     autoIssue: form.autoIssue,
                     issueDay: Number(form.issueDay) || 1,

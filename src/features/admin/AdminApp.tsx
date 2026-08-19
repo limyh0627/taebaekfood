@@ -200,6 +200,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
     () => allIssuedStatements.filter(s => companyOf(s) === companyId),
     [allIssuedStatements, companyId],
   );
+  // 재고 스냅샷도 회사별 — 재고조정 분개가 500 원료매입을 만들기 때문에
+  // 안 거르면 태백 재고 증감이 풍회 손익에 그대로 잡힌다(전표 하나 없이 3천만원).
+  const companySnapshots = useMemo(
+    () => inventorySnapshots.filter(s => companyOf(s) === companyId),
+    [inventorySnapshots, companyId],
+  );
   // 통장도 회사별 — 풍회 원장을 보려면 풍회 통장이 따로 있어야 한다
   const companyCashAccounts = useMemo(
     () => appData.cashAccounts.filter(a => companyOf(a) === companyId),
@@ -3876,6 +3882,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {(currentView === 'profit-analysis' || currentView === 'cost-management') && (
             <div className="h-full overflow-y-auto">
               <ProfitAnalysis
+                  companyId={companyId}
                 issuedStatements={issuedStatements}
                 fixedCosts={fixedCosts}
                 fixedCostTemplates={appData.fixedCostTemplates}
@@ -3904,7 +3911,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 onAddAccountGroup={async (data) => { const id = await addItem('accountGroups', { ...data, id: `ag-${Date.now()}` }); refreshStaticData(); return id; }}
                 onUpdateAccountGroup={(id, data) => { updateItem('accountGroups', id, data); refreshStaticData(); }}
                 onDeleteAccountGroup={(id) => { deleteItem('accountGroups', id); refreshStaticData(); }}
-                inventorySnapshots={inventorySnapshots}
+                inventorySnapshots={companySnapshots}
                 onSaveInventorySnapshot={async (data) => { await addItem('inventorySnapshots', { ...data, id: `inv-snap-${data.yearMonth}` }); }}
                 onGenerateRecurringCosts={generateRecurringCosts}
               />
@@ -3914,6 +3921,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <div className="h-full overflow-y-auto">
               <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                 <ProfitAnalysis
+                  companyId={companyId}
                   initialTab="partners"
                   issuedStatements={issuedStatements}
                   fixedCosts={fixedCosts}
@@ -3929,7 +3937,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
                   accountGroups={appData.accountGroups}
                   accountCodes={appData.accountCodes}
-                  inventorySnapshots={inventorySnapshots}
+                  inventorySnapshots={companySnapshots}
                   cashEntries={companyCashEntries}
                   onAddCashEntry={(e) => addItem('cashEntries', { ...e, companyId })}
                   settlements={appData.settlements}
@@ -3991,6 +3999,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <div className="h-full overflow-y-auto">
               <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                 <ProfitAnalysis
+                  companyId={companyId}
                   initialTab="cash-flow"
                   issuedStatements={issuedStatements}
                   fixedCosts={fixedCosts}
@@ -4006,7 +4015,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
                   accountGroups={appData.accountGroups}
                   accountCodes={appData.accountCodes}
-                  inventorySnapshots={inventorySnapshots}
+                  inventorySnapshots={companySnapshots}
                   cashEntries={companyCashEntries}
                   settlements={appData.settlements}
                   onAddSettlement={(s) => addItem('settlements', s)}
@@ -4025,11 +4034,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <div className="h-full overflow-y-auto">
               <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                 <FinancialReports
+                  companyId={companyId}
                   statements={issuedStatements}
                   cashEntries={companyCashEntries}
                   accounts={appData.accountCodes}
                   cashAccounts={companyCashAccounts}
-                  inventorySnapshots={appData.inventorySnapshots}
+                  inventorySnapshots={companySnapshots}
                 />
               </React.Suspense>
             </div>
