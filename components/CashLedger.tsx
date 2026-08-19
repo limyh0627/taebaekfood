@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Wallet, Plus, X, Landmark, CreditCard, Coins, Settings2, Trash2, Link2 } from 'lucide-react';
 import { CashAccount, CashEntry, AccountCode, Partner, IssuedStatement, Settlement, FixedCostTemplate } from '../src/shared/types';
 import { buildAccountLedger, totalCashOnHand, unsettledStatements, unmatchedCash } from '../src/features/admin/cashLedger';
-import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, CashTemplate } from '../src/shared/cashTemplates';
+import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, isCashDir, CashTemplate } from '../src/shared/cashTemplates';
 import { journalizeCashEntry } from '../src/shared/autoJournal';
 
 interface Props {
@@ -386,8 +386,9 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
   const net = grs - ded;
   // 계정 코드 (이름으로 탐색, 없으면 기본)
   // 고른 방향의 템플릿만. 카드를 누르면 모드·계정과목·비고가 한 번에 채워진다.
-  const templates = useMemo(() => filterTemplates(accountCodes, dir, fixedCostTemplates), [accountCodes, dir, fixedCostTemplates]);
+  const templates = useMemo(() => filterTemplates(accountCodes, fixedCostTemplates), [accountCodes, fixedCostTemplates]);
   const pickTemplate = (t: CashTemplate) => {
+    if (isCashDir(t.dir)) setDir(t.dir);   // 자금원장은 돈이 오간 것만 적는다
     setMode(t.mode);
     setInsCorpStr(''); setInsEmpStr('');
     setAccountCode(t.accountCode ?? '');
@@ -505,7 +506,7 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest shrink-0">전표</span>
               <span className={`text-sm font-black truncate ${picked ? 'text-indigo-700' : 'text-slate-600'}`}>{cur?.label ?? '직접입력'}</span>
               {cur && <span className="text-[10px] font-bold text-slate-400 truncate">{cur.hint ?? `${cur.accountCode} ${accountCodes.find(c => c.code === cur.accountCode)?.name ?? ''}`}</span>}
-              <span className="ml-auto text-[11px] font-black text-indigo-600 shrink-0">자주 쓰는 전표 ▾</span>
+              <span className="ml-auto text-[11px] font-black text-indigo-600 shrink-0">템플릿 ▾</span>
             </button>
           );
         })()}
@@ -720,9 +721,8 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
           <CashTemplateModal
             templates={templates} accountCodes={accountCodes}
             activeId={activeTemplateId(templates, { mode, accountCode })}
-            dir={dir}
-            onDir={d => { setDir(d); setMode('일반'); setAccountCode(''); }}
             onPick={pickTemplate}
+            onDirect={() => { setMode('일반'); setAccountCode(''); setPickerOpen(false); }}
             onClose={() => setPickerOpen(false)}
           />
         )}

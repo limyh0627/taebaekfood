@@ -152,16 +152,20 @@ export const dailyAutoVoucher = onSchedule(
       const day = Math.min(Math.max(Number(t.issueDay ?? 1), 1), lastDay);
       if (`${ym}-${String(day).padStart(2, '0')}` !== today) continue;
 
-      const split = (t.postMode ?? '합침') === '분리';
-      if (split && !t.partnerId) {
-        console.warn(`[autoVoucher] ${t.name}: 분리 발행인데 거래처가 없어 건너뜀`);
+      // 갈래 하나로 정한다 — 출금·입금은 자금전표, 줄돈·받을돈·대체는 전표
+      const dir: string = t.dir ?? (t.postMode === '분리' ? '줄돈' : '출금');
+      const isCash = dir === '출금' || dir === '입금';
+      // 비현금 갈래는 거래처가 있어야 자동으로 낼 수 있다 —
+      // 거래처가 있으면 매입전표(상대변 251이 자동), 없으면 차·대를 직접 세워야 해서 손으로만.
+      if (!isCash && !t.partnerId) {
+        console.warn(`[autoVoucher] ${t.name}: 거래처 없는 대체는 자동 발행 안 함`);
         continue;
       }
 
       const key = `AUTO-${id}-${ym}`;
       const amount = Number(t.amount);
 
-      if (split) {
+      if (!isCash) {
         const ref = db.collection('issuedStatements').doc(key);
         if ((await ref.get()).exists) continue;
         const exempt = !!t.taxExempt;
@@ -173,7 +177,7 @@ export const dailyAutoVoucher = onSchedule(
           id: key,
           issuedAt: new Date().toISOString(),
           tradeDate: today,
-          type: '매입',
+          type: dir === '받을돈' ? '매출' : (t.partnerId ? '매입' : '비용'),
           partnerId: t.partnerId,
           partnerName: t.partnerName ?? '',
           orderId: key,
@@ -195,7 +199,7 @@ export const dailyAutoVoucher = onSchedule(
           id: key,
           date: today,
           cashAccountId: '',
-          dir: t.dir ?? '출금',
+          dir,
           amount,
           accountCode: t.accountCode,
           ...(t.partnerId ? { partnerId: t.partnerId, partnerName: t.partnerName ?? '' } : {}),
@@ -204,7 +208,7 @@ export const dailyAutoVoucher = onSchedule(
         });
       }
       created++;
-      console.log(`[autoVoucher] ${today} ${t.name} ${amount}원 (${split ? '매입전표' : '출금전표'})`);
+      console.log(`[autoVoucher] ${today} ${t.name} ${amount}원 (${dir})`);
     }
     console.log(`[autoVoucher] ${today} — ${created}건 발행`);
   }

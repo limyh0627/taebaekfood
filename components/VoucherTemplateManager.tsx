@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { Trash2, X, ToggleLeft, ToggleRight, Pencil, Check, Eye, EyeOff, Lock, BarChart2, Star, FolderPlus } from 'lucide-react';
-import { FixedCostTemplate, AccountCode } from '../src/shared/types';
+import { FixedCostTemplate, AccountCode, Partner } from '../src/shared/types';
+import { VOUCHER_DIRS, DIR_CHIP, DIR_HINT, isCashDir, VoucherDir } from '../src/shared/cashTemplates';
 
 /**
- * 전표 템플릿 관리 — 일반전표 발행의 '자주 쓰는 전표'가 여기서 정해진다.
+ * 전표 템플릿 관리 — 일반전표 발행의 '템플릿'가 여기서 정해진다.
  *
  * **목록은 한 곳에만 둔다.** 전에 손익화면과 전표화면 두 군데에 있었는데, 같은 것이 두 번
  * 보이니 어느 쪽이 진짜인지 흐려졌다. 쓰는 자리(전표 화면) 옆에 붙여 둔다.
@@ -16,10 +17,11 @@ const fmt = (n: number) => n.toLocaleString('ko-KR');
 export const NO_GROUP = '분류없음';
 
 export default function VoucherTemplateManager({
-  templates, accountCodes, onUpdate, onDelete, compact = false,
+  templates, accountCodes, partners = [], onUpdate, onDelete, compact = false,
 }: {
   templates: FixedCostTemplate[];
   accountCodes: AccountCode[];
+  partners?: Partner[];
   onUpdate?: (id: string, data: Partial<FixedCostTemplate>) => Promise<void> | void;
   onDelete?: (id: string) => Promise<void> | void;
   /** 모달 안이면 높이를 제한한다 */
@@ -29,9 +31,18 @@ export default function VoucherTemplateManager({
   const [filter, setFilter] = useState<'all' | 'auto' | 'hidden'>('all');
   const [editTpl, setEditTpl] = useState<FixedCostTemplate | null>(null);
   const [form, setForm] = useState({
-    name: '', group: '', amount: '', partnerName: '',
-    postMode: '합침' as '합침' | '분리', autoIssue: false, issueDay: '1', taxExempt: false,
+    name: '', group: '', amount: '', partnerId: '', partnerName: '',
+    dir: '출금' as VoucherDir, autoIssue: false, issueDay: '1', taxExempt: false,
   });
+  /** 옛 postMode를 새 갈래로 읽는다 — '분리'는 채무를 세우는 것이니 '줄돈' */
+  const dirOf = (t: FixedCostTemplate): VoucherDir => t.dir ?? (t.postMode === '분리' ? '줄돈' : '출금');
+  // 거래처는 이름만 적으면 소용없다 — id가 붙어야 미지급금이 그 거래처로 잡힌다
+  const [partnerQuery, setPartnerQuery] = useState('');
+  const [partnerOpen, setPartnerOpen] = useState(false);
+  const partnerHits = useMemo(() => {
+    const q = partnerQuery.trim();
+    return (q ? partners.filter(x => x.name.includes(q)) : partners).slice(0, 8);
+  }, [partners, partnerQuery]);
 
   const shown = useMemo(() => {
     const q = search.trim();
@@ -68,9 +79,11 @@ export default function VoucherTemplateManager({
   const openEdit = (t: FixedCostTemplate) => {
     setEditTpl(t);
     setForm({
-      name: t.name, group: t.group ?? '', amount: t.amount ? String(t.amount) : '', partnerName: t.partnerName ?? '',
-      postMode: t.postMode ?? '합침', autoIssue: !!t.autoIssue, issueDay: String(t.issueDay ?? 1), taxExempt: !!t.taxExempt,
+      name: t.name, group: t.group ?? '', amount: t.amount ? String(t.amount) : '',
+      partnerId: t.partnerId ?? '', partnerName: t.partnerName ?? '',
+      dir: dirOf(t), autoIssue: !!t.autoIssue, issueDay: String(t.issueDay ?? 1), taxExempt: !!t.taxExempt,
     });
+    setPartnerQuery(''); setPartnerOpen(false);
   };
 
   return (
@@ -124,8 +137,8 @@ export default function VoucherTemplateManager({
                       <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-lg shrink-0 w-10 text-center ${t.autoIssue ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-300'}`}>
                         {t.autoIssue ? ((t.issueDay ?? 1) === 31 ? '말일' : `${t.issueDay ?? 1}일`) : '수동'}
                       </span>
-                      <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-lg shrink-0 ${(t.dir ?? '출금') === '입금' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                        {t.dir ?? '출금'}
+                      <span title={DIR_HINT[dirOf(t)]} className={`text-[10px] font-black px-1.5 py-0.5 rounded-lg shrink-0 w-11 text-center ${DIR_CHIP[dirOf(t)]}`}>
+                        {dirOf(t)}
                       </span>
                       <button onClick={() => onUpdate?.(t.id, { favorite: !t.favorite })}
                         title={t.favorite ? '즐겨찾기 빼기' : '즐겨찾기 — 목록 맨 위로'}
@@ -135,23 +148,20 @@ export default function VoucherTemplateManager({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="text-xs font-black text-slate-800 truncate">{t.name}</span>
-                          {(t.postMode ?? '합침') === '분리' && (
-                            <span title="발생일에 매입전표로 채무를 세우고, 지불은 따로" className="shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">분리</span>
-                          )}
                           {locked && <span title="기본 템플릿 — 지울 수 없고 숨기기만 됩니다" className="shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400">기본</span>}
                           {t.hidden && <span className="shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-500">숨김</span>}
                         </div>
                         <div className="text-[10px] font-bold text-slate-400 truncate">
                           {t.accountCode ? `${t.accountCode} ${accountCodes.find(c => c.code === t.accountCode)?.name ?? ''}` : (t.mode !== '일반' ? t.mode : '계정 직접선택')}
                           {t.partnerName && ` · ${t.partnerName}`}
-                          {(t.postMode ?? '합침') === '분리' && (t.taxExempt ? ' · 면세' : ' · 과세')}
+                          {!isCashDir(dirOf(t)) && t.partnerId && (t.taxExempt ? ' · 면세' : ' · 과세')}
                         </div>
                       </div>
                       <span className="text-xs font-black text-slate-800 tabular-nums shrink-0 w-20 text-right">
                         {t.amount > 0 ? fmt(t.amount) : <span className="text-slate-300">—</span>}
                       </span>
                       <button onClick={() => onUpdate?.(t.id, { hidden: !t.hidden })}
-                        title={t.hidden ? '숨김 해제 — 자주 쓰는 전표에 다시 뜬다' : '숨기기 — 자주 쓰는 전표에서 뺀다'}
+                        title={t.hidden ? '숨김 해제 — 일반전표 목록에 다시 뜬다' : '숨기기 — 일반전표 목록에서 뺀다'}
                         className="p-1 hover:bg-slate-100 rounded-lg text-slate-300 hover:text-slate-600 shrink-0">
                         {t.hidden ? <EyeOff size={13}/> : <Eye size={13}/>}
                       </button>
@@ -213,10 +223,37 @@ export default function VoucherTemplateManager({
                   </button>
                 </div>
               </div>
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">거래처</label>
-                <input value={form.partnerName} onChange={e => setForm(f => ({ ...f, partnerName: e.target.value }))}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
+              <div className="relative">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
+                  거래처 {form.partnerId
+                    ? <span className="normal-case text-emerald-600">연결됨</span>
+                    : form.partnerName ? <span className="normal-case text-amber-600">이름만 · 연결 안 됨</span> : null}
+                </label>
+                <div className="flex gap-1.5">
+                  <input
+                    value={form.partnerId || !partnerOpen ? form.partnerName : partnerQuery}
+                    placeholder="업체명 검색..."
+                    onFocus={() => { setPartnerQuery(''); setPartnerOpen(true); }}
+                    onChange={e => { setPartnerQuery(e.target.value); setForm(f => ({ ...f, partnerId: '', partnerName: e.target.value })); setPartnerOpen(true); }}
+                    onBlur={() => setTimeout(() => setPartnerOpen(false), 150)}
+                    className="flex-1 min-w-0 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
+                  {(form.partnerId || form.partnerName) && (
+                    <button type="button" onClick={() => { setForm(f => ({ ...f, partnerId: '', partnerName: '' })); setPartnerQuery(''); }}
+                      title="거래처 비우기"
+                      className="shrink-0 px-2.5 rounded-xl border border-slate-200 text-slate-300 hover:text-rose-500 hover:border-rose-300 transition-all"><X size={14}/></button>
+                  )}
+                </div>
+                {partnerOpen && partnerHits.length > 0 && (
+                  <div className="absolute left-0 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl z-10 overflow-hidden max-h-52 overflow-y-auto">
+                    {partnerHits.map(c => (
+                      <button key={c.id} type="button"
+                        onMouseDown={() => { setForm(f => ({ ...f, partnerId: c.id, partnerName: c.name })); setPartnerQuery(''); setPartnerOpen(false); }}
+                        className="w-full text-left px-3 py-2.5 text-xs font-black text-slate-800 hover:bg-indigo-50 transition-colors border-b border-slate-50 last:border-0">
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             <div>
@@ -227,21 +264,24 @@ export default function VoucherTemplateManager({
             </div>
 
             <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">발행 방식</label>
-              <div className="grid grid-cols-2 gap-2">
-                {([['합침', '한 줄', '나가는 날 출금전표 하나'], ['분리', '두 줄', '발생일에 매입전표 · 지불 따로']] as const).map(([v, lbl, hint]) => (
-                  <button key={v} type="button" onClick={() => setForm(f => ({ ...f, postMode: v }))}
-                    className={`px-3 py-2 rounded-xl border text-left transition-all ${form.postMode === v
-                      ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'}`}>
-                    <div className="text-xs font-black">{lbl}</div>
-                    <div className={`text-[9px] font-bold leading-tight mt-0.5 ${form.postMode === v ? 'opacity-70' : 'opacity-50'}`}>{hint}</div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
+                갈래 <span className="normal-case text-slate-300">(돈이 언제 움직이나)</span>
+              </label>
+              <div className="grid grid-cols-3 gap-1.5">
+                {VOUCHER_DIRS.map(d => (
+                  <button key={d} type="button" onClick={() => setForm(f => ({ ...f, dir: d }))}
+                    className={`px-2 py-2 rounded-xl border text-left transition-all ${form.dir === d
+                      ? `${DIR_CHIP[d]} border-transparent` : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'}`}>
+                    <div className="text-xs font-black">{d}</div>
+                    <div className={`text-[9px] font-bold leading-tight mt-0.5 ${form.dir === d ? 'opacity-70' : 'opacity-50'}`}>{DIR_HINT[d]}</div>
                   </button>
                 ))}
               </div>
-              {form.postMode === '분리' && !editTpl.partnerId && (
-                <p className="text-[10px] font-bold text-amber-600 mt-1.5 leading-snug">
-                  거래처가 없습니다 — 미지급금을 걸 곳이 없어 분리로 저장되지 않습니다.
-                  일반전표 발행에서 거래처를 골라 다시 저장해 주세요.
+              {!isCashDir(form.dir) && (
+                <p className="text-[10px] font-bold text-slate-400 mt-1.5 leading-snug">
+                  {form.partnerId
+                    ? <>거래처가 있으니 <b className="text-amber-600">매입전표</b>로 끊습니다 — 미지급금이 이 거래처로 잡히고, 낼 때 [지불]합니다.</>
+                    : <>거래처가 없으니 <b>순수 대체</b>입니다 — 차·대를 직접 세워야 해서 <b className="text-amber-600">자동 발행은 못 켭니다</b>.</>}
                 </p>
               )}
             </div>
@@ -270,7 +310,7 @@ export default function VoucherTemplateManager({
                   {!Number(form.amount) && <span className="text-[10px] font-bold text-rose-500">금액을 넣어야 켤 수 있습니다</span>}
                 </div>
               )}
-              {form.postMode === '분리' && (
+              {!isCashDir(form.dir) && form.partnerId && (
                 <label className="flex items-center gap-2 pl-6 cursor-pointer select-none">
                   <input type="checkbox" checked={form.taxExempt}
                     onChange={e => setForm(f => ({ ...f, taxExempt: e.target.checked }))}
@@ -287,16 +327,17 @@ export default function VoucherTemplateManager({
                   if (!form.name.trim()) { alert('이름을 입력하세요.'); return; }
                   const amount = Number(form.amount || 0);
                   if (form.autoIssue && amount <= 0) { alert('자동 발행은 금액이 정해진 것만 켤 수 있습니다.'); return; }
-                  if (form.postMode === '분리' && !editTpl.partnerId) {
-                    alert('분리 발행은 거래처가 있어야 합니다.\n\n일반전표 발행에서 거래처를 고르고 다시 [템플릿으로 저장]을 눌러 주세요.');
+                  if (form.autoIssue && !isCashDir(form.dir) && !form.partnerId) {
+                    alert('거래처 없는 대체는 자동 발행을 못 켭니다.\n\n차·대를 직접 세워야 하는데 템플릿엔 계정이 하나뿐입니다.\n거래처를 고르면 매입전표로 자동 발행됩니다.');
                     return;
                   }
                   await onUpdate?.(editTpl.id, {
                     name: form.name.trim(),
                     group: form.group.trim() || NO_GROUP,
                     amount,
+                    partnerId: form.partnerId,
                     partnerName: form.partnerName.trim(),
-                    postMode: form.postMode,
+                    dir: form.dir,
                     autoIssue: form.autoIssue,
                     issueDay: Number(form.issueDay) || 1,
                     taxExempt: form.taxExempt,

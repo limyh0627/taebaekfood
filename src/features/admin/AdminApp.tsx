@@ -62,8 +62,8 @@ import {
   FolderOpen,
   BookOpen,
 } from 'lucide-react';
-import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, ShippingRule, poLines } from '../../shared/types';
-import { canAutoIssue, autoVoucherId, buildCashVoucher, buildPurchaseVoucher } from '../../shared/autoVoucher';
+import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, ShippingRule, poLines, CompanyId, COMPANIES, TAEBAEK, companyOf } from '../../shared/types';
+import { canAutoIssue, autoVoucherId, buildCashVoucher, buildStatementVoucher, dirOf, isCashDir } from '../../shared/autoVoucher';
 import PageHeader from '../../shared/components/PageHeader';
 import Dashboard from '../../../components/Dashboard';
 import OrdersList from '../../../components/OrdersList';
@@ -179,12 +179,52 @@ const AdminApp: React.FC<AdminAppProps> = ({
     pallets, palletTransactions, adjustmentRequests,
     noticePosts, chatRooms, chatMessages,
     rawMaterialLedger, sesameInputLedger,
-    appNotifications, workOrderItems, issuedStatements,
+    appNotifications, workOrderItems, issuedStatements: allIssuedStatements,
     itemFormulas, itemBoms, shippingRules, returnRequests, companyInfo, inventorySnapshots, productionSalesLogs, isDataLoading,
     pendingStatementEdits, refreshStaticData,
     historicalOrders, loadHistoricalOrders, isLoadingHistoricalOrders,
     ordersMonths, setOrdersMonths,
   } = appData;
+
+  /**
+   * 보고 있는 회사 — 태백푸드 / 풍회유통. **별도 사업자라 장부를 섞으면 안 된다.**
+   * 회사가 안 붙은 옛 기록은 전부 태백으로 본다.
+   *
+   * 전표·자금만 가른다. 거래처·품목·계정과목은 한 벌을 같이 쓴다 —
+   * 나중에 회사별로 완전히 나눌 때 이 필드가 그대로 나누는 기준이 된다.
+   */
+  const [companyId, setCompanyId] = useState<CompanyId>(() =>
+    (localStorage.getItem('tb_company') as CompanyId) || TAEBAEK);
+  const switchCompany = (id: CompanyId) => { setCompanyId(id); localStorage.setItem('tb_company', id); };
+  const issuedStatements = useMemo(
+    () => allIssuedStatements.filter(s => companyOf(s) === companyId),
+    [allIssuedStatements, companyId],
+  );
+  // 통장도 회사별 — 풍회 원장을 보려면 풍회 통장이 따로 있어야 한다
+  const companyCashAccounts = useMemo(
+    () => appData.cashAccounts.filter(a => companyOf(a) === companyId),
+    [appData.cashAccounts, companyId],
+  );
+  const companyCashEntries = useMemo(
+    () => appData.cashEntries.filter(e => companyOf(e) === companyId),
+    [appData.cashEntries, companyId],
+  );
+  const company = COMPANIES.find(c => c.id === companyId)!;
+
+  /**
+   * 풍회 장부에서 쓸 수 있는 화면 — **회계만** 있다.
+   * 주문·재고·품목·생산·인사는 태백 것이고 풍회엔 없다. 메뉴에 띄워 두면
+   * 태백 데이터가 풍회 화면에 그대로 보여서 어느 회사를 보고 있는지 흐려진다.
+   */
+  const PUNGHOE_VIEWS: ViewType[] = [
+    'trade-statement', 'tax-statement', 'partner-stats', 'ledger-cash',
+    'financial-reports', 'cash-flow', 'profit-analysis', 'cost-management', 'partners',
+  ];
+  const viewAllowed = (v: ViewType) => companyId === TAEBAEK || PUNGHOE_VIEWS.includes(v);
+  // 풍회로 바꿨는데 지금 화면이 태백 전용이면 전표로 보낸다
+  useEffect(() => {
+    if (!viewAllowed(currentView)) setCurrentView('trade-statement');
+  }, [companyId]);
 
   // 활성 주문 + 불러온 이력 주문 통합 (id 중복 제거)
   const allOrders = useMemo(() => {
@@ -1209,12 +1249,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
       if (appData.cashEntries.some(e => e.id === key || e.id === legacyKey)) continue;
       if (issuedStatements.some(s => s.id === key || (s as any).orderId === key || (s as any).orderId === legacyKey)) continue;
       const accountName = appData.accountCodes.find(c => c.code === t.accountCode)?.name;
-      if ((t.postMode ?? '합침') === '분리') {
+      if (isCashDir(dirOf(t))) {
+        await addItem('cashEntries', buildCashVoucher(t, ym, { cashAccountId: defaultAcctId, accountName }) as any);
+      } else {
         seq++;
         const docNo = `${ym}-${String(seq).padStart(4, '0')}`;
-        await addItem('issuedStatements', buildPurchaseVoucher(t, ym, { docNo, accountName }) as any);
-      } else {
-        await addItem('cashEntries', buildCashVoucher(t, ym, { cashAccountId: defaultAcctId, accountName }) as any);
+        await addItem('issuedStatements', buildStatementVoucher(t, ym, { docNo, accountName }) as any);
       }
       created++;
     }
@@ -1261,13 +1301,26 @@ const AdminApp: React.FC<AdminAppProps> = ({
       }`}>
         <div className={`flex flex-col h-full ${isSidebarCollapsed ? 'p-4' : 'p-6'}`} style={{ paddingTop: `max(${isSidebarCollapsed ? '1rem' : '1.5rem'}, env(safe-area-inset-top))`, paddingBottom: `max(${isSidebarCollapsed ? '1rem' : '1.5rem'}, env(safe-area-inset-bottom))` }}>
           <div className={`flex items-center ${isSidebarCollapsed ? 'flex-col gap-2' : 'px-2 justify-between'} mb-10`}>
-            <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setCurrentView(isAdmin ? 'dashboard' : 'orders')}>
-              <div className="w-10 h-10 bg-cyan-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-cyan-200 flex-shrink-0">
+            {/* 회사 이름을 누르면 장부를 바꾼다 — 별도 사업자라 어느 장부를 보고 있는지가 제일 중요하다.
+                실수로 다른 회사에 전표를 끊으면 두 장부가 다 틀어지므로 한 번 물어본다. */}
+            <div className="flex items-center space-x-3 cursor-pointer"
+              onClick={() => {
+                if (!isAdmin) { setCurrentView('orders'); return; }
+                const other = COMPANIES.find(c => c.id !== companyId)!;
+                if (window.confirm(`${other.name} 장부로 바꿀까요?\n\n지금  ${company.name}\n바꾸면  ${other.name}\n\n전표·자금·재무제표가 ${other.name} 것으로 바뀝니다.`)) {
+                  switchCompany(other.id);
+                }
+              }}
+              title={isAdmin ? `${company.name} — 눌러서 회사 전환` : undefined}>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg flex-shrink-0 ${
+                companyId === TAEBAEK ? 'bg-cyan-600 shadow-cyan-200' : 'bg-orange-500 shadow-orange-200'}`}>
                 <svg width="22" height="22" viewBox="0 0 32 32" fill="none"><path d="M4 16C4 16 8 8 16 8C24 8 28 16 28 16" stroke="white" strokeWidth="3" strokeLinecap="round"/><path d="M22 12L28 16L22 20" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/><circle cx="16" cy="22" r="3" fill="white"/></svg>
               </div>
               <div className={`overflow-hidden transition-all duration-200 ${isSidebarCollapsed ? 'opacity-0 w-0' : 'opacity-100'}`}>
-                <p className="text-xs font-black uppercase tracking-widest text-cyan-600 leading-none">Flow-It</p>
-                <p className="text-sm font-bold text-slate-700 leading-tight mt-0.5 whitespace-nowrap">{companyInfo?.name ?? '태백식품'} {isAdmin ? '관리자 센터' : ''}</p>
+                <p className={`text-xs font-black uppercase tracking-widest leading-none ${companyId === TAEBAEK ? 'text-cyan-600' : 'text-orange-500'}`}>Flow-It</p>
+                <p className="text-sm font-bold text-slate-700 leading-tight mt-0.5 whitespace-nowrap">
+                  {isAdmin ? company.name : (companyInfo?.name ?? '태백식품')} {isAdmin ? '관리자 센터' : ''}
+                </p>
               </div>
             </div>
             {!isMobile && (
@@ -1382,30 +1435,30 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   <div>
                     {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">경영 현황</p>}
                     <nav className="space-y-1">
-                      <NavItem icon={LayoutDashboard} label="대시보드" active={currentView === 'dashboard' || currentView === 'ai-consultant'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} />
-                      <NavItem icon={BarChart2} label="손익 / 비용 분석" active={currentView === 'profit-analysis' || currentView === 'cost-management'} onClick={() => handleNavClick('profit-analysis')} collapsed={isSidebarCollapsed} />
-                      <NavItem icon={TrendingUp} label="거래처통계" active={currentView === 'partner-stats'} onClick={() => handleNavClick('partner-stats')} collapsed={isSidebarCollapsed} />
-                      <NavItem icon={Activity} label="현금흐름 분석" active={currentView === 'cash-flow'} onClick={() => handleNavClick('cash-flow')} collapsed={isSidebarCollapsed} />
-                      <NavItem icon={Scale} label="재무제표 (복식부기)" active={currentView === 'financial-reports'} onClick={() => handleNavClick('financial-reports')} collapsed={isSidebarCollapsed} />
+                      <NavItem icon={LayoutDashboard} label="대시보드" active={currentView === 'dashboard' || currentView === 'ai-consultant'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('dashboard')} />
+                      <NavItem icon={BarChart2} label="손익 / 비용 분석" active={currentView === 'profit-analysis' || currentView === 'cost-management'} onClick={() => handleNavClick('profit-analysis')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('profit-analysis')} />
+                      <NavItem icon={TrendingUp} label="거래처통계" active={currentView === 'partner-stats'} onClick={() => handleNavClick('partner-stats')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('partner-stats')} />
+                      <NavItem icon={Activity} label="현금흐름 분석" active={currentView === 'cash-flow'} onClick={() => handleNavClick('cash-flow')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('cash-flow')} />
+                      <NavItem icon={Scale} label="재무제표 (복식부기)" active={currentView === 'financial-reports'} onClick={() => handleNavClick('financial-reports')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('financial-reports')} />
                       {/* 자금 입출금·계좌관리는 전표 탭에도 있지만, 전표 매칭(수금 취소·재배분)은 여기서만 된다. */}
-                      <NavItem icon={BookOpen} label="장부" active={currentView === 'ledger-cash'} onClick={() => handleNavClick('ledger-cash')} collapsed={isSidebarCollapsed} />
-                      <NavItem icon={Factory} label="생산 실적" active={currentView === 'production'} onClick={() => handleNavClick('production')} collapsed={isSidebarCollapsed} />
-                      <NavItem icon={ShoppingBag} label="스마트스토어 분석" active={currentView === 'smartstore-analytics'} onClick={() => handleNavClick('smartstore-analytics')} collapsed={isSidebarCollapsed} />
-                      <NavItem icon={ClipboardList} label="HACCP 체크리스트" active={currentView === 'haccp-checklist'} onClick={() => handleNavClick('haccp-checklist')} collapsed={isSidebarCollapsed} />
+                      <NavItem icon={BookOpen} label="장부" active={currentView === 'ledger-cash'} onClick={() => handleNavClick('ledger-cash')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('ledger-cash')} />
+                      <NavItem icon={Factory} label="생산 실적" active={currentView === 'production'} onClick={() => handleNavClick('production')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('production')} />
+                      <NavItem icon={ShoppingBag} label="스마트스토어 분석" active={currentView === 'smartstore-analytics'} onClick={() => handleNavClick('smartstore-analytics')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('smartstore-analytics')} />
+                      <NavItem icon={ClipboardList} label="HACCP 체크리스트" active={currentView === 'haccp-checklist'} onClick={() => handleNavClick('haccp-checklist')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('haccp-checklist')} />
                     </nav>
                   </div>
                   <div>
                     {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">업무 관리</p>}
                     <nav className="space-y-1">
-                      <NavItem icon={FileText} label="전표" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} />
-                      <NavItem icon={Receipt} label="세금계산서" active={currentView === 'tax-statement'} onClick={() => handleNavClick('tax-statement')} collapsed={isSidebarCollapsed} />
-                      <NavItem icon={Package} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} />
-                      <NavItem icon={UserCheck} label="인사 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} />
-                      <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
-                      <NavItem icon={FolderOpen} label="문서함" active={currentView === 'file-cabinet'} onClick={() => handleNavClick('file-cabinet')} collapsed={isSidebarCollapsed} />
-                      <NavItem icon={Users} label="거래처 관리" active={currentView === 'partners'} onClick={() => handleNavClick('partners')} collapsed={isSidebarCollapsed} />
-                      <NavItem icon={UserPlus} label="거래처 가입승인" active={currentView === 'partner-signup'} onClick={() => handleNavClick('partner-signup')} collapsed={isSidebarCollapsed} badge={pendingSignupCount > 0 ? pendingSignupCount : undefined} />
-                      <NavItem icon={ClipboardList} label="확인사항" active={currentView === 'admin-checklist'} onClick={() => handleNavClick('admin-checklist')} collapsed={isSidebarCollapsed} badge={adminPendingCount > 0 ? adminPendingCount : undefined} />
+                      <NavItem icon={FileText} label="전표" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('trade-statement')} />
+                      <NavItem icon={Receipt} label="세금계산서" active={currentView === 'tax-statement'} onClick={() => handleNavClick('tax-statement')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('tax-statement')} />
+                      <NavItem icon={Package} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('item-management')} />
+                      <NavItem icon={UserCheck} label="인사 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('hr')} />
+                      <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('documents')} />
+                      <NavItem icon={FolderOpen} label="문서함" active={currentView === 'file-cabinet'} onClick={() => handleNavClick('file-cabinet')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('file-cabinet')} />
+                      <NavItem icon={Users} label="거래처 관리" active={currentView === 'partners'} onClick={() => handleNavClick('partners')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('partners')} />
+                      <NavItem icon={UserPlus} label="거래처 가입승인" active={currentView === 'partner-signup'} onClick={() => handleNavClick('partner-signup')} collapsed={isSidebarCollapsed} badge={pendingSignupCount > 0 ? pendingSignupCount : undefined} hidden={!viewAllowed('partner-signup')} />
+                      <NavItem icon={ClipboardList} label="확인사항" active={currentView === 'admin-checklist'} onClick={() => handleNavClick('admin-checklist')} collapsed={isSidebarCollapsed} badge={adminPendingCount > 0 ? adminPendingCount : undefined} hidden={!viewAllowed('admin-checklist')} />
                       <NavItem icon={QrCode} label="QR 라벨 인쇄" active={false} onClick={() => setShowQrLabel(true)} collapsed={isSidebarCollapsed} />
                     </nav>
                   </div>
@@ -1435,17 +1488,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 <div>
                   {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">운영 관리</p>}
                   <nav className="space-y-1">
-                    <NavItem icon={BellRing} label="공지사항" active={currentView === 'notice'} onClick={() => handleNavClick('notice')} collapsed={isSidebarCollapsed} />
-                    <NavItem icon={MessageSquare} label="오피스톡" active={currentView === 'officetalk'} onClick={() => handleNavClick('officetalk')} collapsed={isSidebarCollapsed} badge={chatRooms.filter(r => r.participantIds.includes(currentUser.id) && r.lastUpdatedAt > (r.lastReadBy?.[currentUser.id] ?? '')).length || undefined} />
-                    <NavItem icon={Truck} label="배송 관리" active={currentView === 'shipping'} onClick={() => handleNavClick('shipping')} collapsed={isSidebarCollapsed} />
-                    <NavItem icon={ShoppingCart} label="주문 관리" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} />
-                    <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={(lowStockCount > 0 ? lowStockCount : 0) + returnRequests.filter(r => r.status === 'pending').length + receivedOrders.filter(r => !r.linkedStatementId).length || undefined} />
-                    <NavItem icon={Package} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} />
-                    <NavItem icon={Layers} label="파렛트 관리" active={currentView === 'pallets'} onClick={() => handleNavClick('pallets')} collapsed={isSidebarCollapsed} />
-                    <NavItem icon={CalendarCheck} label="연차 신청" active={currentView === 'leave-portal'} onClick={() => handleNavClick('leave-portal')} collapsed={isSidebarCollapsed} />
-                    <NavItem icon={ShieldCheck} label="확인사항" active={currentView === 'confirmation-items'} onClick={() => handleNavClick('confirmation-items')} collapsed={isSidebarCollapsed} />
-                    <NavItem icon={ShieldAlert} label="작업장 위생점검" active={currentView === 'sanitation-checklist'} onClick={() => handleNavClick('sanitation-checklist')} collapsed={isSidebarCollapsed} />
-                    <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} />
+                    <NavItem icon={BellRing} label="공지사항" active={currentView === 'notice'} onClick={() => handleNavClick('notice')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('notice')} />
+                    <NavItem icon={MessageSquare} label="오피스톡" active={currentView === 'officetalk'} onClick={() => handleNavClick('officetalk')} collapsed={isSidebarCollapsed} badge={chatRooms.filter(r => r.participantIds.includes(currentUser.id) && r.lastUpdatedAt > (r.lastReadBy?.[currentUser.id] ?? '')).length || undefined} hidden={!viewAllowed('officetalk')} />
+                    <NavItem icon={Truck} label="배송 관리" active={currentView === 'shipping'} onClick={() => handleNavClick('shipping')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('shipping')} />
+                    <NavItem icon={ShoppingCart} label="주문 관리" active={currentView === 'orders'} onClick={() => handleNavClick('orders')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('orders')} />
+                    <NavItem icon={Package} label="재고 관리" active={currentView === 'inventory'} onClick={() => handleNavClick('inventory')} collapsed={isSidebarCollapsed} badge={(lowStockCount > 0 ? lowStockCount : 0) + returnRequests.filter(r => r.status === 'pending').length + receivedOrders.filter(r => !r.linkedStatementId).length || undefined} hidden={!viewAllowed('inventory')} />
+                    <NavItem icon={Package} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('item-management')} />
+                    <NavItem icon={Layers} label="파렛트 관리" active={currentView === 'pallets'} onClick={() => handleNavClick('pallets')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('pallets')} />
+                    <NavItem icon={CalendarCheck} label="연차 신청" active={currentView === 'leave-portal'} onClick={() => handleNavClick('leave-portal')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('leave-portal')} />
+                    <NavItem icon={ShieldCheck} label="확인사항" active={currentView === 'confirmation-items'} onClick={() => handleNavClick('confirmation-items')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('confirmation-items')} />
+                    <NavItem icon={ShieldAlert} label="작업장 위생점검" active={currentView === 'sanitation-checklist'} onClick={() => handleNavClick('sanitation-checklist')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('sanitation-checklist')} />
+                    <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('documents')} />
                   </nav>
                 </div>
                 <div>
@@ -1480,6 +1533,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
             className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 shrink-0"
           >
             <Menu size={22} />
+          </button>
+          <button onClick={() => switchCompany(companyId === 'taebaek' ? 'punghoe' : 'taebaek')}
+            title={`${company.name} — 눌러서 회사 전환`}
+            className={`shrink-0 px-2 py-1 rounded-lg text-[11px] font-black ${
+              companyId === 'taebaek' ? 'bg-indigo-600 text-white' : 'bg-orange-500 text-white'}`}>
+            {company.short}
           </button>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-black text-slate-800 truncate">
@@ -3704,16 +3763,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
               partnerItems={partnerItems}
               accountCodes={appData.accountCodes}
               accountGroups={appData.accountGroups}
-              cashAccounts={appData.cashAccounts}
-              cashEntries={appData.cashEntries}
+              cashAccounts={companyCashAccounts}
+              cashEntries={companyCashEntries}
               settlements={appData.settlements}
-              onAddCashEntry={(e) => addItem('cashEntries', e)}
+              onAddCashEntry={(e) => addItem('cashEntries', { ...e, companyId })}
               onUpdateCashEntry={(id, data) => updateItem('cashEntries', id, data)}
               onAddSettlement={(s) => addItem('settlements', s)}
               onUpdateSettlement={(id, data) => updateItem('settlements', id, data)}
               onDeleteCashEntry={(id) => deleteItem('cashEntries', id)}
               onDeleteSettlement={(id) => deleteItem('settlements', id)}
-              onAddCashAccount={(a) => addItem('cashAccounts', a)}
+              onAddCashAccount={(a) => addItem('cashAccounts', { ...a, companyId })}
               onUpdateCashAccount={(id, data) => updateItem('cashAccounts', id, data)}
               fixedCostTemplates={appData.fixedCostTemplates}
               onGenerateRecurringCosts={generateRecurringCosts}
@@ -3728,7 +3787,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onUpsertPartnerItem={(ps) => handleUpsertPartnerItem(ps, 'out')}
               onMarkInvoicePrinted={(id, value) => updateItem('orders', id, { invoicePrinted: value })}
               onUpdateOrder={(id, data) => updateItem('orders', id, data)}
-              onAddIssuedStatement={(stmt) => addItem('issuedStatements', stmt).catch(e => { console.error('전표 저장 실패:', e); alert('전표 저장 실패: ' + (e?.message ?? String(e))); })}
+              companyId={companyId}
+              onAddForCompany={(target, payload) => {
+                // 회사 간 이체 — 상대 회사 장부에도 써야 해서 회사를 지정해 저장한다
+                if (payload.cashEntry) addItem('cashEntries', { ...payload.cashEntry, companyId: target });
+                if (payload.statement) addItem('issuedStatements', { ...payload.statement, companyId: target });
+              }}
+              onAddIssuedStatement={(stmt) => addItem('issuedStatements', { ...stmt, companyId }).catch(e => { console.error('전표 저장 실패:', e); alert('전표 저장 실패: ' + (e?.message ?? String(e))); })}
               onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
               onProposeEdit={(id, data, stmtType, docNo, partnerName) => {
                 const stmt = issuedStatements.find(s => s.id === id);
@@ -3801,6 +3866,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'tax-statement' && (
             <TaxStatement
+              companyId={companyId}
               issuedStatements={issuedStatements}
               partners={partners}
               companyInfo={companyInfo}
@@ -3864,8 +3930,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   accountGroups={appData.accountGroups}
                   accountCodes={appData.accountCodes}
                   inventorySnapshots={inventorySnapshots}
-                  cashEntries={appData.cashEntries}
-                  onAddCashEntry={(e) => addItem('cashEntries', e)}
+                  cashEntries={companyCashEntries}
+                  onAddCashEntry={(e) => addItem('cashEntries', { ...e, companyId })}
                   settlements={appData.settlements}
                   onAddSettlement={(s) => addItem('settlements', s)}
                   onDeleteSettlement={(id) => deleteItem('settlements', id)}
@@ -3896,22 +3962,22 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   {ledgerTab === 'partner' ? (
                     <PartnerLedger
                       issuedStatements={issuedStatements}
-                      cashEntries={appData.cashEntries}
+                      cashEntries={companyCashEntries}
                       settlements={appData.settlements}
                     />
                   ) : (
                   <CashLedger
-                    cashAccounts={appData.cashAccounts}
-                    cashEntries={appData.cashEntries}
+                    cashAccounts={companyCashAccounts}
+                    cashEntries={companyCashEntries}
                     accountCodes={appData.accountCodes}
                     fixedCostTemplates={appData.fixedCostTemplates}
                     partners={partners}
                     issuedStatements={issuedStatements}
                     settlements={appData.settlements}
                     currentUser={currentUser}
-                    onAddCashAccount={(a) => addItem('cashAccounts', a)}
+                    onAddCashAccount={(a) => addItem('cashAccounts', { ...a, companyId })}
                     onUpdateCashAccount={(id, data) => updateItem('cashAccounts', id, data)}
-                    onAddCashEntry={(e) => addItem('cashEntries', e)}
+                    onAddCashEntry={(e) => addItem('cashEntries', { ...e, companyId })}
                     onDeleteCashEntry={(id) => deleteItem('cashEntries', id)}
                     onAddSettlement={(s) => addItem('settlements', s)}
                     onDeleteSettlement={(id) => deleteItem('settlements', id)}
@@ -3941,7 +4007,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   accountGroups={appData.accountGroups}
                   accountCodes={appData.accountCodes}
                   inventorySnapshots={inventorySnapshots}
-                  cashEntries={appData.cashEntries}
+                  cashEntries={companyCashEntries}
                   settlements={appData.settlements}
                   onAddSettlement={(s) => addItem('settlements', s)}
                   onDeleteSettlement={(id) => deleteItem('settlements', id)}
@@ -3960,9 +4026,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
               <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                 <FinancialReports
                   statements={issuedStatements}
-                  cashEntries={appData.cashEntries}
+                  cashEntries={companyCashEntries}
                   accounts={appData.accountCodes}
-                  cashAccounts={appData.cashAccounts}
+                  cashAccounts={companyCashAccounts}
                   inventorySnapshots={appData.inventorySnapshots}
                 />
               </React.Suspense>
@@ -4538,7 +4604,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
   );
 };
 
-const NavItem = ({ icon: Icon, label, active, onClick, collapsed, badge }: { icon: any, label: string, active: boolean, onClick: () => void, collapsed?: boolean, badge?: number }) => (
+/** hidden이면 아예 안 그린다 — 회사에 없는 화면을 메뉴에 남겨 두면 잘못 들어간다 */
+const NavItem = ({ icon: Icon, label, active, onClick, collapsed, badge, hidden }: { icon: any, label: string, active: boolean, onClick: () => void, collapsed?: boolean, badge?: number, hidden?: boolean }) => (
+  hidden ? null : (
   <button
     onClick={onClick}
     title={collapsed ? label : undefined}
@@ -4558,6 +4626,7 @@ const NavItem = ({ icon: Icon, label, active, onClick, collapsed, badge }: { ico
     </div>
     <span className={`text-sm whitespace-nowrap overflow-hidden transition-all duration-200 ${collapsed ? 'opacity-0 w-0' : 'opacity-100'}`}>{label}</span>
   </button>
+  )
 );
 
 export default AdminApp;

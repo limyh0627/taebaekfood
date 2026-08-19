@@ -506,30 +506,34 @@ export interface FixedCostTemplate {
   startYm?: string;            // 'YYYY-MM' 시작월 (이 월부터 생성)
   endYm?: string;              // 'YYYY-MM' 종료월 (선택, 이 월까지)
 
-  // ── 전표 템플릿 (일반전표 '자주 쓰는 전표') ──────────────────────────────
+  // ── 전표 템플릿 (일반전표 '템플릿') ──────────────────────────────
   // 같은 컬렉션을 쓰되 갈래를 나눈다. 'voucher'는 **정기 생성 대상이 아니다** —
   // 전기세 템플릿이 있다고 매달 전기세 전표가 저절로 생기면 안 된다.
   kind?: 'recurring' | 'voucher';   // 없으면 recurring (기존 데이터)
-  dir?: '입금' | '출금';             // 자금 방향
+  /**
+   * 전표 갈래 — **돈이 언제 움직이냐** 하나로 정한다.
+   *
+   *   출금    지금 나감          (차) 비용·자산 / (대) 통장
+   *   입금    지금 들어옴        (차) 통장 / (대) 수익·부채
+   *   줄돈    나중에 나감        매입전표 — (차) 비용 / (대) 251 외상매입금
+   *   받을돈  나중에 들어옴      매출전표 — (차) 108 외상매출금 / (대) 수익
+   *   대체    영영 안 움직임     (차) 감가상각비 / (대) 감가상각누계액
+   *
+   * 비용이냐 수익이냐는 **계정과목이 정한다** — 같은 출금이라도 기계 구입은 자산,
+   * 대출상환은 부채 감소다. 그래서 이 축과 손익 축을 섞지 않는다.
+   */
+  dir?: '입금' | '출금' | '줄돈' | '받을돈' | '대체' | '회사이체';
   mode?: '일반' | '상환' | '급여' | '보험';   // 어느 입력 화면을 쓰는지
   /** 기본 템플릿 표식(cashTemplates의 id). 있으면 삭제 못 하고 숨기기만 된다. */
   builtin?: string;
-  /** 숨김 — '자주 쓰는 전표' 목록에서 안 뜬다. 지운 게 아니라 안 보이는 것. */
+  /** 숨김 — 일반전표의 템플릿 목록에서 안 뜬다. 지운 게 아니라 안 보이는 것. */
   hidden?: boolean;
   /** 묶음 이름 — 사용자가 만든다. 비어 있으면 '분류없음'. */
   group?: string;
-  /** 즐겨찾기 — 자주 쓰는 전표 목록 맨 위에 따로 모인다. */
+  /** 즐겨찾기 — 템플릿 목록 맨 위에 따로 모인다. */
   favorite?: boolean;
 
-  /**
-   * 발행 방식 — 비용이 생기는 시점과 돈이 나가는 시점을 합칠지 나눌지.
-   *
-   *   '합침'  나가는 날 출금전표 하나.  (차) 비용 / (대) 보통예금
-   *           전기세처럼 그 자리에서 내는 것.
-   *   '분리'  발생일에 **매입전표**를 끊어 채무를 세우고, 지불은 따로.
-   *           (차) 비용 / (대) 외상매입금  →  나중에 (차) 외상매입금 / (대) 보통예금
-   *           임대료처럼 발생월과 지급일이 다른 것. 거래처가 있어야 한다.
-   */
+  /** @deprecated dir이 대신한다('분리' = dir '줄돈'). 옛 데이터 읽기용으로만 남긴다. */
   postMode?: '합침' | '분리';
   /** 자동 발행 — 켜면 스케줄러가 매달 만든다. 금액이 정해진 것만 켤 수 있다. */
   autoIssue?: boolean;
@@ -555,6 +559,8 @@ export interface IssuedStatementItem {
 
 export interface IssuedStatement {
   id: string;
+  /** 어느 회사 장부인가. 없으면 태백(옛 기록). */
+  companyId?: CompanyId;
   issuedAt: string;       // ISO timestamp (전표일자)
   tradeDate: string;      // YYYY-MM-DD
   type: '매출' | '매입' | '비용';
@@ -625,6 +631,22 @@ export const poLines = (po: PurchaseOrder): PurchaseOrderItem[] =>
   (po.items && po.items.length > 0)
     ? po.items
     : [{ itemId: po.itemId, name: po.itemName, quantity: po.quantity, unit: po.unit ?? '', isBox: po.isBox }];
+
+/**
+ * 회사 — 태백푸드와 풍회유통은 **별도 사업자**다. 세무신고도 재무제표도 각각이라
+ * 장부를 섞으면 안 된다. 전표·자금에 이 값을 달아 회사별로 가른다.
+ *
+ * 값을 안 단 옛 기록은 전부 태백으로 본다(TAEBAEK). 나중에 회사별 서브컬렉션으로
+ * 완전히 분리할 때, 이 필드가 그대로 나누는 기준이 된다.
+ */
+export type CompanyId = 'taebaek' | 'punghoe';
+export const TAEBAEK: CompanyId = 'taebaek';
+export const COMPANIES: { id: CompanyId; name: string; short: string }[] = [
+  { id: 'taebaek', name: '태백푸드', short: '태백' },
+  { id: 'punghoe', name: '풍회유통', short: '풍회' },
+];
+/** 회사가 안 붙은 기록은 태백 것으로 본다 */
+export const companyOf = (x: { companyId?: CompanyId } | undefined): CompanyId => x?.companyId ?? TAEBAEK;
 
 export interface CompanyInfo {
   name: string;           // 상호
@@ -851,6 +873,8 @@ export interface AccountGroup {
 // 잔액을 굴린다. 현금흐름표는 추측이 아니라 이 원장에서 나온다.
 export interface CashAccount {
   id: string;
+  /** 어느 회사 통장인가. 없으면 태백(옛 기록). 회사가 다르면 계좌 목록에 안 뜬다. */
+  companyId?: CompanyId;
   name: string;                        // '기업은행 1234-56', '법인카드(신한)', '현금시재'
   type: '통장' | '카드' | '현금';
   openingBalance: number;              // 기초 잔액 (openingDate 시점)
@@ -862,6 +886,8 @@ export interface CashAccount {
 
 export interface CashEntry {
   id: string;
+  /** 어느 회사 장부인가. 없으면 태백(옛 기록). */
+  companyId?: CompanyId;
   date: string;                        // 'YYYY-MM-DD' 실제 돈이 움직인 날
   cashAccountId: string;               // 어느 통장/카드/현금에서
   dir: '입금' | '출금';

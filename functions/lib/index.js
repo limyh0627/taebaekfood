@@ -115,7 +115,7 @@ exports.monthlyInventorySnapshot = (0, scheduler_1.onSchedule)({
 // (functions는 별도 빌드라 앱 소스를 import 못 한다. 고칠 땐 양쪽을 같이 고쳐야 한다.)
 // ─────────────────────────────────────────────────────────────────────────
 exports.dailyAutoVoucher = (0, scheduler_1.onSchedule)({ schedule: '0 22 * * *', timeZone: 'UTC', region: REGION }, async () => {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c, _d;
     const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
     const y = kst.getUTCFullYear();
     const m = kst.getUTCMonth() + 1;
@@ -139,14 +139,18 @@ exports.dailyAutoVoucher = (0, scheduler_1.onSchedule)({ schedule: '0 22 * * *',
         const day = Math.min(Math.max(Number((_a = t.issueDay) !== null && _a !== void 0 ? _a : 1), 1), lastDay);
         if (`${ym}-${String(day).padStart(2, '0')}` !== today)
             continue;
-        const split = ((_b = t.postMode) !== null && _b !== void 0 ? _b : '합침') === '분리';
-        if (split && !t.partnerId) {
-            console.warn(`[autoVoucher] ${t.name}: 분리 발행인데 거래처가 없어 건너뜀`);
+        // 갈래 하나로 정한다 — 출금·입금은 자금전표, 줄돈·받을돈·대체는 전표
+        const dir = (_b = t.dir) !== null && _b !== void 0 ? _b : (t.postMode === '분리' ? '줄돈' : '출금');
+        const isCash = dir === '출금' || dir === '입금';
+        // 비현금 갈래는 거래처가 있어야 자동으로 낼 수 있다 —
+        // 거래처가 있으면 매입전표(상대변 251이 자동), 없으면 차·대를 직접 세워야 해서 손으로만.
+        if (!isCash && !t.partnerId) {
+            console.warn(`[autoVoucher] ${t.name}: 거래처 없는 대체는 자동 발행 안 함`);
             continue;
         }
         const key = `AUTO-${id}-${ym}`;
         const amount = Number(t.amount);
-        if (split) {
+        if (!isCash) {
             const ref = db.collection('issuedStatements').doc(key);
             if ((await ref.get()).exists)
                 continue;
@@ -159,7 +163,7 @@ exports.dailyAutoVoucher = (0, scheduler_1.onSchedule)({ schedule: '0 22 * * *',
                 id: key,
                 issuedAt: new Date().toISOString(),
                 tradeDate: today,
-                type: '매입',
+                type: dir === '받을돈' ? '매출' : (t.partnerId ? '매입' : '비용'),
                 partnerId: t.partnerId,
                 partnerName: (_c = t.partnerName) !== null && _c !== void 0 ? _c : '',
                 orderId: key,
@@ -179,10 +183,11 @@ exports.dailyAutoVoucher = (0, scheduler_1.onSchedule)({ schedule: '0 22 * * *',
             const ref = db.collection('cashEntries').doc(key);
             if ((await ref.get()).exists)
                 continue;
-            await ref.set(Object.assign(Object.assign({ id: key, date: today, cashAccountId: '', dir: (_d = t.dir) !== null && _d !== void 0 ? _d : '출금', amount, accountCode: t.accountCode }, (t.partnerId ? { partnerId: t.partnerId, partnerName: (_e = t.partnerName) !== null && _e !== void 0 ? _e : '' } : {})), { note: `정기 · ${t.name}${t.partnerName ? ` · ${t.partnerName}` : ''}`, createdAt: new Date().toISOString() }));
+            await ref.set(Object.assign(Object.assign({ id: key, date: today, cashAccountId: '', dir,
+                amount, accountCode: t.accountCode }, (t.partnerId ? { partnerId: t.partnerId, partnerName: (_d = t.partnerName) !== null && _d !== void 0 ? _d : '' } : {})), { note: `정기 · ${t.name}${t.partnerName ? ` · ${t.partnerName}` : ''}`, createdAt: new Date().toISOString() }));
         }
         created++;
-        console.log(`[autoVoucher] ${today} ${t.name} ${amount}원 (${split ? '매입전표' : '출금전표'})`);
+        console.log(`[autoVoucher] ${today} ${t.name} ${amount}원 (${dir})`);
     }
     console.log(`[autoVoucher] ${today} — ${created}건 발행`);
 });

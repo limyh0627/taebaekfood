@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { issueDateOf, isIssueDay, autoVoucherId, canAutoIssue, buildCashVoucher, buildPurchaseVoucher } from './autoVoucher';
+import { issueDateOf, isIssueDay, autoVoucherId, canAutoIssue, buildCashVoucher, buildStatementVoucher, dirOf } from './autoVoucher';
 import type { FixedCostTemplate } from './types';
 
 const tpl = (over: Partial<FixedCostTemplate> = {}): FixedCostTemplate => ({
@@ -41,9 +41,15 @@ describe('자동 발행 대상 판정', () => {
     expect(canAutoIssue(tpl({ startYm: '2026-09' }), '2026-08')).toBe(false);
     expect(canAutoIssue(tpl({ endYm: '2026-07' }), '2026-08')).toBe(false);
   });
-  it('분리 발행인데 거래처가 없으면 안 나간다 — 미지급금을 걸 곳이 없다', () => {
-    expect(canAutoIssue(tpl({ postMode: '분리' }), '2026-08')).toBe(false);
-    expect(canAutoIssue(tpl({ postMode: '분리', partnerId: 'p1' }), '2026-08')).toBe(true);
+  it('비현금 갈래는 거래처가 있어야 자동으로 난다 — 상대변(251)이 자동으로 서기 때문', () => {
+    expect(canAutoIssue(tpl({ dir: '대체', partnerId: 'p1' }), '2026-08')).toBe(true);
+  });
+  it('거래처 없는 대체는 자동으로 안 낸다 — 계정이 하나뿐이라 차·대가 안 맞는다', () => {
+    expect(canAutoIssue(tpl({ dir: '대체' }), '2026-08')).toBe(false);
+  });
+  it('옛 postMode 분리는 줄돈으로 읽는다', () => {
+    expect(dirOf(tpl({ dir: undefined, postMode: '분리' }))).toBe('줄돈');
+    expect(dirOf(tpl({ dir: undefined }))).toBe('출금');
   });
 });
 
@@ -58,9 +64,9 @@ describe('합침 — 출금 자금전표', () => {
   });
 });
 
-describe('분리 — 매입전표(채무만 세운다)', () => {
-  it('과세면 금액에서 부가세를 갈라 잡는다', () => {
-    const s = buildPurchaseVoucher(tpl({ postMode: '분리', partnerId: 'p1', partnerName: '㈜한성' }), '2026-08', { docNo: '2026-08-0099' });
+describe('대체 — 전표(채권·채무만 세운다)', () => {
+  it('거래처가 있으면 매입전표. 과세면 금액에서 부가세를 갈라 잡는다', () => {
+    const s = buildStatementVoucher(tpl({ dir: '대체', partnerId: 'p1', partnerName: '㈜한성' }), '2026-08', { docNo: '2026-08-0099' });
     expect(s.type).toBe('매입');
     expect(s.totalAmount).toBe(2_500_000);
     expect(s.totalSupply).toBe(2_272_727);
@@ -69,14 +75,18 @@ describe('분리 — 매입전표(채무만 세운다)', () => {
     expect(s.partnerId).toBe('p1');
     expect(s.items[0].accountCode).toBe('510');
   });
+  it('대체는 거래처가 있으면 매입전표, 없으면 비용전표', () => {
+    expect(buildStatementVoucher(tpl({ dir: '대체', partnerId: 'p1' }), '2026-08', { docNo: 'x' }).type).toBe('매입');
+    expect(buildStatementVoucher(tpl({ dir: '대체' }), '2026-08', { docNo: 'x' }).type).toBe('비용');
+  });
   it('면세면 세액 0', () => {
-    const s = buildPurchaseVoucher(tpl({ postMode: '분리', partnerId: 'p1', taxExempt: true }), '2026-08', { docNo: 'x' });
+    const s = buildStatementVoucher(tpl({ dir: '대체', partnerId: 'p1', taxExempt: true }), '2026-08', { docNo: 'x' });
     expect(s.totalTax).toBe(0);
     expect(s.totalSupply).toBe(2_500_000);
   });
   it('자금전표와 id가 같다 — 어느 쪽으로 냈든 그 달 한 번', () => {
     const a = buildCashVoucher(tpl(), '2026-08');
-    const b = buildPurchaseVoucher(tpl({ postMode: '분리', partnerId: 'p1' }), '2026-08', { docNo: 'x' });
+    const b = buildStatementVoucher(tpl({ dir: '대체', partnerId: 'p1' }), '2026-08', { docNo: 'x' });
     expect(a.id).toBe(b.id);
   });
 });

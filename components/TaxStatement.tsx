@@ -4,11 +4,13 @@ import {
   FileText, Printer, Search, Check, CheckSquare, Download, X,
   Receipt, Eye, Calendar, Building2, ChevronDown, ChevronUp, Edit2, Trash2, Package,
 } from 'lucide-react';
-import { Partner, IssuedStatement, CompanyInfo } from '../types';
+import { Partner, IssuedStatement, CompanyInfo, CompanyId } from '../types';
 import { fetchDateRange } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 
 interface TaxStatementProps {
+  /** 보고 있는 회사 — 이 화면이 직접 떠오는 과거 전표도 걸러야 한다 */
+  companyId?: CompanyId;
   issuedStatements: IssuedStatement[];
   partners: Partner[];
   companyInfo?: CompanyInfo | null;
@@ -18,6 +20,7 @@ interface TaxStatementProps {
 const fmt = (n: number) => n.toLocaleString('ko-KR');
 
 const TaxStatement: React.FC<TaxStatementProps> = ({
+  companyId = 'taebaek',
   issuedStatements: liveStatements, partners,
   companyInfo,
   onUpdateIssuedStatement,
@@ -41,12 +44,13 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   }, []);
 
   // 라이브(7일) + 과거(12개월) 병합 — id 기준 dedup, 라이브 우선
+  // 회사로 한 번 더 거른다 — extraStatements는 이 화면이 직접 떠온 것이라 안 걸러져 있다
   const issuedStatements = useMemo(() => {
     const map = new Map<string, IssuedStatement>();
     extraStatements.forEach(s => map.set(s.id, s));
     liveStatements.forEach(s => map.set(s.id, s));
-    return Array.from(map.values());
-  }, [liveStatements, extraStatements]);
+    return Array.from(map.values()).filter(s => (s.companyId ?? 'taebaek') === companyId);
+  }, [liveStatements, extraStatements, companyId]);
 
   // 과거 전표를 업데이트할 때 라이브 구독이 잡지 못하므로 로컬 캐시도 갱신
   const handleUpdateStatement = (id: string, data: Partial<IssuedStatement>) => {
