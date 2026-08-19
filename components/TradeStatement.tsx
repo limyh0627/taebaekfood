@@ -1208,8 +1208,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const markIssued = useCallback(() => {
     if (!selectedClientId || lineItems.length === 0) return;
     // 발행 차단(백스톱) — 인쇄·세금계산서·엑셀 경로에서도 계정 미설정/단가 0이면 발행 기록 안 함
+    //  ※ 음수 단가는 막지 않는다 — 할인·반품 줄이다.
     if (lineItems.some(i => !i.accountCode)) { alert('계정과목이 설정되지 않은 품목이 있어 발행할 수 없습니다.'); return; }
-    if (lineItems.some(i => !i.price || i.price <= 0)) { alert('단가가 0인 품목이 있어 발행할 수 없습니다.'); return; }
+    if (lineItems.some(i => !i.price)) { alert('단가가 0인 품목이 있어 발행할 수 없습니다.'); return; }
     if (selectedOrderId) {
       onMarkInvoicePrinted?.(selectedOrderId, true);
     }
@@ -1296,8 +1297,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       alert(`계정과목이 설정되지 않은 품목이 ${missingAccountCodes.length}건 있습니다.\n(${missingAccountCodes.slice(0, 3).map(i => i.name).join(', ')}${missingAccountCodes.length > 3 ? ' 외' : ''})\n계정을 설정해야 발행할 수 있습니다.`);
       return;
     }
-    // 단가 0(미입력) 품목이 있으면 발행 차단
-    const zeroPriceItems = lineItems.filter(i => !i.price || i.price <= 0);
+    // 단가 0(미입력) 품목이 있으면 발행 차단.
+    //  ※ 0만 막는다. 음수는 통과 — 할인·반품 줄(단가 또는 수량이 마이너스)이
+    //    전표 한 장에 단독으로 설 수 있어야 한다.
+    const zeroPriceItems = lineItems.filter(i => !i.price);
     if (zeroPriceItems.length > 0) {
       alert(`단가가 0인 품목이 ${zeroPriceItems.length}건 있습니다.\n(${zeroPriceItems.slice(0, 3).map(i => i.name).join(', ')}${zeroPriceItems.length > 3 ? ' 외' : ''})\n단가를 입력해야 발행할 수 있습니다.`);
       return;
@@ -5088,20 +5091,20 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                       onChange={e=>setManualItems(prev=>prev.map((r,i)=>i===idx?{...r,price:e.target.value}:r))}
                                       className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-right outline-none focus:ring-2 focus:ring-blue-300"/>}
                               </td>
-                              <td className="px-3 py-2 text-right text-slate-700">{sup>0?fmt(sup):'-'}</td>
+                              <td className={`px-3 py-2 text-right ${sup<0?'text-rose-600 font-bold':'text-slate-700'}`}>{sup!==0?fmt(sup):'-'}</td>
                               <td className="px-3 py-2 text-center">
                                 {ro ? (
                                   <span className={`text-[10px] font-black ${row.isTaxExempt?'text-indigo-600':''}`}>
-                                    {row.isTaxExempt?'면세':tax>0?fmt(tax):'-'}
+                                    {row.isTaxExempt?'면세':tax!==0?fmt(tax):'-'}
                                   </span>
                                 ) : (
                                   <button onClick={e=>{e.stopPropagation();setManualItems(prev=>prev.map((r,i)=>i===idx?{...r,isTaxExempt:!r.isTaxExempt}:r));}}
                                     className={`px-2 py-0.5 rounded-md text-[10px] font-black border transition-all ${row.isTaxExempt?'bg-indigo-100 text-indigo-700 border-indigo-200':'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}>
-                                    {row.isTaxExempt?'면세':tax>0?fmt(tax):'-'}
+                                    {row.isTaxExempt?'면세':tax!==0?fmt(tax):'-'}
                                   </button>
                                 )}
                               </td>
-                              <td className="px-3 py-2 text-right font-black text-slate-800">{(sup+tax)>0?fmt(sup+tax):'-'}</td>
+                              <td className={`px-3 py-2 text-right font-black ${(sup+tax)<0?'text-rose-600':'text-slate-800'}`}>{(sup+tax)!==0?fmt(sup+tax):'-'}</td>
                               <td className="px-3 py-2 w-24">
                                 {ro
                                   ? <span className="text-[10px] font-black text-slate-500">{row.accountCode || (stmtType === '매출' ? '800' : '-')}</span>
