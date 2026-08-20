@@ -529,7 +529,7 @@ export interface FixedCostTemplate {
    * 대출상환은 부채 감소다. 그래서 이 축과 손익 축을 섞지 않는다.
    */
   dir?: '입금' | '출금' | '줄돈' | '받을돈' | '대체' | '회사이체';
-  mode?: '일반' | '상환' | '급여' | '보험';   // 어느 입력 화면을 쓰는지
+  mode?: '일반' | '상환' | '급여' | '보험' | '세금';   // 어느 입력 화면을 쓰는지
   /**
    * 두 줄로 갈리는 갈래(mode)의 **미리 정해둔 값**. 템플릿이 양식을 들고 있어야
    * 고를 때 그대로 채워진다 — amount 하나로는 갈 수 없다.
@@ -546,6 +546,8 @@ export interface FixedCostTemplate {
   gross?: number;     deduction?: number;
   /** 상환 — 원금을 깎을 차입금 계정. 대출이 여러 건이면 매번 고르다 틀린다. */
   loanCode?: string;
+  /** 세금 — 부가세 / 소득세. 한 번에 내도 성격이 달라 갈라 적는다. */
+  vat?: number;       incomeTax?: number;
   /** 기본 템플릿 표식(cashTemplates의 id). 있으면 삭제 못 하고 숨기기만 된다. */
   builtin?: string;
   /** 숨김 — 일반전표의 템플릿 목록에서 안 뜬다. 지운 게 아니라 안 보이는 것. */

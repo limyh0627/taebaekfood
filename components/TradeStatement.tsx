@@ -372,10 +372,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [quickPayDropOpen, setQuickPayDropOpen] = useState(false);
   const [quickPayOverWarn, setQuickPayOverWarn] = useState(false);
   // 입출금 모달 확장 — 일반/상환/급여 + 방향 + 계정과목 (장부 흡수)
-  const [qpMode, setQpMode] = useState<'일반' | '상환' | '급여' | '보험'>('일반');
+  const [qpMode, setQpMode] = useState<'일반' | '상환' | '급여' | '보험' | '세금'>('일반');
   // 4대보험 — 회사부담(비용)과 근로자부담(맡아둔 예수금)을 갈라 넣는다
   const [qpInsCorp, setQpInsCorp] = useState('');
   const [qpInsEmp, setQpInsEmp] = useState('');
+  // 세금 — 부가세·소득세를 한 번에 내도 성격이 달라 갈라 적는다
+  const [qpVat, setQpVat] = useState('');
+  const [qpIncomeTax, setQpIncomeTax] = useState('');
   /**
    * 아직 안 낸 원천공제(예수금 254 잔액) — 급여에서 뗐지만 아직 공단에 안 낸 돈.
    * 4대보험 낼 때 근로자부담분이 보통 이 금액이다. 템플릿 적용과 화면 버튼이
@@ -409,7 +412,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [qpDeduction, setQpDeduction] = useState('');
   const openCashModal = (dir: '입금' | '출금') => {
     setQpMode('일반'); setQpDir(dir); setQpAccountCode(''); setQpPickerOpen(false);
-    setQpInsCorp(''); setQpInsEmp('');
+    setQpInsCorp(''); setQpInsEmp(''); setQpVat(''); setQpIncomeTax('');
     setQpAccrRows([{ name: '', price: '' }]);
     setQpAdvCompany(companyId === 'taebaek' ? 'punghoe' : 'taebaek');
     setQpAdvAmount(''); setQpAdvOver('선급금');
@@ -450,6 +453,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         보험: [setQpInsCorp, setQpInsEmp],
         상환: [setQpPrincipal, setQpInterest],
         급여: [setQpGross, setQpDeduction],
+        세금: [setQpVat, setQpIncomeTax],
       };
       if (sm === '상환' && t.loanCode) setQpLoanCode(t.loanCode);
       const [setA, setB] = setters[sm];
@@ -3624,6 +3628,35 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             ...base(),
           } as CashEntry;
         };
+        /**
+         * 세금 — 한 번에 내지만 **둘 다 비용이 아니다.**
+         *   부가세    손님한테 받아 맡아둔 돈 → 255 부가세예수금(부채)을 턴다
+         *   소득세    사업이 아니라 사장님 개인에게 매기는 세금 → 338 인출금(자본)
+         * 전액을 비용으로 몰면 이익이 그만큼 줄어 보이고, 부가세예수금은 영영 안 줄어든다.
+         */
+        const vat = Number((qpVat || '').replace(/,/g, '')) || 0;
+        const incomeTax = Number((qpIncomeTax || '').replace(/,/g, '')) || 0;
+        const taxTotal = vat + incomeTax;
+        const VAT_CODE = accountCodes.find(c => c.name === '부가세예수금')?.code ?? '255';
+        const DRAW_CODE = accountCodes.find(c => c.name === '인출금')?.code ?? '338';
+        const taxEntry = (): CashEntry => {
+          const memo = quickPayNote.trim() || '세금 납부';
+          const lines = [
+            ...(vat > 0 ? [{ accountCode: VAT_CODE, amount: vat, note: '부가세' }] : []),
+            ...(incomeTax > 0 ? [{ accountCode: DRAW_CODE, amount: incomeTax, note: '소득세' }] : []),
+          ];
+          return {
+            id: `cash-${Date.now()}`, dir: '출금', amount: taxTotal,
+            ...(lines.length > 1 ? { lines } : { accountCode: lines[0].accountCode }),
+            note: lines.length > 1 ? memo : `${memo} (${lines[0].note})`,
+            ...base(),
+          } as CashEntry;
+        };
+        const doTaxSave = () => {
+          if (taxTotal <= 0) return;
+          onAddCashEntry?.(taxEntry() as any);
+          setShowQuickPay(false);
+        };
         const doInsuranceSave = () => {
           if (insTotal <= 0) return;
           onAddCashEntry?.(insuranceEntry() as any);
@@ -3734,6 +3767,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           if (qpMode === '상환') { const e = loanEntry(); return e ? [e] : []; }
           if (qpMode === '급여') return grs > 0 ? [salaryEntry()] : [];
           if (qpMode === '보험') return insTotal > 0 ? [insuranceEntry()] : [];
+          if (qpMode === '세금') return taxTotal > 0 ? [taxEntry()] : [];
           if (qpDir === '회사이체') {
             if (advAmt <= 0) return [];
             const t = buildTransfer({
@@ -3781,6 +3815,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           : !isCashDir(qpDir) ? accrLines.length > 0
           : qpMode === '상환' ? (prin > 0 || intr > 0)
           : qpMode === '보험' ? insTotal > 0
+          : qpMode === '세금' ? taxTotal > 0
           : qpMode === '급여' ? (grs > 0 && ded >= 0 && net >= 0)
           : (amt > 0 && (offsetAmt >= amt || !!qpAccountCode)); // 일반: 전액 상계면 계정 불필요, 아니면 계정 필수
 
@@ -3789,6 +3824,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           if (!isCashDir(qpDir)) { doAccrualSave(); return; }
           if (qpMode === '상환') { if (prin > 0 || intr > 0) doLoanSave(); return; }
           if (qpMode === '보험') { doInsuranceSave(); return; }
+          if (qpMode === '세금') { doTaxSave(); return; }
           if (qpMode === '급여') { if (grs > 0 && ded >= 0 && net >= 0) doSalarySave(); return; }
           if (!canSave) return;
           // 상계 초과분(줄돈/받을돈 전환) 경고 — 거래처 있고 상계보다 많은데 계정도 없으면 canSave가 막음
@@ -4102,6 +4138,52 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   <p className="text-[11px] text-slate-400 leading-snug">
                     회사부담은 <b>비용</b>, 근로자부담은 급여에서 떼어 맡아둔 <b>예수금</b>을 터는 것입니다.
                     한 건으로 끊고 안에서 두 줄로 갈립니다.
+                  </p>
+                </>
+              ) : qpMode === '세금' ? (
+                <>
+                  {/* 부가세·소득세를 한 번에 내도 성격이 다르다.
+                      부가세는 손님한테 받아 맡아둔 돈이라 부채(255)를 터는 것이고,
+                      종합소득세는 사업이 아니라 사장님 개인에게 매기는 세금이라 인출금(338)이다.
+                      비용으로 몰면 이익이 그만큼 줄어 보이고 부가세예수금이 영영 안 줄어든다. */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">부가세 <span className="normal-case text-slate-300">(부가세예수금)</span></label>
+                      <input inputMode="numeric" value={qpVat} placeholder="0"
+                        onChange={e => setQpVat(e.target.value.replace(/[^\d,]/g, ''))}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-right text-sm font-black tabular-nums outline-none focus:ring-2 focus:ring-emerald-300"/>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">소득세 <span className="normal-case text-slate-300">(인출금)</span></label>
+                      <input inputMode="numeric" value={qpIncomeTax} placeholder="0"
+                        onChange={e => setQpIncomeTax(e.target.value.replace(/[^\d,]/g, ''))}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-right text-sm font-black tabular-nums outline-none focus:ring-2 focus:ring-emerald-300"/>
+                    </div>
+                  </div>
+                  {/* 아직 안 낸 부가세 — 맡아둔 예수금 잔액. 보통 이 금액만큼 나간다 */}
+                  {(() => {
+                    const code = accountCodes.find(c => c.name === '부가세예수금')?.code ?? '255';
+                    const held = cashEntries.reduce((a, e) => {
+                      const parts = (e.lines ?? []).filter(l => l.accountCode === code);
+                      const v = parts.length ? parts.reduce((b, l) => b + l.amount, 0) : (e.accountCode === code ? e.amount : 0);
+                      if (!v) return a;
+                      return a + (e.dir === '입금' ? v : -v);
+                    }, 0);
+                    return held > 0 ? (
+                      <button type="button" onClick={() => setQpVat(String(Math.round(held)))}
+                        className="w-full text-left rounded-xl bg-slate-50 hover:bg-emerald-50 px-3 py-2 text-[11px] font-bold text-slate-500 transition-colors">
+                        아직 안 낸 부가세 <b className="text-slate-800 tabular-nums">{fmt(held)}원</b>
+                        <span className="text-emerald-600 ml-1">— 눌러서 채우기</span>
+                      </button>
+                    ) : null;
+                  })()}
+                  <div className="flex items-center justify-between rounded-xl px-3 py-2 text-[11px] font-black bg-slate-50 text-slate-500">
+                    <span>한 번에 내는 총액</span>
+                    <span className="tabular-nums text-slate-800">{fmt(taxTotal)}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-snug">
+                    둘 다 <b>비용이 아닙니다.</b> 부가세는 받아서 맡아둔 돈을 넘기는 것이고,
+                    종합소득세는 사장님 개인 세금이라 <b>인출금</b>입니다. 한 건으로 끊고 안에서 두 줄로 갈립니다.
                   </p>
                 </>
               ) : qpMode === '상환' ? (

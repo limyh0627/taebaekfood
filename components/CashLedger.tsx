@@ -361,7 +361,7 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
   onClose: () => void;
   onAdd: Props['onAddCashEntry'];
 }) {
-  const [mode, setMode] = useState<'일반' | '상환' | '급여' | '보험'>('일반');
+  const [mode, setMode] = useState<'일반' | '상환' | '급여' | '보험' | '세금'>('일반');
   const [cashAccountId, setCashAccountId] = useState(account.id);
   const [date, setDate] = useState(today());
   const [dir, setDir] = useState<'입금' | '출금'>('출금');

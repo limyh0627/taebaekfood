@@ -54,7 +54,7 @@ export interface CashTemplate {
   /** 돈이 언제 움직이냐 — 지금(출금·입금) · 나중에(줄돈·받을돈) · 안 움직임(대체) */
   dir: VoucherDir;
   /** 어느 입력 화면을 쓰는지 — 상환·급여·보험은 줄이 여러 개라 전용 입력이 따로 있다 */
-  mode: '일반' | '상환' | '급여' | '보험';
+  mode: '일반' | '상환' | '급여' | '보험' | '세금';
   accountCode?: string;
   /** 비고 기본값 — 비워 두면 사용자가 적는다 */
   note?: string;
@@ -76,6 +76,8 @@ export interface CashTemplate {
   itemName?: string;
   /** 상환 — 원금을 깎을 차입금 계정 */
   loanCode?: string;
+  /** 세금 — 부가세 / 소득세 */
+  vat?: number;       incomeTax?: number;
   /** 두 줄로 갈리는 갈래의 미리 정해둔 값 — SPLIT_MODES 참고 */
   insCorp?: number;   insEmp?: number;
   principal?: number; interest?: number;
@@ -109,6 +111,12 @@ export const SPLIT_MODES = {
     total: (a: number, b: number) => a - b, totalLabel: '통장에서 나가는 실지급액',
     help: '총급여는 비용으로 잡히고, 공제분은 맡아뒀다가 다음 달에 4대보험·원천세로 냅니다. 통장에서 나가는 건 차액입니다.',
   },
+  세금: {
+    a: 'vat', b: 'incomeTax',
+    labelA: '부가세', hintA: '부가세예수금', labelB: '소득세', hintB: '인출금',
+    total: (a: number, b: number) => a + b, totalLabel: '한 번에 내는 총액',
+    help: '둘 다 비용이 아닙니다. 부가세는 손님한테 받아 맡아둔 돈이라 부채(255)를 터는 것이고, 종합소득세는 사업이 아니라 사장님 개인에게 매기는 세금이라 인출금(338)입니다. 비용으로 몰면 이익이 그만큼 줄어 보입니다.',
+  },
 } as const;
 
 export type SplitMode = keyof typeof SPLIT_MODES;
@@ -140,6 +148,7 @@ export const CASH_TEMPLATES: CashTemplate[] = [
 
   // 받아 뒀다 대신 내주는 돈 — 급여에서 뗀 원천세·4대보험이 예수금으로 잡혀 있다가 여기서 털린다
   { id: 'withhold',label: '원천세납부', dir: '출금', mode: '일반', accountCode: '254', note: '원천공제 납부', hint: '예수금 정리' },
+  { id: 'tax',     label: '세금납부',   dir: '출금', mode: '세금', accountCode: '255', hint: '부가세 + 소득세' },
 
   // 사는 것 · 사장님 돈
   { id: 'deposit', label: '보증금',   dir: '출금', mode: '일반', accountCode: '232' },
@@ -211,7 +220,7 @@ export function filterTemplates(
  */
 export function activeTemplateId(
   templates: CashTemplate[],
-  state: { mode: '일반' | '상환' | '급여' | '보험'; accountCode?: string },
+  state: { mode: '일반' | '상환' | '급여' | '보험' | '세금'; accountCode?: string },
 ): string | null {
   if (state.mode !== '일반') return templates.find(t => t.mode === state.mode)?.id ?? null;
   if (!state.accountCode) return null;
@@ -221,7 +230,7 @@ export function activeTemplateId(
 /** 지금 고른 템플릿(없으면 그 방향의 직접입력) */
 export function activeTemplate(
   templates: CashTemplate[],
-  state: { mode: '일반' | '상환' | '급여' | '보험'; accountCode?: string },
+  state: { mode: '일반' | '상환' | '급여' | '보험' | '세금'; accountCode?: string },
 ): CashTemplate | undefined {
   const id = activeTemplateId(templates, state);
   return templates.find(t => t.id === id);
