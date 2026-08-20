@@ -99,7 +99,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   const [customStartMonth, setCustomStartMonth] = useState(1);
   const [customEndMonth, setCustomEndMonth] = useState(() => Math.max(1, new Date().getMonth()));
   const [newCodeForm, setNewCodeForm] = useState({ code: '', name: '', groupId: '' });
-  const [newGroupForm, setNewGroupForm] = useState({ name: '', type: '수익' as AccountGroup['type'] });
+  const [newGroupForm, setNewGroupForm] = useState({ name: '', type: '수익' as AccountGroup['type'], plLine: undefined as AccountGroup['plLine'] });
   const [showAddCode, setShowAddCode] = useState(false);
   const [showAddGroup, setShowAddGroup] = useState(false);
   // ── 현금흐름표(간접법): 월별 / 기간 모드 ──
@@ -115,10 +115,23 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   }, [cfMonth, cashFlowManual]);
   // ── 계정그룹/계정과목 인라인 수정 ──
   const [editGroupId, setEditGroupId] = useState<string | null>(null);
-  const [editGroupForm, setEditGroupForm] = useState<{ name: string; type: AccountGroup['type'] }>({ name: '', type: '비용' });
+  const [editGroupForm, setEditGroupForm] = useState<{ name: string; type: AccountGroup['type']; plLine: AccountGroup['plLine'] | '' }>({ name: '', type: '비용', plLine: '' });
   const [editCodeId, setEditCodeId] = useState<string | null>(null);
   const [editCodeForm, setEditCodeForm] = useState({ code: '', name: '' });
   const GROUP_TYPES: AccountGroup['type'][] = ['수익', '비용', '자산', '부채', '자본'];
+  /**
+   * 손익계산서 어느 줄에 설 것인가. **비우면 손익에서 조용히 빠지거나 엉뚱한 줄로 간다** —
+   * 비용은 전부 매출원가로 떨어지게 폴백이 걸려 있어, 판관비성 그룹을 만들어도 매출원가에 섞인다.
+   * 재무상태표 계정(자산·부채·자본)은 손익에 안 서므로 비워 두는 게 맞다.
+   */
+  const PL_LINES: { value: AccountGroup['plLine'] | ''; label: string }[] = [
+    { value: '', label: '손익 안 씀 (자산·부채·자본)' },
+    { value: 'revenue', label: '매출' },
+    { value: 'cogs', label: '매출원가' },
+    { value: 'sgna', label: '판관비' },
+    { value: 'other-income', label: '영업외수익' },
+    { value: 'other-expense', label: '영업외비용' },
+  ];
 
   // ── 거래처통계 탭 상태 ──
   const [statsClientId, setStatsClientId] = useState('');
@@ -297,14 +310,29 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
     return [...tally.entries()]
       .map(([code, amount]) => {
         const acc = accountCodes.find(a => String(a.code) === String(code));
-        return { code, name: acc?.name ?? code, amount, plLine: codeToGroup(code)?.plLine };
+        const g = codeToGroup(code);
+        return { code, name: acc?.name ?? code, amount, plLine: g?.plLine, groupId: g?.id, groupName: g?.name };
       })
       .filter(r => r.amount !== 0)
       .sort((a, b) => b.amount - a.amount);
   }, [journalEntries, accountCodes, codeToGroup, monthlyData]);
 
-  /** 원재료·부자재 — "이걸 뺀 비용"을 물을 때 기준이 되는 계정들 */
-  const MATERIAL_CODES = new Set(['500', '501', '503', '505']);
+  /**
+   * 그룹별로 묶는다 — **묶는 근거는 계정그룹 하나뿐이다.**
+   * 예전엔 여기 계정번호를 박아 뒀는데(원재료 500·501·503·505), 계정을 새로 만들면
+   * 목록을 고치기 전까지 소계에서 조용히 빠졌다. 이제 계정에 그룹만 붙이면 따라온다.
+   */
+  const expenseByGroup = useMemo(() => {
+    const m = new Map<string, { name: string; plLine?: string; amount: number; rows: typeof expenseByCode }>();
+    for (const r of expenseByCode) {
+      const key = r.groupId ?? '(그룹없음)';
+      const cur = m.get(key) ?? { name: r.groupName ?? '그룹 없음', plLine: r.plLine, amount: 0, rows: [] };
+      cur.amount += r.amount;
+      cur.rows.push(r);
+      m.set(key, cur);
+    }
+    return [...m.entries()].map(([id, v]) => ({ id, ...v })).sort((a, b) => b.amount - a.amount);
+  }, [expenseByCode]);
 
   // 기간 합계 — 매출원가는 재고 증감 반영(기초 + 매입 − 기말). 스냅샷 있을 때만 조정.
   const summary = useMemo(() => {
@@ -561,48 +589,51 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         </div>
       </div>
 
-      {/* ④ 비용 상세 — 계정과목별. 집계 근거가 손익 숫자와 같은 분개다. */}
+      {/* ④ 비용 상세 — 그룹 소계 + 계정과목. 집계 근거가 손익 숫자와 같은 분개다. */}
       {(() => {
-        const mats = expenseByCode.filter(r => MATERIAL_CODES.has(r.code));
-        const rest = expenseByCode.filter(r => !MATERIAL_CODES.has(r.code));
-        const sum = (rows: typeof expenseByCode) => rows.reduce((a, r) => a + r.amount, 0);
-        const row = (r: typeof expenseByCode[number]) => (
-          <div key={r.code} className="flex items-center justify-between pl-4 text-slate-500">
-            <span>
-              <span className="mr-1.5 text-slate-200">·</span>
-              <span className="text-slate-300 mr-1.5 tabular-nums">{r.code}</span>{r.name}
-              {r.plLine === 'sgna' && <span className="ml-1.5 text-[9px] font-black text-indigo-400">판관비</span>}
-              {!r.plLine && <span className="ml-1.5 text-[9px] font-black text-amber-500">그룹없음</span>}
-            </span>
-            <span className="tabular-nums">{fmtM(r.amount)}</span>
-          </div>
-        );
+        const total = expenseByGroup.reduce((a, g) => a + g.amount, 0);
+        const cogsGroups = expenseByGroup.filter(g => g.plLine === 'cogs');
+        const cogsSum = cogsGroups.reduce((a, g) => a + g.amount, 0);
+        const pct = (v: number) => total ? `${(v / total * 100).toFixed(1)}%` : '';
         return (
           <div className="bg-white rounded-2xl border border-slate-200 p-4">
-            <div className="text-xs font-black text-slate-700 mb-3">비용 상세 — 계정과목별</div>
-            {expenseByCode.length === 0 ? (
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-black text-slate-700">비용 상세 — 그룹별</span>
+              <span className="text-xs font-black text-slate-800 tabular-nums">{fmtM(total)}</span>
+            </div>
+            {expenseByGroup.length === 0 ? (
               <p className="text-[11px] font-bold text-slate-300 py-3 text-center">이 기간에 잡힌 비용이 없습니다.</p>
             ) : (
-              <div className="space-y-2 text-xs">
-                <div className="flex items-center justify-between font-black text-slate-800">
-                  <span>비용 합계</span><span className="tabular-nums">{fmtM(sum(expenseByCode))}</span>
-                </div>
-                {mats.length > 0 && <>
-                  {mats.map(row)}
-                  <div className="flex items-center justify-between font-black text-slate-600 border-t border-slate-100 pt-2">
-                    <span>원재료 · 부자재 소계</span><span className="tabular-nums">{fmtM(sum(mats))}</span>
+              <div className="space-y-3 text-xs">
+                {expenseByGroup.map(g => (
+                  <div key={g.id}>
+                    <div className="flex items-center justify-between font-black text-slate-800">
+                      <span>
+                        {g.name}
+                        {!g.plLine && <span className="ml-1.5 text-[9px] font-black text-amber-500">손익 줄 없음</span>}
+                      </span>
+                      <span className="tabular-nums">{fmtM(g.amount)} <span className="text-[10px] font-bold text-slate-400">{pct(g.amount)}</span></span>
+                    </div>
+                    {g.rows.map(r => (
+                      <div key={r.code} className="flex items-center justify-between pl-4 text-slate-500">
+                        <span><span className="mr-1.5 text-slate-200">·</span><span className="text-slate-300 mr-1.5 tabular-nums">{r.code}</span>{r.name}</span>
+                        <span className="tabular-nums">{fmtM(r.amount)}</span>
+                      </div>
+                    ))}
                   </div>
-                </>}
-                {rest.map(row)}
-                <div className="flex items-center justify-between font-black text-indigo-600 border-t-2 border-slate-100 pt-2">
-                  <span>그 외 비용 소계 <span className="font-bold text-slate-400">(원재료·부자재 뺀 것)</span></span>
-                  <span className="tabular-nums">{fmtM(sum(rest))}</span>
-                </div>
+                ))}
+                {cogsGroups.length > 1 && (
+                  <div className="flex items-center justify-between font-black text-indigo-600 border-t-2 border-slate-100 pt-2">
+                    <span>매출원가 소계 <span className="font-bold text-slate-400">({cogsGroups.map(g => g.name).join(' + ')})</span></span>
+                    <span className="tabular-nums">{fmtM(cogsSum)}</span>
+                  </div>
+                )}
               </div>
             )}
             <p className="text-[10px] font-bold text-slate-400 mt-3 leading-snug">
-              손익 숫자와 **같은 분개**에서 뽑습니다. 계정에 그룹이 없으면 손익 집계에서 빠지므로
-              <span className="text-amber-500"> 그룹없음</span> 표시가 보이면 계정 설정에서 채워 주세요.
+              손익 숫자와 같은 분개에서 뽑습니다. 묶는 근거는 계정그룹 하나뿐이라,
+              계정을 새로 만들어도 그룹만 고르면 여기 따라옵니다.
+              <span className="text-amber-500"> 손익 줄 없음</span>이 보이면 그룹 설정에서 채워 주세요.
             </p>
           </div>
         );
@@ -2134,11 +2165,20 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                     className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-300">
                     {GROUP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
+                  {/* 손익 줄 — 안 고르면 비용이 전부 매출원가로 떨어진다 */}
+                  <select value={newGroupForm.plLine ?? ''}
+                    onChange={e => setNewGroupForm(p => ({...p, plLine: (e.target.value || undefined) as AccountGroup['plLine']}))}
+                    className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-300">
+                    {PL_LINES.map(l => <option key={l.value ?? ''} value={l.value ?? ''}>{l.label}</option>)}
+                  </select>
                   <button
                     onClick={async () => {
                       if (!newGroupForm.name.trim()) return;
-                      await onAddAccountGroup?.({ name: newGroupForm.name.trim(), type: newGroupForm.type });
-                      setNewGroupForm({ name: '', type: '수익' });
+                      if (newGroupForm.type === '수익' || newGroupForm.type === '비용') {
+                        if (!newGroupForm.plLine) { alert('손익 줄을 골라 주세요. 안 고르면 손익계산서 어디에 설지 몰라 비용은 전부 매출원가로 떨어집니다.'); return; }
+                      }
+                      await onAddAccountGroup?.({ name: newGroupForm.name.trim(), type: newGroupForm.type, ...(newGroupForm.plLine ? { plLine: newGroupForm.plLine } : {}) });
+                      setNewGroupForm({ name: '', type: '수익', plLine: undefined });
                     }}
                     className="px-4 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-black hover:bg-amber-600 transition-all flex items-center gap-1">
                     <Save size={12}/>추가
@@ -2172,14 +2212,18 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                       <div className="flex items-center gap-2 mb-3">
                         {editGroupId === group.id ? (
                           <>
+                            <select value={editGroupForm.plLine ?? ''} onChange={e => setEditGroupForm(f => ({ ...f, plLine: (e.target.value || '') as AccountGroup['plLine'] | '' }))}
+                              className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold outline-none">
+                              {PL_LINES.map(l => <option key={l.value ?? ''} value={l.value ?? ''}>{l.label}</option>)}
+                            </select>
                             <select value={editGroupForm.type} onChange={e => setEditGroupForm(f => ({ ...f, type: e.target.value as AccountGroup['type'] }))}
                               className="text-[11px] font-black bg-white border border-slate-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-300">
                               {GROUP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                             </select>
                             <input autoFocus value={editGroupForm.name} onChange={e => setEditGroupForm(f => ({ ...f, name: e.target.value }))}
-                              onKeyDown={e => { if (e.key === 'Enter' && editGroupForm.name.trim()) { onUpdateAccountGroup?.(group.id, { name: editGroupForm.name.trim(), type: editGroupForm.type }); setEditGroupId(null); } if (e.key === 'Escape') setEditGroupId(null); }}
+                              onKeyDown={e => { if (e.key === 'Enter' && editGroupForm.name.trim()) { onUpdateAccountGroup?.(group.id, { name: editGroupForm.name.trim(), type: editGroupForm.type, plLine: (editGroupForm.plLine || undefined) as AccountGroup['plLine'] }); setEditGroupId(null); } if (e.key === 'Escape') setEditGroupId(null); }}
                               className="flex-1 min-w-0 text-sm font-black bg-white border border-slate-200 rounded-lg px-2.5 py-1 outline-none focus:ring-2 focus:ring-blue-300" />
-                            <button onClick={() => { if (editGroupForm.name.trim()) onUpdateAccountGroup?.(group.id, { name: editGroupForm.name.trim(), type: editGroupForm.type }); setEditGroupId(null); }}
+                            <button onClick={() => { if (editGroupForm.name.trim()) onUpdateAccountGroup?.(group.id, { name: editGroupForm.name.trim(), type: editGroupForm.type, plLine: (editGroupForm.plLine || undefined) as AccountGroup['plLine'] }); setEditGroupId(null); }}
                               className="text-emerald-500 hover:text-emerald-700"><Check size={15} /></button>
                             <button onClick={() => setEditGroupId(null)} className="text-slate-300 hover:text-slate-500"><X size={15} /></button>
                           </>
@@ -2188,7 +2232,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                             <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${typeColor[group.type] ?? 'bg-slate-100 text-slate-600'}`}>{group.type}</span>
                             <span className="font-black text-slate-800">{group.name}</span>
                             {onUpdateAccountGroup && (
-                              <button onClick={() => { setEditGroupId(group.id); setEditGroupForm({ name: group.name, type: group.type }); }}
+                              <button onClick={() => { setEditGroupId(group.id); setEditGroupForm({ name: group.name, type: group.type, plLine: group.plLine ?? '' }); }}
                                 className="text-slate-200 hover:text-blue-400 transition-colors"><Pencil size={12} /></button>
                             )}
                             {onDeleteAccountGroup && (
