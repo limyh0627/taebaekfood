@@ -532,7 +532,11 @@ export const OrderCard = memo<OrderCardProps>(({
                         });
                         return (
                           <div key={`exp-${p.id}`} className="flex flex-wrap items-center gap-1 pl-[28px] mt-0.5" onClick={e => e.stopPropagation()}>
-                            <span className="text-[9px] font-black text-indigo-300">└ {abbrev(p.name)}</span>
+                            {/* 어느 낱개인지는 방금 누른 점이 말해 준다 — 이름을 또 적으면 줄만 길어진다.
+                                구성 낱개가 둘 이상일 때만 어느 것인지 밝힌다. */}
+                            {bomProducts.length > 1 && (
+                              <span className="text-[9px] font-black text-indigo-300">└ {abbrev(p.name)}</span>
+                            )}
                             {cSubs.length === 0
                               ? <span className="text-[9px] text-slate-300">부자재 없음</span>
                               : cSubs.map((cs, i) => {
