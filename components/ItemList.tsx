@@ -929,7 +929,11 @@ const ItemList: React.FC<ItemListProps> = ({
       const bCatIdx = CATEGORY_ORDER.indexOf(normCat(b.category));
       const aIdx = aCatIdx === -1 ? 99 : aCatIdx;
       const bIdx = bCatIdx === -1 ? 99 : bCatIdx;
-      return aIdx - bIdx;
+      // 분류가 같으면 **품목명 순**. 전엔 여기서 손을 놔 읽어온 순서가 그대로 남았다.
+      // 이름은 용량을 뗀 것으로 비교한다 — '참기름/병/A/300ml'의 300ml이 정렬을 흔들면 안 된다.
+      return aIdx - bIdx
+        || splitNameVolume(a).base.localeCompare(splitNameVolume(b).base, 'ko')
+        || (a.spec ?? '').localeCompare(b.spec ?? '', 'ko', { numeric: true });
     });
   }, [items, activeTab, catSel, supSel, specSel, activeSubtype, searchTerm, orderRequests, confirmedOrders, inboundPartners, partners, topTab, stockOnly, zeroStockOnly]);
 
@@ -3518,7 +3522,7 @@ const ItemList: React.FC<ItemListProps> = ({
                             .filter((c): c is Item => !!c && c.category === 'submaterial' && !isBulkItem(c) && !c.phantom);
                           if (chips.length === 0) return null;
                           return (
-                            <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
+                            <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-2">
                               {chips.map(c => (
                                 <span key={c.id} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 shrink-0">
                                   <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(c)}`} />
@@ -3530,7 +3534,7 @@ const ItemList: React.FC<ItemListProps> = ({
                         })()}
                       </span>
                       {/* 수량 — 작업완료(미출고)분은 아래 '주문수량'으로 따로 적는다(옆 배지는 없앰) */}
-                      <span className="shrink-0 flex flex-col items-end leading-tight">
+                      <span className="shrink-0 flex flex-col items-end leading-tight min-w-[104px]">
                       {editing ? (
                         <input autoFocus type="text" inputMode="decimal" value={editingClosingVal}
                           onChange={e => setEditingClosingVal(e.target.value)}
@@ -3554,10 +3558,13 @@ const ItemList: React.FC<ItemListProps> = ({
                           {shownNum}<span className="text-[11px] font-bold text-slate-400 ml-0.5">{unitLbl}</span>
                         </span>
                       )}
-                      {/* 주문에 물려 있는 분 — 재고 뷰는 이미 뺀 순수 재고라 안 적는다 */}
+                      {/* 주문에 물린 분 / 총재고 — 둘을 나란히 적어야 '이 중 얼마가 이미 팔렸나'가 보인다.
+                          재고 뷰는 이미 뺀 순수 재고라 안 적는다. */}
                       {disp > 0 && closingView !== 'stock' && (
-                        <span className="text-[10px] font-bold text-amber-600 whitespace-nowrap" title="주문에 물린 작업완료(미출고)분">
-                          주문수량 {disp}
+                        <span className="text-[11px] font-bold whitespace-nowrap" title="주문에 물린 작업완료(미출고)분 / 총재고">
+                          <span className="text-amber-600">주문 {disp}</span>
+                          <span className="text-slate-300 mx-1">/</span>
+                          <span className="text-slate-500">총 {cur}</span>
                         </span>
                       )}
                       </span>
