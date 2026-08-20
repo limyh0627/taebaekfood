@@ -1361,8 +1361,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
         return (
           <div className="flex flex-col md:flex-row gap-4 pb-4 md:items-start">
             {/* 금일 작업순서 패널 */}
-            <div className="w-full md:w-60 md:shrink-0 flex flex-col rounded-3xl border border-violet-100 bg-violet-50/50 shadow-sm">
-              <div className="p-4 border-b border-white/50 flex items-center justify-between">
+            {/* 칸반 컬럼과 같은 규칙 — 흰 바탕에 테두리 색만. 패널까지 칠하면 안의 카드가 묻힌다. */}
+            <div className="w-full md:w-60 md:shrink-0 flex flex-col rounded-3xl border border-violet-100 bg-white shadow-sm">
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between">
                 <button className="flex items-center gap-2 md:cursor-default" onClick={() => { if (window.innerWidth < 768) toggleMobileCollapse('work-order'); }}>
                   <div className="p-1.5 rounded-xl bg-violet-600 text-white"><ListOrdered size={16} /></div>
                   <h3 className="font-black text-sm text-violet-700">금일 작업순서</h3>
