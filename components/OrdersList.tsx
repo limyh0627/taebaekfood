@@ -487,13 +487,6 @@ export const OrderCard = memo<OrderCardProps>(({
                     return (
                       <>
                       <div className={`mt-0.5 ${gridCols >= 2 ? 'grid grid-cols-2 md:flex md:flex-wrap md:items-center gap-x-1 gap-y-0.5 md:gap-1 md:pl-[20px]' : 'flex flex-wrap items-center gap-x-1 gap-y-0.5 pl-[20px]'}`}>
-                        {bomProducts.map(({ p, qty }) => (
-                          <button key={p.id} type="button"
-                            onClick={(e) => { e.stopPropagation(); setExpandedItemBom(prev => { const n = new Set(prev); n.has(rowKey) ? n.delete(rowKey) : n.add(rowKey); return n; }); }}
-                            className="text-[9px] font-black text-indigo-500 flex items-center gap-0.5 shrink-0 hover:text-indigo-700">
-                            <ChevronRight size={9} className={`transition-transform ${open ? 'rotate-90' : ''}`} />{abbrev(p.name)}{qty > 1 ? `×${qty}` : ''}
-                          </button>
-                        ))}
                         {/* 부자재 — 칩으로 칠하면 배경이 글자보다 먼저 읽힌다. 이름 앞에 점만 찍는다: ● 테이프-빨강 */}
                         {allSubs.map(sm => {
                           const _s = items.find(p => p.id === sm.id) ?? { name: sm.name };
@@ -504,6 +497,16 @@ export const OrderCard = memo<OrderCardProps>(({
                             </span>
                           );
                         })}
+                        {/* 구성품 완제품(박스 안의 낱개)은 **맨 뒤**. 부자재와 급이 달라 섞이면 헷갈린다.
+                            눌러서 그 낱개의 부자재를 펼친다 — 화살표 없이 점만 두고 색으로 구분한다. */}
+                        {bomProducts.map(({ p, qty }) => (
+                          <button key={p.id} type="button"
+                            onClick={(e) => { e.stopPropagation(); setExpandedItemBom(prev => { const n = new Set(prev); n.has(rowKey) ? n.delete(rowKey) : n.add(rowKey); return n; }); }}
+                            className="inline-flex items-center gap-1 text-[9px] font-black text-indigo-500 shrink-0 hover:text-indigo-700">
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${open ? 'bg-indigo-600' : 'bg-indigo-300'}`} />
+                            {abbrev(p.name)}{qty > 1 ? `×${qty}` : ''}
+                          </button>
+                        ))}
                       </div>
                       {open && bomProducts.map(({ p }) => {
                         // 펼친 낱개의 부자재 — 벌크는 여기서도 뺀다
