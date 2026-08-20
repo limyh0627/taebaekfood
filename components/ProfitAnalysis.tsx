@@ -111,6 +111,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
     setCfEdit(doc ? { depreciation: doc.depreciation, prepaidInc: doc.prepaidInc, assetBuy: doc.assetBuy, assetSell: doc.assetSell, financeIn: doc.financeIn, debtRepay: doc.debtRepay, openingCash: doc.openingCash, closingCash: doc.closingCash } : {});
   }, [cfMonth, cashFlowManual]);
   // ── 계정그룹/계정과목 인라인 수정 ──
+  const [openCostLine, setOpenCostLine] = useState<string | null>(null);
   const [editGroupId, setEditGroupId] = useState<string | null>(null);
   const [editGroupForm, setEditGroupForm] = useState<{ name: string; type: AccountGroup['type']; plLine: AccountGroup['plLine'] | '' }>({ name: '', type: '비용', plLine: '' });
   const [editCodeId, setEditCodeId] = useState<string | null>(null);
@@ -285,21 +286,21 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   );
 
   /**
-   * 비용을 **계정과목별로** 쪼갠다 — 손익 숫자와 같은 분개에서 뽑으므로 합계가 어긋나지 않는다.
+   * 손익 계정을 **계정과목별로** 쪼갠다 — 손익 숫자와 같은 분개에서 뽑으므로 합계가 어긋나지 않는다.
    *
-   * "원재료·부자재 빼고 얼마 썼나" 같은 물음이 여기서 답이 된다. plLine 네 갈래
-   * (매출/매출원가/판관비/영업외)로만 묶어 두면 그 안을 못 들여다본다.
+   * 수익은 대변, 비용은 차변이 정상이라 계정의 normalBalance로 부호를 잡는다.
+   * 그래야 매출 환입(차변)이나 비용 정정(대변)이 제대로 깎인다.
    */
-  const expenseByCode = useMemo(() => {
+  const plByCode = useMemo(() => {
     const ymSet = new Set(monthlyData.map(m => m.ym));
     const tally = new Map<string, number>();
     for (const e of journalEntries) {
       if (!ymSet.has((e.date ?? '').slice(0, 7))) continue;
       for (const l of e.lines ?? []) {
         const acc = accountCodes.find(a => String(a.code) === String(l.accountCode));
-        if (acc?.type !== '비용') continue;
-        // 비용은 차변이 정상 — 대변은 정정·환입이라 빼 준다
-        const amt = (l.debit ?? 0) - (l.credit ?? 0);
+        if (acc?.type !== '비용' && acc?.type !== '수익') continue;
+        const normal = acc.normalBalance ?? (acc.type === '수익' ? 'credit' : 'debit');
+        const amt = normal === 'debit' ? (l.debit ?? 0) - (l.credit ?? 0) : (l.credit ?? 0) - (l.debit ?? 0);
         if (!amt) continue;
         tally.set(String(l.accountCode), (tally.get(String(l.accountCode)) ?? 0) + amt);
       }
@@ -319,9 +320,9 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
    * 예전엔 여기 계정번호를 박아 뒀는데(원재료 500·501·503·505), 계정을 새로 만들면
    * 목록을 고치기 전까지 소계에서 조용히 빠졌다. 이제 계정에 그룹만 붙이면 따라온다.
    */
-  const expenseByGroup = useMemo(() => {
-    const m = new Map<string, { name: string; plLine?: string; amount: number; rows: typeof expenseByCode }>();
-    for (const r of expenseByCode) {
+  const plByGroup = useMemo(() => {
+    const m = new Map<string, { name: string; plLine?: string; amount: number; rows: typeof plByCode }>();
+    for (const r of plByCode) {
       const key = r.groupId ?? '(그룹없음)';
       const cur = m.get(key) ?? { name: r.groupName ?? '그룹 없음', plLine: r.plLine, amount: 0, rows: [] };
       cur.amount += r.amount;
@@ -329,7 +330,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
       m.set(key, cur);
     }
     return [...m.entries()].map(([id, v]) => ({ id, ...v })).sort((a, b) => b.amount - a.amount);
-  }, [expenseByCode]);
+  }, [plByCode]);
 
   // 기간 합계 — 매출원가는 재고 증감 반영(기초 + 매입 − 기말). 스냅샷 있을 때만 조정.
   const summary = useMemo(() => {
@@ -525,156 +526,89 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         </div>
       </div>
 
-      {/* ① 총매출 · 총매출원가 · 매출총이익 */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-white rounded-2xl border border-slate-200 px-5 py-4">
-          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">총매출</div>
-          <div className="text-2xl font-black text-slate-800 leading-tight">{fmtM(summary.sales)}</div>
-          <div className="text-[10px] text-slate-400 mt-1">{fmt(summary.sales)}원</div>
-        </div>
-        <div className="bg-white rounded-2xl border border-slate-200 px-5 py-4">
-          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">총매출원가</div>
-          <div className="text-2xl font-black text-slate-800 leading-tight">{fmtM(summary.cogs)}</div>
-          <div className="text-[10px] text-slate-400 mt-1">{fmt(summary.cogs)}원</div>
-        </div>
-        <div className="bg-white rounded-2xl border border-slate-200 px-5 py-4">
-          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">매출총이익</div>
-          <div className={`text-2xl font-black leading-tight ${summary.grossProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{fmtM(summary.grossProfit)}</div>
-          <div className="text-[10px] text-slate-400 mt-1">
-            {fmt(summary.grossProfit)}원
-            {summary.sales > 0 && ` · ${Math.round(summary.grossProfit / summary.sales * 100)}%`}
-          </div>
-        </div>
-      </div>
-
-      {/* ② 매출원가 및 재고 상세 */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4">
-        <div className="text-xs font-black text-slate-700 mb-3">매출원가 및 재고 상세</div>
-        <div className="space-y-2 text-xs">
-          <div className="flex items-center justify-between font-black text-slate-800">
-            <span>총매출원가 (COGS)</span>
-            <span>{fmtM(summary.cogs)}</span>
-          </div>
-          <div className="flex items-center justify-between pl-4 text-slate-600">
-            <span><span className="mr-1.5 text-slate-200">├</span>기초상품재고액 (+)</span>
-            {openingSnapshot
-              ? <span className="font-bold text-teal-600">{fmtM(openingSnapshot.value)}</span>
-              : <span className="text-[10px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-lg">스냅샷 없음</span>}
-          </div>
-          <div className="flex items-center justify-between pl-4 text-slate-600 font-bold">
-            <span><span className="mr-1.5 text-slate-200">├</span>당기상품매입액 (+)</span>
-            <span>{fmtM(summary.purchases)}</span>
-          </div>
-          {cogsByCode.map((item, idx) => (
-            <div key={item.code} className="flex items-center justify-between pl-10 text-slate-500">
-              <span>
-                <span className="mr-1.5 text-slate-200">{idx === cogsByCode.length - 1 ? '└' : '├'}</span>
-                {item.code} {item.name}
-              </span>
-              <span>{fmtM(item.total)}</span>
-            </div>
-          ))}
-          <div className="flex items-center justify-between pl-4 text-slate-600">
-            <span><span className="mr-1.5 text-slate-200">└</span>기말상품재고액 (-)</span>
-            {closingSnapshot
-              ? <span className="font-bold text-teal-600">{fmtM(closingSnapshot.value)}</span>
-              : <span className="text-[10px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-lg">스냅샷 없음</span>}
-          </div>
-          {!openingSnapshot && !closingSnapshot && (
-            <p className="text-[10px] text-slate-400 pt-1">※ 기초/기말 재고 스냅샷이 없어 매출원가 = 당기 매입액으로 계산됩니다. 재고액 탭에서 기말재고를 기록하세요.</p>
-          )}
-        </div>
-      </div>
-
-      {/* ④ 비용 상세 — 그룹 소계 + 계정과목. 집계 근거가 손익 숫자와 같은 분개다. */}
+      {/*
+        손익계산서 — **한 줄기로 위에서 아래로.** 매출에서 시작해 빼 나가며 이익이 남는다.
+        예전엔 카드 3개 → 매출원가 상세 → 비용 상세 → 영업이익 순이라, 결과를 보려면
+        상세를 지나쳐 내려가야 했고 비용 상세 안에 판관비·영업외가 다 들어 있어
+        그 아래 영업이익과 순서가 꼬였다. 이제 줄을 누르면 그 자리에서 펼쳐진다.
+      */}
       {(() => {
-        const total = expenseByGroup.reduce((a, g) => a + g.amount, 0);
-        const cogsGroups = expenseByGroup.filter(g => g.plLine === 'cogs');
-        const cogsSum = cogsGroups.reduce((a, g) => a + g.amount, 0);
-        const pct = (v: number) => total ? `${(v / total * 100).toFixed(1)}%` : '';
-        return (
-          <div className="bg-white rounded-2xl border border-slate-200 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-black text-slate-700">비용 상세 — 그룹별</span>
-              <span className="text-xs font-black text-slate-800 tabular-nums">{fmtM(total)}</span>
-            </div>
-            {expenseByGroup.length === 0 ? (
-              <p className="text-[11px] font-bold text-slate-300 py-3 text-center">이 기간에 잡힌 비용이 없습니다.</p>
-            ) : (
-              <div className="space-y-3 text-xs">
-                {expenseByGroup.map(g => (
-                  <div key={g.id}>
-                    <div className="flex items-center justify-between font-black text-slate-800">
-                      <span>
-                        {g.name}
-                        {!g.plLine && <span className="ml-1.5 text-[9px] font-black text-amber-500">손익 줄 없음</span>}
-                      </span>
-                      <span className="tabular-nums">{fmtM(g.amount)} <span className="text-[10px] font-bold text-slate-400">{pct(g.amount)}</span></span>
-                    </div>
-                    {g.rows.map(r => (
-                      <div key={r.code} className="flex items-center justify-between pl-4 text-slate-500">
-                        <span><span className="mr-1.5 text-slate-200">·</span><span className="text-slate-300 mr-1.5 tabular-nums">{r.code}</span>{r.name}</span>
-                        <span className="tabular-nums">{fmtM(r.amount)}</span>
+        const pct = (v: number) => summary.sales > 0 ? `${Math.round(v / summary.sales * 100)}%` : '';
+        const groupsOf = (...lines: string[]) => plByGroup.filter(g => lines.includes(g.plLine ?? ''));
+
+        /** 펼쳐지는 줄 — 그룹 소계 밑에 계정과목 */
+        const Line = ({ label, amount, lines, sign, keyName }: {
+          label: string; amount: number; lines: string[]; sign: '+' | '−'; keyName: string;
+        }) => {
+          const gs = groupsOf(...lines);
+          const open = openCostLine === keyName;
+          return (
+            <div className="border-b border-slate-100">
+              <button onClick={() => setOpenCostLine(open ? null : keyName)}
+                className="w-full flex items-center justify-between px-5 py-3 hover:bg-slate-50/70 transition-colors text-left">
+                <span className="flex items-center gap-1.5 text-sm font-bold text-slate-600">
+                  <ChevronRight size={13} className={`text-slate-300 transition-transform ${open ? 'rotate-90' : ''}`} />
+                  <span className="text-slate-300 w-3">{sign}</span>{label}
+                </span>
+                <span className="text-sm font-black text-slate-700 tabular-nums">
+                  {fmt(amount)}<span className="text-[10px] font-bold text-slate-400 ml-1.5">{pct(Math.abs(amount))}</span>
+                </span>
+              </button>
+              {open && (
+                <div className="bg-slate-50/60 px-5 pb-3 pt-1 space-y-2">
+                  {gs.length === 0 && <p className="text-[11px] font-bold text-slate-300 py-2">이 기간에 잡힌 게 없습니다.</p>}
+                  {gs.map(g => (
+                    <div key={g.id}>
+                      <div className="flex items-center justify-between text-[11px] font-black text-slate-600">
+                        <span>{g.name}{!g.plLine && <span className="ml-1.5 text-[9px] text-amber-500">손익 줄 없음</span>}</span>
+                        <span className="tabular-nums">{fmt(g.amount)}</span>
                       </div>
-                    ))}
-                  </div>
-                ))}
-                {cogsGroups.length > 1 && (
-                  <div className="flex items-center justify-between font-black text-indigo-600 border-t-2 border-slate-100 pt-2">
-                    <span>매출원가 소계 <span className="font-bold text-slate-400">({cogsGroups.map(g => g.name).join(' + ')})</span></span>
-                    <span className="tabular-nums">{fmtM(cogsSum)}</span>
-                  </div>
-                )}
+                      {g.rows.map(r => (
+                        <div key={r.code} className="flex items-center justify-between pl-3 text-[11px] text-slate-400">
+                          <span><span className="text-slate-300 mr-1.5 tabular-nums">{r.code}</span>{r.name}</span>
+                          <span className="tabular-nums">{fmt(r.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        };
+
+        /** 남는 줄 — 소계. 굵게(strong)는 영업이익·당기순이익. */
+        const Result = ({ label, amount, strong }: { label: string; amount: number; strong?: boolean }) => (
+          <div className={`flex items-center justify-between px-5 border-b border-slate-100 ${strong ? 'py-4 bg-slate-50' : 'py-3'}`}>
+            <span className="text-sm font-black text-slate-800"><span className="text-slate-300 mr-1.5">=</span>{label}</span>
+            <span className="text-right">
+              <span className={`${strong ? 'text-xl' : 'text-base'} font-black tabular-nums ${amount >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{fmt(amount)}</span>
+              <span className="text-[10px] font-bold text-slate-400 ml-1.5">{pct(amount)}</span>
+            </span>
+          </div>
+        );
+
+        const other = summary.otherIncome - summary.otherExpense;
+        return (
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+            <Line label="매출" amount={summary.sales} lines={['revenue']} sign="+" keyName="revenue" />
+            <Line label="매출원가" amount={summary.cogs} lines={['cogs']} sign="−" keyName="cogs" />
+            <Result label="매출총이익" amount={summary.grossProfit} />
+            <Line label="판매비와관리비" amount={summary.sgna} lines={['sgna']} sign="−" keyName="sgna" />
+            <Result label="영업이익" amount={summary.operatingProfit} strong />
+            <Line label="기타손익 (영업외)" amount={other} lines={['other-income', 'other-expense']} sign={other >= 0 ? '+' : '−'} keyName="other" />
+            <Result label="당기순이익" amount={summary.netIncome} strong />
+            {(openingSnapshot || closingSnapshot) && (
+              <div className="px-5 py-3 bg-slate-50/60 text-[11px] font-bold text-slate-400 flex items-center gap-4 flex-wrap">
+                <span>재고 실사</span>
+                {openingSnapshot && <span>기초 <span className="text-slate-600">{fmt(openingSnapshot.value)}</span></span>}
+                {closingSnapshot && <span>기말 <span className="text-slate-600">{fmt(closingSnapshot.value)}</span></span>}
+                <span className="text-slate-300">— 매출원가에 이미 반영돼 있습니다(실지재고조사법)</span>
               </div>
             )}
-            <p className="text-[10px] font-bold text-slate-400 mt-3 leading-snug">
-              손익 숫자와 같은 분개에서 뽑습니다. 묶는 근거는 계정그룹 하나뿐이라,
-              계정을 새로 만들어도 그룹만 고르면 여기 따라옵니다.
-              <span className="text-amber-500"> 손익 줄 없음</span>이 보이면 그룹 설정에서 채워 주세요.
-            </p>
           </div>
         );
       })()}
-
-      {/* ③⑤ 영업이익 · 당기순이익 — 같은 행 */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-white rounded-2xl border-2 border-slate-200 px-5 py-4 flex flex-col justify-between">
-          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">영업이익</div>
-          <div>
-            <div className={`text-2xl font-black ${summary.operatingProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{fmtM(summary.operatingProfit)}</div>
-            <div className="text-[10px] text-slate-400 mt-0.5">
-              {fmt(summary.operatingProfit)}원
-              {summary.sales > 0 && ` · ${Math.round(summary.operatingProfit / summary.sales * 100)}%`}
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-2xl border-2 border-slate-200 px-5 py-4 flex flex-col justify-between">
-          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">당기순이익</div>
-          <div>
-            <div className={`text-2xl font-black ${summary.netIncome >= 0 ? 'text-slate-800' : 'text-rose-600'}`}>{fmtM(summary.netIncome)}</div>
-            <div className="text-[10px] text-slate-400 mt-0.5">{fmt(summary.netIncome)}원</div>
-          </div>
-        </div>
-      </div>
-
-      {/* ⑥ 기타 손익 */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2">
-        <div className="text-xs font-black text-slate-700 mb-1">기타 손익 (영업외)</div>
-        <div className="flex items-center justify-between text-xs text-slate-600">
-          <span><span className="mr-1.5 text-slate-200">├</span>영업외수익</span>
-          <span className="font-bold text-emerald-600">{summary.otherIncome ? `+${fmt(summary.otherIncome)}원` : '—'}</span>
-        </div>
-        <div className="flex items-center justify-between text-xs text-slate-600">
-          <span><span className="mr-1.5 text-slate-200">└</span>영업외비용</span>
-          <span className="font-bold text-rose-600">{summary.otherExpense ? `-${fmt(summary.otherExpense)}원` : '—'}</span>
-        </div>
-        <div className="border-t border-slate-100 pt-2 flex items-center justify-between text-xs">
-          <span className="text-slate-400">기타 손익 합계</span>
-          <span className={`font-black ${(summary.otherIncome - summary.otherExpense) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-            {summary.otherIncome - summary.otherExpense >= 0 ? '+' : ''}{fmt(summary.otherIncome - summary.otherExpense)}원
-          </span>
-        </div>
-      </div>
 
       {/* 차트 영역 */}
       <div className="bg-white rounded-2xl border border-slate-200 p-5">
