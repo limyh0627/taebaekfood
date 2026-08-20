@@ -2841,26 +2841,19 @@ const ItemList: React.FC<ItemListProps> = ({
                     <div key={p.id} className={`px-4 sm:px-5 py-3.5 ${add > 0 ? 'bg-indigo-50/40' : isChild ? 'bg-slate-50/40' : ''} ${isChild ? 'pl-8 sm:pl-9' : ''}`}>
                       <div className="flex items-center gap-3">
                         <div className="flex-1 min-w-0">
-                          {/* 이름 + 거래처 + 등급·용량(병/페트)·개입 배지 — 이름 옆 한 줄 그룹(넘치면 줄바꿈) */}
-                          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-                            <p className={`text-[15px] leading-tight break-keep ${isChild ? 'font-bold text-slate-500' : 'font-black text-slate-800'}`}>
-                              {isChild && <span className="text-slate-300 mr-1">└</span>}{lbl.base}
-                              {lbl.brand && <span className="ml-1.5 text-[13px] font-black text-violet-600">· {lbl.brand}</span>}
-                            </p>
-                            {/* 등급·용량·개입 — 색 칩을 벗기고 이름과 같은 크기로. 칠해 두면 이름보다 먼저 읽힌다. */}
-                            {lbl.grade && <span className="text-[13px] font-bold text-slate-500">{lbl.grade}</span>}
-                            {lbl.size && <span className="text-[13px] font-bold text-slate-500">{lbl.size}{lbl.container && <span className="ml-1 text-slate-400">{lbl.container}</span>}</span>}
-                            {lbl.pack && <span className="text-[13px] font-bold text-slate-500">{lbl.pack}</span>}
-                          </div>
-                          {/* 품목에 물려있는 거래처(매출처) — 가로 스크롤 한 줄이라 많아도 UI 안 깨짐 */}
-                          {p.partnerIds && p.partnerIds.length > 0 && (
-                            <div className="flex gap-1 mt-1 overflow-x-auto no-scrollbar">
-                              {p.partnerIds.map(cid => {
-                                const cn = partners.find(c => c.id === cid)?.name;
-                                return cn ? <span key={cid} className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-50 text-violet-600">{cn}</span> : null;
-                              })}
-                            </div>
-                          )}
+                          {/* 카테고리 · 품목명 · 규격 — 다른 화면과 같은 한 행.
+                              거래처는 뺐다: 여기서 고르는 건 '무엇을 몇 개 만드나'지 누구에게 파나가 아니다. */}
+                          <span className={`flex items-center gap-1.5 text-[13px] break-keep ${isChild ? 'font-semibold text-slate-500' : 'font-bold text-slate-800'}`}>
+                            {isChild && <span className="text-slate-300 shrink-0">└</span>}
+                            <span className={`shrink-0 text-[10px] font-black px-1.5 py-0.5 rounded-md ${categoryChipClass(inferSubtype(p))}`}>
+                              {inferSubtype(p)}
+                            </span>
+                            <span className="truncate">{splitNameVolume(p).base}</span>
+                            {(() => {
+                              const sp = specText(p.spec) || splitNameVolume(p).vol;
+                              return sp ? <span className="shrink-0 text-slate-500">{sp}</span> : null;
+                            })()}
+                          </span>
                         </div>
                         {/* 현재고 → 입력칸 바로 왼쪽 */}
                         <div className="flex items-center gap-2 shrink-0">
