@@ -70,9 +70,9 @@ const NameSpec = ({ p, className }: { p: { name: string; spec?: string }; classN
   const { base, vol } = splitNameVolume(p);
   const sp = specText(p.spec) || vol;
   return (
-    <span className={className}>
-      {base}
-      {sp && <span className="ml-1.5 font-bold text-slate-500">{sp}</span>}
+    <span className={`inline-flex items-center gap-1.5 min-w-0 ${className ?? ''}`}>
+      <span className="truncate">{base}</span>
+      {sp && <span className="shrink-0 text-slate-500">{sp}</span>}
     </span>
   );
 };
@@ -3499,20 +3499,20 @@ const ItemList: React.FC<ItemListProps> = ({
                     <div key={r.itemId} className={`w-full flex items-start gap-2 px-3 py-2.5 ${r.isChild ? "pl-7 bg-slate-50/50" : ""}`}>
                       {/* 카테고리 + 품목명 + 규격을 한 줄, 부자재는 그 아래 한 줄에 쭉 */}
                       <span className="flex-1 min-w-0">
-                        <span className={`block text-[13px] break-keep ${r.isChild ? 'font-semibold text-slate-500' : 'font-bold text-slate-800'}`}>
-                          {r.isChild && <span className="text-slate-300 mr-1">└</span>}
+                        {/* 카테고리 · 품목명 · 규격을 flex 한 행으로 — 이름과 규격이 같은 크기, 같은 줄에 선다.
+                            예전엔 인라인이라 칩의 세로 여백에 밀려 규격이 반 칸 내려앉았다. */}
+                        <span className={`flex items-center gap-1.5 text-[13px] break-keep ${r.isChild ? 'font-semibold text-slate-500' : 'font-bold text-slate-800'}`}>
+                          {r.isChild && <span className="text-slate-300 shrink-0">└</span>}
                           {product && (
-                            <span className={`mr-1.5 align-middle text-[10px] font-black px-1.5 py-0.5 rounded-md ${categoryChipClass(inferSubtype(product))}`}>
+                            <span className={`shrink-0 text-[10px] font-black px-1.5 py-0.5 rounded-md ${categoryChipClass(inferSubtype(product))}`}>
                               {inferSubtype(product)}
                             </span>
                           )}
-                          {r.label}
-                          {/* 규격 — 색 칩을 벗기고 품목명과 같은 크기로 옆에 붙인다.
-                              칠해 두면 품목명보다 규격이 먼저 읽힌다(주문카드와 같은 규칙). */}
+                          <span className="truncate">{r.label}</span>
                           {(() => {
                             const _p = product ?? (r.spec ? { name: r.label, spec: r.spec } : null);
                             const sp = _p ? (specText(_p.spec) || splitNameVolume(_p).vol) : '';
-                            return sp ? <span className="ml-1.5 align-middle font-bold text-slate-500">{sp}</span> : null;
+                            return sp ? <span className="shrink-0 text-slate-500">{sp}</span> : null;
                           })()}
                         </span>
                         {(() => {
