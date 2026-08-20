@@ -3534,7 +3534,7 @@ const ItemList: React.FC<ItemListProps> = ({
                         })()}
                       </span>
                       {/* 수량 — 작업완료(미출고)분은 아래 '주문수량'으로 따로 적는다(옆 배지는 없앰) */}
-                      <span className="shrink-0 flex flex-col items-end leading-tight min-w-[104px]">
+                      <span className="shrink-0 flex flex-col items-end leading-tight">
                       {editing ? (
                         <input autoFocus type="text" inputMode="decimal" value={editingClosingVal}
                           onChange={e => setEditingClosingVal(e.target.value)}
@@ -3558,13 +3558,10 @@ const ItemList: React.FC<ItemListProps> = ({
                           {shownNum}<span className="text-[11px] font-bold text-slate-400 ml-0.5">{unitLbl}</span>
                         </span>
                       )}
-                      {/* 주문에 물린 분 / 총재고 — 둘을 나란히 적어야 '이 중 얼마가 이미 팔렸나'가 보인다.
-                          재고 뷰는 이미 뺀 순수 재고라 안 적는다. */}
+                      {/* 주문에 물려 있는 분 — 재고 뷰는 이미 뺀 순수 재고라 안 적는다 */}
                       {disp > 0 && closingView !== 'stock' && (
-                        <span className="text-[11px] font-bold whitespace-nowrap" title="주문에 물린 작업완료(미출고)분 / 총재고">
-                          <span className="text-amber-600">주문 {disp}</span>
-                          <span className="text-slate-300 mx-1">/</span>
-                          <span className="text-slate-500">총 {cur}</span>
+                        <span className="text-[10px] font-bold text-amber-600 whitespace-nowrap" title="주문에 물린 작업완료(미출고)분">
+                          주문수량 {disp}
                         </span>
                       )}
                       </span>
