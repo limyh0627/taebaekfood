@@ -291,12 +291,13 @@ export const OrderCard = memo<OrderCardProps>(({
       <div className={`flex justify-between items-center rounded-t-2xl ${STATUS_HEAD[order.status] ?? 'bg-slate-100 text-slate-600'} ${
         isCollapsed ? '-mx-2.5 -mt-2.5 px-2.5 py-1.5 mb-1.5' : '-mx-4 -mt-4 px-4 py-2.5 mb-3'}`}>
         <div className="flex-1 min-w-0 flex items-center gap-1.5">
-          <h4 className="font-black leading-tight text-sm break-words text-slate-900">{displayName}</h4>
+          {/* 색을 안 준다 — 머리 띠의 상태 글자색을 그대로 물려받아 상태와 같은 색이 된다 */}
+          <h4 className="font-black leading-tight text-[15px] break-words">{displayName}</h4>
           {nonHyangmiyuItems.length > 0 && (
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setIsCollapsed(prev => !prev); }}
-              className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 transition-all bg-white/70 ${isFullyDone ? 'text-emerald-700' : 'text-orange-600'}`}
+              className={`text-[10px] font-black px-1.5 py-0.5 rounded shrink-0 transition-all bg-white/70 ${isFullyDone ? 'text-emerald-700' : 'text-orange-600'}`}
             >
               {completedItems}/{totalItems}
             </button>
@@ -308,7 +309,7 @@ export const OrderCard = memo<OrderCardProps>(({
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); setShowStatusPicker(p => !p); }}
-            className="text-[10px] font-black transition-all hover:opacity-70 opacity-80"
+            className="text-[11px] font-black transition-all hover:opacity-70 opacity-80"
           >
             {STATUS_LABEL[order.status] ?? order.status}
           </button>
@@ -436,7 +437,7 @@ export const OrderCard = memo<OrderCardProps>(({
                 .replace(/들향기름/g, '들향').replace(/맛기름/g, '맛');
               return (
                 <div key={idx} className="flex flex-col border-b border-slate-50 pb-1 last:border-0 cursor-pointer select-none" onClick={(e) => { e.stopPropagation(); onToggleItemChecked?.(order.id, idx, currentUserName); }}>
-                  <div className="flex items-center text-[10px] font-bold">
+                  <div className="flex items-center text-[11px] font-bold">
                     <div className={`mr-1.5 shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`}>
                       {isItemChecked ? <CheckSquare size={14} /> : <Square size={14} />}
                     </div>
@@ -454,9 +455,9 @@ export const OrderCard = memo<OrderCardProps>(({
                       const sub = box && item.unitsPerBox ? `${item.quantity}개` : '';
                       return (
                         <span className={`ml-auto pl-1.5 shrink-0 whitespace-nowrap ${isItemChecked ? 'opacity-50' : ''}`}>
-                          <span className={`text-sm font-black ${isItemChecked ? 'text-emerald-800' : 'text-slate-800'}`}>{qty}</span>
-                          <span className="text-[10px] font-normal text-slate-400 ml-0.5">{unit}</span>
-                          {sub && <span className="text-[10px] font-normal text-slate-300 ml-1">{sub}</span>}
+                          <span className={`text-[15px] font-black ${isItemChecked ? 'text-emerald-800' : 'text-slate-800'}`}>{qty}</span>
+                          <span className="text-[11px] font-normal text-slate-400 ml-0.5">{unit}</span>
+                          {sub && <span className="text-[11px] font-normal text-slate-300 ml-1">{sub}</span>}
                         </span>
                       );
                     })()}
@@ -507,7 +508,7 @@ export const OrderCard = memo<OrderCardProps>(({
                         {allSubs.map(sm => {
                           const _s = items.find(p => p.id === sm.id) ?? { name: sm.name };
                           return (
-                            <span key={sm.id} className="inline-flex items-center gap-1 text-[9px] font-bold text-slate-500 shrink-0">
+                            <span key={sm.id} className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 shrink-0">
                               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(_s)}`} />
                               {sm.name}
                             </span>
@@ -518,7 +519,7 @@ export const OrderCard = memo<OrderCardProps>(({
                         {bomProducts.map(({ p, qty }) => (
                           <button key={p.id} type="button"
                             onClick={(e) => { e.stopPropagation(); setExpandedItemBom(prev => { const n = new Set(prev); n.has(rowKey) ? n.delete(rowKey) : n.add(rowKey); return n; }); }}
-                            className="inline-flex items-center gap-1 text-[9px] font-black text-indigo-500 shrink-0 hover:text-indigo-700">
+                            className="inline-flex items-center gap-1 text-[10px] font-black text-indigo-500 shrink-0 hover:text-indigo-700">
                             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${open ? 'bg-indigo-600' : 'bg-indigo-300'}`} />
                             {abbrev(p.name)}{qty > 1 ? `×${qty}` : ''}
                           </button>
@@ -542,7 +543,7 @@ export const OrderCard = memo<OrderCardProps>(({
                               : cSubs.map((cs, i) => {
                                   const ci = items.find(x => x.id === cs.id);
                                   return (
-                                    <span key={i} className="inline-flex items-center gap-1 text-[9px] font-bold text-slate-500 shrink-0">
+                                    <span key={i} className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 shrink-0">
                                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(ci ?? { name: cs.name })}`} />
                                       {ci?.name ?? cs.name}
                                     </span>
@@ -1333,7 +1334,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
               className={`flex flex-col rounded-3xl border ${col.borderColor} bg-white shadow-sm flex-shrink-0`}
               style={{
                 ...(typeof window !== 'undefined' && window.innerWidth >= 768 ? { width: `calc(${units} * (100vw - 9rem) / 6)` } : {}),
-                minWidth: 280,
+                // 모바일은 컬럼 폭이 곧 카드 폭이다. 280은 한 손에 안 들어와 조금 줄인다.
+                minWidth: typeof window !== 'undefined' && window.innerWidth < 768 ? 248 : 280,
               }}
             >
               <div className="p-5 border-b border-white/50 flex items-center justify-between">
