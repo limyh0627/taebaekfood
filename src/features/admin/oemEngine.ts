@@ -20,7 +20,7 @@ export const OEM_DEFAULT_FEE_PER_KG = 500;    // 가공단가 기본값(원/kg) 
 
 export interface OemEngineDeps {
   items: Item[];
-  adjustRawLots: (opts: { material: string; rawItemId: string; deltaKg: number; date: string; note: string; addedBy?: string }) => Promise<void>;
+  adjustRawLots: (opts: { material: string; rawItemId: string; deltaKg: number; date: string; note: string; addedBy?: string; ledgerType?: 'auto' | 'manual' | 'correction' }) => Promise<void>;
   updateItem: (collection: string, id: string, data: Record<string, any>) => Promise<any>;
   addItem: (collection: string, data: Record<string, any>) => Promise<any>;
   /** 원료식(BOM) — 가공입고분을 어느 원료 그룹에 kg으로 올릴지 결정 */
@@ -77,6 +77,8 @@ export function createOemEngine(deps: OemEngineDeps) {
       await adjustRawLots({
         material: s.material, rawItemId: holder.id, deltaKg: -s.kg,
         date: input.date, note: `OEM 외주출고 → ${input.partnerName}`, addedBy: input.addedBy,
+        // 실제로 나간 원료다 — 정정으로 남기면 사용량 집계에서 빠지고 그날 묶음이 끊긴다
+        ledgerType: 'auto',
       });
     }
 
@@ -175,6 +177,7 @@ export function createOemEngine(deps: OemEngineDeps) {
       await adjustRawLots({
         material: b.material, rawItemId: holder.id, deltaKg: b.kg,
         date: input.date, note: `OEM 가공입고 ← ${po.partnerName ?? ''}`, addedBy: input.addedBy,
+        ledgerType: 'auto',
       });
       receivedKg += b.kg;
     }

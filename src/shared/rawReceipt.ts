@@ -100,8 +100,17 @@ export async function adjustRawLots(opts: {
   note: string;
   addedBy?: string;
   ledger?: boolean;      // 기본 true
+  /**
+   * 원장에 어떤 줄로 남길지. 기본은 '정정'(재고조정·실사).
+   *
+   * **실제로 일어난 입출고는 'auto'로 넘겨야 한다.** 정정으로 남기면
+   *   · 사용량 집계에서 빠진다 — 정정은 입고·사용이 아니라서(RawLedgerList)
+   *   · 같은 날 묶음이 정정 앞뒤로 끊긴다 — 무엇이 정정 대상인지 보이게 하려고
+   * 그래서 OEM 외주출고 1,500kg이 사용에 안 잡히고 그날 입고가 두 줄로 갈렸다.
+   */
+  ledgerType?: 'auto' | 'manual' | 'correction';
 }): Promise<void> {
-  const { material, rawItemId, deltaKg, date, note, addedBy, ledger = true } = opts;
+  const { material, rawItemId, deltaKg, date, note, addedBy, ledger = true, ledgerType = 'correction' } = opts;
   if (Math.abs(deltaKg) < 0.0001) return;
   await mutateRawMaterialLots(
     rawItemId,
@@ -122,7 +131,7 @@ export async function adjustRawLots(opts: {
       material, date,
       received: deltaKg > 0 ? deltaKg : 0,
       used: deltaKg < 0 ? -deltaKg : 0,
-      note, type: 'correction', unit: 'kg', addedBy,
+      note, type: ledgerType, unit: 'kg', addedBy,
       createdAt: new Date().toISOString(),
     });
   }
