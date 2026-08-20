@@ -19,10 +19,7 @@ type MainTab = 'analysis' | 'costs' | 'partners' | 'inventory-value' | 'account-
 
 interface ProfitAnalysisProps {
   issuedStatements: IssuedStatement[];
-  fixedCosts: FixedCostEntry[];
   fixedCostTemplates?: FixedCostTemplate[];
-  onAddCost: (entry: Omit<FixedCostEntry, 'id' | 'createdAt'>) => Promise<void>;
-  onDeleteCost: (id: string) => Promise<void>;
   onAddTemplate?: (data: Omit<FixedCostTemplate, 'id'>) => Promise<void>;
   onUpdateTemplate?: (id: string, data: Partial<FixedCostTemplate>) => Promise<void>;
   onDeleteTemplate?: (id: string) => Promise<void>;
@@ -63,7 +60,7 @@ const fmtM = (n: number) => {
 
 const MONTHS = 12;
 
-const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, fixedCostTemplates = [], onAddCost, onDeleteCost, onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], costOf, onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = [], onSaveCashFlowManual, cashEntries = [], onAddCashEntry, settlements = [], onAddSettlement, onDeleteSettlement, companyId = 'taebaek', initialTab }) => {
+const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCostTemplates = [], onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], costOf, onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = [], onSaveCashFlowManual, cashEntries = [], onAddCashEntry, settlements = [], onAddSettlement, onDeleteSettlement, companyId = 'taebaek', initialTab }) => {
   // 계산결과 그룹만 숨긴다. **id는 안 갈아끼운다** — 예전엔 판관비를 'ag-sgna'로 바꿔
   // 보여줬는데 설정 화면이 그 id를 그대로 저장해서, 없는 그룹을 가리키는 계정이 생겼다.
   // 그런 계정은 plLine을 못 찾아 손익에서 통째로 빠진다(운임·카드대금이 그랬다).
@@ -170,10 +167,10 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   const years = useMemo(() => {
     const ys = new Set<number>();
     issuedStatements.forEach(s => ys.add(Number(s.tradeDate.slice(0, 4))));
-    fixedCosts.forEach(c => ys.add(Number(c.yearMonth.slice(0, 4))));
+
     ys.add(now.getFullYear());
     return [...ys].sort((a, b) => b - a);
-  }, [issuedStatements, fixedCosts]);
+  }, [issuedStatements]);
 
   // 오늘 연월 (미래 달 제외 기준)
   const todayYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -278,7 +275,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   );
   const monthPL = useCallback(
     (ym: string) => computeMonthPLFromJournals(ym, journalEntries, accountCodes, codeToGroup),
-    [journalEntries, accountCodes, codeToGroup, fixedCosts]
+    [journalEntries, accountCodes, codeToGroup]
   );
 
   // 월별 집계
@@ -1039,7 +1036,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                 <div className="flex items-end gap-1 h-28">
                   {periodMonths.map(ym => {
                     const spendOf = (m: string) =>
-                      (paidByMonth.get(m)?.out ?? 0) + fixedCosts.filter(c => c.yearMonth === m).reduce((a, c) => a + c.amount, 0);
+                      (paidByMonth.get(m)?.out ?? 0);
                     const inc = paidByMonth.get(ym)?.inc ?? 0;
                     const out = spendOf(ym);
                     const barMax = Math.max(...periodMonths.map(m => Math.max(paidByMonth.get(m)?.inc ?? 0, spendOf(m))), 1);
@@ -2346,19 +2343,9 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
               );
             })()}
 
-            {/* 고정비 입력 */}
-            <CostManager
-              fixedCosts={fixedCosts}
-              fixedCostTemplates={fixedCostTemplates}
-              issuedStatements={issuedStatements}
-              accountCodes={accountCodes}
-              onAdd={onAddCost}
-              onDelete={onDeleteCost}
-              onAddTemplate={onAddTemplate}
-              onUpdateTemplate={onUpdateTemplate}
-              onDeleteTemplate={onDeleteTemplate}
-              onGenerateRecurringCosts={onGenerateRecurringCosts}
-            />
+            {/* 정기 고정비 입력은 없앴다 — 전표를 안 거치고 손익에 끼어드는 옆길이었다.
+                이제 손익은 전표(분개)와 계정과목으로만 집계한다. 정기적으로 나가는 돈은
+                일반전표의 템플릿으로 끊는다(필요하면 자동 발행). */}
           </div>
           </div>
         </div>

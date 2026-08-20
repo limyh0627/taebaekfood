@@ -3885,18 +3885,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               <ProfitAnalysis
                   companyId={companyId}
                 issuedStatements={issuedStatements}
-                fixedCosts={fixedCosts}
                 fixedCostTemplates={appData.fixedCostTemplates}
-                onAddCost={async (entry) => {
-                  const { note, ...rest } = entry;
-                  await addItem('fixedCosts', {
-                    ...rest,
-                    ...(note ? { note } : {}),
-                    id: `fc-${Date.now()}`,
-                    createdAt: new Date().toISOString(),
-                  });
-                }}
-                onDeleteCost={(id) => deleteItem('fixedCosts', id)}
                 onAddTemplate={async (data) => { await addItem('fixedCostTemplates', { ...data, id: `fct-${Date.now()}` }); refreshStaticData(); }}
                 onUpdateTemplate={async (id, data) => { await updateItem('fixedCostTemplates', id, data); refreshStaticData(); }}
                 onDeleteTemplate={async (id) => { await deleteItem('fixedCostTemplates', id); refreshStaticData(); }}
@@ -3925,13 +3914,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   companyId={companyId}
                   initialTab="partners"
                   issuedStatements={issuedStatements}
-                  fixedCosts={fixedCosts}
                   fixedCostTemplates={appData.fixedCostTemplates}
-                  onAddCost={async (entry) => {
-                    const { note, ...rest } = entry;
-                    await addItem('fixedCosts', { ...rest, ...(note ? { note } : {}), id: `fc-${Date.now()}`, createdAt: new Date().toISOString() });
-                  }}
-                  onDeleteCost={(id) => deleteItem('fixedCosts', id)}
                   partners={partners}
                   items={allItems}
                   costOf={inventoryCostOf}
@@ -4003,13 +3986,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   companyId={companyId}
                   initialTab="cash-flow"
                   issuedStatements={issuedStatements}
-                  fixedCosts={fixedCosts}
                   fixedCostTemplates={appData.fixedCostTemplates}
-                  onAddCost={async (entry) => {
-                    const { note, ...rest } = entry;
-                    await addItem('fixedCosts', { ...rest, ...(note ? { note } : {}), id: `fc-${Date.now()}`, createdAt: new Date().toISOString() });
-                  }}
-                  onDeleteCost={(id) => deleteItem('fixedCosts', id)}
                   partners={partners}
                   items={allItems}
                   costOf={inventoryCostOf}
