@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { makeCodeToGroup, computeMonthPL, computeCashFlowMonth, addMonthStr, filterCodesForContext, isNoncashCode } from './financials';
+import { makeCodeToGroup, computeCashFlowMonth, addMonthStr, filterCodesForContext, isNoncashCode } from './financials';
 import type { IssuedStatement, AccountCode, AccountGroup, FixedCostEntry, CashEntry } from '../../shared/types';
 
 describe('filterCodesForContext', () => {
@@ -75,27 +75,27 @@ describe('makeCodeToGroup', () => {
   });
 });
 
-describe('computeMonthPL', () => {
+describe('집계는 계정과목으로만 — 전표 유형 폴백을 없앴다', () => {
   const c2g = makeCodeToGroup(codes, groups, groups);
-  it('매출은 계정(revenue)로, 매입은 계정없어도 전표 type로 cogs', () => {
-    const statements = [stmt('매출', '2026-07-05', 1000, '400'), stmt('매입', '2026-07-06', 600)];
-    const fixed: FixedCostEntry[] = [{ id: 'fc1', yearMonth: '2026-07', category: '기타', label: '임차', amount: 100, createdAt: '' }];
-    const pl = computeMonthPL('2026-07', statements, fixed, c2g);
-    expect(pl.sales).toBe(1000);
-    expect(pl.cogs).toBe(600);
-    expect(pl.fixed).toBe(100);
-    expect(pl.grossProfit).toBe(400);
-    expect(pl.operatingProfit).toBe(300); // 400 - 0 - 100
-    expect(pl.netIncome).toBe(300);
+
+  it('계정에 붙은 그룹을 있는 그대로 돌려준다 — id를 갈아끼우지 않는다', () => {
+    // 예전엔 표시용으로 판관비 id를 'ag-sgna'로 바꿔 내보냈는데, 설정 화면이 그 id를
+    // 그대로 저장하면서 없는 그룹을 가리키는 계정이 생겼다(운임·카드대금이 손익에서 빠졌다).
+    for (const ac of codes) {
+      const g = c2g(ac.code);
+      if (!g) continue;
+      expect(groups.some(x => x.id === g.id)).toBe(true);   // 실제로 있는 그룹이어야 한다
+    }
   });
-  it('다른 달 전표는 제외', () => {
-    const pl = computeMonthPL('2026-08', [stmt('매출', '2026-07-05', 1000, '400')], [], c2g);
-    expect(pl.sales).toBe(0);
+
+  it('계정과목이 없으면 그룹도 없다 — 전표 유형으로 때려맞추지 않는다', () => {
+    expect(c2g(undefined)).toBeUndefined();
+    expect(c2g('없는코드')).toBeUndefined();
   });
 });
 
 describe('computeCashFlowMonth — 간접법 라인', () => {
-  const monthPL = () => ({ sales: 0, cogs: 0, sgna: 0, fixed: 0, grossProfit: 0, operatingProfit: 300, otherIncome: 0, otherExpense: 0, netIncome: 300 });
+  const monthPL = () => ({ sales: 0, cogs: 0, sgna: 0, grossProfit: 0, operatingProfit: 300, otherIncome: 0, otherExpense: 0, netIncome: 300 });
   it('영업=순이익+감가상각, 투자=매각−취득, 재무=조달−상환, 총합 (수동)', () => {
     const cf = computeCashFlowMonth('2026-07', { depreciation: 50, assetBuy: 200, financeIn: 1000 },
       { issuedStatements: [], inventorySnapshots: [], monthPL });
@@ -216,7 +216,7 @@ describe('자산 매입 (기계 구입) — 영업/투자 이중계상 방지', 
     { id: '500', code: '500', name: '원료매입', groupId: 'g-cogs' },
   ];
   const c2g = makeCodeToGroup(cds, gs, gs);
-  const monthPL = () => ({ sales: 0, cogs: 0, sgna: 0, fixed: 0, grossProfit: 0, operatingProfit: 0, otherIncome: 0, otherExpense: 0, netIncome: 0 });
+  const monthPL = () => ({ sales: 0, cogs: 0, sgna: 0, grossProfit: 0, operatingProfit: 0, otherIncome: 0, otherExpense: 0, netIncome: 0 });
   const cash = (id: string, date: string, dir: '입금' | '출금', amount: number, accountCode?: string): CashEntry =>
     ({ id, date, cashAccountId: 'a1', dir, amount, accountCode, createdAt: '' });
 
@@ -270,7 +270,7 @@ describe('비현금 비용 (감가상각 · 퇴직급여충당금)', () => {
   ];
   const gs: AccountGroup[] = [{ id: 'g-sgna', name: '판관비', type: '비용', plLine: 'sgna' } as AccountGroup];
   const c2g = makeCodeToGroup(noncashCodes, gs, gs);
-  const monthPL = () => ({ sales: 0, cogs: 0, sgna: 0, fixed: 0, grossProfit: 0, operatingProfit: 0, otherIncome: 0, otherExpense: 0, netIncome: -1500 });
+  const monthPL = () => ({ sales: 0, cogs: 0, sgna: 0, grossProfit: 0, operatingProfit: 0, otherIncome: 0, otherExpense: 0, netIncome: -1500 });
   const fc = (label: string, amount: number, accountCode?: string): FixedCostEntry =>
     ({ id: label, yearMonth: '2026-07', category: '기타', label, amount, accountCode, createdAt: '' });
 

@@ -11,7 +11,13 @@ import {
 export const COMPUTED_GROUP_IDS = new Set(['ag-gross-profit', 'ag-op-profit']);
 export const SGNA_LEGACY_IDS = new Set(['ag-selling', 'ag-admin']);
 
-/** 계정코드(code) → AccountGroup 조회기. 구 판매비/관리비 id는 판관비(ag-sgna)로 매핑. */
+/**
+ * 계정코드(code) → AccountGroup 조회기.
+ *
+ * **그룹은 있는 그대로 돌려준다.** 예전엔 표시용으로 id를 'ag-sgna'로 갈아끼워 내보냈는데,
+ * 설정 화면이 그 id를 그대로 저장하면서 없는 그룹을 가리키는 계정이 생겼다(운임·카드대금).
+ * 그런 계정은 plLine을 못 찾아 손익 집계에서 통째로 빠진다.
+ */
 export function makeCodeToGroup(
   accountCodes: AccountCode[],
   accountGroups: AccountGroup[],
@@ -24,7 +30,8 @@ export function makeCodeToGroup(
     if (!code) return undefined;
     const ac = codeMap.get(code);
     if (!ac?.groupId) return undefined;
-    if (SGNA_LEGACY_IDS.has(ac.groupId)) return sgnaGroup ? { ...sgnaGroup, id: 'ag-sgna', name: '판관비' } : undefined;
+    // 옛 '판매비'/'관리비'로 갈려 있던 것은 판관비 하나로 본다 — id는 안 바꾼다.
+    if (SGNA_LEGACY_IDS.has(ac.groupId)) return groupMap.get(ac.groupId) ?? sgnaGroup;
     return groupMap.get(ac.groupId);
   };
 }
@@ -60,49 +67,23 @@ export function filterCodesForContext(
 }
 
 export interface MonthPL {
-  sales: number; cogs: number; sgna: number; fixed: number;
+  sales: number; cogs: number; sgna: number;
   grossProfit: number; operatingProfit: number;
   otherIncome: number; otherExpense: number; netIncome: number;
 }
 
 /**
- * 특정 월(YYYY-MM)의 손익. cogs = 당기 매입액(재고 미반영 — 재고 조정은 기간 summary에서).
- * 전표 항목의 계정그룹 plLine으로 매출/매출원가/판관비/영업외를 분류, 계정 없으면 전표 type로 폴백.
+ * 손익은 **전표(분개)와 그 계정과목으로만** 집계한다.
+ *
+ * 예전엔 computeMonthPL이 따로 있어서 두 가지 다른 길로 숫자를 만들었다:
+ *   · 계정과목이 없으면 전표 유형(매출/매입/비용)으로 때려맞췄다
+ *   · fixedCosts(정기비용) 컬렉션을 판관비에 그냥 더했다 — 전표가 아닌데 손익에 잡혔다
+ * 둘 다 지웠다. 집계 근거가 둘이면 어느 쪽이 맞는지 알 수 없고, 계정과목을 안 거친
+ * 금액은 계정별로 쪼개 볼 수도, 분개와 대조할 수도 없다.
+ *
+ * 계정에 그룹(plLine)이나 5분류(type)가 없으면 손익에서 조용히 빠진다 —
+ * 계정과목을 만들 때 반드시 채울 것.
  */
-export function computeMonthPL(
-  ym: string,
-  issuedStatements: IssuedStatement[],
-  fixedCosts: FixedCostEntry[],
-  codeToGroup: (code: string | undefined) => AccountGroup | undefined,
-): MonthPL {
-  let sales = 0, cogs = 0, sgna = 0, otherIncome = 0, otherExpense = 0;
-  issuedStatements
-    .filter(s => s.tradeDate.startsWith(ym))
-    .forEach(s => {
-      s.items.forEach(item => {
-        const group = codeToGroup(item.accountCode);
-        const pl = group?.plLine;
-        if (pl === 'revenue') sales += item.total;
-        else if (pl === 'cogs') cogs += item.total;
-        else if (pl === 'sgna') sgna += item.total;
-        else if (pl === 'other-income') otherIncome += item.total;
-        else if (pl === 'other-expense') otherExpense += item.total;
-        else if (!pl && group?.type === '수익') sales += item.total;
-        else if (!pl && group?.type === '비용') cogs += item.total;
-        else if (!group) {
-          if (s.type === '매출') sales += item.total;
-          else if (s.type === '비용') sgna += item.total;
-          else if (s.type === '매입') cogs += item.total;
-        }
-      });
-    });
-  // 정기비용은 '비용' 전표로 끊겨 sgna에 잡히므로 fixedCosts만 별도 합산(이중계상 방지)
-  const fixed = fixedCosts.filter(c => c.yearMonth === ym).reduce((a, c) => a + c.amount, 0);
-  const grossProfit = sales - cogs;
-  const operatingProfit = grossProfit - sgna - fixed;
-  const netIncome = operatingProfit + otherIncome - otherExpense;
-  return { sales, cogs, sgna, fixed, grossProfit, operatingProfit, otherIncome, otherExpense, netIncome };
-}
 
 /**
  * 분개 기반 월별 손익 — 전표·자금원장이 모두 분개를 거쳐 들어오므로 원천이 어디든 한 번만 잡힌다.
@@ -119,7 +100,6 @@ export function computeMonthPLFromJournals(
   entries: JournalEntry[],
   accountCodes: AccountCode[],
   codeToGroup: (code: string | undefined) => AccountGroup | undefined,
-  fixedCosts: FixedCostEntry[],
 ): MonthPL {
   const byCode = new Map(accountCodes.map(a => [String(a.code), a]));
   const tally = new Map<string, { debit: number; credit: number }>();
@@ -148,11 +128,10 @@ export function computeMonthPLFromJournals(
       default:              if (acc.type === '수익') sales += bal; else cogs += bal;
     }
   }
-  const fixed = fixedCosts.filter(c => c.yearMonth === ym).reduce((a, c) => a + c.amount, 0);
   const grossProfit = sales - cogs;
-  const operatingProfit = grossProfit - sgna - fixed;
+  const operatingProfit = grossProfit - sgna;
   const netIncome = operatingProfit + otherIncome - otherExpense;
-  return { sales, cogs, sgna, fixed, grossProfit, operatingProfit, otherIncome, otherExpense, netIncome };
+  return { sales, cogs, sgna, grossProfit, operatingProfit, otherIncome, otherExpense, netIncome };
 }
 
 // ── 직접법 현금흐름 ──────────────────────────────────────────────────────────

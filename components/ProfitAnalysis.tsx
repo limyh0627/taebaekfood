@@ -64,11 +64,10 @@ const fmtM = (n: number) => {
 const MONTHS = 12;
 
 const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCosts, fixedCostTemplates = [], onAddCost, onDeleteCost, onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], costOf, onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = [], onSaveCashFlowManual, cashEntries = [], onAddCashEntry, settlements = [], onAddSettlement, onDeleteSettlement, companyId = 'taebaek', initialTab }) => {
-  // 계산결과 그룹 숨김 + 구 판매비/관리비 → 판관비로 통합 표시
-  const accountGroups = rawAccountGroups
-    .filter(g => !COMPUTED_GROUP_IDS.has(g.id))
-    .map(g => SGNA_LEGACY_IDS.has(g.id) ? { ...g, id: 'ag-sgna', name: '판관비' } : g)
-    .filter((g, idx, arr) => arr.findIndex(x => x.id === g.id) === idx);
+  // 계산결과 그룹만 숨긴다. **id는 안 갈아끼운다** — 예전엔 판관비를 'ag-sgna'로 바꿔
+  // 보여줬는데 설정 화면이 그 id를 그대로 저장해서, 없는 그룹을 가리키는 계정이 생겼다.
+  // 그런 계정은 plLine을 못 찾아 손익에서 통째로 빠진다(운임·카드대금이 그랬다).
+  const accountGroups = rawAccountGroups.filter(g => !COMPUTED_GROUP_IDS.has(g.id));
   const [mainTab, setMainTab] = useState<MainTab>(initialTab ?? 'analysis');
   // ── 기초잔액(openingBalances/main) — 재무제표 탭과 같은 문서를 쓴다.
   //    이게 없으면 기초재고가 0이라 첫 달 재고조정이 통째로 매입에서 빠져 매출원가가 망가진다. ──
@@ -265,7 +264,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
     [issuedStatements, cashEntries, accountCodes, opening, inventorySnapshots]
   );
   const monthPL = useCallback(
-    (ym: string) => computeMonthPLFromJournals(ym, journalEntries, accountCodes, codeToGroup, fixedCosts),
+    (ym: string) => computeMonthPLFromJournals(ym, journalEntries, accountCodes, codeToGroup),
     [journalEntries, accountCodes, codeToGroup, fixedCosts]
   );
 
@@ -275,6 +274,38 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
     [periodMonths, monthPL]
   );
 
+  /**
+   * 비용을 **계정과목별로** 쪼갠다 — 손익 숫자와 같은 분개에서 뽑으므로 합계가 어긋나지 않는다.
+   *
+   * "원재료·부자재 빼고 얼마 썼나" 같은 물음이 여기서 답이 된다. plLine 네 갈래
+   * (매출/매출원가/판관비/영업외)로만 묶어 두면 그 안을 못 들여다본다.
+   */
+  const expenseByCode = useMemo(() => {
+    const ymSet = new Set(monthlyData.map(m => m.ym));
+    const tally = new Map<string, number>();
+    for (const e of journalEntries) {
+      if (!ymSet.has((e.date ?? '').slice(0, 7))) continue;
+      for (const l of e.lines ?? []) {
+        const acc = accountCodes.find(a => String(a.code) === String(l.accountCode));
+        if (acc?.type !== '비용') continue;
+        // 비용은 차변이 정상 — 대변은 정정·환입이라 빼 준다
+        const amt = (l.debit ?? 0) - (l.credit ?? 0);
+        if (!amt) continue;
+        tally.set(String(l.accountCode), (tally.get(String(l.accountCode)) ?? 0) + amt);
+      }
+    }
+    return [...tally.entries()]
+      .map(([code, amount]) => {
+        const acc = accountCodes.find(a => String(a.code) === String(code));
+        return { code, name: acc?.name ?? code, amount, plLine: codeToGroup(code)?.plLine };
+      })
+      .filter(r => r.amount !== 0)
+      .sort((a, b) => b.amount - a.amount);
+  }, [journalEntries, accountCodes, codeToGroup, monthlyData]);
+
+  /** 원재료·부자재 — "이걸 뺀 비용"을 물을 때 기준이 되는 계정들 */
+  const MATERIAL_CODES = new Set(['500', '501', '503', '505']);
+
   // 기간 합계 — 매출원가는 재고 증감 반영(기초 + 매입 − 기말). 스냅샷 있을 때만 조정.
   const summary = useMemo(() => {
     const base = monthlyData.reduce(
@@ -282,16 +313,15 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         sales: a.sales + m.sales,
         purchases: a.purchases + m.cogs,   // m.cogs = 당기 매입액
         sgna: a.sgna + m.sgna,
-        fixed: a.fixed + m.fixed,
         otherIncome: a.otherIncome + m.otherIncome,
         otherExpense: a.otherExpense + m.otherExpense,
       }),
-      { sales: 0, purchases: 0, sgna: 0, fixed: 0, otherIncome: 0, otherExpense: 0 }
+      { sales: 0, purchases: 0, sgna: 0, otherIncome: 0, otherExpense: 0 }
     );
     // 재고 조정은 분개(journalizeInventory)가 이미 매출원가에 반영했다 — 여기서 또 빼면 이중이다.
     const cogs = base.purchases;
     const grossProfit = base.sales - cogs;
-    const operatingProfit = grossProfit - base.sgna - base.fixed;
+    const operatingProfit = grossProfit - base.sgna;
     const netIncome = operatingProfit + base.otherIncome - base.otherExpense;
     return { ...base, cogs, grossProfit, operatingProfit, netIncome };
   }, [monthlyData, openingSnapshot, closingSnapshot]);
@@ -531,24 +561,52 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         </div>
       </div>
 
-      {/* ④ 판관비 상세 */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4">
-        <div className="text-xs font-black text-slate-700 mb-3">판매비와관리비 상세 (SG&A)</div>
-        <div className="space-y-2 text-xs">
-          <div className="flex items-center justify-between font-black text-slate-800">
-            <span>판관비 합계</span>
-            <span>{fmtM(summary.sgna + summary.fixed)}</span>
+      {/* ④ 비용 상세 — 계정과목별. 집계 근거가 손익 숫자와 같은 분개다. */}
+      {(() => {
+        const mats = expenseByCode.filter(r => MATERIAL_CODES.has(r.code));
+        const rest = expenseByCode.filter(r => !MATERIAL_CODES.has(r.code));
+        const sum = (rows: typeof expenseByCode) => rows.reduce((a, r) => a + r.amount, 0);
+        const row = (r: typeof expenseByCode[number]) => (
+          <div key={r.code} className="flex items-center justify-between pl-4 text-slate-500">
+            <span>
+              <span className="mr-1.5 text-slate-200">·</span>
+              <span className="text-slate-300 mr-1.5 tabular-nums">{r.code}</span>{r.name}
+              {r.plLine === 'sgna' && <span className="ml-1.5 text-[9px] font-black text-indigo-400">판관비</span>}
+              {!r.plLine && <span className="ml-1.5 text-[9px] font-black text-amber-500">그룹없음</span>}
+            </span>
+            <span className="tabular-nums">{fmtM(r.amount)}</span>
           </div>
-          <div className="flex items-center justify-between pl-4 text-slate-500">
-            <span><span className="mr-1.5 text-slate-200">├</span>고정비 (임대료, 인건비 등)</span>
-            <span>{fmtM(summary.fixed)}</span>
+        );
+        return (
+          <div className="bg-white rounded-2xl border border-slate-200 p-4">
+            <div className="text-xs font-black text-slate-700 mb-3">비용 상세 — 계정과목별</div>
+            {expenseByCode.length === 0 ? (
+              <p className="text-[11px] font-bold text-slate-300 py-3 text-center">이 기간에 잡힌 비용이 없습니다.</p>
+            ) : (
+              <div className="space-y-2 text-xs">
+                <div className="flex items-center justify-between font-black text-slate-800">
+                  <span>비용 합계</span><span className="tabular-nums">{fmtM(sum(expenseByCode))}</span>
+                </div>
+                {mats.length > 0 && <>
+                  {mats.map(row)}
+                  <div className="flex items-center justify-between font-black text-slate-600 border-t border-slate-100 pt-2">
+                    <span>원재료 · 부자재 소계</span><span className="tabular-nums">{fmtM(sum(mats))}</span>
+                  </div>
+                </>}
+                {rest.map(row)}
+                <div className="flex items-center justify-between font-black text-indigo-600 border-t-2 border-slate-100 pt-2">
+                  <span>그 외 비용 소계 <span className="font-bold text-slate-400">(원재료·부자재 뺀 것)</span></span>
+                  <span className="tabular-nums">{fmtM(sum(rest))}</span>
+                </div>
+              </div>
+            )}
+            <p className="text-[10px] font-bold text-slate-400 mt-3 leading-snug">
+              손익 숫자와 **같은 분개**에서 뽑습니다. 계정에 그룹이 없으면 손익 집계에서 빠지므로
+              <span className="text-amber-500"> 그룹없음</span> 표시가 보이면 계정 설정에서 채워 주세요.
+            </p>
           </div>
-          <div className="flex items-center justify-between pl-4 text-slate-500">
-            <span><span className="mr-1.5 text-slate-200">└</span>변동비 (광고비, 포장비 등)</span>
-            <span>{summary.sgna ? fmtM(summary.sgna) : '0원'}</span>
-          </div>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* ③⑤ 영업이익 · 당기순이익 — 같은 행 */}
       <div className="grid grid-cols-2 gap-3">
@@ -649,7 +707,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             <tbody className="divide-y divide-slate-50">
               {monthlyData.map(m => {
                 const margin = m.sales > 0 ? Math.round(m.operatingProfit / m.sales * 100) : 0;
-                const isEmpty = m.sales === 0 && m.cogs === 0 && m.sgna === 0 && m.fixed === 0;
+                const isEmpty = m.sales === 0 && m.cogs === 0 && m.sgna === 0;
                 const isExpanded = expandedMonth === m.ym;
 
                 // 해당 월 전표 목록
@@ -665,7 +723,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                       <td className="px-4 py-3 text-xs text-right text-blue-700 font-bold">{m.sales ? fmt(m.sales) : '-'}</td>
                       <td className="px-4 py-3 text-xs text-right text-amber-700 font-bold">{m.cogs ? fmt(m.cogs) : '-'}</td>
                       <td className="px-4 py-3 text-xs text-right font-bold text-slate-700">{m.grossProfit ? fmt(m.grossProfit) : '-'}</td>
-                      <td className="px-4 py-3 text-xs text-right text-slate-500">{(m.sgna + m.fixed) ? fmt(m.sgna + m.fixed) : '-'}</td>
+                      <td className="px-4 py-3 text-xs text-right text-slate-500">{m.sgna ? fmt(m.sgna) : '-'}</td>
                       <td className={`px-4 py-3 text-xs text-right font-black ${m.operatingProfit > 0 ? 'text-emerald-600' : m.operatingProfit < 0 ? 'text-rose-600' : 'text-slate-400'}`}>
                         {m.operatingProfit ? fmt(m.operatingProfit) : '-'}
                       </td>
@@ -710,7 +768,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                 <td className="px-4 py-3 text-xs text-right font-black text-blue-700">{fmt(summary.sales)}</td>
                 <td className="px-4 py-3 text-xs text-right font-black text-amber-700">{fmt(summary.cogs)}</td>
                 <td className="px-4 py-3 text-xs text-right font-black text-slate-700">{fmt(summary.grossProfit)}</td>
-                <td className="px-4 py-3 text-xs text-right font-black text-slate-500">{fmt(summary.sgna + summary.fixed)}</td>
+                <td className="px-4 py-3 text-xs text-right font-black text-slate-500">{fmt(summary.sgna)}</td>
                 <td className={`px-4 py-3 text-xs text-right font-black ${summary.operatingProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{fmt(summary.operatingProfit)}</td>
                 <td className="px-4 py-3 text-xs text-right font-black text-slate-500">
                   {summary.sales > 0 ? `${Math.round(summary.operatingProfit / summary.sales * 100)}%` : '-'}
