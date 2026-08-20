@@ -13,10 +13,13 @@ import type { RawMaterialEntry } from './types';
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 /** 날짜 → 기록시각 순. 같은 날 여러 줄이면 들어온 순서가 잔량을 가른다. */
-export function sortLedger<T extends Pick<RawMaterialEntry, 'date' | 'createdAt'>>(entries: T[]): T[] {
+export function sortLedger<T extends Pick<RawMaterialEntry, 'date' | 'createdAt' | 'id'>>(entries: T[]): T[] {
   return [...entries].sort(
     (a, b) => String(a.date ?? '').localeCompare(String(b.date ?? ''))
-      || String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')),
+      || String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? ''))
+      // 같은 시각이면 번호순 — 여기서 손을 놓으면 읽어온 순서를 쓰게 되고,
+      // 실사(targetKg)가 잔량을 덮어쓰는 앵커라 순서 한 칸에 숫자가 통째로 달라진다.
+      || String(a.id ?? '').localeCompare(String(b.id ?? ''), undefined, { numeric: true }),
   );
 }
 

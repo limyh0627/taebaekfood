@@ -175,7 +175,10 @@ export function buildPartnerLedger(
     });
   }
 
-  evs.sort((a, b) => a.ts.localeCompare(b.ts) || a.order - b.order);
+  // 같은 시각·같은 갈래면 번호순 — 읽어온 순서에 기대면 새로고침마다 달라진다.
+  evs.sort((a, b) => a.ts.localeCompare(b.ts) || a.order - b.order
+    || String(a.row.label).localeCompare(String(b.row.label), undefined, { numeric: true })
+    || String(a.row.id).localeCompare(String(b.row.id), undefined, { numeric: true }));
 
   let running = 0, accrued = 0, paid = 0;
   const rows: PartnerLedgerRow[] = evs.map(({ row }) => {

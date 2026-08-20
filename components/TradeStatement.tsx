@@ -1962,13 +1962,16 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         evs.push({ kind: 'pay', date: e.date, ts: `${e.date}T${timeOf(e.createdAt)}`,
           amount: amt, method: '계좌이체', note: e.note, paymentId: e.id, src: stmts[0], entry: e });
       }
-      // 실제 발생시각(ts) 오름차순으로 누적잔액 계산. 동시각이면 전표 먼저(매출 가산 후 수금 차감)
+      // 실제 발생시각(ts) 오름차순으로 누적잔액 계산. 동시각이면 전표 먼저(매출 가산 후 수금 차감).
+      //  그래도 동률이면 **번호순**으로 못 박는다 — 안 그러면 읽어온 순서를 그대로 쓰게 돼
+      //  새로고침할 때마다 순서가 달라질 수 있다. 소급 전표는 전부 23:59:59라 자주 부딪힌다.
+      const noOf = (e: Ev) => e.kind === 'stmt' ? (e.s.docNo || e.s.id) : e.paymentId;
       evs.sort((a, b) => {
         const d = (a.ts ?? '').localeCompare(b.ts ?? '');
         if (d !== 0) return d;
         if (a.kind === 'stmt' && b.kind === 'pay') return -1;
         if (a.kind === 'pay' && b.kind === 'stmt') return 1;
-        return 0;
+        return String(noOf(a)).localeCompare(String(noOf(b)), undefined, { numeric: true });
       });
       let running = 0;
       evs.forEach(e => {
