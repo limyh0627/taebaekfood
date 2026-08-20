@@ -60,13 +60,16 @@ const STATUS_COLOR: Record<string, string> = {
   DELIVERED: 'bg-slate-100 text-slate-500',
 };
 
-/** 상태 글자색만 — 거래처명과 상태 배지가 **같은 색**이라 카드 한 장의 상태가 한눈에 읽힌다 */
-const STATUS_TEXT: Record<string, string> = {
-  PENDING: 'text-amber-700',
-  PROCESSING: 'text-sky-700',
-  DISPATCHED: 'text-emerald-700',
-  SHIPPED: 'text-indigo-700',
-  DELIVERED: 'text-slate-500',
+/**
+ * 카드 머리 띠 — 거래처명 줄에 **상태색 바탕**을 깐다. 카드를 멀리서 봐도 상태가 읽힌다.
+ * 글자는 진한 쪽, 바탕은 옅은 쪽이라 이름이 묻히지 않는다.
+ */
+const STATUS_HEAD: Record<string, string> = {
+  PENDING: 'bg-amber-100 text-amber-800',
+  PROCESSING: 'bg-sky-100 text-sky-800',
+  DISPATCHED: 'bg-emerald-100 text-emerald-800',
+  SHIPPED: 'bg-indigo-100 text-indigo-800',
+  DELIVERED: 'bg-slate-100 text-slate-600',
 };
 
 // ─── Props 타입 ───────────────────────────────────────────────────────────────
@@ -284,14 +287,16 @@ export const OrderCard = memo<OrderCardProps>(({
       onClick={() => { if (!isEditing) { setEditingOrderId(order.id); setShowAddProductSelect(null); } }}
       className={`bg-white rounded-2xl shadow-sm border transition-all group relative animate-in zoom-in-95 duration-200 ${isEditing ? 'ring-2 ring-indigo-500 border-indigo-200 shadow-xl z-20' : highlighted ? 'ring-2 ring-amber-400 border-amber-300 shadow-lg shadow-amber-100' : 'border-slate-100 hover:shadow-md hover:border-indigo-100 cursor-pointer'} ${isCollapsed ? 'p-2.5' : 'p-4'} flex flex-col`}
     >
-      <div className={`flex justify-between items-start ${isCollapsed ? 'mb-1.5' : 'mb-3'}`}>
+      {/* 머리 띠 — 카드 좌우 끝까지 닿게 음수 여백으로 빼고 위 모서리만 둥글린다 */}
+      <div className={`flex justify-between items-center rounded-t-2xl ${STATUS_HEAD[order.status] ?? 'bg-slate-100 text-slate-600'} ${
+        isCollapsed ? '-mx-2.5 -mt-2.5 px-2.5 py-1.5 mb-1.5' : '-mx-4 -mt-4 px-4 py-2.5 mb-3'}`}>
         <div className="flex-1 min-w-0 flex items-center gap-1.5">
-          <h4 className={`font-bold leading-tight text-sm break-words ${STATUS_TEXT[order.status] ?? 'text-slate-800'}`}>{displayName}</h4>
+          <h4 className="font-black leading-tight text-sm break-words">{displayName}</h4>
           {nonHyangmiyuItems.length > 0 && (
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setIsCollapsed(prev => !prev); }}
-              className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 transition-all ${isFullyDone ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-600'}`}
+              className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 transition-all bg-white/70 ${isFullyDone ? 'text-emerald-700' : 'text-orange-600'}`}
             >
               {completedItems}/{totalItems}
             </button>
@@ -303,7 +308,7 @@ export const OrderCard = memo<OrderCardProps>(({
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); setShowStatusPicker(p => !p); }}
-            className={`text-[10px] font-black transition-all hover:opacity-70 ${STATUS_TEXT[order.status] ?? 'text-slate-500'}`}
+            className="text-[10px] font-black transition-all hover:opacity-70 opacity-80"
           >
             {STATUS_LABEL[order.status] ?? order.status}
           </button>
