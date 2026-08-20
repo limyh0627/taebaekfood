@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X, Copy, ChevronDown, ChevronUp, ChevronRight, GitMerge, Save, Settings, Store, Package, User, Truck } from 'lucide-react';
+import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X, Copy, ChevronDown, ChevronUp, ChevronRight, GitMerge, Save, Settings, Store, Package, User, Truck, ArrowLeftRight } from 'lucide-react';
 import { Item, InventoryCategory, Partner, PartnerItem, ItemBom } from '../types';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
@@ -1200,26 +1200,36 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
               {/* 선택된 거래처 — 주문 생성의 파란 바와 같은 모양.
                   카드 패널과 폭을 맞춰야 따로 노는 느낌이 안 난다. */}
               <div className="lg:w-3/4 lg:mx-auto">
-                <div className="bg-indigo-50 border border-indigo-100 px-4 py-3.5 rounded-2xl">
+                {/* 머리 — **바탕색을 안 깐다.** 아래 카드에 연한 바탕이 깔려서, 머리까지 칠하면
+                    색이 두 겹이 되어 정작 품목이 묻힌다. 아래 선 하나로 갈라 준다. */}
+                <div className="px-1 pb-3 border-b border-slate-100">
                   <div className="flex items-center gap-2 flex-wrap">
                     <div className="flex flex-col min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
-                        <h4 className="font-black text-indigo-900 text-base truncate">{selectedClient?.name}</h4>
+                        <h4 className="font-black text-slate-900 text-base truncate">{selectedClient?.name}</h4>
                         {selectedClient?.type && (
-                          <span className="px-2 py-0.5 rounded-full bg-indigo-600 text-white text-[10px] font-black shrink-0">{selectedClient.type}</span>
+                          <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-black shrink-0">{selectedClient.type}</span>
                         )}
                       </div>
-                      <p className="text-[11px] text-indigo-500 font-bold mt-0.5">{filteredItems.length}개 품목</p>
+                      <p className="text-[11px] text-slate-400 font-bold mt-0.5">{filteredItems.length}개 품목</p>
                     </div>
+                    {/* 거래처 바꾸기 — 거래처 이름 **바로 옆**이 제자리다.
+                        전엔 맨 오른쪽에 밑줄 글자 '변경'으로 있어 버튼인 줄도 몰랐다. */}
+                    <button
+                      onClick={() => { setSelectedClientId(null); setPage(1); setSearchTerm(''); }}
+                      className="flex items-center gap-1.5 shrink-0 border border-slate-200 text-slate-500 px-3 py-1.5 rounded-xl text-xs font-black hover:border-indigo-300 hover:text-indigo-600 transition-all"
+                    >
+                      <ArrowLeftRight size={13} /> 거래처 바꾸기
+                    </button>
                     {/* 매출/매입 품목 토글 */}
-                    <div className="flex bg-white/70 rounded-lg p-0.5 gap-0.5 shrink-0">
+                    <div className="flex bg-slate-100 rounded-lg p-0.5 gap-0.5 shrink-0">
                       <button
                         onClick={() => { setClientScopeTab('sales'); setPage(1); }}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${partnerScopeTab === 'sales' ? 'bg-indigo-600 text-white shadow-sm' : 'text-indigo-400 hover:text-indigo-600'}`}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${partnerScopeTab === 'sales' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                       >매출 품목</button>
                       <button
                         onClick={() => { setClientScopeTab('purchase'); setPage(1); }}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${partnerScopeTab === 'purchase' ? 'bg-indigo-600 text-white shadow-sm' : 'text-indigo-400 hover:text-indigo-600'}`}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${partnerScopeTab === 'purchase' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                       >매입 품목</button>
                     </div>
                     {isAdmin && (
@@ -1230,10 +1240,6 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                         <Link size={13} /> 품목 연결
                       </button>
                     )}
-                    <button
-                      onClick={() => { setSelectedClientId(null); setPage(1); setSearchTerm(''); }}
-                      className="text-[11px] font-bold text-indigo-400 hover:text-indigo-600 underline whitespace-nowrap shrink-0"
-                    >변경</button>
                   </div>
                 </div>
               </div>

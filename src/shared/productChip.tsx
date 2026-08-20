@@ -128,7 +128,8 @@ export function ProductCard({
     <div
       onClick={onClick}
       className={`p-3 rounded-2xl border transition-all flex flex-col gap-2 ${onClick ? 'cursor-pointer' : ''} ${
-        selected ? 'bg-white border-indigo-500 shadow-md ring-1 ring-indigo-500' : 'bg-white border-slate-100 hover:border-indigo-200'
+        // 아주 연한 바탕 — 흰 배경 위에서 카드 하나하나의 경계가 보인다(테두리만으론 흐리다)
+        selected ? 'bg-white border-indigo-500 shadow-md ring-1 ring-indigo-500' : 'bg-slate-50/70 border-slate-100 hover:bg-white hover:border-indigo-200'
       }`}
     >
       {topChips && <div className="flex flex-wrap items-center gap-1">{topChips}</div>}
