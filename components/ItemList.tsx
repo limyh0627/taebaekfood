@@ -3490,12 +3490,12 @@ const ItemList: React.FC<ItemListProps> = ({
                   const editable = src ? true : closingView !== 'dispatched';
                   const editing = editable && editingClosingId === r.itemId;
                   return (
-                    <div key={r.itemId} className={`w-full flex items-start gap-2 px-3 py-2.5 ${r.isChild ? "pl-7 bg-slate-50/50" : ""}`}>
+                    <div key={r.itemId} className={`w-full flex items-center gap-2 px-3 py-2.5 ${r.isChild ? "pl-7 bg-slate-50/50" : ""}`}>
                       {/* 카테고리 + 품목명 + 규격을 한 줄, 부자재는 그 아래 한 줄에 쭉 */}
                       <span className="flex-1 min-w-0">
                         {/* 카테고리 · 품목명 · 규격을 flex 한 행으로 — 이름과 규격이 같은 크기, 같은 줄에 선다.
                             예전엔 인라인이라 칩의 세로 여백에 밀려 규격이 반 칸 내려앉았다. */}
-                        <span className={`flex items-center gap-1.5 text-[13px] break-keep ${r.isChild ? 'font-semibold text-slate-500' : 'font-bold text-slate-800'}`}>
+                        <span className={`flex items-center gap-1.5 text-[15px] break-keep ${r.isChild ? 'font-semibold text-slate-500' : 'font-bold text-slate-800'}`}>
                           {r.isChild && <span className="text-slate-300 shrink-0">└</span>}
                           {product && (
                             <span className={`shrink-0 text-[10px] font-black px-1.5 py-0.5 rounded-md ${categoryChipClass(inferSubtype(product))}`}>
@@ -3516,7 +3516,7 @@ const ItemList: React.FC<ItemListProps> = ({
                             .filter((c): c is Item => !!c && c.category === 'submaterial' && !isBulkItem(c) && !c.phantom);
                           if (chips.length === 0) return null;
                           return (
-                            <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-3.5">
+                            <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-7">
                               {chips.map(c => (
                                 <span key={c.id} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 shrink-0">
                                   <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(c)}`} />
@@ -3544,11 +3544,11 @@ const ItemList: React.FC<ItemListProps> = ({
                       ) : editable ? (
                         <button onClick={() => { if (!product) return; setEditingClosingId(r.itemId); setEditingClosingVal(String(product.subtype === '향미유' ? Math.floor(shownNum / 12) : shownNum)); }}
                           title={stockEdit ? '눌러서 실사 수정 (작업완료 제외한 재고)' : '눌러서 실사 수정'}
-                          className={`shrink-0 text-lg font-black ${shownNum > 0 ? 'text-slate-700' : 'text-slate-300'} hover:text-indigo-600 hover:underline`}>
+                          className={`shrink-0 text-xl font-black ${shownNum > 0 ? 'text-slate-700' : 'text-slate-300'} hover:text-indigo-600 hover:underline`}>
                           {shownNum}<span className="text-[11px] font-bold text-slate-400 ml-0.5">{unitLbl}</span>
                         </button>
                       ) : (
-                        <span className={`shrink-0 text-lg font-black ${shownNum > 0 ? 'text-slate-700' : 'text-slate-300'}`} title={closingView === 'dispatched' ? '작업완료(미출고)분' : '재고(작업완료 제외)'}>
+                        <span className={`shrink-0 text-xl font-black ${shownNum > 0 ? 'text-slate-700' : 'text-slate-300'}`} title={closingView === 'dispatched' ? '작업완료(미출고)분' : '재고(작업완료 제외)'}>
                           {shownNum}<span className="text-[11px] font-bold text-slate-400 ml-0.5">{unitLbl}</span>
                         </span>
                       )}
