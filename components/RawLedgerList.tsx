@@ -41,6 +41,8 @@ const RawLedgerList: React.FC<Props> = ({
     received: number; used: number; adj: number; prev: number; cur: number;
     notes: string[]; who: Set<string>; types: Set<string>; delIds: string[];
     mine: boolean; anchor?: number; rows: RawMaterialEntry[];
+    /** 만들어진 차례(오래된 것부터 0,1,2…). 표시할 때 같은 날짜 안에서 뒤집는 데 쓴다. */
+    seq: number;
   };
   const allRows = useMemo(() => {
     const r3 = (n: number) => Math.round(n * 1000) / 1000;
@@ -50,6 +52,7 @@ const RawLedgerList: React.FC<Props> = ({
       const arr = byMat.get(m); if (arr) arr.push(e); else byMat.set(m, [e]);
     }
     const out: DayRow[] = [];
+    let order = 0;
     for (const [m, list] of byMat) {
       const density = DENSITY[m] ?? 1;
       // 날짜 → 같은 날은 기록된 시각 순 (그 묶음 첫 줄 직전 잔량 = 전일재고)
@@ -58,7 +61,7 @@ const RawLedgerList: React.FC<Props> = ({
         : (a.date ?? '').localeCompare(b.date ?? ''));
       let bal = 0, seg = 0, curDate = '';
       let g: DayRow | null = null;
-      const flush = () => { if (g) { out.push(g); g = null; } };
+      const flush = () => { if (g) { g.seq = order++; out.push(g); g = null; } };
       for (const e of list) {
         // 옛 기록(unit='L')은 L로 저장돼 있어 kg로 환산해야 나머지와 더해진다
         const toKg = (v: number) => (e.unit === 'L' && density !== 1 ? v * density : v);
@@ -69,7 +72,7 @@ const RawLedgerList: React.FC<Props> = ({
         if (!g || g.key !== key) {
           flush();
           g = { key, date, material: m, received: 0, used: 0, adj: 0, prev: bal, cur: bal,
-                notes: [], who: new Set(), types: new Set(), delIds: [], mine: false, rows: [] };
+                notes: [], who: new Set(), types: new Set(), delIds: [], mine: false, rows: [], seq: 0 };
         }
         const prev = bal;
         // 잔량 규칙은 shared/rawLedgerBalance.ts 한 곳에만 둔다 — 화면과 테스트가 같은 함수를 쓴다.
@@ -105,7 +108,12 @@ const RawLedgerList: React.FC<Props> = ({
   const filtered = useMemo(() => entries.filter(passes), [entries, filter, shownIds]);
   const dayRows = useMemo(
     () => allRows.filter(r => r.rows.some(passes))
-      .sort((a, b) => b.date.localeCompare(a.date) || (a.material ?? '').localeCompare(b.material ?? '')),
+      // 최신이 위. 같은 날짜에 묶음이 여럿이면(정정이 하루를 자를 때) 그 안에서도 최신이 위여야
+      // 잔량이 위→아래로 이어져 읽힌다. seq가 없으면 만들어진 순서(오래된 것부터)가 그대로 남아
+      // 그 날짜만 거꾸로 보였다. **누적 계산은 오름차순 그대로다 — 표시만 뒤집는다.**
+      .sort((a, b) => b.date.localeCompare(a.date)
+        || (a.material ?? '').localeCompare(b.material ?? '')
+        || b.seq - a.seq),
     [allRows, filter, shownIds],
   );
 
@@ -219,7 +227,7 @@ const RawLedgerList: React.FC<Props> = ({
               {/* 상세 — 그날 합계가 어떤 건들로 이뤄졌는지. 자동 차감은 어느 주문에서 왔는지까지 보인다. */}
               {open && (
                 <div className="bg-slate-50/70 border-t border-slate-100 px-3 py-2 space-y-1">
-                  {g.rows.slice().sort((a, b) => String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? ''))).map((e, i) => {
+                  {g.rows.slice().sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? ''))).map((e, i) => {
                     const d = DENSITY[e.material ?? ''] ?? 1;
                     const toU = (v: number) => Math.round(kgToUnit(e.unit === 'L' && d !== 1 ? v * d : v, e.material) * 10) / 10;
                     const r = toU(e.received ?? 0), s = toU(e.used ?? 0);
