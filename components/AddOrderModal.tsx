@@ -727,35 +727,10 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                             ))}
                           </div>
                         )}
+                        {/* 이름 · 규격 · 수량을 **한 줄**에. 부자재는 그 아래 줄로 내린다 —
+                            같은 칸에 넣으면 부자재가 길어질수록 수량칸이 아래로 밀려 내려갔다. */}
                         <div className="flex items-center gap-2">
-                          <div className="flex flex-col min-w-0 flex-1">
-                            <p className="text-xs font-bold text-slate-800 leading-snug break-keep">{renderColoredName(nv.base)}</p>
-                            {(() => {
-                              // 지금 고른 변형(낱개/박스)의 **BOM 그대로** 보여준다.
-                              //  · 낱개를 고르면 라벨·병·캡,  박스를 고르면 겉박스·테이프
-                              //  · 예전엔 언제나 낱개(looseProduct) BOM을 읽고 박스·테이프를 일부러 뺐다
-                              //    → 박스를 골라도 낱개 부자재만 나왔다. 거래처 포장설정(boxTypeId) 경로도 폐기됐다.
-                              // 내용물(반제품·원료·완제품)과 벌크는 뺀다 — 챙길 물건이 아니라 통에서 나온다.
-                              const chips = (product.submaterials ?? [])
-                                .map(s => items.find(x => x.id === s.id))
-                                .filter((c): c is Item => !!c && c.category === 'submaterial' && !isBulkItem(c) && !c.phantom);
-                              return (
-                                <>
-                                  {chips.length > 0 && (
-                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1"
-                                      title={`부자재: ${chips.map(c => c.name).join(' · ')}`}>
-                                      {chips.map(c => (
-                                        <span key={c.id} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 shrink-0">
-                                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(c)}`} />
-                                          {c.name}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  )}
-                                </>
-                              );
-                            })()}
-                          </div>
+                          <p className="text-xs font-bold text-slate-800 leading-snug break-keep min-w-0 flex-1">{renderColoredName(nv.base)}</p>
                           {renderVolumeChip(nv.vol, product)}
                           {/* 수량 — 맨 우측. 숫자를 넣으면 담기고 비우면 빠진다. */}
                           <input inputMode="numeric" value={quickQtyOf(product.id)} placeholder="0"
@@ -764,6 +739,28 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                             className={`w-12 shrink-0 text-right text-sm font-black tabular-nums rounded-lg px-2 py-1.5 border outline-none focus:ring-2 focus:ring-indigo-300 ${
                               isSelected ? 'border-indigo-300 bg-white' : 'border-slate-200 bg-slate-50'}`} />
                         </div>
+                        {(() => {
+                          // 지금 고른 변형(낱개/박스)의 **BOM 그대로** 보여준다.
+                          //  · 낱개를 고르면 라벨·병·캡,  박스를 고르면 겉박스·테이프
+                          //  · 예전엔 언제나 낱개(looseProduct) BOM을 읽고 박스·테이프를 일부러 뺐다
+                          //    → 박스를 골라도 낱개 부자재만 나왔다. 거래처 포장설정(boxTypeId) 경로도 폐기됐다.
+                          // 내용물(반제품·원료·완제품)과 벌크는 뺀다 — 챙길 물건이 아니라 통에서 나온다.
+                          const chips = (product.submaterials ?? [])
+                            .map(s => items.find(x => x.id === s.id))
+                            .filter((c): c is Item => !!c && c.category === 'submaterial' && !isBulkItem(c) && !c.phantom);
+                          if (chips.length === 0) return null;
+                          return (
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5"
+                              title={`부자재: ${chips.map(c => c.name).join(' · ')}`}>
+                              {chips.map(c => (
+                                <span key={c.id} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 shrink-0">
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(c)}`} />
+                                  {c.name}
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        })()}
                         {isSelected && renderItemControls(product)}
                       </div>
                     );
