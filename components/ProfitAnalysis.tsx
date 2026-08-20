@@ -563,6 +563,27 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
               </button>
               {open && (
                 <div className="bg-slate-50/60 px-5 pb-3 pt-1 space-y-2">
+                  {/* 재고 흐름 — 매출원가 = 기초 + 매입 − 기말. 조정분은 분개가 이미 재료비에 반영했다.
+                      금액을 또 더하는 게 아니라, 어떻게 그 값이 나왔는지 보여주는 줄이다. */}
+                  {keyName === 'cogs' && (openingSnapshot || closingSnapshot) && (
+                    <div className="pb-1 mb-1 border-b border-slate-200/70">
+                      <div className="flex items-center justify-between text-[11px] font-black text-slate-600">
+                        <span>재고</span>
+                        <span className="tabular-nums">{fmt((openingSnapshot?.value ?? 0) - (closingSnapshot?.value ?? 0))}</span>
+                      </div>
+                      <div className="flex items-center justify-between pl-3 text-[11px] text-slate-400">
+                        <span>기초재고 (+)</span>
+                        <span className="tabular-nums">{openingSnapshot ? fmt(openingSnapshot.value) : '실사 없음'}</span>
+                      </div>
+                      <div className="flex items-center justify-between pl-3 text-[11px] text-slate-400">
+                        <span>기말재고 (−)</span>
+                        <span className="tabular-nums">{closingSnapshot ? fmt(-closingSnapshot.value) : '실사 없음'}</span>
+                      </div>
+                      <p className="text-[10px] font-bold text-slate-300 pl-3 pt-0.5">
+                        재고가 는 만큼 매출원가에서 빠집니다 — 아래 재료비에 이미 반영돼 있습니다.
+                      </p>
+                    </div>
+                  )}
                   {gs.length === 0 && <p className="text-[11px] font-bold text-slate-300 py-2">이 기간에 잡힌 게 없습니다.</p>}
                   {gs.map(g => (
                     <div key={g.id}>
@@ -603,20 +624,12 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         return (
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
             <Line label="매출" amount={summary.sales} lines={['revenue']} sign="+" keyName="revenue" tone="green" />
-            <Line label="매출원가" amount={summary.cogs} lines={['cogs']} sign="−" keyName="cogs" tone="green" />
-            <Result label="매출총이익" amount={summary.grossProfit} tone="red" />
+            <Line label="매출원가" amount={summary.cogs} lines={['cogs']} sign="−" keyName="cogs" tone="red" />
+            <Result label="매출총이익" amount={summary.grossProfit} tone="green" />
             <Line label="판매비와관리비" amount={summary.sgna} lines={['sgna']} sign="−" keyName="sgna" tone="red" />
             <Result label="영업이익" amount={summary.operatingProfit} tone="green" />
             <Line label="기타손익 (영업외)" amount={other} lines={['other-income', 'other-expense']} sign={other >= 0 ? '+' : '−'} keyName="other" tone="green" />
             <Result label="당기순이익" amount={summary.netIncome} tone="green" />
-            {(openingSnapshot || closingSnapshot) && (
-              <div className="px-5 py-3 bg-slate-50/60 text-[11px] font-bold text-slate-400 flex items-center gap-4 flex-wrap">
-                <span>재고 실사</span>
-                {openingSnapshot && <span>기초 <span className="text-slate-600">{fmt(openingSnapshot.value)}</span></span>}
-                {closingSnapshot && <span>기말 <span className="text-slate-600">{fmt(closingSnapshot.value)}</span></span>}
-                <span className="text-slate-300">— 매출원가에 이미 반영돼 있습니다(실지재고조사법)</span>
-              </div>
-            )}
           </div>
         );
       })()}
