@@ -48,3 +48,28 @@ export function subChipClass(sub: { subtype?: string; category?: string; name?: 
   const c = colorOfName(sub?.name);
   return c ? COLOR[c] : CHIP_NEUTRAL;
 }
+
+/**
+ * 부자재 표시용 **점** 색 — 칩으로 칠하면 글자보다 배경이 먼저 읽힌다.
+ * 이름 앞에 작은 동그라미만 찍고 글자는 그대로 둔다: ● 테이프-빨강
+ * 색이 없는 것(박스 포함)은 옅은 회색 점이라 자리는 지키되 튀지 않는다.
+ */
+const DOT: Record<string, string> = {
+  빨강: 'bg-red-500',
+  주황: 'bg-orange-500',
+  노랑: 'bg-yellow-400',
+  연두: 'bg-lime-400',
+  초록: 'bg-green-500',
+  파랑: 'bg-blue-500',
+  검정: 'bg-slate-800',
+  하양: 'bg-white ring-1 ring-slate-300',
+  투명: 'bg-transparent ring-1 ring-dashed ring-slate-300',
+  골드: 'bg-amber-400',
+  갈색: 'bg-stone-500',
+};
+
+export function subDotClass(sub: { subtype?: string; category?: string; name?: string } | undefined): string {
+  if (isBoxSub(sub)) return 'bg-slate-300';        // 박스는 다 같은 골판지 — 색으로 안 가른다
+  const c = colorOfName(sub?.name);
+  return c ? DOT[c] : 'bg-slate-300';
+}

@@ -33,7 +33,7 @@ import { Order, OrderStatus, Partner, OrderSource, OrderItem, Item, OrderPallet,
 import { isBoxStockItem } from '../src/shared/orderUnits';
 import { splitNameVolume, specText } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
-import { subChipClass } from '../src/shared/submaterialStyle';
+import { subDotClass } from '../src/shared/submaterialStyle';
 
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
@@ -490,17 +490,20 @@ export const OrderCard = memo<OrderCardProps>(({
                         {bomProducts.map(({ p, qty }) => (
                           <button key={p.id} type="button"
                             onClick={(e) => { e.stopPropagation(); setExpandedItemBom(prev => { const n = new Set(prev); n.has(rowKey) ? n.delete(rowKey) : n.add(rowKey); return n; }); }}
-                            className="text-[8px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 flex items-center gap-0.5 shrink-0 hover:bg-indigo-100">
+                            className="text-[9px] font-black text-indigo-500 flex items-center gap-0.5 shrink-0 hover:text-indigo-700">
                             <ChevronRight size={9} className={`transition-transform ${open ? 'rotate-90' : ''}`} />{abbrev(p.name)}{qty > 1 ? `×${qty}` : ''}
                           </button>
                         ))}
-                        {/* 부자재 — 종류별 색(라벨·용기·마개·박스·테이프). 전엔 전부 회색이라 구분이 안 됐다. */}
-                        {allSubs.map(sm => (
-                          <span key={sm.id}
-                            className={`text-[8px] font-bold px-1.5 py-0.5 rounded border ${subChipClass(items.find(p => p.id === sm.id) ?? { name: sm.name })}`}>
-                            {sm.name}
-                          </span>
-                        ))}
+                        {/* 부자재 — 칩으로 칠하면 배경이 글자보다 먼저 읽힌다. 이름 앞에 점만 찍는다: ● 테이프-빨강 */}
+                        {allSubs.map(sm => {
+                          const _s = items.find(p => p.id === sm.id) ?? { name: sm.name };
+                          return (
+                            <span key={sm.id} className="inline-flex items-center gap-1 text-[9px] font-bold text-slate-500 shrink-0">
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(_s)}`} />
+                              {sm.name}
+                            </span>
+                          );
+                        })}
                       </div>
                       {open && bomProducts.map(({ p }) => {
                         // 펼친 낱개의 부자재 — 벌크는 여기서도 뺀다
@@ -510,14 +513,14 @@ export const OrderCard = memo<OrderCardProps>(({
                         });
                         return (
                           <div key={`exp-${p.id}`} className="flex flex-wrap items-center gap-1 pl-[28px] mt-0.5" onClick={e => e.stopPropagation()}>
-                            <span className="text-[8px] font-black text-indigo-300">└ {abbrev(p.name)}</span>
+                            <span className="text-[9px] font-black text-indigo-300">└ {abbrev(p.name)}</span>
                             {cSubs.length === 0
-                              ? <span className="text-[8px] text-slate-300">부자재 없음</span>
+                              ? <span className="text-[9px] text-slate-300">부자재 없음</span>
                               : cSubs.map((cs, i) => {
                                   const ci = items.find(x => x.id === cs.id);
                                   return (
-                                    <span key={i}
-                                      className={`text-[8px] font-bold px-1.5 py-0.5 rounded border ${subChipClass(ci ?? { name: cs.name })}`}>
+                                    <span key={i} className="inline-flex items-center gap-1 text-[9px] font-bold text-slate-500 shrink-0">
+                                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(ci ?? { name: cs.name })}`} />
                                       {ci?.name ?? cs.name}
                                     </span>
                                   );
