@@ -1179,13 +1179,23 @@ const AdminApp: React.FC<AdminAppProps> = ({
       : { ...baseItem, checked: false };
     const allChecked = newItems.every(i => i.checked);
     const wasNotDispatched = order.status !== OrderStatus.DISPATCHED && order.status !== OrderStatus.SHIPPED && order.status !== OrderStatus.ON_HOLD;
+    // 체크는 언제나 먼저 저장한다 — 아래에서 뭘 고르든 체크한 사실은 남아야 한다.
+    await updateItem('orders', orderId, { items: newItems });
     if (allChecked && wasNotDispatched) {
-      // 모두 체크 → 작업완료 자동 이동 + 생산처리(원료·부자재 차감, 완제품 재고 +생산분).
-      // 쓸 재고가 있으면 requestOrderStatus가 모달을 띄우고, 사용량 선택 후에 생산처리된다.
-      await updateItem('orders', orderId, { items: newItems });
-      await requestOrderStatus(orderId, OrderStatus.DISPATCHED);
-    } else {
-      updateItem('orders', orderId, { items: newItems });
+      /**
+       * 다 체크했다고 **바로 넘기지 않는다.** 작업완료는 생산처리(원료·부자재 차감,
+       * 완제품 재고 +생산분)를 부르는 되돌리기 어려운 일이라, 마지막 체크를 잘못 눌렀거나
+       * 확인차 체크만 해둔 경우까지 재고가 움직이면 곤란하다.
+       * 안 보내면 체크만 다 된 채로 남고, 나중에 상태를 직접 바꾸면 그때 생산처리된다.
+       */
+      const name = order.partnerName || partners.find(c => c.id === order.partnerId)?.name || '';
+      const ok = window.confirm(
+        `${name ? name + ' — ' : ''}품목을 모두 체크했습니다.
+
+작업완료로 보낼까요?
+(보내면 원료·부자재가 차감되고 완제품 재고가 늘어납니다)`
+      );
+      if (ok) await requestOrderStatus(orderId, OrderStatus.DISPATCHED);
     }
   };
 
