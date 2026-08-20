@@ -917,9 +917,19 @@ export interface CashEntry {
   /** 어느 회사 장부인가. 없으면 태백(옛 기록). */
   companyId?: CompanyId;
   date: string;                        // 'YYYY-MM-DD' 실제 돈이 움직인 날
-  cashAccountId: string;               // 어느 통장/카드/현금에서
-  dir: '입금' | '출금';
-  amount: number;                      // 항상 양수. 부호는 dir이 결정.
+  cashAccountId: string;               // 어느 통장/카드/현금에서 ('대체'는 빈 값)
+  /**
+   * 입금·출금은 돈이 실제로 오간 것. **대체는 안 오간 것** — 채권·채무끼리 턴다.
+   *
+   * 상계(미수 ↔ 미지급)가 대체다. 예전엔 입금 108 + 출금 251 **두 건**으로 적었는데,
+   * 분개를 만들 때 계좌가 비면 보통예금으로 폴백해서(autoJournal) 실제로 오간 적 없는
+   * 금액이 103 원장에 차·대 두 줄로 남았다. 잔액은 상쇄돼 안 틀어져도 원장이 더러워진다.
+   * 대체는 통장 줄을 아예 안 세우고 (차)251 /(대)108 한 건으로 끝난다.
+   *
+   * 자금원장에는 그대로 남는다 — 거래처 잔액이 여기 108/251을 보고 계산되기 때문이다.
+   */
+  dir: '입금' | '출금' | '대체';
+  amount: number;                      // 항상 양수. 부호는 dir이 결정('대체'는 lines가 정한다).
   partnerId?: string;                  // 거래처 (한국전력공사, 은행 등)
   partnerName?: string;                // 표시용 스냅샷
   accountCode?: string;                // 계정과목 — 이 돈의 성격(비용/자산/부채)을 결정
@@ -930,6 +940,8 @@ export interface CashEntry {
    * 있으면 amount는 이 줄들의 합이고 accountCode는 쓰지 않는다. 없으면 기존대로 accountCode 한 줄.
    */
   lines?: { accountCode: string; amount: number; note?: string }[];
+  /** '대체' 전용 — 이 상계로 턴 상대. 나중에 되돌릴 때 짝을 찾는다. */
+  offsetOf?: { ar: string; ap: string };
   note?: string;
   createdAt: string;
   createdBy?: string;

@@ -129,9 +129,26 @@ export function journalizeCashEntry(e: CashEntry, cashAccountMap: Record<string,
     : [{ accountCode: e.accountCode!, amount: amt }];
   // 통장 쪽은 반드시 줄 합계와 같아야 차·대가 맞는다(amount가 어긋나도 분개는 안 깨진다).
   const total = sum(parts.map(p => p.amount));
-  if (!total) return null;
-  const cash = cashAccountMap[e.cashAccountId] ?? BANK;
+  if (!total && e.dir !== '대체') return null;
   const partner = e.partnerId ? { partnerId: e.partnerId } : {};
+  // 대체(상계) — 돈이 안 움직였으니 **통장 줄을 세우지 않는다.**
+  //   줄 부호가 차·대를 정한다: 양수 = 차변, 음수 = 대변.
+  //   (차) 251 미지급금 / (대) 108 미수금 — 채권·채무끼리만 턴다.
+  if (e.dir === '대체') {
+    const tl: JournalLine[] = parts.map(p => ({
+      accountCode: p.accountCode, ...partner,
+      debit: p.amount > 0 ? p.amount : 0,
+      credit: p.amount < 0 ? -p.amount : 0,
+    }));
+    const dr = sum(tl.map(l => l.debit)), cr = sum(tl.map(l => l.credit));
+    if (!dr || dr !== cr) return null;      // 차·대가 안 맞으면 안 만든다 — 반쪽 분개가 더 나쁘다
+    return {
+      id: `je-cash-${e.id}`, date: e.date, lines: tl,
+      memo: `상계 ${e.partnerName ?? ''} ${e.note ?? ''}`.trim(),
+      sourceType: '자금', sourceId: e.id, createdAt: new Date().toISOString(),
+    };
+  }
+  const cash = cashAccountMap[e.cashAccountId] ?? BANK;
   // 입금이면 계정이 대변, 출금이면 차변. 음수 줄은 그 반대편으로 넘긴다.
   const side = (p: { accountCode: string; amount: number }) => {
     const a = Math.abs(p.amount);

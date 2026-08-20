@@ -330,7 +330,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // ── 자금(입출금) 전표 수정 모달 ──
   const [editCash, setEditCash] = useState<CashEntry | null>(null);
   const [editCashForm, setEditCashForm] = useState<{ amount: string; date: string; dir: '입금'|'출금'; accountCode: string; note: string }>({ amount:'', date:'', dir:'출금', accountCode:'', note:'' });
-  const openEditCash = (e: CashEntry) => { setEditCash(e); setEditCashForm({ amount: String(e.amount), date: e.date, dir: e.dir, accountCode: e.accountCode ?? '', note: e.note ?? '' }); };
+  //  상계(대체)는 방향을 고를 수 있는 게 아니다 — 모달 기본값만 출금으로 두고, 저장 때 dir은 안 건드린다.
+  const openEditCash = (e: CashEntry) => { setEditCash(e); setEditCashForm({ amount: String(e.amount), date: e.date, dir: e.dir === '대체' ? '출금' : e.dir, accountCode: e.accountCode ?? '', note: e.note ?? '' }); };
   const saveEditCash = () => {
     if (!editCash || !onUpdateCashEntry) return;
     const amt = parseFloat(editCashForm.amount) || 0;
@@ -1992,7 +1993,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       const rest = e.amount - arap;
       if (rest <= 0.5) return;            // 전액이 거래처 상계분 → 수금/지불 행으로만
       rows.push({
-        kind: 'cash', entry: e, dir: e.dir, amount: rest,
+        kind: 'cash', entry: e, dir: e.dir === '대체' ? '출금' : e.dir, amount: rest,
         accountCode: e.accountCode, note: e.note, partnerName: e.partnerName,
         date: e.date, ts: `${e.date}T${timeOf(e.createdAt)}`, dateKey: `${e.date}`,
       });

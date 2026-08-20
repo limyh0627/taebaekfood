@@ -23,8 +23,9 @@ export interface AccountLedger {
   closing: number;      // 기말 잔액 = opening + totalIn - totalOut
 }
 
-/** 입금 +, 출금 − */
+/** 입금 +, 출금 −. 대체(상계)는 돈이 안 움직였으므로 0 — 통장 잔액을 건드리면 안 된다. */
 export function signedAmount(e: CashEntry): number {
+  if (e.dir === '대체') return 0;
   return e.dir === '입금' ? e.amount : -e.amount;
 }
 
@@ -272,13 +273,16 @@ export function partnerPaid(
   return cashEntries
     .filter(e => e.partnerId === partnerId)
     .reduce((a, e) => {
-      const parts = (e.lines ?? []).filter(l => l.accountCode && l.amount > 0);
+      // 대체(상계)는 줄 부호가 차·대를 뜻한다 — 음수 줄도 세야 미수·미지급이 양쪽 다 줄어든다.
+      const isOffset = e.dir === '대체';
+      const parts = (e.lines ?? []).filter(l => l.accountCode && (isOffset ? l.amount !== 0 : l.amount > 0));
       const list = parts.length
-        ? parts.map(l => ({ c: l.accountCode, a: l.amount }))
+        ? parts.map(l => ({ c: l.accountCode, a: Math.abs(l.amount) }))
         : (e.accountCode ? [{ c: e.accountCode, a: e.amount }] : []);
       return a + list.reduce((b, x) => {
         if (x.c !== want) return b;
-        const inflow = type === '매출' ? e.dir === '입금' : e.dir === '출금';
+        // 상계는 108·251을 **동시에** 턴다. 어느 쪽을 보든 줄어드는 방향이다.
+        const inflow = isOffset || (type === '매출' ? e.dir === '입금' : e.dir === '출금');
         return b + (inflow ? x.a : -x.a);
       }, 0);
     }, 0);

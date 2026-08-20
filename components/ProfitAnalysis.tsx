@@ -1180,25 +1180,33 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         /**
          * 미수 ↔ 미지급 상계 — 같은 거래처에 받을 돈과 줄 돈이 같이 있으면 서로 턴다.
          *
-         * 분개는 (차) 외상매입금 / (대) 외상매출금 이고 **현금은 안 움직인다.**
-         * 자금원장에 입금 108 · 출금 251 두 줄로 적는데, 통장 쪽은 서로 상쇄돼 0이 된다
-         * (계좌 미지정이라 어느 통장 잔고도 안 건드린다). 잔액 계산이 108/251만 보므로
-         * 이렇게 적어야 미수·미지급이 **양쪽 다** 줄어든다.
+         *   (차) 251 외상매입금 / (대) 108 외상매출금   — 현금은 안 움직인다.
+         *
+         * **대체전표 한 건**으로 끊는다. 예전엔 입금 108 + 출금 251 두 건으로 적었는데,
+         * 분개를 만들 때 계좌가 비면 보통예금으로 폴백해서(autoJournal) 실제로 오간 적 없는
+         * 금액이 103 원장에 차·대 두 줄로 남았다. 잔액은 상쇄돼 안 틀어져도 원장이 더러워진다.
+         *
+         * 자금원장에는 그대로 둔다 — 거래처 잔액이 여기 108/251을 보고 계산되기 때문이다.
+         * dir='대체'면 통장 잔액(signedAmount)은 0이고, 잔액 계산은 두 줄을 양쪽 감소로 읽는다.
          */
         const saveOffset = () => {
           if (!offsetForm) return;
           const amt = Number(String(offsetForm.amount).replace(/,/g, ''));
           if (!Number.isFinite(amt) || amt <= 0) { alert('금액을 숫자로 입력하세요.'); return; }
           if (amt > offsetForm.max) { alert(`상계할 수 있는 최대 금액은 ${fmt(offsetForm.max)}원입니다.`); return; }
-          const stamp = Date.now();
-          const base = {
+          onAddCashEntry?.({
+            id: `cash-${Date.now()}-offset`,
             date: offsetForm.date, cashAccountId: '',
+            dir: '대체', amount: amt,
             partnerId: offsetForm.id, partnerName: offsetForm.name,
+            // 양수 = 차변, 음수 = 대변
+            lines: [
+              { accountCode: '251', amount: amt },    // (차) 외상매입금 — 줄 돈이 준다
+              { accountCode: '108', amount: -amt },   // (대) 외상매출금 — 받을 돈이 준다
+            ],
             note: `${offsetForm.name} 미수·미지급 상계`,
             createdAt: new Date().toISOString(),
-          };
-          onAddCashEntry?.({ id: `cash-${stamp}-ar`, dir: '입금', amount: amt, accountCode: '108', ...base } as CashEntry);
-          onAddCashEntry?.({ id: `cash-${stamp}-ap`, dir: '출금', amount: amt, accountCode: '251', ...base } as CashEntry);
+          } as CashEntry);
           setOffsetForm(null);
         };
 
