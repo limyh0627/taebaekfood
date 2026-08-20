@@ -1,5 +1,5 @@
 import React from 'react';
-import { subChipClass } from './submaterialStyle';
+import { subDotClass } from './submaterialStyle';
 
 /**
  * 품목 카드 공용 표기 — 주문 생성·거래처별 품목이 같은 모양을 쓴다.
@@ -145,16 +145,21 @@ export function ProductCard({
             )}
             {renderColoredName(splitNameVolume(product).base)}
           </p>
-          <ProductSpecChip product={product} />
+          {/* 규격 — 색 없이 이름과 같은 크기(주문카드·품목관리와 같은 규칙) */}
+          {(() => {
+            const sp = specText(product.spec) || splitNameVolume(product).vol;
+            return sp ? <span className="shrink-0 text-[13px] font-bold text-slate-400">{sp}</span> : null;
+          })()}
         </div>
         {subs.length > 0 && (
           // 한 줄에 하나씩 — '마개: 물엿캡-빨강' 처럼 갈래를 앞에 적는다
           <div className="flex flex-col gap-0.5 mt-1.5">
             {subs.map((s, i) => (
-              <div key={s.id ?? `${s.name}-${i}`} className="flex items-center gap-1 min-w-0">
-                <span className="text-[10px] font-black text-slate-400 shrink-0">{s.subtype || s.category || '부자재'}</span>
-                <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded border leading-tight truncate ${subChipClass(s)}`}>
-                  {s.name}
+              <div key={s.id ?? `${s.name}-${i}`} className="flex items-center gap-1.5 min-w-0">
+                <span className="text-[10px] font-black text-slate-400 shrink-0 w-10">{s.subtype || s.category || '부자재'}</span>
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 min-w-0">
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(s)}`} />
+                  <span className="truncate">{s.name}</span>
                 </span>
               </div>
             ))}

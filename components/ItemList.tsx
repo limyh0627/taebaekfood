@@ -62,6 +62,21 @@ const normCat = (cat: string): string =>
 // 다만 **개입수는 언제나 붙인다** — 이름에서 '(10개입)'을 뺐으므로(2026-08-14)
 // 이게 없으면 낱개·10개입·12개입이 목록에서 똑같이 보인다.
 const hasVolumeInName = (name: string) => /\d+(\.\d+)?\s*(ml|kg|l|g)(?![a-z])/i.test(name);
+/**
+ * 품목명과 규격을 **갈라** 그린다 — 이름에 용량을 붙여 버리면 규격 칸이 있으나 마나다.
+ * 색은 안 쓴다(주문카드·품목관리와 같은 규칙). withSpec은 검색 haystack용으로만 남는다.
+ */
+const NameSpec = ({ p, className }: { p: { name: string; spec?: string }; className?: string }) => {
+  const { base, vol } = splitNameVolume(p);
+  const sp = specText(p.spec) || vol;
+  return (
+    <span className={className}>
+      {base}
+      {sp && <span className="ml-1.5 font-normal text-slate-400">{sp}</span>}
+    </span>
+  );
+};
+
 const withSpec = (p: { name: string; spec?: string }): string => {
   const sp = parseSpecUnit(p.spec);
   const count = parseSpecCount(p.spec);
@@ -1661,7 +1676,7 @@ const ItemList: React.FC<ItemListProps> = ({
                         <Package size={20} />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-black text-slate-800 truncate">{withSpec(product)}</p>
+                        <p className="text-sm font-black text-slate-800 truncate"><NameSpec p={product} /></p>
                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">{product.category}</p>
                       </div>
                     </div>
@@ -1807,7 +1822,7 @@ const ItemList: React.FC<ItemListProps> = ({
                       <td className="px-4 py-3">
                         <div className={`flex items-center gap-2 ${isChild ? 'pl-5' : ''}`}>
                           {isChild && <span className="text-indigo-300 text-xs shrink-0">↳</span>}
-                          <span className={`font-bold ${isChild ? 'text-[13px] text-slate-500' : 'text-sm text-slate-800'}`}>{withSpec(product)}</span>
+                          <NameSpec p={product} className={`font-bold ${isChild ? 'text-[13px] text-slate-500' : 'text-sm text-slate-800'}`} />
                           {/* '박스'는 박스 품목 줄에 단다 — 낱개 줄에 붙어 있으면 그 줄이 박스인 줄 안다 */}
                           {isChild && <span className="text-[9px] font-black text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-full shrink-0">박스</span>}
                           {isCritical && <AlertCircle size={12} className="text-rose-500 shrink-0" />}
@@ -2153,7 +2168,7 @@ const ItemList: React.FC<ItemListProps> = ({
                   </>
                 ) : (
                   <div className="bg-slate-50 rounded-2xl px-4 py-3">
-                    <p className="text-sm font-black text-slate-800">{withSpec(rowEditProduct)}</p>
+                    <p className="text-sm font-black text-slate-800"><NameSpec p={rowEditProduct} /></p>
                     <p className="text-[11px] text-slate-400 font-bold mt-0.5">
                       {rowEditProduct.category} · 단위 {rowEditProduct.unit || '-'}
                     </p>
@@ -2271,7 +2286,7 @@ const ItemList: React.FC<ItemListProps> = ({
                       return (
                         <div key={item.id} className="px-5 py-3 flex items-center gap-4">
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-bold text-slate-800 truncate">{withSpec(product)}</p>
+                            <p className="text-sm font-bold text-slate-800 truncate"><NameSpec p={product} /></p>
                             <div className="flex items-center gap-2 mt-0.5">
                               <p className="text-[10px] text-slate-400">
                                 현재 재고 {product.subtype === '향미유' ? fmtHamiyou(product.stock) : `${displayStockOf(product)} ${product.unit}`}
@@ -2435,7 +2450,7 @@ const ItemList: React.FC<ItemListProps> = ({
                                 className="w-4 h-4 accent-indigo-600 cursor-pointer shrink-0"
                               />
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-bold text-slate-800 truncate">{withSpec(product)}</p>
+                                <p className="text-sm font-bold text-slate-800 truncate"><NameSpec p={product} /></p>
                                 <div className="flex items-center gap-2 mt-0.5">
                                   <p className="text-[10px] text-slate-400">{product.category}</p>
                                   {partnerName && (
@@ -2585,7 +2600,7 @@ const ItemList: React.FC<ItemListProps> = ({
                 return (
                   <div key={item.id} className="bg-slate-50 rounded-2xl border border-slate-100 p-3 flex items-center gap-3">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-slate-800 truncate">{withSpec(product)}</p>
+                      <p className="text-sm font-bold text-slate-800 truncate"><NameSpec p={product} /></p>
                       <p className="text-[10px] text-slate-400 font-medium">현재 재고 {product.subtype === '향미유' ? fmtHamiyou(product.stock) : `${displayStockOf(product)}${product.unit}`}</p>
                       {product.subtype === '향미유' && (
                         <div className="flex rounded-lg border border-indigo-200 overflow-hidden text-[9px] font-black mt-1 w-fit">
@@ -3304,7 +3319,7 @@ const ItemList: React.FC<ItemListProps> = ({
             let lastGroup = '기타';
             const rows: GridRow[] = groupLooseBoxRows(baseClosingItems).map(({ p, isChild }) => {
               if (!isChild) lastGroup = stockGroupOf(p);
-              return { itemId: p.id, label: withSpec(p), boxes: closingCounts[p.id]?.boxes ?? '', loose: closingCounts[p.id]?.loose ?? '', editable: true, isChild, group: lastGroup };
+              return { itemId: p.id, label: splitNameVolume(p).base, spec: p.spec, boxes: closingCounts[p.id]?.boxes ?? '', loose: closingCounts[p.id]?.loose ?? '', editable: true, isChild, group: lastGroup };
             });
             // 분류 안에서는 **품목명 순**. 낱개와 박스는 한 덩어리로 묶어서 옮긴다 —
             // 이름으로 그냥 줄 세우면 박스가 부모(낱개)에서 떨어져 짝을 못 찾는다.
