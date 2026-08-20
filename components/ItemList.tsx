@@ -72,7 +72,7 @@ const NameSpec = ({ p, className }: { p: { name: string; spec?: string }; classN
   return (
     <span className={className}>
       {base}
-      {sp && <span className="ml-1.5 font-normal text-slate-400">{sp}</span>}
+      {sp && <span className="ml-1.5 font-bold text-slate-500">{sp}</span>}
     </span>
   );
 };
@@ -3512,7 +3512,7 @@ const ItemList: React.FC<ItemListProps> = ({
                           {(() => {
                             const _p = product ?? (r.spec ? { name: r.label, spec: r.spec } : null);
                             const sp = _p ? (specText(_p.spec) || splitNameVolume(_p).vol) : '';
-                            return sp ? <span className="ml-1.5 align-middle font-normal text-slate-400">{sp}</span> : null;
+                            return sp ? <span className="ml-1.5 align-middle font-bold text-slate-500">{sp}</span> : null;
                           })()}
                         </span>
                         {(() => {
