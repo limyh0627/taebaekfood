@@ -15,7 +15,7 @@ import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/sha
 import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
 import { totalCashOnHand, unsettledStatements, unmatchedCash, partnerOpenBalance, allocatePartnerCash } from '../src/features/admin/cashLedger';
 import { AR, AP, journalizeStatement, journalizeTransfer, journalizeCashEntry, settlementAccountCode } from '../src/shared/autoJournal';
-import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, isCashDir, VOUCHER_DIRS, DIR_CHIP, DIR_HINT, CashTemplate, VoucherDir } from '../src/shared/cashTemplates';
+import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, isCashDir, VOUCHER_DIRS, DIR_CHIP, DIR_HINT, CashTemplate, VoucherDir, SPLIT_MODES, splitModeOf } from '../src/shared/cashTemplates';
 import { canAutoIssue, autoVoucherId } from '../src/shared/autoVoucher';
 import { buildTransfer, splitTransfer, OverKind } from '../src/shared/interCompany';
 import VoucherTemplateManager from './VoucherTemplateManager';
@@ -376,6 +376,20 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // 4대보험 — 회사부담(비용)과 근로자부담(맡아둔 예수금)을 갈라 넣는다
   const [qpInsCorp, setQpInsCorp] = useState('');
   const [qpInsEmp, setQpInsEmp] = useState('');
+  /**
+   * 아직 안 낸 원천공제(예수금 254 잔액) — 급여에서 뗐지만 아직 공단에 안 낸 돈.
+   * 4대보험 낼 때 근로자부담분이 보통 이 금액이다. 템플릿 적용과 화면 버튼이
+   * **같은 값**을 봐야 해서 여기 한 곳에서만 센다.
+   */
+  const heldWithholding = useMemo(() => {
+    const code = accountCodes.find(c => c.name === '예수금')?.code ?? '254';
+    return cashEntries.reduce((a, e) => {
+      const parts = (e.lines ?? []).filter(l => l.accountCode === code);
+      const v = parts.length ? parts.reduce((b, l) => b + l.amount, 0) : (e.accountCode === code ? e.amount : 0);
+      if (!v) return a;
+      return a + (e.dir === '입금' ? v : -v);
+    }, 0);
+  }, [cashEntries, accountCodes]);
   const [qpDir, setQpDir] = useState<VoucherDir>('출금');
   const [qpAccountCode, setQpAccountCode] = useState('');
   const [qpPickerOpen, setQpPickerOpen] = useState(false);
@@ -423,6 +437,27 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     if (t.partnerId) { setQuickPayClientId(t.partnerId); setQuickPayClientSearch(''); }
     else { setQuickPayClientId(''); setQuickPayClientSearch(''); }
     if (t.amount && t.amount > 0) setQuickPayAmount(String(t.amount));
+    // 두 줄로 갈리는 갈래(보험·상환·급여)는 금액칸을 안 쓴다 — 템플릿에 박아 둔 두 값을 그대로 채운다.
+    //  4대보험만 폴백을 둔다: 옛 템플릿엔 총액 하나뿐이라, 미납 예수금만큼을 근로자부담으로
+    //  떼고 나머지를 회사부담으로 짐작한다. 짐작이라 그대로 고쳐 쓰면 된다.
+    const sm = splitModeOf(t.mode);
+    if (sm) {
+      const S = SPLIT_MODES[sm];
+      const a = (t as Record<string, any>)[S.a], b = (t as Record<string, any>)[S.b];
+      const setters: Record<string, [(v: string) => void, (v: string) => void]> = {
+        보험: [setQpInsCorp, setQpInsEmp],
+        상환: [setQpPrincipal, setQpInterest],
+        급여: [setQpGross, setQpDeduction],
+      };
+      const [setA, setB] = setters[sm];
+      if (a != null || b != null) { setA(a ? String(a) : ''); setB(b ? String(b) : ''); }
+      else if (sm === '보험' && (t.amount ?? 0) > 0) {
+        const total = t.amount ?? 0;
+        const emp = Math.max(0, Math.min(Math.round(heldWithholding), total));
+        setQpInsEmp(emp > 0 ? String(emp) : '');
+        setQpInsCorp(String(total - emp));
+      }
+    }
     setQpPickerOpen(false);
   };
   // 계정 5분류 — 자금 전표가 비용인지 수익인지 가려 매입/매출 합계에 반영하는 데 쓴다.
@@ -4047,12 +4082,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   </div>
                   {/* 아직 안 낸 원천공제 — 근로자부담분은 보통 이 잔액만큼 나간다 */}
                   {(() => {
-                    const held = cashEntries.reduce((a, e) => {
-                      const parts = (e.lines ?? []).filter(l => l.accountCode === WITHHOLD_CODE);
-                      const v = parts.length ? parts.reduce((b, l) => b + l.amount, 0) : (e.accountCode === WITHHOLD_CODE ? e.amount : 0);
-                      if (!v) return a;
-                      return a + (e.dir === '입금' ? v : -v);
-                    }, 0);
+                    const held = heldWithholding;
                     return held > 0 ? (
                       <button type="button" onClick={() => setQpInsEmp(String(Math.round(held)))}
                         className="w-full text-left rounded-xl bg-slate-50 hover:bg-indigo-50 px-3 py-2 text-[11px] font-bold text-slate-500 transition-colors">

@@ -74,7 +74,42 @@ export interface CashTemplate {
   favorite?: boolean;
   /** 전표 품목란에 들어갈 이름. 비우면 계정과목 이름을 쓴다. */
   itemName?: string;
+  /** 두 줄로 갈리는 갈래의 미리 정해둔 값 — SPLIT_MODES 참고 */
+  insCorp?: number;   insEmp?: number;
+  principal?: number; interest?: number;
+  gross?: number;     deduction?: number;
 }
+
+/**
+ * 두 줄로 갈리는 갈래의 **양식** — 편집 화면·전표 발행·합계 계산이 전부 여기를 본다.
+ *
+ * 템플릿은 미리 양식을 맞춰 두는 것이라, 두 줄짜리 갈래는 두 값을 들고 있어야 한다.
+ * amount 하나로는 못 채운다 — 갈래마다 두 칸의 뜻도, 통장에서 움직이는 금액도 다르다.
+ */
+export const SPLIT_MODES = {
+  보험: {
+    a: 'insCorp', b: 'insEmp',
+    labelA: '회사부담', hintA: '비용', labelB: '근로자부담', hintB: '예수금',
+    total: (a: number, b: number) => a + b, totalLabel: '통장에서 나가는 총액',
+    help: '공단 고지서의 사업장부담금 · 근로자부담금을 그대로 넣으세요. 총액으로는 못 가릅니다 — 산재는 회사가 전액, 고용보험도 회사 쪽이 더 나갑니다.',
+  },
+  상환: {
+    a: 'principal', b: 'interest',
+    labelA: '원금', hintA: '차입금', labelB: '이자', hintB: '비용',
+    total: (a: number, b: number) => a + b, totalLabel: '통장에서 나가는 총액',
+    help: '원금은 빚이 줄어드는 것(재무상태표), 이자는 비용(손익계산서)입니다. 상환표대로 달마다 비율이 바뀌면 자동 발행은 끄고 그때그때 고쳐 쓰세요.',
+  },
+  급여: {
+    a: 'gross', b: 'deduction',
+    labelA: '총급여', hintA: '비용', labelB: '공제', hintB: '예수금',
+    total: (a: number, b: number) => a - b, totalLabel: '통장에서 나가는 실지급액',
+    help: '총급여는 비용으로 잡히고, 공제분은 맡아뒀다가 다음 달에 4대보험·원천세로 냅니다. 통장에서 나가는 건 차액입니다.',
+  },
+} as const;
+
+export type SplitMode = keyof typeof SPLIT_MODES;
+export const splitModeOf = (mode?: string): SplitMode | null =>
+  mode && mode in SPLIT_MODES ? mode as SplitMode : null;
 
 export const CASH_TEMPLATES: CashTemplate[] = [
   // ══ 출금 ══════════════════════════════════════════════════════════
@@ -151,6 +186,9 @@ export function filterTemplates(
       group: t.group,
       favorite: t.favorite,
       itemName: t.itemName,
+      insCorp: t.insCorp,     insEmp: t.insEmp,
+      principal: t.principal, interest: t.interest,
+      gross: t.gross,         deduction: t.deduction,
       ...(t.mode === '상환' ? { hint: '원금 + 이자' } : {}),
       ...(t.mode === '급여' ? { hint: '총급여 − 공제' } : {}),
       ...(t.mode === '보험' ? { hint: '회사부담 + 예수금' } : {}),

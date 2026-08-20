@@ -1,7 +1,15 @@
 import React, { useMemo, useState } from 'react';
 import { Trash2, X, ToggleLeft, ToggleRight, Pencil, Check, Eye, EyeOff, Lock, BarChart2, Star, FolderPlus } from 'lucide-react';
 import { FixedCostTemplate, AccountCode, Partner } from '../src/shared/types';
-import { VOUCHER_DIRS, DIR_CHIP, DIR_HINT, isCashDir, VoucherDir } from '../src/shared/cashTemplates';
+import { VOUCHER_DIRS, DIR_CHIP, DIR_HINT, isCashDir, VoucherDir, SPLIT_MODES, splitModeOf } from '../src/shared/cashTemplates';
+
+/** 두 줄 갈래 템플릿에서 a·b 칸에 들어갈 저장값을 꺼낸다 (갈래마다 필드 이름이 다르다) */
+const splitValOf = (t: { mode?: string } & Record<string, any>, which: 'a' | 'b'): string => {
+  const sm = splitModeOf(t.mode);
+  if (!sm) return '';
+  const v = t[SPLIT_MODES[sm][which]];
+  return v ? String(v) : '';
+};
 
 /**
  * 전표 템플릿 관리 — 일반전표 발행의 '템플릿'가 여기서 정해진다.
@@ -31,7 +39,7 @@ export default function VoucherTemplateManager({
   const [filter, setFilter] = useState<'all' | 'auto' | 'hidden'>('all');
   const [editTpl, setEditTpl] = useState<FixedCostTemplate | null>(null);
   const [form, setForm] = useState({
-    name: '', group: '', amount: '', partnerId: '', partnerName: '',
+    name: '', group: '', amount: '', splitA: '', splitB: '', partnerId: '', partnerName: '',
     dir: '출금' as VoucherDir, autoIssue: false, issueDay: '1', taxExempt: false, itemName: '',
   });
   /** 옛 postMode를 새 갈래로 읽는다 — '분리'는 채무를 세우는 것이니 '줄돈' */
@@ -80,6 +88,7 @@ export default function VoucherTemplateManager({
     setEditTpl(t);
     setForm({
       name: t.name, group: t.group ?? '', amount: t.amount ? String(t.amount) : '',
+      splitA: splitValOf(t, 'a'), splitB: splitValOf(t, 'b'),
       partnerId: t.partnerId ?? '', partnerName: t.partnerName ?? '',
       dir: dirOf(t), autoIssue: !!t.autoIssue, issueDay: String(t.issueDay ?? 1), taxExempt: !!t.taxExempt,
       itemName: t.itemName ?? '',
@@ -267,12 +276,41 @@ export default function VoucherTemplateManager({
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
               <p className="text-[10px] font-bold text-slate-400 mt-1">전표 품목란에 이대로 찍힙니다.</p>
             </div>
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">금액 <span className="normal-case text-slate-300">(0이면 안 채움)</span></label>
-              <input inputMode="numeric" value={form.amount}
-                onChange={e => setForm(f => ({ ...f, amount: e.target.value.replace(/[^0-9]/g, '') }))}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-right text-lg font-black tabular-nums outline-none focus:ring-2 focus:ring-indigo-300"/>
-            </div>
+            {/* 두 줄로 갈리는 갈래(보험·상환·급여)는 금액 하나로 못 채운다 — 양식대로 두 칸. */}
+            {(() => {
+              const sm = splitModeOf(editTpl.mode);
+              if (!sm) return (
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">금액 <span className="normal-case text-slate-300">(0이면 안 채움)</span></label>
+                  <input inputMode="numeric" value={form.amount}
+                    onChange={e => setForm(f => ({ ...f, amount: e.target.value.replace(/[^0-9]/g, '') }))}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-right text-lg font-black tabular-nums outline-none focus:ring-2 focus:ring-indigo-300"/>
+                </div>
+              );
+              const S = SPLIT_MODES[sm];
+              const num = (v: string) => Number(v || 0);
+              return (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    {([['splitA', S.labelA, S.hintA], ['splitB', S.labelB, S.hintB]] as const).map(([k, label, hint]) => (
+                      <div key={k}>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
+                          {label} <span className="normal-case text-slate-300">({hint})</span>
+                        </label>
+                        <input inputMode="numeric" value={form[k]}
+                          onChange={e => setForm(f => ({ ...f, [k]: e.target.value.replace(/[^0-9]/g, '') }))}
+                          className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-right text-sm font-black tabular-nums outline-none focus:ring-2 focus:ring-indigo-300"/>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between rounded-xl px-3 py-2 text-[11px] font-black bg-slate-50 text-slate-500">
+                    <span>{S.totalLabel}</span>
+                    <span className="tabular-nums text-slate-800">{S.total(num(form.splitA), num(form.splitB)).toLocaleString()}</span>
+                  </div>
+                  <p className="text-[10px] font-bold text-slate-400 leading-snug">{S.help}</p>
+                </div>
+              );
+            })()}
 
             <div>
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
@@ -336,7 +374,12 @@ export default function VoucherTemplateManager({
               <button
                 onClick={async () => {
                   if (!form.name.trim()) { alert('이름을 입력하세요.'); return; }
-                  const amount = Number(form.amount || 0);
+                  // 두 줄 갈래는 두 칸이 곧 값이고, amount는 통장에서 움직이는 돈이다.
+                  const sm = splitModeOf(editTpl.mode);
+                  const a = Number(form.splitA || 0), b = Number(form.splitB || 0);
+                  const S = sm ? SPLIT_MODES[sm] : null;
+                  const amount = S ? S.total(a, b) : Number(form.amount || 0);
+                  const splitPatch = S ? { [S.a]: a, [S.b]: b } : {};
                   if (form.autoIssue && amount <= 0) { alert('자동 발행은 금액이 정해진 것만 켤 수 있습니다.'); return; }
                   if (form.autoIssue && !isCashDir(form.dir) && !form.partnerId) {
                     alert('거래처 없는 대체는 자동 발행을 못 켭니다.\n\n차·대를 직접 세워야 하는데 템플릿엔 계정이 하나뿐입니다.\n거래처를 고르면 매입전표로 자동 발행됩니다.');
@@ -349,6 +392,7 @@ export default function VoucherTemplateManager({
                     partnerId: form.partnerId,
                     partnerName: form.partnerName.trim(),
                     itemName: form.itemName.trim(),
+                    ...splitPatch,
                     dir: form.dir,
                     autoIssue: form.autoIssue,
                     issueDay: Number(form.issueDay) || 1,
