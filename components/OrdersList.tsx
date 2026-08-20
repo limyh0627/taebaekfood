@@ -525,7 +525,7 @@ export const OrderCard = memo<OrderCardProps>(({
                       <>
                       {/* 칩이던 시절엔 폭이 넓어 2칸 그리드로 눌러 담았는데, 점 표기라 짧아졌다.
                           그냥 흐르게 두면 모바일에서 완제품이 혼자 줄바꿈되지 않는다. */}
-                      <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 pl-[20px]">
+                      <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 pl-[20px]">
                         {/* 부자재 — 칩으로 칠하면 배경이 글자보다 먼저 읽힌다. 이름 앞에 점만 찍는다: ● 테이프-빨강 */}
                         {allSubs.map(sm => {
                           const _s = items.find(p => p.id === sm.id) ?? { name: sm.name };
