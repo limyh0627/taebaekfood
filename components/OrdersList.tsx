@@ -462,6 +462,21 @@ export const OrderCard = memo<OrderCardProps>(({
                       );
                     })()}
                   </div>
+                  {/* 라벨 상태·소비기한 — **품목명 바로 밑**. 부자재보다 먼저 챙기는 정보라 위로 올린다.
+                      소비기한은 안 정해져 있어도 자리를 지킨다: 비어 있다는 걸 보여야 채워 넣는다. */}
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 pl-[20px]">
+                    <button type="button" onClick={(e) => { e.stopPropagation(); const ni = [...order.items]; ni[idx] = { ...ni[idx], labelType: next }; onUpdateItems?.(order.id, ni); }}
+                      className={`text-[11px] font-black px-1.5 py-0.5 rounded border transition-all shrink-0 ${colorMap[current]}`}>{current}</button>
+                    <span className="text-[11px] font-bold text-slate-400 shrink-0">
+                      소비기한 {item.mfgDate
+                        ? <span className="text-slate-600">~{(() => { const d = new Date(item.mfgDate!); d.setFullYear(d.getFullYear() + 1); return d.toISOString().slice(2, 10); })()}</span>
+                        : <span className="text-slate-300">미설정</span>}
+                    </span>
+                    {item.checked && item.checkedBy && (
+                      <span className="text-[11px] font-bold text-slate-400 shrink-0">{item.checkedBy}</span>
+                    )}
+                    {productInfo?.oil && <span className="text-[11px] text-indigo-500 font-bold shrink-0">{productInfo.oil}</span>}
+                  </div>
                   {(() => {
                     // 박스 품목이면 카톤/테이프 표시, 낱개(비박스)면 출고 카톤·테이프는 뺀다(박스=품목).
                     const isBoxProd = isBoxStockItem(productInfo);
@@ -555,19 +570,6 @@ export const OrderCard = memo<OrderCardProps>(({
                       </>
                     );
                   })()}
-                  <div className="flex flex-wrap items-center gap-1 mt-0.5 pl-[20px]">
-                    <button type="button" onClick={(e) => { e.stopPropagation(); const ni = [...order.items]; ni[idx] = { ...ni[idx], labelType: next }; onUpdateItems?.(order.id, ni); }}
-                      className={`text-[8px] font-black px-1 py-0.5 rounded border transition-all shrink-0 ${colorMap[current]}`}>{current}</button>
-                    {item.checked && item.checkedBy && (
-                      <span className="text-[8px] font-bold text-slate-400">{item.checkedBy}</span>
-                    )}
-                    {item.mfgDate && (
-                      <span className="text-[8px] font-bold text-slate-400 bg-slate-50 px-1 py-0.5 rounded border border-slate-100">
-                        ~{(() => { const d = new Date(item.mfgDate!); d.setFullYear(d.getFullYear() + 1); return d.toISOString().slice(2, 10); })()}
-                      </span>
-                    )}
-                    {productInfo?.oil && <span className="text-[8px] text-indigo-500 font-bold">{productInfo.oil}</span>}
-                  </div>
                 </div>
               );
             })}
