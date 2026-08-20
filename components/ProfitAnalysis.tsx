@@ -111,7 +111,8 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
     setCfEdit(doc ? { depreciation: doc.depreciation, prepaidInc: doc.prepaidInc, assetBuy: doc.assetBuy, assetSell: doc.assetSell, financeIn: doc.financeIn, debtRepay: doc.debtRepay, openingCash: doc.openingCash, closingCash: doc.closingCash } : {});
   }, [cfMonth, cashFlowManual]);
   // ── 계정그룹/계정과목 인라인 수정 ──
-  const [openCostLine, setOpenCostLine] = useState<string | null>(null);
+  // 손익 줄 접기 — 기본은 **전부 펼침**. 닫은 것만 기억한다(하나만 열리는 아코디언이 아니다).
+  const [closedPlLines, setClosedPlLines] = useState<Set<string>>(new Set());
   const [editGroupId, setEditGroupId] = useState<string | null>(null);
   const [editGroupForm, setEditGroupForm] = useState<{ name: string; type: AccountGroup['type']; plLine: AccountGroup['plLine'] | '' }>({ name: '', type: '비용', plLine: '' });
   const [editCodeId, setEditCodeId] = useState<string | null>(null);
@@ -541,17 +542,22 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           label: string; amount: number; lines: string[]; sign: '+' | '−'; keyName: string;
         }) => {
           const gs = groupsOf(...lines);
-          const open = openCostLine === keyName;
+          const open = !closedPlLines.has(keyName);
+          const toggle = () => setClosedPlLines(prev => {
+            const next = new Set(prev);
+            if (next.has(keyName)) next.delete(keyName); else next.add(keyName);
+            return next;
+          });
           return (
             <div className="border-b border-slate-100">
-              <button onClick={() => setOpenCostLine(open ? null : keyName)}
+              <button onClick={toggle}
                 className="w-full flex items-center justify-between px-5 py-3 hover:bg-slate-50/70 transition-colors text-left">
                 <span className="flex items-center gap-1.5 text-sm font-bold text-slate-600">
                   <ChevronRight size={13} className={`text-slate-300 transition-transform ${open ? 'rotate-90' : ''}`} />
                   <span className="text-slate-300 w-3">{sign}</span>{label}
                 </span>
-                <span className="text-sm font-black text-slate-700 tabular-nums">
-                  {fmt(amount)}<span className="text-[10px] font-bold text-slate-400 ml-1.5">{pct(Math.abs(amount))}</span>
+                <span className="text-base font-black text-slate-700 tabular-nums">
+                  {fmt(amount)}<span className="text-[10px] font-bold text-slate-400 ml-1.5 w-9 inline-block text-right">{pct(Math.abs(amount))}</span>
                 </span>
               </button>
               {open && (
@@ -578,12 +584,16 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         };
 
         /** 남는 줄 — 소계. 굵게(strong)는 영업이익·당기순이익. */
-        const Result = ({ label, amount, strong }: { label: string; amount: number; strong?: boolean }) => (
-          <div className={`flex items-center justify-between px-5 border-b border-slate-100 ${strong ? 'py-4 bg-slate-50' : 'py-3'}`}>
-            <span className="text-sm font-black text-slate-800"><span className="text-slate-300 mr-1.5">=</span>{label}</span>
+        /**
+         * 소계 줄 — 매출총이익·영업이익·당기순이익은 **셋 다 같은 급**이라 같은 모양으로 둔다.
+         * 전엔 뒤 둘에만 회색 배경을 줬는데 그럴 근거가 없었다. 구분은 '='와 굵기로 충분하다.
+         */
+        const Result = ({ label, amount }: { label: string; amount: number }) => (
+          <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-slate-50/70">
+            <span className="text-sm font-black text-slate-800 pl-[18px]"><span className="text-slate-300 mr-1.5">=</span>{label}</span>
             <span className="text-right">
-              <span className={`${strong ? 'text-xl' : 'text-base'} font-black tabular-nums ${amount >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{fmt(amount)}</span>
-              <span className="text-[10px] font-bold text-slate-400 ml-1.5">{pct(amount)}</span>
+              <span className={`text-base font-black tabular-nums ${amount >= 0 ? 'text-slate-800' : 'text-rose-600'}`}>{fmt(amount)}</span>
+              <span className="text-[10px] font-bold text-slate-400 ml-1.5 w-9 inline-block text-right">{pct(amount)}</span>
             </span>
           </div>
         );
@@ -595,9 +605,9 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             <Line label="매출원가" amount={summary.cogs} lines={['cogs']} sign="−" keyName="cogs" />
             <Result label="매출총이익" amount={summary.grossProfit} />
             <Line label="판매비와관리비" amount={summary.sgna} lines={['sgna']} sign="−" keyName="sgna" />
-            <Result label="영업이익" amount={summary.operatingProfit} strong />
+            <Result label="영업이익" amount={summary.operatingProfit} />
             <Line label="기타손익 (영업외)" amount={other} lines={['other-income', 'other-expense']} sign={other >= 0 ? '+' : '−'} keyName="other" />
-            <Result label="당기순이익" amount={summary.netIncome} strong />
+            <Result label="당기순이익" amount={summary.netIncome} />
             {(openingSnapshot || closingSnapshot) && (
               <div className="px-5 py-3 bg-slate-50/60 text-[11px] font-bold text-slate-400 flex items-center gap-4 flex-wrap">
                 <span>재고 실사</span>
