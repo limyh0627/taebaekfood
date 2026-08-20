@@ -2847,9 +2847,10 @@ const ItemList: React.FC<ItemListProps> = ({
                               {isChild && <span className="text-slate-300 mr-1">└</span>}{lbl.base}
                               {lbl.brand && <span className="ml-1.5 text-[13px] font-black text-violet-600">· {lbl.brand}</span>}
                             </p>
-                            {lbl.grade && <span className="text-[11px] font-black px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700">{lbl.grade}</span>}
-                            {lbl.size && <span className="text-[11px] font-black px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600">{lbl.size}{lbl.container && <span className="ml-1 text-slate-400">{lbl.container}</span>}</span>}
-                            {lbl.pack && <span className="text-[11px] font-black px-1.5 py-0.5 rounded-md bg-indigo-100 text-indigo-700">{lbl.pack}</span>}
+                            {/* 등급·용량·개입 — 색 칩을 벗기고 이름과 같은 크기로. 칠해 두면 이름보다 먼저 읽힌다. */}
+                            {lbl.grade && <span className="text-[13px] font-bold text-slate-500">{lbl.grade}</span>}
+                            {lbl.size && <span className="text-[13px] font-bold text-slate-500">{lbl.size}{lbl.container && <span className="ml-1 text-slate-400">{lbl.container}</span>}</span>}
+                            {lbl.pack && <span className="text-[13px] font-bold text-slate-500">{lbl.pack}</span>}
                           </div>
                           {/* 품목에 물려있는 거래처(매출처) — 가로 스크롤 한 줄이라 많아도 UI 안 깨짐 */}
                           {p.partnerIds && p.partnerIds.length > 0 && (
@@ -2877,12 +2878,12 @@ const ItemList: React.FC<ItemListProps> = ({
                       </div>
                       {/* 부자재 — 이름 비슷할 때 구분용이라 더 크고 잘 보이게 */}
                       {subs.length > 0 && (
-                        <div className="flex gap-1.5 flex-wrap mt-2">
+                        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-3">
                           {subs.map((s, i) => {
                             const sub = items.find(x => x.id === s.id);
                             return (
-                              <span key={i}
-                                className="text-[11px] font-bold px-2 py-1 rounded-lg border bg-slate-50 border-slate-200 text-slate-600">
+                              <span key={i} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500">
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(sub ?? { name: s.name })}`} />
                                 {sub ? withSpec(sub) : s.name}
                               </span>
                             );
