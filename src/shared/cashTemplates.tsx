@@ -129,7 +129,6 @@ export const CASH_TEMPLATES: CashTemplate[] = [
   { id: 'rent',    label: '임대료',   dir: '출금', mode: '일반', accountCode: '510' },
   { id: 'ins4',    label: '4대보험',  dir: '출금', mode: '보험', accountCode: '530', hint: '회사부담 + 예수금' },
   { id: 'ins',     label: '보험료',   dir: '출금', mode: '일반', accountCode: '590' },
-  { id: 'cesco',   label: '세스코',   dir: '출금', mode: '일반', accountCode: '595' },
   { id: 'lease',   label: '리스료',   dir: '출금', mode: '일반', accountCode: '819' },
 
   // 그때그때 나가는 것

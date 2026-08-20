@@ -191,15 +191,15 @@ export default function VoucherTemplateManager({
                         className="p-1 hover:bg-slate-100 rounded-lg text-slate-300 hover:text-slate-600 shrink-0">
                         {t.hidden ? <EyeOff size={13}/> : <Eye size={13}/>}
                       </button>
-                      {locked ? (
-                        <button onClick={() => openClone(t)} title="이 기본 템플릿으로 내 템플릿 만들기 — 기본은 그대로 둡니다"
+                      {/* 기본도 그냥 고칠 수 있다. 복제는 "기본은 남겨 두고 변형을 하나 더" 쓰고 싶을 때. */}
+                      {locked && (
+                        <button onClick={() => openClone(t)} title="이 템플릿을 본떠 새로 만들기 — 원본은 그대로 둡니다"
                           className="p-1 hover:bg-indigo-50 rounded-lg text-slate-300 hover:text-indigo-500 shrink-0"><Copy size={13}/></button>
-                      ) : (
-                        <button onClick={() => openEdit(t)} title="이름·묶음·금액·발행 방식 수정"
-                          className="p-1 hover:bg-slate-100 rounded-lg text-slate-300 hover:text-slate-600 shrink-0"><Pencil size={13}/></button>
                       )}
+                      <button onClick={() => openEdit(t)} title="이름·묶음·금액·발행 방식 수정"
+                        className="p-1 hover:bg-slate-100 rounded-lg text-slate-300 hover:text-slate-600 shrink-0"><Pencil size={13}/></button>
                       {locked ? (
-                        <span title="기본 템플릿 — 고치거나 지울 수 없습니다. 숨기거나 복제해서 쓰세요." className="p-1 text-slate-200 shrink-0"><Lock size={13}/></span>
+                        <span title="기본 템플릿 — 지울 수 없습니다. 숨기기만 됩니다." className="p-1 text-slate-200 shrink-0"><Lock size={13}/></span>
                       ) : (
                         <button onClick={() => { if (window.confirm(`'${t.name}' 템플릿을 지울까요?`)) onDelete?.(t.id); }}
                           className="p-1 hover:bg-rose-50 rounded-lg text-slate-200 hover:text-rose-400 shrink-0"><Trash2 size={13}/></button>
@@ -221,12 +221,16 @@ export default function VoucherTemplateManager({
               <h3 className="text-sm font-black text-slate-800">{cloning ? '새 템플릿 만들기' : '템플릿 수정'}</h3>
               <button onClick={() => setEditTpl(null)} className="text-slate-300 hover:text-slate-500"><X size={18}/></button>
             </div>
-            {cloning && (
+            {cloning ? (
               <p className="text-[11px] font-bold text-indigo-500 bg-indigo-50 rounded-xl px-3 py-2 leading-snug">
-                기본 <b>{editTpl.name}</b>의 갈래·계정을 물려받아 <b>내 템플릿</b>을 새로 만듭니다.
-                기본 템플릿은 그대로 남습니다.
+                <b>{editTpl.name}</b>의 갈래·계정을 물려받아 새 템플릿을 만듭니다. 원본은 그대로 남습니다.
               </p>
-            )}
+            ) : editTpl.builtin ? (
+              <p className="text-[11px] font-bold text-slate-400 bg-slate-50 rounded-xl px-3 py-2 leading-snug">
+                기본 템플릿입니다. 이름·금액·거래처는 바꿀 수 있지만 지울 수는 없습니다 — 대신 숨기면 목록에서 빠집니다.
+                원본을 남겨 두고 변형을 만들고 싶으면 목록의 복제 버튼을 쓰세요.
+              </p>
+            ) : null}
             <div>
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">이름</label>
               <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
