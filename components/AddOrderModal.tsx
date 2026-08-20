@@ -3,7 +3,7 @@ import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, La
 import { Item, PartnerItem, OrderItem, Order, Partner, OrderSource, OrderPallet, PalletStock, ShippingRule } from '../types';
 import { bomQty } from '../src/shared/bom';
 import { unpackComponent, isBoxStockItem, boxSiblings, boxDerivedUnitPrice } from '../src/shared/orderUnits';
-import { subChipClass } from '../src/shared/submaterialStyle';
+import { subDotClass } from '../src/shared/submaterialStyle';
 import { catOrder } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
 
@@ -155,9 +155,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
     const spec = String(product?.spec ?? '').trim();
     const text = spec || vol;
     if (!text) return null;
-    return (
-      <span className={`shrink-0 text-[10px] font-black px-2 py-1 rounded-lg whitespace-nowrap ${VOLUME_CHIP_COLORS[vol ?? ''] ?? 'bg-slate-100 text-slate-600'}`}>{text}</span>
-    );
+    // 색을 안 쓴다 — 칠해 두면 품목명보다 규격이 먼저 읽힌다(주문카드·품목관리와 같은 규칙)
+    return <span className="shrink-0 text-xs font-bold text-slate-400 whitespace-nowrap">{text}</span>;
   };
 
   // 거래처 전용 품목 필터링 적용
@@ -369,6 +368,25 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
 
   const updateItem = (itemId: string, patch: Partial<typeof selectedItems[0]>) => {
     setSelectedItems(prev => prev.map(i => i.itemId === itemId ? { ...i, ...patch } : i));
+  };
+
+  /**
+   * 카드 맨 우측 수량칸 — 고르고 나서 수량을 넣는 게 아니라 **수량을 넣으면 담긴다.**
+   * 비우면 선택이 풀린다. 아래 상세 조작(낱개/박스·규격)은 담긴 뒤 그대로 쓴다.
+   */
+  const quickQtyOf = (itemId: string): string => {
+    const sel = selectedItems.find(i => i.itemId === itemId);
+    return sel && typeof sel.quantity === 'number' && sel.quantity > 0 ? String(sel.quantity) : '';
+  };
+  const setQuickQty = (itemId: string, raw: string) => {
+    const v = raw.replace(/[^\d]/g, '');
+    setSelectedItems(prev => {
+      const exists = prev.find(i => i.itemId === itemId);
+      if (!v) return prev.filter(i => i.itemId !== itemId);
+      const qty = Number(v);
+      if (exists) return prev.map(i => i.itemId === itemId ? { ...i, quantity: qty } : i);
+      return [...prev, { ...buildSelection(itemId), quantity: qty }];
+    });
   };
 
   const renderItemControls = (product: { id: string; unit?: string; price: number; category?: string }) => {
@@ -724,12 +742,11 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                               return (
                                 <>
                                   {chips.length > 0 && (
-                                    <div className="flex flex-wrap items-center gap-0.5 mt-0.5"
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1"
                                       title={`부자재: ${chips.map(c => c.name).join(' · ')}`}>
-                                      <span className="text-[9px] text-slate-400 font-bold shrink-0">부자재</span>
                                       {chips.map(c => (
-                                        <span key={c.id}
-                                          className={`text-[9px] font-bold px-1 py-px rounded border leading-tight ${subChipClass(c)}`}>
+                                        <span key={c.id} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 shrink-0">
+                                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(c)}`} />
                                           {c.name}
                                         </span>
                                       ))}
@@ -740,6 +757,12 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                             })()}
                           </div>
                           {renderVolumeChip(nv.vol, product)}
+                          {/* 수량 — 맨 우측. 숫자를 넣으면 담기고 비우면 빠진다. */}
+                          <input inputMode="numeric" value={quickQtyOf(product.id)} placeholder="0"
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => setQuickQty(product.id, e.target.value)}
+                            className={`w-12 shrink-0 text-right text-sm font-black tabular-nums rounded-lg px-2 py-1.5 border outline-none focus:ring-2 focus:ring-indigo-300 ${
+                              isSelected ? 'border-indigo-300 bg-white' : 'border-slate-200 bg-slate-50'}`} />
                         </div>
                         {isSelected && renderItemControls(product)}
                       </div>
