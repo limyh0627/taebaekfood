@@ -85,14 +85,19 @@ export function ProductSpecChip({ product }: { product: { name: string; spec?: s
   );
 }
 
-/** 이름 + 규격칩 한 줄 — 두 화면의 카드 머리가 같은 모양이 된다 */
+/**
+ * 이름 + 규격 한 줄 — 두 화면의 카드 머리가 같은 모양이 된다.
+ * 규격은 **색을 안 쓴다.** 칠해 두면 품목명보다 규격이 먼저 읽힌다(주문카드와 같은 규칙).
+ */
 export function ProductNameRow({ product }: { product: { name: string; spec?: string } }) {
+  const { base, vol } = splitNameVolume(product);
+  const sp = specText(product.spec) || vol;
   return (
-    <div className="flex items-center gap-2 min-w-0">
-      <p className="text-xs font-bold text-slate-800 truncate flex-1 min-w-0">
-        {renderColoredName(splitNameVolume(product).base)}
+    <div className="flex items-center gap-1.5 min-w-0">
+      <p className="text-xs font-bold text-slate-800 truncate min-w-0">
+        {renderColoredName(base)}
       </p>
-      <ProductSpecChip product={product} />
+      {sp && <span className="text-xs font-bold text-slate-400 shrink-0">{sp}</span>}
     </div>
   );
 }

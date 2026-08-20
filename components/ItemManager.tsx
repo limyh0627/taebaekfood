@@ -6,8 +6,8 @@ import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 import CategoryManager from './CategoryManager';
 import { isBoxStockItem, unpackComponent, boxSiblings } from '../src/shared/orderUnits';
-import { subChipClass } from '../src/shared/submaterialStyle';
-import { ProductNameRow, ProductSpecChip, ProductCard, renderColoredName, splitNameVolume, catOrder, categoryChipClass } from '../src/shared/productChip';
+import { subDotClass } from '../src/shared/submaterialStyle';
+import { ProductNameRow, ProductCard, renderColoredName, splitNameVolume, specText, catOrder, categoryChipClass } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
 
 interface ItemManagerProps {
@@ -657,7 +657,11 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                         <p className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
                           {renderColoredName(splitNameVolume(item).base)}
                         </p>
-                        <ProductSpecChip product={item} />
+                        {/* 규격 — 색 칩을 벗기고 품목명과 같은 크기로 옆에 (주문카드와 같은 규칙) */}
+                        {(() => {
+                          const sp = specText(item.spec) || splitNameVolume(item).vol;
+                          return sp ? <span className="text-[11px] font-bold text-slate-400 whitespace-nowrap">{sp}</span> : null;
+                        })()}
                       </div>
                     </td>
                     {!(mainView === 'by-partner' && selectedClientId) && activeCategory === 'product' && (
@@ -738,9 +742,12 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                           });
                           // 주문 생성 화면과 같은 부자재 색 칩
                           return subs.length > 0
-                            ? <span className="flex flex-wrap gap-1">
+                            ? <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                                 {subs.map((s, i) => (
-                                  <span key={`${s.name}-${i}`} className={`text-[10px] font-black px-1.5 py-0.5 rounded-md whitespace-nowrap ${subChipClass(s)}`}>{s.name}</span>
+                                  <span key={`${s.name}-${i}`} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 whitespace-nowrap">
+                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(s)}`} />
+                                    {s.name}
+                                  </span>
                                 ))}
                               </span>
                             : <span className="text-[10px] text-slate-200">-</span>;
@@ -1451,9 +1458,12 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                       <div className="min-w-0 flex-1">
                         <ProductNameRow product={p} />
                         {p.submaterials && p.submaterials.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
                             {sortSubs(p.submaterials).map((s, i) => (
-                              <span key={`${s.name}-${i}`} className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${subChipClass(s)}`}>{s.name}</span>
+                              <span key={`${s.name}-${i}`} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500">
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(s)}`} />
+                                {s.name}
+                              </span>
                             ))}
                           </div>
                         )}
