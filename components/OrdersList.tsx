@@ -60,6 +60,15 @@ const STATUS_COLOR: Record<string, string> = {
   DELIVERED: 'bg-slate-100 text-slate-500',
 };
 
+/** 상태 글자색만 — 거래처명과 상태 배지가 **같은 색**이라 카드 한 장의 상태가 한눈에 읽힌다 */
+const STATUS_TEXT: Record<string, string> = {
+  PENDING: 'text-amber-700',
+  PROCESSING: 'text-sky-700',
+  DISPATCHED: 'text-emerald-700',
+  SHIPPED: 'text-indigo-700',
+  DELIVERED: 'text-slate-500',
+};
+
 // ─── Props 타입 ───────────────────────────────────────────────────────────────
 
 interface OrdersListProps {
@@ -277,7 +286,7 @@ export const OrderCard = memo<OrderCardProps>(({
     >
       <div className={`flex justify-between items-start ${isCollapsed ? 'mb-1.5' : 'mb-3'}`}>
         <div className="flex-1 min-w-0 flex items-center gap-1.5">
-          <h4 className="font-bold text-slate-800 leading-tight text-sm break-words">{displayName}</h4>
+          <h4 className={`font-bold leading-tight text-sm break-words ${STATUS_TEXT[order.status] ?? 'text-slate-800'}`}>{displayName}</h4>
           {nonHyangmiyuItems.length > 0 && (
             <button
               type="button"
@@ -287,40 +296,42 @@ export const OrderCard = memo<OrderCardProps>(({
               {completedItems}/{totalItems}
             </button>
           )}
-          <div className="relative shrink-0">
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setShowStatusPicker(p => !p); }}
-              className={`text-[8px] font-black px-1.5 py-0.5 rounded transition-all ${STATUS_COLOR[order.status] || 'bg-slate-100 text-slate-500'}`}
+        </div>
+        {/* 주문 상태 — 카드 **우측 상단**. 거래처명 옆에 두니 이름이 길 때 밀려 안 보였다.
+            드롭다운은 오른쪽 기준으로 펼친다(왼쪽 기준이면 카드 밖으로 나간다). */}
+        <div className="relative shrink-0">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setShowStatusPicker(p => !p); }}
+            className={`text-[10px] font-black transition-all hover:opacity-70 ${STATUS_TEXT[order.status] ?? 'text-slate-500'}`}
+          >
+            {STATUS_LABEL[order.status] ?? order.status}
+          </button>
+          {showStatusPicker && (
+            <div
+              className="absolute top-full right-0 mt-1 z-50 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden flex flex-col min-w-[72px]"
+              onClick={(e) => e.stopPropagation()}
             >
-              {STATUS_LABEL[order.status] ?? order.status}
-            </button>
-            {showStatusPicker && (
-              <div
-                className="absolute top-full left-0 mt-1 z-50 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden flex flex-col min-w-[72px]"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {([
-                  [OrderStatus.PENDING,    '대기중',   'hover:bg-amber-50 text-amber-700'],
-                  [OrderStatus.PROCESSING, '작업중',   'hover:bg-sky-50 text-sky-700'],
-                  [OrderStatus.DISPATCHED, '작업완료', 'hover:bg-emerald-50 text-emerald-700'],
-                ] as [OrderStatus, string, string][]).map(([st, label, cls]) => (
-                  <button
-                    key={st}
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onUpdateStatus(order.id, st);
-                      setShowStatusPicker(false);
-                    }}
-                    className={`px-3 py-2 text-[10px] font-black text-left transition-all ${cls} ${order.status === st ? 'opacity-40 cursor-default' : ''}`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+              {([
+                [OrderStatus.PENDING,    '대기중',   'hover:bg-amber-50 text-amber-700'],
+                [OrderStatus.PROCESSING, '작업중',   'hover:bg-sky-50 text-sky-700'],
+                [OrderStatus.DISPATCHED, '작업완료', 'hover:bg-emerald-50 text-emerald-700'],
+              ] as [OrderStatus, string, string][]).map(([st, label, cls]) => (
+                <button
+                  key={st}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onUpdateStatus(order.id, st);
+                    setShowStatusPicker(false);
+                  }}
+                  className={`px-3 py-2 text-[10px] font-black text-left transition-all ${cls} ${order.status === st ? 'opacity-40 cursor-default' : ''}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         {isEditing && (
           <button
