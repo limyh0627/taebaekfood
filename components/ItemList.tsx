@@ -46,8 +46,8 @@ import OemManager from './OemManager';
 import CategoryManager from './CategoryManager';
 import { buildTaxonomy, TaxonomyRow } from '../src/shared/taxonomy';
 import { RM_LIST, unitOf, baseRawName, lotStockInUnit, unitToKg, lotKgRemaining, parsePackageKg, parseSpecUnit, parseSpecCount } from '../src/constants/formula';
-import { catOrder, CATEGORY_ORDER_LEN, categoryChipClass, ProductSpecChip, splitNameVolume } from '../src/shared/productChip';
-import { subChipClass } from '../src/shared/submaterialStyle';
+import { catOrder, CATEGORY_ORDER_LEN, categoryChipClass, specText, splitNameVolume } from '../src/shared/productChip';
+import { subDotClass } from '../src/shared/submaterialStyle';
 import { isSubmaterial } from '../src/shared/types';
 import { matchesSearch } from '../src/shared/hangul';
 import { mutateRawMaterialLots, addItem, subscribeToCollection, fetchCollection } from '../src/shared/services/firebaseService';
@@ -3306,8 +3306,20 @@ const ItemList: React.FC<ItemListProps> = ({
               if (!isChild) lastGroup = stockGroupOf(p);
               return { itemId: p.id, label: withSpec(p), boxes: closingCounts[p.id]?.boxes ?? '', loose: closingCounts[p.id]?.loose ?? '', editable: true, isChild, group: lastGroup };
             });
-            return rows.sort((a, b) => stockGroupRank(a.group) - stockGroupRank(b.group)
-              || (a.group ?? '').localeCompare(b.group ?? ''));   // 정렬은 안정적 — 낱개·박스 순서 유지
+            // 분류 안에서는 **품목명 순**. 낱개와 박스는 한 덩어리로 묶어서 옮긴다 —
+            // 이름으로 그냥 줄 세우면 박스가 부모(낱개)에서 떨어져 짝을 못 찾는다.
+            const blocks: GridRow[][] = [];
+            for (const r of rows) {
+              if (r.isChild && blocks.length) blocks[blocks.length - 1].push(r);
+              else blocks.push([r]);
+            }
+            blocks.sort((A, B) => {
+              const a = A[0], b = B[0];
+              return stockGroupRank(a.group) - stockGroupRank(b.group)
+                || (a.group ?? '').localeCompare(b.group ?? '')
+                || String(a.label).localeCompare(String(b.label), 'ko');
+            });
+            return blocks.flat();
           })();
       // 구분=작업완료: 작업완료분이 있는 품목만 남긴다.
       if (!src && closingView === 'dispatched') listRows = listRows.filter(r => dispatchedOf(r.itemId) > 0);
@@ -3476,12 +3488,13 @@ const ItemList: React.FC<ItemListProps> = ({
                             </span>
                           )}
                           {r.label}
-                          {/* 규격 칩 — 지금 품목이 있으면 그걸, 없으면(옛 스냅샷) 저장된 규격을 쓴다 */}
-                          {(product ?? (r.spec ? { name: r.label, spec: r.spec } : null)) && (
-                            <span className="ml-1.5 align-middle">
-                              <ProductSpecChip product={product ?? { name: r.label, spec: r.spec! }} />
-                            </span>
-                          )}
+                          {/* 규격 — 색 칩을 벗기고 품목명과 같은 크기로 옆에 붙인다.
+                              칠해 두면 품목명보다 규격이 먼저 읽힌다(주문카드와 같은 규칙). */}
+                          {(() => {
+                            const _p = product ?? (r.spec ? { name: r.label, spec: r.spec } : null);
+                            const sp = _p ? (specText(_p.spec) || splitNameVolume(_p).vol) : '';
+                            return sp ? <span className="ml-1.5 align-middle font-normal text-slate-400">{sp}</span> : null;
+                          })()}
                         </span>
                         {(() => {
                           // 챙길 물건만 — 내용물(반제품·원료)과 벌크는 통에서 나오므로 뺀다
@@ -3490,9 +3503,10 @@ const ItemList: React.FC<ItemListProps> = ({
                             .filter((c): c is Item => !!c && c.category === 'submaterial' && !isBulkItem(c) && !c.phantom);
                           if (chips.length === 0) return null;
                           return (
-                            <span className="flex flex-wrap items-center gap-1 mt-5">
+                            <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
                               {chips.map(c => (
-                                <span key={c.id} className={`text-[10px] font-bold px-1.5 py-0.5 rounded border leading-tight ${subChipClass(c)}`}>
+                                <span key={c.id} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 shrink-0">
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(c)}`} />
                                   {c.name}
                                 </span>
                               ))}
