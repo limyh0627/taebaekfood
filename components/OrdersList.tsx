@@ -536,17 +536,22 @@ export const OrderCard = memo<OrderCardProps>(({
                             </span>
                           );
                         })}
-                        {/* 구성품 완제품(박스 안의 낱개)은 **맨 뒤**. 부자재와 급이 달라 섞이면 헷갈린다.
-                            눌러서 그 낱개의 부자재를 펼친다 — 화살표 없이 점만 두고 색으로 구분한다. */}
-                        {bomProducts.map(({ p, qty }) => (
-                          <button key={p.id} type="button"
-                            onClick={(e) => { e.stopPropagation(); setExpandedItemBom(prev => { const n = new Set(prev); n.has(rowKey) ? n.delete(rowKey) : n.add(rowKey); return n; }); }}
-                            className="inline-flex items-center gap-1 text-[11px] font-black text-indigo-500 shrink-0 hover:text-indigo-700">
-                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${open ? 'bg-indigo-600' : 'bg-indigo-300'}`} />
-                            {abbrev(p.name)}{qty > 1 ? `×${qty}` : ''}
-                          </button>
-                        ))}
                       </div>
+                      {/* 구성품 완제품(박스 안의 낱개)은 **줄을 따로 쓴다.** 부자재와 급이 달라
+                          같은 줄에 섞이면 어디까지가 부자재인지 흐려진다.
+                          눌러서 그 낱개의 부자재를 펼친다 — 화살표 없이 점만 두고 색으로 구분한다. */}
+                      {bomProducts.length > 0 && (
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 pl-[20px]">
+                          {bomProducts.map(({ p, qty }) => (
+                            <button key={p.id} type="button"
+                              onClick={(e) => { e.stopPropagation(); setExpandedItemBom(prev => { const n = new Set(prev); n.has(rowKey) ? n.delete(rowKey) : n.add(rowKey); return n; }); }}
+                              className="inline-flex items-center gap-1 text-[11px] font-black text-indigo-500 shrink-0 hover:text-indigo-700">
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${open ? 'bg-indigo-600' : 'bg-indigo-300'}`} />
+                              {abbrev(p.name)}{qty > 1 ? `×${qty}` : ''}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       {open && bomProducts.map(({ p }) => {
                         // 펼친 낱개의 부자재 — 벌크는 여기서도 뺀다
                         const cSubs = (p.submaterials ?? []).filter(cs => {
