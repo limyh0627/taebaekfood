@@ -411,7 +411,7 @@ export const OrderCard = memo<OrderCardProps>(({
           </div>
         ) : (
           /* 보기 모드 */
-          <div className="space-y-1">
+          <div className="space-y-2.5">
             {/* 접힌 상태: 완료 요약만 표시 */}
             {/* 일반 품목 (완제품): 펼쳐진 상태에서만 표시 */}
             {!isCollapsed && order.items.filter(item => {
@@ -434,7 +434,7 @@ export const OrderCard = memo<OrderCardProps>(({
                 .replace(/들향기름골드/g, '들향골드').replace(/참향기름/g, '참향')
                 .replace(/들향기름/g, '들향').replace(/맛기름/g, '맛');
               return (
-                <div key={idx} className="flex flex-col border-b border-slate-50 pb-1 last:border-0 cursor-pointer select-none" onClick={(e) => { e.stopPropagation(); onToggleItemChecked?.(order.id, idx, currentUserName); }}>
+                <div key={idx} className="flex flex-col border-b border-slate-100 pb-2.5 last:border-0 last:pb-0 cursor-pointer select-none" onClick={(e) => { e.stopPropagation(); onToggleItemChecked?.(order.id, idx, currentUserName); }}>
                   <div className="flex items-center text-[12px] font-bold">
                     <div className={`mr-1.5 shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`}>
                       {isItemChecked ? <CheckSquare size={14} /> : <Square size={14} />}
@@ -462,13 +462,20 @@ export const OrderCard = memo<OrderCardProps>(({
                   </div>
                   {/* 라벨 상태·소비기한 — **품목명 바로 밑**. 부자재보다 먼저 챙기는 정보라 위로 올린다.
                       소비기한은 안 정해져 있어도 자리를 지킨다: 비어 있다는 걸 보여야 채워 넣는다. */}
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 pl-[20px]">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1.5 pl-[20px]">
                     <button type="button" onClick={(e) => { e.stopPropagation(); const ni = [...order.items]; ni[idx] = { ...ni[idx], labelType: next }; onUpdateItems?.(order.id, ni); }}
                       className={`text-[11px] font-black px-1.5 py-0.5 rounded border transition-all shrink-0 ${colorMap[current]}`}>{current}</button>
-                    <span className="text-[11px] font-bold text-slate-400 shrink-0">
-                      소비기한 {item.mfgDate
+                    {/* 눌러서 제조일을 고르면 1년 뒤로 소비기한이 잡힌다.
+                        날짜 입력을 글자 위에 투명하게 얹어 네이티브 달력이 뜨게 한다. */}
+                    <span className="relative inline-flex items-center text-[11px] font-bold text-slate-400 shrink-0 hover:text-slate-600"
+                      title="제조일을 고르면 1년 뒤로 소비기한이 잡힙니다">
+                      소비기한&nbsp;{item.mfgDate
                         ? <span className="text-slate-600">~{(() => { const d = new Date(item.mfgDate!); d.setFullYear(d.getFullYear() + 1); return d.toISOString().slice(2, 10); })()}</span>
-                        : <span className="text-slate-300">미설정</span>}
+                        : <span className="text-slate-300 underline decoration-dotted underline-offset-2">미설정</span>}
+                      <input type="date" value={item.mfgDate || ''}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => { e.stopPropagation(); handleExpirationDateChange(idx, e.target.value); }}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                     </span>
                     {item.checked && item.checkedBy && (
                       <span className="text-[11px] font-bold text-slate-400 shrink-0">{item.checkedBy}</span>
@@ -516,7 +523,9 @@ export const OrderCard = memo<OrderCardProps>(({
                     const open = expandedItemBom.has(rowKey);
                     return (
                       <>
-                      <div className={`mt-0.5 ${gridCols >= 2 ? 'grid grid-cols-2 md:flex md:flex-wrap md:items-center gap-x-1 gap-y-0.5 md:gap-1 md:pl-[20px]' : 'flex flex-wrap items-center gap-x-1 gap-y-0.5 pl-[20px]'}`}>
+                      {/* 칩이던 시절엔 폭이 넓어 2칸 그리드로 눌러 담았는데, 점 표기라 짧아졌다.
+                          그냥 흐르게 두면 모바일에서 완제품이 혼자 줄바꿈되지 않는다. */}
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 pl-[20px]">
                         {/* 부자재 — 칩으로 칠하면 배경이 글자보다 먼저 읽힌다. 이름 앞에 점만 찍는다: ● 테이프-빨강 */}
                         {allSubs.map(sm => {
                           const _s = items.find(p => p.id === sm.id) ?? { name: sm.name };
