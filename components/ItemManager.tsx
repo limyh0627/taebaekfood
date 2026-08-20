@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X, Copy, ChevronDown, ChevronUp, ChevronRight, GitMerge, Save, Settings, Store, Package, User, Truck, ArrowLeftRight } from 'lucide-react';
+import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X, Copy, ChevronDown, ChevronUp, ChevronRight, GitMerge, Save, Settings, Store, Package, User, Truck, ChevronLeft } from 'lucide-react';
 import { Item, InventoryCategory, Partner, PartnerItem, ItemBom } from '../types';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
@@ -1206,21 +1206,21 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                   <div className="flex items-center gap-2 flex-wrap">
                     <div className="flex flex-col min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
+                        {/* 뒤로가기 — 거래처 이름 바로 왼쪽. 목록으로 돌아가는 것이니 이름 옆이 제자리다. */}
+                        <button
+                          onClick={() => { setSelectedClientId(null); setPage(1); setSearchTerm(''); }}
+                          title="거래처 목록으로"
+                          className="shrink-0 -ml-1 p-1 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-all"
+                        >
+                          <ChevronLeft size={18} />
+                        </button>
                         <h4 className="font-black text-slate-900 text-base truncate">{selectedClient?.name}</h4>
                         {selectedClient?.type && (
                           <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-black shrink-0">{selectedClient.type}</span>
                         )}
                       </div>
-                      <p className="text-[11px] text-slate-400 font-bold mt-0.5">{filteredItems.length}개 품목</p>
+                      <p className="text-[11px] text-slate-400 font-bold mt-0.5 pl-6">{filteredItems.length}개 품목</p>
                     </div>
-                    {/* 거래처 바꾸기 — 거래처 이름 **바로 옆**이 제자리다.
-                        전엔 맨 오른쪽에 밑줄 글자 '변경'으로 있어 버튼인 줄도 몰랐다. */}
-                    <button
-                      onClick={() => { setSelectedClientId(null); setPage(1); setSearchTerm(''); }}
-                      className="flex items-center gap-1.5 shrink-0 border border-slate-200 text-slate-500 px-3 py-1.5 rounded-xl text-xs font-black hover:border-indigo-300 hover:text-indigo-600 transition-all"
-                    >
-                      <ArrowLeftRight size={13} /> 거래처 바꾸기
-                    </button>
                     {/* 매출/매입 품목 토글 */}
                     <div className="flex bg-slate-100 rounded-lg p-0.5 gap-0.5 shrink-0">
                       <button
