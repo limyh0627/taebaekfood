@@ -13,6 +13,7 @@ import { partnerOpenBalance, allocatePartnerCash } from '../src/features/admin/c
 import { buildJournals } from '../src/shared/buildJournals';
 import type { OpeningBalance } from '../src/shared/autoJournal';
 import { fetchCollection } from '../src/shared/services/firebaseService';
+import { stampFor } from '../src/shared/voucherStamp';
 
 type MainTab = 'analysis' | 'costs' | 'partners' | 'inventory-value' | 'account-settings' | 'cash-flow';
 
@@ -1205,7 +1206,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
               { accountCode: '108', amount: -amt },   // (대) 외상매출금 — 받을 돈이 준다
             ],
             note: `${offsetForm.name} 미수·미지급 상계`,
-            createdAt: new Date().toISOString(),
+            createdAt: stampFor(offsetForm.date),
           } as CashEntry);
           setOffsetForm(null);
         };
@@ -1236,7 +1237,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             accountCode: isSale ? '108' : '251',     // 외상매출금 / 외상매입금
             note: [`${payTarget.partnerName ?? ''} ${isSale ? '수금' : '지불'}`, payForm.method, payForm.note.trim()]
               .filter(Boolean).join(' · '),
-            createdAt: new Date().toISOString(),
+            createdAt: stampFor(payForm.date),
           });
           // 이 전표를 찍고 연 수금이면 **그 전표에 붙인다**(매칭). 금액이 아니라 연결만 붙는 것이라
           // 매칭이 틀려도 거래처 잔액은 안 흔들린다 — 어느 청구서냐만 바뀐다.

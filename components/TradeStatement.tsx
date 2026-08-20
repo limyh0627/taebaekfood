@@ -10,6 +10,7 @@ import * as ExcelJS from 'exceljs';
 import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentMethod, AccountCode, AccountGroup, CashAccount, CashEntry, Settlement, FixedCostTemplate, CompanyId, COMPANIES } from '../types';
 import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchDateRange } from '../src/shared/services/firebaseService';
+import { stampFor } from '../src/shared/voucherStamp';
 import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/shared/orderUnits';
 import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
 import { totalCashOnHand, unsettledStatements, unmatchedCash, partnerOpenBalance, allocatePartnerCash } from '../src/features/admin/cashLedger';
@@ -595,7 +596,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       amount: total,
       ...(first.partnerId ? { partnerId: first.partnerId, partnerName: first.partnerName ?? '' } : {}),
       note: opts.note || `${first.partnerName ?? ''} ${first.type === '매입' ? '지불' : '수금'}`.trim(),
-      createdAt: new Date().toISOString(),
+      createdAt: stampFor(opts.date),
     });
     // 전표 매칭(settlement)은 만들지 않는다 — 잔액은 거래처 단위로만 본다.
     // 어느 청구서를 갚았는지 연결하지 않으니 매칭이 어긋나거나 고아가 될 자리가 없다.
@@ -1216,7 +1217,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     }
     const stmt: IssuedStatement = {
       id: `stmt-${Date.now()}`,
-      issuedAt: new Date().toISOString(),
+      // 시각은 전표 날짜에 맞춰 잡는다 — 소급이면 그날 맨 뒤, 미리 끊으면 맨 앞.
+      issuedAt: stampFor(tradeDate),
       tradeDate,
       type: stmtType,
       partnerId: selectedClientId,
@@ -3496,7 +3498,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const expenseCodes = accountCodes.filter(c => ['비용', '자산', '부채', '자본'].includes(c.type as string)).sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }));
 
         const base = () => ({
-          date: quickPayDate, cashAccountId: quickPayAccountId, createdAt: new Date().toISOString(),
+          date: quickPayDate, cashAccountId: quickPayAccountId, createdAt: stampFor(quickPayDate),
           ...(quickPayClientId ? { partnerId: quickPayClientId, partnerName: selectedClientObj?.name ?? '' } : {}),
         });
 
@@ -3617,7 +3619,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
           const stmt: IssuedStatement = {
             id: `stmt-${Date.now()}`,
-            issuedAt: new Date().toISOString(),
+            issuedAt: stampFor(quickPayDate),
             tradeDate: quickPayDate,
             type: accrType,
             partnerId: quickPayClientId || '',
