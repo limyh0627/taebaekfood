@@ -1326,7 +1326,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
             <div key={col.id}
               onDragOver={e => e.preventDefault()}
               onDrop={e => { e.preventDefault(); const id = e.dataTransfer.getData('orderId'); if (id && col.targetStatus) onUpdateStatus(id, col.targetStatus); }}
-              className={`flex flex-col rounded-3xl border ${col.borderColor} ${col.bgColor} shadow-sm flex-shrink-0`}
+              className={`flex flex-col rounded-3xl border ${col.borderColor} bg-white shadow-sm flex-shrink-0`}
               style={{
                 ...(typeof window !== 'undefined' && window.innerWidth >= 768 ? { width: `calc(${units} * (100vw - 9rem) / 6)` } : {}),
                 minWidth: 280,
@@ -1495,7 +1495,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
           '일반': colOrders.filter(o => o.source === '일반' && o.deliveryBoxes === undefined),
         };
         return (
-          <div className={`flex flex-col rounded-3xl border ${col.borderColor} ${col.bgColor} shadow-sm`}>
+          <div className={`flex flex-col rounded-3xl border ${col.borderColor} bg-white shadow-sm`}>
             <div className="p-5 border-b border-white/50 flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <div className={`p-2 rounded-xl ${col.color} text-white`}><Icon size={20} /></div>
