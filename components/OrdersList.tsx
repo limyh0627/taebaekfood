@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { Order, OrderStatus, Partner, OrderSource, OrderItem, Item, OrderPallet, DeliveryBox, PalletStock, ShippingRule, ItemBom, PartnerItem } from '../types';
 import { isBoxStockItem } from '../src/shared/orderUnits';
-import { splitNameVolume, ProductSpecChip } from '../src/shared/productChip';
+import { splitNameVolume, specText } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
 import { subChipClass } from '../src/shared/submaterialStyle';
 
@@ -425,15 +425,25 @@ export const OrderCard = memo<OrderCardProps>(({
                       {isItemChecked ? <CheckSquare size={14} /> : <Square size={14} />}
                     </div>
                     <span className={`break-words min-w-0 ${isItemChecked ? 'text-emerald-800 line-through opacity-50' : 'text-slate-700'}`}>{abbrev(baseName(item.name))}</span>
-                    {/* 규격 — 용량별 고정색 칩. 옆 배지는 주문량이라 개입수를 알 수 없다 */}
-                    {productInfo && <span className="ml-1.5 shrink-0"><ProductSpecChip product={productInfo} /></span>}
-                    <span className={`ml-1.5 px-1 py-0.5 rounded text-[8px] font-black shrink-0 ${isItemChecked ? 'text-emerald-700 bg-emerald-100' : 'text-indigo-600 bg-indigo-50'}`}>
-                      {item.isBoxUnit && item.boxQuantity
-                        ? item.unitsPerBox
-                          ? `${item.boxQuantity}박스(${item.quantity}개)`
-                          : `${item.boxQuantity}박스`
-                        : `${item.quantity}${productInfo?.unit || '개'}`}
-                    </span>
+                    {/* 규격 — 품목과 **같은 크기, 색 없이**. 칩으로 칠해 두면 품목보다 눈에 먼저 띈다. */}
+                    {(() => {
+                      const sp = productInfo ? (specText(productInfo.spec) || splitNameVolume(productInfo).vol) : '';
+                      return sp ? <span className={`ml-1.5 shrink-0 ${isItemChecked ? 'text-emerald-800 opacity-50' : 'text-slate-400'}`}>{sp}</span> : null;
+                    })()}
+                    {/* 주문수량 — 배지 없이 오른쪽 끝에. 수량은 굵게, 단위는 얇게. 카드에서 제일 먼저 읽는 값이다. */}
+                    {(() => {
+                      const box = item.isBoxUnit && item.boxQuantity;
+                      const qty = box ? item.boxQuantity! : item.quantity;
+                      const unit = box ? '박스' : (productInfo?.unit || '개');
+                      const sub = box && item.unitsPerBox ? `${item.quantity}개` : '';
+                      return (
+                        <span className={`ml-auto pl-1.5 shrink-0 whitespace-nowrap ${isItemChecked ? 'opacity-50' : ''}`}>
+                          <span className={`text-sm font-black ${isItemChecked ? 'text-emerald-800' : 'text-slate-800'}`}>{qty}</span>
+                          <span className="text-[10px] font-normal text-slate-400 ml-0.5">{unit}</span>
+                          {sub && <span className="text-[10px] font-normal text-slate-300 ml-1">{sub}</span>}
+                        </span>
+                      );
+                    })()}
                   </div>
                   {(() => {
                     // 박스 품목이면 카톤/테이프 표시, 낱개(비박스)면 출고 카톤·테이프는 뺀다(박스=품목).
