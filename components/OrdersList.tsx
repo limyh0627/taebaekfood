@@ -568,7 +568,11 @@ export const OrderCard = memo<OrderCardProps>(({
                                 {isItemChecked ? <CheckSquare size={12} /> : <Square size={12} />}
                               </div>
                               <span className={`${isItemChecked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{abbrev(baseName(item.name))}</span>
-                              {(() => { const _p = items.find(p => p.id === item.itemId); return _p ? <ProductSpecChip product={_p} /> : null; })()}
+                              {(() => {
+                                const _p = items.find(p => p.id === item.itemId);
+                                const sp = _p ? (specText(_p.spec) || splitNameVolume(_p).vol) : '';
+                                return sp ? <span className="ml-1.5 shrink-0 text-slate-400">{sp}</span> : null;
+                              })()}
                             </div>
                             <span className={`text-[8px] font-black shrink-0 ${isItemChecked ? 'text-emerald-700 bg-emerald-100' : 'text-teal-600 bg-teal-50'} px-1 py-0.5 rounded`}>
                               {item.isBoxUnit && item.boxQuantity ? `${item.boxQuantity}B` : `${item.quantity}개`}
@@ -591,7 +595,11 @@ export const OrderCard = memo<OrderCardProps>(({
                                 {isItemChecked ? <CheckSquare size={12} /> : <Square size={12} />}
                               </div>
                               <span className={`${isItemChecked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{baseName(item.name)}</span>
-                              {(() => { const _p = items.find(p => p.id === item.itemId); return _p ? <ProductSpecChip product={_p} /> : null; })()}
+                              {(() => {
+                                const _p = items.find(p => p.id === item.itemId);
+                                const sp = _p ? (specText(_p.spec) || splitNameVolume(_p).vol) : '';
+                                return sp ? <span className="ml-1.5 shrink-0 text-slate-400">{sp}</span> : null;
+                              })()}
                             </div>
                             <span className={`text-[8px] font-black shrink-0 ${isItemChecked ? 'text-emerald-700 bg-emerald-100' : 'text-orange-600 bg-orange-50'} px-1 py-0.5 rounded`}>
                               {item.isBoxUnit && item.boxQuantity ? `${item.boxQuantity}B` : `${item.quantity}개`}
