@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, LayoutGrid, Layers } from 'lucide-react';
-import { Item, PartnerItem, OrderItem, Order, Partner, OrderSource, OrderPallet, PalletStock, ShippingRule } from '../types';
+import { Item, PartnerItem, OrderItem, Order, Partner, OrderSource, OrderPallet, PalletStock } from '../types';
 import { bomQty } from '../src/shared/bom';
 import { unpackComponent, isBoxStockItem, boxSiblings, boxDerivedUnitPrice, unitsPerBoxOf } from '../src/shared/orderUnits';
 import { subDotClass } from '../src/shared/submaterialStyle';
@@ -11,7 +11,6 @@ interface AddOrderModalProps {
   items: Item[];
   partners: Partner[];
   partnerItems?: import('../src/shared/types').PartnerItem[];
-  shippingRules?: ShippingRule[];
   palletStocks: PalletStock[];
   submaterials?: Item[];
   onClose: () => void;
@@ -42,7 +41,7 @@ const matchClient = (name: string, query: string): boolean => {
   return name.toLowerCase().includes(q.toLowerCase());
 };
 
-const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerItems, shippingRules = [], palletStocks, submaterials: _submaterials, onClose, onSave }) => {
+const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerItems, palletStocks, submaterials: _submaterials, onClose, onSave }) => {
   const products = items;
   const submaterials = _submaterials ?? items.filter(i => i.category !== 'product');
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
@@ -166,7 +165,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
     if (p.partnerIds?.includes(selectedClient.id)) return true;
     if (selectedClient.type === '스마트스토어' && p.partnerIds?.includes('SMARTSTORE')) return true;
     if (selectedClient.type === '스마트스토어' && p.isSmartStore) return true;
-    if (p.isRawMaterial && shippingRules.some(r => r.item_id === p.id && r.partner_id === selectedClient.id)) return true;
+
     return false;
   };
   // 낱개↔박스가 짝인데 거래처마다 노출 명단이 다르다 — 그룹의 아무 변형이나 주문 가능하면 낱개를 앵커로 띄운다
@@ -188,7 +187,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
         const diff = catOrder(catOf(a)) - catOrder(catOf(b));
         return diff !== 0 ? diff : a.name.localeCompare(b.name, 'ko');
       });
-  }, [products, selectedClient, shippingRules]);
+  }, [products, selectedClient]);
 
   // 개봉은 여기 없다 — 재고관리(재고현황) 화면의 박스 품목 행에서 한다.
   //  주문을 받는 화면이 창고 재고를 직접 바꾸면, 주문을 취소해도 개봉은 남고
@@ -247,23 +246,6 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
       if (product.category !== 'product' || !selectedClient) continue;
       const actualQty = item.isBoxUnit && item.unitsPerBox > 0 ? qty * item.unitsPerBox : qty;
 
-      // 통합 품목(isRawMaterial): shipping_rule 기반으로 박스/테이프 부자재 조회
-      if (product.isRawMaterial) {
-        const rule = shippingRules.find(r => r.item_id === product.id && r.partner_id === selectedClient.id);
-        if (rule) {
-          const boxSize = rule.qty_per_box || 1;
-          const boxesNeeded = Math.ceil(actualQty / boxSize);
-          if (rule.box_item_id) {
-            const sub = submaterials.find(sm => sm.id === rule.box_item_id);
-            if (sub) {
-              if (!usage[sub.id]) usage[sub.id] = { name: sub.name, needed: 0, stock: sub.stock };
-              usage[sub.id].needed += boxesNeeded;
-            }
-          }
-        }
-        continue;
-      }
-
       const pc = partnerOut.find(p => p.itemId === product.id && p.partnerId === selectedClient.id);
       const boxSize = pc?.qtyPerBox || item.unitsPerBox || 1;
       const boxesNeeded = Math.ceil(actualQty / boxSize);
@@ -279,7 +261,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
       const unpack = unpackComponent(product);
       const stockQty = unpack ? (item.isBoxUnit ? qty : actualQty / unpack.count) : actualQty;
       for (const s of (product.submaterials || [])) {
-        if (s.category === 'box') continue;   // 겉박스는 shipping_rule 경로 · 테이프는 BOM 수량 0으로
+        // 겉박스·테이프도 BOM으로 센다 — 거래처별 포장설정(shipping_rule)은 폐기했다.
         const sub = submaterials.find(sm => sm.id === s.id);
         if (!sub) continue;
         if (!usage[sub.id]) usage[sub.id] = { name: sub.name, needed: 0, stock: sub.stock };
@@ -287,26 +269,15 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
       }
     }
     return Object.values(usage).filter(v => v.needed > v.stock);
-  }, [selectedItems, selectedClient, products, partnerOut, submaterials, shippingRules]);
+  }, [selectedItems, selectedClient, products, partnerOut, submaterials]);
 
-  // 거래처별 박스 설정 조회 — shippingRules 기반
-  const getClientBoxConfigs = (itemId: string, partnerId?: string): { unitsPerBox: number; boxType: string; boxSubId?: string }[] => {
-    if (partnerId) {
-      const rule = shippingRules.find(r => r.item_id === itemId && r.partner_id === partnerId);
-      if (rule?.qty_per_box) {
-        return [{ unitsPerBox: rule.qty_per_box, boxType: rule.box_item_id ?? '', boxSubId: rule.box_item_id }];
-      }
-    }
+  // 박스 설정 — 품목이 들고 있는 것만 본다(거래처별 포장설정은 폐기).
+  const getClientBoxConfigs = (itemId: string, _partnerId?: string): { unitsPerBox: number; boxType: string; boxSubId?: string }[] => {
     const p = items.find(pr => pr.id === itemId);
     if (p?.defaultBoxConfig?.unitsPerBox) return [p.defaultBoxConfig];
     return [];
   };
-
-  // 품목의 거래처별 포장 규격 목록 (shipping_rule 기반)
-  const getItemCustomerConfigs = (itemId: string, partnerId?: string) => {
-    if (!partnerId) return [];
-    return shippingRules.filter(r => r.item_id === itemId && (r.partner_id === partnerId || !r.partner_id));
-  };
+  const getItemCustomerConfigs = (_itemId: string, _partnerId?: string): { id: string; box_item_id?: string; qty_per_box?: number }[] => [];
 
   // 선택 1건을 어떻게 초기화할지 — 토글·변형 전환에서 공유
   const buildSelection = (itemId: string): typeof selectedItems[0] => {

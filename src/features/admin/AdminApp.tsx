@@ -62,7 +62,7 @@ import {
   FolderOpen,
   BookOpen,
 } from 'lucide-react';
-import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, ShippingRule, poLines, CompanyId, COMPANIES, TAEBAEK, companyOf } from '../../shared/types';
+import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, poLines, CompanyId, COMPANIES, TAEBAEK, companyOf } from '../../shared/types';
 import { canAutoIssue, autoVoucherId, buildCashVoucher, buildStatementVoucher, dirOf, isCashDir } from '../../shared/autoVoucher';
 import PageHeader from '../../shared/components/PageHeader';
 import Dashboard from '../../../components/Dashboard';
@@ -180,7 +180,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     noticePosts, chatRooms, chatMessages,
     rawMaterialLedger, sesameInputLedger,
     appNotifications, workOrderItems, issuedStatements: allIssuedStatements,
-    itemFormulas, itemBoms, shippingRules, returnRequests, companyInfo, inventorySnapshots, productionSalesLogs, isDataLoading,
+    itemFormulas, itemBoms, returnRequests, companyInfo, inventorySnapshots, productionSalesLogs, isDataLoading,
     pendingStatementEdits, refreshStaticData,
     historicalOrders, loadHistoricalOrders, isLoadingHistoricalOrders,
     ordersMonths, setOrdersMonths,
@@ -720,26 +720,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
         if (kg > 0) rawUsageKg[f.raw] = (rawUsageKg[f.raw] ?? 0) + kg;
       }
 
-      // 거래처별 포장 설정에서 박스/테이프 조회 (shippingRules 기반)
-      const rule = partnerId ? shippingRules.find(r => r.item_id === product.id && r.partner_id === partnerId) : null;
-      const unitsPerBox = rule?.qty_per_box || item.unitsPerBox || 1;
-      const boxesNeeded = item.isBoxUnit && item.boxQuantity
-        ? item.boxQuantity
-        : Math.ceil(item.quantity / unitsPerBox);
-
-      // 박스 부족 체크 (shippingRules 기반)
-      if (rule?.box_item_id) {
-        const boxSub = submaterials.find(sm => sm.id === rule.box_item_id);
-        if (boxSub) {
-          usage[boxSub.id] = { name: boxSub.name, needed: (usage[boxSub.id]?.needed ?? 0) + boxesNeeded, unit: '개' };
-        }
-      }
-
-      // BOM 구성품 — 겉박스만 뺀다(shipping_rule이 따로 차감). 테이프는 BOM 수량 0으로 막는다.
+      // 겉박스·테이프는 이제 **박스 품목 BOM**에 들어 있다 — 거래처별 포장설정(shipping_rule)은 폐기.
+      // 그래서 여기서 따로 세지 않고 아래 BOM 순회가 통째로 맡는다.
       for (const s of (product.submaterials || [])) {
         const sub = submaterials.find(sm => sm.id === s.id);
-        if (!sub || sub.category === 'box' ||
-            (sub.category === 'submaterial' && sub.subtype === '박스')) continue;
+        if (!sub) continue;
         // 원료 홀더(raw/wip)는 kg 단위라 '개' 집계가 틀림 → 위 원료식(kg) 경로에서 체크
         if (sub.category === 'raw' || sub.category === 'wip') continue;
         // 재고 1단위 × BOM 수량 — 이중캡 ×2, 180ml캡 ×3 같은 것
@@ -1017,7 +1002,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // ── 생산/출고 분리 재고 엔진 → 도메인 모듈(orderStockEngine)로 분리. 매 렌더 데이터/쓰기 함수 주입. ──
   const { changeOrderStatus } = createOrderStockEngine({
-    allItems, shippingRules, submaterials, partners, allOrders, orders, db,
+    allItems, submaterials, partners, allOrders, orders, db,
     buildFormula, createProductionRecordsForOrder, mutateRawMaterialLots, updateItem, addItem,
   });
 
@@ -1673,7 +1658,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
               partners={partners}
               items={allItems}
               partnerItems={partnerItems}
-              shippingRules={shippingRules}
               itemBoms={itemBoms}
               isLoadingHistoricalOrders={isLoadingHistoricalOrders}
               onLoadHistoricalOrders={loadHistoricalOrders}
@@ -4213,7 +4197,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     }
                     await batch.commit();
                   }}
-                  shippingRules={shippingRules}
                   itemBoms={itemBoms}
                   onUpsertPartnerItem={(ps) => upsertPartnerItemSafe(ps, 'out')}
                   onSaveItemCustomer={async (ic: Partial<import('../../shared/types').PartnerItem> & { id: string }) => {
@@ -4226,19 +4209,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       Object.entries(rest).filter(([, v]) => v !== undefined)
                     );
                     await fUpdate(fDoc(fireDb, 'partner_item', id), data);
-                    refreshStaticData();
-                  }}
-                  onSaveShippingRule={async (rule: Partial<import('../../shared/types').ShippingRule> & { id: string }) => {
-                    const { doc: fDoc, updateDoc: fUpdate } = await import('firebase/firestore');
-                    const { db: fireDb } = await import('../../shared/firebase');
-                    const { id, ...data } = rule;
-                    await fUpdate(fDoc(fireDb, 'shipping_rule', id), data);
-                    refreshStaticData();
-                  }}
-                  onAddShippingRule={async (rule: Omit<import('../../shared/types').ShippingRule, 'id'>) => {
-                    const { addDoc, collection: col } = await import('firebase/firestore');
-                    const { db: fireDb } = await import('../../shared/firebase');
-                    await addDoc(col(fireDb, 'shipping_rule'), rule);
                     refreshStaticData();
                   }}
                 />
@@ -4331,7 +4301,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           correctPassword={companyInfo?.adminPassword || '0000'}
         />
       )}
-      {isAddOrderOpen && <AddOrderModal items={allItems} partners={partners} partnerItems={partnerItems} shippingRules={shippingRules} palletStocks={pallets} submaterials={submaterials} onClose={() => setIsAddOrderOpen(false)} onSave={async (o) => {
+      {isAddOrderOpen && <AddOrderModal items={allItems} partners={partners} partnerItems={partnerItems} palletStocks={pallets} submaterials={submaterials} onClose={() => setIsAddOrderOpen(false)} onSave={async (o) => {
         try {
           console.log('[AddOrder] 저장 시작', o);
           const orderId = `ORD-${Date.now()}`;
@@ -4392,21 +4362,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           }}
           partners={partners}
           partnerItems={partnerItems}
-          shippingRules={shippingRules}
           onClose={() => {setIsProductModalOpen(false); setEditingProduct(null);}}
-          onSaveShippingRule={async (rule: Partial<ShippingRule> & { id: string }) => {
-            const { doc: fDoc, updateDoc: fUpdate } = await import('firebase/firestore');
-            const { db: fireDb } = await import('../../shared/firebase');
-            const { id, ...data } = rule;
-            await fUpdate(fDoc(fireDb, 'shipping_rule', id), data);
-            refreshStaticData();
-          }}
-          onAddShippingRule={async (rule: Omit<ShippingRule, 'id'>) => {
-            const { addDoc, collection: col } = await import('firebase/firestore');
-            const { db: fireDb } = await import('../../shared/firebase');
-            await addDoc(col(fireDb, 'shipping_rule'), rule);
-            refreshStaticData();
-          }}
           onUpsertPartnerItem={(ps: PartnerItem) => upsertPartnerItemSafe(ps, 'in')}
           onDeletePartnerItem={(id: string) => { deleteItem('partner_item', id); refreshStaticData(); }}
           onAddSubmaterial={async (name, category) => {

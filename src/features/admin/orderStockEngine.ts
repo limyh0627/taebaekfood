@@ -1,6 +1,6 @@
 import { doc, setDoc, deleteDoc, getDoc, Firestore } from 'firebase/firestore';
 import { isBulkItem } from '../../shared/itemTaxonomy';
-import { Order, OrderItem, Item, OrderStatus, AppNotification, ShippingRule, Partner, RawMaterialLot } from '../../shared/types';
+import { Order, OrderItem, Item, OrderStatus, AppNotification, Partner, RawMaterialLot } from '../../shared/types';
 import { toKg, baseRawName, lotStockInUnit, unitToKg } from '../../constants/formula';
 import { deductFromLots, withCarryOverLot, buildReceiveLot, deductLotsByQty, restoreLotsByQty } from '../../shared/lotUtils';
 import type { ProductLotTake } from '../../shared/lotUtils';
@@ -34,7 +34,6 @@ export type StockUsePlan = Record<number, StockUseChoice>;
  */
 export interface OrderStockEngineDeps {
   allItems: Item[];
-  shippingRules: ShippingRule[];
   submaterials: Item[];
   partners: Partner[];
   allOrders: Order[];
@@ -73,7 +72,7 @@ export const isGoodsItem = (p: Item) =>
   p.procureType === '완사입' || p.procureType === '임가공';
 
 export function createOrderStockEngine(deps: OrderStockEngineDeps) {
-  const { allItems, shippingRules, submaterials, partners, allOrders, orders, db,
+  const { allItems, submaterials, partners, allOrders, orders, db,
     buildFormula, createProductionRecordsForOrder, mutateRawMaterialLots, updateItem, addItem } = deps;
 
   const goodsShipQty = (item: OrderItem, product: Item) => {
@@ -104,7 +103,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   };
 
   // 겉박스·테이프는 BOM으로만 깎는다. 박스 품목을 만들 때 그 BOM에 들어 있고,
-  // 낱개 BOM에는 애초에 두지 않는다 — 거래처별 배송규칙(shipping_rule) 경로는 폐기했다.
+  // 낱개 BOM에는 애초에 두지 않는다 — 거래처별 배송규칙 경로는 폐기했다.
 
   // 원료 kg 적재 = **item_bom(BOM) 반제품** 기준(등급). 로트·원장 둘 다 이걸로.
   //  · phantom 반제품(참기름특A 등) → buildFormula로 통깨/깨분 leaf 전개
@@ -153,7 +152,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
    *
    * 완제품 구성품(선물세트에 든 병 등)이 모자라면 그만큼 **먼저 만든다**: 재고를 채우고
    * 그 병의 BOM·원료까지 재귀로 내려간다. 만든 수량은 autoBuilt에 남겨 되돌리기 때 쓴다.
-   * 겉박스·테이프는 BOM 밖(shipping_rule)이라 여기서 제외한다.
+   * 겉박스·테이프는 박스 품목 BOM에 들어 있어 여기서 제외한다.
    * sign=-1 차감 / +1 복원.
    *
    * stockCap — 구성품 재고를 이만큼까지만 쓴다(사용자가 모달에서 정한 낱개 사용량). 없으면 있는 대로 다 쓴다.

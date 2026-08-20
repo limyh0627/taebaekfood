@@ -42,7 +42,7 @@ const 박스10 = (stock: number) => mk({
 function harness(items: Item[], order: Order) {
   const rawUsed: Record<string, number> = {};
   const engine = createOrderStockEngine({
-    allItems: items, shippingRules: [], submaterials: [], partners: [], allOrders: [order], orders: [order],
+    allItems: items, submaterials: [], partners: [], allOrders: [order], orders: [order],
     db: {} as any,
     buildFormula: () => [],                       // 원료식 폴백은 이 테스트의 관심사가 아니다(BOM 경로만 본다)
     createProductionRecordsForOrder: async () => {},

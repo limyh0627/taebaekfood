@@ -76,17 +76,6 @@ export interface PartnerItem {
   weightInKg?: number;
 }
 
-// ── 배송 규칙 (shipping_rule 컬렉션) ─────────────────────────────────────
-export interface ShippingRule {
-  id: string;
-  item_id: string;        // 품목 ID (어떤 완제품)
-  box_item_id: string;    // items category='shipping' 인 박스 품목 ID
-  qty_per_box: number;    // 박스당 수량
-  tape_item_id?: string;  // 테이프 품목 ID
-  partner_id?: string;    // 거래처별 오버라이드 (없으면 전체 기본값)
-}
-
-
 // ── 파트너 (partners 컬렉션) ──────────────────────────────────────────────
 export interface Partner {
   id: string;

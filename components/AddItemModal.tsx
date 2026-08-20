@@ -1,6 +1,6 @@
 ﻿import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { X, Package, Tag, Box, Layers, Plus, Building2, Check, Trash2, ChevronRight, FileText } from 'lucide-react';
-import { Item, InventoryCategory, ItemSubtype, Partner, ClientBoxConfig, PartnerItem, ShippingRule } from '../types';
+import { Item, InventoryCategory, ItemSubtype, Partner, ClientBoxConfig, PartnerItem } from '../types';
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { buildTaxonomy, DEFAULT_CATEGORY_LABELS, TaxonomyRow } from '../src/shared/taxonomy';
 import { baseRawName, PRODUCT_FORMULA } from '../src/constants/formula';
@@ -11,11 +11,8 @@ interface ProductModalProps {
   items?: Item[];
   partners?: Partner[];
   partnerItems?: import('../src/shared/types').PartnerItem[];
-  shippingRules?: ShippingRule[];
   onClose: () => void;
   onSave: (_product: Item) => void;
-  onSaveShippingRule?: (rule: Partial<ShippingRule> & { id: string }) => Promise<void>;
-  onAddShippingRule?: (rule: Omit<ShippingRule, 'id'>) => Promise<void>;
   onUpsertPartnerItem?: (ps: PartnerItem) => void;
   onDeletePartnerItem?: (id: string) => void;
   onAddSubmaterial?: (name: string, category: string) => Promise<string>;
@@ -67,7 +64,7 @@ const PUMOK_VOLUMES: Record<string, string[]> = {
   '시골향볶음검정참깨': ['1kg','20kg','25kg'],
 };
 
-const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], items, partners = [], partnerItems, shippingRules = [], onClose, onSave, onSaveShippingRule, onAddShippingRule, onUpsertPartnerItem, onDeletePartnerItem, onAddSubmaterial, rawItems = [], itemFormulas = [], onSaveItemFormula }) => {
+const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], items, partners = [], partnerItems, onClose, onSave, onUpsertPartnerItem, onDeletePartnerItem, onAddSubmaterial, rawItems = [], itemFormulas = [], onSaveItemFormula }) => {
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
   const partnerIn = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
 

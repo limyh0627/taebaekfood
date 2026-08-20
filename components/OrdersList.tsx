@@ -29,7 +29,7 @@ import {
   ClipboardPaste,
   Layers
 } from 'lucide-react';
-import { Order, OrderStatus, Partner, OrderSource, OrderItem, Item, OrderPallet, DeliveryBox, PalletStock, ShippingRule, ItemBom, PartnerItem } from '../types';
+import { Order, OrderStatus, Partner, OrderSource, OrderItem, Item, OrderPallet, DeliveryBox, PalletStock, ItemBom, PartnerItem } from '../types';
 import { isBoxStockItem, unitsPerBoxOf } from '../src/shared/orderUnits';
 import { splitNameVolume, specText } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
@@ -84,7 +84,6 @@ interface OrdersListProps {
   items: Item[];
   partnerItems?: PartnerItem[];
   palletStocks?: PalletStock[];
-  shippingRules?: ShippingRule[];
   itemBoms?: ItemBom[];
   onUpdateStatus: (id: string, status: OrderStatus) => void;
   onUpdateDeliveryDate: (id: string, date: string) => void;
@@ -116,7 +115,6 @@ interface OrderCardProps {
   items: Item[];
   partnerItems?: PartnerItem[];
   palletStocks?: PalletStock[];
-  shippingRules?: ShippingRule[];
   itemBoms?: ItemBom[];
   editingOrderId: string | null;
   setEditingOrderId: (id: string | null) => void;
@@ -175,7 +173,7 @@ export const OrderCard = memo<OrderCardProps>(({
   editingOrderId, setEditingOrderId,
   showAddProductSelect, setShowAddProductSelect,
   onUpdateItems, onUpdateDeliveryDate, onUpdateStatus, onUpdatePallets,
-  onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1, isHighlighted = false, highlightOrderId, palletStocks = [], shippingRules = [], itemBoms = [],
+  onToggleItemChecked, onDeleteOrder, currentUserName, gridCols = 1, isHighlighted = false, highlightOrderId, palletStocks = [], itemBoms = [],
 }) => {
   // Compute derived variables
   const products = items;
@@ -363,9 +361,8 @@ export const OrderCard = memo<OrderCardProps>(({
               };
               const editProductInfo = items.find(p => p.id === item.itemId);
               const isOil = isSecondary(editProductInfo?.category);
-              const rule = shippingRules.find(r => r.item_id === item.itemId && r.partner_id === order.partnerId);
               // 주문에 박힌 값 → 거래처 포장설정 → 품목이 아는 개입수(boxSize·규격·향미유 12)
-              const qtyPerBox = item.unitsPerBox ?? rule?.qty_per_box ?? unitsPerBoxOf(editProductInfo);
+              const qtyPerBox = item.unitsPerBox ?? unitsPerBoxOf(editProductInfo);
               const toggleBoxUnit = () => {
                 const newItems = [...order.items];
                 if (item.isBoxUnit) {
@@ -503,11 +500,9 @@ export const OrderCard = memo<OrderCardProps>(({
                     // 2. 박스/테이프: 박스 품목만. 낱개(비박스)는 출고 카톤·테이프 표시 안 함.
                     const packagingSubs: { id: string; name: string }[] = [];
                     if (isBoxProd) {
-                      const rule = shippingRules.find(r => r.item_id === item.itemId && r.partner_id === order.partnerId);
-                      const boxId = item.boxSubId || rule?.box_item_id;
-                      const tapeId = rule?.tape_item_id;
+                      // 겉박스·테이프는 박스 품목 BOM에 들어 있다(위 bomSubs). 주문에 박아 둔 boxSubId만 보탠다.
+                      const boxId = item.boxSubId;
                       if (boxId) { const b = items.find(p => p.id === boxId); if (b && !bomSubIds.has(b.id)) packagingSubs.push({ id: b.id, name: b.name }); }
-                      if (tapeId) { const t = items.find(p => p.id === tapeId); if (t && !bomSubIds.has(t.id)) packagingSubs.push({ id: t.id, name: t.name }); }
                     }
 
                     // 3. 완제품/반제품 구성품 (박스의 낱개 등) — 펼치면 그 완제품의 부자재까지
@@ -1007,7 +1002,7 @@ const deliveryExtraConfigs = [
 const historyConfig = { id: 'history_col', label: '예전 주문 이력', icon: History, color: 'bg-slate-700', bgColor: 'bg-slate-50/80', borderColor: 'border-slate-200', textColor: 'text-slate-700', statusFilter: [OrderStatus.DELIVERED], targetStatus: undefined };
 
 const OrdersList: React.FC<OrdersListProps> = ({
-  title, subtitle, orders, partners, items, partnerItems, palletStocks, shippingRules = [], itemBoms = [],
+  title, subtitle, orders, partners, items, partnerItems, palletStocks, itemBoms = [],
   onUpdateStatus, onUpdateDeliveryDate, onUpdatePallets,
   onUpdateItems, onUpdateDeliveryBoxes,
   onToggleInvoicePrinted, onToggleItemChecked,
@@ -1128,7 +1123,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
 
   // OrderCard/OrderSourceGroup에 공통으로 넘길 props
   const cardSharedProps = {
-    partners, items, partnerItems, palletStocks, shippingRules, itemBoms,
+    partners, items, partnerItems, palletStocks, itemBoms,
     editingOrderId, setEditingOrderId,
     showAddProductSelect, setShowAddProductSelect,
     onUpdateItems, onUpdateDeliveryDate, onUpdateStatus, onUpdatePallets,

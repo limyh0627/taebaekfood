@@ -4,7 +4,7 @@ import {
   PalletStock, PalletTransaction, Employee, LeaveRequest,
   AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry,
   AppNotification, IssuedStatement,
-  ItemFormula, ItemBom, ShippingRule, CompanyInfo, QrMapping, ReturnRequest,
+  ItemFormula, ItemBom, CompanyInfo, QrMapping, ReturnRequest,
   AccountCode, AccountGroup, FixedCostTemplate, InventorySnapshot, ProductionSalesLog,
   PendingStatementEdit, PurchaseOrder, ExpensePreset, CashFlowManual,
   CashAccount, CashEntry, Settlement,
@@ -59,7 +59,6 @@ export interface AppData {
   issuedStatements: IssuedStatement[];
   itemFormulas: ItemFormula[];
   itemBoms: ItemBom[];
-  shippingRules: ShippingRule[];
   returnRequests: ReturnRequest[];
   companyInfo: CompanyInfo | null;
   accountGroups: AccountGroup[];
@@ -104,7 +103,6 @@ export function useAppData(): AppData {
   const [qrMappings, setQrMappings] = useState<QrMapping[]>([]);
   const [itemFormulas, setItemFormulas] = useState<ItemFormula[]>([]);
   const [itemBoms, setItemBoms] = useState<ItemBom[]>([]);
-  const [shippingRules, setShippingRules] = useState<ShippingRule[]>([]);
   const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([]);
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
   const [accountGroups, setAccountGroups] = useState<AccountGroup[]>([]);
@@ -241,7 +239,6 @@ export function useAppData(): AppData {
     authReady.then(() => {
       Promise.all([
         fetchCollection<PartnerItem>('partner_item'),
-        fetchCollection<ShippingRule>('shipping_rule'),
         fetchCollection<ItemBom>('item_bom'),
         fetchCollection<ItemFormula>('item_formula'),
         fetchCollection<AccountGroup>('accountGroups'),
@@ -250,10 +247,9 @@ export function useAppData(): AppData {
         fetchCollection<QrMapping>('qrMappings'),
         fetchCollection<ExpensePreset>('expensePresets'),
         fetchCollection<CashFlowManual>('cashFlowManual'),
-      ]).then(([piData, srData, bomData, ifData, agData, acData, fctData, qrData, epData, cfmData]) => {
+      ]).then(([piData, bomData, ifData, agData, acData, fctData, qrData, epData, cfmData]) => {
         // partner_item은 canonical(itemId/partnerId/price)만 쓴다. 레거시 대문자 별칭 주입 안 함.
         setPartnerItems(piData);
-        setShippingRules(srData);
         setItemBoms(bomData);
         setItemFormulas(ifData);
         setAccountGroups(agData);
@@ -286,7 +282,7 @@ export function useAppData(): AppData {
     noticePosts, chatRooms, chatMessages,
     rawMaterialLedger, sesameInputLedger,
     appNotifications, workOrderItems, issuedStatements,
-    qrMappings, itemFormulas, itemBoms, shippingRules, returnRequests,
+    qrMappings, itemFormulas, itemBoms, returnRequests,
     companyInfo, accountGroups, accountCodes, fixedCostTemplates, expensePresets, cashFlowManual, inventorySnapshots,
     cashAccounts, cashEntries, settlements,
     productionSalesLogs, pendingStatementEdits,
