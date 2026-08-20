@@ -3522,7 +3522,7 @@ const ItemList: React.FC<ItemListProps> = ({
                             .filter((c): c is Item => !!c && c.category === 'submaterial' && !isBulkItem(c) && !c.phantom);
                           if (chips.length === 0) return null;
                           return (
-                            <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-2">
+                            <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-3.5">
                               {chips.map(c => (
                                 <span key={c.id} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 shrink-0">
                                   <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(c)}`} />
