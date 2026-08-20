@@ -297,7 +297,7 @@ export const OrderCard = memo<OrderCardProps>(({
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setIsCollapsed(prev => !prev); }}
-              className={`text-[10px] font-black px-1.5 py-0.5 rounded shrink-0 transition-all bg-white/70 ${isFullyDone ? 'text-emerald-700' : 'text-orange-600'}`}
+              className="text-[12px] font-black shrink-0 transition-all hover:opacity-70 opacity-80"
             >
               {completedItems}/{totalItems}
             </button>
