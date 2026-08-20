@@ -291,7 +291,7 @@ export const OrderCard = memo<OrderCardProps>(({
       <div className={`flex justify-between items-center rounded-t-2xl ${STATUS_HEAD[order.status] ?? 'bg-slate-100 text-slate-600'} ${
         isCollapsed ? '-mx-2.5 -mt-2.5 px-2.5 py-1.5 mb-1.5' : '-mx-4 -mt-4 px-4 py-2.5 mb-3'}`}>
         <div className="flex-1 min-w-0 flex items-center gap-1.5">
-          <h4 className="font-black leading-tight text-sm break-words">{displayName}</h4>
+          <h4 className="font-black leading-tight text-sm break-words text-slate-900">{displayName}</h4>
           {nonHyangmiyuItems.length > 0 && (
             <button
               type="button"
