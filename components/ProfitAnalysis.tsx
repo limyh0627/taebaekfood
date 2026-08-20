@@ -538,8 +538,9 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         const groupsOf = (...lines: string[]) => plByGroup.filter(g => lines.includes(g.plLine ?? ''));
 
         /** 펼쳐지는 줄 — 그룹 소계 밑에 계정과목 */
-        const Line = ({ label, amount, lines, sign, keyName }: {
-          label: string; amount: number; lines: string[]; sign: '+' | '−'; keyName: string;
+        const TONE = { green: 'text-emerald-600', red: 'text-rose-600' } as const;
+        const Line = ({ label, amount, lines, sign, keyName, tone }: {
+          label: string; amount: number; lines: string[]; sign: '+' | '−'; keyName: string; tone: keyof typeof TONE;
         }) => {
           const gs = groupsOf(...lines);
           const open = !closedPlLines.has(keyName);
@@ -556,7 +557,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                   <ChevronRight size={13} className={`text-slate-300 transition-transform ${open ? 'rotate-90' : ''}`} />
                   <span className="text-slate-300 w-3">{sign}</span>{label}
                 </span>
-                <span className="text-base font-black text-slate-700 tabular-nums">
+                <span className={`text-base font-black tabular-nums ${TONE[tone]}`}>
                   {fmt(amount)}<span className="text-[10px] font-bold text-slate-400 ml-1.5 w-9 inline-block text-right">{pct(Math.abs(amount))}</span>
                 </span>
               </button>
@@ -588,11 +589,11 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
          * 소계 줄 — 매출총이익·영업이익·당기순이익은 **셋 다 같은 급**이라 같은 모양으로 둔다.
          * 전엔 뒤 둘에만 회색 배경을 줬는데 그럴 근거가 없었다. 구분은 '='와 굵기로 충분하다.
          */
-        const Result = ({ label, amount }: { label: string; amount: number }) => (
+        const Result = ({ label, amount, tone }: { label: string; amount: number; tone: keyof typeof TONE }) => (
           <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-slate-50/70">
             <span className="text-sm font-black text-slate-800 pl-[18px]"><span className="text-slate-300 mr-1.5">=</span>{label}</span>
             <span className="text-right">
-              <span className={`text-base font-black tabular-nums ${amount >= 0 ? 'text-slate-800' : 'text-rose-600'}`}>{fmt(amount)}</span>
+              <span className={`text-base font-black tabular-nums ${TONE[tone]}`}>{fmt(amount)}</span>
               <span className="text-[10px] font-bold text-slate-400 ml-1.5 w-9 inline-block text-right">{pct(amount)}</span>
             </span>
           </div>
@@ -601,13 +602,13 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         const other = summary.otherIncome - summary.otherExpense;
         return (
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-            <Line label="매출" amount={summary.sales} lines={['revenue']} sign="+" keyName="revenue" />
-            <Line label="매출원가" amount={summary.cogs} lines={['cogs']} sign="−" keyName="cogs" />
-            <Result label="매출총이익" amount={summary.grossProfit} />
-            <Line label="판매비와관리비" amount={summary.sgna} lines={['sgna']} sign="−" keyName="sgna" />
-            <Result label="영업이익" amount={summary.operatingProfit} />
-            <Line label="기타손익 (영업외)" amount={other} lines={['other-income', 'other-expense']} sign={other >= 0 ? '+' : '−'} keyName="other" />
-            <Result label="당기순이익" amount={summary.netIncome} />
+            <Line label="매출" amount={summary.sales} lines={['revenue']} sign="+" keyName="revenue" tone="green" />
+            <Line label="매출원가" amount={summary.cogs} lines={['cogs']} sign="−" keyName="cogs" tone="green" />
+            <Result label="매출총이익" amount={summary.grossProfit} tone="red" />
+            <Line label="판매비와관리비" amount={summary.sgna} lines={['sgna']} sign="−" keyName="sgna" tone="red" />
+            <Result label="영업이익" amount={summary.operatingProfit} tone="green" />
+            <Line label="기타손익 (영업외)" amount={other} lines={['other-income', 'other-expense']} sign={other >= 0 ? '+' : '−'} keyName="other" tone="green" />
+            <Result label="당기순이익" amount={summary.netIncome} tone="green" />
             {(openingSnapshot || closingSnapshot) && (
               <div className="px-5 py-3 bg-slate-50/60 text-[11px] font-bold text-slate-400 flex items-center gap-4 flex-wrap">
                 <span>재고 실사</span>
