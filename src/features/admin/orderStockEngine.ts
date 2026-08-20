@@ -2,7 +2,8 @@ import { doc, setDoc, deleteDoc, getDoc, Firestore } from 'firebase/firestore';
 import { isBulkItem } from '../../shared/itemTaxonomy';
 import { Order, OrderItem, Item, OrderStatus, AppNotification, ShippingRule, Partner, RawMaterialLot } from '../../shared/types';
 import { toKg, baseRawName, lotStockInUnit, unitToKg } from '../../constants/formula';
-import { deductFromLots, withCarryOverLot, buildReceiveLot } from '../../shared/lotUtils';
+import { deductFromLots, withCarryOverLot, buildReceiveLot, deductLotsByQty, restoreLotsByQty } from '../../shared/lotUtils';
+import type { ProductLotTake } from '../../shared/lotUtils';
 import { bomQty } from '../../shared/bom';
 import { stockUnits, isBoxStockItem, unpackComponent } from '../../shared/orderUnits';
 
@@ -389,6 +390,60 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     }
   };
 
+  // ── 완제품 로트 ─────────────────────────────────────────────────────────
+  //  박스에도 로트를 매겨 어느 로트가 어느 거래처로 나갔는지 남긴다(회수·클레임 역추적).
+  //  재고 숫자는 종전대로 deltas가 움직이고, 로트는 **그 옆에서 같은 수량으로** 따라 빠진다.
+  //  로트에 재고 권한을 주지 않는 이유: 실사·개봉·주문취소 등 재고를 건드리는 길이 여럿이라
+  //  로트를 유일한 근거로 삼으면 아직 안 태운 경로에서 재고가 통째로 날아간다.
+  //  대신 어긋나면 '이월(미상)' 버킷이 음수로 받아 **보이게** 둔다(벌크 로트와 같은 규칙).
+
+  /** 출고 수량 — shipOrder와 같은 규칙이어야 로트와 재고가 안 갈린다. */
+  const shipQtyOf = (item: OrderItem, product: Item) =>
+    isGoodsItem(product) ? goodsShipQty(item, product)
+      : product.category === 'product' ? stockUnits(item, product) : 0;
+
+  /** 로트를 쓰는 완제품인가 — 로트가 한 번이라도 선 품목만. 안 선 품목은 종전대로 숫자 재고만 움직인다. */
+  const hasProductLots = (p: Item) => (p.lots ?? []).some(l => l.qtyRemaining != null);
+
+  /** 출고 — 완제품 로트를 FIFO로 까고, 어느 로트가 나갔는지 주문에 스냅샷으로 남긴다. */
+  const deductProductLotsForOrder = async (order: Order) => {
+    const taken: NonNullable<Order['productConsumedLots']> = [];
+    for (const item of order.items) {
+      const product = allItems.find(p => p.id === item.itemId);
+      if (!product || !hasProductLots(product)) continue;
+      const qty = shipQtyOf(item, product);
+      if (qty <= 0) continue;
+      let captured: ProductLotTake[] = [];
+      // computeStock을 안 넘긴다 — 재고는 deltas가 쓴다(둘이 쓰면 서로 덮어쓴다).
+      await mutateRawMaterialLots(product.id, (lots) => {
+        const r = deductLotsByQty(lots, qty);
+        captured = r.distribution;
+        return r.lots;
+      });
+      for (const t of captured) {
+        taken.push({
+          itemId: product.id,
+          material: (product.lots ?? []).find(l => l.id === t.lotId)?.material,
+          lotId: t.lotId, lotNo: t.lotNo, receivedDate: t.receivedDate, qty: t.qty,
+        });
+      }
+    }
+    return taken;
+  };
+
+  /** 출고취소 — 그때 깐 로트에 스냅샷대로 되돌린다(역FIFO는 그새 들어온 로트에 얹혀 어긋난다). */
+  const restoreProductLotsForOrder = async (order: Order) => {
+    const byItem = new Map<string, ProductLotTake[]>();
+    for (const t of order.productConsumedLots ?? []) {
+      const cur = byItem.get(t.itemId) ?? [];
+      cur.push({ lotId: t.lotId, lotNo: t.lotNo, receivedDate: t.receivedDate, supplierName: '', qty: t.qty });
+      byItem.set(t.itemId, cur);
+    }
+    for (const [itemId, takes] of byItem) {
+      await mutateRawMaterialLots(itemId, (lots) => restoreLotsByQty(lots, takes));
+    }
+  };
+
   const STATUS_WANT_PRODUCED = new Set<OrderStatus>([OrderStatus.DISPATCHED, OrderStatus.SHIPPED, OrderStatus.DELIVERED]);
   const STATUS_WANT_SHIPPED = new Set<OrderStatus>([OrderStatus.SHIPPED, OrderStatus.DELIVERED]);
 
@@ -400,7 +455,10 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     const deltas = new Map<string, number>();
     const patch: Partial<Order> = {};
     // 역방향(되돌리기): 출고취소 → 생산취소
-    if (!wantShipped && order.shippedOut) { unShipOrder(order, deltas); patch.shippedOut = false; }
+    if (!wantShipped && order.shippedOut) {
+      unShipOrder(order, deltas); patch.shippedOut = false;
+      await restoreProductLotsForOrder(order); patch.productConsumedLots = [];
+    }
     if (!wantProduced && order.producedAt) { await unProduceOrder(order, deltas); patch.producedAt = ''; patch.rawLotsDeducted = false; patch.rawConsumedLots = []; patch.autoBuilt = []; patch.producedUnits = []; }
     // 정방향: 생산 → 출고
     if (wantProduced && !order.producedAt) {
@@ -414,7 +472,11 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       patch.producedUnits = producedUnits;
       if (autoBuilt.length > 0) patch.autoBuilt = autoBuilt;
     }
-    if (wantShipped && !order.shippedOut) { shipOrder(order, deltas); patch.shippedOut = true; }
+    if (wantShipped && !order.shippedOut) {
+      shipOrder(order, deltas); patch.shippedOut = true;
+      // 빈 배열이어도 반드시 쓴다 — 안 쓰면 이전 출고의 스냅샷이 남아 취소 때 유령 복원이 된다.
+      patch.productConsumedLots = await deductProductLotsForOrder(order);
+    }
     await applyStockDeltas(deltas);
     if (Object.keys(patch).length > 0) await updateItem('orders', order.id, patch);
   };

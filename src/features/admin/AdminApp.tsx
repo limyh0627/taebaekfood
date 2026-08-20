@@ -1708,6 +1708,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <BomIntegrityPanel items={allItems} itemFormulas={itemFormulas} />
             <ItemList
               items={allItems}
+              orders={allOrders}
               onUpdateItem={async (p) => {
                 await updateItem(getProductCollection(p.category), p.id, p);
               }}

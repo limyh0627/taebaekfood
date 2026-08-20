@@ -1,6 +1,8 @@
-import { Item, IssuedStatement, PurchaseOrder } from '../../shared/types';
+import { Item, IssuedStatement, PurchaseOrder, RawMaterialLot } from '../../shared/types';
 import { isBulkItem } from '../../shared/itemTaxonomy';
-import { parsePackageKg, baseRawName } from '../../constants/formula';
+import { parsePackageKg, parseSpecCount, baseRawName } from '../../constants/formula';
+import { isBoxStockItem } from '../../shared/orderUnits';
+import { buildProductLot, withCarryOverProductLot, nextLotNo } from '../../shared/lotUtils';
 import { batchLoss, processingFee, sentKg } from './oem';
 
 /**
@@ -33,9 +35,21 @@ function findRawHolder(items: Item[], material: string): Item | undefined {
     && baseRawName(i.name) === material);
 }
 
-/** 완제품/벌크 품목 1개가 볶음참깨 몇 kg인지 — spec("10kg"/"1kg") 또는 packageKg. 못 구하면 0. */
+/**
+ * **재고 1단위**가 몇 kg인지 — 박스 품목이면 1박스, 낱개 품목이면 1개.
+ *
+ * 규격은 "낱개 용량 * 개입수" 꼴이라(`1kg * 20`) 앞자리만 읽으면 낱개 용량이다.
+ * 재고 단위가 박스면 개입수를 곱해야 1박스당 kg이 된다.
+ *
+ * 예전엔 품목명이 '볶음참깨/20kg박스'라 parsePackageKg(name)이 20을 집어 맞았는데,
+ * 이름이 '볶음참깨/1kg'으로 정리되면서 1kg으로 읽혔다 — 가공입고 kg·로스·가공비가
+ * 한꺼번에 10~20배 작게 잡히던 자리다. 근거를 이름이 아니라 규격+단위로 옮긴다.
+ */
 export function itemKg(item: Item): number {
-  return item.packageKg ?? parsePackageKg(item.spec) ?? parsePackageKg(item.name) ?? 0;
+  if (item.packageKg) return item.packageKg;
+  const perUnit = parsePackageKg(item.spec) ?? parsePackageKg(item.name) ?? 0;
+  const isBox = isBoxStockItem(item) || item.unit === '박스';
+  return perUnit * (isBox ? parseSpecCount(item.spec) : 1);
 }
 
 export function createOemEngine(deps: OemEngineDeps) {
@@ -110,19 +124,46 @@ export function createOemEngine(deps: OemEngineDeps) {
     let receivedKg = 0;
     const poItems: PurchaseOrder['items'] = [];
     const receivedByRaw: Record<string, number> = {};   // 원료수불부에 남길 kg (재고는 안 건드림)
+    // 로트번호는 **물질·날짜 단위**로 이어 매긴다 — 박스 규격이 달라도 같은 날 볶은 건 한 묶음이라
+    // 실물 박스에 찍는 번호와 장부가 같아진다. 이번 입고에서 새로 만든 것도 세어야 번호가 안 겹친다.
+    const issuedLotNos: RawMaterialLot[] = [];
+    const lotNoFor = (material: string, date: string) => nextLotNo(
+      [...items.flatMap(i => (i.lots ?? []).filter(l => (l.material ?? '') === material)), ...issuedLotNos],
+      date,
+    );
 
     for (const r of lines) {
       const item = items.find(i => i.id === r.itemId);
       if (!item) throw new Error(`품목을 찾을 수 없습니다: ${r.itemId}`);
-      const kg = itemKg(item) * r.qty;
+      const unitKg = itemKg(item);
+      const kg = unitKg * r.qty;
       receivedKg += kg;
       poItems.push({ itemId: item.id, name: item.name, quantity: r.qty, unit: item.unit ?? '개' });
-      // 돌아온 완제품(박스/낱개) → 자기 재고 +N. 다른 품목 재고는 건드리지 않는다.
-      await updateItem('items', item.id, { stock: Math.round(((item.stock ?? 0) + r.qty) * 1000) / 1000 });
+
       // 원료수불부는 BOM(원료식)으로 집계 — 볶음참깨 그룹에 kg 입고로 잡힌다.
-      for (const f of buildFormula(item.품목 || item.name)) {
+      const formula = buildFormula(item.품목 || item.name);
+      for (const f of formula) {
         if (kg * f.ratio > 0) receivedByRaw[f.raw] = (receivedByRaw[f.raw] ?? 0) + kg * f.ratio;
       }
+
+      // 돌아온 완제품(박스/낱개) → 자기 재고 +N. 다른 품목 재고는 건드리지 않는다.
+      //  로트도 여기 붙는다. **벌크 홀더에 몰아넣지 않는 이유**: 그러면 같은 볶음참깨를
+      //  홀더와 박스 품목이 각각 세고(재고 이중계상), FIFO도 kg·개수가 섞여 엉킨다.
+      //  저장은 품목별로 나누고, 이력은 lot.material로 가로질러 묶는다.
+      const patch: Record<string, any> = { stock: Math.round(((item.stock ?? 0) + r.qty) * 1000) / 1000 };
+      // 물질 축 — 배합이 여럿이면 비중이 가장 큰 원료로 건다(볶음참깨는 1.0 하나뿐).
+      const material = formula.slice().sort((a, b) => b.ratio - a.ratio)[0]?.raw;
+      if (material && unitKg > 0) {
+        const lot = buildProductLot({
+          material, itemId: item.id,
+          supplierName: po.partnerName ?? '외주', supplierId: po.oemPartnerId ?? po.partnerId,
+          qtyIn: r.qty, unitKg, receivedDate: input.date, poId: po.id,
+          lotNo: lotNoFor(material, input.date),
+        });
+        issuedLotNos.push(lot);
+        patch.lots = [...withCarryOverProductLot(item.lots ?? [], item.stock ?? 0, material, unitKg), lot];
+      }
+      await updateItem('items', item.id, patch);
     }
 
     // 벌크로 돌아온 몫 — 완포장과 달리 **우리 로트에 쌓는다**. 여기서 소분 품목이 BOM으로 빼간다.

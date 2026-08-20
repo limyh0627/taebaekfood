@@ -2108,7 +2108,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         setManualItems([{ name: '', spec: '', qty: '', price: '', isTaxExempt: false }]);
       } else {
         setSelectedOrderId(o.id);
-        setTradeDate(o.createdAt.slice(0, 10));
+        // 전표일자는 **발행하는 날**이 기본이다(주문 접수일이 아니라).
+        //  주문은 며칠 전에 들어와도 전표는 오늘 끊는 게 보통이라, 접수일을 물려받으면
+        //  매번 손으로 고쳐야 했다. 필요하면 날짜칸에서 바꾸면 된다.
+        setTradeDate(today());
         setShowPreview(false);
         setEditablePrices({});
         setTaxExemptOverrides({});
@@ -4593,6 +4596,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   const loadCard = (po: PurchaseOrder) => {
                     setManualItems([...poToManualRows(po), {name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);
                     setLoadedPoIds(prev => Array.from(new Set([...prev, po.id].filter(Boolean))));
+                    setTradeDate(today());   // 발주일이 아니라 발행하는 날
                     setManualMode(true);
                   };
                   // 발주카드 클릭: 이 카드에 연결된 전표(linkedStatementId)가 있으면 중복 경고, 아니면 로드
@@ -5398,9 +5402,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   // 매입 발주카드 재발행: 직접입력으로 로드
                   setManualItems([...poToManualRows(poCard), {name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);
                   setLoadedPoIds(prev => Array.from(new Set([...prev, (poCard as any).id].filter(Boolean))));
+                  setTradeDate(today());
                   setManualMode(true);
                 } else if (o) {
                   setSelectedOrderId(o.id);
+                  setTradeDate(today());
                   setShowPreview(false);
                   setEditablePrices({});
                   setTaxExemptOverrides({});

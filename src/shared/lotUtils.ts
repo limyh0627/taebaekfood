@@ -53,6 +53,7 @@ export function buildReceiveLot(params: {
   const now = new Date().toISOString();
   return {
     id: `lot-${params.material}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    material: params.material,
     supplierId: params.supplierId,
     supplierName: params.supplierName,
     packageType: params.packageType,
@@ -206,4 +207,175 @@ export function pruneDepletedLots(lots: RawMaterialLot[], retentionMonths = 6): 
   const cutoffStr = cutoff.toISOString().slice(0, 10);
   const kept = lots.filter(l => l.status !== 'depleted' || (l.receivedDate ?? '9999-99-99') >= cutoffStr);
   return kept.length === lots.length ? lots : kept;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  완제품(박스·개) 로트 — 개수로 세는 품목용
+//
+//  벌크 로트와 **같은 배열 모양**을 쓰되 잔량은 qtyRemaining이다. 왜 나누는가:
+//    · 재고가 두 번 잡힌다 — 홀더 stock을 로트 합으로 덮어쓰므로(lotStockInUnit),
+//      박스 로트를 벌크 홀더에 넣으면 박스 품목의 재고와 겹쳐 센다.
+//    · FIFO가 엉킨다 — 벌크는 BOM이 kg으로, 박스는 출고가 개수로 빼간다.
+//      한 배열에 섞으면 벌크 쓸 차례에 박스 로트를 까버린다.
+//  그래서 저장은 품목별로 나누고, 이력은 lot.material로 가로질러 묶는다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 완제품 입고 1건 → 로트 1개. 잔여 = 입고 개수. kg은 환산해 같이 들고 다닌다(수불부와 이어진다). */
+export function buildProductLot(params: {
+  material: string;          // 물질 축 — '볶음참깨'
+  itemId: string;            // 이 로트가 붙는 품목(박스 규격별로 다름)
+  supplierName: string;      // 만든 곳 — OEM이면 외주공장
+  supplierId?: string;
+  qtyIn: number;             // 입고 개수(박스 수)
+  unitKg: number;            // 1개당 kg
+  receivedDate?: string;
+  poId?: string;             // 만든 근거 — OEM 가공 배치
+  lotNo?: string;
+}): RawMaterialLot {
+  const now = new Date().toISOString();
+  const qty = Math.round(params.qtyIn * 1000) / 1000;
+  const kg = round3(qty * params.unitKg);
+  return {
+    id: `lot-${params.itemId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    material: params.material,
+    supplierId: params.supplierId,
+    supplierName: params.supplierName,
+    qtyIn: qty,
+    qtyRemaining: qty,
+    unitKg: params.unitKg,
+    kgIn: kg,
+    kgRemaining: kg,
+    receivedDate: params.receivedDate ?? todayStr(),
+    status: 'active',
+    poId: params.poId,
+    lotNo: params.lotNo,
+    createdAt: now,
+  };
+}
+
+/**
+ * 로트를 안 쓰던 완제품에 첫 로트를 얹을 때, 그때까지의 재고를 '이월' 로트로 보존한다.
+ * 안 하면 로트 합계(0) < 재고(15박스)라 첫 출고부터 전부 미상으로 빠진다.
+ * 이월분은 출처를 모르는 게 사실이므로 supplierName='이월'로 정직하게 남긴다.
+ */
+export function withCarryOverProductLot(
+  lots: RawMaterialLot[],
+  currentQty: number,
+  material: string,
+  unitKg: number,
+): RawMaterialLot[] {
+  if (lots.length > 0) return lots;
+  const qty = round3(currentQty);
+  if (qty <= 0) return lots;
+  return [{
+    id: `lot-carry-${material}-${Date.now()}`,
+    material,
+    supplierName: '이월',
+    qtyIn: qty, qtyRemaining: qty, unitKg,
+    kgIn: round3(qty * unitKg), kgRemaining: round3(qty * unitKg),
+    receivedDate: todayStr(),
+    status: 'active',
+    createdAt: new Date().toISOString(),
+  }];
+}
+
+/** 완제품 로트의 잔여 개수 합 */
+export function lotQtyRemaining(lots: RawMaterialLot[] | undefined): number {
+  return round3((lots ?? []).reduce((s, l) => s + (l.qtyRemaining ?? 0), 0));
+}
+
+export interface ProductLotTake {
+  lotId?: string;
+  lotNo?: string;
+  receivedDate?: string;
+  supplierName: string;
+  qty: number;
+}
+
+/**
+ * 개수 기준 FIFO 차감 — 출고 때 앞쪽 로트부터 깐다. 혼합(mix)은 없다: 박스는 섞이지 않는다.
+ *
+ * 재고보다 많이 나가면 '이월(미상)' 버킷이 음수로 흡수한다 — 벌크와 같은 규칙이다.
+ * 로트를 안 쓰던 시절의 재고가 그대로 남아 있어서(볶음참깨 박스 15개), 로트 도입 직후에는
+ * 출고가 로트를 앞지른다. 그걸 막지 않고 **보이게** 두는 쪽이 낫다: 조용히 0에서 멈추면
+ * 로트 합계가 실제 출고량과 갈려서 추적 자체를 못 믿게 된다.
+ */
+export function deductLotsByQty(
+  lots: RawMaterialLot[],
+  qtyToUse: number,
+): { lots: RawMaterialLot[]; distribution: ProductLotTake[]; shortageQty: number } {
+  let remaining = round3(qtyToUse);
+  const next = lots.map(l => ({ ...l }));
+  const dist: ProductLotTake[] = [];
+  if (remaining <= 0) return { lots: next, distribution: dist, shortageQty: 0 };
+
+  for (const l of next) {
+    if (remaining <= 0) break;
+    if (l.status !== 'active' || (l.qtyRemaining ?? 0) <= 0) continue;
+    const t = Math.min(l.qtyRemaining ?? 0, remaining);
+    if (t <= 0) continue;
+    l.qtyRemaining = round3((l.qtyRemaining ?? 0) - t);
+    l.kgRemaining = round3((l.qtyRemaining ?? 0) * (l.unitKg ?? 0));
+    remaining = round3(remaining - t);
+    if ((l.qtyRemaining ?? 0) <= 0.0001) { l.qtyRemaining = 0; l.kgRemaining = 0; l.status = 'depleted'; }
+    dist.push({ lotId: l.id, lotNo: l.lotNo, receivedDate: l.receivedDate, supplierName: l.supplierName, qty: round3(t) });
+  }
+
+  const overIssued = round3(Math.max(0, remaining));
+  if (overIssued > 0) {
+    let bIdx = next.findIndex(l => l.supplierName === '이월');
+    if (bIdx < 0) {
+      next.push({
+        id: `lot-carry-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        supplierName: '이월', kgIn: 0, kgRemaining: 0, qtyIn: 0, qtyRemaining: 0,
+        receivedDate: todayStr(), status: 'active', createdAt: new Date().toISOString(),
+      } as RawMaterialLot);
+      bIdx = next.length - 1;
+    }
+    const b = next[bIdx];
+    b.qtyRemaining = round3((b.qtyRemaining ?? 0) - overIssued);
+    b.kgRemaining = round3((b.qtyRemaining ?? 0) * (b.unitKg ?? 0));
+    b.status = 'active';
+    dist.push({ lotId: b.id, lotNo: b.lotNo, receivedDate: b.receivedDate, supplierName: '이월', qty: overIssued });
+  }
+
+  return { lots: next, distribution: dist, shortageQty: overIssued };
+}
+
+/**
+ * 출고취소 — 그때 깐 로트에 개수를 그대로 되돌린다.
+ * FIFO를 거꾸로 돌리지 않고 **스냅샷대로** 되돌리는 이유: 출고 뒤에 새 로트가 들어왔으면
+ * 역FIFO는 엉뚱한 로트에 얹는다. 이미 지워진 로트(정리됨)는 건너뛴다.
+ */
+export function restoreLotsByQty(lots: RawMaterialLot[], taken: ProductLotTake[]): RawMaterialLot[] {
+  const next = lots.map(l => ({ ...l }));
+  for (const t of taken) {
+    const l = next.find(x => x.id === t.lotId);
+    if (!l || t.qty <= 0) continue;
+    l.qtyRemaining = round3((l.qtyRemaining ?? 0) + t.qty);
+    l.kgRemaining = round3((l.qtyRemaining ?? 0) * (l.unitKg ?? 0));
+    if ((l.qtyRemaining ?? 0) > 0) l.status = 'active';
+  }
+  return next;
+}
+
+/**
+ * 물질 축으로 로트를 모은다 — 벌크·박스가 어느 품목에 흩어져 있든 한 줄로 본다.
+ * lot.material이 없는 옛 로트는 홀더 품목 이름으로 메운다(로트 도입 전 데이터).
+ */
+export function lotsByMaterial(
+  items: { id: string; name: string; unit?: string; lots?: RawMaterialLot[] }[],
+  materialOf: (itemName: string) => string,
+): Map<string, { itemId: string; itemName: string; unit?: string; lot: RawMaterialLot }[]> {
+  const out = new Map<string, { itemId: string; itemName: string; unit?: string; lot: RawMaterialLot }[]>();
+  for (const it of items) {
+    for (const lot of it.lots ?? []) {
+      const key = lot.material || materialOf(it.name);
+      if (!key) continue;
+      const row = { itemId: it.id, itemName: it.name, unit: it.unit, lot };
+      const cur = out.get(key);
+      if (cur) cur.push(row); else out.set(key, [row]);
+    }
+  }
+  return out;
 }

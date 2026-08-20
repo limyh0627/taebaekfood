@@ -130,6 +130,12 @@ export interface Order {
   documentDate?: string; // 전표(거래명세서) 일자 — 서류 기준일로는 안 쓴다
   rawLotsDeducted?: boolean; // 원료 로트 선입선출 차감 완료 표시(중복 차감 방지) — 생산처리(작업완료) 시 set
   rawConsumedLots?: { material: string; lotId?: string; lotNo?: string; supplierName: string; receivedDate?: string; kg: number }[]; // 정방향 추적: 이 주문이 소비한 원료 lot 스냅샷
+  /**
+   * 이 주문이 출고한 **완제품 로트** 스냅샷 — 어느 박스 로트가 어느 거래처로 나갔나.
+   * 회수는 이걸 거꾸로 읽는다: 로트번호 → 나간 주문 → 거래처.
+   * 출고취소 때도 이 스냅샷대로 되돌린다(FIFO를 다시 돌리면 그새 들어온 로트에 얹혀 어긋난다).
+   */
+  productConsumedLots?: { itemId: string; material?: string; lotId?: string; lotNo?: string; receivedDate?: string; qty: number }[];
   autoBuilt?: { itemId: string; qty: number }[];  // 구성품이 모자라 생산처리 때 먼저 만든 것 — 되돌리기용
   producedUnits?: { itemId: string; qty: number }[];  // 주문 품목을 실제로 몇 개 생산했나(기존 재고로 충당한 몫은 빠짐) — 되돌리기용.
                                                       // 없으면 옛 주문(주문량 전량 생산) → 되돌리기는 주문량으로 계산한다.
@@ -706,8 +712,23 @@ export interface RawMaterialLot {
   receivedDate: string;       // 입고일 'YYYY-MM-DD'
   lotNo?: string;             // 로트번호 (미래 확장)
   status: 'active' | 'depleted';
-  poId?: string;              // 원본 입고 전표(purchaseOrders) 참조
+  poId?: string;              // 원본 입고 전표(purchaseOrders) 참조 — OEM 박스 로트는 가공 배치 id
   createdAt: string;
+
+  // ── 물질 축 ──────────────────────────────────────────────────────────
+  /**
+   * 이 로트가 무슨 물질인가 — 벌크든 박스든 같은 값('볶음참깨').
+   *
+   * 로트는 **재고를 들고 있는 품목**에 붙는다(박스 재고는 박스 품목에 있으니 로트도 거기).
+   * 그래서 같은 볶음참깨가 벌크 홀더와 박스 품목 세 개에 흩어진다.
+   * 회수·역추적은 품목이 아니라 물질 단위로 물으므로, 이 키로 가로질러 모은다.
+   * (같은 배열에 몰아넣으면 재고가 두 번 잡히고 FIFO가 엉킨다 — 저장은 나누고 조회만 묶는다)
+   */
+  material?: string;
+  /** 잔여 **개수** — 박스·개로 세는 완제품 로트용. 벌크는 이 값이 없고 kgRemaining을 쓴다. */
+  qtyRemaining?: number;
+  /** 1개당 kg — 개수↔kg 환산(박스 1개 = 20kg). 완제품 로트만. */
+  unitKg?: number;
 }
 
 /**
