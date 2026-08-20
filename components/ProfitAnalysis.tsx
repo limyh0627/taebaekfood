@@ -59,6 +59,8 @@ const fmtM = (n: number) => {
 };
 
 const MONTHS = 12;
+/** 실지재고조사법에서 재고 조정이 실리는 비용 계정 — autoJournal의 PURCHASE와 같아야 한다 */
+const INVENTORY_EXPENSE_CODE = '500';
 
 const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCostTemplates = [], onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], costOf, onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = [], onSaveCashFlowManual, cashEntries = [], onAddCashEntry, settlements = [], onAddSettlement, onDeleteSettlement, companyId = 'taebaek', initialTab }) => {
   // 계산결과 그룹만 숨긴다. **id는 안 갈아끼운다** — 예전엔 판관비를 'ag-sgna'로 바꿔
@@ -563,27 +565,6 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
               </button>
               {open && (
                 <div className="bg-slate-50/60 px-5 pb-3 pt-1 space-y-2">
-                  {/* 재고 흐름 — 매출원가 = 기초 + 매입 − 기말. 조정분은 분개가 이미 재료비에 반영했다.
-                      금액을 또 더하는 게 아니라, 어떻게 그 값이 나왔는지 보여주는 줄이다. */}
-                  {keyName === 'cogs' && (openingSnapshot || closingSnapshot) && (
-                    <div className="pb-1 mb-1 border-b border-slate-200/70">
-                      <div className="flex items-center justify-between text-[11px] font-black text-slate-600">
-                        <span>재고</span>
-                        <span className="tabular-nums">{fmt((openingSnapshot?.value ?? 0) - (closingSnapshot?.value ?? 0))}</span>
-                      </div>
-                      <div className="flex items-center justify-between pl-3 text-[11px] text-slate-400">
-                        <span>기초재고 (+)</span>
-                        <span className="tabular-nums">{openingSnapshot ? fmt(openingSnapshot.value) : '실사 없음'}</span>
-                      </div>
-                      <div className="flex items-center justify-between pl-3 text-[11px] text-slate-400">
-                        <span>기말재고 (−)</span>
-                        <span className="tabular-nums">{closingSnapshot ? fmt(-closingSnapshot.value) : '실사 없음'}</span>
-                      </div>
-                      <p className="text-[10px] font-bold text-slate-300 pl-3 pt-0.5">
-                        재고가 는 만큼 매출원가에서 빠집니다 — 아래 재료비에 이미 반영돼 있습니다.
-                      </p>
-                    </div>
-                  )}
                   {gs.length === 0 && <p className="text-[11px] font-bold text-slate-300 py-2">이 기간에 잡힌 게 없습니다.</p>}
                   {gs.map(g => (
                     <div key={g.id}>
@@ -592,10 +573,31 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                         <span className="tabular-nums">{fmt(g.amount)}</span>
                       </div>
                       {g.rows.map(r => (
-                        <div key={r.code} className="flex items-center justify-between pl-3 text-[11px] text-slate-400">
-                          <span><span className="text-slate-300 mr-1.5 tabular-nums">{r.code}</span>{r.name}</span>
-                          <span className="tabular-nums">{fmt(r.amount)}</span>
-                        </div>
+                        <React.Fragment key={r.code}>
+                          <div className="flex items-center justify-between pl-3 text-[11px] text-slate-400">
+                            <span><span className="text-slate-300 mr-1.5 tabular-nums">{r.code}</span>{r.name}</span>
+                            <span className="tabular-nums">{fmt(r.amount)}</span>
+                          </div>
+                          {/* 재고 조정은 이 계정 **안에** 실려 있다(분개: (차)146 재고자산 /(대)500 원료매입).
+                              그래서 나란히가 아니라 이 줄 밑에 들여써서 어떻게 그 금액이 나왔는지 보여준다.
+                              따로 빼 놓으면 매출원가에서 또 빼는 것처럼 읽힌다. */}
+                          {r.code === INVENTORY_EXPENSE_CODE && (openingSnapshot || closingSnapshot) && (
+                            <div className="pl-8 pb-1 space-y-0.5">
+                              <div className="flex items-center justify-between text-[11px] text-slate-400">
+                                <span>당기매입</span>
+                                <span className="tabular-nums">{fmt(r.amount + ((closingSnapshot?.value ?? 0) - (openingSnapshot?.value ?? 0)))}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-[11px] text-slate-400">
+                                <span>기초재고 (+)</span>
+                                <span className="tabular-nums">{openingSnapshot ? fmt(openingSnapshot.value) : '실사 없음'}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-[11px] text-slate-400">
+                                <span>기말재고 (−)</span>
+                                <span className="tabular-nums">{closingSnapshot ? fmt(-closingSnapshot.value) : '실사 없음'}</span>
+                              </div>
+                            </div>
+                          )}
+                        </React.Fragment>
                       ))}
                     </div>
                   ))}
