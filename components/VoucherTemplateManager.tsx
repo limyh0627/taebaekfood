@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Trash2, X, ToggleLeft, ToggleRight, Pencil, Check, Eye, EyeOff, Lock, BarChart2, Star, FolderPlus } from 'lucide-react';
+import { Trash2, X, ToggleLeft, ToggleRight, Pencil, Check, Eye, EyeOff, Lock, BarChart2, Star, FolderPlus, Copy } from 'lucide-react';
 import { FixedCostTemplate, AccountCode, Partner } from '../src/shared/types';
 import { VOUCHER_DIRS, DIR_CHIP, DIR_HINT, isCashDir, VoucherDir, SPLIT_MODES, splitModeOf } from '../src/shared/cashTemplates';
 
@@ -25,19 +25,27 @@ const fmt = (n: number) => n.toLocaleString('ko-KR');
 export const NO_GROUP = '분류없음';
 
 export default function VoucherTemplateManager({
-  templates, accountCodes, partners = [], onUpdate, onDelete, compact = false,
+  templates, accountCodes, partners = [], onUpdate, onDelete, onCreate, compact = false,
 }: {
   templates: FixedCostTemplate[];
   accountCodes: AccountCode[];
   partners?: Partner[];
   onUpdate?: (id: string, data: Partial<FixedCostTemplate>) => Promise<void> | void;
   onDelete?: (id: string) => Promise<void> | void;
+  /** 기본 템플릿을 복제해 새로 만든다 — 기본은 손대지 않는다 */
+  onCreate?: (data: Omit<FixedCostTemplate, 'id'>) => Promise<void> | void;
   /** 모달 안이면 높이를 제한한다 */
   compact?: boolean;
 }) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'auto' | 'hidden'>('all');
   const [editTpl, setEditTpl] = useState<FixedCostTemplate | null>(null);
+  /**
+   * 복제 모드 — 기본 템플릿은 **고치지 않는다.** 갈래·계정 같은 뼈대만 물려받아
+   * 내 템플릿을 새로 만든다. 기본이 깨끗하게 남아 있어야 나중에 다시 꺼내 쓸 수 있고,
+   * 무엇이 기본값이었는지도 알 수 있다.
+   */
+  const [cloning, setCloning] = useState(false);
   const [form, setForm] = useState({
     name: '', group: '', amount: '', splitA: '', splitB: '', loanCode: '', partnerId: '', partnerName: '',
     dir: '출금' as VoucherDir, autoIssue: false, issueDay: '1', taxExempt: false, itemName: '',
@@ -84,8 +92,15 @@ export default function VoucherTemplateManager({
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [templates]);
 
-  const openEdit = (t: FixedCostTemplate) => {
+  /** 기본 템플릿을 씨앗으로 새 템플릿 만들기 — 이름에 표시를 달아 구별한다 */
+  const openClone = (t: FixedCostTemplate) => {
+    openEdit(t, true);
+    setForm(f => ({ ...f, name: `${t.name} (내 템플릿)` }));
+  };
+
+  const openEdit = (t: FixedCostTemplate, clone = false) => {
     setEditTpl(t);
+    setCloning(clone);
     setForm({
       name: t.name, group: t.group ?? '', amount: t.amount ? String(t.amount) : '',
       splitA: splitValOf(t, 'a'), splitB: splitValOf(t, 'b'), loanCode: (t as any).loanCode ?? '',
@@ -176,10 +191,15 @@ export default function VoucherTemplateManager({
                         className="p-1 hover:bg-slate-100 rounded-lg text-slate-300 hover:text-slate-600 shrink-0">
                         {t.hidden ? <EyeOff size={13}/> : <Eye size={13}/>}
                       </button>
-                      <button onClick={() => openEdit(t)} title="이름·묶음·금액·발행 방식 수정"
-                        className="p-1 hover:bg-slate-100 rounded-lg text-slate-300 hover:text-slate-600 shrink-0"><Pencil size={13}/></button>
                       {locked ? (
-                        <span title="기본 템플릿 — 지울 수 없습니다. 숨기기만 됩니다." className="p-1 text-slate-200 shrink-0"><Lock size={13}/></span>
+                        <button onClick={() => openClone(t)} title="이 기본 템플릿으로 내 템플릿 만들기 — 기본은 그대로 둡니다"
+                          className="p-1 hover:bg-indigo-50 rounded-lg text-slate-300 hover:text-indigo-500 shrink-0"><Copy size={13}/></button>
+                      ) : (
+                        <button onClick={() => openEdit(t)} title="이름·묶음·금액·발행 방식 수정"
+                          className="p-1 hover:bg-slate-100 rounded-lg text-slate-300 hover:text-slate-600 shrink-0"><Pencil size={13}/></button>
+                      )}
+                      {locked ? (
+                        <span title="기본 템플릿 — 고치거나 지울 수 없습니다. 숨기거나 복제해서 쓰세요." className="p-1 text-slate-200 shrink-0"><Lock size={13}/></span>
                       ) : (
                         <button onClick={() => { if (window.confirm(`'${t.name}' 템플릿을 지울까요?`)) onDelete?.(t.id); }}
                           className="p-1 hover:bg-rose-50 rounded-lg text-slate-200 hover:text-rose-400 shrink-0"><Trash2 size={13}/></button>
@@ -198,12 +218,13 @@ export default function VoucherTemplateManager({
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setEditTpl(null)}>
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-black text-slate-800">템플릿 수정</h3>
+              <h3 className="text-sm font-black text-slate-800">{cloning ? '새 템플릿 만들기' : '템플릿 수정'}</h3>
               <button onClick={() => setEditTpl(null)} className="text-slate-300 hover:text-slate-500"><X size={18}/></button>
             </div>
-            {editTpl.builtin && (
-              <p className="text-[11px] font-bold text-slate-400 bg-slate-50 rounded-xl px-3 py-2 leading-snug">
-                기본 템플릿입니다. 이름·금액·거래처는 바꿀 수 있지만 지울 수는 없습니다 — 대신 숨기면 목록에서 빠집니다.
+            {cloning && (
+              <p className="text-[11px] font-bold text-indigo-500 bg-indigo-50 rounded-xl px-3 py-2 leading-snug">
+                기본 <b>{editTpl.name}</b>의 갈래·계정을 물려받아 <b>내 템플릿</b>을 새로 만듭니다.
+                기본 템플릿은 그대로 남습니다.
               </p>
             )}
             <div>
@@ -403,7 +424,7 @@ export default function VoucherTemplateManager({
                     alert('거래처 없는 대체는 자동 발행을 못 켭니다.\n\n차·대를 직접 세워야 하는데 템플릿엔 계정이 하나뿐입니다.\n거래처를 고르면 매입전표로 자동 발행됩니다.');
                     return;
                   }
-                  await onUpdate?.(editTpl.id, {
+                  const patch = {
                     name: form.name.trim(),
                     group: form.group.trim() || NO_GROUP,
                     amount,
@@ -415,11 +436,25 @@ export default function VoucherTemplateManager({
                     autoIssue: form.autoIssue,
                     issueDay: Number(form.issueDay) || 1,
                     taxExempt: form.taxExempt,
-                  });
+                  };
+                  if (cloning) {
+                    // 뼈대(갈래·계정·입력 방식)는 기본에서 물려받고, builtin 표시는 떼어 낸다 —
+                    // 그래야 내 것으로서 고치고 지울 수 있다.
+                    await onCreate?.({
+                      ...patch,
+                      accountCode: editTpl.accountCode,
+                      mode: editTpl.mode,
+                      kind: editTpl.kind ?? 'voucher',
+                      category: editTpl.category,
+                      active: false, hidden: false,
+                    } as Omit<FixedCostTemplate, 'id'>);
+                  } else {
+                    await onUpdate?.(editTpl.id, patch);
+                  }
                   setEditTpl(null);
                 }}
                 className="flex-[2] py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-black hover:bg-indigo-700 flex items-center justify-center gap-1.5">
-                <Check size={13}/>저장
+                <Check size={13}/>{cloning ? '만들기' : '저장'}
               </button>
             </div>
           </div>

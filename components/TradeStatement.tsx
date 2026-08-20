@@ -3449,6 +3449,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 partners={partners}
                 onUpdate={onUpdateFixedCostTemplate}
                 onDelete={onDeleteFixedCostTemplate}
+                onCreate={onAddFixedCostTemplate}
                 compact
               />
 
