@@ -400,7 +400,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [qpAdvAmount, setQpAdvAmount] = useState('');
   // 미지급을 넘는 몫의 성격 — 물건을 받을 것이면 선급금, 그냥 빌려준 것이면 대여금
   const [qpAdvOver, setQpAdvOver] = useState<OverKind>('선급금');
-  const [qpLoanCode, setQpLoanCode] = useState('260');
+  //  기본은 **장기차입금**(293) — 사업자 대출은 대개 1년을 넘긴다.
+  //  1년 안에 갚는 건만 단기차입금(260)이다. 템플릿에 박아 두면 그게 이긴다.
+  const [qpLoanCode, setQpLoanCode] = useState('293');
   const [qpPrincipal, setQpPrincipal] = useState('');
   const [qpInterest, setQpInterest] = useState('');
   const [qpGross, setQpGross] = useState('');
@@ -449,6 +451,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         상환: [setQpPrincipal, setQpInterest],
         급여: [setQpGross, setQpDeduction],
       };
+      if (sm === '상환' && t.loanCode) setQpLoanCode(t.loanCode);
       const [setA, setB] = setters[sm];
       if (a != null || b != null) { setA(a ? String(a) : ''); setB(b ? String(b) : ''); }
       else if (sm === '보험' && (t.amount ?? 0) > 0) {
@@ -4127,7 +4130,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">대출 계정 <span className="text-rose-400">*</span></label>
                     <select value={qpLoanCode} onChange={e => setQpLoanCode(e.target.value)}
                       className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300">
-                      {(loanAccounts.length ? loanAccounts : [{ id: '260', code: '260', name: '단기차입금' }, { id: '293', code: '293', name: '장기차입금' }]).map(c => (
+                      {(loanAccounts.length ? loanAccounts : [{ id: '293', code: '293', name: '장기차입금' }, { id: '260', code: '260', name: '단기차입금' }]).map(c => (
                         <option key={c.id} value={c.code}>{c.code} · {c.name}</option>
                       ))}
                     </select>

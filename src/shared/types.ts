@@ -544,6 +544,8 @@ export interface FixedCostTemplate {
   insCorp?: number;   insEmp?: number;
   principal?: number; interest?: number;
   gross?: number;     deduction?: number;
+  /** 상환 — 원금을 깎을 차입금 계정. 대출이 여러 건이면 매번 고르다 틀린다. */
+  loanCode?: string;
   /** 기본 템플릿 표식(cashTemplates의 id). 있으면 삭제 못 하고 숨기기만 된다. */
   builtin?: string;
   /** 숨김 — 일반전표의 템플릿 목록에서 안 뜬다. 지운 게 아니라 안 보이는 것. */

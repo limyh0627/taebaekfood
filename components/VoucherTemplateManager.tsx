@@ -39,7 +39,7 @@ export default function VoucherTemplateManager({
   const [filter, setFilter] = useState<'all' | 'auto' | 'hidden'>('all');
   const [editTpl, setEditTpl] = useState<FixedCostTemplate | null>(null);
   const [form, setForm] = useState({
-    name: '', group: '', amount: '', splitA: '', splitB: '', partnerId: '', partnerName: '',
+    name: '', group: '', amount: '', splitA: '', splitB: '', loanCode: '', partnerId: '', partnerName: '',
     dir: '출금' as VoucherDir, autoIssue: false, issueDay: '1', taxExempt: false, itemName: '',
   });
   /** 옛 postMode를 새 갈래로 읽는다 — '분리'는 채무를 세우는 것이니 '줄돈' */
@@ -88,7 +88,7 @@ export default function VoucherTemplateManager({
     setEditTpl(t);
     setForm({
       name: t.name, group: t.group ?? '', amount: t.amount ? String(t.amount) : '',
-      splitA: splitValOf(t, 'a'), splitB: splitValOf(t, 'b'),
+      splitA: splitValOf(t, 'a'), splitB: splitValOf(t, 'b'), loanCode: (t as any).loanCode ?? '',
       partnerId: t.partnerId ?? '', partnerName: t.partnerName ?? '',
       dir: dirOf(t), autoIssue: !!t.autoIssue, issueDay: String(t.issueDay ?? 1), taxExempt: !!t.taxExempt,
       itemName: t.itemName ?? '',
@@ -303,6 +303,22 @@ export default function VoucherTemplateManager({
                       </div>
                     ))}
                   </div>
+                  {'pick' in S && (() => {
+                    const P = (S as any).pick as { field: string; label: string; filter: (c: any) => boolean };
+                    const opts = accountCodes.filter(P.filter);
+                    return (
+                      <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{P.label}</label>
+                        <select value={form.loanCode}
+                          onChange={e => setForm(f => ({ ...f, loanCode: e.target.value }))}
+                          className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-300">
+                          <option value="">전표에서 고르기</option>
+                          {opts.map(c => <option key={c.code} value={c.code}>{c.code} · {c.name}</option>)}
+                        </select>
+                        <p className="text-[10px] font-bold text-slate-400 mt-1">대출이 여러 건이면 여기서 못박아 두세요.</p>
+                      </div>
+                    );
+                  })()}
                   <div className="flex items-center justify-between rounded-xl px-3 py-2 text-[11px] font-black bg-slate-50 text-slate-500">
                     <span>{S.totalLabel}</span>
                     <span className="tabular-nums text-slate-800">{S.total(num(form.splitA), num(form.splitB)).toLocaleString()}</span>
@@ -379,7 +395,9 @@ export default function VoucherTemplateManager({
                   const a = Number(form.splitA || 0), b = Number(form.splitB || 0);
                   const S = sm ? SPLIT_MODES[sm] : null;
                   const amount = S ? S.total(a, b) : Number(form.amount || 0);
-                  const splitPatch = S ? { [S.a]: a, [S.b]: b } : {};
+                  const splitPatch = S
+                    ? { [S.a]: a, [S.b]: b, ...('pick' in S ? { loanCode: form.loanCode } : {}) }
+                    : {};
                   if (form.autoIssue && amount <= 0) { alert('자동 발행은 금액이 정해진 것만 켤 수 있습니다.'); return; }
                   if (form.autoIssue && !isCashDir(form.dir) && !form.partnerId) {
                     alert('거래처 없는 대체는 자동 발행을 못 켭니다.\n\n차·대를 직접 세워야 하는데 템플릿엔 계정이 하나뿐입니다.\n거래처를 고르면 매입전표로 자동 발행됩니다.');

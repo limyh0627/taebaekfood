@@ -74,6 +74,8 @@ export interface CashTemplate {
   favorite?: boolean;
   /** 전표 품목란에 들어갈 이름. 비우면 계정과목 이름을 쓴다. */
   itemName?: string;
+  /** 상환 — 원금을 깎을 차입금 계정 */
+  loanCode?: string;
   /** 두 줄로 갈리는 갈래의 미리 정해둔 값 — SPLIT_MODES 참고 */
   insCorp?: number;   insEmp?: number;
   principal?: number; interest?: number;
@@ -98,6 +100,8 @@ export const SPLIT_MODES = {
     labelA: '원금', hintA: '차입금', labelB: '이자', hintB: '비용',
     total: (a: number, b: number) => a + b, totalLabel: '통장에서 나가는 총액',
     help: '원금은 빚이 줄어드는 것(재무상태표), 이자는 비용(손익계산서)입니다. 상환표대로 달마다 비율이 바뀌면 자동 발행은 끄고 그때그때 고쳐 쓰세요.',
+    // 원금을 어느 빚에서 깎을지 — 대출이 여러 건이면 매번 고르다 틀린다. 템플릿이 기억한다.
+    pick: { field: 'loanCode', label: '대출 계정', filter: (c: { type?: string; name: string }) => c.type === '부채' && /차입금/.test(c.name) },
   },
   급여: {
     a: 'gross', b: 'deduction',
@@ -189,6 +193,7 @@ export function filterTemplates(
       insCorp: t.insCorp,     insEmp: t.insEmp,
       principal: t.principal, interest: t.interest,
       gross: t.gross,         deduction: t.deduction,
+      loanCode: t.loanCode,
       ...(t.mode === '상환' ? { hint: '원금 + 이자' } : {}),
       ...(t.mode === '급여' ? { hint: '총급여 − 공제' } : {}),
       ...(t.mode === '보험' ? { hint: '회사부담 + 예수금' } : {}),
