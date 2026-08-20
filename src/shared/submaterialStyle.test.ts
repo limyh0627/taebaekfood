@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { colorOfName, subChipClass, CHIP_NEUTRAL } from './submaterialStyle';
+import { colorOfName, subChipClass, CHIP_NEUTRAL, subDotClass } from './submaterialStyle';
 
 /** 실제 DB에 있는 부자재 이름으로 검증한다 — 색 판정이 이름에 기대므로 오탐이 제일 무섭다. */
 describe('colorOfName — 구분자 뒤의 색만 인정', () => {
@@ -51,5 +51,22 @@ describe('subChipClass', () => {
     expect(subChipClass({ subtype: '마개', name: '물엿캡-빨강' })).toContain('red');
     expect(subChipClass({ subtype: '테이프', name: '테이프-초록' })).toContain('green');
     expect(subChipClass({ subtype: '라벨', name: '시골향 참① 1.8L' })).toBe(CHIP_NEUTRAL);
+  });
+});
+
+describe('이름에 색이 없어도 물건 자체가 색인 것', () => {
+  it('소주병은 초록 유리다 — 이름에 색이 안 붙어도 초록', () => {
+    expect(colorOfName('300ML-소주병')).toBe('초록');
+    expect(colorOfName('350ML-소주병')).toBe('초록');
+    expect(subDotClass({ name: '300ML-소주병', subtype: '용기' })).toBe('bg-green-500');
+  });
+
+  it('이름에 붙은 색이 있으면 그게 먼저다', () => {
+    expect(colorOfName('물엿캡-빨강')).toBe('빨강');
+  });
+
+  it('그 외는 색 없음 — 옅은 회색 점', () => {
+    expect(colorOfName('1800ML-페트병')).toBeNull();
+    expect(subDotClass({ name: '5-1호박스', subtype: '박스' })).toBe('bg-slate-300');
   });
 });

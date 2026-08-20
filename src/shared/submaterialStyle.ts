@@ -32,10 +32,21 @@ const COLOR: Record<string, string> = {
 
 const COLOR_RE = new RegExp(`[-(]\\s*(${Object.keys(COLOR).join('|')})`);
 
+/**
+ * 이름에 색이 안 붙었지만 **물건 자체가 그 색인 것.**
+ * 소주병은 초록 유리라 '-초록'을 안 적어도 초록으로 보여야 창고에서 헷갈리지 않는다.
+ * 색 이름 규칙(`-빨강`)으로는 못 잡히는 것만 여기 둔다.
+ */
+const NAMED_COLOR: { re: RegExp; color: string }[] = [
+  { re: /소주병/, color: '초록' },
+];
+
 /** 이름에서 색을 뽑는다. 없으면 null */
 export function colorOfName(name?: string): string | null {
-  const m = COLOR_RE.exec(String(name ?? ''));
-  return m ? m[1] : null;
+  const n = String(name ?? '');
+  const m = COLOR_RE.exec(n);
+  if (m) return m[1];
+  return NAMED_COLOR.find(x => x.re.test(n))?.color ?? null;
 }
 
 /** 박스인가 — 카테고리(subtype)가 원천, 옛 데이터는 category='box'도 본다 */
