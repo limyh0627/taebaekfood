@@ -609,12 +609,13 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         /**
          * 소계 줄 — 매출총이익·영업이익·당기순이익은 **셋 다 같은 급**이라 같은 모양으로 둔다.
          * 전엔 뒤 둘에만 회색 배경을 줬는데 그럴 근거가 없었다. 구분은 '='와 굵기로 충분하다.
+         * 색은 안 쓴다: 초록·빨강은 더하는 줄·빼는 줄을 가리는 표시라, 결과에까지 칠하면 뜻이 흐려진다.
          */
-        const Result = ({ label, amount, tone }: { label: string; amount: number; tone: keyof typeof TONE }) => (
+        const Result = ({ label, amount }: { label: string; amount: number }) => (
           <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-slate-50/70">
             <span className="text-sm font-black text-slate-800 pl-[18px]"><span className="text-slate-300 mr-1.5">=</span>{label}</span>
             <span className="text-right">
-              <span className={`text-base font-black tabular-nums ${TONE[tone]}`}>{fmt(amount)}</span>
+              <span className="text-base font-black tabular-nums text-slate-900">{fmt(amount)}</span>
               <span className="text-[10px] font-bold text-slate-400 ml-1.5 w-9 inline-block text-right">{pct(amount)}</span>
             </span>
           </div>
@@ -625,11 +626,11 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
             <Line label="매출" amount={summary.sales} lines={['revenue']} sign="+" keyName="revenue" tone="green" />
             <Line label="매출원가" amount={summary.cogs} lines={['cogs']} sign="−" keyName="cogs" tone="red" />
-            <Result label="매출총이익" amount={summary.grossProfit} tone="green" />
+            <Result label="매출총이익" amount={summary.grossProfit} />
             <Line label="판매비와관리비" amount={summary.sgna} lines={['sgna']} sign="−" keyName="sgna" tone="red" />
-            <Result label="영업이익" amount={summary.operatingProfit} tone="green" />
+            <Result label="영업이익" amount={summary.operatingProfit} />
             <Line label="기타손익 (영업외)" amount={other} lines={['other-income', 'other-expense']} sign={other >= 0 ? '+' : '−'} keyName="other" tone="green" />
-            <Result label="당기순이익" amount={summary.netIncome} tone="green" />
+            <Result label="당기순이익" amount={summary.netIncome} />
           </div>
         );
       })()}
