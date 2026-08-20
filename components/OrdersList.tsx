@@ -217,18 +217,16 @@ export const OrderCard = memo<OrderCardProps>(({
     return () => document.removeEventListener('click', close);
   }, [showPalletPicker]);
 
-  // 완제품 모두 체크 시 → 작업완료(DISPATCHED)로 자동 이동 + 접힘
+  /**
+   * 다 체크되면 카드를 접기만 한다. **상태는 안 건드린다.**
+   *
+   * 예전엔 여기서 작업완료로 바로 넘겼는데, 그러면 handleToggleItemChecked가 띄우는
+   * '작업완료로 보낼까요?'에서 취소를 눌러도 이 effect가 그냥 보내 버렸다.
+   * 상태를 옮기는 자리는 한 곳(handleToggleItemChecked)뿐이어야 한다 —
+   * 작업완료는 원료를 차감하는 되돌리기 어려운 일이라 더 그렇다.
+   */
   useEffect(() => {
-    if (
-      allNonHyangmiyuDone &&
-      order.status !== OrderStatus.DISPATCHED &&
-      order.status !== OrderStatus.SHIPPED &&
-      order.status !== OrderStatus.DELIVERED &&
-      order.status !== OrderStatus.ON_HOLD
-    ) {
-      onUpdateStatus(order.id, OrderStatus.DISPATCHED);
-      setIsCollapsed(true);
-    }
+    if (allNonHyangmiyuDone) setIsCollapsed(true);
   }, [allNonHyangmiyuDone]);
 
   const partner = partners.find(c => c.id === order.partnerId);
