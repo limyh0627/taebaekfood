@@ -30,7 +30,7 @@ import {
   Layers
 } from 'lucide-react';
 import { Order, OrderStatus, Partner, OrderSource, OrderItem, Item, OrderPallet, DeliveryBox, PalletStock, ShippingRule, ItemBom, PartnerItem } from '../types';
-import { isBoxStockItem } from '../src/shared/orderUnits';
+import { isBoxStockItem, unitsPerBoxOf } from '../src/shared/orderUnits';
 import { splitNameVolume, specText } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
 import { subDotClass } from '../src/shared/submaterialStyle';
@@ -364,7 +364,8 @@ export const OrderCard = memo<OrderCardProps>(({
               const editProductInfo = items.find(p => p.id === item.itemId);
               const isOil = isSecondary(editProductInfo?.category);
               const rule = shippingRules.find(r => r.item_id === item.itemId && r.partner_id === order.partnerId);
-              const qtyPerBox = item.unitsPerBox ?? rule?.qty_per_box;
+              // 주문에 박힌 값 → 거래처 포장설정 → 품목이 아는 개입수(boxSize·규격·향미유 12)
+              const qtyPerBox = item.unitsPerBox ?? rule?.qty_per_box ?? unitsPerBoxOf(editProductInfo);
               const toggleBoxUnit = () => {
                 const newItems = [...order.items];
                 if (item.isBoxUnit) {

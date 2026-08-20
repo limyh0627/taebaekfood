@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, LayoutGrid, Layers } from 'lucide-react';
 import { Item, PartnerItem, OrderItem, Order, Partner, OrderSource, OrderPallet, PalletStock, ShippingRule } from '../types';
 import { bomQty } from '../src/shared/bom';
-import { unpackComponent, isBoxStockItem, boxSiblings, boxDerivedUnitPrice } from '../src/shared/orderUnits';
+import { unpackComponent, isBoxStockItem, boxSiblings, boxDerivedUnitPrice, unitsPerBoxOf } from '../src/shared/orderUnits';
 import { subDotClass } from '../src/shared/submaterialStyle';
 import { catOrder } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
@@ -317,8 +317,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
       // 겉박스는 박스 품목 BOM에 들어있어 생산 때 깎인다 — 주문 라인엔 안 싣는다(이중차감 방지)
       return { itemId, quantity: 1, isBoxUnit: false, unitsPerBox: 0, boxType: '' };
     }
-    const isHyangmiyu = product?.subtype === '향미유';
-    if (product?.isRawMaterial && selectedClient) {
+        if (product?.isRawMaterial && selectedClient) {
       const rules = getItemCustomerConfigs(itemId, selectedClient.id);
       if (rules.length >= 1) {
         const rule = rules[0];
@@ -327,7 +326,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
       }
     }
     const configs = getClientBoxConfigs(itemId, selectedClient?.id);
-    const first = configs[0] ?? { unitsPerBox: isHyangmiyu ? 12 : 0, boxType: '', boxSubId: undefined };
+    // 개입수는 품목이 안다(boxSize → 규격 → 향미유 12). 거래처 포장설정이 있으면 그게 먼저.
+    const first = configs[0] ?? { unitsPerBox: unitsPerBoxOf(product), boxType: '', boxSubId: undefined };
     return { itemId, quantity: 1, isBoxUnit: first.unitsPerBox > 0, unitsPerBox: first.unitsPerBox, boxType: first.boxType, boxSubId: first.boxSubId };
   };
 

@@ -1,5 +1,6 @@
 import type { Item, OrderItem } from './types';
 import { bomQty } from './bom';
+import { parseSpecCount } from '../constants/formula';
 
 /**
  * 박스 품목의 낱개 구성 — **BOM에서 읽는다.**
@@ -80,4 +81,26 @@ export function stockUnits(
 ): number {
   if (!isBoxStockItem(product)) return item.quantity;
   return item.isBoxUnit && item.boxQuantity ? item.boxQuantity : item.quantity;
+}
+
+/**
+ * 향미유·고춧가루처럼 **낱개로 세지만 박스로도 주문하는** 품목의 한 박스 개입수.
+ *
+ * 근거는 품목 자신이다 — 예전엔 '향미유면 12'로 코드에 박아 둬서, 고춧가루처럼
+ * 규격마다 개입수가 다른 것(1kg 20개 · 5kg 4개, 둘 다 20kg 박스)을 담을 수 없었다.
+ *
+ *   boxSize            품목에 직접 박아 둔 값이 가장 세다
+ *   규격의 개입수       '1kg * 20' → 20
+ *   향미유             옛 기본값 12 (규격이 없는 품목이 아직 있다)
+ *   그 외              0 = 박스 주문 안 함
+ */
+export function unitsPerBoxOf(
+  product: (Pick<Item, 'boxSize' | 'spec' | 'subtype' | 'category'>) | undefined,
+): number {
+  if (!product) return 0;
+  if (product.boxSize && product.boxSize > 1) return product.boxSize;
+  const bySpec = parseSpecCount(product.spec);
+  if (bySpec > 1) return bySpec;
+  const isFlavorOil = product.subtype === '향미유' || product.category === '향미유';
+  return isFlavorOil ? 12 : 0;
 }
