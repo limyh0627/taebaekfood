@@ -35,17 +35,27 @@ describe('filterCodesForContext', () => {
     expect(names('매입')).toContain('605');
   });
 
-  // 대체전표는 현금도 거래처도 없는 분개 — 비현금 계정만 고를 수 있어야 오용이 막힌다.
-  it('대체전표에는 비현금 계정만 뜬다', () => {
-    const withNoncash: AccountCode[] = [
+  /*
+   * 대체전표는 **돈이 안 움직이는** 분개다. 막아야 할 건 그것 하나 —
+   * 현금이 오간 것을 대체로 적으면 통장 잔액과 어긋난다.
+   *
+   * 전에는 `noncash` 계정(감가상각·퇴직충당)만 남겼는데, 그건 '현금이 안 나간다'가 아니라
+   * '영영 현금이 안 나간다'는 뜻이라 너무 좁았다. 실제 계정 49개 중 4개만 떠서
+   * **급여도 이자도 못 골랐다** — 거래처 없이 발생만 세우는 대표 전표가 그 둘인데.
+   */
+  it('대체전표에서 통장·현금만 빠진다', () => {
+    const withCash: AccountCode[] = [
       ...cs,
       { id: '818', code: '818', name: '감가상각비', groupId: 'ag-cogs', noncash: true },
-      { id: '535', code: '535', name: '퇴직급여충당금', groupId: 'ag-cogs', noncash: true },
+      { id: '103', code: '103', name: '보통예금', groupId: 'ag-asset' },
+      { id: '101', code: '101', name: '현금', groupId: 'ag-asset' },
     ];
-    const out = filterCodesForContext(withNoncash, gs, '대체').map(c => c.code);
-    expect(out).toEqual(['535', '818']);
-    expect(out).not.toContain('520');  // 전기세 — 현금 나감
-    expect(out).not.toContain('260');  // 단기차입금 — 자금원장으로
+    const out = filterCodesForContext(withCash, gs, '대체').map(c => c.code);
+    expect(out).not.toContain('103');
+    expect(out).not.toContain('101');
+    expect(out).toContain('818');   // 감가상각 — 좁히기 전에도 되던 것
+    expect(out).toContain('520');   // 전기세 발생 — 아직 안 낸 것을 세운다
+    expect(out).toContain('260');   // 상대변(부채) — 차·대를 직접 세우려면 있어야 한다
   });
 });
 
