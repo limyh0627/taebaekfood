@@ -66,6 +66,15 @@ const fmtM = (n: number) => {
 const MONTHS = 12;
 /** 실지재고조사법에서 재고 조정이 실리는 비용 계정 — autoJournal의 PURCHASE와 같아야 한다 */
 const INVENTORY_EXPENSE_CODE = '500';
+/** 전표 갈래 색 — 담긴 컬렉션이 아니라 **무슨 전표인가**로 가른다 */
+const VOUCHER_CHIP: Record<string, string> = {
+  '매출': 'bg-blue-100 text-blue-700',
+  '매입': 'bg-amber-100 text-amber-700',
+  '비용': 'bg-slate-200 text-slate-600',
+  '대체': 'bg-slate-200 text-slate-600',
+  '자금출금': 'bg-rose-100 text-rose-700',
+  '자금입금': 'bg-emerald-100 text-emerald-700',
+};
 
 const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCostTemplates = [], onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], costOf, onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = [], onSaveCashFlowManual, cashEntries, onAddCashEntry, settlements = [], onAddSettlement, onDeleteSettlement, companyId = 'taebaek', initialTab }) => {
   // 계산결과 그룹만 숨긴다. **id는 안 갈아끼운다** — 예전엔 판관비를 'ag-sgna'로 바꿔
@@ -180,13 +189,14 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   );
 
   // 연도 목록 (전표 기준)
+  // 연도 목록 — 전표든 자금이든 기록이 있는 해는 다 고를 수 있어야 한다
   const years = useMemo(() => {
     const ys = new Set<number>();
     issuedStatements.forEach(s => ys.add(Number(s.tradeDate.slice(0, 4))));
-
+    cashEntries.forEach(e => { const y = Number((e.date ?? '').slice(0, 4)); if (y) ys.add(y); });
     ys.add(now.getFullYear());
     return [...ys].sort((a, b) => b - a);
-  }, [issuedStatements]);
+  }, [issuedStatements, cashEntries]);
 
   // 오늘 연월 (미래 달 제외 기준)
   const todayYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -391,26 +401,36 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   };
 
 
-  // COGS 계정코드별 집계
-  const cogsByCode = useMemo(() => {
-    const map = new Map<string, { code: string; name: string; total: number }>();
-    issuedStatements
-      .filter(s => periodMonths.some(ym => s.tradeDate.startsWith(ym)))
-      .forEach(s => {
-        s.items.forEach(item => {
-          if (!item.accountCode) return;
-          const group = codeToGroup(item.accountCode);
-          if (!group) return;
-          const isCogs = group.plLine === 'cogs' || (!group.plLine && group.type === '비용');
-          if (!isCogs) return;
-          const ac = accountCodes.find(c => c.code === item.accountCode);
-          const key = item.accountCode;
-          if (!map.has(key)) map.set(key, { code: key, name: ac?.name ?? key, total: 0 });
-          map.get(key)!.total += item.total;
-        });
-      });
-    return [...map.values()].sort((a, b) => a.code.localeCompare(b.code));
-  }, [issuedStatements, periodMonths, codeToGroup, accountCodes]);
+  /**
+   * 그 달 전표 한 줄기 — **거래명세서와 자금전표는 같은 전표다.**
+   *
+   * 담기는 곳이 두 컬렉션(issuedStatements · cashEntries)으로 갈려 있을 뿐,
+   * 둘 다 분개를 한 번 거쳐 손익에 들어간다. 화면에서 한쪽만 보여주면
+   * 합계는 맞는데 내역이 모자라 대조가 안 된다.
+   */
+  const codeName = useMemo(() => new Map(accountCodes.map(c => [c.code, c.name])), [accountCodes]);
+  const monthVouchers = useCallback((ym: string) => [
+    ...issuedStatements.filter(s => (s.tradeDate ?? '').startsWith(ym)).map(s => ({
+      key: s.id, kind: s.type as string, date: s.tradeDate,
+      ts: rowStamp(s.tradeDate, s.issuedAt),
+      who: s.partnerName || '(거래처 없음)',
+      memo: [s.docNo, s.items?.[0]?.name].filter(Boolean).join(' · '),
+      amount: s.totalAmount,
+    })),
+    ...cashEntries.filter(e => (e.date ?? '').startsWith(ym)).map(e => {
+      const codes = (e.lines?.length ? e.lines.map(l => l.accountCode) : [e.accountCode]).filter(Boolean) as string[];
+      return {
+        key: e.id, kind: e.dir === '대체' ? '대체' : `자금${e.dir}`, date: e.date,
+        ts: rowStamp(e.date, e.createdAt),
+        who: e.partnerName || '(거래처 없음)',
+        memo: [codes.map(c => codeName.get(c) ?? c).join('·'), e.note].filter(Boolean).join(' · '),
+        amount: e.amount,
+      };
+    }),
+  ].sort((a, b) => a.ts.localeCompare(b.ts)), [issuedStatements, cashEntries, codeName]);
+
+  // (cogsByCode 삭제: 전표만 보고 매출원가를 따로 세던 곁길. 화면에 안 그려졌고,
+  //  자금전표가 빠져 손익과 어긋나는 값이었다. 집계는 분개 하나로만 한다.)
 
   const TrendBadge = ({ curr, prev }: { curr: number; prev: number | undefined }) => {
     const p = pct(curr, prev);
@@ -735,8 +755,13 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                 const isEmpty = m.sales === 0 && m.cogs === 0 && m.sgna === 0;
                 const isExpanded = expandedMonth === m.ym;
 
-                // 해당 월 전표 목록
-                const monthStmts = issuedStatements.filter(s => s.tradeDate.startsWith(m.ym));
+                /*
+                 * 그 달 **전표 전체** — 거래명세서와 자금전표를 한 줄기로 세운다.
+                 * 전에는 issuedStatements만 봐서 급여·이자·리스료처럼 자금원장에만 있는
+                 * 전표가 목록에서 통째로 빠졌다. 위 손익 숫자에는 들어 있는데 내역엔 없으니
+                 * 금액이 어디서 나왔는지 대조할 수가 없었다.
+                 */
+                const monthStmts = monthVouchers(m.ym);
 
                 return (
                   <React.Fragment key={m.ym}>
@@ -770,12 +795,13 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                           <div className="space-y-1">
                             {monthStmts.length === 0 ? (
                               <div className="text-xs text-slate-300">전표 없음</div>
-                            ) : monthStmts.map(s => (
-                              <div key={s.id} className="flex items-center gap-3 text-[11px]">
-                                <span className={`px-1.5 py-0.5 rounded-full font-black text-[9px] ${s.type === '매출' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>{s.type}</span>
-                                <span className="text-slate-600">{s.tradeDate}</span>
-                                <span className="font-bold text-slate-800">{s.partnerName}</span>
-                                <span className="ml-auto font-black text-slate-700">{fmt(s.totalAmount)}원</span>
+                            ) : monthStmts.map(v => (
+                              <div key={v.key} className="flex items-center gap-3 text-[11px]">
+                                <span className={`shrink-0 w-11 text-center px-1.5 py-0.5 rounded-full font-black text-[9px] ${VOUCHER_CHIP[v.kind] ?? 'bg-slate-100 text-slate-500'}`}>{v.kind}</span>
+                                <span className="text-slate-600 shrink-0">{v.date}</span>
+                                <span className="font-bold text-slate-800 truncate">{v.who}</span>
+                                <span className="text-slate-400 truncate">{v.memo}</span>
+                                <span className="ml-auto font-black text-slate-700 shrink-0 tabular-nums">{fmt(v.amount)}원</span>
                               </div>
                             ))}
                           </div>
