@@ -50,6 +50,7 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
     { id: '매출처', label: '매출처' },
     { id: '매입처', label: '매입처' },
     { id: '매출+매입처', label: '매출+매입처' },
+    { id: '금융기관', label: '금융기관' },
   ];
 
   const partnerChannelTypes: { id: PartnerChannel | '전체', label: string, icon: any, color: string }[] = [
@@ -166,7 +167,10 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
             const currentTypeConfig = partnerChannelTypes.find(t => t.id === partner.type) || partnerChannelTypes[1];
             const TypeIcon = currentTypeConfig.icon;
             const pt = getEffectivePartnerType(partner);
-            const ptColor = pt === '매출처' ? 'bg-indigo-100 text-indigo-600' : pt === '매입처' ? 'bg-orange-100 text-orange-600' : 'bg-violet-100 text-violet-600';
+            const ptColor = pt === '매출처' ? 'bg-indigo-100 text-indigo-600'
+              : pt === '매입처' ? 'bg-orange-100 text-orange-600'
+              : pt === '금융기관' ? 'bg-slate-200 text-slate-600'
+              : 'bg-violet-100 text-violet-600';
             const fullAddress = [partner.address, partner.addressDetail].filter(Boolean).join(' ');
 
             return (
@@ -349,7 +353,14 @@ const PartnerManager: React.FC<PartnerManagerProps> = ({ partners, onUpdateClien
                     <option value="매출처">매출처</option>
                     <option value="매입처">매입처</option>
                     <option value="매출+매입처">매출+매입처</option>
+                    <option value="금융기관">금융기관</option>
                   </select>
+                  {editForm.partnerType === '금융기관' && (
+                    <p className="text-[11px] font-bold text-slate-400 leading-snug mt-1.5">
+                      은행·카드사처럼 <b>빌리고 갚는 상대</b>입니다. 주문·발주·매입전표 거래처 목록에는 안 뜨고,
+                      일반전표(대출상환·이자)에서 고릅니다.
+                    </p>
+                  )}
                 </div>
                 {(editForm.partnerType === '매출처' || editForm.partnerType === '매출+매입처' || !editForm.partnerType) && (
                   <div>
