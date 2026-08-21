@@ -387,7 +387,13 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
   // 계정 코드 (이름으로 탐색, 없으면 기본)
   // 고른 방향의 템플릿만. 카드를 누르면 모드·계정과목·비고가 한 번에 채워진다.
   const templates = useMemo(() => filterTemplates(accountCodes, fixedCostTemplates), [accountCodes, fixedCostTemplates]);
+  /** 고른 템플릿을 id로 붙든다 — 계정만으로 되찾으면 같은 계정 템플릿 중 먼저 오는 게 잡힌다 */
+  const [templateId, setTemplateId] = useState<string | null>(null);
+  const currentTemplate = () =>
+    (templateId ? templates.find(t => t.id === templateId) : undefined)
+      ?? activeTemplate(templates, { mode, accountCode });
   const pickTemplate = (t: CashTemplate) => {
+    setTemplateId(t.id);
     if (isCashDir(t.dir)) setDir(t.dir);   // 자금원장은 돈이 오간 것만 적는다
     setMode(t.mode);
     setInsCorpStr(''); setInsEmpStr('');
@@ -496,7 +502,7 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
 
         {/* 기본은 직접입력. 목록은 고를 때만 창을 열어 보여준다(전표 화면과 같다) */}
         {(() => {
-          const cur = activeTemplate(templates, { mode, accountCode });
+          const cur = currentTemplate();
           const picked = !!cur && !cur.id.startsWith('free');
           return (
             <button type="button" onClick={() => setPickerOpen(true)}
@@ -720,9 +726,9 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
         {pickerOpen && (
           <CashTemplateModal
             templates={templates} accountCodes={accountCodes}
-            activeId={activeTemplateId(templates, { mode, accountCode })}
+            activeId={currentTemplate()?.id ?? null}
             onPick={pickTemplate}
-            onDirect={() => { setMode('일반'); setAccountCode(''); setPickerOpen(false); }}
+            onDirect={() => { setTemplateId(null); setMode('일반'); setAccountCode(''); setPickerOpen(false); }}
             onClose={() => setPickerOpen(false)}
           />
         )}

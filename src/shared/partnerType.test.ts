@@ -38,3 +38,30 @@ describe('금융기관 갈래', () => {
     expect(목록.some(c => c.name === '농협')).toBe(true);
   });
 });
+
+describe('같은 계정을 쓰는 템플릿이 여럿일 때', () => {
+  // 리스료가 둘(기본·안사장) 다 819를 쓴다. 계정만으로 되찾으면 먼저 오는 게 잡힌다.
+  const list = [
+    { id: 'fct-builtin-lease', label: '리스료', mode: '일반', accountCode: '819', amount: 2344300 },
+    { id: 'fct-1787222602711', label: '리스료 (안사장)', mode: '일반', accountCode: '819', amount: 1268550 },
+  ] as { id: string; label: string; mode: string; accountCode: string; amount: number }[];
+
+  /** 옛 방식 — 계정으로 되찾는다 */
+  const byCode = (accountCode: string) => list.find(t => t.accountCode === accountCode)?.id ?? null;
+  /** 지금 방식 — 고른 id를 붙든다 */
+  const byPicked = (pickedId: string | null, accountCode: string) =>
+    (pickedId ? list.find(t => t.id === pickedId)?.id : undefined) ?? byCode(accountCode);
+
+  it('계정으로 되찾으면 안사장을 골라도 기본이 잡힌다 — 고친 이유', () => {
+    expect(byCode('819')).toBe('fct-builtin-lease');
+  });
+
+  it('고른 id를 붙들면 고른 그대로다', () => {
+    expect(byPicked('fct-1787222602711', '819')).toBe('fct-1787222602711');
+    expect(byPicked('fct-builtin-lease', '819')).toBe('fct-builtin-lease');
+  });
+
+  it('고른 게 없으면(전표 수정 등) 계정으로 짐작한다', () => {
+    expect(byPicked(null, '819')).toBe('fct-builtin-lease');
+  });
+});

@@ -410,9 +410,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [qpInterest, setQpInterest] = useState('');
   const [qpGross, setQpGross] = useState('');
   const [qpDeduction, setQpDeduction] = useState('');
+  /**
+   * 방금 고른 템플릿 — **id로 기억한다.**
+   *
+   * 예전엔 계정과목으로 되찾았는데(activeTemplateId), 같은 계정을 쓰는 템플릿이 둘 이상이면
+   * 먼저 오는 게 잡혔다. '리스료'를 골라도 목록엔 '리스료 (안사장)'이 눌린 것처럼 보였다.
+   * 값은 고른 대로 들어갔지만 이름이 딴 것이라 무슨 전표를 쓰는 중인지 못 믿게 된다.
+   */
+  const [qpTemplateId, setQpTemplateId] = useState<string | null>(null);
   const openCashModal = (dir: '입금' | '출금') => {
     setQpMode('일반'); setQpDir(dir); setQpAccountCode(''); setQpPickerOpen(false);
-    setQpInsCorp(''); setQpInsEmp(''); setQpVat(''); setQpIncomeTax('');
+    setQpInsCorp(''); setQpInsEmp(''); setQpVat(''); setQpIncomeTax(''); setQpTemplateId(null);
     setQpAccrRows([{ name: '', price: '' }]);
     setQpAdvCompany(companyId === 'taebaek' ? 'punghoe' : 'taebaek');
     setQpAdvAmount(''); setQpAdvOver('선급금');
@@ -434,6 +442,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // 템플릿을 고르면 계정만이 아니라 **저장해 둔 거래처·금액까지** 채운다.
   // 매달 같은 곳에 같은 금액을 넣는 전표가 대부분이라, 그게 실제로 시간을 줄인다.
   const pickTemplate = (t: CashTemplate) => {
+    setQpTemplateId(t.id);    // 고른 것을 id로 붙든다 — 계정만으로는 같은 계정 템플릿이 섞인다
     setQpDir(t.dir);          // 방향은 템플릿이 정한다
     setQpMode(t.mode);
     setQpAccountCode(t.accountCode ?? '');
@@ -467,6 +476,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     }
     setQpPickerOpen(false);
   };
+  /** 지금 쓰는 템플릿 — 고른 id가 있으면 그것, 없으면(전표 수정 등) 계정으로 짐작한다. */
+  const currentTemplate = (list: CashTemplate[]) =>
+    (qpTemplateId ? list.find(t => t.id === qpTemplateId) : undefined)
+      ?? activeTemplate(list, { mode: qpMode, accountCode: qpAccountCode });
+
   // 계정 5분류 — 자금 전표가 비용인지 수익인지 가려 매입/매출 합계에 반영하는 데 쓴다.
   const codeType = useMemo(() => new Map(accountCodes.map(c => [c.code, c.type])), [accountCodes]);
 
@@ -3864,7 +3878,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               {/* 기본은 직접입력. 목록은 고를 때만 창을 열어 보여준다 —
                   늘 펼쳐 두면 정작 금액 칸이 아래로 밀린다. */}
               {(() => {
-                const cur = activeTemplate(qpTemplates, { mode: qpMode, accountCode: qpAccountCode });
+                const cur = currentTemplate(qpTemplates);
                 const picked = !!cur && !cur.id.startsWith('free');
                 return (
                   <button type="button" onClick={() => setQpPickerOpen(true)}
@@ -4354,7 +4368,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               {onAddFixedCostTemplate && (
                 <button
                   onClick={async () => {
-                    const cur = activeTemplate(qpTemplates, { mode: qpMode, accountCode: qpAccountCode });
+                    const cur = currentTemplate(qpTemplates);
                     const suggest = quickPayNote.trim()
                       || (qpAccountCode ? codeName.get(qpAccountCode) ?? '' : '')
                       || (cur && !(cur.builtin ?? '').startsWith('free') ? cur.label : '');
@@ -4392,9 +4406,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             {qpPickerOpen && (
               <CashTemplateModal
                 templates={qpTemplates} accountCodes={accountCodes}
-                activeId={activeTemplateId(qpTemplates, { mode: qpMode, accountCode: qpAccountCode })}
+                activeId={currentTemplate(qpTemplates)?.id ?? null}
                 onPick={pickTemplate}
-                onDirect={() => { setQpMode('일반'); setQpAccountCode(''); setQuickPayClientId(''); setQuickPayClientSearch(''); setQpPickerOpen(false); }}
+                onDirect={() => { setQpTemplateId(null); setQpMode('일반'); setQpAccountCode(''); setQuickPayClientId(''); setQuickPayClientSearch(''); setQpPickerOpen(false); }}
                 onClose={() => setQpPickerOpen(false)}
               />
             )}
