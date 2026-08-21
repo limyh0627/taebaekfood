@@ -35,7 +35,7 @@ export function buildJournals(input: BuildJournalsInput): BuildJournalsResult {
   for (const s of statements) {
     const je = journalizeStatement(s);
     if (je) entries.push(je);
-    else if (s.type === '매출' || s.type === '매입') skipped.push({ sourceType: s.type, id: s.id, reason: '계정 미지정 또는 빈 전표' });
+    else if (s.type === '매출' || s.type === '매입') skipped.push({ sourceType: s.type, id: s.id, reason: '계정 미지정 · 빈 전표 · 차대 불일치(품목 합계와 전표 합계가 다름)' });
     else if (s.type === '비용') {
       // 대체전표 — 감가상각·퇴직급여충당 등 현금 없는 내부 대체
       const tj = journalizeTransfer(s, normalOf);

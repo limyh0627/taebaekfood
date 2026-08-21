@@ -133,3 +133,47 @@ describe('기초분개', () => {
     expect(je.lines.find(l => l.accountCode === '331')!.credit).toBe(40_000_000);
   });
 });
+
+describe('전표 분개는 차·대가 맞아야 나간다', () => {
+  /**
+   * 채권/채무 줄은 전표 머리(totalAmount)에서, 손익 줄은 품목(supply)에서 온다.
+   * 둘이 어긋난 전표가 실제로 있었다 — 기초 전표 17건의 totalSupply가 0이었다.
+   * 그대로 내보내면 시산표가 조용히 틀어져 어디서 샜는지 못 찾는다.
+   */
+  const stmt = (o: Partial<IssuedStatement>): IssuedStatement => ({
+    id: 's', issuedAt: '', tradeDate: '2026-08-19', type: '매출',
+    partnerId: 'p', partnerName: '가득찬식품', orderId: '', docNo: '260819-01',
+    totalSupply: 1000, totalTax: 0, totalAmount: 1000,
+    items: [{ name: '참기름', spec: '', qty: 1, price: 1000, supply: 1000, tax: 0, total: 1000, isTaxExempt: true, accountCode: '800' }],
+    ...o,
+  } as IssuedStatement);
+
+  it('맞으면 나간다', () => {
+    const je = journalizeStatement(stmt({}))!;
+    expect(je).not.toBeNull();
+    const d = je.lines.reduce((a, l) => a + (l.debit ?? 0), 0);
+    const c = je.lines.reduce((a, l) => a + (l.credit ?? 0), 0);
+    expect(d).toBe(c);
+  });
+
+  it('품목 합계와 전표 합계가 다르면 안 나간다 — skipped로 잡혀 화면에 뜬다', () => {
+    // 머리엔 1,500인데 품목은 1,000 — 500이 어디서 왔는지 알 수 없다
+    expect(journalizeStatement(stmt({ totalAmount: 1500 }))).toBeNull();
+  });
+
+  it('부가세가 빠진 채 합계만 큰 전표도 막는다', () => {
+    // 공급가 1,000 + 세액 100 = 1,100인데 totalTax를 안 적어 둔 경우
+    expect(journalizeStatement(stmt({ totalAmount: 1100, totalTax: 0 }))).toBeNull();
+  });
+
+  it('부가세를 제대로 적으면 나간다 — 매출은 공급가만 수익, 세액은 예수금', () => {
+    const je = journalizeStatement(stmt({
+      totalSupply: 1000, totalTax: 100, totalAmount: 1100,
+      items: [{ name: '참기름', spec: '', qty: 1, price: 1000, supply: 1000, tax: 100, total: 1100, isTaxExempt: false, accountCode: '800' }],
+    }))!;
+    expect(je).not.toBeNull();
+    expect(je.lines.find(l => l.accountCode === '800')!.credit).toBe(1000);   // 수익은 공급가만
+    expect(je.lines.find(l => l.accountCode === '255')!.credit).toBe(100);    // 부가세는 부채
+    expect(je.lines.find(l => l.accountCode === '108')!.debit).toBe(1100);    // 받을 돈은 전액
+  });
+});

@@ -96,6 +96,18 @@ export function journalizeStatement(s: IssuedStatement, opts: AutoJournalOptions
     lines.push({ accountCode: counter ?? AP, debit: 0, credit: gross, ...(counter ? {} : { partnerId: s.partnerId }) });
   }
 
+  /*
+   * **차·대가 안 맞으면 안 내보낸다.**
+   *
+   * 채권/채무 줄은 전표 머리(totalAmount)에서, 손익 줄은 품목(supply)에서 가져온다.
+   * 둘이 어긋난 전표가 실제로 있었다(기초 전표 17건의 totalSupply가 0이었다).
+   * 그대로 내보내면 시산표가 조용히 틀어져 어디서 샜는지 못 찾는다.
+   * 여기서 막으면 buildJournals가 skipped로 잡아 재무제표 화면에 띄운다.
+   */
+  const debit = r(sum(lines.map(l => l.debit ?? 0)));
+  const credit = r(sum(lines.map(l => l.credit ?? 0)));
+  if (debit !== credit) return null;
+
   return {
     id: `je-${s.id}`,
     date: s.tradeDate,
