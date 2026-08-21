@@ -154,8 +154,8 @@ const AddPartnerModal: React.FC<AddPartnerModalProps> = ({ onClose, onSave }) =>
             <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
               <LayoutGrid size={14} className="mr-2" /> 거래처 구분
             </label>
-            <div className="grid grid-cols-3 gap-2">
-              {(['매출처', '매입처', '매출+매입처'] as PartnerType[]).map(pt => (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {(['매출처', '매입처', '매출+매입처', '금융기관'] as PartnerType[]).map(pt => (
                 <button
                   key={pt}
                   type="button"
@@ -170,6 +170,12 @@ const AddPartnerModal: React.FC<AddPartnerModalProps> = ({ onClose, onSave }) =>
                 </button>
               ))}
             </div>
+            {formData.partnerType === '금융기관' && (
+              <p className="text-[11px] font-bold text-slate-400 leading-snug">
+                은행·카드사처럼 <b>빌리고 갚는 상대</b>입니다. 주문·발주·매입전표 거래처 목록에는 안 뜨고,
+                일반전표(대출상환·이자)에서 고릅니다.
+              </p>
+            )}
           </div>
 
           {(formData.partnerType === '매출처' || formData.partnerType === '매출+매입처') && (
