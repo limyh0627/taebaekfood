@@ -14,6 +14,7 @@ import { buildJournals } from '../src/shared/buildJournals';
 import type { OpeningBalance } from '../src/shared/autoJournal';
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { stampFor, rowStamp, issuedMs } from '../src/shared/voucherStamp';
+import { vouchersOfMonth, VOUCHER_KIND_CHIP } from '../src/shared/vouchers';
 
 type MainTab = 'analysis' | 'costs' | 'partners' | 'inventory-value' | 'account-settings' | 'cash-flow';
 
@@ -66,15 +67,7 @@ const fmtM = (n: number) => {
 const MONTHS = 12;
 /** 실지재고조사법에서 재고 조정이 실리는 비용 계정 — autoJournal의 PURCHASE와 같아야 한다 */
 const INVENTORY_EXPENSE_CODE = '500';
-/** 전표 갈래 색 — 담긴 컬렉션이 아니라 **무슨 전표인가**로 가른다 */
-const VOUCHER_CHIP: Record<string, string> = {
-  '매출': 'bg-blue-100 text-blue-700',
-  '매입': 'bg-amber-100 text-amber-700',
-  '비용': 'bg-slate-200 text-slate-600',
-  '대체': 'bg-slate-200 text-slate-600',
-  '자금출금': 'bg-rose-100 text-rose-700',
-  '자금입금': 'bg-emerald-100 text-emerald-700',
-};
+// (전표 갈래 색은 shared/vouchers의 VOUCHER_KIND_CHIP 하나를 쓴다)
 
 const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCostTemplates = [], onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], costOf, onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = [], onSaveCashFlowManual, cashEntries, onAddCashEntry, settlements = [], onAddSettlement, onDeleteSettlement, companyId = 'taebaek', initialTab }) => {
   // 계산결과 그룹만 숨긴다. **id는 안 갈아끼운다** — 예전엔 판관비를 'ag-sgna'로 바꿔
@@ -401,33 +394,15 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   };
 
 
-  /**
-   * 그 달 전표 한 줄기 — **거래명세서와 자금전표는 같은 전표다.**
-   *
-   * 담기는 곳이 두 컬렉션(issuedStatements · cashEntries)으로 갈려 있을 뿐,
-   * 둘 다 분개를 한 번 거쳐 손익에 들어간다. 화면에서 한쪽만 보여주면
-   * 합계는 맞는데 내역이 모자라 대조가 안 된다.
-   */
   const codeName = useMemo(() => new Map(accountCodes.map(c => [c.code, c.name])), [accountCodes]);
-  const monthVouchers = useCallback((ym: string) => [
-    ...issuedStatements.filter(s => (s.tradeDate ?? '').startsWith(ym)).map(s => ({
-      key: s.id, kind: s.type as string, date: s.tradeDate,
-      ts: rowStamp(s.tradeDate, s.issuedAt),
-      who: s.partnerName || '(거래처 없음)',
-      memo: [s.docNo, s.items?.[0]?.name].filter(Boolean).join(' · '),
-      amount: s.totalAmount,
-    })),
-    ...cashEntries.filter(e => (e.date ?? '').startsWith(ym)).map(e => {
-      const codes = (e.lines?.length ? e.lines.map(l => l.accountCode) : [e.accountCode]).filter(Boolean) as string[];
-      return {
-        key: e.id, kind: e.dir === '대체' ? '대체' : `자금${e.dir}`, date: e.date,
-        ts: rowStamp(e.date, e.createdAt),
-        who: e.partnerName || '(거래처 없음)',
-        memo: [codes.map(c => codeName.get(c) ?? c).join('·'), e.note].filter(Boolean).join(' · '),
-        amount: e.amount,
-      };
-    }),
-  ].sort((a, b) => a.ts.localeCompare(b.ts)), [issuedStatements, cashEntries, codeName]);
+  /**
+   * 그 달 전표 — **모으는 자리는 shared/vouchers 하나뿐이다.**
+   * 화면마다 두 컬렉션을 각자 모으면 언젠가 한쪽을 빠뜨린다(실제로 그래서 급여·이자가 0이었다).
+   */
+  const monthVouchers = useCallback(
+    (ym: string) => vouchersOfMonth(issuedStatements, cashEntries, ym, companyId),
+    [issuedStatements, cashEntries, companyId],
+  );
 
   // (cogsByCode 삭제: 전표만 보고 매출원가를 따로 세던 곁길. 화면에 안 그려졌고,
   //  자금전표가 빠져 손익과 어긋나는 값이었다. 집계는 분개 하나로만 한다.)
@@ -796,11 +771,11 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                             {monthStmts.length === 0 ? (
                               <div className="text-xs text-slate-300">전표 없음</div>
                             ) : monthStmts.map(v => (
-                              <div key={v.key} className="flex items-center gap-3 text-[11px]">
-                                <span className={`shrink-0 w-11 text-center px-1.5 py-0.5 rounded-full font-black text-[9px] ${VOUCHER_CHIP[v.kind] ?? 'bg-slate-100 text-slate-500'}`}>{v.kind}</span>
+                              <div key={v.id} className="flex items-center gap-3 text-[11px]">
+                                <span className={`shrink-0 w-11 text-center px-1.5 py-0.5 rounded-full font-black text-[9px] ${VOUCHER_KIND_CHIP[v.kind]}`}>{v.kind}</span>
                                 <span className="text-slate-600 shrink-0">{v.date}</span>
-                                <span className="font-bold text-slate-800 truncate">{v.who}</span>
-                                <span className="text-slate-400 truncate">{v.memo}</span>
+                                <span className="font-bold text-slate-800 truncate">{v.partnerName ?? '(거래처 없음)'}</span>
+                                <span className="text-slate-400 truncate">{[v.docNo, v.memo].filter(Boolean).join(' · ')}</span>
                                 <span className="ml-auto font-black text-slate-700 shrink-0 tabular-nums">{fmt(v.amount)}원</span>
                               </div>
                             ))}
