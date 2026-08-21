@@ -95,8 +95,15 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
     return avail ?? 1;
   });
   const [selectedHalf, setSelectedHalf] = useState<1|2>(1);
+  /*
+   * 기본 기간 — **장부가 시작한 달부터 이번 달까지.**
+   *
+   * 전에는 1월 ~ `new Date().getMonth()`였다. getMonth()는 0부터라 8월에 7이 나와
+   * **이번 달이 빠졌고**, 앞은 기초일(7/31) 이전이라 통째로 잘려서 화면이 전부 0이었다.
+   * 유일하게 데이터가 있는 달이 8월인데 그 8월만 안 보였다.
+   */
   const [customStartMonth, setCustomStartMonth] = useState(1);
-  const [customEndMonth, setCustomEndMonth] = useState(() => Math.max(1, new Date().getMonth()));
+  const [customEndMonth, setCustomEndMonth] = useState(() => new Date().getMonth() + 1);
   const [newCodeForm, setNewCodeForm] = useState({ code: '', name: '', groupId: '' });
   const [newGroupForm, setNewGroupForm] = useState({ name: '', type: '수익' as AccountGroup['type'], plLine: undefined as AccountGroup['plLine'] });
   const [showAddCode, setShowAddCode] = useState(false);
@@ -180,22 +187,27 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   const todayYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const currentMonth = now.getMonth() + 1;
   const isCurrentYear = selectedYear === now.getFullYear();
-  const quarterAvailable = (q: 1|2|3|4) => !isCurrentYear || currentMonth > q * 3;
-  const halfAvailable = (h: 1|2) => !isCurrentYear || (h === 1 && currentMonth > 6);
-  const yearlyAvailable = !isCurrentYear;
+  /*
+   * 기간 버튼을 언제 열 것인가 — **시작한 기간은 연다.**
+   *
+   * 전에는 '끝난 기간만' 열었다(currentMonth > q*3). 8월이면 3분기(7~9월)가 잠겨서,
+   * 정작 장부에 있는 달이 7·8월인데 그 기간을 고를 수가 없었다. 연간도 마찬가지로 잠겨 있었다.
+   * 달 목록은 어차피 `ym <= todayYm`로 잘리니, 진행 중이면 지금까지만 보이면 된다.
+   */
+  const quarterAvailable = (q: 1|2|3|4) => !isCurrentYear || currentMonth >= (q - 1) * 3 + 1;
+  const halfAvailable = (h: 1|2) => !isCurrentYear || currentMonth >= (h === 1 ? 1 : 7);
+  const yearlyAvailable = true;
 
-  // 연도 변경 시 유효하지 않은 기간 자동 초기화
+  // 연도를 바꿨을 때 못 고르는 기간이면 되돌린다 — 판정은 위 *Available 하나만 쓴다.
+  // (전에는 여기서 규칙을 한 번 더 적어 둬서 버튼은 열려 있는데 여기서 튕기는 자리가 있었다)
   useEffect(() => {
     if (selectedYear !== now.getFullYear()) return;
-    if (period === '1Y') { setPeriod('custom'); return; }
-    if (period === '3M') {
-      const avail = ([1,2,3,4] as const).find(q => currentMonth > q * 3);
-      if (!avail) { setPeriod('custom'); return; }
-      if (!(currentMonth > selectedQuarter * 3)) setSelectedQuarter(avail);
+    if (period === '3M' && !quarterAvailable(selectedQuarter)) {
+      const avail = ([1,2,3,4] as const).find(quarterAvailable);
+      if (avail) setSelectedQuarter(avail); else setPeriod('custom');
     }
-    if (period === '6M') {
-      if (currentMonth <= 6) { setPeriod('custom'); return; }
-      if (selectedHalf === 2) setSelectedHalf(1);
+    if (period === '6M' && !halfAvailable(selectedHalf)) {
+      if (halfAvailable(1)) setSelectedHalf(1); else setPeriod('custom');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedYear]);
@@ -296,7 +308,18 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
    */
   const plByCode = useMemo(() => {
     const ymSet = new Set(monthlyData.map(m => m.ym));
+    /*
+     * **손익 계정을 전부 먼저 0으로 깔아 둔다.**
+     *
+     * 분개에 나온 계정만 세면, 그 기간에 안 움직인 계정은 줄 자체가 사라진다.
+     * 그러면 "이자비용이 빠진 건가, 0인 건가"를 화면에서 가릴 수 없다 — 실제로
+     * 기간이 통째로 잘려 전부 0이 됐을 때 계정이 사라진 것처럼 보였다.
+     * 0으로라도 서 있으면 '이 기간엔 없다'가 눈에 보인다.
+     */
     const tally = new Map<string, number>();
+    for (const a of accountCodes) {
+      if (a.type === '비용' || a.type === '수익') tally.set(String(a.code), 0);
+    }
     for (const e of journalEntries) {
       if (!ymSet.has((e.date ?? '').slice(0, 7))) continue;
       for (const l of e.lines ?? []) {
@@ -314,8 +337,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         const g = codeToGroup(code);
         return { code, name: acc?.name ?? code, amount, plLine: g?.plLine, groupId: g?.id, groupName: g?.name };
       })
-      .filter(r => r.amount !== 0)
-      .sort((a, b) => b.amount - a.amount);
+      .sort((a, b) => b.amount - a.amount);   // 0인 줄은 자연히 아래로 모인다
   }, [journalEntries, accountCodes, codeToGroup, monthlyData]);
 
   /**
@@ -565,7 +587,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
               </button>
               {open && (
                 <div className="bg-slate-50/60 px-5 pb-3 pt-1 space-y-2">
-                  {gs.length === 0 && <p className="text-[11px] font-bold text-slate-300 py-2">이 기간에 잡힌 게 없습니다.</p>}
+                  {gs.length === 0 && <p className="text-[11px] font-bold text-slate-300 py-2">이 줄에 붙은 계정그룹이 없습니다 — 계정 설정에서 손익 줄을 정해 주세요.</p>}
                   {gs.map(g => (
                     <div key={g.id}>
                       <div className="flex items-center justify-between text-[11px] font-black text-slate-600">
@@ -574,7 +596,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                       </div>
                       {g.rows.map(r => (
                         <React.Fragment key={r.code}>
-                          <div className="flex items-center justify-between pl-3 text-[11px] text-slate-400">
+                          <div className={`flex items-center justify-between pl-3 text-[11px] ${r.amount ? 'text-slate-400' : 'text-slate-300'}`}>
                             <span><span className="text-slate-300 mr-1.5 tabular-nums">{r.code}</span>{r.name}</span>
                             <span className="tabular-nums">{fmt(r.amount)}</span>
                           </div>
@@ -626,6 +648,15 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         const other = summary.otherIncome - summary.otherExpense;
         return (
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+            {/* 고른 기간이 통째로 장부 시작 이전이면 모든 줄이 0이 된다.
+                아무 말 없이 0만 뜨면 '집계가 깨졌나' 싶다 — 왜 0인지 여기서 밝힌다. */}
+            {periodMonths.length === 0 && (
+              <div className="px-5 py-3 bg-amber-50 border-b border-amber-200 text-[11px] font-bold text-amber-700 leading-snug">
+                고른 기간이 <b>장부 시작({openingDoc?.date ?? '기초일'}) 이전</b>이라 잡힐 게 없습니다.
+                그 이전 실적은 기초잔액에 녹아 있어 또 세면 이중이 됩니다 —
+                기간을 <b>{openingYm ? `${Number(openingYm.slice(5))+1}월` : '장부 시작 다음 달'}</b> 이후로 잡으세요.
+              </div>
+            )}
             <Line label="매출" amount={summary.sales} lines={['revenue']} sign="+" keyName="revenue" tone="green" />
             <Line label="매출원가" amount={summary.cogs} lines={['cogs']} sign="−" keyName="cogs" tone="red" />
             <Result label="매출총이익" amount={summary.grossProfit} />
