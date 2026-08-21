@@ -3901,6 +3901,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 inventorySnapshots={companySnapshots}
                 onSaveInventorySnapshot={async (data) => { await addItem('inventorySnapshots', { ...data, id: `inv-snap-${data.yearMonth}` }); }}
                 onGenerateRecurringCosts={generateRecurringCosts}
+                cashEntries={companyCashEntries}
+                settlements={appData.settlements}
               />
             </div>
           )}

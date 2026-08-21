@@ -41,7 +41,12 @@ interface ProfitAnalysisProps {
   onGenerateRecurringCosts?: (yearMonth: string) => Promise<number>;
   cashFlowManual?: CashFlowManual[];
   onSaveCashFlowManual?: (month: string, data: Partial<CashFlowManual>) => Promise<void>;
-  cashEntries?: CashEntry[];
+  /**
+   * 자금원장 — **손익에 반드시 필요하다.** 급여·이자비용처럼 전표 없이 자금으로만
+   * 나가는 비용이 여기에만 있어서, 안 넘기면 그 계정들이 통째로 0이 된다.
+   * 옛날엔 `?`라 안 넘겨도 조용히 빈 배열이 됐다 — 손익분석 화면이 실제로 그랬다.
+   */
+  cashEntries: CashEntry[];
   onAddCashEntry?: (e: CashEntry) => void;
   settlements?: Settlement[];
   /** 보고 있는 회사 — 기초잔액 문서가 회사별로 다르다 */
@@ -62,7 +67,7 @@ const MONTHS = 12;
 /** 실지재고조사법에서 재고 조정이 실리는 비용 계정 — autoJournal의 PURCHASE와 같아야 한다 */
 const INVENTORY_EXPENSE_CODE = '500';
 
-const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCostTemplates = [], onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], costOf, onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = [], onSaveCashFlowManual, cashEntries = [], onAddCashEntry, settlements = [], onAddSettlement, onDeleteSettlement, companyId = 'taebaek', initialTab }) => {
+const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCostTemplates = [], onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], costOf, onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = [], onSaveCashFlowManual, cashEntries, onAddCashEntry, settlements = [], onAddSettlement, onDeleteSettlement, companyId = 'taebaek', initialTab }) => {
   // 계산결과 그룹만 숨긴다. **id는 안 갈아끼운다** — 예전엔 판관비를 'ag-sgna'로 바꿔
   // 보여줬는데 설정 화면이 그 id를 그대로 저장해서, 없는 그룹을 가리키는 계정이 생겼다.
   // 그런 계정은 plLine을 못 찾아 손익에서 통째로 빠진다(운임·카드대금이 그랬다).
