@@ -9,11 +9,11 @@ import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Partner, PaymentMet
 import PageHeader from './PageHeader';
 import CostManager from './CostManager';
 import { makeCodeToGroup, computeMonthPLFromJournals, computeCashFlowMonth, computeCashFlowDirect, addMonthStr, SGNA_LEGACY_IDS, COMPUTED_GROUP_IDS } from '../src/features/admin/financials';
-import { partnerOpenBalance, allocatePartnerCash } from '../src/features/admin/cashLedger';
+import { partnerOpenBalance, allocatePartnerCash, partnerCashParts } from '../src/features/admin/cashLedger';
 import { buildJournals } from '../src/shared/buildJournals';
 import type { OpeningBalance } from '../src/shared/autoJournal';
 import { fetchCollection } from '../src/shared/services/firebaseService';
-import { stampFor } from '../src/shared/voucherStamp';
+import { stampFor, rowStamp, issuedMs } from '../src/shared/voucherStamp';
 
 type MainTab = 'analysis' | 'costs' | 'partners' | 'inventory-value' | 'account-settings' | 'cash-flow';
 
@@ -1122,20 +1122,13 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           const gross = issuedStatements
             .filter(st => st.partnerId === selId && st.type === type && (isOpening(st) || st.tradeDate < periodStart))
             .reduce((a, st) => a + st.totalAmount, 0);
+          // 채권·채무를 턴 몫은 cashLedger 한 곳에서 읽는다 —
+          // 여기서 따로 세다가 상계(대체)의 108 줄이 통째로 빠지고 251은 부호가 뒤집혔다.
+          const want = type === '매출' ? '108' : '251';
           const paid = cashEntries
             .filter(e => e.partnerId === selId && e.date < periodStart)
-            .flatMap(e => {
-              const parts = (e.lines ?? []).filter(l => l.accountCode && l.amount > 0);
-              const list = parts.length
-                ? parts.map(l => ({ c: l.accountCode, a: l.amount }))
-                : (e.accountCode ? [{ c: e.accountCode, a: e.amount }] : []);
-              return list.map(x => ({ ...x, dir: e.dir }));
-            })
-            .reduce((a, x) => {
-              if (type === '매출' && x.c === '108') return a + (x.dir === '입금' ? x.a : -x.a);
-              if (type === '매입' && x.c === '251') return a + (x.dir === '출금' ? x.a : -x.a);
-              return a;
-            }, 0);
+            .flatMap(partnerCashParts)
+            .reduce((a, x) => a + (x.code === want ? x.reduce : 0), 0);
           return gross - paid;
         };
         const carrySale = carryOver('매출');
@@ -1171,19 +1164,14 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         //   잔액이 이 합계를 빼서 나오므로, 화면 어디서든 같은 근거를 본다.
         const partnerCash = selId ? cashEntries
           .filter(e => e.partnerId === selId)
-          .flatMap(e => {
-            const parts = (e.lines ?? []).filter(l => l.accountCode && l.amount > 0);
-            const list = parts.length
-              ? parts.map(l => ({ c: l.accountCode, a: l.amount, n: l.note as string | undefined }))
-              : (e.accountCode ? [{ c: e.accountCode, a: e.amount, n: undefined as string | undefined }] : []);
-            return list.filter(p => p.c === '108' || p.c === '251').map(p => ({
-              id: `${e.id}-${p.c}`, date: e.date ?? '',
-              kind: (p.c === '108' ? '수금' : '지불') as '수금' | '지불',
-              // 입금이면 채권이 줄고 출금이면 채무가 준다. 반대면 되돌린 것(음수)
-              signed: (p.c === '108' ? (e.dir === '입금' ? 1 : -1) : (e.dir === '출금' ? 1 : -1)) * p.a,
-              note: p.n || e.note || '',
-            }));
-          }) : [];
+          .flatMap(e => partnerCashParts(e).map(p => ({
+            id: `${e.id}-${p.code}`, date: e.date ?? '',
+            // 그날 안의 자리 — 날짜만으로는 소급 기록이 앞에 끼어든다
+            ts: rowStamp(e.date ?? '', e.createdAt),
+            kind: (p.code === '108' ? '수금' : '지불') as '수금' | '지불',
+            signed: p.reduce,   // 양수면 그만큼 줄었다(수금·지불·상계)
+            note: p.note || e.note || '',
+          }))) : [];
         const yearCash = partnerCash.filter(p => p.date.startsWith(periodPrefix));
         const yearCollected = yearCash.filter(p => p.kind === '수금').reduce((a, p) => a + p.signed, 0);
         const yearPaidOut = yearCash.filter(p => p.kind === '지불').reduce((a, p) => a + p.signed, 0);
@@ -1204,14 +1192,27 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         const yearStmts = selId
           ? issuedStatements.filter(s => s.partnerId === selId && s.tradeDate.startsWith(periodPrefix))
           : [];
+        /*
+         * 최신이 위로 오는 목록이다. **같은 날 안에서도 최신이 위**여야 읽힌다 —
+         * 전에는 날짜만 보고 갈래 이름으로 tie를 깼더니, 8/19 매입을 상계한 그날 대체전표가
+         * 매입 아래(= 더 이전)로 내려가 "상계를 매입보다 먼저 잡은 것"처럼 보였다.
+         *
+         * 시각은 stampFor가 찍어 둔 것을 그대로 쓴다 — 소급으로 끊은 전표는 23:59:59라
+         * 그날 맨 뒤(목록에선 맨 위)에 선다. 동시각이면 전표를 뒤에 둬서 '발생 후 상계'로 읽힌다.
+         */
         const timeline = selId ? [
           ...yearStmts.map(s => ({
-            id: s.id, date: s.tradeDate, kind: s.type as '매출' | '매입', amount: s.totalAmount,
+            id: s.id, date: s.tradeDate, ts: rowStamp(s.tradeDate, s.issuedAt),
+            kind: s.type as '매출' | '매입', amount: s.totalAmount,
             note: `${s.docNo ?? ''} ${s.items?.slice(0, 2).map(i => i.name).join(', ') ?? ''}${(s.items?.length ?? 0) > 2 ? ` 외 ${s.items!.length - 2}` : ''}`.trim(),
             stmt: s,
           })),
-          ...yearCash.map(p => ({ id: p.id, date: p.date, kind: p.kind, amount: p.signed, note: p.note, stmt: null as IssuedStatement | null })),
-        ].sort((a, b) => b.date.localeCompare(a.date) || a.kind.localeCompare(b.kind)) : [];
+          ...yearCash.map(p => ({ id: p.id, date: p.date, ts: p.ts, kind: p.kind, amount: p.signed, note: p.note, stmt: null as IssuedStatement | null })),
+        ].sort((a, b) =>
+          b.ts.localeCompare(a.ts)
+          || (a.stmt ? 0 : 1) - (b.stmt ? 0 : 1)          // 동시각이면 전표가 위(=나중)
+          || issuedMs(b.id) - issuedMs(a.id)              // 그래도 같으면 나중에 끊은 게 위
+        ) : [];
         // 월별로 묶기 — 최신 월이 위. 월 머리에 그달 매출·수금 합계를 띄운다.
         const timelineByMonth = (() => {
           const map = new Map<string, typeof timeline>();
@@ -1635,23 +1636,16 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
               //   잔액은 이 합계를 빼서 나오므로, 숫자가 이상하면 여기서 근거를 바로 볼 수 있다.
               const payHistory = cashEntries
                 .filter(e => e.partnerId === receivableDetailClient.id)
-                .flatMap(e => {
-                  const parts = (e.lines ?? []).filter(l => l.accountCode && l.amount > 0);
-                  const list = parts.length
-                    ? parts.map(l => ({ c: l.accountCode, a: l.amount, n: l.note }))
-                    : (e.accountCode ? [{ c: e.accountCode, a: e.amount, n: undefined as string | undefined }] : []);
-                  return list
-                    .filter(p => p.c === '108' || p.c === '251')
-                    .map(p => ({
-                      id: `${e.id}-${p.c}`,
-                      date: e.date ?? '',
-                      kind: p.c === '108' ? '수금' : '지불',
-                      // 입금이면 채권이 줄고, 출금이면 채무가 준다. 반대면 되돌린 것(마이너스)
-                      signed: (p.c === '108' ? (e.dir === '입금' ? 1 : -1) : (e.dir === '출금' ? 1 : -1)) * p.a,
-                      note: p.n || e.note || '',
-                    }));
-                })
-                .sort((a, b) => b.date.localeCompare(a.date));
+                .flatMap(e => partnerCashParts(e).map(p => ({
+                  id: `${e.id}-${p.code}`,
+                  date: e.date ?? '',
+                  kind: p.code === '108' ? '수금' : '지불',
+                  signed: p.reduce,   // 양수면 그만큼 줄었다(수금·지불·상계)
+                  note: p.note || e.note || '',
+                  ts: rowStamp(e.date ?? '', e.createdAt),
+                })))
+                // 최신이 위 — 같은 날이면 그날 안의 시각, 동시각이면 나중에 끊은 것이 위
+                .sort((a, b) => b.ts.localeCompare(a.ts) || issuedMs(b.id) - issuedMs(a.id));
               const payTotal = payHistory.reduce((a, p) => a + p.signed, 0);
               return (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">

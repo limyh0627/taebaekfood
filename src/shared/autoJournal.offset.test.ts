@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { journalizeCashEntry } from './autoJournal';
-import { partnerPaid, signedAmount } from '../features/admin/cashLedger';
+import { partnerPaid, signedAmount, partnerCashParts } from '../features/admin/cashLedger';
 import type { CashEntry } from './types';
 
 /**
@@ -72,5 +72,43 @@ describe('상계 — 잔액', () => {
     expect(partnerPaid('p-han', '매출', [pay])).toBe(500000);
     expect(partnerPaid('p-han', '매입', [pay])).toBe(0);
     expect(signedAmount(pay)).toBe(500000);
+  });
+});
+
+describe('상계는 화면 어디서나 같은 몫으로 읽힌다', () => {
+  /**
+   * 잔액·이월·타임라인·미수금 상세가 각자 세다가 어긋났다.
+   *   · `amount > 0`으로 거르면 상계의 108 줄(음수)이 통째로 사라진다 → 미수가 안 준다
+   *   · 부호를 그대로 쓰면 251이 '되돌림'으로 읽힌다 → 미지급이 오히려 는다
+   * partnerCashParts 하나로 모은 뒤의 약속을 여기서 못 박는다.
+   */
+  const off: any = {
+    id: 'cash-1-offset', date: '2026-08-19', dir: '대체', amount: 9370000,
+    partnerId: 'p-han', partnerName: '한중교역',
+    lines: [{ accountCode: '251', amount: 9370000 }, { accountCode: '108', amount: -9370000 }],
+  };
+
+  it('상계는 108·251 두 줄 모두 감소로 나온다', () => {
+    const parts = partnerCashParts(off);
+    expect(parts).toHaveLength(2);
+    expect(parts.find(p => p.code === '108')!.reduce).toBe(9370000);
+    expect(parts.find(p => p.code === '251')!.reduce).toBe(9370000);
+  });
+
+  it('수금은 108만, 지불은 251만 줄인다', () => {
+    const 수금: any = { id: 'c2', dir: '입금', amount: 500000, accountCode: '108', partnerId: 'p' };
+    const 지불: any = { id: 'c3', dir: '출금', amount: 300000, accountCode: '251', partnerId: 'p' };
+    expect(partnerCashParts(수금)).toEqual([{ code: '108', reduce: 500000, note: undefined }]);
+    expect(partnerCashParts(지불)).toEqual([{ code: '251', reduce: 300000, note: undefined }]);
+  });
+
+  it('반대 방향은 되돌림(음수) — 잘못 넣은 수금을 무르는 출금', () => {
+    const 무름: any = { id: 'c4', dir: '출금', amount: 500000, accountCode: '108', partnerId: 'p' };
+    expect(partnerCashParts(무름)[0].reduce).toBe(-500000);
+  });
+
+  it('채권·채무가 아닌 계정은 안 센다 — 전기세 출금이 미지급을 줄이면 안 된다', () => {
+    const 전기: any = { id: 'c5', dir: '출금', amount: 200000, accountCode: '520', partnerId: 'p' };
+    expect(partnerCashParts(전기)).toEqual([]);
   });
 });

@@ -1,4 +1,5 @@
-﻿
+
+import { stampFor, nextDocNo } from '../src/shared/voucherStamp';﻿
 import React, { useMemo, useState } from 'react';
 import {
   Clock, AlertCircle, Package, ArrowRight,
@@ -192,9 +193,9 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
       });
       const totalSupply = stmtItems.reduce((s, i) => s + i.supply, 0);
       const totalTax = stmtItems.reduce((s, i) => s + i.tax, 0);
-      const docNo = `반품-${returnStmtDraft.tradeDate.slice(0, 7)}-${String(issuedStatements.length + 1).padStart(4, '0')}`;
+      const docNo = nextDocNo(returnStmtDraft.tradeDate, issuedStatements, '반품');
       const stmtId = await addItem('issuedStatements', {
-        issuedAt: new Date().toISOString(),
+        issuedAt: stampFor(returnStmtDraft.tradeDate),
         tradeDate: returnStmtDraft.tradeDate,
         type: '매출' as const,
         partnerId: partner.id,

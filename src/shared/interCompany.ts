@@ -1,4 +1,5 @@
-import type { CashEntry, IssuedStatement, CompanyId } from './types';
+
+import { stampFor } from './voucherStamp';import type { CashEntry, IssuedStatement, CompanyId } from './types';
 
 /**
  * 회사 간 이체 — 한 회사 통장에서 **다른 회사 통장으로** 돈을 보내는 것.
@@ -85,7 +86,7 @@ export function buildTransfer(t: TransferInput): TransferResult {
     ...(split.over > 0 ? [{ accountCode: overIn, amount: split.over, note: split.overKind === '선급금' ? '선수금' : '차입금' }] : []),
   ];
 
-  const base = { date: t.date, amount: t.amount, createdAt: new Date().toISOString() };
+  const base = { date: t.date, amount: t.amount, createdAt: stampFor(t.date) };
   return {
     split,
     out: {

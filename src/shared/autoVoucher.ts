@@ -1,4 +1,5 @@
-import type { FixedCostTemplate, CashEntry, IssuedStatement, IssuedStatementItem } from './types';
+
+import { stampFor } from './voucherStamp';import type { FixedCostTemplate, CashEntry, IssuedStatement, IssuedStatementItem } from './types';
 
 /**
  * 정기 전표 발행 — 템플릿 하나로 무엇을 만들지 정한다. 순수 함수, DB 안 건드림.
@@ -75,7 +76,8 @@ export function buildCashVoucher(
     accountCode: t.accountCode,
     ...(t.partnerId ? { partnerId: t.partnerId, partnerName: t.partnerName ?? '' } : {}),
     note: `정기 · ${t.name}${t.partnerName ? ` · ${t.partnerName}` : ''}`,
-    createdAt: new Date().toISOString(),
+    // 발행일이 지난 달이면 그날 맨 뒤 — 만드는 순간이 아니라 전표일이 자리를 정한다
+    createdAt: stampFor(issueDateOf(ym, t.issueDay)),
   } as CashEntry;
 }
 

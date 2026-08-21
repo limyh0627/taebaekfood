@@ -4,6 +4,7 @@ import { CashAccount, CashEntry, AccountCode, Partner, IssuedStatement, Settleme
 import { buildAccountLedger, totalCashOnHand, unsettledStatements, unmatchedCash } from '../src/features/admin/cashLedger';
 import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, isCashDir, splitModeOf, SPLIT_MODES, CashTemplate } from '../src/shared/cashTemplates';
 import { journalizeCashEntry } from '../src/shared/autoJournal';
+import { stampFor } from '../src/shared/voucherStamp';
 
 interface Props {
   cashAccounts: CashAccount[];
@@ -453,7 +454,12 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
     : mode === '세금' ? taxTotal > 0
     : (grs > 0 && ded >= 0 && net >= 0);
 
-  const base = () => ({ date, cashAccountId, createdAt: new Date().toISOString(), ...(currentUser ? { createdBy: currentUser.name } : {}), ...(partnerId ? { partnerId, partnerName: partner?.name ?? '' } : {}) });
+  /**
+   * 모든 자금전표가 공유하는 바탕. **시각은 stampFor가 정한다** —
+   * 여기서 new Date()를 쓰면 지난 날짜로 끊어도 '지금 시각'이 박혀서, 그날 안의 자리가
+   * 끊은 시각에 따라 멋대로 잡힌다(오전에 끊으면 그날 앞, 저녁에 끊으면 뒤).
+   */
+  const base = () => ({ date, cashAccountId, createdAt: stampFor(date), ...(currentUser ? { createdBy: currentUser.name } : {}), ...(partnerId ? { partnerId, partnerName: partner?.name ?? '' } : {}) });
 
   /**
    * 저장하면 생길 자금전표. 아래 분개 미리보기가 이걸 그대로 분개한다 —

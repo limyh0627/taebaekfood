@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+
+import { stampFor, nextDocNo } from '../src/shared/voucherStamp';import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   RotateCcw, ScanLine, Building2, History, Truck,
   Camera, QrCode, X, Check, Plus, Trash2, ChevronDown,
@@ -614,10 +615,10 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
       });
       const totalSupply = stmtItems.reduce((s, i) => s + i.supply, 0);
       const totalTax = stmtItems.reduce((s, i) => s + i.tax, 0);
-      const docNo = `${statementDraft.tradeDate.slice(0, 7)}-${String(issuedStatements.length + 1).padStart(4, '0')}`;
+      const docNo = nextDocNo(statementDraft.tradeDate, issuedStatements);
 
       const stmtId = await addItem('issuedStatements', {
-        issuedAt: new Date().toISOString(),
+        issuedAt: stampFor(statementDraft.tradeDate),
         tradeDate: statementDraft.tradeDate,
         type: '매입' as const,
         partnerId: partner.id,

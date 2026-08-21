@@ -1,4 +1,5 @@
 import { CashAccount, CashEntry, IssuedStatement, Settlement } from '../../shared/types';
+import { rowStamp, issuedMs } from '../../shared/voucherStamp';
 
 /**
  * 자금 원장(현금출납장) 순수 도메인 모듈 — 부수효과 없음(입력 → 값).
@@ -22,6 +23,10 @@ export interface AccountLedger {
   totalOut: number;     // 기간 출금 합계
   closing: number;      // 기말 잔액 = opening + totalIn - totalOut
 }
+
+/** 거래처 채권·채무 계정 — 이 둘만 거래처 잔액을 움직인다 */
+const AR = '108';   // 외상매출금
+const AP = '251';   // 외상매입금
 
 /** 입금 +, 출금 −. 대체(상계)는 돈이 안 움직였으므로 0 — 통장 잔액을 건드리면 안 된다. */
 export function signedAmount(e: CashEntry): number {
@@ -158,7 +163,7 @@ export function buildPartnerLedger(
     // 전표: 채권·채무 발생
     evs.push({
       row: { kind: '전표', id: s.id, date: s.tradeDate, label: s.docNo || '전표', amount: s.totalAmount },
-      ts: `${s.tradeDate}T${(s.issuedAt || '').slice(11, 19) || '00:00:00'}`,
+      ts: rowStamp(s.tradeDate, s.issuedAt),
       order: 0,   // 같은 시각이면 전표가 먼저 (발생 후 상계)
     });
   }
@@ -170,14 +175,15 @@ export function buildPartnerLedger(
     if (!e) continue;   // 자금 기록이 지워졌으면 상계로 치지 않는다
     evs.push({
       row: { kind: '결제', id: st.id, date: e.date, label: e.note || (e.dir === '출금' ? '지불' : '수금'), amount: -st.amount, source: 'cash' },
-      ts: `${e.date}T${(e.createdAt || '').slice(11, 19) || '00:00:00'}`,
+      ts: rowStamp(e.date, e.createdAt),
       order: 1,
     });
   }
 
-  // 같은 시각·같은 갈래면 번호순 — 읽어온 순서에 기대면 새로고침마다 달라진다.
+  // 같은 시각·같은 갈래면 **끊은 순서**(id에 박힌 ms) — 읽어온 순서에 기대면 새로고침마다 달라진다.
+  // 문서번호는 겹치는 것이 있어 못 쓴다(voucherStamp.issuedMs 참고).
   evs.sort((a, b) => a.ts.localeCompare(b.ts) || a.order - b.order
-    || String(a.row.label).localeCompare(String(b.row.label), undefined, { numeric: true })
+    || issuedMs(a.row.id) - issuedMs(b.row.id)
     || String(a.row.id).localeCompare(String(b.row.id), undefined, { numeric: true }));
 
   let running = 0, accrued = 0, paid = 0;
@@ -266,29 +272,51 @@ export function allocatePartnerCash(
   return left;
 }
 
+/** 자금기록 한 건이 채권·채무를 턴 몫 */
+export interface PartnerCashPart {
+  /** 108 외상매출금(채권) · 251 외상매입금(채무) */
+  code: string;
+  /** 양수 = 그만큼 줄었다(수금·지불·상계), 음수 = 되돌림 */
+  reduce: number;
+  note?: string;
+}
+
+/**
+ * 자금기록 한 건에서 **거래처 채권·채무(108/251)를 턴 몫**을 뽑는다.
+ *
+ * 잔액·이월·타임라인·미수금 상세가 전부 이 한 곳을 본다. 화면마다 따로 세면
+ * 같은 거래처가 화면마다 다른 잔액으로 보인다 — 실제로 그래서 상계가 어떤 화면에선
+ * 안 보이고 어떤 화면에선 부호가 뒤집혀 보였다.
+ *
+ * **상계(대체)가 까다롭다.** 줄 부호가 차·대를 뜻해서 108이 음수로 적힌다.
+ * `amount > 0`으로 거르면 그 줄이 통째로 사라지고, 부호를 그대로 쓰면 채권이 늘어난 것처럼 읽힌다.
+ * 상계는 108·251을 **동시에** 터는 것이라, 어느 쪽을 보든 줄어드는 방향이다.
+ */
+export function partnerCashParts(e: CashEntry): PartnerCashPart[] {
+  const isOffset = e.dir === '대체';
+  const parts = (e.lines ?? []).filter(l => l.accountCode && (isOffset ? l.amount !== 0 : l.amount > 0));
+  const list = parts.length
+    ? parts.map(l => ({ code: l.accountCode as string, amt: Math.abs(l.amount), note: l.note }))
+    : (e.accountCode ? [{ code: e.accountCode, amt: e.amount, note: undefined as string | undefined }] : []);
+  return list
+    .filter(x => x.code === AR || x.code === AP)
+    .map(x => {
+      const inflow = isOffset || (x.code === AR ? e.dir === '입금' : e.dir === '출금');
+      return { code: x.code, reduce: (inflow ? 1 : -1) * x.amt, note: x.note };
+    });
+}
+
 /** 그 거래처로 오간 채권·채무(108/251) 자금 합계. 반대 방향은 되돌림(음수). */
 export function partnerPaid(
   partnerId: string,
   type: '매출' | '매입',
   cashEntries: CashEntry[],
 ): number {
-  const want = type === '매출' ? '108' : '251';
+  const want = type === '매출' ? AR : AP;
   return cashEntries
     .filter(e => e.partnerId === partnerId)
-    .reduce((a, e) => {
-      // 대체(상계)는 줄 부호가 차·대를 뜻한다 — 음수 줄도 세야 미수·미지급이 양쪽 다 줄어든다.
-      const isOffset = e.dir === '대체';
-      const parts = (e.lines ?? []).filter(l => l.accountCode && (isOffset ? l.amount !== 0 : l.amount > 0));
-      const list = parts.length
-        ? parts.map(l => ({ c: l.accountCode, a: Math.abs(l.amount) }))
-        : (e.accountCode ? [{ c: e.accountCode, a: e.amount }] : []);
-      return a + list.reduce((b, x) => {
-        if (x.c !== want) return b;
-        // 상계는 108·251을 **동시에** 턴다. 어느 쪽을 보든 줄어드는 방향이다.
-        const inflow = isOffset || (type === '매출' ? e.dir === '입금' : e.dir === '출금');
-        return b + (inflow ? x.a : -x.a);
-      }, 0);
-    }, 0);
+    .reduce((a, e) => a + partnerCashParts(e)
+      .reduce((b, p) => b + (p.code === want ? p.reduce : 0), 0), 0);
 }
 
 export function partnerBalances(

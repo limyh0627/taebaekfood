@@ -10,7 +10,7 @@ import * as ExcelJS from 'exceljs';
 import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentMethod, AccountCode, AccountGroup, CashAccount, CashEntry, Settlement, FixedCostTemplate, CompanyId, COMPANIES } from '../types';
 import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchDateRange } from '../src/shared/services/firebaseService';
-import { stampFor } from '../src/shared/voucherStamp';
+import { stampFor, timeOfLocal, issuedMs, nextDocNo } from '../src/shared/voucherStamp';
 import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/shared/orderUnits';
 import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
 import { totalCashOnHand, unsettledStatements, unmatchedCash, partnerOpenBalance, allocatePartnerCash } from '../src/features/admin/cashLedger';
@@ -1279,7 +1279,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   const tradeDateObj = new Date(tradeDate + 'T00:00:00');
   const dateStr = `${tradeDateObj.getFullYear()}년 ${tradeDateObj.getMonth() + 1}월 ${tradeDateObj.getDate()}일`;
-  const docNo   = `${tradeDateObj.getFullYear()}-${String(tradeDateObj.getMonth() + 1).padStart(2, '0')}-${String(issuedStatements.length + 1).padStart(4, '0')}`;
+  const docNo   = nextDocNo(tradeDate, issuedStatements);
 
   const inboundPartnerLabel = stmtType === '매출' ? '【 공급자 】' : `【 공급자 】　${selectedClient?.name||''}`;
   const receiverLabel = stmtType === '매출' ? `【 공급받는자 】　${selectedClient?.name||''}` : '【 공급받는자 】';
@@ -2005,12 +2005,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                    date: string; ts: string; dateKey: string };
   type TimelineRow = StmtRow | PayRow | CashRow;
 
-  // 화면 표시값 기준 정렬용 시각 (로컬 HH:MM:SS)
-  const timeOf = (iso?: string) => {
-    if (!iso) return '00:00:00';
-    const d = new Date(iso);
-    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
-  };
+  // 화면 표시값 기준 정렬용 시각 (로컬 HH:MM:SS) — 규칙은 voucherStamp 한 곳에 둔다
+  const timeOf = timeOfLocal;
 
   const allTimelineRows = useMemo((): TimelineRow[] => {
     const rows: TimelineRow[] = [];
@@ -2046,13 +2042,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       // 실제 발생시각(ts) 오름차순으로 누적잔액 계산. 동시각이면 전표 먼저(매출 가산 후 수금 차감).
       //  그래도 동률이면 **번호순**으로 못 박는다 — 안 그러면 읽어온 순서를 그대로 쓰게 돼
       //  새로고침할 때마다 순서가 달라질 수 있다. 소급 전표는 전부 23:59:59라 자주 부딪힌다.
-      const noOf = (e: Ev) => e.kind === 'stmt' ? (e.s.docNo || e.s.id) : e.paymentId;
+      const idOf = (e: Ev) => e.kind === 'stmt' ? e.s.id : e.paymentId;
       evs.sort((a, b) => {
         const d = (a.ts ?? '').localeCompare(b.ts ?? '');
         if (d !== 0) return d;
         if (a.kind === 'stmt' && b.kind === 'pay') return -1;
         if (a.kind === 'pay' && b.kind === 'stmt') return 1;
-        return String(noOf(a)).localeCompare(String(noOf(b)), undefined, { numeric: true });
+        return issuedMs(idOf(a)) - issuedMs(idOf(b))
+          || String(idOf(a)).localeCompare(String(idOf(b)), undefined, { numeric: true });
       });
       let running = 0;
       evs.forEach(e => {
@@ -2129,7 +2126,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         // 동시각이면 전표를 위로(매출 가산 후 수금 차감 순)
         if (a.kind === 'stmt' && b.kind === 'pay') return -1;
         if (a.kind === 'pay' && b.kind === 'stmt') return 1;
-        return 0;
+        // 그래도 같으면 **끊은 순서** — 소급 전표는 시각이 전부 23:59:59라 여기서 갈린다
+        const ida = a.kind === 'stmt' ? a.data.id : a.kind === 'pay' ? a.paymentId : a.entry.id;
+        const idb = b.kind === 'stmt' ? b.data.id : b.kind === 'pay' ? b.paymentId : b.entry.id;
+        return issuedMs(ida) - issuedMs(idb)
+          || String(ida).localeCompare(String(idb), undefined, { numeric: true });
       }); // 오래된→최신
   }, [allTimelineRows, histFrom, histTo, histTypeFilter, histSearch, codeType, codeName, classifyRow, rowKind]);
 
@@ -3729,8 +3730,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const doAccrualSave = () => {
           if (!accrLines.length) return;
           const d = new Date(quickPayDate + 'T00:00:00');
-          const seq = String(issuedStatements.length + 1).padStart(4, '0');
-          const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          // 대체는 따로 센다 — 매입·매출과 번호가 섞이면 어느 갈래인지 번호로 못 읽는다
+          const accrDocNo = nextDocNo(quickPayDate, issuedStatements, accrType === '비용' ? '대체' : '');
           const stmt: IssuedStatement = {
             id: `stmt-${Date.now()}`,
             issuedAt: stampFor(quickPayDate),
@@ -3739,7 +3740,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             partnerId: quickPayClientId || '',
             partnerName: quickPayClientId ? (selectedClientObj?.name ?? '') : (accrLines[0].name || '대체'),
             orderId: '',
-            docNo: accrType === '비용' ? `대체${ym}-${seq}` : `${ym}-${seq}`,
+            docNo: accrDocNo,
             totalSupply: accrTotal, totalTax: 0, totalAmount: accrTotal,
             items: accrLines,
           };

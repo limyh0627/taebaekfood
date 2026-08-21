@@ -16,6 +16,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { nextDocNo } from '../../shared/voucherStamp';
 import { isBulkItem } from '../../shared/itemTaxonomy';
 import { createPortal } from 'react-dom';
 import {
@@ -1032,7 +1033,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // OEM(임가공) 엔진 — 외주 발주(원료 내보내기) / 가공입고(완제품 받기 + 가공비 전표)
   const { issueOemBatch, receiveOemBatch, issueOemFeeStatement } = createOemEngine({
-    items: allItems, adjustRawLots, updateItem, addItem, buildFormula,
+    items: allItems, adjustRawLots, updateItem, addItem, buildFormula, issuedStatements,
   });
   /** 원료 홀더의 현재 재고(kg) — 로트 합계 우선, 없으면 stock */
   const rawStockKg = (material: string): number => {
@@ -1243,7 +1244,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
     const defaultAcctId = appData.cashAccounts.find(a => a.active && a.type !== '카드')?.id
       ?? appData.cashAccounts.find(a => a.active)?.id ?? '';
     let created = 0;
-    let seq = issuedStatements.length;
+    // 이번 실행에서 만든 번호도 같이 센다 — 한 번에 여러 건을 만들면 목록이 아직 안 따라온다
+    const made: { docNo?: string }[] = [];
     for (const t of tpls) {
       const key = autoVoucherId(t, ym);
       const legacyKey = `RC-${t.id}-${ym}`;
@@ -1253,9 +1255,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
       if (isCashDir(dirOf(t))) {
         await addItem('cashEntries', buildCashVoucher(t, ym, { cashAccountId: defaultAcctId, accountName }) as any);
       } else {
-        seq++;
-        const docNo = `${ym}-${String(seq).padStart(4, '0')}`;
-        await addItem('issuedStatements', buildStatementVoucher(t, ym, { docNo, accountName }) as any);
+        const v = buildStatementVoucher(t, ym, { docNo: '', accountName });
+        const docNo = nextDocNo(v.tradeDate, [...issuedStatements, ...made]);
+        made.push({ docNo });
+        await addItem('issuedStatements', { ...v, docNo } as any);
       }
       created++;
     }

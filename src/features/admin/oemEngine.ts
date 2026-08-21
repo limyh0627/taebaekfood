@@ -1,4 +1,5 @@
-import { Item, IssuedStatement, PurchaseOrder, RawMaterialLot } from '../../shared/types';
+
+import { stampFor, nextDocNo } from '../../shared/voucherStamp';import { Item, IssuedStatement, PurchaseOrder, RawMaterialLot } from '../../shared/types';
 import { isBulkItem } from '../../shared/itemTaxonomy';
 import { parsePackageKg, parseSpecCount, baseRawName } from '../../constants/formula';
 import { isBoxStockItem } from '../../shared/orderUnits';
@@ -25,6 +26,8 @@ export interface OemEngineDeps {
   addItem: (collection: string, data: Record<string, any>) => Promise<any>;
   /** 원료식(BOM) — 가공입고분을 어느 원료 그룹에 kg으로 올릴지 결정 */
   buildFormula: (prodKey: string) => { raw: string; ratio: number }[];
+  /** 이미 있는 전표 — 문서번호를 그날 순번으로 매기는 데 쓴다 */
+  issuedStatements?: { docNo?: string }[];
   processingFeeCode?: string; // 기본 OEM_PROCESSING_FEE_CODE
 }
 
@@ -54,6 +57,7 @@ export function itemKg(item: Item): number {
 
 export function createOemEngine(deps: OemEngineDeps) {
   const { items, adjustRawLots, updateItem, addItem, buildFormula } = deps;
+  const statementsOf = () => deps.issuedStatements ?? [];
   const feeCode = deps.processingFeeCode ?? OEM_PROCESSING_FEE_CODE;
 
   /**
@@ -256,10 +260,11 @@ export function createOemEngine(deps: OemEngineDeps) {
     const d = new Date(input.date + 'T00:00:00');
     await addItem('issuedStatements', {
       id: statementId,
-      issuedAt: new Date().toISOString(), tradeDate: input.date, type: '매입',
+      issuedAt: stampFor(input.date), tradeDate: input.date, type: '매입',
       partnerId: po.oemPartnerId ?? po.partnerId ?? '', partnerName: po.partnerName ?? '',
       orderId: po.id,
-      docNo: `가공${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+      // 전에는 `가공2026-08` — 순번이 없어 그달 가공전표가 전부 같은 번호였다
+      docNo: nextDocNo(input.date, statementsOf(), '가공'),
       totalSupply, totalTax, totalAmount: totalSupply + totalTax,
       items: lines,
     } as Partial<IssuedStatement>);
