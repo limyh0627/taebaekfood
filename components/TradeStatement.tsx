@@ -15,7 +15,7 @@ import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/sha
 import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
 import { totalCashOnHand, unsettledStatements, unmatchedCash, partnerOpenBalance, allocatePartnerCash } from '../src/features/admin/cashLedger';
 import { AR, AP, journalizeStatement, journalizeTransfer, journalizeCashEntry, settlementAccountCode } from '../src/shared/autoJournal';
-import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, isCashDir, VOUCHER_DIRS, DIR_CHIP, DIR_HINT, CashTemplate, VoucherDir, SPLIT_MODES, splitModeOf } from '../src/shared/cashTemplates';
+import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, isCashDir, templateAccrRows, VOUCHER_DIRS, DIR_CHIP, DIR_HINT, CashTemplate, VoucherDir, SPLIT_MODES, splitModeOf } from '../src/shared/cashTemplates';
 import { canAutoIssue, autoVoucherId } from '../src/shared/autoVoucher';
 import { buildTransfer, splitTransfer, OverKind } from '../src/shared/interCompany';
 import VoucherTemplateManager from './VoucherTemplateManager';
@@ -439,19 +439,33 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     () => filterTemplates(accountCodes, fixedCostTemplates),
     [accountCodes, fixedCostTemplates],
   );
-  // 템플릿을 고르면 계정만이 아니라 **저장해 둔 거래처·금액까지** 채운다.
-  // 매달 같은 곳에 같은 금액을 넣는 전표가 대부분이라, 그게 실제로 시간을 줄인다.
+  /**
+   * 템플릿을 고르면 **양식 전체가 그 템플릿이 된다** — 계정·거래처·금액·품목까지.
+   * 매달 같은 곳에 같은 금액을 넣는 전표가 대부분이라, 그게 실제로 시간을 줄인다.
+   *
+   * 안 채우는 칸을 남겨 두면 안 된다. 앞서 고른 템플릿의 값이 그대로 남아
+   * **딴 전표 금액으로 끊긴다** — 없는 값은 비우는 것까지가 '가져오는' 것이다.
+   */
   const pickTemplate = (t: CashTemplate) => {
     setQpTemplateId(t.id);    // 고른 것을 id로 붙든다 — 계정만으로는 같은 계정 템플릿이 섞인다
     setQpDir(t.dir);          // 방향은 템플릿이 정한다
     setQpMode(t.mode);
     setQpAccountCode(t.accountCode ?? '');
     // 비고는 품목명 > 템플릿 비고 순 — 전표에 그대로 남는 글이라 품목명이 먼저다
-    if (t.itemName || t.note) setQuickPayNote(t.itemName || t.note || '');
+    setQuickPayNote(t.itemName || t.note || '');
     if (t.partnerId) { setQuickPayClientId(t.partnerId); setQuickPayClientSearch(''); }
     else { setQuickPayClientId(''); setQuickPayClientSearch(''); }
-    if (t.amount && t.amount > 0) setQuickPayAmount(String(t.amount));
-    // 두 줄로 갈리는 갈래(보험·상환·급여)는 금액칸을 안 쓴다 — 템플릿에 박아 둔 두 값을 그대로 채운다.
+    setQuickPayAmount(t.amount && t.amount > 0 ? String(t.amount) : '');
+    /*
+     * 비현금 갈래(대체·줄돈·받을돈)는 금액칸이 아니라 **'계정 · 금액' 줄**을 쓴다.
+     * 리스료·임대료처럼 대체로 끊는 템플릿이 여기 걸린다 — 이 줄을 안 채우면
+     * 금액과 계정을 들고 있는 템플릿을 골라도 빈 양식이 떴다.
+     */
+    setQpAccrRows(templateAccrRows(t));
+    // 두 줄로 갈리는 갈래(보험·상환·급여·세금)는 금액칸을 안 쓴다 — 템플릿에 박아 둔 두 값을 그대로 채운다.
+    // 먼저 넷을 다 비우고 고른 갈래만 채운다. 안 그러면 앞 템플릿의 원금·공제가 남는다.
+    setQpInsCorp(''); setQpInsEmp(''); setQpPrincipal(''); setQpInterest('');
+    setQpGross(''); setQpDeduction(''); setQpVat(''); setQpIncomeTax('');
     //  4대보험만 폴백을 둔다: 옛 템플릿엔 총액 하나뿐이라, 미납 예수금만큼을 근로자부담으로
     //  떼고 나머지를 회사부담으로 짐작한다. 짐작이라 그대로 고쳐 쓰면 된다.
     const sm = splitModeOf(t.mode);
@@ -475,6 +489,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       }
     }
     setQpPickerOpen(false);
+  };
+  /**
+   * 거래처 칸을 눌렀을 때 — **고른 거래처를 지우지 않는다.**
+   *
+   * 전에는 focus에서 지웠다(빈 칸이라야 검색어를 친다고 봤다). 그런데 템플릿이 넣어 준
+   * 거래처가 맞는지 **확인하려고 누른 것만으로** 사라져, 템플릿이 거래처를 안 가져온 것처럼 보였다.
+   * 대신 글자를 통째로 잡아 둔다 — 바꾸려면 그냥 치면 덮이고, 안 치면 그대로 남는다.
+   */
+  const onPartnerFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.currentTarget.select();
+    setQuickPayDropOpen(true);
   };
   /** 지금 쓰는 템플릿 — 고른 id가 있으면 그것, 없으면(전표 수정 등) 계정으로 짐작한다. */
   const currentTemplate = (list: CashTemplate[]) =>
@@ -3982,7 +4007,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     </label>
                     <input type="text" placeholder="업체명 검색..."
                       value={selectedClientObj ? selectedClientObj.name : quickPayClientSearch}
-                      onFocus={() => { setQuickPayClientId(''); setQuickPayDropOpen(true); }}
+                      onFocus={onPartnerFocus}
                       onChange={e => { setQuickPayClientSearch(e.target.value); setQuickPayClientId(''); setQuickPayDropOpen(true); }}
                       onBlur={() => setTimeout(() => setQuickPayDropOpen(false), 150)}
                       className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-amber-300"/>
@@ -4040,7 +4065,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">거래처 <span className="normal-case text-slate-300">(선택 · {qpDir === '입금' ? '매출 미수 상계' : '매입 미지급 상계'})</span></label>
                     <input type="text" placeholder="업체명 검색..."
                       value={selectedClientObj ? selectedClientObj.name : quickPayClientSearch}
-                      onFocus={() => { setQuickPayClientId(''); setQuickPayDropOpen(true); }}
+                      onFocus={onPartnerFocus}
                       onChange={e => { setQuickPayClientSearch(e.target.value); setQuickPayClientId(''); setQuickPayDropOpen(true); }}
                       onBlur={() => setTimeout(() => setQuickPayDropOpen(false), 150)}
                       className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
@@ -4207,7 +4232,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">은행 <span className="text-slate-300">(선택)</span></label>
                     <input type="text" placeholder="은행명 검색..."
                       value={selectedClientObj ? selectedClientObj.name : quickPayClientSearch}
-                      onFocus={() => { setQuickPayClientId(''); setQuickPayDropOpen(true); }}
+                      onFocus={onPartnerFocus}
                       onChange={e => { setQuickPayClientSearch(e.target.value); setQuickPayClientId(''); setQuickPayDropOpen(true); }}
                       onBlur={() => setTimeout(() => setQuickPayDropOpen(false), 150)}
                       className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
@@ -4276,13 +4301,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 </>
               )}
 
-              {/* 비고 */}
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">비고</label>
-                <input type="text" placeholder={qpMode === '일반' ? '예: 7월 전기요금' : qpMode === '상환' ? '예: 기업은행 시설자금' : '예: 7월 급여'}
-                  value={quickPayNote} onChange={e => setQuickPayNote(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
-              </div>
+              {/* 비고 — 비현금 갈래(대체·줄돈)에는 안 띄운다.
+                  그쪽은 전표라 적요가 '계정 · 금액' 줄에 붙고, 여기 적은 글은 저장되지 않는다.
+                  안 남는 칸을 띄워 두면 적어 놓고 사라진 줄 모른다. */}
+              {(isCashDir(qpDir) || qpDir === '회사이체') && (
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">비고</label>
+                  <input type="text" placeholder={qpMode === '일반' ? '예: 7월 전기요금' : qpMode === '상환' ? '예: 기업은행 시설자금' : '예: 7월 급여'}
+                    value={quickPayNote} onChange={e => setQuickPayNote(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
+                </div>
+              )}
 
               {/* ── 이렇게 분개됩니다 ──
                   자금전표는 성격계정 하나만 고르면 나머지 한 변(통장)은 자동이라, 무엇이 어디로

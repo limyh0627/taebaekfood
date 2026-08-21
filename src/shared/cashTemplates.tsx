@@ -215,6 +215,22 @@ export function filterTemplates(
 }
 
 /**
+ * 비현금 갈래(대체·줄돈·받을돈) 템플릿을 **'계정 · 금액' 줄**로 편다.
+ *
+ * 이 갈래는 금액칸을 안 쓴다 — 전표라 줄마다 계정이 붙는다. 그래서 템플릿의 금액·계정을
+ * 금액칸에만 넣어 두면, 리스료·임대료처럼 대체로 끊는 템플릿을 골라도 **빈 양식이 떴다.**
+ * 적요는 품목명 > 비고 > 템플릿 이름 순 — 전표에 그대로 남는 글이라 구체적인 것이 먼저다.
+ */
+export function templateAccrRows(t: CashTemplate): { name: string; accountCode?: string; price: string }[] {
+  if (isCashDir(t.dir) || t.dir === '회사이체') return [{ name: '', price: '' }];
+  return [{
+    name: t.itemName || t.note || t.label,
+    accountCode: t.accountCode,
+    price: t.amount ? String(t.amount) : '',
+  }];
+}
+
+/**
  * 지금 폼 상태가 어느 템플릿인지 — 고른 것이 눌린 채로 보여야 무슨 전표를 쓰는 중인지 안다.
  * **null이면 직접입력**(템플릿 없음)이다. 직접입력은 템플릿이 아니라 상태라 목록에 두지 않는다.
  */

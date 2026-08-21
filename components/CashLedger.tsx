@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Wallet, Plus, X, Landmark, CreditCard, Coins, Settings2, Trash2, Link2 } from 'lucide-react';
 import { CashAccount, CashEntry, AccountCode, Partner, IssuedStatement, Settlement, FixedCostTemplate } from '../src/shared/types';
 import { buildAccountLedger, totalCashOnHand, unsettledStatements, unmatchedCash } from '../src/features/admin/cashLedger';
-import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, isCashDir, CashTemplate } from '../src/shared/cashTemplates';
+import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, isCashDir, splitModeOf, SPLIT_MODES, CashTemplate } from '../src/shared/cashTemplates';
 import { journalizeCashEntry } from '../src/shared/autoJournal';
 
 interface Props {
@@ -376,6 +376,9 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
   // 급여 지급 전용
   const [gross, setGross] = useState('');
   const [deduction, setDeduction] = useState('');
+  // 세금 — 부가세(맡아둔 예수금)와 소득세(사장님 개인)를 한 번에 낸다. 둘 다 비용이 아니다.
+  const [vat, setVat] = useState('');
+  const [incomeTax, setIncomeTax] = useState('');
 
   const amt = Number(amount.replace(/,/g, '')) || 0;
   const partner = partners.find(p => p.id === partnerId);
@@ -384,6 +387,9 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
   const grs = Number(gross.replace(/,/g, '')) || 0;
   const ded = Number(deduction.replace(/,/g, '')) || 0;
   const net = grs - ded;
+  const vatAmt = Number(vat.replace(/,/g, '')) || 0;
+  const taxAmt = Number(incomeTax.replace(/,/g, '')) || 0;
+  const taxTotal = vatAmt + taxAmt;
   // 계정 코드 (이름으로 탐색, 없으면 기본)
   // 고른 방향의 템플릿만. 카드를 누르면 모드·계정과목·비고가 한 번에 채워진다.
   const templates = useMemo(() => filterTemplates(accountCodes, fixedCostTemplates), [accountCodes, fixedCostTemplates]);
@@ -392,13 +398,38 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
   const currentTemplate = () =>
     (templateId ? templates.find(t => t.id === templateId) : undefined)
       ?? activeTemplate(templates, { mode, accountCode });
+  /**
+   * 템플릿을 고르면 **양식 전체가 그 템플릿이 된다** — 계정·거래처·금액·두 줄 값까지.
+   * 전에는 계정과 적요만 가져와서, 거래처·금액을 매번 다시 골라야 했다(템플릿을 둔 뜻이 없다).
+   *
+   * 없는 값은 **비운다.** 안 그러면 앞서 고른 템플릿의 금액이 남아 딴 전표로 끊긴다.
+   */
   const pickTemplate = (t: CashTemplate) => {
     setTemplateId(t.id);
     if (isCashDir(t.dir)) setDir(t.dir);   // 자금원장은 돈이 오간 것만 적는다
     setMode(t.mode);
-    setInsCorpStr(''); setInsEmpStr('');
     setAccountCode(t.accountCode ?? '');
-    if (t.note) setNote(t.note);
+    // 적요는 품목명 > 템플릿 비고 순 — 전표에 그대로 남는 글이라 품목명이 먼저다
+    setNote(t.itemName || t.note || '');
+    setPartnerId(t.partnerId ?? '');
+    setAmount(t.amount && t.amount > 0 ? String(t.amount) : '');
+    // 두 줄로 갈리는 갈래는 금액칸을 안 쓴다. 넷을 먼저 비우고 고른 갈래만 채운다.
+    setInsCorpStr(''); setInsEmpStr(''); setPrincipal(''); setInterest('');
+    setGross(''); setDeduction(''); setVat(''); setIncomeTax('');
+    const sm = splitModeOf(t.mode);
+    if (sm) {
+      const S = SPLIT_MODES[sm];
+      const a = (t as Record<string, any>)[S.a], b = (t as Record<string, any>)[S.b];
+      const setters: Record<string, [(v: string) => void, (v: string) => void]> = {
+        보험: [setInsCorpStr, setInsEmpStr],
+        상환: [setPrincipal, setInterest],
+        급여: [setGross, setDeduction],
+        세금: [setVat, setIncomeTax],
+      };
+      if (sm === '상환' && t.loanCode) setLoanCode(t.loanCode);
+      const [setA, setB] = setters[sm];
+      if (a != null || b != null) { setA(a ? String(a) : ''); setB(b ? String(b) : ''); }
+    }
     setPickerOpen(false);
   };
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -414,9 +445,12 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
   const INTEREST_CODE = accountCodes.find(c => /이자비용/.test(c.name))?.code ?? '951';
   const SALARY_CODE = accountCodes.find(c => c.name === '급여')?.code ?? '515';
   const WITHHOLD_CODE = accountCodes.find(c => c.name === '예수금')?.code ?? '254';
+  const VAT_CODE = accountCodes.find(c => c.name === '부가세예수금')?.code ?? '255';
+  const DRAW_CODE = accountCodes.find(c => c.name === '인출금')?.code ?? '338';
   const canSave = mode === '일반' ? (amt > 0 && !!accountCode)
     : mode === '상환' ? ((prin > 0 || intr > 0) && !!loanCode)
     : mode === '보험' ? insTotal > 0
+    : mode === '세금' ? taxTotal > 0
     : (grs > 0 && ded >= 0 && net >= 0);
 
   const base = () => ({ date, cashAccountId, createdAt: new Date().toISOString(), ...(currentUser ? { createdBy: currentUser.name } : {}), ...(partnerId ? { partnerId, partnerName: partner?.name ?? '' } : {}) });
@@ -456,6 +490,26 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
       ];
       return [{
         id: `cash-${Date.now()}`, dir: '출금', amount: insTotal,
+        ...(lines.length > 1 ? { lines } : { accountCode: lines[0].accountCode }),
+        note: lines.length > 1 ? memo : `${memo} (${lines[0].note})`,
+        ...base(),
+      } as CashEntry];
+    }
+    if (mode === '세금') {
+      /*
+       * 부가세와 종합소득세를 한 번에 낸다. **둘 다 비용이 아니다.**
+       * 부가세는 손님한테 받아 맡아둔 돈이라 부채(255)를 터는 것이고,
+       * 종합소득세는 사업이 아니라 사장님 개인에게 매기는 세금이라 인출금(338)이다.
+       * 비용으로 몰면 이익이 그만큼 줄어 보이고 부가세예수금은 영영 안 줄어든다.
+       */
+      if (taxTotal <= 0) return [];
+      const memo = note.trim() || '세금 납부';
+      const lines = [
+        ...(vatAmt > 0 ? [{ accountCode: VAT_CODE, amount: vatAmt, note: '부가세' }] : []),
+        ...(taxAmt > 0 ? [{ accountCode: DRAW_CODE, amount: taxAmt, note: '소득세' }] : []),
+      ];
+      return [{
+        id: `cash-${Date.now()}`, dir: '출금', amount: taxTotal,
         ...(lines.length > 1 ? { lines } : { accountCode: lines[0].accountCode }),
         note: lines.length > 1 ? memo : `${memo} (${lines[0].note})`,
         ...base(),
@@ -514,6 +568,18 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
               {cur && <span className="text-[10px] font-bold text-slate-400 truncate">{cur.hint ?? `${cur.accountCode} ${accountCodes.find(c => c.code === cur.accountCode)?.name ?? ''}`}</span>}
               <span className="ml-auto text-[11px] font-black text-indigo-600 shrink-0">템플릿 ▾</span>
             </button>
+          );
+        })()}
+        {/* 대체·줄돈 템플릿을 자금원장에서 고르면 — 여긴 돈이 오간 것만 적는 화면이라
+            같은 비용을 전표에서 한 번, 여기서 또 한 번 잡을 수 있다. 고르는 건 막지 않고 알린다. */}
+        {(() => {
+          const cur = currentTemplate();
+          if (!cur || isCashDir(cur.dir)) return null;
+          return (
+            <div className="rounded-xl bg-amber-50 text-amber-700 px-3 py-2.5 text-[11px] font-bold leading-snug">
+              <b>{cur.label}</b>은 <b>{cur.dir}</b> 갈래 템플릿입니다 — 자금원장은 <b>돈이 실제로 오간 것</b>만 적습니다.
+              발생만 잡으려면 전표 화면에서 끊고, 나중에 낼 때 [지불]하세요. 여기서 그대로 저장하면 비용이 두 번 잡힙니다.
+            </div>
           );
         })()}
         <p className="text-[11px] text-slate-400 leading-snug">
@@ -585,6 +651,41 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
             <p className="text-[11px] text-slate-400 leading-snug">
               회사부담은 <b>비용</b>, 근로자부담은 급여에서 떼어 맡아둔 <b>예수금</b>을 터는 것입니다.
             </p>
+          </>
+        ) : mode === '세금' ? (
+          <>
+            {/* 세금 양식이 없어서 '세금납부' 템플릿을 고르면 상환(원금·이자) 칸이 떴다.
+                고른 템플릿과 다른 양식이 뜨면 무슨 전표를 쓰는 중인지 알 수 없다. */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">부가세 <span className="text-slate-300">(예수금)</span></label>
+                <input inputMode="numeric" value={vat} placeholder="0"
+                  onChange={e => setVat(e.target.value.replace(/[^\d,]/g, ''))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-slate-300" />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">소득세 <span className="text-slate-300">(인출금)</span></label>
+                <input inputMode="numeric" value={incomeTax} placeholder="0"
+                  onChange={e => setIncomeTax(e.target.value.replace(/[^\d,]/g, ''))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-right text-base font-black tabular-nums outline-none focus:ring-2 focus:ring-slate-300" />
+              </div>
+            </div>
+            <div className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2 text-[11px] font-black text-slate-500">
+              <span>한 번에 내는 총액</span>
+              <span className="tabular-nums text-slate-800">{fmt(taxTotal)}</span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-snug">
+              둘 다 <b>비용이 아닙니다.</b> 부가세는 받아서 맡아둔 돈을 넘기는 것이고,
+              종합소득세는 사장님 개인 세금이라 <b>인출금</b>입니다.
+            </p>
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">거래처 <span className="text-slate-300">(선택 · 세무서)</span></label>
+              <select value={partnerId} onChange={e => setPartnerId(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-300">
+                <option value="">— 없음 —</option>
+                {partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
           </>
         ) : mode === '일반' ? (
           <>
