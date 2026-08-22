@@ -119,7 +119,7 @@ const PartnerLedger = React.lazy(() => import('../../../components/PartnerLedger
 
 import { db } from '../../shared/firebase';
 import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName, lotStockInUnit, lotKgRemaining, parseSpecUnit } from '../../constants/formula';
-import { docPumok, docOilKg, addOilByRaw, docSaleLine, docUnpack, docDateOf, findDocDrops, DOC_RECALC_RAWS, DOC_SHEET_GROUPS, DOC_SHEET_CATS, DEFAULT_SHEET_TITLE, mixLabel } from '../../shared/docOil';
+import { docPumok, docOilKg, docSpec, addOilByRaw, docSaleLine, docUnpack, docDateOf, findDocDrops, DOC_RECALC_RAWS, DOC_SHEET_GROUPS, DOC_SHEET_CATS, DEFAULT_SHEET_TITLE, mixLabel } from '../../shared/docOil';
 import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo, settleCarryOver } from '../../shared/lotUtils';
 import { rawLotTarget, recordRawMaterialReceipt, adjustRawLots } from '../../shared/rawReceipt';
 import { bomQty } from '../../shared/bom';
@@ -2239,7 +2239,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 const u = docUnpack(product, item.quantity, id => allItems.find(p => p.id === id));
                 const base = u?.item ?? product;
                 const qty = u?.qty ?? item.quantity;
-                const 용량 = base?.spec || base?.용량 || item.displaySize || '';
+                const 용량 = docSpec(base?.spec) || base?.용량 || item.displaySize || '';
                 // 품목이 비면 이름으로 대체 — 판매일지는 줄을 떨어뜨리지 않는다(수량 문서라서)
                 return [{ 상호: partnerName, 품목: docPumok(base?.품목) || item.name, 용량, 수량: qty, 소비기한: calcExpiry(item.mfgDate || ''), 제조일자: item.mfgDate || '', orderId: order.id, itemIdx }];
               });
@@ -2341,7 +2341,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               .filter(p => p.category === 'product' && p.품목 && p.spec && !bottomPumokSet.has(p.품목))
               .forEach(p => {
                 if (!topTemplateMap.has(p.품목!)) topTemplateMap.set(p.품목!, new Set());
-                topTemplateMap.get(p.품목!)!.add(p.spec!);
+                topTemplateMap.get(p.품목!)!.add(docSpec(p.spec));
               });
             const topTemplate: { label: string; key: string; volumes: string[] }[] = Array.from(topTemplateMap.entries())
               .map(([key, volSet]) => ({ label: labelMap[key] || key, key, volumes: sortVolumes(Array.from(volSet)) }))

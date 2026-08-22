@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { docPumok, docOilKg, addOilByRaw, docSaleLine, docDateOf, reconcileSaleVsRaw, findDocDrops, DOC_RECALC_RAWS, DOC_DENSITY } from './docOil';
+import { docPumok, docOilKg, addOilByRaw, docSaleLine, docDateOf, reconcileSaleVsRaw, findDocDrops, DOC_RECALC_RAWS, DOC_DENSITY, docSpec } from './docOil';
 
 describe('docOilKg — 판매 1줄 → 서류상 기름 kg', () => {
   it('ml·L은 부피 × 밀도', () => {
@@ -211,5 +211,30 @@ describe('findDocDrops — 판매기록부에 있는데 원료수불부에서 �
 
   it('출고(SHIPPED)는 안 잡는다 — 아직 배송완료 처리 전이라 날짜가 없는 게 정상', () => {
     expect(findDocDrops([order({ status: 'SHIPPED', deliveredAt: undefined })])).toEqual([]);
+  });
+});
+
+describe('docSpec — 개입수 1은 규격이 아니다', () => {
+  /**
+   * 생산판매일지 양식은 용량만 쓴다('1kg'). 품목의 spec은 개입수를 달고 있다('1kg * 1').
+   * 그대로 맞대면 낱개가 죄다 어긋나 '기타(템플릿 외)'로 밀린다 —
+   * 시골향볶음참깨 1kg 41개·500g 40개가 실제로 그렇게 빠졌다.
+   */
+  it("낱개의 '* 1'을 뗀다", () => {
+    expect(docSpec('1kg * 1')).toBe('1kg');
+    expect(docSpec('1800ml * 1')).toBe('1800ml');
+    expect(docSpec('500g*1')).toBe('500g');
+  });
+
+  it('박스는 그대로 둔다 — 개입수가 규격의 일부다', () => {
+    expect(docSpec('1kg * 20')).toBe('1kg * 20');
+    expect(docSpec('1kg * 10')).toBe('1kg * 10');
+    expect(docSpec('300ml * 12')).toBe('300ml * 12');
+  });
+
+  it('개입수가 없으면 손대지 않는다', () => {
+    expect(docSpec('1kg')).toBe('1kg');
+    expect(docSpec('16.5kg')).toBe('16.5kg');
+    expect(docSpec(undefined)).toBe('');
   });
 });
