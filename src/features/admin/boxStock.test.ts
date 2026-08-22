@@ -15,11 +15,23 @@ import { buildStockUseRows, resolveStockUse, toStockUsePlan } from './stockUseRo
  */
 
 const ledger = vi.hoisted(() => ({ entries: [] as any[] }));
+/**
+ * 재고는 **DB에서 읽어 더한다**(트랜잭션) — 화면 상태에 더해 덮어쓰면 앞선 쓰기가 날아간다.
+ * 그래서 여기 가짜 DB도 진짜처럼 자기가 들고 있는 값을 읽어 준다.
+ */
+const store = vi.hoisted(() => ({ stock: new Map<string, number>() }));
 vi.mock('firebase/firestore', () => ({
-  doc: () => ({}),
+  doc: (_db: unknown, _col?: string, id?: string) => ({ id }),
   setDoc: async (_ref: unknown, data: any) => { ledger.entries.push(data); },
   deleteDoc: async () => {},
   getDoc: async () => ({ exists: () => false }),
+  runTransaction: async (_db: unknown, fn: (tx: any) => Promise<void>) => fn({
+    get: async (ref: any) => ({
+      exists: () => store.stock.has(ref.id),
+      data: () => ({ stock: store.stock.get(ref.id) }),
+    }),
+    update: (ref: any, data: any) => { if (data.stock !== undefined) store.stock.set(ref.id, data.stock); },
+  }),
 }));
 
 // 엔진은 firebase/firestore를 모듈 최상단에서 읽으므로 mock 뒤에 가져온다.
@@ -41,6 +53,9 @@ const 박스10 = (stock: number) => mk({
 /** 엔진을 실제로 돌린다. updateItem이 items·order를 그 자리에서 고쳐 앱의 리렌더를 흉내낸다. */
 function harness(items: Item[], order: Order) {
   const rawUsed: Record<string, number> = {};
+  // 가짜 DB에 지금 재고를 실어 둔다 — 엔진이 트랜잭션으로 여기서 읽고 여기에 쓴다
+  store.stock.clear();
+  for (const i of items) store.stock.set(i.id, i.stock ?? 0);
   const engine = createOrderStockEngine({
     allItems: items, submaterials: [], partners: [], allOrders: [order], orders: [order],
     db: {} as any,
@@ -54,7 +69,13 @@ function harness(items: Item[], order: Order) {
     },
     addItem: async () => undefined,
   });
-  const stockOf = (id: string) => items.find(i => i.id === id)!.stock;
+  // 재고는 이제 트랜잭션으로 DB(가짜 store)에 쓰인다 — 앱 리렌더를 흉내내 items에도 되비춘다
+  const stockOf = (id: string) => {
+    const v = store.stock.get(id);
+    const it = items.find(i => i.id === id)!;
+    if (v !== undefined) it.stock = v;
+    return it.stock;
+  };
   return { engine, stockOf, rawUsed, ledger: ledger.entries };
 }
 
@@ -247,5 +268,51 @@ describe('모달 행 계산 (stockUseRows)', () => {
     expect(states[1].loose!.value).toBe(0);   // 둘째 줄엔 남은 게 없다
     expect(states[1].loose!.short).toBe(20);
     expect(toStockUsePlan(states)).toEqual({ 0: { own: 0, loose: 5 }, 1: { own: 0, loose: 0 } });
+  });
+});
+
+describe('작업완료와 출고를 따로 눌러도 재고가 안 날아간다', () => {
+  /**
+   * **실제로 재고를 마이너스로 판 버그.**
+   *
+   * 재고를 화면 상태(allItems)의 stock에 더해 덮어썼다. allItems는 엔진을 만들 때
+   * 클로저에 갇혀 함수가 도는 동안 안 바뀌고, 구독이 갱신되기 전에 다음 쓰기가 들어오면
+   * 앞선 쓰기가 통째로 날아간다.
+   *
+   *   작업완료  0 + 100 = 100  → DB에 100
+   *   출고      allItems.stock이 아직 0 → 0 − 100 = −100  → DB에 −100
+   *
+   * 서래농산 8/10 주문에서 시골향볶음통들깨/4kg이 딱 이 모양으로 −100이 됐다
+   * (주문 수량과 같은 값). 이제 DB에서 읽어 더하므로 화면이 낡아도 맞는다.
+   */
+  it('사이에 화면 상태가 안 갱신돼도 순변화는 쓴 재고만큼', async () => {
+    const items = [벌크(), 낱개(0), 박스10(0)];
+    const order = 주문(10);
+    const { engine, stockOf } = harness(items, order);
+
+    // 작업완료 — 재고가 없으니 10박스를 새로 만든다
+    await engine.reconcileOrderStock(order, OrderStatus.DISPATCHED);
+    expect(stockOf('box10')).toBe(10);
+
+    // 화면 상태를 일부러 옛 값으로 되돌린다 — 구독이 아직 안 온 상태
+    items.find(i => i.id === 'box10')!.stock = 0;
+
+    await engine.reconcileOrderStock(order, OrderStatus.SHIPPED);
+    expect(stockOf('box10')).toBe(0);       // 전에는 −10이 됐다
+  });
+
+  it('같은 품목이 든 주문을 연달아 처리해도 안 겹친다', async () => {
+    const items = [벌크(), 낱개(0), 박스10(5)];
+    const o1 = { ...주문(2), id: 'o1' } as Order;
+    const { engine, stockOf } = harness(items, o1);
+
+    await engine.reconcileOrderStock(o1, OrderStatus.SHIPPED);
+    expect(stockOf('box10')).toBe(3);
+
+    // 두 번째 주문 — 화면 상태는 아직 5인 채로 들어온다
+    items.find(i => i.id === 'box10')!.stock = 5;
+    const o2 = { ...주문(2), id: 'o2' } as Order;
+    await engine.reconcileOrderStock(o2, OrderStatus.SHIPPED);
+    expect(stockOf('box10')).toBe(1);       // 3 − 2. 전에는 5 − 2 = 3으로 덮어썼다
   });
 });

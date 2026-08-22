@@ -1,4 +1,4 @@
-import { doc, setDoc, deleteDoc, getDoc, Firestore } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, getDoc, runTransaction, Firestore } from 'firebase/firestore';
 import { isBulkItem } from '../../shared/itemTaxonomy';
 import { Order, OrderItem, Item, OrderStatus, AppNotification, Partner, RawMaterialLot } from '../../shared/types';
 import { toKg, baseRawName, lotStockInUnit, unitToKg } from '../../constants/formula';
@@ -83,16 +83,36 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   };
   const addDelta = (m: Map<string, number>, id: string, d: number) => { if (d) m.set(id, (m.get(id) ?? 0) + d); };
 
-  // 품목 재고 델타 일괄 반영 — 한 상태전환에서 같은 품목이 +/−로 겹쳐도(생산+출고 스킵 등) 순변화만 1회 기록.
+  /**
+   * 품목 재고 델타 일괄 반영 — 한 상태전환에서 같은 품목이 +/−로 겹쳐도 순변화만 1회 기록.
+   *
+   * **DB에서 읽어 더한다(트랜잭션).** 화면 상태(allItems)의 stock에 더해 덮어쓰면
+   * 앞선 쓰기가 통째로 날아간다. 실제로 그렇게 재고가 마이너스로 파였다:
+   *
+   *   작업완료  재고 0 + 100 = 100  → DB에 100
+   *   출고      allItems.stock이 아직 0(구독 미갱신) → 0 − 100 = −100  → DB에 −100
+   *                                                     ↑ +100이 사라진다
+   *
+   * allItems는 엔진을 만들 때 클로저에 갇혀서, 함수가 도는 동안 절대 안 바뀐다.
+   * 구독이 새 값을 받아도 이미 실행 중인 호출은 옛 배열을 계속 본다.
+   * 원료 로트는 진작 트랜잭션(mutateRawMaterialLots)이라 멀쩡했다 — 재고만 빠져 있었다.
+   */
   const applyStockDeltas = async (deltas: Map<string, number>) => {
     for (const [itemId, delta] of deltas) {
       if (!delta) continue;
       const it = allItems.find(p => p.id === itemId);
       if (!it) continue;
-      const newStock = Math.round((it.stock + delta) * 1000) / 1000;
-      await updateItem('items', itemId, { stock: newStock });
+      let before = 0, newStock = 0;
+      await runTransaction(db, async (tx) => {
+        const ref = doc(db, 'items', itemId);
+        const snap = await tx.get(ref);
+        if (!snap.exists()) return;
+        before = Number(snap.data().stock ?? 0);
+        newStock = Math.round((before + delta) * 1000) / 1000;
+        tx.update(ref, { stock: newStock });
+      });
       if (newStock < 0) {
-        console.warn(`[재고 부족] ${it.name}: ${it.stock} → ${newStock}`);
+        console.warn(`[재고 부족] ${it.name}: ${before} → ${newStock}`);
         await addItem('notifications', {
           type: 'inventory_shortage', title: '재고 부족 경고',
           body: `${it.name}: 재고 ${newStock} (부족분 ${Math.abs(newStock)}). 주문 상태변경 반영 확인 필요.`,
