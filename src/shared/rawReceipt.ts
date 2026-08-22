@@ -86,7 +86,8 @@ export async function recordRawMaterialReceipt(opts: {
     rawItem.id,
     // 입고 로트 추가 후, 음수 이월(미상)이 있으면 이 입고로 먼저 상쇄(net)한다.
     (lots, stock) => settleCarryOver([...withCarryOverLot(lots, stock, baseName), { ...newLot, lotNo: nextLotNo(lots, newLot.receivedDate) }]),
-    (lots) => lotStockInUnit(lots, baseName),
+    // 로트가 포장분까지 세는 원료는 stock을 안 덮어쓴다 — 벌크 재고는 따로 세는 숫자다
+    rawItem.lotsAreTotal ? undefined : (lots) => lotStockInUnit(lots, baseName),
   );
 
   await addItem('rawMaterialLedger', {
@@ -134,8 +135,10 @@ export async function adjustRawLots(opts: {
   ledgerType?: 'auto' | 'manual' | 'correction';
   /** 어느 회사 창고인가 — 안 박으면 그 회사 수불부에서 사라진다 */
   companyId?: CompanyId;
+  /** 로트가 포장분까지 세는 원료면 true — stock을 안 덮어쓴다 (Item.lotsAreTotal) */
+  lotsAreTotal?: boolean;
 }): Promise<void> {
-  const { material, rawItemId, deltaKg, date, note, addedBy, ledger = true, ledgerType = 'correction', companyId } = opts;
+  const { material, rawItemId, deltaKg, date, note, addedBy, ledger = true, ledgerType = 'correction', companyId, lotsAreTotal } = opts;
   if (Math.abs(deltaKg) < 0.0001) return;
   await mutateRawMaterialLots(
     rawItemId,
@@ -148,7 +151,7 @@ export async function adjustRawLots(opts: {
       }
       return deductFromLots(carried, -deltaKg).lots;
     },
-    (lots) => lotStockInUnit(lots, material),
+    lotsAreTotal ? undefined : (lots) => lotStockInUnit(lots, material),
   );
   if (ledger) {
     await addItem('rawMaterialLedger', {

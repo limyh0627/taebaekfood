@@ -231,6 +231,17 @@ export interface Item {
   itemType?: ProductStage;       // @deprecated → category: 'wip'|'product' 사용
   cost?: number;                 // 원가 (제조/매입원가) — **kg당**. 기름도 마찬가지(2026-08-14~)
   price: number;
+  /**
+   * 로트가 **포장된 것까지 통틀어** 센다는 표식 (볶음참깨처럼 낱개·박스 품목이 딸린 원료).
+   *
+   *   로트·원료수불부   볶음참깨가 통틀어 몇 kg 있나 (벌크 + 낱개 + 박스)
+   *   이 품목 stock     그중 자루로 남은 벌크만
+   *
+   * 안 달면 예전처럼 로트 합이 곧 재고다(깨분처럼 벌크 하나뿐인 원료).
+   * 달아 두면 로트를 건드려도 **stock을 안 덮어쓴다** — 안 그러면 입고 한 번에
+   * 벌크 재고가 로트 합(=총재고)으로 튀어 애써 맞춰둔 숫자가 날아간다.
+   */
+  lotsAreTotal?: boolean;
   /** 재고 — **언제나 kg**(기름 포함). 화면에 L로 보여줄 때만 density로 나눈다. */
   stock: number;
   /**
