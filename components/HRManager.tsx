@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import ConfirmModal from './ConfirmModal';
 import { 
   Users, 
@@ -24,8 +24,8 @@ import {
   Printer,
   Save
 } from 'lucide-react';
-import { Employee, EmployeeStatus, LeaveRequest, LeaveStatus, LeaveType, Payroll, PayrollLine } from '../types';
-import { payrollGross, payrollDeduct, payrollNet, payrollTotals } from '../types';
+import { Employee, EmployeeStatus, LeaveRequest, LeaveStatus, LeaveType, Payroll, PayrollLine, CompanyId } from '../types';
+import { payrollGross, payrollDeduct, payrollNet, payrollTotals, payrollDocId, companyOf, TAEBAEK } from '../types';
 import PageHeader from './PageHeader';
 import { subscribeToCollection, setDocument } from '../src/shared/services/firebaseService';
 
@@ -39,6 +39,8 @@ import {
 } from '../src/shared/leave';
 
 interface HRManagerProps {
+  /** 지금 보고 있는 회사 — 명부·급여대장을 회사별로 가른다 */
+  companyId?: CompanyId;
   employees: Employee[];
   leaveRequests: LeaveRequest[];
   onUpdateEmployee: (_emp: Employee) => void;
@@ -57,7 +59,8 @@ interface HRManagerProps {
 }
 
 const HRManager: React.FC<HRManagerProps> = ({
-  employees,
+  companyId = TAEBAEK,
+  employees: allEmployees,
   leaveRequests,
   onUpdateEmployee,
   onAddEmployee,
@@ -67,6 +70,14 @@ const HRManager: React.FC<HRManagerProps> = ({
   onAddLeaveRequests,
   onCreatePayrollEntry,
 }) => {
+  /*
+   * 명부를 회사로 가른다 — 태백과 풍회는 별도 사업자라 급여도 4대보험도 각각 낸다.
+   * 회사가 안 붙은 옛 기록은 태백으로 본다(companyOf). 관리자 계정(admin)은 어느 쪽에도 안 센다.
+   */
+  const employees = useMemo(
+    () => allEmployees.filter(e => e.id === 'admin' || companyOf(e) === companyId),
+    [allEmployees, companyId],
+  );
   const [activeTab, setActiveTab] = useState<'employees' | 'leave-approval' | 'leave-balance' | 'payroll'>('employees');
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -101,12 +112,14 @@ const HRManager: React.FC<HRManagerProps> = ({
   const [payrolls, setPayrolls] = useState<Payroll[]>([]);
   React.useEffect(() => subscribeToCollection<Payroll>('payrolls', setPayrolls), []);
   const won = (n: number) => (n || 0).toLocaleString('ko-KR');
-  const savedPayroll = payrolls.find(p => p.yearMonth === payYm) ?? null;
+  // 회사별로 문서가 따로다 — 남의 회사 대장을 덮어쓰면 안 된다
+  const payDocId = payrollDocId(companyId, payYm);
+  const savedPayroll = payrolls.find(p => p.id === payDocId) ?? null;
 
   // 월을 바꾸면 저장본을 싣고, 없으면 재직자로 빈 줄을 깐다
   React.useEffect(() => {
     if (activeTab !== 'payroll') return;
-    const doc = payrolls.find(p => p.yearMonth === payYm);
+    const doc = payrolls.find(p => p.id === payDocId);
     if (doc) { setPayLines(doc.lines ?? []); setPayDate(doc.payDate || `${payYm}-25`); }
     else {
       setPayLines(employees.filter(e => e.status === 'working' && e.id !== 'admin').map(e => ({
@@ -115,7 +128,7 @@ const HRManager: React.FC<HRManagerProps> = ({
       setPayDate(`${payYm}-25`);
     }
     setPayMsg('');
-  }, [payYm, activeTab, payrolls, employees]);
+  }, [payYm, payDocId, activeTab, payrolls, employees]);
 
   const setCell = (i: number, field: keyof PayrollLine, v: string) => {
     const n = Math.round(parseFloat(v.replace(/[^\d.-]/g, '')) || 0);
@@ -125,7 +138,7 @@ const HRManager: React.FC<HRManagerProps> = ({
   const copyPrevMonth = () => {
     const [y, m] = payYm.split('-').map(Number);
     const prevYm = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
-    const prev = payrolls.find(p => p.yearMonth === prevYm);
+    const prev = payrolls.find(p => p.id === payrollDocId(companyId, prevYm));
     if (!prev) { setPayMsg(`${prevYm} 대장이 없습니다`); return; }
     const byId = new Map(prev.lines.map(l => [l.employeeId, l]));
     setPayLines(prev2 => prev2.map(l => {
@@ -140,8 +153,8 @@ const HRManager: React.FC<HRManagerProps> = ({
     if (paySaving) return;
     setPaySaving(true);
     try {
-      await setDocument('payrolls', `pay-${payYm}`, {
-        id: `pay-${payYm}`, yearMonth: payYm, payDate,
+      await setDocument('payrolls', payDocId, {
+        id: payDocId, companyId, yearMonth: payYm, payDate,
         lines: payLines.filter(l => payrollGross(l) > 0),
         ...(savedPayroll?.cashEntryId ? { cashEntryId: savedPayroll.cashEntryId } : {}),
         createdAt: savedPayroll?.createdAt ?? new Date().toISOString(),
@@ -166,8 +179,8 @@ const HRManager: React.FC<HRManagerProps> = ({
         note: `${payYm} 급여`,
       });
       if (id) {
-        await setDocument('payrolls', `pay-${payYm}`, {
-          id: `pay-${payYm}`, yearMonth: payYm, payDate,
+        await setDocument('payrolls', payDocId, {
+          id: payDocId, companyId, yearMonth: payYm, payDate,
           lines: payLines.filter(l => payrollGross(l) > 0), cashEntryId: id,
           createdAt: savedPayroll?.createdAt ?? new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -229,6 +242,9 @@ const HRManager: React.FC<HRManagerProps> = ({
     e.preventDefault();
     const empData: Employee = {
       id: editingEmployee ? editingEmployee.id : `emp-${Date.now()}`,
+      // 새로 넣는 사람은 **지금 보고 있는 회사** 소속. 고칠 때는 원래 소속을 지키고,
+      // 옛 기록(회사 없음)은 태백으로 굳힌다 — 안 붙이면 회사를 바꿔도 계속 따라다닌다.
+      companyId: editingEmployee ? companyOf(editingEmployee) : companyId,
       ...formData
     };
     if (editingEmployee) onUpdateEmployee(empData);

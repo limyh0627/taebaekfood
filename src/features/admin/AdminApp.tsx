@@ -2079,6 +2079,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'hr' && (
             <HRManager
+              companyId={companyId}
               employees={employees}
               leaveRequests={leaveRequests}
               onUpdateEmployee={(emp) => updateItem('employees', emp.id, emp)}

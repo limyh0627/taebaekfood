@@ -347,6 +347,8 @@ export interface AnnualLeave {
 
 export interface Employee {
   id: string;
+  /** 어느 회사 직원인가. 없으면 태백(옛 기록) — 급여도 4대보험도 사업자별로 따로 낸다. */
+  companyId?: CompanyId;
   name: string;
   username?: string;
   password?: string;
@@ -382,7 +384,9 @@ export interface PayrollLine {
 }
 
 export interface Payroll {
-  id: string;               // 'pay-2026-08'
+  id: string;               // 'pay-2026-08' (태백) · 'pay-punghoe-2026-08' (풍회)
+  /** 어느 회사 대장인가. 없으면 태백(옛 기록). */
+  companyId?: CompanyId;
   yearMonth: string;        // '2026-08'
   payDate: string;          // 실제 지급일 (전표 일자가 된다)
   lines: PayrollLine[];
@@ -391,6 +395,13 @@ export interface Payroll {
   createdAt?: string;
   updatedAt?: string;
 }
+
+/**
+ * 회사별 급여대장 문서 id. 태백은 옛 문서('pay-YYYY-MM')를 그대로 쓴다.
+ * openingDocId와 같은 규칙 — 회사를 나누는 자리는 한 가지 방식으로만 둔다.
+ */
+export const payrollDocId = (c: CompanyId, ym: string): string =>
+  (c === TAEBAEK ? `pay-${ym}` : `pay-${c}-${ym}`);
 
 /** 지급계 — 기본급 + 수당 */
 export const payrollGross = (l: PayrollLine): number =>
