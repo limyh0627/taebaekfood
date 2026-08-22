@@ -78,6 +78,16 @@ export interface CashTemplate {
   loanCode?: string;
   /** 세금 — 부가세 / 소득세 */
   vat?: number;       incomeTax?: number;
+  /**
+   * 대체전표 **분개 양식** — 차·대를 템플릿이 들고 있는다.
+   *
+   * 사용자가 줄마다 차변/대변을 고르게 하면 회계를 아는 사람만 쓸 수 있다.
+   * 감가상각·퇴직충당처럼 양식이 정해진 전표는 템플릿이 계정과 차·대를 다 알고 있고,
+   * 사용자는 **금액만** 넣는다. 직접입력으로 특수 전표를 끊을 때만 손으로 고른다.
+   *
+   *   감가상각  (차) 818 감가상각비 / (대) 203 감가상각누계액
+   */
+  transferLines?: { accountCode: string; side: '차변' | '대변'; name?: string }[];
   /** 두 줄로 갈리는 갈래의 미리 정해둔 값 — SPLIT_MODES 참고 */
   insCorp?: number;   insEmp?: number;
   principal?: number; interest?: number;
@@ -202,6 +212,7 @@ export function filterTemplates(
       principal: t.principal, interest: t.interest,
       gross: t.gross,         deduction: t.deduction,
       loanCode: t.loanCode,
+      transferLines: t.transferLines,
       ...(t.mode === '상환' ? { hint: '원금 + 이자' } : {}),
       ...(t.mode === '급여' ? { hint: '총급여 − 공제' } : {}),
       ...(t.mode === '보험' ? { hint: '회사부담 + 예수금' } : {}),
@@ -225,7 +236,16 @@ export function templateAccrRows(
   t: CashTemplate,
 ): { name: string; accountCode?: string; price: string; side: '차변' | '대변' }[] {
   if (isCashDir(t.dir) || t.dir === '회사이체') return [{ name: '', price: '', side: '차변' }];
-  // 템플릿 계정은 비용·자산이라 차변이 정상이다. 상대변은 사용자가 한 줄 더 넣는다.
+  // 분개 양식이 있으면 **그대로 편다** — 계정도 차·대도 템플릿이 안다. 사용자는 금액만 넣는다.
+  if (t.transferLines?.length) {
+    return t.transferLines.map(l => ({
+      name: l.name || t.itemName || t.label,
+      accountCode: l.accountCode,
+      price: t.amount ? String(t.amount) : '',
+      side: l.side,
+    }));
+  }
+  // 양식이 없으면 계정 한 줄. 비용·자산이라 차변이 정상이고, 상대변은 사용자가 넣는다.
   return [{
     name: t.itemName || t.note || t.label,
     accountCode: t.accountCode,

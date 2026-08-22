@@ -407,6 +407,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [qpPickerOpen, setQpPickerOpen] = useState(false);
   // 발생(돈 안 움직임) — 계정 여러 줄. 옛 대체전표 입력을 여기로 흡수했다.
   // 대체전표 줄 — **차·대를 손으로 고른다.** 짐작하지 않는다(자본을 차변에 세우는 전표가 있다).
+  /**
+   * 차·대를 손으로 고칠 것인가 — **기본은 안 보인다.**
+   *
+   * 전표에 차·대는 늘 있지만, 사용자가 고를 일은 거의 없다. 템플릿이 양식을 알고 있고
+   * 급여 발생·상계·기초는 버튼이 알아서 끊는다. 회계를 아는 사람만 쓸 수 있는 화면이 되면 안 된다.
+   * 중고 기계 매각처럼 계정이 여러 개 얽히는 특수 전표에서만 펼쳐 쓴다.
+   */
+  const [qpShowSides, setQpShowSides] = useState(false);
   const [qpAccrRows, setQpAccrRows] = useState<
     { name: string; accountCode?: string; price: string; side: '차변' | '대변' }[]
   >([{ name: '', price: '', side: '차변' }]);
@@ -433,7 +441,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const openCashModal = (dir: '입금' | '출금') => {
     setQpMode('일반'); setQpDir(dir); setQpAccountCode(''); setQpPickerOpen(false);
     setQpInsCorp(''); setQpInsEmp(''); setQpVat(''); setQpIncomeTax(''); setQpTemplateId(null);
-    setQpAccrRows([{ name: '', price: '', side: '차변' }]);
+    setQpAccrRows([{ name: '', price: '', side: '차변' }]); setQpShowSides(false);
     setQpAdvCompany(companyId === 'taebaek' ? 'punghoe' : 'taebaek');
     setQpAdvAmount(''); setQpAdvOver('선급금');
     setQpPrincipal(''); setQpInterest(''); setQpGross(''); setQpDeduction(''); setQpLoanCode('260');
@@ -474,6 +482,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
      * 금액과 계정을 들고 있는 템플릿을 골라도 빈 양식이 떴다.
      */
     setQpAccrRows(templateAccrRows(t));
+    setQpShowSides(false);   // 템플릿이 차·대를 안다 — 손댈 일이 없다
     // 두 줄로 갈리는 갈래(보험·상환·급여·세금)는 금액칸을 안 쓴다 — 템플릿에 박아 둔 두 값을 그대로 채운다.
     // 먼저 넷을 다 비우고 고른 갈래만 채운다. 안 그러면 앞 템플릿의 원금·공제가 남는다.
     setQpInsCorp(''); setQpInsEmp(''); setQpPrincipal(''); setQpInterest('');
@@ -4196,7 +4205,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       <div key={idx} className="flex items-center gap-1.5">
                         {/* 차·대는 **대체전표에만** 있다. 매입전표(거래처 있음)는 갈래가 이미 정한다
                             — 품목은 차변, 미지급금은 대변. 3전표제에서 대체만 칸이 있는 이유다. */}
-                        {!quickPayClientId && (
+                        {!quickPayClientId && qpShowSides && (
                           <div className="flex shrink-0 rounded-lg overflow-hidden border border-slate-200">
                             {(['차변', '대변'] as const).map(sd => (
                               <button key={sd} type="button"
@@ -4208,6 +4217,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                 }`}>{sd}</button>
                             ))}
                           </div>
+                        )}
+                        {!quickPayClientId && !qpShowSides && (
+                          <span className={`shrink-0 w-8 text-center text-[11px] font-black ${
+                            r.side === '차변' ? 'text-slate-500' : 'text-amber-600'}`}>{r.side}</span>
                         )}
                         <input value={r.name} placeholder="적요 (비우면 계정명)"
                           onChange={e => setQpAccrRows(prev => prev.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))}
@@ -4233,6 +4246,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                         <Plus size={12} strokeWidth={3}/>행 추가
                       </button>
                       {/* 차·대가 맞아야 끊을 수 있다 — 안 맞는 전표는 시산표를 조용히 망가뜨린다 */}
+                      {!quickPayClientId && !qpShowSides && (
+                        <button type="button" onClick={() => setQpShowSides(true)}
+                          className="text-[11px] font-black text-slate-300 hover:text-slate-500">차·대 고치기</button>
+                      )}
                       {!quickPayClientId && (accrDebit > 0 || accrCredit > 0) && (
                         <span className={`ml-auto text-[11px] font-black tabular-nums ${
                           accrBalanced ? 'text-emerald-600' : 'text-rose-500'}`}>

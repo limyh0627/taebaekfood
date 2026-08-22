@@ -82,3 +82,45 @@ describe('자금원장이 받는 갈래', () => {
     expect(isCashDir('줄돈')).toBe(false);
   });
 });
+
+describe('템플릿이 차·대를 들고 온다', () => {
+  /**
+   * 사용자가 줄마다 차변/대변을 고르게 하면 회계를 아는 사람만 쓸 수 있다.
+   * 양식이 정해진 전표는 템플릿이 계정과 차·대를 다 알고, 사용자는 **금액만** 넣는다.
+   */
+  const 감가상각: CashTemplate = {
+    id: 'fct-builtin-depreciation', label: '감가상각', dir: '대체', mode: '일반',
+    accountCode: '818', amount: 1_000_000,
+    transferLines: [
+      { accountCode: '818', side: '차변' },
+      { accountCode: '203', side: '대변' },
+    ],
+  };
+
+  it('양식이 있으면 줄을 그대로 편다 — 계정도 차·대도 정해져 온다', () => {
+    expect(templateAccrRows(감가상각)).toEqual([
+      { name: '감가상각', accountCode: '818', price: '1000000', side: '차변' },
+      { name: '감가상각', accountCode: '203', price: '1000000', side: '대변' },
+    ]);
+  });
+
+  it('줄마다 이름을 따로 줄 수 있다', () => {
+    const t = { ...감가상각, transferLines: [
+      { accountCode: '818', side: '차변' as const, name: '감가상각비' },
+      { accountCode: '203', side: '대변' as const, name: '누계액' },
+    ] };
+    expect(templateAccrRows(t).map(r => r.name)).toEqual(['감가상각비', '누계액']);
+  });
+
+  it('차·대가 맞는 양식이다 — 저장이 막히지 않는다', () => {
+    const rows = templateAccrRows(감가상각);
+    const 차 = rows.filter(r => r.side === '차변').reduce((a, r) => a + Number(r.price), 0);
+    const 대 = rows.filter(r => r.side === '대변').reduce((a, r) => a + Number(r.price), 0);
+    expect(차).toBe(대);
+  });
+
+  it('양식이 없으면 계정 한 줄 — 상대변은 사용자가 넣는다', () => {
+    expect(templateAccrRows(lease)).toHaveLength(1);
+    expect(templateAccrRows(lease)[0].side).toBe('차변');
+  });
+});

@@ -510,6 +510,8 @@ export interface FixedCostEntry {
 }
 
 export interface FixedCostTemplate {
+  /** 대체전표 분개 양식 — 차·대를 템플릿이 들고 있다(cashTemplates.transferLines 참고) */
+  transferLines?: { accountCode: string; side: '차변' | '대변'; name?: string }[];
   id: string;
   name: string;                // 항목명 (예: 공장 임대료)
   amount: number;
