@@ -24,9 +24,9 @@ const accrual = (gross: number, deduct: number): IssuedStatement => ({
   partnerId: '', partnerName: '급여', orderId: '', docNo: '급여260831-01',
   totalSupply: gross, totalTax: 0, totalAmount: gross,
   items: [
-    { name: '급여', spec: '', qty: 1, price: gross, supply: gross, tax: 0, total: gross, isTaxExempt: true, accountCode: '515' },
-    { name: '예수금(원천공제)', spec: '', qty: 1, price: deduct, supply: deduct, tax: 0, total: deduct, isTaxExempt: true, accountCode: '254' },
-    { name: '미지급급여', spec: '', qty: 1, price: gross - deduct, supply: gross - deduct, tax: 0, total: gross - deduct, isTaxExempt: true, accountCode: '263' },
+    { name: '급여', spec: '', qty: 1, price: gross, supply: gross, tax: 0, total: gross, isTaxExempt: true, accountCode: '515', side: '차변' },
+    { name: '예수금(원천공제)', spec: '', qty: 1, price: deduct, supply: deduct, tax: 0, total: deduct, isTaxExempt: true, accountCode: '254', side: '대변' },
+    { name: '미지급급여', spec: '', qty: 1, price: gross - deduct, supply: gross - deduct, tax: 0, total: gross - deduct, isTaxExempt: true, accountCode: '263', side: '대변' },
   ],
 } as IssuedStatement);
 

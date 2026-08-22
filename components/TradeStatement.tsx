@@ -406,7 +406,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [qpAccountCode, setQpAccountCode] = useState('');
   const [qpPickerOpen, setQpPickerOpen] = useState(false);
   // 발생(돈 안 움직임) — 계정 여러 줄. 옛 대체전표 입력을 여기로 흡수했다.
-  const [qpAccrRows, setQpAccrRows] = useState<{ name: string; accountCode?: string; price: string }[]>([{ name: '', price: '' }]);
+  // 대체전표 줄 — **차·대를 손으로 고른다.** 짐작하지 않는다(자본을 차변에 세우는 전표가 있다).
+  const [qpAccrRows, setQpAccrRows] = useState<
+    { name: string; accountCode?: string; price: string; side: '차변' | '대변' }[]
+  >([{ name: '', price: '', side: '차변' }]);
   // 회사 간 이체 — 우리 통장에서 다른 회사 통장으로 보낼 때. 양쪽에 한 건씩 선다.
   const [qpAdvCompany, setQpAdvCompany] = useState<CompanyId>('punghoe');
   const [qpAdvAmount, setQpAdvAmount] = useState('');
@@ -430,7 +433,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const openCashModal = (dir: '입금' | '출금') => {
     setQpMode('일반'); setQpDir(dir); setQpAccountCode(''); setQpPickerOpen(false);
     setQpInsCorp(''); setQpInsEmp(''); setQpVat(''); setQpIncomeTax(''); setQpTemplateId(null);
-    setQpAccrRows([{ name: '', price: '' }]);
+    setQpAccrRows([{ name: '', price: '', side: '차변' }]);
     setQpAdvCompany(companyId === 'taebaek' ? 'punghoe' : 'taebaek');
     setQpAdvAmount(''); setQpAdvOver('선급금');
     setQpPrincipal(''); setQpInterest(''); setQpGross(''); setQpDeduction(''); setQpLoanCode('260');
@@ -3869,6 +3872,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
          * 부가세 신고에 들어가려면 공급자가 있어야 하고, 미지급금을 걸려면 걸 상대가 있어야 한다 —
          * 그래서 거래처 하나로 갈린다. 사용자는 거래처만 고르면 되고 어느 전표인지는 앱이 정한다.
          */
+        // 갈래가 전표 종류를 정한다 — 거래처를 고르면 매입전표(미지급금이 선다),
+        // 안 고르면 순수 대체(차·대를 직접 세운다)
+        const accrType: '매출' | '매입' | '비용' = quickPayClientId ? '매입' : '비용';
         const accrLines = qpAccrRows
           .filter(r => r.accountCode && Number(String(r.price).replace(/,/g, '')) > 0)
           .map(r => {
@@ -3876,16 +3882,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             return {
               name: r.name.trim() || (codeName.get(r.accountCode!) ?? ''),
               spec: '', qty: 1, price: a, supply: a, tax: 0, total: a,
-              isTaxExempt: true, accountCode: r.accountCode!,
+              isTaxExempt: true, accountCode: r.accountCode!, side: r.side,
             };
           });
-        const accrTotal = accrLines.reduce((a, r) => a + r.total, 0);
+        // 차·대를 따로 센다. 대체전표는 **둘이 같아야** 끊을 수 있다.
+        const accrDebit  = accrLines.filter(l => l.side === '차변').reduce((a, r) => a + r.total, 0);
+        const accrCredit = accrLines.filter(l => l.side === '대변').reduce((a, r) => a + r.total, 0);
+        // 매입전표(거래처 있음)는 차·대가 갈래로 정해지므로 한 변의 합이 총액이다
+        const accrTotal = accrType === '비용' ? accrDebit : accrLines.reduce((a, r) => a + r.total, 0);
+        const accrBalanced = accrType !== '비용' || (accrDebit > 0 && accrDebit === accrCredit);
 
-        // 갈래가 전표 종류를 정한다 — 줄돈은 매입(미지급금), 받을돈은 매출(미수금), 대체는 비용전표
-        // 거래처를 고르면 매입전표(미지급금이 선다), 안 고르면 순수 대체(차·대 직접)
-        const accrType: '매출' | '매입' | '비용' = quickPayClientId ? '매입' : '비용';
         const doAccrualSave = () => {
-          if (!accrLines.length) return;
+          if (!accrLines.length || !accrBalanced) return;   // 차·대가 안 맞으면 안 끊는다
           const d = new Date(quickPayDate + 'T00:00:00');
           // 대체는 따로 센다 — 매입·매출과 번호가 섞이면 어느 갈래인지 번호로 못 읽는다
           const accrDocNo = nextDocNo(quickPayDate, issuedStatements, accrType === '비용' ? '대체' : '');
@@ -4009,7 +4017,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         };
 
         const canSave = qpDir === '회사이체' ? (advAmt > 0 && !!onAddForCompany)
-          : !isCashDir(qpDir) ? accrLines.length > 0
+          : !isCashDir(qpDir) ? (accrLines.length > 0 && accrBalanced)   // 차·대가 맞아야 끊는다
           : qpMode === '상환' ? (prin > 0 || intr > 0)
           : qpMode === '보험' ? insTotal > 0
           : qpMode === '세금' ? taxTotal > 0
@@ -4018,7 +4026,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
         const handleQuickPaySave = () => {
           if (qpDir === '회사이체') { doTransferSave(); return; }
-          if (!isCashDir(qpDir)) { doAccrualSave(); return; }
+          if (!isCashDir(qpDir)) { if (accrBalanced) doAccrualSave(); return; }
           if (qpMode === '상환') { if (prin > 0 || intr > 0) doLoanSave(); return; }
           if (qpMode === '보험') { doInsuranceSave(); return; }
           if (qpMode === '세금') { doTaxSave(); return; }
@@ -4186,6 +4194,21 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">계정 · 금액</label>
                     {qpAccrRows.map((r, idx) => (
                       <div key={idx} className="flex items-center gap-1.5">
+                        {/* 차·대는 **대체전표에만** 있다. 매입전표(거래처 있음)는 갈래가 이미 정한다
+                            — 품목은 차변, 미지급금은 대변. 3전표제에서 대체만 칸이 있는 이유다. */}
+                        {!quickPayClientId && (
+                          <div className="flex shrink-0 rounded-lg overflow-hidden border border-slate-200">
+                            {(['차변', '대변'] as const).map(sd => (
+                              <button key={sd} type="button"
+                                onClick={() => setQpAccrRows(prev => prev.map((x, i) => i === idx ? { ...x, side: sd } : x))}
+                                className={`px-2 py-2 text-[11px] font-black transition-all ${
+                                  r.side === sd
+                                    ? sd === '차변' ? 'bg-slate-700 text-white' : 'bg-amber-500 text-white'
+                                    : 'bg-white text-slate-300 hover:text-slate-500'
+                                }`}>{sd}</button>
+                            ))}
+                          </div>
+                        )}
                         <input value={r.name} placeholder="적요 (비우면 계정명)"
                           onChange={e => setQpAccrRows(prev => prev.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))}
                           className="flex-1 min-w-0 border border-slate-200 rounded-lg px-2.5 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-amber-300"/>
@@ -4204,10 +4227,20 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                         )}
                       </div>
                     ))}
-                    <button type="button" onClick={() => setQpAccrRows(prev => [...prev, { name: '', price: '' }])}
-                      className="flex items-center gap-1 text-xs font-black text-slate-500 hover:text-slate-700">
-                      <Plus size={12} strokeWidth={3}/>행 추가
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button type="button" onClick={() => setQpAccrRows(prev => [...prev, { name: '', price: '', side: prev.length % 2 ? '대변' : '차변' }])}
+                        className="flex items-center gap-1 text-xs font-black text-slate-500 hover:text-slate-700">
+                        <Plus size={12} strokeWidth={3}/>행 추가
+                      </button>
+                      {/* 차·대가 맞아야 끊을 수 있다 — 안 맞는 전표는 시산표를 조용히 망가뜨린다 */}
+                      {!quickPayClientId && (accrDebit > 0 || accrCredit > 0) && (
+                        <span className={`ml-auto text-[11px] font-black tabular-nums ${
+                          accrBalanced ? 'text-emerald-600' : 'text-rose-500'}`}>
+                          차 {fmt(accrDebit)} · 대 {fmt(accrCredit)}
+                          {accrBalanced ? ' ✓' : ` · 차이 ${fmt(accrDebit - accrCredit)}`}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className={`rounded-xl px-3 py-2.5 text-[11px] font-bold leading-snug ${qpDir === '대체' ? 'bg-slate-50 text-slate-500' : 'bg-amber-50 text-amber-700'}`}>

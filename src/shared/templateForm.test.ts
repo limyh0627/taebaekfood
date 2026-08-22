@@ -18,7 +18,7 @@ const lease: CashTemplate = {
 describe('비현금 갈래 템플릿 → 계정·금액 줄', () => {
   it('대체 템플릿은 계정과 금액을 줄에 그대로 편다', () => {
     expect(templateAccrRows(lease)).toEqual([
-      { name: '차량 리스', accountCode: '819', price: '2344300' },
+      { name: '차량 리스', accountCode: '819', price: '2344300', side: '차변' },
     ]);
   });
 
@@ -33,12 +33,12 @@ describe('비현금 갈래 템플릿 → 계정·금액 줄', () => {
   });
 
   it('자금 갈래(출금·입금)는 금액칸을 쓰므로 줄을 비워 둔다', () => {
-    expect(templateAccrRows({ ...lease, dir: '출금' })).toEqual([{ name: '', price: '' }]);
-    expect(templateAccrRows({ ...lease, dir: '입금' })).toEqual([{ name: '', price: '' }]);
+    expect(templateAccrRows({ ...lease, dir: '출금' })).toEqual([{ name: '', price: '', side: '차변' }]);
+    expect(templateAccrRows({ ...lease, dir: '입금' })).toEqual([{ name: '', price: '', side: '차변' }]);
   });
 
   it('회사이체도 전용 입력이라 줄을 안 쓴다', () => {
-    expect(templateAccrRows({ ...lease, dir: '회사이체' })).toEqual([{ name: '', price: '' }]);
+    expect(templateAccrRows({ ...lease, dir: '회사이체' })).toEqual([{ name: '', price: '', side: '차변' }]);
   });
 
   it('줄돈·받을돈도 전표라 줄을 쓴다', () => {

@@ -1154,19 +1154,18 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
          * 기간 시작 이전의 전표 합계에서 그 이전 수금을 뺀 것. 전표가 유일한 근거라
          * 원장을 고치면 이월도 저절로 따라온다(따로 적어 두면 어긋날 자리가 생긴다).
          */
+        /**
+         * 전월(전년)이월 — **기간 시작 전까지의 분개 108·251 잔액.**
+         *
+         * 전에는 전표를 `type`으로 거르고 자금을 따로 뺐다. 두 군데서 세니 규칙이 갈렸고,
+         * 기초 전표를 대체로 옮기는 순간 type 필터에서 빠져 이월이 통째로 사라졌다.
+         * 채권·채무가 움직인 곳은 분개의 108·251 줄뿐이다 — 거기 하나만 본다.
+         * 잔액(partnerBalanceFromJournals)과 같은 근거라 화면끼리 저절로 맞는다.
+         */
         const carryOver = (type: '매출' | '매입') => {
           if (!selId) return 0;
-          const gross = issuedStatements
-            .filter(st => st.partnerId === selId && st.type === type && (isOpening(st) || st.tradeDate < periodStart))
-            .reduce((a, st) => a + st.totalAmount, 0);
-          // 채권·채무를 턴 몫은 cashLedger 한 곳에서 읽는다 —
-          // 여기서 따로 세다가 상계(대체)의 108 줄이 통째로 빠지고 251은 부호가 뒤집혔다.
-          const want = type === '매출' ? '108' : '251';
-          const paid = cashEntries
-            .filter(e => e.partnerId === selId && e.date < periodStart)
-            .flatMap(partnerCashParts)
-            .reduce((a, x) => a + (x.code === want ? x.reduce : 0), 0);
-          return gross - paid;
+          return partnerBalanceFromJournals(
+            selId, type, journalEntries.filter(e => (e.date ?? '') < periodStart));
         };
         const carrySale = carryOver('매출');
         const carryBuy = carryOver('매입');

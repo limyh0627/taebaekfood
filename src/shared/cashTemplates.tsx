@@ -221,12 +221,16 @@ export function filterTemplates(
  * 금액칸에만 넣어 두면, 리스료·임대료처럼 대체로 끊는 템플릿을 골라도 **빈 양식이 떴다.**
  * 적요는 품목명 > 비고 > 템플릿 이름 순 — 전표에 그대로 남는 글이라 구체적인 것이 먼저다.
  */
-export function templateAccrRows(t: CashTemplate): { name: string; accountCode?: string; price: string }[] {
-  if (isCashDir(t.dir) || t.dir === '회사이체') return [{ name: '', price: '' }];
+export function templateAccrRows(
+  t: CashTemplate,
+): { name: string; accountCode?: string; price: string; side: '차변' | '대변' }[] {
+  if (isCashDir(t.dir) || t.dir === '회사이체') return [{ name: '', price: '', side: '차변' }];
+  // 템플릿 계정은 비용·자산이라 차변이 정상이다. 상대변은 사용자가 한 줄 더 넣는다.
   return [{
     name: t.itemName || t.note || t.label,
     accountCode: t.accountCode,
     price: t.amount ? String(t.amount) : '',
+    side: '차변',
   }];
 }
 

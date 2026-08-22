@@ -153,8 +153,8 @@ describe('buildPartnerLedger', () => {
     // (차) 108 외상매출금 / (대) 375 이월이익잉여금 — 개시잔액을 대체로 세운 모습
     const 기초 = { ...stmt('open', '비용', '2026-06-01', 1_000_000), docNo: '기초260601-01',
       items: [
-        { name: '기초 미수금(이월)', spec: '', qty: 1, price: 1_000_000, supply: 1_000_000, tax: 0, total: 1_000_000, isTaxExempt: true, accountCode: '108' },
-        { name: '기초 미수금(이월)', spec: '', qty: 1, price: 1_000_000, supply: 1_000_000, tax: 0, total: 1_000_000, isTaxExempt: true, accountCode: '375' },
+        { name: '기초 미수금(이월)', spec: '', qty: 1, price: 1_000_000, supply: 1_000_000, tax: 0, total: 1_000_000, isTaxExempt: true, accountCode: '108', side: '차변' },
+        { name: '기초 미수금(이월)', spec: '', qty: 1, price: 1_000_000, supply: 1_000_000, tax: 0, total: 1_000_000, isTaxExempt: true, accountCode: '375', side: '대변' },
       ] } as IssuedStatement;
     const l = buildPartnerLedger('p1', '매출', [기초], [], je([기초], []));
     expect(l.rows).toHaveLength(1);

@@ -190,13 +190,27 @@ export function journalizeCashEntry(e: CashEntry, cashAccountMap: Record<string,
  */
 export function journalizeTransfer(
   s: IssuedStatement,
-  normalOf: (code: string) => 'debit' | 'credit',
+  _normalOf?: (code: string) => 'debit' | 'credit',   // 더는 안 쓴다 — 차·대는 줄이 정한다
 ): JournalEntry | null {
   if (s.type !== '비용') return null;
   const items = s.items ?? [];
   if (items.some(it => !it.accountCode)) return null;
   const lines: JournalLine[] = [];
   let debit = 0, credit = 0;
+  /*
+   * 줄마다 **차·대를 그대로 읽는다.** 짐작하지 않는다.
+   *
+   * 실제 전표는 차변·대변 칸이 따로 있다. 전에는 칸이 없어서 계정의 정상 방향으로
+   * 짐작했는데(감가상각비=차변, 충당금=대변), 자본을 차변에 세워야 하는 전표에서 어긋났다.
+   *   기초 미지급  (차) 375 이월이익잉여금 / (대) 251 외상매입금
+   * 375는 자본이라 정상이 대변이다. 짐작으로는 이 전표를 만들 수 없다.
+   *
+   * 차·대를 안 적은 줄이 있으면 **분개를 만들지 않는다.** 짐작으로 메우면 그 전표가
+   * 조용히 틀린 방향으로 서고, 시산표는 맞아 보여서 못 찾는다.
+   */
+  for (const it of items) {
+    if (it.side !== '차변' && it.side !== '대변') return null;
+  }
   for (const it of items) {
     const amt = r(it.total ?? 0);
     if (!amt) continue;
@@ -204,7 +218,7 @@ export function journalizeTransfer(
     // 채권·채무 줄에만 거래처를 붙인다 — 거래처별 잔액이 이 줄에서 나온다.
     // (감가상각처럼 상대가 없는 대체는 거래처가 없다)
     const who = (code === AR || code === AP) && s.partnerId ? { partnerId: s.partnerId } : {};
-    if (normalOf(code) === 'debit') { lines.push({ accountCode: code, ...who, debit: amt, credit: 0 }); debit = r(debit + amt); }
+    if (it.side === '차변') { lines.push({ accountCode: code, ...who, debit: amt, credit: 0 }); debit = r(debit + amt); }
     else { lines.push({ accountCode: code, ...who, debit: 0, credit: amt }); credit = r(credit + amt); }
   }
   if (lines.length < 2 || debit !== credit) return null;
