@@ -3975,7 +3975,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     <PartnerLedger
                       issuedStatements={issuedStatements}
                       cashEntries={companyCashEntries}
-                      settlements={appData.settlements}
+                      accountCodes={appData.accountCodes}
                     />
                   ) : (
                   <CashLedger

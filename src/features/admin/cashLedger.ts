@@ -138,50 +138,53 @@ export interface PartnerLedger {
 }
 
 /**
- * 한 거래처의 채권(매출)·채무(매입) 원장. 전표와 결제를 시간순으로 엮어 잔액을 굴린다.
+ * 한 거래처의 채권(매출)·채무(매입) 원장 — **분개의 108·251 줄을 시간순으로 굴린다.**
  *
- * 결제는 자금원장 매칭(settlements) 한 곳에서만 온다. 전에는 전표에 매달린 payments[]도
- * 같이 봤는데, 같은 결제가 양쪽에 남으면 이중으로 빠져 잔액이 어긋났다.
+ * 전에는 전표를 `type`으로 거르고 결제는 settlements에서 가져왔다. 두 가지가 샜다:
+ *   · 갈래가 매출·매입이 아닌 전표(기초·상계)는 원장에 아예 안 떴다
+ *   · 매칭(settlement)을 안 붙인 수금·지불은 잔액만 줄고 행은 안 보였다
+ * 채권·채무가 움직인 곳은 분개의 108·251 줄뿐이다. 거기서 뽑으면 빠질 자리가 없고,
+ * 합계가 partnerBalanceFromJournals와 저절로 같아진다(근거가 하나라서).
  *
- * 전체 전표를 넘겨야 잔액이 맞는다 — 기간을 잘라서 넘기면 이월 잔액이 사라진다.
+ * 라벨은 원본(전표·자금)에서 찾아 붙인다 — 분개 memo만으로는 무슨 전표인지 흐리다.
  */
 export function buildPartnerLedger(
   partnerId: string,
   type: '매출' | '매입',
   statements: IssuedStatement[],
   cashEntries: CashEntry[],
-  settlements: Settlement[],
+  entries: JournalEntry[],
 ): PartnerLedger {
-  const mine = statements.filter(s => s.partnerId === partnerId && s.type === type);
-  const mineIds = new Set(mine.map(s => s.id));
-  const entryById = new Map(cashEntries.map(e => [e.id, e]));
+  const want = type === '매출' ? AR : AP;
+  const stmtById = new Map(statements.map(s => [s.id, s]));
+  const cashById = new Map(cashEntries.map(e => [e.id, e]));
 
   type Ev = { row: Omit<PartnerLedgerRow, 'balance'>; ts: string; order: number };
   const evs: Ev[] = [];
-
-  for (const s of mine) {
-    // 전표: 채권·채무 발생
-    evs.push({
-      row: { kind: '전표', id: s.id, date: s.tradeDate, label: s.docNo || '전표', amount: s.totalAmount },
-      ts: rowStamp(s.tradeDate, s.issuedAt),
-      order: 0,   // 같은 시각이면 전표가 먼저 (발생 후 상계)
-    });
+  for (const je of entries) {
+    for (const l of je.lines ?? []) {
+      if (String(l.accountCode) !== want || l.partnerId !== partnerId) continue;
+      // 채권은 차변이 느는 것, 채무는 대변이 느는 것
+      const amt = type === '매출' ? (l.debit ?? 0) - (l.credit ?? 0) : (l.credit ?? 0) - (l.debit ?? 0);
+      if (!amt) continue;
+      const st = stmtById.get(je.sourceId ?? '');
+      const ce = cashById.get(je.sourceId ?? '');
+      const date = st?.tradeDate ?? ce?.date ?? je.date;
+      evs.push({
+        row: {
+          kind: amt > 0 ? '전표' : '결제',
+          id: `${je.id}__${l.accountCode}`,
+          date,
+          label: st?.docNo || ce?.note || je.memo || (amt > 0 ? '발생' : '결제'),
+          amount: amt,
+          ...(ce ? { source: 'cash' as const } : {}),
+        },
+        ts: rowStamp(date, st?.issuedAt ?? ce?.createdAt),
+        order: amt > 0 ? 0 : 1,   // 같은 시각이면 발생이 먼저, 상계가 뒤
+      });
+    }
   }
-
-  // 자금원장 매칭
-  for (const st of settlements) {
-    if (!mineIds.has(st.statementId)) continue;
-    const e = entryById.get(st.cashEntryId);
-    if (!e) continue;   // 자금 기록이 지워졌으면 상계로 치지 않는다
-    evs.push({
-      row: { kind: '결제', id: st.id, date: e.date, label: e.note || (e.dir === '출금' ? '지불' : '수금'), amount: -st.amount, source: 'cash' },
-      ts: rowStamp(e.date, e.createdAt),
-      order: 1,
-    });
-  }
-
   // 같은 시각·같은 갈래면 **끊은 순서**(id에 박힌 ms) — 읽어온 순서에 기대면 새로고침마다 달라진다.
-  // 문서번호는 겹치는 것이 있어 못 쓴다(voucherStamp.issuedMs 참고).
   evs.sort((a, b) => a.ts.localeCompare(b.ts) || a.order - b.order
     || issuedMs(a.row.id) - issuedMs(b.row.id)
     || String(a.row.id).localeCompare(String(b.row.id), undefined, { numeric: true }));
@@ -192,7 +195,6 @@ export function buildPartnerLedger(
     if (row.amount > 0) accrued += row.amount; else paid += -row.amount;
     return { ...row, balance: running };
   });
-
   return { rows, accrued, paid, balance: running };
 }
 
@@ -347,16 +349,28 @@ export function partnerBalances(
   type: '매출' | '매입',
   statements: IssuedStatement[],
   cashEntries: CashEntry[],
-  settlements: Settlement[],
+  entries: JournalEntry[],
 ): { partnerId: string; partnerName: string; balance: number; count: number }[] {
+  // 목록도 갈래가 아니라 **분개에 그 거래처의 108·251이 섰는가**로 모은다.
+  // 갈래로 모으면 기초·상계만 있는 거래처가 목록에서 통째로 사라진다.
+  const want = type === '매출' ? AR : AP;
+  const withBalance = new Set<string>();
+  for (const je of entries) for (const l of je.lines ?? []) {
+    if (String(l.accountCode) === want && l.partnerId) withBalance.add(l.partnerId);
+  }
   const ids = new Map<string, string>();
   for (const s of statements) {
     // 실제 데이터에 partnerName이 비어 있는 전표가 있다 — 빈 문자열로 정규화한다.
-    if (s.type === type && s.partnerId) ids.set(s.partnerId, s.partnerName || '(이름없음)');
+    if (s.partnerId && withBalance.has(s.partnerId)) ids.set(s.partnerId, s.partnerName || '(이름없음)');
+  }
+  for (const e of cashEntries) {
+    if (e.partnerId && withBalance.has(e.partnerId) && !ids.has(e.partnerId)) {
+      ids.set(e.partnerId, e.partnerName || '(이름없음)');
+    }
   }
   return [...ids.entries()]
     .map(([partnerId, partnerName]) => {
-      const l = buildPartnerLedger(partnerId, type, statements, cashEntries, settlements);
+      const l = buildPartnerLedger(partnerId, type, statements, cashEntries, entries);
       return { partnerId, partnerName, balance: l.balance, count: l.rows.filter(r => r.kind === '전표').length };
     })
     .sort((a, b) => b.balance - a.balance);

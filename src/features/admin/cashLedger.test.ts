@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   buildAccountLedger, totalCashOnHand, openBalance, unsettledStatements, unmatchedCash, buildPartnerLedger, partnerBalances, partnerOpenBalance, allocatePartnerCash, partnerBalanceFromJournals,
 } from './cashLedger';
-import type { CashAccount, CashEntry, IssuedStatement, Settlement } from '../../shared/types';
+import type { AccountCode, CashAccount, CashEntry, IssuedStatement, Settlement } from '../../shared/types';
+import { buildJournals } from '../../shared/buildJournals';
 
 const acct = (over: Partial<CashAccount> = {}): CashAccount => ({
   id: 'a1', name: '기업은행', type: '통장',
@@ -14,7 +15,7 @@ const entry = (id: string, date: string, dir: '입금' | '출금', amount: numbe
   id, date, cashAccountId: 'a1', dir, amount, createdAt: `${date}T00:00:00`, ...over,
 });
 
-const stmt = (id: string, type: '매출' | '매입', tradeDate: string, total: number): IssuedStatement =>
+const stmt = (id: string, type: '매출' | '매입' | '비용', tradeDate: string, total: number): IssuedStatement =>
   ({ id, type, tradeDate, issuedAt: '', partnerId: 'p1', partnerName: '풍회유통', orderId: '', docNo: '',
      totalSupply: total, totalTax: 0, totalAmount: total, items: [] } as IssuedStatement);
 
@@ -105,63 +106,88 @@ describe('unmatchedCash', () => {
   });
 });
 
+// 원장·잔액은 이제 **분개의 108·251**에서 나온다 — 갈래(type)가 아니다.
+// 그래야 기초·상계처럼 매출·매입이 아닌 전표도 빠지지 않는다.
+const ACCTS = [
+  { id: '108', code: '108', name: '외상매출금', type: '자산', normalBalance: 'debit' },
+  { id: '251', code: '251', name: '외상매입금', type: '부채', normalBalance: 'credit' },
+  { id: '500', code: '500', name: '원료매입', type: '비용', normalBalance: 'debit' },
+  { id: '800', code: '800', name: '일반매출', type: '수익', normalBalance: 'credit' },
+  { id: '375', code: '375', name: '이월이익잉여금', type: '자본', normalBalance: 'credit' },
+  { id: '103', code: '103', name: '보통예금', type: '자산', normalBalance: 'debit' },
+] as unknown as AccountCode[];
+const je = (st: IssuedStatement[], ce: CashEntry[]) =>
+  buildJournals({ statements: st, cashEntries: ce, accounts: ACCTS }).entries;
+
 describe('buildPartnerLedger', () => {
-  const s1 = { ...stmt('s1', '매입', '2026-06-26', 9_315_000), docNo: 'P-001' } as IssuedStatement;
-  const s2 = { ...stmt('s2', '매입', '2026-07-07', 9_315_000), docNo: 'P-002' } as IssuedStatement;
+  const s1 = { ...stmt('s1', '매입', '2026-06-26', 9_315_000), docNo: 'P-001',
+    items: [{ name: '깨', spec: '', qty: 1, price: 9_315_000, supply: 9_315_000, tax: 0, total: 9_315_000, isTaxExempt: true, accountCode: '500' }] } as IssuedStatement;
+  const s2 = { ...stmt('s2', '매입', '2026-07-07', 9_315_000), docNo: 'P-002',
+    items: [{ name: '깨', spec: '', qty: 1, price: 9_315_000, supply: 9_315_000, tax: 0, total: 9_315_000, isTaxExempt: true, accountCode: '500' }] } as IssuedStatement;
+  const 지불 = (id: string, date: string, amt: number) =>
+    ({ ...entry(id, date, '출금', amt), accountCode: '251', partnerId: 'p1' }) as CashEntry;
 
   it('전표는 더하고 결제는 빼며 잔액을 굴린다', () => {
-    const cash = [entry('c1', '2026-07-03', '출금', 5_000_000)];
-    const sets = [settle('t1', 'c1', 's1', 5_000_000)];
-    const l = buildPartnerLedger('p1', '매입', [s1, s2], cash, sets);
+    const cash = [지불('c1', '2026-07-03', 5_000_000)];
+    const l = buildPartnerLedger('p1', '매입', [s1, s2], cash, je([s1, s2], cash));
     expect(l.rows.map(r => r.balance)).toEqual([9_315_000, 4_315_000, 13_630_000]);
     expect(l.accrued).toBe(18_630_000);
     expect(l.paid).toBe(5_000_000);
-    expect(l.balance).toBe(13_630_000);  // 아직 줄 돈
+    expect(l.balance).toBe(13_630_000);
   });
 
   // 6월 전표를 안 빼먹어야 한다 — 옛 화면은 조회 기간 밖 전표를 못 봐서 잔액이 0부터 시작했다.
   it('과거 전표가 잔액에 그대로 반영된다', () => {
-    const l = buildPartnerLedger('p1', '매입', [s1, s2], [], []);
+    const l = buildPartnerLedger('p1', '매입', [s1, s2], [], je([s1, s2], []));
     expect(l.balance).toBe(18_630_000);
   });
 
-  it('결제 행은 전부 자금원장에서 온다 — 전표에 매다는 경로는 없앴다', () => {
-    const cash = [entry('c1', '2026-07-03', '출금', 2_000_000), entry('c2', '2026-07-05', '출금', 3_000_000)];
-    const sets = [settle('t1', 'c1', 's1', 2_000_000), settle('t2', 'c2', 's1', 3_000_000)];
-    const l = buildPartnerLedger('p1', '매입', [s1], cash, sets);
-    expect(l.rows.map(r => r.source)).toEqual([undefined, 'cash', 'cash']);
-    expect(l.paid).toBe(5_000_000);
-    expect(l.balance).toBe(4_315_000);   // 9,315,000 − 5,000,000
+  it('매칭(settlement)을 안 붙인 지불도 행으로 보인다 — 전에는 잔액만 줄고 안 보였다', () => {
+    const cash = [지불('c1', '2026-07-03', 2_000_000)];
+    const l = buildPartnerLedger('p1', '매입', [s1], cash, je([s1], cash));
+    expect(l.rows.map(r => r.source)).toEqual([undefined, 'cash']);
+    expect(l.balance).toBe(7_315_000);
   });
 
-  it('자금 기록이 지워진 매칭은 상계로 치지 않는다', () => {
-    const sets = [settle('t1', 'ghost', 's1', 5_000_000)];
-    const l = buildPartnerLedger('p1', '매입', [s1], [], sets);
-    expect(l.balance).toBe(9_315_000);
+  it('갈래가 매출·매입이 아니어도 잡힌다 — 대체전표가 원장에 선다', () => {
+    // (차) 108 외상매출금 / (대) 375 이월이익잉여금 — 개시잔액을 대체로 세운 모습
+    const 기초 = { ...stmt('open', '비용', '2026-06-01', 1_000_000), docNo: '기초260601-01',
+      items: [
+        { name: '기초 미수금(이월)', spec: '', qty: 1, price: 1_000_000, supply: 1_000_000, tax: 0, total: 1_000_000, isTaxExempt: true, accountCode: '108' },
+        { name: '기초 미수금(이월)', spec: '', qty: 1, price: 1_000_000, supply: 1_000_000, tax: 0, total: 1_000_000, isTaxExempt: true, accountCode: '375' },
+      ] } as IssuedStatement;
+    const l = buildPartnerLedger('p1', '매출', [기초], [], je([기초], []));
+    expect(l.rows).toHaveLength(1);
+    expect(l.balance).toBe(1_000_000);
   });
 
   it('다른 거래처·다른 타입은 섞이지 않는다', () => {
-    const other = { ...stmt('s9', '매입', '2026-07-01', 1_000_000), partnerId: 'p2' } as IssuedStatement;
-    const sale = stmt('s8', '매출', '2026-07-01', 500_000);
-    const l = buildPartnerLedger('p1', '매입', [s1, other, sale], [], []);
+    const other = { ...s1, id: 's9', partnerId: 'p2' } as IssuedStatement;
+    const sale = { ...stmt('s8', '매출', '2026-07-01', 500_000),
+      items: [{ name: '기름', spec: '', qty: 1, price: 500_000, supply: 500_000, tax: 0, total: 500_000, isTaxExempt: true, accountCode: '800' }] } as IssuedStatement;
+    const l = buildPartnerLedger('p1', '매입', [s1, other, sale], [], je([s1, other, sale], []));
     expect(l.rows).toHaveLength(1);
     expect(l.balance).toBe(9_315_000);
   });
 });
 
 describe('partnerBalances', () => {
+  const buy = (id: string, pid: string, name: string, amt: number) =>
+    ({ ...stmt(id, '매입', '2026-07-01', amt), partnerId: pid, partnerName: name,
+       items: [{ name: '깨', spec: '', qty: 1, price: amt, supply: amt, tax: 0, total: amt, isTaxExempt: true, accountCode: '500' }] }) as IssuedStatement;
+
   it('거래처별 잔액을 큰 순으로 준다', () => {
-    const a = { ...stmt('a1', '매입', '2026-07-01', 5_000_000), partnerId: 'pA', partnerName: '풍회유통' } as IssuedStatement;
-    const b = { ...stmt('b1', '매입', '2026-07-02', 8_000_000), partnerId: 'pB', partnerName: '청정식품' } as IssuedStatement;
-    const rows = partnerBalances('매입', [a, b], [], []);
+    const a = buy('a1', 'pA', '풍회유통', 5_000_000);
+    const b = buy('b1', 'pB', '청정식품', 8_000_000);
+    const rows = partnerBalances('매입', [a, b], [], je([a, b], []));
     expect(rows.map(r => r.partnerName)).toEqual(['청정식품', '풍회유통']);
     expect(rows[0].balance).toBe(8_000_000);
   });
 
   // 실제 DB에 partnerName이 비어 있는 전표가 있다 — 여기서 터지면 안 된다.
   it('partnerName이 비어 있어도 죽지 않는다', () => {
-    const nameless = { ...stmt('n1', '매입', '2026-07-01', 1_000), partnerId: 'pX', partnerName: null } as unknown as IssuedStatement;
-    const rows = partnerBalances('매입', [nameless], [], []);
+    const nameless = { ...buy('n1', 'pX', '', 1_000), partnerName: null } as unknown as IssuedStatement;
+    const rows = partnerBalances('매입', [nameless], [], je([nameless], []));
     expect(rows[0].partnerName).toBe('(이름없음)');
     expect(() => rows[0].partnerName.includes('x')).not.toThrow();
   });

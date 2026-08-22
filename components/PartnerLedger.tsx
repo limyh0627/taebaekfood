@@ -1,30 +1,36 @@
 import React, { useMemo, useState } from 'react';
 import { Search, Users } from 'lucide-react';
-import { CashEntry, IssuedStatement, Settlement } from '../src/shared/types';
+import { AccountCode, CashEntry, IssuedStatement } from '../src/shared/types';
 import { buildPartnerLedger, partnerBalances } from '../src/features/admin/cashLedger';
+import { buildJournals } from '../src/shared/buildJournals';
 
 interface Props {
   issuedStatements: IssuedStatement[];
   cashEntries: CashEntry[];
-  settlements: Settlement[];
+  accountCodes: AccountCode[];
 }
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
 
-export default function PartnerLedger({ issuedStatements, cashEntries, settlements }: Props) {
+export default function PartnerLedger({ issuedStatements, cashEntries, accountCodes }: Props) {
+  // 채권·채무가 움직인 곳은 분개의 108·251 줄뿐이다 — 원장도 잔액도 거기서 뽑는다.
+  // 기초잔액은 거래처가 없으니 안 넘겨도 결과가 같다.
+  const journals = useMemo(
+    () => buildJournals({ statements: issuedStatements, cashEntries, accounts: accountCodes }).entries,
+    [issuedStatements, cashEntries, accountCodes]);
   const [type, setType] = useState<'매출' | '매입'>('매입');
   const [search, setSearch] = useState('');
   const [selId, setSelId] = useState('');
 
   const balances = useMemo(
-    () => partnerBalances(type, issuedStatements, cashEntries, settlements),
-    [type, issuedStatements, cashEntries, settlements],
+    () => partnerBalances(type, issuedStatements, cashEntries, journals),
+    [type, issuedStatements, cashEntries, journals],
   );
   const shown = balances.filter(b => !search.trim() || b.partnerName.includes(search.trim()));
   const sel = balances.find(b => b.partnerId === selId) ?? shown[0];
   const ledger = useMemo(
-    () => (sel ? buildPartnerLedger(sel.partnerId, type, issuedStatements, cashEntries, settlements) : null),
-    [sel, type, issuedStatements, cashEntries, settlements],
+    () => (sel ? buildPartnerLedger(sel.partnerId, type, issuedStatements, cashEntries, journals) : null),
+    [sel, type, issuedStatements, cashEntries, journals],
   );
 
   const total = shown.reduce((a, b) => a + b.balance, 0);
