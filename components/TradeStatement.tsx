@@ -934,6 +934,35 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     }
     return '';
   }, [histAccount, accountOptions]);
+  /**
+   * 계정을 콕 집어 걸렀을 때 **그 계정 몫**이 얼마인가.
+   *
+   * 대출상환은 통장에서 3,064,357이 나가지만 그 안의 이자는 294,357이다.
+   * 이자비용으로 걸러 놓고 3,064,357을 보여 주면 손익과 안 맞아 보이고, 줄 합계도 안 맞는다.
+   * 크게(손익·재무) 거를 때는 몫을 가릴 뜻이 없으므로 전액 그대로 둔다.
+   *
+   * null이면 "전액을 그대로 보여라".
+   */
+  const accountPortion = useCallback((row: TimelineRow): number | null => {
+    if (!histAccount) return null;
+    const [kind, val] = histAccount.split(':');
+    if (kind === 'axis') return null;
+    const hit = (c?: string) =>
+      kind === 'code' ? String(c) === val
+      : kind === 'group' ? groupOfCode(c)?.id === val
+      : kind === 'type' ? bsTypeOf(c) === val : false;
+    if (row.kind === 'stmt') {
+      const st = row.data;
+      // 상대변(108·251)으로 걸렀으면 전표 총액이 그 계정 몫이다
+      if (st.type !== '비용' && hit(st.type === '매출' ? AR : AP)) return st.totalAmount ?? 0;
+      return (st.items ?? []).filter(i => hit(i.accountCode)).reduce((a, i) => a + (i.total ?? 0), 0);
+    }
+    if (row.kind === 'pay') return row.amount;   // 수금·지불은 108·251 한 줄뿐
+    const ls = row.entry.lines?.length
+      ? row.entry.lines
+      : [{ accountCode: row.accountCode, amount: row.entry.amount }];
+    return ls.filter(l => hit(l.accountCode)).reduce((a, l) => a + Math.abs(l.amount ?? 0), 0);
+  }, [histAccount, groupOfCode, bsTypeOf]);
   /** 고른 계정 조건에 이 줄들이 걸리는가 */
   const matchAccount = useCallback((codes: string[]): boolean => {
     if (!histAccount) return true;
@@ -3009,7 +3038,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   // 자금 행은 언제나 통장에서 오간 전액을 보여준다.
                   // (예전엔 손익 탭에서 그 성격의 금액만 보여줬는데, 이제 자금전표는
                   //  매출·매입 탭에 아예 안 오므로 가릴 이유가 없다.)
-                  const shownAmt = row.amount;
+                  // 계정을 콕 집어 걸렀으면 **그 계정 몫**을 보여준다 — 안 그러면 손익과 안 맞아 보인다
+                  const portion = accountPortion(row);
+                  const shownAmt = portion != null && portion !== row.amount ? portion : row.amount;
+                  const partial = portion != null && portion !== row.amount;
                   // 성격 배지 — 계정의 종류에서 뽑는다. 한 건에 성격이 여럿이면 배지도 여럿.
                   //   대출상환 = [출금] + 원금(부채↓) [상환] + 이자(비용) [비용]
                   // Tailwind은 클래스명을 조립하면 못 알아보므로 정적 문자열로 둔다.
@@ -3059,8 +3091,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       <td className="px-4 py-2 text-xs font-bold text-slate-700">{row.partnerName || <span className="text-slate-300">—</span>}</td>
                       <td className={`px-4 py-2 text-xs text-right font-black ${row.dir === '입금' ? 'text-emerald-600' : 'text-rose-600'}`}>
                         {fmt(shownAmt)}
+                        {/* 계정으로 걸렀을 땐 그 계정 몫을 띄우되, 통장에서 나간 전액도 같이 밝힌다 */}
+                        {partial && (
+                          <span className="block text-[10px] font-bold text-slate-400">통장 {fmt(row.amount)}</span>
+                        )}
                         {/* 성격이 섞인 건 — 통장에서 나간 전액과 그중 손익분이 다르다 */}
-                        {plAmt > 0 && plAmt !== row.amount && (
+                        {!partial && plAmt > 0 && plAmt !== row.amount && (
                           <span className="block text-[10px] font-bold text-rose-400">그중 {plKind} {fmt(plAmt)}</span>
                         )}
                       </td>
@@ -3148,6 +3184,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 const isReturn   = stmtItems.some(i => i.qty < 0);
                 const cumul = row.cumul;
                 const jOpen = expandedJournal.has(stmt.id);
+                // 계정을 콕 집어 걸렀으면 **그 계정 몫**을 보여준다 — 전표 총액을 띄우면
+                // 손익과 안 맞아 보인다(매출전표 안에 잡이익이 섞인 것처럼).
+                const stPortion = accountPortion(row);
+                const stPartial = stPortion != null && stPortion !== stmt.totalAmount;
                 return (
                   <React.Fragment key={stmt.id}>
                   <tr className={`transition-colors cursor-pointer ${isReturn ? 'bg-rose-50 hover:bg-rose-100' : 'hover:bg-slate-50'}`}
@@ -3163,7 +3203,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       </div>
                     </td>
                     <td className="px-4 py-3 text-xs font-bold text-slate-800">{stmt.partnerName}</td>
-                    <td className={`px-4 py-3 text-xs text-right font-black ${isReturn ? 'text-rose-600' : 'text-slate-800'}`}>{fmt(stmt.totalAmount)}</td>
+                    <td className={`px-4 py-3 text-xs text-right font-black ${isReturn ? 'text-rose-600' : 'text-slate-800'}`}>
+                      {fmt(stPartial ? stPortion! : stmt.totalAmount)}
+                      {stPartial && <span className="block text-[10px] font-bold text-slate-400">전표 {fmt(stmt.totalAmount)}</span>}
+                    </td>
                     <td className="px-4 py-3 text-xs text-right">
                       {cumul === 0
                         ? <span className="font-black text-slate-400">0</span>

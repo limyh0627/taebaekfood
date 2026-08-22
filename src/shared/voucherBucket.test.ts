@@ -173,3 +173,33 @@ describe('세 축은 겹치지만 묻는 게 다르다', () => {
 
   function 자금흐름갈래(kind: string) { return kind === '입금' || kind === '출금'; }
 });
+
+describe('계정으로 걸렀을 때 보이는 금액', () => {
+  /**
+   * 대출상환은 통장에서 3,064,357이 나가지만 그 안의 이자는 294,357이다.
+   * 이자비용으로 걸러 놓고 3,064,357을 보여 주면 손익과 안 맞아 보이고, 줄 합계도 안 맞는다.
+   * **콕 집어 거를 때는 그 계정 몫**, 크게(손익·재무) 거를 때는 전액.
+   */
+  const 상환줄 = [{ accountCode: '293', amount: 2_770_000 }, { accountCode: '951', amount: 294_357 }];
+  const 몫 = (lines: { accountCode: string; amount: number }[], code: string) =>
+    lines.filter(l => l.accountCode === code).reduce((a, l) => a + Math.abs(l.amount), 0);
+
+  it('이자비용으로 걸면 이자 몫만', () => {
+    expect(몫(상환줄, '951')).toBe(294_357);
+  });
+
+  it('차입금으로 걸면 원금 몫만', () => {
+    expect(몫(상환줄, '293')).toBe(2_770_000);
+  });
+
+  it('두 몫을 합하면 통장에서 나간 전액', () => {
+    expect(몫(상환줄, '951') + 몫(상환줄, '293')).toBe(3_064_357);
+  });
+
+  it('매출전표에 잡이익이 섞이면 매출 몫만 — 전표 총액이 아니다', () => {
+    const items = [{ accountCode: '800', total: 1_000_000 }, { accountCode: '930', total: 70_000 }];
+    const 매출몫 = items.filter(i => i.accountCode === '800').reduce((a, i) => a + i.total, 0);
+    expect(매출몫).toBe(1_000_000);
+    expect(items.reduce((a, i) => a + i.total, 0)).toBe(1_070_000);   // 전표 총액은 따로 밝힌다
+  });
+});
