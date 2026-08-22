@@ -124,6 +124,36 @@ export function vouchersOfMonth(
     .filter(v => (v.date ?? '').startsWith(ym));
 }
 
+/**
+ * **그 계정이 들어간 전표** — 손익 금액에서 근거로 내려가는 길.
+ *
+ * 손익분석은 계정별 금액만 보여줬다. "이 계정에 왜 이 금액이 나왔나"를 보려면
+ * 전표 목록으로 가서 눈으로 찾아야 했고, 복합 전표(대출상환처럼 줄이 여럿인 것)는
+ * 갈래 필터로는 아예 못 걸렀다.
+ *
+ * 갈래가 아니라 **줄의 계정**으로 거르므로, 한 전표에 그 계정이 하나라도 있으면 잡힌다.
+ * `accountAmount`는 전표 총액이 아니라 **그 계정 몫**이다 — 합하면 손익 금액과 맞는다.
+ *
+ * ※ 매출전표의 부가세(255)는 줄에 없다(전표 머리의 totalTax). 손익 계정에는 해당 없다.
+ */
+export function vouchersWithAccount(
+  statements: IssuedStatement[],
+  cashEntries: CashEntry[],
+  accountCode: string,
+  opts: { companyId?: CompanyId; months?: string[] } = {},
+): (Voucher & { accountAmount: number })[] {
+  const months = opts.months?.length ? new Set(opts.months) : null;
+  return listVouchers(statements, cashEntries, { companyId: opts.companyId })
+    .filter(v => !months || months.has((v.date ?? '').slice(0, 7)))
+    .map(v => ({
+      ...v,
+      accountAmount: v.lines
+        .filter(l => String(l.accountCode) === String(accountCode))
+        .reduce((a, l) => a + l.amount, 0),
+    }))
+    .filter(v => v.accountAmount !== 0);
+}
+
 /** 갈래 색 — 담긴 컬렉션이 아니라 **무슨 전표인가**로 가른다 */
 export const VOUCHER_KIND_CHIP: Record<VoucherKind, string> = {
   '매출': 'bg-blue-100 text-blue-700',

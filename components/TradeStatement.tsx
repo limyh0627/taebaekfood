@@ -835,7 +835,43 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   }, []);
 
   const [histTypeFilter, setHistTypeFilter] = useState<'전체' | VoucherKind>('전체');
+  /**
+   * 성격 대분류 — **갈래와 다른 축**이다.
+   *
+   *   갈래   어떻게 끊었나 (매출·매입·대체·입금·출금)
+   *   성격   무슨 돈인가   (매출·비용·인건비·자산부채)
+   *
+   * 갈래만으로는 "이번 달 나간 비용 전부"를 못 본다. 대출상환은 출금전표인데 안에
+   * 이자비용이 들어 있고, 급여 발생은 대체전표인데 인건비다. **한 전표가 여러 성격을
+   * 품기 때문**이라, 전표 머리가 아니라 **줄의 계정**을 봐야 한다.
+   *
+   * 계정 번호대(400번대=매출 같은)로 가르지 않는다 — 우리 장부는 800번대에 매출(800·805)과
+   * 비용(818 감가상각비·819 리스료)이 같이 있다. 계정그룹이 유일하게 맞는 근거다.
+   */
+  const [histBucket, setHistBucket] = useState<'전체' | '매출' | '비용' | '인건비' | '자산·부채'>('전체');
   const [histSearch, setHistSearch] = useState('');
+  /** 계정 하나의 성격. 그룹의 plLine이 먼저고, 없으면 계정 5분류로 폴백한다. */
+  const bucketOfCode = useCallback((code?: string): string[] => {
+    if (!code) return [];
+    const g = accountGroups.find(x => x.id === accountCodes.find(c => c.code === code)?.groupId);
+    const t = codeType.get(code);
+    const out: string[] = [];
+    if (g?.plLine === 'revenue' || (!g?.plLine && t === '수익')) out.push('매출');
+    if (g?.plLine === 'cogs' || g?.plLine === 'sgna' || g?.plLine === 'other-expense'
+        || (!g?.plLine && t === '비용')) out.push('비용');
+    // 인건비는 비용 안의 한 갈래 — 겹쳐도 된다(필터는 렌즈지 칸막이가 아니다).
+    // 예수금(254)도 넣는다: 급여에서 뗀 돈이라 인건비를 좇을 때 같이 봐야 한다.
+    if (g?.name === '노무비' || code === '254' || code === '263') out.push('인건비');
+    if (t === '자산' || t === '부채' || t === '자본') out.push('자산·부채');
+    return out;
+  }, [accountCodes, accountGroups, codeType]);
+  /** 그 줄들에 들어간 계정 전부 — 복합 전표라도 하나만 걸리면 잡힌다 */
+  const rowCodes = useCallback((row: TimelineRow): string[] => {
+    if (row.kind === 'stmt') return (row.data.items ?? []).map(i => i.accountCode ?? '').filter(Boolean);
+    if (row.kind === 'pay') return [row.stmtType === '매출' ? AR : AP];
+    const ls = (row.entry.lines ?? []).map(l => l.accountCode).filter(Boolean) as string[];
+    return ls.length ? ls : (row.accountCode ? [row.accountCode] : []);
+  }, []);
   const [histQuick, setHistQuick] = useState<'당일'|'금주'|'당월'|'당년'|'ALL'|''>('당일');
   // 발행내역 페이지네이션
   const HIST_PAGE_SIZE = 50;
@@ -2108,6 +2144,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         // rowKind가 이미 다섯 갈래라 그대로 견준다 — 예전엔 여기서 수금→입금으로 또 옮겨
         // 매핑이 두 군데에 있었고, 한쪽만 고치면 엉뚱한 탭이 걸렸다.
         if (histTypeFilter !== '전체' && rowKind(row) !== histTypeFilter) return false;
+        // 성격은 **줄의 계정**으로 본다 — 전표 머리로 보면 복합 전표가 통째로 빠진다
+        if (histBucket !== '전체'
+            && !rowCodes(row).some(c => bucketOfCode(c).includes(histBucket))) return false;
         if (histSearch.trim()) {
           const q = histSearch.toLowerCase();
           // 계정과목·품목까지 검색 대상 — "이자"로 이번 달 이자비용만 뽑아보려면 이게 있어야 한다.
@@ -2136,7 +2175,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         return issuedMs(ida) - issuedMs(idb)
           || String(ida).localeCompare(String(idb), undefined, { numeric: true });
       }); // 오래된→최신
-  }, [allTimelineRows, histFrom, histTo, histTypeFilter, histSearch, codeType, codeName, classifyRow, rowKind]);
+  }, [allTimelineRows, histFrom, histTo, histTypeFilter, histBucket, histSearch, codeType, codeName, classifyRow, rowKind, rowCodes, bucketOfCode]);
 
   // 페이지네이션: 필터 변경 시 1페이지로 리셋, 최신 페이지부터 보여줌
   useEffect(() => { setHistoryPage(1); }, [histFrom, histTo, histTypeFilter, histSearch]);
@@ -2741,6 +2780,23 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     : val==='입금' ? 'bg-emerald-600 text-white border-emerald-600'
                     : val==='출금' ? 'bg-slate-600 text-white border-slate-600'
                     : val==='대체' ? 'bg-amber-500 text-white border-amber-500'
+                    : 'bg-slate-700 text-white border-slate-700'
+                  : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400 hover:text-slate-600'
+              }`}>{val}</button>
+          ))}
+          <span className="w-px h-4 bg-slate-200 mx-1"/>
+          {/* 성격 — 줄의 계정으로 거른다. 갈래와 다른 축이라 같이 걸 수 있다.
+              "출금 + 인건비"면 이번 달 급여로 나간 돈만 남는다. */}
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest shrink-0">성격</span>
+          {(['전체','매출','비용','인건비','자산·부채'] as const).map(val => (
+            <button key={val} onClick={()=>setHistBucket(val)}
+              title={val === '전체' ? undefined : '전표 줄에 이 성격의 계정이 하나라도 있으면 나옵니다'}
+              className={`px-3 py-1.5 rounded-lg text-[11px] font-black border transition-all ${
+                histBucket===val
+                  ? val==='매출' ? 'bg-blue-600 text-white border-blue-600'
+                    : val==='비용' ? 'bg-rose-600 text-white border-rose-600'
+                    : val==='인건비' ? 'bg-violet-600 text-white border-violet-600'
+                    : val==='자산·부채' ? 'bg-teal-600 text-white border-teal-600'
                     : 'bg-slate-700 text-white border-slate-700'
                   : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400 hover:text-slate-600'
               }`}>{val}</button>
