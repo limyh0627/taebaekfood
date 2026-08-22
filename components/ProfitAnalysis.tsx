@@ -5,7 +5,7 @@ import {
   ResponsiveContainer, Legend, Cell
 } from 'recharts';
 import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, BarChart2, DollarSign, Wallet, Users, ChevronLeft, ChevronRight, Save, Search, Package, X, CreditCard, Download, Archive, Clock, Pencil, Check } from 'lucide-react';
-import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Partner, PaymentMethod, Item, AccountCode, AccountGroup, AccountGroupPlLine, InventorySnapshot, CashFlowManual, CashEntry, Settlement, CompanyId, openingDocId } from '../types';
+import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Partner, PaymentMethod, Item, AccountCode, AccountGroup, AccountGroupPlLine, InventorySnapshot, CashFlowManual, CashEntry, Settlement, CompanyId, openingDocId, companyOf } from '../types';
 import PageHeader from './PageHeader';
 import CostManager from './CostManager';
 import { makeCodeToGroup, computeMonthPLFromJournals, computeCashFlowMonth, computeCashFlowDirect, addMonthStr, SGNA_LEGACY_IDS, COMPUTED_GROUP_IDS } from '../src/features/admin/financials';
@@ -1901,7 +1901,14 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         const getStock = (p: Item) => p.stock ?? 0;
         const unitCost = (p: Item) => (costOf ? costOf(p) : (p.cost ?? 0));  // BOM 롤업 원가(완제품 자동)
 
+        /*
+         * **재고도 회사별이다.** 전표·자금은 진작 갈라 놨는데 재고만 한 덩이였다.
+         * 풍회가 사서 짜 놓은 깨분이 태백 재고로 잡히면, 실지재고조사법이라
+         * 풍회는 매입이 전액 비용으로 남고 태백은 없는 재고자산이 는다 — 양쪽이 같이 틀어진다.
+         * 회사가 안 박힌 옛 품목은 태백 것으로 본다(companyOf).
+         */
         const rows = products
+          .filter(p => companyOf(p) === companyId)
           .map(p => { const c = unitCost(p); return { ...p, stock: getStock(p), unitCost: c, value: Math.round(getStock(p) * c) }; })
           .filter(p => p.stock > 0 || p.unitCost > 0)
           .sort((a, b) => b.value - a.value);

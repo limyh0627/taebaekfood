@@ -209,6 +209,18 @@ export type ProductStage = 'WIP' | 'FINISHED';
 // ── 품목 (items 컬렉션 — 완제품 + 부자재 통합) ───────────────────────────
 export interface Item {
   id: string;
+  /**
+   * 이 품목 **재고를 들고 있는 회사**. 없으면 태백(옛 품목 전부).
+   *
+   * 전표·자금은 진작 회사별인데 재고만 한 덩이였다. 풍회가 카프코에서 깨분을 사서
+   * 짜 놓고도 그 재고가 태백 것으로 잡혀, 풍회는 매입 29,700,000이 전액 비용으로 남고
+   * 태백은 있지도 않은 재고자산이 늘었다(실지재고조사법이라 양쪽 손익이 같이 틀어진다).
+   *
+   * 한 회사만 들고 있는 품목에 단다. 깨분참기름 캔처럼 **양쪽이 다 들고 있는 것**은
+   * 안 달아 두고(태백 기본) 회사별 기말재고 스냅샷에서 따로 잡는다 —
+   * 품목 하나에 회사 하나라는 뜻이 아니라, 안 달면 태백이라는 뜻이다.
+   */
+  companyId?: CompanyId;
   name: string;
   sku?: string;
   category: InventoryCategory | string;
@@ -704,6 +716,12 @@ export const COMPANIES: { id: CompanyId; name: string; short: string }[] = [
 export const companyOf = (x: { companyId?: CompanyId } | undefined): CompanyId => x?.companyId ?? TAEBAEK;
 /** 회사별 기초잔액 문서 id. 태백은 옛 문서('main')를 그대로 쓴다. */
 export const openingDocId = (c: CompanyId): string => (c === TAEBAEK ? 'main' : `main-${c}`);
+/**
+ * 회사별 기말재고 문서 id. 태백은 옛 문서('inv-snap-YYYY-MM')를 그대로 쓴다.
+ * 회사가 빠져 있어서 풍회 7월을 기록하면 **태백 7월을 통째로 덮어썼다.**
+ */
+export const invSnapDocId = (c: CompanyId, ym: string): string =>
+  (c === TAEBAEK ? `inv-snap-${ym}` : `inv-snap-${c}-${ym}`);
 
 export interface CompanyInfo {
   name: string;           // 상호
@@ -784,6 +802,8 @@ export interface RawMaterialLot {
  */
 export interface RawMaterialEntry {
   id: string;
+  /** 어느 회사 창고에서 일어난 일인가. 없으면 태백(옛 기록 전부). [[Item.companyId]]와 같은 규칙. */
+  companyId?: CompanyId;
   material: string;  // 원료명
   date: string;
   received: number;  // 입고량

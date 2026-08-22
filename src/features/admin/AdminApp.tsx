@@ -63,7 +63,7 @@ import {
   FolderOpen,
   BookOpen,
 } from 'lucide-react';
-import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, poLines, CompanyId, COMPANIES, TAEBAEK, companyOf } from '../../shared/types';
+import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, poLines, CompanyId, COMPANIES, TAEBAEK, companyOf, invSnapDocId } from '../../shared/types';
 import { canAutoIssue, autoVoucherId, buildCashVoucher, buildStatementVoucher, dirOf, isCashDir } from '../../shared/autoVoucher';
 import PageHeader from '../../shared/components/PageHeader';
 import Dashboard from '../../../components/Dashboard';
@@ -3921,7 +3921,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 onUpdateAccountGroup={(id, data) => { updateItem('accountGroups', id, data); refreshStaticData(); }}
                 onDeleteAccountGroup={(id) => { deleteItem('accountGroups', id); refreshStaticData(); }}
                 inventorySnapshots={companySnapshots}
-                onSaveInventorySnapshot={async (data) => { await addItem('inventorySnapshots', { ...data, id: `inv-snap-${data.yearMonth}` }); }}
+                /* 회사를 안 박으면 풍회 기말재고가 **태백 것을 덮어쓴다** — id에도 회사가 들어가야 한다 */
+                onSaveInventorySnapshot={async (data) => { await addItem('inventorySnapshots', { ...data, companyId, id: invSnapDocId(companyId, data.yearMonth) }); }}
                 onGenerateRecurringCosts={generateRecurringCosts}
                 cashEntries={companyCashEntries}
                 settlements={appData.settlements}
