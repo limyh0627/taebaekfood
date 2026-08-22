@@ -1,6 +1,6 @@
 import type { Item, OrderItem } from './types';
 import { bomQty } from './bom';
-import { parseSpecCount } from '../constants/formula';
+import { parseSpecCount, parsePackageKg } from '../constants/formula';
 
 /**
  * 박스 품목의 낱개 구성 — **BOM에서 읽는다.**
@@ -103,4 +103,21 @@ export function unitsPerBoxOf(
   if (bySpec > 1) return bySpec;
   const isFlavorOil = product.subtype === '향미유' || product.category === '향미유';
   return isFlavorOil ? 12 : 0;
+}
+
+/**
+ * **재고 1단위**가 몇 kg인지 — 박스 품목이면 1박스, 낱개 품목이면 1개.
+ *
+ * 규격은 "낱개 용량 * 개입수" 꼴이라(`1kg * 20`) 앞자리만 읽으면 낱개 용량이다.
+ * 재고 단위가 박스면 개입수를 곱해야 1박스당 kg이 된다.
+ *
+ * 예전엔 품목명이 '볶음참깨/20kg박스'라 parsePackageKg(name)이 20을 집어 맞았는데,
+ * 이름이 '볶음참깨/1kg'으로 정리되면서 1kg으로 읽혔다 — 가공입고 kg·로스·가공비가
+ * 한꺼번에 10~20배 작게 잡히던 자리다. 근거를 이름이 아니라 규격+단위로 옮긴다.
+ */
+export function itemKg(item: Item): number {
+  if (item.packageKg) return item.packageKg;
+  const perUnit = parsePackageKg(item.spec) ?? parsePackageKg(item.name) ?? 0;
+  const isBox = isBoxStockItem(item) || item.unit === '박스';
+  return perUnit * (isBox ? parseSpecCount(item.spec) : 1);
 }

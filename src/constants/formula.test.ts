@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { toKg, unitToKg, baseRawName, parsePackageKg, unitOf } from './formula';
+import { itemKg } from '../shared/orderUnits';
 
 describe('toKg — 제품 용량 → 원료 kg 환산', () => {
   it('ml/L은 밀도 적용 (통깨참기름 0.916)', () => {
@@ -37,5 +38,31 @@ describe('baseRawName / parsePackageKg', () => {
     expect(parsePackageKg('20kg')).toBe(20);
     expect(parsePackageKg('300ml')).toBeUndefined();
     expect(parsePackageKg(undefined)).toBeUndefined();
+  });
+});
+
+describe('itemKg — 박스는 개입수까지', () => {
+  /**
+   * 입고가 로트에 열 배 적게 잡히던 자리. 규격은 '낱개 용량 * 개입수' 꼴이라
+   * 앞자리만 읽으면 낱개 용량이다 — 10kg 박스 95개가 95kg으로 들어왔다.
+   */
+  const it_ = (o: Partial<import('../shared/types').Item>) => o as import('../shared/types').Item;
+
+  it('박스는 낱개 용량 × 개입수', () => {
+    expect(itemKg(it_({ name: '볶음참깨/1kg', spec: '1kg * 10', unit: '박스' }))).toBe(10);
+    expect(itemKg(it_({ name: '볶음참깨/1kg', spec: '1kg * 20', unit: '박스' }))).toBe(20);
+  });
+
+  it('낱개는 규격 그대로', () => {
+    expect(itemKg(it_({ name: '볶음참깨-낱개/1kg', spec: '1kg * 1', unit: '개' }))).toBe(1);
+    expect(itemKg(it_({ name: '깨분참기름/16.5kg', spec: '16.5kg', unit: '개' }))).toBe(16.5);
+  });
+
+  it('packageKg가 박혀 있으면 그게 먼저다', () => {
+    expect(itemKg(it_({ name: 'x', spec: '1kg * 10', unit: '박스', packageKg: 25 }))).toBe(25);
+  });
+
+  it('kg 규격이 아니면 0 — 기름은 이 길로 안 온다', () => {
+    expect(itemKg(it_({ name: '참기름', spec: '1800ml * 12', unit: '박스' }))).toBe(0);
   });
 });

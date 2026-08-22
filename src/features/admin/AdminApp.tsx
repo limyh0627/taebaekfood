@@ -1076,7 +1076,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
     // 묶음/단일 품목 모두 처리: 원료(raw)에 귀속되면 로트+수불부, 아니면 SKU 재고 가산
     for (const line of poLines(po)) {
       const product = allItems.find(p => p.id === line.itemId);
-      if (!product) continue;
+      /*
+       * **품목이 없으면 조용히 넘기지 않는다.** 지운 품목을 가리키는 발주 줄이 남으면
+       * 입고가 소리 없이 사라진다 — 푸미푸드 볶음참깨 10kg박스 95 + 20kg박스 23,
+       * 1,410kg이 로트에도 재고에도 안 잡혔다. 없어진 걸 알아야 고칠 수 있다.
+       */
+      if (!product) {
+        console.error('[입고확인] 발주 줄이 없는 품목을 가리킵니다:', line.itemId, line);
+        alert(`⚠️ "${(line as { name?: string }).name ?? line.itemId}" 품목이 없어 입고를 못 잡았습니다.
+
+지워진 품목을 가리키는 발주 줄입니다. 품목을 다시 만들거나 발주를 고친 뒤 입고하세요.`);
+        continue;
+      }
       const isRawLinked = !!rawLotTarget(allItems, product, product.name, companyId);
       if (isRawLinked) {
         // 원료 로트가 재고를 소유 → SKU stock 누적 안 하고 로트+수불부로 기록

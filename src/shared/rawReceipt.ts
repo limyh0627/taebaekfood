@@ -6,6 +6,7 @@ import type { CompanyId, Item } from './types';
 import { companyOf } from './types';
 import { addItem, mutateRawMaterialLots } from './services/firebaseService';
 import { RM_LIST, DENSITY, baseRawName, parsePackageKg, lotStockInUnit } from '../constants/formula';
+import { itemKg } from './orderUnits';
 import { withCarryOverLot, buildReceiveLot, receiptToKg, nextLotNo, deductFromLots, settleCarryOver } from './lotUtils';
 
 /**
@@ -59,7 +60,13 @@ export async function recordRawMaterialReceipt(opts: {
   if (!target) return { recorded: false };
   const { baseName, rawItem } = target;
 
-  const packageKg = product?.packageKg ?? parsePackageKg(product?.spec) ?? parsePackageKg(itemName);
+  /*
+   * 포장 1개가 몇 kg인가 — **박스면 개입수까지 곱해야 한다.**
+   * 규격은 '낱개 용량 * 개입수' 꼴이라(`1kg * 10`) 앞자리만 읽으면 낱개 용량이다.
+   * 그대로 쓰면 10kg 박스 95개가 95kg으로 들어온다(열 배 적게).
+   * 같은 계산이 이미 itemKg에 있다 — 두 군데서 따로 세면 언젠가 갈린다.
+   */
+  const packageKg = product ? (itemKg(product) || undefined) : parsePackageKg(itemName);
   const density = DENSITY[baseName] ?? 1.0;
   const u = (unit ?? product?.unit ?? '').toLowerCase();
   const kgIn = receiptToKg({ quantity, unit: u, density, packageKg });
