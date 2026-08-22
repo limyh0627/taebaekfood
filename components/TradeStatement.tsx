@@ -11,10 +11,11 @@ import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, Compan
 import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchDateRange } from '../src/shared/services/firebaseService';
 import { stampFor, timeOfLocal, issuedMs, nextDocNo } from '../src/shared/voucherStamp';
+import { buildJournals } from '../src/shared/buildJournals';
 import type { VoucherKind } from '../src/shared/vouchers';
 import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/shared/orderUnits';
 import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
-import { totalCashOnHand, unsettledStatements, unmatchedCash, partnerOpenBalance, allocatePartnerCash } from '../src/features/admin/cashLedger';
+import { totalCashOnHand, unsettledStatements, unmatchedCash, partnerBalanceFromJournals, allocatePartnerCash } from '../src/features/admin/cashLedger';
 import { AR, AP, journalizeStatement, journalizeTransfer, journalizeCashEntry, settlementAccountCode } from '../src/shared/autoJournal';
 import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, isCashDir, templateAccrRows, VOUCHER_DIRS, DIR_CHIP, DIR_HINT, CashTemplate, VoucherDir, SPLIT_MODES, splitModeOf } from '../src/shared/cashTemplates';
 import { canAutoIssue, autoVoucherId } from '../src/shared/autoVoucher';
@@ -1003,16 +1004,21 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * 분개(108·251 잔액)와 같은 규칙이라 전표화면·거래처통계·재무제표가 저절로 같은 숫자를 낸다.
    * 마이너스면 더 받은 것 = 선수금.
    */
+  // 잔액은 **분개의 108·251**에서 센다 — 전표 갈래(type)로 세면 갈래를 바꿀 때 잔액이 사라진다.
+  // 기초잔액은 거래처가 없으니 안 넘겨도 결과가 같다.
+  const partnerJournals = useMemo(
+    () => buildJournals({ statements: mergedStatements, cashEntries, accounts: accountCodes }).entries,
+    [mergedStatements, cashEntries, accountCodes]);
   const partnerBalances = useMemo(() => {
     const map = new Map<string, { receivable: number; payable: number }>();
     for (const id of new Set(mergedStatements.map(s => s.partnerId).filter(Boolean))) {
       map.set(id, {
-        receivable: partnerOpenBalance(id, '매출', mergedStatements, cashEntries),
-        payable: partnerOpenBalance(id, '매입', mergedStatements, cashEntries),
+        receivable: partnerBalanceFromJournals(id, '매출', partnerJournals),
+        payable: partnerBalanceFromJournals(id, '매입', partnerJournals),
       });
     }
     return map;
-  }, [mergedStatements, cashEntries]);
+  }, [mergedStatements, partnerJournals]);
 
   // ── 발행내역 상세 보기 ──
   const [detailStmt, setDetailStmt] = useState<IssuedStatement | null>(null);

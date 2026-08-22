@@ -201,8 +201,11 @@ export function journalizeTransfer(
     const amt = r(it.total ?? 0);
     if (!amt) continue;
     const code = it.accountCode!;
-    if (normalOf(code) === 'debit') { lines.push({ accountCode: code, debit: amt, credit: 0 }); debit = r(debit + amt); }
-    else { lines.push({ accountCode: code, debit: 0, credit: amt }); credit = r(credit + amt); }
+    // 채권·채무 줄에만 거래처를 붙인다 — 거래처별 잔액이 이 줄에서 나온다.
+    // (감가상각처럼 상대가 없는 대체는 거래처가 없다)
+    const who = (code === AR || code === AP) && s.partnerId ? { partnerId: s.partnerId } : {};
+    if (normalOf(code) === 'debit') { lines.push({ accountCode: code, ...who, debit: amt, credit: 0 }); debit = r(debit + amt); }
+    else { lines.push({ accountCode: code, ...who, debit: 0, credit: amt }); credit = r(credit + amt); }
   }
   if (lines.length < 2 || debit !== credit) return null;
   return {

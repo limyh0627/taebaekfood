@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  buildAccountLedger, totalCashOnHand, openBalance, unsettledStatements, unmatchedCash,
-  buildPartnerLedger, partnerBalances, partnerOpenBalance, allocatePartnerCash,
+  buildAccountLedger, totalCashOnHand, openBalance, unsettledStatements, unmatchedCash, buildPartnerLedger, partnerBalances, partnerOpenBalance, allocatePartnerCash, partnerBalanceFromJournals,
 } from './cashLedger';
 import type { CashAccount, CashEntry, IssuedStatement, Settlement } from '../../shared/types';
 
@@ -264,5 +263,49 @@ describe('allocatePartnerCash', () => {
     const m = allocatePartnerCash('p1', '매출', [s1, s2], [], []);
     expect(m.get('s1')).toBe(1_000_000);
     expect(m.get('s2')).toBe(2_000_000);
+  });
+});
+
+describe('거래처 잔액은 계정으로 센다', () => {
+  /**
+   * 전에는 전표 머리의 type('매출'/'매입')으로 셌다. 숫자는 같았지만 갈래를 바꾸면 무너진다:
+   * 기초 전표를 대체로 옮기는 순간 type 필터에서 빠져 미수가 통째로 사라졌을 것이다.
+   * 잔액은 **계정이 정한다.** 갈래는 어떻게 끊었는지일 뿐이다.
+   */
+  const je = (lines: { accountCode: string; partnerId?: string; debit?: number; credit?: number }[]) =>
+    ({ id: 'je', date: '2026-08-01', lines: lines.map(l => ({ debit: 0, credit: 0, ...l })),
+       memo: '', sourceType: '매출' as const, sourceId: 's', createdAt: '' });
+
+  it('매출은 108 차변, 수금은 108 대변', () => {
+    const entries = [
+      je([{ accountCode: '108', partnerId: 'p1', debit: 1000 }, { accountCode: '800', credit: 1000 }]),
+      je([{ accountCode: '103', debit: 400 }, { accountCode: '108', partnerId: 'p1', credit: 400 }]),
+    ];
+    expect(partnerBalanceFromJournals('p1', '매출', entries)).toBe(600);
+  });
+
+  it('매입은 251 대변, 지불은 251 차변', () => {
+    const entries = [
+      je([{ accountCode: '500', debit: 700 }, { accountCode: '251', partnerId: 'p1', credit: 700 }]),
+      je([{ accountCode: '251', partnerId: 'p1', debit: 200 }, { accountCode: '103', credit: 200 }]),
+    ];
+    expect(partnerBalanceFromJournals('p1', '매입', entries)).toBe(500);
+  });
+
+  it('거래처가 다르면 안 센다', () => {
+    const entries = [je([{ accountCode: '108', partnerId: 'p2', debit: 1000 }])];
+    expect(partnerBalanceFromJournals('p1', '매출', entries)).toBe(0);
+  });
+
+  it('거래처가 안 붙은 줄은 안 센다 — 통장·비용 줄이 섞이면 안 된다', () => {
+    const entries = [je([{ accountCode: '108', debit: 1000 }])];
+    expect(partnerBalanceFromJournals('p1', '매출', entries)).toBe(0);
+  });
+
+  it('갈래가 무엇이든 계정만 본다 — 대체전표(상계)도 잡힌다', () => {
+    const 상계 = { ...je([{ accountCode: '251', partnerId: 'p1', debit: 300 },
+                         { accountCode: '108', partnerId: 'p1', credit: 300 }]), sourceType: '대체' as const };
+    expect(partnerBalanceFromJournals('p1', '매출', [상계])).toBe(-300);   // 미수가 줄었다
+    expect(partnerBalanceFromJournals('p1', '매입', [상계])).toBe(-300);   // 미지급도 줄었다
   });
 });

@@ -9,7 +9,7 @@ import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Partner, PaymentMet
 import PageHeader from './PageHeader';
 import CostManager from './CostManager';
 import { makeCodeToGroup, computeMonthPLFromJournals, computeCashFlowMonth, computeCashFlowDirect, addMonthStr, SGNA_LEGACY_IDS, COMPUTED_GROUP_IDS } from '../src/features/admin/financials';
-import { partnerOpenBalance, allocatePartnerCash, partnerCashParts } from '../src/features/admin/cashLedger';
+import { partnerBalanceFromJournals, allocatePartnerCash, partnerCashParts } from '../src/features/admin/cashLedger';
 import { buildJournals } from '../src/shared/buildJournals';
 import type { OpeningBalance } from '../src/shared/autoJournal';
 import { fetchCollection } from '../src/shared/services/firebaseService';
@@ -1104,7 +1104,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         const getBalance = (s: IssuedStatement) => openByStmt.get(s.id) ?? s.totalAmount;
         /** 거래처 잔액 — 미수(매출) / 미지급(매입) */
         const partnerLeft = (partnerId: string, type: '매출' | '매입') =>
-          partnerOpenBalance(partnerId, type, issuedStatements, cashEntries);
+          partnerBalanceFromJournals(partnerId, type, journalEntries);
 
         // ── 전체 거래처 목록 (매출 + 매입 포함) ──
         const currentYear = new Date().getFullYear();

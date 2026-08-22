@@ -1,4 +1,4 @@
-import { CashAccount, CashEntry, IssuedStatement, Settlement } from '../../shared/types';
+import { CashAccount, CashEntry, IssuedStatement, JournalEntry, Settlement } from '../../shared/types';
 import { rowStamp, issuedMs } from '../../shared/voucherStamp';
 
 /**
@@ -208,6 +208,30 @@ export function buildPartnerLedger(
  *
  * 마이너스면 더 받은 것(선수금). 화면 세 곳(거래처통계·전표·재무제표)이 이 함수 하나를 쓴다.
  */
+/**
+ * 거래처별 채권·채무 — **분개의 108·251에서 센다.**
+ *
+ * 전에는 전표 머리의 `type`('매출'/'매입')으로 셌다. 지금 숫자는 같지만 갈라질 자리가 있다:
+ *   · 기초 전표를 대체로 옮기면 type 필터에서 빠져 미수가 통째로 사라진다
+ *   · 현금매출처럼 108을 안 세우는 전표가 생기면 type만 보고 미수로 잡는다
+ * 잔액은 **계정이 정한다.** 갈래는 어떻게 끊었는지일 뿐이다.
+ *
+ * 분개는 채권·채무 줄에 거래처를 달아 둔다(journalizeStatement·Transfer·CashEntry 모두).
+ * 기초잔액(openingBalances)에는 거래처가 없으므로 안 넘겨도 결과가 같다.
+ */
+export function partnerBalanceFromJournals(
+  partnerId: string,
+  type: '매출' | '매입',
+  entries: JournalEntry[],
+): number {
+  const want = type === '매출' ? AR : AP;
+  return entries.reduce((a, e) => a + (e.lines ?? []).reduce((b, l) => {
+    if (String(l.accountCode) !== want || l.partnerId !== partnerId) return b;
+    // 채권은 차변이 느는 것, 채무는 대변이 느는 것
+    return b + (type === '매출' ? (l.debit ?? 0) - (l.credit ?? 0) : (l.credit ?? 0) - (l.debit ?? 0));
+  }, 0), 0);
+}
+
 export function partnerOpenBalance(
   partnerId: string,
   type: '매출' | '매입',
