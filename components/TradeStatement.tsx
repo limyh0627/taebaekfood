@@ -884,14 +884,36 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     return t === '자산' || t === '부채' || t === '자본' ? t : null;
   }, [codeType]);
   /** 중분류 목록 — 손익은 계정그룹에서 뽑는다. 그룹을 새로 만들면 저절로 늘어난다. */
-  const SUBS = useMemo(() => ({
-    '손익': [...new Set(accountGroups.filter(g => g.plLine).map(g => g.name))],
+  const SUBS: Record<string, string[]> = {
+    '손익': ['매출', '비용'],
     '재무': ['자산', '부채', '자본'],
     '자금흐름': ['입금', '출금', '대체'],
-  } as Record<string, string[]>), [accountGroups]);
-  /** 그 줄들에 들어간 계정 전부 — 복합 전표라도 하나만 걸리면 잡힌다 */
+  };
+  /** 손익 계정이 매출 쪽인가 비용 쪽인가 */
+  const plSideOf = useCallback((code?: string): '매출' | '비용' | null => {
+    const g = groupOfCode(code);
+    const t = codeType.get(code ?? '');
+    if (g?.plLine === 'revenue' || g?.plLine === 'other-income' || (!g?.plLine && t === '수익')) return '매출';
+    if (g?.plLine === 'cogs' || g?.plLine === 'sgna' || g?.plLine === 'other-expense'
+        || (!g?.plLine && t === '비용')) return '비용';
+    return null;
+  }, [groupOfCode, codeType]);
+  /**
+   * 그 전표가 건드리는 계정 전부 — 복합 전표라도 하나만 걸리면 잡힌다.
+   *
+   * 전표(거래명세서)는 품목 줄에 **손익 계정만** 있다. 상대변(외상매출금·외상매입금·부가세)은
+   * 저장돼 있지 않고 분개할 때 생긴다. 그대로 두면 '재무'로 걸러도 매출·매입 전표가
+   * 하나도 안 잡혀서, 재무 필터가 사실상 자금전표만 고르는 꼴이 됐다(자금흐름과 똑같아졌다).
+   * 그래서 분개가 세우는 상대계정을 여기서 같이 넣는다 — journalizeStatement와 같은 규칙.
+   */
   const rowCodes = useCallback((row: TimelineRow): string[] => {
-    if (row.kind === 'stmt') return (row.data.items ?? []).map(i => i.accountCode ?? '').filter(Boolean);
+    if (row.kind === 'stmt') {
+      const items = (row.data.items ?? []).map(i => i.accountCode ?? '').filter(Boolean);
+      if (row.data.type === '비용') return items;          // 대체전표는 차·대가 줄에 다 있다
+      const counter = row.data.type === '매출' ? AR : AP;   // 채권·채무
+      const vat = (row.data.totalTax ?? 0) > 0 ? [row.data.type === '매출' ? '255' : '135'] : [];
+      return [...items, counter, ...vat];
+    }
     if (row.kind === 'pay') return [row.stmtType === '매출' ? AR : AP];
     const ls = (row.entry.lines ?? []).map(l => l.accountCode).filter(Boolean) as string[];
     return ls.length ? ls : (row.accountCode ? [row.accountCode] : []);
@@ -2171,7 +2193,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const codes = rowCodes(row);
         if (histAxis === '손익') {
           if (!codes.some(isPlCode)) return false;
-          if (histSub !== '전체' && !codes.some(c => groupOfCode(c)?.name === histSub)) return false;
+          if (histSub !== '전체' && !codes.some(c => plSideOf(c) === histSub)) return false;
         } else if (histAxis === '재무') {
           if (!codes.some(c => bsTypeOf(c))) return false;
           if (histSub !== '전체' && !codes.some(c => bsTypeOf(c) === histSub)) return false;
@@ -2209,7 +2231,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         return issuedMs(ida) - issuedMs(idb)
           || String(ida).localeCompare(String(idb), undefined, { numeric: true });
       }); // 오래된→최신
-  }, [allTimelineRows, histFrom, histTo, histAxis, histSub, histSearch, codeType, codeName, classifyRow, rowKind, rowCodes, isPlCode, bsTypeOf, groupOfCode]);
+  }, [allTimelineRows, histFrom, histTo, histAxis, histSub, histSearch, codeType, codeName, classifyRow, rowKind, rowCodes, isPlCode, bsTypeOf, plSideOf]);
 
   // 페이지네이션: 필터 변경 시 1페이지로 리셋, 최신 페이지부터 보여줌
   useEffect(() => { setHistoryPage(1); }, [histFrom, histTo, histAxis, histSub, histSearch]);
