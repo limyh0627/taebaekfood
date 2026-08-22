@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Trash2, X, ToggleLeft, ToggleRight, Pencil, Check, Eye, EyeOff, Lock, BarChart2, Star, FolderPlus, Copy } from 'lucide-react';
 import { FixedCostTemplate, AccountCode, Partner } from '../src/shared/types';
-import { VOUCHER_DIRS, DIR_CHIP, DIR_HINT, isCashDir, VoucherDir, SPLIT_MODES, splitModeOf } from '../src/shared/cashTemplates';
+import { VOUCHER_DIRS, DIR_CHIP, DIR_HINT, isCashDir, VoucherDir, SPLIT_MODES, splitModeOf, templateJournalLines, CashTemplate } from '../src/shared/cashTemplates';
 
 /** 두 줄 갈래 템플릿에서 a·b 칸에 들어갈 저장값을 꺼낸다 (갈래마다 필드 이름이 다르다) */
 const splitValOf = (t: { mode?: string } & Record<string, any>, which: 'a' | 'b'): string => {
@@ -40,6 +40,8 @@ export default function VoucherTemplateManager({
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'auto' | 'hidden'>('all');
   const [editTpl, setEditTpl] = useState<FixedCostTemplate | null>(null);
+  // 분개 미리보기 — 평소엔 접어 둔다. 차·대는 사용자가 고르는 게 아니라 확인하는 것이다.
+  const [showJournal, setShowJournal] = useState(false);
   /**
    * 복제 모드 — 기본 템플릿은 **고치지 않는다.** 갈래·계정 같은 뼈대만 물려받아
    * 내 템플릿을 새로 만든다. 기본이 깨끗하게 남아 있어야 나중에 다시 꺼내 쓸 수 있고,
@@ -408,6 +410,61 @@ export default function VoucherTemplateManager({
                   <span className="text-[11px] font-bold text-slate-500">면세 <span className="text-slate-400">(끄면 금액에서 부가세 10%를 갈라 잡습니다)</span></span>
                 </label>
               )}
+            </div>
+
+            {/* ── 이렇게 분개됩니다 ──
+                사용자가 차·대를 고르지는 않지만 **무엇이 어디로 잡히는지는 볼 수 있어야** 한다.
+                계정을 잘못 골라 두면 그 템플릿으로 끊는 전표가 죄다 어긋나는데, 목록엔
+                계정 이름만 보여서 저장 전엔 알 수가 없었다. 평소엔 접어 둔다. */}
+            <div className="rounded-xl border border-slate-200 overflow-hidden">
+              <button type="button" onClick={() => setShowJournal(v => !v)}
+                className="w-full px-3 py-2 bg-slate-50 flex items-center gap-2 hover:bg-slate-100 transition-colors">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">이렇게 분개됩니다</span>
+                <span className="ml-auto text-[11px] font-black text-indigo-600">{showJournal ? '접기' : '보기'}</span>
+              </button>
+              {showJournal && (() => {
+                const preview = {
+                  ...editTpl,
+                  label: form.name, dir: form.dir, mode: editTpl.mode,
+                  accountCode: editTpl.accountCode, itemName: form.itemName || undefined,
+                  transferLines: editTpl.transferLines,
+                  loanCode: form.loanCode,
+                  amount: splitModeOf(editTpl.mode)
+                    ? SPLIT_MODES[splitModeOf(editTpl.mode)!].total(Number(form.splitA || 0), Number(form.splitB || 0))
+                    : Number(form.amount || 0),
+                  ...(splitModeOf(editTpl.mode)
+                    ? { [SPLIT_MODES[splitModeOf(editTpl.mode)!].a]: Number(form.splitA || 0),
+                        [SPLIT_MODES[splitModeOf(editTpl.mode)!].b]: Number(form.splitB || 0) }
+                    : {}),
+                } as unknown as CashTemplate;
+                const lines = templateJournalLines(preview);
+                const 차 = lines.filter(l => l.side === '차변').reduce((a, l) => a + l.amount, 0);
+                const 대 = lines.filter(l => l.side === '대변').reduce((a, l) => a + l.amount, 0);
+                return (
+                  <div>
+                    <div className="grid grid-cols-[40px_1fr_92px_92px] bg-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                      <span className="px-2 py-1">구분</span><span className="px-2 py-1">계정</span>
+                      <span className="px-2 py-1 text-right">차변</span><span className="px-2 py-1 text-right">대변</span>
+                    </div>
+                    {lines.map((l, i) => (
+                      <div key={i} className="grid grid-cols-[40px_1fr_92px_92px] border-t border-slate-50 text-[11px]">
+                        <span className={`px-2 py-1.5 font-black ${l.side === '차변' ? 'text-slate-600' : 'text-amber-600'}`}>{l.side}</span>
+                        <span className="px-2 py-1.5 font-bold text-slate-700 truncate">
+                          <span className="font-mono text-slate-400 mr-1">{l.code}</span>
+                          {accountCodes.find(c => c.code === l.code)?.name ?? l.label}
+                        </span>
+                        <span className="px-2 py-1.5 text-right tabular-nums font-black text-slate-700">{l.side === '차변' ? fmt(l.amount) : ''}</span>
+                        <span className="px-2 py-1.5 text-right tabular-nums font-black text-slate-700">{l.side === '대변' ? fmt(l.amount) : ''}</span>
+                      </div>
+                    ))}
+                    {차 !== 대 && (
+                      <p className="px-3 py-1.5 text-[10px] font-black text-rose-500 border-t border-slate-100">
+                        차·대가 안 맞습니다 — 상대변 계정이 없습니다. 이 템플릿으로는 전표를 못 끊습니다.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="flex gap-2 pt-1">

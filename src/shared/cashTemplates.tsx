@@ -418,3 +418,59 @@ export function CashTemplatePicker({
     </div>
   );
 }
+
+/**
+ * 템플릿이 만들 **분개 모양** — 편집 화면에서 저장 전에 확인한다.
+ *
+ * 사용자는 차·대를 고르지 않지만, **무엇이 어디로 잡히는지는 볼 수 있어야** 한다.
+ * 계정을 잘못 골라 두면 그 템플릿으로 끊는 전표가 죄다 어긋나는데, 목록에는 계정 이름만
+ * 보여서 저장 전엔 알 수가 없었다.
+ *
+ * 실제 분개는 journalize* 함수가 만든다. 여기는 **같은 규칙을 미리 그려 보이는 것**이라,
+ * 규칙이 바뀌면 둘 다 손봐야 한다(그래서 갈래마다 근거를 주석으로 붙여 둔다).
+ */
+export function templateJournalLines(
+  t: CashTemplate,
+  bankName = '보통예금',
+): { side: '차변' | '대변'; code: string; label: string; amount: number }[] {
+  const amt = t.amount ?? 0;
+  const bank = { code: '103', label: bankName };
+  const sm = splitModeOf(t.mode);
+
+  if (sm) {
+    // 두 줄로 갈리는 갈래 — 통장은 한 번 움직이고 그 안에서 성격이 갈린다
+    const a = (t as Record<string, any>)[SPLIT_MODES[sm].a] ?? 0;
+    const b = (t as Record<string, any>)[SPLIT_MODES[sm].b] ?? 0;
+    if (sm === '급여') {
+      // (차) 급여 총액 / (대) 예수금 공제 + 통장 실지급
+      return [
+        { side: '차변', code: '515', label: '급여', amount: a },
+        ...(b ? [{ side: '대변' as const, code: '254', label: '예수금', amount: b }] : []),
+        { side: '대변', code: bank.code, label: bank.label, amount: a - b },
+      ];
+    }
+    // 보험·상환·세금 — 차변이 둘, 대변은 통장 하나
+    const [c1, l1, c2, l2] = sm === '보험' ? ['530', '사대보험', '254', '예수금']
+      : sm === '상환' ? [t.loanCode ?? '293', '차입금', '951', '이자비용']
+      : ['255', '부가세예수금', '338', '인출금'];
+    return [
+      ...(a ? [{ side: '차변' as const, code: c1, label: l1, amount: a }] : []),
+      ...(b ? [{ side: '차변' as const, code: c2, label: l2, amount: b }] : []),
+      { side: '대변', code: bank.code, label: bank.label, amount: a + b },
+    ];
+  }
+
+  if (!isCashDir(t.dir) && t.dir !== '회사이체') {
+    // 대체 — 양식이 있으면 그대로. 없으면 한 줄뿐이라 상대변을 사용자가 넣어야 한다.
+    if (t.transferLines?.length) {
+      return t.transferLines.map(l => ({ side: l.side, code: l.accountCode, label: l.name ?? '', amount: amt }));
+    }
+    return [{ side: '차변', code: t.accountCode ?? '', label: t.itemName ?? '', amount: amt }];
+  }
+
+  // 자금 — 한 변은 늘 통장이다. 입금이면 통장이 차변, 출금이면 대변.
+  const other = { code: t.accountCode ?? '', label: t.itemName ?? '', amount: amt };
+  return t.dir === '입금'
+    ? [{ side: '차변', ...bank, amount: amt }, { side: '대변', ...other }]
+    : [{ side: '차변', ...other }, { side: '대변', ...bank, amount: amt }];
+}
