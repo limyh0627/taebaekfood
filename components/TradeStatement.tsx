@@ -849,24 +849,21 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * 무엇을 찾을 때 쓰는 건 **성격(줄의 계정)**이고, 갈래는 행의 배지로만 보여준다.
    */
   /**
-   * 전표를 무엇으로 찾을 것인가 — **대분류 → 중분류 두 단**이다.
+   * 전표 화면은 **"이 계정에 무슨 전표가 끊겼나"**를 보는 자리다. 손익 요약은 손익분석이 한다.
+   * 그래서 필터가 둘이고, 성질이 달라 모양도 다르다.
    *
-   *   손익      매출 · 재료비 · 노무비 · 제조경비 · 판관비 · 영업외    (계정그룹)
-   *   재무      자산 · 부채 · 자본                                (계정 5분류)
-   *   자금흐름   입금 · 출금 · 대체                                (전표 갈래)
+   *   갈래   매출 · 매입 · 대체 · 입금 · 출금        다섯 개 고정 → 버튼
+   *   계정   대분류 › 계정그룹 › 계정과목            계층이 깊고 수십 개 → 드롭다운
    *
-   * 셋은 **판이 다르다.** 손익은 손익계산서, 재무는 재무상태표, 자금흐름은 통장이 움직인
-   * 방향이다. 한 줄에 매출·비용·인건비·자산부채를 나란히 뒀던 게 잘못이었다 —
-   * 인건비는 비용의 하위(노무비 그룹)고, 자산·부채는 손익이 아니다.
-   *
-   * 손익·재무는 **줄의 계정**으로 거른다. 전표 머리로 보면 복합 전표가 통째로 빠진다 —
-   * 대출상환은 출금전표인데 안에 이자비용(손익)과 차입금(재무)이 같이 있다.
-   *
-   * 계정 번호대(400번대=매출 같은)로 가르지 않는다 — 우리 장부는 800번대에 매출(800·805)과
-   * 비용(818 감가상각비·819 리스료)이 같이 있다. 계정그룹이 유일하게 맞는 근거다.
+   * 계정은 **줄의 계정**으로 거른다. 전표 머리(갈래)로 보면 복합 전표가 통째로 빠진다 —
+   * 대출상환은 출금전표인데 안에 이자비용과 차입금이 같이 있다.
    */
-  const [histAxis, setHistAxis] = useState<'전체' | '손익' | '재무' | '자금흐름'>('전체');
-  const [histSub, setHistSub] = useState<string>('전체');
+  const [histKind, setHistKind] = useState<'전체' | VoucherKind>('전체');
+  // 계정은 고를 때마다 **한 층씩 내려온다** — 대분류 › 그룹 › 계정과목.
+  // 위를 바꾸면 아래는 '전체'로 되돌린다. 안 그러면 안 보이는 조건이 남아 결과가 빈다.
+  const [histAxis, setHistAxis] = useState<'전체' | '손익' | '재무'>('전체');
+  const [histGroup, setHistGroup] = useState<string>('전체');   // 손익=그룹 id · 재무=자산/부채/자본
+  const [histCode, setHistCode] = useState<string>('전체');
   const [histSearch, setHistSearch] = useState('');
   const groupOfCode = useCallback(
     (code?: string) => accountGroups.find(x => x.id === accountCodes.find(c => c.code === code)?.groupId),
@@ -883,23 +880,36 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const t = codeType.get(code ?? '');
     return t === '자산' || t === '부채' || t === '자본' ? t : null;
   }, [codeType]);
-  /** 중분류 목록 — 손익은 계정그룹에서 뽑는다. 그룹을 새로 만들면 저절로 늘어난다. */
-  const SUBS: Record<string, string[]> = {
-    '손익': ['매출', '비용'],
-    '재무': ['자산', '부채', '자본'],
-    // 대체는 **돈이 안 흐른다** — 상계·감가상각·급여 발생. 자금흐름에 둘 게 아니다.
-    // 그런 전표는 손익(급여 발생 → 비용)이나 재무(상계 → 자산·부채)로 찾힌다.
-    '자금흐름': ['입금', '출금'],
-  };
-  /** 손익 계정이 매출 쪽인가 비용 쪽인가 */
-  const plSideOf = useCallback((code?: string): '매출' | '비용' | null => {
-    const g = groupOfCode(code);
-    const t = codeType.get(code ?? '');
-    if (g?.plLine === 'revenue' || g?.plLine === 'other-income' || (!g?.plLine && t === '수익')) return '매출';
-    if (g?.plLine === 'cogs' || g?.plLine === 'sgna' || g?.plLine === 'other-expense'
-        || (!g?.plLine && t === '비용')) return '비용';
-    return null;
-  }, [groupOfCode, codeType]);
+  /** 계정 하나가 손익인가 재무인가 — 드롭다운 묶음의 근거 */
+  const axisOfCode = useCallback((code?: string): '손익' | '재무' | null => {
+    if (isPlCode(code)) return '손익';
+    return bsTypeOf(code) ? '재무' : null;
+  }, [isPlCode, bsTypeOf]);
+  /** 2단 목록 — 손익이면 계정그룹, 재무면 자산·부채·자본. 손으로 안 적는다. */
+  const groupChoices = useMemo(() => {
+    if (histAxis === '손익') return accountGroups.filter(g => g.plLine).map(g => ({ id: g.id, name: g.name }));
+    if (histAxis === '재무') return (['자산', '부채', '자본'] as const).map(t => ({ id: t as string, name: t as string }));
+    return [];
+  }, [histAxis, accountGroups]);
+  /** 3단 목록 — 위에서 고른 묶음 안의 계정과목 */
+  const codeChoices = useMemo(() => {
+    const inAxis = accountCodes.filter(c => axisOfCode(c.code) === histAxis);
+    const mine = histGroup === '전체' ? inAxis
+      : histAxis === '손익' ? inAxis.filter(c => groupOfCode(c.code)?.id === histGroup)
+      : inAxis.filter(c => c.type === histGroup);
+    return [...mine].sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }));
+  }, [accountCodes, histAxis, histGroup, axisOfCode, groupOfCode]);
+  /** 고른 계정 조건에 이 줄들이 걸리는가 — **가장 깊이 고른 것 하나만** 본다 */
+  const matchAccount = useCallback((codes: string[]): boolean => {
+    if (histAxis === '전체') return true;
+    if (histCode !== '전체') return codes.some(c => String(c) === histCode);
+    if (histGroup !== '전체') {
+      return histAxis === '손익'
+        ? codes.some(c => groupOfCode(c)?.id === histGroup)
+        : codes.some(c => bsTypeOf(c) === histGroup);
+    }
+    return codes.some(c => axisOfCode(c) === histAxis);
+  }, [histAxis, histGroup, histCode, axisOfCode, groupOfCode, bsTypeOf]);
   /**
    * 그 전표가 건드리는 계정 전부 — 복합 전표라도 하나만 걸리면 잡힌다.
    *
@@ -2193,21 +2203,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         if (histTo   && d > histTo)   return false;
         // rowKind가 이미 다섯 갈래라 그대로 견준다 — 예전엔 여기서 수금→입금으로 또 옮겨
         // 매핑이 두 군데에 있었고, 한쪽만 고치면 엉뚱한 탭이 걸렸다.
-        // 손익·재무는 **줄의 계정**으로 본다 — 전표 머리로 보면 복합 전표가 통째로 빠진다
-        const codes = rowCodes(row);
-        if (histAxis === '손익') {
-          if (!codes.some(isPlCode)) return false;
-          if (histSub !== '전체' && !codes.some(c => plSideOf(c) === histSub)) return false;
-        } else if (histAxis === '재무') {
-          if (!codes.some(c => bsTypeOf(c))) return false;
-          if (histSub !== '전체' && !codes.some(c => bsTypeOf(c) === histSub)) return false;
-        } else if (histAxis === '자금흐름') {
-          // 통장이 실제로 움직인 것만 — 줄이 아니라 전표 갈래가 정한다.
-          // 매출·매입(외상)과 대체는 돈이 안 오갔으므로 뺀다.
-          const k = rowKind(row);
-          if (k !== '입금' && k !== '출금') return false;
-          if (histSub !== '전체' && k !== histSub) return false;
-        }
+        if (histKind !== '전체' && rowKind(row) !== histKind) return false;
+        // 계정은 **줄**로 본다 — 전표 머리로 보면 복합 전표가 통째로 빠진다
+        if (histAxis !== '전체' && !matchAccount(rowCodes(row))) return false;
         if (histSearch.trim()) {
           const q = histSearch.toLowerCase();
           // 계정과목·품목까지 검색 대상 — "이자"로 이번 달 이자비용만 뽑아보려면 이게 있어야 한다.
@@ -2236,10 +2234,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         return issuedMs(ida) - issuedMs(idb)
           || String(ida).localeCompare(String(idb), undefined, { numeric: true });
       }); // 오래된→최신
-  }, [allTimelineRows, histFrom, histTo, histAxis, histSub, histSearch, codeType, codeName, classifyRow, rowKind, rowCodes, isPlCode, bsTypeOf, plSideOf]);
+  }, [allTimelineRows, histFrom, histTo, histKind, histAxis, histGroup, histCode, histSearch, codeType, codeName, classifyRow, rowKind, rowCodes, matchAccount]);
 
   // 페이지네이션: 필터 변경 시 1페이지로 리셋, 최신 페이지부터 보여줌
-  useEffect(() => { setHistoryPage(1); }, [histFrom, histTo, histAxis, histSub, histSearch]);
+  useEffect(() => { setHistoryPage(1); }, [histFrom, histTo, histKind, histAxis, histGroup, histCode, histSearch]);
   const historyTotalPages = Math.max(1, Math.ceil(filteredHistory.length / HIST_PAGE_SIZE));
   const pagedHistory = useMemo(() => {
     // 최신순(역방향)으로 표시하기 위해 뒤에서부터 슬라이싱
@@ -2827,35 +2825,79 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           </div>
         </div>
         <div className="border-t border-slate-100"/>
-        {/* 2행: 성격 + 검색 + 건수 — 갈래는 행의 배지로만 본다 */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* 성격 — 줄의 계정으로 거른다. 갈래와 다른 축이라 같이 걸 수 있다.
-              "출금 + 비용"이면 이번 달 비용으로 나간 돈만 남는다. */}
-          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-10 shrink-0">분류</span>
-          {/* 대분류 — 판이 다른 셋. 손익계산서 / 재무상태표 / 통장이 움직인 방향. */}
-          {(['전체','손익','재무','자금흐름'] as const).map(val => (
-            <button key={val} onClick={()=>{ setHistAxis(val); setHistSub('전체'); }}
-              className={`px-3 py-1.5 rounded-lg text-[11px] font-black border transition-all ${
-                histAxis===val
-                  ? (AXIS_CLS[val] ?? 'bg-slate-700 text-white border-slate-700')
-                  : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400 hover:text-slate-600'
-              }`}>{val}</button>
-          ))}
-          {/* 중분류 — 대분류를 고르면 그 아래만 뜬다. 손익 목록은 계정그룹에서 뽑으므로
-              그룹을 새로 만들면 저절로 늘어난다. 인건비는 여기 '노무비'다. */}
-          {histAxis !== '전체' && (
-            <>
-              <span className="text-slate-300 text-[11px] font-black shrink-0">›</span>
-              {['전체', ...(SUBS[histAxis] ?? [])].map(g => (
-                <button key={g} onClick={()=>setHistSub(g)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-black border transition-all ${
-                    histSub===g
-                      ? 'bg-slate-600 text-white border-slate-600'
+        {/* 2행 — **좌 갈래 · 우 계정**으로 반반.
+            갈래는 다섯 개 고정이라 버튼, 계정은 계층이 깊어 고를 때마다 한 층씩 내려온다.
+            묻는 게 달라서(어떻게 끊었나 / 무슨 계정이 걸렸나) 나란히 두되 선으로 가른다. */}
+        <div className="flex items-start gap-3">
+          {/* ── 좌: 갈래 ── */}
+          <div className="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-8 shrink-0">갈래</span>
+            {(['전체','매출','매입','대체','입금','출금'] as const).map(val => (
+              <button key={val} onClick={()=>setHistKind(val)}
+                className={`${'px-2.5 py-1 rounded-lg text-[11px] font-black border transition-all'} ${
+                  histKind===val
+                    ? val==='매출' ? 'bg-blue-600 text-white border-blue-600'
+                      : val==='매입' ? 'bg-amber-600 text-white border-amber-600'
+                      : val==='대체' ? 'bg-slate-500 text-white border-slate-500'
+                      : val==='입금' ? 'bg-emerald-600 text-white border-emerald-600'
+                      : val==='출금' ? 'bg-rose-600 text-white border-rose-600'
+                      : 'bg-slate-700 text-white border-slate-700'
+                    : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400 hover:text-slate-600'
+                }`}>{val}</button>
+            ))}
+          </div>
+
+          <div className="w-px self-stretch bg-slate-200 shrink-0"/>
+
+          {/* ── 우: 계정 — 고를 때마다 한 층씩 내려온다 ── */}
+          <div className="flex-1 min-w-0 space-y-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-8 shrink-0">계정</span>
+              {(['전체','손익','재무'] as const).map(val => (
+                <button key={val} onClick={()=>{ setHistAxis(val); setHistGroup('전체'); setHistCode('전체'); }}
+                  className={`${'px-2.5 py-1 rounded-lg text-[11px] font-black border transition-all'} ${
+                    histAxis===val
+                      ? val==='손익' ? 'bg-rose-600 text-white border-rose-600'
+                        : val==='재무' ? 'bg-teal-600 text-white border-teal-600'
+                        : 'bg-slate-700 text-white border-slate-700'
                       : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400 hover:text-slate-600'
-                  }`}>{g}</button>
+                  }`}>{val}</button>
               ))}
-            </>
-          )}
+            </div>
+            {histAxis !== '전체' && (
+              <div className="flex items-center gap-1.5 flex-wrap pl-9">
+                <span className="text-slate-300 text-[11px] font-black shrink-0">›</span>
+                {[{ id: '전체', name: '전체' }, ...groupChoices].map(g => (
+                  <button key={g.id} onClick={()=>{ setHistGroup(g.id); setHistCode('전체'); }}
+                    className={`${'px-2.5 py-1 rounded-lg text-[11px] font-black border transition-all'} ${
+                      histGroup===g.id ? 'bg-slate-600 text-white border-slate-600'
+                        : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400 hover:text-slate-600'
+                    }`}>{g.name}</button>
+                ))}
+              </div>
+            )}
+            {histAxis !== '전체' && codeChoices.length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap pl-9">
+                <span className="text-slate-300 text-[11px] font-black shrink-0">››</span>
+                <button onClick={()=>setHistCode('전체')}
+                  className={`${'px-2.5 py-1 rounded-lg text-[11px] font-black border transition-all'} ${
+                    histCode==='전체' ? 'bg-slate-600 text-white border-slate-600'
+                      : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400 hover:text-slate-600'
+                  }`}>전체</button>
+                {codeChoices.map(c => (
+                  <button key={c.code} onClick={()=>setHistCode(c.code)}
+                    className={`${'px-2.5 py-1 rounded-lg text-[11px] font-black border transition-all'} ${
+                      histCode===c.code ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-white text-slate-400 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
+                    }`}><span className="tabular-nums opacity-60 mr-1">{c.code}</span>{c.name}</button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 3행: 검색 + 건수 */}
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="relative flex-1 max-w-xs ml-1">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
             <input type="text" placeholder="업체명 · 문서번호 · 계정과목(예: 이자)" value={histSearch}
