@@ -11,6 +11,7 @@ import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, Compan
 import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchDateRange } from '../src/shared/services/firebaseService';
 import { stampFor, timeOfLocal, issuedMs, nextDocNo } from '../src/shared/voucherStamp';
+import type { VoucherKind } from '../src/shared/vouchers';
 import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/shared/orderUnits';
 import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
 import { totalCashOnHand, unsettledStatements, unmatchedCash, partnerOpenBalance, allocatePartnerCash } from '../src/features/admin/cashLedger';
@@ -814,19 +815,26 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    *   이체             회사 간 대여·차입(137/267)
    *   입금·출금        그 밖의 자금
    */
-  const rowKind = useCallback((row: TimelineRow): string => {
+  /**
+   * 전표 갈래 — **다섯 가지뿐이다.** 매출 · 매입 · 대체 · 입금 · 출금.
+   *
+   * 예전엔 수금·지불·이체까지 여덟 가지를 썼는데, 그건 갈래가 아니라 **무슨 돈이냐**다.
+   * 돈이 들어왔으면 입금이고, 나갔으면 출금이다. 수금이냐 이자냐는 계정과목이 말해 준다.
+   * 갈래를 늘릴수록 필터가 갈리고, 한 전표가 여러 갈래에 걸치면 어디에도 안 잡힌다.
+   *
+   * **줄이 여럿이어도 갈래는 하나다.** 대출상환은 (차)차입금+이자 /(대)통장 —
+   * 대변이 통장 하나이므로 출금전표다. 차변이 여럿인 건 갈래와 상관없다.
+   */
+  const rowKind = useCallback((row: TimelineRow): VoucherKind => {
     if (row.kind === 'stmt') {
       return row.data.type === '매출' ? '매출' : row.data.type === '매입' ? '매입' : '대체';
     }
-    if (row.kind === 'pay') return row.stmtType === '매출' ? '수금' : '지불';
-    const codes = (row.entry.lines ?? []).map(l => l.accountCode);
-    const all = codes.length ? codes : [row.accountCode ?? ''];
-    if (all.some(c => c === '137' || c === '267')) return '이체';
+    if (row.kind === 'pay') return row.stmtType === '매출' ? '입금' : '출금';
+    if (row.entry.dir === '대체') return '대체';
     return row.dir === '입금' ? '입금' : '출금';
   }, []);
 
-  const [histTypeFilter, setHistTypeFilter] = useState<
-    '전체' | '매출' | '매입' | '입금' | '출금' | '이체' | '대체'>('전체');
+  const [histTypeFilter, setHistTypeFilter] = useState<'전체' | VoucherKind>('전체');
   const [histSearch, setHistSearch] = useState('');
   const [histQuick, setHistQuick] = useState<'당일'|'금주'|'당월'|'당년'|'ALL'|''>('당일');
   // 발행내역 페이지네이션
@@ -2097,13 +2105,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const note  = row.kind === 'cash' ? (row.note ?? '') : '';
         if (histFrom && d < histFrom) return false;
         if (histTo   && d > histTo)   return false;
-        if (histTypeFilter !== '전체') {
-          // 수금은 입금에, 지불은 출금에 포함된다 — 돈이 오간 방향은 같고 성격만 다르다.
-          // 행에는 수금·지불로 따로 표시되므로 목록에서는 구분이 그대로 보인다.
-          const k = rowKind(row);
-          const tab = k === '수금' ? '입금' : k === '지불' ? '출금' : k;
-          if (tab !== histTypeFilter) return false;
-        }
+        // rowKind가 이미 다섯 갈래라 그대로 견준다 — 예전엔 여기서 수금→입금으로 또 옮겨
+        // 매핑이 두 군데에 있었고, 한쪽만 고치면 엉뚱한 탭이 걸렸다.
+        if (histTypeFilter !== '전체' && rowKind(row) !== histTypeFilter) return false;
         if (histSearch.trim()) {
           const q = histSearch.toLowerCase();
           // 계정과목·품목까지 검색 대상 — "이자"로 이번 달 이자비용만 뽑아보려면 이게 있어야 한다.
@@ -2728,7 +2732,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-10 shrink-0">유형</span>
           {/* 값과 라벨을 같게 둔다 — 예전엔 값 '매입'에 라벨 '비용', 값 '비용'에 라벨 '대체'라
               필터 조건을 손볼 때마다 엉뚱한 탭이 걸렸다. classifyRow가 이 값 그대로 판정한다. */}
-          {(['전체','매출','매입','입금','출금','이체','대체'] as const).map(val => (
+          {(['전체','매출','매입','대체','입금','출금'] as const).map(val => (
             <button key={val} onClick={()=>setHistTypeFilter(val)}
               className={`px-3.5 py-1.5 rounded-lg text-[11px] font-black border transition-all ${
                 histTypeFilter===val
@@ -2736,7 +2740,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     : val==='매입' ? 'bg-rose-600 text-white border-rose-600'
                     : val==='입금' ? 'bg-emerald-600 text-white border-emerald-600'
                     : val==='출금' ? 'bg-slate-600 text-white border-slate-600'
-                    : val==='이체' ? 'bg-purple-600 text-white border-purple-600'
                     : val==='대체' ? 'bg-amber-500 text-white border-amber-500'
                     : 'bg-slate-700 text-white border-slate-700'
                   : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400 hover:text-slate-600'
@@ -2898,10 +2901,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       <td className="px-4 py-2 whitespace-nowrap">
                         <span className="inline-flex items-center gap-1 align-middle">
                           {journalToggle(row.entry.id)}
-                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${rowKind(row) === '이체' ? 'bg-purple-100 text-purple-700' : row.dir === '입금' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{rowKind(row)}</span>
-                          {kinds.map(k => (
-                            <span key={k} className={`text-[10px] font-black px-2 py-0.5 rounded-full ${KIND_CLS[k] ?? 'bg-slate-100 text-slate-500'}`}>{k}</span>
-                          ))}
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.dir === '입금' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{rowKind(row)}</span>
                         </span>
                       </td>
                       <td className="px-4 py-2 text-xs font-bold text-slate-700">{row.partnerName || <span className="text-slate-300">—</span>}</td>
@@ -3103,7 +3103,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     <div className="flex items-center justify-between gap-2">
                       <span className="flex items-center gap-1">
                         {journalToggle(row.entry.id)}
-                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${rowKind(row) === '이체' ? 'bg-purple-100 text-purple-700' : row.dir === '입금' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{rowKind(row)}</span>
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.dir === '입금' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{rowKind(row)}</span>
                       </span>
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-mono text-slate-400">{row.date}</span>
@@ -3223,7 +3223,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           const showIncome = histTypeFilter === '전체' || histTypeFilter === '매출';
           const showCost   = histTypeFilter === '전체' || histTypeFilter === '매입';
           const showCash   = histTypeFilter === '전체' || histTypeFilter === '입금'
-            || histTypeFilter === '출금' || histTypeFilter === '이체';
+            || histTypeFilter === '출금';
           const anyPl = (showIncome && sale > 0) || (showCost && buy > 0);
           const anyCash = showCash && (histTotals.receiveSum > 0 || histTotals.paySum > 0);
           return (
