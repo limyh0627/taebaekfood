@@ -1965,7 +1965,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                   <button
                     onClick={() => onSaveInventorySnapshot({
                       yearMonth: currentYm, value: totalValue, recordedAt: new Date().toISOString(),
-                      items: rows.map(p => ({ itemId: p.id, name: p.name, category: catLabel(p), qty: p.stock, value: p.value })),
+                      items: rows.map(p => ({ itemId: p.id, name: p.name, category: catLabel(p), qty: p.stock, value: p.value, ...(p.spec ? { spec: p.spec } : {}) })),
                     })}
                     className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black transition-all ${existingSnap ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' : 'bg-teal-600 text-white hover:bg-teal-700'}`}>
                     <Archive size={12}/>{existingSnap ? '덮어쓰기' : '기말재고 기록'}
@@ -2009,16 +2009,21 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                             <td className="px-4 py-3 text-xs text-right font-black text-teal-700">{fmt(snap.value)}원</td>
                             <td className="px-4 py-3 text-[10px] text-right text-slate-400">{snap.recordedAt.slice(0, 16).replace('T', ' ')}</td>
                           </tr>
-                          {open && snapItems.map((it, i) => (
+                          {open && snapItems.map((it, i) => {
+                            // 옛 기록엔 규격이 안 담겨 있다 — 품목에서 찾아 붙인다(지워진 품목이면 없는 대로)
+                            const spec = it.spec ?? products.find(p => p.id === it.itemId)?.spec;
+                            return (
                             <tr key={snap.id + '-' + i} className="bg-slate-50/60">
                               <td className="pl-9 pr-4 py-1.5 text-[11px] text-slate-600">
                                 <span className="text-slate-400 text-[9px] mr-1.5">{it.category}</span>{it.name}
+                                {spec && <span className="ml-1.5 text-[10px] font-black text-slate-400">{spec}</span>}
                                 <span className="text-slate-400 ml-1.5">× {it.qty}</span>
                               </td>
                               <td className="px-4 py-1.5 text-[11px] text-right font-bold text-slate-600">{fmt(it.value)}원</td>
                               <td className="px-4 py-1.5"></td>
                             </tr>
-                          ))}
+                            );
+                          })}
                           </React.Fragment>
                         );
                       })}
@@ -2052,7 +2057,12 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                       <tbody className="divide-y divide-slate-50">
                         {visibleItems.map(p => (
                           <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                            <td className="px-4 py-3 text-xs font-bold text-slate-700">{p.name}</td>
+                            {/* 규격을 같이 안 적으면 **낱개와 박스를 못 가른다** — 이름이 똑같다.
+                                350ml * 1(병)과 350ml * 20(박스)이 나란히 서는데 재고액은 20배 차이가 난다. */}
+                            <td className="px-4 py-3 text-xs font-bold text-slate-700">
+                              {p.name}
+                              {p.spec && <span className="ml-1.5 text-[10px] font-black text-slate-400">{p.spec}</span>}
+                            </td>
                             <td className="px-4 py-3 text-xs text-right text-slate-600">{p.stock.toLocaleString()} {p.unit}</td>
                             <td className="px-4 py-3 text-xs text-right text-slate-500">
                               {p.unitCost > 0
