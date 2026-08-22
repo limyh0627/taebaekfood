@@ -71,3 +71,20 @@ describe('PRODUCT_FORMULA — 서류용 품목 배합 (2026-08-09 확정)', () =
       expect(rows.reduce((s, r) => s + r.ratio, 0), k).toBeCloseTo(1, 6);
   });
 });
+
+describe('생들기름은 수입산과 다른 원료다', () => {
+  const mix = (k: string) => Object.fromEntries(PRODUCT_FORMULA[k].map(r => [r.raw, r.ratio]));
+  /**
+   * 시골향생들기름 3종이 품목키를 '시골향들기름2'(수입산 100%)로 달고 있었다.
+   * BOM엔 생들기름이 붙어 있는데 배합표는 수입들기름을 가리켜, 원가와 서류상 사용량이
+   * 엉뚱한 원료에서 빠졌다. 볶지 않고 짜낸 것이라 애초에 다른 기름이다.
+   */
+  it('시골향생들기름은 생들기름 100%', () => {
+    expect(mix('시골향생들기름')).toEqual({ 생들기름: 1.0 });
+  });
+
+  it('시골향들기름2와 섞이지 않는다 — 하나는 수입산, 하나는 생들기름', () => {
+    expect(mix('시골향들기름2')).toEqual({ 수입들기름: 1.0 });
+    expect(Object.keys(mix('시골향생들기름'))).not.toContain('수입들기름');
+  });
+});
