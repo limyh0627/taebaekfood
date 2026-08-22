@@ -22,7 +22,8 @@ import {
   Wallet,
   Copy,
   Printer,
-  Save
+  Save,
+  FileText,
 } from 'lucide-react';
 import { Employee, EmployeeStatus, LeaveRequest, LeaveStatus, LeaveType, Payroll, PayrollLine, CompanyId } from '../types';
 import { payrollGross, payrollDeduct, payrollNet, payrollTotals, payrollDocId, companyOf, TAEBAEK } from '../types';
@@ -52,8 +53,16 @@ interface HRManagerProps {
   /** 회사 단체 휴가 일괄 등록 — 선택 직원별로 승인된 '휴가' 신청을 만든다(연차 차감) */
   onAddLeaveRequests?: (_reqs: LeaveRequest[]) => Promise<void> | void;
   // ── 급여대장 ── 대장 자체는 이 화면이 직접 읽고 쓴다(payrolls). 전표만 밖에 맡긴다.
-  /** 대장 합계로 자금기록 한 건을 만들고 그 id를 돌려준다 */
+  /** 대장 합계로 자금기록 한 건을 만들고 그 id를 돌려준다 — **그날 통장에서 바로 나갈 때** */
   onCreatePayrollEntry?: (_p: {
+    date: string; gross: number; deduct: number; net: number; note: string;
+  }) => Promise<string | undefined>;
+  /**
+   * 발생 전표 — 급여를 **그 달 비용으로 세우고 지급은 나중에** 한다.
+   *   (차) 515 급여 지급계   (대) 254 예수금 공제계 + 263 미지급급여 실지급계
+   * 돈이 안 움직이니 대체전표다. 실제로 줄 때는 263을 터는 출금 한 줄이면 된다.
+   */
+  onCreatePayrollAccrual?: (_p: {
     date: string; gross: number; deduct: number; net: number; note: string;
   }) => Promise<string | undefined>;
 }
@@ -69,6 +78,7 @@ const HRManager: React.FC<HRManagerProps> = ({
   onUpdateLeave,
   onAddLeaveRequests,
   onCreatePayrollEntry,
+  onCreatePayrollAccrual,
 }) => {
   /*
    * 명부를 회사로 가른다 — 태백과 풍회는 별도 사업자라 급여도 4대보험도 각각 낸다.
@@ -187,6 +197,34 @@ const HRManager: React.FC<HRManagerProps> = ({
         });
       }
       setPayMsg('전표를 만들었습니다 — 전표내역에서 확인하세요');
+    } finally { setPaySaving(false); }
+  };
+
+  /**
+   * 발생 전표 — 대장 합계로 대체전표 한 건. 통장은 안 건드린다.
+   * 지급일이 사람마다 달라도 발생은 **그 달 말일 한 번**이다. 그래야 그 달 인건비가 온전히 잡힌다.
+   */
+  const makePayrollAccrual = async () => {
+    if (!onCreatePayrollAccrual || paySaving) return;
+    if (payTotals.gross <= 0) { setPayMsg('금액을 먼저 입력하세요'); return; }
+    if (savedPayroll?.cashEntryId && !window.confirm('이미 전표를 끊은 대장입니다. 한 건 더 만들까요?')) return;
+    setPaySaving(true);
+    try {
+      await savePayroll();
+      const [y, m] = payYm.split('-').map(Number);
+      const last = new Date(y, m, 0).getDate();          // 그 달 말일
+      const id = await onCreatePayrollAccrual({
+        date: `${payYm}-${String(last).padStart(2, '0')}`,
+        gross: payTotals.gross, deduct: payTotals.deduct, net: payTotals.net,
+        note: `${payYm} 급여 발생`,
+      });
+      if (id) await setDocument('payrolls', payDocId, {
+        id: payDocId, companyId, yearMonth: payYm, payDate,
+        lines: payLines.filter(l => payrollGross(l) > 0), cashEntryId: id,
+        createdAt: savedPayroll?.createdAt ?? new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      setPayMsg('발생 전표를 만들었습니다 — 줄 때는 263 미지급급여를 터는 출금으로 끊으세요');
     } finally { setPaySaving(false); }
   };
 
@@ -672,9 +710,18 @@ const HRManager: React.FC<HRManagerProps> = ({
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-white border border-slate-200 text-slate-600 hover:border-slate-300 disabled:opacity-40 transition-all">
                   <Save size={13} />저장
                 </button>
-                <button onClick={makePayrollEntry} disabled={paySaving || !onCreatePayrollEntry}
+                {/* 두 갈래 — **언제 비용으로 잡느냐**가 다르다.
+                    발생: 그 달 비용으로 세우고 지급은 나중에(대체전표). 급여를 다음 달에 주면 이쪽.
+                    지급: 그날 통장에서 바로 나감(자금전표). 그날 바로 주면 이쪽. */}
+                <button onClick={makePayrollAccrual} disabled={paySaving || !onCreatePayrollAccrual}
+                  title="그 달 말일에 비용으로 세운다 — 통장은 안 움직인다"
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-violet-600 text-white hover:bg-violet-500 disabled:opacity-40 transition-all">
-                  <Wallet size={13} />전표 생성
+                  <FileText size={13} />발생 전표
+                </button>
+                <button onClick={makePayrollEntry} disabled={paySaving || !onCreatePayrollEntry}
+                  title="지급일에 통장에서 바로 나간다 — 그날 바로 줄 때만"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-white border border-slate-200 text-slate-600 hover:border-violet-300 hover:text-violet-600 disabled:opacity-40 transition-all">
+                  <Wallet size={13} />지급 전표
                 </button>
               </div>
             </div>
@@ -743,18 +790,37 @@ const HRManager: React.FC<HRManagerProps> = ({
             )}
 
             <div className="p-4 space-y-2">
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">전표 생성 시 분개</p>
-                <div className="text-xs font-bold text-slate-600 space-y-0.5 tabular-nums">
-                  <p>(차) 515 급여 <span className="text-slate-800">{won(payTotals.gross)}</span></p>
-                  <p className="pl-6">(대) 254 예수금 <span className="text-slate-800">{won(payTotals.deduct)}</span></p>
-                  <p className="pl-6">(대) 103 보통예금 <span className="text-slate-800">{won(payTotals.net)}</span></p>
+              <div className="grid md:grid-cols-2 gap-2">
+                <div className="rounded-2xl border border-violet-200 bg-violet-50/40 p-4">
+                  <p className="text-[10px] font-black text-violet-500 uppercase tracking-widest mb-2">발생 전표 · 대체</p>
+                  <div className="text-xs font-bold text-slate-600 space-y-0.5 tabular-nums">
+                    <p>(차) 515 급여 <span className="text-slate-800">{won(payTotals.gross)}</span></p>
+                    <p className="pl-6">(대) 254 예수금 <span className="text-slate-800">{won(payTotals.deduct)}</span></p>
+                    <p className="pl-6">(대) 263 미지급급여 <span className="text-slate-800">{won(payTotals.net)}</span></p>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-2">
+                    <b>그 달 말일</b>에 비용으로 세웁니다. 통장은 안 움직입니다.
+                    실제로 줄 때 <b>일반전표 → 출금 → 263 미지급급여</b>로 실지급액만 끊으면 됩니다 —
+                    지급일이 사람마다 달라도 나가는 대로 쪼개 끊으면 잔액이 맞습니다.
+                  </p>
                 </div>
-                <p className="text-[11px] text-slate-400 mt-2">
-                  통장에서 나가는 건 실지급계뿐입니다. 공제분은 <b>예수금(부채)</b>으로 남았다가,
-                  다음 달 원천세·4대보험을 낼 때 <b>입출금 → 일반 → 254 예수금</b> 출금으로 털어야 사라집니다.
-                </p>
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">지급 전표 · 자금</p>
+                  <div className="text-xs font-bold text-slate-600 space-y-0.5 tabular-nums">
+                    <p>(차) 515 급여 <span className="text-slate-800">{won(payTotals.gross)}</span></p>
+                    <p className="pl-6">(대) 254 예수금 <span className="text-slate-800">{won(payTotals.deduct)}</span></p>
+                    <p className="pl-6">(대) 103 보통예금 <span className="text-slate-800">{won(payTotals.net)}</span></p>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-2">
+                    지급일에 통장에서 바로 나갑니다. <b>그날 바로 주는 달에만</b> 쓰세요 —
+                    다음 달에 주는데 이걸 쓰면 비용이 한 달 밀립니다.
+                  </p>
+                </div>
               </div>
+              <p className="text-[11px] text-slate-400 px-1">
+                어느 쪽이든 공제분은 <b>254 예수금(부채)</b>으로 남았다가, 다음 달 원천세·4대보험을 낼 때
+                <b> 일반전표 → 출금 → 254 예수금</b>으로 털어야 사라집니다.
+              </p>
               <p className="text-[11px] text-slate-400 px-1">
                 4대보험 요율은 해마다 바뀌므로 자동계산하지 않습니다 — <b>고지서 금액을 그대로 입력</b>하세요.
                 임금명세서 교부는 법적 의무이니, 줄 끝 인쇄 버튼으로 사원별 명세서를 뽑아 주세요.

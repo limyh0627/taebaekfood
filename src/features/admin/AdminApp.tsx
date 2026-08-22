@@ -16,7 +16,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { nextDocNo } from '../../shared/voucherStamp';
+import { nextDocNo, stampFor } from '../../shared/voucherStamp';
 import { isBulkItem } from '../../shared/itemTaxonomy';
 import { createPortal } from 'react-dom';
 import {
@@ -2107,6 +2107,26 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       ] }
                     : { accountCode: salaryCode }),
                   note, createdAt: new Date().toISOString(),
+                });
+                return id;
+              }}
+              /* 발생 전표 — 급여를 **그 달 비용으로 세우고 지급은 나중에** 한다.
+                 (차) 515 급여 / (대) 254 예수금 + 263 미지급급여. 돈이 안 움직이니 대체전표다.
+                 지급일이 사람마다 달라도 발생은 그 달 말일 한 번이라, 그 달 인건비가 온전히 잡힌다. */
+              onCreatePayrollAccrual={async ({ date, gross, deduct, net, note }) => {
+                const code = (name: string, fallback: string) =>
+                  appData.accountCodes.find(c => c.name === name)?.code ?? fallback;
+                const id = `stmt-payroll-${date.slice(0, 7)}-${companyId}`;
+                await addItem('issuedStatements', {
+                  id, companyId, issuedAt: stampFor(date), tradeDate: date, type: '비용',
+                  partnerId: '', partnerName: '급여', orderId: '',
+                  docNo: nextDocNo(date, issuedStatements, '급여'),
+                  totalSupply: gross, totalTax: 0, totalAmount: gross,
+                  items: [
+                    { name: '급여', spec: '', qty: 1, price: gross, supply: gross, tax: 0, total: gross, isTaxExempt: true, accountCode: code('급여', '515') },
+                    ...(deduct > 0 ? [{ name: '예수금(원천공제)', spec: '', qty: 1, price: deduct, supply: deduct, tax: 0, total: deduct, isTaxExempt: true, accountCode: code('예수금', '254') }] : []),
+                    { name: '미지급급여', spec: '', qty: 1, price: net, supply: net, tax: 0, total: net, isTaxExempt: true, accountCode: code('미지급급여', '263') },
+                  ],
                 });
                 return id;
               }}
