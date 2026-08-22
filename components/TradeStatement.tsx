@@ -15,7 +15,7 @@ import { buildJournals } from '../src/shared/buildJournals';
 import type { VoucherKind } from '../src/shared/vouchers';
 import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/shared/orderUnits';
 import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
-import { totalCashOnHand, unsettledStatements, unmatchedCash, partnerBalanceFromJournals, allocatePartnerCash } from '../src/features/admin/cashLedger';
+import { totalCashOnHand, unsettledStatements, unmatchedCash, partnerBalanceFromJournals, allocatePartnerCash, partnerCashParts } from '../src/features/admin/cashLedger';
 import { AR, AP, journalizeStatement, journalizeTransfer, journalizeCashEntry, settlementAccountCode } from '../src/shared/autoJournal';
 import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, isCashDir, templateAccrRows, VOUCHER_DIRS, DIR_CHIP, DIR_HINT, CashTemplate, VoucherDir, SPLIT_MODES, splitModeOf } from '../src/shared/cashTemplates';
 import { canAutoIssue, autoVoucherId } from '../src/shared/autoVoucher';
@@ -2172,6 +2172,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // ── 전표 통합 타임라인 (거래명세서 + 수금/지불 + 자금 입출금) ──
   type StmtRow = { kind: 'stmt'; data: IssuedStatement; cumul: number; dateKey: string; ts: string };
   type PayRow  = { kind: 'pay';  partnerId: string; partnerName: string; stmtType: '매출'|'매입';
+                   /** 상계 — 받을 것과 줄 것을 맞바꾼 것. 미수·미지급 양쪽에 한 줄씩 선다. */
+                   offset?: boolean;
                    date: string; amount: number; method?: string; note?: string;
                    paymentId: string; cumul: number; dateKey: string; ts: string; src: IssuedStatement;
                    /** 이 수금·지불의 자금원장 원본 */
@@ -2185,15 +2187,45 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // 화면 표시값 기준 정렬용 시각 (로컬 HH:MM:SS) — 규칙은 voucherStamp 한 곳에 둔다
   const timeOf = timeOfLocal;
 
+  /**
+   * 이 전표가 그 거래처의 **채권이냐 채무냐**, 그리고 얼마를 움직이나 — 분개에서 센다.
+   *
+   * 전표 갈래(type)로 가르면 안 된다. 기초 미수는 갈래가 '비용'(대체)이라
+   * 같은 거래처인데도 매출과 다른 묶음이 됐고, 그래서 두 가지가 한꺼번에 어긋났다.
+   *
+   *   · 같은 수금 자금전표를 **두 묶음이 각자 끌어가** 한 줄이 두 줄로 보였다.
+   *     (유)에스제이엠 8/18 수금 2,094,950이 '수금'과 '지불'로 나란히 떴다 —
+   *     분개는 둘 다 (차)103 /(대)108인데 딱지만 달랐다.
+   *   · 누적잔액도 갈렸다. 매출 묶음은 기초 미수를 안 더한 채 수금만 빼서
+   *     2,376,880이어야 할 잔액을 281,930으로 보였다.
+   *
+   * 채권·채무는 **계정(108·251)이 정하는 것**이지 전표 갈래가 정하는 게 아니다.
+   */
+  const arapOf = useCallback((s: IssuedStatement): { side: '채권' | '채무' | null; delta: number } => {
+    let ar = 0, ap = 0;
+    for (const l of journalBySource.get(s.id)?.lines ?? []) {
+      const c = String(l.accountCode);
+      if (c === AR) ar += (l.debit ?? 0) - (l.credit ?? 0);        // 채권은 차변이 느는 것
+      else if (c === AP) ap += (l.credit ?? 0) - (l.debit ?? 0);   // 채무는 대변이 느는 것
+    }
+    if (ar !== 0 && Math.abs(ar) >= Math.abs(ap)) return { side: '채권', delta: ar };
+    if (ap !== 0) return { side: '채무', delta: ap };
+    return { side: null, delta: 0 };   // 감가상각처럼 거래처 빚이 없는 대체
+  }, [journalBySource]);
+
   const allTimelineRows = useMemo((): TimelineRow[] => {
     const rows: TimelineRow[] = [];
     const grouped = new Map<string, IssuedStatement[]>();
+    const arap = new Map<string, { side: '채권' | '채무' | null; delta: number }>();
     mergedStatements.forEach(s => {
-      const key = `${s.partnerId}__${s.type}`;
+      const a = arapOf(s);
+      arap.set(s.id, a);
+      const key = `${s.partnerId}__${a.side ?? '기타'}`;
       if (!grouped.has(key)) grouped.set(key, []);
       grouped.get(key)!.push(s);
     });
-    grouped.forEach(stmts => {
+    grouped.forEach((stmts, key) => {
+      const side = key.slice(key.indexOf('__') + 2) as '채권' | '채무' | '기타';
       type Ev =
         | { kind: 'stmt'; s: IssuedStatement; date: string; ts: string }
         | { kind: 'pay';  date: string; ts: string; amount: number; method?: string; note?: string; paymentId: string; src: IssuedStatement; entry?: CashEntry };
@@ -2203,18 +2235,23 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       });
       // 수금/지불 — 전표에 붙이지 않는다. 그 거래처로 오간 채권·채무(108/251) 자금을 그대로 뺀다.
       //  "어느 청구서를 갚았나"를 안 따지므로 매칭이 어긋날 자리가 없다. 분개(108·251 잔액)와 같은 방식.
-      const pid = stmts[0]?.partnerId, ptype = stmts[0]?.type;
-      if (pid) for (const e of cashEntries) {
+      const pid = stmts[0]?.partnerId;
+      if (pid && side !== '기타') for (const e of cashEntries) {
         if (e.partnerId !== pid) continue;
-        const want = ptype === '매입' ? AP : AR;
-        if ((ptype === '매입') !== (e.dir === '출금')) continue;
-        const parts = (e.lines ?? []).filter(l => l.accountCode && l.amount > 0);
-        const amt = parts.length
-          ? parts.reduce((a, l) => a + (l.accountCode === want ? l.amount : 0), 0)
-          : (e.accountCode === want ? e.amount : 0);
+        const want = side === '채무' ? AP : AR;
+        /*
+         * 얼마를 갚았나는 **partnerCashParts 한 곳**에서 센다(자금원장·거래처잔액과 같은 함수).
+         * 여기서 따로 세다가 상계를 통째로 놓쳤다 — 상계는 dir이 '대체'라 방향으로 못 거르고,
+         * 줄 하나가 음수다(한중교역 8/19: 251 +9,370,000 / 108 −9,370,000).
+         * 그래서 채권 쪽은 음수라 걸러지고 채무 쪽은 방향에서 걸려, 미수·미지급이 나란히
+         * 9,370,000씩 안 줄었다. 자금 행으로도 안 떴다(상계분을 뺀 나머지가 0이라).
+         */
+        const amt = partnerCashParts(e)
+          .filter(x => x.code === want)
+          .reduce((a, x) => a + x.reduce, 0);
         if (amt <= 0.5) continue;
         evs.push({ kind: 'pay', date: e.date, ts: `${e.date}T${timeOf(e.createdAt)}`,
-          amount: amt, method: '계좌이체', note: e.note, paymentId: e.id, src: stmts[0], entry: e });
+          amount: amt, method: e.dir === '대체' ? '상계' : '계좌이체', note: e.note, paymentId: e.id, src: stmts[0], entry: e });
       }
       // 실제 발생시각(ts) 오름차순으로 누적잔액 계산. 동시각이면 전표 먼저(매출 가산 후 수금 차감).
       //  그래도 동률이면 **번호순**으로 못 박는다 — 안 그러면 읽어온 순서를 그대로 쓰게 돼
@@ -2231,12 +2268,16 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       let running = 0;
       evs.forEach(e => {
         if (e.kind === 'stmt') {
-          running += e.s.totalAmount;
+          // 잔액에 얹는 건 **분개가 세운 채권·채무**다. 매출·매입은 전표 총액과 같고,
+          // 기초 이월(대체)도 제자리를 찾는다. 거래처 빚이 없는 대체는 0이라 잔액을 안 흔든다.
+          running += arap.get(e.s.id)?.delta ?? e.s.totalAmount;
           rows.push({ kind: 'stmt', data: e.s, cumul: running, dateKey: `${e.date}__${e.ts}`, ts: e.ts });
         } else {
           running -= e.amount;
           rows.push({ kind: 'pay', partnerId: e.src.partnerId, partnerName: e.src.partnerName,
-            stmtType: e.src.type as '매출' | '매입', date: e.date, amount: e.amount, method: e.method, note: e.note,
+            // 딱지는 묶음이 정한다 — 기초 이월(대체)이 맨 앞에 선 묶음이라도 '수금'은 수금이다
+            stmtType: side === '채무' ? '매입' : '매출', offset: e.entry?.dir === '대체',
+            date: e.date, amount: e.amount, method: e.method, note: e.note,
             paymentId: e.paymentId, cumul: running, dateKey: `${e.date}__${e.ts}`, ts: e.ts, src: e.src, entry: e.entry });
         }
       });
@@ -2259,7 +2300,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       });
     });
     return rows;
-  }, [mergedStatements, cashEntries]);
+  }, [mergedStatements, cashEntries, arapOf]);
 
   const filteredHistory = useMemo((): TimelineRow[] => {
     return allTimelineRows
@@ -3167,7 +3208,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   // ── 수금/지불 행 ──
                   // 라벨은 수금·지불(무슨 돈인지 알아야 하니까). 다만 분류는 자금(입금·출금)이라
                   // 수익·비용 탭에는 안 뜬다 — 매출·매입은 전표 끊을 때 이미 잡혔기 때문.
-                  const label = row.stmtType === '매출' ? '수금' : '지불';
+                  const label = row.offset ? '상계' : row.stmtType === '매출' ? '수금' : '지불';
                   const cumul = row.cumul;
                   const payEntry = row.entry;
                   return (
@@ -3353,7 +3394,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 );
               }
               if (row.kind === 'pay') {
-                const label = row.stmtType === '매출' ? '수금' : '지불';
+                const label = row.offset ? '상계' : row.stmtType === '매출' ? '수금' : '지불';
                 const cumul = row.cumul;
                 const memo = [row.method, row.note].filter(Boolean).join(' · ');
                 return (
