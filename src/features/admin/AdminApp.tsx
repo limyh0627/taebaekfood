@@ -369,8 +369,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
     const map = new Map<string, import('../../shared/types').RawMaterialEntry>();
     extraRawMaterialLedger.forEach(e => map.set(e.id, e));
     rawMaterialLedger.forEach(e => map.set(e.id, e));
-    return Array.from(map.values());
-  }, [rawMaterialLedger, extraRawMaterialLedger]);
+    // 원료 입출고도 회사별 — 풍회 창고에서 짠 깨분이 태백 수불부에 뜨면 안 된다
+    return Array.from(map.values()).filter(e => companyOf(e) === companyId);
+  }, [rawMaterialLedger, extraRawMaterialLedger, companyId]);
 
   // 생산작업기록부/2 는 '배송일' 기준 월 조회인데 orders는 '생성일(createdAt)' 창으로 잘림 →
   //   6월말 생성·7월초 배송 같은 경계 주문이 창 밖으로 빠져 누락. 해당 월 배송을 커버하도록
@@ -448,6 +449,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
       partnerIds: productClientMap.get(p.id) ?? [],
     })),
     [products, submaterials, productClientMap]
+  );
+
+  /**
+   * 회사별 품목 — **재고를 보는 화면**이 쓰는 목록.
+   *
+   * BOM·주문·원가 엔진은 전체(allItems)를 그대로 쓴다. 구성품을 회사로 거르면
+   * 남의 회사 품목을 물고 있는 BOM이 통째로 끊긴다 — 거기서 회사는 뜻이 없다.
+   * 회사가 뜻을 갖는 건 "지금 이 창고에 뭐가 얼마 있나"를 셀 때뿐이다.
+   */
+  const companyItems = useMemo(
+    () => allItems.filter(i => companyOf(i) === companyId),
+    [allItems, companyId],
   );
 
   // 수율(반제품 생산) 규칙 — 원재료(seed) → 파생 반제품 + 수율. item_formula에서 '부모가 원료홀더'인 행을 읽음.
@@ -961,11 +974,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
       if (!item.isResellable) continue;
       const product = allItems.find(p => p.id === item.itemId);
       if (!product) continue;
-      const target = rawLotTarget(allItems, product, product.name);
+      const target = rawLotTarget(allItems, product, product.name, companyId);
       if (target) {
         // 원료 반품 재입고: 입고 로트 + 수불부 (stock 직접 X)
         const nowIso = new Date().toISOString();
-        await recordRawMaterialReceipt({ allItems, product, itemName: product.name, quantity: item.quantity, unit: product.unit, partnerName: '반품', dateStr: nowIso.slice(0, 10), nowIso, addedBy: currentUser?.name });
+        await recordRawMaterialReceipt({ companyId, allItems, product, itemName: product.name, quantity: item.quantity, unit: product.unit, partnerName: '반품', dateStr: nowIso.slice(0, 10), nowIso, addedBy: currentUser?.name });
       } else {
         const col = getProductCollection(product.category as string);
         await updateItem(col, product.id, { stock: product.stock + item.quantity });
@@ -1064,12 +1077,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
     for (const line of poLines(po)) {
       const product = allItems.find(p => p.id === line.itemId);
       if (!product) continue;
-      const isRawLinked = !!rawLotTarget(allItems, product, product.name);
+      const isRawLinked = !!rawLotTarget(allItems, product, product.name, companyId);
       if (isRawLinked) {
         // 원료 로트가 재고를 소유 → SKU stock 누적 안 하고 로트+수불부로 기록
         try {
-          await recordRawMaterialReceipt({
-            allItems, product, itemName: product.name, quantity: line.quantity, unit: product.unit,
+          await recordRawMaterialReceipt({ companyId, allItems, product, itemName: product.name, quantity: line.quantity, unit: product.unit,
             partnerId: po.partnerId, partnerName: po.partnerName || '거래처', dateStr, nowIso, poId: id, addedBy: currentUser?.name,
           });
         } catch (err) {
@@ -1134,10 +1146,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
     for (const line of newPoItems) {
       const product = allItems.find(p => p.id === line.itemId);
       if (!product) continue;
-      if (rawLotTarget(allItems, product, product.name)) {
+      if (rawLotTarget(allItems, product, product.name, companyId)) {
         try {
-          await recordRawMaterialReceipt({
-            allItems, product, itemName: product.name, quantity: line.quantity, unit: product.unit,
+          await recordRawMaterialReceipt({ companyId, allItems, product, itemName: product.name, quantity: line.quantity, unit: product.unit,
             partnerId: po.partnerId, partnerName: po.partnerName || '거래처', dateStr: dateStr2, nowIso: nowIso2, poId, addedBy: currentUser?.name,
           });
         } catch (err) {
@@ -1704,7 +1715,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <>
             <BomIntegrityPanel items={allItems} itemFormulas={itemFormulas} />
             <ItemList
-              items={allItems}
+              items={companyItems}
               orders={allOrders}
               onUpdateItem={async (p) => {
                 await updateItem(getProductCollection(p.category), p.id, p);
@@ -2169,13 +2180,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 }
                 const product = allItems.find(p => p.id === req.itemId);
                 if (req.type === 'quantity_change' && product && req.requestedQuantity !== undefined) {
-                  const target = rawLotTarget(allItems, product, product.name);
+                  const target = rawLotTarget(allItems, product, product.name, companyId);
                   if (target) {
                     // 원료: 목표수량으로 lot 조정 (stock 직접 X)
                     // 요청 수량은 직원이 화면 단위(기름=L)로 넣은 값 → 저장 단위 kg으로
                     const reqKg = product.density ? req.requestedQuantity * product.density : req.requestedQuantity;
                     const deltaKg = reqKg - lotKgRemaining(product.lots);
-                    await adjustRawLots({ material: target.baseName, rawItemId: target.rawItem.id, deltaKg, date: new Date().toISOString().slice(0, 10), note: '재고조정', addedBy: currentUser?.name });
+                    await adjustRawLots({ companyId, material: target.baseName, rawItemId: target.rawItem.id, deltaKg, date: new Date().toISOString().slice(0, 10), note: '재고조정', addedBy: currentUser?.name });
                     setLedgerReloadKey(k => k + 1);
                   } else {
                     await updateItem('items', req.itemId, { stock: req.requestedQuantity });
@@ -4109,11 +4120,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   const collectionName = getProductCollection(product.category);
                   if (req.type === 'quantity_change') {
                     // 수량 변동 승인 시, 요청된 수량만큼 재고에 더함
-                    const target = rawLotTarget(allItems, product, product.name);
+                    const target = rawLotTarget(allItems, product, product.name, companyId);
                     if (target) {
                       // 요청 수량은 화면 단위(기름=L) → 저장 단위 kg으로
                       const addKg = product.density ? (req.requestedQuantity || 0) * product.density : (req.requestedQuantity || 0);
-                      await adjustRawLots({ material: target.baseName, rawItemId: target.rawItem.id, deltaKg: addKg, date: new Date().toISOString().slice(0, 10), note: '재고조정', addedBy: currentUser?.name });
+                      await adjustRawLots({ companyId, material: target.baseName, rawItemId: target.rawItem.id, deltaKg: addKg, date: new Date().toISOString().slice(0, 10), note: '재고조정', addedBy: currentUser?.name });
                       setLedgerReloadKey(k => k + 1);
                     } else {
                       await updateItem(collectionName, req.itemId, { stock: product.stock + (req.requestedQuantity || 0) });

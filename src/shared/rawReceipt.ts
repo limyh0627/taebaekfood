@@ -2,7 +2,8 @@
  * 매입 입고 → 원료(raw) 로트 + 수불부 기록 공용 로직.
  * 스캔 입고·선입고·발주 입고확인 등 모든 입고 경로에서 동일하게 사용한다.
  */
-import type { Item } from './types';
+import type { CompanyId, Item } from './types';
+import { companyOf } from './types';
 import { addItem, mutateRawMaterialLots } from './services/firebaseService';
 import { RM_LIST, DENSITY, baseRawName, parsePackageKg, lotStockInUnit } from '../constants/formula';
 import { withCarryOverLot, buildReceiveLot, receiptToKg, nextLotNo, deductFromLots, settleCarryOver } from './lotUtils';
@@ -11,11 +12,23 @@ import { withCarryOverLot, buildReceiveLot, receiptToKg, nextLotNo, deductFromLo
  * 입고 품목이 어느 원료(raw)에 귀속되는지 해석. RM_LIST에 없거나 대상 raw 품목이 없으면 null.
  * 별도 raw 품목 우선, 없으면 입고품목 자체가 raw면 그것.
  */
-export function rawLotTarget(allItems: Item[], product: Item | undefined, itemName: string): { baseName: string; rawItem: Item } | null {
+export function rawLotTarget(
+  allItems: Item[],
+  product: Item | undefined,
+  itemName: string,
+  /**
+   * 어느 회사 창고로 들어가나. 같은 원료를 두 회사가 각자 들고 있으면(깨분처럼)
+   * 이걸 안 넘길 때 **먼저 걸리는 쪽**으로 들어가 남의 회사 로트가 늘어난다.
+   * 안 넘기면 예전대로 이름만 보고 고른다.
+   */
+  companyId?: CompanyId,
+): { baseName: string; rawItem: Item } | null {
   const baseName = product?.rawMaterialName || baseRawName(itemName);
   if (!RM_LIST.includes(baseName)) return null;
   const isHolder = (c?: string, u?: string) => c === 'raw' || (c === 'wip' && u !== '개');
-  const rawItem = allItems.find(i => isHolder(i.category, i.unit) && baseRawName(i.name) === baseName)
+  const holders = allItems.filter(i => isHolder(i.category, i.unit) && baseRawName(i.name) === baseName);
+  const rawItem = (companyId ? holders.find(i => companyOf(i) === companyId) : undefined)
+               ?? holders[0]
                ?? (isHolder(product?.category, product?.unit) ? product : undefined);
   return rawItem ? { baseName, rawItem } : null;
 }
@@ -38,9 +51,11 @@ export async function recordRawMaterialReceipt(opts: {
   nowIso: string;
   poId?: string;
   addedBy?: string;
+  /** 어느 회사 창고로 들어가나. 로트를 고를 때도, 원장 줄에 박을 때도 쓴다. */
+  companyId?: CompanyId;
 }): Promise<{ recorded: boolean; baseName?: string; kgIn?: number; lotted?: boolean }> {
-  const { allItems, product, itemName, quantity, unit, partnerId, partnerName, dateStr, nowIso, poId, addedBy } = opts;
-  const target = rawLotTarget(allItems, product, itemName);
+  const { allItems, product, itemName, quantity, unit, partnerId, partnerName, dateStr, nowIso, poId, addedBy, companyId } = opts;
+  const target = rawLotTarget(allItems, product, itemName, companyId);
   if (!target) return { recorded: false };
   const { baseName, rawItem } = target;
 
@@ -70,6 +85,7 @@ export async function recordRawMaterialReceipt(opts: {
   await addItem('rawMaterialLedger', {
     id: `rm-rcv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     material: baseName,
+    ...(companyId ? { companyId } : {}),
     date: dateStr,
     received: kgIn,
     used: 0,
@@ -109,8 +125,10 @@ export async function adjustRawLots(opts: {
    * 그래서 OEM 외주출고 1,500kg이 사용에 안 잡히고 그날 입고가 두 줄로 갈렸다.
    */
   ledgerType?: 'auto' | 'manual' | 'correction';
+  /** 어느 회사 창고인가 — 안 박으면 그 회사 수불부에서 사라진다 */
+  companyId?: CompanyId;
 }): Promise<void> {
-  const { material, rawItemId, deltaKg, date, note, addedBy, ledger = true, ledgerType = 'correction' } = opts;
+  const { material, rawItemId, deltaKg, date, note, addedBy, ledger = true, ledgerType = 'correction', companyId } = opts;
   if (Math.abs(deltaKg) < 0.0001) return;
   await mutateRawMaterialLots(
     rawItemId,
@@ -128,7 +146,7 @@ export async function adjustRawLots(opts: {
   if (ledger) {
     await addItem('rawMaterialLedger', {
       id: `rm-adj-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      material, date,
+      material, date, ...(companyId ? { companyId } : {}),
       received: deltaKg > 0 ? deltaKg : 0,
       used: deltaKg < 0 ? -deltaKg : 0,
       note, type: ledgerType, unit: 'kg', addedBy,
