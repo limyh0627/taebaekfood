@@ -30,77 +30,72 @@ const GROUPS: AccountGroup[] = [
   { id: 'ag-liability', name: '부채', type: '부채' },
 ] as AccountGroup[];
 
-// 화면과 같은 식 — 대분류는 **하나만** 돌려준다(계층이 섞이면 안 된다)
+// 화면과 같은 식 — 판이 다른 셋을 각자의 근거로 가른다
 const groupOf = (code: string) => GROUPS.find(x => x.id === CODES.find(c => c.code === code)?.groupId);
-const bucketOf = (code: string): string | null => {
-  const g = groupOf(code);
-  const t = CODES.find(c => c.code === code)?.type;
-  if (g?.plLine === 'revenue' || (!g?.plLine && t === '수익')) return '매출';
-  if (g?.plLine === 'cogs' || g?.plLine === 'sgna' || g?.plLine === 'other-expense'
-      || (!g?.plLine && t === '비용')) return '비용';
-  if (t === '자산' || t === '부채' || t === '자본') return '자산·부채';
-  return null;
+const typeOf  = (code: string) => CODES.find(c => c.code === code)?.type;
+/** 손익 계정인가 — 그룹의 plLine이 먼저, 없으면 계정 5분류 폴백 */
+const isPl = (code: string) => !!groupOf(code)?.plLine || typeOf(code) === '수익' || typeOf(code) === '비용';
+/** 재무 계정인가 */
+const bsType = (code: string) => {
+  const t = typeOf(code);
+  return t === '자산' || t === '부채' || t === '자본' ? t : null;
 };
-/** 전표 하나 — 줄 중 하나라도 걸리면 잡힌다 */
-const hits = (codes: string[], bucket: string) => codes.some(c => bucketOf(c) === bucket);
-const hitsGroup = (codes: string[], name: string) => codes.some(c => groupOf(c)?.name === name);
+const anyPl    = (codes: string[]) => codes.some(isPl);
+const anyBs    = (codes: string[]) => codes.some(c => !!bsType(c));
+const inGroup  = (codes: string[], name: string) => codes.some(c => groupOf(c)?.name === name);
+const inBsType = (codes: string[], t: string) => codes.some(c => bsType(c) === t);
 
-describe('계층이 안 섞인다', () => {
+describe('판이 다른 셋으로 가른다', () => {
   /**
    * 전에는 매출·비용·인건비·자산부채를 한 줄에 나란히 뒀다. 잘못이었다 —
-   * 인건비는 비용의 **하위**고, 자산·부채는 손익이 아니라 재무상태표다.
-   * 나란히 두면 [비용]과 [인건비]가 배타적으로 보이는데 실제로는 포함 관계다.
+   * 인건비는 비용의 **하위**(노무비 그룹)고, 자산·부채는 손익이 아니라 재무상태표다.
    */
-  it('대분류는 셋 — 매출·비용·자산·부채', () => {
-    const all = ['800', '515', '951', '254', '293'].map(bucketOf);
-    expect(new Set(all.filter(Boolean))).toEqual(new Set(['매출', '비용', '자산·부채']));
+  it('손익 계정과 재무 계정은 서로 안 겹친다', () => {
+    expect(isPl('515')).toBe(true);   expect(bsType('515')).toBeNull();
+    expect(isPl('254')).toBe(false);  expect(bsType('254')).toBe('부채');
   });
 
-  it('계정 하나는 대분류 하나에만 든다', () => {
-    expect(bucketOf('515')).toBe('비용');      // 인건비이면서 비용이 아니라, 비용이다
-    expect(bucketOf('254')).toBe('자산·부채');
-  });
-
-  it('인건비는 비용 아래 중분류(노무비 그룹)다', () => {
-    expect(bucketOf('515')).toBe('비용');
+  it('인건비는 손익 › 노무비다 — 나란한 갈래가 아니다', () => {
+    expect(isPl('515')).toBe(true);
     expect(groupOf('515')?.name).toBe('노무비');
-    expect(hitsGroup(['515'], '노무비')).toBe(true);
-    expect(hitsGroup(['951'], '노무비')).toBe(false);
+    expect(inGroup(['951'], '노무비')).toBe(false);
   });
 });
 
 describe('번호대로 가르면 틀린다', () => {
   it('800번대에 매출과 비용이 같이 있다', () => {
-    expect(bucketOf('800')).toBe('매출');
-    expect(bucketOf('818')).toBe('비용');   // 같은 800번대인데 비용
-    expect(bucketOf('819')).toBe('비용');
+    expect(groupOf('800')?.plLine).toBe('revenue');
+    expect(groupOf('818')?.plLine).toBe('sgna');    // 같은 800번대인데 비용
+    expect(groupOf('819')?.plLine).toBe('sgna');
   });
 });
 
 describe('복합 전표도 안 빠진다', () => {
-  const 대출상환 = ['293', '951'];         // 출금전표 · 차입금 + 이자비용
-  const 급여발생 = ['515', '254', '263'];   // 대체전표 · 급여 + 예수금 + 미지급급여
+  const 대출상환 = ['293', '951'];         // 출금전표 · 차입금(재무) + 이자비용(손익)
+  const 급여발생 = ['515', '254', '263'];   // 대체전표 · 급여(손익) + 예수금·미지급급여(재무)
 
-  it('대출상환이 비용에 잡힌다 — 이자비용 줄 때문에', () => {
-    expect(hits(대출상환, '비용')).toBe(true);
+  it('대출상환은 손익에도 재무에도 잡힌다 — 줄이 둘 다 품는다', () => {
+    expect(anyPl(대출상환)).toBe(true);
+    expect(anyBs(대출상환)).toBe(true);
   });
 
-  it('대출상환이 자산·부채에도 잡힌다 — 차입금 줄 때문에', () => {
-    expect(hits(대출상환, '자산·부채')).toBe(true);
+  it('손익 › 영업외비용으로 좁히면 잡히고, 노무비로 좁히면 안 잡힌다', () => {
+    expect(inGroup(대출상환, '영업외비용')).toBe(true);
+    expect(inGroup(대출상환, '노무비')).toBe(false);
   });
 
-  it('대출상환을 비용 › 영업외비용으로 좁히면 잡히고, 노무비로 좁히면 안 잡힌다', () => {
-    expect(hitsGroup(대출상환, '영업외비용')).toBe(true);
-    expect(hitsGroup(대출상환, '노무비')).toBe(false);
+  it('재무 › 부채로 좁히면 잡힌다', () => {
+    expect(inBsType(대출상환, '부채')).toBe(true);
+    expect(inBsType(대출상환, '자산')).toBe(false);
   });
 
-  it('급여 발생이 비용 › 노무비에 잡힌다 — 대체전표인데도', () => {
-    expect(hits(급여발생, '비용')).toBe(true);
-    expect(hitsGroup(급여발생, '노무비')).toBe(true);
+  it('급여 발생이 손익 › 노무비에 잡힌다 — 대체전표인데도', () => {
+    expect(anyPl(급여발생)).toBe(true);
+    expect(inGroup(급여발생, '노무비')).toBe(true);
   });
 
-  it('매출전표는 비용이 아니다', () => {
-    expect(hits(['800'], '비용')).toBe(false);
-    expect(hits(['800'], '매출')).toBe(true);
+  it('매출전표는 재무가 아니다', () => {
+    expect(anyPl(['800'])).toBe(true);
+    expect(anyBs(['800'])).toBe(false);
   });
 });

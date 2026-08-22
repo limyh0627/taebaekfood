@@ -116,6 +116,13 @@ const matchKo = (name: string, q: string) => {
   return false;
 };
 
+/** 분류 대분류 색 — Tailwind은 클래스명을 조립하면 못 알아보므로 정적 문자열로 둔다 */
+const AXIS_CLS: Record<string, string> = {
+  '손익': 'bg-rose-600 text-white border-rose-600',
+  '재무': 'bg-teal-600 text-white border-teal-600',
+  '자금흐름': 'bg-indigo-600 text-white border-indigo-600',
+};
+
 const fmt = (n: number) => n.toLocaleString('ko-KR');
 
 /**
@@ -834,47 +841,54 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     return row.dir === '입금' ? '입금' : '출금';
   }, []);
 
-  const [histTypeFilter, setHistTypeFilter] = useState<'전체' | VoucherKind>('전체');
+  /*
+   * 갈래(매출·매입·대체·입금·출금)는 **필터가 아니라 표시**다.
+   *
+   * 갈래로 거르면 복합 전표가 통째로 빠진다 — 대출상환은 출금전표인데 안에 이자비용이 있고,
+   * 급여 발생은 대체전표인데 인건비다. "이번 달 나간 비용"을 갈래로 찾으면 못 찾는다.
+   * 무엇을 찾을 때 쓰는 건 **성격(줄의 계정)**이고, 갈래는 행의 배지로만 보여준다.
+   */
   /**
-   * 성격 — **갈래와 다른 축**이고, 그 자체가 **두 계층**이다.
+   * 전표를 무엇으로 찾을 것인가 — **대분류 → 중분류 두 단**이다.
    *
-   *   갈래   어떻게 끊었나 (매출·매입·대체·입금·출금)
-   *   성격   무슨 돈인가
-   *            대분류  매출 · 비용 · 자산·부채
-   *            중분류  비용 아래 — 재료비 · 노무비 · 제조경비 · 판관비 · 영업외
+   *   손익      매출 · 재료비 · 노무비 · 제조경비 · 판관비 · 영업외    (계정그룹)
+   *   재무      자산 · 부채 · 자본                                (계정 5분류)
+   *   자금흐름   입금 · 출금 · 대체                                (전표 갈래)
    *
-   * 한 줄에 매출·비용·인건비·자산부채를 나란히 뒀던 게 잘못이었다. 인건비는 비용의
-   * **하위**고, 자산·부채는 손익이 아니라 재무상태표라 판이 아예 다르다.
-   * 같은 줄에 두면 [비용]과 [인건비]가 배타적으로 보이는데 실제로는 포함 관계다.
+   * 셋은 **판이 다르다.** 손익은 손익계산서, 재무는 재무상태표, 자금흐름은 통장이 움직인
+   * 방향이다. 한 줄에 매출·비용·인건비·자산부채를 나란히 뒀던 게 잘못이었다 —
+   * 인건비는 비용의 하위(노무비 그룹)고, 자산·부채는 손익이 아니다.
    *
-   * 갈래만으로는 "이번 달 나간 비용 전부"를 못 본다 — 대출상환은 출금전표인데 안에
-   * 이자비용이 있고, 급여 발생은 대체전표인데 인건비다. **전표 머리가 아니라 줄의 계정**을 본다.
+   * 손익·재무는 **줄의 계정**으로 거른다. 전표 머리로 보면 복합 전표가 통째로 빠진다 —
+   * 대출상환은 출금전표인데 안에 이자비용(손익)과 차입금(재무)이 같이 있다.
    *
    * 계정 번호대(400번대=매출 같은)로 가르지 않는다 — 우리 장부는 800번대에 매출(800·805)과
    * 비용(818 감가상각비·819 리스료)이 같이 있다. 계정그룹이 유일하게 맞는 근거다.
    */
-  const [histBucket, setHistBucket] = useState<'전체' | '매출' | '비용' | '자산·부채'>('전체');
-  /** 비용 아래 중분류 — 계정그룹 이름 그대로. 그룹을 새로 만들면 저절로 늘어난다. */
-  const [histSubGroup, setHistSubGroup] = useState<string>('전체');
+  const [histAxis, setHistAxis] = useState<'전체' | '손익' | '재무' | '자금흐름'>('전체');
+  const [histSub, setHistSub] = useState<string>('전체');
   const [histSearch, setHistSearch] = useState('');
   const groupOfCode = useCallback(
     (code?: string) => accountGroups.find(x => x.id === accountCodes.find(c => c.code === code)?.groupId),
     [accountCodes, accountGroups]);
-  /** 계정 하나의 대분류. 그룹의 plLine이 먼저고, 없으면 계정 5분류로 폴백한다. */
-  const bucketOfCode = useCallback((code?: string): string | null => {
-    if (!code) return null;
+  /** 손익 계정인가 — 그룹의 plLine이 먼저고, 없으면 계정 5분류로 폴백한다 */
+  const isPlCode = useCallback((code?: string) => {
     const g = groupOfCode(code);
-    const t = codeType.get(code);
-    if (g?.plLine === 'revenue' || (!g?.plLine && t === '수익')) return '매출';
-    if (g?.plLine === 'cogs' || g?.plLine === 'sgna' || g?.plLine === 'other-expense'
-        || (!g?.plLine && t === '비용')) return '비용';
-    if (t === '자산' || t === '부채' || t === '자본') return '자산·부채';
-    return null;
+    if (g?.plLine) return true;
+    const t = codeType.get(code ?? '');
+    return t === '수익' || t === '비용';
   }, [groupOfCode, codeType]);
-  /** 비용 아래에 실제로 있는 그룹들 — 목록을 손으로 적지 않는다 */
-  const costGroups = useMemo(() => [...new Set(accountGroups
-    .filter(g => g.plLine === 'cogs' || g.plLine === 'sgna' || g.plLine === 'other-expense')
-    .map(g => g.name))], [accountGroups]);
+  /** 재무 계정인가 */
+  const bsTypeOf = useCallback((code?: string) => {
+    const t = codeType.get(code ?? '');
+    return t === '자산' || t === '부채' || t === '자본' ? t : null;
+  }, [codeType]);
+  /** 중분류 목록 — 손익은 계정그룹에서 뽑는다. 그룹을 새로 만들면 저절로 늘어난다. */
+  const SUBS = useMemo(() => ({
+    '손익': [...new Set(accountGroups.filter(g => g.plLine).map(g => g.name))],
+    '재무': ['자산', '부채', '자본'],
+    '자금흐름': ['입금', '출금', '대체'],
+  } as Record<string, string[]>), [accountGroups]);
   /** 그 줄들에 들어간 계정 전부 — 복합 전표라도 하나만 걸리면 잡힌다 */
   const rowCodes = useCallback((row: TimelineRow): string[] => {
     if (row.kind === 'stmt') return (row.data.items ?? []).map(i => i.accountCode ?? '').filter(Boolean);
@@ -2153,12 +2167,20 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         if (histTo   && d > histTo)   return false;
         // rowKind가 이미 다섯 갈래라 그대로 견준다 — 예전엔 여기서 수금→입금으로 또 옮겨
         // 매핑이 두 군데에 있었고, 한쪽만 고치면 엉뚱한 탭이 걸렸다.
-        if (histTypeFilter !== '전체' && rowKind(row) !== histTypeFilter) return false;
-        // 성격은 **줄의 계정**으로 본다 — 전표 머리로 보면 복합 전표가 통째로 빠진다
+        // 손익·재무는 **줄의 계정**으로 본다 — 전표 머리로 보면 복합 전표가 통째로 빠진다
         const codes = rowCodes(row);
-        if (histBucket !== '전체' && !codes.some(c => bucketOfCode(c) === histBucket)) return false;
-        if (histBucket === '비용' && histSubGroup !== '전체'
-            && !codes.some(c => groupOfCode(c)?.name === histSubGroup)) return false;
+        if (histAxis === '손익') {
+          if (!codes.some(isPlCode)) return false;
+          if (histSub !== '전체' && !codes.some(c => groupOfCode(c)?.name === histSub)) return false;
+        } else if (histAxis === '재무') {
+          if (!codes.some(c => bsTypeOf(c))) return false;
+          if (histSub !== '전체' && !codes.some(c => bsTypeOf(c) === histSub)) return false;
+        } else if (histAxis === '자금흐름') {
+          // 통장이 움직인 방향 — 이건 줄이 아니라 전표 갈래가 정한다
+          const k = rowKind(row);
+          if (k === '매출' || k === '매입') return false;
+          if (histSub !== '전체' && k !== histSub) return false;
+        }
         if (histSearch.trim()) {
           const q = histSearch.toLowerCase();
           // 계정과목·품목까지 검색 대상 — "이자"로 이번 달 이자비용만 뽑아보려면 이게 있어야 한다.
@@ -2187,10 +2209,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         return issuedMs(ida) - issuedMs(idb)
           || String(ida).localeCompare(String(idb), undefined, { numeric: true });
       }); // 오래된→최신
-  }, [allTimelineRows, histFrom, histTo, histTypeFilter, histBucket, histSubGroup, histSearch, codeType, codeName, classifyRow, rowKind, rowCodes, bucketOfCode, groupOfCode]);
+  }, [allTimelineRows, histFrom, histTo, histAxis, histSub, histSearch, codeType, codeName, classifyRow, rowKind, rowCodes, isPlCode, bsTypeOf, groupOfCode]);
 
   // 페이지네이션: 필터 변경 시 1페이지로 리셋, 최신 페이지부터 보여줌
-  useEffect(() => { setHistoryPage(1); }, [histFrom, histTo, histTypeFilter, histSearch]);
+  useEffect(() => { setHistoryPage(1); }, [histFrom, histTo, histAxis, histSub, histSearch]);
   const historyTotalPages = Math.max(1, Math.ceil(filteredHistory.length / HIST_PAGE_SIZE));
   const pagedHistory = useMemo(() => {
     // 최신순(역방향)으로 표시하기 위해 뒤에서부터 슬라이싱
@@ -2778,51 +2800,31 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           </div>
         </div>
         <div className="border-t border-slate-100"/>
-        {/* 2행: 유형 + 검색 + 건수 */}
+        {/* 2행: 성격 + 검색 + 건수 — 갈래는 행의 배지로만 본다 */}
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-10 shrink-0">유형</span>
-          {/* 값과 라벨을 같게 둔다 — 예전엔 값 '매입'에 라벨 '비용', 값 '비용'에 라벨 '대체'라
-              필터 조건을 손볼 때마다 엉뚱한 탭이 걸렸다. classifyRow가 이 값 그대로 판정한다. */}
-          {(['전체','매출','매입','대체','입금','출금'] as const).map(val => (
-            <button key={val} onClick={()=>setHistTypeFilter(val)}
-              className={`px-3.5 py-1.5 rounded-lg text-[11px] font-black border transition-all ${
-                histTypeFilter===val
-                  ? val==='매출' ? 'bg-blue-600 text-white border-blue-600'
-                    : val==='매입' ? 'bg-rose-600 text-white border-rose-600'
-                    : val==='입금' ? 'bg-emerald-600 text-white border-emerald-600'
-                    : val==='출금' ? 'bg-slate-600 text-white border-slate-600'
-                    : val==='대체' ? 'bg-amber-500 text-white border-amber-500'
-                    : 'bg-slate-700 text-white border-slate-700'
-                  : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400 hover:text-slate-600'
-              }`}>{val}</button>
-          ))}
-          <span className="w-px h-4 bg-slate-200 mx-1"/>
           {/* 성격 — 줄의 계정으로 거른다. 갈래와 다른 축이라 같이 걸 수 있다.
               "출금 + 비용"이면 이번 달 비용으로 나간 돈만 남는다. */}
-          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest shrink-0">성격</span>
-          {(['전체','매출','비용','자산·부채'] as const).map(val => (
-            <button key={val} onClick={()=>{ setHistBucket(val); if (val !== '비용') setHistSubGroup('전체'); }}
-              title={val === '전체' ? undefined : '전표 줄에 이 성격의 계정이 하나라도 있으면 나옵니다'}
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-10 shrink-0">분류</span>
+          {/* 대분류 — 판이 다른 셋. 손익계산서 / 재무상태표 / 통장이 움직인 방향. */}
+          {(['전체','손익','재무','자금흐름'] as const).map(val => (
+            <button key={val} onClick={()=>{ setHistAxis(val); setHistSub('전체'); }}
               className={`px-3 py-1.5 rounded-lg text-[11px] font-black border transition-all ${
-                histBucket===val
-                  ? val==='매출' ? 'bg-blue-600 text-white border-blue-600'
-                    : val==='비용' ? 'bg-rose-600 text-white border-rose-600'
-                    : val==='자산·부채' ? 'bg-teal-600 text-white border-teal-600'
-                    : 'bg-slate-700 text-white border-slate-700'
+                histAxis===val
+                  ? (AXIS_CLS[val] ?? 'bg-slate-700 text-white border-slate-700')
                   : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400 hover:text-slate-600'
               }`}>{val}</button>
           ))}
-          {/* 비용 아래 중분류 — **비용을 골랐을 때만** 뜬다. 인건비(노무비)는 비용의 하위지
-              나란한 갈래가 아니다. 목록은 계정그룹에서 뽑으므로 그룹을 만들면 저절로 늘어난다. */}
-          {histBucket === '비용' && (
+          {/* 중분류 — 대분류를 고르면 그 아래만 뜬다. 손익 목록은 계정그룹에서 뽑으므로
+              그룹을 새로 만들면 저절로 늘어난다. 인건비는 여기 '노무비'다. */}
+          {histAxis !== '전체' && (
             <>
               <span className="text-slate-300 text-[11px] font-black shrink-0">›</span>
-              {['전체', ...costGroups].map(g => (
-                <button key={g} onClick={()=>setHistSubGroup(g)}
+              {['전체', ...(SUBS[histAxis] ?? [])].map(g => (
+                <button key={g} onClick={()=>setHistSub(g)}
                   className={`px-2.5 py-1 rounded-lg text-[11px] font-black border transition-all ${
-                    histSubGroup===g
-                      ? 'bg-rose-500 text-white border-rose-500'
-                      : 'bg-white text-slate-400 border-slate-200 hover:border-rose-300 hover:text-rose-500'
+                    histSub===g
+                      ? 'bg-slate-600 text-white border-slate-600'
+                      : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400 hover:text-slate-600'
                   }`}>{g}</button>
               ))}
             </>
@@ -3302,21 +3304,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             </div>
           );
           // 탭이 보는 것의 합계만 띄운다 — 매출 탭에 지불 합계가 뜨면 뭘 보는 건지 흐려진다.
-          const showIncome = histTypeFilter === '전체' || histTypeFilter === '매출';
-          const showCost   = histTypeFilter === '전체' || histTypeFilter === '매입';
-          const showCash   = histTypeFilter === '전체' || histTypeFilter === '입금'
-            || histTypeFilter === '출금';
+          // 갈래 필터를 없앴으니 합계도 가릴 이유가 없다 — 보이는 목록의 합계를 그대로 띄운다
+          const showIncome = true, showCost = true, showCash = true;
           const anyPl = (showIncome && sale > 0) || (showCost && buy > 0);
           const anyCash = showCash && (histTotals.receiveSum > 0 || histTotals.paySum > 0);
           return (
             <div className="px-4 py-3 border-t border-slate-200 bg-slate-50/60 flex flex-wrap items-center justify-end gap-x-5 gap-y-1.5">
               {/* 발생 = 이번 기간에 생긴 손익, 현금 = 이번 기간에 오간 돈. 외상이 있는 한 둘은 안 맞는다. */}
-              {anyPl && histTypeFilter === '전체' && (
+              {anyPl && (
                 <span className="text-[9px] font-black text-slate-400 tracking-widest">발생</span>
               )}
               {showIncome && sale > 0 && cell('수익', sale, 'text-blue-600')}
               {showCost && buy > 0 && cell('비용', buy, 'text-rose-600')}
-              {anyCash && histTypeFilter === '전체' && (
+              {anyCash && (
                 <span className="text-[9px] font-black text-slate-400 tracking-widest border-l border-slate-200 pl-5">현금</span>
               )}
               {showCash && histTotals.receiveSum > 0 && cell('수금', histTotals.receiveSum, 'text-lime-600')}
