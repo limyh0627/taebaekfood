@@ -872,8 +872,15 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * 대출상환은 출금전표인데 안에 이자비용과 차입금이 같이 있다.
    */
   const [histKind, setHistKind] = useState<'전체' | VoucherKind>('전체');
-  /** 계정과목 필터 — '' | axis:손익 | axis:재무 | group:<id> | type:자산 | code:<코드> */
-  const [histAccount, setHistAccount] = useState<string>('');
+  /**
+   * 계정과목 필터 — **고를 때마다 한 층씩 내려간다.**
+   *   손익 고름 → 총매출·재료비·노무비… 가 뜬다
+   *   총매출 고름 → 800 일반매출·805 수입매출 이 뜬다
+   * 수십 개를 한 목록에 늘어놓으면 못 찾는다. 위층을 바꾸면 아래층은 비운다.
+   */
+  const [histAxis, setHistAxis] = useState<'' | '손익' | '재무'>('');
+  const [histGroup, setHistGroup] = useState('');   // 손익=그룹 id · 재무=자산/부채/자본
+  const [histCode, setHistCode] = useState('');
   const [histSearch, setHistSearch] = useState('');
   const groupOfCode = useCallback(
     (code?: string) => accountGroups.find(x => x.id === accountCodes.find(c => c.code === code)?.groupId),
@@ -895,62 +902,37 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     if (isPlCode(code)) return '손익';
     return bsTypeOf(code) ? '재무' : null;
   }, [isPlCode, bsTypeOf]);
-  /**
-   * 계정과목 드롭다운 목록 — 손익(계정그룹별) → 재무(5분류별).
-   * 손으로 안 적는다. 계정·그룹을 만들면 저절로 늘어난다.
-   */
-  const accountOptions = useMemo(() => {
-    const codes = [...accountCodes].sort((a, b) =>
-      String(a.code).localeCompare(String(b.code), undefined, { numeric: true }));
-    const out: { label: string; items: { value: string; text: string }[] }[] = [];
-    out.push({ label: '크게', items: [
-      { value: 'axis:손익', text: '손익 전체' },
-      { value: 'axis:재무', text: '재무 전체' },
-    ] });
-    for (const g of accountGroups.filter(x => x.plLine)) {
-      const mine = codes.filter(c => groupOfCode(c.code)?.id === g.id);
-      if (!mine.length) continue;
-      out.push({ label: `손익 › ${g.name}`, items: [
-        { value: `group:${g.id}`, text: `${g.name} 전체` },
-        ...mine.map(c => ({ value: `code:${c.code}`, text: `${c.code} ${c.name}` })),
-      ] });
-    }
-    for (const t of ['자산', '부채', '자본'] as const) {
-      const mine = codes.filter(c => c.type === t);
-      if (!mine.length) continue;
-      out.push({ label: `재무 › ${t}`, items: [
-        { value: `type:${t}`, text: `${t} 전체` },
-        ...mine.map(c => ({ value: `code:${c.code}`, text: `${c.code} ${c.name}` })),
-      ] });
-    }
-    return out;
-  }, [accountCodes, accountGroups, groupOfCode]);
-  /** 지금 고른 자리 — 드롭다운은 고른 항목 이름만 보여 줘서 어느 묶음인지 흐리다 */
-  const accountCrumb = useMemo(() => {
-    if (!histAccount) return '';
-    for (const g of accountOptions) {
-      const hit = g.items.find(o => o.value === histAccount);
-      if (hit) return g.label === '크게' ? hit.text : `${g.label} › ${hit.text}`;
-    }
-    return '';
-  }, [histAccount, accountOptions]);
+  /** 2층 — 손익이면 계정그룹, 재무면 자산·부채·자본. 손으로 안 적는다. */
+  const groupChoices = useMemo(() => {
+    if (histAxis === '손익') return accountGroups.filter(g => g.plLine).map(g => ({ id: g.id, name: g.name }));
+    if (histAxis === '재무') return ['자산', '부채', '자본'].map(t => ({ id: t, name: t }));
+    return [];
+  }, [histAxis, accountGroups]);
+  /** 3층 — 위에서 고른 묶음 안의 계정과목 */
+  const codeChoices = useMemo(() => {
+    if (!histAxis || !histGroup) return [];
+    const mine = accountCodes.filter(c => histAxis === '손익'
+      ? groupOfCode(c.code)?.id === histGroup
+      : c.type === histGroup);
+    return [...mine].sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }));
+  }, [accountCodes, histAxis, histGroup, groupOfCode]);
+  /** 지금 몇 층인가 — 드롭다운이 그 층의 목록을 띄운다 */
+  const acctLevel = !histAxis ? 0 : !histGroup ? 1 : 2;
   /**
    * 계정을 콕 집어 걸렀을 때 **그 계정 몫**이 얼마인가.
    *
    * 대출상환은 통장에서 3,064,357이 나가지만 그 안의 이자는 294,357이다.
-   * 이자비용으로 걸러 놓고 3,064,357을 보여 주면 손익과 안 맞아 보이고, 줄 합계도 안 맞는다.
-   * 크게(손익·재무) 거를 때는 몫을 가릴 뜻이 없으므로 전액 그대로 둔다.
+   * 이자비용으로 걸러 놓고 3,064,357을 보여 주면 손익과 안 맞아 보이고 줄 합계도 안 맞는다.
+   * 크게(손익·재무만) 거를 때는 몫을 가릴 뜻이 없으므로 전액 그대로 둔다.
    *
    * null이면 "전액을 그대로 보여라".
    */
   const accountPortion = useCallback((row: TimelineRow): number | null => {
-    if (!histAccount) return null;
-    const [kind, val] = histAccount.split(':');
-    if (kind === 'axis') return null;
+    if (!histAxis || !histGroup) return null;
     const hit = (c?: string) =>
-      kind === 'code' ? String(c) === val
-      : kind === 'group' ? groupOfCode(c)?.id === val
-      : kind === 'type' ? bsTypeOf(c) === val : false;
+      histCode ? String(c) === histCode
+      : histAxis === '손익' ? groupOfCode(c)?.id === histGroup
+      : bsTypeOf(c) === histGroup;
     if (row.kind === 'stmt') {
       const st = row.data;
       // 상대변(108·251)으로 걸렀으면 전표 총액이 그 계정 몫이다
@@ -962,17 +944,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       ? row.entry.lines
       : [{ accountCode: row.accountCode, amount: row.entry.amount }];
     return ls.filter(l => hit(l.accountCode)).reduce((a, l) => a + Math.abs(l.amount ?? 0), 0);
-  }, [histAccount, groupOfCode, bsTypeOf]);
-  /** 고른 계정 조건에 이 줄들이 걸리는가 */
+  }, [histAxis, histGroup, histCode, groupOfCode, bsTypeOf]);
+  /** 고른 계정 조건에 이 줄들이 걸리는가 — **가장 깊이 고른 것 하나만** 본다 */
   const matchAccount = useCallback((codes: string[]): boolean => {
-    if (!histAccount) return true;
-    const [kind, val] = histAccount.split(':');
-    if (kind === 'axis') return codes.some(c => axisOfCode(c) === val);
-    if (kind === 'group') return codes.some(c => groupOfCode(c)?.id === val);
-    if (kind === 'type') return codes.some(c => bsTypeOf(c) === val);
-    if (kind === 'code') return codes.some(c => String(c) === val);
-    return true;
-  }, [histAccount, axisOfCode, groupOfCode, bsTypeOf]);
+    if (!histAxis) return true;
+    if (histCode) return codes.some(c => String(c) === histCode);
+    if (histGroup) {
+      return histAxis === '손익'
+        ? codes.some(c => groupOfCode(c)?.id === histGroup)
+        : codes.some(c => bsTypeOf(c) === histGroup);
+    }
+    return codes.some(c => axisOfCode(c) === histAxis);
+  }, [histAxis, histGroup, histCode, axisOfCode, groupOfCode, bsTypeOf]);
   /**
    * 그 전표가 건드리는 계정 전부 — 복합 전표라도 하나만 걸리면 잡힌다.
    *
@@ -2273,7 +2256,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         // 매핑이 두 군데에 있었고, 한쪽만 고치면 엉뚱한 탭이 걸렸다.
         if (histKind !== '전체' && rowKind(row) !== histKind) return false;
         // 계정은 **줄**로 본다 — 전표 머리로 보면 복합 전표가 통째로 빠진다
-        if (histAccount && !matchAccount(rowCodes(row))) return false;
+        if (histAxis && !matchAccount(rowCodes(row))) return false;
         if (histSearch.trim()) {
           const q = histSearch.toLowerCase();
           // 계정과목·품목까지 검색 대상 — "이자"로 이번 달 이자비용만 뽑아보려면 이게 있어야 한다.
@@ -2302,10 +2285,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         return issuedMs(ida) - issuedMs(idb)
           || String(ida).localeCompare(String(idb), undefined, { numeric: true });
       }); // 오래된→최신
-  }, [allTimelineRows, histFrom, histTo, histKind, histAccount, histSearch, codeType, codeName, classifyRow, rowKind, rowCodes, matchAccount]);
+  }, [allTimelineRows, histFrom, histTo, histKind, histAxis, histGroup, histCode, histSearch, codeType, codeName, classifyRow, rowKind, rowCodes, matchAccount]);
 
   // 페이지네이션: 필터 변경 시 1페이지로 리셋, 최신 페이지부터 보여줌
-  useEffect(() => { setHistoryPage(1); }, [histFrom, histTo, histKind, histAccount, histSearch]);
+  useEffect(() => { setHistoryPage(1); }, [histFrom, histTo, histKind, histAxis, histGroup, histCode, histSearch]);
   const historyTotalPages = Math.max(1, Math.ceil(filteredHistory.length / HIST_PAGE_SIZE));
   const pagedHistory = useMemo(() => {
     // 최신순(역방향)으로 표시하기 위해 뒤에서부터 슬라이싱
@@ -2908,22 +2891,43 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             </select>
           </label>
 
-          {/* 계정과목 — 손익/재무 › 그룹 › 계정. 목록은 계정과목·그룹에서 뽑는다. */}
+          {/* 계정과목 — **고를 때마다 한 층씩 내려간다.**
+              손익 고르면 총매출·재료비…, 총매출 고르면 800 일반매출·805 수입매출.
+              수십 개를 한 목록에 늘어놓으면 못 찾는다. 숨길을 눌러 위층으로 돌아간다. */}
           <label className="flex items-center gap-1.5">
             <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">계정과목</span>
-            <select value={histAccount} onChange={e => setHistAccount(e.target.value)}
-              className={`${'border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] font-black bg-white text-slate-600 outline-none focus:ring-2 focus:ring-indigo-300 cursor-pointer'} max-w-[220px] ${histAccount ? 'border-indigo-300 text-indigo-700' : ''}`}>
+            <select
+              value={acctLevel === 0 ? histAxis : acctLevel === 1 ? histGroup : histCode}
+              onChange={e => {
+                const v = e.target.value;
+                if (acctLevel === 0) { setHistAxis(v as '' | '손익' | '재무'); setHistGroup(''); setHistCode(''); }
+                else if (acctLevel === 1) { setHistGroup(v); setHistCode(''); }
+                else setHistCode(v);
+              }}
+              className={`${'border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] font-black bg-white text-slate-600 outline-none focus:ring-2 focus:ring-indigo-300 cursor-pointer'} max-w-[200px] ${histAxis ? 'border-indigo-300 text-indigo-700' : ''}`}>
               <option value="">전체</option>
-              {accountOptions.map(g => (
-                <optgroup key={g.label} label={g.label}>
-                  {g.items.map(o => <option key={o.value} value={o.value}>{o.text}</option>)}
-                </optgroup>
-              ))}
+              {acctLevel === 0 && (['손익', '재무'] as const).map(v => <option key={v} value={v}>{v}</option>)}
+              {acctLevel === 1 && groupChoices.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+              {acctLevel === 2 && codeChoices.map(c => <option key={c.code} value={c.code}>{c.code} {c.name}</option>)}
             </select>
           </label>
-          {/* 고른 자리를 숨길로 — 드롭다운은 고른 항목 이름만 보여 줘서 어느 묶음인지 흐리다 */}
-          {histAccount && (
-            <span className="text-[11px] font-bold text-slate-400 truncate max-w-[240px]">{accountCrumb}</span>
+          {/* 숨길 — 어느 층에 있는지 보여주고, 눌러서 그 층으로 돌아간다 */}
+          {histAxis && (
+            <span className="flex items-center gap-1 text-[11px] font-black text-slate-400">
+              <button type="button" onClick={() => { setHistAxis(''); setHistGroup(''); setHistCode(''); }}
+                className="hover:text-slate-600">{histAxis}</button>
+              {histGroup && <>
+                <span className="text-slate-300">›</span>
+                <button type="button" onClick={() => setHistCode('')}
+                  className="hover:text-slate-600">
+                  {groupChoices.find(g => g.id === histGroup)?.name ?? histGroup}
+                </button>
+              </>}
+              {histCode && <>
+                <span className="text-slate-300">›</span>
+                <span className="text-indigo-600">{codeChoices.find(c => c.code === histCode)?.name ?? histCode}</span>
+              </>}
+            </span>
           )}
 
           <div className="relative flex-1 max-w-xs ml-1">
