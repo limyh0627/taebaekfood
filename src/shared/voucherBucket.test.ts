@@ -19,6 +19,8 @@ const CODES: AccountCode[] = [
   { id: '819', code: '819', name: '리스료', type: '비용', groupId: 'ag-admin' },
   { id: '515', code: '515', name: '급여', type: '비용', groupId: 'ag-labor' },
   { id: '951', code: '951', name: '이자비용', type: '비용', groupId: 'ag-other-expense' },
+  { id: '108', code: '108', name: '외상매출금', type: '자산', groupId: 'ag-asset' },
+  { id: '251', code: '251', name: '외상매입금', type: '부채', groupId: 'ag-liability' },
   { id: '254', code: '254', name: '예수금', type: '부채', groupId: 'ag-liability' },
   { id: '293', code: '293', name: '장기차입금', type: '부채', groupId: 'ag-liability' },
 ] as AccountCode[];
@@ -28,6 +30,7 @@ const GROUPS: AccountGroup[] = [
   { id: 'ag-labor', name: '노무비', type: '비용', plLine: 'cogs' },
   { id: 'ag-other-expense', name: '영업외비용', type: '비용', plLine: 'other-expense' },
   { id: 'ag-liability', name: '부채', type: '부채' },
+  { id: 'ag-asset', name: '자산', type: '자산' },
 ] as AccountGroup[];
 
 // 화면과 같은 식 — 판이 다른 셋을 각자의 근거로 가른다
@@ -133,4 +136,40 @@ describe('전표의 상대계정도 같이 센다', () => {
     const 안넣었을때 = ['800'];
     expect(안넣었을때.some(c => ['자산','부채','자본'].includes(typeOf(c) ?? ''))).toBe(false);
   });
+});
+
+
+describe('세 축은 겹치지만 묻는 게 다르다', () => {
+  /**
+   * 재무를 걸면 입금·출금 전표가 거의 다 나온다 — 자금전표는 대개 108·251·254를 쓰니까.
+   * 그래도 같은 축이 아니다:
+   *   재무      **무슨 계정**을 건드렸나   (재무상태표)
+   *   자금흐름   **통장이 어느 방향**으로 움직였나
+   *
+   * 대체는 자금흐름이 아니다 — 상계·감가상각·급여 발생은 돈이 안 흐른다.
+   */
+  const bs = (codes: string[]) => codes.some(c => !!bsType(c));
+  const pl = (codes: string[]) => codes.some(isPl);
+
+  it('이자 출금은 자금흐름이지만 재무가 아니다 — 951만 건드린다', () => {
+    expect(pl(['951'])).toBe(true);
+    expect(bs(['951'])).toBe(false);
+  });
+
+  it('상계(대체)는 재무지만 자금흐름이 아니다 — 통장이 안 움직인다', () => {
+    const 상계 = ['251', '108'];
+    expect(bs(상계)).toBe(true);
+    expect(pl(상계)).toBe(false);
+    // 갈래가 '대체'면 자금흐름에서 뺀다
+    const 자금흐름 = (kind: string) => kind === '입금' || kind === '출금';
+    expect(자금흐름('대체')).toBe(false);
+  });
+
+  it('매출전표는 재무지만 자금흐름이 아니다 — 외상이라 돈이 안 왔다', () => {
+    const 매출전표 = ['800', '108'];   // 상대계정 포함
+    expect(bs(매출전표)).toBe(true);
+    expect(자금흐름갈래('매출')).toBe(false);
+  });
+
+  function 자금흐름갈래(kind: string) { return kind === '입금' || kind === '출금'; }
 });

@@ -887,7 +887,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const SUBS: Record<string, string[]> = {
     '손익': ['매출', '비용'],
     '재무': ['자산', '부채', '자본'],
-    '자금흐름': ['입금', '출금', '대체'],
+    // 대체는 **돈이 안 흐른다** — 상계·감가상각·급여 발생. 자금흐름에 둘 게 아니다.
+    // 그런 전표는 손익(급여 발생 → 비용)이나 재무(상계 → 자산·부채)로 찾힌다.
+    '자금흐름': ['입금', '출금'],
   };
   /** 손익 계정이 매출 쪽인가 비용 쪽인가 */
   const plSideOf = useCallback((code?: string): '매출' | '비용' | null => {
@@ -2198,9 +2200,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           if (!codes.some(c => bsTypeOf(c))) return false;
           if (histSub !== '전체' && !codes.some(c => bsTypeOf(c) === histSub)) return false;
         } else if (histAxis === '자금흐름') {
-          // 통장이 움직인 방향 — 이건 줄이 아니라 전표 갈래가 정한다
+          // 통장이 실제로 움직인 것만 — 줄이 아니라 전표 갈래가 정한다.
+          // 매출·매입(외상)과 대체는 돈이 안 오갔으므로 뺀다.
           const k = rowKind(row);
-          if (k === '매출' || k === '매입') return false;
+          if (k !== '입금' && k !== '출금') return false;
           if (histSub !== '전체' && k !== histSub) return false;
         }
         if (histSearch.trim()) {
