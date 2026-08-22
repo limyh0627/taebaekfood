@@ -110,26 +110,26 @@ describe('전표의 상대계정도 같이 센다', () => {
    * 저장돼 있지 않고 분개할 때 생긴다. 그대로 두면 '재무'로 걸러도 매출·매입 전표가
    * 하나도 안 잡혀서 재무 필터가 자금전표만 고르는 꼴이 된다 — 자금흐름과 똑같아진다.
    */
-  const AR = '108', AP = '251', VAT_OUT = '255', VAT_IN = '135';
-  /** 화면과 같은 식 */
-  const codesOfStatement = (type: string, items: string[], tax: number) => {
-    if (type === '비용') return items;
-    const counter = type === '매출' ? AR : AP;
-    const vat = tax > 0 ? [type === '매출' ? VAT_OUT : VAT_IN] : [];
-    return [...items, counter, ...vat];
-  };
+  const AR = '108', AP = '251';
+  /** 화면과 같은 식 — 채권·채무만. 부가세는 일부러 뺀다. */
+  const codesOfStatement = (type: string, items: string[]) =>
+    type === '비용' ? items : [...items, type === '매출' ? AR : AP];
 
   it('매출전표는 외상매출금을 품는다 — 재무로 걸러도 잡힌다', () => {
-    expect(codesOfStatement('매출', ['800'], 0)).toEqual(['800', AR]);
+    expect(codesOfStatement('매출', ['800'])).toEqual(['800', AR]);
   });
 
-  it('부가세가 있으면 예수금까지', () => {
-    expect(codesOfStatement('매출', ['800'], 100)).toEqual(['800', AR, VAT_OUT]);
-    expect(codesOfStatement('매입', ['500'], 100)).toEqual(['500', AP, VAT_IN]);
+  it('매출은 자산에만, 매입은 부채에만 — 부가세를 넣으면 뒤섞인다', () => {
+    const 매출 = codesOfStatement('매출', ['800']);
+    const 매입 = codesOfStatement('매입', ['500']);
+    expect(매출.some(c => typeOf(c) === '자산')).toBe(true);
+    expect(매출.some(c => typeOf(c) === '부채')).toBe(false);   // 255를 넣었으면 true가 됐다
+    expect(매입.some(c => typeOf(c) === '부채')).toBe(true);
+    expect(매입.some(c => typeOf(c) === '자산')).toBe(false);   // 135를 넣었으면 true가 됐다
   });
 
   it('대체전표는 차·대가 줄에 다 있어 그대로 둔다', () => {
-    expect(codesOfStatement('비용', ['515', '254', '263'], 0)).toEqual(['515', '254', '263']);
+    expect(codesOfStatement('비용', ['515', '254', '263'])).toEqual(['515', '254', '263']);
   });
 
   it('상대계정을 안 넣으면 매출전표가 재무에서 통째로 빠진다 — 고친 이유', () => {

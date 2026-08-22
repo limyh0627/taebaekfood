@@ -912,9 +912,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     if (row.kind === 'stmt') {
       const items = (row.data.items ?? []).map(i => i.accountCode ?? '').filter(Boolean);
       if (row.data.type === '비용') return items;          // 대체전표는 차·대가 줄에 다 있다
-      const counter = row.data.type === '매출' ? AR : AP;   // 채권·채무
-      const vat = (row.data.totalTax ?? 0) > 0 ? [row.data.type === '매출' ? '255' : '135'] : [];
-      return [...items, counter, ...vat];
+      // 채권·채무만 넣는다. 부가세(255 예수금·135 대급금)는 **일부러 뺀다** —
+      // 회계로는 매출전표가 부채(255)를, 매입전표가 자산(135)을 건드리는 게 맞지만,
+      // 그걸 넣으면 과세 전표가 죄다 자산·부채에 걸려 필터가 무용지물이 된다.
+      // 부가세는 신고 때 부가세 화면에서 본다.
+      return [...items, row.data.type === '매출' ? AR : AP];
     }
     if (row.kind === 'pay') return [row.stmtType === '매출' ? AR : AP];
     const ls = (row.entry.lines ?? []).map(l => l.accountCode).filter(Boolean) as string[];
