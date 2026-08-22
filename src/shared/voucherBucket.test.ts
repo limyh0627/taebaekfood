@@ -21,6 +21,8 @@ const CODES: AccountCode[] = [
   { id: '951', code: '951', name: '이자비용', type: '비용', groupId: 'ag-other-expense' },
   { id: '108', code: '108', name: '외상매출금', type: '자산', groupId: 'ag-asset' },
   { id: '251', code: '251', name: '외상매입금', type: '부채', groupId: 'ag-liability' },
+  { id: '255', code: '255', name: '부가세예수금', type: '부채', groupId: 'ag-liability' },
+  { id: '103', code: '103', name: '보통예금', type: '자산', groupId: 'ag-asset' },
   { id: '254', code: '254', name: '예수금', type: '부채', groupId: 'ag-liability' },
   { id: '293', code: '293', name: '장기차입금', type: '부채', groupId: 'ag-liability' },
 ] as AccountCode[];
@@ -174,32 +176,52 @@ describe('세 축은 겹치지만 묻는 게 다르다', () => {
   function 자금흐름갈래(kind: string) { return kind === '입금' || kind === '출금'; }
 });
 
-describe('계정으로 걸렀을 때 보이는 금액', () => {
+describe('계정으로 걸렀을 때 보이는 금액 — 분개에서 센다', () => {
   /**
-   * 대출상환은 통장에서 3,064,357이 나가지만 그 안의 이자는 294,357이다.
-   * 이자비용으로 걸러 놓고 3,064,357을 보여 주면 손익과 안 맞아 보이고, 줄 합계도 안 맞는다.
-   * **콕 집어 거를 때는 그 계정 몫**, 크게(손익·재무) 거를 때는 전액.
+   * 대출상환은 통장에서 3,064,357이 나가지만 **손익에 잡히는 건 이자 294,357뿐**이다.
+   * 나머지 2,770,000은 차입금(재무)이다. 전액을 띄우면 손익과 안 맞아 보인다.
+   *
+   * 전표 품목만 더하면 부가세가 섞인다 — 매출전표 1,070,000 중 손익은 공급가 1,000,000이고
+   * 70,000은 부가세예수금(부채)이다. 그래서 **분개**에서 센다. 손익 화면과 같은 근거다.
    */
-  const 상환줄 = [{ accountCode: '293', amount: 2_770_000 }, { accountCode: '951', amount: 294_357 }];
-  const 몫 = (lines: { accountCode: string; amount: number }[], code: string) =>
-    lines.filter(l => l.accountCode === code).reduce((a, l) => a + Math.abs(l.amount), 0);
+  type JL = { accountCode: string; debit?: number; credit?: number };
+  const 몫 = (lines: JL[], hit: (c: string) => boolean) =>
+    lines.filter(l => hit(l.accountCode)).reduce((a, l) => a + Math.abs((l.debit ?? 0) - (l.credit ?? 0)), 0);
+  const 손익 = (c: string) => isPl(c);
+  const 재무 = (c: string) => !!bsType(c);
 
-  it('이자비용으로 걸면 이자 몫만', () => {
-    expect(몫(상환줄, '951')).toBe(294_357);
+  // 대출상환 (차) 293 차입금 + 951 이자 / (대) 통장
+  const 상환: JL[] = [
+    { accountCode: '293', debit: 2_770_000 },
+    { accountCode: '951', debit: 294_357 },
+    { accountCode: '103', credit: 3_064_357 },
+  ];
+
+  it('손익으로만 걸러도 이자 몫만 — 전액이 아니다', () => {
+    expect(몫(상환, 손익)).toBe(294_357);
   });
 
-  it('차입금으로 걸면 원금 몫만', () => {
-    expect(몫(상환줄, '293')).toBe(2_770_000);
+  it('재무로 걸면 차입금 + 통장', () => {
+    expect(몫(상환, 재무)).toBe(2_770_000 + 3_064_357);
   });
 
-  it('두 몫을 합하면 통장에서 나간 전액', () => {
-    expect(몫(상환줄, '951') + 몫(상환줄, '293')).toBe(3_064_357);
+  it('계정을 콕 집으면 그 줄만', () => {
+    expect(몫(상환, c => c === '951')).toBe(294_357);
+    expect(몫(상환, c => c === '293')).toBe(2_770_000);
   });
 
-  it('매출전표에 잡이익이 섞이면 매출 몫만 — 전표 총액이 아니다', () => {
-    const items = [{ accountCode: '800', total: 1_000_000 }, { accountCode: '930', total: 70_000 }];
-    const 매출몫 = items.filter(i => i.accountCode === '800').reduce((a, i) => a + i.total, 0);
-    expect(매출몫).toBe(1_000_000);
-    expect(items.reduce((a, i) => a + i.total, 0)).toBe(1_070_000);   // 전표 총액은 따로 밝힌다
+  // 매출전표 (차) 108 총액 / (대) 800 공급가 + 255 부가세
+  const 매출: JL[] = [
+    { accountCode: '108', debit: 1_070_000 },
+    { accountCode: '800', credit: 1_000_000 },
+    { accountCode: '255', credit: 70_000 },
+  ];
+
+  it('매출전표를 손익으로 걸면 **공급가**만 — 부가세는 손익이 아니다', () => {
+    expect(몫(매출, 손익)).toBe(1_000_000);
+  });
+
+  it('품목 총액을 더했으면 부가세까지 섞였을 것이다 — 분개에서 세는 이유', () => {
+    expect(1_070_000).not.toBe(몫(매출, 손익));
   });
 });

@@ -918,33 +918,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   }, [accountCodes, histAxis, histGroup, groupOfCode]);
   /** 지금 몇 층인가 — 드롭다운이 그 층의 목록을 띄운다 */
   const acctLevel = !histAxis ? 0 : !histGroup ? 1 : 2;
-  /**
-   * 계정을 콕 집어 걸렀을 때 **그 계정 몫**이 얼마인가.
-   *
-   * 대출상환은 통장에서 3,064,357이 나가지만 그 안의 이자는 294,357이다.
-   * 이자비용으로 걸러 놓고 3,064,357을 보여 주면 손익과 안 맞아 보이고 줄 합계도 안 맞는다.
-   * 크게(손익·재무만) 거를 때는 몫을 가릴 뜻이 없으므로 전액 그대로 둔다.
-   *
-   * null이면 "전액을 그대로 보여라".
-   */
-  const accountPortion = useCallback((row: TimelineRow): number | null => {
-    if (!histAxis || !histGroup) return null;
-    const hit = (c?: string) =>
-      histCode ? String(c) === histCode
-      : histAxis === '손익' ? groupOfCode(c)?.id === histGroup
-      : bsTypeOf(c) === histGroup;
-    if (row.kind === 'stmt') {
-      const st = row.data;
-      // 상대변(108·251)으로 걸렀으면 전표 총액이 그 계정 몫이다
-      if (st.type !== '비용' && hit(st.type === '매출' ? AR : AP)) return st.totalAmount ?? 0;
-      return (st.items ?? []).filter(i => hit(i.accountCode)).reduce((a, i) => a + (i.total ?? 0), 0);
-    }
-    if (row.kind === 'pay') return row.amount;   // 수금·지불은 108·251 한 줄뿐
-    const ls = row.entry.lines?.length
-      ? row.entry.lines
-      : [{ accountCode: row.accountCode, amount: row.entry.amount }];
-    return ls.filter(l => hit(l.accountCode)).reduce((a, l) => a + Math.abs(l.amount ?? 0), 0);
-  }, [histAxis, histGroup, histCode, groupOfCode, bsTypeOf]);
   /** 고른 계정 조건에 이 줄들이 걸리는가 — **가장 깊이 고른 것 하나만** 본다 */
   const matchAccount = useCallback((codes: string[]): boolean => {
     if (!histAxis) return true;
@@ -1049,11 +1022,41 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * 분개(108·251 잔액)와 같은 규칙이라 전표화면·거래처통계·재무제표가 저절로 같은 숫자를 낸다.
    * 마이너스면 더 받은 것 = 선수금.
    */
+
   // 잔액은 **분개의 108·251**에서 센다 — 전표 갈래(type)로 세면 갈래를 바꿀 때 잔액이 사라진다.
   // 기초잔액은 거래처가 없으니 안 넘겨도 결과가 같다.
   const partnerJournals = useMemo(
     () => buildJournals({ statements: mergedStatements, cashEntries, accounts: accountCodes }).entries,
     [mergedStatements, cashEntries, accountCodes]);
+  /** 전표 id → 그 전표의 분개. 몫을 셀 때 쓴다. */
+  const journalBySource = useMemo(() => {
+    const m = new Map<string, JournalEntry>();
+    for (const je of partnerJournals) if (je.sourceId) m.set(je.sourceId, je);
+    return m;
+  }, [partnerJournals]);
+  /**
+   * 계정으로 걸렀을 때 **그 계정 몫**이 얼마인가 — 분개에서 센다.
+   *
+   * 대출상환은 통장에서 3,064,357이 나가지만 손익에 잡히는 건 이자 294,357뿐이다.
+   * 나머지 2,770,000은 차입금(재무)이다. 전액을 띄우면 손익과 안 맞아 보이고 줄 합계도 안 맞는다.
+   *
+   * **분개에서 세는 이유**: 전표 품목만 더하면 부가세가 섞인다. 매출전표 1,070,000 중
+   * 손익(800 일반매출)은 공급가 1,000,000이고 70,000은 부가세예수금(부채)이다.
+   * 손익 화면과 같은 근거를 써야 숫자가 저절로 맞는다.
+   */
+  const accountPortion = useCallback((row: TimelineRow): number | null => {
+    if (!histAxis) return null;
+    const srcId = row.kind === 'stmt' ? row.data.id : row.entry?.id;
+    const je = srcId ? journalBySource.get(srcId) : undefined;
+    if (!je) return null;
+    const hit = (c?: string) =>
+      histCode ? String(c) === histCode
+      : histGroup ? (histAxis === '손익' ? groupOfCode(c)?.id === histGroup : bsTypeOf(c) === histGroup)
+      : axisOfCode(c) === histAxis;
+    return (je.lines ?? [])
+      .filter(l => hit(String(l.accountCode)))
+      .reduce((a, l) => a + Math.abs((l.debit ?? 0) - (l.credit ?? 0)), 0);
+  }, [histAxis, histGroup, histCode, journalBySource, axisOfCode, groupOfCode, bsTypeOf]);
   const partnerBalances = useMemo(() => {
     const map = new Map<string, { receivable: number; payable: number }>();
     for (const id of new Set(mergedStatements.map(s => s.partnerId).filter(Boolean))) {
