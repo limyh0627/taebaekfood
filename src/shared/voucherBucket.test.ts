@@ -2,7 +2,10 @@ import { describe, it, expect } from 'vitest';
 import type { AccountCode, AccountGroup } from './types';
 
 /**
- * 성격 대분류 필터 — **줄의 계정으로 거른다.**
+ * 성격 필터 — **줄의 계정으로 거르고, 계층은 두 단이다.**
+ *
+ *   대분류  매출 · 비용 · 자산·부채
+ *   중분류  비용 아래 — 재료비 · 노무비 · 제조경비 · 판관비 · 영업외비용
  *
  * 갈래(매출·매입·대체·입금·출금)만으로는 "이번 달 나간 비용 전부"를 못 본다.
  * 대출상환은 출금전표인데 안에 이자비용이 있고, 급여 발생은 대체전표인데 인건비다.
@@ -27,33 +30,56 @@ const GROUPS: AccountGroup[] = [
   { id: 'ag-liability', name: '부채', type: '부채' },
 ] as AccountGroup[];
 
-// 화면과 같은 식
-const bucketOf = (code: string): string[] => {
-  const g = GROUPS.find(x => x.id === CODES.find(c => c.code === code)?.groupId);
+// 화면과 같은 식 — 대분류는 **하나만** 돌려준다(계층이 섞이면 안 된다)
+const groupOf = (code: string) => GROUPS.find(x => x.id === CODES.find(c => c.code === code)?.groupId);
+const bucketOf = (code: string): string | null => {
+  const g = groupOf(code);
   const t = CODES.find(c => c.code === code)?.type;
-  const out: string[] = [];
-  if (g?.plLine === 'revenue' || (!g?.plLine && t === '수익')) out.push('매출');
+  if (g?.plLine === 'revenue' || (!g?.plLine && t === '수익')) return '매출';
   if (g?.plLine === 'cogs' || g?.plLine === 'sgna' || g?.plLine === 'other-expense'
-      || (!g?.plLine && t === '비용')) out.push('비용');
-  if (g?.name === '노무비' || code === '254' || code === '263') out.push('인건비');
-  if (t === '자산' || t === '부채' || t === '자본') out.push('자산·부채');
-  return out;
+      || (!g?.plLine && t === '비용')) return '비용';
+  if (t === '자산' || t === '부채' || t === '자본') return '자산·부채';
+  return null;
 };
 /** 전표 하나 — 줄 중 하나라도 걸리면 잡힌다 */
-const hits = (codes: string[], bucket: string) => codes.some(c => bucketOf(c).includes(bucket));
+const hits = (codes: string[], bucket: string) => codes.some(c => bucketOf(c) === bucket);
+const hitsGroup = (codes: string[], name: string) => codes.some(c => groupOf(c)?.name === name);
+
+describe('계층이 안 섞인다', () => {
+  /**
+   * 전에는 매출·비용·인건비·자산부채를 한 줄에 나란히 뒀다. 잘못이었다 —
+   * 인건비는 비용의 **하위**고, 자산·부채는 손익이 아니라 재무상태표다.
+   * 나란히 두면 [비용]과 [인건비]가 배타적으로 보이는데 실제로는 포함 관계다.
+   */
+  it('대분류는 셋 — 매출·비용·자산·부채', () => {
+    const all = ['800', '515', '951', '254', '293'].map(bucketOf);
+    expect(new Set(all.filter(Boolean))).toEqual(new Set(['매출', '비용', '자산·부채']));
+  });
+
+  it('계정 하나는 대분류 하나에만 든다', () => {
+    expect(bucketOf('515')).toBe('비용');      // 인건비이면서 비용이 아니라, 비용이다
+    expect(bucketOf('254')).toBe('자산·부채');
+  });
+
+  it('인건비는 비용 아래 중분류(노무비 그룹)다', () => {
+    expect(bucketOf('515')).toBe('비용');
+    expect(groupOf('515')?.name).toBe('노무비');
+    expect(hitsGroup(['515'], '노무비')).toBe(true);
+    expect(hitsGroup(['951'], '노무비')).toBe(false);
+  });
+});
 
 describe('번호대로 가르면 틀린다', () => {
   it('800번대에 매출과 비용이 같이 있다', () => {
-    expect(bucketOf('800')).toContain('매출');
-    expect(bucketOf('818')).toContain('비용');   // 같은 800번대인데 비용
-    expect(bucketOf('819')).toContain('비용');
-    expect(bucketOf('818')).not.toContain('매출');
+    expect(bucketOf('800')).toBe('매출');
+    expect(bucketOf('818')).toBe('비용');   // 같은 800번대인데 비용
+    expect(bucketOf('819')).toBe('비용');
   });
 });
 
 describe('복합 전표도 안 빠진다', () => {
-  const 대출상환 = ['293', '951'];      // 출금전표 · 차입금 + 이자비용
-  const 급여발생 = ['515', '254', '263'];  // 대체전표 · 급여 + 예수금 + 미지급급여
+  const 대출상환 = ['293', '951'];         // 출금전표 · 차입금 + 이자비용
+  const 급여발생 = ['515', '254', '263'];   // 대체전표 · 급여 + 예수금 + 미지급급여
 
   it('대출상환이 비용에 잡힌다 — 이자비용 줄 때문에', () => {
     expect(hits(대출상환, '비용')).toBe(true);
@@ -63,22 +89,18 @@ describe('복합 전표도 안 빠진다', () => {
     expect(hits(대출상환, '자산·부채')).toBe(true);
   });
 
-  it('급여 발생이 인건비에 잡힌다 — 대체전표인데도', () => {
-    expect(hits(급여발생, '인건비')).toBe(true);
+  it('대출상환을 비용 › 영업외비용으로 좁히면 잡히고, 노무비로 좁히면 안 잡힌다', () => {
+    expect(hitsGroup(대출상환, '영업외비용')).toBe(true);
+    expect(hitsGroup(대출상환, '노무비')).toBe(false);
   });
 
-  it('대출상환은 인건비가 아니다', () => {
-    expect(hits(대출상환, '인건비')).toBe(false);
+  it('급여 발생이 비용 › 노무비에 잡힌다 — 대체전표인데도', () => {
+    expect(hits(급여발생, '비용')).toBe(true);
+    expect(hitsGroup(급여발생, '노무비')).toBe(true);
   });
 
   it('매출전표는 비용이 아니다', () => {
     expect(hits(['800'], '비용')).toBe(false);
     expect(hits(['800'], '매출')).toBe(true);
-  });
-});
-
-describe('겹치는 건 겹치는 대로', () => {
-  it('급여는 비용이면서 인건비다 — 필터는 렌즈지 칸막이가 아니다', () => {
-    expect(bucketOf('515')).toEqual(expect.arrayContaining(['비용', '인건비']));
   });
 });
