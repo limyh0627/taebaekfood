@@ -457,9 +457,14 @@ export default function VoucherTemplateManager({
                         <span className="px-2 py-1.5 text-right tabular-nums font-black text-slate-700">{l.side === '대변' ? fmt(l.amount) : ''}</span>
                       </div>
                     ))}
+                    {/* 안 맞는 까닭이 둘이다. 한 줄뿐이라 상대변이 없는 것과,
+                        부가세 신고처럼 줄마다 금액이 달라 템플릿 금액 하나로는 못 채우는 것.
+                        뒤엣것은 잘못이 아니다 — 금액을 전표에서 적으면 된다. */}
                     {차 !== 대 && (
                       <p className="px-3 py-1.5 text-[10px] font-black text-rose-500 border-t border-slate-100">
-                        차·대가 안 맞습니다 — 상대변 계정이 없습니다. 이 템플릿으로는 전표를 못 끊습니다.
+                        {(editTpl.transferLines?.length ?? 0) > 1
+                          ? '줄마다 금액이 다른 양식입니다 — 템플릿 금액은 비워 두고 전표에서 줄마다 적으세요.'
+                          : '차·대가 안 맞습니다 — 상대변 계정이 없습니다. 이 템플릿으로는 전표를 못 끊습니다.'}
                       </p>
                     )}
                   </div>

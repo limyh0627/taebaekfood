@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { templateAccrRows, templateJournalLines, splitModeOf, SPLIT_MODES, isCashDir, CashTemplate } from './cashTemplates';
+import { templateAccrRows, templateJournalLines, splitModeOf, SPLIT_MODES, isCashDir, CASH_TEMPLATES, CashTemplate } from './cashTemplates';
 
 /**
  * 템플릿을 고르면 **양식 전체가 그 템플릿이 되어야 한다** — 계정·거래처·금액·두 줄 값까지.
@@ -181,5 +181,48 @@ describe('템플릿이 만들 분개 모양', () => {
     const ls = templateJournalLines(t({ mode: '상환', principal: 2_770_000, interest: 294_357, loanCode: '293' }));
     expect(ls.map(l => l.code)).toEqual(['293', '951', '103']);
     expect(차대(ls)).toEqual([3_064_357, 3_064_357]);
+  });
+});
+
+describe('부가세 — 쌓인 걸 정석대로 턴다', () => {
+  /**
+   * 매출전표가 255를, 매입전표가 135를 자동으로 쌓는데 **그걸 터는 전표가 없었다.**
+   * 255·135를 건드린 전표가 실제로 0건이었다(2026-08 기준 255 18,964,015 / 135 13,176,360).
+   *
+   * 순액으로 255만 깎는 게 흔한 야매다. 그러면 255에 매입세액만큼 잔액이 영영 남고
+   * 135는 자산으로 계속 불어난다. 둘을 맞물려 없애고 차액만 낼 돈으로 세워야 한다.
+   */
+  const byId = (id: string) => CASH_TEMPLATES.find(t => t.id === id)!;
+
+  it('신고는 255를 차변으로 털고 135를 대변으로 상계한다 — 차액이 261 미지급세금', () => {
+    expect(byId('vatSettle').transferLines).toEqual([
+      { accountCode: '255', side: '차변', name: '매출세액' },
+      { accountCode: '135', side: '대변', name: '매입세액' },
+      { accountCode: '261', side: '대변', name: '납부할 세액' },
+    ]);
+  });
+
+  it('신고 양식은 세 줄을 그대로 편다 — 금액은 신고 때마다 달라 비워 둔다', () => {
+    const rows = templateAccrRows(byId('vatSettle'));
+    expect(rows.map(r => [r.accountCode, r.side])).toEqual([
+      ['255', '차변'], ['135', '대변'], ['261', '대변'],
+    ]);
+    expect(rows.every(r => r.price === '')).toBe(true);
+  });
+
+  it('환급이면 261이 안 선다 — 매출세액만큼만 상계하고 나머지는 135에 남는다', () => {
+    const codes = byId('vatRefund').transferLines!.map(l => l.accountCode);
+    expect(codes).toEqual(['255', '135']);
+    expect(codes).not.toContain('261');
+  });
+
+  it('납부는 261을 턴다 — 255를 직접 깎으면 135가 영영 안 없어진다', () => {
+    expect(byId('vatPay').accountCode).toBe('261');
+    expect(byId('vatPay').dir).toBe('출금');
+  });
+
+  it('환급 입금은 135를 턴다 — 신고 때 남겨 둔 돌려받을 돈', () => {
+    expect(byId('vat').accountCode).toBe('135');
+    expect(byId('vat').dir).toBe('입금');
   });
 });

@@ -159,6 +159,7 @@ export const CASH_TEMPLATES: CashTemplate[] = [
   // 받아 뒀다 대신 내주는 돈 — 급여에서 뗀 원천세·4대보험이 예수금으로 잡혀 있다가 여기서 털린다
   { id: 'withhold',label: '원천세납부', dir: '출금', mode: '일반', accountCode: '254', note: '원천공제 납부', hint: '예수금 정리' },
   { id: 'tax',     label: '세금납부',   dir: '출금', mode: '세금', accountCode: '255', hint: '부가세 + 소득세' },
+  { id: 'vatPay',  label: '부가세 납부', dir: '출금', mode: '일반', accountCode: '261', note: '부가세 납부', hint: '신고로 세운 미지급세금을 턴다', group: '수시' },
 
   // 사는 것 · 사장님 돈
   { id: 'deposit', label: '보증금',   dir: '출금', mode: '일반', accountCode: '232' },
@@ -171,8 +172,35 @@ export const CASH_TEMPLATES: CashTemplate[] = [
   { id: 'advance', label: '선수금',   dir: '입금', mode: '일반', accountCode: '259', wantsPartner: true },
   { id: 'loanIn',  label: '차입실행', dir: '입금', mode: '일반', accountCode: '260' },
   { id: 'loanInL', label: '장기차입', dir: '입금', mode: '일반', accountCode: '293' },
-  { id: 'vat',     label: '부가세환급', dir: '입금', mode: '일반', accountCode: '135' },
+  { id: 'vat',     label: '부가세환급', dir: '입금', mode: '일반', accountCode: '135', hint: '135에 남은 돌려받을 돈' },
   { id: 'depBack', label: '보증금회수', dir: '입금', mode: '일반', accountCode: '232' },
+
+  // ══ 대체 ══════════════════════════════════════════════════════════
+  /*
+   * 부가세 신고 — **쌓인 걸 터는 전표.**
+   *
+   * 매출전표가 255를, 매입전표가 135를 자동으로 쌓는다. 신고는 그 둘을 맞물려 없애고
+   * 차액만 낼 돈(261)으로 세우는 일이다. 순액으로 255만 깎으면 135가 영영 자산으로 남는다.
+   *
+   *   (차) 255 부가세예수금 매출세액 / (대) 135 부가세대급금 매입세액 + 261 미지급세금 차액
+   *
+   * 매입세액이 크면 낼 게 아니라 받을 것이라 261이 안 선다. 매출세액만큼만 상계하고
+   * 135에 돌려받을 돈을 남긴 뒤, 들어올 때 '부가세환급'(입금·135)으로 턴다.
+   * 두 금액은 재무제표 > 합계잔액시산표의 255·135 잔액을 그대로 옮겨 적는다.
+   */
+  { id: 'vatSettle', label: '부가세 신고(납부)', dir: '대체', mode: '일반', accountCode: '255', group: '결산',
+    hint: '매출세액 − 매입세액 = 낼 돈',
+    transferLines: [
+      { accountCode: '255', side: '차변', name: '매출세액' },
+      { accountCode: '135', side: '대변', name: '매입세액' },
+      { accountCode: '261', side: '대변', name: '납부할 세액' },
+    ] },
+  { id: 'vatRefund', label: '부가세 신고(환급)', dir: '대체', mode: '일반', accountCode: '255', group: '결산',
+    hint: '매입세액이 클 때 — 남는 건 135에',
+    transferLines: [
+      { accountCode: '255', side: '차변', name: '매출세액' },
+      { accountCode: '135', side: '대변', name: '매출세액분 상계' },
+    ] },
 ];
 
 /**
@@ -198,7 +226,7 @@ export function filterTemplates(
       id: t.id,
       label: t.name,
       dir: dirOf(t),
-      mode: (t.mode ?? '일반') as '일반' | '상환' | '급여' | '보험',
+      mode: (t.mode ?? '일반') as CashTemplate['mode'],
       accountCode: t.accountCode,
       note: t.note,
       amount: t.amount || undefined,
