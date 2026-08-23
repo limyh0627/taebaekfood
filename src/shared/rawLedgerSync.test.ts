@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { withCarryOverLot, buildReceiveLot, deductFromLots, settleCarryOver } from './lotUtils';
 import { lotKgRemaining } from '../constants/formula';
-import { ledgerBalanceKg, sortLedger } from './rawLedgerBalance';
+import { ledgerBalanceKg, sortLedger, isBackdated } from './rawLedgerBalance';
 import type { RawMaterialEntry, RawMaterialLot } from './types';
 
 /**
@@ -43,32 +43,42 @@ class Warehouse {
   }
 
   /** 입고 — 로트 생성 + 원장 입고 */
-  receive(kg: number, supplier = '풍회유통') {
+  receive(kg: number, supplier = '풍회유통', date = '2026-08-01') {
+    if (isBackdated(this.ledger, date)) {   // 앵커 이전 날짜 → 원장만 (아래 use와 같은 규칙)
+      this.ledger.push(this.row({ received: kg, note: `${supplier} 입고`, type: 'manual', date }));
+      return;
+    }
     this.carryOver();
     const carried = withCarryOverLot(this.lots, this.stock, this.material);
-    const lot = buildReceiveLot({ material: this.material, supplierName: supplier, qtyIn: 0, kgIn: kg, receivedDate: '2026-08-01' });
+    const lot = buildReceiveLot({ material: this.material, supplierName: supplier, qtyIn: 0, kgIn: kg, receivedDate: date });
     this.lots = settleCarryOver([...carried, lot]);
     this.syncStock();
-    this.ledger.push(this.row({ received: kg, note: `${supplier} 입고`, type: 'manual' }));
+    this.ledger.push(this.row({ received: kg, note: `${supplier} 입고`, type: 'manual', date }));
   }
 
-  /** 사용 — FIFO 차감 + 원장 사용 */
-  use(kg: number, note = '사용') {
+  /** 사용 — FIFO 차감 + 원장 사용.
+   *  **실사 앵커보다 앞선 날짜면 로트를 건드리지 않는다** — 앵커가 이미 센 몫이라 또 빼면 이중차감.
+   *  원장 줄은 남긴다(사용량은 서류에 잡혀야 하고, 잔량은 앵커가 잡는다). = ItemList의 실제 규칙 */
+  use(kg: number, note = '사용', date = '2026-08-01') {
+    if (isBackdated(this.ledger, date)) {
+      this.ledger.push(this.row({ used: kg, note, type: 'manual', date }));
+      return;
+    }
     this.carryOver();
     const carried = withCarryOverLot(this.lots, this.stock, this.material);
     this.lots = deductFromLots(carried, kg).lots;
     this.syncStock();
-    this.ledger.push(this.row({ used: kg, note, type: 'manual' }));
+    this.ledger.push(this.row({ used: kg, note, type: 'manual', date }));
   }
 
   /** 실사 — 로트를 목표값에 맞추고 원장에 targetKg 앵커를 남긴다.
    *  로트가 안 움직여도(delta 0) 앵커는 **반드시** 쓴다 — 원장만 틀어진 경우를 잡으려면 그래야 한다. */
-  stocktake(targetKg: number) {
+  stocktake(targetKg: number, date = '2026-08-01') {
     this.carryOver();
     const carried = withCarryOverLot(this.lots, this.stock, this.material);
     const delta = Math.round((targetKg - lotKgRemaining(carried)) * 1000) / 1000;
     if (delta > 0.001) {
-      const lot = buildReceiveLot({ material: this.material, supplierName: '실사조정', qtyIn: 0, kgIn: delta, receivedDate: '2026-08-01' });
+      const lot = buildReceiveLot({ material: this.material, supplierName: '실사조정', qtyIn: 0, kgIn: delta, receivedDate: date });
       this.lots = settleCarryOver([...carried, lot]);
     } else if (delta < -0.001) {
       this.lots = deductFromLots(carried, -delta).lots;
@@ -78,7 +88,7 @@ class Warehouse {
     this.syncStock();
     this.ledger.push(this.row({
       received: delta > 0 ? delta : 0, used: delta < 0 ? -delta : 0,
-      targetKg, note: '재고실사', type: 'correction',
+      targetKg, note: '재고실사', type: 'correction', date,
     }));
   }
 
@@ -230,5 +240,48 @@ describe('길게 섞어 돌려도 안 벌어진다', () => {
       w.deleteEntry(e.id!);
       expectAligned(w, `삭제 ${e.id}`);
     }
+  });
+});
+
+describe('실사 앵커보다 앞선 날짜를 뒤늦게 입력해도 안 벌어진다', () => {
+  // 2026-08 참깨 사고 그대로. 8/20 아침에 창고를 세어 1,650으로 앵커를 박은 뒤,
+  // 그날 오후에 8/17·8/19자 사용 510+750을 몰아 넣었다.
+  // 앵커는 그 시점 실물을 센 값이라 그 사용은 **이미 앵커 안에 들어 있다.**
+  // 예전엔 로트만 1,260 깎여서 원장 1,650 vs 로트 390으로 영구히 벌어졌다.
+  it('앵커 이전 날짜의 사용은 원장에만 남고 로트·재고는 안 움직인다', () => {
+    const w = new Warehouse();
+    w.receive(2400, '화통무역', '2026-08-19');
+    w.use(750, 'OEM 외주출고 → 푸미푸드', '2026-08-19');
+    expectAligned(w, '8/19까지');
+    expect(w.lotSum).toBe(1650);
+
+    w.stocktake(1650, '2026-08-20');            // 세어보니 장부와 같아 조정 0
+    expectAligned(w, '8/20 실사');
+
+    w.use(510, '아브라함 근무', '2026-08-17');   // 뒤늦게 입력 — 앵커 이전
+    w.use(750, '사장님 저녁 근무', '2026-08-19');
+    expectAligned(w, '소급 사용 입력 후');
+    expect(w.lotSum).toBe(1650);                 // 1,260이 또 빠지지 않는다
+
+    // 사용 줄은 남아 있어야 한다 — 서류의 사용량은 그대로 잡혀야 하니까
+    expect(w.ledger.filter(e => (e.used ?? 0) > 0).length).toBe(3);
+  });
+
+  it('앵커 이후 날짜의 사용은 평소대로 로트를 깎는다', () => {
+    const w = new Warehouse();
+    w.receive(2400, '화통무역', '2026-08-19');
+    w.stocktake(2400, '2026-08-20');
+    w.use(810, '사용', '2026-08-21');
+    expectAligned(w, '앵커 이후 사용');
+    expect(w.lotSum).toBe(1590);
+  });
+
+  it('앵커 이전 날짜의 입고도 로트를 늘리지 않는다', () => {
+    const w = new Warehouse();
+    w.receive(1000, '풍회유통', '2026-08-19');
+    w.stocktake(1000, '2026-08-20');
+    w.receive(500, '뒤늦게 넣은 입고', '2026-08-18');
+    expectAligned(w, '소급 입고 입력 후');
+    expect(w.lotSum).toBe(1000);
   });
 });

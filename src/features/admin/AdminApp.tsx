@@ -82,7 +82,7 @@ import LeaveManager from '../../../components/LeaveManager';
 import ConfirmationItems from '../../../components/ConfirmationItems';
 import ProductModal from '../../../components/AddItemModal';
 import { downloadSalesJournal } from '../../shared/salesJournal';
-import { sortLedger } from '../../shared/rawLedgerBalance';
+import { sortLedger, isBackdated, latestAnchorDate } from '../../shared/rawLedgerBalance';
 import { createOrderStockEngine, StockUsePlan } from './orderStockEngine';
 import { buildStockUseRows, StockUseRow } from './stockUseRows';
 import StockUseModal from './StockUseModal';
@@ -133,6 +133,7 @@ import {
   setDocument,
   fetchDateRange,
   mutateRawMaterialLots,
+  adjustItemStock,
 } from '../../shared/services/firebaseService';
 import type { AppData } from '../../shared/hooks/useAppData';
 import type { AdminData } from '../../hooks/useAdminData';
@@ -981,7 +982,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
         await recordRawMaterialReceipt({ companyId, allItems, product, itemName: product.name, quantity: item.quantity, unit: product.unit, partnerName: '반품', dateStr: nowIso.slice(0, 10), nowIso, addedBy: currentUser?.name });
       } else {
         const col = getProductCollection(product.category as string);
-        await updateItem(col, product.id, { stock: product.stock + item.quantity });
+        // 재고는 DB에서 읽어 더한다 — 화면값에 더해 덮어쓰면 그 사이 들어온 쓰기가 날아간다
+        await adjustItemStock(col, product.id, item.quantity);
       }
     }
     setLedgerReloadKey(k => k + 1);   // 반품 재입고로 쓴 원료수불부 반영
@@ -1102,7 +1104,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
       } else {
         const collectionName = getProductCollection(product.category);
         const addQty = (product.subtype === '향미유' || product.category === '향미유') && line.isBox ? line.quantity * 12 : line.quantity;
-        await updateItem(collectionName, product.id, { stock: (product.stock ?? 0) + addQty });
+        // 여러 줄을 연달아 입고하면 앞 줄이 쓴 재고가 화면에 아직 안 돌아온다 → DB에서 읽어 더한다
+        await adjustItemStock(collectionName, product.id, addQty);
       }
     }
     await updateItem('purchaseOrders', id, { status: 'received', receivedAt: new Date().toISOString() });
@@ -1169,7 +1172,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
       } else {
         const collectionName = getProductCollection(product.category);
         const addQty = (product.subtype === '향미유' || product.category === '향미유') && line.isBox ? line.quantity * 12 : line.quantity;
-        await updateItem(collectionName, product.id, { stock: (product.stock ?? 0) + addQty });
+        // 여러 줄을 연달아 입고하면 앞 줄이 쓴 재고가 화면에 아직 안 돌아온다 → DB에서 읽어 더한다
+        await adjustItemStock(collectionName, product.id, addQty);
       }
     }
     await updateItem('purchaseOrders', poId, { items: newPoItems, status: 'received', receivedAt: new Date().toISOString() });
@@ -3102,13 +3106,19 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   // 옛 데이터(unit==='L')는 표시 시점에 ×density 환산 → 모두 kg 단위로 통일
                   // ── 원료수불부(서류) 한 장 만들기 ── ⚠ 원장(rawMaterialLedger)과 다른 것이다.
                   //   사용량   : 배합표 원료(DOC_RECALC_RAWS)는 판매에서 되계산 — 원장의 rm-auto는 뺀다
-                  //   입고·실사 : 원장 그대로
+                  //   입고     : 원장 그대로
+                  //   실사     : **재고 화면 실사(rm-stocktake-)는 서류에 안 넣는다** — 아래 필터 참고
                   //   전월이월  : 원장의 전월말 누적
                   //   자세한 구분은 src/shared/docOil.ts 맨 위 주석 참고.
                   const buildRawDocSheet = (material: string) => {
                     const density = DENSITY[material] ?? 1.0;
                     const dbEntries: UsageRow[] = mergedRawMaterialLedger
                       .filter(e => rmAlias(material).includes(e.material))
+                      // 재고 화면 실사는 서류로 넘기지 않는다. 창고 재고를 실물에 맞춘 기록이지 수불 사실이 아니다.
+                      //   특히 targetKg가 서류 잔량을 앵커해버려서, 관청에 내는 수불부가 창고 실사에 끌려다녔다.
+                      //   (참깨 8월: 실사 줄이 서류 입고로 1,990kg 새어 들어와 있었다)
+                      //   서류 쪽 정정이 필요하면 원료수불부 화면에서 따로 넣는다 — 재고 정정과 서류 정정은 별개다.
+                      .filter(e => !/^rm-stocktake-/.test(e.id ?? ''))
                       .map(e => {
                         const isLegacyL = e.unit === 'L' && density !== 1.0;
                         const received = isLegacyL ? Math.round(e.received * density * 1000) / 1000 : e.received;
@@ -3393,7 +3403,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                             const rawHolder = allItems.find(i =>
                                               isBulkItem(i)
                                               && baseRawName(i.name) === rmActiveMaterial);
-                                            if (rawHolder) {
+                                            // 앵커 이전 날짜의 '정정'은 로트를 건드리지 않는다 — 앵커가 이미 센 몫이라 이중차감이 된다.
+                                            //   (실사는 앵커를 새로 박는 것이므로 이 규칙에서 뺀다)
+                                            //   rawLedgerBalance.ts의 latestAnchorDate 주석 참고.
+                                            const matLedger = mergedRawMaterialLedger.filter(e => e.material === rmActiveMaterial);
+                                            const skipLots = !isStocktake && isBackdated(matLedger, rmCorrectionForm.date);
+                                            if (skipLots) {
+                                              alert(`${latestAnchorDate(matLedger)} 실사 이전 날짜라 원장에만 남기고 재고·로트는 그대로 둡니다.`);
+                                            }
+                                            if (rawHolder && !skipLots) {
                                               await mutateRawMaterialLots(
                                                 rawHolder.id,
                                                 (lots, stock) => {
@@ -4138,7 +4156,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       await adjustRawLots({ companyId, material: target.baseName, rawItemId: target.rawItem.id, lotsAreTotal: target.rawItem.lotsAreTotal, deltaKg: addKg, date: new Date().toISOString().slice(0, 10), note: '재고조정', addedBy: currentUser?.name });
                       setLedgerReloadKey(k => k + 1);
                     } else {
-                      await updateItem(collectionName, req.itemId, { stock: product.stock + (req.requestedQuantity || 0) });
+                      await adjustItemStock(collectionName, req.itemId, req.requestedQuantity || 0);
                     }
                   } else if (req.type === 'cancel_receipt') {
                     // 입고 취소 승인 시, 아무것도 하지 않음 (이미 반영 전이므로 리스트에서만 제거)

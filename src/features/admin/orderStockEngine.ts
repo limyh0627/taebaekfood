@@ -310,6 +310,20 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   //  **주문량 전량이 아니라 "기존 재고로 못 채우는 몫"만 생산한다.** 출고는 늘 주문량을 빼므로
   //  순변화 = 쓴 재고만큼. 얼마나 쓸지는 plan(사용자 선택)이 정하고, 없으면 있는 만큼 다 쓴다.
   const produceOrder = async (order: Order, deltas: Map<string, number>, plan?: StockUsePlan) => {
+    // **같은 주문은 원료를 한 번만 뺀다.**
+    //   원장 줄은 id가 `rm-auto-{주문}-{원료}`로 고정이라 두 번째 처리 때 덮어써지는데,
+    //   로트는 mutateRawMaterialLots가 부를 때마다 깎아서 한쪽만 이중이 됐다.
+    //   (생들기름 775.98kg = 8/04 277.2 + 8/05 249.48 + 8/14 249.3 세 건이 각각 두 번씩 빠졌다)
+    //   바깥 가드(`wantProduced && !order.producedAt`)는 **화면 상태**를 보므로 다른 탭·중복 클릭으로
+    //   낡으면 그냥 통과한다 — 재고 음수를 만들던 것과 같은 낡은-상태 문제다.
+    //   → DB의 지금 값을 직접 보고, 이미 빼둔 몫이 있으면 되돌린 뒤 새로 뺀다.
+    //     (수량이 바뀐 재처리도 이 순서면 맞는 값으로 끝난다)
+    const fresh = await getDoc(doc(db, 'orders', order.id));
+    const already = (fresh.exists() ? (fresh.data().rawConsumedLots as Order['rawConsumedLots']) : undefined) ?? [];
+    if (already.length > 0) {
+      console.warn(`[생산 재처리] ${order.id} — 이미 빠진 원료 ${already.length}건을 되돌리고 다시 뺀다`);
+      await restoreRawLotsForOrder({ ...order, rawConsumedLots: already });
+    }
     const rawUsage: Record<string, number> = {};
     const rawUsageLedgerOnly: Record<string, number> = {};   // 임가공 — 수불부에만
     const autoBuilt: { itemId: string; qty: number }[] = []; // 모자라서 먼저 만든 구성품

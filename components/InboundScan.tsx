@@ -7,7 +7,7 @@ import jsQR from 'jsqr';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../src/shared/firebase';
-import { addItem, updateItem } from '../src/shared/services/firebaseService';
+import { addItem, updateItem, adjustItemStock } from '../src/shared/services/firebaseService';
 import { Item, PurchaseOrder, PurchaseOrderItem, QrMapping } from '../src/shared/types';
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY ?? '';
@@ -234,8 +234,9 @@ const InboundScan: React.FC<InboundScanProps> = ({
         if (!sub) continue;
         const qty = Number(item.quantity);
 
-        // 재고 반영 (공통)
-        onUpdateSubmaterial(sub.id, { stock: (sub.stock ?? 0) + qty });
+        // 재고 반영 (공통) — 여러 줄을 연달아 입고하면 화면값이 앞 줄의 쓰기를 못 봐서
+        // 서로 덮어쓴다. DB에서 읽어 더한다(구독이 실시간이어도 이 실행 안엔 안 돌아온다).
+        await adjustItemStock('items', sub.id, qty);
 
         if (item.route === 'order_match' && item.confirmedOrderId) {
           // 발주 매칭 → 입고 완료 처리

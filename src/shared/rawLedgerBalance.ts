@@ -44,3 +44,31 @@ export function ledgerBalanceKg(entries: RawMaterialEntry[], density = 1): numbe
   for (const e of sortLedger(entries)) bal = applyLedgerRow(bal, e, density);
   return bal;
 }
+
+/**
+ * 그 원료의 **마지막 실사 앵커 날짜**(YYYY-MM-DD). 앵커가 없으면 null.
+ *
+ * 앵커는 그날 창고에 실제로 있던 양을 센 값이라, **그 이전에 일어난 일은 이미 그 안에 들어 있다.**
+ * 그래서 앵커보다 앞선 날짜의 사용·입고를 뒤늦게 입력하면
+ *   · 원장 잔량은 앵커가 잡아줘서 안 움직이는데
+ *   · 로트는 앵커를 모르니 그대로 깎이거나 늘어서
+ * 둘이 벌어진다. 참깨가 이 경우였다(8/20 앵커 1,650 뒤에 8/17·8/19자 사용 1,260을 넣어 로트만 깎임).
+ *
+ * → 부르는 쪽은 `isBackdated()`로 걸러서 **로트를 건드리지 않는다**. 원장 줄은 그대로 남긴다
+ *   (사용량이 서류에 잡혀야 하고, 잔량은 어차피 앵커가 잡는다).
+ */
+export function latestAnchorDate(entries: RawMaterialEntry[]): string | null {
+  let latest: string | null = null;
+  for (const e of entries) {
+    if (e.targetKg == null) continue;
+    const d = String(e.date ?? '');
+    if (d && (latest == null || d > latest)) latest = d;
+  }
+  return latest;
+}
+
+/** 입력한 날짜가 마지막 앵커보다 앞이냐 — 앞이면 로트를 건드리면 안 된다. */
+export function isBackdated(entries: RawMaterialEntry[], date: string): boolean {
+  const anchor = latestAnchorDate(entries);
+  return anchor != null && String(date ?? '') < anchor;
+}

@@ -50,10 +50,11 @@ import { catOrder, CATEGORY_ORDER_LEN, categoryChipClass, specText, splitNameVol
 import { subDotClass } from '../src/shared/submaterialStyle';
 import { isSubmaterial } from '../src/shared/types';
 import { matchesSearch } from '../src/shared/hangul';
-import { mutateRawMaterialLots, addItem, subscribeToCollection, fetchCollection } from '../src/shared/services/firebaseService';
+import { mutateRawMaterialLots, addItem, subscribeToCollection, fetchCollection, adjustItemStock } from '../src/shared/services/firebaseService';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../src/shared/firebase';
 import { withCarryOverLot, buildReceiveLot, nextLotNo, deductFromLots, settleCarryOver, lotQtyRemaining } from '../src/shared/lotUtils';
+import { isBackdated, latestAnchorDate } from '../src/shared/rawLedgerBalance';
 
 const normCat = (cat: string): string =>
   ({ product: '완제품', goods: '상품', container: '용기', cap: '마개', tape: '테이프', box: '박스', label: '라벨' } as Record<string, string>)[cat] ?? cat;
@@ -475,7 +476,8 @@ const ItemList: React.FC<ItemListProps> = ({
     if (!window.confirm(`입력한 수량만큼 재고를 추가할까요? (만들기 · ${targets.length}개 품목)`)) return;
     setClosingSaving(true);
     try {
-      await Promise.all(targets.map(p => onUpdateItem({ ...p, stock: (p.stock ?? 0) + enteredQtyOf(p) })));
+      // 여러 품목을 한꺼번에 쓰므로 화면값에 더하면 서로를 덮어쓴다 → DB에서 읽어 더한다
+      await Promise.all(targets.map(p => adjustItemStock('items', p.id, enteredQtyOf(p))));
       setShowClosingModal(false);
     } catch (e) {
       alert('재고 추가 실패: ' + ((e as any)?.message ?? ''));
@@ -755,12 +757,12 @@ const ItemList: React.FC<ItemListProps> = ({
     if (boxStock < 1) { alert('개봉할 박스 재고가 없습니다.'); return; }
     if (!confirm(`${product.name} 1박스를 개봉해 "${target.name}" ${uc.count}개로 전환할까요?\n(${product.name} −1박스, ${target.name} +${uc.count}개)`)) return;
     // 두 번에 나눠 쓰므로 중간에 끊기면 재고가 사라진다 → 낱개 쓰기가 실패하면 박스를 되돌린다.
-    await onUpdateItem({ ...product, stock: boxStock - 1 });
+    await adjustItemStock('items', product.id, -1);
     try {
-      await onUpdateItem({ ...target, stock: (target.stock ?? 0) + uc.count });
+      await adjustItemStock('items', target.id, uc.count);
     } catch (err) {
       console.error('[개봉] 낱개 재고 반영 실패 — 박스 재고 되돌림:', err);
-      await onUpdateItem({ ...product, stock: boxStock });
+      await adjustItemStock('items', product.id, +1);
       alert('개봉에 실패했습니다. 재고는 원래대로 되돌렸습니다.');
       return;
     }
@@ -2941,6 +2943,14 @@ const ItemList: React.FC<ItemListProps> = ({
           // 원료수불부에 기록 (kg canonical)
           await onAddRawMaterialEntry(entry);
           const rawTarget = items.find((i) => isRawHolder(i) && baseRawName(i.name) === entry.material);
+          // 실사 앵커보다 앞선 날짜면 로트를 건드리지 않는다 — 앵커가 이미 센 몫이라 또 빼면 이중차감이다.
+          //   원장 줄은 위에서 이미 남겼다(사용량이 서류에 잡혀야 하고, 잔량은 앵커가 잡는다).
+          //   자세한 이유는 rawLedgerBalance.ts의 latestAnchorDate 주석 참고.
+          const matEntries = rawMaterialLedger.filter(e => e.material === entry.material);
+          if (rawTarget && isBackdated(matEntries, entry.date)) {
+            setToast({ message: `${entry.material} — ${latestAnchorDate(matEntries)} 실사 이전 날짜라 기록만 남기고 재고는 그대로 둡니다` });
+            return;   // 모달은 스스로 닫힌다 (아래 catch의 return과 같은 처리)
+          }
           if (rawTarget) {
             try {
             if ((entry.received ?? 0) > 0) {
