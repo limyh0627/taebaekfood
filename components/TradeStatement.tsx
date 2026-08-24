@@ -908,6 +908,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [acctPickerOpen, setAcctPickerOpen] = useState(false);
   const [acctQuery, setAcctQuery] = useState('');
   const [histSearch, setHistSearch] = useState('');
+  /** 거래처 필터 — 이 거래처 전표만. 빈 값이면 안 거른다. */
+  const [histPartner, setHistPartner] = useState('');
+  const [partnerPickerOpen, setPartnerPickerOpen] = useState(false);
+  const [partnerQuery, setPartnerQuery] = useState('');
+  /**
+   * 계정 고르는 층 — 손익 > 이익·비용 > 계정,  재무 > 자산·부채·자본 > 계정.
+   * '…전체'로 한 층을 통째로 고르는 항목은 뒀더니 무엇으로 걸렀는지 안 읽혔다.
+   * 층을 눌러 좁히고, 마지막에 계정 하나를 고른다.
+   */
+  const [acctAxis, setAcctAxis] = useState<'' | '손익' | '재무'>('');
+  const [acctBranch, setAcctBranch] = useState('');
   const groupOfCode = useCallback(
     (code?: string) => accountGroups.find(x => x.id === accountCodes.find(c => c.code === code)?.groupId),
     [accountCodes, accountGroups]);
@@ -932,48 +943,53 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * 고를 수 있는 계정 자리 전부 — 크게 · 그룹 · 계정과목을 한 목록으로 편다.
    * 목록을 손으로 안 적는다. 계정·그룹을 만들면 저절로 늘어난다.
    */
+  /** 손익 계정의 갈래 — 수익이면 '이익', 비용이면 '비용'. 둘 다 아니면 손익이 아니다. */
+  const plBranchOf = useCallback((code?: string): '이익' | '비용' | null => {
+    const t = codeType.get(code ?? '');
+    return t === '수익' ? '이익' : t === '비용' ? '비용' : null;
+  }, [codeType]);
+  /**
+   * 고를 수 있는 **계정과목**들 — 층('…전체')은 목록에 안 넣는다.
+   * 목록을 손으로 안 적는다. 계정·그룹을 만들면 저절로 늘어난다.
+   */
   const accountItems = useMemo(() => {
     const codes = [...accountCodes].sort((a, b) =>
       String(a.code).localeCompare(String(b.code), undefined, { numeric: true }));
-    const out: { value: string; label: string; path: string; depth: 0 | 1 | 2 }[] = [
-      { value: 'axis:손익', label: '손익 전체', path: '손익', depth: 0 },
-      { value: 'axis:재무', label: '재무 전체', path: '재무', depth: 0 },
-    ];
-    for (const g of accountGroups.filter(x => x.plLine)) {
-      const mine = codes.filter(c => groupOfCode(c.code)?.id === g.id);
-      if (!mine.length) continue;
-      out.push({ value: `group:${g.id}`, label: `${g.name} 전체`, path: `손익 › ${g.name}`, depth: 1 });
-      for (const c of mine) out.push({
-        value: `code:${c.code}`, label: `${c.code} ${c.name}`, path: `손익 › ${g.name}`, depth: 2 });
-    }
-    for (const t of ['자산', '부채', '자본'] as const) {
-      const mine = codes.filter(c => c.type === t);
-      if (!mine.length) continue;
-      out.push({ value: `type:${t}`, label: `${t} 전체`, path: `재무 › ${t}`, depth: 1 });
-      for (const c of mine) out.push({
-        value: `code:${c.code}`, label: `${c.code} ${c.name}`, path: `재무 › ${t}`, depth: 2 });
+    const out: { value: string; label: string; path: string; axis: '손익' | '재무'; branch: string }[] = [];
+    for (const c of codes) {
+      const pl = plBranchOf(c.code);
+      if (pl) {
+        const g = groupOfCode(c.code);
+        out.push({ value: `code:${c.code}`, label: `${c.code} ${c.name}`, axis: '손익', branch: pl,
+          path: `손익 › ${pl}${g ? ` › ${g.name}` : ''}` });
+        continue;
+      }
+      const bs = bsTypeOf(c.code);
+      if (bs) out.push({ value: `code:${c.code}`, label: `${c.code} ${c.name}`, axis: '재무', branch: bs, path: `재무 › ${bs}` });
     }
     return out;
-  }, [accountCodes, accountGroups, groupOfCode]);
+  }, [accountCodes, groupOfCode, plBranchOf, bsTypeOf]);
   const acctPicked = useMemo(
     () => accountItems.find(i => i.value === histAccount),
     [accountItems, histAccount]);
   /** 이름·코드·경로 아무거나로 찾는다 — 찾는 사람은 대개 계정 이름을 안다 */
   const acctShown = useMemo(() => {
     const q = acctQuery.trim().toLowerCase();
-    if (!q) return accountItems;
-    return accountItems.filter(i =>
-      i.label.toLowerCase().includes(q) || i.path.toLowerCase().includes(q));
-  }, [accountItems, acctQuery]);
+    //  검색은 층을 무시하고 전부 뒤진다 — 이름을 아는 계정은 두 번 안 눌러도 나와야 한다.
+    if (q) return accountItems.filter(i => i.label.toLowerCase().includes(q) || i.path.toLowerCase().includes(q));
+    if (!acctAxis || !acctBranch) return [];
+    return accountItems.filter(i => i.axis === acctAxis && i.branch === acctBranch);
+  }, [accountItems, acctQuery, acctAxis, acctBranch]);
   /** 고른 자리에 이 계정이 걸리는가 */
   const acctHit = useCallback((c?: string): boolean => {
     if (!histAccount) return true;
     const [kind, val] = histAccount.split(':');
-    if (kind === 'axis') return axisOfCode(c) === val;
+    if (kind === 'axis') return axisOfCode(c) === val;      // 옛 저장값 호환
     if (kind === 'group') return groupOfCode(c)?.id === val;
+    if (kind === 'pl') return plBranchOf(c) === val;
     if (kind === 'type') return bsTypeOf(c) === val;
     return String(c) === val;
-  }, [histAccount, axisOfCode, groupOfCode, bsTypeOf]);
+  }, [histAccount, axisOfCode, groupOfCode, bsTypeOf, plBranchOf]);
   const matchAccount = useCallback(
     (codes: string[]) => !histAccount || codes.some(acctHit),
     [histAccount, acctHit]);
@@ -2377,6 +2393,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         // rowKind가 이미 다섯 갈래라 그대로 견준다 — 예전엔 여기서 수금→입금으로 또 옮겨
         // 매핑이 두 군데에 있었고, 한쪽만 고치면 엉뚱한 탭이 걸렸다.
         if (histKind !== '전체' && rowKind(row) !== histKind) return false;
+        if (histPartner && name !== histPartner) return false;
         // 계정은 **줄**로 본다 — 전표 머리로 보면 복합 전표가 통째로 빠진다
         if (histAccount && !matchAccount(rowCodes(row))) return false;
         if (histSearch.trim()) {
@@ -2407,10 +2424,23 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         return issuedMs(ida) - issuedMs(idb)
           || String(ida).localeCompare(String(idb), undefined, { numeric: true });
       }); // 오래된→최신
-  }, [allTimelineRows, histFrom, histTo, histKind, histAccount, histSearch, codeType, codeName, classifyRow, rowKind, rowCodes, matchAccount]);
+  }, [allTimelineRows, histFrom, histTo, histKind, histAccount, histPartner, histSearch, codeType, codeName, classifyRow, rowKind, rowCodes, matchAccount]);
 
   // 페이지네이션: 필터 변경 시 1페이지로 리셋, 최신 페이지부터 보여줌
-  useEffect(() => { setHistoryPage(1); }, [histFrom, histTo, histKind, histAccount, histSearch]);
+  useEffect(() => { setHistoryPage(1); }, [histFrom, histTo, histKind, histAccount, histPartner, histSearch]);
+  /** 거래처 목록 — 실제로 전표가 있는 이름만. 없는 이름을 고르게 하면 빈 목록만 본다. */
+  const histPartnerNames = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of allTimelineRows) {
+      const n = (row.kind === 'stmt' ? row.data.partnerName : row.kind === 'pay' ? row.partnerName : (row.partnerName ?? '')) || '';
+      if (n) set.add(n);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, 'ko'));
+  }, [allTimelineRows]);
+  const partnerShown = useMemo(() => {
+    const q = partnerQuery.trim().toLowerCase();
+    return q ? histPartnerNames.filter(n => n.toLowerCase().includes(q)) : histPartnerNames;
+  }, [histPartnerNames, partnerQuery]);
   const historyTotalPages = Math.max(1, Math.ceil(filteredHistory.length / HIST_PAGE_SIZE));
   const pagedHistory = useMemo(() => {
     // 최신순(역방향)으로 표시하기 위해 뒤에서부터 슬라이싱
@@ -3013,6 +3043,41 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             </select>
           </label>
 
+          {/* 거래처 — 전표가 실제로 있는 이름만. 수백 곳이라 검색으로 찾는다(목록 높이는 고정). */}
+          <div className="relative">
+            <button type="button" onClick={() => { setPartnerPickerOpen(v => !v); setPartnerQuery(''); }}
+              className={`flex items-center gap-1.5 border rounded-lg px-2.5 py-1.5 text-[11px] font-black bg-white outline-none transition-all max-w-[200px] ${
+                histPartner ? 'border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500 hover:border-slate-400'}`}>
+              <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest shrink-0">거래처</span>
+              <span className="truncate">{histPartner || '거래처 선택'}</span>
+              <ChevronDown size={12} className="shrink-0 opacity-50"/>
+            </button>
+            {partnerPickerOpen && (<>
+              <div className="fixed inset-0 z-40" onClick={() => setPartnerPickerOpen(false)}/>
+              <div className="absolute left-0 top-full mt-1 z-50 w-[240px] bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden">
+                <div className="p-2 border-b border-slate-100">
+                  <input autoFocus value={partnerQuery} onChange={e => setPartnerQuery(e.target.value)}
+                    placeholder="거래처 이름으로 찾기"
+                    className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
+                </div>
+                <div className="h-[260px] overflow-y-auto py-1">
+                  {histPartner && (
+                    <button type="button" onClick={() => { setHistPartner(''); setPartnerPickerOpen(false); }}
+                      className="w-full text-left px-3 py-1.5 text-xs font-black text-slate-400 hover:bg-slate-50">필터 해제</button>
+                  )}
+                  {partnerShown.length === 0 && (
+                    <p className="px-3 py-6 text-center text-[11px] font-bold text-slate-300">찾는 거래처가 없습니다</p>
+                  )}
+                  {partnerShown.map(n => (
+                    <button key={n} type="button" onClick={() => { setHistPartner(n); setPartnerPickerOpen(false); }}
+                      className={`w-full text-left px-3 py-1.5 text-xs font-black hover:bg-slate-50 transition-colors ${
+                        histPartner === n ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700'}`}>{n}</button>
+                  ))}
+                </div>
+              </div>
+            </>)}
+          </div>
+
           {/* 계정과목 — **검색되는 목록 하나.** 계정은 수십 개지만 찾는 사람은 이름을 안다.
               층을 훑어 내려가게 하면 이자비용 하나 찾는 데도 세 번을 골라야 한다.
               계층은 줄마다 경로로 보여 준다 — 손익 › 영업외비용 › 951 이자비용. */}
@@ -3023,9 +3088,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest shrink-0">계정과목</span>
               <span className="truncate">
                 {acctPicked ? <>
-                  {acctPicked.depth > 0 && <span className="text-slate-400 font-bold">{acctPicked.path} › </span>}
-                  {acctPicked.label}
-                </> : '전체'}
+                  <span className="text-slate-400 font-bold">{acctPicked.path} › </span>{acctPicked.label}
+                </> : '계정 선택'}
               </span>
               <ChevronDown size={12} className="shrink-0 opacity-50"/>
             </button>
@@ -3037,22 +3101,47 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     placeholder="계정 이름·번호로 찾기"
                     className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
                 </div>
-                <div className="max-h-[300px] overflow-y-auto py-1">
-                  <button type="button"
-                    onClick={() => { setHistAccount(''); setAcctPickerOpen(false); }}
-                    className={`w-full text-left px-3 py-1.5 text-xs font-black hover:bg-slate-50 ${
-                      !histAccount ? 'text-indigo-600' : 'text-slate-500'}`}>전체</button>
+                {/* 층으로 좁힌다 — 손익 › 이익·비용,  재무 › 자산·부채·자본. 검색하면 층을 건너뛴다. */}
+                {!acctQuery.trim() && (
+                  <div className="px-2 py-2 space-y-1.5 border-b border-slate-100">
+                    <div className="flex gap-1">
+                      {(['손익', '재무'] as const).map(a => (
+                        <button key={a} type="button"
+                          onClick={() => { setAcctAxis(a); setAcctBranch(''); }}
+                          className={`flex-1 py-1.5 rounded-lg text-[11px] font-black border transition-all ${
+                            acctAxis === a ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>{a}</button>
+                      ))}
+                    </div>
+                    {acctAxis && (
+                      <div className="flex gap-1">
+                        {(acctAxis === '손익' ? ['이익', '비용'] : ['자산', '부채', '자본']).map(b => (
+                          <button key={b} type="button"
+                            onClick={() => setAcctBranch(b)}
+                            className={`flex-1 py-1.5 rounded-lg text-[11px] font-black border transition-all ${
+                              acctBranch === b ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>{b}</button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="h-[260px] overflow-y-auto py-1">
+                  {histAccount && (
+                    <button type="button"
+                      onClick={() => { setHistAccount(''); setAcctAxis(''); setAcctBranch(''); setAcctPickerOpen(false); }}
+                      className="w-full text-left px-3 py-1.5 text-xs font-black text-slate-400 hover:bg-slate-50">필터 해제</button>
+                  )}
                   {acctShown.length === 0 && (
-                    <p className="px-3 py-4 text-center text-[11px] font-bold text-slate-300">찾는 계정이 없습니다</p>
+                    <p className="px-3 py-6 text-center text-[11px] font-bold text-slate-300">
+                      {acctQuery.trim() ? '찾는 계정이 없습니다' : !acctAxis ? '손익 · 재무 중에서 고르세요' : '갈래를 고르세요'}
+                    </p>
                   )}
                   {acctShown.map(it => (
                     <button key={it.value} type="button"
                       onClick={() => { setHistAccount(it.value); setAcctPickerOpen(false); }}
                       className={`w-full text-left px-3 py-1.5 hover:bg-slate-50 transition-colors ${
-                        histAccount === it.value ? 'bg-indigo-50' : ''}`}
-                      style={{ paddingLeft: 12 + it.depth * 10 }}>
+                        histAccount === it.value ? 'bg-indigo-50' : ''}`}>
                       <span className={`text-xs font-black ${histAccount === it.value ? 'text-indigo-700' : 'text-slate-700'}`}>{it.label}</span>
-                      {it.depth === 2 && <span className="block text-[10px] font-bold text-slate-300 leading-tight">{it.path}</span>}
+                      <span className="block text-[10px] font-bold text-slate-300 leading-tight">{it.path}</span>
                     </button>
                   ))}
                 </div>
