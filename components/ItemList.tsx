@@ -32,11 +32,12 @@ import {
   Plus,
   Layers,
   ChevronDown,
+  Check,
 } from 'lucide-react';
 import { Item, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, PartnerItem } from '../types';
 import { PurchaseOrder, poLines } from '../src/shared/types';
 import type { Order } from '../src/shared/types';
-import { unpackComponent } from '../src/shared/orderUnits';
+import { unpackComponent, isBoxStockItem} from '../src/shared/orderUnits';
 import AddItemModal from './AddItemModal';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
@@ -149,12 +150,21 @@ const parseSearchTokens = (kw: string): string[] =>
 interface StockClosingRow { itemId: string; name: string; spec?: string; boxSize: number; boxes: number; loose: number; total: number; }
 interface StockClosing { id: string; date: string; closedBy: string; createdAt: string; items: StockClosingRow[]; totalStock: number; }
 
-const inferSubtype = (item: { subtype?: string; name: string; type: string }): string => {
-  if (item.subtype) return item.subtype;
+/**
+ * 목록의 갈래 딱지 — **박스 묶음만 '박스', 나머지는 카테고리**(참기름·들기름·참깨…).
+ *
+ * 예전엔 subtype을 먼저 봐서 낱개 품목에 '낱개'가 찍혔다. 그 줄이 전부 '낱개'라 아무것도
+ * 안 갈라 준다. 알고 싶은 건 '무엇이냐'(카테고리)고, 박스는 그게 묶음이라는 것만 알면 된다.
+ * 카테고리가 비어 있는 옛 품목만 이름으로 짚는다.
+ */
+const inferSubtype = (item: { subtype?: string; category?: string; name: string; type: string; id?: string }): string => {
+  if (item.subtype === '박스' || (item.id && isBoxStockItem(item as Item))) return '박스';
+  if (item.category) return item.category;
   const n = item.name;
   if (n.includes('들기름')) return '들기름';
   if (n.includes('참기름')) return '참기름';
-  if (n.includes('검정깨') || n.includes('검정참깨')) return '검정깨';
+  if (n.includes('검정깨') || n.includes('검정참깨')) return '검정참깨';
+  if (n.includes('탈피들깨')) return '탈피들깨';
   if (n.includes('들깨')) return '들깨';
   if (n.includes('참깨')) return '참깨';
   if (n.includes('고춧가루')) return '고춧가루';
@@ -239,6 +249,20 @@ type MainTab = 'requests' | 'history' | 'master' | 'inbound' | 'lots';
  * 열어봐야 알았고, 조건 하나 바꾸려면 패널을 열고 찾고 닫았다. 전표관리처럼 **따로 세운다.**
  * 목록 높이는 고정이다 — 검색으로 줄 수가 줄어도 창이 흔들리면 안 된다.
  */
+/**
+ * 드롭다운 안의 선택지 한 줄 — **한 줄에 하나.**
+ * 칩을 흘려 놓으면(flex-wrap) 줄바꿈 자리가 값에 따라 달라져 눈이 훑을 기준선이 없다.
+ */
+const FilterRow: React.FC<{ on: boolean; onClick: () => void; children: React.ReactNode; tone?: string }> =
+  ({ on, onClick, children, tone = 'text-indigo-600 bg-indigo-50' }) => (
+    <button type="button" onClick={onClick}
+      className={`w-full text-left px-3 py-2 text-[11px] font-black transition-colors flex items-center justify-between gap-2 ${
+        on ? tone : 'text-slate-500 hover:bg-slate-50'}`}>
+      <span className="truncate">{children}</span>
+      {on && <Check size={12} className="shrink-0"/>}
+    </button>
+  );
+
 const FilterDrop: React.FC<{
   label: string;
   summary: string;
@@ -375,7 +399,6 @@ const ItemList: React.FC<ItemListProps> = ({
   const [closingView, setClosingView] = useState<'all' | 'dispatched' | 'stock'>('stock');
   const [closingCatSel, setClosingCatSel] = useState<Set<string>>(new Set());   // 분류 — 여러 개
   const [closingSpecSel, setClosingSpecSel] = useState<Set<string>>(new Set());   // 용량 — 여러 개
-  const [closingFilterOpen, setClosingFilterOpen] = useState(false);
   const CLOSING_PAGE_SIZE = 30;   // 목록이 스크롤되므로 한 쪽에 넉넉히 담는다
 
   const boxSizeOf = (p: Item) => (p as any).defaultBoxConfig?.unitsPerBox || (p as any).boxSize || 12;
@@ -449,7 +472,7 @@ const ItemList: React.FC<ItemListProps> = ({
     setClosingView('all');
     setClosingCatSel(new Set());
     setClosingSpecSel(new Set());
-    setClosingFilterOpen(false);
+
     setEditClosingId(null);
     setEditClosingQty('');
     setClosingCounts({});
@@ -889,9 +912,14 @@ const ItemList: React.FC<ItemListProps> = ({
   const subtypeTabs = useMemo(() => taxo.subtypesOf(tabTypeKey), [taxo, tabTypeKey]);
   // 용량 — 지금 타입에 실제로 쓰이는 규격만 모은다. 다른 필터를 건드려도 목록은 그대로 두어야
   // 하나 고른 순간 나머지 선택지가 사라지지 않는다. 부피(ml·L)를 먼저, 무게(g·kg)를 뒤에 둔다.
+  /**
+   * 용량은 **개입수를 떼고** 본다 — 규격이 '낱개 용량 * 개입수' 꼴이라(`1kg * 20`)
+   * 그대로 쓰면 1kg·1kg*10·1kg*20이 각각 다른 선택지로 서서 같은 용량이 셋으로 갈린다.
+   */
+  const baseSpec = (sp?: string) => String(sp ?? '').split(/[*x×]/)[0].trim();
   const specOptions = useMemo(() => {
     const inTab = (p: Item) => p.type === tabTypeKey;
-    const specs = new Set(items.filter(p => !p.archived && inTab(p)).map(p => (p.spec ?? '').trim()).filter(Boolean));
+    const specs = new Set(items.filter(p => !p.archived && inTab(p)).map(p => baseSpec(p.spec)).filter(Boolean));
     const rank = (s: string): [number, number] => {
       const m = s.match(/([\d.]+)\s*(ml|l|리터|g|kg)/i);
       if (!m) return [2, 0];
@@ -923,7 +951,7 @@ const ItemList: React.FC<ItemListProps> = ({
         result = result.filter(p => (p.subtype ?? '') === activeSubtype);
       }
       if (specSel.size > 0) {
-        result = result.filter(p => specSel.has(p.spec ?? ''));
+        result = result.filter(p => specSel.has(baseSpec(p.spec)));
       }
       if (supSel.size > 0) {
         result = result.filter(p => supSel.has(psMap.get(p.id) ?? ''));
@@ -1200,22 +1228,17 @@ const ItemList: React.FC<ItemListProps> = ({
             {subCategories.length > 0 && (
               <FilterDrop label="분류" active={catSel.size > 0}
                 summary={catSel.size === 0 ? '전체' : catSel.size === 1 ? [...catSel][0] : `${[...catSel][0]} 외 ${catSel.size - 1}`}>
-                {() => (
-                  <div className="p-2.5">
-                    <div className="flex flex-wrap gap-1.5">
-                      {subCategories.map(c => {
-                        const on = catSel.has(c.id);
-                        return (
-                          <button key={c.id} onClick={() => toggleIn(setCatSel, c.id)}
-                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-all ${on ? 'bg-slate-700 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-400'}`}
-                          >{c.label}</button>
-                        );
-                      })}
-                    </div>
+                {close => (
+                  <div className="max-h-[280px] overflow-y-auto py-1">
                     {catSel.size > 0 && (
                       <button onClick={() => setCatSel(new Set())}
-                        className="mt-2 w-full py-1.5 rounded-lg text-[11px] font-black text-slate-400 hover:bg-slate-50">필터 해제</button>
+                        className="w-full text-left px-3 py-1.5 text-[11px] font-black text-slate-400 hover:bg-slate-50">필터 해제</button>
                     )}
+                    {/* 하나만 고른다 — 여러 개를 섞으면 지금 무엇을 보고 있는지 흐려진다 */}
+                    {subCategories.map(c => (
+                      <FilterRow key={c.id} on={catSel.has(c.id)}
+                        onClick={() => { setCatSel(new Set(catSel.has(c.id) ? [] : [c.id])); close(); }}>{c.label}</FilterRow>
+                    ))}
                   </div>
                 )}
               </FilterDrop>
@@ -1224,23 +1247,18 @@ const ItemList: React.FC<ItemListProps> = ({
             {specOptions.length > 0 && (
               <FilterDrop label="용량" active={specSel.size > 0}
                 summary={specSel.size === 0 ? '전체' : specSel.size === 1 ? [...specSel][0] : `${[...specSel][0]} 외 ${specSel.size - 1}`}>
-                {() => (
-                  <div className="p-2.5">
-                    {/* 같은 품목이 규격만 다르게 여럿이라 분류만으로는 못 좁힌다 */}
-                    <div className="flex flex-wrap gap-1.5 max-h-[220px] overflow-y-auto">
-                      {specOptions.map(sp => {
-                        const on = specSel.has(sp);
-                        return (
-                          <button key={sp} onClick={() => toggleIn(setSpecSel, sp)}
-                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-all tabular-nums ${on ? 'bg-sky-600 border-sky-600 text-white' : 'bg-white border-slate-200 text-slate-400 hover:border-sky-300'}`}
-                          >{sp}</button>
-                        );
-                      })}
-                    </div>
+                {close => (
+                  /* 같은 품목이 규격만 다르게 여럿이라 분류만으로는 못 좁힌다 */
+                  <div className="max-h-[280px] overflow-y-auto py-1">
                     {specSel.size > 0 && (
                       <button onClick={() => setSpecSel(new Set())}
-                        className="mt-2 w-full py-1.5 rounded-lg text-[11px] font-black text-slate-400 hover:bg-slate-50">필터 해제</button>
+                        className="w-full text-left px-3 py-1.5 text-[11px] font-black text-slate-400 hover:bg-slate-50">필터 해제</button>
                     )}
+                    {specOptions.map(sp => (
+                      <FilterRow key={sp} on={specSel.has(sp)}
+                        onClick={() => { setSpecSel(new Set(specSel.has(sp) ? [] : [sp])); close(); }}
+                        tone="text-sky-600 bg-sky-50"><span className="tabular-nums">{sp}</span></FilterRow>
+                    ))}
                   </div>
                 )}
               </FilterDrop>
@@ -1267,9 +1285,8 @@ const ItemList: React.FC<ItemListProps> = ({
                       {inboundPartners
                         .filter(sp => !supQuery.trim() || sp.name.toLowerCase().includes(supQuery.trim().toLowerCase()))
                         .map(sp => (
-                          <button key={sp.id} onClick={() => toggleIn(setSupSel, sp.id)}
-                            className={`w-full text-left px-3 py-1.5 text-[11px] font-black transition-colors ${supSel.has(sp.id) ? 'text-orange-600 bg-orange-50' : 'text-slate-500 hover:bg-slate-50'}`}
-                          >{sp.name}</button>
+                          <FilterRow key={sp.id} on={supSel.has(sp.id)} onClick={() => toggleIn(setSupSel, sp.id)}
+                            tone="text-orange-600 bg-orange-50">{sp.name}</FilterRow>
                         ))}
                       {inboundPartners.every(sp => supQuery.trim() && !sp.name.toLowerCase().includes(supQuery.trim().toLowerCase())) && (
                         <p className="px-3 py-6 text-center text-[11px] font-bold text-slate-300">해당 거래처 없음</p>
@@ -1283,17 +1300,15 @@ const ItemList: React.FC<ItemListProps> = ({
             <FilterDrop label="재고" width="w-[200px]" active={stockOnly || zeroStockOnly}
               summary={stockOnly ? '재고 있음' : zeroStockOnly ? '최소수량 미만' : '전체'}>
               {close => (
-                <div className="p-2.5 flex flex-col gap-1.5">
+                <div className="py-1">
                   {/* 성격상 하나만 고른다 */}
                   {([
-                    { id: 'all', label: '전체', on: !stockOnly && !zeroStockOnly, cls: 'bg-slate-700 border-slate-700' },
-                    { id: 'has', label: '재고 있음', on: stockOnly, cls: 'bg-emerald-600 border-emerald-600' },
-                    { id: 'low', label: '최소수량 미만', on: zeroStockOnly, cls: 'bg-rose-600 border-rose-600' },
+                    { id: 'all', label: '전체', on: !stockOnly && !zeroStockOnly },
+                    { id: 'has', label: '재고 있음', on: stockOnly },
+                    { id: 'low', label: '최소수량 미만', on: zeroStockOnly },
                   ] as const).map(f => (
-                    <button key={f.id}
-                      onClick={() => { setStockOnly(f.id === 'has'); setZeroStockOnly(f.id === 'low'); close(); }}
-                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-all ${f.on ? `${f.cls} text-white` : 'bg-white border-slate-200 text-slate-400 hover:border-slate-400'}`}
-                    >{f.label}</button>
+                    <FilterRow key={f.id} on={f.on}
+                      onClick={() => { setStockOnly(f.id === 'has'); setZeroStockOnly(f.id === 'low'); close(); }}>{f.label}</FilterRow>
                   ))}
                 </div>
               )}
@@ -3439,81 +3454,65 @@ const ItemList: React.FC<ItemListProps> = ({
                 )}
               </div>
 
-              {/* 필터 — 구분·분류·용량을 버튼 하나에 담는다. 거래처는 위 검색창이 이미 훑으므로 여기 없다.
-                  '품목 추가하기'도 같은 크기로 옆에 둔다. */}
+              {/* 구분·분류·용량을 따로 세운다 — 버튼 하나에 담아 두면 무엇으로 걸렀는지 열어봐야 안다.
+                  거래처는 위 검색창이 이미 훑는다. '품목 추가하기'도 같은 크기로 옆에 둔다. */}
               {!src && (
                 <div className="flex items-center gap-2 flex-wrap mb-2.5">
-                  <div className="relative">
-                    <button onClick={() => setClosingFilterOpen(o => !o)}
-                      className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-black transition-all ${closingFilterOpen || closingFilterCount > 0 ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}>
-                      <LayoutGrid size={13} />필터
-                      {closingFilterCount > 0 && (
-                        <span className="w-4 h-4 flex items-center justify-center rounded-full bg-indigo-600 text-white text-[9px]">{closingFilterCount}</span>
-                      )}
-                    </button>
-
-                    {closingFilterOpen && (
-                      <>
-                        <div className="fixed inset-0 z-30" onClick={() => setClosingFilterOpen(false)} />
-                        <div className="absolute left-0 top-full mt-2 z-40 w-[20rem] max-w-[88vw] bg-white rounded-2xl border border-slate-200 shadow-xl p-3 space-y-3 max-h-[55vh] overflow-y-auto custom-scrollbar">
-                          {/* 구분 — 현재고를 작업완료(미출고)와 순재고로 쪼개 본다 */}
-                          <div>
-                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">구분</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {([['all', '전체'], ['dispatched', '작업완료'], ['stock', '재고']] as const).map(([v, label]) => (
-                                <button key={v} onClick={() => { setClosingView(v); setClosingPage(0); }}
-                                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-all ${closingView === v ? 'bg-slate-800 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-400'}`}>
-                                  {label}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* 분류 — 실제로 있는 분류를 그대로 늘어놓는다. 여러 개 고를 수 있다. */}
-                          <div>
-                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">분류</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {closingCatOptions.map(g => {
-                                const on = closingCatSel.has(g);
-                                return (
-                                  <button key={g} onClick={() => { toggleIn(setClosingCatSel, g); setClosingPage(0); }}
-                                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-all ${on ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-400 hover:border-indigo-300'}`}>
-                                    {g}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-
-                          {/* 용량 — 여러 개 고를 수 있다 */}
-                          {closingSpecOptions.length > 0 && (
-                            <div>
-                              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">용량</p>
-                              <div className="flex flex-wrap gap-1.5">
-                                {closingSpecOptions.map(v => {
-                                  const on = closingSpecSel.has(v);
-                                  return (
-                                    <button key={v} onClick={() => { toggleIn(setClosingSpecSel, v); setClosingPage(0); }}
-                                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-all tabular-nums ${on ? 'bg-sky-600 border-sky-600 text-white' : 'bg-white border-slate-200 text-slate-400 hover:border-sky-300'}`}>
-                                      {v}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-
-                          <div className="flex items-center justify-between pt-1 border-t border-slate-100">
-                            <span className="text-[10px] font-bold text-slate-400">{listRows.length}개 표시 중</span>
-                            <button onClick={clearClosingFilters} disabled={closingFilterCount === 0}
-                              className="px-3 py-1.5 rounded-lg text-[11px] font-black text-slate-500 hover:bg-slate-100 disabled:opacity-30 transition-colors">
-                              모두 해제
-                            </button>
-                          </div>
-                        </div>
-                      </>
+                  {/* 구분 — 현재고를 작업완료(미출고)와 순재고로 쪼개 본다 */}
+                  <FilterDrop label="구분" width="w-[200px]" active={closingView !== 'all'}
+                    summary={closingView === 'all' ? '전체' : closingView === 'dispatched' ? '작업완료' : '재고'}>
+                    {close => (
+                      <div className="py-1">
+                        {([['all', '전체'], ['dispatched', '작업완료'], ['stock', '재고']] as const).map(([v, label]) => (
+                          <FilterRow key={v} on={closingView === v}
+                            onClick={() => { setClosingView(v); setClosingPage(0); close(); }}>{label}</FilterRow>
+                        ))}
+                      </div>
                     )}
-                  </div>
+                  </FilterDrop>
+
+                  {closingCatOptions.length > 0 && (
+                    <FilterDrop label="분류" active={closingCatSel.size > 0}
+                      summary={closingCatSel.size === 0 ? '전체' : closingCatSel.size === 1 ? [...closingCatSel][0] : `${[...closingCatSel][0]} 외 ${closingCatSel.size - 1}`}>
+                      {close => (
+                        <div className="max-h-[280px] overflow-y-auto py-1">
+                          {closingCatSel.size > 0 && (
+                            <button onClick={() => { setClosingCatSel(new Set()); setClosingPage(0); }}
+                              className="w-full text-left px-3 py-1.5 text-[11px] font-black text-slate-400 hover:bg-slate-50">필터 해제</button>
+                          )}
+                          {closingCatOptions.map(g => (
+                            <FilterRow key={g} on={closingCatSel.has(g)}
+                              onClick={() => { setClosingCatSel(new Set(closingCatSel.has(g) ? [] : [g])); setClosingPage(0); close(); }}>{g}</FilterRow>
+                          ))}
+                        </div>
+                      )}
+                    </FilterDrop>
+                  )}
+
+                  {closingSpecOptions.length > 0 && (
+                    <FilterDrop label="용량" active={closingSpecSel.size > 0}
+                      summary={closingSpecSel.size === 0 ? '전체' : closingSpecSel.size === 1 ? [...closingSpecSel][0] : `${[...closingSpecSel][0]} 외 ${closingSpecSel.size - 1}`}>
+                      {close => (
+                        <div className="max-h-[280px] overflow-y-auto py-1">
+                          {closingSpecSel.size > 0 && (
+                            <button onClick={() => { setClosingSpecSel(new Set()); setClosingPage(0); }}
+                              className="w-full text-left px-3 py-1.5 text-[11px] font-black text-slate-400 hover:bg-slate-50">필터 해제</button>
+                          )}
+                          {closingSpecOptions.map(v => (
+                            <FilterRow key={v} on={closingSpecSel.has(v)} tone="text-sky-600 bg-sky-50"
+                              onClick={() => { setClosingSpecSel(new Set(closingSpecSel.has(v) ? [] : [v])); setClosingPage(0); close(); }}>
+                              <span className="tabular-nums">{v}</span>
+                            </FilterRow>
+                          ))}
+                        </div>
+                      )}
+                    </FilterDrop>
+                  )}
+
+                  {closingFilterCount > 0 && (
+                    <button onClick={clearClosingFilters}
+                      className="px-2.5 py-2 rounded-xl text-[11px] font-black text-slate-400 hover:bg-slate-100 transition-colors">모두 해제</button>
+                  )}
 
                   {/* 품목추가 — 전체 품목 검색·수량입력·확정으로 재고 생성(ADD) */}
                   <button onClick={openMakeModal}

@@ -195,18 +195,19 @@ const CATEGORY_CHIP_COLORS = [
 const CATEGORY_FIXED: Record<string, string> = {
   // 완제품 갈래 — 정렬 순서(CATEGORY_ORDER)와 같은 얼굴
   '참기름': 'bg-pink-100 text-pink-700',
-  '들기름': 'bg-lime-100 text-lime-700',
+  '들기름': 'bg-blue-100 text-blue-700',
   '참깨': 'bg-orange-100 text-orange-700',
   '들깨': 'bg-emerald-100 text-emerald-700',
   '탈피들깨': 'bg-teal-100 text-teal-700',
-  '검정깨': 'bg-slate-200 text-slate-700',
+  '검정참깨': 'bg-zinc-300 text-zinc-800',
+  '검정깨': 'bg-zinc-300 text-zinc-800',   // 옛 이름
   '향미유': 'bg-violet-100 text-violet-700',
   '고춧가루': 'bg-rose-100 text-rose-700',
   '선물세트': 'bg-fuchsia-100 text-fuchsia-700',
   // 부자재 갈래 — 안 넣어두면 해시로 아무 색이나 잡혀 화면마다 달라 보인다
   '라벨': 'bg-amber-100 text-amber-700',
   '용기': 'bg-sky-100 text-sky-700',
-  '박스': 'bg-emerald-100 text-emerald-700',
+  '박스': 'bg-slate-200 text-slate-600',
   '마개': 'bg-indigo-100 text-indigo-700',
   '테이프': 'bg-cyan-100 text-cyan-700',
   '케이스': 'bg-stone-200 text-stone-700',
