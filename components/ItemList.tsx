@@ -158,6 +158,16 @@ interface StockClosing { id: string; date: string; closedBy: string; createdAt: 
  * 박스 묶음인지는 딱지가 아니라 **줄 바탕색과 들여쓰기**가 말해 준다(낱개 밑에 딸려 선다).
  * 카테고리가 비어 있는 옛 품목만 이름으로 짚는다.
  */
+/**
+ * 등급(골드·A·분·특·특A·원액) — 이름 토큰으로 짚는다. 품목에 등급 칸이 따로 없다.
+ * A·특은 정확일치라야 한다 — 부분포함으로 보면 '골드A'·'특A'·'특골드'가 죄다 걸린다.
+ */
+const GRADES = ['골드', 'A', '분', '특', '특A', '원액'] as const;
+const matchGrade = (p: Item, g: string): boolean => {
+  const toks = `${p.품목 ?? ''}/${p.name}`.split(/[/()]/).map(t => t.trim());
+  return (g === 'A' || g === '특') ? toks.some(t => t === g) : toks.some(t => t.includes(g));
+};
+
 const inferSubtype = (item: { subtype?: string; category?: string; name: string; type: string; id?: string }): string => {
   if (item.category) return item.category;
   const n = item.name;
@@ -399,6 +409,7 @@ const ItemList: React.FC<ItemListProps> = ({
   const [closingView, setClosingView] = useState<'all' | 'dispatched' | 'stock'>('stock');
   const [closingCatSel, setClosingCatSel] = useState<Set<string>>(new Set());   // 분류 — 여러 개
   const [closingSpecSel, setClosingSpecSel] = useState<Set<string>>(new Set());   // 용량 — 여러 개
+  const [closingGrade, setClosingGrade] = useState('');       // 등급 — 하나
   const [closingPartner, setClosingPartner] = useState('');   // 거래처(매출처) — 하나
   const [closingPartnerQ, setClosingPartnerQ] = useState('');
   const CLOSING_PAGE_SIZE = 30;   // 목록이 스크롤되므로 한 쪽에 넉넉히 담는다
@@ -463,9 +474,9 @@ const ItemList: React.FC<ItemListProps> = ({
       .sort((a, b) => a.localeCompare(b, 'ko')),
     [allClosingItems, salesPartnerNames],
   );
-  const closingFilterCount = (closingView !== 'all' ? 1 : 0) + closingCatSel.size + closingSpecSel.size + (closingPartner ? 1 : 0);
+  const closingFilterCount = (closingView !== 'all' ? 1 : 0) + closingCatSel.size + closingSpecSel.size + (closingPartner ? 1 : 0) + (closingGrade ? 1 : 0);
   const clearClosingFilters = () => {
-    setClosingView('all'); setClosingCatSel(new Set()); setClosingSpecSel(new Set()); setClosingPartner(''); setClosingPage(0);
+    setClosingView('all'); setClosingCatSel(new Set()); setClosingSpecSel(new Set()); setClosingPartner(''); setClosingGrade(''); setClosingPage(0);
   };
   // 저장/표시 대상: 재고 있는 것 + 사용자가 수량을 입력한 것 (재고 0은 기본 숨김, 검색으로 찾아 입력 가능)
   const closingItems = useMemo(
@@ -486,6 +497,7 @@ const ItemList: React.FC<ItemListProps> = ({
     setClosingCatSel(new Set());
     setClosingSpecSel(new Set());
     setClosingPartner('');
+    setClosingGrade('');
 
     setEditClosingId(null);
     setEditClosingQty('');
@@ -621,6 +633,7 @@ const ItemList: React.FC<ItemListProps> = ({
   const [catSel, setCatSel] = useState<Set<string>>(new Set());
   const [supSel, setSupSel] = useState<Set<string>>(new Set());
   const [specSel, setSpecSel] = useState<Set<string>>(new Set());
+  const [gradeSel, setGradeSel] = useState('');   // 등급 — 하나만
   const [supQuery, setSupQuery] = useState('');   // 거래처는 수가 많아 나열 대신 검색으로 고른다
   const [filterOpen, setFilterOpen] = useState(false);
   /** Set 상태에서 값 하나를 켜고 끈다 */
@@ -722,8 +735,8 @@ const ItemList: React.FC<ItemListProps> = ({
   const [stockOnly, setStockOnly] = useState(false);
   const [zeroStockOnly, setZeroStockOnly] = useState(false);
   // 켜진 필터 개수 — 버튼 배지. 서브타입은 항상 보이는 단계라 여기 안 센다.
-  const activeFilterCount = catSel.size + supSel.size + specSel.size + (stockOnly || zeroStockOnly ? 1 : 0);
-  const clearFilters = () => { setCatSel(new Set()); setSupSel(new Set()); setSpecSel(new Set()); setSupQuery(''); setSpecSel(new Set()); setStockOnly(false); setZeroStockOnly(false); };
+  const activeFilterCount = catSel.size + supSel.size + specSel.size + (gradeSel ? 1 : 0) + (stockOnly || zeroStockOnly ? 1 : 0);
+  const clearFilters = () => { setCatSel(new Set()); setSupSel(new Set()); setSpecSel(new Set()); setSupQuery(''); setGradeSel(''); setStockOnly(false); setZeroStockOnly(false); };
   const [priorityClientId] = useState<string | null>(null);
   // cart는 로컬 상태 (Firebase 쓰기는 확정 버튼 시에만)
   const [cart, setCart] = useState<{ id: string; qty: number; isBox: boolean }[]>([]);
@@ -965,6 +978,9 @@ const ItemList: React.FC<ItemListProps> = ({
       if (specSel.size > 0) {
         result = result.filter(p => specSel.has(baseSpec(p.spec)));
       }
+      if (gradeSel) {
+        result = result.filter(p => matchGrade(p, gradeSel));
+      }
       if (supSel.size > 0) {
         result = result.filter(p => supSel.has(psMap.get(p.id) ?? ''));
       }
@@ -1018,7 +1034,7 @@ const ItemList: React.FC<ItemListProps> = ({
         || splitNameVolume(a).base.localeCompare(splitNameVolume(b).base, 'ko')
         || (a.spec ?? '').localeCompare(b.spec ?? '', 'ko', { numeric: true });
     });
-  }, [items, activeTab, catSel, supSel, specSel, activeSubtype, searchTerm, orderRequests, confirmedOrders, inboundPartners, partners, topTab, stockOnly, zeroStockOnly]);
+  }, [items, activeTab, catSel, supSel, specSel, gradeSel, activeSubtype, searchTerm, orderRequests, confirmedOrders, inboundPartners, partners, topTab, stockOnly, zeroStockOnly]);
 
   // 완제품 탭: 박스 품목을 그 낱개 밑으로 묶는다 (unpackComponent 기준). row = { p, isChild, parentId?, boxCount }
   type GroupRow = { p: Item; isChild: boolean; parentId?: string; boxCount: number };
@@ -1278,6 +1294,17 @@ const ItemList: React.FC<ItemListProps> = ({
                 )}
               </FilterDrop>
             )}
+
+            <FilterDrop label="등급" width="w-[180px]" active={!!gradeSel} summary={gradeSel || '전체'}>
+              {close => (
+                <div className="py-1">
+                  {GRADES.map(g => (
+                    <FilterRow key={g} on={gradeSel === g} tone="text-amber-600 bg-amber-50"
+                      onClick={() => { setGradeSel(gradeSel === g ? '' : g); close(); }}>{g}</FilterRow>
+                  ))}
+                </div>
+              )}
+            </FilterDrop>
 
             {/* 매입거래처 — 완제품은 우리가 만드는 것이라 매입처가 없다. 수가 많아 검색으로 고른다. */}
             {topTab !== 'product' && inboundPartners.length > 0 && (
@@ -3448,11 +3475,12 @@ const ItemList: React.FC<ItemListProps> = ({
       //  거래처(매출처) — 고른 값이라 이름을 정확히 견준다.
       const partnerMatch = (p: Item) =>
         !closingPartner || (salesPartnerNames.get(p.id) ?? '').split(' ').includes(closingPartner);
+      const gradeMatch = (p: Item) => !closingGrade || matchGrade(p, closingGrade);
       const dispatchedOf = (id: string) => dispatchedQtyByItem[id] ?? 0;
       // 용량 필터 — 낱개·박스가 같은 칸에 잡히도록 volOf로 맞춰 본다.
       const specMatch = (p: Item) => closingSpecSel.size === 0 || closingSpecSel.has(volOf(p));
       const baseClosingItems = (term ? allClosingItems.filter(matchClosing) : closingItems)
-        .filter(catMatch).filter(specMatch).filter(partnerMatch);
+        .filter(catMatch).filter(specMatch).filter(partnerMatch).filter(gradeMatch);
       let listRows: GridRow[] = src
         ? rowsForGrid
         : (() => {
@@ -3515,18 +3543,15 @@ const ItemList: React.FC<ItemListProps> = ({
                   거래처는 위 검색창이 이미 훑는다. '품목 추가하기'도 같은 크기로 옆에 둔다. */}
               {!src && (
                 <div className="flex items-center gap-2 flex-wrap mb-2.5">
-                  {/* 구분 — 현재고를 작업완료(미출고)와 순재고로 쪼개 본다 */}
-                  <FilterDrop label="구분" width="w-[200px]" active={closingView !== 'all'}
-                    summary={closingView === 'all' ? '전체' : closingView === 'dispatched' ? '작업완료' : '재고'}>
-                    {close => (
-                      <div className="py-1">
-                        {([['all', '전체'], ['dispatched', '작업완료'], ['stock', '재고']] as const).map(([v, label]) => (
-                          <FilterRow key={v} on={closingView === v}
-                            onClick={() => { setClosingView(v); setClosingPage(0); close(); }}>{label}</FilterRow>
-                        ))}
-                      </div>
-                    )}
-                  </FilterDrop>
+                  {/* 구분 — 셋뿐이고 늘 하나가 켜져 있다. 드롭다운을 열 것 없이 눌러서 바꾼다. */}
+                  <div className="flex items-center gap-1 bg-slate-100/70 p-1 rounded-xl border border-slate-200">
+                    {([['all', '전체'], ['dispatched', '작업완료'], ['stock', '재고']] as const).map(([v, label]) => (
+                      <button key={v} onClick={() => { setClosingView(v); setClosingPage(0); }}
+                        className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${closingView === v ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
 
                   {closingCatOptions.length > 0 && (
                     <FilterDrop label="분류" active={closingCatSel.size > 0}
@@ -3565,6 +3590,17 @@ const ItemList: React.FC<ItemListProps> = ({
                       )}
                     </FilterDrop>
                   )}
+
+                  <FilterDrop label="등급" width="w-[180px]" active={!!closingGrade} summary={closingGrade || '전체'}>
+                    {close => (
+                      <div className="py-1">
+                        {GRADES.map(g => (
+                          <FilterRow key={g} on={closingGrade === g} tone="text-amber-600 bg-amber-50"
+                            onClick={() => { setClosingGrade(closingGrade === g ? '' : g); setClosingPage(0); close(); }}>{g}</FilterRow>
+                        ))}
+                      </div>
+                    )}
+                  </FilterDrop>
 
                   {closingPartnerNames.length > 0 && (
                     <FilterDrop label="거래처" active={!!closingPartner} summary={closingPartner || '전체'}>
