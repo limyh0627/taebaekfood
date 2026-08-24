@@ -198,9 +198,9 @@ const CATEGORY_FIXED: Record<string, string> = {
   '들기름': 'bg-lime-100 text-lime-700',
   '참깨': 'bg-orange-100 text-orange-700',
   '들깨': 'bg-emerald-100 text-emerald-700',
-  '탈피들깨': 'bg-teal-100 text-teal-700',
-  '검정참깨': 'bg-zinc-300 text-zinc-800',
-  '검정깨': 'bg-zinc-300 text-zinc-800',   // 옛 이름
+  '탈피들깨': 'bg-yellow-100 text-yellow-800',
+  '검정참깨': 'bg-purple-200 text-purple-800',
+  '검정깨': 'bg-purple-200 text-purple-800',   // 옛 이름
   '향미유': 'bg-violet-100 text-violet-700',
   '고춧가루': 'bg-rose-100 text-rose-700',
   '선물세트': 'bg-fuchsia-100 text-fuchsia-700',

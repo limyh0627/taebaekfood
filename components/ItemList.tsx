@@ -151,14 +151,14 @@ interface StockClosingRow { itemId: string; name: string; spec?: string; boxSize
 interface StockClosing { id: string; date: string; closedBy: string; createdAt: string; items: StockClosingRow[]; totalStock: number; }
 
 /**
- * 목록의 갈래 딱지 — **박스 묶음만 '박스', 나머지는 카테고리**(참기름·들기름·참깨…).
+ * 목록의 갈래 딱지 — **카테고리**(참기름·들기름·참깨…).
  *
- * 예전엔 subtype을 먼저 봐서 낱개 품목에 '낱개'가 찍혔다. 그 줄이 전부 '낱개'라 아무것도
- * 안 갈라 준다. 알고 싶은 건 '무엇이냐'(카테고리)고, 박스는 그게 묶음이라는 것만 알면 된다.
+ * 예전엔 subtype을 먼저 봐서 낱개 품목에 전부 '낱개'가 찍혔다. 그 줄이 죄다 같으면
+ * 아무것도 안 갈라 준다. 알고 싶은 건 '무엇이냐'다.
+ * 박스 묶음인지는 딱지가 아니라 **줄 바탕색과 들여쓰기**가 말해 준다(낱개 밑에 딸려 선다).
  * 카테고리가 비어 있는 옛 품목만 이름으로 짚는다.
  */
 const inferSubtype = (item: { subtype?: string; category?: string; name: string; type: string; id?: string }): string => {
-  if (item.subtype === '박스' || (item.id && isBoxStockItem(item as Item))) return '박스';
   if (item.category) return item.category;
   const n = item.name;
   if (n.includes('들기름')) return '들기름';
@@ -399,6 +399,8 @@ const ItemList: React.FC<ItemListProps> = ({
   const [closingView, setClosingView] = useState<'all' | 'dispatched' | 'stock'>('stock');
   const [closingCatSel, setClosingCatSel] = useState<Set<string>>(new Set());   // 분류 — 여러 개
   const [closingSpecSel, setClosingSpecSel] = useState<Set<string>>(new Set());   // 용량 — 여러 개
+  const [closingPartner, setClosingPartner] = useState('');   // 거래처(매출처) — 하나
+  const [closingPartnerQ, setClosingPartnerQ] = useState('');
   const CLOSING_PAGE_SIZE = 30;   // 목록이 스크롤되므로 한 쪽에 넉넉히 담는다
 
   const boxSizeOf = (p: Item) => (p as any).defaultBoxConfig?.unitsPerBox || (p as any).boxSize || 12;
@@ -445,14 +447,25 @@ const ItemList: React.FC<ItemListProps> = ({
     return CATEGORY_ORDER_LEN + (i === -1 ? STOCK_GROUP_TAIL.length : i);   // 모르는 분류는 뒤로
   };
   // 실제로 쓰이는 분류만 목록에 올린다
+  //  분류 체계 — 이름·순서·하위 분류는 사용자가 정한다(itemTaxonomy). 아래 필터들이 다 이걸 본다.
+  const [taxonomyRows, setTaxonomyRows] = useState<TaxonomyRow[]>([]);
+  useEffect(() => { fetchCollection<TaxonomyRow>('itemTaxonomy').then(setTaxonomyRows).catch(() => {}); }, []);
+  const taxo = useMemo(() => buildTaxonomy(taxonomyRows), [taxonomyRows]);
+
+  //  분류 관리 카테고리 순서 그대로 — 실제로 있는 것만.
   const closingCatOptions = useMemo(
-    () => [...new Set(allClosingItems.map(stockGroupOf))]
-      .sort((a, b) => stockGroupRank(a) - stockGroupRank(b) || a.localeCompare(b)),
-    [allClosingItems],
+    () => taxo.categoriesOf('product').filter(c => allClosingItems.some(p => p.category === c)),
+    [allClosingItems, taxo],
   );
-  const closingFilterCount = (closingView !== 'all' ? 1 : 0) + closingCatSel.size + closingSpecSel.size;
+  /** 거래처(매출처) 후보 — 지금 목록에 실제로 걸린 이름만 */
+  const closingPartnerNames = useMemo(
+    () => [...new Set(allClosingItems.flatMap(p => (salesPartnerNames.get(p.id) ?? '').split(' ').filter(Boolean)))]
+      .sort((a, b) => a.localeCompare(b, 'ko')),
+    [allClosingItems, salesPartnerNames],
+  );
+  const closingFilterCount = (closingView !== 'all' ? 1 : 0) + closingCatSel.size + closingSpecSel.size + (closingPartner ? 1 : 0);
   const clearClosingFilters = () => {
-    setClosingView('all'); setClosingCatSel(new Set()); setClosingSpecSel(new Set()); setClosingPage(0);
+    setClosingView('all'); setClosingCatSel(new Set()); setClosingSpecSel(new Set()); setClosingPartner(''); setClosingPage(0);
   };
   // 저장/표시 대상: 재고 있는 것 + 사용자가 수량을 입력한 것 (재고 0은 기본 숨김, 검색으로 찾아 입력 가능)
   const closingItems = useMemo(
@@ -472,6 +485,7 @@ const ItemList: React.FC<ItemListProps> = ({
     setClosingView('all');
     setClosingCatSel(new Set());
     setClosingSpecSel(new Set());
+    setClosingPartner('');
 
     setEditClosingId(null);
     setEditClosingQty('');
@@ -835,9 +849,6 @@ const ItemList: React.FC<ItemListProps> = ({
 
   // 분류 체계 — 이름·하위 분류는 사용자가 정한다(itemTaxonomy). 저장본이 없으면 기본값.
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
-  const [taxonomyRows, setTaxonomyRows] = useState<TaxonomyRow[]>([]);
-  useEffect(() => { fetchCollection<TaxonomyRow>('itemTaxonomy').then(setTaxonomyRows).catch(() => {}); }, []);
-  const taxo = useMemo(() => buildTaxonomy(taxonomyRows), [taxonomyRows]);
   // 분류를 쓰는 품목 수 — 지울 때 경고에 쓴다
   const taxonomyUsage = useMemo(() => {
     const u: Record<string, number> = {};
@@ -858,6 +869,7 @@ const ItemList: React.FC<ItemListProps> = ({
   const [makeCat, setMakeCat] = useState<string>('참기름');
   const [makeVessel, setMakeVessel] = useState('');   // 품목추가 용량 필터(180/300/350/1750/1800)
   const [makeGrade, setMakeGrade] = useState('');     // 품목추가 등급 필터(골드/A/분/특A)
+  const [makeSubtype, setMakeSubtype] = useState('전체');  // 품목추가 상단 탭(낱개·박스·선물세트)
   const [makePartner, setMakePartner] = useState('');  // 품목추가 거래처 필터(매출처 이름)
   const [makePartnerQ, setMakePartnerQ] = useState('');
   const [page, setPage] = useState(1);
@@ -1828,6 +1840,9 @@ const ItemList: React.FC<ItemListProps> = ({
                       <td className="px-4 py-3">
                         {/* 카테고리 색은 공용(productChip.categoryChipClass) — 화면마다 다르면 헷갈린다.
                             예전엔 참기름·들기름·향미유가 모두 보라라 갈래가 안 갈렸다. */}
+                        {product.subtype && (
+                          <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 whitespace-nowrap">{product.subtype}</span>
+                        )}
                         <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${categoryChipClass(inferSubtype(product))}`}>
                           {inferSubtype(product)}
                         </span>
@@ -2754,14 +2769,17 @@ const ItemList: React.FC<ItemListProps> = ({
           // A·특은 정확일치(골드A·특A·특골드와 안 겹치게), 나머지는 토큰 부분포함
           return (g === 'A' || g === '특') ? toks.some(t => t === g) : toks.some(t => t.includes(g));
         };
-        // 실제 품목이 있는 분류만 탭으로 (빈 탭 안 만듦)
-        const makeCounts = new Map<string, number>();
-        for (const p of base) { const g = stockGroupOf(p); makeCounts.set(g, (makeCounts.get(g) ?? 0) + 1); }
-        const MAKE_CATS = [...makeCounts.entries()]
-          .map(([c, n]) => ({ c, n }))
-          .sort((a, b) => stockGroupRank(a.c) - stockGroupRank(b.c) || a.c.localeCompare(b.c));
-        // 없어진 분류가 골라져 있으면 첫 탭으로
-        const cat = MAKE_CATS.some(x => x.c === makeCat) ? makeCat : (MAKE_CATS[0]?.c ?? '');
+        /**
+         * 상단 탭은 **서브타입 셋**(낱개·박스·선물세트)뿐이다 — 먼저 갈리는 건 '무슨 포장이냐'다.
+         * 카테고리부터 아래는 전부 드롭다운으로 내렸다. 탭이 열 개씩 늘어서면 그 줄이 화면을 먹는다.
+         */
+        const MAKE_SUBTYPES = ['전체', ...(taxo.subtypesOf('product').filter(v =>
+          base.some(p => (p.subtype ?? '') === v)))];
+        const sub = MAKE_SUBTYPES.includes(makeSubtype) ? makeSubtype : '전체';
+        const inSub = (p: Item) => sub === '전체' || (p.subtype ?? '') === sub;
+        //  분류는 **분류 관리 카테고리**를 그대로 쓴다. 다른 화면과 같은 갈래로 묶여야 한다.
+        const MAKE_CATS = taxo.categoriesOf('product').filter(c => base.some(p => inSub(p) && p.category === c));
+        const cat = MAKE_CATS.includes(makeCat) ? makeCat : '';
 
         // 검색: 품목명·품목키·거래처(매출처), '+'로 여러 키워드 AND. 초성 검색 유지.
         const makeTokens = parseSearchTokens(kw);
@@ -2779,12 +2797,15 @@ const ItemList: React.FC<ItemListProps> = ({
         // 검색 중엔 분류 탭만 무시한다(거래처로 찾으면 다른 분류 품목도 나와야 한다).
         // 용량·등급은 검색 중에도 그대로 살려 둔다 — 검색하면 사라져 버려 다시 좁힐 수가 없었다.
         const searching = makeTokens.length > 0;
-        const pool = searching ? base.filter(matchMake) : base.filter(p => stockGroupOf(p) === cat);
+        const pool = searching
+          ? base.filter(matchMake)
+          : base.filter(p => inSub(p) && (!cat || p.category === cat));
         // 용량 칸은 지금 보이는 품목에서 뽑는다 — 기름은 ml, 깨·가루는 g·kg이 그대로 나온다
         const vesselOpts = [...new Set(pool.map(vesselKey).filter((k): k is string => !!k))]
           .sort((a, b) => { const [ka, va] = vesselRank(a), [kb, vb] = vesselRank(b); return ka !== kb ? ka - kb : va - vb; });
         const vessel = vesselOpts.includes(makeVessel) ? makeVessel : '';   // 탭 옮겨 없어진 용량은 무시
         const showGrade = searching || cat === '참기름' || cat === '들기름';   // 등급은 기름류·검색 중에만
+        //  용량은 개입수를 뗀 낱개 용량으로 묶는다(재고관리와 같은 규칙).
         const listedItems = pool.filter(p =>
           (!vessel || matchVessel(p, vessel)) && (!showGrade || !makeGrade || matchGrade(p, makeGrade)));
         // 낱개 밑에 박스 묶어서 표시 (수량과 무관한 고정 정렬이라 입력 중에도 안 움직임)
@@ -2821,27 +2842,77 @@ const ItemList: React.FC<ItemListProps> = ({
                 <button onClick={() => setIsAddModalOpen(false)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
               </div>
 
-              {/* 분류 탭 */}
-              <div className="px-5 pt-3 flex gap-1.5 flex-wrap shrink-0">
-                {MAKE_CATS.map(({ c, n }) => (
-                  <button key={c} onClick={() => setMakeCat(c)}
-                    className={`px-3 py-1.5 rounded-xl border text-xs font-black transition-all ${
-                      cat === c ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
-                    }`}>
-                    {c} <span className={cat === c ? 'text-indigo-200' : 'text-slate-300'}>{n}</span>
-                  </button>
-                ))}
+              {/* 상단은 포장 갈래만 — 낱개·박스·선물세트 */}
+              <div className="px-5 pt-3 shrink-0">
+                <div className="flex items-center gap-1 bg-slate-100/70 p-1 rounded-xl border border-slate-200 w-fit">
+                  {MAKE_SUBTYPES.map(v => (
+                    <button key={v} onClick={() => { setMakeSubtype(v); setMakeCat(''); setMakeVessel(''); }}
+                      className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${sub === v ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                      {v}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              {/* 거래처 — 분류·용량과 나란히. 어느 거래처 것을 만드는지로 먼저 좁히는 일이 많다. */}
-              {makePartnerNames.length > 0 && (
-                <div className="px-5 pt-2 shrink-0">
+              {/* 카테고리부터는 전부 드롭다운 — 탭이 늘어서면 그 줄이 화면을 먹는다 */}
+              <div className="px-5 pt-2 flex items-center gap-2 flex-wrap shrink-0">
+                {MAKE_CATS.length > 0 && (
+                  <FilterDrop label="분류" active={!!cat} summary={cat || '전체'}>
+                    {close => (
+                      <div className="max-h-[280px] overflow-y-auto py-1">
+                        {cat && (
+                          <button onClick={() => { setMakeCat(''); close(); }}
+                            className="w-full text-left px-3 py-1.5 text-[11px] font-black text-slate-400 hover:bg-slate-50">필터 해제</button>
+                        )}
+                        {MAKE_CATS.map(c => (
+                          <FilterRow key={c} on={cat === c}
+                            onClick={() => { setMakeCat(cat === c ? '' : c); setMakeVessel(''); close(); }}>{c}</FilterRow>
+                        ))}
+                      </div>
+                    )}
+                  </FilterDrop>
+                )}
+
+                {vesselOpts.length > 1 && (
+                  <FilterDrop label="용량" active={!!vessel} summary={vessel || '전체'}>
+                    {close => (
+                      <div className="max-h-[280px] overflow-y-auto py-1">
+                        {vessel && (
+                          <button onClick={() => { setMakeVessel(''); close(); }}
+                            className="w-full text-left px-3 py-1.5 text-[11px] font-black text-slate-400 hover:bg-slate-50">필터 해제</button>
+                        )}
+                        {vesselOpts.map(v => (
+                          <FilterRow key={v} on={vessel === v} tone="text-sky-600 bg-sky-50"
+                            onClick={() => { setMakeVessel(vessel === v ? '' : v); close(); }}>
+                            <span className="tabular-nums">{v}</span>
+                          </FilterRow>
+                        ))}
+                      </div>
+                    )}
+                  </FilterDrop>
+                )}
+
+                {/* 등급은 기름류·검색 중에만 — 깨·가루엔 없는 갈래다 */}
+                {showGrade && (
+                  <FilterDrop label="등급" width="w-[180px]" active={!!makeGrade} summary={makeGrade || '전체'}>
+                    {close => (
+                      <div className="py-1">
+                        {['골드', 'A', '분', '특', '특A', '원액'].map(g => (
+                          <FilterRow key={g} on={makeGrade === g} tone="text-amber-600 bg-amber-50"
+                            onClick={() => { setMakeGrade(makeGrade === g ? '' : g); close(); }}>{g}</FilterRow>
+                        ))}
+                      </div>
+                    )}
+                  </FilterDrop>
+                )}
+
+                {makePartnerNames.length > 0 && (
                   <FilterDrop label="거래처" active={!!makePartner} summary={makePartner || '전체'}>
                     {close => (<>
                       <div className="p-2 border-b border-slate-100">
                         <div className="relative">
                           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300" />
-                          <input autoFocus value={makePartnerQ} onChange={e => setMakePartnerQ(e.target.value)} placeholder="거래처 검색"
+                          <input value={makePartnerQ} onChange={e => setMakePartnerQ(e.target.value)} placeholder="거래처 검색"
                             className="w-full pl-8 pr-2 py-1.5 rounded-lg border border-slate-200 text-[11px] font-bold placeholder:text-slate-300 focus:outline-none focus:border-indigo-300"/>
                         </div>
                       </div>
@@ -2853,47 +2924,19 @@ const ItemList: React.FC<ItemListProps> = ({
                         {makePartnerNames
                           .filter(n => !makePartnerQ.trim() || n.toLowerCase().includes(makePartnerQ.trim().toLowerCase()))
                           .map(n => (
-                            <button key={n} onClick={() => { setMakePartner(n); close(); }}
-                              className={`w-full text-left px-3 py-1.5 text-[11px] font-black transition-colors ${makePartner === n ? 'text-indigo-600 bg-indigo-50' : 'text-slate-500 hover:bg-slate-50'}`}>{n}</button>
+                            <FilterRow key={n} on={makePartner === n}
+                              onClick={() => { setMakePartner(makePartner === n ? '' : n); close(); }}>{n}</FilterRow>
                           ))}
                       </div>
                     </>)}
                   </FilterDrop>
-                </div>
-              )}
+                )}
 
-              {/* 용량·등급 필터 — 가로 스크롤 한 줄로 모바일 정리 */}
-              {(vesselOpts.length > 1 || showGrade) && (
-                <div className="px-5 pt-2 space-y-1 shrink-0">
-                  {/* 용량 — 지금 보이는 품목에서 뽑는다. 깨·가루 탭이면 g·kg이 그대로 뜬다. */}
-                  {vesselOpts.length > 1 && (
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-7 shrink-0 text-[10px] font-black text-slate-400">용량</span>
-                      <div className="flex gap-1 overflow-x-auto no-scrollbar">
-                        {['', ...vesselOpts].map(v => (
-                          <button key={v || 'all'} onClick={() => setMakeVessel(v)}
-                            className={`shrink-0 px-2.5 py-1 rounded-lg border text-[11px] font-black tabular-nums transition-all ${vessel === v ? 'bg-slate-800 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}>
-                            {v === '' ? '전체' : v}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {showGrade && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-7 shrink-0 text-[10px] font-black text-slate-400">등급</span>
-                    <div className="flex gap-1 overflow-x-auto no-scrollbar">
-                      {['', '골드', 'A', '분', '특', '특A', '원액'].map(g => (
-                        <button key={g || 'all'} onClick={() => setMakeGrade(g)}
-                          className={`shrink-0 px-2.5 py-1 rounded-lg border text-[11px] font-black transition-all ${makeGrade === g ? 'bg-amber-500 border-amber-500 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}>
-                          {g === '' ? '전체' : g}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  )}
-                </div>
-              )}
+                {(cat || vessel || makeGrade || makePartner) && (
+                  <button onClick={() => { setMakeCat(''); setMakeVessel(''); setMakeGrade(''); setMakePartner(''); }}
+                    className="px-2.5 py-2 rounded-xl text-[11px] font-black text-slate-400 hover:bg-slate-100 transition-colors">모두 해제</button>
+                )}
+              </div>
 
               <div className="px-5 py-3 shrink-0">
                 <div className="relative">
@@ -2920,13 +2963,15 @@ const ItemList: React.FC<ItemListProps> = ({
                   const subs = bomOf(p.id);
                   const lbl = parseMakeLabel(p);   // 대표이름 + 구분요소(등급·용량·개입·거래처)
                   return (
-                    <div key={p.id} className={`px-4 sm:px-5 py-3.5 ${add > 0 ? 'bg-indigo-50/40' : isChild ? 'bg-slate-50/40' : ''} ${isChild ? 'pl-8 sm:pl-9' : ''}`}>
+                    <div key={p.id} className={`px-4 sm:px-5 py-3.5 ${add > 0 ? 'bg-indigo-50/40' : isChild ? 'bg-slate-200/70' : ''} ${isChild ? 'pl-8 sm:pl-9' : ''}`}>
                       <div className="flex items-center gap-3">
                         <div className="flex-1 min-w-0">
                           {/* 카테고리 · 품목명 · 규격 — 다른 화면과 같은 한 행.
                               거래처는 뺐다: 여기서 고르는 건 '무엇을 몇 개 만드나'지 누구에게 파나가 아니다. */}
                           <span className={`flex items-center gap-1.5 text-[13px] break-keep ${isChild ? 'font-semibold text-slate-500' : 'font-bold text-slate-800'}`}>
-                            {isChild && <span className="text-slate-300 shrink-0">└</span>}
+                            {p.subtype && (
+                              <span className="shrink-0 text-[10px] font-black px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">{p.subtype}</span>
+                            )}
                             <span className={`shrink-0 text-[10px] font-black px-1.5 py-0.5 rounded-md ${categoryChipClass(inferSubtype(p))}`}>
                               {inferSubtype(p)}
                             </span>
@@ -3390,12 +3435,16 @@ const ItemList: React.FC<ItemListProps> = ({
         return tokens.every(t => matchesSearch(hay, t));
       };
       // 분류 필터 — 목록 머리와 같은 기준(stockGroupOf)이라 고른 분류가 그 띠 그대로다
-      const catMatch = (p: Item) => closingCatSel.size === 0 || closingCatSel.has(stockGroupOf(p));
+      //  분류는 **분류 관리 카테고리**로 — 다른 화면과 같은 갈래로 묶여야 한다.
+      const catMatch = (p: Item) => closingCatSel.size === 0 || closingCatSel.has(p.category ?? '');
+      //  거래처(매출처) — 고른 값이라 이름을 정확히 견준다.
+      const partnerMatch = (p: Item) =>
+        !closingPartner || (salesPartnerNames.get(p.id) ?? '').split(' ').includes(closingPartner);
       const dispatchedOf = (id: string) => dispatchedQtyByItem[id] ?? 0;
       // 용량 필터 — 낱개·박스가 같은 칸에 잡히도록 volOf로 맞춰 본다.
       const specMatch = (p: Item) => closingSpecSel.size === 0 || closingSpecSel.has(volOf(p));
       const baseClosingItems = (term ? allClosingItems.filter(matchClosing) : closingItems)
-        .filter(catMatch).filter(specMatch);
+        .filter(catMatch).filter(specMatch).filter(partnerMatch);
       let listRows: GridRow[] = src
         ? rowsForGrid
         : (() => {
@@ -3509,6 +3558,32 @@ const ItemList: React.FC<ItemListProps> = ({
                     </FilterDrop>
                   )}
 
+                  {closingPartnerNames.length > 0 && (
+                    <FilterDrop label="거래처" active={!!closingPartner} summary={closingPartner || '전체'}>
+                      {close => (<>
+                        <div className="p-2 border-b border-slate-100">
+                          <div className="relative">
+                            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300" />
+                            <input value={closingPartnerQ} onChange={e => setClosingPartnerQ(e.target.value)} placeholder="거래처 검색"
+                              className="w-full pl-8 pr-2 py-1.5 rounded-lg border border-slate-200 text-[11px] font-bold placeholder:text-slate-300 focus:outline-none focus:border-indigo-300"/>
+                          </div>
+                        </div>
+                        <div className="h-[240px] overflow-y-auto py-1">
+                          {closingPartner && (
+                            <button onClick={() => { setClosingPartner(''); setClosingPage(0); close(); }}
+                              className="w-full text-left px-3 py-1.5 text-[11px] font-black text-slate-400 hover:bg-slate-50">필터 해제</button>
+                          )}
+                          {closingPartnerNames
+                            .filter(n => !closingPartnerQ.trim() || n.toLowerCase().includes(closingPartnerQ.trim().toLowerCase()))
+                            .map(n => (
+                              <FilterRow key={n} on={closingPartner === n}
+                                onClick={() => { setClosingPartner(closingPartner === n ? '' : n); setClosingPage(0); close(); }}>{n}</FilterRow>
+                            ))}
+                        </div>
+                      </>)}
+                    </FilterDrop>
+                  )}
+
                   {closingFilterCount > 0 && (
                     <button onClick={clearClosingFilters}
                       className="px-2.5 py-2 rounded-xl text-[11px] font-black text-slate-400 hover:bg-slate-100 transition-colors">모두 해제</button>
@@ -3561,13 +3636,15 @@ const ItemList: React.FC<ItemListProps> = ({
                   const editable = src ? true : closingView !== 'dispatched';
                   const editing = editable && editingClosingId === r.itemId;
                   return (
-                    <div key={r.itemId} className={`w-full flex items-center gap-2 px-3 py-2.5 ${r.isChild ? "pl-7 bg-slate-50/50" : ""}`}>
+                    <div key={r.itemId} className={`w-full flex items-center gap-2 px-3 py-2.5 ${r.isChild ? "pl-7 bg-slate-200/70" : ""}`}>
                       {/* 카테고리 + 품목명 + 규격을 한 줄, 부자재는 그 아래 한 줄에 쭉 */}
                       <span className="flex-1 min-w-0">
                         {/* 카테고리 · 품목명 · 규격을 flex 한 행으로 — 이름과 규격이 같은 크기, 같은 줄에 선다.
                             예전엔 인라인이라 칩의 세로 여백에 밀려 규격이 반 칸 내려앉았다. */}
                         <span className={`flex items-center gap-1.5 text-[15px] break-keep ${r.isChild ? 'font-semibold text-slate-500' : 'font-bold text-slate-800'}`}>
-                          {r.isChild && <span className="text-slate-300 shrink-0">└</span>}
+                          {product?.subtype && (
+                            <span className="shrink-0 text-[10px] font-black px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">{product.subtype}</span>
+                          )}
                           {product && (
                             <span className={`shrink-0 text-[10px] font-black px-1.5 py-0.5 rounded-md ${categoryChipClass(inferSubtype(product))}`}>
                               {inferSubtype(product)}
