@@ -1,5 +1,9 @@
 # 태백푸드 프로젝트
 
+## 먼저 읽을 것
+- [인수인계.md](인수인계.md) — 지켜야 할 규칙(화면·BOM·재고·원가·전표·데이터 수정)
+- [DB-CHANGELOG.md](DB-CHANGELOG.md) — DB를 건드린 이력과 되돌리는 법
+
 ## 기술 스택
 - React + TypeScript + Vite
 - Firebase (Firestore, Hosting, Auth)

@@ -237,7 +237,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [taxExemptOverrides, setTaxExemptOverrides] = useState<Record<string, boolean>>({});
 
   // ── 단가 DB 관리 패널 ──
-  const [showPricePanel, setShowPricePanel] = useState(false);
   const [pricePanelEdits, setPricePanelEdits] = useState<Record<string, string>>({});
   const [priceSaveState, setPriceSaveState] = useState<Record<string, 'saving' | 'done' | 'error'>>({});
 
@@ -290,9 +289,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setManualMode(true);
     setManualItems(prev => {
       const rows = prev.filter(r => r.name.trim());
+      //  빈 행은 안 붙인다 — 누를 때마다 하나씩 딸려 나와 지우는 일이 됐다. 필요하면 '행 추가'가 있다.
       return [...rows,
-        { name: p.name, spec: '', qty: '1', price: p.price ? String(p.price) : '', isTaxExempt: p.taxType === '면세', note: '' },
-        { name: '', spec: '', qty: '', price: '', isTaxExempt: false, note: '' }];
+        { name: p.name, spec: '', qty: '1', price: p.price ? String(p.price) : '', isTaxExempt: p.taxType === '면세', note: '' }];
     });
   };
   // ── 비용 전표 발행 모달 (거래처 없이 계정과목+금액) ──
@@ -1158,7 +1157,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setDateFrom('');
     setDateTo('');
     setOrderDateQuick(type === '매출' ? '전체' : '');
-    setShowPricePanel(false);
     setSelectedConfirmedIds([]);
     setPurchaseSearch('');
     setShowPurchasePicker(false);
@@ -1236,7 +1234,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setEditablePrices({});
     setTaxExemptOverrides({});
     setClientSearch('');
-    setShowPricePanel(false);
     setActiveSearchRow(null);
   };
 
@@ -5067,16 +5064,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   </button>
                 )}
               </>) : (<>
-                <button onClick={()=>{setSelectedClientId('');setSelectedOrderId('');setEditablePrices({});setTaxExemptOverrides({});setShowPricePanel(false);setManualItems([{name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);setSelectedConfirmedIds([]);}}
+                <button onClick={()=>{setSelectedClientId('');setSelectedOrderId('');setEditablePrices({});setTaxExemptOverrides({});setManualItems([{name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);setSelectedConfirmedIds([]);}}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-black text-slate-600 hover:bg-slate-100 transition-all shrink-0">
                   <ChevronLeft size={12}/>거래처 변경
                 </button>
-                {searchableRows.length>0 && (
-                  <button onClick={()=>setShowPricePanel(v=>!v)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-black border transition-all ${showPricePanel?'bg-violet-600 text-white border-violet-600':'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>
-                    단가관리
-                  </button>
-                )}
                 {createMode==='매출' && !editingStmt && (
                   <div className="ml-auto flex bg-slate-200 rounded-lg p-0.5 gap-0.5">
                     <button onClick={()=>{
@@ -5120,39 +5111,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 <span className="text-slate-300 text-xs">~</span>
                 <input type="date" value={dateTo} onChange={e=>{setDateTo(e.target.value);setOrderDateQuick('');}}
                   className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
-              </div>
-            )}
-
-            {/* ── 단가관리 패널 ── */}
-            {showPricePanel && selectedClientId && searchableRows.length > 0 && (
-              <div className="flex-shrink-0 border-b border-slate-100 max-h-36 overflow-y-auto">
-                <div className="px-5 py-2 bg-violet-50 sticky top-0">
-                  <span className="text-[10px] font-black text-violet-600 uppercase tracking-widest">단가·과세 관리 ({searchableRows.length}품목)</span>
-                </div>
-                <div className="divide-y divide-slate-50">
-                  {searchableRows.map(({pc,product})=>{
-                    const st=priceSaveState[pc.id];
-                    return (
-                    <div key={pc.id} className="flex items-center gap-3 px-5 py-2">
-                      <span className="text-xs font-black text-slate-700 flex-1 truncate">{product!.name}</span>
-                      {product!.spec && <span className="text-[10px] font-bold text-slate-600">{product!.spec}</span>}
-                      <input type="text" inputMode="decimal" placeholder="단가"
-                        value={pricePanelEdits[pc.id]??(pc.price!==undefined?String(pc.price):'')}
-                        onChange={e=>{setPricePanelEdits(prev=>({...prev,[pc.id]:e.target.value}));setPriceSaveState(s=>{const n={...s};delete n[pc.id];return n;});}}
-                        onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();savePcPrice(pc);}}}
-                        className="w-24 text-right bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-violet-300"/>
-                      <button onClick={()=>togglePcTax(pc)} disabled={st==='saving'}
-                        className={`px-2.5 py-1 rounded-lg text-[10px] font-black border transition-all disabled:opacity-50 ${pc.taxType==='면세'?'bg-indigo-500 text-white border-indigo-500':'bg-white text-slate-500 border-slate-200 hover:bg-slate-100'}`}>
-                        {pc.taxType==='면세'?'면세':'과세'}
-                      </button>
-                      <button onClick={()=>savePcPrice(pc)} disabled={st==='saving'}
-                        className={`px-2.5 py-1 rounded-lg text-[10px] font-black text-white transition-all disabled:opacity-60 ${st==='done'?'bg-emerald-500':st==='error'?'bg-rose-500':'bg-violet-600 hover:bg-violet-700'}`}>
-                        {st==='saving'?'저장중':st==='done'?'저장됨':st==='error'?'실패':'저장'}
-                      </button>
-                    </div>
-                    );
-                  })}
-                </div>
               </div>
             )}
 
@@ -5543,14 +5501,15 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 setManualMode(true);
                 setManualItems(prev=>{
                   const existing=prev.filter(r=>r.name.trim());
-                  return [...existing,...toAdd,{name:'',spec:'',qty:'',price:'',isTaxExempt:false,note:''}];
+                  return [...existing,...toAdd];   // 빈 행은 안 붙인다 — 필요하면 '행 추가'
                 });
                 setShowItemPicker(false);setPickerSearch('');setPickerQtys({});
               };
               return (
                 <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
                   onKeyDown={e=>{if(e.key==='Enter')confirmPick();if(e.key==='Escape')setShowItemPicker(false);}}>
-                  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl max-h-[80vh] flex flex-col overflow-hidden mx-4">
+                  {/* 크기 고정 — 검색으로 줄 수가 줄어도 창이 안 흔들린다(검색할 때 가변 크기 금지) */}
+                  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl h-[70vh] flex flex-col overflow-hidden mx-4">
                     <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
                       <div>
                         <div className="font-black text-slate-900">품목 선택</div>
@@ -5592,13 +5551,27 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                   <span className="text-xs font-black text-slate-800">{docN}</span>
                                 </td>
                                 <td className="px-4 py-2.5 text-[11px] font-bold text-slate-700">{r.product!.spec||''}</td>
-                                <td className="px-4 py-2.5 text-xs text-right font-black text-slate-700">
-                                  {r.pc.price!==undefined ? fmt(r.pc.price)+'원' : <span className="text-slate-300 font-normal">미설정</span>}
+                                {/* 단가·과세를 여기서 바로 고친다 — 따로 있던 단가관리 패널을 이 자리로 합쳤다.
+                                    고르는 화면과 고치는 화면이 갈려 있으면 단가 하나 바꾸려고 창을 두 번 연다. */}
+                                <td className="px-4 py-2.5" onClick={e=>e.stopPropagation()}>
+                                  <div className="flex items-center gap-1 justify-end">
+                                    <input type="text" inputMode="decimal" placeholder="미설정"
+                                      value={pricePanelEdits[r.pc.id]??(r.pc.price!==undefined?String(r.pc.price):'')}
+                                      onChange={e=>{setPricePanelEdits(prev=>({...prev,[r.pc.id]:e.target.value}));setPriceSaveState(st=>{const n={...st};delete n[r.pc.id];return n;});}}
+                                      onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();e.stopPropagation();savePcPrice(r.pc);}}}
+                                      className="w-20 text-right bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-violet-300"/>
+                                    <button type="button" onClick={()=>savePcPrice(r.pc)} disabled={priceSaveState[r.pc.id]==='saving'}
+                                      title="단가 저장"
+                                      className={`px-1.5 py-1 rounded-lg text-[10px] font-black text-white transition-all disabled:opacity-60 ${priceSaveState[r.pc.id]==='done'?'bg-emerald-500':priceSaveState[r.pc.id]==='error'?'bg-rose-500':'bg-violet-600 hover:bg-violet-700'}`}>
+                                      {priceSaveState[r.pc.id]==='saving'?'…':priceSaveState[r.pc.id]==='done'?'✓':'저장'}
+                                    </button>
+                                  </div>
                                 </td>
-                                <td className="px-4 py-2.5 text-center">
-                                  <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${r.pc.taxType==='면세'?'bg-indigo-100 text-indigo-700':'bg-slate-100 text-slate-500'}`}>
+                                <td className="px-4 py-2.5 text-center" onClick={e=>e.stopPropagation()}>
+                                  <button type="button" onClick={()=>togglePcTax(r.pc)} disabled={priceSaveState[r.pc.id]==='saving'}
+                                    className={`text-[10px] font-black px-2 py-1 rounded-lg border transition-all disabled:opacity-50 ${r.pc.taxType==='면세'?'bg-indigo-500 text-white border-indigo-500':'bg-white text-slate-500 border-slate-200 hover:bg-slate-100'}`}>
                                     {r.pc.taxType==='면세'?'면세':'과세'}
-                                  </span>
+                                  </button>
                                 </td>
                                 <td className="px-4 py-2.5" onClick={e=>e.stopPropagation()}>
                                   <input type="text" inputMode="decimal" value={qty}
