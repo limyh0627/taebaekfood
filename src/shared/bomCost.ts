@@ -19,6 +19,12 @@ export interface BomCostCtx {
   allItems: Item[];
   /** 품목키 → 원료 배합 [{raw, ratio}]. buildFormula(k, itemFormulas, allItems) 래핑. 없으면 []. */
   formulaOf: (prodKey: string) => { raw: string; ratio: number }[];
+  /**
+   * 품목키 → **직접 구성 한 단**(펼치지 않은, 수율 그대로). formulaRowsOf 래핑.
+   * 제조 반제품 원가가 이걸 쓴다 — 수율은 곱하는 게 아니라 나누는 값이라 미리 곱한 값으론 못 푼다.
+   * 안 넘기면 제조 반제품은 저장 원가만 본다(구 호출부 호환).
+   */
+  formulaRowsOf?: (prodKey: string) => { raw: string; ratio: number; yieldRate: number }[];
   /** 단위당 가공비(임가공 등). 없으면 0. */
   processingFeeOf?: (item: Item) => number;
   /** BOM 단일원천 — item_bom 그대로. 안 넘기면 구성 없는 품목으로 본다(폴백 없음). */
@@ -80,19 +86,29 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
     //   goods(완사입)·raw(원료)·wip(반제품)·submaterial(부자재)·box(겉박스)
     if (TERMINAL.has(item.type as string)) {
       const stored = item.cost ?? 0;
-      if (stored > 0) { memo.set(item.id, stored); return stored; }
-      // **제조 반제품**은 저장 원가가 없으면 원료식으로 굴린다.
-      //   참기름특A = 깨분참기름 0.5 + 통깨참기름 0.5 처럼 사서 오는 게 아니라 섞어 만드는 것.
-      //   (매입 반제품 — 깨분참기름/16.5kg 등 — 은 저장 cost가 종단이라 여기 안 걸린다: stored>0)
-      //   완제품과 달리 용량(spec)이 없으므로 toKg 경로가 아니라 '단위 1당 비율 합'으로 계산한다.
-      if (item.type === 'wip') {
-        const f = ctx.formulaOf(item.품목 || item.name);
-        if (f.length) {
-          // 배합 반제품 1kg당 원가 = 구성 원료의 kg당 원가를 비율로 섞은 값. 단위 환산 없음(전부 kg).
-          const blended = f.reduce((s, r) => s + rawCostPerKg(r.raw, byRawName) * r.ratio, 0);
+      /**
+       * **제조 반제품은 저장 원가보다 원료식이 세다.**
+       *
+       * 참기름특A = 깨분참기름 0.5 + 통깨참기름 0.5처럼 사서 오는 게 아니라 섞어 만드는 것이다.
+       * 예전엔 저장 cost가 있으면 그걸 그대로 썼는데, 원료값이 올라도 안 따라와서
+       * 통들깨들기름이 들깨 5,795원 시절 값을 그대로 들고 있었다(실제 6,700원).
+       * 원료식이 있으면 언제나 굴린다 — 매입 반제품(깨분참기름/16.5kg 등)은 원료식이 없어 안 걸린다.
+       *
+       * 수율은 **나눈다**. 37%는 "들깨 1kg에서 기름 0.37kg"이라 기름 1kg엔 들깨 1/0.37 = 2.7kg이 든다.
+       * 곱하면 0.37kg으로 잡혀 원가가 7배 작아진다.
+       */
+      if (item.type === 'wip' && ctx.formulaRowsOf) {
+        const rows = ctx.formulaRowsOf(item.품목 || item.name);
+        if (rows.length) {
+          const blended = rows.reduce((sum, r) => {
+            const src = byRawName.get(r.raw);
+            const unit = src ? cost(src, s2) : 0;      // 중간 반제품도 제 원료식으로 굴린다(재귀)
+            return sum + unit * r.ratio / (r.yieldRate || 1);
+          }, 0);
           if (blended > 0) { memo.set(item.id, blended); return blended; }
         }
       }
+      if (stored > 0) { memo.set(item.id, stored); return stored; }
       memo.set(item.id, stored);
       return stored;
     }

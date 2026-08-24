@@ -88,7 +88,7 @@ import { createOrderStockEngine, StockUsePlan } from './orderStockEngine';
 import { buildStockUseRows, StockUseRow } from './stockUseRows';
 import StockUseModal from './StockUseModal';
 import { createOemEngine, OEM_DEFAULT_FEE_PER_KG } from './oemEngine';
-import { buildFormula as buildFormulaBom } from './bom';
+import { buildFormula as buildFormulaBom, formulaRowsOf } from './bom';
 import { buildCostFn } from '../../shared/bomCost';
 import NoticeBoard from '../../../components/NoticeBoard';
 import ItemManager from '../../../components/ItemManager';
@@ -493,7 +493,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // 재고평가·마진용 BOM 롤업 원가 (완제품 제조원가 자동). effectiveCost = 저장 cost 우선, 없으면 롤업.
   const inventoryCostOf = useMemo(
-    () => buildCostFn({ allItems, itemBoms, formulaOf: (k) => buildFormulaBom(k, itemFormulas, allItems) }).effective,
+    () => buildCostFn({ allItems, itemBoms, formulaOf: (k) => buildFormulaBom(k, itemFormulas, allItems), formulaRowsOf: (k) => formulaRowsOf(k, itemFormulas) }).effective,
     [allItems, itemBoms, itemFormulas],
   );
 
@@ -507,7 +507,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     formulas: typeof itemFormulas = itemFormulas,
     boms: typeof itemBoms = itemBoms,
   ) => {
-    const roll = buildCostFn({ allItems: src, itemBoms: boms, formulaOf: (k) => buildFormulaBom(k, formulas, src) });
+    const roll = buildCostFn({ allItems: src, itemBoms: boms, formulaOf: (k) => buildFormulaBom(k, formulas, src), formulaRowsOf: (k) => formulaRowsOf(k, formulas) });
     await Promise.all(src
       .map(i => ({ i, v: Math.round(roll(i)) }))
       .filter(({ i, v }) => v > 0 && Math.abs(v - (i.cost ?? 0)) > 0.5)

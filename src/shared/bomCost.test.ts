@@ -118,3 +118,52 @@ describe('bomCost — buildCostFn', () => {
     expect(Number.isFinite(c(a))).toBe(true);
   });
 });
+
+/**
+ * 수율은 **나눈다** — 사장님 지적으로 잡은 자리.
+ * "37%는 들깨 1kg으로 기름 370g 나온다는 거지" → 기름 1kg엔 들깨 1/0.37 = 2.7kg.
+ * 예전엔 buildFormula가 주는 `ratio × yield_rate`를 그대로 곱해서 6,700 × 0.37 = 2,479가 나왔다.
+ */
+describe('제조 반제품 — 수율을 나눈다', () => {
+  const 들깨 = mk({ id: 'raw-들깨', name: '들깨', type: 'raw', unit: 'kg', cost: 6700 });
+  const 통들깨들기름 = mk({ id: 'wip-통들깨', name: '통들깨들기름', type: 'wip', unit: 'L', density: 0.924, cost: 15663 });
+  const 수입들기름 = mk({ id: 'wip-수입', name: '수입들기름', type: 'wip', unit: 'L', cost: 11467 });
+  const 들기름 = mk({ id: 'wip-들기름', name: '들기름', type: 'wip', unit: 'L' });
+  const items = [들깨, 통들깨들기름, 수입들기름, 들기름];
+  const ROWS: Record<string, { raw: string; ratio: number; yieldRate: number }[]> = {
+    통들깨들기름: [{ raw: '들깨', ratio: 1, yieldRate: 0.37 }],
+    들기름: [{ raw: '수입들기름', ratio: 0.8, yieldRate: 1 }, { raw: '통들깨들기름', ratio: 0.2, yieldRate: 1 }],
+  };
+  const c = buildCostFn({
+    allItems: items, itemBoms: [],
+    formulaOf: () => [],
+    formulaRowsOf: k => ROWS[k] ?? [],
+  });
+
+  it('들깨 6,700 · 수율 37% → 18,108원/kg (곱하면 2,479로 7배 작다)', () => {
+    expect(c(통들깨들기름)).toBeCloseTo(6700 / 0.37, 0);
+    expect(c(통들깨들기름)).toBeGreaterThan(6700);   // 원료보다 비싸야 한다 — 짜면 줄어드니까
+  });
+
+  it('저장 원가가 있어도 원료식이 세다 — 원료값이 오르면 따라와야 한다', () => {
+    expect(통들깨들기름.cost).toBe(15663);          // 들깨 5,795원 시절 값
+    expect(c(통들깨들기름)).not.toBeCloseTo(15663, 0);
+  });
+
+  it('중간 반제품을 거쳐도 재귀로 굴린다 — 들기름 = 수입 0.8 + 통들깨 0.2', () => {
+    expect(c(들기름)).toBeCloseTo(11467 * 0.8 + (6700 / 0.37) * 0.2, 0);
+  });
+
+  it('수율 100%(배합)은 그냥 비율대로', () => {
+    const 반반 = mk({ id: 'wip-반반', name: '반반', type: 'wip' });
+    const c2 = buildCostFn({
+      allItems: [...items, 반반], itemBoms: [], formulaOf: () => [],
+      formulaRowsOf: k => (k === '반반' ? [{ raw: '수입들기름', ratio: 0.5, yieldRate: 1 }, { raw: '들깨', ratio: 0.5, yieldRate: 1 }] : ROWS[k] ?? []),
+    });
+    expect(c2(반반)).toBeCloseTo(11467 * 0.5 + 6700 * 0.5, 0);
+  });
+
+  it('원료식이 없는 매입 반제품은 저장 원가가 종단', () => {
+    expect(c(수입들기름)).toBe(11467);
+  });
+});
