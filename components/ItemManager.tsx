@@ -117,6 +117,17 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
    * 이름만 깔아 두면 목록에서 그게 용기인지 마개인지 라벨인지 안 갈린다.
    * 근거는 자식 품목의 category다(SubmaterialComponent.category엔 자식의 type이 들어 있다).
    */
+  /**
+   * BOM 수량 표시 — **저장은 언제나 kg**이라 기름은 그대로 찍으면 실제 용량보다 작아 보인다.
+   * 300ml 병에 든 들기름은 0.2772kg으로 저장된다 — 'L'로 보여줄 땐 밀도로 나눠야 0.3L이 나온다.
+   */
+  const bomQtyLabel = (l: BomLine) => {
+    const d = l.child?.density;
+    const v = d ? Math.round((l.qty / d) * 10000) / 10000 : l.qty;
+    const u = l.child?.unit;
+    return d ? `${v}${u ?? 'L'}` : String(v);
+  };
+
   const bomChip = (l: BomLine, i: number) => {
     const cat = subCatOf(l);
     return (
@@ -124,7 +135,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(l.child)}`} />
         {cat && <span className="text-slate-400">{cat}</span>}
         {l.child?.name ?? l.childId}
-        {l.qty !== 1 && <span className="text-slate-300">×{l.qty}</span>}
+        {l.qty !== 1 && <span className="text-slate-300">×{bomQtyLabel(l)}</span>}
       </span>
     );
   };

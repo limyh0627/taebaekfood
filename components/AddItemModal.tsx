@@ -117,6 +117,15 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const [taxonomyRows, setTaxonomyRows] = useState<TaxonomyRow[]>([]);
   useEffect(() => { fetchCollection<TaxonomyRow>('itemTaxonomy').then(setTaxonomyRows).catch(() => {}); }, []);
   const taxo = useMemo(() => buildTaxonomy(taxonomyRows), [taxonomyRows]);
+  /**
+   * 구성품을 찾는 조회 맵 — **완제품만 담긴 `items`로는 부족하다.**
+   * AdminApp이 넘기는 items는 `type === 'product'`뿐이라 반제품(들기름·참기름특A)·원료를 못 찾았다.
+   * 그 바람에 밀도를 못 읽어 kg 숫자에 'L' 딱지만 붙었다 — 300ml 병이 '0.277 L'로 보였다(0.3L의 kg값).
+   */
+  const compById = useMemo(
+    () => new Map([...(items ?? []), ...allSubmaterials].map(x => [x.id, x])),
+    [items, allSubmaterials],
+  );
 
   /**
    * 박스 묶음 품목인가 — 낱개 ×N을 담는 것. 낱개로 풀려 서류는 낱개 기준이라
@@ -597,7 +606,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                 <div className="space-y-2">
                   {formData.submaterials.map((s, idx) => {
                     // 구성품이 완제품/반제품이면 그 BOM(원료+부자재)을 펼쳐 볼 수 있게
-                    const child = (items ?? []).find(p => p.id === s.id);
+                    const child = compById.get(s.id);
                     const cCat = child ? normCat(child.type) : '';
                     const isAssembly = !!child && (cCat === 'product' || cCat === 'wip' || child.type === '완제품');
                     const open = expandedBom.has(s.id);
@@ -621,7 +630,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                         {/* BOM 수량은 **kg으로 저장**한다. 밀도가 있는 오일은 화면에서만 L로 보여주고
                             입력받은 L에 밀도를 곱해 되돌린다 — 안 그러면 kg 숫자에 'L' 딱지만 붙는다. */}
                         {(() => {
-                          const comp = (items ?? []).find(p => p.id === s.id);
+                          const comp = compById.get(s.id);
                           const d = comp?.density;
                           const shown = d ? Math.round(((s.stock ?? 1) / d) * 10000) / 10000 : (s.stock ?? 1);
                           return (

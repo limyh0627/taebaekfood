@@ -1784,6 +1784,7 @@ const ItemList: React.FC<ItemListProps> = ({
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">서브타입</th>
                   <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">카테고리</th>
                   <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hidden sm:table-cell">거래처</th>
                   <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">품목명</th>
@@ -1837,12 +1838,15 @@ const ItemList: React.FC<ItemListProps> = ({
                       className={`transition-colors cursor-pointer sm:cursor-default ${inCart ? 'bg-indigo-50/40' : isCritical ? 'bg-rose-50/30 hover:bg-rose-50/50' : 'hover:bg-slate-50/50'}`}
                       onClick={() => setExpandedRowId(isExpanded ? null : product.id)}
                     >
+                      {/* 서브타입·카테고리는 **다른 칸**이다 — 한 칸에 겹쳐 두면 무엇이 무엇인지 안 갈린다 */}
+                      <td className="px-4 py-3">
+                        {product.subtype
+                          ? <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 whitespace-nowrap">{product.subtype}</span>
+                          : <span className="text-[10px] text-slate-200">-</span>}
+                      </td>
                       <td className="px-4 py-3">
                         {/* 카테고리 색은 공용(productChip.categoryChipClass) — 화면마다 다르면 헷갈린다.
                             예전엔 참기름·들기름·향미유가 모두 보라라 갈래가 안 갈렸다. */}
-                        {product.subtype && (
-                          <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 whitespace-nowrap">{product.subtype}</span>
-                        )}
                         <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${categoryChipClass(inferSubtype(product))}`}>
                           {inferSubtype(product)}
                         </span>
@@ -2051,7 +2055,7 @@ const ItemList: React.FC<ItemListProps> = ({
                       const isDirty = variants.some(([key]) => editing[key] !== undefined);
                       return (
                         <tr className="bg-emerald-50/40">
-                          <td colSpan={7} className="px-4 py-3">
+                          <td colSpan={8} className="px-4 py-3">
                             <div className="flex flex-col gap-3">
                               <div className="flex items-center justify-between">
                                 <span className="text-[11px] font-black text-emerald-700 uppercase tracking-wide">규격별 재고</span>
@@ -2179,7 +2183,7 @@ const ItemList: React.FC<ItemListProps> = ({
                 })}
                 {pagedRows.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-16 text-center">
+                    <td colSpan={7} className="px-4 py-16 text-center">
                       <div className="flex flex-col items-center gap-2 text-slate-300">
                         <Package size={32} strokeWidth={1.5} />
                         <p className="text-sm font-bold">등록된 품목이 없습니다</p>
