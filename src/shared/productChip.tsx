@@ -195,7 +195,7 @@ const CATEGORY_CHIP_COLORS = [
 const CATEGORY_FIXED: Record<string, string> = {
   // 완제품 갈래 — 정렬 순서(CATEGORY_ORDER)와 같은 얼굴
   '참기름': 'bg-pink-100 text-pink-700',
-  '들기름': 'bg-blue-100 text-blue-700',
+  '들기름': 'bg-lime-100 text-lime-700',
   '참깨': 'bg-orange-100 text-orange-700',
   '들깨': 'bg-emerald-100 text-emerald-700',
   '탈피들깨': 'bg-teal-100 text-teal-700',
