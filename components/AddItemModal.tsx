@@ -473,21 +473,35 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             const pool = [...(items ?? []), ...allSubmaterials];
             const addedIds = new Set(formData.submaterials.map(s => s.id));
             const q = bomSearch.trim().toLowerCase();
-            const SUB_CATS = ['용기', '마개', '라벨', '박스', '테이프'];
-            const catKey = (p: { type?: string; category?: string }) => {
-              const n = normCat(p.type);
-              if (SUB_CATS.includes(n)) return n;
-              if (p.type === 'submaterial' && p.category && SUB_CATS.includes(p.category)) return p.category;
-              return p.type || '기타';
+            /**
+             * 구성품 분류 — **분류 관리의 카테고리**(용기·마개·라벨·비닐·케이스…)를 그대로 쓴다.
+             * 카테고리가 없는 품목은 타입 이름(완제품·반제품·원료)으로 떨어진다.
+             *
+             * 예전엔 용기·마개·라벨·박스·테이프 다섯을 코드에 박아 두고 품목의 **type**을 봤다.
+             * 새로 만든 분류(비닐)는 목록에 없어 안 걸렸고, 폼에 올라온 줄은 type이 아예 없어
+             * 죄다 '기타'로 찍혔다. 근거를 품목의 category 한 곳으로 모은다.
+             */
+            const poolById = new Map(pool.map(x => [x.id, x]));
+            const catKey = (p: { id: string }) => {
+              const c = poolById.get(p.id);
+              return String(c?.category || c?.type || '기타');
             };
-            const catLabelOf = (k: string) => CATEGORY_LABELS[k] ?? k;
-            const CAT_ORDER = ['product', 'goods', 'wip', 'raw', '용기', '마개', '라벨', '박스', '테이프', 'submaterial'];
+            const catLabelOf = (k: string) => taxo.labelOf(k);
+            //  묶음 순서도 분류 관리 그대로 — 타입 순서 → 그 안의 카테고리 순서.
+            const CAT_RANK = (() => {
+              const m = new Map<string, number>();
+              let n = 0;
+              for (const t of taxo.allTypes) {
+                if (!m.has(t.key)) m.set(t.key, n++);
+                for (const c of taxo.categoriesOf(t.key)) if (!m.has(c)) m.set(c, n++);
+              }
+              return m;
+            })();
+            const catRankOf = (k: string) => CAT_RANK.get(k) ?? 999;
             const selectable = pool.filter(p => p.id !== initialData?.id && !addedIds.has(p.id));
             // 칩 목록은 전체 품목 기준으로 고정 (추가/필터에 따라 안 바뀌게)
-            const availableCats = [...new Set(pool.filter(p => p.id !== initialData?.id).map(catKey))].sort((a, b) => {
-              const ai = CAT_ORDER.indexOf(a); const bi = CAT_ORDER.indexOf(b);
-              return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-            });
+            const availableCats = [...new Set(pool.filter(p => p.id !== initialData?.id).map(catKey))]
+              .sort((a, b) => catRankOf(a) - catRankOf(b));
             const results = selectable.filter(p => (bomCatFilter === 'all' || catKey(p) === bomCatFilter) && (!q || p.name.toLowerCase().includes(q)));
             const groups = new Map<string, typeof results>();
             for (const p of results) {
@@ -496,8 +510,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
               groups.get(k)!.push(p);
             }
             const sortedGroups = [...groups.entries()].sort((a, b) => {
-              const ai = CAT_ORDER.indexOf(a[0]); const bi = CAT_ORDER.indexOf(b[0]);
-              return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+              const ai = catRankOf(a[0]); const bi = catRankOf(b[0]);
+              return ai - bi;
             });
             return (
             <div className="space-y-3 pt-2 border-t border-slate-100">

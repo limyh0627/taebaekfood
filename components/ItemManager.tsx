@@ -135,6 +135,14 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
   const [showAll, setShowAll] = useState(true);
   const [showNoClient, setShowNoClient] = useState(false);
   const [activeCategory, setActiveCategory] = useState<InventoryCategory>('product');
+  /**
+   * 분류 3단으로 좁힌다 — 타입 > 서브타입 > 카테고리. 빈 문자열이면 '전체'.
+   * 위 단을 바꾸면 아래 단은 푼다(반제품에 '낱개'가 남아 있으면 아무것도 안 나온다).
+   */
+  const [activeSubtype, setActiveSubtype] = useState('');
+  const [activeItemCat, setActiveItemCat] = useState('');
+  const pickType = (t: InventoryCategory) => { setActiveCategory(t); setActiveSubtype(''); setActiveItemCat(''); setPage(1); };
+  const pickSubtype = (v: string) => { setActiveSubtype(v); setActiveItemCat(''); setPage(1); };
   const [partnerAllCats, setPartnerAllCats] = useState(true); // 거래처별 뷰: 전체 카테고리(연결된 전 품목) 표시
   const [searchTerm, setSearchTerm] = useState('');
   const [partnerSearch, setClientSearch] = useState('');
@@ -310,6 +318,10 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
       result = result.filter(p => (p.partnerIds ?? []).length === 0);
     }
 
+    //  고른 만큼만 좁힌다 — 안 고른 단은 거르지 않는다.
+    if (activeSubtype) result = result.filter(p => (p.subtype ?? '') === activeSubtype);
+    if (activeItemCat) result = result.filter(p => (p.category ?? '') === activeItemCat);
+
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       if (mainView === 'flat') {
@@ -327,7 +339,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
       const d = catOrder(inferSubtype(a)) - catOrder(inferSubtype(b));
       return d !== 0 ? d : a.name.localeCompare(b.name, 'ko');
     });
-  }, [products, activeCategory, selectedClientId, showAll, showNoClient, searchTerm, mainView, partners, partnerScopeTab, partnerItems, partnerAllCats]);
+  }, [products, activeCategory, activeSubtype, activeItemCat, selectedClientId, showAll, showNoClient, searchTerm, mainView, partners, partnerScopeTab, partnerItems, partnerAllCats]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -498,7 +510,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
               return (
                 <button
                   key={cat}
-                  onClick={() => { setPartnerAllCats(false); setActiveCategory(cat); setPage(1); }}
+                  onClick={() => { setPartnerAllCats(false); pickType(cat); }}
                   className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border whitespace-nowrap ${
                     active
                       ? 'bg-indigo-600 border-indigo-600 text-white shadow'
@@ -521,6 +533,46 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
             />
           </div>
         </div>
+
+        {/* 서브타입 · 카테고리 — 위 단을 골라야 아래 단이 뜬다(분류 관리 순서 그대로) */}
+        {isAdmin && (() => {
+          const subs = taxo.subtypesOf(activeCategory);
+          const cats = taxo.categoriesOf(activeCategory);
+          if (subs.length === 0 && cats.length === 0) return null;
+          const chip = (label: string, on: boolean, onClick: () => void) => (
+            <button key={label} onClick={onClick}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition-all border whitespace-nowrap ${
+                on ? 'bg-slate-700 border-slate-700 text-white shadow' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+              }`}>{label}</button>
+          );
+          return (
+            <div className="px-3 py-2 border-b border-slate-100 bg-white space-y-1.5">
+              {subs.length > 0 && (
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                  <span className="text-[9px] font-black text-slate-300 uppercase shrink-0 w-12">서브타입</span>
+                  {chip('전체', !activeSubtype, () => pickSubtype(''))}
+                  {subs.map(v => chip(v, activeSubtype === v, () => pickSubtype(v)))}
+                </div>
+              )}
+              {/* 카테고리는 서브타입을 고른 뒤에 — 한 번에 다 펴 두면 무엇으로 좁혔는지 안 보인다 */}
+              {activeSubtype && cats.length > 0 && (
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                  <span className="text-[9px] font-black text-slate-300 uppercase shrink-0 w-12">카테고리</span>
+                  {chip('전체', !activeItemCat, () => { setActiveItemCat(''); setPage(1); })}
+                  {cats.map(v => chip(v, activeItemCat === v, () => { setActiveItemCat(v); setPage(1); }))}
+                </div>
+              )}
+              {/* 서브타입이 없는 타입(부자재 등)은 카테고리를 바로 보여준다 */}
+              {subs.length === 0 && cats.length > 0 && (
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                  <span className="text-[9px] font-black text-slate-300 uppercase shrink-0 w-12">카테고리</span>
+                  {chip('전체', !activeItemCat, () => { setActiveItemCat(''); setPage(1); })}
+                  {cats.map(v => chip(v, activeItemCat === v, () => { setActiveItemCat(v); setPage(1); }))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* 거래처별 품목 — 주문 생성 화면과 같은 카드 그리드로 본다.
             (품목 목록 뷰는 열이 많아 표가 낫다 → 아래 표를 그대로 쓴다) */}
