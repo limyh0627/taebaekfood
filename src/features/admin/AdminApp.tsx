@@ -63,6 +63,7 @@ import {
   UserPlus,
   FolderOpen,
   BookOpen,
+  ChevronDown,
 } from 'lucide-react';
 import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, poLines, CompanyId, COMPANIES, TAEBAEK, companyOf, invSnapDocId } from '../../shared/types';
 import { canAutoIssue, autoVoucherId, buildCashVoucher, buildStatementVoucher, dirOf, isCashDir } from '../../shared/autoVoucher';
@@ -1481,23 +1482,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 receivedOrders.filter(r => !r.linkedStatementId).length;
               return (
                 <>
-                  <div>
-                    {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">경영 현황</p>}
-                    <nav className="space-y-1">
-                      <NavItem icon={LayoutDashboard} label="대시보드" active={currentView === 'dashboard' || currentView === 'ai-consultant'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('dashboard')} />
-                      <NavItem icon={BarChart2} label="손익 / 비용 분석" active={currentView === 'profit-analysis' || currentView === 'cost-management'} onClick={() => handleNavClick('profit-analysis')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('profit-analysis')} />
-                      <NavItem icon={TrendingUp} label="거래처통계" active={currentView === 'partner-stats'} onClick={() => handleNavClick('partner-stats')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('partner-stats')} />
-                      <NavItem icon={Activity} label="현금흐름 분석" active={currentView === 'cash-flow'} onClick={() => handleNavClick('cash-flow')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('cash-flow')} />
-                      <NavItem icon={Scale} label="재무제표 (복식부기)" active={currentView === 'financial-reports'} onClick={() => handleNavClick('financial-reports')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('financial-reports')} />
-                      {/* 자금 입출금·계좌관리는 전표 탭에도 있지만, 전표 매칭(수금 취소·재배분)은 여기서만 된다. */}
-                      <NavItem icon={BookOpen} label="장부" active={currentView === 'ledger-cash'} onClick={() => handleNavClick('ledger-cash')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('ledger-cash')} />
-                      <NavItem icon={Factory} label="생산 실적" active={currentView === 'production'} onClick={() => handleNavClick('production')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('production')} />
-                      <NavItem icon={ShoppingBag} label="스마트스토어 분석" active={currentView === 'smartstore-analytics'} onClick={() => handleNavClick('smartstore-analytics')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('smartstore-analytics')} />
-                      <NavItem icon={ClipboardList} label="HACCP 체크리스트" active={currentView === 'haccp-checklist'} onClick={() => handleNavClick('haccp-checklist')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('haccp-checklist')} />
-                    </nav>
-                  </div>
-                  <div>
-                    {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">업무 관리</p>}
+                  <NavGroup title="업무 관리" storageKey="work" collapsed={isSidebarCollapsed}>
                     <nav className="space-y-1">
                       <NavItem icon={FileText} label="전표" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('trade-statement')} />
                       <NavItem icon={Receipt} label="세금계산서" active={currentView === 'tax-statement'} onClick={() => handleNavClick('tax-statement')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('tax-statement')} />
@@ -1510,9 +1495,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       <NavItem icon={ClipboardList} label="확인사항" active={currentView === 'admin-checklist'} onClick={() => handleNavClick('admin-checklist')} collapsed={isSidebarCollapsed} badge={adminPendingCount > 0 ? adminPendingCount : undefined} hidden={!viewAllowed('admin-checklist')} />
                       <NavItem icon={QrCode} label="QR 라벨 인쇄" active={false} onClick={() => setShowQrLabel(true)} collapsed={isSidebarCollapsed} />
                     </nav>
-                  </div>
-                  <div>
-                    {!isSidebarCollapsed && <p className="px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">외부 서비스</p>}
+                  </NavGroup>
+                  <NavGroup title="외부 서비스" storageKey="ext" collapsed={isSidebarCollapsed}>
                     <nav className="space-y-1">
                       <button
                         onClick={openPartnerPortal}
@@ -1526,7 +1510,21 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         {!isSidebarCollapsed && <ExternalLink size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />}
                       </button>
                     </nav>
-                  </div>
+                  </NavGroup>
+                  <NavGroup title="경영 현황" storageKey="biz" collapsed={isSidebarCollapsed}>
+                    <nav className="space-y-1">
+                      <NavItem icon={LayoutDashboard} label="대시보드" active={currentView === 'dashboard' || currentView === 'ai-consultant'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('dashboard')} />
+                      <NavItem icon={BarChart2} label="손익 / 비용 분석" active={currentView === 'profit-analysis' || currentView === 'cost-management'} onClick={() => handleNavClick('profit-analysis')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('profit-analysis')} />
+                      <NavItem icon={TrendingUp} label="거래처통계" active={currentView === 'partner-stats'} onClick={() => handleNavClick('partner-stats')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('partner-stats')} />
+                      <NavItem icon={Activity} label="현금흐름 분석" active={currentView === 'cash-flow'} onClick={() => handleNavClick('cash-flow')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('cash-flow')} />
+                      <NavItem icon={Scale} label="재무제표 (복식부기)" active={currentView === 'financial-reports'} onClick={() => handleNavClick('financial-reports')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('financial-reports')} />
+                      {/* 자금 입출금·계좌관리는 전표 탭에도 있지만, 전표 매칭(수금 취소·재배분)은 여기서만 된다. */}
+                      <NavItem icon={BookOpen} label="장부" active={currentView === 'ledger-cash'} onClick={() => handleNavClick('ledger-cash')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('ledger-cash')} />
+                      <NavItem icon={Factory} label="생산 실적" active={currentView === 'production'} onClick={() => handleNavClick('production')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('production')} />
+                      <NavItem icon={ShoppingBag} label="스마트스토어 분석" active={currentView === 'smartstore-analytics'} onClick={() => handleNavClick('smartstore-analytics')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('smartstore-analytics')} />
+                      <NavItem icon={ClipboardList} label="HACCP 체크리스트" active={currentView === 'haccp-checklist'} onClick={() => handleNavClick('haccp-checklist')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('haccp-checklist')} />
+                    </nav>
+                  </NavGroup>
                 </>
               );
             })()}
@@ -4655,6 +4653,36 @@ const AdminApp: React.FC<AdminAppProps> = ({
 };
 
 /** hidden이면 아예 안 그린다 — 회사에 없는 화면을 메뉴에 남겨 두면 잘못 들어간다 */
+/**
+ * 사이드바 묶음 — 제목을 누르면 접힌다. 접은 상태는 브라우저에 남긴다(다음에 열어도 그대로).
+ *
+ * 메뉴가 스무 개를 넘어 한 화면에 안 들어온다. 안 쓰는 묶음을 접어 두면
+ * 매일 쓰는 것만 남는다. 사이드바 자체가 접혀 있으면(아이콘만) 여기선 아무것도 안 한다.
+ */
+const NavGroup: React.FC<{ title: string; storageKey: string; collapsed?: boolean; children: React.ReactNode }> =
+  ({ title, storageKey, collapsed, children }) => {
+    const [open, setOpen] = useState(() => {
+      try { return localStorage.getItem(`nav.${storageKey}`) !== 'closed'; } catch { return true; }
+    });
+    const toggle = () => {
+      setOpen(v => {
+        try { localStorage.setItem(`nav.${storageKey}`, v ? 'closed' : 'open'); } catch { /* 사생활 모드 등 — 접힘만 안 남는다 */ }
+        return !v;
+      });
+    };
+    if (collapsed) return <div>{children}</div>;
+    return (
+      <div>
+        <button onClick={toggle}
+          className="w-full flex items-center justify-between px-4 mb-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors">
+          <span>{title}</span>
+          <ChevronDown size={12} className={`transition-transform ${open ? '' : '-rotate-90'}`} />
+        </button>
+        {open && children}
+      </div>
+    );
+  };
+
 const NavItem = ({ icon: Icon, label, active, onClick, collapsed, badge, hidden }: { icon: any, label: string, active: boolean, onClick: () => void, collapsed?: boolean, badge?: number, hidden?: boolean }) => (
   hidden ? null : (
   <button
