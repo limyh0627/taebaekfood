@@ -2849,20 +2849,21 @@ const ItemList: React.FC<ItemListProps> = ({
                 <button onClick={() => setIsAddModalOpen(false)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
               </div>
 
-              {/* 상단은 포장 갈래만 — 낱개·박스·선물세트 */}
-              <div className="px-5 pt-3 shrink-0">
-                <div className="flex items-center gap-1 bg-slate-100/70 p-1 rounded-xl border border-slate-200 w-fit">
-                  {MAKE_SUBTYPES.map(v => (
-                    <button key={v} onClick={() => { setMakeSubtype(v); setMakeCat(''); setMakeVessel(''); }}
-                      className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${sub === v ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-                      {v}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {/* 필터는 전부 드롭다운 한 줄로 — 탭이 늘어서면 그 줄이 화면을 먹는다 */}
+              <div className="px-5 pt-3 flex items-center gap-2 flex-wrap shrink-0">
+                {MAKE_SUBTYPES.length > 1 && (
+                  <FilterDrop label="서브타입" active={sub !== '전체'} summary={sub}>
+                    {close => (
+                      <div className="max-h-[280px] overflow-y-auto py-1">
+                        {MAKE_SUBTYPES.map(v => (
+                          <FilterRow key={v} on={sub === v}
+                            onClick={() => { setMakeSubtype(v); setMakeCat(''); setMakeVessel(''); close(); }}>{v}</FilterRow>
+                        ))}
+                      </div>
+                    )}
+                  </FilterDrop>
+                )}
 
-              {/* 카테고리부터는 전부 드롭다운 — 탭이 늘어서면 그 줄이 화면을 먹는다 */}
-              <div className="px-5 pt-2 flex items-center gap-2 flex-wrap shrink-0">
                 {MAKE_CATS.length > 0 && (
                   <FilterDrop label="분류" active={!!cat} summary={cat || '전체'}>
                     {close => (
@@ -2939,8 +2940,8 @@ const ItemList: React.FC<ItemListProps> = ({
                   </FilterDrop>
                 )}
 
-                {(cat || vessel || makeGrade || makePartner) && (
-                  <button onClick={() => { setMakeCat(''); setMakeVessel(''); setMakeGrade(''); setMakePartner(''); }}
+                {(sub !== '전체' || cat || vessel || makeGrade || makePartner) && (
+                  <button onClick={() => { setMakeSubtype('전체'); setMakeCat(''); setMakeVessel(''); setMakeGrade(''); setMakePartner(''); }}
                     className="px-2.5 py-2 rounded-xl text-[11px] font-black text-slate-400 hover:bg-slate-100 transition-colors">모두 해제</button>
                 )}
               </div>
