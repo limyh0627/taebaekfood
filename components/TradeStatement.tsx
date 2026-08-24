@@ -5750,20 +5750,21 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                       onChange={e=>setManualItems(prev=>prev.map((r,i)=>i===idx?{...r,price:e.target.value}:r))}
                                       className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-right outline-none focus:ring-2 focus:ring-blue-300"/>}
                               </td>
-                              <td className="px-3 py-2 text-right text-slate-700">{sup>0?fmt(sup):'-'}</td>
+                              {/* 반품은 수량이 음수라 공급가·세액·합계가 다 음수다 — >0으로 걸러 세 칸이 통째로 '-'였다. */}
+                              <td className="px-3 py-2 text-right text-slate-700">{sup!==0?fmt(sup):'-'}</td>
                               <td className="px-3 py-2 text-center">
                                 {ro ? (
                                   <span className={`text-[10px] font-black ${row.isTaxExempt?'text-indigo-600':''}`}>
-                                    {row.isTaxExempt?'면세':tax>0?fmt(tax):'-'}
+                                    {row.isTaxExempt?'면세':tax!==0?fmt(tax):'-'}
                                   </span>
                                 ) : (
                                   <button onClick={e=>{e.stopPropagation();setManualItems(prev=>prev.map((r,i)=>i===idx?{...r,isTaxExempt:!r.isTaxExempt}:r));}}
                                     className={`px-2 py-0.5 rounded-md text-[10px] font-black border transition-all ${row.isTaxExempt?'bg-indigo-100 text-indigo-700 border-indigo-200':'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}>
-                                    {row.isTaxExempt?'면세':tax>0?fmt(tax):'-'}
+                                    {row.isTaxExempt?'면세':tax!==0?fmt(tax):'-'}
                                   </button>
                                 )}
                               </td>
-                              <td className="px-3 py-2 text-right font-black text-slate-800">{(sup+tax)>0?fmt(sup+tax):'-'}</td>
+                              <td className="px-3 py-2 text-right font-black text-slate-800">{(sup+tax)!==0?fmt(sup+tax):'-'}</td>
                               <td className="px-3 py-2 w-24">
                                 {ro
                                   ? <span className="text-[10px] font-black text-slate-500">{row.accountCode || (stmtType === '매출' ? '800' : '-')}</span>
