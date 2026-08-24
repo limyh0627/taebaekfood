@@ -147,7 +147,7 @@ const parseSearchTokens = (kw: string): string[] =>
 interface StockClosingRow { itemId: string; name: string; spec?: string; boxSize: number; boxes: number; loose: number; total: number; }
 interface StockClosing { id: string; date: string; closedBy: string; createdAt: string; items: StockClosingRow[]; totalStock: number; }
 
-const inferSubtype = (item: { subtype?: string; name: string; category: string }): string => {
+const inferSubtype = (item: { subtype?: string; name: string; type: string }): string => {
   if (item.subtype) return item.subtype;
   const n = item.name;
   if (n.includes('들기름')) return '들기름';
@@ -157,7 +157,7 @@ const inferSubtype = (item: { subtype?: string; name: string; category: string }
   if (n.includes('참깨')) return '참깨';
   if (n.includes('고춧가루')) return '고춧가루';
   if (n.includes('향미유')) return '향미유';
-  return normCat(item.category);
+  return normCat(item.type);
 };
 
 interface ItemListProps {
@@ -343,7 +343,7 @@ const ItemList: React.FC<ItemListProps> = ({
   const boxSizeOf = (p: Item) => (p as any).defaultBoxConfig?.unitsPerBox || (p as any).boxSize || 12;
   // 전체 완제품(검색 대상)
   const allClosingItems = useMemo(
-    () => items.filter(p => !p.archived && normCat(p.category) === '완제품'),
+    () => items.filter(p => !p.archived && normCat(p.type) === '완제품'),
     [items],
   );
   // 용량 — 규격에서 숫자+단위만 뽑아 '350ml'처럼 맞춘다. 규격이 비면 이름에서 찾는다.
@@ -367,7 +367,7 @@ const ItemList: React.FC<ItemListProps> = ({
     });
   }, [allClosingItems]);
   // 분류 — subtype이 기준. 비어 있는 몇 개만 이름으로 짐작한다(세트를 먼저 걸러야 '깨'에 안 걸린다).
-  const stockGroupOf = (p: Item) => p.subtype
+  const stockGroupOf = (p: Item) => p.category
     || (p.name.includes('세트') ? '선물세트'
       : p.name.includes('참기름') ? '참기름'
       : p.name.includes('들기름') ? '들기름'
@@ -735,7 +735,7 @@ const ItemList: React.FC<ItemListProps> = ({
       });
     } else {
       // 입력은 표시 단위(밀도 있으면 L) — 저장은 언제나 kg
-      const units = product.subtype === '향미유' ? val * 12
+      const units = product.category === '향미유' ? val * 12
         : product.density ? val * product.density
         : val;
       onUpdateItem({ ...product, stock: Math.round((units + addStockUnits) * 1000) / 1000 });
@@ -782,7 +782,7 @@ const ItemList: React.FC<ItemListProps> = ({
     const u: Record<string, number> = {};
     for (const p of items) {
       if (p.archived) continue;
-      const t = p.category, sub = (p as any).subtype2, cat = p.subtype;
+      const t = p.type, sub = p.subtype, cat = p.category;
       u[`type:${t}`] = (u[`type:${t}`] ?? 0) + 1;
       if (sub) u[`sub:${t}:${sub}`] = (u[`sub:${t}:${sub}`] ?? 0) + 1;
       if (cat) u[`cat:${t}:${cat}`] = (u[`cat:${t}:${cat}`] ?? 0) + 1;
@@ -809,7 +809,7 @@ const ItemList: React.FC<ItemListProps> = ({
       const product = items.find(p => p.id === c.id);
       if (product) {
         // 탭이 subtype 기준이라 둘 다 센다
-        for (const k of new Set([normCat(product.category), product.subtype].filter(Boolean) as string[])) {
+        for (const k of new Set([normCat(product.type), product.category].filter(Boolean) as string[])) {
           counts[k] = (counts[k] || 0) + 1;
         }
       }
@@ -845,11 +845,11 @@ const ItemList: React.FC<ItemListProps> = ({
   // 하나 고른 순간 나머지 선택지가 사라지지 않는다. 부피(ml·L)를 먼저, 무게(g·kg)를 뒤에 둔다.
   const specOptions = useMemo(() => {
     const inTab = (p: Item) =>
-      topTab === 'finished' ? normCat(p.category) === '완제품'
-      : topTab === 'goods' ? ['상품', '향미유', '고춧가루'].includes(normCat(p.category) as string)
-      : topTab === 'wip' ? p.category === 'wip'
-      : topTab === 'rawmaterial' ? p.category === 'raw'
-      : p.category === 'submaterial' || ['label','cap','container','box','tape','용기','마개','테이프','박스','라벨'].includes(p.category as string);
+      topTab === 'finished' ? normCat(p.type) === '완제품'
+      : topTab === 'goods' ? ['상품', '향미유', '고춧가루'].includes(normCat(p.type) as string)
+      : topTab === 'wip' ? p.type === 'wip'
+      : topTab === 'rawmaterial' ? p.type === 'raw'
+      : p.type === 'submaterial' || ['label','cap','container','box','tape','용기','마개','테이프','박스','라벨'].includes(p.type as string);
     const specs = new Set(items.filter(p => !p.archived && inTab(p)).map(p => (p.spec ?? '').trim()).filter(Boolean));
     const rank = (s: string): [number, number] => {
       const m = s.match(/([\d.]+)\s*(ml|l|리터|g|kg)/i);
@@ -878,18 +878,18 @@ const ItemList: React.FC<ItemListProps> = ({
     // 탭별 분리 — 최소수량 미만 필터 활성화 시 전체 품목 대상
     if (!zeroStockOnly) {
       if (topTab === 'finished') {
-        result = result.filter(p => normCat(p.category) === '완제품');
+        result = result.filter(p => normCat(p.type) === '완제품');
       } else if (topTab === 'goods') {
-        result = result.filter(p => normCat(p.category) === '상품' || normCat(p.category) === '향미유' || normCat(p.category) === '고춧가루');
+        result = result.filter(p => normCat(p.type) === '상품' || normCat(p.type) === '향미유' || normCat(p.type) === '고춧가루');
       } else if (topTab === 'wip') {
-        result = result.filter(p => p.category === 'wip');
+        result = result.filter(p => p.type === 'wip');
       } else if (topTab === 'submaterial') {
-        result = result.filter(p => p.category === 'submaterial' || ['label','cap','container','box','tape','용기','마개','테이프','박스','라벨'].includes(p.category as string));
+        result = result.filter(p => p.type === 'submaterial' || ['label','cap','container','box','tape','용기','마개','테이프','박스','라벨'].includes(p.type as string));
       } else if (topTab === 'rawmaterial') {
-        result = result.filter(p => p.category === 'raw');
+        result = result.filter(p => p.type === 'raw');
       }
       if (activeSubtype !== '전체') {
-        result = result.filter(p => (p.subtype2 ?? '') === activeSubtype);
+        result = result.filter(p => (p.subtype ?? '') === activeSubtype);
       }
       if (specSel.size > 0) {
         result = result.filter(p => specSel.has(p.spec ?? ''));
@@ -899,7 +899,7 @@ const ItemList: React.FC<ItemListProps> = ({
       }
       if (catSel.size > 0) {
         // 분류(=DB subtype) 우선 — 옛 데이터는 타입 자리에 '박스'/'라벨'이 들어있어 둘 다 본다
-        const hit = (p: Item) => catSel.has(p.subtype ?? '') || catSel.has(normCat(p.category))
+        const hit = (p: Item) => catSel.has(p.category ?? '') || catSel.has(normCat(p.type))
           || (catSel.has('박스') && p.id.startsWith('GS-'));
         result = result.filter(hit);
       }
@@ -919,16 +919,16 @@ const ItemList: React.FC<ItemListProps> = ({
       result = result.filter(p => displayStockOf(p) > 0);
     }
     if (zeroStockOnly) {
-      result = result.filter(p => normCat(p.category) !== '완제품' && displayStockOf(p) < p.minStock);
+      result = result.filter(p => normCat(p.type) !== '완제품' && displayStockOf(p) < p.minStock);
     }
 
     const CATEGORY_ORDER = ['완제품', '상품', '향미유', '고춧가루', '용기', '마개', '테이프', '박스', '라벨'];
     return [...result].sort((a, b) => {
-      const aCritical = normCat(a.category) !== '완제품' && displayStockOf(a) < a.minStock ? 0 : 1;
-      const bCritical = normCat(b.category) !== '완제품' && displayStockOf(b) < b.minStock ? 0 : 1;
+      const aCritical = normCat(a.type) !== '완제품' && displayStockOf(a) < a.minStock ? 0 : 1;
+      const bCritical = normCat(b.type) !== '완제품' && displayStockOf(b) < b.minStock ? 0 : 1;
       if (aCritical !== bCritical) return aCritical - bCritical;
-      const aCatIdx = CATEGORY_ORDER.indexOf(normCat(a.category));
-      const bCatIdx = CATEGORY_ORDER.indexOf(normCat(b.category));
+      const aCatIdx = CATEGORY_ORDER.indexOf(normCat(a.type));
+      const bCatIdx = CATEGORY_ORDER.indexOf(normCat(b.type));
       const aIdx = aCatIdx === -1 ? 99 : aCatIdx;
       const bIdx = bCatIdx === -1 ? 99 : bCatIdx;
       // 분류가 같으면 **품목명 순**. 전엔 여기서 손을 놔 읽어온 순서가 그대로 남았다.
@@ -1683,7 +1683,7 @@ const ItemList: React.FC<ItemListProps> = ({
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-black text-slate-800 truncate"><NameSpec p={product} /></p>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">{product.category}</p>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">{product.type}</p>
                       </div>
                     </div>
 
@@ -1691,7 +1691,7 @@ const ItemList: React.FC<ItemListProps> = ({
                       <div className="text-left sm:text-center">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter mb-0.5">현재 재고</p>
                         <p className="text-sm font-black text-slate-900">
-                          {product.subtype === '향미유' ? fmtHamiyou(product.stock) : `${displayStockOf(product)}${product.unit}`}
+                          {product.category === '향미유' ? fmtHamiyou(product.stock) : `${displayStockOf(product)}${product.unit}`}
                         </p>
                       </div>
 
@@ -1748,7 +1748,7 @@ const ItemList: React.FC<ItemListProps> = ({
                     : items.find(i => isRawHolder(i) && baseRawName(i.name) === (product.rawMaterialName || baseRawName(product.name)));
                   // 반제품/매입 캔: 재고를 원료 로트(kg)에서 파생 표시 — '캔 수 = 원료 활성잔량 ÷ 캔용량'.
                   // 입고/사용이 원료 로트에 반영되므로 캔 수도 자동으로 따라감(캔 품목의 stock 필드는 표시에 쓰지 않음).
-                  const canPackageKg = (lotRaw && lotRaw.id !== product.id && product.category !== 'product')
+                  const canPackageKg = (lotRaw && lotRaw.id !== product.id && product.type !== 'product')
                     ? (product.packageKg ?? parsePackageKg(product.spec) ?? parsePackageKg(product.name) ?? null)
                     : null;
                   const derivedRawKg = canPackageKg ? lotKgRemaining((lotRaw!.lots ?? []).filter(l => l.status === 'active')) : null;
@@ -1763,8 +1763,8 @@ const ItemList: React.FC<ItemListProps> = ({
                   const effStock = derivedCans != null ? derivedCans : (rawLotStock != null ? rawLotStock : product.stock);
                   // 표시·편집 시드용 재고 (원료는 로트 합계, 그 외는 stock)
                   const displayStock = rawLotStock != null ? rawLotStock : product.stock;
-                  const isCritical = normCat(product.category) !== '완제품' && effStock < product.minStock;
-                  const statusBadge = normCat(product.category) === '완제품' ? (
+                  const isCritical = normCat(product.type) !== '완제품' && effStock < product.minStock;
+                  const statusBadge = normCat(product.type) === '완제품' ? (
                     <span className="text-[9px] font-black text-slate-300">자체생산</span>
                   ) : confInfo ? (
                     <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full whitespace-nowrap">입고대기 {confInfo.quantity}{product.unit}</span>
@@ -1789,7 +1789,7 @@ const ItemList: React.FC<ItemListProps> = ({
                         </span>
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell" onClick={e => e.stopPropagation()}>
-                        {normCat(product.category) === '완제품' ? (
+                        {normCat(product.type) === '완제품' ? (
                           // 완제품: 매출처 (Direction='out', partnerIds 기반)
                           product.partnerIds && product.partnerIds.length > 0 ? (() => {
                             const isExp = expandedClientRowId === product.id;
@@ -1887,21 +1887,21 @@ const ItemList: React.FC<ItemListProps> = ({
                               onClick={e => e.stopPropagation()}
                               className="w-20 text-right text-sm font-black border border-indigo-300 rounded-lg py-1 px-2 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                             />
-                            <span className="text-[10px] text-slate-400">{product.subtype === '향미유' ? 'B' : product.unit}</span>
+                            <span className="text-[10px] text-slate-400">{product.category === '향미유' ? 'B' : product.unit}</span>
                           </div>
                         ) : (
                           <button
-                            onClick={e => { e.stopPropagation(); setEditingStockId(product.id); setEditingStockVal(String(product.subtype === '향미유' ? Math.floor(product.stock / 12) : displayStock)); }}
+                            onClick={e => { e.stopPropagation(); setEditingStockId(product.id); setEditingStockVal(String(product.category === '향미유' ? Math.floor(product.stock / 12) : displayStock)); }}
                             className={`min-w-14 shrink-0 text-right text-base font-black tabular-nums hover:underline hover:text-indigo-600 transition-colors cursor-pointer ${isCritical ? 'text-rose-600' : 'text-slate-800'}`}
                             title={`클릭하여 수량 수정 (${displayStock}${product.unit ?? ''})`}
                           >
                             {/* 1의 자리로 반올림 — 소수점을 그대로 두면 옆 단위 칸을 밀어낸다(정확한 값은 title) */}
-                            {product.subtype === '향미유' ? fmtHamiyou(product.stock) : Math.round(displayStock)}
+                            {product.category === '향미유' ? fmtHamiyou(product.stock) : Math.round(displayStock)}
                           </button>
                         )}
                         {derivedCans == null && editingStockId !== product.id && (
                           <span className="w-7 shrink-0 text-left text-[10px] text-slate-400">
-                            {product.category !== '향미유' && product.unit}
+                            {product.type !== '향미유' && product.unit}
                           </span>
                         )}
                         </div>
@@ -1918,7 +1918,7 @@ const ItemList: React.FC<ItemListProps> = ({
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right hidden sm:table-cell">
-                        {product.category !== '완제품'
+                        {product.type !== '완제품'
                           ? <span className="text-xs font-bold text-slate-400">{product.minStock} {product.unit}</span>
                           : <span className="text-[10px] text-slate-200">-</span>}
                       </td>
@@ -1932,7 +1932,7 @@ const ItemList: React.FC<ItemListProps> = ({
                               >담김 ✓</button>
                             ) : inlineCartId === product.id ? (
                               <div className="flex items-center gap-1 justify-end" onClick={e => e.stopPropagation()}>
-                                {product.subtype === '향미유' && (
+                                {product.category === '향미유' && (
                                   <div className="flex rounded-lg border border-indigo-200 overflow-hidden text-[9px] font-black">
                                     <button onClick={() => setInlineCartIsBox(false)} className={`px-1.5 py-1 transition-all ${!inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>낱개</button>
                                     <button onClick={() => setInlineCartIsBox(true)} className={`px-1.5 py-1 transition-all ${inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>BOX</button>
@@ -1944,14 +1944,14 @@ const ItemList: React.FC<ItemListProps> = ({
                                   value={inlineCartQty}
                                   onChange={e => setInlineCartQty(parseInt(e.target.value) || 0)}
                                   onKeyDown={e => {
-                                    if (e.key === 'Enter') { addToCart(product.id, inlineCartQty, product.subtype === '향미유' ? inlineCartIsBox : undefined); setInlineCartId(null); }
+                                    if (e.key === 'Enter') { addToCart(product.id, inlineCartQty, product.category === '향미유' ? inlineCartIsBox : undefined); setInlineCartId(null); }
                                     if (e.key === 'Escape') setInlineCartId(null);
                                   }}
                                   className="w-14 text-center text-xs font-black border border-indigo-300 rounded-lg py-1 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                                 />
-                                <span className="text-[10px] text-slate-400">{product.subtype === '향미유' && inlineCartIsBox ? 'BOX' : product.unit}</span>
+                                <span className="text-[10px] text-slate-400">{product.category === '향미유' && inlineCartIsBox ? 'BOX' : product.unit}</span>
                                 <button
-                                  onClick={() => { addToCart(product.id, inlineCartQty, product.subtype === '향미유' ? inlineCartIsBox : undefined); setInlineCartId(null); }}
+                                  onClick={() => { addToCart(product.id, inlineCartQty, product.category === '향미유' ? inlineCartIsBox : undefined); setInlineCartId(null); }}
                                   className="text-[10px] font-black px-2 py-1 rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 transition-all"
                                 >담기</button>
                                 <button onClick={() => setInlineCartId(null)} className="text-slate-300 hover:text-slate-500"><X size={12} /></button>
@@ -1964,7 +1964,7 @@ const ItemList: React.FC<ItemListProps> = ({
                             )
                           )}
                           <button
-                            onClick={e => { e.stopPropagation(); setRowEditProduct(product); setRowEditForm({ name: product.name, category: product.category, stock: product.density ? Math.round((product.stock / product.density) * 1000) / 1000 : product.stock, minStock: product.minStock, unit: product.unit }); }}
+                            onClick={e => { e.stopPropagation(); setRowEditProduct(product); setRowEditForm({ name: product.name, type: product.type, stock: product.density ? Math.round((product.stock / product.density) * 1000) / 1000 : product.stock, minStock: product.minStock, unit: product.unit }); }}
                             className="text-[10px] font-black px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-500 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition-all border border-slate-200"
                           >{productEditable ? '수정' : '실사조정'}</button>
                         </div>
@@ -2057,7 +2057,7 @@ const ItemList: React.FC<ItemListProps> = ({
                             <div className="flex items-center justify-between">
                               <span className="text-[10px] font-black text-slate-400 uppercase">최소수량</span>
                               <span className="text-xs font-bold text-slate-500">
-                                {product.category !== '완제품' ? `${product.minStock} ${product.unit}` : '-'}
+                                {product.type !== '완제품' ? `${product.minStock} ${product.unit}` : '-'}
                               </span>
                             </div>
                             <div className="flex items-center justify-between">
@@ -2073,7 +2073,7 @@ const ItemList: React.FC<ItemListProps> = ({
                                   >담김 ✓</button>
                                 ) : inlineCartId === product.id ? (
                                   <div className="flex-1 flex flex-col gap-1">
-                                    {product.subtype === '향미유' && (
+                                    {product.category === '향미유' && (
                                       <div className="flex rounded-lg border border-indigo-200 overflow-hidden text-[10px] font-black self-start">
                                         <button onClick={() => setInlineCartIsBox(false)} className={`px-2 py-1 transition-all ${!inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>낱개</button>
                                         <button onClick={() => setInlineCartIsBox(true)} className={`px-2 py-1 transition-all ${inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>BOX</button>
@@ -2086,14 +2086,14 @@ const ItemList: React.FC<ItemListProps> = ({
                                         value={inlineCartQty}
                                         onChange={e => setInlineCartQty(parseInt(e.target.value) || 0)}
                                         onKeyDown={e => {
-                                          if (e.key === 'Enter') { addToCart(product.id, inlineCartQty, product.subtype === '향미유' ? inlineCartIsBox : undefined); setInlineCartId(null); setExpandedRowId(null); }
+                                          if (e.key === 'Enter') { addToCart(product.id, inlineCartQty, product.category === '향미유' ? inlineCartIsBox : undefined); setInlineCartId(null); setExpandedRowId(null); }
                                           if (e.key === 'Escape') setInlineCartId(null);
                                         }}
                                         className="flex-1 text-center text-xs font-black border border-indigo-300 rounded-lg py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                                       />
-                                      <span className="text-[10px] text-slate-400">{product.subtype === '향미유' && inlineCartIsBox ? 'BOX' : product.unit}</span>
+                                      <span className="text-[10px] text-slate-400">{product.category === '향미유' && inlineCartIsBox ? 'BOX' : product.unit}</span>
                                       <button
-                                        onClick={() => { addToCart(product.id, inlineCartQty, product.subtype === '향미유' ? inlineCartIsBox : undefined); setInlineCartId(null); setExpandedRowId(null); }}
+                                        onClick={() => { addToCart(product.id, inlineCartQty, product.category === '향미유' ? inlineCartIsBox : undefined); setInlineCartId(null); setExpandedRowId(null); }}
                                         className="text-[11px] font-black px-3 py-1.5 rounded-xl bg-indigo-500 text-white"
                                       >담기</button>
                                       <button onClick={() => setInlineCartId(null)} className="text-slate-300"><X size={14} /></button>
@@ -2107,7 +2107,7 @@ const ItemList: React.FC<ItemListProps> = ({
                                 )
                               )}
                               <button
-                                onClick={() => { setRowEditProduct(product); setRowEditForm({ name: product.name, category: product.category, stock: product.density ? Math.round((product.stock / product.density) * 1000) / 1000 : product.stock, minStock: product.minStock, unit: product.unit }); setExpandedRowId(null); }}
+                                onClick={() => { setRowEditProduct(product); setRowEditForm({ name: product.name, type: product.type, stock: product.density ? Math.round((product.stock / product.density) * 1000) / 1000 : product.stock, minStock: product.minStock, unit: product.unit }); setExpandedRowId(null); }}
                                 className="flex-1 text-[11px] font-black py-2 rounded-xl bg-slate-100 text-slate-500 border border-slate-200"
                               >{productEditable ? '수정' : '실사조정'}</button>
                             </div>
@@ -2153,7 +2153,7 @@ const ItemList: React.FC<ItemListProps> = ({
                     <div>
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">카테고리</label>
                       <select
-                        value={rowEditForm.category as string || ''}
+                        value={rowEditForm.type as string || ''}
                         onChange={e => setRowEditForm(f => ({ ...f, category: e.target.value as any }))}
                         className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                       >
@@ -2176,7 +2176,7 @@ const ItemList: React.FC<ItemListProps> = ({
                   <div className="bg-slate-50 rounded-2xl px-4 py-3">
                     <p className="text-sm font-black text-slate-800"><NameSpec p={rowEditProduct} /></p>
                     <p className="text-[11px] text-slate-400 font-bold mt-0.5">
-                      {rowEditProduct.category} · 단위 {rowEditProduct.unit || '-'}
+                      {rowEditProduct.type} · 단위 {rowEditProduct.unit || '-'}
                     </p>
                     <p className="text-[10px] text-slate-400 mt-1.5">
                       실물을 세어 보고 <b>현재 재고</b>를 맞춰주세요. 품목명·카테고리·단위는 관리자만 바꿀 수 있습니다.
@@ -2295,14 +2295,14 @@ const ItemList: React.FC<ItemListProps> = ({
                             <p className="text-sm font-bold text-slate-800 truncate"><NameSpec p={product} /></p>
                             <div className="flex items-center gap-2 mt-0.5">
                               <p className="text-[10px] text-slate-400">
-                                현재 재고 {product.subtype === '향미유' ? fmtHamiyou(product.stock) : `${displayStockOf(product)} ${product.unit}`}
+                                현재 재고 {product.category === '향미유' ? fmtHamiyou(product.stock) : `${displayStockOf(product)} ${product.unit}`}
                               </p>
                               {partnerName && (
                                 <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-md">{partnerName}</span>
                               )}
                             </div>
                           </div>
-                          {product.subtype === '향미유' && (
+                          {product.category === '향미유' && (
                             <button
                               onClick={() => onUpdateOrderRequestIsBox?.(item.id, !item.isBox)}
                               className={`text-[10px] font-black px-2 py-1 rounded-lg border transition-all shrink-0 ${item.isBox ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-500 border-slate-200 hover:border-purple-300'}`}
@@ -2318,7 +2318,7 @@ const ItemList: React.FC<ItemListProps> = ({
                             />
                             <button onClick={() => updateCartQty(item.id, item.qty + 1)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black transition-all">+</button>
                             <span className="text-[11px] text-slate-400 shrink-0">
-                              {product.subtype === '향미유' ? (item.isBox ? `B(${item.qty * 12}개)` : '개') : product.unit}
+                              {product.category === '향미유' ? (item.isBox ? `B(${item.qty * 12}개)` : '개') : product.unit}
                             </span>
                           </div>
                           <button onClick={() => removeFromCart(item.id)} className="text-slate-300 hover:text-rose-400 transition-all shrink-0 ml-1"><X size={15} /></button>
@@ -2458,7 +2458,7 @@ const ItemList: React.FC<ItemListProps> = ({
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-bold text-slate-800 truncate"><NameSpec p={product} /></p>
                                 <div className="flex items-center gap-2 mt-0.5">
-                                  <p className="text-[10px] text-slate-400">{product.category}</p>
+                                  <p className="text-[10px] text-slate-400">{product.type}</p>
                                   {partnerName && (
                                     <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-md">{partnerName}</span>
                                   )}
@@ -2607,8 +2607,8 @@ const ItemList: React.FC<ItemListProps> = ({
                   <div key={item.id} className="bg-slate-50 rounded-2xl border border-slate-100 p-3 flex items-center gap-3">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-slate-800 truncate"><NameSpec p={product} /></p>
-                      <p className="text-[10px] text-slate-400 font-medium">현재 재고 {product.subtype === '향미유' ? fmtHamiyou(product.stock) : `${displayStockOf(product)}${product.unit}`}</p>
-                      {product.subtype === '향미유' && (
+                      <p className="text-[10px] text-slate-400 font-medium">현재 재고 {product.category === '향미유' ? fmtHamiyou(product.stock) : `${displayStockOf(product)}${product.unit}`}</p>
+                      {product.category === '향미유' && (
                         <div className="flex rounded-lg border border-indigo-200 overflow-hidden text-[9px] font-black mt-1 w-fit">
                           <button onClick={() => updateCartIsBox(item.id, false)} className={`px-2 py-0.5 transition-all ${!item.isBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>낱개</button>
                           <button onClick={() => updateCartIsBox(item.id, true)} className={`px-2 py-0.5 transition-all ${item.isBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>BOX</button>
@@ -2624,7 +2624,7 @@ const ItemList: React.FC<ItemListProps> = ({
                         className="w-12 text-center text-sm font-black border border-slate-200 rounded-lg py-1 outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                       />
                       <button onClick={() => updateCartQty(item.id, item.qty + 1)} className="w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 text-sm font-black transition-all">+</button>
-                      <span className="text-[10px] text-slate-400 w-6">{product.subtype === '향미유' && item.isBox ? 'BOX' : product.unit}</span>
+                      <span className="text-[10px] text-slate-400 w-6">{product.category === '향미유' && item.isBox ? 'BOX' : product.unit}</span>
                     </div>
                     <button onClick={() => removeFromCart(item.id)} className="text-slate-300 hover:text-rose-400 transition-all shrink-0">
                       <X size={14} />
@@ -2674,7 +2674,7 @@ const ItemList: React.FC<ItemListProps> = ({
         const kw = makeSearch.trim();
 
         // 완제품만 — 여기서 만드는 건 완제품뿐이다. 상품·반제품은 사오거나 다른 화면에서 움직인다.
-        const base = items.filter(p => !p.archived && !p.phantom && normCat(p.category) === '완제품');
+        const base = items.filter(p => !p.archived && !p.phantom && normCat(p.type) === '완제품');
         // 분류 — 재고 현황과 같은 기준(stockGroupOf). 참깨·들깨·선물세트를 기타로 퉁치지 않는다.
         // 용량 — 품목설정의 규격(spec)을 우선 참고. spec은 "1750ml"처럼 정규화돼 있어
         //   이름("1.75ML")보다 믿을 만하고, BOM/부자재가 비어 있어도 안전. spec 없으면 이름으로 폴백.
@@ -3493,7 +3493,7 @@ const ItemList: React.FC<ItemListProps> = ({
                   const shownKg = (!src && closingView === 'dispatched') ? disp : (!src && closingView === 'stock') ? base : cur;
                   // 저장은 kg — 밀도 있는 품목(기름)만 나눠서 L로 보여준다. 단위도 품목 것을 쓴다.
                   const shownNum = product?.density ? Math.round((shownKg / product.density) * 1000) / 1000 : shownKg;
-                  const unitLbl = product?.subtype === '향미유' ? 'B' : (product?.unit || '개');
+                  const unitLbl = product?.category === '향미유' ? 'B' : (product?.unit || '개');
                   // 재고 뷰 실사 수정 — 입력값은 작업완료를 뺀 순수 재고. 저장 시 작업완료분을 다시 얹어야
                   //   전체 뷰가 '재고 + 작업완료' 합계로 보인다. 작업완료 뷰는 주문에서 파생된 값이라 읽기전용.
                   const stockEdit = !src && closingView === 'stock';
@@ -3523,7 +3523,7 @@ const ItemList: React.FC<ItemListProps> = ({
                           // 챙길 물건만 — 내용물(반제품·원료)과 벌크는 통에서 나오므로 뺀다
                           const chips = (product?.submaterials ?? [])
                             .map(s => items.find(x => x.id === s.id))
-                            .filter((c): c is Item => !!c && c.category === 'submaterial' && !isBulkItem(c) && !c.phantom);
+                            .filter((c): c is Item => !!c && c.type === 'submaterial' && !isBulkItem(c) && !c.phantom);
                           if (chips.length === 0) return null;
                           return (
                             <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-7">
@@ -3552,7 +3552,7 @@ const ItemList: React.FC<ItemListProps> = ({
                           }}
                           className="w-16 shrink-0 border border-indigo-300 rounded-lg px-2 py-1 text-right text-sm font-black outline-none focus:ring-2 focus:ring-indigo-400" />
                       ) : editable ? (
-                        <button onClick={() => { if (!product) return; setEditingClosingId(r.itemId); setEditingClosingVal(String(product.subtype === '향미유' ? Math.floor(shownNum / 12) : shownNum)); }}
+                        <button onClick={() => { if (!product) return; setEditingClosingId(r.itemId); setEditingClosingVal(String(product.category === '향미유' ? Math.floor(shownNum / 12) : shownNum)); }}
                           title={stockEdit ? '눌러서 실사 수정 (작업완료 제외한 재고)' : '눌러서 실사 수정'}
                           className={`shrink-0 text-xl font-black ${shownNum > 0 ? 'text-slate-700' : 'text-slate-300'} hover:text-indigo-600 hover:underline`}>
                           {shownNum}<span className="text-[11px] font-bold text-slate-400 ml-0.5">{unitLbl}</span>

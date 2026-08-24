@@ -67,8 +67,8 @@ export const hasProductComponent = (
 /** 사입·임가공 완제품 — 판매 시 생산 없이 자기 재고만 차감(원료는 완사입=무관/임가공=가공입고 때 소진).
  *  생산을 안 하므로 '재고 쓸까요' 물음의 대상도 아니다 → 화면(stockUseRows)도 이걸 본다. */
 export const isGoodsItem = (p: Item) =>
-  p.subtype === '향미유' || p.subtype === '고춧가루' ||
-  p.category === '향미유' || p.category === '고춧가루' || p.category === 'goods' ||
+  p.category === '향미유' || p.category === '고춧가루' ||
+  p.type === '향미유' || p.type === '고춧가루' || p.type === 'goods' ||
   p.procureType === '완사입' || p.procureType === '임가공';
 
 export function createOrderStockEngine(deps: OrderStockEngineDeps) {
@@ -134,7 +134,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   const accrueRaw = (product: Item, units: number, rawUsage: Record<string, number>) => {
     // 조립 반제품(개 단위 wip = 무라벨 병 등): 오일 구성품 수량은 그 오일의 단위(L)로 직접 입력한 값.
     // → L×밀도(unitToKg)로 환산. 일반 완제품은 기존대로 용량(spec)이 오일량을 준다.
-    const isAssembly = product.category === 'wip' && product.unit === '개';
+    const isAssembly = product.type === 'wip' && product.unit === '개';
     const oilSubs = (product.submaterials ?? [])
       .map(s => ({ s, comp: allItems.find(p => p.id === s.id) }))
       // 개수(개) 단위 반제품은 오일이 아니라 '조립 반제품'(무라벨 병 등) → accrueBom이 생산·차감. 벌크 반제품(L/kg)만 오일.
@@ -197,7 +197,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       // 완제품·개수단위 반제품(조립)이 모자라면 먼저 만든다(그 BOM·오일까지 재귀).
       // 재고를 얼마나 쓸지는 stockCap이 정한다(0이면 전부 새로 생산). 그래도 차감은 need 전액 —
       // 먼저 만든 short가 상쇄해서 순변화는 딱 '쓴 재고'만큼이 된다.
-      if (sign < 0 && (comp.category === 'product' || (comp.category === 'wip' && comp.unit === '개')) && !isGoodsItem(comp)) {
+      if (sign < 0 && (comp.type === 'product' || (comp.type === 'wip' && comp.unit === '개')) && !isGoodsItem(comp)) {
         const onHand = (comp.stock ?? 0) + (deltas.get(comp.id) ?? 0);
         const cap = stockCap?.get(comp.id);
         const have = Math.max(0, cap === undefined ? onHand : Math.min(onHand, cap));
@@ -331,7 +331,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     for (const [idx, item] of order.items.entries()) {
       const product = allItems.find(p => p.id === item.itemId);
       if (!product) continue;
-      if (product.category !== 'product') continue;
+      if (product.type !== 'product') continue;
       const units = stockUnits(item, product);   // 박스 품목이면 박스 개수
 
       // 임가공(OEM): 완제품은 가공입고로 이미 재고에 있고 원료도 우리 로트가 아니다.
@@ -386,7 +386,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
         });
     for (const { itemId, qty } of produced) {
       const product = allItems.find(p => p.id === itemId);
-      if (!product || product.category !== 'product') continue;
+      if (!product || product.type !== 'product') continue;
       if (product.procureType === '임가공') continue;   // 재고 미변동 — 수불부만 restore에서 지운다
       if (isGoodsItem(product)) continue;
       if (qty <= 0) continue;
@@ -409,7 +409,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       const product = allItems.find(p => p.id === item.itemId);
       if (!product) continue;
       if (isGoodsItem(product)) addDelta(deltas, product.id, -goodsShipQty(item, product));
-      else if (product.category === 'product') addDelta(deltas, product.id, -stockUnits(item, product));
+      else if (product.type === 'product') addDelta(deltas, product.id, -stockUnits(item, product));
     }
   };
 
@@ -419,7 +419,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       const product = allItems.find(p => p.id === item.itemId);
       if (!product) continue;
       if (isGoodsItem(product)) addDelta(deltas, product.id, goodsShipQty(item, product));
-      else if (product.category === 'product') addDelta(deltas, product.id, stockUnits(item, product));
+      else if (product.type === 'product') addDelta(deltas, product.id, stockUnits(item, product));
     }
   };
 
@@ -433,7 +433,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   /** 출고 수량 — shipOrder와 같은 규칙이어야 로트와 재고가 안 갈린다. */
   const shipQtyOf = (item: OrderItem, product: Item) =>
     isGoodsItem(product) ? goodsShipQty(item, product)
-      : product.category === 'product' ? stockUnits(item, product) : 0;
+      : product.type === 'product' ? stockUnits(item, product) : 0;
 
   /** 로트를 쓰는 완제품인가 — 로트가 한 번이라도 선 품목만. 안 선 품목은 종전대로 숫자 재고만 움직인다. */
   const hasProductLots = (p: Item) => (p.lots ?? []).some(l => l.qtyRemaining != null);

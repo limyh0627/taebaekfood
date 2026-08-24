@@ -11,7 +11,6 @@ import {
 } from '../types';
 import { subscribeToCollection, subscribeToRecentCollection, subscribeToDocument, fetchCollection, fetchDateRange } from '../services/firebaseService';
 import { withDerivedSubmaterials } from '../bomSource';
-import { toLegacyFields } from '../itemTaxonomy';
 import { where } from 'firebase/firestore';
 import { authReady } from '../firebase';
 
@@ -264,10 +263,9 @@ export function useAppData(): AppData {
 
   // BOM 단일원천 — item_bom을 유일 소스로, submaterials는 파생(로딩 시 계산).
   // (Phase 4) 이걸로 재고차감·원가·주문이 모두 item_bom을 원천으로 읽는다.
-  //   toLegacyFields — DB의 새 이름(type/category/subtype)을 코드가 읽는 옛 이름으로 되돌린다.
-  //   코드 490곳을 헬퍼로 다 옮긴 뒤 이 줄을 지운다. itemTaxonomy.ts 참고.
+  //   DB 필드(type/category/subtype)를 코드가 그대로 읽는다 — 이름 되돌리기는 없앴다(2026-08-23).
   const itemsWithBom = useMemo(
-    () => withDerivedSubmaterials(items.map(toLegacyFields), itemBoms),
+    () => withDerivedSubmaterials(items, itemBoms),
     [items, itemBoms],
   );
 

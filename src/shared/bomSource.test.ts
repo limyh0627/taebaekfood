@@ -4,14 +4,14 @@ import { unpackComponent, isBoxStockItem } from './orderUnits';
 import { bomQty } from './bom';
 import { Item, ItemBom } from './types';
 
-const mk = (p: Partial<Item> & { id: string; name: string; category: string }): Item =>
+const mk = (p: Partial<Item> & { id: string; name: string; type: string }): Item =>
   ({ stock: 0, ...p } as Item);
 
 // 낱개 + 카톤 + 테이프
-const 낱개 = mk({ id: 'loose', name: '볶음참깨-낱개/1kg', category: 'product', spec: '1kg', unit: '개', cost: 5100 });
+const 낱개 = mk({ id: 'loose', name: '볶음참깨-낱개/1kg', type: 'product', spec: '1kg', unit: '개', cost: 5100 });
 const 카톤 = mk({ id: 'B-06', name: '6호박스', category: 'submaterial', subtype: '박스', unit: '개', cost: 1045 } as any);
 const 테이프 = mk({ id: 'T-TR', name: '테이프-투명', category: 'submaterial', subtype: '테이프', unit: '개' } as any);
-const 박스 = mk({ id: 'box10', name: '볶음참깨/10kg박스', category: 'product', spec: '10kg', unit: '개' });
+const 박스 = mk({ id: 'box10', name: '볶음참깨/10kg박스', type: 'product', spec: '10kg', unit: '개' });
 const items = [낱개, 카톤, 테이프, 박스];
 
 // item_bom: 박스 = 낱개×10 + 6호박스×1 + 테이프×0

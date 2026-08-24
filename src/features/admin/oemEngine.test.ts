@@ -3,12 +3,12 @@ import { createOemEngine, itemKg } from './oemEngine';
 import type { Item, PurchaseOrder } from '../../shared/types';
 
 const item = (over: Partial<Item>): Item =>
-  ({ id: 'x', name: 'x', category: 'product', unit: '개', price: 0, stock: 0, minStock: 0, image: '', ...over });
+  ({ id: 'x', name: 'x', type: 'product', unit: '개', price: 0, stock: 0, minStock: 0, image: '', ...over });
 
 // 참깨(raw 홀더) + 볶음참깨 완제품/벌크
 const items: Item[] = [
-  item({ id: 'raw-참깨', name: '참깨', category: 'raw', unit: 'kg', subtype2: '벌크', stock: 5000 }),
-  item({ id: 'raw-볶음참깨', name: '볶음참깨', category: 'wip', unit: 'kg', subtype2: '벌크', stock: 0 }),
+  item({ id: 'raw-참깨', name: '참깨', type: 'raw', unit: 'kg', subtype: '벌크', stock: 5000 }),
+  item({ id: 'raw-볶음참깨', name: '볶음참깨', type: 'wip', unit: 'kg', subtype: '벌크', stock: 0 }),
   item({ id: 'box10', name: '볶음참깨/10kg박스', spec: '10kg', procureType: '임가공', stock: 0 }),
   item({ id: 'box20', name: '볶음참깨/20kg박스', spec: '20kg', procureType: '임가공', stock: 0 }),
   item({ id: 'nakgae', name: '볶음참깨-낱개/1kg', spec: '1kg', procureType: '임가공', stock: 0 }),

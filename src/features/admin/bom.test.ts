@@ -5,7 +5,7 @@ import type { ItemFormula, Item } from '../../shared/types';
 
 const f = (parent_key: string, child_name: string, yield_rate = 1, ratio = 1): ItemFormula =>
   ({ id: `${parent_key}-${child_name}`, parent_key, child_name, ratio, yield_rate });
-const phantom = (name: string): Item => ({ id: name, name, category: 'wip', phantom: true } as Item);
+const phantom = (name: string): Item => ({ id: name, name, type: 'wip', phantom: true } as Item);
 
 describe('buildFormula — 배합식 전개', () => {
   it('단일레벨: item_formula의 ratio×yield_rate', () => {

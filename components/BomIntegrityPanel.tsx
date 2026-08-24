@@ -26,7 +26,7 @@ const BomIntegrityPanel: React.FC<Props> = ({ items, itemFormulas = [] }) => {
     }
     // phantom 반제품(무재고) — 배합식 전개 대상이므로 홀더가 없어도 정상(끊긴참조/orphan 오탐 방지).
     const phantomNames = new Set(items.filter(i => i.phantom).map(i => baseRawName(i.name)));
-    const prods = items.filter(i => i.category === 'product');
+    const prods = items.filter(i => i.type === 'product');
 
     const brokenSub: { product: string; id: string; name?: string }[] = [];
     const missingRaw: { product: string; raw: string }[] = [];
@@ -36,7 +36,7 @@ const BomIntegrityPanel: React.FC<Props> = ({ items, itemFormulas = [] }) => {
     // 조립품 = BOM에 완제품 구성품이 든 것(박스·선물세트). 원료는 그 구성품에서 나가므로
     // 자기 원료식이 없는 게 정상 → 원료식 검사 대상에서 뺀다.
     const isAssembly = (p: Item) =>
-      ((p as any).submaterials ?? []).some((s: any) => byId.get(s.id)?.category === 'product');
+      ((p as any).submaterials ?? []).some((s: any) => byId.get(s.id)?.type === 'product');
 
     for (const p of prods) {
       if (isAssembly(p)) continue;   // 박스·선물세트 등 조립품은 원료식 안 가짐(정상)

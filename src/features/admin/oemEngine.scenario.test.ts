@@ -13,9 +13,9 @@ import type { Item, PurchaseOrder } from '../../shared/types';
  * 완제품 이름(볶음참깨-낱개/1kg)이 아니라 BOM이 가리키는 원료 이름으로 잡혀야
  * 수불부가 원료 단위로 묶인다.
  */
-/** 원료 홀더 — findRawHolder가 **벌크 서브타입**으로 찾는다(subtype2). 실제 DB와 같은 모양. */
+/** 원료 홀더 — findRawHolder가 **벌크 서브타입**으로 찾는다(subtype). 실제 DB와 같은 모양. */
 const raw = (name: string, stock = 0): Item => ({
-  id: `raw-${name}`, name, category: 'goods', subtype: '참깨', subtype2: '벌크',
+  id: `raw-${name}`, name, type: 'goods', category: '참깨', subtype: '벌크',
   price: 0, stock, minStock: 0, unit: 'kg', image: '',
 } as unknown as Item);
 

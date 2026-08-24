@@ -38,12 +38,12 @@ const { createOrderStockEngine } = await import('./orderStockEngine');
 
 const LOT_IN = 5189.184;   // 실제 8/03 생들기름 로트
 const 기름 = (): Item => ({
-  id: 'oil', name: '생들기름', category: 'wip', subtype2: '벌크', unit: 'L', stock: LOT_IN,
+  id: 'oil', name: '생들기름', type: 'wip', subtype: '벌크', unit: 'L', stock: LOT_IN,
   lots: [{ id: 'lot1', lotNo: '260803-01', supplierName: '실사조정', receivedDate: '2026-08-03', kgIn: LOT_IN, qtyIn: 0, kgRemaining: LOT_IN, status: 'active' }],
 } as unknown as Item);
 // 300ml 병 — toKg('300ml','생들기름',n) = 0.3 × 0.924 × n
 const 병 = (): Item => ({
-  id: 'bottle', name: '생들기름/병/해피유통/300ml', category: 'product', unit: '개', spec: '300ml',
+  id: 'bottle', name: '생들기름/병/해피유통/300ml', type: 'product', unit: '개', spec: '300ml',
   stock: 0, submaterials: [],
 } as unknown as Item);
 

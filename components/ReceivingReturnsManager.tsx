@@ -444,7 +444,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   // partner_item(in) 또는 supplierId로 연결된 거래처 ID 집합 (partnerType 무관)
   const inboundPartnerClientIds = new Set([
     ...partnerIn.map(ps => ps.partnerId).filter((id): id is string => !!id),
-    ...items.filter(p => p.partnerId && p.category !== '완제품').map(p => p.partnerId!),
+    ...items.filter(p => p.partnerId && p.type !== '완제품').map(p => p.partnerId!),
   ]);
 
   // 연결 품목이 하나라도 있는 거래처 — partnerType 설정 여부 무관하게 표시
@@ -645,7 +645,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   // ══════════════════════════════════════════
 
   const sellableProducts = items.filter(p =>
-    ['완제품', '향미유', '고춧가루', 'product', 'wip', 'giftset'].includes(p.category as string)
+    ['완제품', '향미유', '고춧가루', 'product', 'wip', 'giftset'].includes(p.type as string)
   );
 
   useEffect(() => {
@@ -1042,7 +1042,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                                         className="w-full px-3 py-2.5 text-left text-sm hover:bg-teal-50 transition-colors flex items-center justify-between gap-2"
                                       >
                                         <span className="font-bold text-slate-700 truncate">{p.name}</span>
-                                        <span className="text-[10px] text-slate-400 shrink-0">{p.category}{p.spec ? ` · ${p.spec}` : ''}</span>
+                                        <span className="text-[10px] text-slate-400 shrink-0">{p.type}{p.spec ? ` · ${p.spec}` : ''}</span>
                                       </button>
                                     ));
                                 })()}

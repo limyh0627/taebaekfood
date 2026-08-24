@@ -33,7 +33,7 @@ export function buildStockUseRows(order: Pick<Order, 'items'>, allItems: Item[])
   const rows: StockUseRow[] = [];
   order.items.forEach((item, idx) => {
     const product = allItems.find(p => p.id === item.itemId);
-    if (!product || product.category !== 'product') return;
+    if (!product || product.type !== 'product') return;
     if (isGoodsItem(product)) return;              // 생산을 안 하는 품목 — 물을 게 없다
 
     const uc = unpackComponent(product);

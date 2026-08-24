@@ -70,9 +70,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
 
   const [formData, setFormData] = useState(() => ({
     name: initialData?.name || '',
-    category: (initialData?.category as InventoryCategory) || 'product',
-    subtype: (initialData?.subtype as ItemSubtype | '') || '',
-    subtype2: initialData?.subtype2 || '',
+    type: (initialData?.type as InventoryCategory) || 'product',
+    category: (initialData?.category as ItemSubtype | '') || '',
+    subtype: initialData?.subtype || '',
     price: initialData?.price || 0,
     cost: initialData?.cost || 0,
     stock: initialData?.stock || 0,
@@ -126,7 +126,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   //   유효비율 = ratio × yield_rate (buildFormula와 동일). 표시/저장은 이 유효비율(%)로 통일.
   const [formulaRows, setFormulaRows] = useState<{ child_name: string; yield_pct: number }[]>(() => {
     if (!initialData) return [];
-    const isProduct = initialData.category === 'product';
+    const isProduct = initialData.type === 'product';
     const key = isProduct ? (initialData.품목 || initialData.name) : baseRawName(initialData.name);
     const rows = (itemFormulas ?? []).filter(f => f.parent_key === key);
     if (rows.length > 0)
@@ -202,11 +202,11 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   // 편집 중 품목의 타입이 숨김이어도 선택이 보이게 포함한다.
   const typeList = useMemo(() => {
     const list = taxo.types.map(t => ({ key: t.key, label: t.label }));
-    if (formData.category && !list.some(t => t.key === formData.category)) {
-      return [{ key: formData.category, label: taxo.labelOf(formData.category) }, ...list];
+    if (formData.type && !list.some(t => t.key === formData.type)) {
+      return [{ key: formData.type, label: taxo.labelOf(formData.type) }, ...list];
     }
     return list;
-  }, [taxo, formData.category]);
+  }, [taxo, formData.type]);
 
   const handleSubmit = async (e?: React.SyntheticEvent) => {
     e?.preventDefault();
@@ -214,7 +214,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     // 배송(박스) 서브타입은 서류용 품목이 없어도 저장 가능 — 낱개로 풀려 서류는 낱개 기준
     // 서류용 품목이 비어 있으면 — 예전엔 조용히 막아서 '저장 버튼이 안 눌린다'로 보였다.
     // 이제 물어보고, 그대로 진행하겠다면 저장한다(서류에서 이 품목은 빠진다).
-    if (formData.category === 'product' && (formData as any).subtype2 !== '배송' && !formData.품목) {
+    if (formData.type === 'product' && formData.subtype !== '배송' && !formData.품목) {
       setPumokWarn(true);
       const go = window.confirm(
         '서류용 품목이 비어 있습니다.\n\n이대로 저장하면 원료수불부·생산작업기록부에서 이 품목이 빠집니다.\n그래도 저장할까요?',
@@ -222,37 +222,37 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       if (!go) { pumokRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
     }
 
-    const isProductCategory = ['product', 'goods', 'wip', 'raw', 'giftset'].includes(formData.category);
+    const isProductCategory = ['product', 'goods', 'wip', 'raw', 'giftset'].includes(formData.type);
     const hasBoxConfig = formData.defaultBoxConfig.unitsPerBox > 0;
 
     // 용량 칸에 숫자만 입력하고 '추가'(또는 Enter)를 누르지 않은 채 저장해도 반영 (완제품/반제품)
-    const pendingSpec = (!formData.spec && volNum.trim() && (formData.category === 'product' || formData.category === 'wip'))
+    const pendingSpec = (!formData.spec && volNum.trim() && (formData.type === 'product' || formData.type === 'wip'))
       ? `${volNum.trim()}${volUnit}` : '';
     const effectiveSpec = formData.spec || pendingSpec;
 
     const finalProduct: Item = {
       id: initialData ? initialData.id : `p-${Date.now()}`,
       name: formData.name,
-      category: formData.category,
+      type: formData.type,
+      ...(formData.category && { category: formData.category }),
       ...(formData.subtype && { subtype: formData.subtype }),
-      ...((formData as any).subtype2 && { subtype2: (formData as any).subtype2 }),
       price: formData.price,
       ...(formData.cost > 0 ? { cost: formData.cost } : {}),
       stock: initialData?.stock ?? 0,
-      minStock: formData.category === 'product' ? 0 : formData.minStock,
+      minStock: formData.type === 'product' ? 0 : formData.minStock,
       unit: formData.unit,
       image: initialData?.image || '',
       // 구성품(BOM)은 item_bom에만 저장한다 — 저장 직후 AdminApp이 동기화한다.
       //   items.submaterials는 로딩 때 withDerivedSubmaterials가 item_bom에서 통째로 다시 만들므로,
       //   여기에 써 두면 아무도 안 읽는 옛 값이 문서에 남아 나중에 진단할 때 헷갈린다.
-      ...(formData.category === 'box' && { freightType: formData.freightType, boxSize: formData.boxSize }),
+      ...(formData.type === 'box' && { freightType: formData.freightType, boxSize: formData.boxSize }),
       ...(isProductCategory && hasBoxConfig && { defaultBoxConfig: formData.defaultBoxConfig }),
       ...(isProductCategory && formData.partnerBoxConfigs.length > 0 && { partnerBoxConfigs: formData.partnerBoxConfigs }),
       ...(effectiveSpec && { spec: effectiveSpec }),
       ...(formData.품목 && { 품목: formData.품목 }),
-      ...(formData.category === 'product' && formData.partnerIds.length > 0 && { partnerIds: formData.partnerIds }),
-      ...(formData.category === 'product' && { isSmartStore: formData.isSmartStore }),
-      ...((formData.category === 'wip' || formData.category === 'raw') && { phantom: !!formData.phantom }),
+      ...(formData.type === 'product' && formData.partnerIds.length > 0 && { partnerIds: formData.partnerIds }),
+      ...(formData.type === 'product' && { isSmartStore: formData.isSmartStore }),
+      ...((formData.type === 'wip' || formData.type === 'raw') && { phantom: !!formData.phantom }),
     };
 
     onSave(finalProduct);
@@ -260,10 +260,10 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     // 원료 배합·수율 저장 — **반제품·원료만**. item_formula.
     //   완제품은 저장하지 않는다: parent_key가 품목이라 같은 품목을 쓰는 다른 완제품까지 덮어쓰고,
     //   완제품 배합은 구성품(BOM)이 정하므로 근거가 둘로 갈린다. 위 편집 UI도 완제품엔 없다.
-    if (onSaveItemFormula && ['wip', 'raw'].includes(formData.category)) {
+    if (onSaveItemFormula && ['wip', 'raw'].includes(formData.type)) {
       const keyOf = (cat: string, pumok: string, nm: string) => cat === 'product' ? (pumok || nm) : baseRawName(nm);
-      const parentKey = keyOf(formData.category, formData.품목, formData.name);
-      const prevKey = initialData ? keyOf(initialData.category, initialData.품목 || '', initialData.name) : undefined;
+      const parentKey = keyOf(formData.type, formData.품목, formData.name);
+      const prevKey = initialData ? keyOf(initialData.type, initialData.품목 || '', initialData.name) : undefined;
       const rows = formulaRows
         .filter(r => r.child_name)
         .map(r => ({ child_name: r.child_name, yield_rate: (r.yield_pct || 0) / 100, ratio: 1 }));
@@ -317,7 +317,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Tag size={14} className="mr-2" /> 품목명
               </label>
-              {formData.category === 'product' && (
+              {formData.type === 'product' && (
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] font-bold text-slate-400">스마트스토어 전용</span>
                   <button
@@ -348,12 +348,12 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             </label>
             <div className="grid grid-cols-4 gap-1.5">
               {typeList.map(({ key, label }) => {
-                const isSelected = formData.category === key;
+                const isSelected = formData.type === key;
                 return (
                   <button
                     key={key}
                     type="button"
-                    onClick={() => setFormData({...formData, category: key as InventoryCategory, subtype: '', subtype2: '' } as any)}
+                    onClick={() => setFormData({...formData, type: key as InventoryCategory, category: '', subtype: '' } as any)}
                     className={`py-2 rounded-xl text-xs font-black border transition-all ${
                       isSelected
                         ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
@@ -368,19 +368,19 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
           </div>
 
           {/* 서브타입 — 낱개/배송/선물세트. 분류 관리에서 정한 목록 */}
-          {taxo.subtypesOf(formData.category).length > 0 && (
+          {taxo.subtypesOf(formData.type).length > 0 && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Layers size={14} className="mr-2" /> 서브타입
               </label>
               <div className="flex flex-wrap gap-1.5">
-                {taxo.subtypesOf(formData.category).map((sub: string) => {
-                  const isSelected = (formData as any).subtype2 === sub;
+                {taxo.subtypesOf(formData.type).map((sub: string) => {
+                  const isSelected = formData.subtype === sub;
                   return (
                     <button
                       key={sub}
                       type="button"
-                      onClick={() => setFormData({ ...formData, subtype2: isSelected ? '' : sub } as any)}
+                      onClick={() => setFormData({ ...formData, subtype: isSelected ? '' : sub } as any)}
                       className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all ${
                         isSelected
                           ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
@@ -396,19 +396,19 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
           )}
 
           {/* 카테고리 — 참기름/라벨/용기…. 분류 관리에서 정한 목록 */}
-          {taxo.categoriesOf(formData.category).length > 0 && (
+          {taxo.categoriesOf(formData.type).length > 0 && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Tag size={14} className="mr-2" /> 카테고리
               </label>
               <div className="flex flex-wrap gap-1.5">
-                {taxo.categoriesOf(formData.category).map((c: string) => {
-                  const isSelected = formData.subtype === c;
+                {taxo.categoriesOf(formData.type).map((c: string) => {
+                  const isSelected = formData.category === c;
                   return (
                     <button
                       key={c}
                       type="button"
-                      onClick={() => setFormData({ ...formData, subtype: isSelected ? '' : c })}
+                      onClick={() => setFormData({ ...formData, category: isSelected ? '' : c })}
                       className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all ${
                         isSelected
                           ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
@@ -455,16 +455,16 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
 
 
           {/* 구성품 (BOM) — 완제품/선물세트/배송/반제품: 전체 품목 검색·추가 (반제품=용기·마개·반제품 조립, 무라벨 등) */}
-          {['product', 'giftset', 'shipping', 'wip'].includes(formData.category) && (() => {
+          {['product', 'giftset', 'shipping', 'wip'].includes(formData.type) && (() => {
             const pool = [...(items ?? []), ...allSubmaterials];
             const addedIds = new Set(formData.submaterials.map(s => s.id));
             const q = bomSearch.trim().toLowerCase();
             const SUB_CATS = ['용기', '마개', '라벨', '박스', '테이프'];
-            const catKey = (p: { category?: string; subtype?: string }) => {
-              const n = normCat(p.category);
+            const catKey = (p: { type?: string; category?: string }) => {
+              const n = normCat(p.type);
               if (SUB_CATS.includes(n)) return n;
-              if (p.category === 'submaterial' && p.subtype && SUB_CATS.includes(p.subtype)) return p.subtype;
-              return p.category || '기타';
+              if (p.type === 'submaterial' && p.category && SUB_CATS.includes(p.category)) return p.category;
+              return p.type || '기타';
             };
             const catLabelOf = (k: string) => CATEGORY_LABELS[k] ?? k;
             const CAT_ORDER = ['product', 'goods', 'wip', 'raw', 'giftset', '용기', '마개', '라벨', '박스', '테이프', 'submaterial', 'shipping'];
@@ -500,8 +500,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                   {formData.submaterials.map((s, idx) => {
                     // 구성품이 완제품/반제품이면 그 BOM(원료+부자재)을 펼쳐 볼 수 있게
                     const child = (items ?? []).find(p => p.id === s.id);
-                    const cCat = child ? normCat(child.category) : '';
-                    const isAssembly = !!child && (cCat === 'product' || cCat === 'wip' || child.category === '완제품');
+                    const cCat = child ? normCat(child.type) : '';
+                    const isAssembly = !!child && (cCat === 'product' || cCat === 'wip' || child.type === '완제품');
                     const open = expandedBom.has(s.id);
                     const childSubs = (child?.submaterials ?? []) as any[];
                     const childRaw = child ? (itemFormulas ?? []).filter(f => f.parent_key === ((child as any).품목 || child.name)) : [];
@@ -637,7 +637,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                                   const newSub = { id: p.id, name: p.name, category: catKey(p), stock: 1, unit: p.unit, ...((p as any).spec ? { spec: (p as any).spec } : {}) };
                                   const next = { ...fd, submaterials: [...fd.submaterials, newSub] };
                                   // 완제품: 용기 추가 시 그 용기의 용량(spec) 자동 입력
-                                  if (fd.category === 'product' && catKey(p) === '용기' && (p as any).spec) next.spec = (p as any).spec;
+                                  if (fd.type === 'product' && catKey(p) === '용기' && (p as any).spec) next.spec = (p as any).spec;
                                   return next;
                                 })}
                                 className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold border bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-600 transition-all text-left"
@@ -664,7 +664,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
           })()}
 
           {/* 1박스 당 수량 (박스 부자재) */}
-          {formData.category === 'box' && (
+          {formData.type === 'box' && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Box size={14} className="mr-2" /> 1박스 당 수량 (개)
@@ -684,7 +684,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
               완제품의 배합은 위 구성품(BOM)이 정한다. 완제품에서 여기를 열어두면 품목 키로
               원료식이 다시 생기고(같은 품목을 쓰는 다른 완제품까지 덮어씀), 재고 계산 근거가
               BOM과 원료식 둘로 갈라진다. 서류 비율은 코드의 DOC_MIX 표가 갖는다. */}
-          {(formData.category === 'wip' || formData.category === 'raw') && (
+          {(formData.type === 'wip' || formData.type === 'raw') && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Layers size={14} className="mr-2" /> 원료 배합 · 수율
@@ -766,7 +766,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
           )}
 
           {/* 매입거래처 (비완제품) */}
-          {formData.category !== 'product' && (
+          {formData.type !== 'product' && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Building2 size={14} className="mr-2" /> 매입거래처 <span className="ml-1 text-[10px] text-slate-300 normal-case">(여러 개 선택 가능)</span>
@@ -823,7 +823,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
           )}
 
           {/* 운임타입 (박스) */}
-          {formData.category === 'box' && (
+          {formData.type === 'box' && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                 <Tag size={14} className="mr-2" /> 운임타입
@@ -851,7 +851,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                여기 두 개는 판매일지·거래명세서 같은 **서류**에만 쓰인다.
                재고 차감량은 위 구성품(BOM)의 수량이 정하며 이 값들과 무관하다.
                (원료수불부는 이 품목·용량으로 오일 사용량을 따로 집계한다) ── */}
-          {(formData.category === 'product' || formData.category === 'wip') && (formData as any).subtype2 !== '배송' && (
+          {(formData.type === 'product' || formData.type === 'wip') && formData.subtype !== '배송' && (
             <div className="pt-2 mt-2 border-t-2 border-dashed border-slate-200 space-y-5">
               <div className="flex items-start gap-2">
                 <FileText size={15} className="text-slate-400 mt-0.5 shrink-0" />
@@ -861,7 +861,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                 </div>
               </div>
             {/* 서류용 품목명 (완제품) — 배송(박스)은 낱개로 풀리므로 숨김 */}
-            {formData.category === 'product' && (formData as any).subtype2 !== '배송' && (
+            {formData.type === 'product' && formData.subtype !== '배송' && (
               <div className="space-y-2" ref={pumokRef}>
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                   <Tag size={14} className="mr-2" /> 품목
@@ -895,7 +895,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             )}
 
             {/* 용량 (완제품/반제품) — 배송(박스)은 낱개 용량을 따르므로 숨김 */}
-            {(formData.category === 'product' || formData.category === 'wip') && (formData as any).subtype2 !== '배송' && (() => {
+            {(formData.type === 'product' || formData.type === 'wip') && formData.subtype !== '배송' && (() => {
               const presetVols = (formData.품목 && PUMOK_VOLUMES[formData.품목]) || [];
               const allVols = Array.from(new Set([...presetVols, ...customVols]));
               const addVol = () => {

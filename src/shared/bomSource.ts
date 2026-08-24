@@ -16,7 +16,7 @@ import { Item, ItemBom, SubmaterialComponent } from './types';
  * 낱개를 골라내는데, 자식이 완제품이면 category='product'라 그대로 걸린다(카톤·부자재는 제외).
  */
 export function buildSubmaterialsFromBom(
-  items: Pick<Item, 'id' | 'name' | 'category' | 'spec' | 'unit' | 'cost' | 'boxSize'>[],
+  items: Pick<Item, 'id' | 'name' | 'type' | 'spec' | 'unit' | 'cost' | 'boxSize'>[],
   itemBoms: ItemBom[],
 ): Map<string, SubmaterialComponent[]> {
   const byId = new Map(items.map(i => [i.id, i]));
@@ -27,7 +27,7 @@ export function buildSubmaterialsFromBom(
     const sub: SubmaterialComponent = {
       id: b.child_id,
       name: child?.name ?? b.child_id,
-      category: child?.category ?? 'submaterial',
+      category: child?.type ?? 'submaterial',
       stock: b.quantity ?? 1,            // stock = BOM 개입수(bomQty가 읽는 자리)
       unit: (child as any)?.unit ?? '개',
       ...(child?.spec != null ? { spec: child.spec } : {}),

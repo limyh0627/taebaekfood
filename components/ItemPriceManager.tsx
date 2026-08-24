@@ -30,7 +30,7 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
 
   const filtered = useMemo(() => {
     return items
-      .filter(p => category === '전체' || p.category === category)
+      .filter(p => category === '전체' || p.type === category)
       .filter(p => !search.trim() || p.name.toLowerCase().includes(search.toLowerCase()))
       .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
   }, [items, category, search]);
@@ -124,7 +124,7 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
                     </td>
                     {/* 카테고리 */}
                     <td className="px-3 py-3">
-                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">{p.category}</span>
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">{p.type}</span>
                     </td>
                     {/* 원가 */}
                     <td className="px-3 py-3 text-right">
@@ -172,7 +172,7 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
                             <button onClick={() => setConfirmModal({
                               message: `'${p.name}'을(를) 삭제하시겠습니까?`,
                               subMessage: '삭제 후 복구할 수 없습니다.',
-                              onConfirm: () => { onDeleteItem(p.id, p.category); setConfirmModal(null); },
+                              onConfirm: () => { onDeleteItem(p.id, p.type); setConfirmModal(null); },
                             })}
                               className="p-2 text-rose-300 hover:bg-rose-50 hover:text-rose-500 rounded-xl transition-all" title="삭제">
                               <Trash2 size={15}/>

@@ -43,7 +43,7 @@ const matchClient = (name: string, query: string): boolean => {
 
 const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerItems, palletStocks, submaterials: _submaterials, onClose, onSave }) => {
   const products = items;
-  const submaterials = _submaterials ?? items.filter(i => i.category !== 'product');
+  const submaterials = _submaterials ?? items.filter(i => i.type !== 'product');
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
 
 
@@ -87,9 +87,9 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
   }, [searchTerm, partners]);
 
   // 카테고리 순서는 공용(productChip.catOrder) — 품목관리·재고현황과 같은 순서로 본다.
-  // 품목에 카테고리(subtype)가 없으면 이름으로 짐작한다.
-  const catOf = (p: { subtype?: string; name: string }): string => {
-    if (p.subtype) return p.subtype;
+  // 품목에 카테고리가 없으면 이름으로 짐작한다.
+  const catOf = (p: { category?: string; name: string }): string => {
+    if (p.category) return p.category;
     const n = p.name;
     if (/들기름|들향|들진|들고소/.test(n)) return '들기름';
     if (/참기름|참진|참고소|참향/.test(n)) return '참기름';
@@ -177,8 +177,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
     return products
       .filter(p => {
         if (p.archived) return false;
-        const isOrderable = p.category === 'product' || p.category === 'giftset';
-        if (!isOrderable || p.subtype === '향미유' || p.subtype === '고춧가루') return false;
+        const isOrderable = p.type === 'product' || p.type === 'giftset';
+        if (!isOrderable || p.category === '향미유' || p.category === '고춧가루') return false;
         // 박스 변형은 목록에서 빼고 낱개 카드의 토글로만 접근 (짝 없이 홀로면 그대로 노출)
         if (isBoxStockItem(p) && items.some(x => !x.archived && x.id === (unpackComponent(p)?.itemId))) return false;
         return groupOrderable(p);
@@ -213,13 +213,13 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
   // 스마트스토어 제외 거래처 → 향미유 목록
   const displayHyangmiyu = useMemo(() => {
     if (!selectedClient || selectedClient.type === '스마트스토어') return [];
-    return items.filter(p => p.subtype === '향미유');
+    return items.filter(p => p.category === '향미유');
   }, [products, selectedClient]);
 
   // 스마트스토어 제외 거래처 → 고춧가루 목록
   const displayGochutgaru = useMemo(() => {
     if (!selectedClient || selectedClient.type === '스마트스토어') return [];
-    return items.filter(p => p.subtype === '고춧가루');
+    return items.filter(p => p.category === '고춧가루');
   }, [products, selectedClient]);
 
   // 현재 선택된 품목 기준 부자재 재고 부족 계산
@@ -232,7 +232,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
       const product = items.find(p => p.id === item.itemId);
       if (!product) continue;
 
-      if (product.subtype === '향미유') {
+      if (product.category === '향미유') {
         const sub = submaterials.find(s => s.id === product.id);
         if (sub) {
           const actualQty = item.isBoxUnit && item.unitsPerBox > 0 ? qty * item.unitsPerBox : qty;
@@ -243,7 +243,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
         continue;
       }
 
-      if (product.category !== 'product' || !selectedClient) continue;
+      if (product.type !== 'product' || !selectedClient) continue;
       const actualQty = item.isBoxUnit && item.unitsPerBox > 0 ? qty * item.unitsPerBox : qty;
 
       const pc = partnerOut.find(p => p.itemId === product.id && p.partnerId === selectedClient.id);
@@ -367,7 +367,6 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
     const boxQty = typeof selection.quantity === 'number' ? selection.quantity : 0;
     const totalUnits = selection.isBoxUnit && uPerBox > 0 ? boxQty * uPerBox : boxQty;
     const availableConfigs = getClientBoxConfigs(product.id, selectedClient?.id);
-    const isHyangmiyu = product.category === '향미유';
     const isBoxMode = selection.isBoxUnit && uPerBox > 0;
     const icConfigs = getItemCustomerConfigs(product.id, selectedClient?.id);
     return (
@@ -718,7 +717,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                           // 내용물(반제품·원료·완제품)과 벌크는 뺀다 — 챙길 물건이 아니라 통에서 나온다.
                           const chips = (product.submaterials ?? [])
                             .map(s => items.find(x => x.id === s.id))
-                            .filter((c): c is Item => !!c && c.category === 'submaterial' && !isBulkItem(c) && !c.phantom);
+                            .filter((c): c is Item => !!c && c.type === 'submaterial' && !isBulkItem(c) && !c.phantom);
                           if (chips.length === 0) return null;
                           return (
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5"

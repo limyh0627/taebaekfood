@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X, Copy, ChevronDown, ChevronUp, ChevronRight, GitMerge, Save, Settings, Store, Package, User, Truck, ChevronLeft } from 'lucide-react';
-import { Item, InventoryCategory, Partner, PartnerItem, ItemBom } from '../types';
+import { Item, InventoryCategory, Partner, PartnerItem, ItemBom, SubmaterialComponent } from '../types';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 import CategoryManager from './CategoryManager';
@@ -36,9 +36,9 @@ const CATEGORY_MAP: Record<string, string> = {
   '마개': '마개', '용기': '용기', '박스': '박스', '테이프': '테이프', '라벨': '라벨',
 };
 const normalizeCategory = (cat: string) => CATEGORY_MAP[cat] || cat;
-const itemSubCat = (item: { category: string; subtype?: string }) =>
-  item.category === 'submaterial' ? (item.subtype || '') : normalizeCategory(item.category);
-const inferSubtype = (item: { subtype?: string; name: string; category: string }): string => {
+const itemSubCat = (item: { type: string; subtype?: string }) =>
+  item.type === 'submaterial' ? (item.subtype || '') : normalizeCategory(item.type);
+const inferSubtype = (item: { subtype?: string; name: string; type: string }): string => {
   if (item.subtype) return item.subtype;
   const n = item.name;
   if (n.includes('들기름')) return '들기름';
@@ -48,7 +48,7 @@ const inferSubtype = (item: { subtype?: string; name: string; category: string }
   if (n.includes('참깨')) return '참깨';
   if (n.includes('고춧가루')) return '고춧가루';
   if (n.includes('향미유')) return '향미유';
-  return CATEGORY_LABELS[item.category] || item.category;
+  return CATEGORY_LABELS[item.type] || item.type;
 };
 
 const CATEGORIES: InventoryCategory[] = ['product', 'goods', 'wip', 'raw', 'giftset', 'submaterial', 'shipping'];
@@ -58,8 +58,12 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 const LINK_CATEGORIES = ['product', 'goods', 'wip', 'raw', 'giftset', 'submaterial'];
 const SUB_ORDER: Record<string, number> = { '라벨': 0, '용기': 1, '마개': 2, '테이프': 3, '박스': 4 };
-const sortSubs = (subs: { name: string; category: string; subtype?: string }[]) =>
-  [...subs].sort((a, b) => (SUB_ORDER[itemSubCat(a)] ?? 9) - (SUB_ORDER[itemSubCat(b)] ?? 9));
+// SubmaterialComponent는 **DB에 저장된 모양**이라 타입을 여전히 category 칸에 담는다(품목의 3단 이름과 별개).
+//   → 여기서 한 번만 갈아 끼워 itemSubCat에 넘긴다.
+const sortSubs = (subs: SubmaterialComponent[]) =>
+  [...subs].sort((a, b) =>
+    (SUB_ORDER[itemSubCat({ type: String(a.category) })] ?? 9)
+    - (SUB_ORDER[itemSubCat({ type: String(b.category) })] ?? 9));
 
 // ── 한글 초성 검색 ──
 const CHOSUNG = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
@@ -128,7 +132,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
     const u: Record<string, number> = {};
     for (const p of items) {
       if (p.archived) continue;
-      const t = p.category, sub = (p as any).subtype2, cat = p.subtype;
+      const t = p.type, sub = p.subtype, cat = p.category;
       u[`type:${t}`] = (u[`type:${t}`] ?? 0) + 1;
       if (sub) u[`sub:${t}:${sub}`] = (u[`sub:${t}:${sub}`] ?? 0) + 1;
       if (cat) u[`cat:${t}:${cat}`] = (u[`cat:${t}:${cat}`] ?? 0) + 1;
@@ -168,7 +172,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
   const activePartnerClients = partnerTab === 'sales' ? salesClients : purchaseClients;
 
   const duplicateGroups = useMemo(() => {
-    const finished = items.filter(p => !p.archived && ['product', 'wip', 'giftset'].includes(p.category));
+    const finished = items.filter(p => !p.archived && ['product', 'wip', 'giftset'].includes(p.type));
     const pcByProduct: Record<string, PartnerItem[]> = {};
     for (const pc of partnerOut) {
       const key = pc.itemId;
@@ -254,11 +258,11 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
   const filteredItems = useMemo(() => {
     const isByClientPurchase = mainView === 'by-partner' && partnerScopeTab === 'purchase' && selectedClientId;
     let result = mainView === 'flat' || showAll || showNoClient
-      ? items.filter(p => !p.archived && p.category === activeCategory)
+      ? items.filter(p => !p.archived && p.type === activeCategory)
       : selectedClientId
         ? isByClientPurchase
           ? items.filter(p => !p.archived && partnerIn.some(ps => (ps.itemId) === p.id && (ps.partnerId) === selectedClientId))
-          : items.filter(p => !p.archived && (partnerAllCats || p.category === activeCategory) && (p.partnerIds ?? []).includes(selectedClientId))
+          : items.filter(p => !p.archived && (partnerAllCats || p.type === activeCategory) && (p.partnerIds ?? []).includes(selectedClientId))
         : [];
 
     if (showNoClient) {
@@ -372,7 +376,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
       ? new Set(partnerIn.filter(ps => (ps.partnerId) === selectedClientId).map(ps => ps.itemId))
       : null;
     return products
-      .filter(p => p.category === linkCategory && (alreadyLinked ? !alreadyLinked.has(p.id) : !(p.partnerIds ?? []).includes(selectedClientId)))
+      .filter(p => p.type === linkCategory && (alreadyLinked ? !alreadyLinked.has(p.id) : !(p.partnerIds ?? []).includes(selectedClientId)))
       .filter(p => !term || p.name.toLowerCase().includes(term))
       .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
   }, [products, selectedClientId, linkCategory, linkSearch, partnerScopeTab, partnerIn]);
@@ -515,7 +519,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                 {(() => {
                   const subs = (item.submaterials ?? [])
                     .map(s => items.find(x => x.id === s.id))
-                    .filter((c): c is Item => !!c && c.category === 'submaterial' && !isBulkItem(c) && !c.phantom);
+                    .filter((c): c is Item => !!c && c.type === 'submaterial' && !isBulkItem(c) && !c.phantom);
                   // 겉박스·테이프는 박스 품목 BOM에 들어 있다 — 거래처별 포장설정은 폐기했다.
                   return (
                     <ProductCard key={item.id} product={item} subs={subs}
@@ -723,7 +727,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                     )}
                     {(['용기', '마개', '라벨'] as const).map(cat => (
                       <td key={cat} className="px-2 py-3">
-                        {item.category === 'product' ? (() => {
+                        {item.type === 'product' ? (() => {
                           const subs = (item.submaterials ?? []).filter(s => {
                             const full = items.find(p => p.id === s.id);
                             return full ? itemSubCat(full) === cat : normalizeCategory(s.category) === cat;
@@ -830,7 +834,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                           // 품목 목록 뷰: 품목 수정 / 삭제 버튼
                           <div className="flex items-center justify-end gap-1.5">
                             {/* 낱개 완제품 → N개입 박스 품목 만들기. 이미 박스인 품목엔 안 띄운다. */}
-                            {onCreateBoxItem && item.category === 'product' && !isBoxStockItem(item) && (
+                            {onCreateBoxItem && item.type === 'product' && !isBoxStockItem(item) && (
                               <button
                                 onClick={() => openBoxModal(item)}
                                 className="px-2 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 transition-all text-[10px] font-black"
@@ -849,7 +853,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                             <button
                               onClick={() => {
                                 if (!window.confirm(`"${item.name}" 품목을 삭제하시겠습니까?\n\n삭제 후 복구할 수 없습니다.`)) return;
-                                onDeleteItem(item.id, item.category);
+                                onDeleteItem(item.id, item.type);
                               }}
                               className="p-1.5 rounded-lg bg-rose-50 text-rose-400 hover:bg-rose-100 hover:text-rose-600 transition-all"
                               title="삭제"
@@ -1390,7 +1394,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                     onChange={e => setBoxForm(f => ({ ...f, comps: f.comps.map((x, j) => j === i ? { ...x, id: e.target.value } : x) }))}
                     className="flex-1 min-w-0 border border-slate-200 rounded-xl px-2 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300 bg-white">
                     <option value="">— 구성품 선택 —</option>
-                    {items.filter(x => !x.archived && x.category !== 'product' && x.category !== 'raw')
+                    {items.filter(x => !x.archived && x.type !== 'product' && x.type !== 'raw')
                       .sort((a, b) => a.name.localeCompare(b.name, 'ko'))
                       .map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
                   </select>

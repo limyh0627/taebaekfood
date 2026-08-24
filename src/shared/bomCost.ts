@@ -53,10 +53,10 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
   //  같은 원료명에 여러 품목이 걸릴 수 있다(원료 '깨분참기름' 7222/L vs 반제품 '깨분참기름/16.5kg' 120,000/드럼).
   //  원료식이 가리키는 건 벌크 원료 → **정확한 이름(규격접미사 없음) + raw** 를 우선한다.
   const byRawName = new Map<string, Item>();
-  const rank = (it: Item, key: string) => (it.name === key ? 2 : 0) + (it.category === 'raw' ? 1 : 0);
+  const rank = (it: Item, key: string) => (it.name === key ? 2 : 0) + (it.type === 'raw' ? 1 : 0);
   const rankOf = new Map<string, number>();
   for (const i of ctx.allItems) {
-    if (i.category !== 'raw' && i.category !== 'wip') continue;
+    if (i.type !== 'raw' && i.type !== 'wip') continue;
     const key = baseRawName(i.name);
     const r = rank(i, key);
     if (!byRawName.has(key) || r > (rankOf.get(key) ?? -1)) { byRawName.set(key, i); rankOf.set(key, r); }
@@ -85,14 +85,14 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
 
     // 종단 품목 = 자기 cost가 원가 (매입·선제조 완료값)
     //   goods(완사입)·raw(원료)·wip(반제품)·submaterial(부자재)·box(겉박스)
-    if (TERMINAL.has(item.category as string)) {
+    if (TERMINAL.has(item.type as string)) {
       const stored = item.cost ?? 0;
       if (stored > 0) { memo.set(item.id, stored); return stored; }
       // **제조 반제품**은 저장 원가가 없으면 원료식으로 굴린다.
       //   참기름특A = 깨분참기름 0.5 + 통깨참기름 0.5 처럼 사서 오는 게 아니라 섞어 만드는 것.
       //   (매입 반제품 — 깨분참기름/16.5kg 등 — 은 저장 cost가 종단이라 여기 안 걸린다: stored>0)
       //   완제품과 달리 용량(spec)이 없으므로 toKg 경로가 아니라 '단위 1당 비율 합'으로 계산한다.
-      if (item.category === 'wip') {
+      if (item.type === 'wip') {
         const f = ctx.formulaOf(item.품목 || item.name);
         if (f.length) {
           // 배합 반제품 1kg당 원가 = 구성 원료의 kg당 원가를 비율로 섞은 값. 단위 환산 없음(전부 kg).
@@ -110,7 +110,7 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
     //   더하면 기름값이 두 번 잡힌다 — 반제품이 이미 그 기름을 담고 있기 때문.
     const hasAssembled = subs.some(s => {
       const c = byId.get(s.id);
-      return !!c && (c.category === 'product' || c.category === 'box' || c.category === 'wip');
+      return !!c && (c.type === 'product' || c.type === 'box' || c.type === 'wip');
     });
 
     let total = 0;
@@ -123,7 +123,7 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
     for (const s of subs) {
       const comp = byId.get(s.id);
       if (!comp) continue;
-      if (comp.category === 'raw') continue;         // 원료는 원료식 경로
+      if (comp.type === 'raw') continue;         // 원료는 원료식 경로
       // 겉박스·테이프도 BOM에 있으면 그대로 원가에 넣는다 — 예전엔 낱개의 겉박스를 코드로 건너뛰었지만,
       // 이제 낱개 BOM에 그것들을 안 둔다(박스 품목을 만들 때 그 BOM으로 잡힌다). BOM이 곧 구성이다.
       const q = bomQty(s);

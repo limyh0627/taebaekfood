@@ -40,13 +40,13 @@ const { createOrderStockEngine } = await import('./orderStockEngine');
 const mk = (o: Partial<Item> & { id: string }) =>
   ({ name: o.id, unit: '개', stock: 0, spec: '', minStock: 0, price: 0, image: '', submaterials: [], ...o }) as unknown as Item;
 
-const 벌크 = () => mk({ id: 'bulk', name: '볶음참깨', category: 'wip', subtype2: '벌크', unit: 'kg', stock: 500 });
+const 벌크 = () => mk({ id: 'bulk', name: '볶음참깨', type: 'wip', subtype: '벌크', unit: 'kg', stock: 500 });
 const 낱개 = (stock: number) => mk({
-  id: 'loose', name: '볶음참깨-낱개/1kg', category: 'product', unit: '개', spec: '1kg', stock,
+  id: 'loose', name: '볶음참깨-낱개/1kg', type: 'product', unit: '개', spec: '1kg', stock,
   submaterials: [{ id: 'bulk', name: '볶음참깨', category: 'wip', stock: 1 }] as any,
 });
 const 박스10 = (stock: number) => mk({
-  id: 'box10', name: '볶음참깨/1kg (10개입)', category: 'product', unit: '박스', spec: '10kg', stock,
+  id: 'box10', name: '볶음참깨/1kg (10개입)', type: 'product', unit: '박스', spec: '10kg', stock,
   submaterials: [{ id: 'loose', name: '볶음참깨-낱개/1kg', category: 'product', stock: 10 }] as any,
 });
 
@@ -251,7 +251,7 @@ describe('모달 행 계산 (stockUseRows)', () => {
 
   it('같은 낱개를 노리는 두 라인이 재고를 나눠 쓴다', () => {
     const 박스20 = mk({
-      id: 'box20', name: '볶음참깨/1kg (20개입)', category: 'product', unit: '박스', stock: 0,
+      id: 'box20', name: '볶음참깨/1kg (20개입)', type: 'product', unit: '박스', stock: 0,
       submaterials: [{ id: 'loose', name: '볶음참깨-낱개/1kg', category: 'product', stock: 20 }] as any,
     });
     const order = {

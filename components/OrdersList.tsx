@@ -186,7 +186,7 @@ export const OrderCard = memo<OrderCardProps>(({
   const isSecondary = (cat?: string) => cat === '향미유' || cat === '고춧가루';
   const nonHyangmiyuItems = order.items.filter(item => {
     const p = items.find(p => p.id === item.itemId);
-    return !isSecondary(p?.category);
+    return !isSecondary(p?.type);
   });
   const totalItems = nonHyangmiyuItems.length || 1;
   const completedItems = nonHyangmiyuItems.filter(i => i.checked).length;
@@ -360,7 +360,7 @@ export const OrderCard = memo<OrderCardProps>(({
                 '부착': 'bg-emerald-50 border-emerald-300 text-emerald-600',
               };
               const editProductInfo = items.find(p => p.id === item.itemId);
-              const isOil = isSecondary(editProductInfo?.category);
+              const isOil = isSecondary(editProductInfo?.type);
               // 주문에 박힌 값 → 거래처 포장설정 → 품목이 아는 개입수(boxSize·규격·향미유 12)
               const qtyPerBox = item.unitsPerBox ?? unitsPerBoxOf(editProductInfo);
               const toggleBoxUnit = () => {
@@ -414,7 +414,7 @@ export const OrderCard = memo<OrderCardProps>(({
             {/* 일반 품목 (완제품): 펼쳐진 상태에서만 표시 */}
             {!isCollapsed && order.items.filter(item => {
               const p = items.find(p => p.id === item.itemId);
-              return !isSecondary(p?.category);
+              return !isSecondary(p?.type);
             }).map((item, _) => {
               const idx = order.items.indexOf(item);
               const isItemChecked = !!item.checked;
@@ -483,16 +483,16 @@ export const OrderCard = memo<OrderCardProps>(({
                   {(() => {
                     // 박스 품목이면 카톤/테이프 표시, 낱개(비박스)면 출고 카톤·테이프는 뺀다(박스=품목).
                     const isBoxProd = isBoxStockItem(productInfo);
-                    const isShipPkg = (p: Item) => p.category === 'box' || p.subtype === '박스' || p.subtype === '테이프';
+                    const isShipPkg = (p: Item) => p.type === 'box' || p.category === '박스' || p.category === '테이프';
                     // 1. item_bom 기반 구성품 (submaterial 카테고리만) — 낱개는 박스/테이프 제외
                     const bomSubs = itemBoms
                       .filter(b => b.parent_id === item.itemId)
                       .map(b => items.find(p => p.id === b.child_id))
-                      .filter((p): p is Item => !!p && p.category === 'submaterial' && (isBoxProd || !isShipPkg(p)));
+                      .filter((p): p is Item => !!p && p.type === 'submaterial' && (isBoxProd || !isShipPkg(p)));
                     const bomSubIds = new Set(bomSubs.map(p => p.id));
 
                     // 1.5 BOM 라벨이 삭제된 품목을 가리키면 품목 구성품 스냅샷의 라벨로 보완
-                    const hasBomLabel = bomSubs.some(p => p.subtype === '라벨');
+                    const hasBomLabel = bomSubs.some(p => p.category === '라벨');
                     const snapLabels = hasBomLabel ? [] : (productInfo?.submaterials ?? [])
                       .filter(s => (s.category === '라벨' || s.category === 'label') && !bomSubIds.has(s.id))
                       .map(s => ({ id: s.id, name: items.find(p => p.id === s.id)?.name ?? s.name }));
@@ -511,7 +511,7 @@ export const OrderCard = memo<OrderCardProps>(({
                       .filter(b => b.parent_id === item.itemId)
                       .map(b => ({ qty: b.quantity, p: items.find(p => p.id === b.child_id) }))
                       .filter((r): r is { qty: number; p: Item } =>
-                        !!r.p && !isBulkItem(r.p) && (r.p.category === 'product' || r.p.category === 'wip' || r.p.category === '완제품'));
+                        !!r.p && !isBulkItem(r.p) && (r.p.type === 'product' || r.p.type === 'wip' || r.p.type === '완제품'));
 
                     const allSubs = [...bomSubs.map(p => ({ id: p.id, name: p.name })), ...snapLabels, ...packagingSubs];
                     if (allSubs.length === 0 && bomProducts.length === 0) return null;
@@ -552,7 +552,7 @@ export const OrderCard = memo<OrderCardProps>(({
                         // 펼친 낱개의 부자재 — 벌크는 여기서도 뺀다
                         const cSubs = (p.submaterials ?? []).filter(cs => {
                           const ci = items.find(x => x.id === cs.id);
-                          return ci?.category === 'submaterial' && !isShipPkg(ci) && !isBulkItem(ci);
+                          return ci?.type === 'submaterial' && !isShipPkg(ci) && !isBulkItem(ci);
                         });
                         return (
                           <div key={`exp-${p.id}`} className="flex flex-wrap items-center gap-1 pl-[28px] mt-0.5" onClick={e => e.stopPropagation()}>
@@ -587,8 +587,8 @@ export const OrderCard = memo<OrderCardProps>(({
                 .replace(/참진한기름/g, '참진').replace(/참고소한기름/g, '참고소')
                 .replace(/들향기름골드/g, '들향골드').replace(/참향기름/g, '참향')
                 .replace(/들향기름/g, '들향').replace(/맛기름/g, '맛');
-              const hyangmiyuItems = order.items.filter(item => items.find(p => p.id === item.itemId)?.category === '향미유');
-              const gochuItems = order.items.filter(item => items.find(p => p.id === item.itemId)?.category === '고춧가루');
+              const hyangmiyuItems = order.items.filter(item => items.find(p => p.id === item.itemId)?.type === '향미유');
+              const gochuItems = order.items.filter(item => items.find(p => p.id === item.itemId)?.type === '고춧가루');
               if (hyangmiyuItems.length === 0 && gochuItems.length === 0) return null;
               return (
                 <div className="space-y-1 pt-1.5 border-t-2 border-dashed border-slate-200 mt-1.5">
@@ -672,7 +672,7 @@ export const OrderCard = memo<OrderCardProps>(({
                         .map(pi => pi.itemId)
                     );
                     return products
-                    .filter(p => p.category === '완제품' && (linkedIds.size === 0 || linkedIds.has(p.id)))
+                    .filter(p => p.type === '완제품' && (linkedIds.size === 0 || linkedIds.has(p.id)))
                     .sort((a, b) => {
                       const order = (name: string) => /가루/.test(name) ? 3 : /참기름|참진|참고소|참향/.test(name) ? 0 : /들기름|들향|들진|들고소/.test(name) ? 1 : /깨/.test(name) ? 2 : 4;
                       const diff = order(a.name) - order(b.name);
@@ -684,12 +684,12 @@ export const OrderCard = memo<OrderCardProps>(({
                   })()}
                 </optgroup>
                 <optgroup label="향미유">
-                  {items.filter(p => p.category === '향미유').map(p => (
+                  {items.filter(p => p.type === '향미유').map(p => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </optgroup>
                 <optgroup label="고춧가루">
-                  {items.filter(p => p.category === '고춧가루').map(p => (
+                  {items.filter(p => p.type === '고춧가루').map(p => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </optgroup>
@@ -877,7 +877,7 @@ const DeliveryRow = memo<DeliveryRowProps>(({ order, partnerName, items, onToggl
   const products = items;
 
   const availableBoxes = useMemo(
-    () => items.filter(p => p.category === '박스' && !/(비닐|자루|원조)/i.test(p.name)),
+    () => items.filter(p => p.type === '박스' && !/(비닐|자루|원조)/i.test(p.name)),
     [items]
   );
 
@@ -1250,7 +1250,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
               itemName: item.name,
               partnerName,
               qty: item.quantity,
-              category: items.find(p => p.id === item.itemId)?.category || '',
+              category: items.find(p => p.id === item.itemId)?.type || '',
             }))
             .filter(wi => wi.category !== '향미유' && wi.category !== '고춧가루');
         });

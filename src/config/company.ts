@@ -99,7 +99,7 @@ export const INITIAL_PRODUCTS: Item[] = [
   {
     id: 'p1',
     name: '태백 저온참기름 (300ml)',
-    category: 'product',
+    type: 'product',
     price: 18500,
     stock: 450,
     minStock: 100,
@@ -114,7 +114,7 @@ export const INITIAL_PRODUCTS: Item[] = [
   {
     id: 'p2',
     name: '태백 전통들기름 (300ml)',
-    category: 'product',
+    type: 'product',
     price: 16500,
     stock: 220,
     minStock: 80,
@@ -126,14 +126,14 @@ export const INITIAL_PRODUCTS: Item[] = [
       { id: 'sub-03', name: '들기름 전용 박스', stock: 1, unit: '개', category: 'box' },
     ],
   },
-  { id: 'p3', name: '생들기름 (180ml)', category: 'product', price: 14000, stock: 15, minStock: 50, unit: '개', image: '' },
-  { id: 'p7', name: '골드캡 마개', category: 'cap', price: 80, stock: 120, minStock: 1000, unit: '개', image: '' },
-  { id: 'p8', name: '태백 로고 테이프', category: 'tape', price: 1200, stock: 45, minStock: 20, unit: '롤', image: '' },
-  { id: 'sub-01', name: '300ml 유리용기', category: 'container', price: 450, stock: 1200, minStock: 500, unit: '개', image: '' },
-  { id: 'sub-02', name: '참기름 전용 박스', category: 'box', price: 300, stock: 800, minStock: 200, unit: '개', image: '' },
-  { id: 'sub-03', name: '들기름 전용 박스', category: 'box', price: 300, stock: 600, minStock: 200, unit: '개', image: '' },
-  { id: 'gck-1', name: '고춧가루 1kg', category: 'product', subtype: '고춧가루', price: 0, stock: 0, minStock: 0, unit: '개', image: '', boxSize: 20 },
-  { id: 'gck-5', name: '고춧가루 5kg', category: 'product', subtype: '고춧가루', price: 0, stock: 0, minStock: 0, unit: '개', image: '', boxSize: 4 },
+  { id: 'p3', name: '생들기름 (180ml)', type: 'product', price: 14000, stock: 15, minStock: 50, unit: '개', image: '' },
+  { id: 'p7', name: '골드캡 마개', type: 'cap', price: 80, stock: 120, minStock: 1000, unit: '개', image: '' },
+  { id: 'p8', name: '태백 로고 테이프', type: 'tape', price: 1200, stock: 45, minStock: 20, unit: '롤', image: '' },
+  { id: 'sub-01', name: '300ml 유리용기', type: 'container', price: 450, stock: 1200, minStock: 500, unit: '개', image: '' },
+  { id: 'sub-02', name: '참기름 전용 박스', type: 'box', price: 300, stock: 800, minStock: 200, unit: '개', image: '' },
+  { id: 'sub-03', name: '들기름 전용 박스', type: 'box', price: 300, stock: 600, minStock: 200, unit: '개', image: '' },
+  { id: 'gck-1', name: '고춧가루 1kg', type: 'product', category: '고춧가루', price: 0, stock: 0, minStock: 0, unit: '개', image: '', boxSize: 20 },
+  { id: 'gck-5', name: '고춧가루 5kg', type: 'product', category: '고춧가루', price: 0, stock: 0, minStock: 0, unit: '개', image: '', boxSize: 4 },
 ];
 
 // ── 거래처 초기 데이터 ────────────────────────────────────────────────────────

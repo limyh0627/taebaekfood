@@ -68,7 +68,7 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
   }, [selectedClientId]);
 
   const sellableProducts = items.filter(p =>
-    ['완제품', '향미유', '고춧가루'].includes(p.category as string)
+    ['완제품', '향미유', '고춧가루'].includes(p.type as string)
   );
 
   const partnerOrders = orders

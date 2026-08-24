@@ -156,7 +156,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
   });
 
   const finishedProducts = useMemo(
-    () => items.filter(p => !p.archived && (p.itemType === 'FINISHED' || p.category === '완제품')),
+    () => items.filter(p => !p.archived && (p.itemType === 'FINISHED' || p.type === '완제품')),
     [items]
   );
 
@@ -184,7 +184,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
     const map: Record<string, { itemName: string; qty: number; count: number; category: string }> = {};
     filteredRecords.forEach(r => {
       if (!map[r.itemId]) {
-        const cat = items.find(p => p.id === r.itemId)?.category ?? '';
+        const cat = items.find(p => p.id === r.itemId)?.type ?? '';
         map[r.itemId] = { itemName: r.itemName, qty: 0, count: 0, category: cat };
       }
       map[r.itemId].qty += r.finishedQty;
@@ -256,7 +256,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
       for (const order of deliveredOrders) {
         for (const item of order.items) {
           const product = items.find(p => p.id === item.itemId);
-          if (product && SUB_ONLY_CATS.has(product.category)) continue;
+          if (product && SUB_ONLY_CATS.has(product.type)) continue;
 
           const recordId = `pr-${order.id}-${item.itemId}`;
           if (existingIds.has(recordId)) continue;

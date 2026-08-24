@@ -114,15 +114,15 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   const productPool = useMemo(() => {
     if (!selectedClient) return [];
     const finished = items.filter(p => {
-      if (p.category !== '완제품') return false;
+      if (p.type !== '완제품') return false;
       if (p.partnerIds?.includes(selectedClient.id)) return true;
       if (selectedClient.type === '스마트스토어' && (p.partnerIds?.includes('SMARTSTORE') || p.isSmartStore)) return true;
       return false;
     });
     const hyangmiyu = selectedClient.type !== '스마트스토어'
-      ? items.filter(p => p.category === '향미유') : [];
+      ? items.filter(p => p.type === '향미유') : [];
     const gochu = selectedClient.type !== '스마트스토어'
-      ? items.filter(p => p.category === '고춧가루') : [];
+      ? items.filter(p => p.type === '고춧가루') : [];
     return [...finished, ...hyangmiyu, ...gochu];
   }, [products, selectedClient]);
 
@@ -373,7 +373,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
                         .filter(sm => {
                           if (pcSubIds.has(sm.id)) return false;
                           const fullSub = items.find(p => p.id === sm.id);
-                          const cat = fullSub?.category || sm.category || '';
+                          const cat = fullSub?.type || sm.category || '';
                           return ['마개', '테이프', '박스', '용기', '라벨', 'Cap', 'Tape'].includes(cat);
                         })
                         .map(sm => sm.name);

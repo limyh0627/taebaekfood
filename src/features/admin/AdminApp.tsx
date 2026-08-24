@@ -245,8 +245,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
 
   // items 컬렉션 카테고리별 분리
-  const products     = useMemo(() => items.filter(i => i.category === 'product'), [items]);
-  const submaterials = useMemo(() => items.filter(i => i.category !== 'product'), [items]);
+  const products     = useMemo(() => items.filter(i => i.type === 'product'), [items]);
+  const submaterials = useMemo(() => items.filter(i => i.type !== 'product'), [items]);
 
   // partner_item 컬렉션 Direction 기준 분리
   const partnerIn = useMemo(() => partnerItems.filter(pi => pi.Direction === 'in'),  [partnerItems]);
@@ -410,7 +410,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       yearMonth: prevYm,
       value: totalValue,
       recordedAt: new Date().toISOString(),
-      items: valued.map(p => ({ itemId: p.id, name: p.name, category: p.category as string, qty: p.stock ?? 0, value: Math.round((p.stock ?? 0) * (p.cost ?? 0)) })),
+      items: valued.map(p => ({ itemId: p.id, name: p.name, category: p.type as string, qty: p.stock ?? 0, value: Math.round((p.stock ?? 0) * (p.cost ?? 0)) })),
     });
   }, [isDataLoading]);
 
@@ -567,7 +567,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const invoicedPurchaseOrders = useMemo(() => purchaseOrders.filter(po => po.status === 'invoiced'), [purchaseOrders]);
 
   const lowStockCount = allItems.filter(p =>
-    p.category !== 'product' && p.minStock > 0 && p.stock < p.minStock
+    p.type !== 'product' && p.minStock > 0 && p.stock < p.minStock
   ).length;
 
   // 판매 상품(완제품/향미유/고춧가루)은 products, 부자재는 submaterials
@@ -579,14 +579,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
   //   완사입·임가공은 작업완료 때 재고가 안 늘어나므로 제외 — orderStockEngine.produceOrder의 isGoodsItem/임가공 스킵과 동일 기준.
   const dispatchedQtyByItem = useMemo<Record<string, number>>(() => {
     const m: Record<string, number> = {};
-    const isGoods = (p: Item) => p.subtype === '향미유' || p.subtype === '고춧가루' ||
-      p.category === '향미유' || p.category === '고춧가루' || (p.category as string) === 'goods' ||
+    const isGoods = (p: Item) => p.category === '향미유' || p.category === '고춧가루' ||
+      p.type === '향미유' || p.type === '고춧가루' || (p.type as string) === 'goods' ||
       p.procureType === '완사입' || p.procureType === '임가공';
     for (const o of allOrders) {
       if (!o.producedAt || o.shippedOut) continue;   // 작업완료 & 미출고만
       for (const it of o.items) {
         const product = allItems.find(p => p.id === it.itemId);
-        if (!product || product.category !== 'product' || isGoods(product)) continue;
+        if (!product || product.type !== 'product' || isGoods(product)) continue;
         m[it.itemId] = Math.round(((m[it.itemId] ?? 0) + stockUnits(it, product)) * 1000) / 1000;
       }
     }
@@ -712,7 +712,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       if (!product) continue;
 
       // 향미유: 재고는 박스 단위
-      if (product.subtype === '향미유') {
+      if (product.category === '향미유') {
         const sub = submaterials.find(s => s.id === product.id);
         if (sub) {
           const boxesNeeded = item.isBoxUnit && item.boxQuantity
@@ -723,7 +723,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         continue;
       }
 
-      if (product.category !== 'product') continue;
+      if (product.type !== 'product') continue;
       // 완사입=원료 무관, 임가공=외주가 볶아 옴(우리 원료 로트가 아님) → 둘 다 원료 부족 대상이 아니다
       if (product.procureType === '완사입' || product.procureType === '임가공') continue;
 
@@ -741,7 +741,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         const sub = submaterials.find(sm => sm.id === s.id);
         if (!sub) continue;
         // 원료 홀더(raw/wip)는 kg 단위라 '개' 집계가 틀림 → 위 원료식(kg) 경로에서 체크
-        if (sub.category === 'raw' || sub.category === 'wip') continue;
+        if (sub.type === 'raw' || sub.type === 'wip') continue;
         // 재고 1단위 × BOM 수량 — 이중캡 ×2, 180ml캡 ×3 같은 것
         usage[sub.id] = { name: sub.name, needed: (usage[sub.id]?.needed ?? 0) + units * bomQty(s), unit: '개' };
       }
@@ -806,13 +806,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
   useEffect(() => {
     const seedFlavoredOil = async () => {
       const items = [
-        { id: 'f1',   name: '참진한기름',   category: 'product', subtype: '향미유', partnerId: 'C001', stock: 0, minStock: 10, price: 0, unit: '개', image: '' },
-        { id: 'f2',   name: '참고소한기름', category: 'product', subtype: '향미유', partnerId: 'C001', stock: 0, minStock: 10, price: 0, unit: '개', image: '' },
-        { id: 'f3',   name: '참향기름',     category: 'product', subtype: '향미유', partnerId: 'C001', stock: 0, minStock: 5,  price: 0, unit: '개', image: '' },
-        { id: 'f4',   name: '맛기름',       category: 'product', subtype: '향미유', partnerId: 'C001', stock: 0, minStock: 10, price: 0, unit: '개', image: '' },
-        { id: 'f5',   name: '들향기름',     category: 'product', subtype: '향미유', partnerId: 'C001', stock: 0, minStock: 5,  price: 0, unit: '개', image: '' },
-        { id: 'f6',   name: '들향기름골드', category: 'product', subtype: '향미유', partnerId: 'C001', stock: 0, minStock: 1,  price: 0, unit: '개', image: '' },
-        { id: 'f2-1', name: '참고소(연한)', category: 'product', subtype: '향미유', partnerId: 'C001', stock: 0, minStock: 0,  price: 0, unit: '개', image: '' },
+        { id: 'f1',   name: '참진한기름',   type: 'goods', category: '향미유', partnerId: 'C001', stock: 0, minStock: 10, price: 0, unit: '개', image: '' },
+        { id: 'f2',   name: '참고소한기름', type: 'goods', category: '향미유', partnerId: 'C001', stock: 0, minStock: 10, price: 0, unit: '개', image: '' },
+        { id: 'f3',   name: '참향기름',     type: 'goods', category: '향미유', partnerId: 'C001', stock: 0, minStock: 5,  price: 0, unit: '개', image: '' },
+        { id: 'f4',   name: '맛기름',       type: 'goods', category: '향미유', partnerId: 'C001', stock: 0, minStock: 10, price: 0, unit: '개', image: '' },
+        { id: 'f5',   name: '들향기름',     type: 'goods', category: '향미유', partnerId: 'C001', stock: 0, minStock: 5,  price: 0, unit: '개', image: '' },
+        { id: 'f6',   name: '들향기름골드', type: 'goods', category: '향미유', partnerId: 'C001', stock: 0, minStock: 1,  price: 0, unit: '개', image: '' },
+        { id: 'f2-1', name: '참고소(연한)', type: 'goods', category: '향미유', partnerId: 'C001', stock: 0, minStock: 0,  price: 0, unit: '개', image: '' },
       ];
       for (const item of items) {
         const ref = doc(db, 'items', item.id);  // 향미유는 products에 저장
@@ -943,7 +943,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const createProductionRecordsForOrder = async (order: Order) => {
     const finishedItems = order.items.filter(item => {
       const p = allItems.find(pr => pr.id === item.itemId);
-      return p && p.category === 'product';
+      return p && p.type === 'product';
     });
     for (const item of finishedItems) {
       let product = allItems.find(p => p.id === item.itemId);
@@ -981,7 +981,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         const nowIso = new Date().toISOString();
         await recordRawMaterialReceipt({ companyId, allItems, product, itemName: product.name, quantity: item.quantity, unit: product.unit, partnerName: '반품', dateStr: nowIso.slice(0, 10), nowIso, addedBy: currentUser?.name });
       } else {
-        const col = getProductCollection(product.category as string);
+        const col = getProductCollection(product.type as string);
         // 재고는 DB에서 읽어 더한다 — 화면값에 더해 덮어쓰면 그 사이 들어온 쓰기가 날아간다
         await adjustItemStock(col, product.id, item.quantity);
       }
@@ -1102,8 +1102,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
           alert(`⚠️ "${product.name}" 원료 재고/수불부 기록 실패\n사유: ${(err as Error)?.message ?? String(err)}\n\n입고확인은 됐지만 원료 로트가 안 잡혔습니다. (Firebase 한도 초과 등) 잠시 후 다시 시도하거나 관리자에게 알려주세요.`);
         }
       } else {
-        const collectionName = getProductCollection(product.category);
-        const addQty = (product.subtype === '향미유' || product.category === '향미유') && line.isBox ? line.quantity * 12 : line.quantity;
+        const collectionName = getProductCollection(product.type);
+        const addQty = (product.category === '향미유' || product.type === '향미유') && line.isBox ? line.quantity * 12 : line.quantity;
         // 여러 줄을 연달아 입고하면 앞 줄이 쓴 재고가 화면에 아직 안 돌아온다 → DB에서 읽어 더한다
         await adjustItemStock(collectionName, product.id, addQty);
       }
@@ -1170,8 +1170,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
           alert(`⚠️ "${product.name}" 원료 재고/수불부 기록 실패\n사유: ${(err as Error)?.message ?? String(err)}\n\n입고확정은 됐지만 원료 로트가 안 잡혔습니다. (Firebase 한도 초과 등) 잠시 후 다시 시도하세요.`);
         }
       } else {
-        const collectionName = getProductCollection(product.category);
-        const addQty = (product.subtype === '향미유' || product.category === '향미유') && line.isBox ? line.quantity * 12 : line.quantity;
+        const collectionName = getProductCollection(product.type);
+        const addQty = (product.category === '향미유' || product.type === '향미유') && line.isBox ? line.quantity * 12 : line.quantity;
         // 여러 줄을 연달아 입고하면 앞 줄이 쓴 재고가 화면에 아직 안 돌아온다 → DB에서 읽어 더한다
         await adjustItemStock(collectionName, product.id, addQty);
       }
@@ -1733,9 +1733,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
               items={companyItems}
               orders={allOrders}
               onUpdateItem={async (p) => {
-                await updateItem(getProductCollection(p.category), p.id, p);
+                await updateItem(getProductCollection(p.type), p.id, p);
               }}
-              onAddItem={(p) => addItem(getProductCollection(p.category), p)} 
+              onAddItem={(p) => addItem(getProductCollection(p.type), p)} 
               orderRequests={pendingPurchaseOrders}
               confirmedOrders={invoicedPurchaseOrders}
               dispatchedQtyByItem={dispatchedQtyByItem}
@@ -2239,7 +2239,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 const p = allItems.find(pr => pr.id === item.itemId);
                 // 제품 ID가 DB에 없으면(삭제 후 재등록 등) 완제품으로 간주
                 // 명확히 부자재인 경우만 제외
-                return !p || !SUB_ONLY_CATS.has(p.category);
+                return !p || !SUB_ONLY_CATS.has(p.type);
               })
             );
 
@@ -2258,9 +2258,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
               const partnerName = partner?.name || order.partnerName || '';
               return order.items.flatMap((item, itemIdx) => {
                 let product = allItems.find(p => p.id === item.itemId);
-                if (product && SUB_ONLY_CATS.has(product.category)) return [];
+                if (product && SUB_ONLY_CATS.has(product.type)) return [];
                 // 완사입(goods: 향미유·고춧가루)은 우리가 생산한 게 아니므로 생산작업판매일지엔 제외(표시만 — 재고 차감엔 영향 없음)
-                if (product && product.category === 'goods') return [];
+                if (product && product.type === 'goods') return [];
                 // 박스 품목은 포장일 뿐 — 낱개 기준으로 푼다(수불부·생산작업기록부와 같은 docUnpack).
                 const u = docUnpack(product, item.quantity, id => allItems.find(p => p.id === id));
                 const base = u?.item ?? product;
@@ -2364,7 +2364,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               defaultTopTemplate.map(t => [t.key, new Set(t.volumes)])
             );
             allItems
-              .filter(p => p.category === 'product' && p.품목 && p.spec && !bottomPumokSet.has(p.품목))
+              .filter(p => p.type === 'product' && p.품목 && p.spec && !bottomPumokSet.has(p.품목))
               .forEach(p => {
                 if (!topTemplateMap.has(p.품목!)) topTemplateMap.set(p.품목!, new Set());
                 topTemplateMap.get(p.품목!)!.add(docSpec(p.spec));
@@ -2443,7 +2443,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             const missingMfgDate = shippedOrders.flatMap(o =>
               o.items.filter(item => {
                 const p = allItems.find(pr => pr.id === item.itemId);
-                return p?.category === 'product' && !item.mfgDate;
+                return p?.type === 'product' && !item.mfgDate;
               }).map(item => item.name)
             );
 
@@ -4146,7 +4146,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 // 실제 재고 반영 로직
                 const product = allItems.find(p => p.id === req.itemId);
                 if (product) {
-                  const collectionName = getProductCollection(product.category);
+                  const collectionName = getProductCollection(product.type);
                   if (req.type === 'quantity_change') {
                     // 수량 변동 승인 시, 요청된 수량만큼 재고에 더함
                     const target = rawLotTarget(allItems, product, product.name, companyId);
@@ -4408,7 +4408,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           initialData={editingProduct || undefined}
           allSubmaterials={submaterials}
           items={products}
-          rawItems={allItems.filter(i => i.category === 'raw' || i.category === 'wip')}
+          rawItems={allItems.filter(i => i.type === 'raw' || i.type === 'wip')}
           itemFormulas={itemFormulas}
           onSaveItemFormula={async (parentKey, rows, prevKey) => {
             const batch = writeBatch(db);
@@ -4439,10 +4439,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
             return id as string;
           }}
           onSave={async (p) => {
-            const collectionName = getProductCollection(p.category);
+            const collectionName = getProductCollection(p.type);
             // 기존 컬렉션과 다른 경우(카테고리 변경) 이전 문서 삭제
             if (editingProduct) {
-              const prevCollection = getProductCollection(editingProduct.category);
+              const prevCollection = getProductCollection(editingProduct.type);
               if (prevCollection !== collectionName) {
                 await deleteItem(prevCollection, p.id);
               }

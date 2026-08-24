@@ -42,7 +42,7 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, onOrderS
   const associatedProducts = useMemo(() => {
     if (!selectedClient) return [];
     return items.filter(p => 
-      p.category === 'product' &&
+      p.type === 'product' &&
       (!p.partnerIds?.length || p.partnerIds.includes(selectedClient.id))
     );
   }, [items, selectedClient]);

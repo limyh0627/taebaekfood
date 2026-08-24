@@ -95,13 +95,13 @@ export function stockUnits(
  *   그 외              0 = 박스 주문 안 함
  */
 export function unitsPerBoxOf(
-  product: (Pick<Item, 'boxSize' | 'spec' | 'subtype' | 'category'>) | undefined,
+  product: (Pick<Item, 'boxSize' | 'spec' | 'category' | 'type'>) | undefined,
 ): number {
   if (!product) return 0;
   if (product.boxSize && product.boxSize > 1) return product.boxSize;
   const bySpec = parseSpecCount(product.spec);
   if (bySpec > 1) return bySpec;
-  const isFlavorOil = product.subtype === '향미유' || product.category === '향미유';
+  const isFlavorOil = product.category === '향미유' || product.type === '향미유';
   return isFlavorOil ? 12 : 0;
 }
 

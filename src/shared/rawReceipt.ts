@@ -27,10 +27,10 @@ export function rawLotTarget(
   const baseName = product?.rawMaterialName || baseRawName(itemName);
   if (!RM_LIST.includes(baseName)) return null;
   const isHolder = (c?: string, u?: string) => c === 'raw' || (c === 'wip' && u !== '개');
-  const holders = allItems.filter(i => isHolder(i.category, i.unit) && baseRawName(i.name) === baseName);
+  const holders = allItems.filter(i => isHolder(i.type, i.unit) && baseRawName(i.name) === baseName);
   const rawItem = (companyId ? holders.find(i => companyOf(i) === companyId) : undefined)
                ?? holders[0]
-               ?? (isHolder(product?.category, product?.unit) ? product : undefined);
+               ?? (isHolder(product?.type, product?.unit) ? product : undefined);
   return rawItem ? { baseName, rawItem } : null;
 }
 
