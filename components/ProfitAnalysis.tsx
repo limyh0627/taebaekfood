@@ -1418,7 +1418,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                     className="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
                 </div>
                 {/* 높이를 묶는다 — flex-1만 두면 거래처 수만큼 늘어나 화면 끝까지 내려간다 */}
-                <div className="bg-white rounded-2xl border border-slate-200 flex-1 min-h-0 max-h-[62vh] overflow-y-auto">
+                <div className="bg-white rounded-2xl border border-slate-200 flex-1 min-h-0 max-h-[calc(100vh-260px)] overflow-y-auto">
                   {allClientList.length === 0 && <div className="py-8 text-center text-slate-300 text-xs font-bold">전표 없음</div>}
                   {allClientList.map(c => {
                     const isActive = selId === c.id;

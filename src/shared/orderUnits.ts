@@ -134,3 +134,28 @@ export function itemKg(item: Item): number {
   const isBox = isBoxStockItem(item) || item.unit === '박스';
   return perUnit * (isBox ? parseSpecCount(item.spec) : 1);
 }
+
+/**
+ * 낱개 밑에 박스 품목을 붙여 정렬한다 — 목록에서 둘이 떨어져 있으면 같은 물건인 줄 모른다.
+ * 박스(unpackComponent)의 낱개가 목록에 있으면 그 아래로, 없으면(orphan) 단독으로 둔다.
+ */
+export function groupLooseBoxRows<T extends Pick<Item, 'id' | 'unpackTo'>>(arr: T[]): { p: T; isChild: boolean }[] {
+  const inList = new Set(arr.map(p => p.id));
+  const boxByParent = new Map<string, T[]>();
+  const looseOrOrphan: T[] = [];
+  for (const p of arr) {
+    const uc = unpackComponent(p);
+    if (uc && inList.has(uc.itemId)) {
+      const cur = boxByParent.get(uc.itemId);
+      if (cur) cur.push(p); else boxByParent.set(uc.itemId, [p]);
+    } else {
+      looseOrOrphan.push(p);
+    }
+  }
+  const out: { p: T; isChild: boolean }[] = [];
+  for (const p of looseOrOrphan) {
+    out.push({ p, isChild: false });
+    for (const b of (boxByParent.get(p.id) ?? [])) out.push({ p: b, isChild: true });
+  }
+  return out;
+}

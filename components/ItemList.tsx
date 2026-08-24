@@ -37,7 +37,7 @@ import {
 import { Item, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, PartnerItem } from '../types';
 import { PurchaseOrder, poLines } from '../src/shared/types';
 import type { Order } from '../src/shared/types';
-import { unpackComponent, isBoxStockItem} from '../src/shared/orderUnits';
+import { unpackComponent, isBoxStockItem, groupLooseBoxRows } from '../src/shared/orderUnits';
 import AddItemModal from './AddItemModal';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
@@ -116,29 +116,6 @@ const parseMakeLabel = (p: { name: string; spec?: string }): { base: string; gra
   const sizeNum = parseFloat(size);
   const container = (/kg/i.test(size) || !sizeNum) ? '' : sizeNum <= 350 ? '병' : sizeNum >= 1500 ? '페트' : '';
   return { base, grade, size, pack, brand, container };
-};
-
-// 낱개 밑에 박스 품목을 붙여 정렬 — 박스(unpackComponent)의 낱개가 목록에 있으면 그 아래로.
-// 낱개가 목록에 없는 박스(orphan)는 단독으로 둔다.
-const groupLooseBoxRows = (arr: Item[]): { p: Item; isChild: boolean }[] => {
-  const inList = new Set(arr.map(p => p.id));
-  const boxByParent = new Map<string, Item[]>();
-  const looseOrOrphan: Item[] = [];
-  for (const p of arr) {
-    const uc = unpackComponent(p);
-    if (uc && inList.has(uc.itemId)) {
-      if (!boxByParent.has(uc.itemId)) boxByParent.set(uc.itemId, []);
-      boxByParent.get(uc.itemId)!.push(p);
-    } else {
-      looseOrOrphan.push(p);
-    }
-  }
-  const out: { p: Item; isChild: boolean }[] = [];
-  for (const p of looseOrOrphan) {
-    out.push({ p, isChild: false });
-    for (const b of (boxByParent.get(p.id) ?? [])) out.push({ p: b, isChild: true });
-  }
-  return out;
 };
 
 // 검색어 → 토큰들. '+'로 AND, 각 키워드는 한글↔영숫자 경계에서 쪼갠다(예: "참A" → ["참","A"]).

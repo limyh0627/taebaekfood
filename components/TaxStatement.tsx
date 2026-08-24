@@ -1,5 +1,6 @@
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
+import { matchesSearch } from '../src/shared/hangul';
 import {
   FileText, Printer, Search, Check, CheckSquare, Download, X,
   Receipt, Eye, Calendar, Building2, ChevronDown, ChevronUp, Edit2, Trash2, Package,
@@ -105,9 +106,9 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
     );
     return partners
       .filter(c => inMonth.has(c.id))
-      .filter(c => !taxClientSearch || c.name.includes(taxClientSearch))
+      .filter(c => matchesSearch(c.name, taxClientSearch))
       .filter(c => !onlyUnissued || (partnerUnissuedCount.get(c.id) ?? 0) > 0)
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => a.name.localeCompare(b.name, 'ko'));   // 가나다순
   }, [partners, issuedStatements, selectedMonth, taxClientSearch, onlyUnissued, partnerUnissuedCount]);
 
   const partnerStmts = useMemo(() =>
@@ -234,8 +235,8 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   const issuedClients = useMemo(() =>
     partners
       .filter(c => issuedStatements.some(s => s.partnerId === c.id && s.type === '매출' && !!s.taxIssuedAt))
-      .filter(c => !histClientSearch || c.name.includes(histClientSearch))
-      .sort((a, b) => a.name.localeCompare(b.name)),
+      .filter(c => matchesSearch(c.name, histClientSearch))
+      .sort((a, b) => a.name.localeCompare(b.name, 'ko')),   // 가나다순
     [partners, issuedStatements, histClientSearch]
   );
 
@@ -456,7 +457,8 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
             </div>
 
             {/* 거래처 목록 */}
-            <div className="bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden" style={{maxHeight:400}}>
+            {/* 높이는 거래처통계와 같은 기준 — 400px 고정이라 아래가 비었다 */}
+            <div className="bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden max-h-[calc(100vh-260px)]">
               <div className="px-3 pt-3 pb-2 border-b border-slate-100 space-y-2">
                 <div className="relative">
                   <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
@@ -768,7 +770,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-7 pr-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
                 </div>
               </div>
-              <div className="overflow-y-auto divide-y divide-slate-50">
+              <div className="overflow-y-auto divide-y divide-slate-50 max-h-[calc(100vh-260px)]">
                 <button onClick={() => { setHistClientId(''); setHistPreviewGroupKey(null); }}
                   className={`w-full text-left px-3 py-2.5 transition-all hover:bg-emerald-50 ${!histClientId ? 'bg-emerald-50 border-r-2 border-emerald-500' : ''}`}>
                   <span className={`text-xs font-black ${!histClientId ? 'text-emerald-700' : 'text-slate-500'}`}>전체 거래처</span>
