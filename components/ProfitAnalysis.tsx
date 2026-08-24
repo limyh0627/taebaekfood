@@ -1915,10 +1915,16 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
          * 풍회는 매입이 전액 비용으로 남고 태백은 없는 재고자산이 는다 — 양쪽이 같이 틀어진다.
          * 회사가 안 박힌 옛 품목은 태백 것으로 본다(companyOf).
          */
+        /**
+         * 재고 0인 줄은 안 보여준다 — **원료·반제품만 예외.**
+         *   완제품·부자재는 수백 개라 0이 대부분이어서, 원가만 붙어 있으면 다 떠서 목록이 안 읽혔다.
+         *   원료·반제품은 종류가 적고 0이어도 좇아야 하니 남긴다(음수는 어느 타입이든 보여준다).
+         */
+        const keepZero = (p: Item) => p.type === 'raw' || p.type === 'wip';
         const rows = products
           .filter(p => companyOf(p) === companyId)
           .map(p => { const c = unitCost(p); return { ...p, stock: getStock(p), unitCost: c, value: Math.round(getStock(p) * c) }; })
-          .filter(p => p.stock > 0 || p.unitCost > 0)
+          .filter(p => p.stock !== 0 || keepZero(p))
           .sort((a, b) => b.value - a.value);
 
         const totalValue = rows.reduce((acc, p) => acc + p.value, 0);
@@ -1938,10 +1944,21 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           if (['용기', '마개', '라벨', '박스', '테이프'].includes(c)) return c; // 구 한글 부자재
           return '기타';
         };
-        const groupOrder = ['완제품', '반제품', '상품', '향미유', '고춧가루', '원료', '선물세트', '배송', '용기', '마개', '라벨', '박스', '테이프', '부자재', '기타'];
+        /**
+         * 화면 묶음은 **타입** 하나로 — 완제품·상품·반제품·원료·선물세트·배송·부자재.
+         *   예전엔 catLabel로 묶어서 향미유·용기·라벨·마개가 각각 한 덩이씩 서서
+         *   표가 15개로 갈렸다. 스냅샷에 저장하는 값은 catLabel 그대로 둔다 —
+         *   거기선 용기·라벨 구분이 있어야 나중에 되짚을 수 있다.
+         */
+        const TYPE_GROUP: Record<string, string> = {
+          product: '완제품', goods: '상품', wip: '반제품', raw: '원료',
+          giftset: '선물세트', shipping: '배송', submaterial: '부자재',
+        };
+        const typeLabel = (p: Item): string => TYPE_GROUP[String(p.type)] ?? catLabel(p);
+        const groupOrder = ['완제품', '상품', '반제품', '원료', '선물세트', '배송', '부자재', '기타'];
         const byLabel = new Map<string, typeof rows>();
         for (const p of rows) {
-          const l = catLabel(p);
+          const l = typeLabel(p);
           if (!byLabel.has(l)) byLabel.set(l, []);
           byLabel.get(l)!.push(p);
         }
@@ -2011,7 +2028,34 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                       {sortedSnapshots.map(snap => {
                         const hasItems = Array.isArray(snap.items) && snap.items.length > 0;
                         const open = expandedSnapId === snap.id;
-                        const snapItems = hasItems ? [...snap.items!].sort((a, b) => b.value - a.value) : [];
+                        /**
+         * 펼친 스냅샷도 **타입별로** 묶어 보여준다 — 500줄 평면 목록은 못 읽는다.
+         * 저장된 category는 catLabel 값(완제품·향미유·용기…)이라 타입 층으로 되올린다.
+         * 값 0인 줄은 뺀다(원료·반제품은 그래도 남긴다 — 위 목록과 같은 규칙).
+         */
+                        const SNAP_TO_TYPE: Record<string, string> = {
+                          완제품: '완제품', 반제품: '반제품', 원료: '원료', 선물세트: '선물세트', 배송: '배송',
+                          상품: '상품', 향미유: '상품', 고춧가루: '상품',
+                          용기: '부자재', 마개: '부자재', 라벨: '부자재', 박스: '부자재', 테이프: '부자재', 케이스: '부자재', 부자재: '부자재',
+                        };
+                        const snapGroups = hasItems
+                          ? (() => {
+                              const m = new Map<string, { name: string; qty: number; value: number; spec?: string; itemId: string; category?: string }[]>();
+                              for (const it of snap.items!) {
+                                const g = SNAP_TO_TYPE[String(it.category)] ?? '기타';
+                                if (Number(it.value) === 0 && g !== '원료' && g !== '반제품') continue;
+                                const arr = m.get(g) ?? [];
+                                arr.push(it as never);
+                                m.set(g, arr);
+                              }
+                              for (const arr of m.values()) arr.sort((a, b) => Number(b.value) - Number(a.value));
+                              return [...m.entries()]
+                                .sort((a, b) => {
+                                  const oi = groupOrder.indexOf(a[0]), oj = groupOrder.indexOf(b[0]);
+                                  return (oi === -1 ? 99 : oi) - (oj === -1 ? 99 : oj);
+                                });
+                            })()
+                          : [];
                         return (
                           <React.Fragment key={snap.id}>
                           <tr onClick={() => hasItems && setExpandedSnapId(open ? null : snap.id)}
@@ -2025,21 +2069,34 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                             <td className="px-4 py-3 text-xs text-right font-black text-teal-700">{fmt(snap.value)}원</td>
                             <td className="px-4 py-3 text-[10px] text-right text-slate-400">{snap.recordedAt.slice(0, 16).replace('T', ' ')}</td>
                           </tr>
-                          {open && snapItems.map((it, i) => {
-                            // 옛 기록엔 규격이 안 담겨 있다 — 품목에서 찾아 붙인다(지워진 품목이면 없는 대로)
-                            const spec = it.spec ?? products.find(p => p.id === it.itemId)?.spec;
-                            return (
-                            <tr key={snap.id + '-' + i} className="bg-slate-50/60">
-                              <td className="pl-9 pr-4 py-1.5 text-[11px] text-slate-600">
-                                <span className="text-slate-400 text-[9px] mr-1.5">{it.category}</span>{it.name}
-                                {spec && <span className="ml-1.5 text-[10px] font-black text-slate-400">{spec}</span>}
-                                <span className="text-slate-400 ml-1.5">× {it.qty}</span>
-                              </td>
-                              <td className="px-4 py-1.5 text-[11px] text-right font-bold text-slate-600">{fmt(it.value)}원</td>
-                              <td className="px-4 py-1.5"></td>
-                            </tr>
-                            );
-                          })}
+                          {open && snapGroups.map(([g, list]) => (
+                            <React.Fragment key={snap.id + '-g-' + g}>
+                              <tr className="bg-slate-100/80">
+                                <td className="pl-9 pr-4 py-1.5 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                  {g} <span className="text-slate-400 font-bold normal-case">{list.length}품목</span>
+                                </td>
+                                <td className="px-4 py-1.5 text-[11px] text-right font-black text-slate-600">
+                                  {fmt(list.reduce((a, x) => a + Number(x.value || 0), 0))}원
+                                </td>
+                                <td className="px-4 py-1.5"></td>
+                              </tr>
+                              {list.map((it, i) => {
+                                // 옛 기록엔 규격이 안 담겨 있다 — 품목에서 찾아 붙인다(지워진 품목이면 없는 대로)
+                                const spec = it.spec ?? products.find(p => p.id === it.itemId)?.spec;
+                                return (
+                                  <tr key={snap.id + '-' + g + '-' + i} className="bg-slate-50/60">
+                                    <td className="pl-12 pr-4 py-1.5 text-[11px] text-slate-600">
+                                      {it.name}
+                                      {spec && <span className="ml-1.5 text-[10px] font-black text-slate-400">{spec}</span>}
+                                      <span className="text-slate-400 ml-1.5">× {it.qty}</span>
+                                    </td>
+                                    <td className="px-4 py-1.5 text-[11px] text-right font-bold text-slate-600">{fmt(it.value)}원</td>
+                                    <td className="px-4 py-1.5"></td>
+                                  </tr>
+                                );
+                              })}
+                            </React.Fragment>
+                          ))}
                           </React.Fragment>
                         );
                       })}
