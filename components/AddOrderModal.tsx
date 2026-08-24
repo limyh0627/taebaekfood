@@ -177,7 +177,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
     return products
       .filter(p => {
         if (p.archived) return false;
-        const isOrderable = p.type === 'product' || p.type === 'giftset';
+        //  선물세트도 완제품이다 — 갈래는 subtype('선물세트')이 쥔다.
+        const isOrderable = p.type === 'product';
         if (!isOrderable || p.category === '향미유' || p.category === '고춧가루') return false;
         // 박스 변형은 목록에서 빼고 낱개 카드의 토글로만 접근 (짝 없이 홀로면 그대로 노출)
         if (isBoxStockItem(p) && items.some(x => !x.archived && x.id === (unpackComponent(p)?.itemId))) return false;

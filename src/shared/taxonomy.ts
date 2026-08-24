@@ -2,7 +2,7 @@
  * 품목 분류 3단 — 타입 > 서브타입 > 카테고리
  *
  *   타입(type)         완제품 · 상품 · 반제품 · 원료 · 부자재
- *   서브타입(subtype)   낱개 · 배송 · 선물세트          ← 선택. 부자재·원료는 지금 비어 있다.
+ *   서브타입(subtype)   낱개 · 배송 · 선물세트 · 벌크    ← 선택. 부자재는 지금 비어 있다.
  *   카테고리(category)  참기름 · 라벨 · 용기 · 박스 …    ← 실제로 뭔지
  *
  * 타입 **키**(product/goods/…)는 엔진이 분기에 쓰므로 고정이다. 재고 차감·원료식·
@@ -15,17 +15,24 @@
  * DB 필드 대응은 itemTaxonomy.ts 참고 — category=타입, subtype2=서브타입, subtype=카테고리.
  */
 
-export const CATEGORY_KEYS = ['product', 'goods', 'wip', 'raw', 'submaterial', 'giftset', 'shipping'] as const;
+export const CATEGORY_KEYS = ['product', 'goods', 'wip', 'raw', 'submaterial'] as const;
 export type CategoryKey = typeof CATEGORY_KEYS[number];
 
 export const DEFAULT_CATEGORY_LABELS: Record<string, string> = {
-  product: '완제품', goods: '상품', wip: '반제품', raw: '원료',
-  submaterial: '부자재', giftset: '선물세트', shipping: '배송',
+  product: '완제품', goods: '상품', wip: '반제품', raw: '원료', submaterial: '부자재',
 };
 
-/** 타입별 서브타입 기본값 — 완제품만 있다 */
+/**
+ * 타입별 서브타입 기본값.
+ *
+ * 원료·반제품의 `벌크`는 **isBulkItem이 보는 값**이다 — BOM 수량이 용량(kg·L)이냐
+ * 개수냐를 이 한 값이 정하고, 재고차감·원료홀더 탐색 30여 곳이 거기 얹혀 있다.
+ * 목록에 없으면 새 품목에 달 방법이 없어 조용히 개수로 취급된다.
+ */
 export const DEFAULT_SUBTYPES: Record<string, string[]> = {
   product: ['낱개', '배송', '선물세트'],
+  wip: ['벌크'],
+  raw: ['벌크'],
 };
 
 /** 타입별 카테고리 기본값 */

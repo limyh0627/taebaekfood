@@ -4,6 +4,8 @@ import { Plus, Edit2, Trash2, Search, Save, X } from 'lucide-react';
 import { Item, InventoryCategory } from '../types';
 import PageHeader from './PageHeader';
 import ConfirmModal from './ConfirmModal';
+import { bomQty } from '../src/shared/bom';
+import { subDotClass } from '../src/shared/submaterialStyle';
 
 interface ItemPriceManagerProps {
   items: Item[];
@@ -107,18 +109,26 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
                     <td className="px-4 py-3">
                       <div className="font-black text-slate-800 text-sm">{p.name}</div>
                       {(() => {
+                        /**
+                         * 부자재는 BOM 그대로 — 용기·마개만 골라 뽑던 자리다.
+                         * 그 필터는 `s.category`를 '용기'와 견줬는데 BOM 파생이 거기에 자식의
+                         * **type**('submaterial')을 넣어서, 한 품목도 안 걸리고 늘 비어 있었다.
+                         */
                         const subs = p.submaterials ?? [];
-                        const 용기 = subs.find(s => s.category === '용기')?.name;
-                        const 마개 = subs.find(s => s.category === '마개')?.name;
                         const 정보 = p.oil || p.spec || '';
-                        const tags = [용기 && `용기: ${용기}`, 마개 && `마개: ${마개}`, 정보 && `정보: ${정보}`].filter(Boolean);
-                        return tags.length > 0 ? (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {tags.map((tag, i) => (
-                              <span key={i} className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-400">{tag}</span>
+                        if (!subs.length && !정보) return null;
+                        return (
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
+                            {정보 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-400">{정보}</span>}
+                            {subs.map((s, i) => (
+                              <span key={`${s.id}-${i}`} className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 whitespace-nowrap">
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(s)}`} />
+                                {s.name}
+                                {bomQty(s) !== 1 && <span className="text-slate-300">×{bomQty(s)}</span>}
+                              </span>
                             ))}
                           </div>
-                        ) : null;
+                        );
                       })()}
                       {p.sku && <div className="text-[10px] text-slate-300 mt-0.5">{p.sku}</div>}
                     </td>

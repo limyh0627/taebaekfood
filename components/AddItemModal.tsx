@@ -222,7 +222,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       if (!go) { pumokRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
     }
 
-    const isProductCategory = ['product', 'goods', 'wip', 'raw', 'giftset'].includes(formData.type);
+    const isProductCategory = ['product', 'goods', 'wip', 'raw'].includes(formData.type);
     const hasBoxConfig = formData.defaultBoxConfig.unitsPerBox > 0;
 
     // 용량 칸에 숫자만 입력하고 '추가'(또는 Enter)를 누르지 않은 채 저장해도 반영 (완제품/반제품)
@@ -454,8 +454,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
           </div>
 
 
-          {/* 구성품 (BOM) — 완제품/선물세트/배송/반제품: 전체 품목 검색·추가 (반제품=용기·마개·반제품 조립, 무라벨 등) */}
-          {['product', 'giftset', 'shipping', 'wip'].includes(formData.type) && (() => {
+          {/* 구성품 (BOM) — 완제품·반제품: 전체 품목 검색·추가 (선물세트·배송도 완제품이다 — subtype으로 갈린다) */}
+          {['product', 'wip'].includes(formData.type) && (() => {
             const pool = [...(items ?? []), ...allSubmaterials];
             const addedIds = new Set(formData.submaterials.map(s => s.id));
             const q = bomSearch.trim().toLowerCase();
@@ -467,7 +467,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
               return p.type || '기타';
             };
             const catLabelOf = (k: string) => CATEGORY_LABELS[k] ?? k;
-            const CAT_ORDER = ['product', 'goods', 'wip', 'raw', 'giftset', '용기', '마개', '라벨', '박스', '테이프', 'submaterial', 'shipping'];
+            const CAT_ORDER = ['product', 'goods', 'wip', 'raw', '용기', '마개', '라벨', '박스', '테이프', 'submaterial'];
             const selectable = pool.filter(p => p.id !== initialData?.id && !addedIds.has(p.id));
             // 칩 목록은 전체 품목 기준으로 고정 (추가/필터에 따라 안 바뀌게)
             const availableCats = [...new Set(pool.filter(p => p.id !== initialData?.id).map(catKey))].sort((a, b) => {

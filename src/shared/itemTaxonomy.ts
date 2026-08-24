@@ -50,11 +50,16 @@ export function toFields(v: { type: string; subtype?: string; category?: string 
   return { type: v.type, category: v.category ?? '', subtype: v.subtype ?? '' };
 }
 
-/** 타입 키(고정) — 사용자가 못 바꾼다 */
-export const TYPE_KEYS = ['product', 'goods', 'wip', 'raw', 'submaterial', 'giftset', 'shipping'] as const;
+/**
+ * 타입 키(고정) — 사용자가 못 바꾼다.
+ *
+ * 선물세트·배송은 **타입이 아니라 product의 subtype**이다. 예전엔 타입에도 있어서
+ * 같은 것이 두 자리에 존재했고, 어느 쪽으로 등록했느냐에 따라 주문 목록·손익 묶음이
+ * 달라졌다. 타입에서 뺀다(그 타입으로 저장된 품목은 0건이었다).
+ */
+export const TYPE_KEYS = ['product', 'goods', 'wip', 'raw', 'submaterial'] as const;
 export type TypeKey = typeof TYPE_KEYS[number];
 
 export const DEFAULT_TYPE_LABELS: Record<string, string> = {
-  product: '완제품', goods: '상품', wip: '반제품', raw: '원료',
-  submaterial: '부자재', giftset: '선물세트', shipping: '배송',
+  product: '완제품', goods: '상품', wip: '반제품', raw: '원료', submaterial: '부자재',
 };

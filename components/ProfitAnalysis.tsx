@@ -1937,25 +1937,23 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           if (c === 'product' || c === '완제품') return '완제품';
           if (c === 'wip') return '반제품';
           if (c === 'raw') return '원료';
-          if (c === 'giftset' || c === '선물세트') return '선물세트';
           if (c === 'goods' || c === '향미유' || c === '고춧가루') return sub || '상품';
-          if (c === 'shipping') return '배송';
           if (c === 'submaterial') return sub || '부자재';
           if (['용기', '마개', '라벨', '박스', '테이프'].includes(c)) return c; // 구 한글 부자재
           return '기타';
         };
         /**
-         * 화면 묶음은 **타입** 하나로 — 완제품·상품·반제품·원료·선물세트·배송·부자재.
+         * 화면 묶음은 **타입** 하나로 — 완제품·상품·반제품·원료·부자재.
+         *   선물세트·배송은 타입이 아니라 완제품의 subtype이라 '완제품'에 함께 선다.
          *   예전엔 catLabel로 묶어서 향미유·용기·라벨·마개가 각각 한 덩이씩 서서
          *   표가 15개로 갈렸다. 스냅샷에 저장하는 값은 catLabel 그대로 둔다 —
          *   거기선 용기·라벨 구분이 있어야 나중에 되짚을 수 있다.
          */
         const TYPE_GROUP: Record<string, string> = {
-          product: '완제품', goods: '상품', wip: '반제품', raw: '원료',
-          giftset: '선물세트', shipping: '배송', submaterial: '부자재',
+          product: '완제품', goods: '상품', wip: '반제품', raw: '원료', submaterial: '부자재',
         };
         const typeLabel = (p: Item): string => TYPE_GROUP[String(p.type)] ?? catLabel(p);
-        const groupOrder = ['완제품', '상품', '반제품', '원료', '선물세트', '배송', '부자재', '기타'];
+        const groupOrder = ['완제품', '상품', '반제품', '원료', '부자재', '기타'];
         const byLabel = new Map<string, typeof rows>();
         for (const p of rows) {
           const l = typeLabel(p);

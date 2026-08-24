@@ -6,6 +6,7 @@ import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 import CategoryManager from './CategoryManager';
 import { isBoxStockItem, unpackComponent, boxSiblings } from '../src/shared/orderUnits';
+import { bomQty } from '../src/shared/bom';
 import { subDotClass } from '../src/shared/submaterialStyle';
 import { ProductNameRow, ProductCard, renderColoredName, splitNameVolume, specText, catOrder, categoryChipClass } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
@@ -36,8 +37,6 @@ const CATEGORY_MAP: Record<string, string> = {
   '마개': '마개', '용기': '용기', '박스': '박스', '테이프': '테이프', '라벨': '라벨',
 };
 const normalizeCategory = (cat: string) => CATEGORY_MAP[cat] || cat;
-const itemSubCat = (item: { type: string; subtype?: string }) =>
-  item.type === 'submaterial' ? (item.subtype || '') : normalizeCategory(item.type);
 const inferSubtype = (item: { subtype?: string; name: string; type: string }): string => {
   if (item.subtype) return item.subtype;
   const n = item.name;
@@ -51,19 +50,25 @@ const inferSubtype = (item: { subtype?: string; name: string; type: string }): s
   return CATEGORY_LABELS[item.type] || item.type;
 };
 
-const CATEGORIES: InventoryCategory[] = ['product', 'goods', 'wip', 'raw', 'giftset', 'submaterial', 'shipping'];
+const CATEGORIES: InventoryCategory[] = ['product', 'goods', 'wip', 'raw', 'submaterial'];
 const CATEGORY_LABELS: Record<string, string> = {
   product: '완제품', goods: '상품', wip: '반제품', raw: '원료',
-  giftset: '선물세트', submaterial: '부자재', shipping: '배송',
+  submaterial: '부자재',
 };
-const LINK_CATEGORIES = ['product', 'goods', 'wip', 'raw', 'giftset', 'submaterial'];
+const LINK_CATEGORIES = ['product', 'goods', 'wip', 'raw', 'submaterial'];
 const SUB_ORDER: Record<string, number> = { '라벨': 0, '용기': 1, '마개': 2, '테이프': 3, '박스': 4 };
-// SubmaterialComponent는 **DB에 저장된 모양**이라 타입을 여전히 category 칸에 담는다(품목의 3단 이름과 별개).
-//   → 여기서 한 번만 갈아 끼워 itemSubCat에 넘긴다.
-const sortSubs = (subs: SubmaterialComponent[]) =>
+/**
+ * 부자재 정렬 — 라벨 → 용기 → 마개 → 테이프 → 박스.
+ *
+ * 근거는 **자식 품목의 category**다(용기·마개·라벨이 사는 자리). BOM 파생
+ * (buildSubmaterialsFromBom)이 SubmaterialComponent.category 칸에는 자식의 **type**을
+ * 넣어서, 그 칸만 보면 부자재가 죄다 'submaterial' 한 덩어리라 정렬이 안 먹었다.
+ * catOf를 넘기면 원래 품목에서 제 카테고리를 읽는다.
+ */
+const sortSubs = (subs: SubmaterialComponent[], catOf?: (s: SubmaterialComponent) => string) =>
   [...subs].sort((a, b) =>
-    (SUB_ORDER[itemSubCat({ type: String(a.category) })] ?? 9)
-    - (SUB_ORDER[itemSubCat({ type: String(b.category) })] ?? 9));
+    (SUB_ORDER[normalizeCategory(catOf?.(a) ?? String(a.category))] ?? 9)
+    - (SUB_ORDER[normalizeCategory(catOf?.(b) ?? String(b.category))] ?? 9));
 
 // ── 한글 초성 검색 ──
 const CHOSUNG = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
@@ -110,6 +115,9 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
 
   const products = items;
   const itemCustomers = partnerItems;
+  //  BOM 줄의 자식 품목 — 부자재 칩 정렬이 제 카테고리(용기·마개·라벨)를 봐야 해서 필요하다.
+  const itemById = useMemo(() => new Map(items.map(i => [i.id, i])), [items]);
+  const subCatOf = (s: SubmaterialComponent) => String(itemById.get(s.id)?.category ?? s.category);
   const partnerOut = partnerItems.filter(pi => pi.Direction === 'out');
   const partnerIn = partnerItems.filter(pi => pi.Direction === 'in');
   const [mainView, setMainView] = useState<'flat' | 'by-partner'>(isAdmin ? 'flat' : 'by-partner');
@@ -172,7 +180,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
   const activePartnerClients = partnerTab === 'sales' ? salesClients : purchaseClients;
 
   const duplicateGroups = useMemo(() => {
-    const finished = items.filter(p => !p.archived && ['product', 'wip', 'giftset'].includes(p.type));
+    const finished = items.filter(p => !p.archived && ['product', 'wip'].includes(p.type));
     const pcByProduct: Record<string, PartnerItem[]> = {};
     for (const pc of partnerOut) {
       const key = pc.itemId;
@@ -182,12 +190,24 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
     }
     const subMap = Object.fromEntries(items.map(p => [p.id, p.name]));
 
+    /**
+     * 중복 판정 = **이름 + BOM**. 구성이 다르면 다른 물건이다.
+     *
+     *   낱개  볶음참깨-낱개/1kg      ← 벌크 ×1
+     *   박스  볶음참깨/1kg (10개입)  ← 낱개 ×10 + 겉박스 + 테이프
+     *
+     * 구성이 통째로 다르니 한 그룹에 못 들어간다. 예전엔 용기·마개 이름만 봤는데
+     * BOM 파생(buildSubmaterialsFromBom)이 category에 자식의 **type**을 넣게 되면서
+     * 그 필터가 아무것도 안 걸러, 사실상 **이름만으로** 묶고 있었다.
+     */
+    const bomKey = (p: Item) => (p.submaterials ?? [])
+      .map(s => `${s.id}×${bomQty(s)}`)
+      .sort()
+      .join(',');
+
     const groups: Record<string, typeof finished> = {};
     for (const p of finished) {
-      const subs = p.submaterials || [];
-      const 용기 = subs.filter(s => normalizeCategory(s.category) === '용기').map(s => s.name).sort().join(',');
-      const 마개 = subs.filter(s => normalizeCategory(s.category) === '마개').map(s => s.name).sort().join(',');
-      const key = `${p.name}||용기:${용기}|마개:${마개}`;
+      const key = `${p.name}||${bomKey(p)}`;
       if (!groups[key]) groups[key] = [];
       groups[key].push(p);
     }
@@ -195,19 +215,16 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
     return Object.entries(groups)
       .filter(([, prods]) => prods.length > 1)
       .map(([key, prods]) => {
-        const [namePart, containerPart] = key.split('||');
-        const items = prods.map(p => {
-          const subs = p.submaterials || [];
-          const 라벨 = subs.filter(s => normalizeCategory(s.category) === '라벨').map(s => s.name).join(', ');
-          const pcs = pcByProduct[p.id] || [];
-          const directClients = [...new Set([...(p.partnerIds || [])])];
-          return { product: p, 라벨, pcs, directClients, subMap };
-        });
-        const labels = [...new Set(items.map(i => i.라벨).filter(Boolean))];
-        const canMerge = labels.length <= 1;
-        return { key, name: namePart, container: containerPart, items, canMerge };
-      })
-      .sort((a, b) => (a.canMerge ? 0 : 1) - (b.canMerge ? 0 : 1));
+        //  한 그룹은 이름도 BOM도 같다 — 구성은 아무거나 하나에서 뽑으면 그룹 전체를 대표한다.
+        //  예전엔 라벨이 다르면 '통합 불가'로 갈랐는데, 라벨도 BOM이라 이제 그런 그룹 자체가 안 생긴다.
+        const items = prods.map(p => ({
+          product: p,
+          pcs: pcByProduct[p.id] || [],
+          directClients: [...new Set([...(p.partnerIds || [])])],
+          subMap,
+        }));
+        return { key, name: key.split('||')[0], subs: prods[0].submaterials || [], items };
+      });
   }, [products, partnerItems]);
 
   // 삭제/통합된 품목을 가리키는 유령 연결은 카운트에서 제외 (목록과 개수 일치)
@@ -610,11 +627,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                 <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[100px]">품목 정보</th>
                 {!(mainView === 'by-partner' && selectedClientId) && activeCategory === 'product' && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">거래처</th>}
                 {!(mainView === 'by-partner' && selectedClientId) && activeCategory !== 'product' && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">매입거래처</th>}
-                <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">용기</th>
-                <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">마개</th>
-                <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">라벨</th>
-                {(mainView === 'by-partner' && selectedClientId && partnerScopeTab === 'sales') && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">박스</th>}
-                {(mainView === 'by-partner' && selectedClientId && partnerScopeTab === 'sales') && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">테이프</th>}
+                {/* 부자재는 BOM 그대로 한 칸에 — 용기·마개·라벨로 칸을 갈라 두면 그 셋 말고는 못 보여준다. */}
+                <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">부자재</th>
                 {isAdmin && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">원가</th>}
                 {(isAdmin && mainView === 'by-partner' && selectedClientId && partnerScopeTab === 'sales') && <th className="px-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">판매단가</th>}
                 {(isAdmin || (mainView === 'by-partner' && !!selectedClientId)) && <th className="px-2 py-3" />}
@@ -623,13 +637,13 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
             <tbody className="divide-y divide-slate-50">
               {!selectedClientId && !showAll ? (
                 <tr>
-                  <td colSpan={isAdmin ? 7 : 6} className="px-6 py-16 text-center text-slate-300 font-medium text-sm">
+                  <td colSpan={isAdmin ? 6 : 5} className="px-6 py-16 text-center text-slate-300 font-medium text-sm">
                     거래처를 선택하세요.
                   </td>
                 </tr>
               ) : pagedItems.length === 0 ? (
                 <tr>
-                  <td colSpan={isAdmin ? 7 : 6} className="px-6 py-16 text-center text-slate-400 font-medium text-sm">
+                  <td colSpan={isAdmin ? 6 : 5} className="px-6 py-16 text-center text-slate-400 font-medium text-sm">
                     {showAll ? '등록된 품목이 없습니다.' : '이 거래처에 연결된 품목이 없습니다.'}
                   </td>
                 </tr>
@@ -725,48 +739,22 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                         })()}
                       </td>
                     )}
-                    {(['용기', '마개', '라벨'] as const).map(cat => (
-                      <td key={cat} className="px-2 py-3">
-                        {item.type === 'product' ? (() => {
-                          const subs = (item.submaterials ?? []).filter(s => {
-                            const full = items.find(p => p.id === s.id);
-                            return full ? itemSubCat(full) === cat : normalizeCategory(s.category) === cat;
-                          });
-                          // 주문 생성 화면과 같은 부자재 색 칩
-                          return subs.length > 0
-                            ? <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                                {subs.map((s, i) => (
-                                  <span key={`${s.name}-${i}`} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 whitespace-nowrap">
-                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(s)}`} />
-                                    {s.name}
-                                  </span>
-                                ))}
-                              </span>
-                            : <span className="text-[10px] text-slate-200">-</span>;
-                        })() : (
-                          <span className="text-[10px] text-slate-200">-</span>
-                        )}
-                      </td>
-                    ))}
-                    {(mainView === 'by-partner' && selectedClientId && partnerScopeTab === 'sales') && (() => {
-                      // 겉박스·테이프는 박스 품목 BOM으로 옮겼다 — 여기 칸은 더 볼 게 없다.
-                      const boxName: string | null = null;
-                      const tapeName: string | null = null;
-                      return (
-                        <>
-                          <td className="px-2 py-3">
-                            {boxName
-                              ? <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">{boxName}</span>
-                              : <span className="text-[10px] text-slate-200">-</span>}
-                          </td>
-                          <td className="px-2 py-3">
-                            {tapeName
-                              ? <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">{tapeName}</span>
-                              : <span className="text-[10px] text-slate-200">-</span>}
-                          </td>
-                        </>
-                      );
-                    })()}
+                    <td className="px-2 py-3">
+                      {/* 품목이 품은 것 전부 — 주문 생성 화면과 같은 부자재 색 칩 */}
+                      {(item.submaterials?.length ?? 0) > 0 ? (
+                        <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                          {sortSubs(item.submaterials!, subCatOf).map((s, i) => (
+                            <span key={`${s.id}-${i}`} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 whitespace-nowrap">
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(s)}`} />
+                              {s.name}
+                              {bomQty(s) !== 1 && <span className="text-slate-300">×{bomQty(s)}</span>}
+                            </span>
+                          ))}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-200">-</span>
+                      )}
+                    </td>
                     {isAdmin && (
                       <td className="px-2 py-3 text-right">
                         {item.cost != null
@@ -952,7 +940,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
             <div className="flex items-center gap-2">
               <Copy size={15} className="text-amber-600" />
               <span className="text-sm font-black text-amber-800">중복 품목 목록</span>
-              <span className="text-[10px] font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">이름+용기/마개 기준 {duplicateGroups.length}그룹</span>
+              <span className="text-[10px] font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">이름+BOM 같은 것 {duplicateGroups.length}그룹</span>
             </div>
             <button onClick={() => setShowDuplicates(false)} className="p-1 hover:bg-amber-100 rounded-lg transition-colors">
               <X size={14} className="text-amber-500" />
@@ -969,10 +957,13 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                   >
                     <div className="flex items-center gap-2 flex-wrap min-w-0">
                       <span className="text-sm font-black text-slate-800">{group.name}</span>
-                      <span className="text-[10px] font-bold text-slate-400">{group.container}</span>
-                      <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${group.canMerge ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-600'}`}>
-                        {group.canMerge ? '통합 가능' : '라벨 다름'}
-                      </span>
+                      {sortSubs(group.subs, subCatOf).map((s, i) => (
+                        <span key={`${s.id}-${i}`} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 whitespace-nowrap">
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(s)}`} />
+                          {s.name}
+                          {bomQty(s) !== 1 && <span className="text-slate-300">×{bomQty(s)}</span>}
+                        </span>
+                      ))}
                       <span className="text-[10px] font-bold text-amber-600">{group.items.length}개</span>
                     </div>
                     {isExpanded ? <ChevronUp size={14} className="text-amber-500 shrink-0 mt-0.5" /> : <ChevronDown size={14} className="text-amber-500 shrink-0 mt-0.5" />}
@@ -980,21 +971,12 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
 
                   {isExpanded && (
                     <div className="mt-3 space-y-2">
-                      {group.items.map(({ product, 라벨, pcs, directClients, subMap }) => {
-                        const subs = product.submaterials || [];
-                        const 용기목록 = subs.filter(s => normalizeCategory(s.category) === '용기').map(s => s.name).join(', ');
-                        const 마개목록 = subs.filter(s => normalizeCategory(s.category) === '마개').map(s => s.name).join(', ');
+                      {group.items.map(({ product, pcs, directClients, subMap }) => {
                         return (
                         <div key={product.id} className="bg-white rounded-xl border border-amber-100 px-4 py-3">
                           <div className="flex items-center gap-2 mb-2 flex-wrap">
+                            {/* 구성은 그룹 전체가 같으니 헤더에 한 번만 — 여기는 어느 문서인지·누구한테 물렸는지만 */}
                             <span className="text-[10px] font-black text-slate-400 font-mono">{product.id}</span>
-                            {라벨 ? (
-                              <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">라벨: {라벨}</span>
-                            ) : (
-                              <span className="text-[10px] font-bold text-slate-300">라벨 없음</span>
-                            )}
-                            {용기목록 && <span className="text-[10px] font-bold text-sky-600 bg-sky-50 px-2 py-0.5 rounded-full">용기: {용기목록}</span>}
-                            {마개목록 && <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">마개: {마개목록}</span>}
                           </div>
                           {pcs.length > 0 ? (
                             <div className="space-y-1">
@@ -1046,13 +1028,14 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                         };
 
                         return (
-                          <div className={`border rounded-xl px-4 py-3 ${group.canMerge ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}>
-                            <p className={`text-[11px] font-black mb-3 ${group.canMerge ? 'text-emerald-700' : 'text-rose-600'}`}>
-                              {group.canMerge ? '합칠 품목을 선택하고, 남길 품목을 지정하세요' : '⚠ 라벨이 달라 통합 시 주의 필요'}
+                          <div className="border rounded-xl px-4 py-3 bg-emerald-50 border-emerald-200">
+                            {/* 이름도 BOM도 같아야 한 그룹이라, 여기 온 것들은 언제나 합쳐도 되는 짝이다. */}
+                            <p className="text-[11px] font-black mb-3 text-emerald-700">
+                              합칠 품목을 선택하고, 남길 품목을 지정하세요
                             </p>
 
                             <div className="space-y-2 mb-3">
-                              {group.items.map(({ product, 라벨 }) => {
+                              {group.items.map(({ product }) => {
                                 const isSelected = mergeSet.has(product.id);
                                 const isKeep = keepId === product.id && isSelected;
                                 return (
@@ -1064,9 +1047,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                                     >
                                       {isSelected && <span className="text-white text-[9px] font-black">✓</span>}
                                     </button>
-                                    {/* 품목 ID + 라벨 */}
                                     <span className="text-[10px] font-bold text-slate-600 font-mono flex-1 truncate">
-                                      {product.id}{라벨 ? ` (${라벨})` : ''}
+                                      {product.id}
                                     </span>
                                     {/* 남길 품목 선택 */}
                                     {isSelected && (
@@ -1310,7 +1292,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                         <ProductNameRow product={p} />
                         {p.submaterials && p.submaterials.length > 0 && (
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
-                            {sortSubs(p.submaterials).map((s, i) => (
+                            {sortSubs(p.submaterials, subCatOf).map((s, i) => (
                               <span key={`${s.name}-${i}`} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500">
                                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(s)}`} />
                                 {s.name}

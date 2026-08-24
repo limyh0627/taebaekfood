@@ -645,7 +645,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   // ══════════════════════════════════════════
 
   const sellableProducts = items.filter(p =>
-    ['완제품', '향미유', '고춧가루', 'product', 'wip', 'giftset'].includes(p.type as string)
+    ['완제품', '향미유', '고춧가루', 'product', 'wip'].includes(p.type as string)
   );
 
   useEffect(() => {

@@ -168,7 +168,7 @@ export interface SubmaterialComponent {
 
 // 새 영문 체계
 export type InventoryCategory =
-  'raw' | 'wip' | 'product' | 'goods' | 'giftset' | 'submaterial' | 'shipping' |
+  'raw' | 'wip' | 'product' | 'goods' | 'submaterial' |
   // @deprecated 마이그레이션 완료 전 하위 호환
   'label' | 'cap' | 'container' | 'box' | 'tape' |
   '완제품' | '향미유' | '고춧가루' | '용기' | '마개' | '테이프' | '박스' | '라벨';
@@ -179,11 +179,8 @@ export type ItemSubtype =
   // submaterial 세부 분류
   '마개' | '용기' | '박스' | '테이프' | '라벨';
 
-export const PRODUCT_LINE = ['raw', 'wip', 'product', 'goods', 'giftset'] as const;
 export const SUBMATERIALS  = ['submaterial'] as const;
 export const SUBMATERIAL_TYPES = ['마개', '용기', '박스', '테이프', '라벨'] as const;
-export const SHIPPING_ITEMS = ['shipping'] as const;
-export const isProductLine = (cat: string): boolean => (PRODUCT_LINE as readonly string[]).includes(cat);
 export const isSubmaterial = (cat: string): boolean =>
   cat === 'submaterial' || (['label', 'cap', 'container', 'box', 'tape'] as string[]).includes(cat);
 
@@ -224,7 +221,7 @@ export interface Item {
   name: string;
   sku?: string;
   // 분류 3단 — 이름이 뜻과 같다(DB 필드와 1:1). shared/itemTaxonomy.ts 참고.
-  type: InventoryCategory | string;   // 타입 — product/goods/wip/raw/submaterial/giftset/shipping
+  type: InventoryCategory | string;   // 타입 — product/goods/wip/raw/submaterial (선물세트·배송은 subtype)
   category?: ItemSubtype | string;    // 카테고리 — 참기름·들기름·라벨·용기·박스·마개·테이프·향미유…
   subtype?: string;                   // 서브타입 — 낱개·배송·선물세트·벌크. 부자재는 비어 있다.
   itemType?: ProductStage;       // @deprecated → type: 'wip'|'product' 사용

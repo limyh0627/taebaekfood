@@ -33,11 +33,11 @@ describe('타입 이름', () => {
   it('순서·숨김', () => {
     const t = buildTaxonomy([
       row({ kind: 'type', key: 'submaterial', label: '부자재', order: -1 }),
-      row({ kind: 'type', key: 'giftset', label: '선물세트', hidden: true }),
+      row({ kind: 'type', key: 'goods', label: '상품', hidden: true }),
     ]);
     expect(t.types[0].key).toBe('submaterial');
-    expect(t.types.map(c => c.key)).not.toContain('giftset');
-    expect(t.allTypes.map(c => c.key)).toContain('giftset');
+    expect(t.types.map(c => c.key)).not.toContain('goods');
+    expect(t.allTypes.map(c => c.key)).toContain('goods');
   });
   it('키는 그대로 — 엔진 분기가 깨지지 않는다', () => {
     const t = buildTaxonomy([row({ kind: 'type', key: 'product', label: '완성품' })]);
@@ -79,11 +79,19 @@ describe('서브타입 · 카테고리', () => {
 });
 
 describe('defaultTaxonomyRows — 최초 시딩', () => {
-  it('타입 7개 + 서브타입 + 카테고리', () => {
+  //  선물세트·배송은 타입이 아니라 완제품의 subtype이다 — 타입은 다섯이다.
+  it('타입 5개 + 서브타입 + 카테고리', () => {
     const rows = defaultTaxonomyRows();
-    expect(rows.filter(r => r.kind === 'type')).toHaveLength(7);
+    expect(rows.filter(r => r.kind === 'type')).toHaveLength(5);
     expect(rows.filter(r => r.kind === 'subtype' && r.parent === 'product')).toHaveLength(3);
     expect(rows.filter(r => r.kind === 'category' && r.parent === 'submaterial')).toHaveLength(6);
+  });
+  //  벌크는 isBulkItem이 보는 값 — 목록에 없으면 새 원료·반제품에 달 방법이 없다.
+  it('원료·반제품 서브타입에 벌크가 있다', () => {
+    const rows = defaultTaxonomyRows();
+    for (const parent of ['raw', 'wip']) {
+      expect(rows.filter(r => r.kind === 'subtype' && r.parent === parent).map(r => r.label)).toEqual(['벌크']);
+    }
   });
   it('시딩 결과를 다시 읽으면 기본값과 같다', () => {
     const rows = defaultTaxonomyRows().map((r, i) => ({ ...r, id: `t${i}` })) as TaxonomyRow[];
