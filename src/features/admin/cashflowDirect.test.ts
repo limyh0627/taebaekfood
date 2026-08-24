@@ -17,6 +17,10 @@ const accounts: AccountCode[] = [
   { id: '260', code: '260', name: '단기차입금', type: '부채', normalBalance: 'credit', groupId: 'g-liab' },
   { id: '951', code: '951', name: '이자비용', type: '비용', normalBalance: 'debit', groupId: 'g-other-exp' },
   { id: '520', code: '520', name: '전력비', type: '비용', normalBalance: 'debit', groupId: 'g-sgna' },
+  { id: '263', code: '263', name: '미지급급여', type: '부채', normalBalance: 'credit', groupId: 'g-liab' },
+  { id: '261', code: '261', name: '미지급세금', type: '부채', normalBalance: 'credit', groupId: 'g-liab' },
+  { id: '259', code: '259', name: '선수금', type: '부채', normalBalance: 'credit', groupId: 'g-liab' },
+  { id: '295', code: '295', name: '퇴직급여충당부채', type: '부채', normalBalance: 'credit', groupId: 'g-liab' },
 ] as AccountCode[];
 const gById = new Map(groups.map(g => [g.id, g]));
 const codeToGroup = (c?: string) => gById.get(accounts.find(a => a.code === c)?.groupId ?? '');
@@ -94,5 +98,50 @@ describe('computeCashFlowDirect', () => {
     expect(r.net).toBe(600_000);
     expect(r.net).toBe(r.op + r.inv + r.fin);
     expect(r.lines.map(l => l.accountCode)).toContain('520');
+  });
+});
+
+describe('영업부채는 재무가 아니다 — 부채라고 다 재무로 찍으면 안 된다', () => {
+  /**
+   * cfSectionOf는 그룹 성격만 봐서 부채=재무로 찍는다. 그래서 급여를 지급하면
+   * 12,860,310원이 **재무활동**에 섰다(2026-08 실제 데이터). 갚을 상대가 있느냐가
+   * 아니라 **무엇 때문에 생긴 빚이냐**가 갈래를 정한다 — 급여·세금·선수금은 영업이다.
+   */
+  it('미지급급여 지급은 영업활동', () => {
+    const r = run([je('j1', '2026-08-10', [
+      { accountCode: '263', debit: 12_860_310 },
+      { accountCode: '103', credit: 12_860_310 },
+    ])]);
+    expect(r.op).toBe(-12_860_310);
+    expect(r.fin).toBe(0);
+  });
+
+  it('미지급세금·선수금·퇴직급여충당부채도 영업활동', () => {
+    const r = run([
+      je('j2', '2026-08-11', [{ accountCode: '261', debit: 3_000_000 }, { accountCode: '103', credit: 3_000_000 }]),
+      je('j3', '2026-08-12', [{ accountCode: '103', debit: 1_000_000 }, { accountCode: '259', credit: 1_000_000 }]),
+      je('j4', '2026-08-13', [{ accountCode: '295', debit: 500_000 }, { accountCode: '103', credit: 500_000 }]),
+    ]);
+    expect(r.op).toBe(-2_500_000);   // −3,000,000 +1,000,000 −500,000
+    expect(r.fin).toBe(0);
+  });
+
+  it('차입금은 그대로 재무 — 영업으로 끌어오지 않는다', () => {
+    const r = run([je('j5', '2026-08-14', [
+      { accountCode: '260', debit: 2_770_000 },
+      { accountCode: '103', credit: 2_770_000 },
+    ])]);
+    expect(r.fin).toBe(-2_770_000);
+    expect(r.op).toBe(0);
+  });
+
+  it('총 현금흐름은 갈래를 어떻게 나눠도 현금계정 증감과 같다', () => {
+    const r = run([
+      je('j6', '2026-08-15', [{ accountCode: '263', debit: 1_000_000 }, { accountCode: '103', credit: 1_000_000 }]),
+      je('j7', '2026-08-16', [{ accountCode: '260', debit: 2_000_000 }, { accountCode: '103', credit: 2_000_000 }]),
+      je('j8', '2026-08-17', [{ accountCode: '206', debit: 3_000_000 }, { accountCode: '103', credit: 3_000_000 }]),
+    ]);
+    expect(r.net).toBe(-6_000_000);
+    expect(r.op + r.inv + r.fin).toBe(r.net);
   });
 });
