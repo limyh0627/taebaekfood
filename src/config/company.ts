@@ -105,11 +105,6 @@ export const INITIAL_PRODUCTS: Item[] = [
     minStock: 100,
     unit: '개',
     image: '',
-    submaterials: [
-      { id: 'p7', name: '골드캡 마개', stock: 1, unit: '개', category: 'cap' },
-      { id: 'sub-01', name: '300ml 유리용기', stock: 1, unit: '개', category: 'container' },
-      { id: 'sub-02', name: '참기름 전용 박스', stock: 1, unit: '개', category: 'box' },
-    ],
   },
   {
     id: 'p2',
@@ -120,11 +115,6 @@ export const INITIAL_PRODUCTS: Item[] = [
     minStock: 80,
     unit: '개',
     image: '',
-    submaterials: [
-      { id: 'p7', name: '골드캡 마개', stock: 1, unit: '개', category: 'cap' },
-      { id: 'sub-01', name: '300ml 유리용기', stock: 1, unit: '개', category: 'container' },
-      { id: 'sub-03', name: '들기름 전용 박스', stock: 1, unit: '개', category: 'box' },
-    ],
   },
   { id: 'p3', name: '생들기름 (180ml)', type: 'product', price: 14000, stock: 15, minStock: 50, unit: '개', image: '' },
   { id: 'p7', name: '골드캡 마개', type: 'cap', price: 80, stock: 120, minStock: 1000, unit: '개', image: '' },

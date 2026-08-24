@@ -1,6 +1,7 @@
 ﻿
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
+import { bomOf } from '../src/shared/bomIndex';
 import {
   Package,
   Edit,
@@ -2837,7 +2838,7 @@ const ItemList: React.FC<ItemListProps> = ({
                   const cur = displayStockOf(p) ?? 0;
                   const low = p.minStock > 0 && cur < p.minStock;
                   // 이 품목에 들어가는 부자재 — 재고를 같이 보여준다
-                  const subs = p.submaterials ?? [];
+                  const subs = bomOf(p.id);
                   const lbl = parseMakeLabel(p);   // 대표이름 + 구분요소(등급·용량·개입·거래처)
                   return (
                     <div key={p.id} className={`px-4 sm:px-5 py-3.5 ${add > 0 ? 'bg-indigo-50/40' : isChild ? 'bg-slate-50/40' : ''} ${isChild ? 'pl-8 sm:pl-9' : ''}`}>
@@ -2874,15 +2875,12 @@ const ItemList: React.FC<ItemListProps> = ({
                       {/* 부자재 — 이름 비슷할 때 구분용이라 더 크고 잘 보이게 */}
                       {subs.length > 0 && (
                         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-3">
-                          {subs.map((s, i) => {
-                            const sub = items.find(x => x.id === s.id);
-                            return (
-                              <span key={i} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500">
-                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(sub ?? { name: s.name })}`} />
-                                {sub ? withSpec(sub) : s.name}
-                              </span>
-                            );
-                          })}
+                          {subs.map((l, i) => (
+                            <span key={i} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500">
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(l.child)}`} />
+                              {l.child ? withSpec(l.child) : l.childId}
+                            </span>
+                          ))}
                         </div>
                       )}
                     </div>
@@ -3521,8 +3519,8 @@ const ItemList: React.FC<ItemListProps> = ({
                         </span>
                         {(() => {
                           // 챙길 물건만 — 내용물(반제품·원료)과 벌크는 통에서 나오므로 뺀다
-                          const chips = (product?.submaterials ?? [])
-                            .map(s => items.find(x => x.id === s.id))
+                          const chips = bomOf(product?.id)
+                            .map(l => l.child)
                             .filter((c): c is Item => !!c && c.type === 'submaterial' && !isBulkItem(c) && !c.phantom);
                           if (chips.length === 0) return null;
                           return (

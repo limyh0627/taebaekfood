@@ -24,18 +24,19 @@ const 낱개 = mk({ id: 'loose', name: '볶음참깨-낱개/1kg', type: 'product
 const 박스 = mk({
   id: 'box10', name: '볶음참깨/10kg박스', type: 'product', spec: '10kg', 품목: '시골향볶음참깨',
   unpackTo: { itemId: 'loose', count: 10 },
-  submaterials: [
-    { id: 'loose', name: '볶음참깨-낱개/1kg', category: 'product', stock: 10 } as any,
-    { id: 'box6', name: '6호박스', category: 'submaterial', stock: 1 } as any,
-    { id: 'tape', name: '테이프-투명', category: 'submaterial', stock: 0 } as any,
-  ],
 });
 
 // 기름 완제품 — 1750ml 통깨참기름 + 병
 const 참기름 = mk({
   id: 'oil-prod', name: '시골향 참기름/1750ml', type: 'product', spec: '1750ml', 품목: '시골향참기름1',
-  submaterials: [{ id: 'bottle', name: '유리병-1750', category: 'submaterial', stock: 1 } as any],
 });
+
+//  구성은 item_bom이 유일 원천이다 — 예전엔 품목의 submaterials에 달았다(폐기).
+const bom = (parent: string, child: string, quantity: number) => ({ parent_id: parent, child_id: child, quantity });
+const itemBoms = [
+  bom('box10', 'loose', 10), bom('box10', 'box6', 1), bom('box10', 'tape', 0),
+  bom('oil-prod', 'bottle', 1),
+];
 
 const allItems = [볶음참깨, 통깨참기름, 참깨, 육호박스, 테이프, 병, 낱개, 박스, 참기름];
 
@@ -61,7 +62,7 @@ describe('bomCost — rawCostPerKg', () => {
 });
 
 describe('bomCost — buildCostFn', () => {
-  const cost = buildCostFn({ allItems, formulaOf });
+  const cost = buildCostFn({ allItems, formulaOf, itemBoms });
 
   it('원료·반제품은 자기 cost', () => {
     expect(cost(볶음참깨)).toBe(5100);
@@ -85,13 +86,13 @@ describe('bomCost — buildCostFn', () => {
 
   it('effective: 저장 cost 우선, 없으면 롤업', () => {
     const withCost = mk({ id: 'x', name: '완제품X', type: 'product', cost: 999, 품목: '시골향볶음참깨', spec: '1kg' });
-    const c = buildCostFn({ allItems: [...allItems, withCost], formulaOf });
+    const c = buildCostFn({ allItems: [...allItems, withCost], formulaOf, itemBoms });
     expect(c.effective(withCost)).toBe(999);   // 저장값
     expect(c.effective(낱개)).toBe(5100);        // 롤업
   });
 
   it('가공비 hook 반영', () => {
-    const c = buildCostFn({ allItems, formulaOf, processingFeeOf: it => (it.procureType === '임가공' ? 500 : 0) });
+    const c = buildCostFn({ allItems, formulaOf, itemBoms, processingFeeOf: it => (it.procureType === '임가공' ? 500 : 0) });
     const oem = mk({ id: 'oem', name: 'OEM낱개', type: 'product', spec: '1kg', 품목: '시골향볶음참깨', procureType: '임가공' });
     expect(c({ ...oem })).toBe(5100 + 500);
   });
@@ -110,9 +111,9 @@ describe('bomCost — buildCostFn', () => {
   });
 
   it('순환 BOM도 무한루프 없이 종료', () => {
-    const a = mk({ id: 'A', name: 'A', type: 'product', submaterials: [{ id: 'B', name: 'B', category: 'product', stock: 1 } as any] });
-    const b = mk({ id: 'B', name: 'B', type: 'product', submaterials: [{ id: 'A', name: 'A', category: 'product', stock: 1 } as any] });
-    const c = buildCostFn({ allItems: [a, b], formulaOf });
+    const a = mk({ id: 'A', name: 'A', type: 'product' });
+    const b = mk({ id: 'B', name: 'B', type: 'product' });
+    const c = buildCostFn({ allItems: [a, b], formulaOf, itemBoms: [bom('A', 'B', 1), bom('B', 'A', 1)] });
     expect(() => c(a)).not.toThrow();
     expect(Number.isFinite(c(a))).toBe(true);
   });

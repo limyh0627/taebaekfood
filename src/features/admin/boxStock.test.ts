@@ -35,24 +35,33 @@ vi.mock('firebase/firestore', () => ({
 }));
 
 // 엔진은 firebase/firestore를 모듈 최상단에서 읽으므로 mock 뒤에 가져온다.
+const { setBomIndex, buildBomIndex } = await import('../../shared/bomIndex');
 const { createOrderStockEngine } = await import('./orderStockEngine');
 
 const mk = (o: Partial<Item> & { id: string }) =>
-  ({ name: o.id, unit: '개', stock: 0, spec: '', minStock: 0, price: 0, image: '', submaterials: [], ...o }) as unknown as Item;
+  ({ name: o.id, unit: '개', stock: 0, spec: '', minStock: 0, price: 0, image: '', ...o }) as unknown as Item;
 
 const 벌크 = () => mk({ id: 'bulk', name: '볶음참깨', type: 'wip', subtype: '벌크', unit: 'kg', stock: 500 });
 const 낱개 = (stock: number) => mk({
   id: 'loose', name: '볶음참깨-낱개/1kg', type: 'product', unit: '개', spec: '1kg', stock,
-  submaterials: [{ id: 'bulk', name: '볶음참깨', category: 'wip', stock: 1 }] as any,
 });
 const 박스10 = (stock: number) => mk({
   id: 'box10', name: '볶음참깨/1kg (10개입)', type: 'product', unit: '박스', spec: '10kg', stock,
-  submaterials: [{ id: 'loose', name: '볶음참깨-낱개/1kg', category: 'product', stock: 10 }] as any,
 });
+
+/**
+ * 구성은 item_bom이 유일 원천이다 — 품목에 붙이던 submaterials는 없앴다.
+ *   낱개  ← 벌크 ×1(kg)
+ *   박스10 ← 낱개 ×10
+ *   박스20 ← 낱개 ×20
+ */
+const bom = (parent: string, child: string, quantity: number) => ({ parent_id: parent, child_id: child, quantity });
+const BOMS = [bom('loose', 'bulk', 1), bom('box10', 'loose', 10), bom('box20', 'loose', 20)];
 
 /** 엔진을 실제로 돌린다. updateItem이 items·order를 그 자리에서 고쳐 앱의 리렌더를 흉내낸다. */
 function harness(items: Item[], order: Order) {
   const rawUsed: Record<string, number> = {};
+  setBomIndex(buildBomIndex(items, BOMS));
   // 가짜 DB에 지금 재고를 실어 둔다 — 엔진이 트랜잭션으로 여기서 읽고 여기에 쓴다
   store.stock.clear();
   for (const i of items) store.stock.set(i.id, i.stock ?? 0);
@@ -252,7 +261,6 @@ describe('모달 행 계산 (stockUseRows)', () => {
   it('같은 낱개를 노리는 두 라인이 재고를 나눠 쓴다', () => {
     const 박스20 = mk({
       id: 'box20', name: '볶음참깨/1kg (20개입)', type: 'product', unit: '박스', stock: 0,
-      submaterials: [{ id: 'loose', name: '볶음참깨-낱개/1kg', category: 'product', stock: 20 }] as any,
     });
     const order = {
       ...주문(1),

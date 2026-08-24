@@ -10,7 +10,7 @@ import {
   CashAccount, CashEntry, Settlement,
 } from '../types';
 import { subscribeToCollection, subscribeToRecentCollection, subscribeToDocument, fetchCollection, fetchDateRange } from '../services/firebaseService';
-import { withDerivedSubmaterials } from '../bomSource';
+import { buildBomIndex, setBomIndex } from '../bomIndex';
 import { where } from 'firebase/firestore';
 import { authReady } from '../firebase';
 
@@ -261,17 +261,20 @@ export function useAppData(): AppData {
     });
   }, [staticRefreshKey]);
 
-  // BOM 단일원천 — item_bom을 유일 소스로, submaterials는 파생(로딩 시 계산).
-  // (Phase 4) 이걸로 재고차감·원가·주문이 모두 item_bom을 원천으로 읽는다.
-  //   DB 필드(type/category/subtype)를 코드가 그대로 읽는다 — 이름 되돌리기는 없앴다(2026-08-23).
-  const itemsWithBom = useMemo(
-    () => withDerivedSubmaterials(items, itemBoms),
-    [items, itemBoms],
-  );
+  /**
+   * BOM 단일원천 — item_bom을 유일 소스로 세운다.
+   *
+   * 예전엔 여기서 품목마다 `submaterials`를 만들어 붙였다(withDerivedSubmaterials).
+   * 그 그림자 필드를 없애고 구성은 bomIndex에서만 읽는다 — 품목은 제 구성을 안 들고 다닌다.
+   * useMemo에서 세우는 건 이 값이 **자식 렌더보다 먼저** 서야 하기 때문이다(같은 입력이면
+   * 같은 인덱스라 여러 번 돌아도 결과가 같다).
+   */
+  const bomIndex = useMemo(() => buildBomIndex(items, itemBoms), [items, itemBoms]);
+  setBomIndex(bomIndex);
 
   return {
     orders, purchaseOrders,
-    items: itemsWithBom,
+    items,
     partnerItems,
     setPartnerItems,
     partners,

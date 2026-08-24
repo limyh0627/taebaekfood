@@ -33,6 +33,7 @@ import { Order, OrderStatus, Partner, OrderSource, OrderItem, Item, OrderPallet,
 import { isBoxStockItem, unitsPerBoxOf } from '../src/shared/orderUnits';
 import { splitNameVolume, specText } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
+import { bomOf } from '../src/shared/bomIndex';
 import { subDotClass } from '../src/shared/submaterialStyle';
 
 import ConfirmModal from './ConfirmModal';
@@ -491,11 +492,9 @@ export const OrderCard = memo<OrderCardProps>(({
                       .filter((p): p is Item => !!p && p.type === 'submaterial' && (isBoxProd || !isShipPkg(p)));
                     const bomSubIds = new Set(bomSubs.map(p => p.id));
 
-                    // 1.5 BOM 라벨이 삭제된 품목을 가리키면 품목 구성품 스냅샷의 라벨로 보완
-                    const hasBomLabel = bomSubs.some(p => p.category === '라벨');
-                    const snapLabels = hasBomLabel ? [] : (productInfo?.submaterials ?? [])
-                      .filter(s => (s.category === '라벨' || s.category === 'label') && !bomSubIds.has(s.id))
-                      .map(s => ({ id: s.id, name: items.find(p => p.id === s.id)?.name ?? s.name }));
+                    //  옛 품목 구성품 스냅샷(Item.submaterials)으로 라벨을 보완하던 자리 — 그 필드를 없앴다.
+                    //  라벨은 item_bom에만 있고, BOM이 지워진 품목을 가리키면 BomIntegrityPanel이 잡는다.
+                    const snapLabels: { id: string; name: string }[] = [];
 
                     // 2. 박스/테이프: 박스 품목만. 낱개(비박스)는 출고 카톤·테이프 표시 안 함.
                     const packagingSubs: { id: string; name: string }[] = [];
@@ -550,8 +549,8 @@ export const OrderCard = memo<OrderCardProps>(({
                       )}
                       {open && bomProducts.map(({ p }) => {
                         // 펼친 낱개의 부자재 — 벌크는 여기서도 뺀다
-                        const cSubs = (p.submaterials ?? []).filter(cs => {
-                          const ci = items.find(x => x.id === cs.id);
+                        const cSubs = bomOf(p.id).filter(l => {
+                          const ci = l.child;
                           return ci?.type === 'submaterial' && !isShipPkg(ci) && !isBulkItem(ci);
                         });
                         return (
@@ -563,15 +562,12 @@ export const OrderCard = memo<OrderCardProps>(({
                             )}
                             {cSubs.length === 0
                               ? <span className="text-[9px] text-slate-300">부자재 없음</span>
-                              : cSubs.map((cs, i) => {
-                                  const ci = items.find(x => x.id === cs.id);
-                                  return (
-                                    <span key={i} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 shrink-0">
-                                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(ci ?? { name: cs.name })}`} />
-                                      {ci?.name ?? cs.name}
-                                    </span>
-                                  );
-                                })}
+                              : cSubs.map((l, i) => (
+                                  <span key={i} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 shrink-0">
+                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(l.child)}`} />
+                                    {l.child?.name ?? l.childId}
+                                  </span>
+                                ))}
                           </div>
                         );
                       })}

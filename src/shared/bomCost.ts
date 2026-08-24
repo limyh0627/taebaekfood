@@ -21,10 +21,7 @@ export interface BomCostCtx {
   formulaOf: (prodKey: string) => { raw: string; ratio: number }[];
   /** 단위당 가공비(임가공 등). 없으면 0. */
   processingFeeOf?: (item: Item) => number;
-  /**
-   * BOM 단일원천 — item_bom을 그대로 읽는다. 넘기면 `item.submaterials`(레거시 파생)를 안 본다.
-   * 안 넘기면 예전처럼 submaterials로 폴백(구 호출부·테스트 호환).
-   */
+  /** BOM 단일원천 — item_bom 그대로. 안 넘기면 구성 없는 품목으로 본다(폴백 없음). */
   itemBoms?: { parent_id: string; child_id: string; quantity?: number }[];
 }
 
@@ -64,18 +61,14 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
   const feeOf = ctx.processingFeeOf ?? (() => 0);
   const memo = new Map<string, number>();
 
-  // 구성품 조회 — item_bom을 주면 그걸 단일원천으로 쓰고, 없으면 레거시 submaterials.
-  //   item_bom의 quantity와 submaterials의 stock은 같은 뜻이라 { id, stock }으로 맞춰 돌려준다.
+  //  구성품은 item_bom만 본다. { id, stock } 모양은 아래 롤업이 bomQty로 읽던 자리와 같다.
   const bomByParent = new Map<string, { id: string; stock: number }[]>();
   for (const b of ctx.itemBoms ?? []) {
     const arr = bomByParent.get(b.parent_id) ?? [];
     arr.push({ id: b.child_id, stock: typeof b.quantity === 'number' ? b.quantity : 1 });
     bomByParent.set(b.parent_id, arr);
   }
-  const componentsOf = (item: Item): { id: string; stock: number }[] =>
-    ctx.itemBoms
-      ? (bomByParent.get(item.id) ?? [])
-      : ((item.submaterials ?? []) as unknown as { id: string; stock: number }[]);
+  const componentsOf = (item: Item): { id: string; stock: number }[] => bomByParent.get(item.id) ?? [];
 
   const cost = (item: Item, seen: Set<string>): number => {
     const cached = memo.get(item.id);

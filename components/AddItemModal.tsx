@@ -1,8 +1,9 @@
 ﻿import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { X, Package, Tag, Box, Layers, Plus, Building2, Check, Trash2, ChevronRight, FileText } from 'lucide-react';
-import { Item, InventoryCategory, ItemSubtype, Partner, ClientBoxConfig, PartnerItem } from '../types';
+import { Item, InventoryCategory, ItemSubtype, Partner, ClientBoxConfig, PartnerItem, SubmaterialComponent } from '../types';
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { buildTaxonomy, DEFAULT_CATEGORY_LABELS, TaxonomyRow } from '../src/shared/taxonomy';
+import { bomOf, BomDraftLine } from '../src/shared/bomIndex';
 import { baseRawName, PRODUCT_FORMULA } from '../src/constants/formula';
 
 interface ProductModalProps {
@@ -12,7 +13,7 @@ interface ProductModalProps {
   partners?: Partner[];
   partnerItems?: import('../src/shared/types').PartnerItem[];
   onClose: () => void;
-  onSave: (_product: Item) => void;
+  onSave: (_product: Item & { bomDraft?: BomDraftLine[] }) => void;
   onUpsertPartnerItem?: (ps: PartnerItem) => void;
   onDeletePartnerItem?: (id: string) => void;
   onAddSubmaterial?: (name: string, category: string) => Promise<string>;
@@ -95,10 +96,16 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       .filter(pi => pi.itemId === initialData?.id)
       .map(pi => (pi.partnerId))
       .filter(Boolean) as string[],
-    submaterials: (initialData?.submaterials || []).map(s => ({
-      ...s,
-      category: normCat(s.category)
-    }))
+    //  구성은 item_bom에서 읽는다. 자식 품목이 붙어 오므로 이름·규격·단위가 언제나 제 값이다.
+    submaterials: bomOf(initialData?.id).map(l => ({
+      id: l.childId,
+      name: l.child?.name ?? l.childId,
+      category: normCat(l.child?.type ?? 'submaterial'),
+      stock: l.qty,
+      unit: l.child?.unit ?? '개',
+      ...(l.child?.spec != null ? { spec: l.child.spec } : {}),
+      ...(l.child?.cost != null ? { cost: l.child.cost } : {}),
+    }) as SubmaterialComponent)
   }));
 
   // 분류 체계 — 사용자가 정한 이름·하위 분류(itemTaxonomy). 저장본이 없으면 기본값.
@@ -255,7 +262,14 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       ...((formData.type === 'wip' || formData.type === 'raw') && { phantom: !!formData.phantom }),
     };
 
-    onSave(finalProduct);
+    /**
+     * 구성(BOM)은 품목 문서가 아니라 **초안으로 따로** 넘긴다 — 저장 핸들러가 item_bom을 다시 쓴다.
+     *
+     * 2026-08-14(98e914d)에 payload에서 submaterials를 빼면서 이 줄이 같이 없어졌다.
+     * 받는 쪽은 `p.submaterials`를 계속 읽었으니 늘 빈 배열이었고, 그쪽 로직이
+     * "기존 줄 전부 삭제 → 초안대로 다시 쓰기"라서 **품목을 저장할 때마다 BOM이 통째로 지워졌다.**
+     */
+    onSave({ ...finalProduct, bomDraft: formData.submaterials.map(s => ({ childId: s.id, qty: typeof s.stock === 'number' ? s.stock : 1 })) });
 
     // 원료 배합·수율 저장 — **반제품·원료만**. item_formula.
     //   완제품은 저장하지 않는다: parent_key가 품목이라 같은 품목을 쓰는 다른 완제품까지 덮어쓰고,
@@ -503,7 +517,10 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                     const cCat = child ? normCat(child.type) : '';
                     const isAssembly = !!child && (cCat === 'product' || cCat === 'wip' || child.type === '완제품');
                     const open = expandedBom.has(s.id);
-                    const childSubs = (child?.submaterials ?? []) as any[];
+                    const childSubs = bomOf(child?.id).map(l => ({
+                      id: l.childId, name: l.child?.name ?? l.childId,
+                      category: l.child?.type ?? 'submaterial', stock: l.qty, unit: l.child?.unit ?? '개',
+                    })) as any[];
                     const childRaw = child ? (itemFormulas ?? []).filter(f => f.parent_key === ((child as any).품목 || child.name)) : [];
                     return (
                     <div key={`${s.id}-${idx}`} className="rounded-2xl border border-slate-100 overflow-hidden">

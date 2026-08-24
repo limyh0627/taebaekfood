@@ -6,6 +6,7 @@ import { unpackComponent, isBoxStockItem, boxSiblings, boxDerivedUnitPrice, unit
 import { subDotClass } from '../src/shared/submaterialStyle';
 import { catOrder } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
+import { bomOf } from '../src/shared/bomIndex';
 
 interface AddOrderModalProps {
   items: Item[];
@@ -261,12 +262,12 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
       // 재고 1단위 기준 수량 — 박스 품목은 박스 개수(입력이 박스면 qty가 곧 박스 수)
       const unpack = unpackComponent(product);
       const stockQty = unpack ? (item.isBoxUnit ? qty : actualQty / unpack.count) : actualQty;
-      for (const s of (product.submaterials || [])) {
+      for (const line of bomOf(product.id)) {
         // 겉박스·테이프도 BOM으로 센다 — 거래처별 포장설정(shipping_rule)은 폐기했다.
-        const sub = submaterials.find(sm => sm.id === s.id);
+        const sub = submaterials.find(sm => sm.id === line.childId);
         if (!sub) continue;
         if (!usage[sub.id]) usage[sub.id] = { name: sub.name, needed: 0, stock: sub.stock };
-        usage[sub.id].needed += stockQty * bomQty(s);   // 재고 1단위 × BOM 수량
+        usage[sub.id].needed += stockQty * line.qty;   // 재고 1단위 × BOM 수량
       }
     }
     return Object.values(usage).filter(v => v.needed > v.stock);
@@ -716,8 +717,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                           //  · 예전엔 언제나 낱개(looseProduct) BOM을 읽고 박스·테이프를 일부러 뺐다
                           //    → 박스를 골라도 낱개 부자재만 나왔다. 거래처 포장설정(boxTypeId) 경로도 폐기됐다.
                           // 내용물(반제품·원료·완제품)과 벌크는 뺀다 — 챙길 물건이 아니라 통에서 나온다.
-                          const chips = (product.submaterials ?? [])
-                            .map(s => items.find(x => x.id === s.id))
+                          const chips = bomOf(product.id)
+                            .map(l => l.child)
                             .filter((c): c is Item => !!c && c.type === 'submaterial' && !isBulkItem(c) && !c.phantom);
                           if (chips.length === 0) return null;
                           return (

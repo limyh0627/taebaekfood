@@ -14,6 +14,7 @@ import { stampFor, timeOfLocal, issuedMs, nextDocNo } from '../src/shared/vouche
 import { buildJournals } from '../src/shared/buildJournals';
 import type { VoucherKind } from '../src/shared/vouchers';
 import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/shared/orderUnits';
+import { bomOf } from '../src/shared/bomIndex';
 import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
 import { totalCashOnHand, unsettledStatements, unmatchedCash, partnerBalanceFromJournals, allocatePartnerCash, partnerCashParts } from '../src/features/admin/cashLedger';
 import { AR, AP, journalizeStatement, journalizeTransfer, journalizeCashEntry, settlementAccountCode } from '../src/shared/autoJournal';
@@ -5461,9 +5462,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                           <div className="h-60 overflow-y-auto">
                           {quickResults.slice(0,50).map(r=>{
                             const docN=r.product!.name;
-                            const sub = r.product!.submaterials ?? [];
-                            const 용기 = sub.find(s=>s.category==='용기')?.name;
-                            const 마개 = sub.find(s=>s.category==='마개')?.name;
+                            const sub = bomOf(r.product!.id);
+                            const 용기 = sub.find(l=>l.child?.category==='용기')?.child?.name;
+                            const 마개 = sub.find(l=>l.child?.category==='마개')?.child?.name;
                             const 정보 = r.product!.oil || r.product!.spec || '';
                             const tags = [용기, 마개, 정보].filter(Boolean).join(' · ');
                             return (
@@ -5708,9 +5709,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                     <div className="absolute left-0 top-full z-50 mt-1 w-64 h-56 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl">
                                       {searchResults.slice(0,50).map(r=>{
                                         const docN=r.product!.name;
-                                        const sub2 = r.product!.submaterials ?? [];
-                                        const 용기2 = sub2.find(s=>s.category==='용기')?.name;
-                                        const 마개2 = sub2.find(s=>s.category==='마개')?.name;
+                                        const sub2 = bomOf(r.product!.id);
+                                        const 용기2 = sub2.find(l=>l.child?.category==='용기')?.child?.name;
+                                        const 마개2 = sub2.find(l=>l.child?.category==='마개')?.child?.name;
                                         const 정보2 = r.product!.oil || r.product!.spec || '';
                                         const tags2 = [용기2, 마개2, 정보2].filter(Boolean).join(' · ');
                                         return (

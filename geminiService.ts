@@ -14,8 +14,8 @@ export const getBusinessInsights = async (orders: Order[], products: Item[]) => 
   }, { totalSales: 0, count: 0 });
 
   const lowStockItems = products.filter(p => p.stock < 10);
-  const lowStockComponents = products.flatMap(p => p.submaterials || [])
-    .filter(c => c.stock < 20);
+  //  구성은 품목에 안 붙는다 — 부자재 재고는 품목 자체를 본다(shared/bomIndex).
+  const lowStockComponents = products.filter(p => p.type === 'submaterial' && p.stock < 20);
 
   const prompt = `
     다음은 현재 비즈니스 데이터 요약입니다:

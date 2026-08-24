@@ -264,7 +264,8 @@ export interface Item {
   용량?: string;
   isSmartStore?: boolean;
   smartStorePrice?: number;
-  submaterials?: SubmaterialComponent[];
+  //  구성(BOM)은 품목에 안 붙는다 — item_bom이 유일 원천이다(shared/bomIndex).
+  //    읽기 `bomOf(item.id)` · 저장은 편집 폼이 bomDraft로 따로 넘긴다.
   procureType?: '완사입' | '임가공';  // 완사입=완제품 사옴(원료무관). 임가공(OEM)=우리 원료를 외주가공. 둘 다 판매 시 생산처리 없이 자기재고 −N
   unpackTo?: { itemId: string; count: number }; // 박스 개봉 — 이 품목 1개 개봉 시 대상 품목 재고 +count (예: 10kg박스 → 낱개 +10)
   isRawMaterial?: boolean;    // 원료로도 관리되는 품목 (수불부 자동 연동)

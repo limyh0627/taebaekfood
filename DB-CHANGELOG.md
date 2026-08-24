@@ -365,3 +365,19 @@
 
 - 옛 품목을 물고 있던 BOM은 이 한 줄뿐이었다.
 - 되돌리기: 새 줄을 지우고 `{parent_id:'PLDhkjOgcPIhO1hhReHm', child_id:'PLYZ-S-1000', quantity:1}` 복원.
+
+## 2026-08-24 — items에서 옛 `submaterials`·`unpackTo` 필드 제거
+
+**작업자:** Claude 에이전트 (사용자 지시)
+**스크립트:** `scripts/fix-drop-item-submaterials.mts` (기본 `--dry`, 적용 `--apply`)
+
+구성(BOM)은 `item_bom`이 유일 원천이 됐다(shared/bomIndex). 품목 문서에 남아 있던 옛
+배열은 아무도 안 읽는데 남아서, 진단할 때마다 "어느 쪽이 참이냐"를 되묻게 만들었다.
+
+| 문서 | 변경 |
+|---|---|
+| `items` 50건 | `submaterials` · `unpackTo` 필드 제거 |
+
+- 지우기 전 대조: 옛 배열과 item_bom이 **차이 0건**으로 일치했다(구성·수량 모두).
+- `unpackTo`는 이미 전 품목에서 0건이었다.
+- 되돌리기: 지운 배열은 복구 안 된다. `item_bom`이 같은 내용을 그대로 들고 있다.

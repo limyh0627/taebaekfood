@@ -8,7 +8,7 @@ import CategoryManager from './CategoryManager';
 import { buildTaxonomy, TaxonomyRow } from '../src/shared/taxonomy';
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { isBoxStockItem, unpackComponent, boxSiblings } from '../src/shared/orderUnits';
-import { bomQty } from '../src/shared/bom';
+import { bomOf, BomLine } from '../src/shared/bomIndex';
 import { subDotClass } from '../src/shared/submaterialStyle';
 import { ProductNameRow, ProductCard, renderColoredName, splitNameVolume, specText, catOrder, categoryChipClass } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
@@ -58,12 +58,8 @@ const LINK_CATEGORIES = ['product', 'goods', 'wip', 'raw', 'submaterial'];
  * 예전엔 라벨→용기→마개→테이프→박스를 코드에 박아 뒀다. 분류를 새로 만들면(비닐 같은)
  * 그 목록에 없어서 늘 맨 뒤로 밀렸고, 화면에서 순서를 바꿔도 여긴 안 따라왔다.
  * rankOf는 분류 관리 저장본에서 만든 순위다(아래 catRank).
- *
- * 근거 값은 **자식 품목의 category**다. BOM 파생(buildSubmaterialsFromBom)이
- * SubmaterialComponent.category 칸에는 자식의 **type**을 넣어서, 그 칸만 보면
- * 부자재가 죄다 'submaterial' 한 덩어리라 정렬이 안 먹는다.
  */
-const sortSubs = (subs: SubmaterialComponent[], rankOf: (s: SubmaterialComponent) => number) =>
+const sortSubs = (subs: BomLine[], rankOf: (l: BomLine) => number) =>
   [...subs].sort((a, b) => rankOf(a) - rankOf(b));
 
 // ── 한글 초성 검색 ──
@@ -113,22 +109,22 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
   const itemCustomers = partnerItems;
   //  BOM 줄의 자식 품목 — 부자재 칩 정렬이 제 카테고리(용기·마개·라벨)를 봐야 해서 필요하다.
   const itemById = useMemo(() => new Map(items.map(i => [i.id, i])), [items]);
-  const subCatOf = (s: SubmaterialComponent) => String(itemById.get(s.id)?.category ?? '');
+  const subCatOf = (l: BomLine) => String(l.child?.category ?? '');
   //  분류 관리에 없는 카테고리(또는 카테고리가 빈 품목)는 맨 뒤로.
-  const subRank = (s: SubmaterialComponent) => catRank.get(subCatOf(s)) ?? Number.MAX_SAFE_INTEGER;
+  const subRank = (l: BomLine) => catRank.get(subCatOf(l)) ?? Number.MAX_SAFE_INTEGER;
   /**
    * BOM 한 줄 — "마개 이중캡 골드 ×2" 꼴로 **카테고리를 앞에 단다.**
    * 이름만 깔아 두면 목록에서 그게 용기인지 마개인지 라벨인지 안 갈린다.
    * 근거는 자식 품목의 category다(SubmaterialComponent.category엔 자식의 type이 들어 있다).
    */
-  const bomChip = (s: SubmaterialComponent, i: number) => {
-    const cat = subCatOf(s);
+  const bomChip = (l: BomLine, i: number) => {
+    const cat = subCatOf(l);
     return (
-      <span key={`${s.id}-${i}`} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 whitespace-nowrap">
-        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(s)}`} />
+      <span key={`${l.childId}-${i}`} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 whitespace-nowrap">
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(l.child)}`} />
         {cat && <span className="text-slate-400">{cat}</span>}
-        {s.name}
-        {bomQty(s) !== 1 && <span className="text-slate-300">×{bomQty(s)}</span>}
+        {l.child?.name ?? l.childId}
+        {l.qty !== 1 && <span className="text-slate-300">×{l.qty}</span>}
       </span>
     );
   };
@@ -228,8 +224,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
      * BOM 파생(buildSubmaterialsFromBom)이 category에 자식의 **type**을 넣게 되면서
      * 그 필터가 아무것도 안 걸러, 사실상 **이름만으로** 묶고 있었다.
      */
-    const bomKey = (p: Item) => (p.submaterials ?? [])
-      .map(s => `${s.id}×${bomQty(s)}`)
+    const bomKey = (p: Item) => bomOf(p.id)
+      .map(l => `${l.childId}×${l.qty}`)
       .sort()
       .join(',');
 
@@ -251,7 +247,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
           directClients: [...new Set([...(p.partnerIds || [])])],
           subMap,
         }));
-        return { key, name: key.split('||')[0], subs: prods[0].submaterials || [], items };
+        return { key, name: key.split('||')[0], subs: bomOf(prods[0].id), items };
       });
   }, [products, partnerItems]);
 
@@ -562,8 +558,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                     return (
                 <React.Fragment key={anchor.id}>
                 {(() => {
-                  const subs = (item.submaterials ?? [])
-                    .map(s => items.find(x => x.id === s.id))
+                  const subs = bomOf(item.id)
+                    .map(l => l.child)
                     .filter((c): c is Item => !!c && c.type === 'submaterial' && !isBulkItem(c) && !c.phantom);
                   // 겉박스·테이프는 박스 품목 BOM에 들어 있다 — 거래처별 포장설정은 폐기했다.
                   return (
@@ -769,9 +765,9 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                     )}
                     <td className="px-2 py-3">
                       {/* 품목이 품은 것 전부 — 주문 생성 화면과 같은 부자재 색 칩 */}
-                      {(item.submaterials?.length ?? 0) > 0 ? (
+                      {bomOf(item.id).length > 0 ? (
                         <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                          {sortSubs(item.submaterials!, subRank).map(bomChip)}
+                          {sortSubs(bomOf(item.id), subRank).map(bomChip)}
                         </span>
                       ) : (
                         <span className="text-[10px] text-slate-200">-</span>
@@ -1306,9 +1302,9 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                       {/* 주문 생성 화면과 같은 표기 — 이름 색 + 규격칩 + 부자재칩 (src/shared/productChip) */}
                       <div className="min-w-0 flex-1">
                         <ProductNameRow product={p} />
-                        {p.submaterials && p.submaterials.length > 0 && (
+                        {bomOf(p.id).length > 0 && (
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
-                            {sortSubs(p.submaterials, subRank).map(bomChip)}
+                            {sortSubs(bomOf(p.id), subRank).map(bomChip)}
                           </div>
                         )}
                       </div>

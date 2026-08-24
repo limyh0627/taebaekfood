@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { docPumok, docOilKg, addOilByRaw, docSaleLine, docDateOf, reconcileSaleVsRaw, findDocDrops, DOC_RECALC_RAWS, DOC_DENSITY, docSpec } from './docOil';
+import { buildBomIndex, setBomIndex } from './bomIndex';
 
 describe('docOilKg — 판매 1줄 → 서류상 기름 kg', () => {
   it('ml·L은 부피 × 밀도', () => {
@@ -72,9 +73,13 @@ describe('docSaleLine — 박스는 낱개로 풀어서 집계', () => {
   const loose = { id: 'p-loose', name: '참기름/350ml', category: 'product', spec: '350ml', 품목: '시골향참기름1' } as any;
   const box = {
     id: 'p-box', name: '참기름/350ml (20개입)', category: 'product', spec: '', 품목: '',
-    submaterials: [{ id: 'p-loose', category: 'product', stock: 20 }],   // bomQty는 stock을 읽는다
   } as any;
   const find = (id: string) => (id === 'p-loose' ? loose : undefined);
+  //  구성은 item_bom이 유일 원천 — 박스 1개 = 낱개 ×20.
+  setBomIndex(buildBomIndex(
+    [{ ...loose, type: 'product' }, { ...box, type: 'product' }] as any,
+    [{ parent_id: 'p-box', child_id: 'p-loose', quantity: 20 }],
+  ));
 
   it('박스 1개 → 낱개 20개, 품목·규격은 낱개 것', () => {
     expect(docSaleLine(box, 1, find)).toEqual({ 품목: '시골향참기름1', spec: '350ml', qty: 20 });

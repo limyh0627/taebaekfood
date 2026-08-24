@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
+import { bomOf } from '../src/shared/bomIndex';
 import { Item } from '../types';
 import { PRODUCT_FORMULA, baseRawName } from '../src/constants/formula';
 import { ShieldAlert, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react';
@@ -36,7 +37,7 @@ const BomIntegrityPanel: React.FC<Props> = ({ items, itemFormulas = [] }) => {
     // 조립품 = BOM에 완제품 구성품이 든 것(박스·선물세트). 원료는 그 구성품에서 나가므로
     // 자기 원료식이 없는 게 정상 → 원료식 검사 대상에서 뺀다.
     const isAssembly = (p: Item) =>
-      ((p as any).submaterials ?? []).some((s: any) => byId.get(s.id)?.type === 'product');
+      bomOf(p.id).some(l => l.child?.type === 'product');
 
     for (const p of prods) {
       if (isAssembly(p)) continue;   // 박스·선물세트 등 조립품은 원료식 안 가짐(정상)
@@ -48,9 +49,10 @@ const BomIntegrityPanel: React.FC<Props> = ({ items, itemFormulas = [] }) => {
       else for (const { raw } of rows) {
         if (!holderByRaw[raw] && !phantomNames.has(raw)) missingRaw.push({ product: p.name, raw });
       }
-      const subs = (p as any).submaterials;
-      if (!Array.isArray(subs) || subs.length === 0) noSub.push(p.name);
-      else for (const s of subs) if (!s.id || !byId.has(s.id)) brokenSub.push({ product: p.name, id: s.id, name: (s as any).name });
+      const subs = bomOf(p.id);
+      if (subs.length === 0) noSub.push(p.name);
+      //  자식 품목을 못 찾는 줄 = 지워진 품목을 가리키는 BOM. 원가·차감에서 조용히 빠진다.
+      else for (const l of subs) if (!l.child) brokenSub.push({ product: p.name, id: l.childId, name: l.childId });
     }
     const prodKeys = new Set(prods.map(p => (p as any).품목 || p.name));
     // orphan = 완제품도 원료홀더(반제품 수율 BOM의 부모)도 phantom 반제품도 아닌 parent_key

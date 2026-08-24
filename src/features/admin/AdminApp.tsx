@@ -18,6 +18,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { nextDocNo, stampFor } from '../../shared/voucherStamp';
 import { isBulkItem } from '../../shared/itemTaxonomy';
+import { bomOf } from '../../shared/bomIndex';
 import { createPortal } from 'react-dom';
 import {
   LayoutDashboard,
@@ -532,7 +533,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
       cost: 0,
       price: 0,
       minStock: 0,
-      submaterials: [],
       lots: [],
     } as Item;
     // addItem을 거쳐야 옛 필드 이름이 DB의 새 이름(type/category/subtype)으로 변환된다
@@ -737,13 +737,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
       // 겉박스·테이프는 이제 **박스 품목 BOM**에 들어 있다 — 거래처별 포장설정(shipping_rule)은 폐기.
       // 그래서 여기서 따로 세지 않고 아래 BOM 순회가 통째로 맡는다.
-      for (const s of (product.submaterials || [])) {
-        const sub = submaterials.find(sm => sm.id === s.id);
+      for (const line of bomOf(product.id)) {
+        const sub = submaterials.find(sm => sm.id === line.childId);
         if (!sub) continue;
         // 원료 홀더(raw/wip)는 kg 단위라 '개' 집계가 틀림 → 위 원료식(kg) 경로에서 체크
         if (sub.type === 'raw' || sub.type === 'wip') continue;
         // 재고 1단위 × BOM 수량 — 이중캡 ×2, 180ml캡 ×3 같은 것
-        usage[sub.id] = { name: sub.name, needed: (usage[sub.id]?.needed ?? 0) + units * bomQty(s), unit: '개' };
+        usage[sub.id] = { name: sub.name, needed: (usage[sub.id]?.needed ?? 0) + units * line.qty, unit: '개' };
       }
     }
 
@@ -4450,7 +4450,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
             // 품목 저장(순수 쓰기)을 최우선으로 — 거래처 매핑(setProductClients)은 getDocs(읽기)가
             // 필요해 읽기 한도(429) 시 throw 되는데, 예전엔 그게 품목 저장 자체를 막아 "저장이 안 됨"
             // 으로 보였다. 품목부터 저장하고 매핑은 부수효과로 분리한다(Blaze 후에도 유지할 순서).
-            const { partnerIds: _cids, ...productData } = p;
+            const { partnerIds: _cids, bomDraft, ...productData } = p;
             if (editingProduct) {
               // 기존 품목은 필드 병합(updateDoc)으로만 수정 — addItem(setDoc 전체교체)을 쓰면
               // 폼이 모르는 필드(원료 lots·mixEnabled 등)가 통째로 지워진다(6/29 원료 로트 소실 사고 원인).
@@ -4460,26 +4460,34 @@ const AdminApp: React.FC<AdminAppProps> = ({
             } else {
               await addItem(collectionName, productData);
             }
-            // BOM(구성품) → item_bom 동기화. item_bom이 단일원천이므로 편집을 여기에 반영한다.
+            /**
+             * BOM(구성품) → item_bom 동기화. item_bom이 단일원천이므로 편집을 여기에 반영한다.
+             *
+             * **초안이 없으면 손대지 않는다.** 예전엔 `p.submaterials`를 읽었는데 저장 payload에서
+             * 그 필드가 빠진 뒤로 늘 빈 배열이었고, 아래가 "전부 지우고 다시 쓰기"라서
+             * 품목을 저장할 때마다 BOM이 통째로 날아갔다. 구성을 편집하는 화면만 초안을 보낸다.
+             */
             try {
+              if (!bomDraft) throw new Error('__skip_bom__');
               const bomBatch = writeBatch(db);
               itemBoms.filter(b => b.parent_id === p.id).forEach(b => bomBatch.delete(doc(db, 'item_bom', b.id)));
-              (p.submaterials ?? []).forEach(s => {
-                const bid = `bom-${p.id}__${s.id}`.replace(/[/#$[\].]/g, '_');
-                bomBatch.set(doc(db, 'item_bom', bid), { parent_id: p.id, child_id: s.id, quantity: typeof s.stock === 'number' ? s.stock : 1 });
+              bomDraft.forEach(l => {
+                const bid = `bom-${p.id}__${l.childId}`.replace(/[/#$[\].]/g, '_');
+                bomBatch.set(doc(db, 'item_bom', bid), { parent_id: p.id, child_id: l.childId, quantity: l.qty });
               });
               await bomBatch.commit();
               refreshStaticData();
               // BOM이 바뀌면 원가도 바뀐다 — 방금 저장한 item_bom 구성으로 다시 굴린다.
               await recomputeAllCosts(allItems, itemFormulas, [
                 ...itemBoms.filter(b => b.parent_id !== p.id),
-                ...(p.submaterials ?? []).map(s => ({
-                  id: `bom-${p.id}__${s.id}`.replace(/[/#$[\].]/g, '_'),
-                  parent_id: p.id, child_id: s.id,
-                  quantity: typeof s.stock === 'number' ? s.stock : 1,
+                ...bomDraft.map(l => ({
+                  id: `bom-${p.id}__${l.childId}`.replace(/[/#$[\].]/g, '_'),
+                  parent_id: p.id, child_id: l.childId, quantity: l.qty,
                 })),
               ] as typeof itemBoms);
-            } catch (e) { console.error('[품목 저장] item_bom 동기화 실패:', e); }
+            } catch (e) {
+              if ((e as Error).message !== '__skip_bom__') console.error('[품목 저장] item_bom 동기화 실패:', e);
+            }
             // partnerOut 컬렉션 거래처 매핑 — 실패해도 품목 저장은 유지(읽기 한도 등).
             try {
               await setProductClients(p.id, p.partnerIds ?? []);

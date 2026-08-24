@@ -1,5 +1,6 @@
 import { doc, setDoc, deleteDoc, getDoc, runTransaction, Firestore } from 'firebase/firestore';
 import { isBulkItem } from '../../shared/itemTaxonomy';
+import { bomOf } from '../../shared/bomIndex';
 import { Order, OrderItem, Item, OrderStatus, AppNotification, Partner, RawMaterialLot } from '../../shared/types';
 import { toKg, baseRawName, lotStockInUnit, unitToKg } from '../../constants/formula';
 import { deductFromLots, withCarryOverLot, buildReceiveLot, deductLotsByQty, restoreLotsByQty } from '../../shared/lotUtils';
@@ -61,8 +62,8 @@ const inFlightOrders = new Set<string>();
 /** 구성품에 완제품이 있는가 — 박스·세트·재포장. 그 완제품이 자기 원료를 지니므로
  *  이런 품목에 품목 원료식을 또 적용하면 원료가 두 번 빠진다. */
 export const hasProductComponent = (
-  product: Pick<Item, 'submaterials'> | undefined,
-): boolean => (product?.submaterials ?? []).some(s => s.category === 'product' || s.category === '완제품');
+  product: Pick<Item, 'id'> | undefined,
+): boolean => bomOf(product?.id).some(l => l.child?.type === 'product' || l.child?.type === '완제품');
 
 /** 사입·임가공 완제품 — 판매 시 생산 없이 자기 재고만 차감(원료는 완사입=무관/임가공=가공입고 때 소진).
  *  생산을 안 하므로 '재고 쓸까요' 물음의 대상도 아니다 → 화면(stockUseRows)도 이걸 본다. */
@@ -135,13 +136,13 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     // 조립 반제품(개 단위 wip = 무라벨 병 등): 오일 구성품 수량은 그 오일의 단위(L)로 직접 입력한 값.
     // → L×밀도(unitToKg)로 환산. 일반 완제품은 기존대로 용량(spec)이 오일량을 준다.
     const isAssembly = product.type === 'wip' && product.unit === '개';
-    const oilSubs = (product.submaterials ?? [])
-      .map(s => ({ s, comp: allItems.find(p => p.id === s.id) }))
+    const oilSubs = bomOf(product.id)
+      .map(l => ({ l, comp: allItems.find(p => p.id === l.childId) }))
       // 개수(개) 단위 반제품은 오일이 아니라 '조립 반제품'(무라벨 병 등) → accrueBom이 생산·차감. 벌크 반제품(L/kg)만 오일.
       .filter(({ comp }) => comp && isBulkItem(comp));
     if (oilSubs.length > 0) {
-      for (const { s, comp } of oilSubs) {
-        const qty = bomQty(s);
+      for (const { l, comp } of oilSubs) {
+        const qty = l.qty;
         if (!comp || qty <= 0) continue;
         const perUnitKg = () => perUnitOilKg(qty);
         if (comp.phantom) {
@@ -184,14 +185,14 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     stockCap?: Map<string, number>,
   ) => {
     if (units <= 0 || depth > 4) return;   // depth — BOM 순환 방어
-    for (const s of (product.submaterials ?? [])) {
-      const comp = allItems.find(p => p.id === s.id);
+    for (const line of bomOf(product.id)) {
+      const comp = allItems.find(p => p.id === line.childId);
       if (!comp) continue;
       // 겉박스·테이프도 BOM에 있으면 그대로 깎는다 — 낱개 BOM엔 그것들을 안 둔다
       // (박스 품목을 만들 때 그 BOM으로 잡힌다). BOM이 곧 구성이다.
       // 원료·벌크 반제품(L/kg)은 kg로 원료식 경로에서 처리. 개수(개) 단위 반제품(조립)은 완제품처럼 여기서 생산·차감.
       if (isBulkItem(comp)) continue;
-      const need = Math.round(units * bomQty(s) * 1000) / 1000;
+      const need = Math.round(units * line.qty * 1000) / 1000;
       if (need <= 0) continue;
 
       // 완제품·개수단위 반제품(조립)이 모자라면 먼저 만든다(그 BOM·오일까지 재귀).

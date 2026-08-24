@@ -4,7 +4,7 @@ import { Plus, Edit2, Trash2, Search, Save, X } from 'lucide-react';
 import { Item, InventoryCategory } from '../types';
 import PageHeader from './PageHeader';
 import ConfirmModal from './ConfirmModal';
-import { bomQty } from '../src/shared/bom';
+import { bomOf } from '../src/shared/bomIndex';
 import { subDotClass } from '../src/shared/submaterialStyle';
 
 interface ItemPriceManagerProps {
@@ -109,22 +109,18 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
                     <td className="px-4 py-3">
                       <div className="font-black text-slate-800 text-sm">{p.name}</div>
                       {(() => {
-                        /**
-                         * 부자재는 BOM 그대로 — 용기·마개만 골라 뽑던 자리다.
-                         * 그 필터는 `s.category`를 '용기'와 견줬는데 BOM 파생이 거기에 자식의
-                         * **type**('submaterial')을 넣어서, 한 품목도 안 걸리고 늘 비어 있었다.
-                         */
-                        const subs = p.submaterials ?? [];
+                        //  부자재는 BOM 그대로 — 용기·마개만 골라 뽑던 자리다(그 필터는 늘 비어 있었다).
+                        const subs = bomOf(p.id);
                         const 정보 = p.oil || p.spec || '';
                         if (!subs.length && !정보) return null;
                         return (
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
                             {정보 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-400">{정보}</span>}
-                            {subs.map((s, i) => (
-                              <span key={`${s.id}-${i}`} className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 whitespace-nowrap">
-                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(s)}`} />
-                                {s.name}
-                                {bomQty(s) !== 1 && <span className="text-slate-300">×{bomQty(s)}</span>}
+                            {subs.map((l, i) => (
+                              <span key={`${l.childId}-${i}`} className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 whitespace-nowrap">
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(l.child)}`} />
+                                {l.child?.category ? `${l.child.category} ` : ''}{l.child?.name ?? l.childId}
+                                {l.qty !== 1 && <span className="text-slate-300">×{l.qty}</span>}
                               </span>
                             ))}
                           </div>
