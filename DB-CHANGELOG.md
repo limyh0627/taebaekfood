@@ -348,3 +348,20 @@
 - 되돌리기: `items/raw-볶음참깨`의 `stock`을 201로.
 - ⚠️ `firebaseService.mutateRawMaterialLots`의 `lotsAreTotal` 가드가 **배포되기 전까지는**
   로트를 건드리는 순간 stock이 로트합(201)으로 도로 덮인다.
+
+## 2026-08-24 — 볶음참깨-낱개/1kg BOM의 유령 부자재 교체
+
+**작업자:** Claude 에이전트 (사용자 지시)
+**스크립트:** `scripts/fix-bokkeum-1kg-vinyl.mts` (기본 `--dry`, 적용 `--apply`)
+
+옛 `1KG-볶음참깨`(PLYZ-S-1000)는 2026-07-13에 archived 처리됐는데 BOM에는 그대로
+남아 있었다. 보관된 품목은 화면·원가 롤업에서 빠지므로 1kg 낱개의 비닐 원가가 통째로
+빠졌다. 사장님이 새로 만든 같은 이름의 비닐 품목으로 옮긴다.
+
+| 문서 | 변경 |
+|---|---|
+| `item_bom/bom-PLDhkjOgcPIhO1hhReHm-PLYZ-S-1000` | 삭제 (보관 품목 참조) |
+| `item_bom/bom-PLDhkjOgcPIhO1hhReHm__p-1787560459683` | 신규 — `1KG-볶음참깨`(category=비닐, 원가 110) ×1 |
+
+- 옛 품목을 물고 있던 BOM은 이 한 줄뿐이었다.
+- 되돌리기: 새 줄을 지우고 `{parent_id:'PLDhkjOgcPIhO1hhReHm', child_id:'PLYZ-S-1000', quantity:1}` 복원.

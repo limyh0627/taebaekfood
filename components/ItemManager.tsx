@@ -1,10 +1,12 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X, Copy, ChevronDown, ChevronUp, ChevronRight, GitMerge, Save, Settings, Store, Package, User, Truck, ChevronLeft } from 'lucide-react';
 import { Item, InventoryCategory, Partner, PartnerItem, ItemBom, SubmaterialComponent } from '../types';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 import CategoryManager from './CategoryManager';
+import { buildTaxonomy, TaxonomyRow } from '../src/shared/taxonomy';
+import { fetchCollection } from '../src/shared/services/firebaseService';
 import { isBoxStockItem, unpackComponent, boxSiblings } from '../src/shared/orderUnits';
 import { bomQty } from '../src/shared/bom';
 import { subDotClass } from '../src/shared/submaterialStyle';
@@ -31,12 +33,6 @@ interface ItemManagerProps {
   isAdmin?: boolean;
 }
 
-const CATEGORY_MAP: Record<string, string> = {
-  'cap': '마개', 'container': '용기', 'box': '박스', 'tape': '테이프', 'label': '라벨',
-  'Cap': '마개', 'Tape': '테이프',
-  '마개': '마개', '용기': '용기', '박스': '박스', '테이프': '테이프', '라벨': '라벨',
-};
-const normalizeCategory = (cat: string) => CATEGORY_MAP[cat] || cat;
 const inferSubtype = (item: { subtype?: string; name: string; type: string }): string => {
   if (item.subtype) return item.subtype;
   const n = item.name;
@@ -50,25 +46,25 @@ const inferSubtype = (item: { subtype?: string; name: string; type: string }): s
   return CATEGORY_LABELS[item.type] || item.type;
 };
 
-const CATEGORIES: InventoryCategory[] = ['product', 'goods', 'wip', 'raw', 'submaterial'];
+//  탭 이름·순서·숨김은 전부 분류 관리(itemTaxonomy)가 쥔다 — 여기 표는 저장본이 없을 때의 이름뿐이다.
 const CATEGORY_LABELS: Record<string, string> = {
   product: '완제품', goods: '상품', wip: '반제품', raw: '원료',
   submaterial: '부자재',
 };
 const LINK_CATEGORIES = ['product', 'goods', 'wip', 'raw', 'submaterial'];
-const SUB_ORDER: Record<string, number> = { '라벨': 0, '용기': 1, '마개': 2, '테이프': 3, '박스': 4 };
 /**
- * 부자재 정렬 — 라벨 → 용기 → 마개 → 테이프 → 박스.
+ * 부자재 정렬 — **분류 관리에 적힌 순서 그대로.**
  *
- * 근거는 **자식 품목의 category**다(용기·마개·라벨이 사는 자리). BOM 파생
- * (buildSubmaterialsFromBom)이 SubmaterialComponent.category 칸에는 자식의 **type**을
- * 넣어서, 그 칸만 보면 부자재가 죄다 'submaterial' 한 덩어리라 정렬이 안 먹었다.
- * catOf를 넘기면 원래 품목에서 제 카테고리를 읽는다.
+ * 예전엔 라벨→용기→마개→테이프→박스를 코드에 박아 뒀다. 분류를 새로 만들면(비닐 같은)
+ * 그 목록에 없어서 늘 맨 뒤로 밀렸고, 화면에서 순서를 바꿔도 여긴 안 따라왔다.
+ * rankOf는 분류 관리 저장본에서 만든 순위다(아래 catRank).
+ *
+ * 근거 값은 **자식 품목의 category**다. BOM 파생(buildSubmaterialsFromBom)이
+ * SubmaterialComponent.category 칸에는 자식의 **type**을 넣어서, 그 칸만 보면
+ * 부자재가 죄다 'submaterial' 한 덩어리라 정렬이 안 먹는다.
  */
-const sortSubs = (subs: SubmaterialComponent[], catOf?: (s: SubmaterialComponent) => string) =>
-  [...subs].sort((a, b) =>
-    (SUB_ORDER[normalizeCategory(catOf?.(a) ?? String(a.category))] ?? 9)
-    - (SUB_ORDER[normalizeCategory(catOf?.(b) ?? String(b.category))] ?? 9));
+const sortSubs = (subs: SubmaterialComponent[], rankOf: (s: SubmaterialComponent) => number) =>
+  [...subs].sort((a, b) => rankOf(a) - rankOf(b));
 
 // ── 한글 초성 검색 ──
 const CHOSUNG = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
@@ -117,7 +113,25 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
   const itemCustomers = partnerItems;
   //  BOM 줄의 자식 품목 — 부자재 칩 정렬이 제 카테고리(용기·마개·라벨)를 봐야 해서 필요하다.
   const itemById = useMemo(() => new Map(items.map(i => [i.id, i])), [items]);
-  const subCatOf = (s: SubmaterialComponent) => String(itemById.get(s.id)?.category ?? s.category);
+  const subCatOf = (s: SubmaterialComponent) => String(itemById.get(s.id)?.category ?? '');
+  //  분류 관리에 없는 카테고리(또는 카테고리가 빈 품목)는 맨 뒤로.
+  const subRank = (s: SubmaterialComponent) => catRank.get(subCatOf(s)) ?? Number.MAX_SAFE_INTEGER;
+  /**
+   * BOM 한 줄 — "마개 이중캡 골드 ×2" 꼴로 **카테고리를 앞에 단다.**
+   * 이름만 깔아 두면 목록에서 그게 용기인지 마개인지 라벨인지 안 갈린다.
+   * 근거는 자식 품목의 category다(SubmaterialComponent.category엔 자식의 type이 들어 있다).
+   */
+  const bomChip = (s: SubmaterialComponent, i: number) => {
+    const cat = subCatOf(s);
+    return (
+      <span key={`${s.id}-${i}`} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 whitespace-nowrap">
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(s)}`} />
+        {cat && <span className="text-slate-400">{cat}</span>}
+        {s.name}
+        {bomQty(s) !== 1 && <span className="text-slate-300">×{bomQty(s)}</span>}
+      </span>
+    );
+  };
   const partnerOut = partnerItems.filter(pi => pi.Direction === 'out');
   const partnerIn = partnerItems.filter(pi => pi.Direction === 'in');
   const [mainView, setMainView] = useState<'flat' | 'by-partner'>(isAdmin ? 'flat' : 'by-partner');
@@ -135,6 +149,20 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; onConfirm: () => void } | null>(null);
   const [linkCategory, setLinkCategory] = useState('product');
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false); // 분류 관리(품목관리로 이동)
+  // 분류 체계 — 타입 탭 이름·순서·숨김, 부자재 칩 정렬이 전부 이걸 본다. 저장본이 없으면 기본값.
+  const [taxonomyRows, setTaxonomyRows] = useState<TaxonomyRow[]>([]);
+  useEffect(() => { fetchCollection<TaxonomyRow>('itemTaxonomy').then(setTaxonomyRows).catch(() => {}); }, [categoryManagerOpen]);
+  const taxo = useMemo(() => buildTaxonomy(taxonomyRows), [taxonomyRows]);
+  /**
+   * 카테고리 순위 — 분류 관리에 보이는 순서를 그대로 편다(타입 순서 → 그 안의 카테고리 순서).
+   * 사장님 저장본은 부자재가 첫 타입이라 용기·마개·라벨이 앞에 서고 원료·완제품 계열이 뒤에 선다.
+   */
+  const catRank = useMemo(() => {
+    const m = new Map<string, number>();
+    let n = 0;
+    for (const t of taxo.allTypes) for (const c of taxo.categoriesOf(t.key)) if (!m.has(c)) m.set(c, n++);
+    return m;
+  }, [taxo]);
   // 분류를 쓰는 품목 수 — 삭제 경고용
   const taxonomyUsage = useMemo(() => {
     const u: Record<string, number> = {};
@@ -468,7 +496,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                 거래처 없는 것만
               </button>
             )}
-            {isAdmin && CATEGORIES.map(cat => {
+            {isAdmin && taxo.types.map(t => t.key as InventoryCategory).map(cat => {
               const inPartner = mainView === 'by-partner' && !!selectedClientId;
               const active = inPartner ? (!partnerAllCats && activeCategory === cat) : (activeCategory === cat);
               return (
@@ -481,7 +509,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                       : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
                   }`}
                 >
-                  {CATEGORY_LABELS[cat] ?? cat}
+                  {taxo.labelOf(cat)}
                 </button>
               );
             })}
@@ -743,13 +771,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                       {/* 품목이 품은 것 전부 — 주문 생성 화면과 같은 부자재 색 칩 */}
                       {(item.submaterials?.length ?? 0) > 0 ? (
                         <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                          {sortSubs(item.submaterials!, subCatOf).map((s, i) => (
-                            <span key={`${s.id}-${i}`} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 whitespace-nowrap">
-                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(s)}`} />
-                              {s.name}
-                              {bomQty(s) !== 1 && <span className="text-slate-300">×{bomQty(s)}</span>}
-                            </span>
-                          ))}
+                          {sortSubs(item.submaterials!, subRank).map(bomChip)}
                         </span>
                       ) : (
                         <span className="text-[10px] text-slate-200">-</span>
@@ -957,13 +979,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                   >
                     <div className="flex items-center gap-2 flex-wrap min-w-0">
                       <span className="text-sm font-black text-slate-800">{group.name}</span>
-                      {sortSubs(group.subs, subCatOf).map((s, i) => (
-                        <span key={`${s.id}-${i}`} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 whitespace-nowrap">
-                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(s)}`} />
-                          {s.name}
-                          {bomQty(s) !== 1 && <span className="text-slate-300">×{bomQty(s)}</span>}
-                        </span>
-                      ))}
+                      {sortSubs(group.subs, subRank).map(bomChip)}
                       <span className="text-[10px] font-bold text-amber-600">{group.items.length}개</span>
                     </div>
                     {isExpanded ? <ChevronUp size={14} className="text-amber-500 shrink-0 mt-0.5" /> : <ChevronDown size={14} className="text-amber-500 shrink-0 mt-0.5" />}
@@ -1292,12 +1308,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                         <ProductNameRow product={p} />
                         {p.submaterials && p.submaterials.length > 0 && (
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
-                            {sortSubs(p.submaterials, subCatOf).map((s, i) => (
-                              <span key={`${s.name}-${i}`} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500">
-                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${subDotClass(s)}`} />
-                                {s.name}
-                              </span>
-                            ))}
+                            {sortSubs(p.submaterials, subRank).map(bomChip)}
                           </div>
                         )}
                       </div>
