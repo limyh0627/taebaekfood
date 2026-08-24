@@ -45,9 +45,15 @@ export function rawCostPerKg(name: string, byRawName: Map<string, Item>): number
 }
 
 export interface CostFn {
+  /** 이 품목의 원가 — costSource가 'manual'이면 손으로 넣은 값, 아니면 롤업. */
   (item: Item): number;
-  /** 저장된 cost 우선, 없거나 0이면 롤업값 */
+  /** @deprecated 이제 본체와 같다(품목이 제 출처를 정한다). 옛 호출부 호환용. */
   effective: (item: Item) => number;
+  /**
+   * **출처를 무시한 순수 롤업.** 'manual'로 못 박아 둔 품목도 계산값을 보여줘야 하는
+   * 편집 화면(원가 토글)이 쓴다. 굴릴 게 없으면 저장값으로 떨어진다.
+   */
+  rollup: (item: Item) => number;
 }
 
 export function buildCostFn(ctx: BomCostCtx): CostFn {
@@ -64,6 +70,13 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
     const r = rank(i, key);
     if (!byRawName.has(key) || r > (rankOf.get(key) ?? -1)) { byRawName.set(key, i); rankOf.set(key, r); }
   }
+  /**
+   * **면세 원료로 과세품을 만들면 매입세액을 못 뺀다** — 그만큼이 그대로 원가에 얹힌다.
+   * 참깨·들깨(면세 농산물)로 참기름·들기름(과세)을 짜는 자리가 그렇다.
+   * 원료가 과세면 매입세액을 빼므로 단가 그대로다.
+   */
+  const vatUp = (child: Item, parent: Item) =>
+    (child.taxType === '면세' && parent.taxType !== '면세' ? 1.1 : 1);
   const feeOf = ctx.processingFeeOf ?? (() => 0);
   const memo = new Map<string, number>();
 
@@ -102,7 +115,7 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
         if (rows.length) {
           const blended = rows.reduce((sum, r) => {
             const src = byRawName.get(r.raw);
-            const unit = src ? cost(src, s2) : 0;      // 중간 반제품도 제 원료식으로 굴린다(재귀)
+            const unit = src ? cost(src, s2) * vatUp(src, item) : 0;   // 중간 반제품도 제 원료식으로 굴린다(재귀)
             return sum + unit * r.ratio / (r.yieldRate || 1);
           }, 0);
           if (blended > 0) { memo.set(item.id, blended); return blended; }
@@ -126,7 +139,8 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
     if (!hasAssembled) {
       for (const f of ctx.formulaOf(item.품목 || item.name)) {
         const kg = toKg(item.spec || '', f.raw, 1) * f.ratio;
-        if (kg > 0) total += kg * rawCostPerKg(f.raw, byRawName);
+        const src = byRawName.get(f.raw);
+        if (kg > 0) total += kg * rawCostPerKg(f.raw, byRawName) * (src ? vatUp(src, item) : 1);
       }
     }
     for (const s of subs) {
@@ -137,14 +151,21 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
       // 이제 낱개 BOM에 그것들을 안 둔다(박스 품목을 만들 때 그 BOM으로 잡힌다). BOM이 곧 구성이다.
       const q = bomQty(s);
       if (q <= 0) continue;                          // 테이프 등 0 = 원가 산입 안 함
-      total += q * cost(comp, s2);
+      total += q * cost(comp, s2) * vatUp(comp, item);
     }
     total += feeOf(item);
     memo.set(item.id, total);
     return total;
   };
 
-  const fn = ((item: Item) => cost(item, new Set<string>())) as CostFn;
-  fn.effective = (item: Item) => (item.cost != null && item.cost > 0 ? item.cost : fn(item));
+  /**
+   * 손으로 못 박은 품목은 그 값이 곧 원가다 — 계산이 실제와 안 맞을 때 쓰는 탈출구.
+   * 안 정했으면(기본) 롤업이 이긴다. 예전엔 저장값이 늘 우선이라 원료값이 올라도 안 따라왔다.
+   */
+  const rollup = (item: Item) => cost(item, new Set<string>());
+  const fn = ((item: Item) =>
+    (item.costSource === 'manual' && (item.cost ?? 0) > 0 ? item.cost! : rollup(item))) as CostFn;
+  fn.effective = fn;
+  fn.rollup = rollup;
   return fn;
 }

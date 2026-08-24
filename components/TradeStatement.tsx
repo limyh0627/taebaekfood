@@ -1556,7 +1556,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const priceChanged = !pc || pc.price !== item.price;
         const accountChanged = !!(item.accountCode && pc?.Account_Code !== item.accountCode);
         if (priceChanged || accountChanged) {
-          onUpsertPartnerItem({ ...(pc ?? {}), id: pcId, itemId: product.id, partnerId: selectedClientId, Direction: 'out' as const, price: item.price, taxType: pc?.taxType, Account_Code: item.accountCode || pc?.Account_Code });
+          //  전표에 찍힌 과세/면세를 거래처 단가와 **같이** 저장한다 — 예전엔 옛 값을 그대로
+        //  물려주기만 해서, 전표에서 면세로 끊어도 거래처엔 과세로 남아 다음 전표가 또 과세로 열렸다.
+        onUpsertPartnerItem({ ...(pc ?? {}), id: pcId, itemId: product.id, partnerId: selectedClientId, Direction: 'out' as const, price: item.price, taxType: item.isTaxExempt ? '면세' : '과세', Account_Code: item.accountCode || pc?.Account_Code });
         }
       }
     }
@@ -1571,7 +1573,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         if (!product || !selectedClientId) continue;
         const existing = partnerIn.find(s => (s.itemId) === product.id && (s.partnerId) === selectedClientId);
         const psId = existing?.id ?? `${product.id}_${selectedClientId}_in`;
-        onUpsertPartnerItem({ ...(existing ?? {}), id: psId, itemId: product.id, partnerId: selectedClientId, Direction: 'in' as const, price: item.price, taxType: existing?.taxType, Account_Code: item.accountCode || existing?.Account_Code });
+        //  전표에 찍힌 과세/면세를 거래처 단가와 **같이** 저장한다 — 예전엔 옛 값을 그대로
+        //  물려주기만 해서, 전표에서 면세로 끊어도 거래처엔 과세로 남아 다음 전표가 또 과세로 열렸다.
+        onUpsertPartnerItem({ ...(existing ?? {}), id: psId, itemId: product.id, partnerId: selectedClientId, Direction: 'in' as const, price: item.price, taxType: item.isTaxExempt ? '면세' : '과세', Account_Code: item.accountCode || existing?.Account_Code });
         onUpdateItemCost?.(product.id, item.price);
       }
     }
@@ -1637,7 +1641,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const existing = partnerIn.find(s => (s.itemId) === product.id && (s.partnerId) === selectedClientId);
         const psId = existing?.id ?? `${product.id}_${selectedClientId}_in`;
         // 가드 없이 항상 동기화 (구독 지연으로 인한 누락 방지)
-        onUpsertPartnerItem({ ...(existing ?? {}), id: psId, itemId: product.id, partnerId: selectedClientId, Direction: 'in' as const, price: item.price, taxType: existing?.taxType, Account_Code: item.accountCode || existing?.Account_Code });
+        //  전표에 찍힌 과세/면세를 거래처 단가와 **같이** 저장한다 — 예전엔 옛 값을 그대로
+        //  물려주기만 해서, 전표에서 면세로 끊어도 거래처엔 과세로 남아 다음 전표가 또 과세로 열렸다.
+        onUpsertPartnerItem({ ...(existing ?? {}), id: psId, itemId: product.id, partnerId: selectedClientId, Direction: 'in' as const, price: item.price, taxType: item.isTaxExempt ? '면세' : '과세', Account_Code: item.accountCode || existing?.Account_Code });
         onUpdateItemCost?.(product.id, item.price);
       }
     }

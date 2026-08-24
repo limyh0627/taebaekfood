@@ -498,6 +498,25 @@ const AdminApp: React.FC<AdminAppProps> = ({
   );
 
   /**
+   * 편집 중인 품목의 **롤업 원가** — 저장 전 초안(BOM·분류)을 그대로 반영해 보여준다.
+   * 출처가 '입력'인 품목도 계산값은 보여야 고를 수 있으므로 rollup()을 쓴다.
+   */
+  const rollupCostOf = useCallback((draft: Item, bomDraft?: { childId: string; qty: number }[]) => {
+    const src = allItems.some(i => i.id === draft.id)
+      ? allItems.map(i => (i.id === draft.id ? draft : i))
+      : [...allItems, draft];
+    const boms = bomDraft
+      ? [...itemBoms.filter(b => b.parent_id !== draft.id),
+         ...bomDraft.map(l => ({ id: `draft-${l.childId}`, parent_id: draft.id, child_id: l.childId, quantity: l.qty }))] as typeof itemBoms
+      : itemBoms;
+    return buildCostFn({
+      allItems: src, itemBoms: boms,
+      formulaOf: (k) => buildFormulaBom(k, itemFormulas, src),
+      formulaRowsOf: (k) => formulaRowsOf(k, itemFormulas),
+    }).rollup(draft);
+  }, [allItems, itemBoms, itemFormulas]);
+
+  /**
    * 원가 갱신 — 바뀐 품목의 cost를 저장하고, **그걸 재료로 쓰는 상위 품목 원가도 다시 굴려 저장**한다.
    * cost는 재고평가·스냅샷 등 여러 곳이 읽으므로 저장해두는데, 저장만 하면 원료 단가가 바뀌어도
    * 완제품 원가가 옛날 값에 굳는다. 그래서 바뀔 때마다 연쇄로 다시 계산한다.
@@ -4410,6 +4429,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           items={products}
           rawItems={allItems.filter(i => i.type === 'raw' || i.type === 'wip')}
           itemFormulas={itemFormulas}
+          rollupCostOf={rollupCostOf}
           onSaveItemFormula={async (parentKey, rows, prevKey) => {
             const batch = writeBatch(db);
             const keys = new Set([parentKey, prevKey].filter(Boolean) as string[]);

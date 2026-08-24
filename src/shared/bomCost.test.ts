@@ -84,11 +84,24 @@ describe('bomCost — buildCostFn', () => {
     expect(cost(참기름)).toBeCloseTo(expected, 2);
   });
 
-  it('effective: 저장 cost 우선, 없으면 롤업', () => {
-    const withCost = mk({ id: 'x', name: '완제품X', type: 'product', cost: 999, 품목: '시골향볶음참깨', spec: '1kg' });
-    const c = buildCostFn({ allItems: [...allItems, withCost], formulaOf, itemBoms });
-    expect(c.effective(withCost)).toBe(999);   // 저장값
-    expect(c.effective(낱개)).toBe(5100);        // 롤업
+  /**
+   * 원가 출처는 **품목이 정한다**(costSource). 예전엔 저장 cost가 0만 아니면 무조건 이겨서,
+   * 원료값이 올라도 완제품 원가가 옛 값에 굳었다.
+   */
+  it("costSource='manual'이면 손으로 넣은 값, 안 정하면 롤업", () => {
+    const 못박음 = mk({ id: 'x', name: '완제품X', type: 'product', cost: 999, costSource: 'manual', 품목: '시골향볶음참깨', spec: '1kg' });
+    const 그냥저장 = mk({ id: 'y', name: '완제품Y', type: 'product', cost: 999, 품목: '시골향볶음참깨', spec: '1kg' });
+    const c = buildCostFn({ allItems: [...allItems, 못박음, 그냥저장], formulaOf, itemBoms });
+    expect(c(못박음)).toBe(999);        // 못 박은 값
+    expect(c(그냥저장)).toBe(5100);      // 저장값이 있어도 롤업이 이긴다
+    expect(c(낱개)).toBe(5100);
+  });
+
+  it('rollup()은 못 박은 품목도 계산값을 준다 — 편집 화면의 토글이 쓴다', () => {
+    const 못박음 = mk({ id: 'x', name: '완제품X', type: 'product', cost: 999, costSource: 'manual', 품목: '시골향볶음참깨', spec: '1kg' });
+    const c = buildCostFn({ allItems: [...allItems, 못박음], formulaOf, itemBoms });
+    expect(c(못박음)).toBe(999);
+    expect(c.rollup(못박음)).toBe(5100);
   });
 
   it('가공비 hook 반영', () => {
@@ -165,5 +178,41 @@ describe('제조 반제품 — 수율을 나눈다', () => {
 
   it('원료식이 없는 매입 반제품은 저장 원가가 종단', () => {
     expect(c(수입들기름)).toBe(11467);
+  });
+});
+
+/**
+ * 면세 원료 → 과세품. 매입세액을 못 빼니 그만큼 원가에 얹힌다.
+ * 사장님 지적 — "통깨는 참깨가 면세고 통깨참기름은 과세여서 참깨에 1.1곱해서 해야할걸".
+ */
+describe('면세 원료 가산(×1.1)', () => {
+  const 참깨 = mk({ id: 'raw-참깨', name: '참깨', type: 'raw', unit: 'kg', cost: 4105, taxType: '면세' });
+  const 깨분 = mk({ id: 'raw-깨분', name: '깨분', type: 'raw', unit: 'kg', cost: 2970 });   // 과세
+  const 통깨참기름 = mk({ id: 'wip-통깨', name: '통깨참기름', type: 'wip', unit: 'L' });
+  const 깨분참기름 = mk({ id: 'wip-깨분', name: '깨분참기름', type: 'wip', unit: 'L' });
+  const ROWS: Record<string, { raw: string; ratio: number; yieldRate: number }[]> = {
+    통깨참기름: [{ raw: '참깨', ratio: 1, yieldRate: 0.48 }],
+    깨분참기름: [{ raw: '깨분', ratio: 1, yieldRate: 0.45 }],
+  };
+  const c = buildCostFn({
+    allItems: [참깨, 깨분, 통깨참기름, 깨분참기름], itemBoms: [],
+    formulaOf: () => [], formulaRowsOf: k => ROWS[k] ?? [],
+  });
+
+  it('면세 참깨는 1.1 얹어서 나눈다', () => {
+    expect(c(통깨참기름)).toBeCloseTo(4105 * 1.1 / 0.48, 0);
+  });
+
+  it('과세 원료는 그대로 — 매입세액을 빼니까', () => {
+    expect(c(깨분참기름)).toBeCloseTo(2970 / 0.45, 0);
+  });
+
+  it('면세품을 만들면 안 얹는다 — 뗄 세금이 없다', () => {
+    const 면세품 = mk({ id: 'wip-면세', name: '면세품', type: 'wip', taxType: '면세' });
+    const c2 = buildCostFn({
+      allItems: [참깨, 면세품], itemBoms: [], formulaOf: () => [],
+      formulaRowsOf: k => (k === '면세품' ? [{ raw: '참깨', ratio: 1, yieldRate: 0.5 }] : []),
+    });
+    expect(c2(면세품)).toBeCloseTo(4105 / 0.5, 0);
   });
 });

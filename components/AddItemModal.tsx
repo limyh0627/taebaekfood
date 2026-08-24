@@ -20,6 +20,8 @@ interface ProductModalProps {
   rawItems?: Item[];
   itemFormulas?: import('../src/shared/types').ItemFormula[];
   onSaveItemFormula?: (parentKey: string, rows: { child_name: string; yield_rate: number; ratio: number }[], prevKey?: string) => Promise<void>;
+  /** 편집 중인 초안 기준 롤업 원가 — 원가 토글이 계산값을 보여주는 데 쓴다. */
+  rollupCostOf?: (draft: Item, bomDraft?: BomDraftLine[]) => number;
 }
 
 const CAT_NORM: Record<string, string> = {
@@ -65,7 +67,7 @@ const PUMOK_VOLUMES: Record<string, string[]> = {
   '시골향볶음검정참깨': ['1kg','20kg','25kg'],
 };
 
-const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], items, partners = [], partnerItems, onClose, onSave, onUpsertPartnerItem, onDeletePartnerItem, onAddSubmaterial, rawItems = [], itemFormulas = [], onSaveItemFormula }) => {
+const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], items, partners = [], partnerItems, onClose, onSave, onUpsertPartnerItem, onDeletePartnerItem, onAddSubmaterial, rawItems = [], itemFormulas = [], onSaveItemFormula, rollupCostOf }) => {
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
   const partnerIn = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
 
@@ -91,6 +93,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     품목: initialData?.품목 || '',
     isSmartStore: initialData?.isSmartStore ?? false,
     phantom: initialData?.phantom ?? false,
+    //  원가 출처 — 안 정했으면 롤업이 기본이다(구성·원료식에서 계산).
+    costSource: (initialData?.costSource ?? 'rollup') as 'rollup' | 'manual',
+    taxType: (initialData?.taxType ?? '과세') as '과세' | '면세',
     partnerIds: initialData?.partnerIds ?? (initialData?.partnerId ? [initialData.partnerId] : []),
     inPartnerIds: partnerIn
       .filter(pi => pi.itemId === initialData?.id)
@@ -276,6 +281,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       ...(formData.type === 'product' && formData.partnerIds.length > 0 && { partnerIds: formData.partnerIds }),
       ...(formData.type === 'product' && { isSmartStore: formData.isSmartStore }),
       ...((formData.type === 'wip' || formData.type === 'raw') && { phantom: !!formData.phantom }),
+      costSource: formData.costSource,
+      taxType: formData.taxType,
     };
 
     /**
@@ -467,20 +474,67 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             />
           </div>
 
-          {/* 원가 (수동 입력 — 매입전표 발행 시 자동 갱신되지만 직접 입력도 가능) */}
+          {/* 원가 — 롤업(구성·원료식에서 계산) / 입력단가(손으로 못 박기) 중 고른다 */}
+          {(() => {
+            const draft = { ...(initialData ?? {}), id: initialData?.id ?? 'draft', name: formData.name, type: formData.type, category: formData.category, subtype: formData.subtype, spec: formData.spec, 품목: formData.품목, taxType: formData.taxType, cost: formData.cost, costSource: 'rollup' } as unknown as Item;
+            const bomDraft = formData.submaterials.map(sm => ({ childId: sm.id, qty: typeof sm.stock === 'number' ? sm.stock : 1 }));
+            const rolled = rollupCostOf ? Math.round(rollupCostOf(draft, bomDraft) * 100) / 100 : 0;
+            const manual = formData.costSource === 'manual';
+            return (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
+                    <Box size={14} className="mr-2" /> 원가 (원)
+                  </label>
+                  <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
+                    {([['rollup', '롤업'], ['manual', '입력단가']] as const).map(([v, label]) => (
+                      <button key={v} type="button"
+                        onClick={() => setFormData(fd => ({ ...fd, costSource: v, ...(v === 'manual' && !fd.cost ? { cost: rolled } : {}) }))}
+                        className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${formData.costSource === v ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {manual ? (
+                  <input
+                    type="number"
+                    min={0}
+                    value={formData.cost === 0 ? '' : formData.cost}
+                    onChange={(e) => setFormData({ ...formData, cost: e.target.value === '' ? 0 : Number(e.target.value) })}
+                    placeholder="매입원가 직접 입력 (예: 380)"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                  />
+                ) : (
+                  <div className="w-full bg-slate-100/70 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-black text-slate-600 flex items-center justify-between">
+                    <span>{rolled > 0 ? rolled.toLocaleString() : '—'}</span>
+                    <span className="text-[10px] font-bold text-slate-400">계산값</span>
+                  </div>
+                )}
+                <p className="text-[11px] text-slate-400">
+                  {manual
+                    ? `손으로 넣은 값을 씁니다. 구성·원료식으로 계산하면 ${rolled > 0 ? rolled.toLocaleString() + '원' : '값이 안 나옵니다'}.`
+                    : '구성(BOM)·원료식에서 계산합니다. 원료값이 바뀌면 따라옵니다.'}
+                </p>
+              </div>
+            );
+          })()}
+
+          {/* 과세 · 면세 — 면세 원료로 과세품을 만들면 매입세액을 못 빼 원가에 얹힌다(×1.1) */}
           <div className="space-y-2">
             <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-              <Box size={14} className="mr-2" /> 원가 (원)
+              <Tag size={14} className="mr-2" /> 과세 구분
             </label>
-            <input
-              type="number"
-              min={0}
-              value={formData.cost === 0 ? '' : formData.cost}
-              onChange={(e) => setFormData({...formData, cost: e.target.value === '' ? 0 : Number(e.target.value)})}
-              placeholder="매입원가 직접 입력 (예: 380)"
-              className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-            />
-            <p className="text-[11px] text-slate-400">매입전표 발행/수정 시 자동 갱신됩니다. 직접 입력도 가능.</p>
+            <div className="flex gap-1.5">
+              {(['과세', '면세'] as const).map(v => (
+                <button key={v} type="button"
+                  onClick={() => setFormData(fd => ({ ...fd, taxType: v }))}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-black border transition-all ${formData.taxType === v ? 'bg-indigo-600 border-indigo-600 text-white shadow' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'}`}>
+                  {v}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-400">면세 원료(참깨·들깨 등)로 과세품을 만들면 매입세액을 못 빼 원가에 10%가 얹힙니다.</p>
           </div>
 
 
