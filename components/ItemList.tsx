@@ -31,6 +31,7 @@ import {
   Factory,
   Plus,
   Layers,
+  ChevronDown,
 } from 'lucide-react';
 import { Item, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, PartnerItem } from '../types';
 import { PurchaseOrder, poLines } from '../src/shared/types';
@@ -230,6 +231,40 @@ const CLIENT_BADGE_COLORS = [
   'bg-indigo-50 text-indigo-500',
 ];
 type MainTab = 'requests' | 'history' | 'master' | 'inbound' | 'lots';
+
+/**
+ * 필터 드롭다운 하나 — 라벨 + 고른 값 요약 + 펼치면 선택지.
+ *
+ * 예전엔 분류·용량·거래처·재고를 '필터' 버튼 **하나** 안에 다 넣었다. 무엇으로 걸렀는지
+ * 열어봐야 알았고, 조건 하나 바꾸려면 패널을 열고 찾고 닫았다. 전표관리처럼 **따로 세운다.**
+ * 목록 높이는 고정이다 — 검색으로 줄 수가 줄어도 창이 흔들리면 안 된다.
+ */
+const FilterDrop: React.FC<{
+  label: string;
+  summary: string;
+  active: boolean;
+  width?: string;
+  children: (close: () => void) => React.ReactNode;
+}> = ({ label, summary, active, width = 'w-[280px]', children }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className={`flex items-center gap-1.5 border rounded-xl px-2.5 py-2 text-[11px] font-black bg-white outline-none transition-all max-w-[220px] ${
+          active ? 'border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-500 hover:border-slate-400'}`}>
+        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest shrink-0">{label}</span>
+        <span className="truncate">{summary}</span>
+        <ChevronDown size={12} className="shrink-0 opacity-50"/>
+      </button>
+      {open && (<>
+        <div className="fixed inset-0 z-30" onClick={() => setOpen(false)}/>
+        <div className={`absolute left-0 top-full mt-1.5 z-40 ${width} max-w-[90vw] bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden`}>
+          {children(() => setOpen(false))}
+        </div>
+      </>)}
+    </div>
+  );
+};
 type InboundSubTab = '입고' | '반품';
 //  상단 탭 = 품목 **타입 키** 그대로. 예전엔 finished/rawmaterial 같은 별칭을 따로 뒀는데
 //  분류 관리에서 타입을 숨기거나 이름을 바꿔도 안 따라오고, 매핑 표만 늘었다.
@@ -800,6 +835,8 @@ const ItemList: React.FC<ItemListProps> = ({
   const [makeCat, setMakeCat] = useState<string>('참기름');
   const [makeVessel, setMakeVessel] = useState('');   // 품목추가 용량 필터(180/300/350/1750/1800)
   const [makeGrade, setMakeGrade] = useState('');     // 품목추가 등급 필터(골드/A/분/특A)
+  const [makePartner, setMakePartner] = useState('');  // 품목추가 거래처 필터(매출처 이름)
+  const [makePartnerQ, setMakePartnerQ] = useState('');
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 24;
 
@@ -1159,126 +1196,113 @@ const ItemList: React.FC<ItemListProps> = ({
               </div>
             )}
 
-            {/* 필터 버튼 — 켜진 개수를 배지로. 누르면 아래 패널이 열린다. */}
-            <div className="relative">
-              <button
-                onClick={() => setFilterOpen(o => !o)}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-[11px] font-black transition-all ${filterOpen || activeFilterCount > 0 ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
-              >
-                <LayoutGrid size={13} />필터
-                {activeFilterCount > 0 && (
-                  <span className="w-4 h-4 flex items-center justify-center rounded-full bg-indigo-600 text-white text-[9px]">{activeFilterCount}</span>
-                )}
-              </button>
-
-              {filterOpen && (
-                <>
-                  {/* 바깥을 눌러 닫기 */}
-                  <div className="fixed inset-0 z-30" onClick={() => setFilterOpen(false)} />
-                  <div className="absolute left-0 top-full mt-2 z-40 w-[22rem] max-w-[90vw] bg-white rounded-2xl border border-slate-200 shadow-xl p-3 space-y-3 max-h-[70vh] overflow-y-auto custom-scrollbar">
-                    {/* 분류 — 여러 개 고를 수 있다 */}
-                    {subCategories.length > 0 && (
-                      <div>
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">분류</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {subCategories.map(c => {
-                            const on = catSel.has(c.id);
-                            return (
-                              <button key={c.id} onClick={() => toggleIn(setCatSel, c.id)}
-                                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-all ${on ? 'bg-slate-700 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-400'}`}
-                              >{c.label}</button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 용량 — 같은 품목이 규격만 다르게 여럿이라 분류만으로는 못 좁힌다 */}
-                    {specOptions.length > 0 && (
-                      <div>
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">용량</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {specOptions.map(sp => {
-                            const on = specSel.has(sp);
-                            return (
-                              <button key={sp} onClick={() => toggleIn(setSpecSel, sp)}
-                                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-all tabular-nums ${on ? 'bg-sky-600 border-sky-600 text-white' : 'bg-white border-slate-200 text-slate-400 hover:border-sky-300'}`}
-                              >{sp}</button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 매입거래처 — 수가 많아 전부 늘어놓지 않고 검색해서 고른다.
-                        완제품은 우리가 만드는 것이라 매입처가 없다. */}
-                    {topTab !== 'finished' && inboundPartners.length > 0 && (
-                      <div>
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">매입거래처</p>
-                        {/* 고른 거래처는 위에 남겨 검색어를 지워도 안 사라지게 */}
-                        {supSel.size > 0 && (
-                          <div className="flex flex-wrap gap-1.5 mb-1.5">
-                            {[...supSel].map(id => (
-                              <button key={id} onClick={() => toggleIn(setSupSel, id)}
-                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-orange-500 text-[11px] font-black text-white">
-                                {inboundPartnerMap.get(id)?.name ?? id}<X size={11} />
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        <div className="relative">
-                          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300" />
-                          <input
-                            value={supQuery} onChange={e => setSupQuery(e.target.value)}
-                            placeholder="거래처 검색"
-                            className="w-full pl-8 pr-2 py-2 rounded-lg border border-slate-200 text-[11px] font-bold placeholder:text-slate-300 focus:outline-none focus:border-orange-300"
-                          />
-                        </div>
-                        {supQuery.trim() && (
-                          <div className="mt-1.5 max-h-40 overflow-y-auto custom-scrollbar rounded-lg border border-slate-100">
-                            {inboundPartners
-                              .filter(sp => sp.name.toLowerCase().includes(supQuery.trim().toLowerCase()))
-                              .slice(0, 30)
-                              .map(sp => (
-                                <button key={sp.id} onClick={() => { toggleIn(setSupSel, sp.id); setSupQuery(''); }}
-                                  className={`w-full text-left px-2.5 py-1.5 text-[11px] font-black transition-colors ${supSel.has(sp.id) ? 'text-orange-600 bg-orange-50' : 'text-slate-500 hover:bg-slate-50'}`}
-                                >{sp.name}</button>
-                              ))}
-                            {inboundPartners.every(sp => !sp.name.toLowerCase().includes(supQuery.trim().toLowerCase())) && (
-                              <p className="px-2.5 py-2 text-[11px] font-bold text-slate-300">해당 거래처 없음</p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* 재고 — 성격상 하나만 고른다 */}
-                    <div>
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">재고</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {([
-                          { id: 'all', label: '전체', on: !stockOnly && !zeroStockOnly, cls: 'bg-slate-700 border-slate-700' },
-                          { id: 'has', label: '재고 있음', on: stockOnly, cls: 'bg-emerald-600 border-emerald-600' },
-                          { id: 'low', label: '최소수량 미만', on: zeroStockOnly, cls: 'bg-rose-600 border-rose-600' },
-                        ] as const).map(f => (
-                          <button key={f.id}
-                            onClick={() => { setStockOnly(f.id === 'has'); setZeroStockOnly(f.id === 'low'); }}
-                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-all ${f.on ? `${f.cls} text-white` : 'bg-white border-slate-200 text-slate-400 hover:border-slate-400'}`}
-                          >{f.label}</button>
-                        ))}
-                      </div>
+            {/* 분류·용량·거래처·재고를 각각 세운다 — 무엇으로 걸렀는지 열어보지 않아도 보인다. */}
+            {subCategories.length > 0 && (
+              <FilterDrop label="분류" active={catSel.size > 0}
+                summary={catSel.size === 0 ? '전체' : catSel.size === 1 ? [...catSel][0] : `${[...catSel][0]} 외 ${catSel.size - 1}`}>
+                {() => (
+                  <div className="p-2.5">
+                    <div className="flex flex-wrap gap-1.5">
+                      {subCategories.map(c => {
+                        const on = catSel.has(c.id);
+                        return (
+                          <button key={c.id} onClick={() => toggleIn(setCatSel, c.id)}
+                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-all ${on ? 'bg-slate-700 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-400'}`}
+                          >{c.label}</button>
+                        );
+                      })}
                     </div>
-
-                    <div className="flex items-center justify-between pt-1 border-t border-slate-100">
-                      <span className="text-[10px] font-bold text-slate-400">{filteredProducts.length}개 표시 중</span>
-                      <button onClick={clearFilters} disabled={activeFilterCount === 0}
-                        className="px-3 py-1.5 rounded-lg text-[11px] font-black text-slate-500 hover:bg-slate-100 disabled:opacity-30 transition-colors"
-                      >모두 해제</button>
-                    </div>
+                    {catSel.size > 0 && (
+                      <button onClick={() => setCatSel(new Set())}
+                        className="mt-2 w-full py-1.5 rounded-lg text-[11px] font-black text-slate-400 hover:bg-slate-50">필터 해제</button>
+                    )}
                   </div>
-                </>
+                )}
+              </FilterDrop>
+            )}
+
+            {specOptions.length > 0 && (
+              <FilterDrop label="용량" active={specSel.size > 0}
+                summary={specSel.size === 0 ? '전체' : specSel.size === 1 ? [...specSel][0] : `${[...specSel][0]} 외 ${specSel.size - 1}`}>
+                {() => (
+                  <div className="p-2.5">
+                    {/* 같은 품목이 규격만 다르게 여럿이라 분류만으로는 못 좁힌다 */}
+                    <div className="flex flex-wrap gap-1.5 max-h-[220px] overflow-y-auto">
+                      {specOptions.map(sp => {
+                        const on = specSel.has(sp);
+                        return (
+                          <button key={sp} onClick={() => toggleIn(setSpecSel, sp)}
+                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-all tabular-nums ${on ? 'bg-sky-600 border-sky-600 text-white' : 'bg-white border-slate-200 text-slate-400 hover:border-sky-300'}`}
+                          >{sp}</button>
+                        );
+                      })}
+                    </div>
+                    {specSel.size > 0 && (
+                      <button onClick={() => setSpecSel(new Set())}
+                        className="mt-2 w-full py-1.5 rounded-lg text-[11px] font-black text-slate-400 hover:bg-slate-50">필터 해제</button>
+                    )}
+                  </div>
+                )}
+              </FilterDrop>
+            )}
+
+            {/* 매입거래처 — 완제품은 우리가 만드는 것이라 매입처가 없다. 수가 많아 검색으로 고른다. */}
+            {topTab !== 'product' && inboundPartners.length > 0 && (
+              <FilterDrop label="거래처" active={supSel.size > 0}
+                summary={supSel.size === 0 ? '전체' : supSel.size === 1 ? (inboundPartnerMap.get([...supSel][0])?.name ?? '1곳') : `${supSel.size}곳`}>
+                {() => (
+                  <>
+                    <div className="p-2 border-b border-slate-100">
+                      <div className="relative">
+                        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300" />
+                        <input value={supQuery} onChange={e => setSupQuery(e.target.value)} placeholder="거래처 검색"
+                          className="w-full pl-8 pr-2 py-1.5 rounded-lg border border-slate-200 text-[11px] font-bold placeholder:text-slate-300 focus:outline-none focus:border-orange-300"/>
+                      </div>
+                    </div>
+                    <div className="h-[240px] overflow-y-auto py-1">
+                      {supSel.size > 0 && (
+                        <button onClick={() => setSupSel(new Set())}
+                          className="w-full text-left px-3 py-1.5 text-[11px] font-black text-slate-400 hover:bg-slate-50">필터 해제</button>
+                      )}
+                      {inboundPartners
+                        .filter(sp => !supQuery.trim() || sp.name.toLowerCase().includes(supQuery.trim().toLowerCase()))
+                        .map(sp => (
+                          <button key={sp.id} onClick={() => toggleIn(setSupSel, sp.id)}
+                            className={`w-full text-left px-3 py-1.5 text-[11px] font-black transition-colors ${supSel.has(sp.id) ? 'text-orange-600 bg-orange-50' : 'text-slate-500 hover:bg-slate-50'}`}
+                          >{sp.name}</button>
+                        ))}
+                      {inboundPartners.every(sp => supQuery.trim() && !sp.name.toLowerCase().includes(supQuery.trim().toLowerCase())) && (
+                        <p className="px-3 py-6 text-center text-[11px] font-bold text-slate-300">해당 거래처 없음</p>
+                      )}
+                    </div>
+                  </>
+                )}
+              </FilterDrop>
+            )}
+
+            <FilterDrop label="재고" width="w-[200px]" active={stockOnly || zeroStockOnly}
+              summary={stockOnly ? '재고 있음' : zeroStockOnly ? '최소수량 미만' : '전체'}>
+              {close => (
+                <div className="p-2.5 flex flex-col gap-1.5">
+                  {/* 성격상 하나만 고른다 */}
+                  {([
+                    { id: 'all', label: '전체', on: !stockOnly && !zeroStockOnly, cls: 'bg-slate-700 border-slate-700' },
+                    { id: 'has', label: '재고 있음', on: stockOnly, cls: 'bg-emerald-600 border-emerald-600' },
+                    { id: 'low', label: '최소수량 미만', on: zeroStockOnly, cls: 'bg-rose-600 border-rose-600' },
+                  ] as const).map(f => (
+                    <button key={f.id}
+                      onClick={() => { setStockOnly(f.id === 'has'); setZeroStockOnly(f.id === 'low'); close(); }}
+                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-all ${f.on ? `${f.cls} text-white` : 'bg-white border-slate-200 text-slate-400 hover:border-slate-400'}`}
+                    >{f.label}</button>
+                  ))}
+                </div>
               )}
-            </div>
+            </FilterDrop>
+
+            {activeFilterCount > 0 && (
+              <button onClick={clearFilters}
+                className="px-2.5 py-2 rounded-xl text-[11px] font-black text-slate-400 hover:bg-slate-100 transition-colors">모두 해제</button>
+            )}
 
             {/* 켜진 필터를 칩으로 — 패널을 안 열어도 무엇이 걸렸는지 보이고, 눌러서 바로 뗀다 */}
             {[...catSel].map(c => (
@@ -2728,9 +2752,14 @@ const ItemList: React.FC<ItemListProps> = ({
         const makeTokens = parseSearchTokens(kw);
         const matchMake = (p: Item) => {
           const partnerStr = salesPartnerNames.get(p.id) ?? '';
+          //  거래처를 고르면 그 거래처에 물린 품목만 — 검색과 달리 '고른 값'이라 정확히 견준다.
+          if (makePartner && !partnerStr.split(' ').includes(makePartner)) return false;
           return makeTokens.every(t =>
             matchesSearch(withSpec(p), t) || matchesSearch(p.품목 ?? '', t) || matchesSearch(partnerStr, t));
         };
+        //  고를 수 있는 거래처 — 지금 목록에 실제로 걸린 이름만.
+        const makePartnerNames = [...new Set(base.flatMap(p => (salesPartnerNames.get(p.id) ?? '').split(' ').filter(Boolean)))]
+          .sort((a, b) => a.localeCompare(b, 'ko'));
         // 순서는 건드리지 않는다 — 수량 넣었다고 목록이 움직이면 이어서 못 적는다.
         // 검색 중엔 분류 탭만 무시한다(거래처로 찾으면 다른 분류 품목도 나와야 한다).
         // 용량·등급은 검색 중에도 그대로 살려 둔다 — 검색하면 사라져 버려 다시 좁힐 수가 없었다.
@@ -2788,6 +2817,35 @@ const ItemList: React.FC<ItemListProps> = ({
                   </button>
                 ))}
               </div>
+
+              {/* 거래처 — 분류·용량과 나란히. 어느 거래처 것을 만드는지로 먼저 좁히는 일이 많다. */}
+              {makePartnerNames.length > 0 && (
+                <div className="px-5 pt-2 shrink-0">
+                  <FilterDrop label="거래처" active={!!makePartner} summary={makePartner || '전체'}>
+                    {close => (<>
+                      <div className="p-2 border-b border-slate-100">
+                        <div className="relative">
+                          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300" />
+                          <input autoFocus value={makePartnerQ} onChange={e => setMakePartnerQ(e.target.value)} placeholder="거래처 검색"
+                            className="w-full pl-8 pr-2 py-1.5 rounded-lg border border-slate-200 text-[11px] font-bold placeholder:text-slate-300 focus:outline-none focus:border-indigo-300"/>
+                        </div>
+                      </div>
+                      <div className="h-[240px] overflow-y-auto py-1">
+                        {makePartner && (
+                          <button onClick={() => { setMakePartner(''); close(); }}
+                            className="w-full text-left px-3 py-1.5 text-[11px] font-black text-slate-400 hover:bg-slate-50">필터 해제</button>
+                        )}
+                        {makePartnerNames
+                          .filter(n => !makePartnerQ.trim() || n.toLowerCase().includes(makePartnerQ.trim().toLowerCase()))
+                          .map(n => (
+                            <button key={n} onClick={() => { setMakePartner(n); close(); }}
+                              className={`w-full text-left px-3 py-1.5 text-[11px] font-black transition-colors ${makePartner === n ? 'text-indigo-600 bg-indigo-50' : 'text-slate-500 hover:bg-slate-50'}`}>{n}</button>
+                          ))}
+                      </div>
+                    </>)}
+                  </FilterDrop>
+                </div>
+              )}
 
               {/* 용량·등급 필터 — 가로 스크롤 한 줄로 모바일 정리 */}
               {(vesselOpts.length > 1 || showGrade) && (
