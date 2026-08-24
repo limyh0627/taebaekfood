@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { matchesSearch } from '../src/shared/hangul';
 import { Plus, Edit, Search, Trash2, LayoutGrid, Link, X, Copy, ChevronDown, ChevronUp, ChevronRight, GitMerge, Save, Settings, Store, Package, User, Truck, ChevronLeft } from 'lucide-react';
 import { Item, InventoryCategory, Partner, PartnerItem, ItemBom, SubmaterialComponent } from '../types';
 import ConfirmModal from './ConfirmModal';
@@ -63,19 +64,8 @@ const sortSubs = (subs: BomLine[], rankOf: (l: BomLine) => number) =>
   [...subs].sort((a, b) => rankOf(a) - rankOf(b));
 
 // ── 한글 초성 검색 ──
-const CHOSUNG = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
-const toChosung = (s: string) => [...s].map(ch => {
-  const code = ch.charCodeAt(0) - 0xAC00;
-  return (code >= 0 && code <= 11171) ? CHOSUNG[Math.floor(code / 588)] : ch;
-}).join('');
-// 이름에 검색어가 포함되거나, 검색어가 전부 초성이면 이름 초성열에서 매칭
-const matchKo = (name: string, query: string) => {
-  const q = query.trim();
-  if (!q) return true;
-  if (name.toLowerCase().includes(q.toLowerCase())) return true;
-  if ([...q].every(ch => CHOSUNG.includes(ch))) return toChosung(name).includes(q);
-  return false;
-};
+//  초성·겹자음 처리는 shared/hangul 하나뿐이다 — 복사본을 두면 화면마다 다르게 찾는다.
+const matchKo = (name: string, q: string) => matchesSearch(name, q);
 
 const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems = [], itemBoms = [], onEditProduct, onAddItem, onDeleteItem, onLinkItem, onUnlinkItem, onLinkSupplier, onUnlinkSupplier, onMergeItems, onSaveItemCustomer, onUpsertPartnerItem, onCreateBoxItem, isAdmin = true }) => {
   // ── 박스 품목 만들기 ──

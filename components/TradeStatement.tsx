@@ -1,5 +1,6 @@
 ﻿
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
+import { matchesSearch } from '../src/shared/hangul';
 import {
   FileText, Printer, Search, ChevronDown, CalendarDays,
   Package, ClipboardList, ChevronRight, CheckCircle2, Edit2, Plus, X, ArrowLeft,
@@ -106,18 +107,7 @@ const STATUS_COLOR: Record<string, string> = {
 const ACTIVE_STATUSES = new Set([OrderStatus.PENDING, OrderStatus.PROCESSING, OrderStatus.DISPATCHED, OrderStatus.SHIPPED]);
 
 // 초성 검색: 한글 이름의 초성 추출 + 매칭(부분일치 or 초성일치)
-const CHOSUNG = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
-const toChosung = (s: string) => [...s].map(ch => {
-  const c = ch.charCodeAt(0) - 0xAC00;
-  return (c >= 0 && c <= 11171) ? CHOSUNG[Math.floor(c / 588)] : ch;
-}).join('');
-const matchKo = (name: string, q: string) => {
-  const query = q.trim();
-  if (!query) return true;
-  if (name.toLowerCase().includes(query.toLowerCase())) return true;
-  if (/^[ㄱ-ㅎ]+$/.test(query)) return toChosung(name).includes(query);
-  return false;
-};
+const matchKo = (name: string, q: string) => matchesSearch(name, q);
 
 /** 분류 대분류 색 — Tailwind은 클래스명을 조립하면 못 알아보므로 정적 문자열로 둔다 */
 const AXIS_CLS: Record<string, string> = {
@@ -976,7 +966,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const acctShown = useMemo(() => {
     const q = acctQuery.trim().toLowerCase();
     //  검색은 층을 무시하고 전부 뒤진다 — 이름을 아는 계정은 두 번 안 눌러도 나와야 한다.
-    if (q) return accountItems.filter(i => i.label.toLowerCase().includes(q) || i.path.toLowerCase().includes(q));
+    if (q) return accountItems.filter(i => matchesSearch(i.label, q) || matchesSearch(i.path, q));
     if (!acctAxis || !acctBranch) return [];
     return accountItems.filter(i => i.axis === acctAxis && i.branch === acctBranch);
   }, [accountItems, acctQuery, acctAxis, acctBranch]);
@@ -2406,8 +2396,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             : row.kind === 'stmt'
               ? (row.data.items ?? []).map(i => `${i.accountCode ?? ''} ${codeName.get(i.accountCode ?? '') ?? ''} ${i.name ?? ''}`).join(' ')
               : '';
-          if (!name.toLowerCase().includes(q) && !docNo.includes(q)
-            && !note.toLowerCase().includes(q) && !acctText.toLowerCase().includes(q)) return false;
+          if (!matchesSearch(name, q) && !docNo.includes(q)
+            && !matchesSearch(note, q) && !matchesSearch(acctText, q)) return false;
         }
         return true;
       })
@@ -2439,7 +2429,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   }, [allTimelineRows]);
   const partnerShown = useMemo(() => {
     const q = partnerQuery.trim().toLowerCase();
-    return q ? histPartnerNames.filter(n => n.toLowerCase().includes(q)) : histPartnerNames;
+    return q ? histPartnerNames.filter(n => matchesSearch(n, q)) : histPartnerNames;
   }, [histPartnerNames, partnerQuery]);
   const historyTotalPages = Math.max(1, Math.ceil(filteredHistory.length / HIST_PAGE_SIZE));
   const pagedHistory = useMemo(() => {
@@ -5472,11 +5462,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 const q = quickName.toLowerCase();
                 const partnerMatches = searchableRows.filter(r => {
                   const docN = r.product!.name.toLowerCase();
-                  return docN.includes(q) || r.product!.name.toLowerCase().includes(q);
+                  return matchesSearch(docN, q) || matchesSearch(r.product!.name, q);
                 });
                 if (partnerMatches.length > 0) return partnerMatches;
                 return allItems
-                  .filter(p => !isBoxStockItem(p) && (p.name + ' ' + (p.품목 ?? '')).toLowerCase().includes(q))
+                  .filter(p => !isBoxStockItem(p) && matchesSearch(p.name + ' ' + (p.품목 ?? ''), q))
                   .map(p => {
                     const existingPc = partnerOut.find(pc => pc.itemId === p.id && pc.partnerId === selectedClientId);
                     return {
@@ -5575,7 +5565,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               const q=pickerSearch.trim().toLowerCase();
               const filtered = !q
                 ? searchableRows
-                : pickerRows.filter(r=>((r.product!.name)+' '+(r.product!.품목??'')).toLowerCase().includes(q));
+                : pickerRows.filter(r=>matchesSearch((r.product!.name)+' '+(r.product!.품목??''), q));
               const confirmPick = () => {
                 const toAdd: ManualRow[] = [];
                 for (const [itemId,qtyStr] of Object.entries(pickerQtys)) {
@@ -5748,12 +5738,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                           const searchResults = ro ? [] : (() => {
                             if (!row.name.trim()) return [] as typeof searchableRows;
                             const qq = row.name.toLowerCase();
-                            const linked = searchableRows.filter(r => r.product!.name.toLowerCase().includes(qq));
+                            const linked = searchableRows.filter(r => matchesSearch(r.product!.name, qq));
                             if (linked.length > 0) return linked;
                             // 거래처에 등록 안 된 품목도 전체에서 검색 (반제품·원료·부자재 포함)
                             const src = createMode === '매입' ? partnerIn : partnerOut;
                             return allItems
-                              .filter(p => !isBoxStockItem(p) && (p.name + ' ' + (p.품목 ?? '')).toLowerCase().includes(qq))
+                              .filter(p => !isBoxStockItem(p) && matchesSearch(p.name + ' ' + (p.품목 ?? ''), qq))
                               .map(p => {
                                 const ex = src.find(pc => (pc.itemId) === p.id && (pc.partnerId) === selectedClientId);
                                 return { pc: { id: ex?.id ?? p.id, itemId: p.id, partnerId: selectedClientId, price: ex?.price ?? ex?.price ?? p.price, taxType: ex?.taxType }, product: p };

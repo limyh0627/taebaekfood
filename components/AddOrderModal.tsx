@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { matchesSearch } from '../src/shared/hangul';
 import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, LayoutGrid, Layers } from 'lucide-react';
 import { Item, PartnerItem, OrderItem, Order, Partner, OrderSource, OrderPallet, PalletStock } from '../types';
 import { bomQty } from '../src/shared/bom';
@@ -34,13 +35,9 @@ const COMPOUND_MAP: Record<string, string> = {
 const decompound = (str: string): string =>
   str.split('').map(c => COMPOUND_MAP[c] ?? c).join('');
 
-const matchClient = (name: string, query: string): boolean => {
-  const q = query.trim();
-  if (!q) return false;
-  const isChosung = /^[ㄱ-ㅎ]+$/.test(q);
-  if (isChosung) return getChosung(name).includes(decompound(q));
-  return name.toLowerCase().includes(q.toLowerCase());
-};
+//  초성·겹자음 처리는 shared/hangul 하나뿐이다. 빈 검색어는 '아무도 아님'으로 본다(거래처 고르기).
+const matchClient = (name: string, query: string): boolean =>
+  !!query.trim() && matchesSearch(name, query);
 
 const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerItems, palletStocks, submaterials: _submaterials, onClose, onSave }) => {
   const products = items;

@@ -1223,20 +1223,23 @@ const ItemList: React.FC<ItemListProps> = ({
         )}
 
         {/* ── 서브타입 — 타입을 누르면 그 아래로 펼쳐지는 단계. 항상 보이는 건 이것뿐이고,
-            나머지 조건(분류·거래처·재고)은 '필터' 버튼 안에서 골라 담는다. ── */}
+            서브타입·분류·용량·거래처·재고를 나란히 세운다. ── */}
         {activeTab !== 'inbound' && activeTab !== 'lots' && (
           <div className="flex items-center gap-2 flex-wrap">
+            {/* 서브타입·분류·용량·거래처·재고를 각각 세운다 — 무엇으로 걸렀는지 열어보지 않아도 보인다. */}
             {subtypeTabs.length > 0 && (
-              <div className="flex items-center gap-1 bg-slate-100/70 p-1 rounded-xl border border-slate-200">
-                {['전체', ...subtypeTabs].map(s => (
-                  <button key={s} onClick={() => setActiveSubtype(s)}
-                    className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${activeSubtype === s ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                  >{s}</button>
-                ))}
-              </div>
+              <FilterDrop label="서브타입" active={activeSubtype !== '전체'} summary={activeSubtype}>
+                {close => (
+                  <div className="max-h-[280px] overflow-y-auto py-1">
+                    {['전체', ...subtypeTabs].map(v => (
+                      <FilterRow key={v} on={activeSubtype === v}
+                        onClick={() => { setActiveSubtype(v); close(); }}>{v}</FilterRow>
+                    ))}
+                  </div>
+                )}
+              </FilterDrop>
             )}
 
-            {/* 분류·용량·거래처·재고를 각각 세운다 — 무엇으로 걸렀는지 열어보지 않아도 보인다. */}
             {subCategories.length > 0 && (
               <FilterDrop label="분류" active={catSel.size > 0}
                 summary={catSel.size === 0 ? '전체' : catSel.size === 1 ? [...catSel][0] : `${[...catSel][0]} 외 ${catSel.size - 1}`}>
@@ -1295,12 +1298,12 @@ const ItemList: React.FC<ItemListProps> = ({
                           className="w-full text-left px-3 py-1.5 text-[11px] font-black text-slate-400 hover:bg-slate-50">필터 해제</button>
                       )}
                       {inboundPartners
-                        .filter(sp => !supQuery.trim() || sp.name.toLowerCase().includes(supQuery.trim().toLowerCase()))
+                        .filter(sp => matchesSearch(sp.name, supQuery))
                         .map(sp => (
                           <FilterRow key={sp.id} on={supSel.has(sp.id)} onClick={() => toggleIn(setSupSel, sp.id)}
                             tone="text-orange-600 bg-orange-50">{sp.name}</FilterRow>
                         ))}
-                      {inboundPartners.every(sp => supQuery.trim() && !sp.name.toLowerCase().includes(supQuery.trim().toLowerCase())) && (
+                      {inboundPartners.every(sp => supQuery.trim() && !matchesSearch(sp.name, supQuery)) && (
                         <p className="px-3 py-6 text-center text-[11px] font-bold text-slate-300">해당 거래처 없음</p>
                       )}
                     </div>
@@ -2926,7 +2929,7 @@ const ItemList: React.FC<ItemListProps> = ({
                             className="w-full text-left px-3 py-1.5 text-[11px] font-black text-slate-400 hover:bg-slate-50">필터 해제</button>
                         )}
                         {makePartnerNames
-                          .filter(n => !makePartnerQ.trim() || n.toLowerCase().includes(makePartnerQ.trim().toLowerCase()))
+                          .filter(n => matchesSearch(n, makePartnerQ))
                           .map(n => (
                             <FilterRow key={n} on={makePartner === n}
                               onClick={() => { setMakePartner(makePartner === n ? '' : n); close(); }}>{n}</FilterRow>
@@ -3578,7 +3581,7 @@ const ItemList: React.FC<ItemListProps> = ({
                               className="w-full text-left px-3 py-1.5 text-[11px] font-black text-slate-400 hover:bg-slate-50">필터 해제</button>
                           )}
                           {closingPartnerNames
-                            .filter(n => !closingPartnerQ.trim() || n.toLowerCase().includes(closingPartnerQ.trim().toLowerCase()))
+                            .filter(n => matchesSearch(n, closingPartnerQ))
                             .map(n => (
                               <FilterRow key={n} on={closingPartner === n}
                                 onClick={() => { setClosingPartner(closingPartner === n ? '' : n); setClosingPage(0); close(); }}>{n}</FilterRow>
