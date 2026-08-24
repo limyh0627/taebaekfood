@@ -9,7 +9,7 @@ import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Partner, PaymentMet
 import PageHeader from './PageHeader';
 import CostManager from './CostManager';
 import { makeCodeToGroup, computeMonthPLFromJournals, computeCashFlowMonth, computeCashFlowDirect, addMonthStr, SGNA_LEGACY_IDS, COMPUTED_GROUP_IDS } from '../src/features/admin/financials';
-import { partnerBalanceFromJournals, allocatePartnerCash, partnerCashParts } from '../src/features/admin/cashLedger';
+import { partnerBalanceFromJournals, partnerCarryOver, allocatePartnerCash, partnerCashParts } from '../src/features/admin/cashLedger';
 import { buildJournals } from '../src/shared/buildJournals';
 import type { OpeningBalance } from '../src/shared/autoJournal';
 import { fetchCollection } from '../src/shared/services/firebaseService';
@@ -1162,11 +1162,19 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
          * 채권·채무가 움직인 곳은 분개의 108·251 줄뿐이다 — 거기 하나만 본다.
          * 잔액(partnerBalanceFromJournals)과 같은 근거라 화면끼리 저절로 맞는다.
          */
-        const carryOver = (type: '매출' | '매입') => {
-          if (!selId) return 0;
-          return partnerBalanceFromJournals(
-            selId, type, journalEntries.filter(e => (e.date ?? '') < periodStart));
-        };
+        /**
+         * **기초 전표는 날짜가 기간 안이라도 이월로 센다.**
+         *
+         * 장부는 2026-07-31 기초로 시작한다. 연 2026을 보면 이월 조건(`날짜 < 2026-01-01`)에
+         * 걸리는 분개가 하나도 없어 이월이 0이 되는데, 기초 전표는 `isOpening`으로
+         * **기간매출에서도 빼고 있었다.** 그래서 개시잔액이 이월에도·기간발생에도 안 들어가
+         * 통째로 사라졌다 — 거래처 44곳에서 미수가 139,859,460원 모자라게 보였다.
+         * (목록은 전기간 분개 잔액이라 제 값이었고, 상세만 어긋났다)
+         */
+        const openingStmtIds = new Set(
+          issuedStatements.filter(st => st.partnerId === selId && isOpening(st)).map(st => st.id));
+        const carryOver = (type: '매출' | '매입') =>
+          selId ? partnerCarryOver(selId, type, journalEntries, periodStart, openingStmtIds) : 0;
         const carrySale = carryOver('매출');
         const carryBuy = carryOver('매입');
         /**
@@ -1915,10 +1923,11 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
 
         const totalValue = rows.reduce((acc, p) => acc + p.value, 0);
 
-        // category(영문/구한글) + subtype → 한글 그룹 라벨
+        // 타입(영문/구한글) + 카테고리 → 한글 그룹 라벨
+        //   상품·부자재는 타입만으론 뭔지 몰라서 카테고리(향미유·고춧가루·용기·라벨…)를 쓴다.
         const catLabel = (p: Item): string => {
-          const c = p.category as string;
-          const sub = (p as any).subtype as string | undefined;
+          const c = p.type as string;
+          const sub = p.category as string | undefined;
           if (c === 'product' || c === '완제품') return '완제품';
           if (c === 'wip') return '반제품';
           if (c === 'raw') return '원료';

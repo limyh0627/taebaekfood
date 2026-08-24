@@ -234,6 +234,27 @@ export function partnerBalanceFromJournals(
   }, 0), 0);
 }
 
+/**
+ * 기간 이월 — **기간 시작 전 잔액 + 기초 전표.**
+ *
+ * 기초 전표는 거래가 아니라 개시잔액이라 기간 발생에서 빼는데(날짜가 기간 안이어도),
+ * 그러면 이월에도 넣어야 한다. 안 넣으면 어디에도 안 잡혀 통째로 사라진다 —
+ * 장부가 2026-07-31 기초로 시작하는데 연 2026을 보면 `날짜 < 2026-01-01`에 걸리는
+ * 분개가 없어 이월이 0이 됐고, 거래처 44곳에서 미수가 139,859,460원 모자랐다.
+ *
+ * `이월 + 기간발생 − 기간결제 = 기간말 잔액`이 성립해야 목록(전기간 잔액)과 맞는다.
+ */
+export function partnerCarryOver(
+  partnerId: string,
+  type: '매출' | '매입',
+  entries: JournalEntry[],
+  periodStart: string,
+  openingSourceIds: ReadonlySet<string>,
+): number {
+  return partnerBalanceFromJournals(partnerId, type, entries.filter(
+    e => String(e.date ?? '') < periodStart || openingSourceIds.has(String(e.sourceId ?? ''))));
+}
+
 export function partnerOpenBalance(
   partnerId: string,
   type: '매출' | '매입',

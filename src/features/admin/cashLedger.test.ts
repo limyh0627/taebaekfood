@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
-  buildAccountLedger, totalCashOnHand, openBalance, unsettledStatements, unmatchedCash, buildPartnerLedger, partnerBalances, partnerOpenBalance, allocatePartnerCash, partnerBalanceFromJournals,
+  buildAccountLedger, totalCashOnHand, openBalance, unsettledStatements, unmatchedCash, buildPartnerLedger, partnerBalances, partnerOpenBalance, allocatePartnerCash, partnerBalanceFromJournals, partnerCarryOver,
 } from './cashLedger';
-import type { AccountCode, CashAccount, CashEntry, IssuedStatement, Settlement } from '../../shared/types';
+import type { AccountCode, CashAccount, CashEntry, IssuedStatement, Settlement, JournalEntry } from '../../shared/types';
 import { buildJournals } from '../../shared/buildJournals';
 
 const acct = (over: Partial<CashAccount> = {}): CashAccount => ({
@@ -333,5 +333,43 @@ describe('거래처 잔액은 계정으로 센다', () => {
                          { accountCode: '108', partnerId: 'p1', credit: 300 }]), sourceType: '대체' as const };
     expect(partnerBalanceFromJournals('p1', '매출', [상계])).toBe(-300);   // 미수가 줄었다
     expect(partnerBalanceFromJournals('p1', '매입', [상계])).toBe(-300);   // 미지급도 줄었다
+  });
+});
+
+describe('partnerCarryOver — 기초 전표는 기간 안에 있어도 이월이다', () => {
+  /**
+   * 2026-07-31 기초로 장부를 열고 연 2026을 보는 상황.
+   * 이월 조건(`날짜 < 2026-01-01`)에 걸리는 분개가 없어서 이월이 0이 됐는데,
+   * 기초 전표는 기간 발생에서도 빼고 있었다 → 개시잔액이 통째로 사라졌다.
+   */
+  const je = (id: string, date: string, debit: number, sourceId: string): JournalEntry =>
+    ({ id, date, sourceId, lines: [{ accountCode: '108', partnerId: 'p1', debit, credit: 0 }] } as unknown as JournalEntry);
+
+  const 기초 = je('j0', '2026-07-31', 21_782_710, 'stmt-기초');
+  const 매출 = je('j1', '2026-08-05', 1_000_000, 'stmt-1');
+  const opening = new Set(['stmt-기초']);
+
+  it('기초 전표를 이월에 넣는다 — 안 넣으면 0이 된다', () => {
+    const entries = [기초, 매출];
+    expect(partnerCarryOver('p1', '매출', entries, '2026-01-01', opening)).toBe(21_782_710);
+    // 기초를 안 알려주면 예전처럼 사라진다(이 값이 버그였다)
+    expect(partnerCarryOver('p1', '매출', entries, '2026-01-01', new Set())).toBe(0);
+  });
+
+  it('이월 + 기간발생 = 전기간 잔액 (목록과 상세가 맞는다)', () => {
+    const entries = [기초, 매출];
+    const carry = partnerCarryOver('p1', '매출', entries, '2026-01-01', opening);
+    const inPeriod = 1_000_000;                                    // 기초 뺀 그 해 발생
+    expect(carry + inPeriod).toBe(partnerBalanceFromJournals('p1', '매출', entries));
+  });
+
+  it('기간 시작 전 분개는 그대로 이월', () => {
+    const entries = [je('j2', '2025-12-31', 500_000, 'stmt-old'), 매출];
+    expect(partnerCarryOver('p1', '매출', entries, '2026-01-01', new Set())).toBe(500_000);
+  });
+
+  it('월 단위도 같다 — 8월을 보면 7/31 기초가 이월', () => {
+    const entries = [기초, 매출];
+    expect(partnerCarryOver('p1', '매출', entries, '2026-08-01', opening)).toBe(21_782_710);
   });
 });
