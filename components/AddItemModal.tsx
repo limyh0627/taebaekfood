@@ -113,6 +113,22 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   useEffect(() => { fetchCollection<TaxonomyRow>('itemTaxonomy').then(setTaxonomyRows).catch(() => {}); }, []);
   const taxo = useMemo(() => buildTaxonomy(taxonomyRows), [taxonomyRows]);
 
+  /**
+   * 박스 묶음 품목인가 — 낱개 ×N을 담는 것. 낱개로 풀려 서류는 낱개 기준이라
+   * **서류용 품목(품목·용량)이 없어도 된다.**
+   *
+   * 근거는 **구성**이다. 예전엔 서브타입 이름(`'배송'`)을 네 곳에서 견줬는데,
+   * 분류 관리에서 이름을 바꾸면(배송→박스) 그 자리들이 조용히 다 안 걸린다.
+   * 판정 규칙은 unpackComponent와 같다 — 완제품 구성품 딱 하나 × 수량 2 이상.
+   */
+  const isBoxDraft = useMemo(() => {
+    const comps = formData.submaterials.filter(sm => {
+      const c = (items ?? []).find(x => x.id === sm.id);
+      return c?.type === 'product' || c?.type === '완제품';
+    });
+    return comps.length === 1 && (typeof comps[0].stock === 'number' ? comps[0].stock : 1) > 1;
+  }, [formData.submaterials, items]);
+
   const [partnerSearch, setClientSearch] = useState('');
   const [inboundPartnerSearch, setSupplierSearch] = useState('');
   const [showPumokDrop, setShowPumokDrop] = useState(false);
@@ -218,10 +234,10 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const handleSubmit = async (e?: React.SyntheticEvent) => {
     e?.preventDefault();
     if (!formData.name) return;
-    // 배송(박스) 서브타입은 서류용 품목이 없어도 저장 가능 — 낱개로 풀려 서류는 낱개 기준
+    // 박스 묶음 품목은 서류용 품목이 없어도 저장 가능 — 낱개로 풀려 서류는 낱개 기준
     // 서류용 품목이 비어 있으면 — 예전엔 조용히 막아서 '저장 버튼이 안 눌린다'로 보였다.
     // 이제 물어보고, 그대로 진행하겠다면 저장한다(서류에서 이 품목은 빠진다).
-    if (formData.type === 'product' && formData.subtype !== '배송' && !formData.품목) {
+    if (formData.type === 'product' && !isBoxDraft && !formData.품목) {
       setPumokWarn(true);
       const go = window.confirm(
         '서류용 품목이 비어 있습니다.\n\n이대로 저장하면 원료수불부·생산작업기록부에서 이 품목이 빠집니다.\n그래도 저장할까요?',
@@ -882,7 +898,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                여기 두 개는 판매일지·거래명세서 같은 **서류**에만 쓰인다.
                재고 차감량은 위 구성품(BOM)의 수량이 정하며 이 값들과 무관하다.
                (원료수불부는 이 품목·용량으로 오일 사용량을 따로 집계한다) ── */}
-          {(formData.type === 'product' || formData.type === 'wip') && formData.subtype !== '배송' && (
+          {(formData.type === 'product' || formData.type === 'wip') && !isBoxDraft && (
             <div className="pt-2 mt-2 border-t-2 border-dashed border-slate-200 space-y-5">
               <div className="flex items-start gap-2">
                 <FileText size={15} className="text-slate-400 mt-0.5 shrink-0" />
@@ -891,8 +907,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                   <p className="text-[11px] font-bold text-slate-400 mt-0.5">판매일지·수불부에만 쓰입니다. 재고 차감에는 영향이 없습니다.</p>
                 </div>
               </div>
-            {/* 서류용 품목명 (완제품) — 배송(박스)은 낱개로 풀리므로 숨김 */}
-            {formData.type === 'product' && formData.subtype !== '배송' && (
+            {/* 서류용 품목명 (완제품) — 박스 묶음은 낱개로 풀리므로 숨김 */}
+            {formData.type === 'product' && !isBoxDraft && (
               <div className="space-y-2" ref={pumokRef}>
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                   <Tag size={14} className="mr-2" /> 품목
@@ -926,7 +942,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             )}
 
             {/* 용량 (완제품/반제품) — 배송(박스)은 낱개 용량을 따르므로 숨김 */}
-            {(formData.type === 'product' || formData.type === 'wip') && formData.subtype !== '배송' && (() => {
+            {(formData.type === 'product' || formData.type === 'wip') && !isBoxDraft && (() => {
               const presetVols = (formData.품목 && PUMOK_VOLUMES[formData.품목]) || [];
               const allVols = Array.from(new Set([...presetVols, ...customVols]));
               const addVol = () => {

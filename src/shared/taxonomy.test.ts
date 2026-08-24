@@ -9,7 +9,7 @@ describe('저장본이 없을 때', () => {
     const t = buildTaxonomy([]);
     expect(t.seeded).toBe(false);
     expect(t.labelOf('product')).toBe('완제품');
-    expect(t.subtypesOf('product')).toEqual(['낱개', '배송', '선물세트']);
+    expect(t.subtypesOf('product')).toEqual(['낱개', '박스', '선물세트']);
     expect(t.categoriesOf('product')).toEqual(['참기름', '들기름', '참깨', '들깨', '고춧가루']);
     expect(t.categoriesOf('submaterial')).toEqual(['용기', '마개', '박스', '라벨', '테이프', '케이스']);
     expect(t.subtypesOf('submaterial')).toEqual([]);   // 부자재는 서브타입 없음
@@ -97,7 +97,7 @@ describe('defaultTaxonomyRows — 최초 시딩', () => {
     const rows = defaultTaxonomyRows().map((r, i) => ({ ...r, id: `t${i}` })) as TaxonomyRow[];
     const t = buildTaxonomy(rows);
     expect(t.labelOf('raw')).toBe('원료');
-    expect(t.subtypesOf('product')).toEqual(['낱개', '배송', '선물세트']);
+    expect(t.subtypesOf('product')).toEqual(['낱개', '박스', '선물세트']);
     expect(t.categoriesOf('submaterial')).toEqual(['용기', '마개', '박스', '라벨', '테이프', '케이스']);
   });
 });

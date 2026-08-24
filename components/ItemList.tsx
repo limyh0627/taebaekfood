@@ -231,7 +231,9 @@ const CLIENT_BADGE_COLORS = [
 ];
 type MainTab = 'requests' | 'history' | 'master' | 'inbound' | 'lots';
 type InboundSubTab = '입고' | '반품';
-type TopTab = 'finished' | 'goods' | 'submaterial' | 'rawmaterial' | 'wip';
+//  상단 탭 = 품목 **타입 키** 그대로. 예전엔 finished/rawmaterial 같은 별칭을 따로 뒀는데
+//  분류 관리에서 타입을 숨기거나 이름을 바꿔도 안 따라오고, 매핑 표만 늘었다.
+type TopTab = string;
 
 // 원료 로트 홀더 판별 — raw, 또는 wip 벌크 반제품(볶음참깨·볶음들깨·볶음검정참깨·들깨가루(고운)).
 //   단 wip이라도 unit이 '개'인 캔/포장 SKU(예: 깨분참기름/16.5kg)는 홀더가 아님.
@@ -344,7 +346,7 @@ const ItemList: React.FC<ItemListProps> = ({
   const boxSizeOf = (p: Item) => (p as any).defaultBoxConfig?.unitsPerBox || (p as any).boxSize || 12;
   // 전체 완제품(검색 대상)
   const allClosingItems = useMemo(
-    () => items.filter(p => !p.archived && normCat(p.type) === '완제품'),
+    () => items.filter(p => !p.archived && p.type === 'product'),
     [items],
   );
   // 용량 — 규격에서 숫자+단위만 뽑아 '350ml'처럼 맞춘다. 규격이 비면 이름에서 찾는다.
@@ -519,7 +521,7 @@ const ItemList: React.FC<ItemListProps> = ({
     } catch { /* noop */ }
   };
 
-  const [topTab, setTopTab] = useState<TopTab>('finished');
+  const [topTab, setTopTab] = useState<TopTab>('product');
   const [activeTab, setActiveTab] = useState<MainTab>('master');
   const [inboundSubTab, setInboundSubTab] = useState<InboundSubTab>('입고');
   const [showInboundOverlay, setShowInboundOverlay] = useState(false);
@@ -831,12 +833,18 @@ const ItemList: React.FC<ItemListProps> = ({
   // 품목별 필터 탭 — 분류 관리에서 정한 하위 분류를 그대로 따라간다(추가하면 여기 바로 뜬다)
   const SUB_ICONS: Record<string, any> = {
     용기: Cylinder, 마개: Disc, 테이프: StickyNote, 박스: Inbox, 라벨: Tag, 향미유: Grape,
+    비닐: StickyNote, 케이스: Inbox,
   };
-  // 지금 탭이 어느 타입인가 — 서브타입·카테고리 필터를 여기서 뽑는다
-  const tabTypeKey = topTab === 'finished' ? 'product'
-    : topTab === 'goods' ? 'goods'
-    : topTab === 'wip' ? 'wip'
-    : topTab === 'rawmaterial' ? 'raw' : 'submaterial';
+  //  타입 탭의 아이콘·색 — 이름·순서는 분류 관리가 쥐고, 모양만 여기서 준다.
+  const TYPE_STYLE: Record<string, { color: string; icon: React.ReactNode }> = {
+    product: { color: 'text-violet-600', icon: <Package size={13}/> },
+    goods: { color: 'text-orange-500', icon: <Box size={13}/> },
+    wip: { color: 'text-sky-600', icon: <Cylinder size={13}/> },
+    raw: { color: 'text-emerald-600', icon: <Grape size={13}/> },
+    submaterial: { color: 'text-indigo-600', icon: <Box size={13}/> },
+  };
+  //  탭이 곧 타입이다 — 서브타입·카테고리 필터도 여기서 뽑는다.
+  const tabTypeKey = topTab;
   const subCategories = useMemo(
     () => taxo.categoriesOf(tabTypeKey).map(s => ({ id: s, label: s, icon: SUB_ICONS[s] ?? Tag })),
     [taxo, tabTypeKey],
@@ -845,12 +853,7 @@ const ItemList: React.FC<ItemListProps> = ({
   // 용량 — 지금 타입에 실제로 쓰이는 규격만 모은다. 다른 필터를 건드려도 목록은 그대로 두어야
   // 하나 고른 순간 나머지 선택지가 사라지지 않는다. 부피(ml·L)를 먼저, 무게(g·kg)를 뒤에 둔다.
   const specOptions = useMemo(() => {
-    const inTab = (p: Item) =>
-      topTab === 'finished' ? normCat(p.type) === '완제품'
-      : topTab === 'goods' ? ['상품', '향미유', '고춧가루'].includes(normCat(p.type) as string)
-      : topTab === 'wip' ? p.type === 'wip'
-      : topTab === 'rawmaterial' ? p.type === 'raw'
-      : p.type === 'submaterial' || ['label','cap','container','box','tape','용기','마개','테이프','박스','라벨'].includes(p.type as string);
+    const inTab = (p: Item) => p.type === tabTypeKey;
     const specs = new Set(items.filter(p => !p.archived && inTab(p)).map(p => (p.spec ?? '').trim()).filter(Boolean));
     const rank = (s: string): [number, number] => {
       const m = s.match(/([\d.]+)\s*(ml|l|리터|g|kg)/i);
@@ -865,7 +868,7 @@ const ItemList: React.FC<ItemListProps> = ({
       const [ka, va] = rank(a); const [kb, vb] = rank(b);
       return ka !== kb ? ka - kb : va !== vb ? va - vb : a.localeCompare(b);
     });
-  }, [items, topTab]);
+  }, [items, tabTypeKey]);
 
   const filteredProducts = useMemo(() => {
     let result: Item[] = [];
@@ -878,17 +881,7 @@ const ItemList: React.FC<ItemListProps> = ({
     }
     // 탭별 분리 — 최소수량 미만 필터 활성화 시 전체 품목 대상
     if (!zeroStockOnly) {
-      if (topTab === 'finished') {
-        result = result.filter(p => normCat(p.type) === '완제품');
-      } else if (topTab === 'goods') {
-        result = result.filter(p => normCat(p.type) === '상품' || normCat(p.type) === '향미유' || normCat(p.type) === '고춧가루');
-      } else if (topTab === 'wip') {
-        result = result.filter(p => p.type === 'wip');
-      } else if (topTab === 'submaterial') {
-        result = result.filter(p => p.type === 'submaterial' || ['label','cap','container','box','tape','용기','마개','테이프','박스','라벨'].includes(p.type as string));
-      } else if (topTab === 'rawmaterial') {
-        result = result.filter(p => p.type === 'raw');
-      }
+      result = result.filter(p => p.type === tabTypeKey);
       if (activeSubtype !== '전체') {
         result = result.filter(p => (p.subtype ?? '') === activeSubtype);
       }
@@ -920,18 +913,28 @@ const ItemList: React.FC<ItemListProps> = ({
       result = result.filter(p => displayStockOf(p) > 0);
     }
     if (zeroStockOnly) {
-      result = result.filter(p => normCat(p.type) !== '완제품' && displayStockOf(p) < p.minStock);
+      result = result.filter(p => p.type !== 'product' && displayStockOf(p) < p.minStock);
     }
 
-    const CATEGORY_ORDER = ['완제품', '상품', '향미유', '고춧가루', '용기', '마개', '테이프', '박스', '라벨'];
+    //  분류 관리 순서 그대로 — 타입 순서 → 그 안의 카테고리 순서. 코드에 박아 두면
+    //  새로 만든 분류(비닐·케이스)가 늘 맨 뒤로 밀리고 화면에서 바꿔도 안 따라온다.
+    //  근거는 품목의 category, 없으면 타입 — 라벨이 아니라 **키**로 잡는다(이름은 바뀐다).
+    const CAT_RANK = (() => {
+      const m = new Map<string, number>();
+      let n = 0;
+      for (const t of taxo.allTypes) {
+        if (!m.has(t.key)) m.set(t.key, n++);
+        for (const c of taxo.categoriesOf(t.key)) if (!m.has(c)) m.set(c, n++);
+      }
+      return m;
+    })();
+    const rankOf = (p: Item) => CAT_RANK.get(String(p.category ?? '')) ?? CAT_RANK.get(String(p.type)) ?? 999;
     return [...result].sort((a, b) => {
-      const aCritical = normCat(a.type) !== '완제품' && displayStockOf(a) < a.minStock ? 0 : 1;
-      const bCritical = normCat(b.type) !== '완제품' && displayStockOf(b) < b.minStock ? 0 : 1;
+      const aCritical = a.type !== 'product' && displayStockOf(a) < a.minStock ? 0 : 1;
+      const bCritical = b.type !== 'product' && displayStockOf(b) < b.minStock ? 0 : 1;
       if (aCritical !== bCritical) return aCritical - bCritical;
-      const aCatIdx = CATEGORY_ORDER.indexOf(normCat(a.type));
-      const bCatIdx = CATEGORY_ORDER.indexOf(normCat(b.type));
-      const aIdx = aCatIdx === -1 ? 99 : aCatIdx;
-      const bIdx = bCatIdx === -1 ? 99 : bCatIdx;
+      const aIdx = rankOf(a);
+      const bIdx = rankOf(b);
       // 분류가 같으면 **품목명 순**. 전엔 여기서 손을 놔 읽어온 순서가 그대로 남았다.
       // 이름은 용량을 뗀 것으로 비교한다 — '참기름/병/A/300ml'의 300ml이 정렬을 흔들면 안 된다.
       return aIdx - bIdx
@@ -1047,13 +1050,14 @@ const ItemList: React.FC<ItemListProps> = ({
         {!zeroStockOnly && activeTab !== 'inbound' && activeTab !== 'lots' && (
           <div className="flex items-center gap-3 flex-wrap">
             <div className="bg-slate-100/50 p-1 rounded-2xl flex items-center self-start border border-slate-200 max-w-full overflow-x-auto no-scrollbar">
-              {([
-                { id: 'finished', label: '완제품', color: 'text-violet-600', icon: <Package size={13}/>, onClick: () => { setTopTab('finished'); setCatSel(new Set()); setSupSel(new Set()); setSpecSel(new Set()); setActiveSubtype('전체'); } },
-                { id: 'goods', label: '상품', color: 'text-orange-500', icon: <Box size={13}/>, onClick: () => { setTopTab('goods'); setCatSel(new Set()); setSupSel(new Set()); setSpecSel(new Set()); setActiveSubtype('전체'); } },
-                { id: 'wip', label: '반제품', color: 'text-sky-600', icon: <Cylinder size={13}/>, onClick: () => { setTopTab('wip'); setCatSel(new Set()); setSupSel(new Set()); setSpecSel(new Set()); setActiveSubtype('전체'); } },
-                { id: 'rawmaterial', label: '원료재고', color: 'text-emerald-600', icon: <Grape size={13}/>, onClick: () => { setTopTab('rawmaterial'); setCatSel(new Set()); setSupSel(new Set()); setSpecSel(new Set()); setActiveSubtype('전체'); } },
-                { id: 'submaterial', label: '부자재', color: 'text-indigo-600', icon: <Box size={13}/>, onClick: () => { setTopTab('submaterial'); setCatSel(new Set()); setSupSel(new Set()); setSpecSel(new Set()); setActiveSubtype('전체'); } },
-              ] as const).map(t => (
+              {/* 탭 = 분류 관리의 타입 그대로 — 이름·순서·숨김이 다 따라온다.
+                  아이콘·색만 코드가 쥔다(분류표에 담을 값이 아니다). 새 타입은 기본 모양으로 뜬다. */}
+              {taxo.types.map(t => ({
+                id: t.key, label: t.label,
+                color: TYPE_STYLE[t.key]?.color ?? 'text-slate-600',
+                icon: TYPE_STYLE[t.key]?.icon ?? <Package size={13}/>,
+                onClick: () => { setTopTab(t.key); setCatSel(new Set()); setSupSel(new Set()); setSpecSel(new Set()); setActiveSubtype('전체'); },
+              })).map(t => (
                 <button key={t.id} onClick={t.onClick}
                   className={`px-3 py-2 rounded-xl flex items-center gap-1 transition-all text-xs font-black whitespace-nowrap ${topTab === t.id ? `bg-white ${t.color} shadow-sm` : 'text-slate-400 hover:text-slate-600'}`}>
                   {t.icon}<span>{t.label}</span>
@@ -1081,7 +1085,7 @@ const ItemList: React.FC<ItemListProps> = ({
               >
                 <Box size={13} /> 재고 현황
               </button>
-              {activeTab === 'master' && topTab === 'rawmaterial' && (
+              {activeTab === 'master' && topTab === 'raw' && (
                 <button
                   type="button"
                   onClick={() => setRawEntryModal({ mode: 'usage' })}
@@ -1654,7 +1658,7 @@ const ItemList: React.FC<ItemListProps> = ({
         </div>
       )}
 
-      {activeTab !== 'inbound' && activeTab !== 'lots' && (zeroStockOnly || topTab === 'submaterial' || topTab === 'finished' || topTab === 'goods' || topTab === 'rawmaterial' || topTab === 'wip') && <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+      {activeTab !== 'inbound' && activeTab !== 'lots' && /* 탭은 언제나 하나 골라져 있다 — 예전엔 별칭 다섯을 일일이 나열했다 */ true && <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
         {activeTab === 'requests' && draftOrders.length > 0 && (
           <div className="mb-8 bg-indigo-50/50 border border-indigo-100 rounded-[32px] p-6">
             <div className="flex items-center justify-between mb-6 px-2">
@@ -2158,7 +2162,9 @@ const ItemList: React.FC<ItemListProps> = ({
                         onChange={e => setRowEditForm(f => ({ ...f, category: e.target.value as any }))}
                         className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
                       >
-                        {['완제품','향미유','고춧가루','용기','마개','테이프','박스','라벨'].map(c => (
+                        {/* 고를 수 있는 건 이 타입의 카테고리뿐 — 분류 관리가 목록을 쥔다 */}
+                        <option value="">(없음)</option>
+                        {taxo.categoriesOf(String(rowEditForm.type ?? tabTypeKey)).map(c => (
                           <option key={c} value={c}>{c}</option>
                         ))}
                       </select>
