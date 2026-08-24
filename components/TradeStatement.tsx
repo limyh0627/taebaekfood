@@ -19,6 +19,7 @@ import { totalCashOnHand, unsettledStatements, unmatchedCash, partnerBalanceFrom
 import { AR, AP, journalizeStatement, journalizeTransfer, journalizeCashEntry, settlementAccountCode } from '../src/shared/autoJournal';
 import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, isCashDir, templateAccrRows, VOUCHER_DIRS, DIR_CHIP, DIR_HINT, CashTemplate, VoucherDir, SPLIT_MODES, splitModeOf } from '../src/shared/cashTemplates';
 import { canAutoIssue, autoVoucherId } from '../src/shared/autoVoucher';
+import { buildCashEditPatch, cashEditSplit, cashEditAmount } from '../src/shared/cashEntryEdit';
 import { buildTransfer, splitTransfer, OverKind } from '../src/shared/interCompany';
 import VoucherTemplateManager from './VoucherTemplateManager';
 import type { JournalEntry } from '../src/shared/types';
@@ -340,11 +341,27 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // ── 자금(입출금) 전표 수정 모달 ──
   const [editCash, setEditCash] = useState<CashEntry | null>(null);
   const [editCashForm, setEditCashForm] = useState<{ amount: string; date: string; dir: '입금'|'출금'; accountCode: string; note: string }>({ amount:'', date:'', dir:'출금', accountCode:'', note:'' });
+  /**
+   * 쪼개진 줄(CashEntry.lines) — 모달이 이걸 안 들고 있다가 저장 한 번에 눈앞에서 사라졌다.
+   * 쓰는 쪽이 accountCode 한 줄만 보내서, 대출상환(원금+이자)·급여(총액+원천공제) 같은 전표를
+   * 열었다 닫기만 해도 자금원장 금액과 분개(줄 합)가 따로 놀았다.
+   */
+  const [editCashLines, setEditCashLines] = useState<{ accountCode: string; amount: string; note: string }[]>([]);
   //  상계(대체)는 방향을 고를 수 있는 게 아니다 — 모달 기본값만 출금으로 두고, 저장 때 dir은 안 건드린다.
-  const openEditCash = (e: CashEntry) => { setEditCash(e); setEditCashForm({ amount: String(e.amount), date: e.date, dir: e.dir === '대체' ? '출금' : e.dir, accountCode: e.accountCode ?? '', note: e.note ?? '' }); };
+  const openEditCash = (e: CashEntry) => {
+    setEditCash(e);
+    setEditCashForm({ amount: String(e.amount), date: e.date, dir: e.dir === '대체' ? '출금' : e.dir, accountCode: e.accountCode ?? '', note: e.note ?? '' });
+    setEditCashLines((e.lines ?? []).map(l => ({ accountCode: l.accountCode, amount: String(l.amount), note: l.note ?? '' })));
+  };
+  const closeEditCash = () => { setEditCash(null); setEditCashLines([]); };
+  //  판정은 shared/cashEntryEdit이 쥔다 — 화면 조각이라 테스트가 안 닿던 자리였다.
+  const editCashIsOffset = editCash?.dir === '대체';
+  const editCashSplit = cashEditSplit(editCashLines);
+  const editCashSplitSum = editCashSplit.reduce((a, l) => a + l.amount, 0);
+  const editCashAmt = cashEditAmount(editCashForm, editCashLines, editCashIsOffset);
   const saveEditCash = () => {
     if (!editCash || !onUpdateCashEntry) return;
-    const amt = parseFloat(editCashForm.amount) || 0;
+    const amt = editCashAmt;
     if (amt <= 0) return;
     // 전표에 상계된 자금이면 상계액(settlement)도 같은 폭으로 옮겨야 미수/미지급 잔액이 안 틀어진다.
     const linked = settlements.filter(s => s.cashEntryId === editCash.id);
@@ -361,13 +378,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       }
       onUpdateSettlement(linked[0].id, { amount: next });
     }
-    const updated: CashEntry = { ...editCash, amount: amt, date: editCashForm.date, dir: editCashForm.dir,
-      accountCode: editCashForm.accountCode, note: editCashForm.note.trim() };
-    onUpdateCashEntry(editCash.id, { amount: updated.amount, date: updated.date, dir: updated.dir,
-      accountCode: updated.accountCode, note: updated.note });
+    const patch = buildCashEditPatch(editCash, editCashForm, editCashLines);
+    const updated: CashEntry = { ...editCash, ...patch };
+    onUpdateCashEntry(editCash.id, patch);
     // 상계액을 방금 옮겼으면 settlements가 최신이 아니라 매칭 계산이 어긋난다 → 그때만 건너뛴다.
     if (!(linked.length && delta !== 0)) autoMatchCashToStatements(updated);
-    setEditCash(null);
+    closeEditCash();
   };
 
   // ── 빠른 수금/지불 모달 ──
@@ -3701,8 +3717,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
       {/* ── 자금(입출금) 전표 수정 모달 ── */}
       {editCash && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setEditCash(null)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={closeEditCash}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-start justify-between">
               <div>
                 <h3 className="text-sm font-black text-slate-800">자금 전표 수정</h3>
@@ -3719,23 +3735,28 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   );
                 })() : <p className="text-[11px] font-bold text-slate-300 mt-0.5">거래처 없음</p>}
               </div>
-              <button onClick={() => setEditCash(null)} className="p-1 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={16}/></button>
+              <button onClick={closeEditCash} className="p-1 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={16}/></button>
             </div>
             <div className="space-y-3">
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">구분</label>
                 <div className="flex gap-1.5">
                   {(['입금','출금'] as const).map(d => (
-                    <button key={d} onClick={() => setEditCashForm(p => ({ ...p, dir: d }))}
+                    <button key={d} disabled={editCashIsOffset} onClick={() => setEditCashForm(p => ({ ...p, dir: d }))}
                       className={`flex-1 py-2 rounded-xl text-xs font-black border transition-all ${editCashForm.dir === d ? (d==='입금'?'bg-emerald-600 text-white border-emerald-600':'bg-rose-600 text-white border-rose-600') : 'bg-white text-slate-500 border-slate-200'}`}>{d}</button>
                   ))}
                 </div>
               </div>
               <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">금액</label>
-                <input type="text" inputMode="decimal" value={editCashForm.amount}
+                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">
+                  금액{editCashSplit.length > 0 && !editCashIsOffset && <span className="ml-1 text-blue-400 normal-case">= 줄 합계</span>}
+                </label>
+                {/* 쪼갠 전표의 금액은 줄 합이다 — 여기서 따로 고치면 자금원장과 분개가 갈라진다. */}
+                <input type="text" inputMode="decimal"
+                  value={editCashSplit.length > 0 && !editCashIsOffset ? String(editCashSplitSum) : editCashForm.amount}
+                  readOnly={editCashSplit.length > 0 && !editCashIsOffset}
                   onChange={e => setEditCashForm(p => ({ ...p, amount: e.target.value.replace(/[^\d.]/g,'') }))}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-right outline-none focus:ring-2 focus:ring-blue-300"/>
+                  className={`w-full border rounded-xl px-3 py-2 text-sm font-bold text-right outline-none focus:ring-2 focus:ring-blue-300 ${editCashSplit.length > 0 && !editCashIsOffset ? 'border-slate-100 bg-slate-50 text-slate-500' : 'border-slate-200'}`}/>
               </div>
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">일자</label>
@@ -3744,15 +3765,57 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
               </div>
               <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">계정과목</label>
-                <select value={editCashForm.accountCode}
-                  onChange={e => setEditCashForm(p => ({ ...p, accountCode: e.target.value }))}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300 bg-white">
-                  <option value="">계정 미지정(영업)</option>
-                  {[...accountCodes].sort((a,b)=>String(a.code).localeCompare(String(b.code),undefined,{numeric:true})).map(ac => (
-                    <option key={ac.id} value={ac.code}>{ac.code} {ac.name}</option>
-                  ))}
-                </select>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase">
+                    {editCashLines.length > 0 ? '쪼갠 줄' : '계정과목'}
+                  </label>
+                  <button
+                    onClick={() => setEditCashLines(p => [...p,
+                      // 첫 줄은 지금 화면의 계정·금액을 그대로 물려받는다 — 한 줄짜리를 쪼개는 흔한 경우.
+                      p.length === 0
+                        ? { accountCode: editCashForm.accountCode, amount: editCashForm.amount, note: '' }
+                        : { accountCode: '', amount: '', note: '' }])}
+                    className="text-[10px] font-black text-blue-600 hover:bg-blue-50 px-2 py-0.5 rounded-lg">+ 줄 추가</button>
+                </div>
+                {editCashLines.length === 0 ? (
+                  <select value={editCashForm.accountCode}
+                    onChange={e => setEditCashForm(p => ({ ...p, accountCode: e.target.value }))}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300 bg-white">
+                    <option value="">계정 미지정(영업)</option>
+                    {[...accountCodes].sort((a,b)=>String(a.code).localeCompare(String(b.code),undefined,{numeric:true})).map(ac => (
+                      <option key={ac.id} value={ac.code}>{ac.code} {ac.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="space-y-1.5">
+                    {editCashLines.map((l, i) => (
+                      <div key={i} className="flex gap-1.5 items-center">
+                        <select value={l.accountCode}
+                          onChange={e => setEditCashLines(p => p.map((x, j) => j === i ? { ...x, accountCode: e.target.value } : x))}
+                          className="flex-1 min-w-0 border border-slate-200 rounded-xl px-2 py-2 text-[11px] font-bold outline-none focus:ring-2 focus:ring-blue-300 bg-white">
+                          <option value="">계정 선택</option>
+                          {[...accountCodes].sort((a,b)=>String(a.code).localeCompare(String(b.code),undefined,{numeric:true})).map(ac => (
+                            <option key={ac.id} value={ac.code}>{ac.code} {ac.name}</option>
+                          ))}
+                        </select>
+                        {/* 상계(대체)는 반대편 줄이 음수라 빼기 부호를 지우면 안 된다. */}
+                        <input type="text" inputMode="decimal" value={l.amount} placeholder="금액"
+                          onChange={e => setEditCashLines(p => p.map((x, j) => j === i ? { ...x, amount: e.target.value.replace(/[^\d.-]/g,'') } : x))}
+                          className="w-24 shrink-0 border border-slate-200 rounded-xl px-2 py-2 text-[11px] font-bold text-right outline-none focus:ring-2 focus:ring-blue-300"/>
+                        <input type="text" value={l.note} placeholder="적요"
+                          onChange={e => setEditCashLines(p => p.map((x, j) => j === i ? { ...x, note: e.target.value } : x))}
+                          className="w-16 shrink-0 border border-slate-200 rounded-xl px-2 py-2 text-[11px] font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
+                        <button onClick={() => setEditCashLines(p => p.filter((_, j) => j !== i))}
+                          className="p-1 shrink-0 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg"><X size={13}/></button>
+                      </div>
+                    ))}
+                    {!editCashIsOffset ? (
+                      <p className="text-[10px] font-bold text-slate-400 text-right">줄 합계 {fmt(editCashSplitSum)}</p>
+                    ) : (
+                      <p className="text-[10px] font-bold text-amber-600">상계(대체) 전표 — 줄이 부호를 가져 합은 0, 방향은 못 바꿉니다.</p>
+                    )}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">비고</label>
@@ -3763,11 +3826,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             </div>
             <div className="flex gap-2 pt-1">
               {onDeleteCashEntry && (
-                <button onClick={() => { if (window.confirm('이 자금 전표를 삭제할까요?')) { onDeleteCashEntry(editCash.id); setEditCash(null); } }}
+                <button onClick={() => { if (window.confirm('이 자금 전표를 삭제할까요?')) { onDeleteCashEntry(editCash.id); closeEditCash(); } }}
                   className="flex items-center gap-1 px-3 py-2.5 rounded-xl bg-red-50 text-red-600 text-xs font-black hover:bg-red-100 border border-red-200"><Trash2 size={12}/>삭제</button>
               )}
-              <button onClick={() => setEditCash(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
-              <button onClick={saveEditCash} disabled={!editCashForm.amount || Number(editCashForm.amount) <= 0}
+              <button onClick={closeEditCash} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
+              <button onClick={saveEditCash} disabled={editCashAmt <= 0}
                 className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center gap-1.5"><Save size={12}/>저장</button>
             </div>
           </div>
