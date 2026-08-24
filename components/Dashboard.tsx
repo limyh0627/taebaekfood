@@ -20,9 +20,12 @@ import {
 } from 'lucide-react';
 import { Order, Item, OrderStatus, ViewType, Partner } from '../types';
 import PageHeader from './PageHeader';
+import DashboardLinks from './DashboardLinks';
 
 interface DashboardProps {
   orders: Order[];
+  /** 바로가기를 고칠 수 있나 — 직원 화면에선 보기만 한다 */
+  isAdmin?: boolean;
   items: Item[];
   partners?: Partner[];
   partnerItems?: import('../src/shared/types').PartnerItem[];
@@ -64,7 +67,7 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon: Icon, trend, co
   </div>
 );
 
-const Dashboard: React.FC<DashboardProps> = ({ orders, items, partners = [], partnerItems = [], onNavigate, onCreatePurchaseOrder }) => {
+const Dashboard: React.FC<DashboardProps> = ({ orders, items, partners = [], partnerItems = [], onNavigate, onCreatePurchaseOrder, isAdmin = true }) => {
   // Compute derived variables
   const products = items;
   const partnerIn = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
@@ -147,6 +150,8 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, items, partners = [], par
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
+      {/* 자주 여는 홈페이지 — 코드에 안 박는다(사람마다 다르고 자주 바뀐다) */}
+      <DashboardLinks isAdmin={isAdmin} />
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
           title="이번 주 주문 상품량"
