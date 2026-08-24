@@ -184,10 +184,18 @@ export const mutateRawMaterialLots = async (
   transform: (currentLots: RawMaterialLot[], currentStock: number) => RawMaterialLot[],
   computeStock?: (lots: RawMaterialLot[]) => number,
 ): Promise<RawMaterialLot[]> => {
-  // Firestore는 undefined 필드를 거부 → 로트 배열에서 제거 (캔/수동 입고 로트의 미입력 옵션 필드 대비)
-  const buildPatch = (next: RawMaterialLot[]): { lots: RawMaterialLot[]; stock?: number } => {
+  /**
+   * Firestore는 undefined 필드를 거부 → 로트 배열에서 제거 (캔/수동 입고 로트의 미입력 옵션 필드 대비)
+   *
+   * **`lotsAreTotal` 원료는 stock을 안 덮어쓴다.** 로트와 벌크 재고는 다른 숫자다:
+   *     로트·원료수불부   볶음참깨가 통틀어 몇 kg 있나 (벌크 + 낱개 + 박스)
+   *     items.stock       그중 자루로 남은 **벌크만**
+   * 부르는 쪽마다 챙기게 해 놨더니 orderStockEngine이 빠뜨려, 출고할 때마다 벌크 재고가
+   * 로트합으로 덮였다. 판정을 이 안으로 들여서 어느 경로로 들어와도 안 틀어지게 한다.
+   */
+  const buildPatch = (next: RawMaterialLot[], lotsAreTotal: boolean): { lots: RawMaterialLot[]; stock?: number } => {
     const patch: { lots: RawMaterialLot[]; stock?: number } = { lots: stripUndefined(next) };
-    if (computeStock) patch.stock = computeStock(next);
+    if (computeStock && !lotsAreTotal) patch.stock = computeStock(next);
     return patch;
   };
   const { next, opening } = await runTransaction(db, async (tx) => {
@@ -199,7 +207,7 @@ export const mutateRawMaterialLots = async (
     const stockBefore = Number(data.stock ?? 0);
     // #1 로트 배열 무한 증가 방지 — 오래된 depleted 로트 정리(모든 로트 쓰기 경로가 이 함수를 지남)
     const next = pruneDepletedLots(transform(current, stockBefore));
-    tx.update(ref, buildPatch(next));
+    tx.update(ref, buildPatch(next, !!data.lotsAreTotal));
     // 로트가 하나도 없던 원료를 처음 건드리는 순간 = withCarryOverLot이 stock을 '이월' 로트로 옮기는 때.
     // 그 이월은 **실제 원장에 아무 줄도 안 남겨서**, 로트합만 올라가고 잔량은 그대로라 영구히 벌어졌다.
     // → 여기서 기초이월 한 줄을 남긴다. 실제 원장의 줄과 로트 변화는 언제나 1:1이어야 한다.

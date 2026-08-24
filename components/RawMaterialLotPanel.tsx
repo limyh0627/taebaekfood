@@ -40,6 +40,23 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
   const totalKg = lotKgRemaining(active);
   const totalUnit = isOil ? kgToUnit(totalKg, material) : totalKg;
 
+  /**
+   * 로트가 **포장분까지 통틀어** 세는 원료인가 (볶음참깨처럼 낱개·박스 품목이 딸린 것).
+   *
+   *   로트 합계        볶음참깨가 통틀어 몇 kg 있나 (벌크 + 낱개 + 박스)
+   *   이 품목 stock    그중 자루로 남은 **벌크만**
+   *
+   * 켜 두면 로트를 건드려도 stock을 안 덮어쓴다(firebaseService.mutateRawMaterialLots).
+   * 여태 이 표식을 켤 자리가 아무 데도 없어서, 코드만 있고 아무 원료에도 안 달려 있었다.
+   */
+  const lotsAreTotal = !!product.lotsAreTotal;
+  const bulkKg = Number(product.stock ?? 0);
+  const bulkUnit = isOil ? kgToUnit(bulkKg, material) : bulkKg;
+  const setLotsAreTotal = async (on: boolean) => {
+    try { await updateItem('items', product.id, { lotsAreTotal: on }); }
+    catch (err) { console.error('[통합재고 설정 실패]', err); }
+  };
+
   const setMixEnabled = async (on: boolean) => {
     try { await updateItem('items', product.id, { mixEnabled: on, mixTopPercent: product.mixTopPercent ?? 50 }); }
     catch (err) { console.error('[혼합 설정 실패]', err); }
@@ -233,7 +250,7 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
       <div className="flex items-center justify-between">
         <span className="text-[11px] font-black text-emerald-700 uppercase tracking-wide">입고 로트 {mixEnabled ? '(혼합 사용)' : '(선입선출)'}</span>
         <span className="text-sm font-black text-emerald-800">
-          합계 {fmt(totalUnit)} {unitLabel}{isOil && <span className="text-[11px] font-bold text-emerald-500"> ({fmt(totalKg)} kg)</span>}
+          {lotsAreTotal ? '통합' : '합계'} {fmt(totalUnit)} {unitLabel}{isOil && <span className="text-[11px] font-bold text-emerald-500"> ({fmt(totalKg)} kg)</span>}
         </span>
       </div>
 
@@ -257,6 +274,23 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
           </div>
         );
       })()}
+
+      {/* 로트가 포장분까지 통틀어 세는 원료 표식 (관리자) — 볶음참깨처럼 낱개·박스가 딸린 것 */}
+      {isAdmin && (
+        <div className="flex items-center gap-2 flex-wrap bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+          <button
+            onClick={(e) => { e.stopPropagation(); setLotsAreTotal(!lotsAreTotal); }}
+            className={`text-[11px] font-black px-2.5 py-1 rounded-full transition-colors shrink-0 ${lotsAreTotal ? 'bg-slate-700 text-white' : 'bg-white text-slate-500 border border-slate-200'}`}
+          >로트=통합재고 {lotsAreTotal ? 'ON' : 'OFF'}</button>
+          <span className="text-[11px] font-bold text-slate-500 leading-snug">
+            {lotsAreTotal ? (
+              <>로트는 벌크+낱개+박스를 통틀어 센다 · 이 품목 재고는 <b className="text-slate-700">벌크만 {fmt(bulkUnit)} {unitLabel}</b> (로트가 안 덮어씀)</>
+            ) : (
+              <>로트 합계가 곧 이 품목 재고다 (벌크 하나뿐인 원료)</>
+            )}
+          </span>
+        </div>
+      )}
 
       {/* 기름 혼합 사용 — 상위 2개 로트를 비율대로 차감 (관리자, 기름만) */}
       {isOil && isAdmin && (
