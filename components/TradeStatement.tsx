@@ -1342,15 +1342,25 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   }, [allItems, partners, partnerIn, purchaseSearch]);
 
   // ── 현재 진행 주문 (매출전표 현재 주문만 패널용) ──
+  /**
+   * 거래처 미선택 화면의 목록 — **진행 주문 + 전표 안 걸린 배송완료 주문.**
+   *
+   * 예전엔 ACTIVE_STATUSES(대기·작업·출고)만 담아서, 배송완료(DELIVERED)로 넘어간 주문은
+   * 전표를 안 끊었어도 여기 영영 안 떴다. 거래처를 콕 집어 골라야만 보였다.
+   * 배송이 끝났다고 전표가 선 건 아니다 — 오히려 그쪽이 놓치면 아픈 건이다.
+   *
+   * 전표가 걸린 배송완료 주문은 계속 뺀다(발행내역에서 본다).
+   */
   const activeOrders = useMemo(() =>
     orders
-      .filter(o => ACTIVE_STATUSES.has(o.status as OrderStatus) && o.partnerName !== '생산기록')
+      .filter(o => o.partnerName !== '생산기록')
+      .filter(o => ACTIVE_STATUSES.has(o.status as OrderStatus) || !isVouchered(o))
       .sort((a, b) => {
-        const aP = !!a.invoicePrinted, bP = !!b.invoicePrinted;
+        const aP = isVouchered(a), bP = isVouchered(b);
         if (aP !== bP) return aP ? 1 : -1;
         return new Date(a.deliveryDate || a.createdAt).getTime() - new Date(b.deliveryDate || b.createdAt).getTime();
       }),
-    [orders]
+    [orders, isVouchered]
   );
 
   // ── 선택된 발주항목(확정+예정) → 매입전표 직접 입력 모드 ──
@@ -5449,11 +5459,16 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
             {/* ── 진행 주문 목록 (매출·진행주문만·거래처 미선택) ── */}
             {createMode==='매출' && !selectedClientId && activeOrders.length > 0 && (() => {
-              const listOrders = (onlyActive ? activeOrders.filter(o => !o.invoicePrinted) : activeOrders)
+              const listOrders = (onlyActive ? activeOrders.filter(o => !isVouchered(o)) : activeOrders)
                 // 스마트스토어 거래처 제외 (전표 발행 대상 아님)
                 .filter(o => (partners.find(c => c.id === o.partnerId)?.type ?? o.source) !== '스마트스토어')
                 .filter(o => matchKo(partners.find(c => c.id === o.partnerId)?.name || '', partnerSearch))
-                .filter(o => { const d = (o.deliveryDate || '').slice(0, 10); return (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo); });
+                //  납품일이 비어 있으면 배송일·생성일로 물러선다 — 옛 주문은 deliveryDate가 없는 게 많아
+                //  날짜필터를 걸면 통째로 사라졌다.
+                .filter(o => {
+                  const d = ((o.deliveryDate || (o as { deliveredAt?: string }).deliveredAt || o.createdAt) || '').slice(0, 10);
+                  return (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo);
+                });
               return (
               <div className="flex-1 min-h-0 flex flex-col">
                 <div className="px-5 py-2 bg-slate-50 flex items-center gap-2 flex-shrink-0">
@@ -5473,7 +5488,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                         </span>
                         <span className="w-28 shrink-0 text-slate-400">납품 {o.deliveryDate?.slice(5,10) || '미정'}</span>
                         <span className="w-14 shrink-0 text-center">
-                          {o.invoicePrinted
+                          {isVouchered(o)
                             ? <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">발행</span>
                             : <span className="text-[10px] font-black text-pink-500 bg-pink-100 px-1.5 py-0.5 rounded-full">미발행</span>}
                         </span>
