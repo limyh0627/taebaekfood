@@ -1,0 +1,29 @@
+{
+ "itemId": "raw-생들기름",
+ "lots": [
+  {
+   "lotNo": "260803-01",
+   "supplierName": "실사조정",
+   "id": "lot-생들기름-1785741727473-penz",
+   "status": "active",
+   "kgIn": 5189.184,
+   "createdAt": "2026-08-03T07:22:07.473Z",
+   "kgRemaining": 2276.756,
+   "receivedDate": "2026-08-03",
+   "qtyIn": 0
+  },
+  {
+   "id": "lot-생들기름-복원-1787470000967",
+   "lotNo": "260823-복원",
+   "material": "생들기름",
+   "supplierName": "이중차감 복원 (실사 3307L)",
+   "receivedDate": "2026-08-23",
+   "createdAt": "2026-08-23T07:26:40.967Z",
+   "kgIn": 249.444,
+   "qtyIn": 0,
+   "kgRemaining": 249.444,
+   "status": "active"
+  }
+ ],
+ "stock": 2526.2
+}
