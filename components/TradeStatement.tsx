@@ -1094,9 +1094,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     return set;
   }, [mergedStatements]);
 
-  /** 전표까지 실제로 있는가 — 플래그만으로는 발행완료로 안 친다. */
+  /**
+   * 발행완료인가 — **전표가 걸렸느냐 하나만 본다.** `invoicePrinted` 플래그는 안 본다.
+   *
+   * 플래그는 양쪽으로 다 거짓말한다. 전표를 지워도 true로 남고(그 주문이 영영 숨는다),
+   * 전표를 손으로 이어 붙이면 여전히 false다(전표가 있는데 미발행으로 뜬다).
+   * 근거는 전표 실물뿐이다.
+   *
+   * 전표를 아직 못 불러왔으면 미발행으로 보이는데, 그쪽이 안전한 방향이다 —
+   * 있는 걸 한 번 더 보는 건 괜찮지만 없는 걸 숨기면 매출이 통째로 샌다.
+   */
   const isVouchered = useCallback(
-    (o: { id: string; invoicePrinted?: boolean }) => !!o.invoicePrinted && voucherOrderIds.has(o.id),
+    (o: { id: string }) => voucherOrderIds.has(o.id),
     [voucherOrderIds],
   );
 
