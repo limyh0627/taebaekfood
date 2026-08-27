@@ -2040,11 +2040,22 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                           상품: '상품', 향미유: '상품', 고춧가루: '상품',
                           용기: '부자재', 마개: '부자재', 라벨: '부자재', 박스: '부자재', 테이프: '부자재', 케이스: '부자재', 부자재: '부자재',
                         };
+                        /**
+                         * 되읽기 표에 없는 분류는 **품목의 지금 type으로 되올린다.**
+                         * 표만 믿으면 새 분류가 생길 때마다 '기타'로 샌다 — '비닐' 4품목
+                         * 296만원이 부자재 소계에서 빠져 따로 서 있었다. 표는 지워진 품목
+                         * (되짚을 데가 없는 옛 기록)에만 쓴다.
+                         */
+                        const snapGroupOf = (it: { category?: string; itemId: string }): string => {
+                          const cur = products.find(p => p.id === it.itemId);
+                          if (cur) return TYPE_GROUP[String(cur.type)] ?? SNAP_TO_TYPE[String(it.category)] ?? '기타';
+                          return SNAP_TO_TYPE[String(it.category)] ?? '기타';
+                        };
                         const snapGroups = hasItems
                           ? (() => {
                               const m = new Map<string, { name: string; qty: number; value: number; spec?: string; itemId: string; category?: string }[]>();
                               for (const it of snap.items!) {
-                                const g = SNAP_TO_TYPE[String(it.category)] ?? '기타';
+                                const g = snapGroupOf(it);
                                 if (Number(it.value) === 0 && g !== '원료' && g !== '반제품') continue;
                                 const arr = m.get(g) ?? [];
                                 arr.push(it as never);
