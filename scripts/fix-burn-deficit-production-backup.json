@@ -1,0 +1,727 @@
+{
+ "items": {
+  "box-p-20-20": {
+   "stock": -15
+  },
+  "raw-깨분참기름": {
+   "stock": -420.111,
+   "lots": [
+    {
+     "id": "lot-깨분참기름-1785742027691-8jtl",
+     "createdAt": "2026-08-03T07:27:07.691Z",
+     "supplierName": "실사조정",
+     "kgIn": 1760.552,
+     "lotNo": "260803-01",
+     "status": "depleted",
+     "receivedDate": "2026-08-03",
+     "qtyIn": 0,
+     "kgRemaining": 0
+    },
+    {
+     "packageType": "캔",
+     "receivedDate": "2026-08-04",
+     "qtyIn": 64,
+     "supplierName": "풍회유통",
+     "createdAt": "2026-08-04T04:57:26.503Z",
+     "poId": "WTl2jCP9Ua9dbBySVT5U",
+     "lotNo": "260804-01",
+     "id": "lot-깨분참기름-1785819446503-pkxx",
+     "status": "depleted",
+     "kgRemaining": 0,
+     "kgIn": 1056,
+     "packageKg": 16.5,
+     "supplierId": "c-1779251636370"
+    },
+    {
+     "createdAt": "2026-08-04T07:02:05.020Z",
+     "id": "lot-깨분참기름-1785826925020-z34j",
+     "receivedDate": "2026-08-03",
+     "kgIn": 144.27,
+     "status": "active",
+     "kgRemaining": -420.111,
+     "qtyIn": 0,
+     "supplierName": "이월"
+    },
+    {
+     "qtyIn": 0,
+     "id": "lot-깨분참기름-1785826943937-l8v3",
+     "receivedDate": "2026-08-03",
+     "kgIn": 21.105,
+     "supplierName": "이월",
+     "kgRemaining": 0,
+     "status": "depleted",
+     "createdAt": "2026-08-04T07:02:23.937Z"
+    },
+    {
+     "qtyIn": 0,
+     "id": "lot-깨분참기름-1785827247875-sqrx",
+     "supplierName": "이월",
+     "kgIn": 12.023,
+     "status": "depleted",
+     "receivedDate": "2026-08-03",
+     "kgRemaining": 0,
+     "createdAt": "2026-08-04T07:07:27.875Z"
+    },
+    {
+     "id": "lot-깨분참기름-1785827335329-hrhp",
+     "kgRemaining": 0,
+     "receivedDate": "2026-08-03",
+     "createdAt": "2026-08-04T07:08:55.328Z",
+     "supplierName": "이월",
+     "kgIn": 395.712,
+     "qtyIn": 0,
+     "status": "depleted"
+    },
+    {
+     "kgIn": 15.828,
+     "qtyIn": 0,
+     "supplierName": "이월",
+     "kgRemaining": 0,
+     "receivedDate": "2026-08-03",
+     "status": "depleted",
+     "createdAt": "2026-08-04T07:13:13.362Z",
+     "id": "lot-깨분참기름-1785827593362-9cbn"
+    },
+    {
+     "status": "depleted",
+     "qtyIn": 58,
+     "supplierId": "c-1779251336139",
+     "createdAt": "2026-08-07T06:29:56.382Z",
+     "kgRemaining": 0,
+     "kgIn": 957,
+     "supplierName": "(인천)청정식품",
+     "packageKg": 16.5,
+     "id": "lot-깨분참기름-1786084196382-l7ea",
+     "receivedDate": "2026-08-07",
+     "poId": "Tm4l2bWNoOiTkRGbmgfj",
+     "lotNo": "260807-01",
+     "packageType": "캔"
+    },
+    {
+     "status": "depleted",
+     "qtyIn": 0,
+     "id": "lot-깨분참기름-1786084263901-vn6y",
+     "receivedDate": "2026-08-04",
+     "lotNo": "260804-02",
+     "kgIn": 0.916,
+     "kgRemaining": 0,
+     "createdAt": "2026-08-07T06:31:03.901Z",
+     "supplierName": "수불부 정정"
+    },
+    {
+     "kgRemaining": 0,
+     "lotNo": "260807-02",
+     "receivedDate": "2026-08-07",
+     "status": "depleted",
+     "createdAt": "2026-08-07T07:22:27.194Z",
+     "id": "lot-깨분참기름-1786087347194-kcho",
+     "qtyIn": 0,
+     "supplierName": "실사조정",
+     "kgIn": 926.427
+    },
+    {
+     "kgIn": 1072.5,
+     "packageType": "캔",
+     "status": "depleted",
+     "supplierName": "풍회유통",
+     "supplierId": "c-1779251636370",
+     "receivedDate": "2026-08-10",
+     "qtyIn": 65,
+     "packageKg": 16.5,
+     "lotNo": "260810-01",
+     "kgRemaining": 0,
+     "id": "lot-깨분참기름-1786324499057-w16k",
+     "poId": "rPQLHjAS6nN1wEkoOKp1",
+     "createdAt": "2026-08-10T01:14:59.057Z"
+    },
+    {
+     "id": "lot-깨분참기름-fix-1786337933539",
+     "supplierName": "중복차감 복원",
+     "kgIn": 212.605,
+     "kgRemaining": 0,
+     "receivedDate": "2026-08-10",
+     "status": "depleted",
+     "createdAt": "2026-08-10T04:58:53.539Z"
+    },
+    {
+     "id": "lot-깨분참기름-1786665586818-l4oi",
+     "supplierName": "실사조정",
+     "qtyIn": 0,
+     "kgIn": 1474.465,
+     "kgRemaining": 0,
+     "receivedDate": "2026-08-13",
+     "status": "depleted",
+     "createdAt": "2026-08-13T23:59:46.818Z",
+     "lotNo": "260813-01"
+    },
+    {
+     "id": "lot-깨분참기름-1786674297660-i6jp",
+     "supplierId": "c-1779251336139",
+     "supplierName": "(인천)청정식품",
+     "packageType": "캔",
+     "packageKg": 16.5,
+     "qtyIn": 58,
+     "kgIn": 957,
+     "kgRemaining": 0,
+     "receivedDate": "2026-08-14",
+     "status": "depleted",
+     "poId": "gs43Nle7IFnoX1LTwU0H",
+     "createdAt": "2026-08-14T02:24:57.660Z",
+     "lotNo": "260814-01"
+    },
+    {
+     "id": "lot-깨분참기름-1787014885125-y9dr",
+     "supplierId": "c-1779251636370",
+     "supplierName": "풍회유통",
+     "packageType": "캔",
+     "packageKg": 16.5,
+     "qtyIn": 71,
+     "kgIn": 1171.5,
+     "kgRemaining": 0,
+     "receivedDate": "2026-08-18",
+     "status": "depleted",
+     "poId": "M2gEeLr7HOc7rirhxkjr",
+     "createdAt": "2026-08-18T01:01:25.125Z",
+     "lotNo": "260818-01"
+    },
+    {
+     "id": "lot-깨분참기름-1787290531440-b25b",
+     "material": "깨분참기름",
+     "supplierId": "c-1779251636370",
+     "supplierName": "풍회유통",
+     "packageType": "캔",
+     "packageKg": 16.5,
+     "qtyIn": 69,
+     "kgIn": 1138.5,
+     "kgRemaining": 0,
+     "receivedDate": "2026-08-21",
+     "status": "depleted",
+     "poId": "MwFtvbULN2hOfSi38Daf",
+     "createdAt": "2026-08-21T05:35:31.440Z",
+     "lotNo": "260821-01"
+    },
+    {
+     "id": "lot-깨분참기름-1787714771391-diht",
+     "material": "깨분참기름",
+     "supplierId": "c-1779251336139",
+     "supplierName": "(인천)청정식품",
+     "packageType": "캔",
+     "packageKg": 16.5,
+     "qtyIn": 58,
+     "kgIn": 957,
+     "kgRemaining": 0,
+     "receivedDate": "2026-08-26",
+     "status": "depleted",
+     "poId": "po-1787552125853",
+     "createdAt": "2026-08-26T03:26:11.391Z",
+     "lotNo": "260826-01"
+    }
+   ]
+  },
+  "raw-통깨참기름": {
+   "stock": 2704.363,
+   "lots": [
+    {
+     "id": "lot-통깨참기름-1785741813446-pwun",
+     "status": "depleted",
+     "qtyIn": 0,
+     "receivedDate": "2026-08-03",
+     "kgRemaining": 0,
+     "createdAt": "2026-08-03T07:23:33.446Z",
+     "lotNo": "260803-01",
+     "supplierName": "실사조정",
+     "kgIn": 164.88
+    },
+    {
+     "lotNo": "260803-02",
+     "supplierName": "참깨 압착",
+     "createdAt": "2026-08-04T00:19:11.275Z",
+     "kgRemaining": 0,
+     "status": "depleted",
+     "qtyIn": 0,
+     "id": "lot-통깨참기름-1785802751275-9074",
+     "kgIn": 244.8,
+     "receivedDate": "2026-08-03"
+    },
+    {
+     "kgRemaining": 0,
+     "status": "depleted",
+     "createdAt": "2026-08-04T07:02:05.172Z",
+     "kgIn": 1.794,
+     "supplierName": "참깨 압착",
+     "qtyIn": 0,
+     "id": "lot-통깨참기름-1785826925172-ythe",
+     "receivedDate": "2026-07-27"
+    },
+    {
+     "supplierName": "이월",
+     "status": "depleted",
+     "qtyIn": 0,
+     "receivedDate": "2026-08-03",
+     "kgRemaining": 0,
+     "createdAt": "2026-08-04T07:02:05.172Z",
+     "kgIn": 46.296,
+     "id": "lot-통깨참기름-1785826925172-ogjx"
+    },
+    {
+     "kgRemaining": 0,
+     "id": "lot-통깨참기름-1785826944047-aiyw",
+     "receivedDate": "2026-08-03",
+     "supplierName": "이월",
+     "kgIn": 31.657,
+     "createdAt": "2026-08-04T07:02:24.047Z",
+     "qtyIn": 0,
+     "status": "depleted"
+    },
+    {
+     "kgIn": 4.008,
+     "createdAt": "2026-08-04T07:07:28.006Z",
+     "kgRemaining": 0,
+     "receivedDate": "2026-08-03",
+     "qtyIn": 0,
+     "status": "depleted",
+     "supplierName": "이월",
+     "id": "lot-통깨참기름-1785827248006-k1tz"
+    },
+    {
+     "createdAt": "2026-08-04T07:08:55.432Z",
+     "status": "depleted",
+     "kgIn": 6.102,
+     "supplierName": "참깨 압착",
+     "qtyIn": 0,
+     "id": "lot-통깨참기름-1785827335432-4fp5",
+     "kgRemaining": 0,
+     "receivedDate": "2026-07-10"
+    },
+    {
+     "status": "depleted",
+     "qtyIn": 0,
+     "supplierName": "참깨 압착",
+     "kgIn": 15,
+     "receivedDate": "2026-07-11",
+     "createdAt": "2026-08-04T07:08:55.432Z",
+     "id": "lot-통깨참기름-1785827335432-8n6h",
+     "kgRemaining": 0
+    },
+    {
+     "status": "depleted",
+     "kgRemaining": 0,
+     "receivedDate": "2026-07-13",
+     "createdAt": "2026-08-04T07:08:55.432Z",
+     "kgIn": 15,
+     "qtyIn": 0,
+     "id": "lot-통깨참기름-1785827335432-7lwq",
+     "supplierName": "참깨 압착"
+    },
+    {
+     "qtyIn": 0,
+     "kgIn": 15,
+     "id": "lot-통깨참기름-1785827335432-ufpc",
+     "kgRemaining": 0,
+     "supplierName": "참깨 압착",
+     "status": "depleted",
+     "createdAt": "2026-08-04T07:08:55.432Z",
+     "receivedDate": "2026-07-15"
+    },
+    {
+     "qtyIn": 0,
+     "kgIn": 15,
+     "status": "depleted",
+     "kgRemaining": 0,
+     "supplierName": "참깨 압착",
+     "receivedDate": "2026-07-16",
+     "id": "lot-통깨참기름-1785827335432-g7zg",
+     "createdAt": "2026-08-04T07:08:55.432Z"
+    },
+    {
+     "kgRemaining": 0,
+     "createdAt": "2026-08-04T07:08:55.432Z",
+     "qtyIn": 0,
+     "supplierName": "참깨 압착",
+     "status": "depleted",
+     "id": "lot-통깨참기름-1785827335432-l418",
+     "receivedDate": "2026-07-17",
+     "kgIn": 15
+    },
+    {
+     "id": "lot-통깨참기름-1785827335432-ntwc",
+     "createdAt": "2026-08-04T07:08:55.432Z",
+     "supplierName": "참깨 압착",
+     "kgRemaining": 0,
+     "receivedDate": "2026-07-16",
+     "qtyIn": 0,
+     "kgIn": 15,
+     "status": "depleted"
+    },
+    {
+     "supplierName": "참깨 압착",
+     "receivedDate": "2026-07-20",
+     "createdAt": "2026-08-04T07:08:55.432Z",
+     "kgIn": 2.826,
+     "status": "depleted",
+     "kgRemaining": 0,
+     "id": "lot-통깨참기름-1785827335432-h7zu",
+     "qtyIn": 0
+    },
+    {
+     "kgRemaining": 0,
+     "supplierName": "이월",
+     "id": "lot-통깨참기름-1785827593427-2784",
+     "receivedDate": "2026-08-03",
+     "createdAt": "2026-08-04T07:13:13.427Z",
+     "kgIn": 3.957,
+     "qtyIn": 0,
+     "status": "depleted"
+    },
+    {
+     "qtyIn": 0,
+     "id": "lot-통깨참기름-1785832165685-jicl",
+     "supplierName": "참깨 압착",
+     "kgRemaining": 0,
+     "kgIn": 244.8,
+     "status": "depleted",
+     "createdAt": "2026-08-04T08:29:25.685Z",
+     "lotNo": "260804-01",
+     "receivedDate": "2026-08-04"
+    },
+    {
+     "kgRemaining": 0,
+     "kgIn": 244.8,
+     "createdAt": "2026-08-07T00:45:03.474Z",
+     "id": "lot-통깨참기름-1786063503474-e8ij",
+     "lotNo": "260805-01",
+     "status": "depleted",
+     "supplierName": "참깨 압착",
+     "receivedDate": "2026-08-05",
+     "qtyIn": 0
+    },
+    {
+     "kgIn": 216,
+     "qtyIn": 0,
+     "createdAt": "2026-08-07T00:45:35.902Z",
+     "supplierName": "참깨 압착",
+     "status": "depleted",
+     "kgRemaining": 0,
+     "lotNo": "260806-01",
+     "receivedDate": "2026-08-06",
+     "id": "lot-통깨참기름-1786063535902-6076"
+    },
+    {
+     "kgIn": 2274.716,
+     "receivedDate": "2026-08-07",
+     "lotNo": "260807-01",
+     "createdAt": "2026-08-07T07:40:18.294Z",
+     "status": "depleted",
+     "id": "lot-통깨참기름-1786088418294-wx9a",
+     "supplierName": "실사조정",
+     "kgRemaining": 0,
+     "qtyIn": 0
+    },
+    {
+     "supplierName": "참깨 압착",
+     "lotNo": "260807-02",
+     "kgIn": 240,
+     "kgRemaining": 0,
+     "receivedDate": "2026-08-07",
+     "createdAt": "2026-08-07T08:36:00.352Z",
+     "id": "lot-통깨참기름-1786091760352-wy6c",
+     "qtyIn": 0,
+     "status": "depleted"
+    },
+    {
+     "kgRemaining": 0,
+     "id": "lot-통깨참기름-restore-1786116545909",
+     "status": "depleted",
+     "createdAt": "2026-08-07T15:29:05.909Z",
+     "supplierName": "생산취소 복원",
+     "kgIn": 9.738,
+     "receivedDate": "2026-08-07"
+    },
+    {
+     "lotNo": "260808-01",
+     "status": "depleted",
+     "supplierName": "참깨 압착",
+     "kgRemaining": 0,
+     "qtyIn": 0,
+     "id": "lot-통깨참기름-1786333100037-17rd",
+     "createdAt": "2026-08-10T03:38:20.037Z",
+     "kgIn": 240,
+     "receivedDate": "2026-08-08"
+    },
+    {
+     "id": "lot-통깨참기름-fix-1786337933539",
+     "supplierName": "중복차감 복원",
+     "kgIn": 275.234,
+     "kgRemaining": 0,
+     "receivedDate": "2026-08-10",
+     "status": "depleted",
+     "createdAt": "2026-08-10T04:58:53.539Z"
+    },
+    {
+     "id": "lot-통깨참기름-1786430668996-p8s4",
+     "supplierName": "참깨 압착",
+     "qtyIn": 0,
+     "kgIn": 240,
+     "kgRemaining": 0,
+     "receivedDate": "2026-08-10",
+     "status": "depleted",
+     "createdAt": "2026-08-11T06:44:28.996Z",
+     "lotNo": "260810-01"
+    },
+    {
+     "id": "lot-통깨참기름-1786431528060-b2pr",
+     "supplierName": "참깨 압착",
+     "qtyIn": 0,
+     "kgIn": 4.8,
+     "kgRemaining": 0,
+     "receivedDate": "2026-08-11",
+     "status": "depleted",
+     "createdAt": "2026-08-11T06:58:48.060Z",
+     "lotNo": "260811-01"
+    },
+    {
+     "id": "lot-통깨참기름-1786522491273-1vby",
+     "supplierName": "참깨 압착",
+     "qtyIn": 0,
+     "kgIn": 100.8,
+     "kgRemaining": 0,
+     "receivedDate": "2026-08-12",
+     "status": "depleted",
+     "createdAt": "2026-08-12T08:14:51.273Z",
+     "lotNo": "260812-01"
+    },
+    {
+     "id": "lot-통깨참기름-1786609670553-v8gi",
+     "supplierName": "참깨 압착",
+     "qtyIn": 0,
+     "kgIn": 244.8,
+     "kgRemaining": 0,
+     "receivedDate": "2026-08-13",
+     "status": "depleted",
+     "createdAt": "2026-08-13T08:27:50.553Z",
+     "lotNo": "260813-01"
+    },
+    {
+     "id": "lot-통깨참기름-1786664525555-jf4x",
+     "supplierName": "실사조정",
+     "qtyIn": 0,
+     "kgIn": 421.734,
+     "kgRemaining": 0,
+     "receivedDate": "2026-08-13",
+     "status": "depleted",
+     "createdAt": "2026-08-13T23:42:05.555Z",
+     "lotNo": "260813-02"
+    },
+    {
+     "id": "lot-통깨참기름-1786695695060-m9f0",
+     "supplierName": "참깨 압착",
+     "qtyIn": 0,
+     "kgIn": 244.8,
+     "kgRemaining": 0,
+     "receivedDate": "2026-08-14",
+     "status": "depleted",
+     "createdAt": "2026-08-14T08:21:35.060Z",
+     "lotNo": "260814-01"
+    },
+    {
+     "id": "lot-통깨참기름-1786772113478-a5u6",
+     "supplierName": "참깨 압착",
+     "qtyIn": 0,
+     "kgIn": 244.8,
+     "kgRemaining": 0,
+     "receivedDate": "2026-08-15",
+     "status": "depleted",
+     "createdAt": "2026-08-15T05:35:13.478Z",
+     "lotNo": "260815-01"
+    },
+    {
+     "id": "lot-통깨참기름-1787050153165-lbuk",
+     "supplierName": "참깨 압착",
+     "qtyIn": 0,
+     "kgIn": 244.8,
+     "kgRemaining": 0,
+     "receivedDate": "2026-08-18",
+     "status": "depleted",
+     "createdAt": "2026-08-18T10:49:13.165Z",
+     "lotNo": "260818-01"
+    },
+    {
+     "id": "lot-통깨참기름-1787188732384-h2ef",
+     "supplierName": "참깨 압착",
+     "qtyIn": 0,
+     "kgIn": 360,
+     "kgRemaining": 0,
+     "receivedDate": "2026-08-19",
+     "status": "depleted",
+     "createdAt": "2026-08-20T01:18:52.384Z",
+     "lotNo": "260819-01"
+    },
+    {
+     "id": "lot-통깨참기름-1787204085866-9jau",
+     "supplierName": "참깨 압착",
+     "qtyIn": 0,
+     "kgIn": 360,
+     "kgRemaining": 0,
+     "receivedDate": "2026-08-19",
+     "status": "depleted",
+     "createdAt": "2026-08-20T05:34:45.866Z",
+     "lotNo": "260819-02"
+    },
+    {
+     "id": "lot-통깨참기름-1787204178952-joae",
+     "supplierName": "참깨 압착",
+     "qtyIn": 0,
+     "kgIn": 244.8,
+     "kgRemaining": 0,
+     "receivedDate": "2026-08-17",
+     "status": "depleted",
+     "createdAt": "2026-08-20T05:36:18.952Z",
+     "lotNo": "260817-01"
+    },
+    {
+     "id": "lot-통깨참기름-1787213869151-t9x5",
+     "material": "통깨참기름",
+     "supplierName": "참깨 압착",
+     "qtyIn": 0,
+     "kgIn": 360,
+     "kgRemaining": 121.723,
+     "receivedDate": "2026-08-20",
+     "status": "active",
+     "createdAt": "2026-08-20T08:17:49.151Z",
+     "lotNo": "260820-01"
+    },
+    {
+     "id": "lot-통깨참기름-1787295431429-7acb",
+     "material": "통깨참기름",
+     "supplierName": "참깨 압착",
+     "qtyIn": 0,
+     "kgIn": 388.8,
+     "kgRemaining": 388.8,
+     "receivedDate": "2026-08-21",
+     "status": "active",
+     "createdAt": "2026-08-21T06:57:11.429Z",
+     "lotNo": "260821-01"
+    },
+    {
+     "id": "lot-통깨참기름-1787379857457-5ujb",
+     "material": "통깨참기름",
+     "supplierName": "참깨 압착",
+     "qtyIn": 0,
+     "kgIn": 345.6,
+     "kgRemaining": 345.6,
+     "receivedDate": "2026-08-22",
+     "status": "active",
+     "createdAt": "2026-08-22T06:24:17.457Z",
+     "lotNo": "260822-01"
+    },
+    {
+     "id": "lot-통깨참기름-1787465646985-5clo",
+     "material": "통깨참기름",
+     "supplierName": "참깨 압착",
+     "qtyIn": 0,
+     "kgIn": 259.2,
+     "kgRemaining": 259.2,
+     "receivedDate": "2026-08-23",
+     "status": "active",
+     "createdAt": "2026-08-23T06:14:06.985Z",
+     "lotNo": "260823-01"
+    },
+    {
+     "id": "lot-통깨참기름-1787558483095-qdzn",
+     "material": "통깨참기름",
+     "supplierName": "참깨 압착",
+     "qtyIn": 0,
+     "kgIn": 72,
+     "kgRemaining": 72,
+     "receivedDate": "2026-08-24",
+     "status": "active",
+     "createdAt": "2026-08-24T08:01:23.095Z",
+     "lotNo": "260824-01"
+    },
+    {
+     "id": "lot-통깨참기름-1787647448235-c83k",
+     "material": "통깨참기름",
+     "supplierName": "참깨 압착",
+     "qtyIn": 0,
+     "kgIn": 244.8,
+     "kgRemaining": 244.8,
+     "receivedDate": "2026-08-25",
+     "status": "active",
+     "createdAt": "2026-08-25T08:44:08.235Z",
+     "lotNo": "260825-01"
+    },
+    {
+     "id": "lot-통깨참기름-1787729679548-sp1h",
+     "material": "통깨참기름",
+     "supplierId": "c-1785818085745",
+     "supplierName": "카프코",
+     "qtyIn": 540,
+     "kgIn": 494.64,
+     "kgRemaining": 494.64,
+     "receivedDate": "2026-08-26",
+     "status": "active",
+     "poId": "jGEAdS8z8wotdKmbXSHM",
+     "createdAt": "2026-08-26T07:34:39.548Z",
+     "lotNo": "260826-01"
+    },
+    {
+     "id": "lot-통깨참기름-1787803259683-au57",
+     "material": "통깨참기름",
+     "supplierName": "참깨 압착",
+     "qtyIn": 0,
+     "kgIn": 532.8,
+     "kgRemaining": 532.8,
+     "receivedDate": "2026-08-26",
+     "status": "active",
+     "createdAt": "2026-08-27T04:00:59.683Z",
+     "lotNo": "260826-02"
+    },
+    {
+     "id": "lot-통깨참기름-1787819195683-zwf1",
+     "material": "통깨참기름",
+     "supplierName": "참깨 압착",
+     "qtyIn": 0,
+     "kgIn": 244.8,
+     "kgRemaining": 244.8,
+     "receivedDate": "2026-08-27",
+     "status": "active",
+     "createdAt": "2026-08-27T08:26:35.683Z",
+     "lotNo": "260827-01"
+    }
+   ]
+  },
+  "box-p-1777506850191-10": {
+   "stock": -2
+  },
+  "p-1775086496028": {
+   "stock": -3
+  },
+  "box-p-104-20": {
+   "stock": -1
+  },
+  "raw-탈피들깨가루": {
+   "stock": 1829,
+   "lots": [
+    {
+     "id": "lot-탈피들깨가루-1785744132955-y3xp",
+     "supplierName": "실사조정",
+     "qtyIn": 0,
+     "kgIn": 2160,
+     "kgRemaining": 1829,
+     "receivedDate": "2026-08-03",
+     "status": "active",
+     "createdAt": "2026-08-03T08:02:12.955Z",
+     "lotNo": "260803-01"
+    }
+   ]
+  }
+ },
+ "ledgerIds": [
+  "rm-auto-FIX-보정-box-p-104-20-탈피들깨가루",
+  "rm-auto-FIX-보정-box-p-1777506850191-10-깨분참기름",
+  "rm-auto-FIX-보정-box-p-1777506850191-10-통깨참기름",
+  "rm-auto-FIX-보정-box-p-20-20-깨분참기름",
+  "rm-auto-FIX-보정-box-p-20-20-통깨참기름",
+  "rm-auto-FIX-보정-p-1775086496028-깨분참기름"
+ ]
+}
