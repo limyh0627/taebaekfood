@@ -1,0 +1,40 @@
+{
+ "itemId": "raw-볶음들깨",
+ "lots": [
+  {
+   "kgIn": 4350,
+   "createdAt": "2026-08-03T07:29:23.313Z",
+   "status": "active",
+   "qtyIn": 0,
+   "id": "lot-볶음들깨-1785742163313-mal0",
+   "receivedDate": "2026-08-03",
+   "supplierName": "실사조정",
+   "kgRemaining": 24,
+   "lotNo": "260803-01"
+  },
+  {
+   "poId": "gSFegGImDkykCZQX8fgc",
+   "supplierName": "수입",
+   "kgRemaining": 9816,
+   "qtyIn": 9816,
+   "kgIn": 9816,
+   "createdAt": "2026-08-04T05:05:19.959Z",
+   "receivedDate": "2026-08-04",
+   "id": "lot-볶음들깨-1785819919959-xwxi",
+   "supplierId": "c-1785818924815",
+   "status": "active",
+   "lotNo": "260804-01"
+  },
+  {
+   "id": "lot-볶음들깨-fix-1786337933539",
+   "supplierName": "중복차감 복원",
+   "kgIn": 400,
+   "kgRemaining": 400,
+   "receivedDate": "2026-08-10",
+   "status": "active",
+   "createdAt": "2026-08-10T04:58:53.539Z"
+  }
+ ],
+ "stock": 10240,
+ "anchorId": "rm-anchor-볶음들깨-20260827"
+}

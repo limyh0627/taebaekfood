@@ -1076,6 +1076,31 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   }, [issuedStatements, extraStatements, deletedStmtIds, companyId]);
 
   /**
+   * **전표가 실제로 걸린 주문 id** — `invoicePrinted` 플래그가 아니라 전표를 근거로 본다.
+   *
+   * 플래그는 전표를 만들 때 세우는데, 전표를 지우거나 발행이 중간에 엎어져도 그대로 남는다.
+   * 그러면 전표가 없는데도 목록에서 숨어 영영 안 보인다(2026-08 기준 3건이 그 상태였다:
+   * 일성상회 08-18 · 세화식품 08-13 · 글로벌유통 08-05).
+   *
+   * 뱃지(5300줄 근처)는 진작 전표를 같이 보고 있었는데 **목록 필터만 플래그를 봐서**,
+   * "미발행이라고 찍히는데 목록엔 안 뜨는" 상태였다. 둘을 하나로 맞춘다.
+   *
+   * 한 전표가 여러 주문을 묶기도 해서 콤마·공백으로 갈라 담는다.
+   */
+  const voucherOrderIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const st of mergedStatements)
+      for (const v of String(st.orderId ?? '').split(/[,\s]+/)) if (v) set.add(v);
+    return set;
+  }, [mergedStatements]);
+
+  /** 전표까지 실제로 있는가 — 플래그만으로는 발행완료로 안 친다. */
+  const isVouchered = useCallback(
+    (o: { id: string; invoicePrinted?: boolean }) => !!o.invoicePrinted && voucherOrderIds.has(o.id),
+    [voucherOrderIds],
+  );
+
+  /**
    * 거래처별 잔액 — 전표 총액에서 그 거래처로 오간 채권·채무(108/251) 자금을 뺀다.
    * **전표에 안 붙인다.** 받은 돈이 어느 청구서를 갚았는지 따지지 않고 "이 거래처에 얼마 남았나"만 본다.
    * 분개(108·251 잔액)와 같은 규칙이라 전표화면·거래처통계·재무제표가 저절로 같은 숫자를 낸다.
@@ -1382,19 +1407,20 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       .filter(o => o.partnerId === selectedClientId)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     if (onlyActive) {
-      // 진행주문 = 미발행(배송완료여도 미발행이면 표시) + 진행중 상태. 발행완료(invoicePrinted)는 발행내역에서 본다.
-      list = list.filter(o => !o.invoicePrinted || ACTIVE_STATUSES.has(o.status as OrderStatus));
+      // 진행주문 = 미발행(배송완료·예전주문이어도 전표가 안 걸렸으면 표시) + 진행중 상태.
+      // 발행완료는 발행내역에서 본다. **판정은 전표 실물** — 플래그만 남고 전표가 없는 건 여기 떠야 한다.
+      list = list.filter(o => !isVouchered(o) || ACTIVE_STATUSES.has(o.status as OrderStatus));
       list = [...list].sort((a, b) => {
-        const aP = !!a.invoicePrinted, bP = !!b.invoicePrinted;
+        const aP = isVouchered(a), bP = isVouchered(b);
         if (aP !== bP) return aP ? 1 : -1;
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       });
     }
     // 미발행(진행) 전표는 날짜 무관하게 다 보인다 (배송완료·예전주문이어도). 날짜필터는 발행완료 건에만.
-    if (dateFrom) list = list.filter(o => !o.invoicePrinted || (o.createdAt || '').slice(0, 10) >= dateFrom);
-    if (dateTo)   list = list.filter(o => !o.invoicePrinted || (o.createdAt || '').slice(0, 10) <= dateTo);
+    if (dateFrom) list = list.filter(o => !isVouchered(o) || (o.createdAt || '').slice(0, 10) >= dateFrom);
+    if (dateTo)   list = list.filter(o => !isVouchered(o) || (o.createdAt || '').slice(0, 10) <= dateTo);
     return list;
-  }, [orders, selectedClientId, onlyActive, dateFrom, dateTo]);
+  }, [orders, selectedClientId, onlyActive, dateFrom, dateTo, isVouchered]);
 
   const selectedOrder  = partnerOrders.find(o => o.id === selectedOrderId);
   const selectedClient = partners.find(c => c.id === selectedClientId);
@@ -5288,7 +5314,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                           </div>
                           <div className="divide-y divide-slate-50">
                             {byMonth[month].map(o=>{
-                              const alreadyIssued=!!o.invoicePrinted&&!!issuedStatements.find(s=>s.orderId===o.id);
+                              const alreadyIssued = isVouchered(o);   // 목록 필터와 같은 기준
                               return (
                                 <button key={o.id} onClick={()=>handleOrderClick(o)}
                                   className={`w-full flex items-center gap-3 text-left px-5 py-3 text-xs transition-all ${alreadyIssued?'bg-emerald-50 hover:bg-emerald-100':'hover:bg-pink-50'}`}>
