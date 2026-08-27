@@ -507,3 +507,18 @@ BOM 수량은 **언제나 kg**으로 저장한다(items.stock·로트·원료수
 세우는 현금주의용이라 여기 쓰면 비용이 두 번 잡힌다.
 
 - 되돌리기: `npx tsx scripts/fix-tpl-salary-payout.mts --undo`
+
+## 2026-08-24 — 옛 '급여' 템플릿 숨김
+
+**작업자:** Claude 에이전트 (사용자 지시)
+**스크립트:** `scripts/fix-tpl-hide-old-salary.mts` (기본 `--dry`, 적용 `--apply`, 되돌리기 `--undo`)
+
+| 문서 | 변경 |
+|---|---|
+| `fixedCostTemplates/fct-builtin-salary` | `hidden` false → **true** |
+
+`mode='급여'`라 515 급여를 차변에 세우는 **현금주의**용이다. 급여를 말일 발생으로 잡는 지금
+방식에선 지급 때 이걸 쓰면 비용이 두 번 잡힌다. 지급은 `fct-salary-payout`(263을 턴다)을 쓴다.
+기본 템플릿(builtin)이라 지울 수는 없고 숨기기만 된다.
+
+- 되돌리기: `npx tsx scripts/fix-tpl-hide-old-salary.mts --undo`
