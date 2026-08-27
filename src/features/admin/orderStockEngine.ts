@@ -4,6 +4,7 @@ import { bomOf } from '../../shared/bomIndex';
 import { Order, OrderItem, Item, OrderStatus, AppNotification, Partner, RawMaterialLot } from '../../shared/types';
 import { toKg, baseRawName, lotStockInUnit, unitToKg } from '../../constants/formula';
 import { deductFromLots, withCarryOverLot, buildReceiveLot, deductLotsByQty, restoreLotsByQty } from '../../shared/lotUtils';
+import { checkLedgerLot, gapMessage } from '../../shared/ledgerLotCheck';
 import type { ProductLotTake } from '../../shared/lotUtils';
 import { bomQty } from '../../shared/bom';
 import { stockUnits, isBoxStockItem, unpackComponent } from '../../shared/orderUnits';
@@ -300,6 +301,24 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       }
       const entryId = `rm-auto-${order.id}-${raw.replace(/\s/g, '_')}`;
       await setDoc(doc(db, 'rawMaterialLedger', entryId), { id: entryId, material: raw, date: dateStr, received: 0, used: usedKg, note: `자동: ${customerName}${noteSuffix}`, createdAt: new Date().toISOString(), type: 'auto', orderId: order.id }, { merge: true });
+
+      /**
+       * **둘 다 쓴 뒤에 되읽어 대조한다.**
+       * 원장과 로트는 따로 쓰기 때문에 한쪽만 성공하면 그대로 갈린다. 쓰는 순서를 바꾸는 걸로는
+       * 못 막는다 — 로트가 실패하면 일은 어차피 날아가고, 다만 조용히 날아갈 뿐이다.
+       * 실패했는지는 되읽어 대조해야만 안다.
+       */
+      if (rawItem) {
+        const gap = await checkLedgerLot(db, rawItem.id, raw, rawItem.density ?? 1);
+        if (gap) {
+          console.warn(`[원장·로트 불일치] ${gapMessage(gap)} (주문 ${order.id})`);
+          await addItem('notifications', {
+            type: 'inventory_shortage', title: '원장·로트 불일치',
+            body: `${gapMessage(gap)} — 주문 ${order.id}(${customerName}) 처리 뒤. 한쪽만 반영됐을 수 있습니다.`,
+            linkedId: rawItem.id, readBy: [], createdAt: new Date().toISOString(),
+          } as Omit<AppNotification, 'id'>);
+        }
+      }
     }
     return consumedLots;
   };

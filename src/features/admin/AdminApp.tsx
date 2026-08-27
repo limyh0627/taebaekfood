@@ -91,6 +91,7 @@ import StockUseModal from './StockUseModal';
 import { createOemEngine, OEM_DEFAULT_FEE_PER_KG } from './oemEngine';
 import { buildFormula as buildFormulaBom, formulaRowsOf } from './bom';
 import { buildCostFn } from '../../shared/bomCost';
+import { checkLedgerLot, gapMessage } from '../../shared/ledgerLotCheck';
 import NoticeBoard from '../../../components/NoticeBoard';
 import ItemManager from '../../../components/ItemManager';
 import ItemPriceManager from '../../../components/ItemPriceManager';
@@ -1825,6 +1826,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       );
                     } catch (err) {
                       console.error('[수율 자동입고] 파생 원료 로트 생성 실패:', product, err);
+                    }
+                    /**
+                     * **쓰고 나서 되읽어 대조한다.** 위 catch는 던져진 실패만 잡고 콘솔에만 찍는다 —
+                     * 아무도 안 보고, 원장만 늘어난 채로 몇 주 뒤에 "왜 안 맞냐"로 만난다.
+                     * 순서를 바꾸는 걸로는 못 막는다(로트가 실패하면 일은 어차피 날아간다).
+                     */
+                    const gap = await checkLedgerLot(db, derivedRaw.id, product, derivedRaw.density ?? 1);
+                    if (gap) {
+                      console.warn(`[원장·로트 불일치] ${gapMessage(gap)}`);
+                      alert(`⚠ ${gapMessage(gap)}
+
+압착 입고가 한쪽에만 반영됐을 수 있습니다. 실사로 맞춰 주세요.`);
                     }
                   }
                 }

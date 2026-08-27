@@ -53,9 +53,10 @@ import { catOrder, CATEGORY_ORDER_LEN, categoryChipClass, specText, splitNameVol
 import { subDotClass } from '../src/shared/submaterialStyle';
 import { isSubmaterial } from '../src/shared/types';
 import { matchesSearch } from '../src/shared/hangul';
+import { checkLedgerLot, gapMessage } from '../src/shared/ledgerLotCheck';
 import { mutateRawMaterialLots, addItem, subscribeToCollection, fetchCollection, adjustItemStock } from '../src/shared/services/firebaseService';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from '../src/shared/firebase';
+import { storage, db } from '../src/shared/firebase';
 import { withCarryOverLot, buildReceiveLot, nextLotNo, deductFromLots, settleCarryOver, lotQtyRemaining } from '../src/shared/lotUtils';
 import { isBackdated, latestAnchorDate } from '../src/shared/rawLedgerBalance';
 
@@ -3137,6 +3138,12 @@ const ItemList: React.FC<ItemListProps> = ({
               setToast({ message: `${entry.material} 기록은 저장됐지만 재고 반영에 실패했습니다. 네트워크/재고를 확인하세요.` });
               return; // 성공 토스트 생략 (모달은 정상 종료)
             }
+            /**
+             * **쓰고 나서 되읽어 대조한다.** 위 catch는 던져진 실패만 잡는다 — 조용히 한쪽만
+             * 써진 경우(부분 성공·다른 탭의 겹친 쓰기)는 못 잡는다. 실패했는지는 대조해야 안다.
+             */
+            const gap = await checkLedgerLot(db, rawTarget.id, entry.material, rawTarget.density ?? 1);
+            if (gap) setToast({ message: `⚠ ${gapMessage(gap)} — 한쪽만 반영됐을 수 있습니다. 실사로 맞춰 주세요.` });
           }
           // 저장 완료 토스트
           const amt = entry.received > 0 ? entry.received : Math.abs(entry.used);
