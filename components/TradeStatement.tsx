@@ -1417,8 +1417,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         .map((item, idx) => {
           const qty = parseFloat(item.qty) || 0;
           const price = parseFloat(item.price) || 0;
-          // 단가는 부가세 포함 → 공급가액 역산 (주문 기반 경로 및 품목행 표시와 동일 규칙)
-          const gross = qty * price;
+          /**
+           * 단가는 부가세 포함 → 공급가액 역산 (주문 기반 경로 및 품목행 표시와 동일 규칙).
+           * **원 단위로 반올림한다** — 수량이 소수인 줄(0.277kg 같은 것)이 끼면 공급가·세액에
+           * 소수점이 남아 합계가 1원씩 어긋나고, 전표에 '1,234.56원'이 찍힌다.
+           */
+          const gross = Math.round(qty * price);
           const supply = item.isTaxExempt ? gross : Math.round(gross / 1.1);
           const tax = item.isTaxExempt ? 0 : gross - supply;
           return { key: `manual-${idx}`, no: idx + 1, name: item.name, spec: item.spec, qty, price, supply, tax, total: supply + tax, isTaxExempt: item.isTaxExempt, isBoxUnit: item.isBoxUnit, boxSize: item.boxSize, side: item.side, accountCode: item.accountCode || (stmtType === '매출' ? '800' : undefined) };
@@ -1463,15 +1467,16 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         : pcTaxType === '면세';
       // 과세: 단가는 부가세 포함 → 공급가액 역산
       let supply: number, tax: number, displayPrice: number;
+      //  금액은 원 단위로 반올림한다 — 소수 수량이 끼면 합계가 1원씩 어긋난다.
       if (isTaxExempt) {
         displayPrice = unitPrice;
-        supply = unitPrice * qtyUnits;
+        supply = Math.round(unitPrice * qtyUnits);
         tax = 0;
       } else {
         // 부가세 포함 단가 → 공급가액 = round(단가/1.1)*수량
         displayPrice = Math.round(unitPrice / 1.1);
-        supply = displayPrice * qtyUnits;
-        tax = unitPrice * qtyUnits - supply;
+        supply = Math.round(displayPrice * qtyUnits);
+        tax = Math.round(unitPrice * qtyUnits) - supply;
       }
       if (itemMap[key]) {
         itemMap[key].qty += qtyUnits;
