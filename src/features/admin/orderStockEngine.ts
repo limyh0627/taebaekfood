@@ -85,6 +85,42 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   const addDelta = (m: Map<string, number>, id: string, d: number) => { if (d) m.set(id, (m.get(id) ?? 0) + d); };
 
   /**
+   * **재고 판정에 쓸 실제 값** — 생산 한 판이 시작될 때 DB에서 읽어 채운다.
+   *
+   * 쓰기(applyStockDeltas)는 진작 트랜잭션으로 고쳤는데 **읽기가 남아 있었다.**
+   * `product.stock`은 엔진을 만들 때 클로저에 갇힌 화면 값이라, 앞 주문이 방금 깎아도
+   * 그대로다. 그래서 "재고 있으니 안 만들어도 된다"고 판단해 놓고 실제로는 없어서 파였다:
+   *
+   *   화면 낱개 30개  ─┬─ 훈장골 5개   → "30 있다" 생산 0, 출고 −5   DB 30→25
+   *                   └─ 현대유통 30개 → "30 있다" 생산 0, 출고 −30  DB 25→ **−5**
+   *
+   * 재고만 음수가 아니다. 안 만들었으니 **원료도 안 빠진다**(rawConsumedLots 0건) —
+   * 이쪽이 더 크다. 판정도 DB를 보게 한다.
+   */
+  const freshStock = new Map<string, number>();
+  const stockOf = (p: Item) => freshStock.get(p.id) ?? p.stock ?? 0;
+
+  /** 주문이 건드릴 품목 — 주문 라인 + BOM 하위 전체(구성품을 모자라면 먼저 만들기 때문에 필요하다) */
+  const stockTouchedIds = (order: Order): string[] => {
+    const seen = new Set<string>();
+    const walk = (id: string, depth: number) => {
+      if (depth > 5 || seen.has(id)) return;
+      seen.add(id);
+      for (const line of bomOf(id)) walk(line.childId, depth + 1);
+    };
+    for (const item of order.items) walk(item.itemId, 0);
+    return [...seen];
+  };
+
+  /** 판정용 재고를 DB에서 새로 읽어 둔다 — 생산 한 판마다 한 번. */
+  const loadFreshStock = async (order: Order) => {
+    freshStock.clear();
+    const ids = stockTouchedIds(order);
+    const snaps = await Promise.all(ids.map(id => getDoc(doc(db, 'items', id))));
+    snaps.forEach((snap, i) => { if (snap.exists()) freshStock.set(ids[i], Number(snap.data().stock ?? 0)); });
+  };
+
+  /**
    * 품목 재고 델타 일괄 반영 — 한 상태전환에서 같은 품목이 +/−로 겹쳐도 순변화만 1회 기록.
    *
    * **DB에서 읽어 더한다(트랜잭션).** 화면 상태(allItems)의 stock에 더해 덮어쓰면
@@ -199,7 +235,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       // 재고를 얼마나 쓸지는 stockCap이 정한다(0이면 전부 새로 생산). 그래도 차감은 need 전액 —
       // 먼저 만든 short가 상쇄해서 순변화는 딱 '쓴 재고'만큼이 된다.
       if (sign < 0 && (comp.type === 'product' || (comp.type === 'wip' && comp.unit === '개')) && !isGoodsItem(comp)) {
-        const onHand = (comp.stock ?? 0) + (deltas.get(comp.id) ?? 0);
+        const onHand = stockOf(comp) + (deltas.get(comp.id) ?? 0);
         const cap = stockCap?.get(comp.id);
         const have = Math.max(0, cap === undefined ? onHand : Math.min(onHand, cap));
         const short = Math.round((need - have) * 1000) / 1000;
@@ -319,6 +355,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     //   낡으면 그냥 통과한다 — 재고 음수를 만들던 것과 같은 낡은-상태 문제다.
     //   → DB의 지금 값을 직접 보고, 이미 빼둔 몫이 있으면 되돌린 뒤 새로 뺀다.
     //     (수량이 바뀐 재처리도 이 순서면 맞는 값으로 끝난다)
+    await loadFreshStock(order);   // 판정 기준을 DB의 지금 값으로 — 화면 값은 낡는다
     const fresh = await getDoc(doc(db, 'orders', order.id));
     const already = (fresh.exists() ? (fresh.data().rawConsumedLots as Order['rawConsumedLots']) : undefined) ?? [];
     if (already.length > 0) {
@@ -348,7 +385,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       if (isGoodsItem(product)) continue;
 
       // 이 품목 자신의 재고로 충당할 몫. 앞선 라인이 이미 쓴 만큼(deltas)은 빠진 값으로 본다.
-      const onHand = Math.max(0, (product.stock ?? 0) + (deltas.get(product.id) ?? 0));
+      const onHand = Math.max(0, stockOf(product) + (deltas.get(product.id) ?? 0));
       const choice = plan?.[idx];
       const own = Math.min(choice ? Math.max(0, choice.own) : onHand, onHand, units);
       const toProduce = Math.round((units - own) * 1000) / 1000;
