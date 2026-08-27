@@ -1,0 +1,89 @@
+{
+ "raw-수입들기름": {
+  "lots": [
+   {
+    "kgRemaining": 0,
+    "status": "depleted",
+    "kgIn": 282.744,
+    "id": "lot-수입들기름-1785741788141-9qsu",
+    "qtyIn": 0,
+    "supplierName": "실사조정",
+    "createdAt": "2026-08-03T07:23:08.141Z",
+    "receivedDate": "2026-08-03",
+    "lotNo": "260803-01"
+   },
+   {
+    "createdAt": "2026-08-05T01:20:43.316Z",
+    "supplierName": "이월",
+    "receivedDate": "2026-08-05",
+    "id": "lot-carry-1785892843316-29z7",
+    "kgIn": 0,
+    "status": "active",
+    "kgRemaining": -512.848
+   },
+   {
+    "qtyIn": 0,
+    "status": "depleted",
+    "createdAt": "2026-08-07T07:31:48.512Z",
+    "id": "lot-수입들기름-1786087908512-dsud",
+    "receivedDate": "2026-08-07",
+    "supplierName": "실사조정",
+    "lotNo": "260807-01",
+    "kgIn": 262.122,
+    "kgRemaining": 0
+   },
+   {
+    "id": "lot-수입들기름-fix-1786337933539",
+    "supplierName": "중복차감 복원",
+    "kgIn": 107.692,
+    "kgRemaining": 0,
+    "receivedDate": "2026-08-10",
+    "status": "depleted",
+    "createdAt": "2026-08-10T04:58:53.539Z"
+   },
+   {
+    "id": "lot-수입들기름-1787210948038-6vfn",
+    "material": "수입들기름",
+    "supplierId": "c-1784097939362",
+    "supplierName": "현대농업",
+    "qtyIn": 360,
+    "kgIn": 332.64,
+    "kgRemaining": 0,
+    "receivedDate": "2026-08-20",
+    "status": "depleted",
+    "poId": "YDS55aOfEz2HRIcRRYFo",
+    "createdAt": "2026-08-20T07:29:08.038Z",
+    "lotNo": "260820-01"
+   }
+  ],
+  "stock": 0
+ },
+ "raw-생들기름": {
+  "lots": [
+   {
+    "lotNo": "260803-01",
+    "supplierName": "실사조정",
+    "id": "lot-생들기름-1785741727473-penz",
+    "status": "active",
+    "kgIn": 5189.184,
+    "createdAt": "2026-08-03T07:22:07.473Z",
+    "kgRemaining": 2789.604,
+    "receivedDate": "2026-08-03",
+    "qtyIn": 0
+   },
+   {
+    "id": "lot-생들기름-복원-1787470000967",
+    "lotNo": "260823-복원",
+    "material": "생들기름",
+    "supplierName": "이중차감 복원 (실사 3307L)",
+    "receivedDate": "2026-08-23",
+    "createdAt": "2026-08-23T07:26:40.967Z",
+    "kgIn": 249.444,
+    "qtyIn": 0,
+    "kgRemaining": 249.444,
+    "status": "active"
+   }
+  ],
+  "stock": 2526.2
+ }
+}
