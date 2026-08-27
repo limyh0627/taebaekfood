@@ -232,7 +232,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // ── 직접 입력 모드 ──
   const [manualMode, setManualMode] = useState(false);
-  type ManualRow = { name: string; spec: string; qty: string; price: string; isTaxExempt: boolean; note?: string; isBoxUnit?: boolean; boxSize?: number; accountCode?: string };
+  /**
+   * `side`가 달린 줄 = **양변 전표(일반전표)**. 기초이월·감가상각처럼 차·대를 직접 세우는 것.
+   * 안 실어 나르면 저장 한 번에 side가 사라지고, autoJournal이 짐작을 안 하므로
+   * 그 전표의 분개가 통째로 안 선다(미광팩 기초 미지급이 그렇게 비어 있었다).
+   */
+  type ManualRow = { name: string; spec: string; qty: string; price: string; isTaxExempt: boolean; note?: string; isBoxUnit?: boolean; boxSize?: number; accountCode?: string; side?: '차변' | '대변' };
   const [manualItems, setManualItems] = useState<ManualRow[]>([
     { name: '', spec: '', qty: '', price: '', isTaxExempt: false, note: '' },
   ]);
@@ -1234,8 +1239,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         accountCode: i.accountCode,
         isBoxUnit: i.isBoxUnit,
         boxSize: i.boxSize,
+        side: (i as { side?: '차변' | '대변' }).side,
       })),
-      { name: '', spec: '', qty: '', price: '', isTaxExempt: false },
+      //  빈 줄은 안 붙인다 — 양변 전표에 빈 줄이 끼면 차·대가 안 맞아 분개가 안 선다.
     ]);
     setEditablePrices({});
     setTaxExemptOverrides({});
@@ -1398,6 +1404,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     key: string; no: number; name: string; spec: string;
     qty: number; price: number; supply: number; tax: number; total: number;
     isTaxExempt: boolean; isBoxUnit?: boolean; boxSize?: number; accountCode?: string;
+    /** 차·대를 직접 세운 줄 — 있으면 양변 전표(일반전표)다. 합계는 차변 합만 센다. */
+    side?: '차변' | '대변';
     /** 주문의 품목을 못 찾음 — 박스가 안 풀렸을 수 있어 화면에 경고를 단다 */
     unknownItem?: boolean;
   };
@@ -1413,7 +1421,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           const gross = qty * price;
           const supply = item.isTaxExempt ? gross : Math.round(gross / 1.1);
           const tax = item.isTaxExempt ? 0 : gross - supply;
-          return { key: `manual-${idx}`, no: idx + 1, name: item.name, spec: item.spec, qty, price, supply, tax, total: supply + tax, isTaxExempt: item.isTaxExempt, isBoxUnit: item.isBoxUnit, boxSize: item.boxSize, accountCode: item.accountCode || (stmtType === '매출' ? '800' : undefined) };
+          return { key: `manual-${idx}`, no: idx + 1, name: item.name, spec: item.spec, qty, price, supply, tax, total: supply + tax, isTaxExempt: item.isTaxExempt, isBoxUnit: item.isBoxUnit, boxSize: item.boxSize, side: item.side, accountCode: item.accountCode || (stmtType === '매출' ? '800' : undefined) };
         });
     }
     if (!selectedOrder) return [];
@@ -1479,8 +1487,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     return Object.values(itemMap);
   }, [manualMode, manualItems, selectedOrder, allItems, partnerOut, partnerIn, selectedClientId, editablePrices, taxExemptOverrides, accountCodeOverrides, stmtType]);
 
-  const totalSupply = lineItems.reduce((s, r) => s + r.supply, 0);
-  const totalTax    = lineItems.reduce((s, r) => s + r.tax, 0);
+  /**
+   * 양변 전표(일반전표)인가 — 줄마다 차·대를 직접 세운 것.
+   *
+   * 이런 전표는 **차변 합만이 전표 금액**이다. 품목표처럼 전 줄을 더하면 차·대가 겹쳐
+   * 두 배가 된다 — 거산농산 기초이월 1,230,000이 2,460,000으로 떴다.
+   */
+  const isTwoSided = lineItems.some(r => r.side === '차변' || r.side === '대변');
+  const sumOf = (pick: (r: typeof lineItems[number]) => number) =>
+    isTwoSided
+      ? lineItems.filter(r => r.side === '차변').reduce((s, r) => s + pick(r), 0)
+      : lineItems.reduce((s, r) => s + pick(r), 0);
+  const totalSupply = sumOf(r => r.supply);
+  const totalTax    = sumOf(r => r.tax);
   const totalAmount = totalSupply + totalTax;
 
   const tradeDateObj = new Date(tradeDate + 'T00:00:00');
@@ -1519,6 +1538,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         name: i.name, spec: i.spec, qty: i.qty, price: i.price,
         supply: i.supply, tax: i.tax, total: i.total, isTaxExempt: i.isTaxExempt,
         isBoxUnit: i.isBoxUnit, boxSize: i.boxSize, accountCode: i.accountCode || undefined,
+        ...(i.side ? { side: i.side } : {}),   // 양변 전표 — 없으면 분개가 안 선다
       })),
       // 매입전표: 발주된 품목 ID 목록 (purchaseOrders 연결용)
       ...(stmtType === '매입' ? {
@@ -1630,6 +1650,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         name: i.name, spec: i.spec, qty: i.qty, price: i.price,
         supply: i.supply, tax: i.tax, total: i.total, isTaxExempt: i.isTaxExempt,
         isBoxUnit: i.isBoxUnit, boxSize: i.boxSize, accountCode: i.accountCode || undefined,
+        ...(i.side ? { side: i.side } : {}),   // 양변 전표 — 없으면 분개가 안 선다
       })),
     };
     // 거래명세서 탭에서의 수정은 즉시 반영 (확인사항 안 거침)
@@ -5094,8 +5115,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
             {/* ── 헤더 ── */}
             <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-5 py-3 border-b border-slate-100 flex-shrink-0 flex-wrap">
-              <span className={`text-xs font-black px-2.5 py-1 rounded-full ${createMode==='매출'?'bg-blue-100 text-blue-700':'bg-rose-100 text-rose-700'}`}>
-                {createMode==='매출'?'매출':'매입'}전표
+              {/* 양변 전표는 매출도 매입도 아니다 — 차·대를 직접 세운 일반전표다 */}
+              <span className={`text-xs font-black px-2.5 py-1 rounded-full ${
+                isTwoSided ? 'bg-amber-100 text-amber-700' : createMode==='매출'?'bg-blue-100 text-blue-700':'bg-rose-100 text-rose-700'}`}>
+                {isTwoSided ? '일반' : createMode==='매출'?'매출':'매입'}전표
               </span>
               {editingStmt && (
                 <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded-lg">[수정중] {editingStmt.docNo}</span>
@@ -5959,9 +5982,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     <tr className="bg-slate-50 border-t-2 border-slate-200">
                       <td colSpan={3} className="px-3 py-2.5 text-center text-xs font-black text-slate-600">합 계</td>
                       <td className="px-3 py-2.5 text-right text-xs font-black text-slate-700">
-                        {fmt(manualMode
-                          ? manualItems.reduce((s,r)=>s+(parseFloat(r.qty)||0),0)
-                          : lineItems.reduce((s,i)=>s+(i.qty||0),0))}
+                        {fmt(sumOf(r => r.qty || 0))}
                       </td>
                       <td/>
                       <td className="px-3 py-2.5 text-right text-xs font-black text-slate-700">{fmt(totalSupply)}</td>
