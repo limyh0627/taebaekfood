@@ -52,7 +52,6 @@ const CATEGORY_LABELS: Record<string, string> = {
   product: '완제품', goods: '상품', wip: '반제품', raw: '원료',
   submaterial: '부자재',
 };
-const LINK_CATEGORIES = ['product', 'goods', 'wip', 'raw', 'submaterial'];
 /**
  * 부자재 정렬 — **분류 관리에 적힌 순서 그대로.**
  *
@@ -225,6 +224,10 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
   const [taxonomyRows, setTaxonomyRows] = useState<TaxonomyRow[]>([]);
   useEffect(() => { fetchCollection<TaxonomyRow>('itemTaxonomy').then(setTaxonomyRows).catch(() => {}); }, [categoryManagerOpen]);
   const taxo = useMemo(() => buildTaxonomy(taxonomyRows), [taxonomyRows]);
+  //  분류 관리에서 그 타입이 사라지거나 순서가 바뀌면 빈 탭이 골라져 있을 수 있다 — 첫 타입으로 되돌린다.
+  useEffect(() => {
+    if (taxo.types.length && !taxo.types.some(t => t.key === linkCategory)) setLinkCategory(taxo.types[0].key);
+  }, [taxo, linkCategory]);
   /**
    * 카테고리 순위 — 분류 관리에 보이는 순서를 그대로 편다(타입 순서 → 그 안의 카테고리 순서).
    * 사장님 저장본은 부자재가 첫 타입이라 용기·마개·라벨이 앞에 서고 원료·완제품 계열이 뒤에 선다.
@@ -503,11 +506,13 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
     const alreadyLinked = partnerScopeTab === 'purchase'
       ? new Set(partnerIn.filter(ps => (ps.partnerId) === selectedClientId).map(ps => ps.itemId))
       : null;
-    return products
+    //  **items 전체**를 본다 — products는 완제품만이라 goods·wip·raw·부자재가 통째로 빠졌다.
+    return items
+      .filter(p => !p.archived)
       .filter(p => p.type === linkCategory && (alreadyLinked ? !alreadyLinked.has(p.id) : !(p.partnerIds ?? []).includes(selectedClientId)))
-      .filter(p => !term || p.name.toLowerCase().includes(term))
+      .filter(p => !term || matchKo(p.name, term))   // 다른 검색과 같게 초성으로도 찾는다
       .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-  }, [products, selectedClientId, linkCategory, linkSearch, partnerScopeTab, partnerIn]);
+  }, [items, selectedClientId, linkCategory, linkSearch, partnerScopeTab, partnerIn]);
 
   // 품목 테이블 패널 (공통)
   // 거래처별 뷰는 위에 헤더(메인탭+거래처명+매출/매입토글)가 더 쌓이므로 데스크톱 고정높이 오프셋을 키운다.
@@ -1413,19 +1418,21 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                 <X size={18} />
               </button>
             </div>
-            {/* 카테고리 탭 */}
+            {/* 타입 탭 — **분류 관리(itemTaxonomy)에서 가져온다.** 목록 탭과 같은 소스다.
+                예전엔 ['product','goods','wip','raw','submaterial']를 코드에 박아 둬서,
+                분류를 새로 만들면 그 타입 품목이 여기서 통째로 안 보였다(영문 키가 그대로 뜬 것도 그 탓). */}
             <div className="px-6 pt-4 pb-1 flex flex-wrap gap-1.5">
-              {LINK_CATEGORIES.map(cat => (
+              {taxo.types.map(t => (
                 <button
-                  key={cat}
-                  onClick={() => { setLinkCategory(cat); setLinkSearch(''); }}
+                  key={t.key}
+                  onClick={() => { setLinkCategory(t.key); setLinkSearch(''); }}
                   className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border whitespace-nowrap ${
-                    linkCategory === cat
+                    linkCategory === t.key
                       ? 'bg-emerald-600 border-emerald-600 text-white shadow'
                       : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
                   }`}
                 >
-                  {cat}
+                  {t.label}
                 </button>
               ))}
             </div>
