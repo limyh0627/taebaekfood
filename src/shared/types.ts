@@ -670,7 +670,13 @@ export interface IssuedStatement {
   totalTax: number;
   totalAmount: number;
   items: IssuedStatementItem[];
-  taxIssuedAt?: string;   // 세금계산서 발행 일시
+  taxIssuedAt?: string;   // 세금계산서(과세분) 발행 일시
+  /**
+   * **계산서(면세분) 발행 일시** — 과세와 면세는 서류가 따로 나간다(세금계산서 / 계산서).
+   * 한 전표에 둘이 섞여 있으면 반쪽만 발행할 수 있어야 해서 칸을 나눴다.
+   * 면세만 있는 전표는 taxIssuedAt도 같이 찍는다 — 다른 화면들이 그걸로 '발행됨'을 보기 때문.
+   */
+  exemptIssuedAt?: string;
   cashDir?: '입금' | '출금'; // 자금 전표(비용) 방향 — 현금흐름표 투자/재무 부호 판정용(자산·부채·자본 계정). 기본 출금.
 }
 

@@ -152,10 +152,19 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taxStmtIds.join(',')]);
 
-  const activeItems = editedItems.length > 0 ? editedItems : mergedFromStmts;
+  const [taxScope, setTaxScope] = useState<'all' | 'taxable' | 'exempt'>('all');
+  const allItems2 = editedItems.length > 0 ? editedItems : mergedFromStmts;
+  /**
+   * **과세분·면세분은 서류가 따로 나간다** — 세금계산서 / 계산서.
+   * 위 두 상자를 눌러 어느 쪽을 찍을지 고른다. 고른 쪽만 미리보기·인쇄·PDF·발행에 담긴다.
+   * 다시 누르면 둘 다(all)로 돌아간다.
+   */
+  const activeItems = taxScope === 'taxable' ? allItems2.filter(i => !i.isTaxExempt)
+    : taxScope === 'exempt' ? allItems2.filter(i => i.isTaxExempt)
+    : allItems2;
   const mergedItems = {
-    taxable: activeItems.filter(i => !i.isTaxExempt),
-    exempt: activeItems.filter(i => i.isTaxExempt),
+    taxable: allItems2.filter(i => !i.isTaxExempt),
+    exempt: allItems2.filter(i => i.isTaxExempt),
   };
   const taxSupply = mergedItems.taxable.reduce((s, i) => s + i.supply, 0);
   const taxAmt = mergedItems.taxable.reduce((s, i) => s + i.tax, 0);
@@ -188,10 +197,25 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   const selectedClient = partners.find(c => c.id === taxClientId);
   const tradeMonth = selectedStmts.length > 0 ? selectedStmts[selectedStmts.length - 1].tradeDate.slice(0, 7) : '';
 
+  /**
+   * 발행 표시 — **고른 쪽만** 찍는다.
+   * 면세만 있는 전표는 taxIssuedAt도 같이 찍는다: 다른 화면(전표·재고)들이 그 칸 하나로
+   * '발행됨'을 보기 때문에, 안 찍으면 영영 미발행으로 남는다.
+   */
   const handleTaxIssue = () => {
     if (selectedStmts.length === 0) return;
-    const issuedAt = new Date().toISOString();
-    selectedStmts.forEach(s => handleUpdateStatement(s.id, { taxIssuedAt: issuedAt }));
+    const at = new Date().toISOString();
+    selectedStmts.forEach(s => {
+      const hasTax = (s.items ?? []).some(i => !i.isTaxExempt);
+      const hasExempt = (s.items ?? []).some(i => i.isTaxExempt);
+      const patch: { taxIssuedAt?: string; exemptIssuedAt?: string } = {};
+      if (taxScope !== 'exempt' && hasTax) patch.taxIssuedAt = at;
+      if (taxScope !== 'taxable' && hasExempt) {
+        patch.exemptIssuedAt = at;
+        if (!hasTax) patch.taxIssuedAt = at;   // 면세만인 전표 — 옛 칸도 같이 찍는다
+      }
+      if (Object.keys(patch).length) handleUpdateStatement(s.id, patch);
+    });
     setTaxStmtIds([]);
   };
 
@@ -584,7 +608,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                     <div className="flex gap-1.5">
                       <button onClick={handleTaxIssue}
                         className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-[11px] font-black hover:bg-emerald-700">
-                        <Check size={11}/>발행
+                        <Check size={11}/>{taxScope === 'taxable' ? '과세분 발행' : taxScope === 'exempt' ? '면세분 발행' : '발행'}
                       </button>
                       <button onClick={handleTaxPdf}
                         className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-[11px] font-black hover:bg-blue-700">
@@ -598,19 +622,25 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                   </div>
                   <div className="px-4 py-3 border-b border-slate-100 flex flex-wrap gap-4">
                     {mergedItems.taxable.length > 0 && (
-                      <div className="flex items-center gap-3 bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5">
+                      <button type="button" onClick={() => setTaxScope(v => v === 'taxable' ? 'all' : 'taxable')}
+                        title="과세분만 찍기 — 다시 누르면 둘 다"
+                        className={`flex items-center gap-3 rounded-xl px-4 py-2.5 border transition-all ${
+                          taxScope === 'taxable' ? 'bg-blue-100 border-blue-400 ring-2 ring-blue-300' : 'bg-blue-50 border-blue-100 hover:border-blue-300'}`}>
                         <span className="text-[11px] font-black text-blue-600">과세</span>
                         <span className="text-xs text-slate-600">공급가 <b className="text-slate-900">{fmt(taxSupply)}</b></span>
                         <span className="text-xs text-slate-600">세액 <b className="text-slate-900">{fmt(taxAmt)}</b></span>
                         <span className="text-sm font-black text-blue-700">{fmt(taxSupply+taxAmt)}원</span>
-                      </div>
+                      </button>
                     )}
                     {mergedItems.exempt.length > 0 && (
-                      <div className="flex items-center gap-3 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-2.5">
+                      <button type="button" onClick={() => setTaxScope(v => v === 'exempt' ? 'all' : 'exempt')}
+                        title="면세분만 찍기 — 다시 누르면 둘 다"
+                        className={`flex items-center gap-3 rounded-xl px-4 py-2.5 border transition-all ${
+                          taxScope === 'exempt' ? 'bg-indigo-100 border-indigo-400 ring-2 ring-indigo-300' : 'bg-indigo-50 border-indigo-100 hover:border-indigo-300'}`}>
                         <span className="text-[11px] font-black text-indigo-600">면세</span>
                         <span className="text-xs text-slate-600">공급가 <b className="text-slate-900">{fmt(exemptSup)}</b></span>
                         <span className="text-sm font-black text-indigo-700">{fmt(exemptSup)}원</span>
-                      </div>
+                      </button>
                     )}
                     <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2.5 ml-auto">
                       <span className="text-[11px] font-black text-emerald-600">합계</span>
