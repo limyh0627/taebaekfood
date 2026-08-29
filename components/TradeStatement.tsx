@@ -1225,6 +1225,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     return out;
   }, [mergedStatements, cashEntries, settlements]);
   const getBalance = (s: IssuedStatement) => openByStmt.get(s.id) ?? s.totalAmount;
+  /**
+   * **수금·지불 버튼을 달 전표인가** — 채권(108)·채무(251)를 세우는 것만.
+   *
+   * 예전엔 `getBalance(s) > 0` 하나로 봤는데, getBalance는 배분에 없으면 총액으로 물러선다.
+   * 그래서 감가상각·급여·선급금대체처럼 **갚을 상대가 없는 전표까지** 전액 미결제로 보여
+   * 지불처리 버튼이 붙었다(지금 데이터로 비용 25건).
+   *
+   * 기초이월은 type이 '비용'이지만 108·251을 세우므로 여기 걸린다 — 실제로 갚아야 할 것이다.
+   */
+  const canSettle = useCallback((s: IssuedStatement) =>
+    (isReceivableStmt(s, '매출') || isReceivableStmt(s, '매입')) && getBalance(s) > 0,
+    [openByStmt]);
 
   // ── 발행내역 상세 보기 ──
   const [detailStmt, setDetailStmt] = useState<IssuedStatement | null>(null);
@@ -3615,7 +3627,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     <td className="px-4 py-3 text-[11px] text-slate-400 max-w-[180px] truncate">{summary}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
-                        {getBalance(stmt) > 0 && (
+                        {canSettle(stmt) && (
                           <button onClick={e=>{e.stopPropagation();openPayModal(stmt);}}
                             className={`text-[10px] font-black px-2 py-1 rounded-lg transition-all flex items-center gap-1 ${
                               stmt.type === '매입'
@@ -3777,7 +3789,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                         : <span className={`text-[11px] font-black shrink-0 ${stmt.type === '매출' ? 'text-blue-600' : 'text-rose-600'}`}>잔액 {fmt(cumul)}</span>
                     )}
                   </div>
-                  {getBalance(stmt) > 0 && (
+                  {canSettle(stmt) && (
                     <button onClick={e => { e.stopPropagation(); openPayModal(stmt); }}
                       className={`self-start mt-0.5 text-[10px] font-black px-2.5 py-1 rounded-lg flex items-center gap-1 ${stmt.type === '매입' ? 'bg-rose-50 text-rose-600' : 'bg-blue-50 text-blue-600'}`}>
                       <Save size={10}/>{stmt.type === '매입' ? '지불처리' : '수금처리'}
