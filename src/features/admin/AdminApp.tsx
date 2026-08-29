@@ -471,6 +471,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
     [allItems, companyId],
   );
 
+  /**
+   * 이 회사 장부에 뜨는 거래처 — 목록 화면이 쓴다.
+   * 계산(잔액·전표)은 **거르지 않은 partners**를 계속 쓴다. 남의 회사 거래처가 섞여도
+   * 그쪽 전표가 없으면 잔액이 0이라 해가 없고, 거르면 옛 전표의 이름이 안 붙는다.
+   */
+  const companyPartners = useMemo(
+    () => partners.filter(p => companyOf(p) === companyId),
+    [partners, companyId],
+  );
+
   // 수율(반제품 생산) 규칙 — 원재료(seed) → 파생 반제품 + 수율. item_formula에서 '부모가 원료홀더'인 행을 읽음.
   //   예: 통깨참기름 ← 참깨(0.45). 데이터가 없으면 기존 하드코딩값으로 폴백(무회귀).
   const yieldRules = useMemo(() => {
@@ -2124,7 +2134,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
             </div>
             );
           })()}
-          {currentView === 'partners' && <PartnerManager partners={partners} onUpdateClient={(c) => updateItem('partners', c.id, c)} onAddClient={(c) => addItem('partners', c)} onDeleteClient={(id) => deleteItem('partners', id)} />}
+          {/* 거래처 목록도 회사별 — 공용 거래처는 양쪽에 다 뜬다(companyIds 배열) */}
+          {currentView === 'partners' && <PartnerManager partners={companyPartners} onUpdateClient={(c) => updateItem('partners', c.id, c)} onAddClient={(c) => addItem('partners', { ...c, companyId })} onDeleteClient={(id) => deleteItem('partners', id)} />}
           {currentView === 'file-cabinet' && <DocumentManager currentUser={{ id: currentUser.id, name: currentUser.name }} />}
           {currentView === 'notice' && <NoticeBoard posts={noticePosts} onAddPost={(post) => addItem('notices', post)} />}
           {currentView === 'pallets' && (

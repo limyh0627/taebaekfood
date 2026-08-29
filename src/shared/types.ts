@@ -104,6 +104,13 @@ export interface Partner {
   fax?: string;
   note?: string;
   partnerType?: PartnerType; // undefined = '매출처' (하위 호환)
+  /**
+   * **이 거래처가 어느 회사 장부에 뜨는가.** 없으면 태백(옛 기록).
+   *
+   * 양쪽이 같이 쓰는 곳(카프코·한국농수산물유통공사 등)은 **회사마다 문서를 따로 둔다.**
+   * 한 문서를 공유하면 잔액·전표가 어느 회사 것인지 흐려진다 — 장부는 회사마다 따로다.
+   */
+  companyId?: CompanyId;
   isOemFactory?: boolean;    // 임가공(OEM) 외주공장 — OEM 발주 대상. 켜진 거래처만 외주공장 목록에 뜬다.
   purchaseItems?: PurchaseItem[];
 }

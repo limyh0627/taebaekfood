@@ -1,0 +1,92 @@
+{
+ "createdPartners": [
+  "c-1785818085745-punghoe",
+  "c-1778504018504-punghoe",
+  "c-1779251400400-punghoe",
+  "c-1785823081689-punghoe",
+  "c-1786079039448-punghoe",
+  "c-1786083450787-punghoe",
+  "c-bank-sosangong-punghoe",
+  "c-jungjingong-punghoe",
+  "c-bank-1-punghoe",
+  "c-1785823172251-punghoe"
+ ],
+ "partners": {
+  "c-taebaek-food": {
+   "id": "c-taebaek-food",
+   "type": "일반",
+   "partnerType": "매출+매입처",
+   "name": "태백푸드",
+   "note": "관계회사 — 같은 앱에서 장부를 나눠 쓴다"
+  }
+ },
+ "repoint": {
+  "issuedStatements": {
+   "stmt-1785859517345": {
+    "partnerId": "c-1785818085745",
+    "partnerName": "카프코"
+   },
+   "stmt-1787302720988": {
+    "partnerId": "c-1778504018504",
+    "partnerName": "한국농수산물유통공사"
+   },
+   "stmt-1787302786848": {
+    "partnerId": "c-1778504018504",
+    "partnerName": "한국농수산물유통공사"
+   },
+   "stmt-1787302836963": {
+    "partnerId": "c-1778504018504",
+    "partnerName": "한국농수산물유통공사"
+   },
+   "stmt-open-c-1785823081689-매입": {
+    "partnerId": "c-1785823081689",
+    "partnerName": "품질검사(풍회)"
+   },
+   "stmt-1787297238799": {
+    "partnerId": "c-1786079039448",
+    "partnerName": "보험료"
+   },
+   "stmt-1787559245559": {
+    "partnerId": "c-1786083450787",
+    "partnerName": "카드대금"
+   }
+  },
+  "cashEntries": {
+   "cash-1785859556917": {
+    "partnerId": "c-1785818085745",
+    "partnerName": "카프코"
+   },
+   "cash-1787302871461": {
+    "partnerId": "c-1778504018504",
+    "partnerName": "한국농수산물유통공사"
+   },
+   "cash-1787302877760": {
+    "partnerId": "c-1778504018504",
+    "partnerName": "한국농수산물유통공사"
+   },
+   "cash-1787302887363": {
+    "partnerId": "c-1778504018504",
+    "partnerName": "한국농수산물유통공사"
+   },
+   "cash-1787297101476": {
+    "partnerId": "c-bank-sosangong",
+    "partnerName": "소상공"
+   },
+   "cash-ph-exp-20260807-0": {
+    "partnerId": "c-jungjingong",
+    "partnerName": "중진공"
+   },
+   "cash-ph-exp-20260811-2": {
+    "partnerId": "c-bank-1",
+    "partnerName": "농협은행"
+   },
+   "cash-ph-exp-20260818-4": {
+    "partnerId": "c-1785823172251",
+    "partnerName": "한전"
+   }
+  }
+ },
+ "createdItems": [
+  "p-1779251176421-punghoe"
+ ]
+}
