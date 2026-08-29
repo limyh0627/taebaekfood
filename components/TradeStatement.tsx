@@ -1237,6 +1237,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const canSettle = useCallback((s: IssuedStatement) =>
     (isReceivableStmt(s, '매출') || isReceivableStmt(s, '매입')) && getBalance(s) > 0,
     [openByStmt]);
+  /**
+   * **갚을 상대가 있는 전표인가** — 없으면 누적잔액 칸에 숫자를 안 쓴다.
+   *
+   * 급여·감가상각·선급금대체처럼 채권·채무를 안 세우는 전표는 잔액이라는 게 없다.
+   * 그런데 칸에 '0'을 찍어 두면 **다 갚은 것처럼** 보인다 — 없는 것과 0은 다르다.
+   */
+  const hasArAp = useCallback((s: IssuedStatement) =>
+    isReceivableStmt(s, '매출') || isReceivableStmt(s, '매입'), []);
 
   // ── 발행내역 상세 보기 ──
   const [detailStmt, setDetailStmt] = useState<IssuedStatement | null>(null);
@@ -3614,7 +3622,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       {stPartial && <span className="block text-[10px] font-bold text-slate-400">전표 {fmt(stmt.totalAmount)}</span>}
                     </td>
                     <td className="px-4 py-3 text-xs text-right">
-                      {cumul === 0
+                      {!hasArAp(stmt)
+                        ? <span className="font-black text-slate-300" title="갚을 상대가 없는 전표 — 잔액이라는 게 없다">—</span>
+                        : cumul === 0
                         ? <span className="font-black text-slate-400">0</span>
                         : cumul < 0
                           ? <span className="font-black text-slate-500 whitespace-nowrap">
@@ -3780,7 +3790,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] text-slate-400 truncate flex-1 min-w-0">{summary}</span>
-                    {cumul !== 0 && (
+                    {!hasArAp(stmt)
+                      ? <span className="text-[11px] font-black shrink-0 text-slate-300" title="갚을 상대가 없는 전표">—</span>
+                      : cumul !== 0 && (
                       cumul < 0
                         ? <span className="text-[11px] font-black shrink-0 text-slate-500 whitespace-nowrap">
                             −{fmt(Math.abs(cumul))}
