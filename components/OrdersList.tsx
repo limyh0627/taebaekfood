@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo, memo } from 'react';
+import { matchesSearch } from '../src/shared/hangul';
 import {
   Plus,
   Clock,
@@ -182,6 +183,7 @@ export const OrderCard = memo<OrderCardProps>(({
   const isEditing = editingOrderId === order.id;
   const [confirmModal, setConfirmModal] = useState<{ message: string; subMessage?: string; confirmText?: string; onConfirm: () => void } | null>(null);
   const [expandedItemBom, setExpandedItemBom] = useState<Set<string>>(new Set()); // 박스 완제품 구성 펼치기
+  const [addItemQuery, setAddItemQuery] = useState('');   // 품목 추가 패널 검색어
 
   // 향미유·고춧가루 제외한 품목만 진행률 및 완료 판단에 사용
   const isSecondary = (cat?: string) => cat === '향미유' || cat === '고춧가루';
@@ -376,8 +378,13 @@ export const OrderCard = memo<OrderCardProps>(({
               };
               return (
                 <div key={idx} className="flex flex-col gap-1 text-[10px] font-bold border-b border-slate-50 pb-2 last:border-0">
-                  <span className="text-slate-800 text-[11px] leading-snug break-words">{item.name}</span>
+                  {/* **이름 → 규격 → 수량**을 한 줄에. 수량을 아래로 내리면 품목마다 두 줄이 되고,
+                      규격이 없으면 어느 규격의 수량인지 눈으로 안 갈린다. */}
                   <div className="flex items-center gap-1.5">
+                    <span className="text-slate-800 text-[11px] leading-snug break-words min-w-0 flex-1">{item.name}</span>
+                    {editProductInfo?.spec && (
+                      <span className="text-[9px] font-bold text-slate-400 shrink-0">{editProductInfo.spec}</span>
+                    )}
                     {/* 향미유·고춧가루: 낱개/박스 토글 */}
                     {isOil && (
                       <button
@@ -653,44 +660,72 @@ export const OrderCard = memo<OrderCardProps>(({
         <div className="mt-2 mb-3">
           {showAddProductSelect === order.id ? (
             <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
-              <select
-                onChange={(e) => { const p = items.find(prod => prod.id === e.target.value); if (p) handleAddItem(p); }}
-                className="w-full bg-slate-50 border border-indigo-200 rounded-lg py-1.5 px-2 text-[10px] font-bold outline-none"
-                defaultValue=""
-              >
-                <option value="" disabled>추가할 품목 선택...</option>
-                <optgroup label="완제품">
-                  {(() => {
-                    // 이 거래처와 연결된 완제품(partner_item Direction 'out')만. 연결 정보 없으면 전체 완제품 표시(폴백).
-                    const linkedIds = new Set(
-                      (partnerItems ?? [])
-                        .filter(pi => pi.Direction === 'out' && (pi.partnerId) === order.partnerId)
-                        .map(pi => pi.itemId)
-                    );
-                    return products
-                    .filter(p => p.type === '완제품' && (linkedIds.size === 0 || linkedIds.has(p.id)))
-                    .sort((a, b) => {
-                      const order = (name: string) => /가루/.test(name) ? 3 : /참기름|참진|참고소|참향/.test(name) ? 0 : /들기름|들향|들진|들고소/.test(name) ? 1 : /깨/.test(name) ? 2 : 4;
-                      const diff = order(a.name) - order(b.name);
-                      return diff !== 0 ? diff : a.name.localeCompare(b.name, 'ko');
-                    })
-                    .map(p => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ));
-                  })()}
-                </optgroup>
-                <optgroup label="향미유">
-                  {items.filter(p => p.type === '향미유').map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </optgroup>
-                <optgroup label="고춧가루">
-                  {items.filter(p => p.type === '고춧가루').map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </optgroup>
-              </select>
-              <button onClick={() => setShowAddProductSelect(null)} className="w-full py-1 text-[8px] font-black text-slate-400 uppercase hover:text-slate-600">취소</button>
+              {(() => {
+                /**
+                 * **옛 한글 타입을 보고 있었다** — `p.type === '완제품'`·`'향미유'`·`'고춧가루'`.
+                 * 지금 타입은 product·goods·wip·raw·submaterial이고 향미유·고춧가루는 category다.
+                 * 그래서 목록이 통째로 비어 **품목을 하나도 못 넣었다.**
+                 *
+                 * 주문 추가 화면과 같은 규칙 — **매출(Direction='out')로 연결된 품목이면 타입 불문**
+                 * 다 뜨고, 타입별로 묶는다. 고르는 창도 native select를 걷어내고 검색 패널로 바꿨다
+                 * (품목이 수십 개라 select로는 눈으로 못 찾는다).
+                 */
+                const pid = order.partnerId ?? '';
+                const linkedIds = new Set(
+                  (partnerItems ?? []).filter(pi => pi.Direction === 'out' && pi.partnerId === pid).map(pi => String(pi.itemId)),
+                );
+                const already = new Set(order.items.map(i => String(i.itemId)));
+                const q = addItemQuery.trim();
+                const pool = items
+                  .filter(p => !p.archived && !already.has(p.id)
+                    && (linkedIds.has(p.id) || (p.partnerIds ?? []).includes(pid)))
+                  .filter(p => !q || matchesSearch(p.name, q) || matchesSearch(String(p.spec ?? ''), q));
+                const TYPE_LABEL: Record<string, string> = {
+                  product: '완제품', goods: '상품', wip: '반제품', raw: '원료', submaterial: '부자재',
+                };
+                const TYPE_ORDER = ['product', 'goods', 'wip', 'raw', 'submaterial'];
+                const rank = (name: string) => /가루/.test(name) ? 3 : /참기름|참진|참고소|참향/.test(name) ? 0 : /들기름|들향|들진|들고소/.test(name) ? 1 : /깨/.test(name) ? 2 : 4;
+                const groups = new Map<string, typeof pool>();
+                for (const p of pool) { const k = String(p.type); (groups.get(k) ?? groups.set(k, []).get(k)!).push(p); }
+                const ordered = [...groups.entries()].sort((a, b) => {
+                  const ai = TYPE_ORDER.indexOf(a[0]), bi = TYPE_ORDER.indexOf(b[0]);
+                  return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+                });
+                return (
+                  <div className="rounded-xl border border-indigo-200 bg-white overflow-hidden shadow-sm">
+                    <div className="p-1.5 border-b border-slate-100">
+                      <input autoFocus value={addItemQuery} onChange={e => setAddItemQuery(e.target.value)}
+                        onClick={e => e.stopPropagation()}
+                        placeholder="품목명·규격으로 찾기"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
+                    </div>
+                    {/* 창 크기를 고정한다 — 검색으로 줄 수가 줄어도 카드가 안 흔들린다 */}
+                    <div className="h-[180px] overflow-y-auto">
+                      {ordered.length === 0 ? (
+                        <p className="px-2 py-8 text-center text-[10px] font-bold text-slate-300">
+                          {q ? '찾는 품목이 없습니다' : '이 거래처에 연결된 품목이 없습니다'}
+                        </p>
+                      ) : ordered.map(([key, list]) => (
+                        <div key={key}>
+                          <div className="sticky top-0 bg-slate-50/95 px-2 py-1 text-[8px] font-black text-slate-400 uppercase tracking-widest">
+                            {TYPE_LABEL[key] ?? key} <span className="text-slate-300">{list.length}</span>
+                          </div>
+                          {list.sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name, 'ko')).map(p => (
+                            <button key={p.id} type="button"
+                              onClick={e => { e.stopPropagation(); handleAddItem(p); setAddItemQuery(''); }}
+                              className="w-full flex items-center gap-1.5 px-2 py-1.5 text-left hover:bg-indigo-50 transition-colors border-b border-slate-50 last:border-0">
+                              <Plus size={10} className="shrink-0 text-indigo-400"/>
+                              <span className="text-[10px] font-bold text-slate-700 truncate flex-1 min-w-0">{p.name}</span>
+                              {p.spec && <span className="text-[9px] font-bold text-slate-400 shrink-0">{p.spec}</span>}
+                            </button>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+              <button onClick={() => { setShowAddProductSelect(null); setAddItemQuery(''); }} className="w-full py-1 text-[8px] font-black text-slate-400 uppercase hover:text-slate-600">취소</button>
             </div>
           ) : (
             <button onClick={() => setShowAddProductSelect(order.id)}
