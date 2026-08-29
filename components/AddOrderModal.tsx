@@ -221,6 +221,29 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
   }, [displayProducts]);
   const shownProducts = volumeFilter ? displayProducts.filter(p => splitNameVolume(p).vol === volumeFilter) : displayProducts;
 
+  /**
+   * **타입별로 나눠 보여준다** — 연결된 품목이면 다 뜨게 바꾸면서 완제품·벌크·부자재가
+   * 한 줄로 섞여 나왔다. 어디까지가 완제품인지 눈으로 안 갈린다.
+   * 순서는 완제품 → 상품 → 반제품 → 원료 → 부자재. 타입 안에서는 원래 정렬 그대로.
+   */
+  const TYPE_LABEL: Record<string, string> = {
+    product: '완제품', goods: '상품', wip: '반제품', raw: '원료', submaterial: '부자재',
+  };
+  const TYPE_ORDER = ['product', 'goods', 'wip', 'raw', 'submaterial'];
+  const shownGroups = useMemo(() => {
+    const m = new Map<string, Item[]>();
+    for (const p of shownProducts) {
+      const k = String(p.type);
+      (m.get(k) ?? m.set(k, []).get(k)!).push(p);
+    }
+    return [...m.entries()]
+      .sort((a, b) => {
+        const ai = TYPE_ORDER.indexOf(a[0]), bi = TYPE_ORDER.indexOf(b[0]);
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+      })
+      .map(([key, list]) => ({ key, label: TYPE_LABEL[key] ?? key, list }));
+  }, [shownProducts]);
+
   // 스마트스토어 제외 거래처 → 향미유 목록
   const displayHyangmiyu = useMemo(() => {
     if (!selectedClient || selectedClient.type === '스마트스토어') return [];
@@ -458,9 +481,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
             }`}
           />
           <button type="button" onClick={() => handleQuantityStep(product.id, 1)} className="text-sm font-black w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 shrink-0">+</button>
-          <span className={`text-[10px] font-bold shrink-0 ${isBoxMode ? 'text-indigo-500' : 'text-slate-400'}`}>
-            {isBoxMode ? '박스' : (product.unit || '개')}
-          </span>
+          {/* 단위는 카드 맨 위 수량칸 옆에 붙였다 — 여기 또 두면 같은 말이 두 번 나온다 */}
         </div>
 
         {/* 합계 */}
@@ -673,7 +694,17 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
               )}
               <div className="grid grid-cols-1 gap-2">
                 {shownProducts.length > 0 ? (
-                  shownProducts.map(looseProduct => {
+                  shownGroups.map(g => (
+                  <React.Fragment key={g.key}>
+                  {/* 타입이 하나뿐이면 머리를 안 붙인다 — 나눌 게 없는데 줄만 는다 */}
+                  {shownGroups.length > 1 && (
+                    <div className="flex items-center gap-2 pt-1 first:pt-0">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{g.label}</span>
+                      <span className="text-[10px] font-bold text-slate-300">{g.list.length}</span>
+                      <div className="flex-1 h-px bg-slate-100"/>
+                    </div>
+                  )}
+                  {g.list.map(looseProduct => {
                     // 낱개↔박스 변형 — 이 낱개에 짝지어진 박스 품목들. 있으면 카드 안에서 전환.
                     // 낱개 + 이 거래처에 설정된 박스만 (모든 박스 규격을 다 띄우지 않는다)
                     const siblings = boxSiblings(looseProduct, items).filter(s => orderableForClient(s.item));
@@ -719,6 +750,12 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                             onChange={(e) => setQuickQty(product.id, e.target.value)}
                             className={`w-12 shrink-0 text-right text-sm font-black tabular-nums rounded-lg px-2 py-1.5 border outline-none focus:ring-2 focus:ring-indigo-300 ${
                               isSelected ? 'border-indigo-300 bg-white' : 'border-slate-200 bg-slate-50'}`} />
+                          {/* 단위 — 숫자 바로 옆이라야 '3'이 3박스인지 3병인지 눈으로 안다.
+                              칸 너비를 고정해 품목마다 수량칸이 들쭉날쭉하지 않게 한다. */}
+                          <span className={`w-7 shrink-0 text-[10px] font-black ${
+                            isBoxStockItem(product) ? 'text-indigo-500' : 'text-slate-400'}`}>
+                            {isBoxStockItem(product) ? '박스' : (product.unit || '개')}
+                          </span>
                         </div>
                         {(() => {
                           // 지금 고른 변형(낱개/박스)의 **BOM 그대로** 보여준다.
@@ -745,7 +782,9 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                         {isSelected && renderItemControls(product)}
                       </div>
                     );
-                  })
+                  })}
+                  </React.Fragment>
+                  ))
                 ) : (
                    <div className="text-center py-10 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center space-y-2 animate-in fade-in">
                       <AlertCircle className="text-slate-300" size={32} />
