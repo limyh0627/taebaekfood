@@ -1,6 +1,7 @@
 ﻿
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { matchesSearch } from '../src/shared/hangul';
+import { buildTaxonomy, type TaxonomyRow } from '../src/shared/taxonomy';
 import {
   FileText, Printer, Search, ChevronDown, CalendarDays,
   Package, ClipboardList, ChevronRight, CheckCircle2, Edit2, Plus, X, ArrowLeft,
@@ -10,7 +11,7 @@ import {
 import * as ExcelJS from 'exceljs';
 import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentMethod, AccountCode, AccountGroup, CashAccount, CashEntry, Settlement, FixedCostTemplate, CompanyId, COMPANIES } from '../types';
 import { filterCodesForContext } from '../src/features/admin/financials';
-import { fetchDateRange } from '../src/shared/services/firebaseService';
+import { fetchDateRange, fetchCollection } from '../src/shared/services/firebaseService';
 import { stampFor, timeOfLocal, issuedMs, nextDocNo } from '../src/shared/voucherStamp';
 import { buildJournals } from '../src/shared/buildJournals';
 import type { VoucherKind } from '../src/shared/vouchers';
@@ -886,6 +887,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * 계층은 줄마다 경로로 보여 준다(손익 › 영업외비용 › 951 이자비용).
    */
   const [histAccount, setHistAccount] = useState('');
+  //  분류(itemTaxonomy) — 품목 선택 피커를 목록 화면과 같은 순서로 세우는 데 쓴다.
+  const [taxonomyRows, setTaxonomyRows] = useState<TaxonomyRow[]>([]);
+  useEffect(() => { fetchCollection<TaxonomyRow>('itemTaxonomy').then(setTaxonomyRows).catch(() => {}); }, []);
   const [acctPickerOpen, setAcctPickerOpen] = useState(false);
   const [acctQuery, setAcctQuery] = useState('');
   const [histSearch, setHistSearch] = useState('');
@@ -1427,7 +1431,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       }
     });
     if (rows.length === 0) return;
-    setManualItems([...rows, { name: '', spec: '', qty: '', price: '', isTaxExempt: false }]);
+    setManualItems(rows);   // 빈 행은 안 붙인다 — 필요하면 '행 추가'
     setSelectedConfirmedIds([]);
     setManualMode(true);
   };
@@ -2248,6 +2252,29 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // 현재 모드에 따른 검색 소스
   const searchableRows = createMode === '매입' ? inboundPartnerItemRows : partnerItemRows;
 
+  /**
+   * **분류 순서** — 목록 화면(재고관리·품목관리)과 같은 근거(itemTaxonomy)로 줄을 세운다.
+   * 저장본이 없으면 buildTaxonomy가 기본값을 준다. 여기 없는 분류는 맨 뒤로 보낸다.
+   */
+  const pickerOrder = useMemo(() => {
+    const taxo = buildTaxonomy(taxonomyRows);
+    const typeRank = new Map(taxo.types.map((t, i) => [t.key, i]));
+    const catRank = new Map<string, number>();
+    let n = 0;
+    for (const t of taxo.allTypes) for (const c of taxo.categoriesOf(t.key)) if (!catRank.has(c)) catRank.set(c, n++);
+    return (p?: Item): [number, number, string] => [
+      typeRank.get(String(p?.type)) ?? 99,
+      catRank.get(String(p?.category)) ?? 999,
+      String(p?.name ?? ''),
+    ];
+  }, [taxonomyRows]);
+  /** 분류 → 분류 안에서는 이름 — 표에서 같은 갈래가 붙어 있어야 눈으로 찾는다 */
+  const byTaxonomy = useCallback((a?: Item, b?: Item) => {
+    const [at, ac, an] = pickerOrder(a);
+    const [bt, bc, bn] = pickerOrder(b);
+    return at - bt || ac - bc || an.localeCompare(bn, 'ko');
+  }, [pickerOrder]);
+
   // 품목 선택 피커 전체 풀 — 거래처에 등록된 품목 + 미등록 전체 품목(반제품·원료·부자재 포함). 검색 시 전품목 대상.
   const pickerRows = useMemo(() => {
     const linkedIds = new Set(searchableRows.map(r => r.product!.id));
@@ -2258,8 +2285,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const ex = src.find(pc => (pc.itemId) === p.id && (pc.partnerId) === selectedClientId);
         return { pc: { id: ex?.id ?? p.id, itemId: p.id, partnerId: selectedClientId, price: ex?.price ?? ex?.price ?? p.price, taxType: ex?.taxType }, product: p };
       });
-    return [...searchableRows, ...extra] as unknown as typeof searchableRows;
-  }, [searchableRows, allItems, createMode, partnerIn, partnerOut, selectedClientId]);
+    //  **분류로 줄을 세운다.** 거래처에 등록된 품목을 앞에 두는 것은 그대로 — 자주 쓰는 게 위에 와야 한다.
+    const sorted = (rows: typeof searchableRows) =>
+      [...rows].sort((x, y) => byTaxonomy(x.product as Item | undefined, y.product as Item | undefined));
+    return [...sorted(searchableRows), ...sorted(extra as unknown as typeof searchableRows)] as unknown as typeof searchableRows;
+  }, [searchableRows, allItems, createMode, partnerIn, partnerOut, selectedClientId, byTaxonomy]);
 
   // 단가 저장 (매출: price, 매입: price)
   // 저장은 비동기다 — 성공/실패를 화면에 표시하지 않으면 "눌러도 아무 일도 안 난다"로 보인다.
@@ -2302,10 +2332,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const addProductRow = useCallback((pc: typeof partnerItemRows[0]) => {
     setManualItems(prev => {
       const filled = prev.filter(r => r.name.trim());
+      //  빈 행은 안 붙인다 — 누를 때마다 하나씩 딸려 나와 지우는 일이 된다. 필요하면 '행 추가'가 있다.
       return [
         ...filled,
         { name: pc.product!.name, spec: pc.product!.spec || '', qty: '1', price: String(pc.pc.price ?? pc.product!.price ?? 0), isTaxExempt: false },
-        { name: '', spec: '', qty: '', price: '', isTaxExempt: false },
       ];
     });
   }, []);
@@ -5417,7 +5447,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   );
 
                   const loadCard = (po: PurchaseOrder) => {
-                    setManualItems([...poToManualRows(po), {name:'',spec:'',qty:'',price:'',isTaxExempt:false}]);
+                    setManualItems(poToManualRows(po));   // 빈 행은 안 붙인다 — 필요하면 '행 추가'
                     setLoadedPoIds(prev => Array.from(new Set([...prev, po.id].filter(Boolean))));
                     setTradeDate(today());   // 발주일이 아니라 발행하는 날
                     setManualMode(true);
@@ -5607,7 +5637,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 setManualMode(true);
                 setManualItems(prev=>{
                   const rows = prev.filter(r=>r.name.trim());
-                  return [...rows,newRow,{name:'',spec:'',qty:'',price:'',isTaxExempt:false,note:''}];
+                  return [...rows,newRow];   // 빈 행은 안 붙인다 — 필요하면 '행 추가'
                 });
                 setQuickName('');setQuickSpec('');setQuickQty('');setQuickPrice('');setQuickNote('');setQuickSearchOpen(false);setQuickIsTaxExempt(false);
               };
