@@ -113,6 +113,7 @@ const SanitationChecklistView = React.lazy(() =>
   import('../../../components/HaccpChecklist').then(m => ({ default: m.StaffChecklistView }))
 );
 const ReturnManager = React.lazy(() => import('../../../components/ReturnManager'));
+const ItemLedger = React.lazy(() => import('../../../components/ItemLedger'));
 const ReceivingReturnsManager = React.lazy(() => import('../../../components/ReceivingReturnsManager'));
 const ProductionManager = React.lazy(() => import('../../../components/ProductionManager'));
 const TradeStatement = React.lazy(() => import('../../../components/TradeStatement'));
@@ -234,7 +235,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const PUNGHOE_VIEWS: ViewType[] = [
     'trade-statement', 'tax-statement', 'partner-stats', 'ledger-cash',
     'financial-reports', 'cash-flow', 'profit-analysis', 'cost-management', 'partners',
-    'item-management',
+    'item-management', 'item-ledger',
   ];
   const viewAllowed = (v: ViewType) => companyId === TAEBAEK || PUNGHOE_VIEWS.includes(v);
   // 풍회로 바꿨는데 지금 화면이 태백 전용이면 전표로 보낸다
@@ -1524,10 +1525,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   <NavGroup title="기준정보 관리" storageKey="master" collapsed={isSidebarCollapsed}>
                     <nav className="space-y-1">
                       <NavItem icon={Package} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('item-management')} />
-                      <NavItem icon={Users} label="거래처 관리" active={currentView === 'partners' || currentView === 'partner-signup'} onClick={() => handleNavClick('partners')} collapsed={isSidebarCollapsed} badge={pendingSignupCount > 0 ? pendingSignupCount : undefined} hidden={!viewAllowed('partners')} />
-                      {/* 가입승인은 거래처 관리에 딸린 것이라 줄을 따로 안 세운다.
-                          다만 기다리는 건이 있으면 놓치면 안 되므로 그때만 띄운다(위 배지와 같은 수). */}
-                      <NavItem icon={UserPlus} label="거래처 가입승인" active={currentView === 'partner-signup'} onClick={() => handleNavClick('partner-signup')} collapsed={isSidebarCollapsed} badge={pendingSignupCount} hidden={!viewAllowed('partner-signup') || pendingSignupCount === 0} />
+                      <NavItem icon={Users} label="거래처 관리" active={currentView === 'partners'} onClick={() => handleNavClick('partners')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('partners')} />
                       <NavItem icon={UserCheck} label="인사 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('hr')} />
                       <NavItem icon={FolderOpen} label="문서함" active={currentView === 'file-cabinet'} onClick={() => handleNavClick('file-cabinet')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('file-cabinet')} />
                       <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('documents')} />
@@ -1537,8 +1535,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   <NavGroup title="장부 / 원장 관리" storageKey="ledger" collapsed={isSidebarCollapsed}>
                     <nav className="space-y-1">
                       {/* 자금 입출금·계좌관리는 전표 탭에도 있지만, 전표 매칭(수금 취소·재배분)은 여기서만 된다.
-                          '장부' 화면은 현금출납장·거래처원장 두 탭이라 여기서 거래처원장 탭을 열어 준다. */}
-                      <NavItem icon={BookOpen} label="거래처원장" active={currentView === 'ledger-cash'} onClick={() => { setLedgerTab('partner'); handleNavClick('ledger-cash'); }} collapsed={isSidebarCollapsed} hidden={!viewAllowed('ledger-cash')} />
+                          '장부' 화면은 현금출납장·거래처원장 두 탭이라, 메뉴에서 각각의 탭을 바로 연다. */}
+                      <NavItem icon={Wallet} label="현금출납장" active={currentView === 'ledger-cash' && ledgerTab === 'cash'} onClick={() => { setLedgerTab('cash'); handleNavClick('ledger-cash'); }} collapsed={isSidebarCollapsed} hidden={!viewAllowed('ledger-cash')} />
+                      <NavItem icon={BookOpen} label="거래처원장" active={currentView === 'ledger-cash' && ledgerTab === 'partner'} onClick={() => { setLedgerTab('partner'); handleNavClick('ledger-cash'); }} collapsed={isSidebarCollapsed} hidden={!viewAllowed('ledger-cash')} />
+                      <NavItem icon={Package} label="제품별원장" active={currentView === 'item-ledger'} onClick={() => handleNavClick('item-ledger')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('item-ledger')} />
                       <NavItem icon={Scale} label="재무제표" active={currentView === 'financial-reports'} onClick={() => handleNavClick('financial-reports')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('financial-reports')} />
                     </nav>
                   </NavGroup>
@@ -1556,9 +1556,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       <NavItem icon={ClipboardList} label="HACCP 체크리스트" active={currentView === 'haccp-checklist'} onClick={() => handleNavClick('haccp-checklist')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('haccp-checklist')} />
                     </nav>
                   </NavGroup>
-                  {/* 외부 서비스는 맨 아래 */}
+                  {/* 외부 서비스는 맨 아래. 거래처 가입승인도 거래처가 포털에서 넣는 것이라 여기 둔다. */}
                   <NavGroup title="외부 서비스" storageKey="ext" collapsed={isSidebarCollapsed}>
                     <nav className="space-y-1">
+                      <NavItem icon={UserPlus} label="거래처 가입승인" active={currentView === 'partner-signup'} onClick={() => handleNavClick('partner-signup')} collapsed={isSidebarCollapsed} badge={pendingSignupCount > 0 ? pendingSignupCount : undefined} hidden={!viewAllowed('partner-signup')} />
                       <button
                         onClick={openPartnerPortal}
                         title={isSidebarCollapsed ? "거래처 주문 포털" : undefined}
@@ -1645,7 +1646,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 'ledger-cash': '장부',
                 'production': '생산 실적', 'admin-checklist': '확인사항',
                 'leave-portal': '연차 신청', 'confirmation-items': '확인사항',
-                'item-management': '품목 관리', 'item-price-management': '품목 관리',
+                'item-management': '품목 관리', 'item-price-management': '품목 관리', 'item-ledger': '제품별원장',
                 'inbound-scan': '입고 스캔', 'partner-portal': '거래처 포털',
                 'officetalk': '오피스톡', 'smartstore-analytics': '스마트스토어 분석',
                 'haccp-checklist': 'HACCP 체크리스트', 'return-management': '반품 관리',
@@ -4068,6 +4069,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   onDeleteSettlement={(id) => deleteItem('settlements', id)}
                 />
               </React.Suspense>
+            </div>
+          )}
+          {currentView === 'item-ledger' && (
+            <div className="h-full flex flex-col overflow-hidden">
+              <PageHeader title="제품별원장" subtitle="품목 하나가 언제 얼마나 들고 났나 — 주문에 남은 기록 기준" />
+              <div className="flex-1 min-h-0 p-6">
+                <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+                  <ItemLedger items={companyItems} orders={allOrders} />
+                </React.Suspense>
+              </div>
             </div>
           )}
           {currentView === 'ledger-cash' && (
