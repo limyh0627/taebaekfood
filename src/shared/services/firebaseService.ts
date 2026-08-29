@@ -23,6 +23,7 @@ import {
 import { db } from "../firebase";
 import type { RawMaterialLot } from "../types";
 import { pruneDepletedLots } from "../lotUtils";
+import { statementBlockReason } from "../statementGuard";
 
 export const subscribeToDocument = <T>(
   collectionName: string,
@@ -120,6 +121,15 @@ const stripUndefined = (obj: any): any => {
  */
 
 export const addItem = async (collectionName: string, item: any) => {
+  /**
+   * **차·대를 못 채우는 전표는 안 만든다.** 만드는 길이 여러 갈래(전표화면·확인사항·반품·임가공)라
+   * 화면마다 막으면 한 곳은 반드시 새다. 쓰는 문 하나에서 막는다.
+   * (스크립트는 raw Firestore를 쓰므로 여기 안 걸린다 — 일부러 하는 정정은 막을 이유가 없다)
+   */
+  if (collectionName === 'issuedStatements') {
+    const reason = statementBlockReason(item);
+    if (reason) throw new Error(`전표를 만들 수 없습니다 — ${reason}`);
+  }
   const { id, ...raw } = item;
   const data = stripUndefined(raw);
   if (id) {

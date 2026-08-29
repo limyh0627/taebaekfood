@@ -25,6 +25,8 @@ export interface AccountLedger {
 }
 
 /** 거래처 채권·채무 계정 — 이 둘만 거래처 잔액을 움직인다 */
+import { journalizeStatement } from '../../shared/autoJournal';
+
 const AR = '108';   // 외상매출금
 const AP = '251';   // 외상매입금
 
@@ -308,24 +310,27 @@ export function partnerOpenBalance(
  * 근거(cashEntry)가 사라진 매칭은 안 친다 — 근거 없이 갚은 것으로 치면 안 받은 돈이 사라진다.
  */
 /**
- * **이 전표가 그 거래처의 채권(매출)·채무(매입)를 세우는가.**
+ * **이 전표가 그 거래처의 채권(매출)·채무(매입)를 세우는가 — 분개로 판단한다.**
  *
- * 근거가 둘이다. 왜 분개 하나로 안 보는지 적어 둔다 — 한 번 그렇게 고쳤다가 되돌렸다.
+ * 타입(매출/매입)으로 보면 근거가 약하다. 갈래는 "어떻게 끊었는지"일 뿐이고
+ * **잔액은 계정이 정한다.** 그래서 실제로 108/251이 서는지를 본다.
  *
- * ① **타입(매출/매입)** — journalizeStatement가 옵션 없이 불리므로 매출은 언제나 108,
- *    매입은 언제나 251을 세운다. 지금 장부 300건 중 299건이 분개 판정과 같다.
- *    **분개를 못 세운 것과 채권이 없는 것은 다르다** — 품목에 계정이 안 붙어 분개가 null이어도
- *    거래처는 그 돈을 여전히 갚아야 한다. 그걸 빼면 수금 버튼이 사라지고 잔액에서도 빠진다.
+ * 분개가 안 서는 전표(품목에 계정이 안 붙은 것)는 **애초에 있으면 안 된다** — 대변을 못 채우면
+ * 차·대가 안 맞는다. 그래서 여기서 감싸 주지 않는다. 만드는 길은 발행 때 막는다
+ * (TradeStatement가 계정 없는 줄이 있으면 저장을 거부한다).
  *
- * ② **줄에 적힌 108 차변 / 251 대변** — 기초이월은 차·대를 직접 세운 일반전표라
- *    `IssuedStatement.type`에 담을 갈래가 없어 `'비용'`으로 저장돼 있다(매출·매입·비용 셋뿐).
- *    ①만 보면 통째로 놓치고, 그걸 갚은 수금의 지정 매칭까지 무시돼 그 돈이 새 전표를
- *    오래된 순으로 갉아먹는다(유통가교: 기초 1,755,000을 수금했는데 08-25·08-28이 다
- *    갚아진 걸로 잡혔다. 실제 미수는 620,000).
+ * 다만 **기초이월은 분개가 안 선다** — 차·대를 직접 세운 일반전표라 type이 '비용'이고
+ * journalizeStatement는 매출·매입만 만든다. 그건 줄에 적힌 108 차변 / 251 대변으로 읽는다.
+ * 이걸 빠뜨리면 기초를 갚은 수금이 새 전표를 오래된 순으로 갉아먹는다
+ * (유통가교: 기초 1,755,000 수금에 08-25·08-28이 다 갚아진 걸로 잡혔다. 실제 미수 620,000).
  */
 export function isReceivableStmt(s: IssuedStatement, type: '매출' | '매입'): boolean {
-  if (s.type === type) return true;
   const want = type === '매출' ? AR : AP;
+  for (const l of journalizeStatement(s)?.lines ?? []) {
+    if (String(l.accountCode) !== want) continue;
+    const moved = type === '매출' ? (l.debit ?? 0) - (l.credit ?? 0) : (l.credit ?? 0) - (l.debit ?? 0);
+    if (moved !== 0) return true;
+  }
   const side = type === '매출' ? '차변' : '대변';
   return (s.items ?? []).some(it => String(it.accountCode) === want && it.side === side);
 }

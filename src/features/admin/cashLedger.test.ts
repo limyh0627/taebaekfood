@@ -15,9 +15,17 @@ const entry = (id: string, date: string, dir: '입금' | '출금', amount: numbe
   id, date, cashAccountId: 'a1', dir, amount, createdAt: `${date}T00:00:00`, ...over,
 });
 
+/**
+ * 가짜 전표 — **품목에 계정을 채운다.**
+ * 예전엔 `items: []`였는데, 그러면 journalizeStatement가 첫 줄에서 null을 낸다.
+ * 채권·채무 판정을 분개로 옮기니 가짜 전표가 통째로 '채권 아님'이 되어 17건이 깨졌다.
+ * 실제 장부엔 계정 없는 전표가 하나도 없다 — 픽스처만 실물과 달랐던 것이다.
+ */
 const stmt = (id: string, type: '매출' | '매입' | '비용', tradeDate: string, total: number): IssuedStatement =>
   ({ id, type, tradeDate, issuedAt: '', partnerId: 'p1', partnerName: '풍회유통', orderId: '', docNo: '',
-     totalSupply: total, totalTax: 0, totalAmount: total, items: [] } as IssuedStatement);
+     totalSupply: total, totalTax: 0, totalAmount: total,
+     items: [{ name: '품목', spec: '', qty: 1, price: total, supply: total, tax: 0, total,
+               isTaxExempt: true, accountCode: type === '매입' ? '500' : '800' }] } as IssuedStatement);
 
 const settle = (id: string, cashEntryId: string, statementId: string, amount: number): Settlement =>
   ({ id, cashEntryId, statementId, amount, createdAt: '' });
