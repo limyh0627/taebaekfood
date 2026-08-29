@@ -265,6 +265,47 @@ describe('allocatePartnerCash', () => {
     expect(m.get('s1')).toBe(700_000);    // 남은 300,000이 오래된 것으로
   });
 
+  /**
+   * 기초이월 전표는 차·대를 직접 세운 일반전표라 `type`이 '비용'이다(매출·매입·비용 셋뿐이라서).
+   * 그걸 후보에서 빼면 **그 기초를 갚은 수금이 새 전표를 갉아먹는다.**
+   * 유통가교가 그랬다 — 기초 1,755,000을 수금했는데 08-25·08-28 전표가 다 갚아진 걸로 잡혀
+   * 수금처리 버튼이 사라졌다(실제 미수 620,000).
+   */
+  const 기초 = (id: string, total: number): IssuedStatement =>
+    ({ ...stmt(id, '비용', '2026-07-31', total),
+       items: [{ name: '기초 미수금(이월)', spec: '', qty: 1, price: total, supply: total, tax: 0, total,
+                 isTaxExempt: true, accountCode: '108', side: '차변' }] } as IssuedStatement);
+
+  it('기초이월 전표(type=비용)도 채권 전표로 본다 — 그 수금이 새 전표를 먹지 않는다', () => {
+    const open = 기초('open1', 1_755_000);
+    const s3 = stmt('s3', '매출', '2026-08-25', 120_000);
+    const s4 = stmt('s4', '매출', '2026-08-28', 500_000);
+    const m = allocatePartnerCash('p1', '매출', [open, s3, s4], [cash('c1', 1_755_000)],
+      [settle('t1', 'c1', 'open1', 1_755_000)]);
+    expect(m.get('open1')).toBe(0);        // 기초는 다 갚았고
+    expect(m.get('s3')).toBe(120_000);     // 새 전표는 그대로 남는다
+    expect(m.get('s4')).toBe(500_000);
+  });
+
+  it('지정이 없어도 기초 전표가 오래된 순 맨 앞이라 먼저 채워진다', () => {
+    const open = 기초('open1', 1_755_000);
+    const s3 = stmt('s3', '매출', '2026-08-25', 120_000);
+    const m = allocatePartnerCash('p1', '매출', [open, s3], [cash('c1', 1_755_000)], []);
+    expect(m.get('open1')).toBe(0);
+    expect(m.get('s3')).toBe(120_000);
+  });
+
+  it('매입 기초는 251 대변으로 알아본다', () => {
+    const openAp = { ...stmt('openAp', '비용', '2026-07-31', 900_000),
+      items: [{ name: '기초 미지급금(이월)', spec: '', qty: 1, price: 900_000, supply: 900_000, tax: 0,
+                total: 900_000, isTaxExempt: true, accountCode: '251', side: '대변' }] } as IssuedStatement;
+    const b1 = stmt('b1', '매입', '2026-08-10', 300_000);
+    const m = allocatePartnerCash('p1', '매입', [openAp, b1],
+      [entry('c9', '2026-08-12', '출금', 900_000, { partnerId: 'p1', accountCode: '251' })], []);
+    expect(m.get('openAp')).toBe(0);
+    expect(m.get('b1')).toBe(300_000);
+  });
+
   it('배분 합계는 늘 거래처 잔액과 같다 — 지정을 해도 총액은 안 변한다', () => {
     const ce = [cash('c1', 1_500_000)];
     const sum = (sets: ReturnType<typeof settle>[]) =>

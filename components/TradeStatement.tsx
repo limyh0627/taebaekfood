@@ -673,20 +673,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   //
   // 전표 한 장의 잔액은 "어느 청구서를 갚았나"가 기록에 없으므로 거래처 수금을 오래된 전표부터
   // 채워 나눈다(합계는 거래처 잔액과 같다). 자금기록이 지워진 상계는 안 친다 — 근거가 사라졌으니 안 받은 돈이다.
-  const openByStmt = useMemo(() => {
-    const out = new Map<string, number>();
-    const keys = new Set(issuedStatements
-      .filter(st => st.type === '매출' || st.type === '매입')
-      .map(st => `${st.partnerId}|${st.type}`));
-    for (const key of keys) {
-      const [pid, type] = key.split('|');
-      for (const [id, open] of allocatePartnerCash(pid, type as '매출' | '매입', issuedStatements, cashEntries, settlements)) {
-        out.set(id, open);
-      }
-    }
-    return out;
-  }, [issuedStatements, cashEntries, settlements]);
-  const getBalance = (s: IssuedStatement) => openByStmt.get(s.id) ?? s.totalAmount;
 
 
   /** 결제 기록 — 자금원장에 출금/입금 1건을 만든다. */
@@ -1156,6 +1142,28 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     }
     return map;
   }, [mergedStatements, partnerJournals]);
+
+  /**
+   * 전표별 남은 금액 — **mergedStatements로 돌린다.**
+   *
+   * props(issuedStatements)는 최근 7일 창이라, 그걸로 배분하면 창 밖의 옛 전표가 후보에서 빠지고
+   * 그 거래처의 수금 전액이 창 안 전표를 갉아먹는다 → 안 갚은 전표가 '완납'으로 보여
+   * **수금처리 버튼이 사라진다.** 배분은 언제나 그 거래처의 전표 전부를 놓고 해야 맞다.
+   */
+  const openByStmt = useMemo(() => {
+    const out = new Map<string, number>();
+    const keys = new Set(mergedStatements
+      .filter(st => st.type === '매출' || st.type === '매입')
+      .map(st => `${st.partnerId}|${st.type}`));
+    for (const key of keys) {
+      const [pid, type] = key.split('|');
+      for (const [id, open] of allocatePartnerCash(pid, type as '매출' | '매입', mergedStatements, cashEntries, settlements)) {
+        out.set(id, open);
+      }
+    }
+    return out;
+  }, [mergedStatements, cashEntries, settlements]);
+  const getBalance = (s: IssuedStatement) => openByStmt.get(s.id) ?? s.totalAmount;
 
   // ── 발행내역 상세 보기 ──
   const [detailStmt, setDetailStmt] = useState<IssuedStatement | null>(null);
@@ -4103,11 +4111,16 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         // 방향으로 상계 대상 전표 유형 결정 — 입금→매출(미수), 출금→매입(미지급)
         const stmtTypeForPay = qpDir === '입금' ? '매출' : '매입';
         const selectedClientObj = quickPayClientId ? partners.find(c => c.id === quickPayClientId) : null;
-        const partnerTotal = quickPayClientId
-          ? issuedStatements
-              .filter(s => s.partnerId === quickPayClientId && s.type === stmtTypeForPay)
-              .reduce((sum, s) => sum + getBalance(s), 0)
-          : 0;
+        /**
+         * 거래처 미수/미지급 총액 — **분개(108·251) 기준**으로 본다(partnerBalances).
+         *
+         * 예전엔 props(최근 7일) 전표의 잔액을 더했다. 창 밖 옛 전표가 통째로 빠지는 데다,
+         * 기초이월 전표는 type이 '비용'이라 배분 후보에서도 빠져 수금이 새 전표를 갉아먹었다.
+         * 그래서 거래처 잔액 화면과 숫자가 갈렸다(유통가교 620,000 vs 500,000).
+         * 분개 기준은 재무제표·거래처통계와 같은 근거라 저절로 맞는다.
+         */
+        const pb = quickPayClientId ? partnerBalances.get(quickPayClientId) : undefined;
+        const partnerTotal = stmtTypeForPay === '매입' ? (pb?.payable ?? 0) : (pb?.receivable ?? 0);
         const dropClients = quickPayClientSearch.trim()
           ? partners.filter(c => c.name.includes(quickPayClientSearch.trim())).slice(0, 8)
           : [];
@@ -4673,7 +4686,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     {quickPayDropOpen && dropClients.length > 0 && (
                       <div className="absolute left-0 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl z-10 overflow-hidden">
                         {dropClients.map(c => {
-                          const bal = issuedStatements.filter(s => s.partnerId === c.id && s.type === stmtTypeForPay).reduce((sum, s) => sum + getBalance(s), 0);
+                          //  위 partnerTotal과 같은 근거(분개 108·251)로 본다 — 목록과 상세가 갈리면 안 된다.
+                          const cb = partnerBalances.get(c.id);
+                          const bal = stmtTypeForPay === '매입' ? (cb?.payable ?? 0) : (cb?.receivable ?? 0);
                           return (
                             <button key={c.id}
                               onMouseDown={() => { setQuickPayClientId(c.id); setQuickPayClientSearch(''); setQuickPayDropOpen(false); }}

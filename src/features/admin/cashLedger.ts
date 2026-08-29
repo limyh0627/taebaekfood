@@ -262,7 +262,7 @@ export function partnerOpenBalance(
   cashEntries: CashEntry[],
 ): number {
   const gross = statements
-    .filter(s => s.partnerId === partnerId && s.type === type)
+    .filter(s => s.partnerId === partnerId && isReceivableStmt(s, type))
     .reduce((a, s) => a + (s.totalAmount ?? 0), 0);
   return gross - partnerPaid(partnerId, type, cashEntries);
 }
@@ -279,6 +279,26 @@ export function partnerOpenBalance(
  *
  * 근거(cashEntry)가 사라진 매칭은 안 친다 — 근거 없이 갚은 것으로 치면 안 받은 돈이 사라진다.
  */
+/**
+ * **이 전표가 그 거래처의 채권(매출)·채무(매입)를 세우는가.**
+ *
+ * `type === '매출'`만 보면 **기초이월 전표를 놓친다.** 기초는 차·대를 직접 세운 일반전표라
+ * `IssuedStatement.type`에 담을 갈래가 없어 `'비용'`으로 저장돼 있다(매출·매입·비용 셋뿐이라서).
+ * 그래서 배분 후보에서 빠졌고, 그걸 갚은 수금의 지정 매칭(settlement)까지 통째로 무시돼
+ * **그 돈이 새 전표를 오래된 순으로 갉아먹었다.**
+ *   유통가교: 기초 1,755,000을 08-12에 수금 → 기초 전표가 후보에 없어 08-25·08-28 전표가
+ *   다 갚아진 걸로 잡혔다(잔액 0). 분개(108) 기준 실제 미수는 620,000이다.
+ *
+ * 기초 전표는 줄 구성이 일정하다 — 매출 기초는 `108 차변`, 매입 기초는 `251 대변`.
+ * 그 줄이 있으면 채권·채무 전표로 인정한다.
+ */
+function isReceivableStmt(s: IssuedStatement, type: '매출' | '매입'): boolean {
+  if (s.type === type) return true;
+  const want = type === '매출' ? AR : AP;
+  const side = type === '매출' ? '차변' : '대변';
+  return (s.items ?? []).some(it => String(it.accountCode) === want && it.side === side);
+}
+
 export function allocatePartnerCash(
   partnerId: string,
   type: '매출' | '매입',
@@ -286,8 +306,9 @@ export function allocatePartnerCash(
   cashEntries: CashEntry[],
   settlements: Settlement[] = [],
 ): Map<string, number> {
+  //  기초이월 전표도 후보에 넣는다 — 안 넣으면 그걸 갚은 수금이 새 전표를 갉아먹는다(isReceivableStmt 주석 참조).
   const mine = statements
-    .filter(s => s.partnerId === partnerId && s.type === type)
+    .filter(s => s.partnerId === partnerId && isReceivableStmt(s, type))
     .sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
   const left = new Map(mine.map(s => [s.id, s.totalAmount ?? 0]));
   if (!mine.length) return left;
