@@ -96,7 +96,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [expandedInvCats, setExpandedInvCats] = useState<Set<string>>(new Set());
   const [expandedSnapId, setExpandedSnapId] = useState<string | null>(null);
-  const [period, setPeriod] = useState<'3M' | '6M' | '1Y' | 'custom'>('custom');
+  const [period, setPeriod] = useState<'1M' | '3M' | '6M' | '1Y' | 'custom'>('custom');
   const [selectedQuarter, setSelectedQuarter] = useState<1|2|3|4>(() => {
     const cm = new Date().getMonth() + 1;
     const avail = ([1,2,3,4] as const).find(q => cm > q * 3);
@@ -226,6 +226,10 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
     const cut = (ms: string[]) => openingYm ? ms.filter(ym => ym > openingYm) : ms;
     return cut(rawPeriodMonths());
     function rawPeriodMonths(): string[] {
+    //  당월 — 이번 달 한 달. 지난 해를 고르면 그 해 12월(장부가 거기서 끝난다).
+    if (period === '1M') {
+      return [selectedYear === now.getFullYear() ? todayYm : `${selectedYear}-12`];
+    }
     if (period === '1Y') {
       const all = Array.from({ length: 12 }, (_, i) => `${selectedYear}-${String(i + 1).padStart(2, '0')}`);
       return selectedYear === now.getFullYear() ? all.filter(ym => ym <= todayYm) : all;
@@ -465,25 +469,28 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
 
       {/* ── 제목 + 기간 컨트롤 ── */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <div className="text-base font-black text-slate-800">
-            {selectedYear}년{' '}
-            {period === '1Y'
-              ? `연간 (1월~${periodMonths.length > 0 ? Number(periodMonths[periodMonths.length - 1].split('-')[1]) : 12}월)`
-              : period === '3M' ? `${selectedQuarter}분기`
-              : period === '6M' ? (selectedHalf === 1 ? '상반기' : '하반기')
-              : `${customStartMonth}월~${Math.min(customEndMonth, selectedYear === now.getFullYear() ? now.getMonth() + 1 : 12)}월`}{' '}
-            손익분석
+        {/* 기간 갈래를 **왼쪽 맨 앞**에 둔다 — 화면이 어느 기간인지가 먼저 읽혀야 한다.
+            제목에 '2026년 1월~8월'을 또 쓰지 않는다. 고른 값이 곧 제목이라 두 번 말하는 것이다. */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
+            {([['1M','당월'],['3M','분기'],['6M','반기'],['1Y','당년'],['custom','기간']] as const).map(([val,label]) => {
+              const disabled =
+                (val === '1Y' && !yearlyAvailable) ||
+                (val === '6M' && !halfAvailable(1) && !halfAvailable(2)) ||
+                (val === '3M' && !([1,2,3,4] as const).some(q => quarterAvailable(q)));
+              return (
+                <button key={val}
+                  disabled={disabled}
+                  onClick={() => !disabled && setPeriod(val)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${
+                    disabled ? 'text-slate-300 cursor-not-allowed' :
+                    period === val ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'
+                  }`}>
+                  {label}
+                </button>
+              );
+            })}
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">매출 · 매입 · 고정비 기반 손익구조 분석</div>
-        </div>
-        <div className="flex items-center gap-1.5 flex-wrap shrink-0">
-          <button
-            onClick={() => setShowAccountSettings(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-black transition-all border border-amber-200"
-          >
-            <Wallet size={13}/>계정 설정
-          </button>
           {period !== 'custom' && (
             <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))}
               className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer">
@@ -530,25 +537,14 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
               </div>
             );
           })()}
-          <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
-            {([['3M','분기'],['6M','반기'],['1Y','연간'],['custom','기간']] as const).map(([val,label]) => {
-              const disabled =
-                (val === '1Y' && !yearlyAvailable) ||
-                (val === '6M' && !halfAvailable(1) && !halfAvailable(2)) ||
-                (val === '3M' && !([1,2,3,4] as const).some(q => quarterAvailable(q)));
-              return (
-                <button key={val}
-                  disabled={disabled}
-                  onClick={() => !disabled && setPeriod(val)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all ${
-                    disabled ? 'text-slate-300 cursor-not-allowed' :
-                    period === val ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'
-                  }`}>
-                  {label}
-                </button>
-              );
-            })}
-          </div>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            onClick={() => setShowAccountSettings(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-black transition-all border border-amber-200"
+          >
+            <Wallet size={13}/>계정 설정
+          </button>
         </div>
       </div>
 
