@@ -930,13 +930,39 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     return t === '수익' ? '이익' : t === '비용' ? '비용' : null;
   }, [codeType]);
   /**
-   * 고를 수 있는 **계정과목**들 — 층('…전체')은 목록에 안 넣는다.
+   * 고를 수 있는 자리 — **계정그룹(재료비·판관비…)과 계정과목**을 한 목록으로 편다.
+   *
+   * 그룹은 예전엔 경로 글자(`손익 › 비용 › 재료비`)로만 있어서, '재료비'로 검색하면
+   * 그 밑 계정들이 낱개로 줄줄이 나올 뿐 **묶어서 고를 수가 없었다.**
+   * 판정(acctHit)은 진작 `group:` 을 알아듣고 있었는데 목록에 없었을 뿐이다.
+   *
    * 목록을 손으로 안 적는다. 계정·그룹을 만들면 저절로 늘어난다.
    */
   const accountItems = useMemo(() => {
+    const out: { value: string; label: string; path: string; axis: '손익' | '재무'; branch: string; isGroup?: boolean }[] = [];
+
+    //  ① 계정그룹 — 그 밑 계정이 실제로 있는 것만(빈 그룹은 골라 봐야 아무것도 안 걸린다).
+    //     '매출총이익'·'영업이익'처럼 계산용 그룹이 그렇다.
+    const codesOfGroup = new Map<string, string[]>();
+    for (const c of accountCodes) {
+      const gid = groupOfCode(c.code)?.id;
+      if (!gid) continue;
+      (codesOfGroup.get(gid) ?? codesOfGroup.set(gid, []).get(gid)!).push(c.code);
+    }
+    for (const g of accountGroups) {
+      const kids = codesOfGroup.get(g.id) ?? [];
+      if (!kids.length) continue;
+      const pl = plBranchOf(kids[0]);
+      const axis: '손익' | '재무' = pl ? '손익' : '재무';
+      const branch = pl ?? bsTypeOf(kids[0]) ?? '';
+      if (!branch) continue;
+      out.push({ value: `group:${g.id}`, label: `${g.name} 전체`, axis, branch, isGroup: true,
+        path: `${axis} › ${branch} › ${g.name}` });
+    }
+
+    //  ② 계정과목
     const codes = [...accountCodes].sort((a, b) =>
       String(a.code).localeCompare(String(b.code), undefined, { numeric: true }));
-    const out: { value: string; label: string; path: string; axis: '손익' | '재무'; branch: string }[] = [];
     for (const c of codes) {
       const pl = plBranchOf(c.code);
       if (pl) {
@@ -946,10 +972,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         continue;
       }
       const bs = bsTypeOf(c.code);
-      if (bs) out.push({ value: `code:${c.code}`, label: `${c.code} ${c.name}`, axis: '재무', branch: bs, path: `재무 › ${bs}` });
+      if (bs) {
+        const g = groupOfCode(c.code);
+        out.push({ value: `code:${c.code}`, label: `${c.code} ${c.name}`, axis: '재무', branch: bs,
+          path: `재무 › ${bs}${g ? ` › ${g.name}` : ''}` });
+      }
     }
     return out;
-  }, [accountCodes, groupOfCode, plBranchOf, bsTypeOf]);
+  }, [accountCodes, accountGroups, groupOfCode, plBranchOf, bsTypeOf]);
   const acctPicked = useMemo(
     () => accountItems.find(i => i.value === histAccount),
     [accountItems, histAccount]);
@@ -959,7 +989,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     //  검색은 층을 무시하고 전부 뒤진다 — 이름을 아는 계정은 두 번 안 눌러도 나와야 한다.
     if (q) return accountItems.filter(i => matchesSearch(i.label, q) || matchesSearch(i.path, q));
     if (!acctAxis || !acctBranch) return [];
-    return accountItems.filter(i => i.axis === acctAxis && i.branch === acctBranch);
+    //  묶음(재료비·판관비…)을 맨 위에 세운다 — 계정 사이에 섞이면 눈에 안 띈다.
+    const inBranch = accountItems.filter(i => i.axis === acctAxis && i.branch === acctBranch);
+    return [...inBranch.filter(i => i.isGroup), ...inBranch.filter(i => !i.isGroup)];
   }, [accountItems, acctQuery, acctAxis, acctBranch]);
   /** 고른 자리에 이 계정이 걸리는가 */
   const acctHit = useCallback((c?: string): boolean => {
@@ -3162,7 +3194,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               <div className="absolute left-0 top-full mt-1 z-50 w-[320px] bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden">
                 <div className="p-2 border-b border-slate-100">
                   <input autoFocus value={acctQuery} onChange={e => setAcctQuery(e.target.value)}
-                    placeholder="계정 이름·번호로 찾기"
+                    placeholder="계정 이름·번호·묶음(재료비·판관비)"
                     className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
                 </div>
                 {/* 층으로 좁힌다 — 손익 › 이익·비용,  재무 › 자산·부채·자본. 검색하면 층을 건너뛴다. */}
@@ -3204,7 +3236,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       onClick={() => { setHistAccount(it.value); setAcctPickerOpen(false); }}
                       className={`w-full text-left px-3 py-1.5 hover:bg-slate-50 transition-colors ${
                         histAccount === it.value ? 'bg-indigo-50' : ''}`}>
-                      <span className={`text-xs font-black ${histAccount === it.value ? 'text-indigo-700' : 'text-slate-700'}`}>{it.label}</span>
+                      <span className={`text-xs font-black ${histAccount === it.value ? 'text-indigo-700' : 'text-slate-700'}`}>
+                        {it.label}
+                        {/* 묶음은 눈에 띄게 — 계정 하나를 고른 건지 그 밑을 통째로 고른 건지 헷갈리면 안 된다 */}
+                        {it.isGroup && <span className="ml-1.5 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-600 align-middle">묶음</span>}
+                      </span>
                       <span className="block text-[10px] font-bold text-slate-300 leading-tight">{it.path}</span>
                     </button>
                   ))}
