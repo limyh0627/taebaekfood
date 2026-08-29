@@ -223,13 +223,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const company = COMPANIES.find(c => c.id === companyId)!;
 
   /**
-   * 풍회 장부에서 쓸 수 있는 화면 — **회계만** 있다.
-   * 주문·재고·품목·생산·인사는 태백 것이고 풍회엔 없다. 메뉴에 띄워 두면
-   * 태백 데이터가 풍회 화면에 그대로 보여서 어느 회사를 보고 있는지 흐려진다.
+   * 풍회 장부에서 쓸 수 있는 화면 — **회계 + 품목관리.**
+   *
+   * 주문·재고·생산·인사는 아직 태백 것이다. 그 데이터엔 회사 칸 자체가 없어서
+   * (거래처 295건·주문 203건·발주 16건·partner_item 1208건 전부 회사 미지정)
+   * 메뉴에 띄우면 풍회 화면에 태백 것이 그대로 보인다 — 어느 회사를 보고 있는지 흐려진다.
+   * 품목은 companyId가 붙어 있어 갈라 볼 수 있으므로 연다.
    */
   const PUNGHOE_VIEWS: ViewType[] = [
     'trade-statement', 'tax-statement', 'partner-stats', 'ledger-cash',
     'financial-reports', 'cash-flow', 'profit-analysis', 'cost-management', 'partners',
+    'item-management',
   ];
   const viewAllowed = (v: ViewType) => companyId === TAEBAEK || PUNGHOE_VIEWS.includes(v);
   // 풍회로 바꿨는데 지금 화면이 태백 전용이면 전표로 보낸다
@@ -4238,7 +4242,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 <ItemManager
                   isAdmin={isAdmin}
                   onCreateBoxItem={createBoxItem}
-                  items={allItems}
+                  /**
+                   * **목록은 회사 것만.** BOM 조회는 여기 안 걸린다 — bomIndex가 allItems로
+                   * 따로 만들어져 있어서 남의 회사 품목을 물고 있어도 안 끊긴다.
+                   * (품목에 회사가 뜻을 갖는 건 "이 창고에 뭐가 얼마 있나"를 셀 때뿐이다)
+                   */
+                  items={companyItems}
                   partners={partners}
                   partnerItems={partnerItems}
                   onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
@@ -4489,7 +4498,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
               const { stock: _staleStock, ...safeData } = productData;
               await updateItem(collectionName, p.id, safeData);
             } else {
-              await addItem(collectionName, productData);
+              //  **지금 보고 있는 회사를 붙인다.** 안 붙이면 전부 태백으로 잡혀
+              //  풍회 화면에서 만든 품목이 그 목록에서 바로 사라진다.
+              await addItem(collectionName, { ...productData, companyId });
             }
             /**
              * BOM(구성품) → item_bom 동기화. item_bom이 단일원천이므로 편집을 여기에 반영한다.
