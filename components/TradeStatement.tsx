@@ -736,12 +736,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setPayOverWarn(false);
     setPayTarget(stmt);
     setPayScope('stmt');   // 기본은 '이 전표' — 누른 전표부터 갚는다
-    // 기본값은 이 전표 금액 — 안 고치면 전표 금액 그대로 수금/지불된다.
-    setPayForm({ amount: String(Math.round(stmt.totalAmount)), date: new Date().toISOString().slice(0, 10), method: '계좌이체', note: '' });
+    //  기본값은 **이 전표에 남은 금액**. 총액을 박아 두면 이미 절반을 낸 전표에서도 전액이
+    //  찍혀 또 나간다(카드대금 899,925이 두 번 나간 게 그 꼴이다).
+    setPayForm({ amount: String(Math.round(getBalance(stmt))), date: new Date().toISOString().slice(0, 10), method: '계좌이체', note: '' });
     setPayAccountId(prev => prev || activeCashAccounts[0]?.id || '');
   };
 
+  /**
+   * **한 번 누르면 한 건만.** 저장은 비동기라 state가 바뀌기 전에 또 눌리면 두 건이 들어간다.
+   * 자금기록 id가 `cash-${Date.now()}`라 밀리초만 달라도 다른 문서가 되어 막을 데가 없다.
+   */
+  const paySaving = useRef(false);
   const savePayment = (forceOver = false) => {
+    if (paySaving.current) return;
     if (!payTarget || !payForm.amount) return;
     const amount = Number(payForm.amount);
     if (amount <= 0) return;
@@ -760,7 +767,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       //  '거래처 잔액'을 골랐으면 전표에 안 붙인다 — 오래된 전표부터 채워진다.
       pin: payScope === 'stmt',
     });
+    paySaving.current = true;
     setPayTarget(null);
+    //  모달이 닫힌 뒤 잠깐 잠근다 — 같은 클릭 묶음에서 두 번 새는 것만 막으면 된다
+    setTimeout(() => { paySaving.current = false; }, 800);
   };
 
   // 타임라인의 수금/지불 행 삭제 — 그 cashEntry와 거기 붙은 settlement를 전부 지운다(잔액이 정확히 되돌려짐).
@@ -3908,11 +3918,20 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               {payTarget.type === '매입' ? '지불 처리' : '수금 처리'}
             </h3>
             <div className="text-xs text-slate-400">{payTarget.partnerName} · {payTarget.tradeDate}</div>
+            {/* 이미 낸 게 있으면 먼저 밝힌다 — 갚아 놓고 또 누르는 걸 막는 건 이 한 줄이다 */}
+            {Math.round(payTarget.totalAmount - getBalance(payTarget)) > 0 && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 text-[11px] font-black text-emerald-700">
+                이 전표에 이미 {fmt(Math.round(payTarget.totalAmount - getBalance(payTarget)))}원 {payTarget.type === '매입' ? '지불' : '수금'}했습니다
+                　<span className="text-emerald-500">(전표 {fmt(Math.round(payTarget.totalAmount))}원 중 남은 {fmt(Math.round(getBalance(payTarget)))}원)</span>
+              </div>
+            )}
             {/* **어디에 붙일지 고른다** — 고른 쪽이 파랗게 켜지고 그 금액이 찍힌다.
                 이 전표 = 누른 전표부터 갚는다 · 거래처 잔액 = 오래된 전표부터 갚는다. */}
             {(() => {
               const bal = partnerBalances.get(payTarget.partnerId);
               const partnerLeft = payTarget.type === '매입' ? (bal?.payable ?? 0) : (bal?.receivable ?? 0);
+              //  이 전표에 이미 낸 몫 — 안 보여주면 갚아 놓고 또 누른다(카드대금 899,925이 두 번 나갔다)
+              const paid = Math.round(payTarget.totalAmount - getBalance(payTarget));
               const box = (scope: 'stmt' | 'partner', label: string, amount: number, hint: string) => {
                 const on = payScope === scope;
                 return (
@@ -3929,7 +3948,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               };
               return (
                 <div className="flex gap-2">
-                  {box('stmt', '이 전표', payTarget.totalAmount, '이 전표부터 갚음')}
+                  {box('stmt', '이 전표', getBalance(payTarget), '이 전표부터 갚음')}
                   {box('partner', '거래처 잔액', partnerLeft, '오래된 전표부터 갚음')}
                 </div>
               );
