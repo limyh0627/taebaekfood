@@ -235,6 +235,34 @@ export function partnerBalanceFromJournals(
 }
 
 /**
+ * **전 거래처 채권·채무 잔액을 한 번에.** 분개를 한 번만 훑는다.
+ *
+ * 거래처마다 partnerBalanceFromJournals를 부르면 (거래처 수 × 분개 수)로 훑는 데다,
+ * 부르는 쪽이 거래처 목록을 만들어야 해서 **목록에서 빠진 거래처가 조용히 0으로 보인다.**
+ * 전표 조회창이 좁으면 그 창에 안 걸린 거래처가 통째로 빠졌다 — 일반전표 발행에서
+ * 거래처를 골랐는데 잔액이 0으로 뜨던 원인이다. 여기선 분개에 나오는 거래처를 다 담는다.
+ */
+export function allPartnerBalances(entries: JournalEntry[]): Map<string, { receivable: number; payable: number }> {
+  const map = new Map<string, { receivable: number; payable: number }>();
+  const bump = (pid: string, key: 'receivable' | 'payable', v: number) => {
+    const cur = map.get(pid) ?? { receivable: 0, payable: 0 };
+    cur[key] += v;
+    map.set(pid, cur);
+  };
+  for (const e of entries) {
+    for (const l of e.lines ?? []) {
+      const pid = l.partnerId;
+      if (!pid) continue;
+      const code = String(l.accountCode);
+      // 채권은 차변이 느는 것, 채무는 대변이 느는 것 (partnerBalanceFromJournals와 같은 규칙)
+      if (code === AR) bump(pid, 'receivable', (l.debit ?? 0) - (l.credit ?? 0));
+      else if (code === AP) bump(pid, 'payable', (l.credit ?? 0) - (l.debit ?? 0));
+    }
+  }
+  return map;
+}
+
+/**
  * 기간 이월 — **기간 시작 전 잔액 + 기초 전표.**
  *
  * 기초 전표는 거래가 아니라 개시잔액이라 기간 발생에서 빼는데(날짜가 기간 안이어도),
@@ -292,7 +320,7 @@ export function partnerOpenBalance(
  * 기초 전표는 줄 구성이 일정하다 — 매출 기초는 `108 차변`, 매입 기초는 `251 대변`.
  * 그 줄이 있으면 채권·채무 전표로 인정한다.
  */
-function isReceivableStmt(s: IssuedStatement, type: '매출' | '매입'): boolean {
+export function isReceivableStmt(s: IssuedStatement, type: '매출' | '매입'): boolean {
   if (s.type === type) return true;
   const want = type === '매출' ? AR : AP;
   const side = type === '매출' ? '차변' : '대변';

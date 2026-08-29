@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  buildAccountLedger, totalCashOnHand, openBalance, unsettledStatements, unmatchedCash, buildPartnerLedger, partnerBalances, partnerOpenBalance, allocatePartnerCash, partnerBalanceFromJournals, partnerCarryOver,
+  buildAccountLedger, totalCashOnHand, openBalance, unsettledStatements, unmatchedCash, buildPartnerLedger, partnerBalances, partnerOpenBalance, allocatePartnerCash, partnerBalanceFromJournals, partnerCarryOver, allPartnerBalances,
 } from './cashLedger';
 import type { AccountCode, CashAccount, CashEntry, IssuedStatement, Settlement, JournalEntry } from '../../shared/types';
 import { buildJournals } from '../../shared/buildJournals';
@@ -412,5 +412,34 @@ describe('partnerCarryOver — 기초 전표는 기간 안에 있어도 이월�
   it('월 단위도 같다 — 8월을 보면 7/31 기초가 이월', () => {
     const entries = [기초, 매출];
     expect(partnerCarryOver('p1', '매출', entries, '2026-08-01', opening)).toBe(21_782_710);
+  });
+});
+
+/**
+ * 전 거래처 잔액 — **분개에 나오는 거래처를 하나도 빠뜨리면 안 된다.**
+ * 예전엔 부르는 쪽이 '전표에 등장한 거래처' 목록을 만들어 넘겼는데, 전표 조회창이 좁으면
+ * 그 창에 안 걸린 거래처가 통째로 빠져 일반전표 발행에서 잔액이 0으로 떴다.
+ */
+describe('allPartnerBalances', () => {
+  const je2 = (date: string, lines: { accountCode: string; debit?: number; credit?: number; partnerId?: string }[]) =>
+    ({ id: date, date, sourceId: date, lines } as never);
+
+  it('거래처마다 부르는 것과 같은 값을 낸다', () => {
+    const entries = [
+      je2('2026-07-31', [{ accountCode: '108', debit: 1_755_000, partnerId: 'p1' }, { accountCode: '375', credit: 1_755_000 }]),
+      je2('2026-08-12', [{ accountCode: '103', debit: 1_755_000 }, { accountCode: '108', credit: 1_755_000, partnerId: 'p1' }]),
+      je2('2026-08-25', [{ accountCode: '108', debit: 120_000, partnerId: 'p1' }, { accountCode: '800', credit: 120_000 }]),
+      je2('2026-08-10', [{ accountCode: '146', debit: 900_000 }, { accountCode: '251', credit: 900_000, partnerId: 'p2' }]),
+    ];
+    const all = allPartnerBalances(entries);
+    expect(all.get('p1')!.receivable).toBe(partnerBalanceFromJournals('p1', '매출', entries));
+    expect(all.get('p1')!.receivable).toBe(120_000);
+    expect(all.get('p2')!.payable).toBe(900_000);
+  });
+
+  it('전표가 한 장도 없어도 자금만으로 잔액이 잡히면 담는다', () => {
+    //  수금만 있고 전표가 조회창 밖이면 예전 방식은 이 거래처를 통째로 빠뜨렸다
+    const entries = [je2('2026-08-12', [{ accountCode: '103', debit: 500_000 }, { accountCode: '108', credit: 500_000, partnerId: 'p9' }])];
+    expect(allPartnerBalances(entries).get('p9')!.receivable).toBe(-500_000);
   });
 });

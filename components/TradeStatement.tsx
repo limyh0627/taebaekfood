@@ -17,7 +17,7 @@ import type { VoucherKind } from '../src/shared/vouchers';
 import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/shared/orderUnits';
 import { bomOf } from '../src/shared/bomIndex';
 import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
-import { totalCashOnHand, unsettledStatements, unmatchedCash, partnerBalanceFromJournals, allocatePartnerCash, partnerCashParts } from '../src/features/admin/cashLedger';
+import { totalCashOnHand, unsettledStatements, unmatchedCash, partnerBalanceFromJournals, allPartnerBalances, isReceivableStmt, allocatePartnerCash, partnerCashParts } from '../src/features/admin/cashLedger';
 import { AR, AP, journalizeStatement, journalizeTransfer, journalizeCashEntry, settlementAccountCode } from '../src/shared/autoJournal';
 import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, isCashDir, templateAccrRows, VOUCHER_DIRS, DIR_CHIP, DIR_HINT, CashTemplate, VoucherDir, SPLIT_MODES, splitModeOf } from '../src/shared/cashTemplates';
 import { canAutoIssue, autoVoucherId } from '../src/shared/autoVoucher';
@@ -1133,15 +1133,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       .reduce((a, l) => a + Math.abs((l.debit ?? 0) - (l.credit ?? 0)), 0);
   }, [histAccount, journalBySource, acctHit]);
   const partnerBalances = useMemo(() => {
-    const map = new Map<string, { receivable: number; payable: number }>();
-    for (const id of new Set(mergedStatements.map(s => s.partnerId).filter(Boolean))) {
-      map.set(id, {
-        receivable: partnerBalanceFromJournals(id, '매출', partnerJournals),
-        payable: partnerBalanceFromJournals(id, '매입', partnerJournals),
-      });
-    }
-    return map;
-  }, [mergedStatements, partnerJournals]);
+    //  **분개에 나오는 거래처를 다 담는다.** 예전엔 mergedStatements에 등장한 거래처만 담아서,
+    //  전표 조회창 밖 거래처는 통째로 빠져 일반전표 발행에서 잔액이 0으로 떴다.
+    return allPartnerBalances(partnerJournals);
+  }, [partnerJournals]);
 
   /**
    * 전표별 남은 금액 — **mergedStatements로 돌린다.**
@@ -4148,8 +4143,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         // 상계에 쓸 전표 배분 — 오래된 것부터 채운다. 저장과 미리보기가 같은 값을 봐야 한다.
         const offsetAllocations = () => {
           if (offsetAmt <= 0) return [] as { stmt: IssuedStatement; amount: number }[];
-          const unpaid = issuedStatements
-            .filter(s => s.partnerId === quickPayClientId && s.type === stmtTypeForPay && getBalance(s) > 0)
+          //  mergedStatements + 기초 전표까지 본다 — props(7일)만 보거나 type만 보면
+          //  갚을 전표가 있는데도 목록이 비어 상계가 통째로 안 걸린다.
+          const unpaid = mergedStatements
+            .filter(s => s.partnerId === quickPayClientId && isReceivableStmt(s, stmtTypeForPay) && getBalance(s) > 0)
             .sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
           const out: { stmt: IssuedStatement; amount: number }[] = [];
           let rem = offsetAmt;
