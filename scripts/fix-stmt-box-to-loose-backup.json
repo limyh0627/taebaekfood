@@ -1,0 +1,129 @@
+{
+ "stmt-1785759146203": [
+  {
+   "name": "시골향 들기름/1.75ML (10개입)",
+   "spec": "1750ml",
+   "qty": 20,
+   "price": 25000,
+   "supply": 454545,
+   "tax": 45455,
+   "total": 500000,
+   "isTaxExempt": false,
+   "accountCode": "800"
+  }
+ ],
+ "stmt-1786494303273": [
+  {
+   "name": "들깨가루(중간)/거산/1kg (20개입)",
+   "spec": "1kg",
+   "qty": 300,
+   "price": 7500,
+   "supply": 2250000,
+   "tax": 0,
+   "total": 2250000,
+   "isTaxExempt": true,
+   "accountCode": "800"
+  },
+  {
+   "name": "들깨가루(거친)/거산/1kg (20개입)",
+   "spec": "1kg",
+   "qty": 60,
+   "price": 7500,
+   "supply": 450000,
+   "tax": 0,
+   "total": 450000,
+   "isTaxExempt": true,
+   "accountCode": "800"
+  },
+  {
+   "name": "시골향 탈피들깨가루/1kg (20개입)",
+   "spec": "1kg",
+   "qty": 60,
+   "price": 8000,
+   "supply": 480000,
+   "tax": 0,
+   "total": 480000,
+   "isTaxExempt": true,
+   "accountCode": "800"
+  },
+  {
+   "name": "참진한기름",
+   "spec": "",
+   "qty": 60,
+   "price": 8700,
+   "supply": 474545,
+   "tax": 47455,
+   "total": 522000,
+   "isTaxExempt": false,
+   "accountCode": "800"
+  },
+  {
+   "name": "볶음참깨/1kg (20개입)",
+   "spec": "20kg",
+   "qty": 60,
+   "price": 5600,
+   "supply": 336000,
+   "tax": 0,
+   "total": 336000,
+   "isTaxExempt": true,
+   "accountCode": "800"
+  }
+ ],
+ "stmt-1786497178293": [
+  {
+   "name": "볶음참깨/1kg (10개입)",
+   "spec": "1kg",
+   "qty": 50,
+   "price": 5800,
+   "supply": 290000,
+   "tax": 0,
+   "total": 290000,
+   "isTaxExempt": true,
+   "accountCode": "800"
+  },
+  {
+   "name": "참향기름",
+   "spec": "",
+   "qty": 12,
+   "price": 7400,
+   "supply": 80727,
+   "tax": 8073,
+   "total": 88800,
+   "isTaxExempt": false,
+   "accountCode": "800"
+  },
+  {
+   "name": "들향기름골드",
+   "spec": "",
+   "qty": 10,
+   "price": 8200,
+   "supply": 74545,
+   "tax": 7455,
+   "total": 82000,
+   "isTaxExempt": false,
+   "accountCode": "800"
+  },
+  {
+   "name": "시골향 참기름/A/1800ml (12개입)",
+   "spec": "1800ml",
+   "qty": 12,
+   "price": 18000,
+   "supply": 196364,
+   "tax": 19636,
+   "total": 216000,
+   "isTaxExempt": false,
+   "accountCode": "800"
+  },
+  {
+   "name": "시골향 들깨가루(중간)/1kg",
+   "spec": "1kg",
+   "qty": 20,
+   "price": 7500,
+   "supply": 150000,
+   "tax": 0,
+   "total": 150000,
+   "isTaxExempt": true,
+   "accountCode": "800"
+  }
+ ]
+}

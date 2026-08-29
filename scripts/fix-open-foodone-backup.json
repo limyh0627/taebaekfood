@@ -1,0 +1,30 @@
+{
+ "old": {
+  "id": "stmt-1786084601851",
+  "issuedAt": "2026-07-31T14:59:59.000Z",
+  "type": "매출",
+  "companyId": "taebaek",
+  "docNo": "260731-01",
+  "orderId": "",
+  "totalAmount": 466800,
+  "partnerId": "C074",
+  "tradeDate": "2026-07-31",
+  "partnerName": "푸드원",
+  "totalTax": 42436,
+  "items": [
+   {
+    "name": "기초 미수금(이월)",
+    "spec": "",
+    "qty": 1,
+    "price": 466800,
+    "supply": 424364,
+    "tax": 42436,
+    "total": 466800,
+    "isTaxExempt": false,
+    "accountCode": "800"
+   }
+  ],
+  "totalSupply": 424364
+ },
+ "newId": "stmt-open-C074-매출"
+}

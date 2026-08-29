@@ -306,6 +306,24 @@ describe('allocatePartnerCash', () => {
     expect(m.get('b1')).toBe(300_000);
   });
 
+  /**
+   * **누른 전표에 붙여야 남은 금액이 남는다.**
+   * 안 붙이면 그 돈이 오래된 전표부터 채워져, 500,000짜리에 100,000만 넣었는데
+   * 엉뚱한 옛 전표가 완납으로 잡히고 그쪽 수금 버튼이 사라졌다.
+   */
+  it('새 전표에 일부만 넣으면 그 전표에 그만큼만 붙고 나머지가 남는다', () => {
+    const m = allocatePartnerCash('p1', '매출', [s1, s2], [cash('c1', 500_000)],
+      [settle('t1', 'c1', 's2', 500_000)]);
+    expect(m.get('s2')).toBe(1_500_000);   // 2,000,000 − 500,000 → 버튼이 남는다
+    expect(m.get('s1')).toBe(1_000_000);   // 옛 전표는 안 건드린다
+  });
+
+  it('안 붙이면 옛 전표가 대신 채워진다 — 고치기 전 모습', () => {
+    const m = allocatePartnerCash('p1', '매출', [s1, s2], [cash('c1', 500_000)], []);
+    expect(m.get('s1')).toBe(500_000);     // 오래된 쪽이 먼저 채워진다
+    expect(m.get('s2')).toBe(2_000_000);
+  });
+
   it('배분 합계는 늘 거래처 잔액과 같다 — 지정을 해도 총액은 안 변한다', () => {
     const ce = [cash('c1', 1_500_000)];
     const sum = (sets: ReturnType<typeof settle>[]) =>

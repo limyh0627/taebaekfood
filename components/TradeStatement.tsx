@@ -707,8 +707,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       note: opts.note || `${first.partnerName ?? ''} ${first.type === '매입' ? '지불' : '수금'}`.trim(),
       createdAt: stampFor(opts.date),
     });
-    // 전표 매칭(settlement)은 만들지 않는다 — 잔액은 거래처 단위로만 본다.
-    // 어느 청구서를 갚았는지 연결하지 않으니 매칭이 어긋나거나 고아가 될 자리가 없다.
+    /**
+     * **누른 전표에 붙인다(settlement).**
+     *
+     * 안 붙이면 그 돈이 거래처 잔액에만 들어가고, allocatePartnerCash가 **오래된 전표부터**
+     * 채운다 — 500,000짜리 전표에 100,000만 넣었는데 엉뚱한 옛 전표가 완납으로 잡혀
+     * 그쪽 수금/지불 버튼이 사라졌다. 누른 전표에 그만큼만 붙어야 남은 금액이 남는다.
+     *
+     * 고아가 될 자리는 없다 — allocatePartnerCash는 `liveCash`에 있는 자금기록만 보고,
+     * 자금기록을 지우면 deletePayTimelineRow가 붙은 settlement도 같이 지운다.
+     */
+    for (const { stmt, amount } of allocations) {
+      if (amount > 0) onAddSettlement?.({ id: `st-${entryId}-${stmt.id}`, cashEntryId: entryId, statementId: stmt.id, amount, createdAt: new Date().toISOString() });
+    }
   };
 
   const openPayModal = (stmt: IssuedStatement) => {
