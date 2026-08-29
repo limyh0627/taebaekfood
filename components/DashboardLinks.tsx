@@ -24,6 +24,16 @@ const normalizeUrl = (raw: string): string => {
   return /^https?:\/\//i.test(u) ? u : `https://${u}`;
 };
 
+/**
+ * 사이트 아이콘 — 그 도메인의 favicon을 구글이 대신 내준다.
+ * 사이트마다 파일 위치가 제각각(/favicon.ico·apple-touch-icon·manifest)이라 직접 찾으면
+ * 절반은 깨진다. 못 가져오면 아래에서 첫 글자로 갈음한다(onError).
+ */
+const faviconOf = (url: string): string => {
+  try { return `https://www.google.com/s2/favicons?sz=64&domain=${new URL(normalizeUrl(url)).hostname}`; }
+  catch { return ''; }
+};
+
 /** 주소에서 보여줄 짧은 이름 — 이름을 안 적었을 때 쓴다 */
 const hostOf = (url: string): string => {
   try { return new URL(normalizeUrl(url)).hostname.replace(/^www\./, ''); }
@@ -130,24 +140,35 @@ const DashboardLinks: React.FC<{ isAdmin?: boolean }> = ({ isAdmin = true }) => 
         </p>
       )}
 
-      <div className="flex flex-wrap gap-2">
+      {/* 아이콘 타일 — 글자 줄보다 눈이 먼저 찾는다. 이름은 아이콘 밑에 붙인다. */}
+      <div className="flex flex-wrap gap-3">
         {links.map(l => (
-          <span key={l.id} className="inline-flex items-center">
+          <div key={l.id} className="relative group/tile">
             <a href={normalizeUrl(l.url)} target="_blank" rel="noopener noreferrer"
-              title={l.url}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-black text-slate-600 hover:border-indigo-300 hover:text-indigo-600 transition-all">
-              <ExternalLink size={12} className="opacity-50" />
-              {l.label}
+              title={`${l.label} — ${l.url}`}
+              className="flex flex-col items-center gap-1.5 w-[76px] p-2 rounded-2xl border border-slate-200 bg-white hover:border-indigo-300 hover:shadow-sm transition-all">
+              <span className="w-9 h-9 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
+                {/* 파비콘이 안 오면 첫 글자로 갈음한다 — 빈 네모가 남으면 뭐가 뭔지 모른다 */}
+                <img src={faviconOf(l.url)} alt="" className="w-5 h-5"
+                  onError={e => {
+                    const img = e.currentTarget;
+                    img.style.display = 'none';
+                    const fb = img.nextElementSibling as HTMLElement | null;
+                    if (fb) fb.style.display = 'block';
+                  }} />
+                <span className="hidden text-sm font-black text-slate-400">{(l.label || hostOf(l.url)).slice(0, 1)}</span>
+              </span>
+              <span className="text-[10px] font-black text-slate-600 leading-tight text-center line-clamp-2 break-all">{l.label}</span>
             </a>
             {editing && (
-              <>
+              <div className="absolute -top-1.5 -right-1.5 flex gap-0.5">
                 <button onClick={() => rename(l)} title="이름 바꾸기"
-                  className="ml-1 p-1 text-slate-300 hover:text-indigo-500 transition-colors"><Pencil size={12} /></button>
+                  className="p-1 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-indigo-500 shadow-sm"><Pencil size={10} /></button>
                 <button onClick={() => remove(l)} title="지우기"
-                  className="p-1 text-slate-300 hover:text-rose-500 transition-colors"><X size={13} /></button>
-              </>
+                  className="p-1 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-rose-500 shadow-sm"><X size={11} /></button>
+              </div>
             )}
-          </span>
+          </div>
         ))}
       </div>
 

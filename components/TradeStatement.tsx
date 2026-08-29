@@ -800,7 +800,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // ── 메인 탭 ──
   const [mainTab, setMainTab] = useState<'history' | 'taxinvoice'>(defaultTab ?? 'history');
   // 계좌 관리 모달 (장부에서 흡수)
-  const [showAccounts, setShowAccounts] = useState(false);
   // 거래명세서(매출/매입) 생성 드롭다운
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const createMenuRef = useRef<HTMLDivElement>(null);
@@ -3126,13 +3125,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               <p className={`text-sm font-black tabular-nums leading-tight mt-0.5 ${bal < 0 ? 'text-rose-600' : 'text-slate-800'}`}>{fmt(bal)}</p>
             </div>
           ))}
-          {onAddCashAccount && (
-            <button onClick={() => setShowAccounts(true)}
-              className="shrink-0 rounded-2xl px-3 border border-dashed border-slate-200 text-slate-300 hover:text-slate-500 hover:border-slate-400 transition-all"
-              title="계좌 관리">
-              <Landmark size={15}/>
-            </button>
-          )}
+          {/* 계좌 **관리**는 여기 없다 — 장부(현금출납장)가 계좌를 쥔다.
+              전표 화면은 전표를 끊는 곳이고, 잔액은 참고로만 본다.
+              한 가지를 두 곳에서 고칠 수 있으면 어느 쪽이 진짜인지 흐려진다. */}
         </div>
       )}
 
@@ -3361,15 +3356,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         <div className="w-px h-6 bg-slate-200 mx-1 self-center"/>
 
         {/* ── 도구 (soft) ── */}
-        {onAddCashAccount && (
-          <button
-            onClick={() => setShowAccounts(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-all"
-            title="자금 계좌 관리 (통장·카드·현금)"
-          >
-            <Landmark size={13}/>계좌
-          </button>
-        )}
+        {/* 계좌 관리 버튼은 뺐다 — 장부(현금출납장)가 계좌를 쥔다.
+            한 가지를 두 곳에서 고칠 수 있으면 어느 쪽이 진짜인지 흐려진다. */}
         <button
           onClick={() => { setShowCompanyModal(true); setCompanyForm(companyInfo ?? { name:'',ceoName:'',bizNo:'',bizType:'',bizItem:'',address:'',phone:'',fax:'',email:'' }); }}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-all"
@@ -5194,11 +5182,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       })()}
 
       {/* ── 계좌 관리 모달 (장부 흡수) ── */}
-      {showAccounts && onAddCashAccount && onUpdateCashAccount && (
-        <AccountModal accounts={cashAccounts} onClose={() => setShowAccounts(false)}
-          onAdd={onAddCashAccount} onUpdate={onUpdateCashAccount} />
-      )}
-
       {/* ── 발행내역 상세 모달 ── */}
       {detailStmt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
