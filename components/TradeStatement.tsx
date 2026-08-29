@@ -1237,14 +1237,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const canSettle = useCallback((s: IssuedStatement) =>
     (isReceivableStmt(s, '매출') || isReceivableStmt(s, '매입')) && getBalance(s) > 0,
     [openByStmt]);
-  /**
-   * **갚을 상대가 있는 전표인가** — 없으면 누적잔액 칸에 숫자를 안 쓴다.
-   *
-   * 급여·감가상각·선급금대체처럼 채권·채무를 안 세우는 전표는 잔액이라는 게 없다.
-   * 그런데 칸에 '0'을 찍어 두면 **다 갚은 것처럼** 보인다 — 없는 것과 0은 다르다.
-   */
-  const hasArAp = useCallback((s: IssuedStatement) =>
-    isReceivableStmt(s, '매출') || isReceivableStmt(s, '매입'), []);
 
   // ── 발행내역 상세 보기 ──
   const [detailStmt, setDetailStmt] = useState<IssuedStatement | null>(null);
@@ -2391,7 +2383,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   }, []);
 
   // ── 전표 통합 타임라인 (거래명세서 + 수금/지불 + 자금 입출금) ──
-  type StmtRow = { kind: 'stmt'; data: IssuedStatement; cumul: number; dateKey: string; ts: string };
+  //  cumul이 undefined = 잔액이라는 게 없는 줄(거래처가 안 붙은 전표). 화면은 —로 띄운다.
+  type StmtRow = { kind: 'stmt'; data: IssuedStatement; cumul?: number; dateKey: string; ts: string };
   type PayRow  = { kind: 'pay';  partnerId: string; partnerName: string; stmtType: '매출'|'매입';
                    /** 상계 — 받을 것과 줄 것을 맞바꾼 것. 미수·미지급 양쪽에 한 줄씩 선다. */
                    offset?: boolean;
@@ -2515,8 +2508,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const balTrail = new Map<string, { ts: string; cumul: number }[]>();
     for (const r of rows) {
       if (r.kind !== 'stmt' && r.kind !== 'pay') continue;      // 자금 행은 아직 안 만들었다
+      //  채권·채무를 안 세우는 전표(급여·감가상각·선급금대체)는 제 묶음('기타')에서 0부터 굴러서
+      //  그 값을 자취에 넣으면 그 거래처 잔액이 통째로 흐려진다. 자취는 채권·채무만 쌓는다.
+      if (r.kind === 'stmt' && !arap.get(r.data.id)?.side) continue;
       const pid = r.kind === 'stmt' ? r.data.partnerId : r.partnerId;
-      if (!pid) continue;
+      if (!pid || r.cumul == null) continue;
       const arr = balTrail.get(pid) ?? [];
       arr.push({ ts: r.ts, cumul: r.cumul });
       balTrail.set(pid, arr);
@@ -2530,6 +2526,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       for (const x of arr) { if (x.ts <= ts) out = x.cumul; else break; }
       return out;
     };
+
+    /**
+     * 채권·채무를 안 세우는 전표의 잔액 칸 — **그 거래처의 그 시점 잔액**을 적는다.
+     *
+     * 그 전표 자체는 잔액을 안 흔들지만, 거래처가 붙어 있으면 "이 거래처가 지금 얼마 남았나"는
+     * 보여야 읽힌다(자금 행과 같은 규칙). 거래처가 없으면 undefined — 화면에서 —로 뜬다.
+     */
+    for (const r of rows) {
+      if (r.kind !== 'stmt' || arap.get(r.data.id)?.side) continue;
+      r.cumul = balanceAt(r.data.partnerId, r.ts);
+    }
 
     // ── 자금 입출금 전표 ── 거래처 채권·채무(108/251)로 나간 부분은 이미 수금/지불 행으로 보였다.
     // 나머지(계정이 붙은 비용·차입금·선수금 등)만 자금 행으로 띄운다.
@@ -3622,8 +3629,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       {stPartial && <span className="block text-[10px] font-bold text-slate-400">전표 {fmt(stmt.totalAmount)}</span>}
                     </td>
                     <td className="px-4 py-3 text-xs text-right">
-                      {!hasArAp(stmt)
-                        ? <span className="font-black text-slate-300" title="갚을 상대가 없는 전표 — 잔액이라는 게 없다">—</span>
+                      {cumul == null
+                        ? <span className="font-black text-slate-300" title="거래처가 없는 전표 — 잔액이라는 게 없다">—</span>
                         : cumul === 0
                         ? <span className="font-black text-slate-400">0</span>
                         : cumul < 0
@@ -3790,8 +3797,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] text-slate-400 truncate flex-1 min-w-0">{summary}</span>
-                    {!hasArAp(stmt)
-                      ? <span className="text-[11px] font-black shrink-0 text-slate-300" title="갚을 상대가 없는 전표">—</span>
+                    {cumul == null
+                      ? <span className="text-[11px] font-black shrink-0 text-slate-300" title="거래처가 없는 전표">—</span>
                       : cumul !== 0 && (
                       cumul < 0
                         ? <span className="text-[11px] font-black shrink-0 text-slate-500 whitespace-nowrap">

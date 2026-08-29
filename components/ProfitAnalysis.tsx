@@ -110,8 +110,12 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
    * **이번 달이 빠졌고**, 앞은 기초일(7/31) 이전이라 통째로 잘려서 화면이 전부 0이었다.
    * 유일하게 데이터가 있는 달이 8월인데 그 8월만 안 보였다.
    */
-  const [customStartMonth, setCustomStartMonth] = useState(1);
-  const [customEndMonth, setCustomEndMonth] = useState(() => new Date().getMonth() + 1);
+  /**
+   * 기간은 **날짜로 고른다** — 전표 화면과 같은 모양. 셈은 달 단위라 고른 날짜가 걸친 달을 쓴다.
+   * 월 드롭다운이던 시절엔 같은 해 안에서만 고를 수 있어 12월~1월처럼 해를 넘기지 못했다.
+   */
+  const [customStart, setCustomStart] = useState(() => `${new Date().getFullYear()}-01-01`);
+  const [customEnd, setCustomEnd] = useState(() => new Date().toISOString().slice(0, 10));
   const [newCodeForm, setNewCodeForm] = useState({ code: '', name: '', groupId: '' });
   const [newGroupForm, setNewGroupForm] = useState({ name: '', type: '수익' as AccountGroup['type'], plLine: undefined as AccountGroup['plLine'] });
   const [showAddCode, setShowAddCode] = useState(false);
@@ -244,16 +248,21 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
       const all = Array.from({ length: 6 }, (_, i) => `${selectedYear}-${String(sm + i).padStart(2, '0')}`);
       return selectedYear === now.getFullYear() ? all.filter(ym => ym <= todayYm) : all;
     }
-    // custom: 같은 연도 내 월 범위
-    const maxMonth = selectedYear === now.getFullYear() ? now.getMonth() + 1 : 12;
-    const end = Math.min(customEndMonth, maxMonth);
+    // custom: 고른 두 날짜가 걸친 달 전부 — 해를 넘겨도 된다
+    const a = customStart.slice(0, 7), b = customEnd.slice(0, 7);
+    const [from, to] = a <= b ? [a, b] : [b, a];
     const months: string[] = [];
-    for (let m = customStartMonth; m <= end; m++) {
-      months.push(`${selectedYear}-${String(m).padStart(2, '0')}`);
+    let [y, m] = from.split('-').map(Number);
+    const cap = to > todayYm ? todayYm : to;      // 앞으로 올 달은 셀 게 없다
+    for (let guard = 0; guard < 240; guard++) {
+      const ym = `${y}-${String(m).padStart(2, '0')}`;
+      if (ym > cap) break;
+      months.push(ym);
+      if (++m > 12) { m = 1; y++; }
     }
     return months;
     }
-  }, [period, selectedYear, selectedQuarter, selectedHalf, customStartMonth, customEndMonth, todayYm, openingYm]);
+  }, [period, selectedYear, selectedQuarter, selectedHalf, customStart, customEnd, todayYm, openingYm]);
 
   // ── 월별 실수금·실지불 (결제가 실제로 일어난 달 기준) ──
   // 결제는 자금원장 매칭(settlements)에서만 온다 — 전표에 매다는 옛 경로는 걷어냈다.
@@ -517,26 +526,16 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
               ))}
             </div>
           )}
-          {period === 'custom' && (() => {
-            const maxM = selectedYear === now.getFullYear() ? now.getMonth() + 1 : 12;
-            return (
-              <div className="flex items-center gap-1">
-                <select value={customStartMonth} onChange={e => { const v = Number(e.target.value); setCustomStartMonth(v); if (v > customEndMonth) setCustomEndMonth(v); }}
-                  className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer">
-                  {Array.from({ length: maxM }, (_, i) => i + 1).map(m => (
-                    <option key={m} value={m}>{m}월</option>
-                  ))}
-                </select>
-                <span className="text-slate-400 text-xs font-black">~</span>
-                <select value={Math.min(customEndMonth, maxM)} onChange={e => setCustomEndMonth(Number(e.target.value))}
-                  className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer">
-                  {Array.from({ length: maxM - customStartMonth + 1 }, (_, i) => customStartMonth + i).map(m => (
-                    <option key={m} value={m}>{m}월</option>
-                  ))}
-                </select>
-              </div>
-            );
-          })()}
+          {period === 'custom' && (
+            /* 날짜로 고른다 — 전표 화면과 같은 모양. 셈은 달 단위라 고른 날짜가 걸친 달을 쓴다. */
+            <div className="flex items-center gap-1">
+              <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)}
+                className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer"/>
+              <span className="text-slate-400 text-xs font-black">~</span>
+              <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)}
+                className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer"/>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <button
@@ -857,7 +856,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         const unclassified = netTotal - computedNet;         // 기타(미분류) = 실제 − 계산
         const cfLabel = cfMode === 'month'
           ? `${Number(cfMonth.split('-')[0])}년 ${Number(cfMonth.split('-')[1])}월`
-          : (period === '1Y' ? `${selectedYear}년 연간` : period === '3M' ? `${selectedYear}년 ${selectedQuarter}분기` : period === '6M' ? `${selectedYear}년 ${selectedHalf === 1 ? '상반기' : '하반기'}` : `${selectedYear}년 ${customStartMonth}월~${customEndMonth}월`);
+          : (period === '1Y' ? `${selectedYear}년 연간` : period === '3M' ? `${selectedYear}년 ${selectedQuarter}분기` : period === '6M' ? `${selectedYear}년 ${selectedHalf === 1 ? '상반기' : '하반기'}` : `${customStart} ~ ${customEnd}`);
         const editable = cfMode === 'month';
         const isBaselineMonth = !baseline || cfMonth <= baseline;
         const mVal = (f: keyof CashFlowManual) => (cfEdit[f] != null ? Number(cfEdit[f]).toLocaleString() : '');
@@ -931,18 +930,14 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                   </div>
                 )}
                 {period === 'custom' && (() => {
-                  const maxM = selectedYear === now.getFullYear() ? now.getMonth() + 1 : 12;
                   return (
+                    /* 손익분석과 같은 모양 — 날짜로 고른다 */
                     <div className="flex items-center gap-1">
-                      <select value={customStartMonth} onChange={e => { const v = Number(e.target.value); setCustomStartMonth(v); if (v > customEndMonth) setCustomEndMonth(v); }}
-                        className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer">
-                        {Array.from({ length: maxM }, (_, i) => i + 1).map(m => <option key={m} value={m}>{m}월</option>)}
-                      </select>
+                      <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)}
+                        className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer"/>
                       <span className="text-slate-400 text-xs font-black">~</span>
-                      <select value={Math.min(customEndMonth, maxM)} onChange={e => setCustomEndMonth(Number(e.target.value))}
-                        className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer">
-                        {Array.from({ length: maxM - customStartMonth + 1 }, (_, i) => customStartMonth + i).map(m => <option key={m} value={m}>{m}월</option>)}
-                      </select>
+                      <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)}
+                        className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer"/>
                     </div>
                   );
                 })()}
