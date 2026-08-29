@@ -1507,20 +1507,56 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 receivedOrders.filter(r => !r.linkedStatementId).length;
               return (
                 <>
+                  {/* 메뉴 짜임 — 사장님이 정한 순서 그대로.
+                      대시보드 · 업무 관리 · 기준정보 관리 · 장부/원장 · 경영 분석 · 특수 관리 · 외부 서비스(맨 아래) */}
+                  <NavGroup title="대시보드" storageKey="dash" collapsed={isSidebarCollapsed}>
+                    <nav className="space-y-1">
+                      <NavItem icon={LayoutDashboard} label="대시보드" active={currentView === 'dashboard' || currentView === 'ai-consultant'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('dashboard')} />
+                    </nav>
+                  </NavGroup>
                   <NavGroup title="업무 관리" storageKey="work" collapsed={isSidebarCollapsed}>
                     <nav className="space-y-1">
+                      <NavItem icon={ClipboardList} label="확인사항" active={currentView === 'admin-checklist'} onClick={() => handleNavClick('admin-checklist')} collapsed={isSidebarCollapsed} badge={adminPendingCount > 0 ? adminPendingCount : undefined} hidden={!viewAllowed('admin-checklist')} />
                       <NavItem icon={FileText} label="전표" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('trade-statement')} />
                       <NavItem icon={Receipt} label="세금계산서" active={currentView === 'tax-statement'} onClick={() => handleNavClick('tax-statement')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('tax-statement')} />
+                    </nav>
+                  </NavGroup>
+                  <NavGroup title="기준정보 관리" storageKey="master" collapsed={isSidebarCollapsed}>
+                    <nav className="space-y-1">
                       <NavItem icon={Package} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('item-management')} />
+                      <NavItem icon={Users} label="거래처 관리" active={currentView === 'partners' || currentView === 'partner-signup'} onClick={() => handleNavClick('partners')} collapsed={isSidebarCollapsed} badge={pendingSignupCount > 0 ? pendingSignupCount : undefined} hidden={!viewAllowed('partners')} />
+                      {/* 가입승인은 거래처 관리에 딸린 것이라 줄을 따로 안 세운다.
+                          다만 기다리는 건이 있으면 놓치면 안 되므로 그때만 띄운다(위 배지와 같은 수). */}
+                      <NavItem icon={UserPlus} label="거래처 가입승인" active={currentView === 'partner-signup'} onClick={() => handleNavClick('partner-signup')} collapsed={isSidebarCollapsed} badge={pendingSignupCount} hidden={!viewAllowed('partner-signup') || pendingSignupCount === 0} />
                       <NavItem icon={UserCheck} label="인사 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('hr')} />
-                      <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('documents')} />
                       <NavItem icon={FolderOpen} label="문서함" active={currentView === 'file-cabinet'} onClick={() => handleNavClick('file-cabinet')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('file-cabinet')} />
-                      <NavItem icon={Users} label="거래처 관리" active={currentView === 'partners'} onClick={() => handleNavClick('partners')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('partners')} />
-                      <NavItem icon={UserPlus} label="거래처 가입승인" active={currentView === 'partner-signup'} onClick={() => handleNavClick('partner-signup')} collapsed={isSidebarCollapsed} badge={pendingSignupCount > 0 ? pendingSignupCount : undefined} hidden={!viewAllowed('partner-signup')} />
-                      <NavItem icon={ClipboardList} label="확인사항" active={currentView === 'admin-checklist'} onClick={() => handleNavClick('admin-checklist')} collapsed={isSidebarCollapsed} badge={adminPendingCount > 0 ? adminPendingCount : undefined} hidden={!viewAllowed('admin-checklist')} />
+                      <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('documents')} />
                       <NavItem icon={QrCode} label="QR 라벨 인쇄" active={false} onClick={() => setShowQrLabel(true)} collapsed={isSidebarCollapsed} />
                     </nav>
                   </NavGroup>
+                  <NavGroup title="장부 / 원장 관리" storageKey="ledger" collapsed={isSidebarCollapsed}>
+                    <nav className="space-y-1">
+                      {/* 자금 입출금·계좌관리는 전표 탭에도 있지만, 전표 매칭(수금 취소·재배분)은 여기서만 된다.
+                          '장부' 화면은 현금출납장·거래처원장 두 탭이라 여기서 거래처원장 탭을 열어 준다. */}
+                      <NavItem icon={BookOpen} label="거래처원장" active={currentView === 'ledger-cash'} onClick={() => { setLedgerTab('partner'); handleNavClick('ledger-cash'); }} collapsed={isSidebarCollapsed} hidden={!viewAllowed('ledger-cash')} />
+                      <NavItem icon={Scale} label="재무제표" active={currentView === 'financial-reports'} onClick={() => handleNavClick('financial-reports')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('financial-reports')} />
+                    </nav>
+                  </NavGroup>
+                  <NavGroup title="경영 분석 및 통계" storageKey="biz" collapsed={isSidebarCollapsed}>
+                    <nav className="space-y-1">
+                      <NavItem icon={BarChart2} label="손익 / 비용 분석" active={currentView === 'profit-analysis' || currentView === 'cost-management'} onClick={() => handleNavClick('profit-analysis')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('profit-analysis')} />
+                      <NavItem icon={Activity} label="현금흐름 분석" active={currentView === 'cash-flow'} onClick={() => handleNavClick('cash-flow')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('cash-flow')} />
+                      <NavItem icon={TrendingUp} label="거래처통계" active={currentView === 'partner-stats'} onClick={() => handleNavClick('partner-stats')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('partner-stats')} />
+                      <NavItem icon={Factory} label="생산 실적" active={currentView === 'production'} onClick={() => handleNavClick('production')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('production')} />
+                      <NavItem icon={ShoppingBag} label="스마트스토어 분석" active={currentView === 'smartstore-analytics'} onClick={() => handleNavClick('smartstore-analytics')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('smartstore-analytics')} />
+                    </nav>
+                  </NavGroup>
+                  <NavGroup title="특수 관리" storageKey="special" collapsed={isSidebarCollapsed}>
+                    <nav className="space-y-1">
+                      <NavItem icon={ClipboardList} label="HACCP 체크리스트" active={currentView === 'haccp-checklist'} onClick={() => handleNavClick('haccp-checklist')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('haccp-checklist')} />
+                    </nav>
+                  </NavGroup>
+                  {/* 외부 서비스는 맨 아래 */}
                   <NavGroup title="외부 서비스" storageKey="ext" collapsed={isSidebarCollapsed}>
                     <nav className="space-y-1">
                       <button
@@ -1534,20 +1570,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         </div>
                         {!isSidebarCollapsed && <ExternalLink size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />}
                       </button>
-                    </nav>
-                  </NavGroup>
-                  <NavGroup title="경영 현황" storageKey="biz" collapsed={isSidebarCollapsed}>
-                    <nav className="space-y-1">
-                      <NavItem icon={LayoutDashboard} label="대시보드" active={currentView === 'dashboard' || currentView === 'ai-consultant'} onClick={() => handleNavClick('dashboard')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('dashboard')} />
-                      <NavItem icon={BarChart2} label="손익 / 비용 분석" active={currentView === 'profit-analysis' || currentView === 'cost-management'} onClick={() => handleNavClick('profit-analysis')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('profit-analysis')} />
-                      <NavItem icon={TrendingUp} label="거래처통계" active={currentView === 'partner-stats'} onClick={() => handleNavClick('partner-stats')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('partner-stats')} />
-                      <NavItem icon={Activity} label="현금흐름 분석" active={currentView === 'cash-flow'} onClick={() => handleNavClick('cash-flow')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('cash-flow')} />
-                      <NavItem icon={Scale} label="재무제표 (복식부기)" active={currentView === 'financial-reports'} onClick={() => handleNavClick('financial-reports')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('financial-reports')} />
-                      {/* 자금 입출금·계좌관리는 전표 탭에도 있지만, 전표 매칭(수금 취소·재배분)은 여기서만 된다. */}
-                      <NavItem icon={BookOpen} label="장부" active={currentView === 'ledger-cash'} onClick={() => handleNavClick('ledger-cash')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('ledger-cash')} />
-                      <NavItem icon={Factory} label="생산 실적" active={currentView === 'production'} onClick={() => handleNavClick('production')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('production')} />
-                      <NavItem icon={ShoppingBag} label="스마트스토어 분석" active={currentView === 'smartstore-analytics'} onClick={() => handleNavClick('smartstore-analytics')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('smartstore-analytics')} />
-                      <NavItem icon={ClipboardList} label="HACCP 체크리스트" active={currentView === 'haccp-checklist'} onClick={() => handleNavClick('haccp-checklist')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('haccp-checklist')} />
                     </nav>
                   </NavGroup>
                 </>
