@@ -158,9 +158,20 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
 
   // 거래처 전용 품목 필터링 적용
   // 이 거래처가 이 품목을 주문할 수 있나 (거래처 등록·스마트스토어·통합품목)
+  /**
+   * 이 거래처가 이 품목을 주문할 수 있나 — **연결이 두 군데에 산다.**
+   *   · items.partnerIds (옛 방식)
+   *   · partner_item 행 (품목관리 '품목 연결'이 만드는 것 — 지금 쓰는 길)
+   * partnerIds만 보면 품목 연결로 붙인 것이 통째로 안 뜬다. 새봄푸드의 벌크 볶음참깨·
+   * 볶음검정참깨가 그랬다(partnerIds는 비었고 partner_item에만 있다).
+   */
+  const partnerOutIds = useMemo(
+    () => new Set(partnerOut.filter((pi: any) => pi.partnerId === selectedClient?.id).map((pi: any) => String(pi.itemId))),
+    [partnerOut, selectedClient?.id]);
   const orderableForClient = (p: Item): boolean => {
     if (!selectedClient) return false;
     if (p.partnerIds?.includes(selectedClient.id)) return true;
+    if (partnerOutIds.has(p.id)) return true;
     if (selectedClient.type === '스마트스토어' && p.partnerIds?.includes('SMARTSTORE')) return true;
     if (selectedClient.type === '스마트스토어' && p.isSmartStore) return true;
 
@@ -175,9 +186,10 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
     return products
       .filter(p => {
         if (p.archived) return false;
-        //  선물세트도 완제품이다 — 갈래는 subtype('선물세트')이 쥔다.
-        const isOrderable = p.type === 'product';
-        if (!isOrderable || p.category === '향미유' || p.category === '고춧가루') return false;
+        //  **타입을 안 가린다 — 연결된 품목이면 다 뜬다.** 벌크(반제품·원료)도 판다.
+        //  예전엔 type === 'product'만 통과시켜 벌크 볶음참깨 같은 게 통째로 빠졌다.
+        //  향미유·고춧가루는 아래에 자기 칸이 따로 있어 여기선 뺀다(두 번 뜨면 헷갈린다).
+        if (p.category === '향미유' || p.category === '고춧가루') return false;
         // 박스 변형은 목록에서 빼고 낱개 카드의 토글로만 접근 (짝 없이 홀로면 그대로 노출)
         if (isBoxStockItem(p) && items.some(x => !x.archived && x.id === (unpackComponent(p)?.itemId))) return false;
         return groupOrderable(p);
@@ -186,7 +198,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
         const diff = catOrder(catOf(a)) - catOrder(catOf(b));
         return diff !== 0 ? diff : a.name.localeCompare(b.name, 'ko');
       });
-  }, [products, selectedClient]);
+  }, [products, selectedClient, partnerOutIds]);
 
   // 개봉은 여기 없다 — 재고관리(재고현황) 화면의 박스 품목 행에서 한다.
   //  주문을 받는 화면이 창고 재고를 직접 바꾸면, 주문을 취소해도 개봉은 남고

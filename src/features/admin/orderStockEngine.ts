@@ -388,6 +388,27 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     for (const [idx, item] of order.items.entries()) {
       const product = allItems.find(p => p.id === item.itemId);
       if (!product) continue;
+      /**
+       * **벌크를 그대로 파는 주문** — 볶음참깨 20kg 자루 같은 것.
+       *
+       * 완제품이 아니라 예전엔 통째로 건너뛰었다. 주문 화면이 완제품만 띄우던 시절엔
+       * 들어올 일이 없었는데, 연결된 품목이면 다 뜨게 바꾸면서 길이 열렸다.
+       * 안 막으면 **팔아도 재고·로트·원장이 하나도 안 움직인다.**
+       *
+       * 원료식과 같은 길(rawUsage)로 보낸다 — 로트 FIFO 차감과 원장 기록이 저절로 따라온다.
+       * 로트는 kg으로 세므로 L 단위 품목은 밀도로 환산한다.
+       */
+      if (isBulkItem(product)) {
+        const raw = baseRawName(product.name);
+        const usedKg = unitToKg(stockUnits(item, product), raw);
+        if (usedKg > 0) {
+          rawUsage[raw] = Math.round(((rawUsage[raw] ?? 0) + usedKg) * 1000) / 1000;
+          //  lotsAreTotal 원료는 로트합이 통합재고라 stock을 안 덮는다(mutateRawMaterialLots).
+          //  벌크로 나간 만큼은 벌크 재고에서도 빼 줘야 한다.
+          if (product.lotsAreTotal) addDelta(deltas, product.id, -usedKg);
+        }
+        continue;
+      }
       if (product.type !== 'product') continue;
       const units = stockUnits(item, product);   // 박스 품목이면 박스 개수
 
@@ -460,23 +481,32 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     await restoreRawLotsForOrder(order);
   };
 
-  // 출고: 완제품/상품 재고 −N.
+  /**
+   * 출고 — **타입을 안 가리고 판 만큼 뺀다.**
+   *
+   * 예전엔 완제품(type='product')과 상품만 뺐다. 주문 화면이 완제품만 띄우던 시절의 규칙인데,
+   * "연결된 품목이면 다 뜬다"로 바꾸면서 부자재·조립반제품도 팔 수 있게 됐다.
+   * 안 빼면 **팔아도 재고가 그대로 남는다.**
+   *
+   * 벌크(L/kg 반제품·원료)만 예외다 — 그쪽은 생산처리에서 rawUsage로 로트·원장까지 함께
+   * 빠지므로, 여기서 또 빼면 두 번 빠진다.
+   */
   const shipOrder = (order: Order, deltas: Map<string, number>) => {
     for (const item of order.items) {
       const product = allItems.find(p => p.id === item.itemId);
-      if (!product) continue;
+      if (!product || isBulkItem(product)) continue;
       if (isGoodsItem(product)) addDelta(deltas, product.id, -goodsShipQty(item, product));
-      else if (product.type === 'product') addDelta(deltas, product.id, -stockUnits(item, product));
+      else addDelta(deltas, product.id, -stockUnits(item, product));
     }
   };
 
-  // 출고 취소: 완제품/상품 재고 +N.
+  // 출고 취소 — shipOrder와 같은 규칙이어야 되돌린 값이 맞는다.
   const unShipOrder = (order: Order, deltas: Map<string, number>) => {
     for (const item of order.items) {
       const product = allItems.find(p => p.id === item.itemId);
-      if (!product) continue;
+      if (!product || isBulkItem(product)) continue;
       if (isGoodsItem(product)) addDelta(deltas, product.id, goodsShipQty(item, product));
-      else if (product.type === 'product') addDelta(deltas, product.id, stockUnits(item, product));
+      else addDelta(deltas, product.id, stockUnits(item, product));
     }
   };
 
