@@ -332,6 +332,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [tplEditId, setTplEditId] = useState<string | null>(null);
   const [tplEditAmt, setTplEditAmt] = useState('');
   const [payOverWarn, setPayOverWarn] = useState(false);
+  /**
+   * **이 돈을 어디에 붙일까** — 기본은 '이 전표'.
+   *   이 전표    누른 전표에 붙인다(settlement). 그 전표부터 갚아진다.
+   *   거래처 잔액 안 붙인다. allocatePartnerCash가 **오래된 전표부터** 채운다.
+   * 안 고르게 두면 늘 오래된 것부터 갚아져, 방금 끊은 전표를 갚아도 옛 전표 버튼이 사라졌다.
+   */
+  const [payScope, setPayScope] = useState<'stmt' | 'partner'>('stmt');
 
 
   // ── 자금(입출금) 전표 수정 모달 ──
@@ -679,7 +686,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   /** 결제 기록 — 자금원장에 출금/입금 1건을 만든다. */
   const recordPayment = (
     allocations: { stmt: IssuedStatement; amount: number }[],
-    opts: { date: string; method?: PaymentMethod; note?: string; cashAccountId?: string },
+    opts: { date: string; method?: PaymentMethod; note?: string; cashAccountId?: string; pin?: boolean },
   ) => {
     const total = allocations.reduce((a, x) => a + x.amount, 0);
     if (total <= 0) return;
@@ -717,14 +724,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
      * 고아가 될 자리는 없다 — allocatePartnerCash는 `liveCash`에 있는 자금기록만 보고,
      * 자금기록을 지우면 deletePayTimelineRow가 붙은 settlement도 같이 지운다.
      */
-    for (const { stmt, amount } of allocations) {
-      if (amount > 0) onAddSettlement?.({ id: `st-${entryId}-${stmt.id}`, cashEntryId: entryId, statementId: stmt.id, amount, createdAt: new Date().toISOString() });
+    //  pin=false면 안 붙인다 — 그때는 오래된 전표부터 채워지는 게 사장님이 고른 뜻이다.
+    if (opts.pin !== false) {
+      for (const { stmt, amount } of allocations) {
+        if (amount > 0) onAddSettlement?.({ id: `st-${entryId}-${stmt.id}`, cashEntryId: entryId, statementId: stmt.id, amount, createdAt: new Date().toISOString() });
+      }
     }
   };
 
   const openPayModal = (stmt: IssuedStatement) => {
     setPayOverWarn(false);
     setPayTarget(stmt);
+    setPayScope('stmt');   // 기본은 '이 전표' — 누른 전표부터 갚는다
     // 기본값은 이 전표 금액 — 안 고치면 전표 금액 그대로 수금/지불된다.
     setPayForm({ amount: String(Math.round(stmt.totalAmount)), date: new Date().toISOString().slice(0, 10), method: '계좌이체', note: '' });
     setPayAccountId(prev => prev || activeCashAccounts[0]?.id || '');
@@ -746,6 +757,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     recordPayment([{ stmt: liveStmt, amount }], {
       date: payForm.date, method: payForm.method, note: payForm.note.trim() || undefined,
       cashAccountId: payAccountId,
+      //  '거래처 잔액'을 골랐으면 전표에 안 붙인다 — 오래된 전표부터 채워진다.
+      pin: payScope === 'stmt',
     });
     setPayTarget(null);
   };
@@ -3864,25 +3877,29 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               {payTarget.type === '매입' ? '지불 처리' : '수금 처리'}
             </h3>
             <div className="text-xs text-slate-400">{payTarget.partnerName} · {payTarget.tradeDate}</div>
-            {/* 전표 금액과 거래처 누적잔액을 나란히 — 둘 중 하나를 전액으로 찍어 넣을 수 있다.
-                돈은 전표에 붙지 않고 거래처 잔액에서 빠지므로, 어느 쪽을 골라도 결과는 잔액 차감이다. */}
+            {/* **어디에 붙일지 고른다** — 고른 쪽이 파랗게 켜지고 그 금액이 찍힌다.
+                이 전표 = 누른 전표부터 갚는다 · 거래처 잔액 = 오래된 전표부터 갚는다. */}
             {(() => {
               const bal = partnerBalances.get(payTarget.partnerId);
               const partnerLeft = payTarget.type === '매입' ? (bal?.payable ?? 0) : (bal?.receivable ?? 0);
-              const box = (label: string, amount: number, hint: string) => (
-                <button onClick={() => setPayForm(p => ({ ...p, amount: String(Math.round(amount)) }))}
-                  className="flex-1 text-left bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded-xl px-3 py-2.5 transition-all">
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</div>
-                  <div className={`font-black text-base ${amount <= 0 ? 'text-emerald-600' : 'text-slate-800'}`}>
-                    {amount <= 0 ? '없음' : `${fmt(Math.round(amount))}원`}
-                  </div>
-                  <div className="text-[10px] text-slate-400">{hint}</div>
-                </button>
-              );
+              const box = (scope: 'stmt' | 'partner', label: string, amount: number, hint: string) => {
+                const on = payScope === scope;
+                return (
+                  <button onClick={() => { setPayScope(scope); setPayForm(p => ({ ...p, amount: String(Math.round(amount)) })); }}
+                    className={`flex-1 text-left rounded-xl px-3 py-2.5 border transition-all ${
+                      on ? 'bg-indigo-50 border-indigo-400 ring-2 ring-indigo-300' : 'bg-slate-50 border-slate-200 hover:border-indigo-300'}`}>
+                    <div className={`text-[10px] font-black uppercase tracking-widest ${on ? 'text-indigo-600' : 'text-slate-400'}`}>{label}</div>
+                    <div className={`font-black text-base ${amount <= 0 ? 'text-emerald-600' : on ? 'text-indigo-800' : 'text-slate-800'}`}>
+                      {amount <= 0 ? '없음' : `${fmt(Math.round(amount))}원`}
+                    </div>
+                    <div className={`text-[10px] ${on ? 'text-indigo-400' : 'text-slate-400'}`}>{hint}</div>
+                  </button>
+                );
+              };
               return (
                 <div className="flex gap-2">
-                  {box('이 전표', payTarget.totalAmount, '눌러서 전액 입력')}
-                  {box('거래처 잔액', partnerLeft, `${payTarget.partnerName} 전체`)}
+                  {box('stmt', '이 전표', payTarget.totalAmount, '이 전표부터 갚음')}
+                  {box('partner', '거래처 잔액', partnerLeft, '오래된 전표부터 갚음')}
                 </div>
               );
             })()}
