@@ -87,6 +87,7 @@ import { downloadSalesJournal } from '../../shared/salesJournal';
 import { sortLedger, isBackdated, latestAnchorDate } from '../../shared/rawLedgerBalance';
 import { createOrderStockEngine, StockUsePlan } from './orderStockEngine';
 import { buildStockUseRows, StockUseRow } from './stockUseRows';
+import { buildRollbackPlan } from './rollbackSummary';
 import StockUseModal from './StockUseModal';
 import { createOemEngine, OEM_DEFAULT_FEE_PER_KG } from './oemEngine';
 import { buildFormula as buildFormulaBom, formulaRowsOf } from './bom';
@@ -1067,6 +1068,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
     //  체크를 남겨두면 되돌리는 즉시 원위치돼 되돌리기가 아예 안 되는 것처럼 보인다.
     const DONE = [OrderStatus.DISPATCHED, OrderStatus.SHIPPED, OrderStatus.DELIVERED];
     const BACK = [OrderStatus.PENDING, OrderStatus.PROCESSING];
+    /**
+     * **되돌리기는 재고를 조용히 움직인다** — 출고취소로 완제품이 다시 채워지고, 생산취소로
+     * BOM 구성품·원료 로트가 복원되며 원료수불부 줄이 지워진다. 눌러 놓고 나중에
+     * "왜 재고가 늘었지"로 만나면 되짚기 어렵다. 무엇이 움직이는지 적어 보여주고 확인을 받는다.
+     */
+    if (cur && DONE.includes(cur.status) && BACK.includes(status)) {
+      const plan = buildRollbackPlan(cur, allItems, cur.status, status);
+      if (!window.confirm(plan.text)) return;
+    }
     if (cur && DONE.includes(cur.status) && BACK.includes(status) && cur.items.some(i => i.checked)) {
       await updateItem('orders', id, {
         items: cur.items.map(({ checkedBy: _drop, ...rest }) => ({ ...rest, checked: false })),

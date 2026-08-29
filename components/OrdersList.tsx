@@ -31,9 +31,9 @@ import {
   Layers
 } from 'lucide-react';
 import { Order, OrderStatus, Partner, OrderSource, OrderItem, Item, OrderPallet, DeliveryBox, PalletStock, ItemBom, PartnerItem } from '../types';
-import { isBoxStockItem, unitsPerBoxOf } from '../src/shared/orderUnits';
 import { splitNameVolume, specText } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
+import { boxSiblings, isBoxStockItem, unpackComponent, unitsPerBoxOf } from '../src/shared/orderUnits';
 import { bomOf } from '../src/shared/bomIndex';
 import { subDotClass } from '../src/shared/submaterialStyle';
 
@@ -169,6 +169,18 @@ interface DeliveryRowProps {
 type TabType = 'delivery' | 'active' | 'history';
 
 // ─── OrderCard ────────────────────────────────────────────────────────────────
+
+/**
+ * **카드 순서를 못 박는다** — 납기 → 주문일 → id.
+ *
+ * 예전엔 정렬이 아예 없어서 Firestore 스냅샷이 주는 순서를 그대로 썼다. 주문을 고치면
+ * (품목 추가 같은 것) 그 문서가 다시 실려 오면서 **카드가 목록 안에서 튀었다.**
+ * 무엇을 고쳤든 자리는 그대로여야 눈이 안 흔들린다.
+ */
+const byDeliveryThenId = (a: Order, b: Order) =>
+  String(a.deliveryDate ?? '').localeCompare(String(b.deliveryDate ?? ''))
+  || String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? ''))
+  || String(a.id).localeCompare(String(b.id));
 
 export const OrderCard = memo<OrderCardProps>(({
   order, partners, items, partnerItems,
@@ -382,8 +394,13 @@ export const OrderCard = memo<OrderCardProps>(({
                       규격이 없으면 어느 규격의 수량인지 눈으로 안 갈린다. */}
                   <div className="flex items-center gap-1.5">
                     <span className="text-slate-800 text-[11px] leading-snug break-words min-w-0 flex-1">{item.name}</span>
-                    {editProductInfo?.spec && (
-                      <span className="text-[9px] font-bold text-slate-400 shrink-0">{editProductInfo.spec}</span>
+                    {/* 규격 — 벌크는 규격이 없다(자루째 kg으로 센다). spec에 '1kg'을 넣으면
+                        코드가 그걸 낱개 용량·개입수로 읽어 박스 계산이 어긋나므로 넣으면 안 된다.
+                        대신 '벌크'라고 적어 준다. 단위는 수량칸 옆에 따로 붙는다. */}
+                    {(editProductInfo?.spec || (editProductInfo && isBulkItem(editProductInfo))) && (
+                      <span className="text-[9px] font-bold text-slate-400 shrink-0">
+                        {editProductInfo?.spec || '벌크'}
+                      </span>
                     )}
                     {/* 향미유·고춧가루: 낱개/박스 토글 */}
                     {isOil && (
@@ -402,8 +419,12 @@ export const OrderCard = memo<OrderCardProps>(({
                         {qtyPerBox ? <span className="text-[8px] font-bold text-indigo-400">={item.quantity}개</span> : null}
                       </div>
                     ) : (
-                      <input type="number" value={item.quantity} onChange={(e) => handleDirectQtyChange(idx, e.target.value)}
-                        className="w-10 text-center bg-slate-50 border border-indigo-200 rounded outline-none font-bold py-0.5 shrink-0" />
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <input type="number" value={item.quantity} onChange={(e) => handleDirectQtyChange(idx, e.target.value)}
+                          className="w-10 text-center bg-slate-50 border border-indigo-200 rounded outline-none font-bold py-0.5" />
+                        {/* 단위는 칸 **바깥**에 — 안에 넣으면 숫자와 겹쳐 읽힌다 */}
+                        <span className="text-[8px] font-bold text-slate-400">{editProductInfo?.unit || '개'}</span>
+                      </div>
                     )}
                     <button onClick={() => handleRemoveItem(idx)} className="ml-auto p-1 text-rose-400 hover:bg-rose-50 rounded shrink-0"><Trash2 size={10} /></button>
                   </div>
@@ -676,9 +697,15 @@ export const OrderCard = memo<OrderCardProps>(({
                 );
                 const already = new Set(order.items.map(i => String(i.itemId)));
                 const q = addItemQuery.trim();
+                const orderable = (p: Item) => linkedIds.has(p.id) || (p.partnerIds ?? []).includes(pid);
+                /**
+                 * **낱개↔박스는 한 줄에 토글로.** 둘을 따로 띄우면 이름이 같아 어느 쪽을 눌렀는지
+                 * 모르고, 목록도 두 배로 길어진다. 주문 추가 화면과 같은 규칙이다.
+                 * 짝 없이 홀로 있는 박스는 그대로 띄운다.
+                 */
                 const pool = items
-                  .filter(p => !p.archived && !already.has(p.id)
-                    && (linkedIds.has(p.id) || (p.partnerIds ?? []).includes(pid)))
+                  .filter(p => !p.archived && !already.has(p.id) && orderable(p))
+                  .filter(p => !(isBoxStockItem(p) && items.some(x => !x.archived && x.id === unpackComponent(p)?.itemId)))
                   .filter(p => !q || matchesSearch(p.name, q) || matchesSearch(String(p.spec ?? ''), q));
                 const TYPE_LABEL: Record<string, string> = {
                   product: '완제품', goods: '상품', wip: '반제품', raw: '원료', submaterial: '부자재',
@@ -710,15 +737,29 @@ export const OrderCard = memo<OrderCardProps>(({
                           <div className="sticky top-0 bg-slate-50/95 px-2 py-1 text-[8px] font-black text-slate-400 uppercase tracking-widest">
                             {TYPE_LABEL[key] ?? key} <span className="text-slate-300">{list.length}</span>
                           </div>
-                          {list.sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name, 'ko')).map(p => (
-                            <button key={p.id} type="button"
-                              onClick={e => { e.stopPropagation(); handleAddItem(p); setAddItemQuery(''); }}
-                              className="w-full flex items-center gap-1.5 px-2 py-1.5 text-left hover:bg-indigo-50 transition-colors border-b border-slate-50 last:border-0">
-                              <Plus size={10} className="shrink-0 text-indigo-400"/>
-                              <span className="text-[10px] font-bold text-slate-700 truncate flex-1 min-w-0">{p.name}</span>
-                              {p.spec && <span className="text-[9px] font-bold text-slate-400 shrink-0">{p.spec}</span>}
-                            </button>
-                          ))}
+                          {list.sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name, 'ko')).map(p => {
+                            //  이 낱개에 짝지어진 박스 중 이 거래처가 살 수 있는 것만 토글에 올린다
+                            const boxes = boxSiblings(p, items).filter(b => orderable(b.item) && !already.has(b.item.id));
+                            const variants = [
+                              { item: p as Item, label: isBulkItem(p) ? '벌크' : '낱개', spec: p.spec || (isBulkItem(p) ? p.unit : '') },
+                              ...boxes.map(b => ({ item: b.item as Item, label: `${b.count}개입`, spec: b.item.spec || '' })),
+                            ];
+                            return (
+                              <div key={p.id} className="border-b border-slate-50 last:border-0">
+                                <div className="flex items-center gap-1.5 px-2 py-1.5">
+                                  <span className="text-[10px] font-bold text-slate-700 truncate flex-1 min-w-0">{p.name}</span>
+                                  {variants.map(v => (
+                                    <button key={v.item.id} type="button"
+                                      onClick={e => { e.stopPropagation(); handleAddItem(v.item); setAddItemQuery(''); }}
+                                      title={`${p.name} ${v.spec}`}
+                                      className="shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-slate-200 text-[9px] font-black text-slate-500 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600 transition-all">
+                                      <Plus size={8} strokeWidth={3}/>{v.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       ))}
                     </div>
@@ -1357,9 +1398,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
         };
 
         const renderCol = (col: typeof activeConfigs[0]) => {
-          const allColOrders = filteredOrders.filter(o =>
-            col.statusFilter.includes(o.status)
-          );
+          const allColOrders = filteredOrders
+            .filter(o => col.statusFilter.includes(o.status))
+            .sort(byDeliveryThenId);   // 스냅샷 순서에 맡기면 고칠 때마다 카드가 튄다
           const units = columnUnits[col.id] ?? defaultUnits[col.id] ?? 1;
           const colMax = maxUnits[col.id] ?? 2;
           const Icon = col.icon;
@@ -1522,7 +1563,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
       {/* ── 주문이력 탭: 예전주문이력 전체 폭 ── */}
       {activeTab === 'history' && (() => {
         const col = historyConfig;
-        const allColOrders = filteredOrders.filter(o => col.statusFilter.includes(o.status));
+        const allColOrders = filteredOrders.filter(o => col.statusFilter.includes(o.status)).sort(byDeliveryThenId);
         const filteredHistoryOrders = allColOrders.filter(o => {
           if (historySearch && !((o.partnerName || '').includes(historySearch))) return false;
           const dateStr = (o.deliveredAt || o.deliveryDate || o.createdAt || '').slice(0, 10);
