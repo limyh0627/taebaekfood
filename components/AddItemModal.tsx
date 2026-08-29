@@ -150,7 +150,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const [expandedBoxClient, setExpandedBoxClient] = useState<string | null>(null);
   const [boxClientSearch, setBoxClientSearch] = useState('');
   const [volNum, setVolNum] = useState('');
-  const [volUnit, setVolUnit] = useState<'ml' | 'kg' | 'g'>('ml');
+  const [volUnit, setVolUnit] = useState<'ml' | 'L' | 'kg' | 'g'>('ml');
   const [customVols, setCustomVols] = useState<string[]>(initialData?.spec ? [initialData.spec] : []);
   const [bomSearch, setBomSearch] = useState('');
   const [bomPickerOpen, setBomPickerOpen] = useState(false);
@@ -386,6 +386,66 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
               className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
             />
           </div>
+
+          {/* 규격 — **모든 품목에 보인다.** 예전엔 '용량'이라 부르고 완제품·반제품에만 띄웠는데,
+              부자재·상품도 규격이 있어야 목록에서 어느 것인지 가려진다.
+              벌크는 낱개 용량이라는 게 없어 '벌크'라고 적는다(자루째 kg/L로 센다). */}
+          {(() => {
+            const isBulk = formData.subtype === '벌크';
+            const presetVols = (formData.품목 && PUMOK_VOLUMES[formData.품목]) || [];
+            const allVols = Array.from(new Set([...presetVols, ...customVols]));
+            const addVol = () => {
+              const n = volNum.trim();
+              if (!n) return;
+              const vol = `${n}${volUnit}`;
+              if (!presetVols.includes(vol) && !customVols.includes(vol)) setCustomVols(prev => [...prev, vol]);
+              setFormData(fd => ({ ...fd, spec: vol }));
+              setVolNum('');
+            };
+            return (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
+                  <Box size={14} className="mr-2" /> 규격
+                </label>
+                {isBulk ? (
+                  <div className="flex items-center gap-2">
+                    <span className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black">벌크</span>
+                    <span className="text-[11px] font-bold text-slate-400">자루째 {formData.unit || 'kg'}로 셉니다 — 낱개 용량이 없습니다</span>
+                  </div>
+                ) : (<>
+                  {allVols.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {allVols.map(vol => (
+                        <button key={vol} type="button"
+                          onClick={() => setFormData(fd => ({ ...fd, spec: fd.spec === vol ? '' : vol }))}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all ${
+                            formData.spec === vol ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}>
+                          {vol}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1.5">
+                    <input value={volNum} onChange={e => setVolNum(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addVol(); } }}
+                      placeholder="예: 350" inputMode="decimal"
+                      className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400"/>
+                    <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5 shrink-0">
+                      {(['ml', 'L', 'g', 'kg'] as const).map(u => (
+                        <button key={u} type="button" onClick={() => setVolUnit(u)}
+                          className={`px-2 py-1 rounded-lg text-[11px] font-black transition-all ${volUnit === u ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>{u}</button>
+                      ))}
+                    </div>
+                    <button type="button" onClick={addVol}
+                      className="shrink-0 px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black hover:bg-indigo-700">추가</button>
+                  </div>
+                  {formData.spec && (
+                    <p className="text-[11px] font-bold text-slate-400">고른 규격: <span className="text-indigo-600">{formData.spec}</span></p>
+                  )}
+                </>)}
+              </div>
+            );
+          })()}
 
           {/* 타입 */}
           <div className="space-y-2">
@@ -1004,75 +1064,6 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
               </div>
             )}
 
-            {/* 용량 (완제품/반제품) — 배송(박스)은 낱개 용량을 따르므로 숨김 */}
-            {(formData.type === 'product' || formData.type === 'wip') && !isBoxDraft && (() => {
-              const presetVols = (formData.품목 && PUMOK_VOLUMES[formData.품목]) || [];
-              const allVols = Array.from(new Set([...presetVols, ...customVols]));
-              const addVol = () => {
-                const n = volNum.trim();
-                if (!n) return;
-                const vol = `${n}${volUnit}`;
-                if (!presetVols.includes(vol) && !customVols.includes(vol)) setCustomVols(prev => [...prev, vol]);
-                setFormData(fd => ({ ...fd, spec: vol }));
-                setVolNum('');
-              };
-              return (
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                  <Box size={14} className="mr-2" /> 용량
-                </label>
-                {allVols.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {allVols.map(vol => (
-                      <button
-                        key={vol}
-                        type="button"
-                        onClick={() => setFormData(fd => ({...fd, spec: fd.spec === vol ? '' : vol}))}
-                        title={formData.spec === vol ? '클릭하면 선택 해제' : undefined}
-                        className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
-                          formData.spec === vol
-                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
-                            : 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'
-                        }`}
-                      >
-                        {vol}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {/* 용량 직접 추가: 숫자 입력 + ml/kg 토글 */}
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    value={volNum}
-                    onChange={(e) => setVolNum(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addVol(); } }}
-                    placeholder="예: 300"
-                    className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setVolUnit(prev => prev === 'ml' ? 'g' : prev === 'g' ? 'kg' : 'ml')}
-                    title="단위 전환 (ml → g → kg)"
-                    className="shrink-0 w-16 px-4 py-3.5 rounded-2xl border border-indigo-200 bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-all"
-                  >
-                    {volUnit}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={addVol}
-                    className="shrink-0 px-5 py-3.5 rounded-2xl bg-indigo-50 text-indigo-600 text-sm font-bold hover:bg-indigo-100 transition-all"
-                  >
-                    추가
-                  </button>
-                </div>
-                {formData.spec && (
-                  <p className="text-[11px] font-bold text-slate-400">선택된 용량: <span className="text-indigo-600">{formData.spec}</span></p>
-                )}
-              </div>
-              );
-            })()}
             </div>
           )}
 
