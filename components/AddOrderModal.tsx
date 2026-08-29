@@ -356,21 +356,6 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
     });
   };
 
-  const handleQuantityInput = (itemId: string, value: string) => {
-    const qty = value === '' ? '' : parseInt(value) || '';
-    setSelectedItems(prev => prev.map(item =>
-      item.itemId === itemId ? { ...item, quantity: qty } : item
-    ));
-  };
-
-  const handleQuantityStep = (itemId: string, delta: number) => {
-    setSelectedItems(prev => prev.map(item => {
-      if (item.itemId !== itemId) return item;
-      const current = typeof item.quantity === 'number' ? item.quantity : 1;
-      return { ...item, quantity: Math.max(1, current + delta) };
-    }));
-  };
-
   const updateItem = (itemId: string, patch: Partial<typeof selectedItems[0]>) => {
     setSelectedItems(prev => prev.map(i => i.itemId === itemId ? { ...i, ...patch } : i));
   };
@@ -392,6 +377,28 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
       if (exists) return prev.map(i => i.itemId === itemId ? { ...i, quantity: qty } : i);
       return [...prev, { ...buildSelection(itemId), quantity: qty }];
     });
+  };
+
+  /**
+   * **수량칸은 카드 맨 위 한 곳뿐이다.** 숫자를 넣으면 담기고 비우면 빠진다.
+   * 예전엔 펼친 뒤 아래에 [−][수량][+]가 또 있었다 — 같은 값을 두 군데서 고치니
+   * 어느 쪽이 진짜인지 헷갈리고, 카드가 세로로 길어져 목록이 안 읽혔다.
+   */
+  const renderQtyBox = (product: Item) => {
+    const isBox = isBoxStockItem(product);
+    return (
+      <>
+        <input inputMode="numeric" value={quickQtyOf(product.id)} placeholder="0"
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => setQuickQty(product.id, e.target.value)}
+          className={`w-12 shrink-0 text-right text-sm font-black tabular-nums rounded-lg px-2 py-1.5 border outline-none focus:ring-2 focus:ring-indigo-300 ${
+            selectedItems.some(i => i.itemId === product.id) ? 'border-indigo-300 bg-white' : 'border-slate-200 bg-slate-50'}`} />
+        {/* 단위 — 숫자 바로 옆이라야 '3'이 3박스인지 3병인지 눈으로 안다 */}
+        <span className={`w-7 shrink-0 text-[10px] font-black ${isBox ? 'text-indigo-500' : 'text-slate-400'}`}>
+          {isBox ? '박스' : (product.unit || '개')}
+        </span>
+      </>
+    );
   };
 
   const renderItemControls = (product: { id: string; unit?: string; price: number; category?: string }) => {
@@ -469,20 +476,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
           </div>
         )}
 
-        {/* 수량 입력 */}
-        <div className="flex items-center gap-1.5">
-          <button type="button" onClick={() => handleQuantityStep(product.id, -1)} className="text-sm font-black w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 shrink-0">−</button>
-          <input
-            type="number"
-            value={selection.quantity === '' ? '' : selection.quantity}
-            onChange={(e) => handleQuantityInput(product.id, e.target.value)}
-            className={`text-xs font-black w-full text-center text-slate-800 bg-white border rounded-lg outline-none py-0.5 ${
-              isBoxMode ? 'border-indigo-200' : 'border-slate-200'
-            }`}
-          />
-          <button type="button" onClick={() => handleQuantityStep(product.id, 1)} className="text-sm font-black w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 shrink-0">+</button>
-          {/* 단위는 카드 맨 위 수량칸 옆에 붙였다 — 여기 또 두면 같은 말이 두 번 나온다 */}
-        </div>
+        {/* 수량은 카드 맨 위 한 곳에서만 고친다(renderQtyBox) — 여기 또 두면 같은 값이 두 군데다 */}
 
         {/* 합계 */}
         {isBoxMode && boxQty > 0 && (
@@ -745,17 +739,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                           <p className="text-xs font-bold text-slate-800 leading-snug break-keep min-w-0 flex-1">{renderColoredName(nv.base)}</p>
                           {renderVolumeChip(nv.vol, product)}
                           {/* 수량 — 맨 우측. 숫자를 넣으면 담기고 비우면 빠진다. */}
-                          <input inputMode="numeric" value={quickQtyOf(product.id)} placeholder="0"
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => setQuickQty(product.id, e.target.value)}
-                            className={`w-12 shrink-0 text-right text-sm font-black tabular-nums rounded-lg px-2 py-1.5 border outline-none focus:ring-2 focus:ring-indigo-300 ${
-                              isSelected ? 'border-indigo-300 bg-white' : 'border-slate-200 bg-slate-50'}`} />
-                          {/* 단위 — 숫자 바로 옆이라야 '3'이 3박스인지 3병인지 눈으로 안다.
-                              칸 너비를 고정해 품목마다 수량칸이 들쭉날쭉하지 않게 한다. */}
-                          <span className={`w-7 shrink-0 text-[10px] font-black ${
-                            isBoxStockItem(product) ? 'text-indigo-500' : 'text-slate-400'}`}>
-                            {isBoxStockItem(product) ? '박스' : (product.unit || '개')}
-                          </span>
+                          {renderQtyBox(product)}
                         </div>
                         {(() => {
                           // 지금 고른 변형(낱개/박스)의 **BOM 그대로** 보여준다.
@@ -813,6 +797,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                       <div className="flex items-center gap-2">
                         <p className="text-xs font-bold text-slate-800 leading-snug break-keep flex-1 min-w-0">{renderColoredName(splitNameVolume(product).base)}</p>
                         {renderVolumeChip(splitNameVolume(product).vol, product)}
+                        {renderQtyBox(product)}
                       </div>
                       {isSelected && renderItemControls(product)}
                     </div>
@@ -839,6 +824,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                       <div className="flex items-center gap-2">
                         <p className="text-xs font-bold text-slate-800 leading-snug break-keep flex-1 min-w-0">{renderColoredName(splitNameVolume(product).base)}</p>
                         {renderVolumeChip(splitNameVolume(product).vol, product)}
+                        {renderQtyBox(product)}
                       </div>
                       {isSelected && renderItemControls(product)}
                     </div>
