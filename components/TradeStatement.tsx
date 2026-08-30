@@ -334,6 +334,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [tplEditAmt, setTplEditAmt] = useState('');
   const [payOverWarn, setPayOverWarn] = useState(false);
   /**
+   * **발행하면서 바로 수금·지불한다.** 현금·계좌로 그 자리에서 받는 거래가 많은데,
+   * 전표를 끊고 목록에서 다시 찾아 수금처리를 누르는 건 같은 일을 두 번 하는 것이다.
+   * 금액은 전표 총액이 기본이고 고칠 수 있다(일부만 받는 거래).
+   */
+  const [issuePay, setIssuePay] = useState(false);
+  const [issuePayAmount, setIssuePayAmount] = useState('');
+  /**
    * **이 돈을 어디에 붙일까** — 기본은 '이 전표'.
    *   이 전표    누른 전표에 붙인다(settlement). 그 전표부터 갚아진다.
    *   거래처 잔액 안 붙인다. allocatePartnerCash가 **오래된 전표부터** 채운다.
@@ -1295,7 +1302,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setManualItems([{ name: '', spec: '', qty: '', price: '', isTaxExempt: false }]);
     setLoadedPoIds([]);
   };
-  const closeCreate = () => { setCreateMode(null); setEditingStmt(null); setIsEditMode(false); setTradeNote(''); setSelectedItemIdx(null); setQuickName(''); setQuickSpec(''); setQuickQty(''); setQuickPrice(''); setQuickNote(''); setQuickSearchOpen(false); setQuickIsTaxExempt(false); setShowItemPicker(false); setPickerSearch(''); setPickerQtys({}); setAccountCodeOverrides({}); setLoadedPoIds([]); hasIssuedRef.current = false; };
+  const closeCreate = () => { setCreateMode(null); setEditingStmt(null); setIsEditMode(false); setTradeNote(''); setSelectedItemIdx(null); setQuickName(''); setQuickSpec(''); setQuickQty(''); setQuickPrice(''); setQuickNote(''); setQuickSearchOpen(false); setQuickIsTaxExempt(false); setShowItemPicker(false); setPickerSearch(''); setPickerQtys({}); setAccountCodeOverrides({}); setLoadedPoIds([]); setIssuePay(false); setIssuePayAmount(''); hasIssuedRef.current = false; };
 
   // pendingInvoice가 오면 자동으로 매입전표 생성 모달 열기
   useEffect(() => {
@@ -1648,11 +1655,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const missingAccountCodes = lineItems.filter(i => !i.accountCode);
   const canIssue = lineItems.length > 0 && !!selectedClientId && (manualMode || !!selectedOrderId);
 
-  const markIssued = useCallback(() => {
-    if (!selectedClientId || lineItems.length === 0) return;
+  /** 전표를 만들고 **그 전표를 돌려준다** — 발행하면서 바로 수금·지불하려면 그 객체가 필요하다. */
+  const markIssued = useCallback((): IssuedStatement | null => {
+    if (!selectedClientId || lineItems.length === 0) return null;
     // 발행 차단(백스톱) — 인쇄·세금계산서·엑셀 경로에서도 계정 미설정/단가 0이면 발행 기록 안 함
-    if (lineItems.some(i => !i.accountCode)) { alert('계정과목이 설정되지 않은 품목이 있어 발행할 수 없습니다.'); return; }
-    if (lineItems.some(i => !i.price || i.price <= 0)) { alert('단가가 0인 품목이 있어 발행할 수 없습니다.'); return; }
+    if (lineItems.some(i => !i.accountCode)) { alert('계정과목이 설정되지 않은 품목이 있어 발행할 수 없습니다.'); return null; }
+    if (lineItems.some(i => !i.price || i.price <= 0)) { alert('단가가 0인 품목이 있어 발행할 수 없습니다.'); return null; }
     if (selectedOrderId) {
       onMarkInvoicePrinted?.(selectedOrderId, true);
     }
@@ -1737,6 +1745,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         onUpdateItemCost?.(product.id, item.price);
       }
     }
+    return stmt;
   }, [manualMode, selectedOrderId, selectedClientId, tradeDate, stmtType, selectedClient, docNo, totalSupply, totalTax, totalAmount, lineItems, onMarkInvoicePrinted, onAddIssuedStatement, onAddConfirmedOrder, onRemoveConfirmedOrder, onRemoveOrderRequest, onCreateInboundPO, onLinkPurchaseOrder, loadedPoIds, allItems, confirmedOrders, orderRequests, partnerOut, partnerIn, onUpsertPartnerItem, onUpdateItemCost, onUpdateOrder, selectedOrder, manualItems]);
 
   const handleIssue = () => {
@@ -1768,7 +1777,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       );
       if (!ok) return;
     }
-    markIssued();
+    const stmt = markIssued();
+    //  발행과 같은 클릭에서 수금·지불까지. 전표에 붙여(pin) 그 전표부터 갚아지게 한다.
+    if (stmt && issuePay) {
+      const amt = Number((issuePayAmount || '').replace(/[,\s원]/g, '')) || 0;
+      if (amt > 0) {
+        recordPayment([{ stmt, amount: amt }], {
+          date: tradeDate, method: '계좌이체', cashAccountId: activeCashAccounts[0]?.id ?? '', pin: true,
+        });
+      }
+    }
+    setIssuePay(false); setIssuePayAmount('');
     closeCreate();
   };
 
@@ -6258,6 +6277,28 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     </button>
                   </>)
                 ) : canIssue ? (<>
+                  {/* **발행하면서 바로 수금·지불.** 그 자리에서 받는 거래가 많은데, 전표를 끊고
+                      목록에서 다시 찾아 누르는 건 같은 일을 두 번 하는 것이다.
+                      금액은 전표 총액이 기본이고 고칠 수 있다(일부만 받는 거래). */}
+                  <label className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl border text-[11px] font-black cursor-pointer transition-all ${
+                    issuePay ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-400'}`}>
+                    <input type="checkbox" checked={issuePay}
+                      onChange={e => { setIssuePay(e.target.checked); if (e.target.checked) setIssuePayAmount(String(Math.round(totalAmount))); }}
+                      className="accent-emerald-600"/>
+                    {createMode === '매출' ? '수금' : '지불'}도 함께
+                  </label>
+                  {issuePay && (
+                    <div className="flex items-center gap-1">
+                      <input inputMode="numeric" value={issuePayAmount}
+                        onChange={e => setIssuePayAmount(e.target.value.replace(/[^\d]/g, ''))}
+                        className="w-28 text-right border border-emerald-300 rounded-xl px-2.5 py-2 text-xs font-black tabular-nums outline-none focus:ring-2 focus:ring-emerald-300"/>
+                      <span className="text-[10px] font-black text-slate-400">원</span>
+                      {Math.round(Number(issuePayAmount) || 0) !== Math.round(totalAmount) && (
+                        <button type="button" onClick={() => setIssuePayAmount(String(Math.round(totalAmount)))}
+                          className="text-[10px] font-black text-emerald-600 hover:underline">전액</button>
+                      )}
+                    </div>
+                  )}
                   <button onClick={handleIssue}
                     className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black transition-all ${createMode==='매출'?'bg-blue-600 text-white hover:bg-blue-700':'bg-rose-600 text-white hover:bg-rose-700'}`}>
                     <Plus size={13} strokeWidth={3}/>저장
