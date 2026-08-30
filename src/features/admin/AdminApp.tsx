@@ -1311,8 +1311,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
    *
    * 같은 달에 두 번 돌려도 id가 같아서 한 건이다. 옛 키(RC-…)로 만든 것도 중복으로 친다.
    */
-  const generateRecurringCosts = async (ym: string): Promise<number> => {
-    const tpls = appData.fixedCostTemplates.filter(t => canAutoIssue(t, ym));
+  /**
+   * 정기 전표 생성. `onlyId`를 주면 **그 템플릿 하나만** 만든다 —
+   * 화면에서 줄마다 발행할 수 있어야 어느 것을 낼지 고를 수 있다.
+   */
+  const generateRecurringCosts = async (ym: string, onlyId?: string): Promise<number> => {
+    const tpls = appData.fixedCostTemplates.filter(t => canAutoIssue(t, ym) && (!onlyId || t.id === onlyId));
     const defaultAcctId = appData.cashAccounts.find(a => a.active && a.type !== '카드')?.id
       ?? appData.cashAccounts.find(a => a.active)?.id ?? '';
     let created = 0;

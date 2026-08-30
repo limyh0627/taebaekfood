@@ -21,7 +21,7 @@ import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
 import { totalCashOnHand, unsettledStatements, unmatchedCash, partnerBalanceFromJournals, allPartnerBalances, isReceivableStmt, allocatePartnerCash, partnerCashParts } from '../src/features/admin/cashLedger';
 import { AR, AP, journalizeStatement, journalizeTransfer, journalizeCashEntry, settlementAccountCode } from '../src/shared/autoJournal';
 import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, isCashDir, templateAccrRows, VOUCHER_DIRS, DIR_CHIP, DIR_HINT, CashTemplate, VoucherDir, SPLIT_MODES, splitModeOf } from '../src/shared/cashTemplates';
-import { canAutoIssue, autoVoucherId } from '../src/shared/autoVoucher';
+import { canAutoIssue, autoVoucherId, issueDateOf } from '../src/shared/autoVoucher';
 import { buildCashEditPatch, cashEditSplit, cashEditAmount } from '../src/shared/cashEntryEdit';
 import { buildTransfer, splitTransfer, OverKind } from '../src/shared/interCompany';
 import VoucherTemplateManager from './VoucherTemplateManager';
@@ -50,7 +50,8 @@ interface TradeStatementProps {
   onUpdateCashAccount?: (id: string, data: Partial<CashAccount>) => void;
   // 정기 고정비 — 템플릿으로 해당 월 전표를 한 번에 생성 (중복 생성은 핸들러가 막는다)
   fixedCostTemplates?: FixedCostTemplate[];
-  onGenerateRecurringCosts?: (yearMonth: string) => Promise<number>;
+  /** onlyId를 주면 그 템플릿 하나만 발행한다 — 줄마다 골라 낼 수 있어야 한다 */
+  onGenerateRecurringCosts?: (yearMonth: string, onlyId?: string) => Promise<number>;
   onAddFixedCostTemplate?: (data: Omit<FixedCostTemplate, 'id'>) => Promise<void>;
   onUpdateFixedCostTemplate?: (id: string, data: Partial<FixedCostTemplate>) => Promise<void>;
   onDeleteFixedCostTemplate?: (id: string) => Promise<void>;
@@ -4163,14 +4164,15 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const pending = due.filter(t => !alreadyDone(t));
         const total = pending.reduce((a, t) => a + t.amount, 0);
 
-        const run = async () => {
-          if (!onGenerateRecurringCosts || pending.length === 0) return;
+        /** 한 줄만 발행 — 통째로 내면 뭘 냈는지 안 남는다. 어느 것을 낼지 골라야 한다. */
+        const runOne = async (t: FixedCostTemplate) => {
+          if (!onGenerateRecurringCosts || recurringBusy) return;
           setRecurringBusy(true);
           try {
-            const n = await onGenerateRecurringCosts(recurringYm);
-            setRecurringMsg(n > 0 ? `${n}건 생성했습니다.` : '새로 생성할 게 없습니다.');
+            const n = await onGenerateRecurringCosts(recurringYm, t.id);
+            setRecurringMsg(n > 0 ? `${t.name} 발행했습니다.` : `${t.name} — 이미 발행돼 있습니다.`);
           } catch (e) {
-            setRecurringMsg(`생성 실패: ${(e as Error)?.message ?? String(e)}`);
+            setRecurringMsg(`발행 실패: ${(e as Error)?.message ?? String(e)}`);
           } finally {
             setRecurringBusy(false);
           }
@@ -4223,10 +4225,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                             {t.accountCode} {ac?.name ?? ''}{t.partnerName ? ` · ${t.partnerName}` : ''}
                           </p>
                         </div>
-                        <p className="text-xs font-black text-slate-700 tabular-nums shrink-0">{fmt(t.amount)}</p>
-                        <span className={`text-[10px] font-black px-2 py-0.5 rounded shrink-0 ${done ? 'bg-slate-200 text-slate-500' : 'bg-violet-600 text-white'}`}>
-                          {done ? '생성됨' : '생성 예정'}
-                        </span>
+                        {/* 나가는 날 — 안 보이면 언제 서는 전표인지 모른다(issueDay 31은 말일로 친다) */}
+                        <span className="text-[10px] font-black text-slate-400 tabular-nums shrink-0">{issueDateOf(recurringYm, t.issueDay)}</span>
+                        <p className="text-xs font-black text-slate-700 tabular-nums shrink-0 w-24 text-right">{fmt(t.amount)}</p>
+                        {done ? (
+                          <span className="text-[10px] font-black px-2.5 py-1 rounded-lg shrink-0 bg-slate-200 text-slate-500">발행됨</span>
+                        ) : (
+                          <button onClick={() => runOne(t)} disabled={recurringBusy}
+                            className="text-[10px] font-black px-2.5 py-1 rounded-lg shrink-0 bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-40 transition-all">
+                            발행
+                          </button>
+                        )}
                       </div>
                     );
                   })}
@@ -4244,14 +4253,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 <p className="text-[11px] font-black text-emerald-700 bg-emerald-50 rounded-xl px-4 py-2.5">{recurringMsg}</p>
               )}
 
-              <div className="flex gap-2">
-                <button onClick={() => setShowRecurring(false)}
-                  className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200 transition-all">닫기</button>
-                <button onClick={run} disabled={pending.length === 0 || recurringBusy}
-                  className="flex-1 py-2.5 rounded-xl bg-violet-600 text-white text-xs font-black hover:bg-violet-700 disabled:opacity-40 transition-all">
-                  {recurringBusy ? '발행 중…' : `${recurringYm} 지금 발행`}
-                </button>
-              </div>
+              {/* 통째로 내는 버튼은 없앴다 — 줄마다 발행한다 */}
+              <button onClick={() => setShowRecurring(false)}
+                className="w-full py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200 transition-all">닫기</button>
             </div>
           </div>
         );
