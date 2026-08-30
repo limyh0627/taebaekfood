@@ -43,9 +43,9 @@ export default function VoucherTemplateManager({
   // 분개 미리보기 — 평소엔 접어 둔다. 차·대는 사용자가 고르는 게 아니라 확인하는 것이다.
   const [showJournal, setShowJournal] = useState(false);
   /**
-   * 복제 모드 — 기본 템플릿은 **고치지 않는다.** 갈래·계정 같은 뼈대만 물려받아
-   * 내 템플릿을 새로 만든다. 기본이 깨끗하게 남아 있어야 나중에 다시 꺼내 쓸 수 있고,
-   * 무엇이 기본값이었는지도 알 수 있다.
+   * 복제 모드 — 원본을 안 고치고 뼈대만 물려받아 새로 만든다.
+   * 기본 템플릿은 깨끗하게 남아 있어야 나중에 다시 꺼내 쓸 수 있고, 손으로 만든 것도
+   * 금액·날짜만 다른 변형을 자주 쓴다(차량 리스가 둘, 보험료가 여럿).
    */
   const [cloning, setCloning] = useState(false);
   const [form, setForm] = useState({
@@ -95,9 +95,14 @@ export default function VoucherTemplateManager({
   }, [templates]);
 
   /** 기본 템플릿을 씨앗으로 새 템플릿 만들기 — 이름에 표시를 달아 구별한다 */
+  /**
+   * 복제 — 원본은 그대로 두고 뼈대(갈래·계정·거래처)만 물려받아 새로 만든다.
+   * 이름은 기본 템플릿이면 '(내 템플릿)', 손으로 만든 것이면 '(사본)'을 붙인다.
+   * 같은 이름이 둘이면 목록에서 어느 것을 고르는지 알 수 없다.
+   */
   const openClone = (t: FixedCostTemplate) => {
     openEdit(t, true);
-    setForm(f => ({ ...f, name: `${t.name} (내 템플릿)` }));
+    setForm(f => ({ ...f, name: `${t.name} ${t.builtin ? '(내 템플릿)' : '(사본)'}` }));
   };
 
   const openEdit = (t: FixedCostTemplate, clone = false) => {
@@ -193,11 +198,10 @@ export default function VoucherTemplateManager({
                         className="p-1 hover:bg-slate-100 rounded-lg text-slate-300 hover:text-slate-600 shrink-0">
                         {t.hidden ? <EyeOff size={13}/> : <Eye size={13}/>}
                       </button>
-                      {/* 기본도 그냥 고칠 수 있다. 복제는 "기본은 남겨 두고 변형을 하나 더" 쓰고 싶을 때. */}
-                      {locked && (
-                        <button onClick={() => openClone(t)} title="이 템플릿을 본떠 새로 만들기 — 원본은 그대로 둡니다"
-                          className="p-1 hover:bg-indigo-50 rounded-lg text-slate-300 hover:text-indigo-500 shrink-0"><Copy size={13}/></button>
-                      )}
+                      {/* 복제는 **어느 템플릿이든** 된다. 기본만 되게 해 뒀는데, 손으로 만든 것도
+                          금액·날짜만 다른 변형을 자주 쓴다(리스료 차량이 둘, 보험료가 여럿). */}
+                      <button onClick={() => openClone(t)} title="이 템플릿을 본떠 새로 만들기 — 원본은 그대로 둡니다"
+                        className="p-1 hover:bg-indigo-50 rounded-lg text-slate-300 hover:text-indigo-500 shrink-0"><Copy size={13}/></button>
                       <button onClick={() => openEdit(t)} title="이름·묶음·금액·발행 방식 수정"
                         className="p-1 hover:bg-slate-100 rounded-lg text-slate-300 hover:text-slate-600 shrink-0"><Pencil size={13}/></button>
                       {locked ? (
