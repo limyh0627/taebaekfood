@@ -18,7 +18,7 @@ import type { VoucherKind } from '../src/shared/vouchers';
 import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/shared/orderUnits';
 import { bomOf } from '../src/shared/bomIndex';
 import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
-import { totalCashOnHand, unsettledStatements, unmatchedCash, partnerBalanceFromJournals, allPartnerBalances, isReceivableStmt, allocatePartnerCash, partnerCashParts } from '../src/features/admin/cashLedger';
+import { unsettledStatements, unmatchedCash, partnerBalanceFromJournals, allPartnerBalances, isReceivableStmt, allocatePartnerCash, partnerCashParts } from '../src/features/admin/cashLedger';
 import { AR, AP, journalizeStatement, journalizeTransfer, journalizeCashEntry, settlementAccountCode } from '../src/shared/autoJournal';
 import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, isCashDir, templateAccrRows, VOUCHER_DIRS, DIR_CHIP, DIR_HINT, CashTemplate, VoucherDir, SPLIT_MODES, splitModeOf } from '../src/shared/cashTemplates';
 import { canAutoIssue, autoVoucherId, issueDateOf } from '../src/shared/autoVoucher';
@@ -668,13 +668,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       {expandedJournal.has(id) ? <ChevronDown size={13}/> : <ChevronRight size={13}/>}
     </button>
   );
-  // 계좌별 현재 잔액 + 보유자금 총액 (장부 흡수 — 전표 화면에서 잔액 확인)
-  const cashBalances = useMemo(() => {
-    const active = cashAccounts.filter(a => a.active);
-    const perAccount = active.map(a => ({ acct: a, bal: totalCashOnHand([a], cashEntries, today()) }));
-    const total = totalCashOnHand(active.filter(a => a.type !== '카드'), cashEntries, today());
-    return { perAccount, total };
-  }, [cashAccounts, cashEntries]);
   const cashEntryById = useMemo(() => new Map(cashEntries.map(e => [e.id, e])), [cashEntries]);
 
   // 수금·지불은 **자금원장 한 곳**에만 적힌다. 전표에 매달던 payments[]는 2026-08-16에
@@ -3172,26 +3165,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
       {mainTab === 'history' && <>
 
-      {/* ── 계좌 잔액 스트립 (보유자금 + 계좌별 현재잔액) ── */}
-      {cashAccounts.length > 0 && (
-        <div className="flex items-stretch gap-2 overflow-x-auto pb-1 mb-3">
-          <div className="shrink-0 bg-slate-800 text-white rounded-2xl px-4 py-2.5">
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-wide">보유자금 (통장+현금)</p>
-            <p className="text-lg font-black tabular-nums leading-tight mt-0.5">{fmt(cashBalances.total)}<span className="text-[10px] ml-0.5 text-slate-400">원</span></p>
-          </div>
-          {cashBalances.perAccount.map(({ acct, bal }) => (
-            <div key={acct.id} className="shrink-0 bg-white border border-slate-100 rounded-2xl px-4 py-2.5 min-w-[120px]">
-              <p className="text-[9px] font-black text-slate-400 truncate flex items-center gap-1">
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300"/>{acct.name}<span className="text-slate-300">· {acct.type}</span>
-              </p>
-              <p className={`text-sm font-black tabular-nums leading-tight mt-0.5 ${bal < 0 ? 'text-rose-600' : 'text-slate-800'}`}>{fmt(bal)}</p>
-            </div>
-          ))}
-          {/* 계좌 **관리**는 여기 없다 — 장부(현금출납장)가 계좌를 쥔다.
-              전표 화면은 전표를 끊는 곳이고, 잔액은 참고로만 본다.
-              한 가지를 두 곳에서 고칠 수 있으면 어느 쪽이 진짜인지 흐려진다. */}
-        </div>
-      )}
+      {/* 보유자금·계좌 잔액은 여기 안 띄운다 — 장부(현금출납장)가 그걸 쥔다.
+          전표 화면은 전표를 끊는 곳이다. 같은 숫자를 두 곳에 두면 어느 쪽이 진짜인지 흐려진다. */}
 
       {/* ── 필터 바 + 액션 버튼 (같은 행: 필터 좌측 · 버튼 우측) ── */}
       <div className="flex flex-col md:flex-row md:items-start gap-3">
