@@ -6195,22 +6195,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               </div>
             ) : null}
 
-            {/* ── 수금/지불 내역 (전표 조회 시) ── */}
+            {/* ── 이 전표의 수금/지불 (전표 조회 시) — 한 줄 요약 ── */}
             {editingStmt && !isEditMode && (() => {
-              // 수금은 거래처 단위로 자금원장에 적힌다 — 전표 한 장에 얼마가 붙었는지는
-              // 오래된 전표부터 채운 결과(getBalance)로 보고, 목록은 그 거래처의 자금 움직임 그대로 띄운다.
+              // 수금은 거래처 단위로 자금원장에 적힌다. 이 전표에 얼마가 붙었는지는
+              // 붙인 매칭(settlement)과 오래된 순 배분을 합친 결과(getBalance)로 본다.
               const bal = getBalance(editingStmt);
               const paid = editingStmt.totalAmount - bal;
               const label = editingStmt.type === '매출' ? '수금' : '지불';
-              const want = editingStmt.type === '매입' ? AP : AR;
-              const payments = cashEntries
-                .filter(e => e.partnerId && e.partnerId === editingStmt.partnerId
-                  && ((e.lines ?? []).some(l => l.accountCode === want) || e.accountCode === want))
-                .sort((a, b) => a.date.localeCompare(b.date));
               return (
                 <div className="flex-shrink-0 border-t border-slate-100 bg-slate-50 px-5 py-3 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label} 내역 <span className="normal-case text-slate-300">(거래처 기준)</span></span>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">이 전표 {label}</span>
                     <div className="flex items-center gap-3 text-xs">
                       <span className="text-slate-500">합계 <b className="text-slate-800">{fmt(editingStmt.totalAmount)}</b></span>
                       <span className="text-slate-500">{label} <b className="text-emerald-700">{fmt(paid)}</b></span>
@@ -6221,28 +6216,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       </span>
                     </div>
                   </div>
-                  {payments.length === 0 ? (
-                    <p className="text-[11px] text-slate-400 py-1">{label} 내역 없음</p>
-                  ) : (
-                    <div className="space-y-1">
-                      {payments.map(p => (
-                        <div key={p.id}
-                          className="flex items-center gap-2 px-3 py-2 bg-white rounded-xl border border-slate-200">
-                          <span className="text-[10px] font-mono text-slate-400 shrink-0">
-                            {p.date}{p.createdAt ? ` ${p.createdAt.slice(11,16)}` : ''}
-                          </span>
-                          <span className={`text-xs font-black flex-1 ${p.dir === '입금' ? 'text-slate-800' : 'text-rose-600'}`}>
-                            {p.dir === (editingStmt.type === '매입' ? '입금' : '출금') ? '−' : ''}{fmt(p.amount)}원
-                          </span>
-                          <span className="text-[10px] text-slate-400 truncate">{p.note}</span>
-                          <button onClick={() => openEditCash(p)}
-                            className="text-[10px] font-black text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded-lg transition-all shrink-0">
-                            수정
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  {/* 내역 목록은 안 띄운다 — 거래처 기준이라 줄이 수십 개가 되어 전표를 통째로 가렸다.
+                      그 거래처의 수금·지불을 훑는 건 장부(거래처원장)가 할 일이다.
+                      여기선 이 전표에 얼마가 붙었는지(위 요약 한 줄)만 보면 된다. */}
                   {bal > 0 && (
                     <button onClick={() => { setCreateMode(null); openPayModal(editingStmt); }}
                       className={`text-[10px] font-black px-3 py-1.5 rounded-lg transition-all flex items-center gap-1 ${editingStmt.type === '매입' ? 'bg-rose-50 text-rose-600 hover:bg-rose-100' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}>
