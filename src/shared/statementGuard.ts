@@ -18,17 +18,27 @@ export function statementBlockReason(s: Partial<IssuedStatement>): string | null
     return `계정과목이 없는 줄이 ${noCode.length}건 있습니다 (${noCode.slice(0, 3).map(i => i.name || '이름없음').join(', ')}). `
       + '계정이 없으면 대변을 못 채워 분개가 안 서고, 그 전표는 시산표에서 사라집니다.';
   }
-  //  줄에 side가 하나라도 있으면 양변 전표 — 그러면 전 줄에 있어야 차·대가 선다
-  const sided = items.filter(i => i.side);
-  if (sided.length > 0 && sided.length !== items.length) {
-    return `차변·대변을 적은 줄과 안 적은 줄이 섞여 있습니다 (${sided.length}/${items.length}). `
-      + '양변 전표는 모든 줄에 차변·대변이 있어야 분개가 섭니다.';
-  }
-  if (sided.length === items.length) {
-    const debit = items.filter(i => i.side === '차변').reduce((a, i) => a + (i.total ?? 0), 0);
-    const credit = items.filter(i => i.side === '대변').reduce((a, i) => a + (i.total ?? 0), 0);
-    if (Math.round(debit) !== Math.round(credit)) {
-      return `차변 ${Math.round(debit).toLocaleString()}원과 대변 ${Math.round(credit).toLocaleString()}원이 안 맞습니다.`;
+  /**
+   * 차·대 균형은 **양변 전표에만** 따진다.
+   *
+   * 매출·매입 전표는 줄에 한쪽(매출계정·매입계정)만 적고 **상대변(108·251)은
+   * journalizeStatement가 세운다.** 그걸 모르고 줄만 세면 "대변 0원"이라며 멀쩡한
+   * 매입전표를 막는다 — 전기세 1,233,780원 한 줄짜리가 그렇게 막혔다.
+   *
+   * 양변 전표(기초이월·감가상각)만 줄에 차·대를 직접 세우고, 그건 스스로 맞아야 한다.
+   */
+  if (s.type !== '매출' && s.type !== '매입') {
+    const sided = items.filter(i => i.side);
+    if (sided.length > 0 && sided.length !== items.length) {
+      return `차변·대변을 적은 줄과 안 적은 줄이 섞여 있습니다 (${sided.length}/${items.length}). `
+        + '양변 전표는 모든 줄에 차변·대변이 있어야 분개가 섭니다.';
+    }
+    if (sided.length > 0) {
+      const debit = items.filter(i => i.side === '차변').reduce((a, i) => a + (i.total ?? 0), 0);
+      const credit = items.filter(i => i.side === '대변').reduce((a, i) => a + (i.total ?? 0), 0);
+      if (Math.round(debit) !== Math.round(credit)) {
+        return `차변 ${Math.round(debit).toLocaleString()}원과 대변 ${Math.round(credit).toLocaleString()}원이 안 맞습니다.`;
+      }
     }
   }
   return null;
