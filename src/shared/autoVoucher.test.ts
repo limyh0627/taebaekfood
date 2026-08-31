@@ -90,3 +90,47 @@ describe('대체 — 전표(채권·채무만 세운다)', () => {
     expect(a.id).toBe(b.id);
   });
 });
+
+/**
+ * 상환은 통장에서 한 번 나가지만 전표는 두 줄이다.
+ * 원금은 부채가 주는 것(재무상태표), 이자는 비용(손익).
+ * 뭉치면 원금까지 비용으로 잡혀 이익이 그만큼 깎인다.
+ */
+describe('상환 템플릿 자동발행', () => {
+  const car = tpl({
+    id: 'fct-car-installment', name: '차할부금', mode: '상환', dir: '출금',
+    issueDay: 10, amount: 470_280, principal: 440_000, interest: 30_280, loanCode: '253',
+    accountCode: undefined,
+  });
+
+  it('원금·이자를 줄로 가른다', () => {
+    const e = buildCashVoucher(car, '2026-09') as any;
+    expect(e.date).toBe('2026-09-10');
+    expect(e.dir).toBe('출금');
+    expect(e.amount).toBe(470_280);
+    expect(e.lines).toEqual([
+      { accountCode: '253', amount: 440_000, note: '원금' },
+      { accountCode: '951', amount: 30_280, note: '이자' },
+    ]);
+    expect(e.accountCode).toBeUndefined();   // 줄이 둘이면 머리 계정은 안 쓴다
+  });
+
+  it('줄 합이 통장에서 나간 금액과 같다', () => {
+    const e = buildCashVoucher(car, '2026-09') as any;
+    expect(e.lines.reduce((a: number, l: any) => a + l.amount, 0)).toBe(e.amount);
+  });
+
+  it('무이자면 한 줄 — 부채 계정 하나로 끊는다', () => {
+    const e = buildCashVoucher(tpl({ ...car, interest: 0, amount: 440_000 }), '2026-09') as any;
+    expect(e.lines).toBeUndefined();
+    expect(e.accountCode).toBe('253');
+    expect(e.amount).toBe(440_000);
+  });
+
+  it('상환이 아니면 예전 그대로 — 머리 계정 한 줄', () => {
+    const e = buildCashVoucher(tpl({ accountCode: '510' }), '2026-09') as any;
+    expect(e.lines).toBeUndefined();
+    expect(e.accountCode).toBe('510');
+    expect(e.amount).toBe(2_500_000);
+  });
+});

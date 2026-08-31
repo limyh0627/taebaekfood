@@ -62,18 +62,41 @@ export function canAutoIssue(t: FixedCostTemplate, ym: string): boolean {
 }
 
 /** 출금·입금 — 자금전표 한 건 */
+/** 이자비용 계정 — 계정표에서 못 찾을 때의 기본값. 일반전표 화면과 같은 번호다. */
+const INTEREST_CODE = '951';
+
 export function buildCashVoucher(
   t: FixedCostTemplate,
   ym: string,
   opts: { cashAccountId?: string; accountName?: string } = {},
 ): CashEntry {
+  /*
+   * **상환은 한 번 나가지만 두 줄이다.** 원금은 부채가 주는 것(재무상태표),
+   * 이자는 비용(손익). 한 계정으로 뭉치면 원금까지 비용으로 잡혀 이익이 깎인다.
+   *   차할부금 470,280 = 원금 440,000(253 미지급금) + 이자 30,280(951)
+   * 일반전표 화면의 상환 입력(loanEntry)과 같은 모양으로 낸다.
+   *
+   * 급여·보험도 줄이 갈리지만 예수금 쪽 부호가 달라 여기서 안 만든다 —
+   * 지금 자동발행을 켠 급여·보험 템플릿이 없고, 어설프게 세우면 조용히 틀린다.
+   */
+  const prin = Number(t.principal ?? 0), intr = Number(t.interest ?? 0);
+  const repayLines = t.mode === '상환' && (prin > 0 || intr > 0)
+    ? [
+        ...(prin > 0 ? [{ accountCode: t.loanCode ?? '293', amount: prin, note: '원금' }] : []),
+        ...(intr > 0 ? [{ accountCode: INTEREST_CODE, amount: intr, note: '이자' }] : []),
+      ]
+    : null;
+
   return {
     id: autoVoucherId(t, ym),
     date: issueDateOf(ym, t.issueDay),
     cashAccountId: opts.cashAccountId ?? '',
     dir: (dirOf(t) === '입금' ? '입금' : '출금') as '입금' | '출금',
-    amount: t.amount,
-    accountCode: t.accountCode,
+    amount: repayLines ? prin + intr : t.amount,
+    //  줄이 둘이면 lines로 끊는다 — 그때 accountCode는 안 쓴다(CashEntry 주석 참고)
+    ...(repayLines && repayLines.length > 1
+      ? { lines: repayLines }
+      : { accountCode: repayLines?.[0]?.accountCode ?? t.accountCode }),
     ...(t.partnerId ? { partnerId: t.partnerId, partnerName: t.partnerName ?? '' } : {}),
     note: `정기 · ${t.name}${t.partnerName ? ` · ${t.partnerName}` : ''}`,
     // 발행일이 지난 달이면 그날 맨 뒤 — 만드는 순간이 아니라 전표일이 자리를 정한다

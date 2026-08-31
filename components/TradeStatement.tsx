@@ -4344,7 +4344,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const grs  = Number((qpGross || '').replace(/,/g, '')) || 0;
         const ded  = Number((qpDeduction || '').replace(/,/g, '')) || 0;
         const net  = grs - ded;
-        const loanAccounts = accountCodes.filter(c => c.type === '부채' && /차입금/.test(c.name));
+        //  할부도 상환이다 — 차를 할부로 사면 부채가 '미지급금'이지 차입금이 아니다.
+        //  차입금만 걸러 두면 할부금을 상환으로 끊을 길이 없어 비용으로 새는 수밖에 없다.
+        const loanAccounts = accountCodes.filter(c => c.type === '부채' && /차입금|미지급금/.test(c.name));
         const INTEREST_CODE = accountCodes.find(c => /이자비용/.test(c.name))?.code ?? '951';
         const SALARY_CODE = accountCodes.find(c => c.name === '급여')?.code ?? '515';
         const WITHHOLD_CODE = accountCodes.find(c => c.name === '예수금')?.code ?? '254';
