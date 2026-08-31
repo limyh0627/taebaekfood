@@ -5,6 +5,7 @@ import { buildAccountLedger, totalCashOnHand, unsettledStatements, unmatchedCash
 import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, isCashDir, splitModeOf, SPLIT_MODES, CashTemplate } from '../src/shared/cashTemplates';
 import { journalizeCashEntry } from '../src/shared/autoJournal';
 import { stampFor } from '../src/shared/voucherStamp';
+import VoucherSlip from '../src/shared/VoucherSlip';
 
 interface Props {
   cashAccounts: CashAccount[];
@@ -435,6 +436,7 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
   };
   const [pickerOpen, setPickerOpen] = useState(false);
   const codeName = useMemo(() => new Map(accountCodes.map(c => [c.code, c.name])), [accountCodes]);
+  const partnerNameMap = useMemo(() => new Map(partners.map(p => [p.id, p.name])), [partners]);
   // 4대보험 — 회사부담(비용) + 근로자부담(맡아둔 예수금)
   const [insCorpStr, setInsCorpStr] = useState('');
   const [insEmpStr, setInsEmpStr] = useState('');
@@ -789,24 +791,8 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
                   return (
                     <div key={e.id} className="px-4 py-2.5">
                       {je ? (
-                        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-                          <div className="grid grid-cols-[42px_1fr_100px_100px] bg-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                            <span className="px-2 py-1.5">구분</span>
-                            <span className="px-2 py-1.5">계정</span>
-                            <span className="px-2 py-1.5 text-right">차변</span>
-                            <span className="px-2 py-1.5 text-right">대변</span>
-                          </div>
-                          {je.lines.map((l, i) => (
-                            <div key={i} className="grid grid-cols-[42px_1fr_100px_100px] border-t border-slate-50 text-[11px]">
-                              <span className={`px-2 py-1.5 font-black ${l.debit ? 'text-slate-600' : 'text-slate-400'}`}>{l.debit ? '차변' : '대변'}</span>
-                              <span className="px-2 py-1.5 font-bold text-slate-700 truncate">
-                                <span className="text-slate-400 font-mono mr-1">{l.accountCode}</span>{codeName.get(l.accountCode) ?? ''}
-                              </span>
-                              <span className="px-2 py-1.5 text-right font-black tabular-nums text-slate-700">{l.debit ? fmt(l.debit) : ''}</span>
-                              <span className="px-2 py-1.5 text-right font-black tabular-nums text-slate-700">{l.credit ? fmt(l.credit) : ''}</span>
-                            </div>
-                          ))}
-                        </div>
+                        <VoucherSlip je={je} codeName={codeName} partnerName={partnerNameMap}
+                          kind={e.dir} docNo={e.docNo} date={e.date} headPartner={e.partnerName} />
                       ) : (
                         <p className="text-[11px] font-black text-amber-600">
                           계정과목이 없어 분개를 만들 수 없습니다 — 손익·재무제표 어디에도 안 잡힙니다.

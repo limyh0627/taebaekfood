@@ -75,10 +75,22 @@ export function journalizeStatement(s: IssuedStatement, opts: AutoJournalOptions
 
   // 계정별 공급가 합산(같은 계정 여러 줄이면 묶음)
   const bySupply = new Map<string, number>();
+  //  품목명을 계정별로 모아 둔다 — 전표 양식의 '적요' 칸이 이걸 쓴다.
+  //  차·대에는 안 쓰이므로 금액은 그대로다. 계정 이름만 보면 무슨 돈인지 안 읽힌다
+  //  ('520 전기세'는 알겠지만 '500 원료매입'만으론 참깨인지 들깨인지 모른다).
+  const byName = new Map<string, string[]>();
   for (const it of items) {
     const code = it.accountCode!;
     bySupply.set(code, r((bySupply.get(code) ?? 0) + (it.supply ?? 0)));
+    const nm = String(it.name ?? '').trim();
+    if (nm) { const arr = byName.get(code) ?? []; if (!arr.includes(nm)) arr.push(nm); byName.set(code, arr); }
   }
+  /** 그 계정에 붙은 품목명 — 셋을 넘으면 '외 N건'으로 줄인다 */
+  const noteOf = (code: string) => {
+    const arr = byName.get(code) ?? [];
+    if (!arr.length) return undefined;
+    return arr.length <= 3 ? arr.join(', ') : `${arr.slice(0, 3).join(', ')} 외 ${arr.length - 3}건`;
+  };
   const tax = r(s.totalTax ?? sum(items.map(it => it.tax ?? 0)));
   const gross = r(s.totalAmount ?? sum(items.map(it => it.total ?? 0)));
   const counter = opts.cashAccountCode;   // 현금거래면 통장, 아니면 채권/채무
@@ -87,12 +99,12 @@ export function journalizeStatement(s: IssuedStatement, opts: AutoJournalOptions
   if (s.type === '매출') {
     // (차) 채권/현금 gross   (대) 매출계정들 supply + 부가세예수금 tax
     lines.push({ accountCode: counter ?? AR, debit: gross, credit: 0, ...(counter ? {} : { partnerId: s.partnerId }) });
-    for (const [code, supply] of bySupply) if (supply) lines.push({ accountCode: code, debit: 0, credit: supply });
-    if (tax) lines.push({ accountCode: VAT_PAYABLE, debit: 0, credit: tax });
+    for (const [code, supply] of bySupply) if (supply) lines.push({ accountCode: code, debit: 0, credit: supply, ...(noteOf(code) ? { note: noteOf(code)! } : {}) });
+    if (tax) lines.push({ accountCode: VAT_PAYABLE, debit: 0, credit: tax, note: '매출세액' });
   } else {
     // 매입: (차) 매입계정들 supply + 부가세대급금 tax   (대) 채무/현금 gross
-    for (const [code, supply] of bySupply) if (supply) lines.push({ accountCode: code, debit: supply, credit: 0 });
-    if (tax) lines.push({ accountCode: VAT_RECEIVABLE, debit: tax, credit: 0 });
+    for (const [code, supply] of bySupply) if (supply) lines.push({ accountCode: code, debit: supply, credit: 0, ...(noteOf(code) ? { note: noteOf(code)! } : {}) });
+    if (tax) lines.push({ accountCode: VAT_RECEIVABLE, debit: tax, credit: 0, note: '매입세액' });
     lines.push({ accountCode: counter ?? AP, debit: 0, credit: gross, ...(counter ? {} : { partnerId: s.partnerId }) });
   }
 
@@ -136,9 +148,11 @@ export function journalizeCashEntry(e: CashEntry, cashAccountMap: Record<string,
   //   이게 없으면 급여를 전표 두 건(출금·입금)으로 쪼개야 해서 목록에 두 줄로 보인다.
   const split = (e.lines ?? []).filter(l => l.accountCode && r(l.amount) !== 0);
   if (!split.length && (!amt || !e.accountCode)) return null;
+  //  줄 적요(note)를 같이 들고 간다 — 전표 양식의 '적요' 칸이 이걸 쓴다.
+  //  차·대 판정에는 안 쓰이므로 금액은 그대로다. 없으면 전표 비고로 떨어진다.
   const parts = split.length
-    ? split.map(l => ({ accountCode: l.accountCode, amount: r(l.amount) }))
-    : [{ accountCode: e.accountCode!, amount: amt }];
+    ? split.map(l => ({ accountCode: l.accountCode, amount: r(l.amount), note: l.note }))
+    : [{ accountCode: e.accountCode!, amount: amt, note: e.note }];
   // 통장 쪽은 반드시 줄 합계와 같아야 차·대가 맞는다(amount가 어긋나도 분개는 안 깨진다).
   const total = sum(parts.map(p => p.amount));
   if (!total && e.dir !== '대체') return null;
@@ -151,6 +165,7 @@ export function journalizeCashEntry(e: CashEntry, cashAccountMap: Record<string,
       accountCode: p.accountCode, ...partner,
       debit: p.amount > 0 ? p.amount : 0,
       credit: p.amount < 0 ? -p.amount : 0,
+      ...(p.note ? { note: p.note } : {}),
     }));
     const dr = sum(tl.map(l => l.debit)), cr = sum(tl.map(l => l.credit));
     if (!dr || dr !== cr) return null;      // 차·대가 안 맞으면 안 만든다 — 반쪽 분개가 더 나쁘다
@@ -162,15 +177,17 @@ export function journalizeCashEntry(e: CashEntry, cashAccountMap: Record<string,
   }
   const cash = cashAccountMap[e.cashAccountId] ?? BANK;
   // 입금이면 계정이 대변, 출금이면 차변. 음수 줄은 그 반대편으로 넘긴다.
-  const side = (p: { accountCode: string; amount: number }) => {
+  const side = (p: { accountCode: string; amount: number; note?: string }) => {
     const a = Math.abs(p.amount);
     const normal = e.dir === '입금' ? p.amount > 0 : p.amount > 0;   // 부호가 양수면 제자리
     const asCredit = e.dir === '입금' ? normal : !normal;
-    return { accountCode: p.accountCode, ...partner, debit: asCredit ? 0 : a, credit: asCredit ? a : 0 };
+    return { accountCode: p.accountCode, ...partner, debit: asCredit ? 0 : a, credit: asCredit ? a : 0,
+      ...(p.note ? { note: p.note } : {}) };
   };
+  const bankNote = e.note ? { note: e.note } : {};
   const lines: JournalLine[] = e.dir === '입금'
-    ? [{ accountCode: cash, debit: total, credit: 0 }, ...parts.map(side)]
-    : [...parts.map(side), { accountCode: cash, debit: 0, credit: total }];
+    ? [{ accountCode: cash, debit: total, credit: 0, ...bankNote }, ...parts.map(side)]
+    : [...parts.map(side), { accountCode: cash, debit: 0, credit: total, ...bankNote }];
   return {
     id: `je-cash-${e.id}`, date: e.date, lines,
     memo: `${e.dir} ${e.partnerName ?? ''} ${e.note ?? ''}`.trim(), sourceType: '자금', sourceId: e.id,

@@ -16,9 +16,11 @@ describe('journalizeCashEntry — 쪼갠 줄(대출상환)', () => {
         { accountCode: '951', amount: 965_899, note: '이자' },
       ],
     }))!;
+    //  줄 적요는 분개까지 따라온다 — 전표 양식의 '적요' 칸이 이걸 쓴다.
+    //  차·대 판정에는 안 쓰이므로 금액은 그대로다.
     expect(je.lines).toEqual([
-      { accountCode: '260', debit: 1_000_000, credit: 0 },
-      { accountCode: '951', debit: 965_899, credit: 0 },
+      { accountCode: '260', debit: 1_000_000, credit: 0, note: '원금' },
+      { accountCode: '951', debit: 965_899, credit: 0, note: '이자' },
       { accountCode: '103', debit: 0, credit: 1_965_899 },
     ]);
     const d = je.lines.reduce((a, l) => a + l.debit, 0);
@@ -32,7 +34,7 @@ describe('journalizeCashEntry — 쪼갠 줄(대출상환)', () => {
       lines: [{ accountCode: '260', amount: 3_000_000, note: '대출 실행' }],
     }))!;
     expect(je.lines[0]).toEqual({ accountCode: '103', debit: 3_000_000, credit: 0 });
-    expect(je.lines[1]).toEqual({ accountCode: '260', debit: 0, credit: 3_000_000 });
+    expect(je.lines[1]).toEqual({ accountCode: '260', debit: 0, credit: 3_000_000, note: '대출 실행' });
   });
 
   it('amount가 줄 합계와 어긋나도 분개는 줄 합계로 균형을 맞춘다', () => {
@@ -78,8 +80,8 @@ describe('journalizeCashEntry — 음수 줄(급여 원천공제)', () => {
       ],
     }))!;
     expect(je.lines).toEqual([
-      { accountCode: '515', debit: 3_000_000, credit: 0 },
-      { accountCode: '254', debit: 0, credit: 300_000 },
+      { accountCode: '515', debit: 3_000_000, credit: 0, note: '총급여' },
+      { accountCode: '254', debit: 0, credit: 300_000, note: '원천공제' },
       { accountCode: '103', debit: 0, credit: 2_700_000 },
     ]);
     const d = je.lines.reduce((a, l) => a + l.debit, 0);
@@ -94,7 +96,7 @@ describe('journalizeCashEntry — 음수 줄(급여 원천공제)', () => {
       lines: [{ accountCode: '515', amount: 3_000_000, note: '총급여' }],
     }))!;
     expect(je.lines).toEqual([
-      { accountCode: '515', debit: 3_000_000, credit: 0 },
+      { accountCode: '515', debit: 3_000_000, credit: 0, note: '총급여' },
       { accountCode: '103', debit: 0, credit: 3_000_000 },
     ]);
   });
@@ -109,8 +111,8 @@ describe('journalizeCashEntry — 음수 줄(급여 원천공제)', () => {
     }))!;
     expect(je.lines).toEqual([
       { accountCode: '103', debit: 900_000, credit: 0 },
-      { accountCode: '800', debit: 0, credit: 1_000_000 },
-      { accountCode: '831', debit: 100_000, credit: 0 },
+      { accountCode: '800', debit: 0, credit: 1_000_000, note: '매출' },
+      { accountCode: '831', debit: 100_000, credit: 0, note: '수수료 공제' },
     ]);
     const d = je.lines.reduce((a, l) => a + l.debit, 0);
     const c = je.lines.reduce((a, l) => a + l.credit, 0);

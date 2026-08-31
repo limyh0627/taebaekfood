@@ -65,7 +65,7 @@ import {
   BookOpen,
   ChevronDown,
 } from 'lucide-react';
-import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, poLines, CompanyId, COMPANIES, TAEBAEK, companyOf, invSnapDocId } from '../../shared/types';
+import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, poLines, CompanyId, COMPANIES, TAEBAEK, companyOf, invSnapDocId, CashEntry } from '../../shared/types';
 import { canAutoIssue, autoVoucherId, buildCashVoucher, buildStatementVoucher, dirOf, isCashDir } from '../../shared/autoVoucher';
 import PageHeader from '../../shared/components/PageHeader';
 import Dashboard from '../../../components/Dashboard';
@@ -1031,7 +1031,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const stmt = issuedStatements.find(s => s.id === req.linkedStatementId);
       if (stmt) {
         const isSale = stmt.type !== '매입';
-        await addItem('cashEntries', {
+        await addCashEntry({
           id: `cash-return-${req.id}-${Date.now()}`,
           date: new Date().toISOString().slice(0, 10),
           cashAccountId: '',
@@ -1315,6 +1315,21 @@ const AdminApp: React.FC<AdminAppProps> = ({
    * 정기 전표 생성. `onlyId`를 주면 **그 템플릿 하나만** 만든다 —
    * 화면에서 줄마다 발행할 수 있어야 어느 것을 낼지 고를 수 있다.
    */
+  /**
+   * 자금전표를 넣는 **유일한 문** — 전표번호를 여기서 매긴다.
+   *
+   * 거래명세서 계열과 **같은 번호통**을 쓴다(회사별·날짜별). 같은 날 07번은 하나뿐이고,
+   * 번호만으론 매입전표인지 출금전표인지 모른다 — 그건 전표 머리의 이름이 말한다.
+   * 넣는 자리가 여럿이라 각자 번호를 매기면 같은 번호가 두 번 나온다. 그래서 문을 하나로 둔다.
+   */
+  const addCashEntry = async (e: Partial<CashEntry> & { date: string }, co: CompanyId = companyId) => {
+    const pool = [
+      ...allIssuedStatements.filter(x => companyOf(x) === co),
+      ...appData.cashEntries.filter(x => companyOf(x) === co),
+    ];
+    return addItem('cashEntries', { ...e, companyId: co, docNo: e.docNo ?? nextDocNo(e.date, pool) } as any);
+  };
+
   const generateRecurringCosts = async (ym: string, onlyId?: string): Promise<number> => {
     const tpls = appData.fixedCostTemplates.filter(t => canAutoIssue(t, ym) && (!onlyId || t.id === onlyId));
     const defaultAcctId = appData.cashAccounts.find(a => a.active && a.type !== '카드')?.id
@@ -1329,7 +1344,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       if (issuedStatements.some(s => s.id === key || (s as any).orderId === key || (s as any).orderId === legacyKey)) continue;
       const accountName = appData.accountCodes.find(c => c.code === t.accountCode)?.name;
       if (isCashDir(dirOf(t))) {
-        await addItem('cashEntries', buildCashVoucher(t, ym, { cashAccountId: defaultAcctId, accountName }) as any);
+        await addCashEntry(buildCashVoucher(t, ym, { cashAccountId: defaultAcctId, accountName }) as any);
       } else {
         const v = buildStatementVoucher(t, ym, { docNo: '', accountName });
         const docNo = nextDocNo(v.tradeDate, [...issuedStatements, ...made]);
@@ -2205,7 +2220,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 const salaryCode = appData.accountCodes.find(c => c.name === '급여')?.code ?? '515';
                 const withholdCode = appData.accountCodes.find(c => c.name === '예수금')?.code ?? '254';
                 const id = `cash-${Date.now()}`;
-                await addItem('cashEntries', {
+                await addCashEntry({
                   id, date, dir: '출금', amount: net,
                   cashAccountId: appData.cashAccounts?.find(a => a.type === '통장')?.id ?? '',
                   ...(deduct > 0
@@ -3914,7 +3929,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               cashAccounts={companyCashAccounts}
               cashEntries={companyCashEntries}
               settlements={appData.settlements}
-              onAddCashEntry={(e) => addItem('cashEntries', { ...e, companyId })}
+              onAddCashEntry={(e) => addCashEntry(e)}
               onUpdateCashEntry={(id, data) => updateItem('cashEntries', id, data)}
               onAddSettlement={(s) => addItem('settlements', s)}
               onUpdateSettlement={(id, data) => updateItem('settlements', id, data)}
@@ -3938,7 +3953,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               companyId={companyId}
               onAddForCompany={(target, payload) => {
                 // 회사 간 이체 — 상대 회사 장부에도 써야 해서 회사를 지정해 저장한다
-                if (payload.cashEntry) addItem('cashEntries', { ...payload.cashEntry, companyId: target });
+                if (payload.cashEntry) addCashEntry(payload.cashEntry, target);
                 if (payload.statement) addItem('issuedStatements', { ...payload.statement, companyId: target });
               }}
               onAddIssuedStatement={(stmt) => addItem('issuedStatements', { ...stmt, companyId }).catch(e => { console.error('전표 저장 실패:', e); alert('전표 저장 실패: ' + (e?.message ?? String(e))); })}
@@ -4067,7 +4082,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   accountCodes={appData.accountCodes}
                   inventorySnapshots={companySnapshots}
                   cashEntries={companyCashEntries}
-                  onAddCashEntry={(e) => addItem('cashEntries', { ...e, companyId })}
+                  onAddCashEntry={(e) => addCashEntry(e)}
                   settlements={appData.settlements}
                   onAddSettlement={(s) => addItem('settlements', s)}
                   onDeleteSettlement={(id) => deleteItem('settlements', id)}
@@ -4116,7 +4131,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     currentUser={currentUser}
                     onAddCashAccount={(a) => addItem('cashAccounts', { ...a, companyId })}
                     onUpdateCashAccount={(id, data) => updateItem('cashAccounts', id, data)}
-                    onAddCashEntry={(e) => addItem('cashEntries', { ...e, companyId })}
+                    onAddCashEntry={(e) => addCashEntry(e)}
                     onDeleteCashEntry={(id) => deleteItem('cashEntries', id)}
                     onAddSettlement={(s) => addItem('settlements', s)}
                     onDeleteSettlement={(id) => deleteItem('settlements', id)}

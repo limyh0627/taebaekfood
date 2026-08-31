@@ -18,6 +18,7 @@ import type { VoucherKind } from '../src/shared/vouchers';
 import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/shared/orderUnits';
 import { bomOf } from '../src/shared/bomIndex';
 import { PurchaseOrder, poLines, ExpensePreset, companyOf } from '../src/shared/types';
+import VoucherSlip from '../src/shared/VoucherSlip';
 import { unsettledStatements, unmatchedCash, partnerBalanceFromJournals, allPartnerBalances, isReceivableStmt, allocatePartnerCash, partnerCashParts } from '../src/features/admin/cashLedger';
 import { AR, AP, journalizeStatement, journalizeTransfer, journalizeCashEntry, settlementAccountCode } from '../src/shared/autoJournal';
 import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, isCashDir, templateAccrRows, VOUCHER_DIRS, DIR_CHIP, DIR_HINT, CashTemplate, VoucherDir, SPLIT_MODES, splitModeOf } from '../src/shared/cashTemplates';
@@ -615,7 +616,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const journalOfStmt = (s: IssuedStatement): JournalEntry | null =>
     s.type === '비용' ? journalizeTransfer(s, normalOf) : journalizeStatement(s);
   /** 분개 미리보기 — 표(compact=false)와 모바일 카드(compact=true) 공용. */
-  const renderJournal = (je: JournalEntry | null, compact = false) => {
+  /** 거래처id → 이름. 전표 양식의 '거래처명' 칸이 쓴다. */
+  const partnerNameById = useMemo(() => new Map(partners.map(p => [p.id, p.name])), [partners]);
+  /**
+   * 펼친 분개 — **표준 전표 양식**으로 그린다(거래명세서만 예외).
+   * compact는 모바일 카드 안에 접어 넣는 자리라 예전 두 줄 모양 그대로 둔다.
+   */
+  const renderJournal = (
+    je: JournalEntry | null,
+    compact = false,
+    meta: { kind?: string; docNo?: string; date?: string; headPartner?: string } = {},
+  ) => {
     if (!je) return (
       <p className={`${compact ? 'px-2.5 py-2' : ''} text-[11px] font-black text-amber-600`}>
         계정이 지정되지 않아 분개를 만들 수 없습니다 — 손익·재무제표에 안 잡힙니다.
@@ -637,38 +648,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       </>
     );
     return (
-      <div className="inline-block min-w-[380px] rounded-xl border border-slate-200 bg-white overflow-hidden">
-        <div className="grid grid-cols-[46px_1fr_110px_110px] bg-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-widest">
-          <span className="px-2 py-1.5">구분</span>
-          <span className="px-2 py-1.5">계정</span>
-          <span className="px-2 py-1.5 text-right">차변</span>
-          <span className="px-2 py-1.5 text-right">대변</span>
-        </div>
-        {je.lines.map((l, i) => (
-          <div key={i} className="grid grid-cols-[46px_1fr_110px_110px] border-t border-slate-50 text-[11px]">
-            <span className={`px-2 py-1.5 font-black ${l.debit ? 'text-slate-600' : 'text-slate-400'}`}>{l.debit ? '차변' : '대변'}</span>
-            <span className="px-2 py-1.5 font-bold text-slate-700">
-              <span className="text-slate-400 font-mono mr-1">{l.accountCode}</span>
-              {codeName.get(l.accountCode) ?? ''}
-            </span>
-            <span className="px-2 py-1.5 text-right font-black tabular-nums text-slate-700">{l.debit ? fmt(l.debit) : ''}</span>
-            <span className="px-2 py-1.5 text-right font-black tabular-nums text-slate-700">{l.credit ? fmt(l.credit) : ''}</span>
-          </div>
-        ))}
-        <div className="grid grid-cols-[46px_1fr_110px_110px] border-t-2 border-slate-200 bg-slate-50 text-[11px]">
-          <span className="px-2 py-1.5" />
-          <span className="px-2 py-1.5 font-black text-slate-400">합계</span>
-          <span className="px-2 py-1.5 text-right font-black tabular-nums text-slate-800">{fmt(totalD)}</span>
-          <span className="px-2 py-1.5 text-right font-black tabular-nums text-slate-800">{fmt(totalC)}</span>
-        </div>
-      </div>
+      <VoucherSlip je={je} codeName={codeName} partnerName={partnerNameById}
+        kind={meta.kind} docNo={meta.docNo} date={meta.date} headPartner={meta.headPartner} />
     );
   };
   /** 표에서 분개를 담는 줄 — 첫 칸은 비우고 나머지를 통으로 쓴다. */
-  const journalTr = (key: string, je: JournalEntry | null) => (
+  const journalTr = (
+    key: string, je: JournalEntry | null,
+    meta: { kind?: string; docNo?: string; date?: string; headPartner?: string } = {},
+  ) => (
     <tr key={key} className="bg-slate-50/80">
       <td />
-      <td colSpan={6} className="px-4 pt-1 pb-3">{renderJournal(je)}</td>
+      <td colSpan={6} className="px-4 pt-1 pb-3 overflow-x-auto">{renderJournal(je, false, meta)}</td>
     </tr>
   );
   /** 펼치기 화살표 — 행 클릭(편집)과 겹치지 않게 이벤트를 끊는다. */
@@ -3600,7 +3591,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     </tr>
                     {/* 분개 — 쪼갠 줄(대출상환 원금+이자)도 여기서 계정별로 갈려 보인다.
                         전에는 쪼갠 줄만 따로 폈는데, 통장 쪽 상대계정이 안 보여 반쪽이었다. */}
-                    {isOpen && journalTr(`je__cash__${row.entry.id}`, journalizeCashEntry(row.entry))}
+                    {isOpen && journalTr(`je__cash__${row.entry.id}`, journalizeCashEntry(row.entry),
+                      { kind: rowKind(row), docNo: row.entry.docNo, date: row.date, headPartner: row.partnerName })}
                   </React.Fragment>
                   );
                 }
@@ -3655,7 +3647,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     </tr>
                     {/* 수금·지불은 손익이 아니라 채권·채무를 현금으로 상계하는 것 — 분개로 보면 분명하다 */}
                     {expandedJournal.has(payKey) && payEntry &&
-                      journalTr(`je__pay__${payKey}`, journalizeCashEntry(payEntry))}
+                      journalTr(`je__pay__${payKey}`, journalizeCashEntry(payEntry),
+                        { kind: payEntry.dir, docNo: payEntry.docNo, date: row.date, headPartner: row.partnerName })}
                     </React.Fragment>
                   );
                 }
@@ -3721,7 +3714,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     </td>
                   </tr>
                   {/* ── 분개 미리보기 ── 매출 한 건도 채권·매출·부가세로 갈리므로 줄로 편다 */}
-                  {jOpen && journalTr(`je__${stmt.id}`, journalOfStmt(stmt))}
+                  {jOpen && journalTr(`je__${stmt.id}`, journalOfStmt(stmt),
+                    { kind: stmt.type === '비용' ? '대체' : stmt.type, docNo: stmt.docNo, date: stmt.tradeDate, headPartner: stmt.partnerName })}
                   </React.Fragment>
                 );
               })}

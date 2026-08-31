@@ -1017,6 +1017,12 @@ export interface CashEntry {
   id: string;
   /** 어느 회사 장부인가. 없으면 태백(옛 기록). */
   companyId?: CompanyId;
+  /**
+   * 전표번호 — 거래명세서 계열과 **같은 번호통**을 쓴다(`260831-07`).
+   * 그래서 번호만으론 갈래를 모르고, 전표 머리의 이름(입금·출금·대체전표)이 그 몫을 한다.
+   * 2026-09-01부터 매긴다. 그 전 자금전표는 비어 있다.
+   */
+  docNo?: string;
   date: string;                        // 'YYYY-MM-DD' 실제 돈이 움직인 날
   cashAccountId: string;               // 어느 통장/카드/현금에서 ('대체'는 빈 값)
   /**

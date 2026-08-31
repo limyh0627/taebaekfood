@@ -54,8 +54,8 @@ describe('급여대장 → 전표', () => {
     } as CashEntry;
     const je = journalizeCashEntry(entry)!;
     expect(je.lines).toEqual([
-      { accountCode: '515', debit: t.gross, credit: 0 },
-      { accountCode: '254', debit: 0, credit: t.deduct },
+      { accountCode: '515', debit: t.gross, credit: 0, note: '총급여' },
+      { accountCode: '254', debit: 0, credit: t.deduct, note: '원천공제' },
       { accountCode: '103', debit: 0, credit: t.net },
     ]);
     const d = je.lines.reduce((a, l) => a + l.debit, 0);
