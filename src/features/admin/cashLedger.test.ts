@@ -498,3 +498,53 @@ describe('상계 자금전표', () => {
     expect(ap).toBe(24_604_700);   // 미지급도 준다
   });
 });
+
+/**
+ * 기초이월은 **발생이 아니다** — 넘어온 잔액이다.
+ *
+ * 청양식품: 7/31 기초 58,494,500 + 8/25 매입 16,080,000 을 뭉쳐 '발생 74,574,500'으로
+ * 보여 주니, 8월에 5,800만원어치 새로 산 것처럼 읽혔다. 칸을 가른다.
+ *   기초 + 발생 − 결제 = 잔액
+ */
+describe('거래처원장 기초이월', () => {
+  const 기초 = {
+    ...stmt('open-p1', '비용', '2026-07-31', 58_494_500), docNo: '기초260731-46',
+    items: [
+      { name: '기초 미지급금(이월)', spec: '', qty: 1, price: 58_494_500, supply: 58_494_500, tax: 0, total: 58_494_500, isTaxExempt: true, accountCode: '251', side: '대변' },
+      { name: '기초 미지급금(이월)', spec: '', qty: 1, price: 58_494_500, supply: 58_494_500, tax: 0, total: 58_494_500, isTaxExempt: true, accountCode: '375', side: '차변' },
+    ],
+  } as unknown as IssuedStatement;
+  const 매입 = {
+    ...stmt('s-aug', '매입', '2026-08-25', 16_080_000), docNo: '260825-02',
+    items: [{ name: '깨', spec: '', qty: 1, price: 16_080_000, supply: 16_080_000, tax: 0, total: 16_080_000, isTaxExempt: true, accountCode: '500' }],
+  } as IssuedStatement;
+  const 지불 = { ...entry('c-aug', '2026-08-25', '출금', 16_080_000), accountCode: '251', partnerId: 'p1' } as CashEntry;
+
+  it('기초를 발생에서 갈라 낸다', () => {
+    const st = [기초, 매입], ce = [지불];
+    const l = buildPartnerLedger('p1', '매입', st, ce, je(st, ce));
+    expect(l.opening).toBe(58_494_500);   // 넘어온 잔액
+    expect(l.accrued).toBe(16_080_000);   // 8월에 실제로 산 것
+    expect(l.paid).toBe(16_080_000);
+    expect(l.balance).toBe(58_494_500);
+  });
+
+  it('기초 + 발생 − 결제 = 잔액', () => {
+    const st = [기초, 매입], ce = [지불];
+    const l = buildPartnerLedger('p1', '매입', st, ce, je(st, ce));
+    expect(l.opening + l.accrued - l.paid).toBe(l.balance);
+  });
+
+  it('기초 줄에 표식이 붙는다 — 화면에서 딱지를 가른다', () => {
+    const st = [기초, 매입], ce = [지불];
+    const l = buildPartnerLedger('p1', '매입', st, ce, je(st, ce));
+    expect(l.rows.filter(r => r.opening).map(r => r.amount)).toEqual([58_494_500]);
+  });
+
+  it('기초가 없으면 0이고 발생은 예전 그대로', () => {
+    const st = [매입], ce: CashEntry[] = [];
+    const l = buildPartnerLedger('p1', '매입', st, ce, je(st, ce));
+    expect(l.opening).toBe(0);
+    expect(l.accrued).toBe(16_080_000);
+  });
+});

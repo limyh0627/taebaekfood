@@ -130,12 +130,23 @@ export interface PartnerLedgerRow {
   balance: number;        // 이 행 직후 잔액
   /** 결제 출처 — 자금원장 매칭뿐이다(전표에 매다는 옛 경로는 걷어냈다) */
   source?: 'cash';
+  /** 기초이월 줄인가 — 이번 기간에 새로 산 게 아니라 넘어온 잔액이다 */
+  opening?: true;
 }
 
 export interface PartnerLedger {
   rows: PartnerLedgerRow[];
-  accrued: number;        // 기간 내 발생 총액
-  paid: number;           // 기간 내 결제 총액
+  /**
+   * **기초이월은 발생에서 뺀다.**
+   * 청양식품은 7/31 기초 58,494,500에 8/25 매입 16,080,000이 얹힌 것인데,
+   * 둘을 뭉쳐 '발생 74,574,500'으로 보이니 8월에 5,800만원어치 새로 산 것처럼 읽혔다.
+   * 넘어온 잔액과 이번에 산 것은 성격이 다르다 — 칸을 가른다.
+   *
+   *   기초 + 발생 − 결제 = 잔액
+   */
+  opening: number;        // 기초이월 (넘어온 잔액)
+  accrued: number;        // 기초 뺀 발생 총액
+  paid: number;           // 결제 총액
   balance: number;        // 현재 잔액 (매출=받을돈, 매입=줄돈)
 }
 
@@ -172,6 +183,8 @@ export function buildPartnerLedger(
       const st = stmtById.get(je.sourceId ?? '');
       const ce = cashById.get(je.sourceId ?? '');
       const date = st?.tradeDate ?? ce?.date ?? je.date;
+      //  기초이월 표식 — 손익 화면(ProfitAnalysis)이 쓰는 기준과 같다
+      const isOpening = String(st?.docNo ?? '').includes('기초');
       evs.push({
         row: {
           kind: amt > 0 ? '전표' : '결제',
@@ -180,6 +193,7 @@ export function buildPartnerLedger(
           label: st?.docNo || ce?.note || je.memo || (amt > 0 ? '발생' : '결제'),
           amount: amt,
           ...(ce ? { source: 'cash' as const } : {}),
+          ...(isOpening && amt > 0 ? { opening: true as const } : {}),
         },
         ts: rowStamp(date, st?.issuedAt ?? ce?.createdAt),
         order: amt > 0 ? 0 : 1,   // 같은 시각이면 발생이 먼저, 상계가 뒤
@@ -191,13 +205,15 @@ export function buildPartnerLedger(
     || issuedMs(a.row.id) - issuedMs(b.row.id)
     || String(a.row.id).localeCompare(String(b.row.id), undefined, { numeric: true }));
 
-  let running = 0, accrued = 0, paid = 0;
+  let running = 0, opening = 0, accrued = 0, paid = 0;
   const rows: PartnerLedgerRow[] = evs.map(({ row }) => {
     running += row.amount;
-    if (row.amount > 0) accrued += row.amount; else paid += -row.amount;
+    if (row.amount <= 0) paid += -row.amount;
+    else if (row.opening) opening += row.amount;   // 넘어온 잔액 — 이번에 산 게 아니다
+    else accrued += row.amount;
     return { ...row, balance: running };
   });
-  return { rows, accrued, paid, balance: running };
+  return { rows, opening, accrued, paid, balance: running };
 }
 
 /** 거래처별 현재 잔액 — 목록 화면용 */

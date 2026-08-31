@@ -34,7 +34,9 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
   );
 
   const total = shown.reduce((a, b) => a + b.balance, 0);
-  const label = type === '매출' ? '받을 돈' : '줄 돈';
+  //  회계 용어로 적는다 — 세무대리인과 같은 말을 써야 옮겨 적을 때 헷갈리지 않는다.
+  //  전표 화면도 같은 이유로 '줄돈·받을돈'을 걷어냈다(TradeStatement 잔액 칸 참고).
+  const label = type === '매출' ? '미수 잔액' : '미지급 잔액';
   const tone = type === '매출' ? 'text-blue-600' : 'text-rose-600';
 
   return (
@@ -47,7 +49,7 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
               className={`px-4 py-2 rounded-lg text-xs font-black transition-all ${
                 type === t ? (t === '매입' ? 'bg-rose-600 text-white' : 'bg-blue-600 text-white') : 'text-slate-400'
               }`}>
-              {t === '매입' ? '매입 (줄 돈)' : '매출 (받을 돈)'}
+              {t === '매입' ? '매입 (미지급)' : '매출 (미수)'}
             </button>
           ))}
         </div>
@@ -94,9 +96,15 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
           <div className="px-5 py-3 border-b border-slate-50 flex items-center justify-between gap-3 flex-wrap">
             <span className="font-black text-sm text-slate-800">{sel?.partnerName ?? '—'}</span>
             {ledger && (
-              <div className="flex items-center gap-4 text-[11px] font-black">
+              /* 기초 + 발생 − 결제 = 잔액. 기초를 발생에 뭉치면 이번 달에 새로 산 것처럼 읽힌다 —
+                 청양식품은 넘어온 5,800만원이 8월 매입으로 보였다. */
+              <div className="flex items-center gap-3 text-[11px] font-black">
+                {ledger.opening > 0 && (
+                  <span className="text-slate-400">기초 <span className="text-slate-500 tabular-nums">{fmt(ledger.opening)}</span></span>
+                )}
                 <span className="text-slate-400">발생 <span className="text-slate-700 tabular-nums">{fmt(ledger.accrued)}</span></span>
                 <span className="text-slate-400">결제 <span className="text-emerald-600 tabular-nums">{fmt(ledger.paid)}</span></span>
+                <span className="text-slate-300">=</span>
                 <span className="text-slate-400">{label} <span className={`tabular-nums ${tone}`}>{fmt(ledger.balance)}</span></span>
               </div>
             )}
@@ -119,7 +127,9 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
                   <tr key={`${r.kind}-${r.id}`} className="hover:bg-slate-50/50">
                     <td className="px-4 py-2.5 font-bold text-slate-500 whitespace-nowrap">{r.date.slice(5)}</td>
                     <td className="px-4 py-2.5">
-                      {r.kind === '전표'
+                      {r.opening
+                        ? <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">기초</span>
+                        : r.kind === '전표'
                         ? <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${type === '매입' ? 'bg-rose-50 text-rose-600' : 'bg-blue-50 text-blue-600'}`}>전표</span>
                         : <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600">
                             {r.source === 'cash' ? '결제·자금' : '결제'}
