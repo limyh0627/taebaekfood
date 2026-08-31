@@ -17,7 +17,7 @@ import { buildJournals } from '../src/shared/buildJournals';
 import type { VoucherKind } from '../src/shared/vouchers';
 import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/shared/orderUnits';
 import { bomOf } from '../src/shared/bomIndex';
-import { PurchaseOrder, poLines, ExpensePreset } from '../src/shared/types';
+import { PurchaseOrder, poLines, ExpensePreset, companyOf } from '../src/shared/types';
 import { unsettledStatements, unmatchedCash, partnerBalanceFromJournals, allPartnerBalances, isReceivableStmt, allocatePartnerCash, partnerCashParts } from '../src/features/admin/cashLedger';
 import { AR, AP, journalizeStatement, journalizeTransfer, journalizeCashEntry, settlementAccountCode } from '../src/shared/autoJournal';
 import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, isCashDir, templateAccrRows, VOUCHER_DIRS, DIR_CHIP, DIR_HINT, CashTemplate, VoucherDir, SPLIT_MODES, splitModeOf } from '../src/shared/cashTemplates';
@@ -310,6 +310,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [pickerSearch, setPickerSearch] = useState('');
   // 팝업 내 수량 임시 입력: { [itemId]: qty }
   const [pickerQtys, setPickerQtys] = useState<Record<string,string>>({});
+  //  피커에서 "연결할까요?"에 **아니요**를 누른 품목 — 이번 전표에만 쓰고 거래처엔 안 붙인다.
+  //  발행할 때 단가·계정을 거래처에 자동 저장하는 길이 따로 있어서, 여기 적어 두지 않으면
+  //  아니요를 눌러도 발행하는 순간 결국 붙어 버린다.
+  const [noLinkIds, setNoLinkIds] = useState<Set<string>>(new Set());
 
   // 현재 전표 세션에서 이미 issuedStatement에 저장했는지 추적 (인쇄 중복 방지)
   const hasIssuedRef = useRef(false);
@@ -1332,7 +1336,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setManualItems([{ name: '', spec: '', qty: '', price: '', isTaxExempt: false }]);
     setLoadedPoIds([]);
   };
-  const closeCreate = () => { setCreateMode(null); setEditingStmt(null); setIsEditMode(false); setTradeNote(''); setSelectedItemIdx(null); setQuickName(''); setQuickSpec(''); setQuickQty(''); setQuickPrice(''); setQuickNote(''); setQuickSearchOpen(false); setQuickIsTaxExempt(false); setShowItemPicker(false); setPickerSearch(''); setPickerQtys({}); setAccountCodeOverrides({}); setLoadedPoIds([]); setIssuePay(false); setIssuePayAmount(''); hasIssuedRef.current = false; };
+  const closeCreate = () => { setCreateMode(null); setEditingStmt(null); setIsEditMode(false); setTradeNote(''); setSelectedItemIdx(null); setQuickName(''); setQuickSpec(''); setQuickQty(''); setQuickPrice(''); setQuickNote(''); setQuickSearchOpen(false); setQuickIsTaxExempt(false); setShowItemPicker(false); setPickerSearch(''); setPickerQtys({}); setNoLinkIds(new Set()); setAccountCodeOverrides({}); setLoadedPoIds([]); setIssuePay(false); setIssuePayAmount(''); hasIssuedRef.current = false; };
 
   // pendingInvoice가 오면 자동으로 매입전표 생성 모달 열기
   useEffect(() => {
@@ -1747,6 +1751,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         if (!item.price || item.price <= 0) continue;
         const product = allItems.find(p => p.name === item.name || p.품목 === item.name);
         if (!product || !selectedClientId) continue;
+        if (noLinkIds.has(product.id)) continue;   // 피커에서 "아니요" — 이번 전표에만 쓴다
         const pc = partnerOut.find(p => (p.itemId) === product.id && (p.partnerId) === selectedClientId);
         const pcId = pc?.id ?? `${product.id}_${selectedClientId}_out`;
         const priceChanged = !pc || pc.price !== item.price;
@@ -1767,6 +1772,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         if (!item.price || item.price <= 0) continue;
         const product = allItems.find(p => p.name === item.name || p.품목 === item.name);
         if (!product || !selectedClientId) continue;
+        if (noLinkIds.has(product.id)) continue;   // 피커에서 "아니요" — 이번 전표에만 쓴다
         const existing = partnerIn.find(s => (s.itemId) === product.id && (s.partnerId) === selectedClientId);
         const psId = existing?.id ?? `${product.id}_${selectedClientId}_in`;
         //  전표에 찍힌 과세/면세를 거래처 단가와 **같이** 저장한다 — 예전엔 옛 값을 그대로
@@ -2375,6 +2381,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const linkedIds = new Set(searchableRows.map(r => r.product!.id));
     const src = createMode === '매입' ? partnerIn : partnerOut;
     const extra = allItems
+      //  **이 회사 품목만.** 회사를 안 가리니 같은 이름의 풍회 사본이 태백 전표 피커에
+      //  같이 떠서 "깨분참기름/16.5kg가 왜 두 개냐"가 됐다. 어느 쪽을 골랐는지에 따라
+      //  단가도 재고도 다른 품목에 붙는다.
+      .filter(p => companyOf(p) === companyId)
       .filter(p => !linkedIds.has(p.id) && !isBoxStockItem(p))   // 박스 품목은 전표 피커에서 제외(낱개만)
       .map(p => {
         const ex = src.find(pc => (pc.itemId) === p.id && (pc.partnerId) === selectedClientId);
@@ -2384,7 +2394,16 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const sorted = (rows: typeof searchableRows) =>
       [...rows].sort((x, y) => byTaxonomy(x.product as Item | undefined, y.product as Item | undefined));
     return [...sorted(searchableRows), ...sorted(extra as unknown as typeof searchableRows)] as unknown as typeof searchableRows;
-  }, [searchableRows, allItems, createMode, partnerIn, partnerOut, selectedClientId, byTaxonomy]);
+  }, [searchableRows, allItems, createMode, partnerIn, partnerOut, selectedClientId, byTaxonomy, companyId]);
+
+  //  거래처를 바꾸면 '이번만 쓰기'도 없던 일이 된다 — 다른 거래처 얘기다
+  useEffect(() => { setNoLinkIds(new Set()); }, [selectedClientId]);
+
+  //  거래처에 이미 붙어 있는 품목 — 피커에서 "연결할까요?"를 물을지 가르는 기준
+  const linkedItemIds = useMemo(
+    () => new Set(searchableRows.map(r => r.product!.id)),
+    [searchableRows],
+  );
 
   // 단가 저장 (매출: price, 매입: price)
   // 저장은 비동기다 — 성공/실패를 화면에 표시하지 않으면 "눌러도 아무 일도 안 난다"로 보인다.
@@ -5836,17 +5855,50 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               const filtered = !q
                 ? searchableRows
                 : pickerRows.filter(r=>matchesSearch((r.product!.name)+' '+(r.product!.품목??''), q));
-              const confirmPick = () => {
+              const confirmPick = async () => {
                 const toAdd: ManualRow[] = [];
+                const picked: typeof pickerRows = [];
                 for (const [itemId,qtyStr] of Object.entries(pickerQtys)) {
                   const qty=parseFloat(qtyStr);
                   if(!qty) continue;
                   const row=pickerRows.find(r=>r.product!.id===itemId);
                   if(!row) continue;
+                  picked.push(row);
                   const docN=row.product!.name;
                   toAdd.push({name:docN,spec:row.product!.spec||'',qty:String(qty),price:String(row.pc.price??row.product!.price??''),isTaxExempt:row.pc.taxType==='면세',note:''});
                 }
                 if(toAdd.length===0){setShowItemPicker(false);return;}
+                /* **거래처에 안 붙은 품목을 골랐으면 물어본다.**
+                   예 → 거래처 품목으로 붙인다(단가·과세도 같이). 다음부터 검색 없이 뜬다.
+                   아니요 → 이번 전표에만 쓴다. 발행할 때 자동으로 붙는 길도 막는다. */
+                const unlinked = picked.filter(r => !linkedItemIds.has(r.product!.id));
+                if (unlinked.length && selectedClientId) {
+                  const names = unlinked.map(r => `· ${r.product!.name}${r.product!.spec?` (${r.product!.spec})`:''}`).join(String.fromCharCode(10));
+                  const ok = window.confirm(
+                    `${selectedClient?.name ?? '이 거래처'}에 연결된 품목이 아닙니다.
+
+${names}
+
+거래처에 연결할까요?
+
+예 = 거래처 품목으로 등록(다음부터 바로 뜸)
+아니요 = 이번 전표에만 추가`
+                  );
+                  if (ok) {
+                    const dir = createMode === '매입' ? 'in' as const : 'out' as const;
+                    for (const r of unlinked) {
+                      const edited = pricePanelEdits[r.pc.id];
+                      const price = Number(String(edited ?? r.pc.price ?? r.product!.price ?? '').replace(/[,\s원]/g,'')) || 0;
+                      await onUpsertPartnerItem?.({
+                        id: `${r.product!.id}_${selectedClientId}_${dir}`,
+                        itemId: r.product!.id, partnerId: selectedClientId, Direction: dir,
+                        price, taxType: r.pc.taxType ?? '과세',
+                      });
+                    }
+                  } else {
+                    setNoLinkIds(prev => { const n = new Set(prev); for (const r of unlinked) n.add(r.product!.id); return n; });
+                  }
+                }
                 setManualMode(true);
                 setManualItems(prev=>{
                   const existing=prev.filter(r=>r.name.trim());
