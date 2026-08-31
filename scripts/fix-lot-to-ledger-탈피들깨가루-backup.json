@@ -1,0 +1,18 @@
+{
+ "itemId": "raw-탈피들깨가루",
+ "lots": [
+  {
+   "id": "lot-탈피들깨가루-1785744132955-y3xp",
+   "supplierName": "실사조정",
+   "qtyIn": 0,
+   "kgIn": 2160,
+   "kgRemaining": 1764.6,
+   "receivedDate": "2026-08-03",
+   "status": "active",
+   "createdAt": "2026-08-03T08:02:12.955Z",
+   "lotNo": "260803-01"
+  }
+ ],
+ "stock": 1764.6,
+ "anchorId": "rm-anchor-탈피들깨가루-20260831"
+}

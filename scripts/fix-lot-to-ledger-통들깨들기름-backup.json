@@ -1,0 +1,49 @@
+{
+ "itemId": "raw-통들깨들기름",
+ "lots": [
+  {
+   "supplierName": "실사조정",
+   "lotNo": "260803-01",
+   "status": "depleted",
+   "createdAt": "2026-08-03T07:23:16.109Z",
+   "receivedDate": "2026-08-03",
+   "qtyIn": 0,
+   "kgIn": 166.32,
+   "id": "lot-통들깨들기름-1785741796109-nk5c",
+   "kgRemaining": 0
+  },
+  {
+   "id": "lot-통들깨들기름-fix-1786337933539",
+   "supplierName": "중복차감 복원",
+   "kgIn": 23.469,
+   "kgRemaining": 0,
+   "receivedDate": "2026-08-10",
+   "status": "depleted",
+   "createdAt": "2026-08-10T04:58:53.539Z"
+  },
+  {
+   "id": "lot-통들깨들기름-1786430718963-9ov8",
+   "supplierName": "들깨 압착",
+   "qtyIn": 0,
+   "kgIn": 101.75,
+   "kgRemaining": 0,
+   "receivedDate": "2026-08-11",
+   "status": "depleted",
+   "createdAt": "2026-08-11T06:45:18.963Z",
+   "lotNo": "260811-01"
+  },
+  {
+   "id": "lot-통들깨들기름-1786493943078-ce3z",
+   "supplierName": "들깨 압착",
+   "qtyIn": 0,
+   "kgIn": 185,
+   "kgRemaining": 158.764,
+   "receivedDate": "2026-08-11",
+   "status": "active",
+   "createdAt": "2026-08-12T00:19:03.078Z",
+   "lotNo": "260811-02"
+  }
+ ],
+ "stock": 158.764,
+ "anchorId": "rm-anchor-통들깨들기름-20260831"
+}
