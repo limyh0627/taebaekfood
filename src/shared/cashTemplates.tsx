@@ -151,6 +151,9 @@ export const CASH_TEMPLATES: CashTemplate[] = [
 
   // 그때그때 나가는 것
   { id: 'card',    label: '카드대금', dir: '출금', mode: '일반', accountCode: '650' },
+  //  할부로 산 물건 값 — 살 때 (차)자산 /(대)253 미지급금이 서고, 매달 그 미지급금을 턴다.
+  //  비용이 아니다. 비용으로 끊으면 물건값을 두 번 털게 된다(살 때 자산 + 낼 때 비용).
+  { id: 'installment', label: '할부금', dir: '출금', mode: '일반', accountCode: '253', hint: '미지급금 상환' },
   { id: 'freight', label: '운임',     dir: '출금', mode: '일반', accountCode: '605', wantsPartner: true },
   { id: 'outwork', label: '외주가공', dir: '출금', mode: '일반', accountCode: '540', wantsPartner: true },
   { id: 'submat',  label: '부자재',   dir: '출금', mode: '일반', accountCode: '505', wantsPartner: true },
