@@ -1363,8 +1363,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   /** 문서함에서 '서류관리 › 생산판매기록부'를 펴 놓았나 */
-  const inCabinetDoc = currentView === 'file-cabinet'
-    && cabinetSel.cat === '서류관리' && cabinetSel.sub === '생산판매기록부';
+  //  '전체'(중분류 미선택)도 친다 — 서류관리 밑엔 이 하나뿐이라, 대분류만 눌러도 서류가 떠야 한다.
+  //  중분류를 눌러야만 뜨게 해 두면 파일도 없는 빈 화면을 먼저 보게 된다.
+  const inCabinetDoc = currentView === 'file-cabinet' && cabinetSel.cat === '서류관리'
+    && (cabinetSel.sub === '생산판매기록부' || cabinetSel.sub === '');
   useEffect(() => { if (inCabinetDoc) setDocTab('생산판매기록부'); }, [inCabinetDoc]);
 
   const handleNavClick = (view: ViewType) => {
@@ -1557,8 +1559,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       <NavItem icon={Package} label="품목 관리" active={currentView === 'item-management'} onClick={() => handleNavClick('item-management')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('item-management')} />
                       <NavItem icon={Users} label="거래처 관리" active={currentView === 'partners'} onClick={() => handleNavClick('partners')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('partners')} />
                       <NavItem icon={UserCheck} label="인사 관리" active={currentView === 'hr'} onClick={() => handleNavClick('hr')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('hr')} />
+                      {/* 관리자뷰 '서류 관리'는 없앴다(2026-09-01) — 안에 있던 넷이 다 나갔다.
+                          벤조피렌·원료수불부·생산작업기록부는 직원뷰로, 생산판매기록부는 문서함으로.
+                          생산작업기록부2는 삭제. 빈 탭줄만 남을 자리라 문을 닫는다.
+                          직원뷰 메뉴(아래)는 그대로 둔다. */}
                       <NavItem icon={FolderOpen} label="문서함" active={currentView === 'file-cabinet'} onClick={() => handleNavClick('file-cabinet')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('file-cabinet')} />
-                      <NavItem icon={FileText} label="서류 관리" active={currentView === 'documents'} onClick={() => handleNavClick('documents')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('documents')} />
                       <NavItem icon={QrCode} label="QR 라벨 인쇄" active={false} onClick={() => setShowQrLabel(true)} collapsed={isSidebarCollapsed} />
                     </nav>
                   </NavGroup>
@@ -2203,7 +2208,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
             <DocumentManager
               currentUser={{ id: currentUser.id, name: currentUser.name }}
               seed={[{ category: '서류관리', subCategory: '생산판매기록부' }]}
-              onSelect={(cat, sub) => setCabinetSel({ cat, sub })}
+              /* 같은 자리면 그대로 둔다 — 새 객체를 세우면 렌더가 한 번 더 돈다 */
+              onSelect={(cat, sub) => setCabinetSel(p => (p.cat === cat && p.sub === sub ? p : { cat, sub }))}
               /* 서류가 뜨는 자리엔 파일 목록을 안 띄운다 — 아래 서류관리 화면이 그 자리를 쓴다 */
               hideDocs={inCabinetDoc}
             />

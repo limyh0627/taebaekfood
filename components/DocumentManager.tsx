@@ -80,15 +80,25 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
   useEffect(() => {
     if (!seed.length) return;
     for (const { category, subCategory } of seed) {
+      //  대분류와 중분류를 **따로** 본다. 예전엔 else로 묶어서, 대분류를 막 만든 첫 판에
+      //  중분류를 건너뛰고 넘어갔다 — 그러면 문이 반만 서서 화면이 빈 채로 남는다.
       if (!categories.some(c => c.name === category))
         addItem('fileCabinetCategories', { name: category, order: 90, createdAt: new Date().toISOString() });
-      else if (!subCategories.some(sc => sc.category === category && sc.name === subCategory))
+      if (categories.some(c => c.name === category)
+        && !subCategories.some(sc => sc.category === category && sc.name === subCategory))
         addItem('fileCabinetSubCategories', { category, name: subCategory, order: 0, createdAt: new Date().toISOString() });
     }
   }, [seedKey, categories, subCategories]);
 
-  //  고른 자리를 바깥에 알린다
-  useEffect(() => { onSelect?.(activeCat, activeSub); }, [activeCat, activeSub, onSelect]);
+  /*
+   * 고른 자리를 바깥에 알린다.
+   * **onSelect를 의존성에 넣으면 안 된다** — 부르는 쪽이 인라인 화살표를 넘기면 매 렌더마다
+   * 새 함수가 돼서 효과가 다시 돌고, 그쪽이 상태를 세우면 렌더가 끝없이 돈다.
+   * 함수는 ref에 담아 두고 **고른 자리가 바뀔 때만** 알린다.
+   */
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+  useEffect(() => { onSelectRef.current?.(activeCat, activeSub); }, [activeCat, activeSub]);
 
   const sortedCats = useMemo(
     () => [...categories].sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
