@@ -3959,13 +3959,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               const paid = Math.round(payTarget.totalAmount - getBalance(payTarget));
               const box = (scope: 'stmt' | 'partner', label: string, amount: number, hint: string) => {
                 const on = payScope === scope;
+                //  상자를 바꿔도 **날짜는 안 건드린다** — 전표에서 연 수금·지불이라
+                //  기본은 언제나 그 전표 날짜다. 고치고 싶으면 손으로 고친다.
                 return (
-                  <button onClick={() => {
-                      setPayScope(scope);
-                      //  '이 전표'면 그 전표 날짜, '거래처 잔액'이면 오늘 — 무엇을 갚는지에 날짜를 맞춘다
-                      setPayForm(p => ({ ...p, amount: String(Math.round(amount)),
-                        date: scope === 'stmt' ? (payTarget.tradeDate || p.date) : new Date().toISOString().slice(0, 10) }));
-                    }}
+                  <button onClick={() => { setPayScope(scope); setPayForm(p => ({ ...p, amount: String(Math.round(amount)) })); }}
                     className={`flex-1 text-left rounded-xl px-3 py-2.5 border transition-all ${
                       on ? 'bg-indigo-50 border-indigo-400 ring-2 ring-indigo-300' : 'bg-slate-50 border-slate-200 hover:border-indigo-300'}`}>
                     <div className={`text-[10px] font-black uppercase tracking-widest ${on ? 'text-indigo-600' : 'text-slate-400'}`}>{label}</div>
