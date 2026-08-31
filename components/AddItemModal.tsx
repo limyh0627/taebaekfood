@@ -44,28 +44,16 @@ const PRESET_PUMOK = [
   '시골향볶음참깨', '시골향들깨가루', '시골향탈피들깨가루', '시골향볶음검정참깨',
 ];
 
-const PUMOK_VOLUMES: Record<string, string[]> = {
-  '시골향참기름1': ['180ml','300ml','350ml','1500ml','1750ml','1800ml','16.5kg'],
-  '시골향참기름2': ['300ml','350ml','1500ml','1750ml','1800ml'],
-  '시골향참기름3': ['300ml','350ml','1500ml','1750ml','1800ml','16.5kg'],
-  '시골향참기름4': ['300ml','350ml','1500ml','1750ml','1800ml'],
-  '시골향들기름1': ['270ml','350ml','1800ml','16.5kg'],
-  '시골향들기름2': ['180ml','300ml','350ml','1500ml','1750ml','1800ml'],
-  '하남댁참기름':  ['300ml','1750ml'],
-  '하남댁들기름':  ['300ml','1750ml'],
-  '하남댁맑음들기름': ['300ml'],
-  '가득찬순참기름': ['300ml','1800ml'],
-  '해달참기름':    ['350ml'],
-  '해달들기름':    ['350ml'],
-  '시골집참기름(해내음)': ['1800ml'],
-  '토마토참기름':  ['300ml','500ml','1800ml'],
-  '새싹참기름':   ['300ml'],
-  '새싹들기름':   ['300ml'],
-  '시골향볶음참깨': ['140g','200g','350g','500g','1kg','20kg','25kg'],
-  '시골향들깨가루': ['1kg','4kg','20kg','25kg'],
-  '시골향탈피들깨가루': ['400g','1kg','20kg','25kg'],
-  '시골향볶음검정참깨': ['1kg','20kg','25kg'],
-};
+/**
+ * 규격 = **숫자 + 단위**. `350ml` · `16.5kg` · 박스면 `350ml * 20`.
+ * 뒤꼬리(` * 20`)는 개입수라 여기서 건드리지 않고 그대로 붙여 둔다.
+ */
+const SPEC_RE = /^\s*([\d.]+)\s*(ml|L|g|kg)(.*)$/i;
+const SPEC_UNITS = ['ml', 'L', 'g', 'kg'] as const;
+type SpecUnit = typeof SPEC_UNITS[number];
+const normUnit = (u: string | undefined): SpecUnit =>
+  SPEC_UNITS.find(x => x.toLowerCase() === String(u ?? '').toLowerCase()) ?? 'ml';
+
 
 const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterials = [], items, partners = [], partnerItems, onClose, onSave, onUpsertPartnerItem, onDeletePartnerItem, onAddSubmaterial, rawItems = [], itemFormulas = [], onSaveItemFormula, rollupCostOf }) => {
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
@@ -149,9 +137,17 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const [pumokWarn, setPumokWarn] = useState(false);
   const [expandedBoxClient, setExpandedBoxClient] = useState<string | null>(null);
   const [boxClientSearch, setBoxClientSearch] = useState('');
-  const [volNum, setVolNum] = useState('');
-  const [volUnit, setVolUnit] = useState<'ml' | 'L' | 'kg' | 'g'>('ml');
-  const [customVols, setCustomVols] = useState<string[]>(initialData?.spec ? [initialData.spec] : []);
+  //  지금 규격을 그 자리에 그대로 띄운다 — 칩을 눌러 고르는 게 아니라 숫자를 고쳐 쓰는 칸이다
+  /*
+   * 열 때 박스였던 품목의 낱개 id. 개입수를 지우는 도중(빈 칸 → 0)에도 박스 칸을 유지하려고
+   * 붙잡아 둔다. 수량만 보고 판정하면 숫자를 지우는 순간 낱개 칸으로 홱 바뀐다.
+   */
+  const openedAsBoxChild = useRef<string | null>((() => {
+    const comps = bomOf(initialData?.id).filter(l => l.child?.type === 'product' || l.child?.type === '완제품');
+    return comps.length === 1 && comps[0].qty > 1 ? comps[0].childId : null;
+  })());
+  const [volNum, setVolNum] = useState(() => SPEC_RE.exec(initialData?.spec ?? '')?.[1] ?? '');
+  const [volUnit, setVolUnit] = useState<SpecUnit>(() => normUnit(SPEC_RE.exec(initialData?.spec ?? '')?.[2]));
   const [bomSearch, setBomSearch] = useState('');
   const [bomPickerOpen, setBomPickerOpen] = useState(false);
   const [bomCatFilter, setBomCatFilter] = useState<string>('all');
@@ -262,10 +258,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     const isProductCategory = ['product', 'goods', 'wip', 'raw'].includes(formData.type);
     const hasBoxConfig = formData.defaultBoxConfig.unitsPerBox > 0;
 
-    // 용량 칸에 숫자만 입력하고 '추가'(또는 Enter)를 누르지 않은 채 저장해도 반영 (완제품/반제품)
-    const pendingSpec = (!formData.spec && volNum.trim() && (formData.type === 'product' || formData.type === 'wip'))
-      ? `${volNum.trim()}${volUnit}` : '';
-    const effectiveSpec = formData.spec || pendingSpec;
+    const effectiveSpec = formData.spec;   // 칸을 고치는 즉시 들어간다 — 따로 담아 둘 게 없다
 
     const finalProduct: Item = {
       id: initialData ? initialData.id : `p-${Date.now()}`,
@@ -392,16 +385,41 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
               벌크는 낱개 용량이라는 게 없어 '벌크'라고 적는다(자루째 kg/L로 센다). */}
           {(() => {
             const isBulk = formData.subtype === '벌크';
-            const presetVols = (formData.품목 && PUMOK_VOLUMES[formData.품목]) || [];
-            const allVols = Array.from(new Set([...presetVols, ...customVols]));
-            const addVol = () => {
-              const n = volNum.trim();
-              if (!n) return;
-              const vol = `${n}${volUnit}`;
-              if (!presetVols.includes(vol) && !customVols.includes(vol)) setCustomVols(prev => [...prev, vol]);
-              setFormData(fd => ({ ...fd, spec: vol }));
-              setVolNum('');
+            /*
+             * **박스 품목은 규격을 제가 안 갖는다.** 낱개 규격을 그대로 물려받고 개입수만 붙인다.
+             *   시골향참기름/A/1750ml  →  박스는 `1750ml * 10`
+             * 박스에서 낱개 용량을 따로 고칠 수 있으면 낱개와 어긋나고, 어긋난 쪽이 어느 쪽인지
+             * 알 길이 없다. 그래서 여기선 **개입수만** 고친다. 용량은 낱개 품목에서 고친다.
+             *
+             * 박스 판정은 주문·재고 쪽 unpackComponent와 같은 근거다 — 구성에 완제품이
+             * 딱 하나, 수량 2 이상(선물세트는 서로 다른 완제품을 하나씩 담으므로 안 걸린다).
+             */
+            const prodComps = (formData.submaterials ?? []).filter(c => {
+              const t = compById.get(c.id)?.type;
+              return t === 'product' || t === '완제품';
+            });
+            const boxComp = prodComps.length === 1
+              && (Number(prodComps[0].stock) > 1 || openedAsBoxChild.current === prodComps[0].id)
+              ? prodComps[0] : null;
+            const boxChild = boxComp ? compById.get(boxComp.id) : undefined;
+            const baseSpec = String(boxChild?.spec ?? '').replace(SPEC_RE, '$1$2');   // 낱개 쪽 꼬리는 떼고
+            const setBoxCount = (raw: string) => {
+              const n = Math.max(0, Math.floor(Number(raw.replace(/[^\d]/g, '')) || 0));
+              setFormData(fd => ({
+                ...fd,
+                //  개입수의 근거는 BOM 수량이다(unpackComponent가 여기를 읽는다). 규격 글자는 따라 적는 것.
+                submaterials: fd.submaterials.map(c => c.id === boxComp!.id ? { ...c, stock: n } : c),
+                spec: baseSpec && n > 1 ? `${baseSpec} * ${n}` : baseSpec,
+                ...(fd.boxSize > 0 ? { boxSize: n } : {}),
+                ...(fd.defaultBoxConfig.unitsPerBox > 0
+                  ? { defaultBoxConfig: { ...fd.defaultBoxConfig, unitsPerBox: n } } : {}),
+              }));
             };
+            //  숫자·단위를 고치면 **바로** 규격이 된다. 예전엔 칩으로 골라야 했고 '추가'를
+            //  안 누르면 안 들어가서, 고쳐 놓고 저장했는데 옛 값이 남는 일이 있었다.
+            const tail = SPEC_RE.exec(formData.spec ?? '')?.[3] ?? '';   // 박스의 ' * 20'은 그대로 둔다
+            const writeSpec = (num: string, unit: SpecUnit) =>
+              setFormData(fd => ({ ...fd, spec: num.trim() ? `${num.trim()}${unit}${tail}` : '' }));
             return (
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
@@ -412,36 +430,32 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                     <span className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black">벌크</span>
                     <span className="text-[11px] font-bold text-slate-400">자루째 {formData.unit || 'kg'}로 셉니다 — 낱개 용량이 없습니다</span>
                   </div>
-                ) : (<>
-                  {allVols.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {allVols.map(vol => (
-                        <button key={vol} type="button"
-                          onClick={() => setFormData(fd => ({ ...fd, spec: fd.spec === vol ? '' : vol }))}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all ${
-                            formData.spec === vol ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}>
-                          {vol}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                ) : boxComp ? (<>
+                  <div className="flex items-center gap-2">
+                    <span className="px-3 py-2 rounded-xl bg-slate-100 text-slate-600 text-sm font-black">{baseSpec || '규격 없음'}</span>
+                    <span className="text-slate-400 font-black">×</span>
+                    <input value={Number(boxComp.stock) > 0 ? String(boxComp.stock) : ''} onChange={e => setBoxCount(e.target.value)}
+                      inputMode="numeric" placeholder="개입수"
+                      className="w-24 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400"/>
+                    <span className="text-xs font-bold text-slate-400">개입</span>
+                  </div>
+                  <p className="text-[11px] font-bold text-slate-400">
+                    낱개 <span className="text-slate-600">{boxChild?.name ?? boxComp.name}</span>의 규격을 그대로 씁니다 —
+                    용량을 고치려면 낱개 품목에서 고치세요. 지금 규격: <span className="text-indigo-600">{formData.spec || '—'}</span>
+                  </p>
+                </>) : (<>
                   <div className="flex items-center gap-1.5">
-                    <input value={volNum} onChange={e => setVolNum(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addVol(); } }}
+                    <input value={volNum}
+                      onChange={e => { setVolNum(e.target.value); writeSpec(e.target.value, volUnit); }}
                       placeholder="예: 350" inputMode="decimal"
                       className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400"/>
                     <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5 shrink-0">
-                      {(['ml', 'L', 'g', 'kg'] as const).map(u => (
-                        <button key={u} type="button" onClick={() => setVolUnit(u)}
+                      {SPEC_UNITS.map(u => (
+                        <button key={u} type="button" onClick={() => { setVolUnit(u); writeSpec(volNum, u); }}
                           className={`px-2 py-1 rounded-lg text-[11px] font-black transition-all ${volUnit === u ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>{u}</button>
                       ))}
                     </div>
-                    <button type="button" onClick={addVol}
-                      className="shrink-0 px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black hover:bg-indigo-700">추가</button>
                   </div>
-                  {formData.spec && (
-                    <p className="text-[11px] font-bold text-slate-400">고른 규격: <span className="text-indigo-600">{formData.spec}</span></p>
-                  )}
                 </>)}
               </div>
             );
