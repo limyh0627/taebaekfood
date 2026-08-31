@@ -226,3 +226,36 @@ describe('부가세 — 쌓인 걸 정석대로 턴다', () => {
     expect(byId('vat').dir).toBe('입금');
   });
 });
+
+/**
+ * 대체 양식(transferLines)의 금액 — **하나로 채울 수 있을 때만 채운다.**
+ *
+ * 부가세 신고는 255 차 한 줄에 135·261 대 두 줄이라 템플릿 금액 하나로는 못 채운다.
+ * 그런데도 전부 같은 금액을 박아서 미리보기가 차 100,000 · 대 200,000으로 떴다 —
+ * 안 맞는 분개를 보여주고 빨간 글씨로 겁까지 줬다.
+ */
+describe('대체 양식의 미리보기 금액', () => {
+  const t = (over: Partial<CashTemplate>): CashTemplate =>
+    ({ id: 'x', label: 'x', dir: '대체', mode: '일반', amount: 100_000, ...over } as CashTemplate);
+
+  it('차 한 줄 · 대 한 줄이면 금액이 양쪽에 선다 (감가상각)', () => {
+    const ls = templateJournalLines(t({ transferLines: [
+      { accountCode: '818', side: '차변' }, { accountCode: '203', side: '대변' },
+    ] }));
+    expect(ls.map(l => l.amount)).toEqual([100_000, 100_000]);
+    expect(ls.some(l => l.perVoucher)).toBe(false);
+    const 차 = ls.filter(l => l.side === '차변').reduce((a, l) => a + l.amount, 0);
+    const 대 = ls.filter(l => l.side === '대변').reduce((a, l) => a + l.amount, 0);
+    expect(차).toBe(대);
+  });
+
+  it('줄이 1:2면 금액을 안 채우고 전표에서 적으라고 표시한다 (부가세 신고)', () => {
+    const ls = templateJournalLines(t({ transferLines: [
+      { accountCode: '255', side: '차변' },
+      { accountCode: '135', side: '대변' },
+      { accountCode: '261', side: '대변' },
+    ] }));
+    expect(ls.every(l => l.perVoucher)).toBe(true);
+    expect(ls.every(l => l.amount === 0)).toBe(true);
+  });
+});

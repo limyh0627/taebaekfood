@@ -1,0 +1,90 @@
+{
+  "stmts": [
+    {
+      "id": "stmt-1787211610899",
+      "purchaseOrderIds": [],
+      "totalAmount": 3680000,
+      "totalTax": 0,
+      "items": [
+        {
+          "name": "카드세금납부(부가세,소득세)",
+          "spec": "우리카드개인",
+          "qty": 1,
+          "price": 3680000,
+          "supply": 3680000,
+          "tax": 0,
+          "total": 3680000,
+          "isTaxExempt": true,
+          "accountCode": "650"
+        }
+      ],
+      "partnerId": "c-1786083450787",
+      "tradeDate": "2026-08-20",
+      "orderId": "",
+      "docNo": "260820-13",
+      "type": "매입",
+      "companyId": "taebaek",
+      "totalSupply": 3680000,
+      "partnerName": "카드대금",
+      "issuedAt": "2026-08-20T07:40:10.900Z"
+    },
+    {
+      "id": "stmt-1788162755035",
+      "companyId": "taebaek",
+      "issuedAt": "2026-08-31T07:52:35.035Z",
+      "purchaseOrderIds": [],
+      "totalSupply": 160580,
+      "partnerName": "카드대금",
+      "docNo": "260831-06",
+      "type": "매입",
+      "orderId": "",
+      "tradeDate": "2026-08-31",
+      "partnerId": "c-1786083450787",
+      "totalAmount": 160580,
+      "totalTax": 0,
+      "items": [
+        {
+          "name": "카드세금납부",
+          "spec": "자동차세6389",
+          "qty": 1,
+          "price": 160580,
+          "supply": 160580,
+          "tax": 0,
+          "total": 160580,
+          "isTaxExempt": true,
+          "accountCode": "650"
+        }
+      ]
+    },
+    {
+      "id": "stmt-1787559245559",
+      "docNo": "260824-01",
+      "tradeDate": "2026-08-24",
+      "partnerId": "c-1786083450787-punghoe",
+      "totalTax": 282727,
+      "purchaseOrderIds": [],
+      "totalSupply": 2827273,
+      "partnerName": "카드대금",
+      "companyId": "punghoe",
+      "issuedAt": "2026-08-24T08:14:05.559Z",
+      "type": "매입",
+      "items": [
+        {
+          "name": "카드대금(세금납부)",
+          "spec": "",
+          "qty": 1,
+          "price": 3110000,
+          "supply": 2827273,
+          "tax": 282727,
+          "total": 3110000,
+          "isTaxExempt": false,
+          "accountCode": "650"
+        }
+      ],
+      "totalAmount": 3110000,
+      "orderId": ""
+    }
+  ],
+  "acct": "ac-998",
+  "at": "2026-08-31T16:55:02.090Z"
+}

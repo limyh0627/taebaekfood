@@ -1,0 +1,49 @@
+{
+  "tpl": {
+    "id": "fct-savings-suhyup",
+    "dir": "대체",
+    "partnerId": "c-bank-suhyup",
+    "taxExempt": true,
+    "accountCode": "106",
+    "active": false,
+    "mode": "일반",
+    "hidden": false,
+    "amount": 300000,
+    "group": "고정비",
+    "itemName": "정기적금",
+    "autoIssue": true,
+    "issueDay": 12,
+    "name": "적금 (수협)",
+    "partnerName": "수협은행",
+    "category": "기타",
+    "kind": "voucher"
+  },
+  "stmt": {
+    "id": "AUTO-fct-savings-suhyup-2026-08",
+    "totalAmount": 300000,
+    "totalTax": 0,
+    "partnerName": "수협은행",
+    "partnerId": "c-bank-suhyup",
+    "tradeDate": "2026-08-12",
+    "type": "매입",
+    "orderId": "AUTO-fct-savings-suhyup-2026-08",
+    "issuedAt": "2026-08-12T00:00:00.000Z",
+    "items": [
+      {
+        "name": "정기적금",
+        "spec": "",
+        "qty": 1,
+        "price": 300000,
+        "supply": 300000,
+        "tax": 0,
+        "total": 300000,
+        "isTaxExempt": true,
+        "accountCode": "106"
+      }
+    ],
+    "docNo": "260812-09",
+    "totalSupply": 300000
+  },
+  "cashId": "AUTO-fct-savings-suhyup-2026-08",
+  "at": "2026-08-31T16:59:02.196Z"
+}

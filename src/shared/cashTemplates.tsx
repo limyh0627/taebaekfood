@@ -463,7 +463,7 @@ export function CashTemplatePicker({
 export function templateJournalLines(
   t: CashTemplate,
   bankName = '보통예금',
-): { side: '차변' | '대변'; code: string; label: string; amount: number }[] {
+): { side: '차변' | '대변'; code: string; label: string; amount: number; perVoucher?: true }[] {
   const amt = t.amount ?? 0;
   const bank = { code: '103', label: bankName };
   const sm = splitModeOf(t.mode);
@@ -494,7 +494,20 @@ export function templateJournalLines(
   if (!isCashDir(t.dir) && t.dir !== '회사이체') {
     // 대체 — 양식이 있으면 그대로. 없으면 한 줄뿐이라 상대변을 사용자가 넣어야 한다.
     if (t.transferLines?.length) {
-      return t.transferLines.map(l => ({ side: l.side, code: l.accountCode, label: l.name ?? '', amount: amt }));
+      /*
+       * **금액 하나로 채울 수 있을 때만 채운다.**
+       * 감가상각(818 차 / 203 대)처럼 차 한 줄 · 대 한 줄이면 같은 금액이 양쪽에 선다.
+       * 부가세 신고(255 차 / 135 대 / 261 대)는 줄마다 금액이 달라 하나로 못 채운다 —
+       * 그런데도 전부 같은 금액을 박아 넣어서, 미리보기가 차 100,000 · 대 200,000으로
+       * 안 맞는 분개를 보여줬다. 못 채우는 줄은 금액을 비우고 그렇다고 표시한다.
+       */
+      const dr = t.transferLines.filter(l => l.side === '차변').length;
+      const cr = t.transferLines.length - dr;
+      const fits = dr === 1 && cr === 1;
+      return t.transferLines.map(l => ({
+        side: l.side, code: l.accountCode, label: l.name ?? '',
+        amount: fits ? amt : 0, ...(fits ? {} : { perVoucher: true as const }),
+      }));
     }
     return [{ side: '차변', code: t.accountCode ?? '', label: t.itemName ?? '', amount: amt }];
   }

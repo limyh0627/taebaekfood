@@ -222,7 +222,9 @@ export default function VoucherTemplateManager({
       {/* 수정 — 이름·묶음·금액·거래처·발행 방식 */}
       {editTpl && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setEditTpl(null)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          {/* 폭 — 분개 미리보기에 계정명이 통째로 들어가야 한다. max-w-sm(384px)에선
+    금액칸을 빼고 나면 이름 자리가 손바닥만 해서 '255 부가세…'로 잘렸다. */}
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-black text-slate-800">{cloning ? '새 템플릿 만들기' : '템플릿 수정'}</h3>
               <button onClick={() => setEditTpl(null)} className="text-slate-300 hover:text-slate-500"><X size={18}/></button>
@@ -442,33 +444,40 @@ export default function VoucherTemplateManager({
                     : {}),
                 } as unknown as CashTemplate;
                 const lines = templateJournalLines(preview);
+                //  금액을 전표에서 정하는 양식이면 차·대를 견줄 게 없다 — 안 맞는다고 하면 안 된다
+                const perVoucher = lines.some(l => l.perVoucher);
                 const 차 = lines.filter(l => l.side === '차변').reduce((a, l) => a + l.amount, 0);
                 const 대 = lines.filter(l => l.side === '대변').reduce((a, l) => a + l.amount, 0);
                 return (
                   <div>
-                    <div className="grid grid-cols-[40px_1fr_92px_92px] bg-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                    <div className="grid grid-cols-[44px_minmax(0,1fr)_110px_110px] bg-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-widest">
                       <span className="px-2 py-1">구분</span><span className="px-2 py-1">계정</span>
                       <span className="px-2 py-1 text-right">차변</span><span className="px-2 py-1 text-right">대변</span>
                     </div>
                     {lines.map((l, i) => (
-                      <div key={i} className="grid grid-cols-[40px_1fr_92px_92px] border-t border-slate-50 text-[11px]">
+                      <div key={i} className="grid grid-cols-[44px_minmax(0,1fr)_110px_110px] border-t border-slate-50 text-[11px]">
                         <span className={`px-2 py-1.5 font-black ${l.side === '차변' ? 'text-slate-600' : 'text-amber-600'}`}>{l.side}</span>
-                        <span className="px-2 py-1.5 font-bold text-slate-700 truncate">
+                        {/* 계정명은 안 자른다 — '255 부가세…'로 잘리면 예수금인지 대급금인지 못 가린다 */}
+                        <span className="px-2 py-1.5 font-bold text-slate-700 break-keep">
                           <span className="font-mono text-slate-400 mr-1">{l.code}</span>
                           {accountCodes.find(c => c.code === l.code)?.name ?? l.label}
                         </span>
-                        <span className="px-2 py-1.5 text-right tabular-nums font-black text-slate-700">{l.side === '차변' ? fmt(l.amount) : ''}</span>
-                        <span className="px-2 py-1.5 text-right tabular-nums font-black text-slate-700">{l.side === '대변' ? fmt(l.amount) : ''}</span>
+                        <span className="px-2 py-1.5 text-right tabular-nums font-black text-slate-700">
+                          {l.perVoucher ? <span className="text-slate-300">—</span> : l.side === '차변' ? fmt(l.amount) : ''}</span>
+                        <span className="px-2 py-1.5 text-right tabular-nums font-black text-slate-700">
+                          {l.perVoucher ? <span className="text-slate-300">—</span> : l.side === '대변' ? fmt(l.amount) : ''}</span>
                       </div>
                     ))}
-                    {/* 안 맞는 까닭이 둘이다. 한 줄뿐이라 상대변이 없는 것과,
-                        부가세 신고처럼 줄마다 금액이 달라 템플릿 금액 하나로는 못 채우는 것.
-                        뒤엣것은 잘못이 아니다 — 금액을 전표에서 적으면 된다. */}
-                    {차 !== 대 && (
+                    {/* 줄마다 금액이 다른 양식은 **잘못이 아니다** — 금액을 전표에서 적으면 된다.
+                        빨간 글씨로 겁줄 일이 아니라서 회색 안내로 적는다.
+                        진짜 잘못은 상대변이 통째로 없는 것뿐이다. */}
+                    {perVoucher ? (
+                      <p className="px-3 py-1.5 text-[10px] font-bold text-slate-400 border-t border-slate-100">
+                        줄마다 금액이 다른 양식입니다 — 금액은 전표를 끊을 때 줄마다 적습니다.
+                      </p>
+                    ) : 차 !== 대 && (
                       <p className="px-3 py-1.5 text-[10px] font-black text-rose-500 border-t border-slate-100">
-                        {(editTpl.transferLines?.length ?? 0) > 1
-                          ? '줄마다 금액이 다른 양식입니다 — 템플릿 금액은 비워 두고 전표에서 줄마다 적으세요.'
-                          : '차·대가 안 맞습니다 — 상대변 계정이 없습니다. 이 템플릿으로는 전표를 못 끊습니다.'}
+                        차·대가 안 맞습니다 — 상대변 계정이 없습니다. 이 템플릿으로는 전표를 못 끊습니다.
                       </p>
                     )}
                   </div>
