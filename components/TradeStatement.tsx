@@ -3608,18 +3608,27 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   // ── 수금/지불 행 ──
                   // 라벨은 수금·지불(무슨 돈인지 알아야 하니까). 다만 분류는 자금(입금·출금)이라
                   // 수익·비용 탭에는 안 뜬다 — 매출·매입은 전표 끊을 때 이미 잡혔기 때문.
-                  const label = row.offset ? '상계' : row.stmtType === '매출' ? '수금' : '지불';
+                  const label = row.offset ? (row.stmtType === '매출' ? '미수상계' : '미지급상계')
+                    : row.stmtType === '매출' ? '수금' : '지불';
                   const cumul = row.cumul;
                   const payEntry = row.entry;
+                  /*
+                   * **행 열쇠는 자금전표 id만으로 모자란다.**
+                   * 상계 하나가 미수와 미지급을 같이 줄이면 채권 묶음·채무 묶음에서 각각
+                   * 한 줄씩 나온다(가득찬식품 8/31 24,604,700). 둘 다 paymentId가 같아
+                   * key가 겹쳤고, React가 같은 열쇠를 둘로 보고 지운 줄을 못 지워
+                   * "필터에 안 맞는데도 남아 있는" 행이 됐다. 방향을 열쇠에 붙여 가른다.
+                   */
+                  const payKey = `${row.paymentId}__${row.stmtType}`;
                   return (
-                    <React.Fragment key={`pay__${row.paymentId}`}>
+                    <React.Fragment key={`pay__${payKey}`}>
                     <tr
                       className={`cursor-pointer transition-colors ${row.stmtType === '매출' ? 'bg-lime-50/80 hover:bg-lime-100/80' : 'bg-orange-50/80 hover:bg-orange-100/80'}`}
                       onClick={() => openPayTimelineRow(row.paymentId, row.src)}>
                       <td className="px-4 py-2 text-[11px] font-mono text-slate-500 whitespace-nowrap">{row.date}{payEntry?.createdAt ? ` ${payEntry.createdAt.slice(11,16)}` : ''}</td>
                       <td className="px-4 py-2">
                         <span className="inline-flex items-center gap-1 align-middle">
-                          {journalToggle(row.paymentId)}
+                          {journalToggle(payKey)}
                           <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.stmtType === '매출' ? 'bg-lime-100 text-lime-700' : 'bg-orange-100 text-orange-700'}`}>{label}</span>
                         </span>
                       </td>
@@ -3645,8 +3654,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       </td>
                     </tr>
                     {/* 수금·지불은 손익이 아니라 채권·채무를 현금으로 상계하는 것 — 분개로 보면 분명하다 */}
-                    {expandedJournal.has(row.paymentId) && payEntry &&
-                      journalTr(`je__pay__${row.paymentId}`, journalizeCashEntry(payEntry))}
+                    {expandedJournal.has(payKey) && payEntry &&
+                      journalTr(`je__pay__${payKey}`, journalizeCashEntry(payEntry))}
                     </React.Fragment>
                   );
                 }
@@ -3796,16 +3805,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 );
               }
               if (row.kind === 'pay') {
-                const label = row.offset ? '상계' : row.stmtType === '매출' ? '수금' : '지불';
+                const label = row.offset ? (row.stmtType === '매출' ? '미수상계' : '미지급상계')
+                  : row.stmtType === '매출' ? '수금' : '지불';
                 const cumul = row.cumul;
                 const memo = [row.method, row.note].filter(Boolean).join(' · ');
+                const payKey = `${row.paymentId}__${row.stmtType}`;   // 상계는 채권·채무 두 줄 — 데스크탑과 같은 이유
                 return (
-                  <div key={`m-pay-${row.paymentId}`}
+                  <div key={`m-pay-${payKey}`}
                     onClick={() => openPayTimelineRow(row.paymentId, row.src)}
                     className={`w-full px-4 py-3 flex flex-col gap-1.5 cursor-pointer ${row.stmtType === '매출' ? 'bg-lime-50/70' : 'bg-orange-50/70'}`}>
                     <div className="flex items-center justify-between gap-2">
                       <span className="flex items-center gap-1">
-                        {journalToggle(row.paymentId)}
+                        {journalToggle(payKey)}
                         <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.stmtType === '매출' ? 'bg-lime-100 text-lime-700' : 'bg-orange-100 text-orange-700'}`}>{label}</span>
                       </span>
                       <div className="flex items-center gap-2">
@@ -3818,7 +3829,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       <span className="text-sm font-black text-slate-800 shrink-0">{fmt(row.amount)}</span>
                     </div>
                     {memo && <p className="text-[11px] text-slate-400 truncate">{memo}</p>}
-                    {expandedJournal.has(row.paymentId) && row.entry && (
+                    {expandedJournal.has(payKey) && row.entry && (
                       <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50/70 overflow-hidden" onClick={e => e.stopPropagation()}>
                         {renderJournal(journalizeCashEntry(row.entry), true)}
                       </div>

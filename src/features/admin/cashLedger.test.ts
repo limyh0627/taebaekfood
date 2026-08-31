@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  buildAccountLedger, totalCashOnHand, openBalance, unsettledStatements, unmatchedCash, buildPartnerLedger, partnerBalances, partnerOpenBalance, allocatePartnerCash, partnerBalanceFromJournals, partnerCarryOver, allPartnerBalances,
+  buildAccountLedger, totalCashOnHand, openBalance, unsettledStatements, unmatchedCash, buildPartnerLedger, partnerBalances, partnerOpenBalance, allocatePartnerCash, partnerBalanceFromJournals, partnerCarryOver, allPartnerBalances, partnerCashParts,
 } from './cashLedger';
 import type { AccountCode, CashAccount, CashEntry, IssuedStatement, Settlement, JournalEntry } from '../../shared/types';
 import { buildJournals } from '../../shared/buildJournals';
@@ -467,5 +467,34 @@ describe('allPartnerBalances', () => {
     //  수금만 있고 전표가 조회창 밖이면 예전 방식은 이 거래처를 통째로 빠뜨렸다
     const entries = [je2('2026-08-12', [{ accountCode: '103', debit: 500_000 }, { accountCode: '108', credit: 500_000, partnerId: 'p9' }])];
     expect(allPartnerBalances(entries).get('p9')!.receivable).toBe(-500_000);
+  });
+});
+
+/**
+ * 상계(대체)는 **미수와 미지급을 같이 줄인다** — 108 한 줄, 251 한 줄.
+ *
+ * 전표 화면 타임라인은 거래처를 채권 묶음·채무 묶음으로 갈라 굴리므로, 이런 자금전표
+ * 하나가 수금·지불 행 **두 줄**로 나온다. 두 줄의 paymentId가 같아서 화면 열쇠(key)를
+ * 자금전표 id만으로 잡으면 겹친다 — 겹친 열쇠는 React가 지운 줄을 못 지워, 걸러낸
+ * 뒤에도 남아 있는 행이 된다(가득찬식품 2026-08-31 24,604,700).
+ * 그래서 열쇠에 방향(stmtType)을 붙인다. 이 테스트는 "두 줄이 나온다"는 근거를 잡아 둔다.
+ */
+describe('상계 자금전표', () => {
+  it('108·251 두 계정을 모두 양수로 줄인다 — 그래서 타임라인 행이 두 줄', () => {
+    const offset = entry('cash-offset', '2026-08-31', '입금', 24_604_700, {
+      dir: '대체' as CashEntry['dir'],
+      partnerId: 'p1',
+      lines: [
+        { accountCode: '251', amount: 24_604_700, note: '미지급 상계' },
+        { accountCode: '108', amount: -24_604_700, note: '미수 상계' },
+      ],
+    } as Partial<CashEntry>);
+
+    const parts = partnerCashParts(offset);
+    const ar = parts.filter(x => x.code === '108').reduce((a, x) => a + x.reduce, 0);
+    const ap = parts.filter(x => x.code === '251').reduce((a, x) => a + x.reduce, 0);
+
+    expect(ar).toBe(24_604_700);   // 미수가 준다
+    expect(ap).toBe(24_604_700);   // 미지급도 준다
   });
 });
