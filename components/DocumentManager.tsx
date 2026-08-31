@@ -10,6 +10,15 @@ const MAX_SIZE_MB = 30;
 
 interface DocumentManagerProps {
   currentUser: { id: string; name: string };
+  /**
+   * 반드시 있어야 하는 자리 — 없으면 만든다.
+   * 앱이 화면을 얹는 자리(서류관리 › 생산판매기록부)는 사람이 지워도 다시 서야 한다.
+   */
+  seed?: { category: string; subCategory: string }[];
+  /** 지금 펴 놓은 자리를 바깥에 알린다 — 그 자리에 화면을 얹는 쪽이 쓴다 */
+  onSelect?: (category: string, subCategory: string) => void;
+  /** 파일 목록을 감춘다 — 그 자리를 얹은 화면이 쓸 때 */
+  hideDocs?: boolean;
 }
 
 const fmtSize = (bytes: number) => {
@@ -30,7 +39,7 @@ const fileIconFor = (name: string, contentType: string) => {
   return <FileIcon className="w-5 h-5 text-slate-400" />;
 };
 
-const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser }) => {
+const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [], onSelect, hideDocs }) => {
   const [categories, setCategories] = useState<CabinetCategory[]>([]);
   const [subCategories, setSubCategories] = useState<CabinetSubCategory[]>([]);
   const [docs, setDocs] = useState<CabinetDoc[]>([]);
@@ -62,6 +71,24 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser }) => {
     });
     return () => { unsubCat(); unsubSub(); unsubDoc(); };
   }, []);
+
+  /*
+   * 앱이 화면을 얹는 자리를 세워 둔다. 사람이 지워도 다음에 들어오면 다시 선다 —
+   * 그 자리가 없으면 생산판매기록부로 가는 문이 통째로 사라진다.
+   */
+  const seedKey = seed.map(x => `${x.category}|${x.subCategory}`).join(',');
+  useEffect(() => {
+    if (!seed.length) return;
+    for (const { category, subCategory } of seed) {
+      if (!categories.some(c => c.name === category))
+        addItem('fileCabinetCategories', { name: category, order: 90, createdAt: new Date().toISOString() });
+      else if (!subCategories.some(sc => sc.category === category && sc.name === subCategory))
+        addItem('fileCabinetSubCategories', { category, name: subCategory, order: 0, createdAt: new Date().toISOString() });
+    }
+  }, [seedKey, categories, subCategories]);
+
+  //  고른 자리를 바깥에 알린다
+  useEffect(() => { onSelect?.(activeCat, activeSub); }, [activeCat, activeSub, onSelect]);
 
   const sortedCats = useMemo(
     () => [...categories].sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name)),
@@ -273,7 +300,8 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser }) => {
         </div>
       )}
 
-      {/* 업로드 영역 */}
+      {/* 업로드·파일 목록 — 앱이 화면을 얹은 자리에선 감춘다(그 자리를 서류가 쓴다) */}
+      {!hideDocs && (<>
       <div
         onDragOver={e => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
@@ -317,6 +345,7 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser }) => {
           </ul>
         )}
       </div>
+      </>)}
     </div>
   );
 };

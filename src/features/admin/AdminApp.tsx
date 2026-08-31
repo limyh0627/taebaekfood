@@ -311,7 +311,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const { fixedCosts, productionRecords } = adminData;
 
   const [pendingInvoice, setPendingInvoice] = useState<{ partnerId: string; partnerName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }>; poIds?: string[] } | null>(null);
-  const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부' | '거래명세서' | '생산작업기록부' | '생산작업기록부2' | '벤조피렌' | 'haccp'>('생산판매기록부');
+  /**
+   * 문서함에서 지금 고른 자리 — **생산판매기록부를 문서함에 얹기 위한 것.**
+   * 그 화면은 서류관리 화면 안 커다란 IIFE 안에서 만들어져서 밖으로 못 뺀다.
+   * 그래서 화면을 옮기는 대신 **문 위치를 옮겼다** — 문서함에서 서류관리 › 생산판매기록부를
+   * 고르면 파일 목록 자리에 그 서류가 뜬다.
+   */
+  const [cabinetSel, setCabinetSel] = useState<{ cat: string; sub: string }>({ cat: '', sub: '' });
+  const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부' | '거래명세서' | '생산작업기록부' | '벤조피렌' | 'haccp'>('생산판매기록부');
   const [docYearMonth, setDocYearMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [docLogMonth, setDocLogMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [bulkMfgDate, setBulkMfgDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -320,7 +327,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [openSheetBrand, setOpenSheetBrand] = useState<string | null>('시골향');
   const [sheetTitles, setSheetTitles] = useState<Record<string, string>>({});
   const [productionWorkMonth, setProductionWorkMonth] = useState(() => new Date().toISOString().slice(0, 7));
-  const [prodLedger2Month, setProdLedger2Month] = useState(() => new Date().toISOString().slice(0, 7));
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [notifPanelPos, setNotifPanelPos] = useState({ top: 0, left: 0 });
   const notifBtnRef = useRef<HTMLButtonElement>(null);
@@ -369,7 +375,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   //   전역 7일 구독을 제거했으므로, 이 화면 진입 시 재조회가 유일한 최신화 경로 —
   //   입고·반품·OEM·로트삭제 등 어디서 쓴 원장이든 진입 시점에 모두 반영된다.
   useEffect(() => {
-    if (docTab !== '원료수불부' && docTab !== '생산작업기록부' && docTab !== '생산작업기록부2' && currentView !== 'inventory') return;
+    if (docTab !== '원료수불부' && docTab !== '생산작업기록부' && currentView !== 'inventory') return;
     const to = new Date().toISOString().slice(0, 10);
     fetchDateRange<import('../../shared/types').RawMaterialEntry>('rawMaterialLedger', 'date', '2020-01-01', to)
       .then(setExtraRawMaterialLedger)
@@ -387,14 +393,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
   //   6월말 생성·7월초 배송 같은 경계 주문이 창 밖으로 빠져 누락. 해당 월 배송을 커버하도록
   //   이력 주문을 로드(생성일 버퍼: 전월 1일 ~ 당월 말일). allOrders에 병합돼 표시됨.
   useEffect(() => {
-    if (docTab !== '생산작업기록부' && docTab !== '생산작업기록부2' && docTab !== '원료수불부') return;
-    const ym = docTab === '생산작업기록부' ? productionWorkMonth : docTab === '생산작업기록부2' ? prodLedger2Month : docYearMonth;
+    if (docTab !== '생산작업기록부' && docTab !== '원료수불부') return;
+    const ym = docTab === '생산작업기록부' ? productionWorkMonth : docYearMonth;
     const [y, m] = ym.split('-').map(Number);
     if (!y || !m) return;
     const start = new Date(y, m - 2, 1).toISOString().slice(0, 10);   // 전월 1일 (생성일 버퍼)
     const end = new Date(y, m, 0).toISOString().slice(0, 10);         // 당월 말일
     loadHistoricalOrders(start, end);
-  }, [docTab, productionWorkMonth, prodLedger2Month, docYearMonth]);
+  }, [docTab, productionWorkMonth, docYearMonth]);
 
   // 거래명세서(전표): 미발행 주문은 예전 배송완료까지 다 떠야 하므로 주문 전체를 로드한다.
   //   orders 날짜창은 읽기 몇 백 건 아끼자고 건 건데, 그 때문에 미발행이 안 보이면 손해라 여기선 전체 조회.
@@ -633,7 +639,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // 서류용 통깨/깨분 참기름 사용량 — **생산작업기록부 getOutflow 로직 단일 원천**.
   //  품목 그룹 배합비(시골향1=통깨100 / 2+해내음=50:50 / 3=깨분100 / 4+가득찬순=20:80 / 하남댁+새싹+해달=통깨100),
   //  캔(kg규격)=그대로, ml/L=×0.92, 서류일=배송완료일(deliveredAt), 출고+배송 상태.
-  //  원료수불부·생산작업기록부·생산작업기록부2가 전부 이걸 공유해서 숫자가 항상 일치한다.
+  //  원료수불부·생산작업기록부가 전부 이걸 공유해서 숫자가 항상 일치한다.
   // 서류(원료수불부)용 기름 사용량 — 재고(BOM)와 **별개**로 판매분에서 다시 구한다.
   //   참기름: 아래 하드코딩 비율 (품목 원료식과 다른 값이 있어 손대지 않음)
   //   들기름: 품목 원료식(item_formula) 그대로 — 시골향들기름1=통들깨 100, 2=수입 9:통들깨 1 …
@@ -1355,6 +1361,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
     }
     return created;
   };
+
+  /** 문서함에서 '서류관리 › 생산판매기록부'를 펴 놓았나 */
+  const inCabinetDoc = currentView === 'file-cabinet'
+    && cabinetSel.cat === '서류관리' && cabinetSel.sub === '생산판매기록부';
+  useEffect(() => { if (inCabinetDoc) setDocTab('생산판매기록부'); }, [inCabinetDoc]);
 
   const handleNavClick = (view: ViewType) => {
     const adminOnlyViews: ViewType[] = ['hr', 'dashboard', 'ai-consultant', 'cost-management', 'profit-analysis', 'production', 'admin-checklist', 'smartstore-analytics', 'haccp-checklist', 'partner-stats', 'cash-flow', 'file-cabinet', 'ledger-cash', 'financial-reports'];
@@ -2188,7 +2199,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
           })()}
           {/* 거래처 목록도 회사별 — 공용 거래처는 양쪽에 다 뜬다(companyIds 배열) */}
           {currentView === 'partners' && <PartnerManager partners={companyPartners} onUpdateClient={(c) => updateItem('partners', c.id, c)} onAddClient={(c) => addItem('partners', { ...c, companyId })} onDeleteClient={(id) => deleteItem('partners', id)} />}
-          {currentView === 'file-cabinet' && <DocumentManager currentUser={{ id: currentUser.id, name: currentUser.name }} />}
+          {currentView === 'file-cabinet' && (
+            <DocumentManager
+              currentUser={{ id: currentUser.id, name: currentUser.name }}
+              seed={[{ category: '서류관리', subCategory: '생산판매기록부' }]}
+              onSelect={(cat, sub) => setCabinetSel({ cat, sub })}
+              /* 서류가 뜨는 자리엔 파일 목록을 안 띄운다 — 아래 서류관리 화면이 그 자리를 쓴다 */
+              hideDocs={inCabinetDoc}
+            />
+          )}
           {currentView === 'notice' && <NoticeBoard posts={noticePosts} onAddPost={(post) => addItem('notices', post)} />}
           {currentView === 'pallets' && (
             <PalletManager
@@ -2327,7 +2346,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           {currentView === 'partner-signup' && (
             <PartnerSignupApproval partners={partners} />
           )}
-          {currentView === 'documents' && (() => {
+          {(currentView === 'documents' || inCabinetDoc) && (() => {
             const SUB_ONLY_CATS = new Set(['container', 'cap', 'tape', 'box', 'label', 'raw']);
             const shippedOrders = orders.filter(o =>
               o.status === OrderStatus.SHIPPED &&
@@ -2614,18 +2633,22 @@ const AdminApp: React.FC<AdminAppProps> = ({
             return (
               <div className="space-y-5 animate-in slide-in-from-right-4 duration-500">
                 <div className="flex flex-col gap-4">
-                  <div className="hidden md:flex items-center justify-between pb-3 md:pb-4 border-b border-slate-200">
+                  {/* 문서함에서 열었으면 머리는 문서함이 이미 달았다 — 두 번 적지 않는다 */}
+                  <div className={`${inCabinetDoc ? 'hidden' : 'hidden md:flex'} items-center justify-between pb-3 md:pb-4 border-b border-slate-200`}>
                     <div>
                       <h2 className="text-base md:text-lg font-black text-slate-800 leading-tight truncate">서류 관리</h2>
                       <p className="text-[11px] md:text-xs text-slate-400 mt-0.5 truncate">생산·원료·작업 관련 서류를 조회하세요.</p>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <div className="flex flex-wrap gap-1 bg-white p-1 rounded-2xl border border-slate-200 shadow-sm">
-                      <button
-                        onClick={() => setDocTab('생산판매기록부')}
-                        className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '생산판매기록부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
-                      >생산판매기록부</button>
+                    <div className={`flex-wrap gap-1 bg-white p-1 rounded-2xl border border-slate-200 shadow-sm ${inCabinetDoc ? 'hidden' : 'flex'}`}>
+                      {/*
+                        서류는 **보는 사람 쪽에 둔다**(2026-09-01 사장님 지시).
+                          직원뷰  HACCP · 벤조피렌 · 원료수불부 · 생산작업기록부 — 현장에서 적고 보는 것
+                          관리자뷰 거래명세서만 — 나머지는 직원뷰나 문서함에 있다
+                          문서함  생산판매기록부 (서류관리 › 생산판매기록부)
+                        생산작업기록부2는 안 쓰기로 해서 통째로 걷어냈다.
+                      */}
                       {!isAdmin && (<>
                         <button
                           onClick={() => setDocTab('haccp')}
@@ -2635,8 +2658,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
                           onClick={() => setDocTab('벤조피렌')}
                           className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '벤조피렌' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
                         >벤조피렌 검사성적서</button>
-                      </>)}
-                      {isAdmin && (<>
                         <button
                           onClick={() => setDocTab('원료수불부')}
                           className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '원료수불부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
@@ -2645,14 +2666,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
                           onClick={() => setDocTab('생산작업기록부')}
                           className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '생산작업기록부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
                         >생산작업기록부</button>
-                        <button
-                          onClick={() => setDocTab('생산작업기록부2')}
-                          className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '생산작업기록부2' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
-                        >생산작업기록부2</button>
-                        <button
-                          onClick={() => setDocTab('벤조피렌')}
-                          className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '벤조피렌' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
-                        >벤조피렌 검사성적서</button>
                       </>)}
                     </div>
                     {/* 판매기록부 ↔ 원료수불부 대조 — 서류 기준일이 배송완료일 하나뿐이라,
@@ -2834,145 +2847,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         </button>
                       </div>
                     )}
-                    {docTab === '생산작업기록부2' && (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-3 py-1.5 shadow-sm">
-                          <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">년월</span>
-                          <input
-                            type="month"
-                            value={prodLedger2Month}
-                            onChange={e => setProdLedger2Month(e.target.value)}
-                            className="text-xs font-bold text-slate-700 bg-transparent outline-none cursor-pointer"
-                          />
-                        </div>
-                        <button
-                          onClick={async () => {
-                            const ExcelJSMod = (await import('exceljs')).default;
-                            const wb2 = new ExcelJSMod.Workbook();
-                            const [xl2Year, xl2Month] = prodLedger2Month.split('-').map(Number);
-                            const xl2Days = new Date(xl2Year, xl2Month, 0).getDate();
-                            // 생산작업기록부2도 원료수불부·생산작업기록부와 동일한 oilOutflowByDate 공유(캔 포함·전품목)
-                            const getOutflow2 = (day: number, type: string): number => {
-                              const ds = `${xl2Year}-${String(xl2Month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                              return (oilOutflowByDate[ds] as Record<string, number> | undefined)?.[type] ?? 0;
-                            };
-                            const getLEntry = (type: string, date: string) =>
-                              sesameInputLedger.find(e => e.type === type && e.date === date);
-                            // 입고 = 자동 압착 입고(rawMaterialLedger) → 원료수불부와 동일
-                            const getInflow2 = (day: number, type: string): number => {
-                              const ds = `${xl2Year}-${String(xl2Month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                              return (oilInflowByDate[ds] as Record<string, number> | undefined)?.[type] ?? 0;
-                            };
-                            const getInit2 = (type: string): number =>
-                              getLEntry(type, `${prodLedger2Month}-init`)?.amount || 0;
-                            const tStocks2: number[] = new Array(xl2Days + 1).fill(0);
-                            const gStocks2: number[] = new Array(xl2Days + 1).fill(0);
-                            let tSt2 = getInit2('통깨참기름'), gSt2 = getInit2('깨분참기름');
-                            let totTIn2 = 0, totTOut2 = 0, totGIn2 = 0, totGOut2 = 0;
-                            for (let day = 1; day <= xl2Days; day++) {
-                              const tIn = getInflow2(day, '통깨참기름');
-                              const tOut = getOutflow2(day, '통깨참기름');
-                              const gIn = getInflow2(day, '깨분참기름');
-                              const gOut = getOutflow2(day, '깨분참기름');
-                              tSt2 = tSt2 + tIn - tOut;
-                              gSt2 = gSt2 + gIn - gOut;
-                              tStocks2[day] = tSt2;
-                              gStocks2[day] = gSt2;
-                              totTIn2 += tIn; totTOut2 += tOut;
-                              totGIn2 += gIn; totGOut2 += gOut;
-                            }
-                            // A:일자 B:통깨입고 C:통깨출고 D:통깨재고 E:깨분입고 F:깨분출고 G:깨분재고 H:총입고 I:총출고 J:총재고
-                            const ws2 = wb2.addWorksheet('참기름수불부');
-                            ws2.columns = [
-                              { width: 6 }, { width: 7 }, { width: 7 }, { width: 7 },
-                              { width: 7 }, { width: 7 }, { width: 7 },
-                              { width: 7 }, { width: 7 }, { width: 7 },
-                            ];
-                            ws2.pageSetup = {
-                              paperSize: 9, orientation: 'landscape',
-                              fitToPage: true, fitToWidth: 1, fitToHeight: 1,
-                              margins: { left: 0.5, right: 0.5, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 },
-                            };
-                            const thin2: Partial<ExcelJSType.Borders> = {
-                              top:{style:'thin'}, bottom:{style:'thin'}, left:{style:'thin'}, right:{style:'thin'}
-                            };
-                            const hFill2: ExcelJSType.Fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFD9E1F2'} };
-                            const center2 = { horizontal: 'center' as const, vertical: 'middle' as const };
-                            // 제목 (행1)
-                            const titleRow = ws2.addRow([`참기름 원료 수불부  ${xl2Year}년 ${xl2Month}월`, '', '', '', '', '', '', '', '', '']);
-                            ws2.mergeCells('A1:J1');
-                            titleRow.getCell(1).font = { bold: true, size: 12 };
-                            titleRow.getCell(1).alignment = center2;
-                            titleRow.height = 22;
-                            ws2.addRow([]); // 행2 빈 줄
-                            // 헤더 행1 (행3): 일자 | 통깨참기름(3) | 깨분참기름(3) | 참기름총량(3)
-                            const h1 = ws2.addRow(['일자', '통깨참기름 (Kg)', '', '', '깨분참기름 (Kg)', '', '', '참기름 총량 (Kg)', '', '']);
-                            ws2.mergeCells('B3:D3'); ws2.mergeCells('E3:G3'); ws2.mergeCells('H3:J3');
-                            h1.eachCell(cell => { cell.font = { bold: true, size: 9 }; cell.fill = hFill2; cell.border = thin2; cell.alignment = center2; });
-                            h1.getCell(1).border = thin2;
-                            // 헤더 행2 (행4)
-                            const h2 = ws2.addRow(['', '입고', '출고', '재고', '입고', '출고', '재고', '입고', '출고', '재고']);
-                            h2.eachCell(cell => { cell.font = { bold: true, size: 9 }; cell.fill = hFill2; cell.border = thin2; cell.alignment = center2; });
-                            // 전기이월 (행5)
-                            const tInit = getInit2('통깨참기름');
-                            const gInit = getInit2('깨분참기름');
-                            const initRow = ws2.addRow(['전기이월', 0, 0, tInit, 0, 0, gInit, 0, 0, { formula: `D5+G5`, result: tInit + gInit }]);
-                            initRow.eachCell((cell, col) => { cell.border = thin2; cell.alignment = center2; cell.font = { size: 9, bold: true }; });
-                            // 데이터 행 (행6~)
-                            for (let day = 1; day <= xl2Days; day++) {
-                              const rn = day + 5; // 행 번호
-                              const prevRn = rn - 1;
-                              const tIn = getInflow2(day, '통깨참기름');
-                              const tOut = getOutflow2(day, '통깨참기름');
-                              const gIn = getInflow2(day, '깨분참기름');
-                              const gOut = getOutflow2(day, '깨분참기름');
-                              const tSt = tStocks2[day];
-                              const gSt = gStocks2[day];
-                              const r = ws2.addRow([
-                                day,
-                                tIn || 0,
-                                tOut || 0,
-                                { formula: `D${prevRn}+B${rn}-C${rn}`, result: tSt },
-                                gIn || 0,
-                                gOut || 0,
-                                { formula: `G${prevRn}+E${rn}-F${rn}`, result: gSt },
-                                { formula: `B${rn}+E${rn}`, result: tIn + gIn },
-                                { formula: `C${rn}+F${rn}`, result: tOut + gOut },
-                                { formula: `D${rn}+G${rn}`, result: tSt + gSt },
-                              ]);
-                              r.eachCell((cell, col) => { cell.border = thin2; cell.alignment = center2; cell.font = { size: 9 }; });
-                            }
-                            // 총량 행
-                            const lastDataRn = xl2Days + 5;
-                            const firstDataRn = 6;
-                            const totRow2 = ws2.addRow([
-                              '총 량',
-                              { formula: `SUM(B${firstDataRn}:B${lastDataRn})`, result: totTIn2 },
-                              { formula: `SUM(C${firstDataRn}:C${lastDataRn})`, result: totTOut2 },
-                              tStocks2[xl2Days],
-                              { formula: `SUM(E${firstDataRn}:E${lastDataRn})`, result: totGIn2 },
-                              { formula: `SUM(F${firstDataRn}:F${lastDataRn})`, result: totGOut2 },
-                              gStocks2[xl2Days],
-                              { formula: `SUM(H${firstDataRn}:H${lastDataRn})`, result: totTIn2 + totGIn2 },
-                              { formula: `SUM(I${firstDataRn}:I${lastDataRn})`, result: totTOut2 + totGOut2 },
-                              { formula: `D${lastDataRn + 1}+G${lastDataRn + 1}`, result: tStocks2[xl2Days] + gStocks2[xl2Days] },
-                            ]);
-                            totRow2.eachCell(cell => { cell.border = thin2; cell.font = { bold: true, size: 9 }; cell.fill = hFill2; cell.alignment = center2; });
-                            const buf2 = await wb2.xlsx.writeBuffer();
-                            const a2 = document.createElement('a');
-                            a2.href = URL.createObjectURL(new Blob([buf2], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
-                            a2.download = `참기름수불부_${prodLedger2Month}.xlsx`;
-                            a2.click();
-                          }}
-                          className="flex items-center space-x-2 bg-emerald-600 text-white px-5 py-2.5 rounded-2xl font-bold shadow hover:bg-emerald-700 transition-all text-sm"
-                        >
-                          <FileText size={16} />
-                          <span>엑셀 저장</span>
-                        </button>
-                      </div>
-                    )}
                   </div>
                 </div>
+
 
                 {docTab === '생산판매기록부' && isAdmin && (() => {
                   const allLogs = [...mergedProductionSalesLogs].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -3723,198 +3600,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   );
                 })()}
 
-                {docTab === '생산작업기록부2' && (() => {
-                  const [lm2Year, lm2Month] = prodLedger2Month.split('-').map(Number);
-                  const daysInMonth2 = new Date(lm2Year, lm2Month, 0).getDate();
-
-                  const parseVolL = (vol: string): number => {
-                    const sp = parseSpecUnit(vol);
-                    if (!sp) return 0;
-                    if (sp.unit === 'ml') return sp.value / 1000;
-                    if (sp.unit === 'l') return sp.value;
-                    return 0;
-                  };
-
-                  const getDayKg = (day: number, catKey: string): number => {
-                    let total = 0;
-                    allOrders
-                      .filter(o => [OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(o.status as OrderStatus))
-                      .forEach(order => {
-                        const ds = docDateOf(order);   // 판매기록부와 같은 기준일
-                        if (ds !== `${lm2Year}-${String(lm2Month).padStart(2, '0')}-${String(day).padStart(2, '0')}`) return;
-                        order.items.forEach(item => {
-                          // itemId가 바뀐 옛 주문은 이름으로 폴백 매칭
-                          const p = allItems.find(pr => pr.id === item.itemId) || allItems.find(pr => pr.name === item.name);
-                          if (!p || p.품목 !== catKey) return;
-                          const spec = (p.spec || '').toLowerCase();
-                          // kg 규격(벌크 캔, 예: 16.5kg)은 기름량 그대로, ml/L 규격은 밀도(0.92)로 환산
-                          const kg = spec.includes('kg')
-                            ? (parseFloat(spec) || 0) * item.quantity
-                            : parseVolL(p.spec || '') * item.quantity * 0.92;
-                          total += Math.round(kg);
-                        });
-                      });
-                    return total;
-                  };
-
-                  // 화면도 엑셀·원료수불부와 같은 oilOutflowByDate를 본다.
-                  //  (예전엔 여기 배합비가 따로 박혀 있어 표를 고쳐도 화면만 옛 숫자가 남았다)
-                  const getOutflow = (day: number, type: string): number => {
-                    const ds = `${prodLedger2Month}-${String(day).padStart(2, '0')}`;
-                    return (oilOutflowByDate[ds] as Record<string, number> | undefined)?.[type] ?? 0;
-                  };
-
-                  const getLedgerEntry = (type: string, date: string) =>
-                    sesameInputLedger.find(e => e.type === type && e.date === date);
-
-                  // 입고 = 자동 압착 입고(rawMaterialLedger) → 원료수불부와 동일
-                  const getInflow = (day: number, type: string): number => {
-                    const ds = `${prodLedger2Month}-${String(day).padStart(2, '0')}`;
-                    return (oilInflowByDate[ds] as Record<string, number> | undefined)?.[type] ?? 0;
-                  };
-
-                  const getInitStock = (type: string): number =>
-                    getLedgerEntry(type, `${prodLedger2Month}-init`)?.amount || 0;
-
-                  const saveEntry = async (type: string, date: string, amount: number) => {
-                    const existing = getLedgerEntry(type, date);
-                    if (existing) {
-                      await updateItem('sesameInputLedger', existing.id, { amount });
-                    } else {
-                      await addItem('sesameInputLedger', { type, date, amount });
-                    }
-                  };
-
-                  const tongkaeStocks: number[] = new Array(daysInMonth2 + 1).fill(0);
-                  const gaebbunStocks: number[] = new Array(daysInMonth2 + 1).fill(0);
-                  let tStock = getInitStock('통깨참기름');
-                  let gStock = getInitStock('깨분참기름');
-                  for (let day = 1; day <= daysInMonth2; day++) {
-                    tStock = tStock + getInflow(day, '통깨참기름') - getOutflow(day, '통깨참기름');
-                    gStock = gStock + getInflow(day, '깨분참기름') - getOutflow(day, '깨분참기름');
-                    tongkaeStocks[day] = tStock;
-                    gaebbunStocks[day] = gStock;
-                  }
-
-                  let totalTIn = 0, totalTOut = 0, totalGIn = 0, totalGOut = 0;
-                  for (let day = 1; day <= daysInMonth2; day++) {
-                    totalTIn += getInflow(day, '통깨참기름');
-                    totalTOut += getOutflow(day, '통깨참기름');
-                    totalGIn += getInflow(day, '깨분참기름');
-                    totalGOut += getOutflow(day, '깨분참기름');
-                  }
-
-                  return (
-                    <div className="space-y-4">
-                      <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
-                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-                          <span className="text-sm font-bold text-slate-700">참기름 원료 수불부</span>
-                          <span className="text-sm font-bold text-slate-500">{lm2Year}년 {lm2Month}월</span>
-                        </div>
-                        <table className="text-xs border-collapse w-full min-w-[720px]">
-                          <thead>
-                            <tr className="bg-slate-50">
-                              <th rowSpan={2} className="px-3 py-2.5 text-center text-[10px] font-black text-slate-500 border border-slate-200 w-12">일자</th>
-                              <th colSpan={3} className="px-3 py-2 text-center text-[10px] font-black text-slate-500 border border-slate-200">통깨참기름 (Kg)</th>
-                              <th colSpan={3} className="px-3 py-2 text-center text-[10px] font-black text-slate-500 border border-slate-200">깨분참기름 (Kg)</th>
-                              <th colSpan={3} className="px-3 py-2 text-center text-[10px] font-black text-slate-500 border border-slate-200">참기름 총량 (Kg)</th>
-                            </tr>
-                            <tr className="bg-slate-50">
-                              {['입고', '출고', '재고', '입고', '출고', '재고', '입고', '출고', '재고'].map((h, i) => (
-                                <th key={i} className="px-3 py-1.5 text-center text-[10px] font-black text-slate-400 border border-slate-200">{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <tr key={`init-${prodLedger2Month}`} className="bg-amber-50">
-                              <td className="px-3 py-1.5 text-center font-bold text-slate-600 border border-slate-200 text-[10px] whitespace-nowrap">전기이월</td>
-                              <td className="border border-slate-200" />
-                              <td className="border border-slate-200" />
-                              <td className="border border-slate-200 p-0">
-                                <input
-                                  key={`ti-${prodLedger2Month}-${getInitStock('통깨참기름')}`}
-                                  type="number"
-                                  defaultValue={getInitStock('통깨참기름') || ''}
-                                  onBlur={e => saveEntry('통깨참기름', `${prodLedger2Month}-init`, Number(e.target.value))}
-                                  className="w-full text-center text-xs font-bold text-amber-800 bg-transparent outline-none px-2 py-1.5"
-                                  placeholder="0"
-                                />
-                              </td>
-                              <td className="border border-slate-200" />
-                              <td className="border border-slate-200" />
-                              <td className="border border-slate-200 p-0">
-                                <input
-                                  key={`gi-${prodLedger2Month}-${getInitStock('깨분참기름')}`}
-                                  type="number"
-                                  defaultValue={getInitStock('깨분참기름') || ''}
-                                  onBlur={e => saveEntry('깨분참기름', `${prodLedger2Month}-init`, Number(e.target.value))}
-                                  className="w-full text-center text-xs font-bold text-amber-800 bg-transparent outline-none px-2 py-1.5"
-                                  placeholder="0"
-                                />
-                              </td>
-                              <td className="border border-slate-200" />
-                              <td className="border border-slate-200" />
-                              <td className="px-3 py-1.5 text-center font-bold text-amber-800 border border-slate-200">{getInitStock('통깨참기름') + getInitStock('깨분참기름') || ''}</td>
-                            </tr>
-                            {Array.from({ length: daysInMonth2 }, (_, i) => i + 1).map(day => {
-                              const dateStr = `${prodLedger2Month}-${String(day).padStart(2, '0')}`;
-                              const tIn = getInflow(day, '통깨참기름');
-                              const tOut = getOutflow(day, '통깨참기름');
-                              const tSt = tongkaeStocks[day];
-                              const gIn = getInflow(day, '깨분참기름');
-                              const gOut = getOutflow(day, '깨분참기름');
-                              const gSt = gaebbunStocks[day];
-                              return (
-                                <tr key={`${prodLedger2Month}-${day}`} className="border-b border-slate-100 hover:bg-slate-50/50">
-                                  <td className="px-3 py-1.5 text-center font-bold text-slate-600 border border-slate-100">{day}</td>
-                                  <td className="border border-slate-100 p-0">
-                                    <input
-                                      key={`t-in-${dateStr}-${tIn}`}
-                                      type="number"
-                                      defaultValue={tIn || ''}
-                                      onBlur={e => saveEntry('통깨참기름', dateStr, Number(e.target.value))}
-                                      className="w-full text-center text-xs text-slate-700 bg-transparent outline-none px-2 py-1.5"
-                                      placeholder="-"
-                                    />
-                                  </td>
-                                  <td className="px-3 py-1.5 text-center text-slate-700 border border-slate-100">{tOut > 0 ? tOut : '-'}</td>
-                                  <td className="px-3 py-1.5 text-center font-bold text-indigo-700 border border-slate-100">{tSt}</td>
-                                  <td className="border border-slate-100 p-0">
-                                    <input
-                                      key={`g-in-${dateStr}-${gIn}`}
-                                      type="number"
-                                      defaultValue={gIn || ''}
-                                      onBlur={e => saveEntry('깨분참기름', dateStr, Number(e.target.value))}
-                                      className="w-full text-center text-xs text-slate-700 bg-transparent outline-none px-2 py-1.5"
-                                      placeholder="-"
-                                    />
-                                  </td>
-                                  <td className="px-3 py-1.5 text-center text-slate-700 border border-slate-100">{gOut > 0 ? gOut : '-'}</td>
-                                  <td className="px-3 py-1.5 text-center font-bold text-indigo-700 border border-slate-100">{gSt}</td>
-                                  <td className="px-3 py-1.5 text-center text-slate-700 border border-slate-100">{tIn + gIn > 0 ? tIn + gIn : '-'}</td>
-                                  <td className="px-3 py-1.5 text-center text-slate-700 border border-slate-100">{tOut + gOut > 0 ? tOut + gOut : '-'}</td>
-                                  <td className="px-3 py-1.5 text-center font-bold text-indigo-800 border border-slate-100">{tSt + gSt}</td>
-                                </tr>
-                              );
-                            })}
-                            <tr className="bg-slate-50 font-bold border-t-2 border-slate-300">
-                              <td className="px-3 py-2 text-center text-slate-700 border border-slate-200">총 량</td>
-                              <td className="px-3 py-2 text-center text-slate-800 border border-slate-200">{totalTIn || '-'}</td>
-                              <td className="px-3 py-2 text-center text-slate-800 border border-slate-200">{totalTOut || '-'}</td>
-                              <td className="px-3 py-2 text-center text-indigo-800 border border-slate-200">{tongkaeStocks[daysInMonth2]}</td>
-                              <td className="px-3 py-2 text-center text-slate-800 border border-slate-200">{totalGIn || '-'}</td>
-                              <td className="px-3 py-2 text-center text-slate-800 border border-slate-200">{totalGOut || '-'}</td>
-                              <td className="px-3 py-2 text-center text-indigo-800 border border-slate-200">{gaebbunStocks[daysInMonth2]}</td>
-                              <td className="px-3 py-2 text-center text-slate-800 border border-slate-200">{(totalTIn + totalGIn) || '-'}</td>
-                              <td className="px-3 py-2 text-center text-slate-800 border border-slate-200">{(totalTOut + totalGOut) || '-'}</td>
-                              <td className="px-3 py-2 text-center text-indigo-800 border border-slate-200">{tongkaeStocks[daysInMonth2] + gaebbunStocks[daysInMonth2]}</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  );
-                })()}
               </div>
             );
           })()}
