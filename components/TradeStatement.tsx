@@ -1088,26 +1088,54 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     return d.toISOString().slice(0, 10);
   }, []);
 
+  /**
+   * 발행내역 온디맨드 fetch — **떠온 전표는 안 버린다.**
+   *
+   * 예전엔 조회 기간을 최근 7일로 좁히면 `setExtraStatements([])`로 통째로 비웠다.
+   * 그런데 이 목록은 **거래처 잔액의 근거**이기도 하다(partnerJournals → partnerBalances).
+   * 비우는 순간 옛 전표가 사라져 미수·미지급이 확 줄고, 일반전표 발행 화면이 보여주는
+   * 누적잔액이 거래처 누적잔액과 안 맞았다.
+   *
+   * 화면에 뭘 **보여줄지**는 아래 filteredHistory가 날짜로 거른다. 여기서 버릴 이유가 없다.
+   * 그래서 id로 합치기만 하고 지우지 않는다.
+   */
+  /**
+   * **잔액용 전체 적재 — 화면을 열 때 한 번.**
+   *
+   * 조회 기간이 '당일'로 시작하는데(histFrom = 오늘), 그 조건만 보면 옛 전표를 아예 안 떠온다.
+   * 그런데 거래처 잔액(partnerBalances)은 이 목록을 근거로 세므로, 안 떠오면 미수·미지급이
+   * 최근 7일치만 잡혀 거래처 누적잔액과 안 맞는다.
+   * 화면에 뭘 보여줄지는 filteredHistory가 날짜로 거른다 — 적재는 넉넉히 해 둔다.
+   */
+  useEffect(() => {
+    fetchDateRange<IssuedStatement>('issuedStatements', 'tradeDate', '2020-01-01', today())
+      .then(data => setExtraStatements(prev => {
+        const m = new Map(prev.map(x => [x.id, x]));
+        for (const x of data) m.set(x.id, { ...x, items: x.items ?? [], tradeDate: x.tradeDate ?? '', issuedAt: x.issuedAt ?? '' });
+        return [...m.values()];
+      }))
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     const from = histFrom || '2020-01-01';
     const to   = histTo   || today();
-    // 7일 이내면 props 데이터로 충분
-    if (from >= sevenDaysAgoCutoff) {
-      setExtraStatements([]);
-      fetchedRangeRef.current = null;
-      return;
-    }
-    // 동일 범위 재요청 방지
+    if (from >= sevenDaysAgoCutoff) return;          // 최근 7일은 props로 충분 — 더 안 떠온다
     if (fetchedRangeRef.current?.from === from && fetchedRangeRef.current?.to === to) return;
     setIsFetchingHistory(true);
     fetchDateRange<IssuedStatement>('issuedStatements', 'tradeDate', from, to)
       .then(data => {
-        setExtraStatements(data.map(s => ({
+        const fetched = data.map(s => ({
           ...s,
           items: s.items ?? [],
           tradeDate: s.tradeDate ?? '',
           issuedAt: s.issuedAt ?? '',
-        })));
+        }));
+        setExtraStatements(prev => {
+          const m = new Map(prev.map(x => [x.id, x]));
+          for (const x of fetched) m.set(x.id, x);   // 새로 떠온 게 최신
+          return [...m.values()];
+        });
         fetchedRangeRef.current = { from, to };
       })
       .finally(() => setIsFetchingHistory(false));
