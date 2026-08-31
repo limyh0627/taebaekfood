@@ -1539,7 +1539,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   <NavGroup title="장부 / 원장 관리" storageKey="ledger" collapsed={isSidebarCollapsed}>
                     <nav className="space-y-1">
                       {/* 자금 입출금·계좌관리는 전표 탭에도 있지만, 전표 매칭(수금 취소·재배분)은 여기서만 된다.
-                          '장부' 화면은 현금출납장·거래처원장 두 탭이라, 메뉴에서 각각의 탭을 바로 연다. */}
+                          두 장부는 한 화면(ledger-cash)을 ledgerTab으로 갈라 쓴다 — 여기가 유일한 전환 자리다. */}
                       <NavItem icon={Wallet} label="현금출납장" active={currentView === 'ledger-cash' && ledgerTab === 'cash'} onClick={() => { setLedgerTab('cash'); handleNavClick('ledger-cash'); }} collapsed={isSidebarCollapsed} hidden={!viewAllowed('ledger-cash')} />
                       <NavItem icon={BookOpen} label="거래처원장" active={currentView === 'ledger-cash' && ledgerTab === 'partner'} onClick={() => { setLedgerTab('partner'); handleNavClick('ledger-cash'); }} collapsed={isSidebarCollapsed} hidden={!viewAllowed('ledger-cash')} />
                       <NavItem icon={Package} label="제품별원장" active={currentView === 'item-ledger'} onClick={() => handleNavClick('item-ledger')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('item-ledger')} />
@@ -4087,22 +4087,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'ledger-cash' && (
             <div className="h-full overflow-y-auto">
+              {/* 탭을 없앴다 — 메뉴에서 현금출납장·거래처원장을 각각 여는데 화면 안에 또 탭이
+                  있으면 같은 일을 두 군데서 하게 된다. 어디를 눌러 왔는지도 헷갈린다.
+                  제목이 곧 어느 장부인지 말한다. */}
               <PageHeader
-                title="장부"
+                title={ledgerTab === 'cash' ? '현금출납장' : '거래처원장'}
                 subtitle={ledgerTab === 'cash'
-                  ? '현금출납장 — 통장·카드·현금의 실제 입출금과 잔액'
-                  : '거래처원장 — 거래처별 채권·채무와 결제 내역'}
+                  ? '통장·카드·현금의 실제 입출금과 잔액'
+                  : '거래처별 채권·채무와 결제 내역'}
               />
-              <div className="px-6 pt-4">
-                <div className="inline-flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
-                  {([['cash', '현금출납장'], ['partner', '거래처원장']] as const).map(([k, label]) => (
-                    <button key={k} onClick={() => setLedgerTab(k)}
-                      className={`px-4 py-2 rounded-lg text-xs font-black transition-all ${
-                        ledgerTab === k ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'
-                      }`}>{label}</button>
-                  ))}
-                </div>
-              </div>
               <div className="p-6">
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                   {ledgerTab === 'partner' ? (
