@@ -739,7 +739,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setPayScope('stmt');   // 기본은 '이 전표' — 누른 전표부터 갚는다
     //  기본값은 **이 전표에 남은 금액**. 총액을 박아 두면 이미 절반을 낸 전표에서도 전액이
     //  찍혀 또 나간다(카드대금 899,925이 두 번 나간 게 그 꼴이다).
-    setPayForm({ amount: String(Math.round(getBalance(stmt))), date: new Date().toISOString().slice(0, 10), method: '계좌이체', note: '' });
+    //  일자도 **그 전표 날짜**가 기본이다 — '이 전표'를 갚는 것이라 그날로 잡는 게 맞다.
+    //  오늘로 박아 두면 8/28 전표를 8/31에 열었을 때 날짜를 매번 고쳐야 한다.
+    setPayForm({ amount: String(Math.round(getBalance(stmt))), date: stmt.tradeDate || new Date().toISOString().slice(0, 10), method: '계좌이체', note: '' });
     setPayAccountId(prev => prev || activeCashAccounts[0]?.id || '');
   };
 
@@ -3958,7 +3960,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               const box = (scope: 'stmt' | 'partner', label: string, amount: number, hint: string) => {
                 const on = payScope === scope;
                 return (
-                  <button onClick={() => { setPayScope(scope); setPayForm(p => ({ ...p, amount: String(Math.round(amount)) })); }}
+                  <button onClick={() => {
+                      setPayScope(scope);
+                      //  '이 전표'면 그 전표 날짜, '거래처 잔액'이면 오늘 — 무엇을 갚는지에 날짜를 맞춘다
+                      setPayForm(p => ({ ...p, amount: String(Math.round(amount)),
+                        date: scope === 'stmt' ? (payTarget.tradeDate || p.date) : new Date().toISOString().slice(0, 10) }));
+                    }}
                     className={`flex-1 text-left rounded-xl px-3 py-2.5 border transition-all ${
                       on ? 'bg-indigo-50 border-indigo-400 ring-2 ring-indigo-300' : 'bg-slate-50 border-slate-200 hover:border-indigo-300'}`}>
                     <div className={`text-[10px] font-black uppercase tracking-widest ${on ? 'text-indigo-600' : 'text-slate-400'}`}>{label}</div>
