@@ -548,3 +548,42 @@ describe('거래처원장 기초이월', () => {
     expect(l.accrued).toBe(16_080_000);
   });
 });
+
+/**
+ * **갚을 것보다 많이 받으면 초과분은 채권 상계가 아니다.**
+ *
+ * 매출 초과 → 259 선수금(미리 받은 돈) · 매입 초과 → 131 선급금(미리 준 돈).
+ * 전액을 108/251에 몰면 채권·채무가 음수로 밀린다 — "안 진 빚을 갚았다"가 되는 자리다.
+ * 화면은 "초과분은 선수금으로 전환됩니다"라고 적어 놓고 실제로는 안 그랬다.
+ *
+ * 여기서는 그 자금전표가 만들어졌을 때 분개가 어떻게 서는지를 잠가 둔다.
+ */
+describe('초과수금·초과지급', () => {
+  const 초과수금 = {
+    ...entry('c-over', '2026-09-01', '입금', 1_000_000),
+    partnerId: 'p1',
+    lines: [
+      { accountCode: '108', amount: 700_000, note: '미수 상계' },
+      { accountCode: '259', amount: 300_000, note: '초과수금 — 선수금' },
+    ],
+  } as CashEntry;
+
+  it('상계분만 108을 줄이고, 초과분은 선수금으로 선다', () => {
+    const parts = partnerCashParts(초과수금);
+    //  108 줄만 채권 상계로 센다 — 259는 여기 안 걸린다
+    expect(parts.map(p => [p.code, p.reduce])).toEqual([['108', 700_000]]);
+  });
+
+  it('초과지급은 131 선급금으로 선다', () => {
+    const 초과지급 = {
+      ...entry('c-over2', '2026-09-01', '출금', 500_000),
+      partnerId: 'p1',
+      lines: [
+        { accountCode: '251', amount: 400_000, note: '미지급 상계' },
+        { accountCode: '131', amount: 100_000, note: '초과지급 — 선급금' },
+      ],
+    } as CashEntry;
+    const parts = partnerCashParts(초과지급);
+    expect(parts.map(p => [p.code, p.reduce])).toEqual([['251', 400_000]]);
+  });
+});

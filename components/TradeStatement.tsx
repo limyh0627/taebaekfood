@@ -24,7 +24,7 @@ import { AR, AP, journalizeStatement, journalizeTransfer, journalizeCashEntry, s
 import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, isCashDir, templateAccrRows, VOUCHER_DIRS, DIR_CHIP, DIR_HINT, CashTemplate, VoucherDir, SPLIT_MODES, splitModeOf } from '../src/shared/cashTemplates';
 import { canAutoIssue, autoVoucherId, issueDateOf } from '../src/shared/autoVoucher';
 import { buildCashEditPatch, cashEditSplit, cashEditAmount } from '../src/shared/cashEntryEdit';
-import { buildTransfer, splitTransfer, OverKind } from '../src/shared/interCompany';
+import { buildTransfer, splitTransfer, OverKind, PREPAID, ADVANCE_IN } from '../src/shared/interCompany';
 import VoucherTemplateManager from './VoucherTemplateManager';
 import type { JournalEntry } from '../src/shared/types';
 import { AccountModal } from './CashLedger';
@@ -717,10 +717,33 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       (stmt.items ?? []).map(i => i.accountCode).filter(Boolean) as string[]);
     const payCode = settlementAccountCode(first.type, itemCodes, groupTypeOf);
 
+    /*
+     * **갚을 것보다 많이 받았으면 그 초과분은 채권 상계가 아니다.**
+     *
+     * 매출 초과 → 259 선수금(미리 받은 돈, 부채) · 매입 초과 → 131 선급금(미리 준 돈, 자산).
+     * 예전엔 전액을 108/251에 몰아서 채권·채무가 음수로 밀렸다 —
+     * "안 진 빚을 갚았다"가 되는 자리다. 화면은 "초과분은 선수금으로 전환됩니다"라고
+     * 적어 놓고 실제로는 안 그랬으니, 안내가 거짓말을 하고 있었다.
+     *
+     * 초과 판정은 **거래처 잔액**으로 한다 — 돈은 전표가 아니라 거래처 채권·채무에서 빠진다.
+     */
+    const isSale = first.type !== '매입';
+    const pb0 = partnerBalances.get(first.partnerId);
+    const owed = Math.max(0, Math.round(isSale ? (pb0?.receivable ?? 0) : (pb0?.payable ?? 0)));
+    const settled = Math.min(total, owed);
+    const over = Math.round(total - settled);
+    const overCode = isSale ? ADVANCE_IN : PREPAID;
+
     const entryId = `cash-${Date.now()}`;
     onAddCashEntry({
       id: entryId,
-      ...(payCode ? { accountCode: payCode } : {}),
+      //  초과가 없으면 예전과 똑같은 한 줄짜리 모양 — 목록·분개·수정 어디서도 안 갈린다
+      ...(over > 0 && payCode
+        ? { lines: [
+            ...(settled > 0 ? [{ accountCode: payCode, amount: settled, note: isSale ? '미수 상계' : '미지급 상계' }] : []),
+            { accountCode: overCode, amount: over, note: isSale ? '초과수금 — 선수금' : '초과지급 — 선급금' },
+          ] }
+        : payCode ? { accountCode: payCode } : {}),
       date: opts.date,
       cashAccountId: acctId,
       dir: first.type === '매입' ? '출금' : '입금',
