@@ -1056,7 +1056,21 @@ export interface CashEntry {
    * dir·cashAccountId가 이미 정하므로 반대편만 여러 줄로 적는다.
    * 있으면 amount는 이 줄들의 합이고 accountCode는 쓰지 않는다. 없으면 기존대로 accountCode 한 줄.
    */
-  lines?: { accountCode: string; amount: number; note?: string }[];
+  lines?: {
+    accountCode: string;
+    /**
+     * **언제나 양수로 적는다.** 차·대는 `side`가 말한다.
+     *
+     * `side`가 없는 옛 줄은 **부호가 곧 차·대**였다 — 양수면 통장 반대편, 음수면
+     * 통장과 같은 편(급여 원천공제가 그 길). 그 규칙은 `dir`에 매달려 있어서
+     * 입금·출금을 바꾸면 모든 줄의 뜻이 조용히 뒤집혔다. 읽는 쪽은 아직 그 줄도
+     * 받아 주지만(옛 데이터 호환), **새로 쓸 땐 `side`를 넣는다.**
+     */
+    amount: number;
+    /** 차변이냐 대변이냐. 대체전표 줄(`IssuedStatementItem.side`)과 같은 모양이다. */
+    side?: '차변' | '대변';
+    note?: string;
+  }[];
   /** '대체' 전용 — 이 상계로 턴 상대. 나중에 되돌릴 때 짝을 찾는다. */
   offsetOf?: { ar: string; ap: string };
   note?: string;

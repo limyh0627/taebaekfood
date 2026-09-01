@@ -172,18 +172,29 @@ export function journalizeStatement(s: IssuedStatement, opts: AutoJournalOptions
  */
 export function journalizeCashEntry(e: CashEntry, cashAccountMap: Record<string, string> = {}): JournalEntry | null {
   const amt = r(e.amount ?? 0);
-  // 쪼갠 줄이 있으면 그쪽이 우선 — 대출상환이면 원금(차입금)·이자(비용)가 각각 선다.
-  //
-  // 줄 금액은 **부호를 가진다**. 음수면 통장과 같은 편에 선다.
-  //   급여 지급: 총급여 +3,000,000 / 예수금 -300,000 → 통장에서 나간 건 2,700,000
-  //     (차) 급여 3,000,000  (대) 예수금 300,000 + 보통예금 2,700,000
-  //   이게 없으면 급여를 전표 두 건(출금·입금)으로 쪼개야 해서 목록에 두 줄로 보인다.
-  const split = (e.lines ?? []).filter(l => l.accountCode && r(l.amount) !== 0);
+  /*
+   * 쪼갠 줄이 있으면 그쪽이 우선 — 대출상환이면 원금(차입금)·이자(비용)가 각각 선다.
+   *   급여 지급: 총급여 3,000,000(차변) / 예수금 300,000(대변) → 통장에서 나간 건 2,700,000
+   *     (차) 급여 3,000,000  (대) 예수금 300,000 + 보통예금 2,700,000
+   *   이게 없으면 급여를 전표 두 건(출금·입금)으로 쪼개야 해서 목록에 두 줄로 보인다.
+   *
+   * **차·대를 읽는 길이 둘이다.**
+   *   `side`가 있으면 그게 답이다(새로 쓰는 줄).
+   *   없으면 옛 규칙 — 부호가 곧 차·대다. 양수면 통장 반대편, 음수면 통장과 같은 편.
+   *
+   * 옛 규칙은 뜻이 `dir`에 매달려 있어서, 같은 +3,000,000이 출금이면 차변 입금이면
+   * 대변이었다. `dir`을 바꾸면 모든 줄이 조용히 뒤집힌다. 그래서 `side`로 옮긴다.
+   * 아래 계산은 전부 **부호 있는 값**으로 돌므로, side를 부호로 한 번 바꿔 놓고 시작한다.
+   */
+  const positiveSide = e.dir === '입금' ? '대변' : '차변';   // 부호가 양수인 쪽
+  const signed = (l: { amount: number; side?: '차변' | '대변' }): number =>
+    (l.side ? (l.side === positiveSide ? 1 : -1) * Math.abs(r(l.amount)) : r(l.amount));
+  const split = (e.lines ?? []).filter(l => l.accountCode && signed(l) !== 0);
   if (!split.length && (!amt || !e.accountCode)) return null;
   //  줄 적요(note)를 같이 들고 간다 — 전표 양식의 '적요' 칸이 이걸 쓴다.
   //  차·대 판정에는 안 쓰이므로 금액은 그대로다. 없으면 전표 비고로 떨어진다.
   const parts = split.length
-    ? split.map(l => ({ accountCode: l.accountCode, amount: r(l.amount), note: l.note }))
+    ? split.map(l => ({ accountCode: l.accountCode, amount: signed(l), note: l.note }))
     : [{ accountCode: e.accountCode!, amount: amt, note: e.note }];
   // 통장 쪽은 반드시 줄 합계와 같아야 차·대가 맞는다(amount가 어긋나도 분개는 안 깨진다).
   const total = sum(parts.map(p => p.amount));

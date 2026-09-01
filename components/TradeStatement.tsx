@@ -4576,15 +4576,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             const cashLine = cashLines[0];
             const others = accrLines.filter(l => l !== cashLine);
             const dir = cashLine.side === '대변' ? '출금' : '입금';
-            //  통장 반대편이 양수 — journalizeCashEntry가 음수 줄을 통장과 같은 편으로 세운다
-            const normalSide = dir === '입금' ? '대변' : '차변';
             onAddCashEntry({
               id: `cash-${Date.now()}`, dir, amount: cashLine.total,
               cashAccountId: quickPayAccountId,
+              //  차·대는 side 가 말한다 — 금액은 언제나 양수다(부호로 뜻을 싣지 않는다)
               ...(others.length > 1
                 ? { lines: others.map(l => ({
                     accountCode: l.accountCode, note: l.name,
-                    amount: l.total * (l.side === normalSide ? 1 : -1),
+                    amount: Math.abs(l.total), side: l.side,
                   })) }
                 : { accountCode: others[0].accountCode }),
               ...(quickPayNote.trim() ? { note: quickPayNote.trim() } : { note: others[0]?.name ?? '' }),
@@ -4651,7 +4650,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           const memo = quickPayNote.trim() || '급여';
           const lines = [
             { accountCode: SALARY_CODE, amount: grs, note: '총급여' },
-            ...(ded > 0 ? [{ accountCode: WITHHOLD_CODE, amount: -ded, note: '원천공제' }] : []),
+            //  공제는 통장과 같은 편(출금인데 대변) — 예전엔 음수로 실었다
+            ...(ded > 0 ? [{ accountCode: WITHHOLD_CODE, amount: ded, side: '대변' as const, note: '원천공제' }] : []),
           ];
           return {
             id: `cash-${Date.now()}`, dir: '출금', amount: net,
@@ -4739,11 +4739,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const cashSplitLines = qpCashRows
           .map(r => ({
             accountCode: r.accountCode ?? '',
-            amount: (cashSingleAuto ? plainAmt : Number(r.price || 0)) * ((r.side ?? normalSide) === normalSide ? 1 : -1),
+            amount: cashSingleAuto ? plainAmt : Number(r.price || 0),
+            side: (r.side ?? normalSide) as '차변' | '대변',
             note: r.note.trim() || undefined,
           }))
           .filter(l => l.accountCode && l.amount !== 0);
-        const cashSplitSum = cashSplitLines.reduce((a, l) => a + l.amount, 0);
+        //  차·대가 맞는지는 **부호로 세어** 본다 — 통장 줄까지 세면 0이 되어야 한다
+        const cashSplitSum = cashSplitLines.reduce((a, l) => a + l.amount * (l.side === normalSide ? 1 : -1), 0);
         const cashSplitOk = cashSplitLines.length > 0 && Math.abs(cashSplitSum - plainAmt) < 0.5;
 
         const canSave = qpDir === '회사이체' ? (advAmt > 0 && !!onAddForCompany)

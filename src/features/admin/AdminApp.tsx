@@ -2298,7 +2298,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   ...(deduct > 0
                     ? { lines: [
                         { accountCode: salaryCode, amount: gross, note: '총급여' },
-                        { accountCode: withholdCode, amount: -deduct, note: '원천공제' },
+                        //  공제는 통장과 같은 편(출금인데 대변) — 부호가 아니라 side 로 적는다
+                        { accountCode: withholdCode, amount: deduct, side: '대변' as const, note: '원천공제' },
                       ] }
                     : { accountCode: salaryCode }),
                   note, createdAt: new Date().toISOString(),

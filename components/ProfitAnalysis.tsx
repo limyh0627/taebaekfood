@@ -1287,8 +1287,8 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             partnerId: offsetForm.id, partnerName: offsetForm.name,
             // 양수 = 차변, 음수 = 대변
             lines: [
-              { accountCode: '251', amount: amt },    // (차) 외상매입금 — 줄 돈이 준다
-              { accountCode: '108', amount: -amt },   // (대) 외상매출금 — 받을 돈이 준다
+              { accountCode: '251', amount: amt, side: '차변' as const },   // 외상매입금 — 줄 돈이 준다
+              { accountCode: '108', amount: amt, side: '대변' as const },   // 외상매출금 — 받을 돈이 준다
             ],
             note: `${offsetForm.name} 미수·미지급 상계`,
             createdAt: stampFor(offsetForm.date),

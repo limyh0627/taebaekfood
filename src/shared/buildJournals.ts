@@ -57,5 +57,22 @@ export function buildJournals(input: BuildJournalsInput): BuildJournalsResult {
     entries.push(...journalizeInventory(inventorySnapshots, baseline, opening?.date?.slice(0, 7)));
   }
 
+  /*
+   * **한 줄에 차·대가 둘 다 서면 안 된다.**
+   *
+   * JournalLine 은 `debit`·`credit` 두 칸인데, 타입은 "둘 중 하나만" 을 못 막는다.
+   * 둘 다 차 있으면 시산표 합계는 맞아 보이면서 그 줄만 뜻이 없어진다 —
+   * 조용히 틀리는 자리라 여기서 걸러 낸다. 차·대가 안 맞는 분개도 같이 본다.
+   */
+  for (const je of entries) {
+    const bad = (je.lines ?? []).find(l => (l.debit ?? 0) > 0 && (l.credit ?? 0) > 0);
+    if (bad) skipped.push({ sourceType: je.sourceType, id: je.sourceId ?? je.id,
+      reason: `한 줄에 차·대가 둘 다 있습니다 (${bad.accountCode})` });
+    const dr = (je.lines ?? []).reduce((a, l) => a + (l.debit ?? 0), 0);
+    const cr = (je.lines ?? []).reduce((a, l) => a + (l.credit ?? 0), 0);
+    if (Math.round(dr - cr) !== 0) skipped.push({ sourceType: je.sourceType, id: je.sourceId ?? je.id,
+      reason: `차변 ${Math.round(dr).toLocaleString()}원과 대변 ${Math.round(cr).toLocaleString()}원이 다릅니다` });
+  }
+
   return { entries, skipped };
 }
