@@ -14,6 +14,7 @@ import { filterCodesForContext, isCashAccountCode } from '../src/features/admin/
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { useVoucherLedger } from '../src/features/admin/useVoucherLedger';
 import CashEntryModal, { type CashModalMode, type SettleInput } from './voucher/CashEntryModal';
+import RecurringModal from './voucher/RecurringModal';
 import { stampFor, timeOfLocal, issuedMs, nextDocNo } from '../src/shared/voucherStamp';
 import { buildJournals } from '../src/shared/buildJournals';
 import type { VoucherKind } from '../src/shared/vouchers';
@@ -330,16 +331,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [payAccountId, setPayAccountId] = useState('');
   const [quickPayAccountId, setQuickPayAccountId] = useState('');
 
-  // ── 정기 고정비 생성 ──
+  //  템플릿 창 — 열고 닫는 것만 화면이 쥔다. 대상 월·진행 상태는 창 안의 일이다.
   const [showRecurring, setShowRecurring] = useState(false);
-  const [recurringYm, setRecurringYm] = useState(today().slice(0, 7));
-  const [recurringMsg, setRecurringMsg] = useState('');
-  const [recurringBusy, setRecurringBusy] = useState(false);
-  // 정기비용 템플릿 추가 폼 (거래명세서 안에서 바로 관리)
-  const [tplForm, setTplForm] = useState<{ name: string; amount: string; accountCode: string; partnerId: string; startYm: string }>({ name: '', amount: '', accountCode: '', partnerId: '', startYm: '' });
-  const [tplBusy, setTplBusy] = useState(false);
-  const [tplEditId, setTplEditId] = useState<string | null>(null);
-  const [tplEditAmt, setTplEditAmt] = useState('');
   /**
    * **발행하면서 바로 수금·지불한다.** 현금·계좌로 그 자리에서 받는 거래가 많은데,
    * 전표를 끊고 목록에서 다시 찾아 수금처리를 누르는 건 같은 일을 두 번 하는 것이다.
@@ -3288,7 +3281,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         </button>
         {onGenerateRecurringCosts && (
           <button
-            onClick={() => { setShowRecurring(true); setRecurringYm(today().slice(0, 7)); setRecurringMsg(''); }}
+            onClick={() => setShowRecurring(true)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-violet-600 text-white hover:bg-violet-500 shadow-sm shadow-violet-200 transition-all"
             title="전표 템플릿 — 목록 관리 · 매달 자동 발행 설정"
           >
@@ -3832,113 +3825,21 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       {/* ── 빠른 수금/지불 모달 ── */}
 
       {/* ── 정기 고정비 생성 모달 ── */}
-      {showRecurring && (() => {
-        // 자동 발행 대상 — AdminApp·스케줄러와 같은 판정(shared/autoVoucher)
-        const due = fixedCostTemplates.filter(t => canAutoIssue(t, recurringYm));
-        const alreadyDone = (t: FixedCostTemplate) => {
-          const key = autoVoucherId(t, recurringYm);
-          return mergedStatements.some(s => s.id === key || (s as any).orderId === key)
-            || cashEntries.some(e => e.id === key);
-        };
-        const pending = due.filter(t => !alreadyDone(t));
-        const total = pending.reduce((a, t) => a + t.amount, 0);
-
-        /** 한 줄만 발행 — 통째로 내면 뭘 냈는지 안 남는다. 어느 것을 낼지 골라야 한다. */
-        const runOne = async (t: FixedCostTemplate) => {
-          if (!onGenerateRecurringCosts || recurringBusy) return;
-          setRecurringBusy(true);
-          try {
-            const n = await onGenerateRecurringCosts(recurringYm, t.id);
-            setRecurringMsg(n > 0 ? `${t.name} 발행했습니다.` : `${t.name} — 이미 발행돼 있습니다.`);
-          } catch (e) {
-            setRecurringMsg(`발행 실패: ${(e as Error)?.message ?? String(e)}`);
-          } finally {
-            setRecurringBusy(false);
-          }
-        };
-
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setShowRecurring(false)}>
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl p-6 space-y-4 max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between">
-                <h3 className="text-base font-black text-slate-800">템플릿</h3>
-                <button onClick={() => setShowRecurring(false)} className="text-slate-300 hover:text-slate-500"><X size={18} /></button>
-              </div>
-              <p className="text-[11px] text-slate-400 leading-snug">
-                일반전표 발행에서 고르는 <b>템플릿</b> 목록입니다. 스위치를 켜면 매달 정한 날에
-                저절로 발행됩니다(앱을 안 켜도 됩니다). 새 템플릿은 일반전표 발행에서 <b>[템플릿으로 저장]</b>으로 만듭니다.
-              </p>
-
-              {/* 목록·수정은 한 곳에서만 — 여러 화면에 두면 어느 게 진짜인지 흐려진다 */}
-              <VoucherTemplateManager
-                templates={fixedCostTemplates}
-                accountCodes={accountCodes}
-                partners={partners}
-                onUpdate={onUpdateFixedCostTemplate}
-                onDelete={onDeleteFixedCostTemplate}
-                onCreate={onAddFixedCostTemplate}
-                compact
-              />
-
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">대상 월</label>
-                <input type="month" value={recurringYm}
-                  onChange={e => { setRecurringYm(e.target.value); setRecurringMsg(''); }}
-                  className="border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-violet-300" />
-              </div>
-
-              {due.length === 0 ? (
-                <p className="text-[11px] font-bold text-amber-700 bg-amber-50 rounded-xl px-4 py-3">
-                  이 달에 자동 발행할 것이 없습니다. 위 목록에서 스위치를 켜세요.
-                </p>
-              ) : (
-                <div className="space-y-1.5">
-                  {due.map(t => {
-                    const done = alreadyDone(t);
-                    const ac = accountCodes.find(c => c.code === t.accountCode);
-                    return (
-                      <div key={t.id} className={`flex items-center gap-3 rounded-xl px-4 py-2.5 ${done ? 'bg-slate-50 opacity-50' : 'bg-violet-50/60'}`}>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-black text-slate-800 truncate">{t.name}</p>
-                          <p className="text-[10px] text-slate-400">
-                            {t.accountCode} {ac?.name ?? ''}{t.partnerName ? ` · ${t.partnerName}` : ''}
-                          </p>
-                        </div>
-                        {/* 나가는 날 — 안 보이면 언제 서는 전표인지 모른다(issueDay 31은 말일로 친다) */}
-                        <span className="text-[10px] font-black text-slate-400 tabular-nums shrink-0">{issueDateOf(recurringYm, t.issueDay)}</span>
-                        <p className="text-xs font-black text-slate-700 tabular-nums shrink-0 w-24 text-right">{fmt(t.amount)}</p>
-                        {done ? (
-                          <span className="text-[10px] font-black px-2.5 py-1 rounded-lg shrink-0 bg-slate-200 text-slate-500">발행됨</span>
-                        ) : (
-                          <button onClick={() => runOne(t)} disabled={recurringBusy}
-                            className="text-[10px] font-black px-2.5 py-1 rounded-lg shrink-0 bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-40 transition-all">
-                            발행
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {pending.length > 0 && (
-                <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-                  <span className="text-[11px] font-bold text-slate-400">{pending.length}건 생성 예정</span>
-                  <span className="text-base font-black text-slate-800">합계 {fmt(total)}원</span>
-                </div>
-              )}
-
-              {recurringMsg && (
-                <p className="text-[11px] font-black text-emerald-700 bg-emerald-50 rounded-xl px-4 py-2.5">{recurringMsg}</p>
-              )}
-
-              {/* 통째로 내는 버튼은 없앴다 — 줄마다 발행한다 */}
-              <button onClick={() => setShowRecurring(false)}
-                className="w-full py-2.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-black hover:bg-slate-200 transition-all">닫기</button>
-            </div>
-          </div>
-        );
-      })()}
+      {showRecurring && (
+        <RecurringModal
+          templates={fixedCostTemplates}
+          accountCodes={accountCodes}
+          partners={partners}
+          //  같은 열쇠로 전표·자금 양쪽을 본다 — 어느 쪽으로 났든 두 번 내면 안 된다
+          isIssued={key => mergedStatements.some(s => s.id === key || s.orderId === key)
+            || cashEntries.some(e => e.id === key)}
+          onClose={() => setShowRecurring(false)}
+          onGenerate={onGenerateRecurringCosts}
+          onCreateTemplate={onAddFixedCostTemplate}
+          onUpdateTemplate={onUpdateFixedCostTemplate}
+          onDeleteTemplate={onDeleteFixedCostTemplate}
+        />
+      )}
 
       {showQuickPay && (() => {
         // 방향으로 상계 대상 전표 유형 결정 — 입금→매출(미수), 출금→매입(미지급)
