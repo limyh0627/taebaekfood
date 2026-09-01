@@ -169,6 +169,9 @@ export const CASH_TEMPLATES: CashTemplate[] = [
 
   // 사는 것 · 사장님 돈
   { id: 'deposit', label: '보증금',   dir: '출금', mode: '일반', accountCode: '232' },
+  //  미리 준 물건값 — **초과지급도 여기로 간다.** 갚을 게 없는데 더 보냈으면 그건 채무 상계가
+  //  아니라 선급금(자산)이다. 251을 음수로 미는 건 "안 진 빚을 갚았다"가 된다.
+  { id: 'prepaid', label: '선급금',   dir: '출금', mode: '일반', accountCode: '131', wantsPartner: true, hint: '초과지급·선지급' },
   { id: 'machine', label: '기계구입', dir: '출금', mode: '일반', accountCode: '206' },
   { id: 'draw',    label: '인출금',   dir: '출금', mode: '일반', accountCode: '338' },
 

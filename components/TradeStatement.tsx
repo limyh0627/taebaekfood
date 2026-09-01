@@ -566,6 +566,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setQuickPayDropOpen(true);
   };
   /**
+   * 템플릿을 골라 둔 채로 분개를 손대면 물어본다.
+   * 고른 템플릿과 다른 전표가 되는데도 머리엔 그 이름이 그대로 남으면,
+   * 나중에 목록에서 "이건 무슨 전표지"가 된다. 예라고 하면 직접입력으로 푼다.
+   */
+  const askTemplateBreak = (go: () => void) => {
+    if (!qpTemplateId) { go(); return; }
+    if (!window.confirm('정해진 템플릿과 분개가 달라집니다.\n직접작성으로 바꿀까요?')) return;
+    setQpTemplateId(null);
+    go();
+  };
+  /**
    * 지금 쓰는 템플릿 — **고른 것만.** 안 골랐으면 없다(직접입력).
    *
    * 예전엔 계정과목으로 짐작했다(activeTemplate). 그러다 보니 직접입력으로 255 부가세예수금을
@@ -5298,6 +5309,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               {(() => {
                 const entries = previewEntries();
                 if (!entries.length) return null;
+                /*
+                 * **표가 이미 분개 전체를 보여 주면 여기선 안 띄운다.**
+                 * 위 계정·금액 표에 통장 줄까지 들어가 있어서, 상계가 없고 갈래도 단순하면
+                 * 같은 걸 두 번 보게 된다. 상계가 끼거나 상환·급여·보험처럼 줄이 갈리는
+                 * 갈래에서만 띄운다 — 그때는 표만 봐선 결과를 못 읽는다.
+                 */
+                if (isCashDir(qpDir) && qpMode === '일반' && offsetAmt <= 0 && entries.length === 1) return null;
                 return (
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/70 overflow-hidden">
                     <div className="px-4 py-2 border-b border-slate-200 flex items-center gap-2">
