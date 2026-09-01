@@ -12,6 +12,7 @@ import * as ExcelJS from 'exceljs';
 import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentMethod, AccountCode, AccountGroup, CashAccount, CashEntry, Settlement, FixedCostTemplate, CompanyId } from '../types';
 import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchCollection } from '../src/shared/services/firebaseService';
+import { partnerPriceWrites } from '../src/shared/partnerPriceSync';
 import { useVoucherLedger } from '../src/features/admin/useVoucherLedger';
 import CashEntryModal, { type CashModalMode, type SettleInput } from './voucher/CashEntryModal';
 import RecurringModal from './voucher/RecurringModal';
@@ -1340,6 +1341,23 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const missingAccountCodes = lineItems.filter(i => !i.accountCode);
   const canIssue = lineItems.length > 0 && !!selectedClientId && (manualMode || !!selectedOrderId);
 
+  /**
+   * 전표에 찍힌 단가·계정을 **거래처 단가로 되민다.**
+   *
+   * 셈은 `shared/partnerPriceSync` 한 곳에 있다. 여기서는 그 답을 쓰기만 한다 —
+   * 예전엔 발행-매출 · 발행-매입 · 수정-매입 세 벌로 쓰여 있었고 셋이 서로 달랐다.
+   * (수정이 "이번 전표에만"을 무시했고, 수정에는 매출이 통째로 없었다.)
+   */
+  const applyPriceSync = useCallback((type: string) => {
+    if (!onUpsertPartnerItem) return;
+    const { upserts, costUpdates } = partnerPriceWrites({
+      type, partnerId: selectedClientId, lines: lineItems, items: allItems,
+      partnerItems: [...partnerOut, ...partnerIn], noLinkIds,
+    });
+    for (const u of upserts) onUpsertPartnerItem(u);
+    for (const c of costUpdates) onUpdateItemCost?.(c.itemId, c.price);
+  }, [onUpsertPartnerItem, onUpdateItemCost, selectedClientId, lineItems, allItems, partnerOut, partnerIn, noLinkIds]);
+
   /** 전표를 만들고 **그 전표를 돌려준다** — 발행하면서 바로 수금·지불하려면 그 객체가 필요하다. */
   const markIssued = useCallback((): IssuedStatement | null => {
     if (!selectedClientId || lineItems.length === 0) return null;
@@ -1396,42 +1414,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         }
       }
     }
-    // 매출전표 발행 시 매출단가/계정 자동 저장 (partner_item canonical price = 매출단가)
-    if (stmtType === '매출' && onUpsertPartnerItem) {
-      for (const item of lineItems) {
-        if (!item.price || item.price <= 0) continue;
-        const product = allItems.find(p => p.name === item.name || p.품목 === item.name);
-        if (!product || !selectedClientId) continue;
-        if (noLinkIds.has(product.id)) continue;   // 피커에서 "아니요" — 이번 전표에만 쓴다
-        const pc = partnerOut.find(p => (p.itemId) === product.id && (p.partnerId) === selectedClientId);
-        const pcId = pc?.id ?? `${product.id}_${selectedClientId}_out`;
-        const priceChanged = !pc || pc.price !== item.price;
-        const accountChanged = !!(item.accountCode && pc?.Account_Code !== item.accountCode);
-        if (priceChanged || accountChanged) {
-          //  전표에 찍힌 과세/면세를 거래처 단가와 **같이** 저장한다 — 예전엔 옛 값을 그대로
-        //  물려주기만 해서, 전표에서 면세로 끊어도 거래처엔 과세로 남아 다음 전표가 또 과세로 열렸다.
-        onUpsertPartnerItem({ ...(pc ?? {}), id: pcId, itemId: product.id, partnerId: selectedClientId, Direction: 'out' as const, price: item.price, taxType: item.isTaxExempt ? '면세' : '과세', Account_Code: item.accountCode || pc?.Account_Code });
-        }
-      }
-    }
+    //  전표에 찍힌 단가·계정을 거래처 단가로 되민다 — 발행이든 수정이든 같은 셈이다
+    //  (shared/partnerPriceSync). 예전엔 세 벌로 쓰여 있어 서로 갈렸다.
+    applyPriceSync(stmtType);
     // (원본 주문 자동반영 기능 제거됨 — 전표 편집은 원본 주문을 건드리지 않는다.
     //  박스→낱개 변환 때문에 낱개가 주문에 이중으로 붙는 문제도 함께 방지.)
-    // 매입전표 발행 시 원가/계정 자동 저장 (partner_item canonical price = 원가, items.cost 동기화)
-    // 가드 없이 항상 동기화 — 구독(partnerIn) 지연으로 직전 저장값과 비교가 빗나가 누락되는 문제 방지
-    if (stmtType === '매입' && onUpsertPartnerItem) {
-      for (const item of lineItems) {
-        if (!item.price || item.price <= 0) continue;
-        const product = allItems.find(p => p.name === item.name || p.품목 === item.name);
-        if (!product || !selectedClientId) continue;
-        if (noLinkIds.has(product.id)) continue;   // 피커에서 "아니요" — 이번 전표에만 쓴다
-        const existing = partnerIn.find(s => (s.itemId) === product.id && (s.partnerId) === selectedClientId);
-        const psId = existing?.id ?? `${product.id}_${selectedClientId}_in`;
-        //  전표에 찍힌 과세/면세를 거래처 단가와 **같이** 저장한다 — 예전엔 옛 값을 그대로
-        //  물려주기만 해서, 전표에서 면세로 끊어도 거래처엔 과세로 남아 다음 전표가 또 과세로 열렸다.
-        onUpsertPartnerItem({ ...(existing ?? {}), id: psId, itemId: product.id, partnerId: selectedClientId, Direction: 'in' as const, price: item.price, taxType: item.isTaxExempt ? '면세' : '과세', Account_Code: item.accountCode || existing?.Account_Code });
-        onUpdateItemCost?.(product.id, item.price);
-      }
-    }
     return stmt;
   }, [manualMode, selectedOrderId, selectedClientId, tradeDate, stmtType, selectedClient, docNo, totalSupply, totalTax, totalAmount, lineItems, onMarkInvoicePrinted, onAddIssuedStatement, onAddConfirmedOrder, onRemoveConfirmedOrder, onRemoveOrderRequest, onCreateInboundPO, onLinkPurchaseOrder, loadedPoIds, allItems, confirmedOrders, orderRequests, partnerOut, partnerIn, onUpsertPartnerItem, onUpdateItemCost, onUpdateOrder, selectedOrder, manualItems]);
 
@@ -1497,21 +1484,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     // 거래명세서 탭에서의 수정은 즉시 반영 (확인사항 안 거침)
     // ※ 입고대기 발주카드 수정 → 연결된 전표 수정요청은 AdminApp.handleRequestPoEdit 경로(별도)
     onUpdateIssuedStatement?.(editingStmt.id, proposed);
-    // 매입전표면 원가/매입단가 동기화 (markIssued와 동일)
-    if (editingStmt.type === '매입' && onUpsertPartnerItem) {
-      for (const item of lineItems) {
-        if (!item.price || item.price <= 0) continue;
-        const product = allItems.find(p => p.name === item.name || p.품목 === item.name);
-        if (!product || !selectedClientId) continue;
-        const existing = partnerIn.find(s => (s.itemId) === product.id && (s.partnerId) === selectedClientId);
-        const psId = existing?.id ?? `${product.id}_${selectedClientId}_in`;
-        // 가드 없이 항상 동기화 (구독 지연으로 인한 누락 방지)
-        //  전표에 찍힌 과세/면세를 거래처 단가와 **같이** 저장한다 — 예전엔 옛 값을 그대로
-        //  물려주기만 해서, 전표에서 면세로 끊어도 거래처엔 과세로 남아 다음 전표가 또 과세로 열렸다.
-        onUpsertPartnerItem({ ...(existing ?? {}), id: psId, itemId: product.id, partnerId: selectedClientId, Direction: 'in' as const, price: item.price, taxType: item.isTaxExempt ? '면세' : '과세', Account_Code: item.accountCode || existing?.Account_Code });
-        onUpdateItemCost?.(product.id, item.price);
-      }
-    }
+    applyPriceSync(editingStmt.type);
     setIsEditMode(false);
     closeCreate();
     alert('전표가 수정되었습니다.');
