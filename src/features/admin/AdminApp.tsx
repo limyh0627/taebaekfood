@@ -490,6 +490,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
    * 계산(잔액·전표)은 **거르지 않은 partners**를 계속 쓴다. 남의 회사 거래처가 섞여도
    * 그쪽 전표가 없으면 잔액이 0이라 해가 없고, 거르면 옛 전표의 이름이 안 붙는다.
    */
+  /**
+   * 이 회사에서 쓸 전표 템플릿 — **회사가 안 적힌 건 공용 뼈대라 다 보인다.**
+   * 거래처·금액이 박힌 건 그 회사 것만 보인다. 안 거르면 풍회 화면에 태백 거래처가
+   * 물린 템플릿이 떠서, 그걸로 끊은 전표가 엉뚱한 거래처에 붙는다.
+   */
+  const companyTemplates = useMemo(
+    () => appData.fixedCostTemplates.filter(t => !t.companyId || t.companyId === companyId),
+    [appData.fixedCostTemplates, companyId],
+  );
+
   const companyPartners = useMemo(
     () => partners.filter(p => companyOf(p) === companyId),
     [partners, companyId],
@@ -1343,7 +1353,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   };
 
   const generateRecurringCosts = async (ym: string, onlyId?: string): Promise<number> => {
-    const tpls = appData.fixedCostTemplates.filter(t => canAutoIssue(t, ym) && (!onlyId || t.id === onlyId));
+    const tpls = companyTemplates.filter(t => canAutoIssue(t, ym) && (!onlyId || t.id === onlyId));
     const defaultAcctId = appData.cashAccounts.find(a => a.active && a.type !== '카드')?.id
       ?? appData.cashAccounts.find(a => a.active)?.id ?? '';
     let created = 0;
@@ -3648,9 +3658,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onDeleteSettlement={(id) => deleteItem('settlements', id)}
               onAddCashAccount={(a) => addItem('cashAccounts', { ...a, companyId })}
               onUpdateCashAccount={(id, data) => updateItem('cashAccounts', id, data)}
-              fixedCostTemplates={appData.fixedCostTemplates}
+              fixedCostTemplates={companyTemplates}
               onGenerateRecurringCosts={generateRecurringCosts}
-              onAddFixedCostTemplate={async (data) => { await addItem('fixedCostTemplates', { ...data, id: `fct-${Date.now()}` }); refreshStaticData(); }}
+              onAddFixedCostTemplate={async (data) => { await addItem('fixedCostTemplates', { ...data, companyId, id: `fct-${Date.now()}` }); refreshStaticData(); }}
               onUpdateFixedCostTemplate={async (id, data) => { await updateItem('fixedCostTemplates', id, data); refreshStaticData(); }}
               onDeleteFixedCostTemplate={async (id) => { await deleteItem('fixedCostTemplates', id); refreshStaticData(); }}
               expensePresets={appData.expensePresets}
@@ -3752,8 +3762,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
               <ProfitAnalysis
                   companyId={companyId}
                 issuedStatements={issuedStatements}
-                fixedCostTemplates={appData.fixedCostTemplates}
-                onAddTemplate={async (data) => { await addItem('fixedCostTemplates', { ...data, id: `fct-${Date.now()}` }); refreshStaticData(); }}
+                fixedCostTemplates={companyTemplates}
+                onAddTemplate={async (data) => { await addItem('fixedCostTemplates', { ...data, companyId, id: `fct-${Date.now()}` }); refreshStaticData(); }}
                 onUpdateTemplate={async (id, data) => { await updateItem('fixedCostTemplates', id, data); refreshStaticData(); }}
                 onDeleteTemplate={async (id) => { await deleteItem('fixedCostTemplates', id); refreshStaticData(); }}
                 partners={partners}
@@ -3784,7 +3794,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   companyId={companyId}
                   initialTab="partners"
                   issuedStatements={issuedStatements}
-                  fixedCostTemplates={appData.fixedCostTemplates}
+                  fixedCostTemplates={companyTemplates}
                   partners={partners}
                   items={allItems}
                   costOf={inventoryCostOf}
@@ -3835,7 +3845,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     cashAccounts={companyCashAccounts}
                     cashEntries={companyCashEntries}
                     accountCodes={appData.accountCodes}
-                    fixedCostTemplates={appData.fixedCostTemplates}
+                    fixedCostTemplates={companyTemplates}
                     partners={partners}
                     issuedStatements={issuedStatements}
                     settlements={appData.settlements}
@@ -3859,7 +3869,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   companyId={companyId}
                   initialTab="cash-flow"
                   issuedStatements={issuedStatements}
-                  fixedCostTemplates={appData.fixedCostTemplates}
+                  fixedCostTemplates={companyTemplates}
                   partners={partners}
                   items={allItems}
                   costOf={inventoryCostOf}

@@ -553,6 +553,16 @@ export interface FixedCostEntry {
 }
 
 export interface FixedCostTemplate {
+  /**
+   * 어느 회사 템플릿인가.
+   *
+   * **비워 두면 모든 회사에서 보인다** — 계정만 붙은 뼈대(카드대금·수금·지불·인출금 등)가
+   * 그렇다. 어느 회사든 그대로 쓴다.
+   * 거래처나 금액이 박힌 것(임대료 3,900,000 · 이자(수협) · 차할부금)은 그 회사 것이라
+   * companyId를 단다. 안 달면 풍회 화면에 태백 거래처가 물린 템플릿이 뜨고,
+   * 그걸로 끊으면 전표가 엉뚱한 거래처에 붙는다.
+   */
+  companyId?: CompanyId;
   /** 대체전표 분개 양식 — 차·대를 템플릿이 들고 있다(cashTemplates.transferLines 참고) */
   transferLines?: { accountCode: string; side: '차변' | '대변'; name?: string }[];
   id: string;
