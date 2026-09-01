@@ -1,0 +1,41 @@
+[
+  {
+    "id": "stmt-1787559245559",
+    "companyId": "punghoe",
+    "issuedAt": "2026-08-24T08:14:05.559Z",
+    "partnerId": "c-1786083450787-punghoe",
+    "docNo": "260824-01",
+    "totalAmount": 3110000,
+    "totalSupply": 3110000,
+    "partnerName": "카드대금",
+    "totalTax": 0,
+    "type": "매입",
+    "items": [
+      {
+        "name": "카드 세금납부 · 부가세",
+        "spec": "",
+        "qty": 1,
+        "price": 1555000,
+        "supply": 1555000,
+        "tax": 0,
+        "total": 1555000,
+        "isTaxExempt": true,
+        "accountCode": "255"
+      },
+      {
+        "name": "카드 세금납부 · 법인세",
+        "spec": "",
+        "qty": 1,
+        "price": 1555000,
+        "supply": 1555000,
+        "tax": 0,
+        "total": 1555000,
+        "isTaxExempt": true,
+        "accountCode": "998"
+      }
+    ],
+    "orderId": "",
+    "tradeDate": "2026-08-24",
+    "purchaseOrderIds": []
+  }
+]
