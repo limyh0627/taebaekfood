@@ -1,0 +1,39 @@
+[
+  {
+    "col": "fileCabinetCategories",
+    "doc": {
+      "id": "aDKX5jmGqxhHUIxfTaig",
+      "order": 90,
+      "name": "서류관리",
+      "createdAt": "2026-08-31T23:57:56.216Z"
+    }
+  },
+  {
+    "col": "fileCabinetCategories",
+    "doc": {
+      "id": "COnTWjWY06t9D5zarG8H",
+      "name": "서류관리",
+      "order": 90,
+      "createdAt": "2026-08-31T23:59:57.250Z"
+    }
+  },
+  {
+    "col": "fileCabinetCategories",
+    "doc": {
+      "id": "vWPsByDcWBIguM0I6TF5",
+      "order": 90,
+      "name": "서류관리",
+      "createdAt": "2026-09-01T00:00:52.648Z"
+    }
+  },
+  {
+    "col": "fileCabinetSubCategories",
+    "doc": {
+      "id": "E9Y4sIQrFDpplrSGc1vx",
+      "createdAt": "2026-08-31T23:59:57.315Z",
+      "category": "서류관리",
+      "name": "생산판매기록부",
+      "order": 0
+    }
+  }
+]

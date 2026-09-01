@@ -77,16 +77,29 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
    * 그 자리가 없으면 생산판매기록부로 가는 문이 통째로 사라진다.
    */
   const seedKey = seed.map(x => `${x.category}|${x.subCategory}`).join(',');
+  /*
+   * **한 번 넣은 건 다시 안 넣는다.** addItem은 비동기고 목록은 구독으로 늦게 따라온다 —
+   * 그 사이에 효과가 또 돌면 `categories`에 아직 없어 보여서 같은 걸 또 만든다.
+   * 실제로 '서류관리' 대분류가 셋이 됐다. 이번 판에 이미 손댄 이름을 ref에 적어 막는다.
+   */
+  const seedTried = useRef(new Set<string>());
   useEffect(() => {
     if (!seed.length) return;
     for (const { category, subCategory } of seed) {
-      //  대분류와 중분류를 **따로** 본다. 예전엔 else로 묶어서, 대분류를 막 만든 첫 판에
-      //  중분류를 건너뛰고 넘어갔다 — 그러면 문이 반만 서서 화면이 빈 채로 남는다.
-      if (!categories.some(c => c.name === category))
-        addItem('fileCabinetCategories', { name: category, order: 90, createdAt: new Date().toISOString() });
-      if (categories.some(c => c.name === category)
-        && !subCategories.some(sc => sc.category === category && sc.name === subCategory))
+      const catKey = `cat|${category}`;
+      if (!categories.some(c => c.name === category)) {
+        if (!seedTried.current.has(catKey)) {
+          seedTried.current.add(catKey);
+          addItem('fileCabinetCategories', { name: category, order: 90, createdAt: new Date().toISOString() });
+        }
+        continue;                       // 대분류가 설 때까지 중분류는 기다린다
+      }
+      const subKey = `sub|${category}|${subCategory}`;
+      if (!subCategories.some(sc => sc.category === category && sc.name === subCategory)
+        && !seedTried.current.has(subKey)) {
+        seedTried.current.add(subKey);
         addItem('fileCabinetSubCategories', { category, name: subCategory, order: 0, createdAt: new Date().toISOString() });
+      }
     }
   }, [seedKey, categories, subCategories]);
 
