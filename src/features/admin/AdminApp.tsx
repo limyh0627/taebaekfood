@@ -238,7 +238,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const PUNGHOE_VIEWS: ViewType[] = [
     'trade-statement', 'tax-statement', 'partner-stats', 'ledger-cash',
     'financial-reports', 'cash-flow', 'profit-analysis', 'cost-management', 'partners',
-    'item-management', 'item-ledger',
+    'item-management', 'item-ledger', 'quotation',
+    //  인사 관리 — 화면은 이미 회사별로 갈려 있다(직원·급여대장·발생전표 id가 전부 회사를 탄다).
+    //  못 열게 막혀 있었을 뿐이라 목록에 넣기만 하면 된다.
+    'hr',
   ];
   const viewAllowed = (v: ViewType) => companyId === TAEBAEK || PUNGHOE_VIEWS.includes(v);
   // 풍회로 바꿨는데 지금 화면이 태백 전용이면 전표로 보낸다
