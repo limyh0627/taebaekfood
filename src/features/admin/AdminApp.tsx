@@ -17,6 +17,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { nextDocNo, stampFor } from '../../shared/voucherStamp';
+import { calcCost } from './costCalc';
 import { isBulkItem } from '../../shared/itemTaxonomy';
 import { bomOf } from '../../shared/bomIndex';
 import { createPortal } from 'react-dom';
@@ -3999,6 +4000,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 <ItemManager
                   isAdmin={isAdmin}
                   onCreateBoxItem={createBoxItem}
+                  /* 원가계산기 — **원료식·전체 품목을 여기서 물려 넘긴다.**
+                     화면이 받는 items는 회사별로 걸러진 것이라 그걸로 굴리면 구성품을 못 찾고,
+                     원료식이 없어 반제품 원가가 통째로 빠진다. 실제 원가와 같은 근거를 쓴다. */
+                  onCalcCost={(rows, opts) => calcCost(rows, allItems, itemBoms, {
+                    ...opts,
+                    formulaOf: (k) => buildFormulaBom(k, itemFormulas, allItems),
+                    formulaRowsOf: (k) => formulaRowsOf(k, itemFormulas),
+                  })}
                   /**
                    * **목록은 회사 것만.** BOM 조회는 여기 안 걸린다 — bomIndex가 allItems로
                    * 따로 만들어져 있어서 남의 회사 품목을 물고 있어도 안 끊긴다.

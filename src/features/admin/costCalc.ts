@@ -81,8 +81,21 @@ export function calcCost(
     stock: 0, minStock: 0, price: 0, taxType, costSource: 'rollup',
   } as unknown as Item;
 
-  const valid = rows.filter(r => r.itemId && Number(r.qty) > 0);
   const byId = new Map(allItems.map(i => [i.id, i]));
+  const valid = rows.filter(r => r.itemId && Number(r.qty) > 0);
+
+  /*
+   * **원료(raw)는 BOM으로 못 넣는다.** 실제 롤업은 BOM에 든 raw 구성품을 건너뛴다
+   * (`bomCost.ts`의 `if (comp.type === 'raw') continue`) — 원료는 BOM이 아니라
+   * 원료식(item_formula)으로 들어오는 게 이 앱의 규칙이기 때문이다.
+   *
+   * 그런데 계산기는 "참깨 2.7kg + 병 + 캡" 같은 걸 짜 보는 자리라 원료를 빼면 쓸모가 없고,
+   * 그렇다고 BOM에 얹으면 **조용히 0으로 잡혀** 계산기가 거짓말을 한다.
+   * 그래서 원료 줄만 갈라서 여기서 직접 더한다 — 면세 할증은 똑같이 매긴다.
+   */
+  const isRaw = (id: string) => byId.get(id)?.type === 'raw';
+  const bomRows = valid.filter(r => !isRaw(r.itemId));
+  const rawRows = valid.filter(r => isRaw(r.itemId));
 
   const costOf = buildCostFn({
     allItems: [...allItems, ghost],
@@ -90,7 +103,7 @@ export function calcCost(
     formulaRowsOf: opts.formulaRowsOf,
     itemBoms: [
       ...itemBoms,
-      ...valid.map(r => ({ parent_id: CALC_ITEM_ID, child_id: r.itemId, quantity: Number(r.qty) })),
+      ...bomRows.map(r => ({ parent_id: CALC_ITEM_ID, child_id: r.itemId, quantity: Number(r.qty) })),
     ],
   });
 
@@ -111,8 +124,14 @@ export function calcCost(
     };
   });
 
-  //  합계는 **롤업이 낸 값**을 쓴다 — 줄 합을 쓰면 하위 BOM 재귀나 반올림에서 갈린다
-  const cost = r0(costOf.rollup(ghost) + fee);
+  //  BOM 몫은 **롤업이 낸 값**을 쓴다 — 줄 합을 쓰면 하위 BOM 재귀에서 갈린다.
+  //  원료 몫은 위에서 말한 까닭으로 여기서 따로 더한다.
+  const rawTotal = rawRows.reduce((a, r) => {
+    const it = byId.get(r.itemId)!;
+    const up = it.taxType === '면세' && taxType !== '면세' ? 1.1 : 1;
+    return a + Number(r.qty) * costOf(it) * up;
+  }, 0);
+  const cost = r0(costOf.rollup(ghost) + rawTotal + fee);
   const margin = r0(price - cost);
   return {
     lines,
