@@ -5103,14 +5103,37 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                             </div>
                           );
                         })}
+                        {/* 통장 줄 — **앱이 채우는 줄이라 못 고친다.** 그래도 표 안에 같이 보여야
+                            분개 전체가 한자리에서 읽힌다. 출금이면 대변, 입금이면 차변으로 고정이고
+                            금액은 위 금액칸을 그대로 따라간다. */}
+                        {plainAmt > 0 && (
+                          <div className="flex items-center gap-1.5">
+                            <span className={`shrink-0 w-11 py-2 rounded-lg text-[11px] font-black text-center text-white opacity-60 ${
+                              qpDir === '입금' ? 'bg-slate-700' : 'bg-amber-500'}`}>
+                              {qpDir === '입금' ? '차변' : '대변'}
+                            </span>
+                            <span className="flex-1 min-w-0 px-2.5 py-2 text-sm font-bold text-slate-400 truncate">
+                              {activeCashAccounts.find(a => a.id === quickPayAccountId)?.name ?? '통장'}
+                              <span className="text-slate-300 ml-1 font-bold">· 자동 (못 고침)</span>
+                            </span>
+                            <span className="w-36 shrink-0 px-1.5 py-2 text-[11px] font-bold text-slate-400 bg-slate-100 border border-slate-200 rounded-lg">
+                              103 보통예금
+                            </span>
+                            <span className="w-28 shrink-0 px-2 py-2 text-sm font-black text-right tabular-nums text-slate-500">
+                              {fmt(plainAmt)}
+                            </span>
+                            <span className="shrink-0 w-[14px]" />
+                          </div>
+                        )}
                         <div className="flex items-center justify-between gap-3">
-                          <button type="button" onClick={() => setQpCashRows(prev => [...prev, { note: '', price: '' }])}
+                          <button type="button" onClick={() => askTemplateBreak(() => setQpCashRows(prev => [...prev, { note: '', price: '' }]))}
                             className="flex items-center gap-1 text-xs font-black text-slate-500 hover:text-slate-700">
                             <Plus size={12} strokeWidth={3}/>행 추가
                           </button>
                           {/* 줄 합이 통장에서 움직인 금액과 같아야 끊는다 — 통장 줄까지 세면 차·대가 맞는다는 뜻이다.
-                              행이 하나뿐이고 금액을 안 적었으면 통장 금액을 그대로 쓰므로 이 줄을 안 띄운다. */}
-                          {!cashSingleAuto && (
+                              계정을 아직 안 골랐거나 한 줄짜리 자동이면 안 띄운다 — 시작하자마자
+                              '부족'이라고 붉게 뜨면 뭘 잘못한 줄 알게 된다. */}
+                          {!cashSingleAuto && qpCashRows.some(r => r.accountCode) && (
                             <span className={`text-[11px] font-black tabular-nums ${cashSplitOk ? 'text-emerald-600' : 'text-amber-600'}`}>
                               {cashSplitOk
                                 ? `차−대 ${fmt(cashSplitSum)} — 통장과 맞음`
