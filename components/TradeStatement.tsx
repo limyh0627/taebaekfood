@@ -442,7 +442,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * 켜기 전엔 계정 하나(qpAccountCode)로 끊는다 — 대부분이 그 꼴이라 기본은 단순하게 둔다.
    */
   const [qpSplitOn, setQpSplitOn] = useState(false);
-  const [qpCashRows, setQpCashRows] = useState<{ note: string; accountCode?: string; price: string }[]>(
+  //  쪼갠 줄 — side로 차·대를 고른다. 통장 반대편이 기본이고, 반대로 놓으면 음수로 나간다
+  //  (journalizeCashEntry가 음수 줄을 통장과 같은 편으로 세운다. 급여 원천공제가 그 길이다).
+  const [qpCashRows, setQpCashRows] = useState<{ note: string; accountCode?: string; price: string; side?: '차변' | '대변' }[]>(
     [{ note: '', price: '' }, { note: '', price: '' }]);
   const [qpPickerOpen, setQpPickerOpen] = useState(false);
   // 발생(돈 안 움직임) — 계정 여러 줄. 옛 대체전표 입력을 여기로 흡수했다.
@@ -563,10 +565,16 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     e.currentTarget.select();
     setQuickPayDropOpen(true);
   };
-  /** 지금 쓰는 템플릿 — 고른 id가 있으면 그것, 없으면(전표 수정 등) 계정으로 짐작한다. */
+  /**
+   * 지금 쓰는 템플릿 — **고른 것만.** 안 골랐으면 없다(직접입력).
+   *
+   * 예전엔 계정과목으로 짐작했다(activeTemplate). 그러다 보니 직접입력으로 255 부가세예수금을
+   * 고르기만 해도 머리에 '부가세 신고(납부)'가 떠서, 안 고른 템플릿을 쓰는 중인 것처럼 보였다.
+   * 갈래도 안 맞았다 — 그 템플릿은 대체인데 화면은 출금이었다.
+   * 짐작이 맞을 때도 있지만, 틀릴 때 무슨 전표를 쓰는지 못 믿게 되는 게 더 비싸다.
+   */
   const currentTemplate = (list: CashTemplate[]) =>
-    (qpTemplateId ? list.find(t => t.id === qpTemplateId) : undefined)
-      ?? activeTemplate(list, { mode: qpMode, accountCode: qpAccountCode });
+    (qpTemplateId ? list.find(t => t.id === qpTemplateId) : undefined);
 
   // 계정 5분류 — 자금 전표가 비용인지 수익인지 가려 매입/매출 합계에 반영하는 데 쓴다.
   const codeType = useMemo(() => new Map(accountCodes.map(c => [c.code, c.type])), [accountCodes]);
@@ -4351,7 +4359,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const INTEREST_CODE = accountCodes.find(c => /이자비용/.test(c.name))?.code ?? '951';
         const SALARY_CODE = accountCodes.find(c => c.name === '급여')?.code ?? '515';
         const WITHHOLD_CODE = accountCodes.find(c => c.name === '예수금')?.code ?? '254';
-        const expenseCodes = accountCodes.filter(c => ['비용', '자산', '부채', '자본'].includes(c.type as string)).sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }));
+        /*
+         * 고를 수 있는 계정 — **다섯 갈래 전부.** 예전엔 수익을 뺐는데(비용·자산·부채·자본만),
+         * 그러면 잡이익 대체나 이자수익 계상, 매출 정정을 손으로 끊을 길이 없다.
+         * 막아야 할 건 셋뿐이다: 계정 없는 줄 · 빈 전표 · 차변≠대변.
+         * 어느 계정을 어느 편에 놓을지는 적는 사람이 정한다.
+         */
+        const expenseCodes = accountCodes.filter(c => ['비용', '자산', '부채', '자본', '수익'].includes(c.type as string)).sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }));
 
         const base = () => ({
           date: quickPayDate, cashAccountId: quickPayAccountId, createdAt: stampFor(quickPayDate),
@@ -4637,10 +4651,21 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
          * 쪼갠 줄 — 계정이 붙고 금액이 있는 줄만. 합이 통장에서 움직인 금액(plainAmt)과 같아야 끊는다.
          * 안 맞는 전표는 시산표를 조용히 망가뜨린다(발생 쪽 차·대 검사와 같은 이유).
          */
+        /*
+         * 쪼갠 줄의 **부호가 차·대를 정한다.** 통장 반대편(출금이면 차변)이 양수,
+         * 통장과 같은 편이면 음수다 — journalizeCashEntry가 그렇게 읽는다.
+         * 그래서 줄 합이 통장에서 움직인 금액과 같아야 차·대가 맞는다.
+         *   급여: 총급여 +3,000,000 · 예수금 −300,000 → 통장 2,700,000
+         */
+        const normalSide = qpDir === '입금' ? '대변' : '차변';
         const cashSplitLines = qpSplitOn
           ? qpCashRows
-              .map(r => ({ accountCode: r.accountCode ?? '', amount: Number(r.price || 0), note: r.note.trim() || undefined }))
-              .filter(l => l.accountCode && l.amount > 0)
+              .map(r => ({
+                accountCode: r.accountCode ?? '',
+                amount: Number(r.price || 0) * ((r.side ?? normalSide) === normalSide ? 1 : -1),
+                note: r.note.trim() || undefined,
+              }))
+              .filter(l => l.accountCode && l.amount !== 0)
           : [];
         const cashSplitSum = cashSplitLines.reduce((a, l) => a + l.amount, 0);
         const cashSplitOk = qpSplitOn && cashSplitLines.length > 0 && Math.abs(cashSplitSum - plainAmt) < 0.5;
@@ -4980,8 +5005,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                         </>
                       ) : (
                         <div className="space-y-2">
-                          {qpCashRows.map((r, idx) => (
+                          {qpCashRows.map((r, idx) => {
+                            const side = r.side ?? (qpDir === '입금' ? '대변' : '차변');
+                            return (
                             <div key={idx} className="flex items-center gap-1.5">
+                              {/* 차·대를 여기서 고른다 — 통장 반대편이 기본이고, 뒤집으면 음수로 나가
+                                  통장과 같은 편에 선다(급여 원천공제가 그 길). */}
+                              <button type="button"
+                                onClick={() => setQpCashRows(prev => prev.map((x, i) => i === idx ? { ...x, side: side === '차변' ? '대변' : '차변' } : x))}
+                                title="차변·대변 바꾸기"
+                                className={`shrink-0 w-10 py-2 rounded-lg text-[11px] font-black border transition-all ${side === '차변' ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-rose-50 text-rose-600 border-rose-200'}`}>
+                                {side}
+                              </button>
                               <input value={r.note} placeholder="적요 (비우면 계정명)"
                                 onChange={e => setQpCashRows(prev => prev.map((x, i) => i === idx ? { ...x, note: e.target.value } : x))}
                                 className="flex-1 min-w-0 border border-slate-200 rounded-lg px-2.5 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
@@ -4999,7 +5034,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                   className="shrink-0 text-slate-300 hover:text-rose-400"><X size={14}/></button>
                               )}
                             </div>
-                          ))}
+                            );
+                          })}
                           <div className="flex items-center justify-between gap-3">
                             <button type="button" onClick={() => setQpCashRows(prev => [...prev, { note: '', price: '' }])}
                               className="flex items-center gap-1 text-xs font-black text-slate-500 hover:text-slate-700">
@@ -5008,8 +5044,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                             {/* 합이 통장에서 움직인 금액과 같아야 끊는다 — 안 맞는 전표는 시산표를 조용히 망가뜨린다 */}
                             <span className={`text-[11px] font-black tabular-nums ${cashSplitOk ? 'text-emerald-600' : 'text-amber-600'}`}>
                               {cashSplitOk
-                                ? `합 ${fmt(cashSplitSum)} — 맞음`
-                                : `합 ${fmt(cashSplitSum)} / 통장 ${fmt(plainAmt)}  (${cashSplitSum > plainAmt ? '초과' : '부족'} ${fmt(Math.abs(plainAmt - cashSplitSum))})`}
+                                ? `차−대 ${fmt(cashSplitSum)} — 통장과 맞음`
+                                : `차−대 ${fmt(cashSplitSum)} / 통장 ${fmt(plainAmt)}  (${cashSplitSum > plainAmt ? '초과' : '부족'} ${fmt(Math.abs(plainAmt - cashSplitSum))})`}
                             </span>
                           </div>
                         </div>
