@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import type { AccountCode, FixedCostTemplate } from './types';
+import { AR, AP, VAT_PAYABLE, VAT_RECEIVABLE } from './autoJournal';
 
 /**
  * 일반전표 템플릿 — 자주 끊는 자금전표를 한 번에 채운다.
@@ -65,6 +66,8 @@ export interface CashTemplate {
   /** 저장해 둔 금액 — 고르면 금액 칸이 채워진다(0이면 안 채운다) */
   amount?: number;
   partnerId?: string;
+  /** 면세면 부가세를 안 뗀다 — 거래처가 붙은 템플릿의 분개 미리보기가 이걸 본다 */
+  taxExempt?: boolean;
   partnerName?: string;
   /** 기본 템플릿 표식 — 있으면 삭제 못 하고 숨기기만 된다 */
   builtin?: string;
@@ -492,6 +495,29 @@ export function templateJournalLines(
   }
 
   if (!isCashDir(t.dir) && t.dir !== '회사이체') {
+    /*
+     * **거래처가 있으면 상대변은 채권·채무다.** buildStatementVoucher가 그렇게 낸다 —
+     * 거래처가 붙으면 매입전표(받을돈이면 매출전표)라 상대변이 251(108)로 자동이다.
+     * 예전엔 그걸 모르고 한 줄만 그려서, 멀쩡한 템플릿에 "차·대가 안 맞는다"고 붙었다.
+     * 과세면 부가세 줄까지 선다 — 금액은 부가세 포함 총액으로 본다.
+     */
+    if (t.partnerId && t.accountCode) {
+      const gross = amt;
+      const supply = t.taxExempt ? gross : Math.round(gross / 1.1);
+      const tax = gross - supply;
+      const other = { code: t.accountCode, label: t.itemName ?? '' };
+      return t.dir === '받을돈'
+        ? [
+            { side: '차변' as const, code: AR, label: '외상매출금', amount: gross },
+            { side: '대변' as const, ...other, amount: supply },
+            ...(tax ? [{ side: '대변' as const, code: VAT_PAYABLE, label: '부가세예수금', amount: tax }] : []),
+          ]
+        : [
+            { side: '차변' as const, ...other, amount: supply },
+            ...(tax ? [{ side: '차변' as const, code: VAT_RECEIVABLE, label: '부가세대급금', amount: tax }] : []),
+            { side: '대변' as const, code: AP, label: '외상매입금', amount: gross },
+          ];
+    }
     // 대체 — 양식이 있으면 그대로. 없으면 한 줄뿐이라 상대변을 사용자가 넣어야 한다.
     if (t.transferLines?.length) {
       /*

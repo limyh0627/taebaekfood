@@ -435,6 +435,10 @@ export default function VoucherTemplateManager({
                   accountCode: editTpl.accountCode, itemName: form.itemName || undefined,
                   transferLines: editTpl.transferLines,
                   loanCode: form.loanCode,
+                  //  거래처·과세를 넘겨야 미리보기가 상대변(251·108)과 부가세 줄을 그린다.
+                  //  안 넘기면 한 줄만 그려 놓고 "차·대가 안 맞는다"고 멀쩡한 템플릿을 나무란다.
+                  partnerId: form.partnerId || undefined,
+                  taxExempt: form.taxExempt,
                   amount: splitModeOf(editTpl.mode)
                     ? SPLIT_MODES[splitModeOf(editTpl.mode)!].total(Number(form.splitA || 0), Number(form.splitB || 0))
                     : Number(form.amount || 0),

@@ -259,3 +259,51 @@ describe('대체 양식의 미리보기 금액', () => {
     expect(ls.every(l => l.amount === 0)).toBe(true);
   });
 });
+
+/**
+ * 거래처가 붙은 대체 템플릿 — **상대변은 채권·채무다.**
+ * buildStatementVoucher가 그렇게 낸다(거래처가 있으면 매입전표, 받을돈이면 매출전표).
+ * 미리보기가 한 줄만 그리는 바람에, 멀쩡한 '리스료 (안사장)' 템플릿에
+ * "차·대가 안 맞는다 — 이 템플릿으로는 전표를 못 끊습니다"가 붙었다.
+ */
+describe('거래처가 붙은 템플릿의 미리보기', () => {
+  const t = (over: Partial<CashTemplate>): CashTemplate =>
+    ({ id: 'x', label: 'x', dir: '대체', mode: '일반', ...over } as CashTemplate);
+  const 합 = (ls: ReturnType<typeof templateJournalLines>) => ({
+    차: ls.filter(l => l.side === '차변').reduce((a, l) => a + l.amount, 0),
+    대: ls.filter(l => l.side === '대변').reduce((a, l) => a + l.amount, 0),
+  });
+
+  it('면세면 두 줄로 서고 차·대가 맞는다', () => {
+    const ls = templateJournalLines(t({ accountCode: '819', partnerId: 'p1', amount: 1_268_550, taxExempt: true }));
+    expect(ls.map(l => [l.side, l.code, l.amount])).toEqual([
+      ['차변', '819', 1_268_550],
+      ['대변', '251', 1_268_550],
+    ]);
+    const s = 합(ls);
+    expect(s.차).toBe(s.대);
+  });
+
+  it('과세면 부가세대급금 줄이 하나 더 서고, 총액이 대변이다', () => {
+    const ls = templateJournalLines(t({ accountCode: '819', partnerId: 'p1', amount: 1_100_000 }));
+    expect(ls.map(l => [l.side, l.code, l.amount])).toEqual([
+      ['차변', '819', 1_000_000],
+      ['차변', '135', 100_000],
+      ['대변', '251', 1_100_000],
+    ]);
+    const s = 합(ls);
+    expect(s.차).toBe(s.대);
+  });
+
+  it('받을돈이면 방향이 뒤집힌다 — 외상매출금이 차변', () => {
+    const ls = templateJournalLines(t({ dir: '받을돈', accountCode: '404', partnerId: 'p1', amount: 1_100_000 }));
+    expect(ls[0]).toMatchObject({ side: '차변', code: '108', amount: 1_100_000 });
+    const s = 합(ls);
+    expect(s.차).toBe(s.대);
+  });
+
+  it('거래처가 없으면 예전처럼 한 줄 — 상대변을 사람이 넣는다', () => {
+    const ls = templateJournalLines(t({ accountCode: '818', amount: 500_000 }));
+    expect(ls).toHaveLength(1);
+  });
+});
