@@ -1520,7 +1520,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     [orders]
   );
   const availableClients = useMemo(() => {
-    let base = partners.filter(c => {
+    /*
+     * **고르는 목록은 이 회사 거래처만.** 계산(잔액·분개)은 아래에서 거르지 않은 partners를
+     * 그대로 쓴다 — 남의 회사 거래처가 섞여도 회사별로 거른 전표만 보므로 값이 안 흔들린다.
+     * 그런데 **고르는 목록**은 다르다. 태백과 풍회가 같은 이름의 사본을 하나씩 갖고 있어서
+     * (카프코·한전·농협은행 등 10곳) 안 거르면 같은 이름이 두 줄로 뜨고,
+     * 어느 쪽을 골랐느냐에 따라 전표가 엉뚱한 회사 장부에 붙는다.
+     */
+    let base = partners.filter(c => companyOf(c) === companyId).filter(c => {
       if (createMode === '매입') {
         // 매입전표: 매입처 또는 매출+매입처
         return c.partnerType === '매입처' || c.partnerType === '매출+매입처';
@@ -1535,7 +1542,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     if (onlyActive && !partnerSearch.trim() && createMode !== '매입') base = base.filter(c => activeClientIds.has(c.id));
     if (!partnerSearch.trim()) return base;
     return base.filter(c => matchKo(c.name, partnerSearch));
-  }, [partners, partnerSearch, onlyActive, activeClientIds, createMode]);
+  }, [partners, partnerSearch, onlyActive, activeClientIds, createMode, companyId]);
 
   // ── 주문 목록 ──
   const partnerOrders = useMemo(() => {
@@ -4326,7 +4333,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const pb = quickPayClientId ? partnerBalances.get(quickPayClientId) : undefined;
         const partnerTotal = stmtTypeForPay === '매입' ? (pb?.payable ?? 0) : (pb?.receivable ?? 0);
         const dropClients = quickPayClientSearch.trim()
-          ? partners.filter(c => c.name.includes(quickPayClientSearch.trim())).slice(0, 8)
+          ? partners.filter(c => companyOf(c) === companyId && c.name.includes(quickPayClientSearch.trim())).slice(0, 8)
           : [];
 
         const amt = Number((quickPayAmount || '').replace(/,/g, '')) || 0;
