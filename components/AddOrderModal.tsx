@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { today, addDays } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
 import { X, Search, ShoppingBag, User, ArrowRight, AlertCircle, Truck, Store, LayoutGrid, Layers } from 'lucide-react';
 import { Item, PartnerItem, OrderItem, Order, Partner, OrderSource, OrderPallet, PalletStock } from '../types';
@@ -56,12 +57,12 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
   const [selectedItems, setSelectedItems] = useState<{ itemId: string, quantity: number | '', isBoxUnit: boolean, unitsPerBox: number, boxType: string, boxSubId?: string, displaySize?: string }[]>([]);
   const [showHyangmiyu, setShowHyangmiyu] = useState(false);
   const [showGochutgaru, setShowGochutgaru] = useState(false);
+  //  기본 납기 = 사흘 뒤, 주말이면 월요일로 민다.
+  //  날짜 셈은 shared/day 로 — 예전엔 toISOString 이 UTC로 되돌려 하루가 밀렸다.
   const [deadline, setDeadline] = useState(() => {
-    const d = new Date(Date.now() + 86400000 * 3);
-    const day = d.getDay();
-    if (day === 6) d.setDate(d.getDate() + 2);
-    else if (day === 0) d.setDate(d.getDate() + 1);
-    return d.toISOString().split('T')[0];
+    const base = addDays(today(), 3);
+    const day = new Date(`${base}T12:00:00Z`).getUTCDay();
+    return day === 6 ? addDays(base, 2) : day === 0 ? addDays(base, 1) : base;
   });
   const [source, setSource] = useState<OrderSource>('일반');
   const [pallets, setPallets] = useState<OrderPallet[]>([]);

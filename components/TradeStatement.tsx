@@ -11,7 +11,8 @@ import {
 import * as ExcelJS from 'exceljs';
 import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentMethod, AccountCode, AccountGroup, CashAccount, CashEntry, Settlement, FixedCostTemplate, CompanyId, COMPANIES } from '../types';
 import { filterCodesForContext, isCashAccountCode } from '../src/features/admin/financials';
-import { fetchDateRange, fetchCollection } from '../src/shared/services/firebaseService';
+import { fetchDateRange, fetchCollection, fetchByIds, fetchWhere } from '../src/shared/services/firebaseService';
+import { anchorBefore, readFrom, openStatementIds, allocationInputs, balancesWithAnchor, type PartnerAnchor } from '../src/features/admin/partnerAnchor';
 import { stampFor, timeOfLocal, issuedMs, nextDocNo } from '../src/shared/voucherStamp';
 import { buildJournals } from '../src/shared/buildJournals';
 import type { VoucherKind } from '../src/shared/vouchers';
@@ -19,7 +20,7 @@ import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/sha
 import { bomOf } from '../src/shared/bomIndex';
 import { PurchaseOrder, poLines, ExpensePreset, companyOf, openingDocId } from '../src/shared/types';
 import VoucherSlip from '../src/shared/VoucherSlip';
-import { unsettledStatements, unmatchedCash, partnerBalanceFromJournals, allPartnerBalances, isReceivableStmt, allocatePartnerCash, partnerCashParts } from '../src/features/admin/cashLedger';
+import { unsettledStatements, unmatchedCash, partnerBalanceFromJournals, isReceivableStmt, allocatePartnerCash, partnerCashParts } from '../src/features/admin/cashLedger';
 import { AR, AP, journalizeStatement, journalizeTransfer, journalizeCashEntry, settlementAccountCode } from '../src/shared/autoJournal';
 import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, isCashDir, templateAccrRows, VOUCHER_DIRS, DIR_CHIP, DIR_HINT, CashTemplate, VoucherDir, SPLIT_MODES, splitModeOf } from '../src/shared/cashTemplates';
 import { canAutoIssue, autoVoucherId, issueDateOf } from '../src/shared/autoVoucher';
@@ -1155,8 +1156,37 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       .then(rows => setOpeningDate(rows.find(r => r.id === openingDocId(companyId))?.date ?? null))
       .catch(() => setOpeningDate(null));
   }, [companyId]);
-  /** 이 회사 장부가 시작하는 날. 기초가 없으면 전부. */
-  const ledgerFrom = openingDate ?? '2020-01-01';
+
+  /**
+   * **연말 앵커** — 결산 때 박아 둔 거래처 잔액·미결 전표(`partnerBalanceSnapshots`).
+   * 있으면 그 다음 날부터만 읽는다. 없으면 기초일부터(지금이 이 길이다 — 첫 앵커는 2026-12-31).
+   */
+  const [anchors, setAnchors] = useState<PartnerAnchor[]>([]);
+  useEffect(() => {
+    fetchWhere<PartnerAnchor>('partnerBalanceSnapshots', 'companyId', companyId)
+      .then(setAnchors).catch(() => setAnchors([]));
+  }, [companyId]);
+  const anchor = useMemo(() => anchorBefore(anchors, today()), [anchors]);
+
+  /** 이 회사 장부를 어디부터 읽나. 앵커 > 기초 > 전부. */
+  const ledgerFrom = readFrom(anchor, openingDate ?? '2020-01-01');
+
+  /**
+   * **앵커가 짚어 준 미결 전표를 따로 집어 온다.**
+   *
+   * 잔액은 앵커 숫자로 되지만 **전표 한 장씩 얼마 남았나**는 그 전표가 손에 있어야 센다.
+   * 안 집어 오면 옛 미결 전표가 후보에서 빠져, 그 거래처 수금이 새 전표를 갉아먹고
+   * 안 갚은 전표가 '완납'으로 보인다 → 수금·지불 버튼이 사라진다.
+   * 연말에 살아 있는 건 몇 장뿐이라 id로 집어 오면 싸다.
+   */
+  const [anchorStatements, setAnchorStatements] = useState<IssuedStatement[]>([]);
+  useEffect(() => {
+    const ids = openStatementIds(anchor);
+    if (!ids.length) { setAnchorStatements([]); return; }
+    fetchByIds<IssuedStatement>('issuedStatements', ids)
+      .then(rows => setAnchorStatements(rows.map(x => ({ ...x, items: x.items ?? [], tradeDate: x.tradeDate ?? '', issuedAt: x.issuedAt ?? '' }))))
+      .catch(() => setAnchorStatements([]));
+  }, [anchor]);
 
   /**
    * **잔액용 전체 적재 — 화면을 열 때 한 번.**
@@ -1229,11 +1259,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // 직접 떠온 것이라 안 걸러져 있다 — 그래서 풍회로 바꿔도 태백 전표가 다 보였다.
   const mergedStatements = useMemo(() => {
     const map = new Map<string, IssuedStatement>();
+    //  앵커가 짚어 준 옛 미결 전표가 맨 밑 — 나중 것이 이긴다
+    anchorStatements.forEach(s => map.set(s.id, s));
     extraStatements.forEach(s => map.set(s.id, s));
     issuedStatements.forEach(s => map.set(s.id, s));
     for (const id of deletedStmtIds) map.delete(id);
     return Array.from(map.values()).filter(s => (s.companyId ?? 'taebaek') === companyId);
-  }, [issuedStatements, extraStatements, deletedStmtIds, companyId]);
+  }, [issuedStatements, extraStatements, anchorStatements, deletedStmtIds, companyId]);
 
   /**
    * **전표가 실제로 걸린 주문 id** — `invoicePrinted` 플래그가 아니라 전표를 근거로 본다.
@@ -1309,8 +1341,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const partnerBalances = useMemo(() => {
     //  **분개에 나오는 거래처를 다 담는다.** 예전엔 mergedStatements에 등장한 거래처만 담아서,
     //  전표 조회창 밖 거래처는 통째로 빠져 일반전표 발행에서 잔액이 0으로 떴다.
-    return allPartnerBalances(partnerJournals);
-  }, [partnerJournals]);
+    //
+    //  앵커가 있으면 그 숫자 위에 앵커 뒤 움직임만 얹는다. 앵커가 없으면(지금이 그렇다)
+    //  넘어온 분개가 전부라 예전과 똑같이 센다.
+    return balancesWithAnchor(anchor, partnerJournals);
+  }, [anchor, partnerJournals]);
 
   /**
    * 전표별 남은 금액 — **mergedStatements로 돌린다.**
@@ -1320,18 +1355,20 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * **수금처리 버튼이 사라진다.** 배분은 언제나 그 거래처의 전표 전부를 놓고 해야 맞다.
    */
   const openByStmt = useMemo(() => {
+    //  앵커가 걸리면 전표·자금·시작잔액 셋을 같이 잘라야 한다 — 규칙은 앵커가 들고 있다
+    const alloc = allocationInputs(anchor, mergedStatements, cashEntries);
     const out = new Map<string, number>();
-    const keys = new Set(mergedStatements
+    const keys = new Set(alloc.statements
       .filter(st => st.type === '매출' || st.type === '매입')
       .map(st => `${st.partnerId}|${st.type}`));
     for (const key of keys) {
       const [pid, type] = key.split('|');
-      for (const [id, open] of allocatePartnerCash(pid, type as '매출' | '매입', mergedStatements, cashEntries, settlements)) {
+      for (const [id, open] of allocatePartnerCash(pid, type as '매출' | '매입', alloc.statements, alloc.cashEntries, settlements, alloc.opening)) {
         out.set(id, open);
       }
     }
     return out;
-  }, [mergedStatements, cashEntries, settlements]);
+  }, [anchor, mergedStatements, cashEntries, settlements]);
   const getBalance = (s: IssuedStatement) => openByStmt.get(s.id) ?? s.totalAmount;
   /**
    * **수금·지불 버튼을 달 전표인가** — 채권(108)·채무(251)를 세우는 것만.

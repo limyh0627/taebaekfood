@@ -4,6 +4,7 @@ import { Item, Partner, PartnerItem, CompanyId, COMPANIES } from '../src/shared/
 import { matchesSearch } from '../src/shared/hangul';
 import { subscribeToCollection, addItem, deleteItem } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
+import { today, addDays as plusDays } from '../src/shared/day';
 
 /**
  * **견적서** — 팔기 전에 얼마에 줄지 적어 내미는 종이.
@@ -62,12 +63,8 @@ interface Props {
 }
 
 const fmt = (n: number) => Math.round(n).toLocaleString('ko-KR');
-const today = () => new Date().toISOString().slice(0, 10);
-const plusDays = (d: string, n: number) => {
-  const x = new Date(`${d}T00:00:00`);
-  x.setDate(x.getDate() + n);
-  return x.toISOString().slice(0, 10);
-};
+//  날짜 셈은 shared/day 하나로 — 손으로 하면 toISOString 이 UTC로 되돌려 하루가 밀린다
+//  (한국 자정은 UTC로 전날 15:00이다). 유효기한이 29일 뒤로 잡히던 자리다.
 const num = (v: string) => Number(String(v).replace(/[^\d.]/g, '')) || 0;
 
 /** 그날 안에서 이어지는 번호 — 전표와 같은 꼴(`Q260901-01`)이되 통은 따로 쓴다 */

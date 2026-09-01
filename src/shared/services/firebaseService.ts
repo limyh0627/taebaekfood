@@ -19,6 +19,7 @@ import {
   DocumentData,
   QuerySnapshot,
   QueryConstraint,
+  documentId,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import type { RawMaterialLot } from "../types";
@@ -388,6 +389,25 @@ export const fetchWhere = async <T extends { id: string }>(
 };
 
 /** 한 필드가 어떤 값인 문서를 계속 지켜본다. 해지 함수를 돌려준다. */
+/**
+ * **id로 콕 집어 온다** — 앵커가 짚어 준 미결 전표처럼 몇 장만 필요할 때.
+ *
+ * Firestore `in`은 한 번에 30개까지라 30개씩 끊어 던진다. 없는 id는 그냥 안 온다.
+ * 날짜 범위로 훑는 것과 달리 **읽는 양이 요청한 개수만큼**이라, 앵커가 값을 하는 자리다.
+ */
+export const fetchByIds = async <T extends { id: string }>(
+  collectionName: string,
+  ids: string[],
+): Promise<T[]> => {
+  const uniq = [...new Set(ids.filter(Boolean))];
+  const out: T[] = [];
+  for (let i = 0; i < uniq.length; i += 30) {
+    const snap = await getDocs(query(collection(db, collectionName), where(documentId(), 'in', uniq.slice(i, i + 30))));
+    for (const d of snap.docs) out.push({ id: d.id, ...d.data() } as T);
+  }
+  return out;
+};
+
 export const subscribeWhere = <T extends { id: string }>(
   collectionName: string,
   field: string,

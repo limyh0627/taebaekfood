@@ -365,12 +365,19 @@ export function allocatePartnerCash(
   statements: IssuedStatement[],
   cashEntries: CashEntry[],
   settlements: Settlement[] = [],
+  /**
+   * **앵커에서 이어받은 시작 잔액** (전표 id → 그때 남아 있던 금액).
+   *
+   * 앵커 이전을 안 읽을 때 쓴다. 앵커에 담긴 미결 전표는 이미 얼마쯤 갚힌 상태라
+   * 총액부터 다시 시작하면 그만큼 덜 갚은 것으로 보인다. 없으면 총액부터.
+   */
+  opening?: Map<string, number>,
 ): Map<string, number> {
   //  기초이월 전표도 후보에 넣는다 — 안 넣으면 그걸 갚은 수금이 새 전표를 갉아먹는다(isReceivableStmt 주석 참조).
   const mine = statements
     .filter(s => s.partnerId === partnerId && isReceivableStmt(s, type))
     .sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
-  const left = new Map(mine.map(s => [s.id, s.totalAmount ?? 0]));
+  const left = new Map(mine.map(s => [s.id, opening?.get(s.id) ?? (s.totalAmount ?? 0)]));
   if (!mine.length) return left;
 
   const liveCash = new Set(cashEntries.map(e => e.id));
