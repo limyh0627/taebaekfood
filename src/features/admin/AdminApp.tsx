@@ -48,6 +48,7 @@ import {
   Tag,
   FileText,
   Receipt,
+  FileSignature,
   Wallet,
   BarChart2,
   Factory,
@@ -103,6 +104,7 @@ import OfficeTalk from '../../../components/OfficeTalk';
 import AdminChecklist from '../../../components/AdminChecklist';
 import PartnerSignupApproval from '../../../components/PartnerSignupApproval';
 import DocumentManager from '../../../components/DocumentManager';
+import QuotationManager from '../../../components/QuotationManager';
 import type * as ExcelJSType from 'exceljs';
 
 const InboundScan = React.lazy(() => import('../../../components/InboundScan'));
@@ -1553,6 +1555,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       <NavItem icon={ClipboardList} label="확인사항" active={currentView === 'admin-checklist'} onClick={() => handleNavClick('admin-checklist')} collapsed={isSidebarCollapsed} badge={adminPendingCount > 0 ? adminPendingCount : undefined} hidden={!viewAllowed('admin-checklist')} />
                       <NavItem icon={FileText} label="전표" active={currentView === 'trade-statement'} onClick={() => handleNavClick('trade-statement')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('trade-statement')} />
                       <NavItem icon={Receipt} label="세금계산서" active={currentView === 'tax-statement'} onClick={() => handleNavClick('tax-statement')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('tax-statement')} />
+                      <NavItem icon={FileSignature} label="견적서" active={currentView === 'quotation'} onClick={() => handleNavClick('quotation')} collapsed={isSidebarCollapsed} hidden={!viewAllowed('quotation')} />
                     </nav>
                   </NavGroup>
                   <NavGroup title="기준정보 관리" storageKey="master" collapsed={isSidebarCollapsed}>
@@ -2205,6 +2208,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
           })()}
           {/* 거래처 목록도 회사별 — 공용 거래처는 양쪽에 다 뜬다(companyIds 배열) */}
           {currentView === 'partners' && <PartnerManager partners={companyPartners} onUpdateClient={(c) => updateItem('partners', c.id, c)} onAddClient={(c) => addItem('partners', { ...c, companyId })} onDeleteClient={(id) => deleteItem('partners', id)} />}
+          {currentView === 'quotation' && (
+            <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
+              <QuotationManager
+                items={companyItems}
+                partners={companyPartners}
+                partnerItems={partnerItems}
+                companyId={companyId}
+                currentUser={{ id: currentUser.id, name: currentUser.name }}
+              />
+            </React.Suspense>
+          )}
           {currentView === 'file-cabinet' && (
             <DocumentManager
               currentUser={{ id: currentUser.id, name: currentUser.name }}
