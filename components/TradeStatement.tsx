@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import * as ExcelJS from 'exceljs';
 import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, CompanyInfo, PaymentMethod, AccountCode, AccountGroup, CashAccount, CashEntry, Settlement, FixedCostTemplate, CompanyId, COMPANIES } from '../types';
-import { filterCodesForContext } from '../src/features/admin/financials';
+import { filterCodesForContext, isCashAccountCode } from '../src/features/admin/financials';
 import { fetchDateRange, fetchCollection } from '../src/shared/services/firebaseService';
 import { stampFor, timeOfLocal, issuedMs, nextDocNo } from '../src/shared/voucherStamp';
 import { buildJournals } from '../src/shared/buildJournals';
@@ -4525,6 +4525,38 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
         const doAccrualSave = () => {
           if (!accrLines.length || !accrBalanced) return;   // 차·대가 안 맞으면 안 끊는다
+          /*
+           * **통장 줄이 끼어 있으면 자금전표다.**
+           *
+           * 여기는 차·대를 손으로 적는 자리라 (차)255 부가세예수금 / (대)103 보통예금 같은
+           * 분개도 그대로 적힌다. 그걸 대체전표로만 저장하면 분개는 맞는데 현금출납장에
+           * 안 서서, 통장에서 나간 돈이 자금 목록에서 사라진다.
+           * 통장·현금 줄이 **딱 하나**면 자금전표로 낸다 — 그 줄이 통장 쪽, 나머지가 반대편이다.
+           * 둘 이상이면(통장↔통장) 자금전표 한 건으로 못 담으니 대체전표로 둔다.
+           */
+          const cashLines = accrLines.filter(l => isCashAccountCode(l.accountCode, accountCodes));
+          if (accrType === '비용' && cashLines.length === 1 && accrLines.length > 1 && onAddCashEntry) {
+            const cashLine = cashLines[0];
+            const others = accrLines.filter(l => l !== cashLine);
+            const dir = cashLine.side === '대변' ? '출금' : '입금';
+            //  통장 반대편이 양수 — journalizeCashEntry가 음수 줄을 통장과 같은 편으로 세운다
+            const normalSide = dir === '입금' ? '대변' : '차변';
+            onAddCashEntry({
+              id: `cash-${Date.now()}`, dir, amount: cashLine.total,
+              cashAccountId: quickPayAccountId,
+              ...(others.length > 1
+                ? { lines: others.map(l => ({
+                    accountCode: l.accountCode, note: l.name,
+                    amount: l.total * (l.side === normalSide ? 1 : -1),
+                  })) }
+                : { accountCode: others[0].accountCode }),
+              ...(quickPayNote.trim() ? { note: quickPayNote.trim() } : { note: others[0]?.name ?? '' }),
+              date: quickPayDate, createdAt: stampFor(quickPayDate),
+              ...(quickPayClientId ? { partnerId: quickPayClientId, partnerName: selectedClientObj?.name ?? '' } : {}),
+            } as never);
+            setShowQuickPay(false);
+            return;
+          }
           const d = new Date(quickPayDate + 'T00:00:00');
           // 대체는 따로 센다 — 매입·매출과 번호가 섞이면 어느 갈래인지 번호로 못 읽는다
           const accrDocNo = nextDocNo(quickPayDate, issuedStatements, accrType === '비용' ? '대체' : '');

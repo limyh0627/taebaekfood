@@ -326,7 +326,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [cabinetSel, setCabinetSel] = useState<{ cat: string; sub: string }>({ cat: '', sub: '' });
   const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부' | '거래명세서' | '생산작업기록부' | '벤조피렌' | 'haccp'>('생산판매기록부');
   const [docYearMonth, setDocYearMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  /**
+   * 생산판매기록부 이력을 볼 달 — **기록이 있는 마지막 달**로 연다.
+   * 이번 달로 열면 1일에 들어갔을 때 텅 빈 목록만 보고 "8월 것 어디 갔냐"가 된다.
+   * 기록이 하나도 없으면 이번 달.
+   */
   const [docLogMonth, setDocLogMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const docLogMonthTouched = useRef(false);
+  /** 달을 손으로 움직이면 표식을 남긴다 — 그 뒤엔 자동으로 안 옮긴다 */
+  const markDocLogMonth = (v: string) => { docLogMonthTouched.current = true; setDocLogMonth(v); };
   const [bulkMfgDate, setBulkMfgDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [productionWorkCat, setProductionWorkCat] = useState('시골향참기름1');
   // 생산작업기록부 시트 — 브랜드 접기 상태와, 사용자가 고친 시트 제목(docSheetTitles)
@@ -372,6 +380,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
     productionSalesLogs.forEach(l => map.set(l.id, l));
     return Array.from(map.values());
   }, [productionSalesLogs, extraProductionLogs]);
+
+  /*
+   * 이력을 볼 달을 **기록이 있는 마지막 달**로 한 번 맞춘다.
+   * 이번 달로 열면 1일에 들어갔을 때 빈 목록만 보인다(8월 것이 사라진 것처럼).
+   * 사용자가 달을 직접 움직였으면(docLogMonthTouched) 다시 안 건드린다.
+   */
+  useEffect(() => {
+    if (docLogMonthTouched.current || !mergedProductionSalesLogs.length) return;
+    const last = mergedProductionSalesLogs
+      .map(l => String(l.date ?? '').slice(0, 7)).filter(Boolean).sort().pop();
+    if (last && last !== docLogMonth) setDocLogMonth(last);
+  }, [mergedProductionSalesLogs]);
 
   // 라이브 구독은 7일치만(무료요금제 읽기 절약) → 원료수불부는 전재고(이월 잔고) 계산에 전체 이력이 필요.
   // 수불부 탭을 열 때만 1회 온디맨드 조회하여 라이브 7일 구독분과 merge. (다른 페이지는 7일 유지)
@@ -2745,13 +2765,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
                             className="text-xs font-bold text-slate-700 bg-transparent outline-none cursor-pointer"
                           />
                         </div>
-                        <button
-                          onClick={exportExcel}
-                          className="flex items-center space-x-2 bg-emerald-600 text-white px-5 py-2.5 rounded-2xl font-bold shadow hover:bg-emerald-700 transition-all text-sm"
-                        >
-                          <FileText size={16} />
-                          <span>엑셀 저장</span>
-                        </button>
                       </div>
                     )}
                     {docTab === '생산작업기록부' && (
@@ -2895,9 +2908,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       <div className="flex items-center justify-between flex-wrap gap-2">
                         <span className="text-xs font-black text-slate-500 uppercase tracking-widest">생산판매기록부 이력 ({logs.length}건)</span>
                         <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm">
-                          <button onClick={() => { const d = new Date(docLogMonth + '-01'); d.setMonth(d.getMonth() - 1); setDocLogMonth(d.toISOString().slice(0, 7)); }} className="text-slate-400 hover:text-indigo-500 font-black text-sm px-1">‹</button>
-                          <input type="month" value={docLogMonth} onChange={e => setDocLogMonth(e.target.value)} className="text-xs font-bold text-slate-700 bg-transparent outline-none cursor-pointer" />
-                          <button onClick={() => { const d = new Date(docLogMonth + '-01'); d.setMonth(d.getMonth() + 1); setDocLogMonth(d.toISOString().slice(0, 7)); }} className="text-slate-400 hover:text-indigo-500 font-black text-sm px-1">›</button>
+                          <button onClick={() => { const d = new Date(docLogMonth + '-01'); d.setMonth(d.getMonth() - 1); markDocLogMonth(d.toISOString().slice(0, 7)); }} className="text-slate-400 hover:text-indigo-500 font-black text-sm px-1">‹</button>
+                          <input type="month" value={docLogMonth} onChange={e => markDocLogMonth(e.target.value)} className="text-xs font-bold text-slate-700 bg-transparent outline-none cursor-pointer" />
+                          <button onClick={() => { const d = new Date(docLogMonth + '-01'); d.setMonth(d.getMonth() + 1); markDocLogMonth(d.toISOString().slice(0, 7)); }} className="text-slate-400 hover:text-indigo-500 font-black text-sm px-1">›</button>
                         </div>
                       </div>
                       {logs.length === 0 ? (

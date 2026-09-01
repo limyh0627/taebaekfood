@@ -6,6 +6,8 @@ import { subscribeToCollection, addItem, deleteItem, updateItem, fetchCollection
 import { CabinetCategory, CabinetSubCategory, CabinetDoc } from '../src/shared/types';
 
 const DEFAULT_CATEGORIES = ['직원용', '업무용', '거래처용'];
+/** 이번 탭에서 이미 세운 자리 — 화면을 드나들어도 두 번 안 만든다 */
+const seededPaths = new Set<string>();
 const MAX_SIZE_MB = 30;
 
 interface DocumentManagerProps {
@@ -73,35 +75,39 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
   }, []);
 
   /*
-   * 앱이 화면을 얹는 자리를 세워 둔다. 사람이 지워도 다음에 들어오면 다시 선다 —
-   * 그 자리가 없으면 생산판매기록부로 가는 문이 통째로 사라진다.
+   * **자리를 세우는 건 딱 한 번, 그것도 목록을 실제로 읽어 본 뒤에.**
+   *
+   * 앞서 두 번 틀렸다:
+   *   ① 구독이 아직 안 왔는데 `categories`가 빈 배열이라 "없네" 하고 만들었다.
+   *   ② 막는 표식을 useRef에 뒀더니 화면을 나갔다 오면 초기화돼 또 만들었다.
+   * 그래서 '서류관리'가 넷이 됐다.
+   *
+   * 이번엔 **fetch로 직접 확인**하고(구독을 안 기다린다), 표식을 **모듈 수준**에 둔다.
+   * 화면을 몇 번 드나들어도 이 탭이 살아 있는 동안엔 한 번만 만든다.
    */
   const seedKey = seed.map(x => `${x.category}|${x.subCategory}`).join(',');
-  /*
-   * **한 번 넣은 건 다시 안 넣는다.** addItem은 비동기고 목록은 구독으로 늦게 따라온다 —
-   * 그 사이에 효과가 또 돌면 `categories`에 아직 없어 보여서 같은 걸 또 만든다.
-   * 실제로 '서류관리' 대분류가 셋이 됐다. 이번 판에 이미 손댄 이름을 ref에 적어 막는다.
-   */
-  const seedTried = useRef(new Set<string>());
   useEffect(() => {
-    if (!seed.length) return;
-    for (const { category, subCategory } of seed) {
-      const catKey = `cat|${category}`;
-      if (!categories.some(c => c.name === category)) {
-        if (!seedTried.current.has(catKey)) {
-          seedTried.current.add(catKey);
-          addItem('fileCabinetCategories', { name: category, order: 90, createdAt: new Date().toISOString() });
-        }
-        continue;                       // 대분류가 설 때까지 중분류는 기다린다
+    if (!seedKey) return;
+    let alive = true;
+    (async () => {
+      for (const { category, subCategory } of seed) {
+        const key = `${category}|${subCategory}`;
+        if (seededPaths.has(key)) continue;
+        seededPaths.add(key);                       // 먼저 막는다 — await 사이에 또 들어온다
+        const [cs, ss] = await Promise.all([
+          fetchCollection<CabinetCategory>('fileCabinetCategories'),
+          fetchCollection<CabinetSubCategory>('fileCabinetSubCategories'),
+        ]);
+        if (!alive) return;
+        if (!cs.some(c => c.name === category))
+          await addItem('fileCabinetCategories', { name: category, order: 90, createdAt: new Date().toISOString() });
+        if (!ss.some(x => x.category === category && x.name === subCategory))
+          await addItem('fileCabinetSubCategories', { category, name: subCategory, order: 0, createdAt: new Date().toISOString() });
       }
-      const subKey = `sub|${category}|${subCategory}`;
-      if (!subCategories.some(sc => sc.category === category && sc.name === subCategory)
-        && !seedTried.current.has(subKey)) {
-        seedTried.current.add(subKey);
-        addItem('fileCabinetSubCategories', { category, name: subCategory, order: 0, createdAt: new Date().toISOString() });
-      }
-    }
-  }, [seedKey, categories, subCategories]);
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seedKey]);
 
   /*
    * 고른 자리를 바깥에 알린다.
