@@ -1,0 +1,36 @@
+{
+  "snap": {
+    "id": "inv-snap-punghoe-2026-08",
+    "companyId": "punghoe",
+    "items": [
+      {
+        "itemId": "p-1782788554239",
+        "name": "깨분",
+        "spec": "벌크",
+        "category": "참깨",
+        "qty": 0,
+        "value": 0
+      },
+      {
+        "itemId": "wip-깨분참기름-캔-punghoe",
+        "name": "깨분참기름/16.5kg",
+        "spec": "16.5kg",
+        "category": "참기름",
+        "qty": 30,
+        "value": 3267000
+      },
+      {
+        "itemId": "p-1779251176421-punghoe",
+        "name": "참깨",
+        "spec": "벌크",
+        "category": "참깨",
+        "qty": 0,
+        "value": 0
+      }
+    ],
+    "value": 3267000,
+    "yearMonth": "2026-08",
+    "recordedAt": "2026-09-01T02:54:35.778Z"
+  },
+  "madeItem": true
+}
