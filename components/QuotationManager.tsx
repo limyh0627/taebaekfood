@@ -10,13 +10,20 @@ import PageHeader from './PageHeader';
  *
  * 전표(거래명세서)와 다른 점은 **아직 판 게 아니라는 것**이다. 그래서 회계에 아무것도 안 남긴다 —
  * 분개도, 채권도, 재고도 안 움직인다. 나중에 그 값으로 실제로 팔면 그때 전표를 끊는다.
- * 여기서 만든 건 `quotations` 컬렉션에만 쌓인다.
+ *
+ * 그리고 견적은 대개 **안 팔던 걸 새로 팔 때** 낸다. 그래서 품목 고르는 자리가
+ * 거래처에 등록된 것 위주면 안 된다 — 전 품목을 빠르게 뒤질 수 있어야 한다.
+ * 값을 매기려면 원가가 보여야 하고, 단가를 넣으면 남는 게 바로 보여야 한다.
  */
 export interface QuotationLine {
+  /** 품목에서 골랐으면 그 id — 원가를 되찾는 데 쓴다. 직접 적은 줄은 없다. */
+  itemId?: string;
   name: string;
   spec: string;
   qty: number;
   price: number;
+  /** 낼 때의 원가 — 나중에 원료값이 바뀌어도 그때 얼마로 셈했는지 남는다 */
+  cost?: number;
   /** 면세면 부가세를 안 붙인다 */
   isTaxExempt: boolean;
   note?: string;
@@ -37,6 +44,8 @@ export interface Quotation {
   totalSupply: number;
   totalTax: number;
   totalAmount: number;
+  /** 낼 때의 원가 합 — 나중에 "이 견적 남는 거였나"를 되짚을 수 있게 */
+  totalCost?: number;
   note?: string;
   createdAt: string;
   createdBy?: string;
@@ -48,6 +57,8 @@ interface Props {
   partnerItems?: PartnerItem[];
   companyId?: CompanyId;
   currentUser?: { id: string; name: string };
+  /** 품목 원가 — 재고평가와 같은 롤업을 쓴다(AdminApp이 넘긴다) */
+  costOf?: (_item: Item) => number;
 }
 
 const fmt = (n: number) => Math.round(n).toLocaleString('ko-KR');
@@ -57,6 +68,7 @@ const plusDays = (d: string, n: number) => {
   x.setDate(x.getDate() + n);
   return x.toISOString().slice(0, 10);
 };
+const num = (v: string) => Number(String(v).replace(/[^\d.]/g, '')) || 0;
 
 /** 그날 안에서 이어지는 번호 — 전표와 같은 꼴(`Q260901-01`)이되 통은 따로 쓴다 */
 function nextQuoteNo(date: string, existing: { quoteNo?: string }[]): string {
@@ -71,30 +83,38 @@ function nextQuoteNo(date: string, existing: { quoteNo?: string }[]): string {
   return `${head}${String(max + 1).padStart(2, '0')}`;
 }
 
-/** 줄들의 공급가·세액·합계. 면세 줄은 세액이 0이다. */
+/** 줄들의 공급가·세액·합계·원가. 면세 줄은 세액이 0이다. */
 export function quoteTotals(lines: QuotationLine[]) {
-  let supply = 0, tax = 0;
+  let supply = 0, tax = 0, cost = 0;
   for (const l of lines) {
-    const amt = Math.round((Number(l.qty) || 0) * (Number(l.price) || 0));
+    const qty = Number(l.qty) || 0;
+    const amt = Math.round(qty * (Number(l.price) || 0));
     supply += amt;
     if (!l.isTaxExempt) tax += Math.round(amt * 0.1);
+    cost += Math.round(qty * (Number(l.cost) || 0));
   }
-  return { supply, tax, total: supply + tax };
+  //  마진은 **공급가 기준**이다 — 부가세는 받아서 그대로 내는 돈이라 남는 게 아니다.
+  const margin = supply - cost;
+  return { supply, tax, total: supply + tax, cost, margin, marginRate: supply > 0 ? margin / supply : 0 };
 }
 
 const emptyLine = (): QuotationLine => ({ name: '', spec: '', qty: 1, price: 0, isTaxExempt: false });
 
-export default function QuotationManager({ items, partners, partnerItems = [], companyId = 'taebaek', currentUser }: Props) {
+export default function QuotationManager({ items, partners, partnerItems = [], companyId = 'taebaek', currentUser, costOf }: Props) {
   const [quotes, setQuotes] = useState<Quotation[]>([]);
   useEffect(() => subscribeToCollection<Quotation>('quotations', setQuotes), []);
 
   const [search, setSearch] = useState('');
-  const [editing, setEditing] = useState<Quotation | null>(null);
-  const [form, setForm] = useState<Omit<Quotation, 'id' | 'createdAt' | 'quoteNo' | 'totalSupply' | 'totalTax' | 'totalAmount'>>({
+  const [viewing, setViewing] = useState<Quotation | null>(null);
+  const [form, setForm] = useState<{
+    date: string; validUntil?: string; partnerId: string; partnerName: string;
+    attention?: string; lines: QuotationLine[]; note?: string;
+  }>({
     date: today(), validUntil: plusDays(today(), 30),
     partnerId: '', partnerName: '', attention: '', lines: [emptyLine()], note: '',
   });
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [partnerSearch, setPartnerSearch] = useState('');
   const [pickIdx, setPickIdx] = useState<number | null>(null);
   const [itemSearch, setItemSearch] = useState('');
@@ -114,32 +134,23 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
   const totals = quoteTotals(form.lines);
   const companyName = COMPANIES.find(c => c.id === companyId)?.name ?? '';
 
-  const openNew = () => {
-    setEditing(null);
-    setForm({
-      date: today(), validUntil: plusDays(today(), 30),
-      partnerId: '', partnerName: '', attention: '', lines: [emptyLine()], note: '',
-    });
-    setPartnerSearch(''); setPickIdx(null); setOpen(true);
-  };
+  /** 그 거래처에 등록된 단가 — 있으면 기본값으로 쓴다 */
+  const priceFor = (itemId: string) =>
+    partnerItems.find(p => p.itemId === itemId && p.partnerId === form.partnerId && p.Direction !== 'in')?.price;
+  const costFor = (it: Item) => Math.round(costOf?.(it) ?? Number(it.cost ?? 0));
 
-  /** 그대로 베껴 새 견적을 연다 — 같은 거래처에 값만 바꿔 다시 내미는 일이 흔하다 */
-  const openCopy = (q: Quotation) => {
-    setEditing(null);
-    setForm({
-      date: today(), validUntil: plusDays(today(), 30),
-      partnerId: q.partnerId, partnerName: q.partnerName, attention: q.attention ?? '',
-      lines: q.lines.map(l => ({ ...l })), note: q.note ?? '',
-    });
-    setPartnerSearch(''); setPickIdx(null); setOpen(true);
-  };
+  const resetForm = (base?: Quotation) => setForm({
+    date: today(), validUntil: plusDays(today(), 30),
+    partnerId: base?.partnerId ?? '', partnerName: base?.partnerName ?? '',
+    attention: base?.attention ?? '',
+    lines: base ? base.lines.map(l => ({ ...l })) : [emptyLine()],
+    note: base?.note ?? '',
+  });
+  const openNew = () => { setEditingId(null); resetForm(); setPartnerSearch(''); setPickIdx(null); setOpen(true); };
+  const openCopy = (q: Quotation) => { setEditingId(null); resetForm(q); setPartnerSearch(''); setPickIdx(null); setOpen(true); };
 
   const setLine = (i: number, patch: Partial<QuotationLine>) =>
     setForm(f => ({ ...f, lines: f.lines.map((l, k) => (k === i ? { ...l, ...patch } : l)) }));
-
-  /** 거래처에 등록된 단가가 있으면 그 값으로 연다 — 견적이 실제 거래가와 어긋나면 쓸모가 없다 */
-  const priceFor = (itemId: string) =>
-    partnerItems.find(p => p.itemId === itemId && p.partnerId === form.partnerId && p.Direction !== 'in')?.price;
 
   const save = async () => {
     if (!form.partnerId) { alert('거래처를 고르세요.'); return; }
@@ -149,22 +160,31 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
     setSaving(true);
     try {
       const t = quoteTotals(lines);
-      const q: Quotation = {
-        id: editing?.id ?? `quo-${Date.now()}`,
+      const prev = editingId ? mine.find(q => q.id === editingId) : undefined;
+      await addItem('quotations', {
+        id: prev?.id ?? `quo-${Date.now()}`,
         companyId,
-        quoteNo: editing?.quoteNo ?? nextQuoteNo(form.date, mine),
+        quoteNo: prev?.quoteNo ?? nextQuoteNo(form.date, mine),
         date: form.date, validUntil: form.validUntil || undefined,
         partnerId: form.partnerId, partnerName: form.partnerName,
         attention: form.attention || undefined,
-        lines, totalSupply: t.supply, totalTax: t.tax, totalAmount: t.total,
+        lines, totalSupply: t.supply, totalTax: t.tax, totalAmount: t.total, totalCost: t.cost,
         note: form.note || undefined,
-        createdAt: editing?.createdAt ?? new Date().toISOString(),
+        createdAt: prev?.createdAt ?? new Date().toISOString(),
         createdBy: currentUser?.name,
-      };
-      await addItem('quotations', q as never);
+      } as never);
       setOpen(false);
     } finally { setSaving(false); }
   };
+
+  /** 품목 고르기 — 검색 결과. 전 품목을 뒤진다(견적은 안 팔던 걸 새로 팔 때 낸다). */
+  const pickResults = useMemo(() => {
+    const q = itemSearch.trim();
+    const rows = q ? items.filter(x => matchesSearch(`${x.name} ${x.spec ?? ''} ${x.품목 ?? ''}`, q)) : items;
+    //  그 거래처에 이미 붙은 품목을 앞에 둔다 — 검색어가 없을 때 자주 쓰는 게 위로 온다
+    const linked = new Set(partnerItems.filter(p => p.partnerId === form.partnerId).map(p => p.itemId));
+    return [...rows].sort((a, b) => (linked.has(b.id) ? 1 : 0) - (linked.has(a.id) ? 1 : 0)).slice(0, 300);
+  }, [items, itemSearch, partnerItems, form.partnerId]);
 
   return (
     <div className="space-y-4">
@@ -185,43 +205,54 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
       {/* 목록 */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-xs min-w-[720px]">
+          <table className="w-full text-xs min-w-[820px]">
             <thead className="bg-slate-50 text-slate-400">
               <tr>
-                {['번호', '일자', '유효기한', '거래처', '품목', '합계', ''].map((h, i) => (
-                  <th key={h + i} className={`px-4 py-2.5 font-black whitespace-nowrap ${h === '합계' ? 'text-right' : 'text-left'}`}>{h}</th>
+                {['번호', '일자', '유효기한', '거래처', '품목'].map(h => (
+                  <th key={h} className="px-4 py-2.5 font-black text-left whitespace-nowrap">{h}</th>
                 ))}
+                <th className="px-4 py-2.5 font-black text-right whitespace-nowrap">합계</th>
+                <th className="px-4 py-2.5 font-black text-right whitespace-nowrap">마진</th>
+                <th />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {shown.length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-16 text-center text-slate-300 font-bold">견적서가 없습니다</td></tr>
+                <tr><td colSpan={8} className="px-4 py-16 text-center text-slate-300 font-bold">견적서가 없습니다</td></tr>
               )}
-              {shown.map(q => (
-                <tr key={q.id} className="hover:bg-slate-50/60">
-                  <td className="px-4 py-2.5 font-mono font-bold text-slate-500 whitespace-nowrap">{q.quoteNo}</td>
-                  <td className="px-4 py-2.5 font-mono text-slate-500 whitespace-nowrap">{q.date}</td>
-                  <td className={`px-4 py-2.5 font-mono whitespace-nowrap ${q.validUntil && q.validUntil < today() ? 'text-rose-500' : 'text-slate-400'}`}>
-                    {q.validUntil ?? '—'}
-                    {q.validUntil && q.validUntil < today() && <span className="ml-1 text-[10px] font-black">지남</span>}
-                  </td>
-                  <td className="px-4 py-2.5 font-bold text-slate-800 whitespace-nowrap">{q.partnerName}</td>
-                  <td className="px-4 py-2.5 text-slate-500 max-w-[240px] truncate">
-                    {q.lines[0]?.name}{q.lines.length > 1 ? ` 외 ${q.lines.length - 1}건` : ''}
-                  </td>
-                  <td className="px-4 py-2.5 text-right font-black text-slate-800 tabular-nums whitespace-nowrap">{fmt(q.totalAmount)}</td>
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-1 justify-end">
-                      <button onClick={() => { setEditing(q); setOpen(false); }} title="보기 · 인쇄"
-                        className="p-1.5 text-slate-300 hover:text-indigo-600"><Printer size={13} /></button>
-                      <button onClick={() => openCopy(q)} title="이대로 새 견적"
-                        className="p-1.5 text-slate-300 hover:text-emerald-600"><Copy size={13} /></button>
-                      <button onClick={() => { if (window.confirm(`${q.quoteNo} 견적서를 지울까요?`)) deleteItem('quotations', q.id); }}
-                        title="삭제" className="p-1.5 text-slate-300 hover:text-rose-500"><Trash2 size={13} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {shown.map(q => {
+                const t = quoteTotals(q.lines);
+                return (
+                  <tr key={q.id} className="hover:bg-slate-50/60">
+                    <td className="px-4 py-2.5 font-mono font-bold text-slate-500 whitespace-nowrap">{q.quoteNo}</td>
+                    <td className="px-4 py-2.5 font-mono text-slate-500 whitespace-nowrap">{q.date}</td>
+                    <td className={`px-4 py-2.5 font-mono whitespace-nowrap ${q.validUntil && q.validUntil < today() ? 'text-rose-500' : 'text-slate-400'}`}>
+                      {q.validUntil ?? '—'}
+                      {q.validUntil && q.validUntil < today() && <span className="ml-1 text-[10px] font-black">지남</span>}
+                    </td>
+                    <td className="px-4 py-2.5 font-bold text-slate-800 whitespace-nowrap">{q.partnerName}</td>
+                    <td className="px-4 py-2.5 text-slate-500 max-w-[220px] truncate">
+                      {q.lines[0]?.name}{q.lines.length > 1 ? ` 외 ${q.lines.length - 1}건` : ''}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-black text-slate-800 tabular-nums whitespace-nowrap">{fmt(q.totalAmount)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums whitespace-nowrap">
+                      {t.cost > 0
+                        ? <span className={`font-black ${t.margin < 0 ? 'text-rose-500' : 'text-emerald-600'}`}>{(t.marginRate * 100).toFixed(1)}%</span>
+                        : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-1 justify-end">
+                        <button onClick={() => setViewing(q)} title="보기 · 인쇄"
+                          className="p-1.5 text-slate-300 hover:text-indigo-600"><Printer size={13} /></button>
+                        <button onClick={() => openCopy(q)} title="이대로 새 견적"
+                          className="p-1.5 text-slate-300 hover:text-emerald-600"><Copy size={13} /></button>
+                        <button onClick={() => { if (window.confirm(`${q.quoteNo} 견적서를 지울까요?`)) deleteItem('quotations', q.id); }}
+                          title="삭제" className="p-1.5 text-slate-300 hover:text-rose-500"><Trash2 size={13} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -230,7 +261,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
       {/* ── 작성 ── */}
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setOpen(false)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <FileText size={16} className="text-indigo-600" />
@@ -283,65 +314,50 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                 )}
               </div>
 
-              {/* 품목 */}
+              {/* 품목 — 원가와 마진율을 줄마다 보여준다. 값을 매기는 자리라 이게 안 보이면 감으로 적게 된다. */}
               <div className="rounded-2xl border border-slate-200 overflow-hidden">
-                <div className="grid grid-cols-[1fr_78px_100px_100px_52px_32px] bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                <div className="grid grid-cols-[1fr_70px_92px_100px_64px_100px_48px_30px] bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                   <span className="px-3 py-2">품목</span>
                   <span className="px-2 py-2 text-right">수량</span>
+                  <span className="px-2 py-2 text-right">원가</span>
                   <span className="px-2 py-2 text-right">단가</span>
+                  <span className="px-2 py-2 text-right">마진율</span>
                   <span className="px-2 py-2 text-right">금액</span>
-                  <span className="px-2 py-2 text-center">과세</span>
+                  <span className="px-1 py-2 text-center">과세</span>
                   <span />
                 </div>
-                {form.lines.map((l, i) => (
-                  <div key={i} className="grid grid-cols-[1fr_78px_100px_100px_52px_32px] border-t border-slate-100 items-start">
-                    <div className="px-3 py-2 min-w-0">
-                      <input value={l.name} onChange={e => setLine(i, { name: e.target.value })}
-                        onFocus={() => { setPickIdx(i); setItemSearch(''); }}
-                        placeholder="품목명 (직접 적거나 골라도 됩니다)"
-                        className="w-full bg-transparent text-xs font-bold outline-none" />
-                      <input value={l.spec} onChange={e => setLine(i, { spec: e.target.value })} placeholder="규격"
-                        className="w-full bg-transparent text-[10px] text-slate-400 outline-none" />
-                      {pickIdx === i && (
-                        <div className="mt-1.5 rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden">
-                          <div className="flex items-center gap-1 px-2 py-1.5 border-b border-slate-100">
-                            <input value={itemSearch} onChange={e => setItemSearch(e.target.value)} placeholder="품목 검색..."
-                              className="flex-1 text-xs font-bold outline-none" />
-                            <button onClick={() => setPickIdx(null)} className="text-slate-300 hover:text-slate-600"><X size={12} /></button>
-                          </div>
-                          <div className="h-40 overflow-y-auto">
-                            {items.filter(x => !itemSearch.trim() || matchesSearch(`${x.name} ${x.spec ?? ''}`, itemSearch.trim()))
-                              .slice(0, 200).map(x => (
-                              <button key={x.id}
-                                onClick={() => {
-                                  setLine(i, {
-                                    name: x.name, spec: String(x.spec ?? ''),
-                                    price: priceFor(x.id) ?? Number(x.price ?? 0),
-                                    isTaxExempt: x.taxType === '면세',
-                                  });
-                                  setPickIdx(null);
-                                }}
-                                className="w-full text-left px-3 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-indigo-50 truncate">
-                                {x.name}<span className="text-slate-400 ml-1">{x.spec ?? ''}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                {form.lines.map((l, i) => {
+                  const lineMargin = l.price - (l.cost ?? 0);
+                  const lineRate = l.price > 0 ? lineMargin / l.price : 0;
+                  return (
+                    <div key={i} className="grid grid-cols-[1fr_70px_92px_100px_64px_100px_48px_30px] border-t border-slate-100 items-center">
+                      <div className="px-3 py-2 min-w-0">
+                        <button onClick={() => { setPickIdx(i); setItemSearch(''); }}
+                          className={`w-full text-left text-xs font-bold truncate px-2 py-1.5 rounded-lg border transition-all ${l.name ? 'border-slate-200 text-slate-700 hover:border-indigo-300' : 'border-dashed border-slate-300 text-slate-400'}`}>
+                          {l.name || '품목 고르기'}
+                          {l.spec && <span className="text-slate-400 font-normal ml-1">{l.spec}</span>}
+                        </button>
+                      </div>
+                      <input value={String(l.qty)} inputMode="decimal" onChange={e => setLine(i, { qty: num(e.target.value) })}
+                        className="mx-1 text-right bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none" />
+                      <span className="px-2 text-right text-xs font-bold text-slate-400 tabular-nums">
+                        {l.cost ? fmt(l.cost) : '—'}
+                      </span>
+                      <input value={String(l.price)} inputMode="numeric" onChange={e => setLine(i, { price: num(e.target.value) })}
+                        className="mx-1 text-right bg-white border-2 border-indigo-100 rounded-lg px-2 py-1.5 text-xs font-black outline-none focus:border-indigo-300" />
+                      <span className={`px-2 text-right text-xs font-black tabular-nums ${!l.cost || !l.price ? 'text-slate-300' : lineMargin < 0 ? 'text-rose-500' : 'text-emerald-600'}`}>
+                        {l.cost && l.price ? `${(lineRate * 100).toFixed(1)}%` : '—'}
+                      </span>
+                      <span className="px-2 text-right text-xs font-black text-slate-800 tabular-nums">{fmt(l.qty * l.price)}</span>
+                      <button onClick={() => setLine(i, { isTaxExempt: !l.isTaxExempt })}
+                        className={`mx-1 py-1.5 rounded-lg text-[10px] font-black border ${l.isTaxExempt ? 'bg-indigo-500 text-white border-indigo-500' : 'bg-white text-slate-500 border-slate-200'}`}>
+                        {l.isTaxExempt ? '면세' : '과세'}
+                      </button>
+                      <button onClick={() => setForm(f => ({ ...f, lines: f.lines.filter((_, k) => k !== i) }))}
+                        className="text-slate-300 hover:text-rose-500 justify-self-center"><Trash2 size={13} /></button>
                     </div>
-                    <input value={String(l.qty)} inputMode="decimal" onChange={e => setLine(i, { qty: Number(e.target.value.replace(/[^\d.]/g, '')) || 0 })}
-                      className="mx-1 mt-2 text-right bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none" />
-                    <input value={String(l.price)} inputMode="numeric" onChange={e => setLine(i, { price: Number(e.target.value.replace(/[^\d.]/g, '')) || 0 })}
-                      className="mx-1 mt-2 text-right bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold outline-none" />
-                    <span className="px-2 py-4 text-right text-xs font-black text-slate-800 tabular-nums">{fmt(l.qty * l.price)}</span>
-                    <button onClick={() => setLine(i, { isTaxExempt: !l.isTaxExempt })}
-                      className={`mx-1 mt-2 py-1.5 rounded-lg text-[10px] font-black border ${l.isTaxExempt ? 'bg-indigo-500 text-white border-indigo-500' : 'bg-white text-slate-500 border-slate-200'}`}>
-                      {l.isTaxExempt ? '면세' : '과세'}
-                    </button>
-                    <button onClick={() => setForm(f => ({ ...f, lines: f.lines.filter((_, k) => k !== i) }))}
-                      className="text-slate-300 hover:text-rose-500 justify-self-center mt-3.5"><Trash2 size={13} /></button>
-                  </div>
-                ))}
+                  );
+                })}
                 <button onClick={() => setForm(f => ({ ...f, lines: [...f.lines, emptyLine()] }))}
                   className="w-full py-2 border-t border-slate-100 text-[11px] font-black text-indigo-600 hover:bg-indigo-50">+ 줄 추가</button>
               </div>
@@ -353,12 +369,27 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300" />
               </label>
 
-              <div className="rounded-2xl bg-slate-900 text-white px-5 py-3 flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-center gap-4 text-[11px] font-bold text-slate-400">
-                  <span>공급가 <b className="text-white tabular-nums">{fmt(totals.supply)}</b></span>
-                  <span>부가세 <b className="text-white tabular-nums">{fmt(totals.tax)}</b></span>
+              <div className="rounded-2xl bg-slate-900 text-white px-5 py-3 space-y-1.5">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-4 text-[11px] font-bold text-slate-400">
+                    <span>공급가 <b className="text-white tabular-nums">{fmt(totals.supply)}</b></span>
+                    <span>부가세 <b className="text-white tabular-nums">{fmt(totals.tax)}</b></span>
+                  </div>
+                  <span className="text-lg font-black tabular-nums">{fmt(totals.total)}원</span>
                 </div>
-                <span className="text-lg font-black tabular-nums">{fmt(totals.total)}원</span>
+                {totals.cost > 0 && (
+                  <div className="flex items-center justify-between border-t border-slate-700 pt-1.5 flex-wrap gap-2">
+                    <span className="text-[11px] font-bold text-slate-400">원가 <b className="text-slate-200 tabular-nums">{fmt(totals.cost)}</b></span>
+                    <span className="text-[11px] font-bold text-slate-400">
+                      마진{' '}
+                      <b className={`tabular-nums ${totals.margin < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>{fmt(totals.margin)}</b>
+                      <b className={`ml-2 ${totals.margin < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>{(totals.marginRate * 100).toFixed(1)}%</b>
+                    </span>
+                  </div>
+                )}
+                {totals.margin < 0 && totals.cost > 0 && (
+                  <p className="text-[11px] font-black text-rose-400">원가보다 싼 값입니다 — 팔면 손해입니다.</p>
+                )}
               </div>
             </div>
 
@@ -373,34 +404,105 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
         </div>
       )}
 
+      {/* ── 품목 고르기 ──────────────────────────────────────────────
+          견적은 대개 **안 팔던 걸 새로 팔 때** 낸다. 그래서 거래처에 붙은 것만 보여주면 안 된다 —
+          전 품목을 뒤지되, 그 거래처에 이미 붙은 건 위로 올린다.
+          원가와 등록 단가를 나란히 보여줘 여기서 바로 값을 가늠할 수 있게 한다. */}
+      {pickIdx !== null && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setPickIdx(null)}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl h-[72vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
+              <div>
+                <h4 className="font-black text-slate-900 text-sm">품목 고르기</h4>
+                <p className="text-[10px] text-slate-400">{pickResults.length}품목 · 이 거래처에 붙은 품목이 위에 옵니다</p>
+              </div>
+              <button onClick={() => setPickIdx(null)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl"><X size={16} /></button>
+            </div>
+            <div className="px-5 py-3 border-b border-slate-100">
+              <div className="relative">
+                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
+                <input autoFocus value={itemSearch} onChange={e => setItemSearch(e.target.value)} placeholder="품목명·규격 검색 (초성도 됩니다)"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300" />
+              </div>
+            </div>
+            {/* 크기 고정 — 검색으로 줄 수가 줄어도 창이 안 흔들린다 */}
+            <div className="flex-1 overflow-y-auto">
+              <div className="grid grid-cols-[1fr_100px_100px_100px] bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-widest sticky top-0">
+                <span className="px-4 py-2">품목</span>
+                <span className="px-3 py-2 text-right">원가</span>
+                <span className="px-3 py-2 text-right">등록 단가</span>
+                <span className="px-3 py-2 text-right">마진율</span>
+              </div>
+              {pickResults.length === 0 && <p className="px-4 py-16 text-center text-slate-300 font-bold text-sm">품목이 없습니다</p>}
+              {pickResults.map(x => {
+                const c = costFor(x);
+                const p = priceFor(x.id);
+                const rt = p && p > 0 ? (p - c) / p : null;
+                const linked = p !== undefined;
+                return (
+                  <button key={x.id}
+                    onClick={() => {
+                      setLine(pickIdx, {
+                        itemId: x.id, name: x.name, spec: String(x.spec ?? ''),
+                        cost: c, price: p ?? Number(x.price ?? 0),
+                        isTaxExempt: x.taxType === '면세',
+                      });
+                      setPickIdx(null);
+                    }}
+                    className="w-full grid grid-cols-[1fr_100px_100px_100px] items-center border-t border-slate-50 hover:bg-indigo-50/70 text-left">
+                    <span className="px-4 py-2 min-w-0">
+                      <span className="text-xs font-bold text-slate-800 truncate block">
+                        {x.name}
+                        {linked && <span className="ml-1.5 text-[9px] font-black text-indigo-500">거래중</span>}
+                        {x.taxType === '면세' && <span className="ml-1 text-[9px] font-black text-slate-400">면세</span>}
+                      </span>
+                      <span className="text-[10px] text-slate-400">{x.spec ?? ''}{x.unit ? ` · ${x.unit}` : ''}</span>
+                    </span>
+                    <span className="px-3 py-2 text-right text-xs font-bold text-slate-500 tabular-nums">{c > 0 ? fmt(c) : '—'}</span>
+                    <span className="px-3 py-2 text-right text-xs font-bold text-slate-700 tabular-nums">{p !== undefined ? fmt(p) : '—'}</span>
+                    <span className={`px-3 py-2 text-right text-xs font-black tabular-nums ${rt == null ? 'text-slate-300' : rt < 0 ? 'text-rose-500' : 'text-emerald-600'}`}>
+                      {rt == null ? '—' : `${(rt * 100).toFixed(1)}%`}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-[11px] font-bold text-slate-400">목록에 없으면 줄에 직접 적어도 됩니다</span>
+              <button onClick={() => setPickIdx(null)} className="px-4 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── 보기 · 인쇄 ── */}
-      {editing && (
+      {viewing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 print:static print:bg-white print:p-0"
-          onClick={() => setEditing(null)}>
+          onClick={() => setViewing(null)}>
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden print:max-h-none print:shadow-none print:rounded-none"
             onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-3 border-b border-slate-100 print:hidden">
-              <h3 className="font-black text-slate-900 text-sm">{editing.quoteNo}</h3>
+              <h3 className="font-black text-slate-900 text-sm">{viewing.quoteNo}</h3>
               <div className="flex items-center gap-2">
                 <button onClick={() => window.print()}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-black hover:bg-slate-800">
                   <Printer size={13} />인쇄
                 </button>
-                <button onClick={() => setEditing(null)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl"><X size={16} /></button>
+                <button onClick={() => setViewing(null)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl"><X size={16} /></button>
               </div>
             </div>
             <div className="flex-1 overflow-y-auto px-8 py-6 print:overflow-visible">
               <h2 className="text-center text-2xl font-black tracking-[0.4em] text-slate-900 mb-6">견 적 서</h2>
               <div className="flex justify-between gap-6 mb-5 text-xs">
                 <div className="space-y-1">
-                  <p className="font-black text-slate-800 text-sm">{editing.partnerName} 귀중</p>
-                  {editing.attention && <p className="text-slate-500">담당 {editing.attention}</p>}
+                  <p className="font-black text-slate-800 text-sm">{viewing.partnerName} 귀중</p>
+                  {viewing.attention && <p className="text-slate-500">담당 {viewing.attention}</p>}
                   <p className="text-slate-400">아래와 같이 견적합니다.</p>
                 </div>
                 <div className="text-right space-y-0.5 text-slate-500 whitespace-nowrap">
-                  <p><span className="text-slate-400">견적번호</span> <b className="font-mono text-slate-700">{editing.quoteNo}</b></p>
-                  <p><span className="text-slate-400">일자</span> <b className="font-mono text-slate-700">{editing.date}</b></p>
-                  {editing.validUntil && <p><span className="text-slate-400">유효기한</span> <b className="font-mono text-slate-700">{editing.validUntil}</b></p>}
+                  <p><span className="text-slate-400">견적번호</span> <b className="font-mono text-slate-700">{viewing.quoteNo}</b></p>
+                  <p><span className="text-slate-400">일자</span> <b className="font-mono text-slate-700">{viewing.date}</b></p>
+                  {viewing.validUntil && <p><span className="text-slate-400">유효기한</span> <b className="font-mono text-slate-700">{viewing.validUntil}</b></p>}
                   <p className="pt-1 font-black text-slate-800">{companyName}</p>
                 </div>
               </div>
@@ -415,7 +517,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                   </tr>
                 </thead>
                 <tbody>
-                  {editing.lines.map((l, i) => (
+                  {viewing.lines.map((l, i) => (
                     <tr key={i} className="border-b border-slate-100">
                       <td className="px-3 py-2 font-bold text-slate-800">
                         {l.name}{l.isTaxExempt && <span className="ml-1 text-[9px] font-black text-indigo-500">면세</span>}
@@ -429,15 +531,22 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                 </tbody>
                 <tfoot className="border-t-2 border-slate-800">
                   <tr><td colSpan={4} className="px-3 py-1.5 text-right font-bold text-slate-500">공급가액</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums font-black">{fmt(editing.totalSupply)}</td></tr>
+                    <td className="px-3 py-1.5 text-right tabular-nums font-black">{fmt(viewing.totalSupply)}</td></tr>
                   <tr><td colSpan={4} className="px-3 py-1.5 text-right font-bold text-slate-500">부가세</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums font-black">{fmt(editing.totalTax)}</td></tr>
+                    <td className="px-3 py-1.5 text-right tabular-nums font-black">{fmt(viewing.totalTax)}</td></tr>
                   <tr className="bg-slate-50"><td colSpan={4} className="px-3 py-2 text-right font-black text-slate-800">합계</td>
-                    <td className="px-3 py-2 text-right tabular-nums font-black text-base">{fmt(editing.totalAmount)}</td></tr>
+                    <td className="px-3 py-2 text-right tabular-nums font-black text-base">{fmt(viewing.totalAmount)}</td></tr>
                 </tfoot>
               </table>
-              {editing.note && (
-                <p className="mt-4 text-[11px] text-slate-500 whitespace-pre-wrap border-t border-slate-100 pt-3">{editing.note}</p>
+              {viewing.note && (
+                <p className="mt-4 text-[11px] text-slate-500 whitespace-pre-wrap border-t border-slate-100 pt-3">{viewing.note}</p>
+              )}
+              {/* 원가·마진은 **인쇄에서 뺀다** — 거래처에 주는 종이다 */}
+              {quoteTotals(viewing.lines).cost > 0 && (
+                <p className="mt-3 text-[11px] font-bold text-slate-400 print:hidden">
+                  원가 {fmt(quoteTotals(viewing.lines).cost)} · 마진 {fmt(quoteTotals(viewing.lines).margin)}
+                  ({(quoteTotals(viewing.lines).marginRate * 100).toFixed(1)}%) — 이 줄은 인쇄에 안 나옵니다
+                </p>
               )}
             </div>
           </div>
