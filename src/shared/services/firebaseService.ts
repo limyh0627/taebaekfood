@@ -365,3 +365,75 @@ export const syncInitialData = async (collectionName: string, initialData: any[]
     await addItem(collectionName, item);
   }
 };
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * 아래 셋은 **문을 넓히려고** 더한 것이다.
+ *
+ * 예전엔 이 파일에 없는 기능(조건 조회·트랜잭션·배치)이 필요하면 화면이 firebase를
+ * 직접 불렀다. 그렇게 8개 파일이 밖으로 샜다. 나중에 다른 DB로 옮기든 회사 격리를
+ * 한 곳에서 강제하든, **Firestore를 부르는 자리가 이 파일 하나여야** 손을 댈 수 있다.
+ *
+ * 여기 있는 것들은 일부러 **Firestore 타입을 밖으로 안 내보낸다** — 받는 것도 주는 것도
+ * 평범한 객체다. 그래야 부르는 쪽이 Firestore를 몰라도 된다.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/** 한 필드가 어떤 값인 문서만. 컬렉션 전체를 읽어 거르는 것보다 싸다. */
+export const fetchWhere = async <T extends { id: string }>(
+  collectionName: string,
+  field: string,
+  value: unknown,
+): Promise<T[]> => {
+  const snap = await getDocs(query(collection(db, collectionName), where(field, '==', value)));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() } as T));
+};
+
+/** 한 필드가 어떤 값인 문서를 계속 지켜본다. 해지 함수를 돌려준다. */
+export const subscribeWhere = <T extends { id: string }>(
+  collectionName: string,
+  field: string,
+  value: unknown,
+  cb: (_rows: T[]) => void,
+): (() => void) =>
+  onSnapshot(
+    query(collection(db, collectionName), where(field, '==', value)),
+    (snap: QuerySnapshot<DocumentData>) => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as T))),
+    () => cb([]),
+  );
+
+/**
+ * 여러 문서를 **한꺼번에** 쓴다 — 중간에 끊겨 반만 쓰이는 일이 없다.
+ * 재고 차감처럼 여러 품목이 같이 움직일 때 쓴다.
+ */
+export const writeMany = async (
+  ops: { collection: string; id: string; data: Record<string, unknown>; merge?: boolean }[],
+): Promise<void> => {
+  if (!ops.length) return;
+  //  Firestore 배치는 한 번에 500건까지다. 넘으면 나눠 보낸다.
+  for (let i = 0; i < ops.length; i += 400) {
+    const batch = writeBatch(db);
+    for (const op of ops.slice(i, i + 400)) {
+      batch.set(doc(db, op.collection, op.id), op.data, { merge: op.merge ?? false });
+    }
+    await batch.commit();
+  }
+};
+
+/**
+ * 읽고 고쳐 쓰는 걸 **한 덩어리로** — 그 사이 남이 고치면 다시 돈다.
+ * 두 사람이 같은 재고를 동시에 깎을 때 하나가 사라지는 걸 막는다.
+ *
+ * @param read  지금 값을 읽어 온다(없으면 undefined)
+ * @param write 그 값으로 무엇을 쓸지 정한다. undefined를 주면 아무것도 안 쓴다.
+ */
+export const mutateDoc = async <T>(
+  collectionName: string,
+  id: string,
+  next: (_cur: T | undefined) => Record<string, unknown> | undefined,
+): Promise<void> => {
+  const ref = doc(db, collectionName, id);
+  await runTransaction(db, async tx => {
+    const snap = await tx.get(ref);
+    const data = next(snap.exists() ? ({ id: snap.id, ...snap.data() } as T) : undefined);
+    if (data) tx.set(ref, data, { merge: true });
+  });
+};
