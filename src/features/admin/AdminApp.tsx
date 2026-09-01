@@ -235,20 +235,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
    * 메뉴에 띄우면 풍회 화면에 태백 것이 그대로 보인다 — 어느 회사를 보고 있는지 흐려진다.
    * 품목은 companyId가 붙어 있어 갈라 볼 수 있으므로 연다.
    */
-  const PUNGHOE_VIEWS: ViewType[] = [
-    'trade-statement', 'tax-statement', 'partner-stats', 'ledger-cash',
-    'financial-reports', 'cash-flow', 'profit-analysis', 'cost-management', 'partners',
-    'item-management', 'item-ledger', 'quotation',
-    //  인사 관리 — 화면은 이미 회사별로 갈려 있다(직원·급여대장·발생전표 id가 전부 회사를 탄다).
-    //  못 열게 막혀 있었을 뿐이라 목록에 넣기만 하면 된다.
-    'hr',
-  ];
-  const viewAllowed = (v: ViewType) => companyId === TAEBAEK || PUNGHOE_VIEWS.includes(v);
-  // 풍회로 바꿨는데 지금 화면이 태백 전용이면 전표로 보낸다
-  useEffect(() => {
-    if (!viewAllowed(currentView)) setCurrentView('trade-statement');
-  }, [companyId]);
-
+  /*
+   * **회사로 화면을 막지 않는다** (2026-09-01 사장님 지시: "풍회에도 태백에 있는 전 메뉴 뜨게").
+   *
+   * 예전엔 풍회에서 열 수 있는 화면을 목록(PUNGHOE_VIEWS)으로 좁혀 뒀다. 그런데
+   * 화면이 늘 때마다 목록에 넣는 걸 잊어서 "왜 풍회엔 없냐"가 반복됐다 —
+   * 인사 관리·견적서가 그랬다.
+   *
+   * 화면은 다 열고, **데이터가 회사를 탄다.** 풍회에 주문·생산 기록이 없으면 그 화면은
+   * 빈 목록으로 뜬다. 그게 "메뉴가 아예 없다"보다 낫다 — 없는 건지 못 여는 건지 알 수 있다.
+   */
+  const viewAllowed = (_v: ViewType) => true;
   // 활성 주문 + 불러온 이력 주문 통합 (id 중복 제거)
   const allOrders = useMemo(() => {
     const map = new Map<string, typeof orders[number]>();
