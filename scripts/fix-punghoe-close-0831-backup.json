@@ -1,0 +1,92 @@
+{
+  "items": [
+    {
+      "id": "p-1782788554239",
+      "lots": [
+        {
+          "id": "lot-깨분-1786516535923-uyga",
+          "supplierId": "c-1785818085745",
+          "supplierName": "카프코",
+          "qtyIn": 10000,
+          "kgIn": 10000,
+          "kgRemaining": 2000,
+          "receivedDate": "2026-08-12",
+          "status": "active",
+          "poId": "po-1785859517345",
+          "createdAt": "2026-08-12T06:35:35.923Z",
+          "lotNo": "260812-01"
+        }
+      ],
+      "subtype": "벌크",
+      "price": 0,
+      "category": "참깨",
+      "companyId": "punghoe",
+      "cost": 2970,
+      "stock": 2000,
+      "name": "깨분",
+      "minStock": 10,
+      "unit": "kg",
+      "type": "raw",
+      "partnerIds": [],
+      "spec": "벌크",
+      "image": ""
+    },
+    {
+      "id": "wip-깨분참기름-캔-punghoe",
+      "spec": "16.5kg",
+      "image": "",
+      "category": "참기름",
+      "unit": "개",
+      "type": "wip",
+      "partnerIds": [],
+      "cost": 108900,
+      "minStock": 10,
+      "subtype": "",
+      "name": "깨분참기름/16.5kg",
+      "stock": 0,
+      "lots": [],
+      "companyId": "punghoe",
+      "price": 0
+    },
+    {
+      "id": "p-1779251176421-punghoe",
+      "type": "raw",
+      "unit": "kg",
+      "price": 0,
+      "taxType": "면세",
+      "category": "참깨",
+      "spec": "벌크",
+      "stock": 0,
+      "companyId": "punghoe",
+      "cost": 4090,
+      "image": "",
+      "name": "참깨",
+      "subtype": "벌크",
+      "minStock": 10
+    }
+  ],
+  "snap": {
+    "id": "inv-snap-punghoe-2026-08",
+    "yearMonth": "2026-08",
+    "value": 5940000,
+    "companyId": "punghoe",
+    "recordedAt": "2026-08-22T19:33:30.452Z",
+    "items": [
+      {
+        "itemId": "p-1782788554239",
+        "name": "깨분",
+        "category": "원료",
+        "qty": 2000,
+        "value": 5940000
+      },
+      {
+        "itemId": "wip-깨분참기름-캔-punghoe",
+        "name": "깨분참기름/16.5kg",
+        "category": "반제품",
+        "qty": 0,
+        "value": 0,
+        "spec": "16.5kg"
+      }
+    ]
+  }
+}
