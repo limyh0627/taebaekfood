@@ -1,0 +1,84 @@
+[
+  {
+    "id": "stmt-1787634617969",
+    "companyId": "taebaek",
+    "docNo": "260825-01",
+    "totalAmount": 9281925,
+    "issuedAt": "2026-08-25T05:10:17.969Z",
+    "purchaseOrderIds": [
+      "p-1779251176421"
+    ],
+    "totalTax": 2925,
+    "tradeDate": "2026-08-25",
+    "items": [
+      {
+        "name": "참깨",
+        "spec": "kg",
+        "qty": 2250,
+        "price": 4111,
+        "supply": 9249750,
+        "tax": 0,
+        "total": 9249750,
+        "isTaxExempt": true,
+        "accountCode": "500"
+      },
+      {
+        "name": "상차비",
+        "spec": "kg",
+        "qty": 2250,
+        "price": 14.3,
+        "supply": 29250,
+        "tax": 2925,
+        "total": 32175,
+        "isTaxExempt": false,
+        "accountCode": "980"
+      }
+    ],
+    "type": "매입",
+    "totalSupply": 9279000,
+    "orderId": "",
+    "partnerId": "c-1779251636370",
+    "partnerName": "풍회유통"
+  },
+  {
+    "id": "stmt-1787643906200",
+    "totalTax": 843811,
+    "companyId": "taebaek",
+    "type": "매입",
+    "orderId": "",
+    "issuedAt": "2026-08-25T07:45:06.200Z",
+    "totalSupply": 8438114,
+    "items": [
+      {
+        "name": "참깨",
+        "spec": "kg",
+        "qty": 2250,
+        "price": 4111,
+        "supply": 8408864,
+        "tax": 840886,
+        "total": 9249750,
+        "isTaxExempt": false,
+        "accountCode": "500"
+      },
+      {
+        "name": "상차비",
+        "spec": "kg",
+        "qty": 2250,
+        "price": 14.3,
+        "supply": 29250,
+        "tax": 2925,
+        "total": 32175,
+        "isTaxExempt": false,
+        "accountCode": "980"
+      }
+    ],
+    "partnerName": "한국농수산물유통공사",
+    "docNo": "260825-09",
+    "tradeDate": "2026-08-25",
+    "purchaseOrderIds": [
+      "p-1779251176421"
+    ],
+    "totalAmount": 9281925,
+    "partnerId": "c-1778504018504"
+  }
+]

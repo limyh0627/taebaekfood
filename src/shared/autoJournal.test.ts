@@ -84,14 +84,28 @@ describe('settlementAccountCode — 수금/지불 상대계정', () => {
   });
   it('기초전표(375 자본)도 채권·채무로 상계한다 — 자본계정을 물면 미수가 안 준다', () => {
     expect(settlementAccountCode('매출', ['375'], gt)).toBe(AR);
+    //  계정을 못 읽는 전표는 예전대로 251 — 253으로 밀면 옛 전표의 채무가 딴 계정으로 옮겨 간다
     expect(settlementAccountCode('매입', ['375'], gt)).toBe(AP);
+  });
+  /**
+   * 251 외상매입금은 **상거래 채무만** 쓴다. 세금·경비·자산구입은 253 미지급금이 표준이다.
+   * 전표가 251·253을 직접 적었으면 그게 답이고, 아니면 품목 계정으로 가른다.
+   */
+  it('상거래가 아니면 253 미지급금 — 251은 물건 산 것만', () => {
+    expect(settlementAccountCode('매입', ['500'], gt)).toBe(AP);        // 원료매입
+    expect(settlementAccountCode('매입', ['505'], gt)).toBe(AP);        // 부자재매입
+    expect(settlementAccountCode('매입', ['520'], gt)).toBe('253');      // 전기세
+    expect(settlementAccountCode('매입', ['255'], gt)).toBe('253');      // 부가세 납부
+    expect(settlementAccountCode('매입', ['500', '605'], gt)).toBe(AP);  // 원료 + 딸린 운임은 같은 거래
+    expect(settlementAccountCode('매입', ['251'], gt)).toBe(AP);        // 전표가 직접 적었으면 그게 답
   });
   it('비유동자산만 달린 전표(기계 구입)는 그 자산계정을 유지한다 — 투자활동', () => {
     expect(settlementAccountCode('매입', ['208'], gt)).toBe('208');
   });
   it('자산이 섞여 있어도 계정이 여럿이면 미지정으로 둔다', () => {
     expect(settlementAccountCode('매입', ['208', '108'], gt)).toBe(AP);   // 채권·채무가 섞이면 상계
-    expect(settlementAccountCode('매입', ['208', '146'], gt)).toBe(AP);   // 146은 그룹 미상 → 예외 아님
+    //  자산 구입은 상거래가 아니다 — 253 미지급금이 맞다(146은 그룹 미상이라 투자 예외에도 안 걸린다)
+    expect(settlementAccountCode('매입', ['208', '146'], gt)).toBe('253');
   });
   it('계정을 하나도 모르면 채권·채무로 간다', () => {
     expect(settlementAccountCode('매출', [], gt)).toBe(AR);

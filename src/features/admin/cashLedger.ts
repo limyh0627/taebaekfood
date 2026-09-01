@@ -29,6 +29,14 @@ import { journalizeStatement } from '../../shared/autoJournal';
 
 const AR = '108';   // 외상매출금
 const AP = '251';   // 외상매입금
+const OTHER_PAYABLE = '253';   // 미지급금 — 상거래가 아닌 채무(autoJournal 과 같은 값)
+/*
+ * **거래처 잔액은 251·253을 한 덩어리로 본다.**
+ * 둘 다 그 거래처에 갚을 돈이다 — 재무상태표에서만 매입채무와 미지급금으로 갈린다.
+ * 여기서 251만 보면, 세금·경비를 외상으로 진 채무가 거래처원장에서 통째로 사라진다.
+ */
+const PAYABLES = [AP, OTHER_PAYABLE];
+const isPay = (c: string | undefined) => c === AP || c === OTHER_PAYABLE;
 
 /** 입금 +, 출금 −. 대체(상계)는 돈이 안 움직였으므로 0 — 통장 잔액을 건드리면 안 된다. */
 export function signedAmount(e: CashEntry): number {
@@ -168,7 +176,7 @@ export function buildPartnerLedger(
   cashEntries: CashEntry[],
   entries: JournalEntry[],
 ): PartnerLedger {
-  const want = type === '매출' ? AR : AP;
+  const wantCodes = type === '매출' ? [AR] : PAYABLES;
   const stmtById = new Map(statements.map(s => [s.id, s]));
   const cashById = new Map(cashEntries.map(e => [e.id, e]));
 
@@ -176,7 +184,7 @@ export function buildPartnerLedger(
   const evs: Ev[] = [];
   for (const je of entries) {
     for (const l of je.lines ?? []) {
-      if (String(l.accountCode) !== want || l.partnerId !== partnerId) continue;
+      if (!wantCodes.includes(String(l.accountCode)) || l.partnerId !== partnerId) continue;
       // 채권은 차변이 느는 것, 채무는 대변이 느는 것
       const amt = type === '매출' ? (l.debit ?? 0) - (l.credit ?? 0) : (l.credit ?? 0) - (l.debit ?? 0);
       if (!amt) continue;
@@ -244,9 +252,9 @@ export function partnerBalanceFromJournals(
   type: '매출' | '매입',
   entries: JournalEntry[],
 ): number {
-  const want = type === '매출' ? AR : AP;
+  const wantCodes = type === '매출' ? [AR] : PAYABLES;
   return entries.reduce((a, e) => a + (e.lines ?? []).reduce((b, l) => {
-    if (String(l.accountCode) !== want || l.partnerId !== partnerId) return b;
+    if (!wantCodes.includes(String(l.accountCode)) || l.partnerId !== partnerId) return b;
     // 채권은 차변이 느는 것, 채무는 대변이 느는 것
     return b + (type === '매출' ? (l.debit ?? 0) - (l.credit ?? 0) : (l.credit ?? 0) - (l.debit ?? 0));
   }, 0), 0);
@@ -274,7 +282,7 @@ export function allPartnerBalances(entries: JournalEntry[]): Map<string, { recei
       const code = String(l.accountCode);
       // 채권은 차변이 느는 것, 채무는 대변이 느는 것 (partnerBalanceFromJournals와 같은 규칙)
       if (code === AR) bump(pid, 'receivable', (l.debit ?? 0) - (l.credit ?? 0));
-      else if (code === AP) bump(pid, 'payable', (l.credit ?? 0) - (l.debit ?? 0));
+      else if (isPay(code)) bump(pid, 'payable', (l.credit ?? 0) - (l.debit ?? 0));
     }
   }
   return map;
@@ -341,14 +349,14 @@ export function partnerOpenBalance(
  * (유통가교: 기초 1,755,000 수금에 08-25·08-28이 다 갚아진 걸로 잡혔다. 실제 미수 620,000).
  */
 export function isReceivableStmt(s: IssuedStatement, type: '매출' | '매입'): boolean {
-  const want = type === '매출' ? AR : AP;
+  const wantCodes = type === '매출' ? [AR] : PAYABLES;
   for (const l of journalizeStatement(s)?.lines ?? []) {
-    if (String(l.accountCode) !== want) continue;
+    if (!wantCodes.includes(String(l.accountCode))) continue;
     const moved = type === '매출' ? (l.debit ?? 0) - (l.credit ?? 0) : (l.credit ?? 0) - (l.debit ?? 0);
     if (moved !== 0) return true;
   }
   const side = type === '매출' ? '차변' : '대변';
-  return (s.items ?? []).some(it => String(it.accountCode) === want && it.side === side);
+  return (s.items ?? []).some(it => wantCodes.includes(String(it.accountCode)) && it.side === side);
 }
 
 export function allocatePartnerCash(
@@ -419,7 +427,7 @@ export function partnerCashParts(e: CashEntry): PartnerCashPart[] {
     ? parts.map(l => ({ code: l.accountCode as string, amt: Math.abs(l.amount), note: l.note }))
     : (e.accountCode ? [{ code: e.accountCode, amt: e.amount, note: undefined as string | undefined }] : []);
   return list
-    .filter(x => x.code === AR || x.code === AP)
+    .filter(x => x.code === AR || isPay(x.code))
     .map(x => {
       const inflow = isOffset || (x.code === AR ? e.dir === '입금' : e.dir === '출금');
       return { code: x.code, reduce: (inflow ? 1 : -1) * x.amt, note: x.note };
@@ -432,11 +440,11 @@ export function partnerPaid(
   type: '매출' | '매입',
   cashEntries: CashEntry[],
 ): number {
-  const want = type === '매출' ? AR : AP;
+  const wantCodes = type === '매출' ? [AR] : PAYABLES;
   return cashEntries
     .filter(e => e.partnerId === partnerId)
     .reduce((a, e) => a + partnerCashParts(e)
-      .reduce((b, p) => b + (p.code === want ? p.reduce : 0), 0), 0);
+      .reduce((b, p) => b + (wantCodes.includes(p.code) ? p.reduce : 0), 0), 0);
 }
 
 export function partnerBalances(
@@ -447,10 +455,10 @@ export function partnerBalances(
 ): { partnerId: string; partnerName: string; balance: number; count: number }[] {
   // 목록도 갈래가 아니라 **분개에 그 거래처의 108·251이 섰는가**로 모은다.
   // 갈래로 모으면 기초·상계만 있는 거래처가 목록에서 통째로 사라진다.
-  const want = type === '매출' ? AR : AP;
+  const wantCodes = type === '매출' ? [AR] : PAYABLES;
   const withBalance = new Set<string>();
   for (const je of entries) for (const l of je.lines ?? []) {
-    if (String(l.accountCode) === want && l.partnerId) withBalance.add(l.partnerId);
+    if (wantCodes.includes(String(l.accountCode)) && l.partnerId) withBalance.add(l.partnerId);
   }
   const ids = new Map<string, string>();
   for (const s of statements) {

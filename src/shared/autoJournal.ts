@@ -16,6 +16,37 @@ export const AR = '108';   // 외상매출금
 export const AP = '251';   // 외상매입금
 export const VAT_PAYABLE = '255';   // 부가세예수금
 export const VAT_RECEIVABLE = '135'; // 부가세대급금
+export const OTHER_PAYABLE = '253';  // 미지급금 — 상거래가 아닌 채무
+
+/**
+ * **251 외상매입금은 상거래 채무만 쓴다.**
+ *
+ * 물건·원재료를 외상으로 산 것만 외상매입금이다. 세금·경비·자산구입·카드값처럼
+ * 상거래가 아닌 채무는 **253 미지급금**이 표준이다.
+ * 안 가르면 재무상태표의 매입채무가 부풀고, 그 안에 세금 낼 돈까지 섞여 보인다.
+ *
+ * 한 전표에 상거래 계정이 하나라도 있으면 그 거래는 상거래다 — 참깨 매입에 딸린
+ * 상차비·운임은 같은 거래의 부대비용이라 따로 253으로 가르지 않는다.
+ */
+export const TRADE_PURCHASE_CODES = new Set(['500', '501', '503', '505']);
+export function payableCodeFor(itemCodes: (string | undefined)[]): string {
+  const cs = itemCodes.map(c => String(c ?? ''));
+  //  전표가 채무 계정을 **직접 적었으면** 그게 답이다 — 기초 이월 전표가 그 꼴이다
+  //  (108/251을 줄에 박아 놓는다). 짐작으로 덮으면 갚은 계정이 진 계정과 어긋난다.
+  if (cs.includes(AP)) return AP;
+  if (cs.includes(OTHER_PAYABLE)) return OTHER_PAYABLE;
+  //  채권 계정이 줄에 있으면 그 전표는 이미 상계 성격이다 — 예전대로 251로 턴다
+  if (cs.includes(AR)) return AP;
+  //  계정을 못 읽는 전표(빈 줄·자본만)는 예전대로 251 — 여기서 253으로 밀면
+  //  옛 전표의 채무가 갑자기 다른 계정으로 옮겨 간다.
+  if (!cs.some(c => c && (TRADE_PURCHASE_CODES.has(c) || NON_TRADE_HINT.test(c)))) return AP;
+  return cs.some(c => TRADE_PURCHASE_CODES.has(c)) ? AP : OTHER_PAYABLE;
+}
+/** 253으로 보낼 만한 계정대 — 비용·세금·자산구입. 자본(3xx)·채권채무는 안 걸린다. */
+const NON_TRADE_HINT = /^(1[0-9]{2}|2[0-9]{2}|5[1-9][0-9]|6[0-9]{2}|8[0-9]{2}|9[0-9]{2})$/;
+/** 갚을 돈 계정인가 — 거래처 잔액은 251·253을 **한 덩어리**로 본다(둘 다 그 거래처에 갚을 돈이다) */
+export const isPayableCode = (code: string | undefined): boolean =>
+  code === AP || code === OTHER_PAYABLE;
 export const BANK = '103';  // 보통예금 (기본 현금계정)
 export const INVENTORY = '146';   // 재고자산
 export const PURCHASE = '500';    // 원료매입 — 실지재고조사법의 재고 대체 상대계정
@@ -53,7 +84,7 @@ export function settlementAccountCode(
     && types.length === codes.length
     && types.every(t => t === '자산')
     && !codes.some(c => c === AR || c === AP);
-  if (!nonOperating) return stmtType === '매입' ? AP : AR;
+  if (!nonOperating) return stmtType === '매입' ? payableCodeFor(codes) : AR;
   const uniq = new Set(codes);
   return uniq.size === 1 ? [...uniq][0] : undefined;
 }
@@ -105,7 +136,8 @@ export function journalizeStatement(s: IssuedStatement, opts: AutoJournalOptions
     // 매입: (차) 매입계정들 supply + 부가세대급금 tax   (대) 채무/현금 gross
     for (const [code, supply] of bySupply) if (supply) lines.push({ accountCode: code, debit: supply, credit: 0, ...(noteOf(code) ? { note: noteOf(code)! } : {}) });
     if (tax) lines.push({ accountCode: VAT_RECEIVABLE, debit: tax, credit: 0, note: '매입세액' });
-    lines.push({ accountCode: counter ?? AP, debit: 0, credit: gross, ...(counter ? {} : { partnerId: s.partnerId }) });
+    //  상거래면 251, 아니면 253 — 재무상태표에서 매입채무와 미지급금이 갈려야 한다
+    lines.push({ accountCode: counter ?? payableCodeFor([...bySupply.keys()]), debit: 0, credit: gross, ...(counter ? {} : { partnerId: s.partnerId }) });
   }
 
   /*
@@ -234,7 +266,7 @@ export function journalizeTransfer(
     const code = it.accountCode!;
     // 채권·채무 줄에만 거래처를 붙인다 — 거래처별 잔액이 이 줄에서 나온다.
     // (감가상각처럼 상대가 없는 대체는 거래처가 없다)
-    const who = (code === AR || code === AP) && s.partnerId ? { partnerId: s.partnerId } : {};
+    const who = (code === AR || isPayableCode(code)) && s.partnerId ? { partnerId: s.partnerId } : {};
     if (it.side === '차변') { lines.push({ accountCode: code, ...who, debit: amt, credit: 0 }); debit = r(debit + amt); }
     else { lines.push({ accountCode: code, ...who, debit: 0, credit: amt }); credit = r(credit + amt); }
   }
