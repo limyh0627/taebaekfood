@@ -1,0 +1,3405 @@
+{
+  "snaps": [
+    {
+      "id": "inv-snap-2026-07",
+      "companyId": "taebaek",
+      "recordedAt": "2026-08-04T04:37:30.844Z",
+      "yearMonth": "2026-07",
+      "items": [
+        {
+          "name": "1호박스",
+          "qty": 90,
+          "category": "박스",
+          "value": 133650,
+          "itemId": "B-01"
+        },
+        {
+          "name": "2호박스",
+          "value": 523950,
+          "category": "박스",
+          "itemId": "B-02",
+          "qty": 499
+        },
+        {
+          "value": 465465,
+          "category": "박스",
+          "name": "3호박스",
+          "itemId": "B-03",
+          "qty": 403
+        },
+        {
+          "category": "박스",
+          "name": "4호박스",
+          "value": 573210,
+          "qty": 579,
+          "itemId": "B-04"
+        },
+        {
+          "name": "5호박스",
+          "value": 587180,
+          "itemId": "B-05",
+          "qty": 628,
+          "category": "박스"
+        },
+        {
+          "name": "5-1호박스",
+          "itemId": "B-05-1",
+          "value": 264000,
+          "qty": 330,
+          "category": "박스"
+        },
+        {
+          "qty": 375,
+          "value": 300000,
+          "name": "5-2호박스",
+          "itemId": "B-05-2",
+          "category": "박스"
+        },
+        {
+          "qty": 496,
+          "itemId": "B-06",
+          "value": 518320,
+          "category": "박스",
+          "name": "6호박스"
+        },
+        {
+          "qty": 291,
+          "value": 291000,
+          "name": "7호박스",
+          "itemId": "B-07",
+          "category": "박스"
+        },
+        {
+          "category": "박스",
+          "qty": 300,
+          "value": 300000,
+          "name": "8호박스",
+          "itemId": "B-08"
+        },
+        {
+          "value": 0,
+          "category": "박스",
+          "itemId": "BK",
+          "qty": 237,
+          "name": "겉비닐"
+        },
+        {
+          "name": "원조4구",
+          "category": "박스",
+          "itemId": "BW-01",
+          "qty": 300,
+          "value": 0
+        },
+        {
+          "qty": 300,
+          "category": "박스",
+          "value": 0,
+          "itemId": "BW-02",
+          "name": "원조8구"
+        },
+        {
+          "qty": 300,
+          "itemId": "BW-03",
+          "value": 0,
+          "category": "박스",
+          "name": "원조16구"
+        },
+        {
+          "category": "마개",
+          "value": 187440,
+          "qty": 2840,
+          "name": "물엿캡-파랑",
+          "itemId": "C-BL01"
+        },
+        {
+          "value": 373560,
+          "category": "마개",
+          "itemId": "C-GD01",
+          "qty": 5660,
+          "name": "물엿캡-골드"
+        },
+        {
+          "qty": 11579,
+          "category": "마개",
+          "name": "이중캡-골드",
+          "itemId": "C-GD03",
+          "value": 588445
+        },
+        {
+          "name": "물엿캡-연두",
+          "category": "마개",
+          "itemId": "C-LG01",
+          "qty": 4641,
+          "value": 306306
+        },
+        {
+          "qty": 1906,
+          "itemId": "C-RD01",
+          "value": 114360,
+          "category": "마개",
+          "name": "물엿캡-빨강"
+        },
+        {
+          "value": 11220,
+          "qty": 200,
+          "category": "마개",
+          "itemId": "C-RD02",
+          "name": "병캡-빨강"
+        },
+        {
+          "value": 238200,
+          "qty": 3970,
+          "name": "물엿캡-노랑",
+          "category": "마개",
+          "itemId": "C-YL01"
+        },
+        {
+          "qty": 4610,
+          "name": "병캡-노랑",
+          "category": "마개",
+          "value": 207450,
+          "itemId": "C-YL02"
+        },
+        {
+          "category": "마개",
+          "qty": 1500,
+          "name": "이중캡-노랑",
+          "value": 99000,
+          "itemId": "C-YL03"
+        },
+        {
+          "category": "박스",
+          "name": "벌크비닐",
+          "itemId": "FI1255jPs6bZ4PwJjnbY",
+          "qty": 400,
+          "value": 0
+        },
+        {
+          "itemId": "GLA-R-300-TR",
+          "name": "300ML-소주병",
+          "value": 69300,
+          "qty": 300,
+          "category": "용기"
+        },
+        {
+          "name": "350ML-소주병",
+          "category": "용기",
+          "qty": 966,
+          "value": 223146,
+          "itemId": "GLA-R-350-TR"
+        },
+        {
+          "category": "용기",
+          "itemId": "GLA-S-300-TR",
+          "value": 38280,
+          "qty": 100,
+          "name": "300ML-사각병"
+        },
+        {
+          "itemId": "GS-01",
+          "qty": 240,
+          "value": 0,
+          "category": "케이스",
+          "name": "선물세트-180ML-3구"
+        },
+        {
+          "category": "케이스",
+          "name": "선물세트-300ML-2구",
+          "qty": 250,
+          "itemId": "GS-02",
+          "value": 0
+        },
+        {
+          "itemId": "GS-03",
+          "category": "케이스",
+          "name": "선물세트-300ML-3구",
+          "value": 0,
+          "qty": 150
+        },
+        {
+          "name": "25kg 자루",
+          "qty": 999,
+          "category": "용기",
+          "value": 0,
+          "itemId": "Oa5VtyzqXt38phvTqfXH"
+        },
+        {
+          "qty": 0,
+          "itemId": "PET-D-1800-RD",
+          "value": 0,
+          "name": "1800ML-페트병-빨강D",
+          "category": "용기"
+        },
+        {
+          "itemId": "PET-D-1800-YL",
+          "value": 81180,
+          "qty": 164,
+          "category": "용기",
+          "name": "1800ML-페트병-노랑D"
+        },
+        {
+          "qty": 52,
+          "value": 20800,
+          "itemId": "PET-H-1500-RD",
+          "category": "용기",
+          "name": "1500ML-페트병-빨강"
+        },
+        {
+          "qty": 150,
+          "value": 60000,
+          "name": "1500ML-페트병-노랑",
+          "itemId": "PET-H-1500-YL",
+          "category": "용기"
+        },
+        {
+          "qty": 658,
+          "value": 296100,
+          "category": "용기",
+          "itemId": "PET-H-1800-GD",
+          "name": "1800ML-페트병-골드"
+        },
+        {
+          "name": "1800ML-페트병-빨강n",
+          "category": "용기",
+          "value": 241200,
+          "itemId": "PET-H-1800-RD",
+          "qty": 536
+        },
+        {
+          "name": "1800ML-페트병-노랑n",
+          "qty": 514,
+          "category": "용기",
+          "value": 231300,
+          "itemId": "PET-H-1800-YL"
+        },
+        {
+          "value": 304080,
+          "category": "용기",
+          "name": "1750ML-페트병",
+          "itemId": "PET-N-1750-TR",
+          "qty": 840
+        },
+        {
+          "value": 0,
+          "name": "300ML-페트병",
+          "itemId": "PET-R-300-TR",
+          "category": "용기",
+          "qty": 2800
+        },
+        {
+          "category": "용기",
+          "name": "350ML-페트병",
+          "itemId": "PET-R-350-TR",
+          "value": 0,
+          "qty": 2000
+        },
+        {
+          "category": "완제품",
+          "name": "볶음참깨-낱개/1kg",
+          "value": 26050,
+          "itemId": "PLDhkjOgcPIhO1hhReHm",
+          "qty": 5
+        },
+        {
+          "qty": 12633,
+          "value": 1389630,
+          "category": "용기",
+          "itemId": "PLYS-A-1000",
+          "name": "1KG-실링"
+        },
+        {
+          "value": 1549400,
+          "itemId": "PLYS-A-4000",
+          "qty": 7747,
+          "category": "용기",
+          "name": "4KG-실링"
+        },
+        {
+          "name": "500G-실링",
+          "category": "용기",
+          "qty": 60,
+          "itemId": "PLYS-A-500",
+          "value": 0
+        },
+        {
+          "itemId": "PLYT-A-4000",
+          "name": "4KG-묶음",
+          "value": 386200,
+          "qty": 1931,
+          "category": "용기"
+        },
+        {
+          "qty": 359,
+          "category": "용기",
+          "value": 39490,
+          "name": "1KG-볶음검정깨",
+          "itemId": "PLYZ-B-1000"
+        },
+        {
+          "category": "용기",
+          "name": "1KG-탈피들깨가루",
+          "itemId": "PLYZ-NP-1000",
+          "qty": 10691,
+          "value": 1176010
+        },
+        {
+          "name": "들기름/병/특/가득찬/300ml",
+          "itemId": "SES-OIL-",
+          "category": "완제품",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "qty": 10,
+          "value": 0,
+          "category": "박스",
+          "name": "자루",
+          "itemId": "SK"
+        },
+        {
+          "category": "라벨",
+          "itemId": "Ss53KlDc4ZGRNOueRy2f",
+          "name": "모란 탈피들깨가루",
+          "value": 0,
+          "qty": 600
+        },
+        {
+          "itemId": "T-BK",
+          "qty": 62,
+          "category": "테이프",
+          "value": 0,
+          "name": "테이프-검정"
+        },
+        {
+          "name": "테이프-파랑",
+          "itemId": "T-BL",
+          "value": 0,
+          "category": "테이프",
+          "qty": 120
+        },
+        {
+          "qty": 110,
+          "value": 0,
+          "name": "테이프-초록",
+          "category": "테이프",
+          "itemId": "T-GN"
+        },
+        {
+          "qty": 160,
+          "name": "테이프-빨강",
+          "category": "테이프",
+          "value": 0,
+          "itemId": "T-RD"
+        },
+        {
+          "itemId": "T-TR",
+          "value": 0,
+          "category": "테이프",
+          "name": "테이프-투명",
+          "qty": 170
+        },
+        {
+          "name": "테이프-하양",
+          "qty": 50,
+          "itemId": "T-WT",
+          "value": 0,
+          "category": "테이프"
+        },
+        {
+          "name": "테이프-노랑",
+          "value": 0,
+          "qty": 120,
+          "category": "테이프",
+          "itemId": "T-YL"
+        },
+        {
+          "value": 0,
+          "qty": 10000,
+          "name": "하남댁 볶음참깨 140g",
+          "itemId": "VRScJ75CzBjCpcJjJeH7",
+          "category": "라벨"
+        },
+        {
+          "name": "볶음참깨-낱개/1kg (20개입)",
+          "category": "완제품",
+          "itemId": "box-PLDhkjOgcPIhO1hhReHm-20",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "itemId": "box-PLDhkjOgcPIhO1hhReHm-40",
+          "value": 0,
+          "category": "완제품",
+          "name": "볶음참깨-낱개/500g (40개입)",
+          "qty": 0
+        },
+        {
+          "name": "들기름/병/특/가득찬/300ml (20개입)",
+          "category": "완제품",
+          "value": 0,
+          "itemId": "box-SES-OIL--20",
+          "qty": 0
+        },
+        {
+          "name": "참기름/병/A/가득찬/300ml (20개입)",
+          "value": 0,
+          "qty": 0,
+          "itemId": "box-p-1-20",
+          "category": "완제품"
+        },
+        {
+          "qty": 0,
+          "value": 0,
+          "name": "시골향 탈피들깨가루/1kg (10개입)",
+          "itemId": "box-p-104-10",
+          "category": "완제품"
+        },
+        {
+          "name": "시골향 탈피들깨가루/1kg (20개입)",
+          "itemId": "box-p-104-20",
+          "qty": 0,
+          "category": "완제품",
+          "value": 0
+        },
+        {
+          "value": 0,
+          "qty": 0,
+          "itemId": "box-p-105-10",
+          "name": "시골향 들기름/1.75ML (10개입)",
+          "category": "완제품"
+        },
+        {
+          "name": "시골향 들기름/1.75ML (12개입)",
+          "itemId": "box-p-105-12",
+          "qty": 0,
+          "category": "완제품",
+          "value": 0
+        },
+        {
+          "itemId": "box-p-106-10",
+          "category": "완제품",
+          "name": "시골향 참기름/A/1750ml (10개입)",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "name": "시골향 참기름/A/1750ml (12개입)",
+          "category": "완제품",
+          "value": 0,
+          "qty": 0,
+          "itemId": "box-p-106-12"
+        },
+        {
+          "value": 0,
+          "itemId": "box-p-107-10",
+          "qty": 0,
+          "category": "완제품",
+          "name": "시골향 들깨가루(중간)/1kg (10개입)"
+        },
+        {
+          "itemId": "box-p-107-20",
+          "qty": 0,
+          "value": 0,
+          "name": "시골향 들깨가루(중간)/1kg (20개입)",
+          "category": "완제품"
+        },
+        {
+          "value": 0,
+          "category": "완제품",
+          "itemId": "box-p-11-20",
+          "qty": 0,
+          "name": "들깨가루(고운)/거산/1kg (20개입)"
+        },
+        {
+          "value": 498128,
+          "category": "완제품",
+          "qty": 3,
+          "itemId": "box-p-110-10",
+          "name": "시골향 참기름/특골드/1750ml (10개입)"
+        },
+        {
+          "category": "완제품",
+          "name": "시골향 참기름/특골드/1750ml (12개입)",
+          "itemId": "box-p-110-12",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "name": "시골향 참기름/A/1750ml (10개입)",
+          "category": "완제품",
+          "value": 0,
+          "itemId": "box-p-116-10",
+          "qty": 0
+        },
+        {
+          "category": "완제품",
+          "name": "시골향 참기름/A/1750ml (12개입)",
+          "qty": 0,
+          "itemId": "box-p-116-12",
+          "value": 0
+        },
+        {
+          "itemId": "box-p-121-10",
+          "value": 0,
+          "category": "완제품",
+          "name": "시골향 참기름/특A/1800ml (10개입)",
+          "qty": 0
+        },
+        {
+          "name": "시골향 참기름/특A/1800ml (12개입)",
+          "itemId": "box-p-121-12",
+          "value": 0,
+          "category": "완제품",
+          "qty": 0
+        },
+        {
+          "category": "완제품",
+          "itemId": "box-p-137-20",
+          "name": "시골향 들기름/병/350ml (20개입)",
+          "qty": 0,
+          "value": 0
+        },
+        {
+          "itemId": "box-p-138-20",
+          "value": 0,
+          "name": "시골향 참기름/병/특A/350ml (20개입)",
+          "category": "완제품",
+          "qty": 0
+        },
+        {
+          "name": "시골향 참기름/분/1750ml (10개입)",
+          "value": 0,
+          "qty": 0,
+          "itemId": "box-p-139-10",
+          "category": "완제품"
+        },
+        {
+          "category": "완제품",
+          "qty": 0,
+          "name": "참기름/분/알이네/1800ml (12개입)",
+          "value": 0,
+          "itemId": "box-p-14-12"
+        },
+        {
+          "itemId": "box-p-144-20",
+          "value": 0,
+          "name": "들기름/병/특/알이네/350ml (20개입)",
+          "category": "완제품",
+          "qty": 0
+        },
+        {
+          "category": "완제품",
+          "qty": 0,
+          "name": "참기름/병/특/알이네/350ml (20개입)",
+          "value": 0,
+          "itemId": "box-p-145-20"
+        },
+        {
+          "value": 0,
+          "qty": 0,
+          "category": "완제품",
+          "itemId": "box-p-148-12",
+          "name": "진참기름/분/1500ml (12개입)"
+        },
+        {
+          "itemId": "box-p-150-10",
+          "name": "진참기름/A/1750ml (10개입)",
+          "category": "완제품",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "name": "참기름/특A/알이네/1800ml (10개입)",
+          "itemId": "box-p-152-10",
+          "qty": 0,
+          "value": 0,
+          "category": "완제품"
+        },
+        {
+          "value": 0,
+          "category": "완제품",
+          "qty": 0,
+          "itemId": "box-p-153-10",
+          "name": "들기름/양념나라/1750ml (10개입)"
+        },
+        {
+          "category": "완제품",
+          "qty": 0,
+          "value": 0,
+          "itemId": "box-p-156-20",
+          "name": "참기름/병/특/양념나라/350ml (20개입)"
+        },
+        {
+          "name": "시골향 들기름/병/특/350ml (20개입)",
+          "category": "완제품",
+          "value": 0,
+          "qty": 0,
+          "itemId": "box-p-165-20"
+        },
+        {
+          "name": "시골향 참기름/병/골드A/350ml (20개입)",
+          "itemId": "box-p-166-20",
+          "value": 0,
+          "category": "완제품",
+          "qty": 0
+        },
+        {
+          "name": "참기름/특A/대왕/1800ml (12개입)",
+          "itemId": "box-p-17-12",
+          "value": 515178,
+          "category": "완제품",
+          "qty": 3
+        },
+        {
+          "itemId": "box-p-177-5",
+          "value": 0,
+          "category": "완제품",
+          "qty": 0,
+          "name": "시골향 들깨가루(살짝고운)/4kg (5개입)"
+        },
+        {
+          "name": "탈피들깨가루(원물)/20kg (4개입)",
+          "itemId": "box-p-1773566034743-4",
+          "value": 0,
+          "category": "완제품",
+          "qty": 0
+        },
+        {
+          "itemId": "box-p-1773585416573-20",
+          "name": "시골향 참기름/병/원액/350ml (20개입)",
+          "value": 0,
+          "category": "완제품",
+          "qty": 0
+        },
+        {
+          "name": "참기름/병/골드A/300ml (20개입)",
+          "category": "완제품",
+          "itemId": "box-p-1773846558383-20",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "qty": 0,
+          "value": 0,
+          "name": "참기름참/특A/해내음/1800ml (10개입)",
+          "itemId": "box-p-1774594990193-10",
+          "category": "완제품"
+        },
+        {
+          "itemId": "box-p-1774849478876-20",
+          "value": 0,
+          "qty": 0,
+          "category": "완제품",
+          "name": "들기름/병/특/해피유통/300ml (20개입)"
+        },
+        {
+          "qty": 0,
+          "value": 0,
+          "name": "탈피들깨가루/1kg (10개입)",
+          "category": "완제품",
+          "itemId": "box-p-1774849779025-10"
+        },
+        {
+          "category": "완제품",
+          "name": "참기름/특A/청우/1800ml (12개입)",
+          "qty": 0,
+          "value": 0,
+          "itemId": "box-p-1774852970743-12"
+        },
+        {
+          "name": "들기름/알이네/1800ml (10개입)",
+          "qty": 0,
+          "category": "완제품",
+          "value": 0,
+          "itemId": "box-p-1774944582929-10"
+        },
+        {
+          "name": "참기름/병/A/수라간/350ml (20개입)",
+          "category": "완제품",
+          "itemId": "box-p-1775030234040-20",
+          "qty": 0,
+          "value": 0
+        },
+        {
+          "category": "완제품",
+          "name": "시골향 들깨가루(거친)/1kg (10개입)",
+          "qty": 0,
+          "value": 0,
+          "itemId": "box-p-1775432846919-10"
+        },
+        {
+          "name": "시골향 들깨가루(거친)/1kg (20개입)",
+          "qty": 0,
+          "value": 0,
+          "category": "완제품",
+          "itemId": "box-p-1775432846919-20"
+        },
+        {
+          "category": "완제품",
+          "qty": 0,
+          "itemId": "box-p-1775432881153-10",
+          "value": 0,
+          "name": "시골향 들깨가루(고운)/1kg (10개입)"
+        },
+        {
+          "qty": 0,
+          "value": 0,
+          "itemId": "box-p-1775432881153-20",
+          "name": "시골향 들깨가루(고운)/1kg (20개입)",
+          "category": "완제품"
+        },
+        {
+          "category": "완제품",
+          "qty": 0,
+          "name": "참기름/특A/지구/1800ml (12개입)",
+          "value": 0,
+          "itemId": "box-p-1775605596628-12"
+        },
+        {
+          "value": 0,
+          "category": "완제품",
+          "qty": 0,
+          "itemId": "box-p-1775721875724-20",
+          "name": "시골향 볶음참깨가루/1kg (20개입)"
+        },
+        {
+          "value": 0,
+          "qty": 0,
+          "category": "완제품",
+          "itemId": "box-p-1776066627865-5",
+          "name": "시골향 들깨가루(고운)/4kg (5개입)"
+        },
+        {
+          "category": "완제품",
+          "qty": 0,
+          "value": 0,
+          "name": "시골향 참기름/특/1750ml (10개입)",
+          "itemId": "box-p-1776210831918-10"
+        },
+        {
+          "category": "완제품",
+          "qty": 0,
+          "itemId": "box-p-1776598644385-20",
+          "name": "들깨가루(중간)/거산/1kg (20개입)",
+          "value": 0
+        },
+        {
+          "category": "완제품",
+          "qty": 0,
+          "name": "참기름/특A/가득찬/1800ml (12개입)",
+          "itemId": "box-p-1776602003336-12",
+          "value": 0
+        },
+        {
+          "itemId": "box-p-1776672557281-20",
+          "name": "참기름/병/A/첫느낌/350ml (20개입)",
+          "category": "완제품",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "name": "들기름/병/첫느낌/350ml (20개입)",
+          "qty": 0,
+          "category": "완제품",
+          "itemId": "box-p-1776672612810-20",
+          "value": 0
+        },
+        {
+          "qty": 0,
+          "category": "완제품",
+          "value": 0,
+          "itemId": "box-p-1776673512047-20",
+          "name": "(농가)선물세트 참기름/300ml (20개입)"
+        },
+        {
+          "value": 0,
+          "itemId": "box-p-1776673557724-20",
+          "name": "(농가)선물세트 생들기름/300ml (20개입)",
+          "qty": 0,
+          "category": "완제품"
+        },
+        {
+          "name": "(농가)선물세트 들기름/300ml (20개입)",
+          "value": 0,
+          "category": "완제품",
+          "qty": 0,
+          "itemId": "box-p-1776673586523-20"
+        },
+        {
+          "category": "완제품",
+          "itemId": "box-p-1776730100766-20",
+          "qty": 0,
+          "name": "참기름/병/A/조선/350ml (20개입)",
+          "value": 0
+        },
+        {
+          "qty": 0,
+          "category": "완제품",
+          "name": "들기름/병/조선/350ml (20개입)",
+          "itemId": "box-p-1776730152085-20",
+          "value": 0
+        },
+        {
+          "itemId": "box-p-1776730298222-20",
+          "name": "참기름/병/특A(금빛)/350ml (20개입)",
+          "value": 0,
+          "qty": 0,
+          "category": "완제품"
+        },
+        {
+          "itemId": "box-p-1777000226858-12",
+          "value": 0,
+          "category": "완제품",
+          "name": "들기름/라이스/1800ml (12개입)",
+          "qty": 0
+        },
+        {
+          "value": 0,
+          "itemId": "box-p-1777000282172-12",
+          "qty": 0,
+          "name": "참기름/분/라이스/1800ml (12개입)",
+          "category": "완제품"
+        },
+        {
+          "qty": 0,
+          "category": "완제품",
+          "value": 0,
+          "itemId": "box-p-1777000396656-10",
+          "name": "들기름/모란/1750ml (10개입)"
+        },
+        {
+          "name": "들깨가루(중간)/모란/1kg (20개입)",
+          "qty": 0,
+          "value": 0,
+          "category": "완제품",
+          "itemId": "box-p-1777000525177-20"
+        },
+        {
+          "category": "완제품",
+          "qty": 0,
+          "value": 0,
+          "itemId": "box-p-1777000621827-20",
+          "name": "볶음검정참깨/모란/1kg (20개입)"
+        },
+        {
+          "name": "참기름/골드A/모란/1750ml (10개입)",
+          "itemId": "box-p-1777000727260-10",
+          "value": 0,
+          "category": "완제품",
+          "qty": 0
+        },
+        {
+          "category": "완제품",
+          "qty": 0,
+          "value": 0,
+          "name": "참기름/특/모란/1750ml (10개입)",
+          "itemId": "box-p-1777000947957-10"
+        },
+        {
+          "itemId": "box-p-1777000996662-20",
+          "value": 0,
+          "qty": 0,
+          "name": "탈피들깨가루/모란/1kg (20개입)",
+          "category": "완제품"
+        },
+        {
+          "name": "참기름/골드/반석/1800ml (10개입)",
+          "itemId": "box-p-1777001262840-10",
+          "qty": 0,
+          "value": 0,
+          "category": "완제품"
+        },
+        {
+          "qty": 0,
+          "name": "참기름/분/부원/1800ml (12개입)",
+          "itemId": "box-p-1777001566985-12",
+          "value": 0,
+          "category": "완제품"
+        },
+        {
+          "category": "완제품",
+          "qty": 0,
+          "name": "들기름/병/양념나라/350ml (20개입)",
+          "value": 0,
+          "itemId": "box-p-1777014726283-20"
+        },
+        {
+          "category": "완제품",
+          "qty": 0,
+          "value": 0,
+          "name": "참기름/A/양념나라/1750ml (10개입)",
+          "itemId": "box-p-1777014871858-10"
+        },
+        {
+          "itemId": "box-p-1777016497890-10",
+          "qty": 0,
+          "value": 0,
+          "name": "들기름/우리식품/1750ml (10개입)",
+          "category": "완제품"
+        },
+        {
+          "itemId": "box-p-1777016551167-10",
+          "value": 0,
+          "category": "완제품",
+          "name": "참기름/골드A/우리식품/1750ml (10개입)",
+          "qty": 0
+        },
+        {
+          "qty": 0,
+          "itemId": "box-p-1777016594557-10",
+          "value": 0,
+          "category": "완제품",
+          "name": "참기름/A/우리식품/1750ml (10개입)"
+        },
+        {
+          "value": 0,
+          "category": "완제품",
+          "itemId": "box-p-1777095162697-12",
+          "name": "참기름/분/임진농산/1800ml (12개입)",
+          "qty": 0
+        },
+        {
+          "name": "들기름/지구/1800ml (12개입)",
+          "category": "완제품",
+          "value": 0,
+          "qty": 0,
+          "itemId": "box-p-1777095683613-12"
+        },
+        {
+          "itemId": "box-p-1777096833351-12",
+          "qty": 0,
+          "value": 0,
+          "name": "시골향 참기름/특A/1800ml (12개입)",
+          "category": "완제품"
+        },
+        {
+          "category": "완제품",
+          "itemId": "box-p-1777097597801-6",
+          "value": 0,
+          "name": "들기름/해내음/1800ml (6개입)",
+          "qty": 0
+        },
+        {
+          "itemId": "box-p-1777098316059-10",
+          "qty": 0,
+          "value": 0,
+          "category": "완제품",
+          "name": "참기름/A/해피유통/1750ml (10개입)"
+        },
+        {
+          "itemId": "box-p-1777102035682-20",
+          "value": 0,
+          "name": "시골향 참기름/병/특A/350ml (20개입)",
+          "qty": 0,
+          "category": "완제품"
+        },
+        {
+          "qty": 0,
+          "value": 0,
+          "name": "참기름/A/가득찬/1800ml (12개입)",
+          "itemId": "box-p-1777364661145-12",
+          "category": "완제품"
+        },
+        {
+          "category": "완제품",
+          "itemId": "box-p-1777506850191-10",
+          "name": "시골향 참기름/골드A/1750ml (10개입)",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "itemId": "box-p-1777536360094-20",
+          "name": "참기름/병/원액/해피유통/300ml (20개입)",
+          "value": 2817070,
+          "qty": 50,
+          "category": "완제품"
+        },
+        {
+          "name": "시골향 참기름/원액/300ml (20개입)",
+          "category": "완제품",
+          "value": 0,
+          "qty": 0,
+          "itemId": "box-p-1778155763510-20"
+        },
+        {
+          "category": "완제품",
+          "name": "참기름/분/구월/1800ml (12개입)",
+          "qty": 0,
+          "itemId": "box-p-1780276377790-12",
+          "value": 0
+        },
+        {
+          "name": "볶음참깨/140g (20개입)",
+          "qty": 0,
+          "category": "완제품",
+          "itemId": "box-p-1780297369472-20",
+          "value": 0
+        },
+        {
+          "qty": 0,
+          "value": 0,
+          "itemId": "box-p-1781739328648-40",
+          "category": "완제품",
+          "name": "볶음참깨/500g (40개입)"
+        },
+        {
+          "value": 0,
+          "category": "완제품",
+          "qty": 0,
+          "itemId": "box-p-1782699579814-12",
+          "name": "진참기름/A/1800ml (12개입)"
+        },
+        {
+          "name": "들기름/병/수라간/350ml (20개입)",
+          "value": 0,
+          "category": "완제품",
+          "qty": 0,
+          "itemId": "box-p-179-20"
+        },
+        {
+          "qty": 0,
+          "itemId": "box-p-199-4",
+          "category": "완제품",
+          "value": 0,
+          "name": "시골향 들깨가루(고운4kg) (4개입)"
+        },
+        {
+          "qty": 30,
+          "value": 4301550,
+          "name": "참기름/A/가득찬/1800ml (10개입)",
+          "category": "완제품",
+          "itemId": "box-p-2-10"
+        },
+        {
+          "category": "완제품",
+          "name": "시골향 참기름/병/특/350ml (20개입)",
+          "value": 0,
+          "itemId": "box-p-20-20",
+          "qty": 0
+        },
+        {
+          "itemId": "box-p-201-4",
+          "category": "완제품",
+          "name": "시골향 들깨기루(중간4kg) (4개입)",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "value": 0,
+          "category": "완제품",
+          "itemId": "box-p-203-10",
+          "name": "시골향 참기름/특A/1750ml (10개입)",
+          "qty": 0
+        },
+        {
+          "category": "완제품",
+          "qty": 0,
+          "itemId": "box-p-207-20",
+          "name": "들기름/병/특/청우/350ml (20개입)",
+          "value": 0
+        },
+        {
+          "value": 0,
+          "qty": 0,
+          "itemId": "box-p-22-12",
+          "name": "시골향 참기름/분/1800ml (12개입)",
+          "category": "완제품"
+        },
+        {
+          "itemId": "box-p-22-6",
+          "qty": 0,
+          "value": 0,
+          "category": "완제품",
+          "name": "시골향 참기름/분/1800ml (6개입)"
+        },
+        {
+          "category": "완제품",
+          "itemId": "box-p-23-12",
+          "name": "시골향 참기름/A/1800ml (12개입)",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "category": "완제품",
+          "name": "참기름/병/특A/청우/350ml (20개입)",
+          "itemId": "box-p-230-20",
+          "qty": 0,
+          "value": 0
+        },
+        {
+          "name": "검정참깨가루/1kg (10개입)",
+          "itemId": "box-p-235-10",
+          "category": "완제품",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "category": "완제품",
+          "name": "검정참깨가루/1kg (20개입)",
+          "itemId": "box-p-235-20",
+          "qty": 0,
+          "value": 0
+        },
+        {
+          "category": "완제품",
+          "name": "들기름/청우/1800ml (12개입)",
+          "qty": 0,
+          "itemId": "box-p-236-12",
+          "value": 0
+        },
+        {
+          "value": 0,
+          "qty": 0,
+          "itemId": "box-p-25-10",
+          "name": "시골향 참기름/특A/1750ml (10개입)",
+          "category": "완제품"
+        },
+        {
+          "value": 0,
+          "category": "완제품",
+          "qty": 0,
+          "itemId": "box-p-25-12",
+          "name": "시골향 참기름/특A/1750ml (12개입)"
+        },
+        {
+          "qty": 50,
+          "value": 5115780,
+          "itemId": "box-p-270-6",
+          "name": "참기름/특A(토마토)/1800ml (6개입)",
+          "category": "완제품"
+        },
+        {
+          "name": "시골향 들기름/특/1750ml (10개입)",
+          "qty": 3,
+          "value": 640413,
+          "category": "완제품",
+          "itemId": "box-p-278-10"
+        },
+        {
+          "name": "생들기름/병/해피유통/300ml (20개입)",
+          "category": "완제품",
+          "qty": 0,
+          "itemId": "box-p-281-20",
+          "value": 0
+        },
+        {
+          "category": "완제품",
+          "itemId": "box-p-298-10",
+          "qty": 0,
+          "name": "시골향 들기름/1800ml (10개입)",
+          "value": 0
+        },
+        {
+          "name": "시골향 들기름/1800ml (12개입)",
+          "itemId": "box-p-298-12",
+          "qty": 0,
+          "category": "완제품",
+          "value": 0
+        },
+        {
+          "value": 0,
+          "category": "완제품",
+          "itemId": "box-p-3-12",
+          "qty": 0,
+          "name": "참기름/분/가득찬/1800ml (12개입)"
+        },
+        {
+          "category": "완제품",
+          "itemId": "box-p-311-10",
+          "qty": 0,
+          "name": "시골향 들기름/1800ml (10개입)",
+          "value": 0
+        },
+        {
+          "qty": 0,
+          "category": "완제품",
+          "name": "시골향 들기름/1800ml (12개입)",
+          "value": 0,
+          "itemId": "box-p-311-12"
+        },
+        {
+          "category": "완제품",
+          "name": "시골향 참기름/A/1800ml (12개입)",
+          "itemId": "box-p-48-12",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "value": 0,
+          "itemId": "box-p-56-12",
+          "category": "완제품",
+          "qty": 0,
+          "name": "참기름/특A/구월/1800ml (12개입)"
+        },
+        {
+          "itemId": "box-p-57-12",
+          "value": 0,
+          "name": "참기름/A(삼진)/1750ml (12개입)",
+          "qty": 0,
+          "category": "완제품"
+        },
+        {
+          "qty": 0,
+          "category": "완제품",
+          "name": "시골향 생들기름/병/300ml (20개입)",
+          "itemId": "box-p-61-20",
+          "value": 0
+        },
+        {
+          "name": "시골향 생들기름/1800ml (10개입)",
+          "itemId": "box-p-63-10",
+          "category": "완제품",
+          "value": 440809,
+          "qty": 2
+        },
+        {
+          "value": 0,
+          "qty": 0,
+          "category": "완제품",
+          "itemId": "box-p-64-10",
+          "name": "시골향 참기름/골드/1800ml (10개입)"
+        },
+        {
+          "name": "참기름/특A/라이스/1800ml (12개입)",
+          "category": "완제품",
+          "qty": 0,
+          "value": 0,
+          "itemId": "box-p-77-12"
+        },
+        {
+          "name": "참기름/A/라이스/1800ml (12개입)",
+          "itemId": "box-p-78-12",
+          "category": "완제품",
+          "qty": 0,
+          "value": 0
+        },
+        {
+          "qty": 0,
+          "value": 0,
+          "category": "완제품",
+          "name": "참기름/병/특A/모란/350ml (20개입)",
+          "itemId": "box-p-83-20"
+        },
+        {
+          "name": "참기름/분/모란/1750ml (10개입)",
+          "value": 0,
+          "category": "완제품",
+          "qty": 0,
+          "itemId": "box-p-87-10"
+        },
+        {
+          "category": "완제품",
+          "name": "들깨가루(거친)/거산/1kg (20개입)",
+          "qty": 0,
+          "value": 0,
+          "itemId": "box-p-9-20"
+        },
+        {
+          "itemId": "box-p-91-10",
+          "category": "완제품",
+          "qty": 0,
+          "name": "볶음검정참깨/1kg (10개입)",
+          "value": 0
+        },
+        {
+          "qty": 0,
+          "name": "볶음검정참깨/1kg (20개입)",
+          "value": 0,
+          "category": "완제품",
+          "itemId": "box-p-91-20"
+        },
+        {
+          "category": "라벨",
+          "qty": 2020,
+          "name": "시골향 참3(검정)",
+          "itemId": "bwxMdRVm5SYYJSBdIlWq",
+          "value": 0
+        },
+        {
+          "name": "벌크비닐/20kg",
+          "value": 0,
+          "category": "용기",
+          "itemId": "container-bulk-vinyl",
+          "qty": 55
+        },
+        {
+          "itemId": "container-pet-r-200",
+          "value": 0,
+          "category": "용기",
+          "qty": 320,
+          "name": "200G-페트"
+        },
+        {
+          "itemId": "f1",
+          "name": "참진한기름",
+          "value": 831600,
+          "category": "향미유",
+          "qty": 108
+        },
+        {
+          "value": 1876800,
+          "qty": 276,
+          "itemId": "f2",
+          "name": "참고소한기름",
+          "category": "향미유"
+        },
+        {
+          "category": "향미유",
+          "qty": 0,
+          "name": "참고소(연한)",
+          "value": 0,
+          "itemId": "f2-1"
+        },
+        {
+          "itemId": "f3",
+          "value": 153600,
+          "qty": 24,
+          "category": "향미유",
+          "name": "참향기름"
+        },
+        {
+          "name": "맛기름",
+          "category": "향미유",
+          "qty": 24,
+          "value": 148800,
+          "itemId": "f4"
+        },
+        {
+          "qty": 24,
+          "category": "향미유",
+          "value": 158400,
+          "name": "들향기름",
+          "itemId": "f5"
+        },
+        {
+          "category": "향미유",
+          "itemId": "f6",
+          "qty": 0,
+          "value": 0,
+          "name": "들향기름골드"
+        },
+        {
+          "itemId": "gck-1",
+          "qty": 0,
+          "value": 0,
+          "name": "고춧가루 1kg",
+          "category": "고춧가루"
+        },
+        {
+          "value": 0,
+          "qty": 0,
+          "itemId": "gck-5",
+          "category": "고춧가루",
+          "name": "고춧가루 5kg"
+        },
+        {
+          "name": "200G 페트 마개",
+          "category": "마개",
+          "value": 0,
+          "itemId": "hsGvS0lNTwJkJ4LPubmO",
+          "qty": 180
+        },
+        {
+          "qty": 400,
+          "category": "라벨",
+          "value": 0,
+          "name": "가득찬 병들 300ml",
+          "itemId": "label-가득찬-병들-300ml"
+        },
+        {
+          "value": 0,
+          "category": "라벨",
+          "itemId": "label-가득찬-병참-300ml",
+          "qty": 600,
+          "name": "가득찬 병참 300ml"
+        },
+        {
+          "value": 0,
+          "qty": 3090,
+          "itemId": "label-가득찬-순참-1-8l",
+          "category": "라벨",
+          "name": "가득찬 순참 1.8L"
+        },
+        {
+          "category": "라벨",
+          "name": "가득찬 참3 1.8L",
+          "value": 0,
+          "itemId": "label-가득찬-참-1-8l",
+          "qty": 1000
+        },
+        {
+          "qty": 164,
+          "value": 0,
+          "name": "구월-큰흰사각 1.8L",
+          "category": "라벨",
+          "itemId": "label-구월-큰흰사각-1-8l"
+        },
+        {
+          "category": "라벨",
+          "itemId": "label-국수기행-1-8l",
+          "qty": 750,
+          "value": 0,
+          "name": "국수기행 1.8L"
+        },
+        {
+          "category": "라벨",
+          "itemId": "label-농가-참4-1-75l",
+          "qty": 1400,
+          "name": "농가 참④ 1.75L",
+          "value": 0
+        },
+        {
+          "value": 0,
+          "category": "라벨",
+          "qty": 988,
+          "itemId": "label-대왕-참4-1-8l",
+          "name": "대왕 참④ 1.8L"
+        },
+        {
+          "qty": 1080,
+          "category": "라벨",
+          "name": "모란 들 1.75L",
+          "itemId": "label-모란-들-1-75l",
+          "value": 0
+        },
+        {
+          "name": "모란 병참 350ml",
+          "category": "라벨",
+          "qty": 900,
+          "value": 0,
+          "itemId": "label-모란-병참-350ml"
+        },
+        {
+          "category": "라벨",
+          "itemId": "label-모란-참1-1-75l",
+          "value": 0,
+          "qty": 495,
+          "name": "모란 참① 1.75L"
+        },
+        {
+          "name": "모란 참③ 1.75L",
+          "itemId": "label-모란-참3-1-75l",
+          "category": "라벨",
+          "qty": 770,
+          "value": 0
+        },
+        {
+          "itemId": "label-모란-참4-1-75l",
+          "value": 0,
+          "qty": 430,
+          "category": "라벨",
+          "name": "모란 참④ 1.75L"
+        },
+        {
+          "category": "라벨",
+          "qty": 2000,
+          "name": "수인들기름 350ml페트",
+          "value": 0,
+          "itemId": "label-수인들기름-350ml페트"
+        },
+        {
+          "name": "수인참기름 350ml페트",
+          "qty": 2000,
+          "value": 0,
+          "itemId": "label-수인참기름-350ml페트",
+          "category": "라벨"
+        },
+        {
+          "category": "라벨",
+          "qty": 510,
+          "itemId": "label-알이네-들-1-8l",
+          "name": "알이네 들 1.8L",
+          "value": 0
+        },
+        {
+          "qty": 400,
+          "name": "알이네 들-350ml",
+          "category": "라벨",
+          "value": 0,
+          "itemId": "label-알이네-들-350ml"
+        },
+        {
+          "category": "라벨",
+          "name": "알이네 참③ 1.8L",
+          "value": 0,
+          "qty": 1150,
+          "itemId": "label-알이네-참3-1-8l"
+        },
+        {
+          "qty": 410,
+          "name": "알이네 참④ 1.8L",
+          "value": 0,
+          "itemId": "label-알이네-참4-1-8l",
+          "category": "라벨"
+        },
+        {
+          "value": 0,
+          "itemId": "label-알이네-참4-350ml",
+          "category": "라벨",
+          "qty": 460,
+          "name": "알이네 참④-350ml"
+        },
+        {
+          "value": 0,
+          "qty": 1130,
+          "itemId": "label-양념나라-들2-1-75l",
+          "category": "라벨",
+          "name": "양념나라 들② 1.75L"
+        },
+        {
+          "qty": 10,
+          "itemId": "label-양념나라-들2-350ml",
+          "value": 0,
+          "name": "양념나라 들② (병합)",
+          "category": "라벨"
+        },
+        {
+          "itemId": "label-양념나라-참2-1-75l",
+          "value": 0,
+          "category": "라벨",
+          "qty": 210,
+          "name": "양념나라 참② 1.75L"
+        },
+        {
+          "category": "라벨",
+          "name": "양념나라 참② (병합)",
+          "itemId": "label-양념나라-참2-350ml",
+          "qty": 460,
+          "value": 0
+        },
+        {
+          "name": "우리 병들 350ml",
+          "itemId": "label-우리-병들-350ml",
+          "category": "라벨",
+          "value": 0,
+          "qty": 300
+        },
+        {
+          "name": "우리 병참 350ml",
+          "value": 0,
+          "category": "라벨",
+          "itemId": "label-우리-병참-350ml",
+          "qty": 400
+        },
+        {
+          "name": "우리식품 들 1.8L",
+          "value": 0,
+          "itemId": "label-우리식품-들-1-8l",
+          "category": "라벨",
+          "qty": 300
+        },
+        {
+          "name": "우리식품 참② 1.75L",
+          "category": "라벨",
+          "value": 0,
+          "itemId": "label-우리식품-참2-1-75l",
+          "qty": 480
+        },
+        {
+          "value": 0,
+          "itemId": "label-우리식품-참3-1-8l",
+          "qty": 800,
+          "category": "라벨",
+          "name": "우리식품 참③ 1.8L"
+        },
+        {
+          "qty": 1200,
+          "name": "우리식품 참④ 1.8L",
+          "category": "라벨",
+          "value": 0,
+          "itemId": "label-우리식품-참4-1-8l"
+        },
+        {
+          "name": "임진 참③ 1.8L",
+          "category": "라벨",
+          "qty": 250,
+          "value": 0,
+          "itemId": "label-임진-참3-1-8l"
+        },
+        {
+          "value": 0,
+          "category": "라벨",
+          "qty": 588,
+          "itemId": "label-지구-들2-1-8l",
+          "name": "지구 들② 1.8L"
+        },
+        {
+          "name": "지구 참① 1.8L",
+          "qty": 650,
+          "category": "라벨",
+          "value": 0,
+          "itemId": "label-지구-참1-1-8l"
+        },
+        {
+          "category": "라벨",
+          "qty": 600,
+          "name": "진식자재 들 1.8L",
+          "itemId": "label-진식자재-들-1-8l",
+          "value": 0
+        },
+        {
+          "value": 0,
+          "qty": 700,
+          "category": "라벨",
+          "itemId": "label-진식자재-들-호승-1-5l",
+          "name": "진식자재 들(호승) 1.5L"
+        },
+        {
+          "name": "진식자재 참② 1.75L",
+          "qty": 700,
+          "category": "라벨",
+          "value": 0,
+          "itemId": "label-진식자재-참2-1-75l"
+        },
+        {
+          "name": "진식자재 참② 1.8L",
+          "qty": 700,
+          "itemId": "label-진식자재-참2-1-8l",
+          "value": 0,
+          "category": "라벨"
+        },
+        {
+          "qty": 700,
+          "category": "라벨",
+          "itemId": "label-진식자재-참3-호승-1-5l",
+          "value": 0,
+          "name": "진식자재 참③(호승) 1.5L"
+        },
+        {
+          "qty": 600,
+          "value": 0,
+          "category": "라벨",
+          "itemId": "label-진식자재-참4-호승-1-5l",
+          "name": "진식자재 참④(호승) 1.5L"
+        },
+        {
+          "name": "청우 들 1.8L,350ml",
+          "category": "라벨",
+          "itemId": "label-청우-들-1-8l",
+          "value": 0,
+          "qty": 1000
+        },
+        {
+          "value": 0,
+          "category": "라벨",
+          "qty": 500,
+          "itemId": "label-청우-참-1-8l",
+          "name": "청우 참④ 350ml,1.8L"
+        },
+        {
+          "qty": 1333,
+          "itemId": "label-태백-들2-1-75l",
+          "value": 0,
+          "category": "라벨",
+          "name": "시골향 들② 1.75L"
+        },
+        {
+          "name": "시골향 들② 1.8L",
+          "qty": 1474,
+          "category": "라벨",
+          "value": 0,
+          "itemId": "label-태백-들2-1-8l"
+        },
+        {
+          "qty": 1000,
+          "category": "라벨",
+          "itemId": "label-태백-들2-흰정사각-350ml",
+          "name": "시골향 들②-흰정사각 350ml/1.75L",
+          "value": 0
+        },
+        {
+          "name": "시골향 들기름2(중국산) 1.75L",
+          "itemId": "label-태백-들기름2-중국산-1-75l",
+          "category": "라벨",
+          "qty": 700,
+          "value": 0
+        },
+        {
+          "name": "시골향 생들기름 300ml(사각)",
+          "category": "라벨",
+          "qty": 10460,
+          "itemId": "label-태백-생들기름-300ml-사각",
+          "value": 0
+        },
+        {
+          "value": 0,
+          "name": "시골향 참① 1.75L",
+          "itemId": "label-태백-참1-1-75l",
+          "category": "라벨",
+          "qty": 838
+        },
+        {
+          "name": "시골향 참① 1.8L",
+          "value": 0,
+          "itemId": "label-태백-참1-1-8l",
+          "qty": 753,
+          "category": "라벨"
+        },
+        {
+          "qty": 1060,
+          "category": "라벨",
+          "name": "시골향 참① 300ml(사각)",
+          "value": 0,
+          "itemId": "label-태백-참1-300ml-사각"
+        },
+        {
+          "qty": 300,
+          "category": "라벨",
+          "itemId": "label-태백-참1-350ml",
+          "name": "시골향 참①-350ml",
+          "value": 0
+        },
+        {
+          "category": "라벨",
+          "qty": 1025,
+          "value": 0,
+          "itemId": "label-태백-참1-흰정사각-350ml",
+          "name": "시골향 참①-흰정사각 350ml/1.75L"
+        },
+        {
+          "itemId": "label-태백-참2-1-75l",
+          "qty": 988,
+          "category": "라벨",
+          "name": "시골향 참② 1.75L",
+          "value": 0
+        },
+        {
+          "name": "시골향 참② 1.8L",
+          "itemId": "label-태백-참2-1-8l",
+          "value": 0,
+          "category": "라벨",
+          "qty": 548
+        },
+        {
+          "category": "라벨",
+          "name": "시골향 참②-흰정사각 350ml/1.75L",
+          "value": 0,
+          "itemId": "label-태백-참2-흰정사각-350ml",
+          "qty": 1600
+        },
+        {
+          "qty": 980,
+          "name": "시골향 참③ 1.75L",
+          "category": "라벨",
+          "value": 0,
+          "itemId": "label-태백-참3-1-75l"
+        },
+        {
+          "category": "라벨",
+          "value": 0,
+          "itemId": "label-태백-참3-1-8l",
+          "qty": 500,
+          "name": "시골향 참③ 1.8L"
+        },
+        {
+          "itemId": "label-태백-참3-흰정사각-350ml",
+          "value": 0,
+          "category": "라벨",
+          "name": "풍회 참 3",
+          "qty": 40
+        },
+        {
+          "itemId": "label-태백-참4-1-75l",
+          "value": 0,
+          "category": "라벨",
+          "name": "시골향 참④ 1.75L",
+          "qty": 941
+        },
+        {
+          "qty": 1068,
+          "itemId": "label-태백-참4-1-8l",
+          "name": "시골향 참④ 1.8L",
+          "category": "라벨",
+          "value": 0
+        },
+        {
+          "name": "시골향 참④ 350ml",
+          "itemId": "label-태백-참4-350ml",
+          "category": "라벨",
+          "qty": 200,
+          "value": 0
+        },
+        {
+          "qty": 1200,
+          "itemId": "label-태백1-1-75l",
+          "value": 0,
+          "category": "라벨",
+          "name": "시골향① 1.75L"
+        },
+        {
+          "itemId": "label-태백1-300ml-사각",
+          "name": "시골향① 300ml(사각)",
+          "category": "라벨",
+          "value": 0,
+          "qty": 1100
+        },
+        {
+          "name": "토마토 참 1.8L",
+          "qty": 300,
+          "value": 0,
+          "itemId": "label-토마토-참-1-8l",
+          "category": "라벨"
+        },
+        {
+          "qty": 12500,
+          "category": "라벨",
+          "itemId": "label-하남댁-들기름-300ml-옆면",
+          "value": 0,
+          "name": "하남댁(들기름) 300ml(옆면)"
+        },
+        {
+          "itemId": "label-하남댁-생들기름-300ml-옆면",
+          "name": "하남댁(생들기름) 300ml(옆면)",
+          "value": 0,
+          "category": "라벨",
+          "qty": 2600
+        },
+        {
+          "qty": 6000,
+          "name": "하남댁(참기름) 300ml(옆면)",
+          "value": 0,
+          "category": "라벨",
+          "itemId": "label-하남댁-참기름-300ml-옆면"
+        },
+        {
+          "name": "해내음 참④ 1.8L",
+          "qty": 2200,
+          "category": "라벨",
+          "value": 0,
+          "itemId": "label-해내음-참4-1-8l"
+        },
+        {
+          "category": "라벨",
+          "qty": 400,
+          "name": "해달(금빛) 참 350ml",
+          "itemId": "label-해달-금빛-참-350ml",
+          "value": 0
+        },
+        {
+          "itemId": "label-해달-수라간-들-350ml",
+          "value": 0,
+          "category": "라벨",
+          "qty": 20,
+          "name": "해달(수라간) 들 350ml"
+        },
+        {
+          "qty": 250,
+          "category": "라벨",
+          "value": 0,
+          "name": "해달(수라간) 참 350ml",
+          "itemId": "label-해달-수라간-참-350ml"
+        },
+        {
+          "category": "라벨",
+          "name": "해달(조선) 들 350ml",
+          "itemId": "label-해달-조선-들-350ml",
+          "qty": 500,
+          "value": 0
+        },
+        {
+          "value": 0,
+          "category": "라벨",
+          "itemId": "label-해달-조선-참-350ml",
+          "name": "해달(조선) 참 350ml",
+          "qty": 1000
+        },
+        {
+          "value": 0,
+          "qty": 200,
+          "itemId": "label-해달-첫느낌-들-350ml",
+          "category": "라벨",
+          "name": "해달(첫느낌) 들 350ml"
+        },
+        {
+          "name": "해달(첫느낌) 참 350ml",
+          "qty": 150,
+          "category": "라벨",
+          "value": 0,
+          "itemId": "label-해달-첫느낌-참-350ml"
+        },
+        {
+          "name": "5kg 비닐",
+          "value": 0,
+          "qty": 3000,
+          "category": "용기",
+          "itemId": "nJJNWQVxWqiS8VCDtS77"
+        },
+        {
+          "name": "400 페트",
+          "category": "용기",
+          "value": 0,
+          "qty": 930,
+          "itemId": "oQCfIvUnUaxbkzWZjHyC"
+        },
+        {
+          "name": "참기름/병/A/가득찬/300ml",
+          "category": "완제품",
+          "itemId": "p-1",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "qty": 0,
+          "value": 0,
+          "itemId": "p-104",
+          "category": "완제품",
+          "name": "시골향 탈피들깨가루/1kg"
+        },
+        {
+          "value": 0,
+          "qty": 0,
+          "name": "시골향 들기름/1.75ML",
+          "category": "완제품",
+          "itemId": "p-105"
+        },
+        {
+          "qty": 0,
+          "category": "완제품",
+          "name": "시골향 참기름/A/1750ml",
+          "itemId": "p-106",
+          "value": 0
+        },
+        {
+          "qty": 0,
+          "name": "시골향 들깨가루(중간)/1kg",
+          "value": 0,
+          "itemId": "p-107",
+          "category": "완제품"
+        },
+        {
+          "value": 0,
+          "qty": 0,
+          "itemId": "p-108",
+          "category": "완제품",
+          "name": "시골향 볶음검정참(벌크)/20kg"
+        },
+        {
+          "qty": 0,
+          "name": "들깨가루(고운)/거산/1kg",
+          "category": "완제품",
+          "value": 0,
+          "itemId": "p-11"
+        },
+        {
+          "qty": 0,
+          "category": "완제품",
+          "value": 0,
+          "name": "시골향 참기름/특골드/1750ml",
+          "itemId": "p-110"
+        },
+        {
+          "name": "시골향 볶음통들깨/4kg",
+          "qty": 0,
+          "value": 0,
+          "category": "완제품",
+          "itemId": "p-115"
+        },
+        {
+          "category": "완제품",
+          "itemId": "p-116",
+          "value": 0,
+          "name": "시골향 참기름/A/1750ml",
+          "qty": 0
+        },
+        {
+          "value": 0,
+          "itemId": "p-121",
+          "qty": 0,
+          "category": "완제품",
+          "name": "시골향 참기름/특A/1800ml"
+        },
+        {
+          "qty": 0,
+          "category": "완제품",
+          "value": 0,
+          "name": "시골향 들기름/병/350ml",
+          "itemId": "p-137"
+        },
+        {
+          "category": "완제품",
+          "qty": 0,
+          "value": 0,
+          "itemId": "p-138",
+          "name": "시골향 참기름/병/특A/350ml"
+        },
+        {
+          "itemId": "p-139",
+          "qty": 0,
+          "value": 0,
+          "category": "완제품",
+          "name": "시골향 참기름/분/1750ml"
+        },
+        {
+          "category": "완제품",
+          "qty": 0,
+          "name": "참기름/분/알이네/1800ml",
+          "itemId": "p-14",
+          "value": 0
+        },
+        {
+          "qty": 0,
+          "itemId": "p-144",
+          "category": "완제품",
+          "value": 0,
+          "name": "들기름/병/특/알이네/350ml"
+        },
+        {
+          "name": "참기름/병/특/알이네/350ml",
+          "itemId": "p-145",
+          "qty": 0,
+          "category": "완제품",
+          "value": 0
+        },
+        {
+          "name": "진참기름/분/1500ml",
+          "itemId": "p-148",
+          "category": "완제품",
+          "qty": 0,
+          "value": 0
+        },
+        {
+          "category": "완제품",
+          "qty": 0,
+          "value": 0,
+          "itemId": "p-150",
+          "name": "진참기름/A/1750ml"
+        },
+        {
+          "itemId": "p-152",
+          "qty": 0,
+          "value": 0,
+          "name": "참기름/특A/알이네/1800ml",
+          "category": "완제품"
+        },
+        {
+          "value": 0,
+          "category": "완제품",
+          "itemId": "p-153",
+          "name": "들기름/양념나라/1750ml",
+          "qty": 0
+        },
+        {
+          "name": "참기름/병/특/양념나라/350ml",
+          "category": "완제품",
+          "itemId": "p-156",
+          "qty": 0,
+          "value": 0
+        },
+        {
+          "itemId": "p-165",
+          "value": 0,
+          "category": "완제품",
+          "qty": 0,
+          "name": "시골향 들기름/병/특/350ml"
+        },
+        {
+          "qty": 0,
+          "itemId": "p-166",
+          "value": 0,
+          "name": "시골향 참기름/병/골드A/350ml",
+          "category": "완제품"
+        },
+        {
+          "qty": 36,
+          "itemId": "p-17",
+          "value": 512028,
+          "name": "참기름/특A/대왕/1800ml",
+          "category": "완제품"
+        },
+        {
+          "name": "시골향 들깨가루(살짝고운)/4kg",
+          "itemId": "p-177",
+          "category": "완제품",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "category": "완제품",
+          "value": 0,
+          "qty": 0,
+          "name": "시골향들기름2-캔/16.5kg",
+          "itemId": "p-1773565128048"
+        },
+        {
+          "qty": 0,
+          "value": 0,
+          "category": "완제품",
+          "name": "시골향참기름1-캔/16.5kg",
+          "itemId": "p-1773565691663"
+        },
+        {
+          "name": "탈피들깨가루(원물)/20kg",
+          "category": "완제품",
+          "value": 0,
+          "itemId": "p-1773566034743",
+          "qty": 0
+        },
+        {
+          "name": "시골향 참기름/병/원액/350ml",
+          "itemId": "p-1773585416573",
+          "qty": 0,
+          "category": "완제품",
+          "value": 0
+        },
+        {
+          "itemId": "p-1773586253973",
+          "qty": 0,
+          "category": "완제품",
+          "value": 0,
+          "name": "통들깨-낱개/1kg"
+        },
+        {
+          "name": "시골향참기름3-캔/16.5kg",
+          "value": 0,
+          "qty": 0,
+          "itemId": "p-1773588080692",
+          "category": "완제품"
+        },
+        {
+          "category": "완제품",
+          "name": "볶음통들깨/원물/20kg",
+          "itemId": "p-1773590625739",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "category": "용기",
+          "itemId": "p-1773594296713",
+          "name": "180ml-사각병",
+          "value": 1128600,
+          "qty": 2700
+        },
+        {
+          "name": "180ml캡-골드",
+          "itemId": "p-1773594339569",
+          "value": 207900,
+          "category": "마개",
+          "qty": 2700
+        },
+        {
+          "category": "완제품",
+          "itemId": "p-1773594501169",
+          "name": "들기름/병/특/180ml",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "name": "생들기름/병/180ml",
+          "qty": 0,
+          "category": "완제품",
+          "value": 0,
+          "itemId": "p-1773594545440"
+        },
+        {
+          "qty": 0,
+          "value": 0,
+          "category": "완제품",
+          "itemId": "p-1773595248560",
+          "name": "들기름/병/특/원조방앗간/300ml"
+        },
+        {
+          "value": 0,
+          "name": "탈피들깨가루/400G",
+          "itemId": "p-1773846424074",
+          "qty": 0,
+          "category": "완제품"
+        },
+        {
+          "itemId": "p-1773846558383",
+          "qty": 0,
+          "value": 0,
+          "name": "참기름/병/골드A/300ml",
+          "category": "완제품"
+        },
+        {
+          "qty": 0,
+          "category": "완제품",
+          "value": 0,
+          "itemId": "p-1774415984653",
+          "name": "탈피들깨가루/1kg"
+        },
+        {
+          "value": 0,
+          "name": "들깨/1kg",
+          "itemId": "p-1774416061766",
+          "category": "완제품",
+          "qty": 0
+        },
+        {
+          "name": "탈피(400g)",
+          "value": 0,
+          "category": "완제품",
+          "qty": 0,
+          "itemId": "p-1774416105247"
+        },
+        {
+          "qty": 0,
+          "name": "참기름참/특A/해내음/1800ml",
+          "value": 0,
+          "category": "완제품",
+          "itemId": "p-1774594990193"
+        },
+        {
+          "qty": 360,
+          "itemId": "p-1774595102958",
+          "name": "해내음식품",
+          "category": "박스",
+          "value": 0
+        },
+        {
+          "category": "박스",
+          "name": "해내음식품(토마토)",
+          "value": 0,
+          "itemId": "p-1774595147390",
+          "qty": 220
+        },
+        {
+          "name": "들기름/병/특/해피유통/300ml",
+          "value": 0,
+          "itemId": "p-1774849478876",
+          "qty": 0,
+          "category": "완제품"
+        },
+        {
+          "qty": 0,
+          "name": "탈피들깨가루/1kg",
+          "value": 0,
+          "category": "완제품",
+          "itemId": "p-1774849779025"
+        },
+        {
+          "qty": 4440,
+          "name": "1KG-탈피들깨가루(해피유통)",
+          "value": 488400,
+          "category": "용기",
+          "itemId": "p-1774850456963"
+        },
+        {
+          "value": 0,
+          "qty": 0,
+          "itemId": "p-1774852970743",
+          "name": "참기름/특A/청우/1800ml",
+          "category": "완제품"
+        },
+        {
+          "itemId": "p-1774944582929",
+          "name": "들기름/알이네/1800ml",
+          "qty": 0,
+          "value": 0,
+          "category": "완제품"
+        },
+        {
+          "category": "완제품",
+          "itemId": "p-1775030234040",
+          "name": "참기름/병/A/수라간/350ml",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "name": "참기름/분(스마트)/1800ml",
+          "value": 54038,
+          "qty": 4,
+          "category": "완제품",
+          "itemId": "p-1775086496028"
+        },
+        {
+          "name": "참기름/골드(스마트)/350ml",
+          "category": "완제품",
+          "itemId": "p-1775086595573",
+          "qty": 0,
+          "value": 0
+        },
+        {
+          "qty": 1,
+          "name": "참기름/골드(스마트)/1800ml",
+          "value": 17053,
+          "category": "완제품",
+          "itemId": "p-1775173203214"
+        },
+        {
+          "qty": 3,
+          "value": 42651,
+          "itemId": "p-1775173349635",
+          "category": "완제품",
+          "name": "참기름/특A(스마트)/1800ml"
+        },
+        {
+          "itemId": "p-1775432846919",
+          "name": "시골향 들깨가루(거친)/1kg",
+          "category": "완제품",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "value": 0,
+          "itemId": "p-1775432881153",
+          "name": "시골향 들깨가루(고운)/1kg",
+          "qty": 0,
+          "category": "완제품"
+        },
+        {
+          "qty": 0,
+          "value": 0,
+          "name": "참기름/특A/지구/1800ml",
+          "itemId": "p-1775605596628",
+          "category": "완제품"
+        },
+        {
+          "itemId": "p-1775688081496",
+          "value": 0,
+          "qty": 0,
+          "category": "완제품",
+          "name": "들기름(스마트)/1800ml"
+        },
+        {
+          "qty": 0,
+          "itemId": "p-1775721875724",
+          "category": "완제품",
+          "value": 0,
+          "name": "시골향 볶음참깨가루/1kg"
+        },
+        {
+          "qty": 0,
+          "name": "시골향 들깨가루(고운)/4kg",
+          "category": "완제품",
+          "value": 0,
+          "itemId": "p-1776066627865"
+        },
+        {
+          "value": 0,
+          "category": "완제품",
+          "qty": 0,
+          "itemId": "p-1776067029004",
+          "name": "시골향들기름1-캔/16.5kg"
+        },
+        {
+          "name": "시골향 참기름/특/1750ml",
+          "itemId": "p-1776210831918",
+          "qty": 0,
+          "value": 0,
+          "category": "완제품"
+        },
+        {
+          "itemId": "p-1776598644385",
+          "value": 0,
+          "category": "완제품",
+          "qty": 0,
+          "name": "들깨가루(중간)/거산/1kg"
+        },
+        {
+          "name": "참기름/특A/가득찬/1800ml",
+          "qty": 0,
+          "itemId": "p-1776602003336",
+          "value": 0,
+          "category": "완제품"
+        },
+        {
+          "category": "완제품",
+          "name": "참기름/병/A/첫느낌/350ml",
+          "itemId": "p-1776672557281",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "itemId": "p-1776672612810",
+          "category": "완제품",
+          "value": 0,
+          "name": "들기름/병/첫느낌/350ml",
+          "qty": 0
+        },
+        {
+          "itemId": "p-1776673512047",
+          "value": 0,
+          "qty": 0,
+          "category": "완제품",
+          "name": "(농가)선물세트 참기름/300ml"
+        },
+        {
+          "name": "(농가)선물세트 생들기름/300ml",
+          "itemId": "p-1776673557724",
+          "value": 0,
+          "qty": 0,
+          "category": "완제품"
+        },
+        {
+          "qty": 0,
+          "itemId": "p-1776673586523",
+          "category": "완제품",
+          "value": 0,
+          "name": "(농가)선물세트 들기름/300ml"
+        },
+        {
+          "qty": 0,
+          "itemId": "p-1776730100766",
+          "name": "참기름/병/A/조선/350ml",
+          "category": "완제품",
+          "value": 0
+        },
+        {
+          "name": "들기름/병/조선/350ml",
+          "category": "완제품",
+          "value": 0,
+          "qty": 0,
+          "itemId": "p-1776730152085"
+        },
+        {
+          "qty": 0,
+          "name": "참기름/병/특A(금빛)/350ml",
+          "itemId": "p-1776730298222",
+          "category": "완제품",
+          "value": 0
+        },
+        {
+          "category": "완제품",
+          "qty": 0,
+          "name": "들기름/라이스/1800ml",
+          "value": 0,
+          "itemId": "p-1777000226858"
+        },
+        {
+          "value": 0,
+          "itemId": "p-1777000282172",
+          "qty": 0,
+          "category": "완제품",
+          "name": "참기름/분/라이스/1800ml"
+        },
+        {
+          "qty": 0,
+          "category": "완제품",
+          "name": "들기름/모란/1750ml",
+          "value": 0,
+          "itemId": "p-1777000396656"
+        },
+        {
+          "name": "들깨가루(중간)/모란/1kg",
+          "value": 0,
+          "qty": 0,
+          "itemId": "p-1777000525177",
+          "category": "완제품"
+        },
+        {
+          "itemId": "p-1777000621827",
+          "qty": 0,
+          "value": 0,
+          "name": "볶음검정참깨/모란/1kg",
+          "category": "완제품"
+        },
+        {
+          "qty": 0,
+          "itemId": "p-1777000727260",
+          "name": "참기름/골드A/모란/1750ml",
+          "category": "완제품",
+          "value": 0
+        },
+        {
+          "qty": 0,
+          "itemId": "p-1777000947957",
+          "value": 0,
+          "name": "참기름/특/모란/1750ml",
+          "category": "완제품"
+        },
+        {
+          "value": 0,
+          "qty": 0,
+          "itemId": "p-1777000996662",
+          "category": "완제품",
+          "name": "탈피들깨가루/모란/1kg"
+        },
+        {
+          "name": "참기름/골드/반석/1800ml",
+          "value": 0,
+          "itemId": "p-1777001262840",
+          "category": "완제품",
+          "qty": 0
+        },
+        {
+          "value": 0,
+          "qty": 0,
+          "name": "참기름/분/부원/1800ml",
+          "category": "완제품",
+          "itemId": "p-1777001566985"
+        },
+        {
+          "value": 0,
+          "category": "완제품",
+          "itemId": "p-1777014726283",
+          "name": "들기름/병/양념나라/350ml",
+          "qty": 0
+        },
+        {
+          "itemId": "p-1777014871858",
+          "value": 0,
+          "qty": 0,
+          "category": "완제품",
+          "name": "참기름/A/양념나라/1750ml"
+        },
+        {
+          "qty": 0,
+          "category": "완제품",
+          "value": 0,
+          "itemId": "p-1777016497890",
+          "name": "들기름/우리식품/1750ml"
+        },
+        {
+          "name": "참기름/골드A/우리식품/1750ml",
+          "qty": 0,
+          "itemId": "p-1777016551167",
+          "category": "완제품",
+          "value": 0
+        },
+        {
+          "category": "완제품",
+          "itemId": "p-1777016594557",
+          "name": "참기름/A/우리식품/1750ml",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "name": "참기름/분/임진농산/1800ml",
+          "qty": 0,
+          "category": "완제품",
+          "value": 0,
+          "itemId": "p-1777095162697"
+        },
+        {
+          "value": 0,
+          "category": "완제품",
+          "qty": 0,
+          "itemId": "p-1777095683613",
+          "name": "들기름/지구/1800ml"
+        },
+        {
+          "itemId": "p-1777096833351",
+          "name": "시골향 참기름/특A/1800ml",
+          "qty": 0,
+          "value": 0,
+          "category": "완제품"
+        },
+        {
+          "itemId": "p-1777097597801",
+          "qty": 0,
+          "value": 0,
+          "name": "들기름/해내음/1800ml",
+          "category": "완제품"
+        },
+        {
+          "qty": 0,
+          "category": "완제품",
+          "value": 0,
+          "itemId": "p-1777098316059",
+          "name": "참기름/A/해피유통/1750ml"
+        },
+        {
+          "name": "시골향 참기름/병/특A/350ml",
+          "value": 0,
+          "qty": 0,
+          "itemId": "p-1777102035682",
+          "category": "완제품"
+        },
+        {
+          "name": "들깨가루(스마트)/1kg",
+          "category": "완제품",
+          "value": 0,
+          "qty": 0,
+          "itemId": "p-1777364096884"
+        },
+        {
+          "name": "참기름/A/가득찬/1800ml(빨강)",
+          "itemId": "p-1777364661145",
+          "value": 0,
+          "category": "완제품",
+          "qty": 0
+        },
+        {
+          "value": 0,
+          "itemId": "p-1777506666378",
+          "category": "완제품",
+          "qty": 0,
+          "name": "시골향 참기름/특A/다싸다마트/1750ml"
+        },
+        {
+          "name": "시골향 참기름/골드A/1750ml",
+          "value": 0,
+          "itemId": "p-1777506850191",
+          "qty": 0,
+          "category": "완제품"
+        },
+        {
+          "category": "완제품",
+          "itemId": "p-1777536360094",
+          "name": "참기름/병/원액/해피유통/300ml",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "name": "시골향 선물세트 참기름/300ml",
+          "value": 0,
+          "qty": 0,
+          "itemId": "p-1778024315971",
+          "category": "완제품"
+        },
+        {
+          "itemId": "p-1778024430890",
+          "qty": 1200,
+          "category": "라벨",
+          "value": 0,
+          "name": "시골향 들② 300ml(사각)"
+        },
+        {
+          "category": "완제품",
+          "itemId": "p-1778024469902",
+          "qty": 0,
+          "name": "시골향 선물세트 들기름/300ml",
+          "value": 0
+        },
+        {
+          "qty": 488,
+          "itemId": "p-1778055446777",
+          "value": 0,
+          "category": "라벨",
+          "name": "스마트스토어(빨강)/1.8L"
+        },
+        {
+          "itemId": "p-1778055459315",
+          "category": "라벨",
+          "name": "스마트스토어(갈색)/1.8L",
+          "value": 0,
+          "qty": 979
+        },
+        {
+          "category": "라벨",
+          "itemId": "p-1778055470583",
+          "name": "스마트스토어(골드)/1.8L",
+          "qty": 966,
+          "value": 0
+        },
+        {
+          "itemId": "p-1778055484080",
+          "name": "스마트스토어(초록)/1.8L",
+          "category": "라벨",
+          "value": 0,
+          "qty": 800
+        },
+        {
+          "itemId": "p-1778063638674",
+          "value": 0,
+          "category": "완제품",
+          "qty": 0,
+          "name": "들기름/스마트/350ml"
+        },
+        {
+          "category": "완제품",
+          "name": "참기름+볶음참깨/스마트/300ml",
+          "value": 0,
+          "itemId": "p-1778063790799",
+          "qty": 0
+        },
+        {
+          "qty": 0,
+          "category": "완제품",
+          "name": "참기름2P/스마트/300ml",
+          "value": 0,
+          "itemId": "p-1778063816046"
+        },
+        {
+          "category": "완제품",
+          "itemId": "p-1778063832081",
+          "name": "참+들/스마트/300ml",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "category": "완제품",
+          "name": "참2+볶음참깨/스마트/300ml",
+          "value": 0,
+          "qty": 0,
+          "itemId": "p-1778063848475"
+        },
+        {
+          "name": "참+들+볶음참깨/300ml",
+          "category": "완제품",
+          "qty": 0,
+          "value": 0,
+          "itemId": "p-1778063866447"
+        },
+        {
+          "name": "시골향 참기름/원액/300ml",
+          "itemId": "p-1778155763510",
+          "category": "완제품",
+          "qty": 0,
+          "value": 0
+        },
+        {
+          "itemId": "p-1778227753693",
+          "value": 0,
+          "qty": 0,
+          "category": "완제품",
+          "name": "볶음들깨-25kg"
+        },
+        {
+          "itemId": "p-1778228479352",
+          "value": 0,
+          "category": "완제품",
+          "name": "참기름/A/한신/1800ml",
+          "qty": 0
+        },
+        {
+          "name": "참기름/병/180ml",
+          "value": 0,
+          "qty": 0,
+          "itemId": "p-1778825300854",
+          "category": "완제품"
+        },
+        {
+          "itemId": "p-1779235379678",
+          "value": 0,
+          "category": "완제품",
+          "name": "시골향 참기름/분/300ml/엘생몀",
+          "qty": 0
+        },
+        {
+          "itemId": "p-1779235470190",
+          "value": 0,
+          "category": "완제품",
+          "qty": 0,
+          "name": "시골향 참기름/병/원액/300ml"
+        },
+        {
+          "name": "참깨",
+          "category": "원료",
+          "qty": 1080,
+          "itemId": "p-1779251176421",
+          "value": 4433400
+        },
+        {
+          "value": 0,
+          "itemId": "p-1779320974154",
+          "qty": 0,
+          "category": "완제품",
+          "name": "볶음참깨/200g"
+        },
+        {
+          "name": "볶음통들깨/원물/25kg",
+          "qty": 0,
+          "value": 0,
+          "category": "완제품",
+          "itemId": "p-1779349161834"
+        },
+        {
+          "qty": 0,
+          "category": "완제품",
+          "value": 0,
+          "name": "볶음참깨(벌크)/20kg",
+          "itemId": "p-1779937553909"
+        },
+        {
+          "itemId": "p-1780276377790",
+          "value": 0,
+          "name": "참기름/분/구월/1800ml",
+          "category": "완제품",
+          "qty": 0
+        },
+        {
+          "value": 0,
+          "qty": 0,
+          "category": "완제품",
+          "itemId": "p-1780297246794",
+          "name": "참+들+깨 180ml 세트"
+        },
+        {
+          "name": "볶음참깨/140g",
+          "category": "완제품",
+          "qty": 0,
+          "itemId": "p-1780297369472",
+          "value": 0
+        },
+        {
+          "name": "볶음참깨/10kg박스",
+          "category": "완제품",
+          "value": 1169190,
+          "itemId": "p-1780625531675",
+          "qty": 22
+        },
+        {
+          "itemId": "p-1780625559322",
+          "value": 312600,
+          "name": "볶음참깨/20kg박스",
+          "qty": 3,
+          "category": "완제품"
+        },
+        {
+          "qty": 0,
+          "value": 0,
+          "itemId": "p-1780961846005",
+          "name": "들기름/병/스마트/350ml",
+          "category": "완제품"
+        },
+        {
+          "itemId": "p-1781739328648",
+          "category": "완제품",
+          "name": "볶음참깨/500g",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "name": "볶음참깨/80g",
+          "category": "완제품",
+          "qty": 0,
+          "value": 0,
+          "itemId": "p-1781770117874"
+        },
+        {
+          "qty": 0,
+          "value": 0,
+          "itemId": "p-1782184684196",
+          "category": "완제품",
+          "name": "테스트(깨)"
+        },
+        {
+          "itemId": "p-1782690815905",
+          "category": "완제품",
+          "name": "진참기름/특A/1500ML",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "name": "진들기름/알이네1800ml",
+          "value": 0,
+          "category": "라벨",
+          "itemId": "p-1782699494765",
+          "qty": 452
+        },
+        {
+          "qty": 0,
+          "name": "진참기름/A/1800ml",
+          "itemId": "p-1782699579814",
+          "category": "완제품",
+          "value": 0
+        },
+        {
+          "name": "진들기름",
+          "value": 0,
+          "itemId": "p-1782699603420",
+          "qty": 0,
+          "category": "완제품"
+        },
+        {
+          "name": "깨분",
+          "qty": 0,
+          "category": "원료",
+          "value": 0,
+          "itemId": "p-1782788554239"
+        },
+        {
+          "name": "깻묵",
+          "value": 0,
+          "qty": 0,
+          "category": "원료",
+          "itemId": "p-1782788799105"
+        },
+        {
+          "value": 0,
+          "qty": 0,
+          "itemId": "p-1782950712509",
+          "category": "완제품",
+          "name": "참기름/A/천하1750ml"
+        },
+        {
+          "itemId": "p-1783497611690",
+          "qty": 0,
+          "value": 0,
+          "name": "볶음참깨/400g",
+          "category": "완제품"
+        },
+        {
+          "itemId": "p-1783918260605",
+          "qty": 0,
+          "category": "완제품",
+          "value": 0,
+          "name": "볶음참깨/350g"
+        },
+        {
+          "name": "시골향 들깨가루",
+          "value": 0,
+          "qty": 1920,
+          "itemId": "p-1784783101022",
+          "category": "라벨"
+        },
+        {
+          "qty": 0,
+          "value": 0,
+          "itemId": "p-1784787585083",
+          "category": "완제품",
+          "name": "참기름/병/특/알찬/300ml"
+        },
+        {
+          "qty": 4100,
+          "value": 0,
+          "category": "라벨",
+          "itemId": "p-1784787641031",
+          "name": "하남댁 알찬 참기름/300ml"
+        },
+        {
+          "qty": 4100,
+          "category": "라벨",
+          "itemId": "p-1784787660250",
+          "name": "하남댁 알찬 참기름/350ml",
+          "value": 0
+        },
+        {
+          "value": 0,
+          "itemId": "p-1784787834504",
+          "category": "완제품",
+          "qty": 0,
+          "name": "참기름/병/특/알찬/350ml"
+        },
+        {
+          "name": "거산 들깨가루",
+          "value": 0,
+          "itemId": "p-1784788018073",
+          "qty": 1540,
+          "category": "라벨"
+        },
+        {
+          "name": "모란 들깨가루",
+          "category": "라벨",
+          "itemId": "p-1784788812234",
+          "value": 0,
+          "qty": 500
+        },
+        {
+          "name": "시골향 볶음참깨",
+          "itemId": "p-1784790733491",
+          "category": "라벨",
+          "value": 0,
+          "qty": 2000
+        },
+        {
+          "qty": 800,
+          "category": "라벨",
+          "value": 0,
+          "itemId": "p-1784790843654",
+          "name": "라이스에그 들② 1.8L"
+        },
+        {
+          "value": 0,
+          "category": "라벨",
+          "itemId": "p-1784790884261",
+          "name": "라이스에그 참③ 1.8L",
+          "qty": 800
+        },
+        {
+          "value": 0,
+          "itemId": "p-1784791088529",
+          "qty": 800,
+          "category": "라벨",
+          "name": "라이스에그 참④ 1.8L"
+        },
+        {
+          "qty": 800,
+          "value": 0,
+          "itemId": "p-1784791147422",
+          "name": "라이스에그 참① 1.8L",
+          "category": "라벨"
+        },
+        {
+          "name": "들기름/병/수라간/350ml",
+          "category": "완제품",
+          "qty": 0,
+          "itemId": "p-179",
+          "value": 0
+        },
+        {
+          "name": "시골향 들깨가루(고운4kg)",
+          "itemId": "p-199",
+          "qty": 0,
+          "category": "완제품",
+          "value": 0
+        },
+        {
+          "name": "참기름/A/가득찬/1800ml",
+          "itemId": "p-2",
+          "qty": 0,
+          "category": "완제품",
+          "value": 0
+        },
+        {
+          "qty": 0,
+          "category": "완제품",
+          "itemId": "p-20",
+          "value": 0,
+          "name": "시골향 참기름/병/특/350ml"
+        },
+        {
+          "name": "시골향 들깨기루(중간4kg)",
+          "category": "완제품",
+          "qty": 0,
+          "itemId": "p-201",
+          "value": 0
+        },
+        {
+          "name": "시골향 참기름/특A/1750ml",
+          "qty": 0,
+          "itemId": "p-203",
+          "category": "완제품",
+          "value": 0
+        },
+        {
+          "itemId": "p-207",
+          "value": 0,
+          "name": "들기름/병/특/청우/350ml",
+          "category": "완제품",
+          "qty": 0
+        },
+        {
+          "itemId": "p-22",
+          "qty": 0,
+          "name": "시골향 참기름/분/1800ml",
+          "value": 0,
+          "category": "완제품"
+        },
+        {
+          "name": "참기름/골드/대왕/1800ml",
+          "category": "완제품",
+          "itemId": "p-223",
+          "qty": 0,
+          "value": 0
+        },
+        {
+          "itemId": "p-23",
+          "category": "완제품",
+          "qty": 0,
+          "name": "시골향 참기름/A/1800ml",
+          "value": 0
+        },
+        {
+          "itemId": "p-230",
+          "value": 0,
+          "name": "참기름/병/특A/청우/350ml",
+          "qty": 0,
+          "category": "완제품"
+        },
+        {
+          "value": 0,
+          "itemId": "p-235",
+          "qty": 0,
+          "name": "검정참깨가루/1kg",
+          "category": "완제품"
+        },
+        {
+          "itemId": "p-236",
+          "qty": 0,
+          "category": "완제품",
+          "value": 0,
+          "name": "들기름/청우/1800ml"
+        },
+        {
+          "qty": 0,
+          "category": "완제품",
+          "value": 0,
+          "name": "시골향 참기름/특A/1750ml",
+          "itemId": "p-25"
+        },
+        {
+          "itemId": "p-270",
+          "category": "완제품",
+          "name": "참기름/특A(토마토)/1800ml",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "qty": 0,
+          "value": 0,
+          "category": "완제품",
+          "name": "시골향 들기름/특/1750ml",
+          "itemId": "p-278"
+        },
+        {
+          "name": "들기름/병/특/300ml",
+          "category": "완제품",
+          "itemId": "p-279",
+          "qty": 0,
+          "value": 0
+        },
+        {
+          "name": "생들기름/병/해피유통/300ml",
+          "qty": 0,
+          "category": "완제품",
+          "value": 0,
+          "itemId": "p-281"
+        },
+        {
+          "itemId": "p-298",
+          "category": "완제품",
+          "qty": 0,
+          "name": "시골향 들기름/1800ml",
+          "value": 0
+        },
+        {
+          "qty": 0,
+          "name": "참기름/분/가득찬/1800ml",
+          "value": 0,
+          "category": "완제품",
+          "itemId": "p-3"
+        },
+        {
+          "name": "시골향 들기름/1800ml",
+          "qty": 0,
+          "category": "완제품",
+          "itemId": "p-311",
+          "value": 0
+        },
+        {
+          "category": "완제품",
+          "itemId": "p-42",
+          "name": "들기름/대왕/1800ml",
+          "value": 0,
+          "qty": 0
+        },
+        {
+          "itemId": "p-43",
+          "value": 0,
+          "category": "완제품",
+          "qty": 0,
+          "name": "들기름/병/대왕/350ml"
+        },
+        {
+          "value": 0,
+          "itemId": "p-48",
+          "qty": 0,
+          "category": "완제품",
+          "name": "시골향 참기름/A/1800ml"
+        },
+        {
+          "qty": 0,
+          "itemId": "p-56",
+          "value": 0,
+          "category": "완제품",
+          "name": "참기름/특A/구월/1800ml"
+        },
+        {
+          "value": 0,
+          "category": "완제품",
+          "qty": 0,
+          "itemId": "p-57",
+          "name": "참기름/A(삼진)/1750ml"
+        },
+        {
+          "qty": 0,
+          "value": 0,
+          "category": "완제품",
+          "name": "시골향 생들기름/병/300ml",
+          "itemId": "p-61"
+        },
+        {
+          "qty": 0,
+          "itemId": "p-63",
+          "value": 0,
+          "category": "완제품",
+          "name": "시골향 생들기름/1800ml"
+        },
+        {
+          "name": "시골향 참기름/골드/1800ml",
+          "category": "완제품",
+          "value": 0,
+          "itemId": "p-64",
+          "qty": 0
+        },
+        {
+          "value": 0,
+          "qty": 0,
+          "itemId": "p-77",
+          "category": "완제품",
+          "name": "참기름/특A/라이스/1800ml"
+        },
+        {
+          "qty": 0,
+          "name": "참기름/A/라이스/1800ml",
+          "value": 0,
+          "itemId": "p-78",
+          "category": "완제품"
+        },
+        {
+          "qty": 0,
+          "category": "완제품",
+          "value": 0,
+          "itemId": "p-80",
+          "name": "들깨가루(고운)/모란/1kg"
+        },
+        {
+          "name": "참기름/병/특A/모란/350ml",
+          "category": "완제품",
+          "itemId": "p-83",
+          "qty": 0,
+          "value": 0
+        },
+        {
+          "category": "완제품",
+          "itemId": "p-87",
+          "qty": 0,
+          "name": "참기름/분/모란/1750ml",
+          "value": 0
+        },
+        {
+          "qty": 0,
+          "itemId": "p-9",
+          "category": "완제품",
+          "value": 0,
+          "name": "들깨가루(거친)/거산/1kg"
+        },
+        {
+          "itemId": "p-91",
+          "value": 11770,
+          "qty": 1,
+          "name": "볶음검정참깨/1kg",
+          "category": "완제품"
+        },
+        {
+          "category": "박스",
+          "qty": 500,
+          "value": 0,
+          "name": "원조방앗간 박스",
+          "itemId": "qus0RgvZINX6DFtOjFeH"
+        },
+        {
+          "value": 12804317,
+          "itemId": "raw-깨분참기름",
+          "category": "원료",
+          "qty": 1772.96,
+          "name": "깨분참기름"
+        },
+        {
+          "name": "들깨가루(고운)",
+          "value": 0,
+          "qty": 540,
+          "itemId": "raw-들깨가루고운",
+          "category": "반제품"
+        },
+        {
+          "name": "볶음검정참깨",
+          "qty": 97,
+          "category": "반제품",
+          "value": 1131020,
+          "itemId": "raw-볶음검정참깨"
+        },
+        {
+          "itemId": "raw-볶음들깨",
+          "value": 26100000,
+          "name": "볶음들깨",
+          "qty": 4350,
+          "category": "반제품"
+        },
+        {
+          "itemId": "raw-볶음참깨",
+          "value": 0,
+          "name": "볶음참깨",
+          "qty": 0,
+          "category": "반제품"
+        },
+        {
+          "qty": 5616,
+          "value": 65207376,
+          "category": "원료",
+          "itemId": "raw-생들기름",
+          "name": "생들기름"
+        },
+        {
+          "name": "수입들기름",
+          "category": "원료",
+          "itemId": "raw-수입들기름",
+          "value": 2800562,
+          "qty": 241.199
+        },
+        {
+          "qty": 2160,
+          "name": "탈피들깨가루",
+          "value": 9720000,
+          "itemId": "raw-탈피들깨가루",
+          "category": "원료"
+        },
+        {
+          "value": 2865333,
+          "category": "원료",
+          "itemId": "raw-통깨참기름",
+          "qty": 311.89,
+          "name": "통깨참기름"
+        },
+        {
+          "itemId": "raw-통들깨들기름",
+          "name": "통들깨들기름",
+          "value": 2500949,
+          "qty": 172.801,
+          "category": "원료"
+        },
+        {
+          "value": 0,
+          "qty": 976,
+          "itemId": "vOAoTr6EboXFFD0Rkb1c",
+          "name": "대왕 참③",
+          "category": "라벨"
+        },
+        {
+          "category": "박스",
+          "itemId": "viiAF1MqwvAEMlOGxK8q",
+          "name": "해내음깨박스",
+          "value": 0,
+          "qty": 45
+        }
+      ],
+      "value": 161220237
+    },
+    {
+      "id": "inv-snap-punghoe-2026-07",
+      "companyId": "punghoe",
+      "recordedAt": "2026-08-22T18:25:54.921Z",
+      "value": 9939600,
+      "items": [
+        {
+          "itemId": "wip-깨분참기름-캔-punghoe",
+          "value": 6969600,
+          "category": "반제품",
+          "qty": 64,
+          "spec": "16.5kg",
+          "name": "깨분참기름/16.5kg"
+        },
+        {
+          "category": "원료",
+          "value": 2970000,
+          "name": "깨분",
+          "itemId": "p-1782788554239",
+          "qty": 1000
+        }
+      ],
+      "yearMonth": "2026-07"
+    }
+  ],
+  "items": [
+    {
+      "id": "p-1782788799105",
+      "partnerIds": [],
+      "stock": 3,
+      "minStock": 10,
+      "type": "raw",
+      "image": "",
+      "unit": "개",
+      "price": 0,
+      "cost": 380,
+      "name": "깻묵",
+      "subtype": "",
+      "lots": [
+        {
+          "id": "lot-깻묵-1786334445953-m6r1",
+          "supplierName": "실사조정",
+          "qtyIn": 0,
+          "kgIn": 3,
+          "kgRemaining": 3,
+          "receivedDate": "2026-08-10",
+          "status": "active",
+          "createdAt": "2026-08-10T04:00:45.952Z",
+          "lotNo": "260810-01"
+        }
+      ],
+      "category": "참깨"
+    }
+  ]
+}
