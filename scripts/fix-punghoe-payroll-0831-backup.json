@@ -1,0 +1,31 @@
+{
+  "cash": [
+    {
+      "id": "cash-1786602897488-g",
+      "date": "2026-08-13",
+      "companyId": "punghoe",
+      "amount": 2800000,
+      "cashAccountId": "",
+      "accountCode": "515",
+      "dir": "출금",
+      "createdAt": "2026-08-13T06:34:57.488Z",
+      "note": "우용 급여"
+    },
+    {
+      "id": "cash-ph-exp-20260818-3",
+      "cashAccountId": "",
+      "note": "급여",
+      "accountCode": "515",
+      "companyId": "punghoe",
+      "amount": 3500000,
+      "createdAt": "2026-08-18T14:59:59.000Z",
+      "dir": "출금",
+      "date": "2026-08-18"
+    }
+  ],
+  "made": [
+    "stmt-open-punghoe-미지급급여",
+    "stmt-ph-payroll-20260831-1",
+    "stmt-ph-payroll-20260831-2"
+  ]
+}
