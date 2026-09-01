@@ -17,7 +17,7 @@ import { buildJournals } from '../src/shared/buildJournals';
 import type { VoucherKind } from '../src/shared/vouchers';
 import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/shared/orderUnits';
 import { bomOf } from '../src/shared/bomIndex';
-import { PurchaseOrder, poLines, ExpensePreset, companyOf } from '../src/shared/types';
+import { PurchaseOrder, poLines, ExpensePreset, companyOf, openingDocId } from '../src/shared/types';
 import VoucherSlip from '../src/shared/VoucherSlip';
 import { unsettledStatements, unmatchedCash, partnerBalanceFromJournals, allPartnerBalances, isReceivableStmt, allocatePartnerCash, partnerCashParts } from '../src/features/admin/cashLedger';
 import { AR, AP, journalizeStatement, journalizeTransfer, journalizeCashEntry, settlementAccountCode } from '../src/shared/autoJournal';
@@ -793,7 +793,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const amount = Number(payForm.amount);
     if (amount <= 0) return;
     // 초과 판정은 거래처 잔액 기준 — 돈은 전표가 아니라 거래처 채권·채무에서 빠진다.
-    const liveStmt = issuedStatements.find(s => s.id === payTarget.id) ?? payTarget;
+    const liveStmt = mergedStatements.find(s => s.id === payTarget.id) ?? payTarget;
     const pb = partnerBalances.get(liveStmt.partnerId);
     const bal = liveStmt.type === '매입' ? (pb?.payable ?? 0) : (pb?.receivable ?? 0);
     if (amount > bal && !forceOver) {
@@ -1139,6 +1139,26 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * 그래서 id로 합치기만 하고 지우지 않는다.
    */
   /**
+   * **어디까지 거슬러 읽나 — 기초일이 앵커다.**
+   *
+   * 기초 전표(`기초260731-…` 62건)가 그 이전을 통째로 요약한다. 거래처별 108·251을
+   * 그날 한 번에 세워 두므로, **기초일부터 읽으면 잔액이 맞는다.**
+   * 앵커를 무시하고 2020년부터 읽으면 지금은 결과가 같지만(그 이전 전표가 0건),
+   * 해가 쌓이면 읽는 양만 늘고 "왜 다 읽나"가 코드에 안 남는다.
+   * 결산 때 다음 기초를 박으면 그 앞이 저절로 잘린다 — 그게 앵커의 값이다.
+   *
+   * 기초 문서가 없으면 근거가 없으니 전부 읽는다.
+   */
+  const [openingDate, setOpeningDate] = useState<string | null>(null);
+  useEffect(() => {
+    fetchCollection<{ id: string; date: string }>('openingBalances')
+      .then(rows => setOpeningDate(rows.find(r => r.id === openingDocId(companyId))?.date ?? null))
+      .catch(() => setOpeningDate(null));
+  }, [companyId]);
+  /** 이 회사 장부가 시작하는 날. 기초가 없으면 전부. */
+  const ledgerFrom = openingDate ?? '2020-01-01';
+
+  /**
    * **잔액용 전체 적재 — 화면을 열 때 한 번.**
    *
    * 조회 기간이 '당일'로 시작하는데(histFrom = 오늘), 그 조건만 보면 옛 전표를 아예 안 떠온다.
@@ -1147,17 +1167,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * 화면에 뭘 보여줄지는 filteredHistory가 날짜로 거른다 — 적재는 넉넉히 해 둔다.
    */
   useEffect(() => {
-    fetchDateRange<IssuedStatement>('issuedStatements', 'tradeDate', '2020-01-01', today())
+    fetchDateRange<IssuedStatement>('issuedStatements', 'tradeDate', ledgerFrom, today())
       .then(data => setExtraStatements(prev => {
         const m = new Map(prev.map(x => [x.id, x]));
         for (const x of data) m.set(x.id, { ...x, items: x.items ?? [], tradeDate: x.tradeDate ?? '', issuedAt: x.issuedAt ?? '' });
         return [...m.values()];
       }))
       .catch(() => {});
-  }, []);
+  }, [ledgerFrom]);
 
   useEffect(() => {
-    const from = histFrom || '2020-01-01';
+    const from = histFrom || ledgerFrom;
     const to   = histTo   || today();
     if (from >= sevenDaysAgoCutoff) return;          // 최근 7일은 props로 충분 — 더 안 떠온다
     if (fetchedRangeRef.current?.from === from && fetchedRangeRef.current?.to === to) return;
@@ -1193,7 +1213,17 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setExtraStatements(prev => prev.filter(s => s.id !== id));
   };
 
-  // props(전체 구독) + 온디맨드 fetch 데이터 합치기 (id 기준 dedup, props 우선)
+  /**
+   * **전표의 유일한 원천.** 화면 어디서든 이걸 본다 — props(issuedStatements)를 직접
+   * 보면 안 된다.
+   *
+   * props는 최근 7일 구독이고 extraStatements는 마운트 때 통째로 떠온 과거다.
+   * 둘을 합치되 props가 이겨서, **과거 전부 + 최근은 실시간**이 된다.
+   *
+   * 예전엔 자리마다 둘 중 하나를 골라 썼고, props를 고른 자리가 전부 "7일 밖은
+   * 못 본다"는 같은 병을 앓았다 — 끊은 주문이 미발행으로 뜨고, 소급 발행하면 문서번호가
+   * 겹치고, 정기전표가 두 번 나가고, 이미 연결된 발주가 다시 떴다.
+   */
   //
   // **회사로 한 번 더 거른다.** props는 이미 걸러져 오지만 extraStatements는 이 화면이
   // 직접 떠온 것이라 안 걸러져 있다 — 그래서 풍회로 바꿔도 태백 전표가 다 보였다.
@@ -1408,10 +1438,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // editingStmt를 live issuedStatements와 동기화 (수금처리 후 즉시 반영) — 편집 중에는 제외
   useEffect(() => {
     if (editingStmt && !isEditMode) {
-      const live = issuedStatements.find(s => s.id === editingStmt.id);
+      const live = mergedStatements.find(s => s.id === editingStmt.id);
       if (live) setEditingStmt(live);
     }
-  }, [issuedStatements, isEditMode]);
+  }, [mergedStatements, isEditMode]);
 
   const openEdit = (stmt: IssuedStatement) => {
     setEditingStmt(stmt);
@@ -1446,11 +1476,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // ── 매입전표 발행된 발주 품목 ID 집합 (발행완료/미발행 뱃지) ──
   const issuedPurchaseOrderIds = useMemo(() => {
     const s = new Set<string>();
-    issuedStatements
+    mergedStatements
       .filter(st => st.type === '매입')
       .forEach(st => ((st as any).purchaseOrderIds ?? (st as any).confirmedProductIds ?? []).forEach((id: string) => s.add(id)));
     return s;
-  }, [issuedStatements]);
+  }, [mergedStatements]);
 
   // partnerIn → itemId:partnerId 빠른 조회 맵
   const psMap = useMemo(() => new Map(
@@ -1720,7 +1750,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   const tradeDateObj = new Date(tradeDate + 'T00:00:00');
   const dateStr = `${tradeDateObj.getFullYear()}년 ${tradeDateObj.getMonth() + 1}월 ${tradeDateObj.getDate()}일`;
-  const docNo   = nextDocNo(tradeDate, issuedStatements);
+  //  번호는 **그날 전표 전부**를 보고 매긴다 — 7일 밖으로 소급하면 겹친다
+  const docNo   = nextDocNo(tradeDate, mergedStatements);
 
   const inboundPartnerLabel = stmtType === '매출' ? '【 공급자 】' : `【 공급자 】　${selectedClient?.name||''}`;
   const receiverLabel = stmtType === '매출' ? `【 공급받는자 】　${selectedClient?.name||''}` : '【 공급받는자 】';
@@ -2786,7 +2817,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // ── 주문 클릭 처리 (중복 발행 감지) ──
   const handleOrderClick = (o: Order) => {
-    const existing = issuedStatements.find(s => s.orderId === o.id);
+    const existing = mergedStatements.find(s => s.orderId === o.id);
     if (existing && o.invoicePrinted) {
       setWarnDuplicate({ order: o, stmt: existing });
     } else {
@@ -4097,7 +4128,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               </div>
             </div>
             {payOverWarn && (() => {
-              const liveStmt = issuedStatements.find(s => s.id === payTarget?.id) ?? payTarget;
+              const liveStmt = mergedStatements.find(s => s.id === payTarget?.id) ?? payTarget;
               const bal = liveStmt ? getBalance(liveStmt) : 0;
               const overLabel = overLabelOf(payTarget?.type);
               return (
@@ -4257,7 +4288,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         const due = fixedCostTemplates.filter(t => canAutoIssue(t, recurringYm));
         const alreadyDone = (t: FixedCostTemplate) => {
           const key = autoVoucherId(t, recurringYm);
-          return issuedStatements.some(s => s.id === key || (s as any).orderId === key)
+          return mergedStatements.some(s => s.id === key || (s as any).orderId === key)
             || cashEntries.some(e => e.id === key);
         };
         const pending = due.filter(t => !alreadyDone(t));
@@ -4595,7 +4626,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           }
           const d = new Date(quickPayDate + 'T00:00:00');
           // 대체는 따로 센다 — 매입·매출과 번호가 섞이면 어느 갈래인지 번호로 못 읽는다
-          const accrDocNo = nextDocNo(quickPayDate, issuedStatements, accrType === '비용' ? '대체' : '');
+          const accrDocNo = nextDocNo(quickPayDate, mergedStatements, accrType === '비용' ? '대체' : '');
           const stmt: IssuedStatement = {
             id: `stmt-${Date.now()}`,
             issuedAt: stampFor(quickPayDate),
@@ -5741,7 +5772,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   };
                   // 발주카드 클릭: 이 카드에 연결된 전표(linkedStatementId)가 있으면 중복 경고, 아니면 로드
                   const clickCard = (po: PurchaseOrder) => {
-                    const linked = po.linkedStatementId ? issuedStatements.find(s => s.id === po.linkedStatementId) : undefined;
+                    const linked = po.linkedStatementId ? mergedStatements.find(s => s.id === po.linkedStatementId) : undefined;
                     if (linked) { setWarnDuplicate({ po, stmt: linked }); return; }
                     loadCard(po);
                   };
