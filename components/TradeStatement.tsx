@@ -13,6 +13,7 @@ import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, Compan
 import { filterCodesForContext, isCashAccountCode } from '../src/features/admin/financials';
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { useVoucherLedger } from '../src/features/admin/useVoucherLedger';
+import CashEntryModal, { type CashModalMode, type SettleInput } from './voucher/CashEntryModal';
 import { stampFor, timeOfLocal, issuedMs, nextDocNo } from '../src/shared/voucherStamp';
 import { buildJournals } from '../src/shared/buildJournals';
 import type { VoucherKind } from '../src/shared/vouchers';
@@ -24,7 +25,7 @@ import { unsettledStatements, unmatchedCash, partnerBalanceFromJournals, isRecei
 import { AR, AP, journalizeStatement, journalizeTransfer, journalizeCashEntry, settlementAccountCode } from '../src/shared/autoJournal';
 import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, isCashDir, templateAccrRows, VOUCHER_DIRS, DIR_CHIP, DIR_HINT, CashTemplate, VoucherDir, SPLIT_MODES, splitModeOf } from '../src/shared/cashTemplates';
 import { canAutoIssue, autoVoucherId, issueDateOf } from '../src/shared/autoVoucher';
-import { buildCashEditPatch, cashEditSplit, cashEditAmount } from '../src/shared/cashEntryEdit';
+import { buildCashEditPatch, cashEditAmount, type CashEditForm, type CashEditLineDraft } from '../src/shared/cashEntryEdit';
 import { buildTransfer, splitTransfer, OverKind, PREPAID, ADVANCE_IN } from '../src/shared/interCompany';
 import VoucherTemplateManager from './VoucherTemplateManager';
 import type { JournalEntry } from '../src/shared/types';
@@ -320,11 +321,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // 현재 전표 세션에서 이미 issuedStatement에 저장했는지 추적 (인쇄 중복 방지)
   const hasIssuedRef = useRef(false);
 
-  // ── 지불/수불 처리 모달 ──
-  const [payTarget, setPayTarget] = useState<IssuedStatement | null>(null);
-  const [payForm, setPayForm] = useState<{ amount: string; date: string; method: PaymentMethod; note: string }>({
-    amount: '', date: new Date().toISOString().slice(0, 10), method: '계좌이체', note: '',
-  });
+  /**
+   * **자금 전표 창 하나** — 수금·지불도, 이미 난 전표를 고치는 것도 여기로 연다.
+   * 수금은 입금이고 지불은 출금이다. 상대계정이 108·251로 정해지고 전표에 상계로
+   * 붙는 것만 다르다. 창을 둘로 나누면 같은 것을 두 번 만들게 되고 한쪽만 고쳐진 채 갈린다.
+   */
+  const [cashModal, setCashModal] = useState<CashModalMode | null>(null);
   const [payAccountId, setPayAccountId] = useState('');
   const [quickPayAccountId, setQuickPayAccountId] = useState('');
 
@@ -338,7 +340,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [tplBusy, setTplBusy] = useState(false);
   const [tplEditId, setTplEditId] = useState<string | null>(null);
   const [tplEditAmt, setTplEditAmt] = useState('');
-  const [payOverWarn, setPayOverWarn] = useState(false);
   /**
    * **발행하면서 바로 수금·지불한다.** 현금·계좌로 그 자리에서 받는 거래가 많은데,
    * 전표를 끊고 목록에서 다시 찾아 수금처리를 누르는 건 같은 일을 두 번 하는 것이다.
@@ -346,43 +347,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    */
   const [issuePay, setIssuePay] = useState(false);
   const [issuePayAmount, setIssuePayAmount] = useState('');
-  /**
-   * **이 돈을 어디에 붙일까** — 기본은 '이 전표'.
-   *   이 전표    누른 전표에 붙인다(settlement). 그 전표부터 갚아진다.
-   *   거래처 잔액 안 붙인다. allocatePartnerCash가 **오래된 전표부터** 채운다.
-   * 안 고르게 두면 늘 오래된 것부터 갚아져, 방금 끊은 전표를 갚아도 옛 전표 버튼이 사라졌다.
-   */
-  const [payScope, setPayScope] = useState<'stmt' | 'partner'>('stmt');
 
 
-  // ── 자금(입출금) 전표 수정 모달 ──
-  const [editCash, setEditCash] = useState<CashEntry | null>(null);
-  const [editCashForm, setEditCashForm] = useState<{ amount: string; date: string; dir: '입금'|'출금'; accountCode: string; note: string }>({ amount:'', date:'', dir:'출금', accountCode:'', note:'' });
   /**
-   * 쪼개진 줄(CashEntry.lines) — 모달이 이걸 안 들고 있다가 저장 한 번에 눈앞에서 사라졌다.
-   * 쓰는 쪽이 accountCode 한 줄만 보내서, 대출상환(원금+이자)·급여(총액+원천공제) 같은 전표를
-   * 열었다 닫기만 해도 자금원장 금액과 분개(줄 합)가 따로 놀았다.
+   * **고친 자금 전표를 저장한다** — 폼은 창이 쥐고, 돈이 얽힌 뒷일은 여기서 푼다.
+   * 판정 자체는 shared/cashEntryEdit이 쥔다(화면 조각이라 테스트가 안 닿던 자리였다).
    */
-  const [editCashLines, setEditCashLines] = useState<{ accountCode: string; amount: string; note: string }[]>([]);
-  //  상계(대체)는 방향을 고를 수 있는 게 아니다 — 모달 기본값만 출금으로 두고, 저장 때 dir은 안 건드린다.
-  const openEditCash = (e: CashEntry) => {
-    setEditCash(e);
-    setEditCashForm({ amount: String(e.amount), date: e.date, dir: e.dir === '대체' ? '출금' : e.dir, accountCode: e.accountCode ?? '', note: e.note ?? '' });
-    setEditCashLines((e.lines ?? []).map(l => ({ accountCode: l.accountCode, amount: String(l.amount), note: l.note ?? '' })));
-  };
-  const closeEditCash = () => { setEditCash(null); setEditCashLines([]); };
-  //  판정은 shared/cashEntryEdit이 쥔다 — 화면 조각이라 테스트가 안 닿던 자리였다.
-  const editCashIsOffset = editCash?.dir === '대체';
-  const editCashSplit = cashEditSplit(editCashLines);
-  const editCashSplitSum = editCashSplit.reduce((a, l) => a + l.amount, 0);
-  const editCashAmt = cashEditAmount(editCashForm, editCashLines, editCashIsOffset);
-  const saveEditCash = () => {
-    if (!editCash || !onUpdateCashEntry) return;
-    const amt = editCashAmt;
+  const saveEditCash = (entry: CashEntry, form: CashEditForm, lines: CashEditLineDraft[]) => {
+    if (!onUpdateCashEntry) return;
+    const amt = cashEditAmount(form, lines, entry.dir === '대체');
     if (amt <= 0) return;
     // 전표에 상계된 자금이면 상계액(settlement)도 같은 폭으로 옮겨야 미수/미지급 잔액이 안 틀어진다.
-    const linked = settlements.filter(s => s.cashEntryId === editCash.id);
-    const delta = amt - editCash.amount;
+    const linked = settlements.filter(s => s.cashEntryId === entry.id);
+    const delta = amt - entry.amount;
     if (linked.length && delta !== 0) {
       if (linked.length > 1 || !onUpdateSettlement) {
         window.alert('이 자금은 여러 전표에 나눠 상계돼 있어 금액을 여기서 못 고칩니다.\n수금/지불을 삭제한 뒤 다시 잡아주세요.');
@@ -395,12 +372,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       }
       onUpdateSettlement(linked[0].id, { amount: next });
     }
-    const patch = buildCashEditPatch(editCash, editCashForm, editCashLines);
-    const updated: CashEntry = { ...editCash, ...patch };
-    onUpdateCashEntry(editCash.id, patch);
+    const patch = buildCashEditPatch(entry, form, lines);
+    onUpdateCashEntry(entry.id, patch);
     // 상계액을 방금 옮겼으면 settlements가 최신이 아니라 매칭 계산이 어긋난다 → 그때만 건너뛴다.
-    if (!(linked.length && delta !== 0)) autoMatchCashToStatements(updated);
-    closeEditCash();
+    if (!(linked.length && delta !== 0)) autoMatchCashToStatements({ ...entry, ...patch });
+    setCashModal(null);
   };
 
   // ── 빠른 수금/지불 모달 ──
@@ -772,45 +748,27 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   };
 
   const openPayModal = (stmt: IssuedStatement) => {
-    setPayOverWarn(false);
-    setPayTarget(stmt);
-    setPayScope('stmt');   // 기본은 '이 전표' — 누른 전표부터 갚는다
-    //  기본값은 **이 전표에 남은 금액**. 총액을 박아 두면 이미 절반을 낸 전표에서도 전액이
-    //  찍혀 또 나간다(카드대금 899,925이 두 번 나간 게 그 꼴이다).
-    //  일자도 **그 전표 날짜**가 기본이다 — '이 전표'를 갚는 것이라 그날로 잡는 게 맞다.
-    //  오늘로 박아 두면 8/28 전표를 8/31에 열었을 때 날짜를 매번 고쳐야 한다.
-    setPayForm({ amount: String(Math.round(getBalance(stmt))), date: stmt.tradeDate || new Date().toISOString().slice(0, 10), method: '계좌이체', note: '' });
+    setCashModal({ kind: '수금지불', stmt });
     setPayAccountId(prev => prev || activeCashAccounts[0]?.id || '');
   };
+  const openEditCash = (entry: CashEntry) => setCashModal({ kind: '수정', entry });
 
   /**
    * **한 번 누르면 한 건만.** 저장은 비동기라 state가 바뀌기 전에 또 눌리면 두 건이 들어간다.
    * 자금기록 id가 `cash-${Date.now()}`라 밀리초만 달라도 다른 문서가 되어 막을 데가 없다.
    */
   const paySaving = useRef(false);
-  const savePayment = (forceOver = false) => {
+  const savePayment = (stmt: IssuedStatement, input: SettleInput) => {
     if (paySaving.current) return;
-    if (!payTarget || !payForm.amount) return;
-    const amount = Number(payForm.amount);
-    if (amount <= 0) return;
-    // 초과 판정은 거래처 잔액 기준 — 돈은 전표가 아니라 거래처 채권·채무에서 빠진다.
-    const liveStmt = mergedStatements.find(s => s.id === payTarget.id) ?? payTarget;
-    const pb = partnerBalances.get(liveStmt.partnerId);
-    const bal = liveStmt.type === '매입' ? (pb?.payable ?? 0) : (pb?.receivable ?? 0);
-    if (amount > bal && !forceOver) {
-      setPayOverWarn(true);
-      return;
-    }
-    setPayOverWarn(false);
-    recordPayment([{ stmt: liveStmt, amount }], {
-      date: payForm.date, method: payForm.method, note: payForm.note.trim() || undefined,
+    recordPayment([{ stmt, amount: input.amount }], {
+      date: input.date, method: input.method, note: input.note || undefined,
       cashAccountId: payAccountId,
       //  '거래처 잔액'을 골랐으면 전표에 안 붙인다 — 오래된 전표부터 채워진다.
-      pin: payScope === 'stmt',
+      pin: input.scope === 'stmt',
     });
     paySaving.current = true;
-    setPayTarget(null);
-    //  모달이 닫힌 뒤 잠깐 잠근다 — 같은 클릭 묶음에서 두 번 새는 것만 막으면 된다
+    setCashModal(null);
+    //  창이 닫힌 뒤 잠깐 잠근다 — 같은 클릭 묶음에서 두 번 새는 것만 막으면 된다
     setTimeout(() => { paySaving.current = false; }, 800);
   };
 
@@ -3849,245 +3807,26 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       </div>
 
       {/* ── 지불/수불 처리 모달 ── */}
-      {payTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4"
-            onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-black text-slate-800">
-              {payTarget.type === '매입' ? '지불 처리' : '수금 처리'}
-            </h3>
-            <div className="text-xs text-slate-400">{payTarget.partnerName} · {payTarget.tradeDate}</div>
-            {/* 이미 낸 게 있으면 먼저 밝힌다 — 갚아 놓고 또 누르는 걸 막는 건 이 한 줄이다 */}
-            {Math.round(payTarget.totalAmount - getBalance(payTarget)) > 0 && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 text-[11px] font-black text-emerald-700">
-                이 전표에 이미 {fmt(Math.round(payTarget.totalAmount - getBalance(payTarget)))}원 {payTarget.type === '매입' ? '지불' : '수금'}했습니다
-                　<span className="text-emerald-500">(전표 {fmt(Math.round(payTarget.totalAmount))}원 중 남은 {fmt(Math.round(getBalance(payTarget)))}원)</span>
-              </div>
-            )}
-            {/* **어디에 붙일지 고른다** — 고른 쪽이 파랗게 켜지고 그 금액이 찍힌다.
-                이 전표 = 누른 전표부터 갚는다 · 거래처 잔액 = 오래된 전표부터 갚는다. */}
-            {(() => {
-              const bal = partnerBalances.get(payTarget.partnerId);
-              const partnerLeft = payTarget.type === '매입' ? (bal?.payable ?? 0) : (bal?.receivable ?? 0);
-              //  이 전표에 이미 낸 몫 — 안 보여주면 갚아 놓고 또 누른다(카드대금 899,925이 두 번 나갔다)
-              const paid = Math.round(payTarget.totalAmount - getBalance(payTarget));
-              const box = (scope: 'stmt' | 'partner', label: string, amount: number, hint: string) => {
-                const on = payScope === scope;
-                //  상자를 바꿔도 **날짜는 안 건드린다** — 전표에서 연 수금·지불이라
-                //  기본은 언제나 그 전표 날짜다. 고치고 싶으면 손으로 고친다.
-                return (
-                  <button onClick={() => { setPayScope(scope); setPayForm(p => ({ ...p, amount: String(Math.round(amount)) })); }}
-                    className={`flex-1 text-left rounded-xl px-3 py-2.5 border transition-all ${
-                      on ? 'bg-indigo-50 border-indigo-400 ring-2 ring-indigo-300' : 'bg-slate-50 border-slate-200 hover:border-indigo-300'}`}>
-                    <div className={`text-[10px] font-black uppercase tracking-widest ${on ? 'text-indigo-600' : 'text-slate-400'}`}>{label}</div>
-                    <div className={`font-black text-base ${amount <= 0 ? 'text-emerald-600' : on ? 'text-indigo-800' : 'text-slate-800'}`}>
-                      {amount <= 0 ? '없음' : `${fmt(Math.round(amount))}원`}
-                    </div>
-                    <div className={`text-[10px] ${on ? 'text-indigo-400' : 'text-slate-400'}`}>{hint}</div>
-                  </button>
-                );
-              };
-              return (
-                <div className="flex gap-2">
-                  {box('stmt', '이 전표', getBalance(payTarget), '이 전표부터 갚음')}
-                  {box('partner', '거래처 잔액', partnerLeft, '오래된 전표부터 갚음')}
-                </div>
-              );
-            })()}
-            <div className="space-y-3">
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">금액</label>
-                <input type="text" inputMode="decimal" value={payForm.amount}
-                  onChange={e => setPayForm(p => ({ ...p, amount: e.target.value }))}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
-              </div>
-              {activeCashAccounts.length > 0 && (
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">
-                    {payTarget.type === '매입' ? '출금 계좌' : '입금 계좌'}
-                  </label>
-                  <select value={payAccountId} onChange={e => setPayAccountId(e.target.value)}
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300">
-                    {activeCashAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
-                  <p className="text-[10px] text-slate-400 mt-1">현금출납장에 자동으로 기록되고 이 전표에 매칭됩니다.</p>
-                </div>
-              )}
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">일자</label>
-                <input type="date" value={payForm.date}
-                  onChange={e => setPayForm(p => ({ ...p, date: e.target.value }))}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
-              </div>
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">결제 방법</label>
-                <div className="flex gap-1.5 flex-wrap">
-                  {(['현금', '계좌이체', '어음', '카드', '기타'] as PaymentMethod[]).map(m => (
-                    <button key={String(m)} onClick={() => setPayForm(p => ({ ...p, method: m }))}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-black border transition-all ${payForm.method === m ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>
-                      {m}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">비고</label>
-                <input type="text" placeholder="예: 1차 분할" value={payForm.note}
-                  onChange={e => setPayForm(p => ({ ...p, note: e.target.value }))}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
-              </div>
-            </div>
-            {payOverWarn && (() => {
-              const liveStmt = mergedStatements.find(s => s.id === payTarget?.id) ?? payTarget;
-              const bal = liveStmt ? getBalance(liveStmt) : 0;
-              const overLabel = overLabelOf(payTarget?.type);
-              return (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs space-y-2">
-                  <p className="font-black text-amber-700">
-                    입력금액이 잔액({fmt(bal)}원)을 초과합니다. 초과분은 {overLabel}으로 전환됩니다.
-                  </p>
-                  <div className="flex gap-2">
-                    <button onClick={() => setPayOverWarn(false)}
-                      className="flex-1 py-1.5 rounded-lg bg-slate-200 text-slate-600 font-black">취소</button>
-                    <button onClick={() => savePayment(true)}
-                      className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white font-black">계속 진행</button>
-                  </div>
-                </div>
-              );
-            })()}
-            <div className="flex gap-2 pt-1">
-              <button onClick={() => { setPayTarget(null); setPayOverWarn(false); }}
-                className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
-              <button onClick={() => savePayment(false)}
-                disabled={!payForm.amount || Number(payForm.amount) <= 0}
-                className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center gap-1.5">
-                <Save size={12}/>저장
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── 자금(입출금) 전표 수정 모달 ── */}
-      {editCash && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={closeEditCash}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-sm font-black text-slate-800">자금 전표 수정</h3>
-                {/* 거래처를 안 보여줘서 어느 거래처 돈인지 모르고 고쳤다. 잔액도 같이 띄운다. */}
-                {editCash.partnerName ? (() => {
-                  const bal = editCash.partnerId ? partnerBalances.get(editCash.partnerId) : undefined;
-                  const ar = bal?.receivable ?? 0, ap = bal?.payable ?? 0;
-                  return (
-                    <p className="text-[11px] font-bold text-slate-500 mt-0.5">
-                      {editCash.partnerName}
-                      {ar !== 0 && <span className="ml-1.5 text-blue-600">미수 {fmt(ar)}</span>}
-                      {ap !== 0 && <span className="ml-1.5 text-rose-600">미지급 {fmt(ap)}</span>}
-                    </p>
-                  );
-                })() : <p className="text-[11px] font-bold text-slate-300 mt-0.5">거래처 없음</p>}
-              </div>
-              <button onClick={closeEditCash} className="p-1 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={16}/></button>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">구분</label>
-                <div className="flex gap-1.5">
-                  {(['입금','출금'] as const).map(d => (
-                    <button key={d} disabled={editCashIsOffset} onClick={() => setEditCashForm(p => ({ ...p, dir: d }))}
-                      className={`flex-1 py-2 rounded-xl text-xs font-black border transition-all ${editCashForm.dir === d ? (d==='입금'?'bg-emerald-600 text-white border-emerald-600':'bg-rose-600 text-white border-rose-600') : 'bg-white text-slate-500 border-slate-200'}`}>{d}</button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">
-                  금액{editCashSplit.length > 0 && !editCashIsOffset && <span className="ml-1 text-blue-400 normal-case">= 줄 합계</span>}
-                </label>
-                {/* 쪼갠 전표의 금액은 줄 합이다 — 여기서 따로 고치면 자금원장과 분개가 갈라진다. */}
-                <input type="text" inputMode="decimal"
-                  value={editCashSplit.length > 0 && !editCashIsOffset ? String(editCashSplitSum) : editCashForm.amount}
-                  readOnly={editCashSplit.length > 0 && !editCashIsOffset}
-                  onChange={e => setEditCashForm(p => ({ ...p, amount: e.target.value.replace(/[^\d.]/g,'') }))}
-                  className={`w-full border rounded-xl px-3 py-2 text-sm font-bold text-right outline-none focus:ring-2 focus:ring-blue-300 ${editCashSplit.length > 0 && !editCashIsOffset ? 'border-slate-100 bg-slate-50 text-slate-500' : 'border-slate-200'}`}/>
-              </div>
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">일자</label>
-                <input type="date" value={editCashForm.date}
-                  onChange={e => setEditCashForm(p => ({ ...p, date: e.target.value }))}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase">
-                    {editCashLines.length > 0 ? '쪼갠 줄' : '계정과목'}
-                  </label>
-                  <button
-                    onClick={() => setEditCashLines(p => [...p,
-                      // 첫 줄은 지금 화면의 계정·금액을 그대로 물려받는다 — 한 줄짜리를 쪼개는 흔한 경우.
-                      p.length === 0
-                        ? { accountCode: editCashForm.accountCode, amount: editCashForm.amount, note: '' }
-                        : { accountCode: '', amount: '', note: '' }])}
-                    className="text-[10px] font-black text-blue-600 hover:bg-blue-50 px-2 py-0.5 rounded-lg">+ 줄 추가</button>
-                </div>
-                {editCashLines.length === 0 ? (
-                  <select value={editCashForm.accountCode}
-                    onChange={e => setEditCashForm(p => ({ ...p, accountCode: e.target.value }))}
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-300 bg-white">
-                    <option value="">계정 미지정(영업)</option>
-                    {[...accountCodes].sort((a,b)=>String(a.code).localeCompare(String(b.code),undefined,{numeric:true})).map(ac => (
-                      <option key={ac.id} value={ac.code}>{ac.code} {ac.name}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <div className="space-y-1.5">
-                    {editCashLines.map((l, i) => (
-                      <div key={i} className="flex gap-1.5 items-center">
-                        <select value={l.accountCode}
-                          onChange={e => setEditCashLines(p => p.map((x, j) => j === i ? { ...x, accountCode: e.target.value } : x))}
-                          className="flex-1 min-w-0 border border-slate-200 rounded-xl px-2 py-2 text-[11px] font-bold outline-none focus:ring-2 focus:ring-blue-300 bg-white">
-                          <option value="">계정 선택</option>
-                          {[...accountCodes].sort((a,b)=>String(a.code).localeCompare(String(b.code),undefined,{numeric:true})).map(ac => (
-                            <option key={ac.id} value={ac.code}>{ac.code} {ac.name}</option>
-                          ))}
-                        </select>
-                        {/* 상계(대체)는 반대편 줄이 음수라 빼기 부호를 지우면 안 된다. */}
-                        <input type="text" inputMode="decimal" value={l.amount} placeholder="금액"
-                          onChange={e => setEditCashLines(p => p.map((x, j) => j === i ? { ...x, amount: e.target.value.replace(/[^\d.-]/g,'') } : x))}
-                          className="w-24 shrink-0 border border-slate-200 rounded-xl px-2 py-2 text-[11px] font-bold text-right outline-none focus:ring-2 focus:ring-blue-300"/>
-                        <input type="text" value={l.note} placeholder="적요"
-                          onChange={e => setEditCashLines(p => p.map((x, j) => j === i ? { ...x, note: e.target.value } : x))}
-                          className="w-16 shrink-0 border border-slate-200 rounded-xl px-2 py-2 text-[11px] font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
-                        <button onClick={() => setEditCashLines(p => p.filter((_, j) => j !== i))}
-                          className="p-1 shrink-0 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg"><X size={13}/></button>
-                      </div>
-                    ))}
-                    {!editCashIsOffset ? (
-                      <p className="text-[10px] font-bold text-slate-400 text-right">줄 합계 {fmt(editCashSplitSum)}</p>
-                    ) : (
-                      <p className="text-[10px] font-bold text-amber-600">상계(대체) 전표 — 줄이 부호를 가져 합은 0, 방향은 못 바꿉니다.</p>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">비고</label>
-                <input type="text" value={editCashForm.note}
-                  onChange={e => setEditCashForm(p => ({ ...p, note: e.target.value }))}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300"/>
-              </div>
-            </div>
-            <div className="flex gap-2 pt-1">
-              {onDeleteCashEntry && (
-                <button onClick={() => { if (window.confirm('이 자금 전표를 삭제할까요?')) { onDeleteCashEntry(editCash.id); closeEditCash(); } }}
-                  className="flex items-center gap-1 px-3 py-2.5 rounded-xl bg-red-50 text-red-600 text-xs font-black hover:bg-red-100 border border-red-200"><Trash2 size={12}/>삭제</button>
-              )}
-              <button onClick={closeEditCash} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
-              <button onClick={saveEditCash} disabled={editCashAmt <= 0}
-                className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 disabled:opacity-40 flex items-center justify-center gap-1.5"><Save size={12}/>저장</button>
-            </div>
-          </div>
-        </div>
+      {/**
+        * **자금 전표 창** — 수금·지불(전표에서 연 입출금)도, 이미 난 전표를 고치는 것도 하나다.
+        * `key`로 열 때마다 새로 마운트한다 — 그래야 창이 폼을 되씻는 effect 없이 초기값만 읽는다.
+        */}
+      {cashModal && (
+        <CashEntryModal
+          key={cashModal.kind === '수정' ? cashModal.entry.id : cashModal.stmt.id}
+          mode={cashModal}
+          accountCodes={accountCodes}
+          cashAccounts={activeCashAccounts}
+          accountId={payAccountId}
+          onAccountId={setPayAccountId}
+          partnerBalances={partnerBalances}
+          getBalance={getBalance}
+          latestStatement={id => mergedStatements.find(s => s.id === id)}
+          onClose={() => setCashModal(null)}
+          onSettle={savePayment}
+          onSaveEdit={saveEditCash}
+          onDeleteEntry={onDeleteCashEntry}
+        />
       )}
 
       {/* ── 빠른 수금/지불 모달 ── */}
