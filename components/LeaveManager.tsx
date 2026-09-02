@@ -34,6 +34,7 @@ import {
   calculateMonthlyLeave,
   calculateAnnualLeave,
   getAnnualGrantInfo,
+  hasStarted,
 } from '../src/shared/leave';
 
 interface LeaveManagerProps {
@@ -467,11 +468,17 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
             // 회사 단체 휴가 = '휴가' 유형 신청, 개인연차 = 그 외. 둘 다 승인분만.
             const mineApproved = leaveRequests.filter(r =>
               r.employeeId === emp.id && r.status === 'approved' && isDeductible(r));
-            const usedVacation = mineApproved.filter(r => r.type === '휴가').reduce((s, r) => s + (r.daysUsed || 0), 0);
-            const usedPersonal = mineApproved.filter(r => r.type !== '휴가').reduce((s, r) => s + (r.daysUsed || 0), 0);
+            //  **승인 ≠ 사용.** 아직 안 온 휴가는 '예정'으로 따로 센다(2026-09-02) —
+            //  승인만 하면 두 달 뒤 연차가 오늘 쓴 것으로 보였다.
+            //  잔여에서는 예정도 뺀다. 이미 약속한 날이라 또 내주면 안 된다.
+            //  '시작됐나' 판정은 공용 모듈 하나뿐이다(shared/leave.ts hasStarted).
+            const 지난것 = mineApproved.filter(r => hasStarted(r));
+            const usedVacation = 지난것.filter(r => r.type === '휴가').reduce((s, r) => s + (r.daysUsed || 0), 0);
+            const usedPersonal = 지난것.filter(r => r.type !== '휴가').reduce((s, r) => s + (r.daysUsed || 0), 0);
             const totalUsed = usedVacation + usedPersonal;
-            const remaining = total - totalUsed;
-            const usagePercent = total > 0 ? (totalUsed / total) * 100 : 0;
+            const scheduled = mineApproved.filter(r => !hasStarted(r)).reduce((s, r) => s + (r.daysUsed || 0), 0);
+            const remaining = total - totalUsed - scheduled;
+            const usagePercent = total > 0 ? ((totalUsed + scheduled) / total) * 100 : 0;
 
             return (
               <div key={emp.id} className="flex flex-col lg:flex-row gap-4 md:gap-5 items-start">

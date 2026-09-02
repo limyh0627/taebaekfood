@@ -191,3 +191,89 @@ describe('calculateLeaveBalance', () => {
     });
   });
 });
+
+/**
+ * **승인 ≠ 사용.** (2026-09-02 사장님 지적)
+ *
+ * 승인만 하면 두 달 뒤 연차가 오늘 '사용'에 잡혔다. 박은지 10/29~30 두 건이
+ * 9월 화면에서 이미 쓴 것으로 보였다 — 아직 쉬지도 않았는데.
+ *
+ * 그렇다고 잔여에서 빼지 않으면 없는 날을 또 내준다. 그래서 **칸을 나눈다** —
+ * 사용(이미 시작된 것) · 예정(아직 안 온 것), 잔여에서는 둘 다 뺀다.
+ */
+describe('사용과 예정을 가른다', () => {
+  const 오늘 = new Date('2026-09-02T00:00:00');
+  const 은지 = () => emp({ id: 'e5', joinDate: '2025-06-26', annualLeave: { carryOverLeave: 3, bonusLeave: 0 } });
+
+  it('**아직 안 온 연차는 사용이 아니라 예정이다**', () => {
+    const reqs = [
+      req({ id: '지난것', employeeId: 'e5', startDate: '2026-06-12', endDate: '2026-06-12' }),
+      req({ id: '앞으로', employeeId: 'e5', startDate: '2026-10-29', endDate: '2026-10-30', daysUsed: 2 }),
+    ];
+    const b = calculateLeaveBalance(은지(), reqs, 오늘);
+    expect(b.usedTotal).toBe(1);
+    expect(b.scheduled).toBe(2);
+  });
+
+  it('**잔여에서는 예정도 뺀다** — 승인한 날은 이미 약속한 것이라 또 내주면 안 된다', () => {
+    const reqs = [
+      req({ id: '지난것', employeeId: 'e5', startDate: '2026-06-12', endDate: '2026-06-12' }),
+      req({ id: '앞으로', employeeId: 'e5', startDate: '2026-10-29', endDate: '2026-10-30', daysUsed: 2 }),
+    ];
+    const b = calculateLeaveBalance(은지(), reqs, 오늘);
+    expect(b.remaining).toBe(b.granted - 1 - 2);
+    //  칸을 가르기 전과 잔여는 같아야 한다 — 보이는 방식만 바뀐 것이다
+    expect(b.usedTotal + b.scheduled).toBe(3);
+  });
+
+  it('오늘 시작하는 휴가는 사용이다 — 오늘 쉬고 있으면 쓴 것이다', () => {
+    const reqs = [req({ id: '오늘', employeeId: 'e5', startDate: '2026-09-02', endDate: '2026-09-02' })];
+    const b = calculateLeaveBalance(은지(), reqs, 오늘);
+    expect(b.usedTotal).toBe(1);
+    expect(b.scheduled).toBe(0);
+  });
+
+  it('내일 시작하면 예정이다 — 하루 차이로 갈린다', () => {
+    const reqs = [req({ id: '내일', employeeId: 'e5', startDate: '2026-09-03', endDate: '2026-09-03' })];
+    const b = calculateLeaveBalance(은지(), reqs, 오늘);
+    expect(b.usedTotal).toBe(0);
+    expect(b.scheduled).toBe(1);
+  });
+
+  it('**여러 날에 걸쳐도 쪼개지 않는다** — 시작일 하나로 가른다', () => {
+    //  9/1~9/5 는 오늘(9/2) 한창 쉬는 중 — 3일 썼다고 나누지 않고 통째로 사용이다
+    const reqs = [req({ id: '걸침', employeeId: 'e5', startDate: '2026-09-01', endDate: '2026-09-05', daysUsed: 5 })];
+    const b = calculateLeaveBalance(은지(), reqs, 오늘);
+    expect(b.usedTotal).toBe(5);
+    expect(b.scheduled).toBe(0);
+  });
+
+  it('당월 사용에도 예정은 안 섞인다', () => {
+    const reqs = [
+      req({ id: '이달지남', employeeId: 'e5', startDate: '2026-09-01', endDate: '2026-09-01' }),
+      req({ id: '이달앞으로', employeeId: 'e5', startDate: '2026-09-30', endDate: '2026-09-30' }),
+    ];
+    const b = calculateLeaveBalance(은지(), reqs, 오늘);
+    expect(b.usedThisMonth).toBe(1);
+    expect(b.scheduled).toBe(1);
+  });
+
+  it('승인 안 된 건은 사용도 예정도 아니다', () => {
+    const reqs = [
+      req({ id: '대기', employeeId: 'e5', startDate: '2026-10-29', endDate: '2026-10-29', status: 'pending' }),
+      req({ id: '반려', employeeId: 'e5', startDate: '2026-10-30', endDate: '2026-10-30', status: 'rejected' }),
+    ];
+    const b = calculateLeaveBalance(은지(), reqs, 오늘);
+    expect(b.usedTotal).toBe(0);
+    expect(b.scheduled).toBe(0);
+    expect(b.remaining).toBe(b.granted);
+  });
+
+  it('경조사·기타는 예정에도 안 들어간다 — 애초에 차감을 안 한다', () => {
+    const reqs = [
+      req({ id: '경조', employeeId: 'e5', type: '경조사', startDate: '2026-10-29', endDate: '2026-10-29', daysUsed: 3 }),
+    ];
+    const b = calculateLeaveBalance(은지(), reqs, 오늘);
+    expect(b.scheduled).toBe(0);
+  });
+});

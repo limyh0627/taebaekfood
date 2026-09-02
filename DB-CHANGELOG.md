@@ -1291,3 +1291,17 @@ BOM 수량은 **언제나 kg**으로 저장한다(items.stock·로트·원료수
 
 `scripts/fix-box-spec-tail.mts` · 백업·`--undo` 있음. 개입수 판단은 BOM 이 하므로
 동작은 안 바뀌었다 — 화면에 찍히는 글자만 맞췄다.
+
+## 2026-09-02 — 박은지 2026-09-02 연차 1건 삭제
+
+잘못 들어간 신청(사장님 확인). `leaveRequests/lv-rry4ztnki` (2026-09-02, 연차, approved, 1일).
+
+사용일수는 직원 문서에 저장돼 있지 않다 — `getApprovedLeaveDays` 가 승인된 신청을
+그때그때 더해서 낸다. 그래서 이 줄을 지우면 사용이 1일 줄고 잔여가 1일 는다.
+따로 고칠 칸이 없다.
+
+    npx tsx scripts/fix-leave-eunji-0902.mts          # 무엇을 지울지 보기
+    npx tsx scripts/fix-leave-eunji-0902.mts --apply  # 지우기(백업 남김)
+    npx tsx scripts/fix-leave-eunji-0902.mts --undo   # 되돌리기
+
+백업: `scripts/fix-leave-eunji-0902-backup.json`

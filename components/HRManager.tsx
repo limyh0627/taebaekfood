@@ -665,6 +665,13 @@ const HRManager: React.FC<HRManagerProps> = ({
                             <span className={`text-sm font-black ${bal.usedThisMonth > 0 ? 'text-amber-500' : 'text-slate-300'}`}>{bal.usedThisMonth}</span>
                           </div>
                           <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">총 / 당월</span>
+                          {/*  승인만 되고 아직 안 온 휴가 — 사용에 섞으면 안 쉬었는데 쓴 것으로 보인다.
+                               그래도 잔여에서는 빼고 있으니 여기 적어 둬야 숫자가 안 맞아 보이지 않는다. */}
+                          {bal.scheduled > 0 && (
+                            <span className="text-[8px] font-black text-violet-400 mt-0.5" title="승인됐지만 아직 안 온 휴가 — 잔여에서는 빠져 있습니다">
+                              예정 {bal.scheduled}일
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="px-8 py-6 text-right">
@@ -1186,6 +1193,11 @@ const HRManager: React.FC<HRManagerProps> = ({
                     <span className="text-xs ml-0.5 text-rose-300">일</span>
                   </p>
                   <p className="text-[9px] text-rose-400 mt-0.5">승인 {deductible.length}건</p>
+                  {bal.scheduled > 0 && (
+                    <p className="text-[9px] font-black text-violet-500 mt-0.5" title="승인됐지만 아직 안 온 휴가 — 잔여에서는 빠져 있습니다">
+                      예정 {bal.scheduled}일 (아직 안 옴)
+                    </p>
+                  )}
                 </div>
                 <div className="bg-indigo-600 rounded-2xl px-4 py-3">
                   <p className="text-[10px] font-black text-indigo-200 uppercase">잔여</p>

@@ -114,11 +114,43 @@ export function calculateAnnualLeave(joinDate: string, now = new Date()): number
   return g.days;
 }
 
-/** 승인된 신청 중 차감 대상 일수 합계. ym('YYYY-MM')을 주면 그 달 시작분만. */
-export function getApprovedLeaveDays(empId: string, leaveRequests: LeaveRequest[], ym?: string): number {
+/**
+ * 승인된 신청 중 차감 대상 일수 합계. ym('YYYY-MM')을 주면 그 달 시작분만.
+ *
+ * `when` 으로 **아직 안 온 날**을 갈라낼 수 있다(2026-09-02 사장님 지적) —
+ * 승인만 하면 10월 연차가 9월 '사용'에 잡혀서, 아직 쉬지도 않았는데 쓴 것으로 보였다.
+ *   'past'      시작일이 오늘까지 — 실제로 쓴 것
+ *   'upcoming'  시작일이 내일 이후 — 승인됐지만 아직 안 온 것
+ *   (없으면)     전부
+ *
+ * **여러 날짜에 걸친 신청은 쪼개지 않는다.** 시작일 하나로 가른다 —
+ * 9/1~9/5 신청을 3일 쓰고 2일 남았다고 나누면 화면에서 그 숫자가 뭘 뜻하는지
+ * 아무도 못 읽는다. 사람이 읽는 대로 "그 휴가는 시작됐나"로 본다.
+ */
+/**
+ * 이 휴가가 **이미 시작됐나** — 사용과 예정을 가르는 유일한 판정.
+ * 관리자(HRManager)와 직원 앱(LeaveManager)이 이 하나를 쓴다.
+ * 시작일이 오늘이면 시작된 것으로 본다(오늘 쉬고 있으면 쓴 것이다).
+ */
+export function hasStarted(r: Pick<LeaveRequest, 'startDate'>, now = new Date()): boolean {
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return (r.startDate ?? '') <= today;
+}
+
+export function getApprovedLeaveDays(
+  empId: string,
+  leaveRequests: LeaveRequest[],
+  ym?: string,
+  when?: 'past' | 'upcoming',
+  now = new Date(),
+): number {
   return leaveRequests
     .filter(r => r.employeeId === empId && r.status === 'approved' && isDeductible(r))
     .filter(r => !ym || (r.startDate ?? '').slice(0, 7) === ym)
+    .filter(r => {
+      if (!when) return true;
+      return when === 'past' ? hasStarted(r, now) : !hasStarted(r, now);
+    })
     .reduce((sum, r) => sum + (r.daysUsed || 0), 0);
 }
 
@@ -131,9 +163,10 @@ export interface LeaveBalance {
   carryOver: number;    // 이월
   bonus: number;        // 보너스
   granted: number;      // 총 부여 = monthly + annual + carryOver + bonus
-  usedTotal: number;    // 총 사용 — 승인된 신청(연차·휴가 등) 전부
-  usedThisMonth: number;// 당월 사용분 (신청 시작일 기준)
-  remaining: number;    // 잔여 = granted − usedTotal
+  usedTotal: number;    // 총 사용 — **이미 시작된** 승인 신청만
+  usedThisMonth: number;// 당월 사용분 (신청 시작일 기준, 이미 시작된 것만)
+  scheduled: number;    // 예정 — 승인됐지만 아직 안 온 것. 잔여에서는 이것도 뺀다
+  remaining: number;    // 잔여 = granted − usedTotal − scheduled
   grant: AnnualGrantInfo;
 }
 
@@ -141,8 +174,13 @@ export interface LeaveBalance {
  * 직원 한 명의 연차 현황 — 관리자·직원 앱이 이 결과를 그대로 쓴다.
  *
  *   총 부여 = 월차 + 연차 + 이월 + 보너스
- *   사용    = 승인된 신청 + 휴가(단체)
- *   잔여    = 총 부여 − 사용
+ *   사용    = 승인된 신청 중 **이미 시작된 것** + 휴가(단체)
+ *   예정    = 승인됐지만 **아직 안 온 것**
+ *   잔여    = 총 부여 − 사용 − 예정
+ *
+ * **사용과 예정을 가르되 잔여에서는 둘 다 뺀다.** 승인된 휴가는 이미 약속한 것이라
+ * 잔여에서 빼지 않으면 없는 날을 또 내줄 수 있다. 그렇다고 '사용'에 섞으면
+ * 아직 쉬지도 않았는데 쓴 것으로 보인다 — 그래서 칸을 나눈다.
  */
 export function calculateLeaveBalance(
   emp: Employee,
@@ -154,14 +192,15 @@ export function calculateLeaveBalance(
   const carryOver = emp.annualLeave?.carryOverLeave || 0;
   const bonus = emp.annualLeave?.bonusLeave || 0;
   // 사용은 신청 기록 하나로만 센다. 회사 단체 휴가도 '휴가' 유형 신청으로 남는다.
-  const usedTotal = getApprovedLeaveDays(emp.id, leaveRequests);
-  const usedThisMonth = getApprovedLeaveDays(emp.id, leaveRequests, toYearMonth(now));
+  const usedTotal = getApprovedLeaveDays(emp.id, leaveRequests, undefined, 'past', now);
+  const usedThisMonth = getApprovedLeaveDays(emp.id, leaveRequests, toYearMonth(now), 'past', now);
+  const scheduled = getApprovedLeaveDays(emp.id, leaveRequests, undefined, 'upcoming', now);
 
   const granted = monthly + annual + carryOver + bonus;
   return {
     monthly, annual, carryOver, bonus, granted,
-    usedTotal, usedThisMonth,
-    remaining: granted - usedTotal,
+    usedTotal, usedThisMonth, scheduled,
+    remaining: granted - usedTotal - scheduled,
     grant: getAnnualGrantInfo(emp.joinDate, now),
   };
 }
