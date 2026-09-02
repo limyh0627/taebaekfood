@@ -1,5 +1,6 @@
 import type { Item, OrderItem } from './types';
 import { bomOf, bomParentsOf } from './bomIndex';
+import { packUnitsOf } from './packIndex';
 import { parseSpecCount, parsePackageKg } from '../constants/formula';
 
 /** 박스 판정에 쓰는 최소 정보 — id만 있으면 BOM은 bomIndex에서 읽는다. */
@@ -107,25 +108,24 @@ export function stockUnits(
  * 실제로 다섯 품목이 그 상태였다(참기름/병/분/엘생명 40개입 · 시골향참기름/원액 10개입 등).
  * BOM엔 40·10이 멀쩡히 있는데 규격이 비어 있어 "박스가 아니다"로 읽혔다.
  *
- *   BOM               낱개 구성품 × 개입수 — **이것만이 근거다**
- *   boxSize           BOM이 없을 때만. 옛 필드, 지금 두 품목만 쓴다(고춧가루)
- *   규격의 개입수       그 다음. 옛 데이터 호환
- *   향미유            더더 옛 기본값 12
- *   그 외             0 = 박스로 안 판다
+ * 근거가 둘이고, 둘은 서로 다른 것을 뜻한다.
  *
- * 아래 셋은 **걷어낼 것들**이다. BOM만 남으면 이 함수는 `unpackComponent`의 겉옷이 된다.
+ *   ① BOM              **박스를 별개 품목으로 두는 것.** 박스째 쌓아 두고 박스로 센다.
+ *                      겉박스·테이프까지 그 BOM에 달려 있다(129/136).
+ *   ② 포장 환산표       **낱개로만 세는데 박스로 말하는 것.** 향미유·고춧가루가 그렇다.
+ *                      재고는 개로 두고 주문 입력만 박스로 받는다(`item_pack`).
+ *
+ * **길은 이 둘뿐이다.** 예전엔 `boxSize` 필드 · 규격 글자 · 코드에 박은 '향미유면 12'까지
+ * 넷이었는데, 근거가 넷이면 어느 게 맞는지 아무도 못 믿는다. 실제로 갈려 있었다
+ * (규격이 안 따라간 다섯 품목에서 0이 나왔다). 셋을 걷어내고 표로 옮겼다 —
+ * 규격 글자는 **한 품목도 안 쓰고 있었고**(131개가 전부 BOM 도 갖고 있었다),
+ * `boxSize`와 '향미유 12'는 goods 아홉 품목뿐이었다.
  */
-export function unitsPerBoxOf(
-  product: (BoxLike & Partial<Pick<Item, 'boxSize' | 'spec' | 'category' | 'type'>>) | undefined,
-): number {
+export function unitsPerBoxOf(product: BoxLike | undefined): number {
   if (!product) return 0;
   const packed = unpackComponent(product);
   if (packed) return packed.count;
-  if (product.boxSize && product.boxSize > 1) return product.boxSize;
-  const bySpec = parseSpecCount(product.spec);
-  if (bySpec > 1) return bySpec;
-  const isFlavorOil = product.category === '향미유' || product.type === '향미유';
-  return isFlavorOil ? 12 : 0;
+  return packUnitsOf(product.id);
 }
 
 /**

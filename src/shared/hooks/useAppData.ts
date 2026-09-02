@@ -11,6 +11,7 @@ import {
 } from '../types';
 import { subscribeToCollection, subscribeToRecentCollection, subscribeToDocument, fetchCollection, fetchDateRange } from '../services/firebaseService';
 import { buildBomIndex, setBomIndex } from '../bomIndex';
+import { buildPackIndex, setPackIndex, type PackRow } from '../packIndex';
 import { where } from 'firebase/firestore';
 import { authReady } from '../firebase';
 
@@ -58,6 +59,8 @@ export interface AppData {
   issuedStatements: IssuedStatement[];
   itemFormulas: ItemFormula[];
   itemBoms: ItemBom[];
+  /** 포장 환산표 — 박스로 주문할 수 있는 낱개 품목과 그 개입수 */
+  itemPacks: PackRow[];
   returnRequests: ReturnRequest[];
   companyInfo: CompanyInfo | null;
   accountGroups: AccountGroup[];
@@ -102,6 +105,8 @@ export function useAppData(): AppData {
   const [qrMappings, setQrMappings] = useState<QrMapping[]>([]);
   const [itemFormulas, setItemFormulas] = useState<ItemFormula[]>([]);
   const [itemBoms, setItemBoms] = useState<ItemBom[]>([]);
+  //  포장 환산표 — 낱개로만 세는데 박스로 말하는 품목(향미유·고춧가루)의 개입수
+  const [itemPacks, setItemPacks] = useState<PackRow[]>([]);
   const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([]);
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
   const [accountGroups, setAccountGroups] = useState<AccountGroup[]>([]);
@@ -239,6 +244,7 @@ export function useAppData(): AppData {
       Promise.all([
         fetchCollection<PartnerItem>('partner_item'),
         fetchCollection<ItemBom>('item_bom'),
+        fetchCollection<PackRow & { id: string }>('item_pack'),
         fetchCollection<ItemFormula>('item_formula'),
         fetchCollection<AccountGroup>('accountGroups'),
         fetchCollection<AccountCode>('accountCodes'),
@@ -246,10 +252,11 @@ export function useAppData(): AppData {
         fetchCollection<QrMapping>('qrMappings'),
         fetchCollection<ExpensePreset>('expensePresets'),
         fetchCollection<CashFlowManual>('cashFlowManual'),
-      ]).then(([piData, bomData, ifData, agData, acData, fctData, qrData, epData, cfmData]) => {
+      ]).then(([piData, bomData, packData, ifData, agData, acData, fctData, qrData, epData, cfmData]) => {
         // partner_item은 canonical(itemId/partnerId/price)만 쓴다. 레거시 대문자 별칭 주입 안 함.
         setPartnerItems(piData);
         setItemBoms(bomData);
+        setItemPacks(packData);
         setItemFormulas(ifData);
         setAccountGroups(agData);
         setAccountCodes(acData);
@@ -271,6 +278,9 @@ export function useAppData(): AppData {
    */
   const bomIndex = useMemo(() => buildBomIndex(items, itemBoms), [items, itemBoms]);
   setBomIndex(bomIndex);
+  //  포장 환산표도 같은 방식으로 — 개입수의 근거는 BOM 아니면 이 표, 둘뿐이다
+  const packIndex = useMemo(() => buildPackIndex(itemPacks), [itemPacks]);
+  setPackIndex(packIndex);
 
   return {
     orders, purchaseOrders,
@@ -283,7 +293,7 @@ export function useAppData(): AppData {
     noticePosts, chatRooms, chatMessages,
     rawMaterialLedger, sesameInputLedger,
     appNotifications, workOrderItems, issuedStatements,
-    qrMappings, itemFormulas, itemBoms, returnRequests,
+    qrMappings, itemFormulas, itemBoms, itemPacks, returnRequests,
     companyInfo, accountGroups, accountCodes, fixedCostTemplates, expensePresets, cashFlowManual, inventorySnapshots,
     cashAccounts, cashEntries, settlements,
     productionSalesLogs, pendingStatementEdits,

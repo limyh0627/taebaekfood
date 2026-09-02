@@ -2006,7 +2006,7 @@ const ItemList: React.FC<ItemListProps> = ({
                               >담김 ✓</button>
                             ) : inlineCartId === product.id ? (
                               <div className="flex items-center gap-1 justify-end" onClick={e => e.stopPropagation()}>
-                                {product.category === '향미유' && (
+                                {unitsPerBoxOf(product) > 0 && (
                                   <div className="flex rounded-lg border border-indigo-200 overflow-hidden text-[9px] font-black">
                                     <button onClick={() => setInlineCartIsBox(false)} className={`px-1.5 py-1 transition-all ${!inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>낱개</button>
                                     <button onClick={() => setInlineCartIsBox(true)} className={`px-1.5 py-1 transition-all ${inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>BOX</button>
@@ -2147,7 +2147,7 @@ const ItemList: React.FC<ItemListProps> = ({
                                   >담김 ✓</button>
                                 ) : inlineCartId === product.id ? (
                                   <div className="flex-1 flex flex-col gap-1">
-                                    {product.category === '향미유' && (
+                                    {unitsPerBoxOf(product) > 0 && (
                                       <div className="flex rounded-lg border border-indigo-200 overflow-hidden text-[10px] font-black self-start">
                                         <button onClick={() => setInlineCartIsBox(false)} className={`px-2 py-1 transition-all ${!inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>낱개</button>
                                         <button onClick={() => setInlineCartIsBox(true)} className={`px-2 py-1 transition-all ${inlineCartIsBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>BOX</button>
@@ -2378,7 +2378,7 @@ const ItemList: React.FC<ItemListProps> = ({
                               )}
                             </div>
                           </div>
-                          {product.category === '향미유' && (
+                          {unitsPerBoxOf(product) > 0 && (
                             <button
                               onClick={() => onUpdateOrderRequestIsBox?.(item.id, !item.isBox)}
                               className={`text-[10px] font-black px-2 py-1 rounded-lg border transition-all shrink-0 ${item.isBox ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-500 border-slate-200 hover:border-purple-300'}`}
@@ -2686,7 +2686,7 @@ const ItemList: React.FC<ItemListProps> = ({
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-slate-800 truncate"><NameSpec p={product} /></p>
                       <p className="text-[10px] text-slate-400 font-medium">현재 재고 {product.category === '향미유' ? fmtHamiyou(product.stock) : `${displayStockOf(product)}${product.unit}`}</p>
-                      {product.category === '향미유' && (
+                      {unitsPerBoxOf(product) > 0 && (
                         <div className="flex rounded-lg border border-indigo-200 overflow-hidden text-[9px] font-black mt-1 w-fit">
                           <button onClick={() => updateCartIsBox(item.id, false)} className={`px-2 py-0.5 transition-all ${!item.isBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>낱개</button>
                           <button onClick={() => updateCartIsBox(item.id, true)} className={`px-2 py-0.5 transition-all ${item.isBox ? 'bg-indigo-500 text-white' : 'bg-white text-slate-400'}`}>BOX</button>

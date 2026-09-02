@@ -376,7 +376,10 @@ export const OrderCard = memo<OrderCardProps>(({
                 '부착': 'bg-emerald-50 border-emerald-300 text-emerald-600',
               };
               const editProductInfo = items.find(p => p.id === item.itemId);
-              const isOil = isSecondary(editProductInfo?.type);
+              //  박스로 주문할 수 있느냐는 **개입수가 있느냐**로 정한다 —
+              //  박스 품목은 BOM 이, 향미유·고춧가루는 포장 환산표가 답한다.
+              //  예전엔 '향미유·고춧가루면'으로 갈래를 박아 둬서 다른 품목은 아예 못 골랐다.
+              const isOil = unitsPerBoxOf(editProductInfo) > 0;
               // 주문에 박힌 값 → 거래처 포장설정 → 품목이 아는 개입수(boxSize·규격·향미유 12)
               const qtyPerBox = item.unitsPerBox ?? unitsPerBoxOf(editProductInfo);
               const toggleBoxUnit = () => {

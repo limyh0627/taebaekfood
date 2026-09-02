@@ -1,0 +1,52 @@
+{
+  "at": "2026-09-02T06:04:31.111Z",
+  "items": [
+    {
+      "id": "gck-1",
+      "spec": "1kg",
+      "unit": "개",
+      "image": "",
+      "category": "고춧가루",
+      "type": "goods",
+      "boxSize": 20,
+      "stock": 0,
+      "subtype": "",
+      "partnerIds": [
+        "C077"
+      ],
+      "name": "고춧가루 1kg",
+      "cost": 7500,
+      "minStock": 10,
+      "price": 0
+    },
+    {
+      "id": "gck-5",
+      "minStock": 10,
+      "stock": 0,
+      "name": "고춧가루 5kg",
+      "cost": 7500,
+      "image": "",
+      "subtype": "",
+      "spec": "5kg",
+      "unit": "개",
+      "boxSize": 4,
+      "price": 0,
+      "partnerIds": [
+        "C077"
+      ],
+      "type": "goods",
+      "category": "고춧가루"
+    }
+  ],
+  "packIds": [
+    "pack-f1",
+    "pack-f2",
+    "pack-f2-1",
+    "pack-f3",
+    "pack-f4",
+    "pack-f5",
+    "pack-f6",
+    "pack-gck-1",
+    "pack-gck-5"
+  ]
+}
