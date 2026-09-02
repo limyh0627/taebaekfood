@@ -131,7 +131,7 @@ import { docPumok, docOilKg, docSpec, addOilByRaw, docSaleLine, docUnpack, docDa
 import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo, settleCarryOver } from '../../shared/lotUtils';
 import { rawLotTarget, recordRawMaterialReceipt, adjustRawLots } from '../../shared/rawReceipt';
 import { bomQty } from '../../shared/bom';
-import { stockUnits, unpackComponent } from '../../shared/orderUnits';
+import { stockUnits, unpackComponent, unpackQty } from '../../shared/orderUnits';
 import {
   addItem,
   updateItem,
@@ -1188,7 +1188,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
         }
       } else {
         const collectionName = getProductCollection(product.type);
-        const addQty = (product.category === '향미유' || product.type === '향미유') && line.isBox ? line.quantity * 12 : line.quantity;
+        //  개입수는 품목이 안다(unitsPerBoxOf) — '향미유면 12'로 박아 두면
+        //  20개입 품목을 박스로 입고할 때 재고가 개당 8개씩 샌다
+        const addQty = unpackQty(line.quantity, product, line.isBox);
         // 여러 줄을 연달아 입고하면 앞 줄이 쓴 재고가 화면에 아직 안 돌아온다 → DB에서 읽어 더한다
         await adjustItemStock(collectionName, product.id, addQty);
       }
@@ -1256,7 +1258,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
         }
       } else {
         const collectionName = getProductCollection(product.type);
-        const addQty = (product.category === '향미유' || product.type === '향미유') && line.isBox ? line.quantity * 12 : line.quantity;
+        //  입고확정 수정 경로 — 위 확정 경로와 같은 셈이라야 한다
+        const addQty = unpackQty(line.quantity, product, line.isBox);
         // 여러 줄을 연달아 입고하면 앞 줄이 쓴 재고가 화면에 아직 안 돌아온다 → DB에서 읽어 더한다
         await adjustItemStock(collectionName, product.id, addQty);
       }

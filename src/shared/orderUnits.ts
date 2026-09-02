@@ -119,6 +119,33 @@ export function unitsPerBoxOf(
 }
 
 /**
+ * **박스 수량을 낱개로 편다.**
+ *
+ * 개입수는 품목이 안다(`unitsPerBoxOf`). 그런데 화면 일곱 군데가 **12를 손으로 박아** 놓고
+ * 있었다 — 인쇄 두 곳, 거래명세서 품목표, 품목목록 세 곳, 그리고 **입고 재고를 더하는 자리**.
+ *
+ * 지금 박스 품목 140개 중 **102개가 12개입이 아니다**(20개입만 52품목). 마침 향미유가
+ * 전부 12개입이고 박스로 담긴 주문이 아직 없어서 안 틀렸을 뿐, 쓰는 날 바로 틀린다.
+ * 재고를 더하는 자리가 틀리면 재고가 통째로 어긋난다.
+ */
+export function unpackQty(qty: number, product: Parameters<typeof unitsPerBoxOf>[0], isBox?: boolean): number {
+  const n = Number(qty) || 0;
+  if (!isBox) return n;
+  const per = unitsPerBoxOf(product);
+  return per > 1 ? n * per : n;
+}
+
+/**
+ * `3BOX(60개)`처럼 적는다 — **개입수를 모르면 개수를 안 적는다.**
+ * 모르면서 12라고 적는 건 틀린 값을 확신에 차서 보여주는 것이다.
+ */
+export function boxQtyLabel(qty: number | string, perBox?: number, boxWord = 'BOX'): string {
+  const n = Number(qty) || 0;
+  const per = Number(perBox) || 0;
+  return per > 1 ? `${n}${boxWord}(${n * per}개)` : `${n}${boxWord}`;
+}
+
+/**
  * **재고 1단위**가 몇 kg인지 — 박스 품목이면 1박스, 낱개 품목이면 1개.
  *
  * 규격은 "낱개 용량 * 개입수" 꼴이라(`1kg * 20`) 앞자리만 읽으면 낱개 용량이다.

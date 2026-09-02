@@ -23,6 +23,7 @@ import VoucherComposer from './voucher/VoucherComposer';
 import { stampFor, timeOfLocal, issuedMs, nextDocNo } from '../src/shared/voucherStamp';
 import type { VoucherKind } from '../src/shared/vouchers';
 import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/shared/orderUnits';
+import { boxQtyLabel } from '../src/shared/orderUnits';
 import { bomOf } from '../src/shared/bomIndex';
 import { PurchaseOrder, poLines, ExpensePreset, companyOf } from '../src/shared/types';
 import VoucherSlip from '../src/shared/VoucherSlip';
@@ -1592,7 +1593,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           <td style="border:1px solid ${BC};font-size:11px;font-weight:bold;padding:0 3px;overflow:hidden;white-space:nowrap;">${item.name||''}</td>
           <td style="border:1px solid ${BC};text-align:center;font-size:9.5px;padding:0 2px;">${item.spec||''}</td>
           <td style="border:1px solid ${BC};text-align:center;font-size:10px;padding:0 2px;">${(item as any).unit||'개'}</td>
-          <td style="border:1px solid ${BC};text-align:right;font-size:10.5px;padding:0 3px;">${(item as any).isBoxUnit ? `${item.qty}BOX(${item.qty*12}개)` : fmt(item.qty)}</td>
+          <td style="border:1px solid ${BC};text-align:right;font-size:10.5px;padding:0 3px;">${(item as any).isBoxUnit ? boxQtyLabel(item.qty, (item as any).boxSize) : fmt(item.qty)}</td>
           <td style="border:1px solid ${BC};text-align:right;font-size:10.5px;padding:0 3px;">${fmt(item.price)}</td>
           <td style="border:1px solid ${BC};text-align:right;font-size:10.5px;padding:0 3px;">${fmt(item.total)}</td>
         </tr>`;
@@ -1798,7 +1799,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   <td style="border:1px solid #000;padding:1px 3px;text-align:center;">${dd}</td>
   <td style="border:1px solid #000;padding:1px 3px;">${item.name}</td>
   <td style="border:1px solid #000;padding:1px 3px;text-align:center;">${item.spec||''}</td>
-  <td style="border:1px solid #000;padding:1px 3px;text-align:right;">${item.isBoxUnit ? `${item.qty}BOX(${item.qty*12}개)` : fmt2(item.qty)}</td>
+  <td style="border:1px solid #000;padding:1px 3px;text-align:right;">${item.isBoxUnit ? boxQtyLabel(item.qty, item.boxSize) : fmt2(item.qty)}</td>
   <td style="border:1px solid #000;padding:1px 3px;text-align:right;">${fmt2(item.price)}</td>
   <td style="border:1px solid #000;padding:1px 3px;text-align:right;">${fmt2(item.supply)}</td>
   <td style="border:1px solid #000;padding:1px 3px;text-align:right;">${item.isTaxExempt?'면세':fmt2(item.tax)}</td>
@@ -4455,7 +4456,7 @@ ${names}
                               <td className="px-3 py-2 w-16">
                                 {ro
                                   ? <span className="block text-right font-bold">
-                                      {row.isBoxUnit ? `${row.qty}BOX(${parseFloat(row.qty as string)*12}개)` : row.qty}
+                                      {row.isBoxUnit ? boxQtyLabel(row.qty, row.boxSize) : row.qty}
                                     </span>
                                   : <div className="flex items-center gap-1">
                                       <input type="text" inputMode="decimal" placeholder="0" value={row.qty}

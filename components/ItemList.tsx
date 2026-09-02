@@ -37,7 +37,7 @@ import {
 import { Item, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, PartnerItem } from '../types';
 import { PurchaseOrder, poLines } from '../src/shared/types';
 import type { Order } from '../src/shared/types';
-import { unpackComponent, isBoxStockItem, groupLooseBoxRows } from '../src/shared/orderUnits';
+import { unpackComponent, isBoxStockItem, groupLooseBoxRows, unitsPerBoxOf, unpackQty, boxQtyLabel } from '../src/shared/orderUnits';
 import AddItemModal from './AddItemModal';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
@@ -801,7 +801,9 @@ const ItemList: React.FC<ItemListProps> = ({
       });
     } else {
       // 입력은 표시 단위(밀도 있으면 L) — 저장은 언제나 kg
-      const units = product.category === '향미유' ? val * 12
+      //  개입수는 품목이 안다 — '향미유면 12'로 박아 두면 20개입 품목이 12개로 잡힌다
+      const perBox = unitsPerBoxOf(product);
+      const units = perBox > 1 ? val * perBox
         : product.density ? val * product.density
         : val;
       onUpdateItem({ ...product, stock: Math.round((units + addStockUnits) * 1000) / 1000 });
@@ -2391,7 +2393,9 @@ const ItemList: React.FC<ItemListProps> = ({
                             />
                             <button onClick={() => updateCartQty(item.id, item.qty + 1)} className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-black transition-all">+</button>
                             <span className="text-[11px] text-slate-400 shrink-0">
-                              {product.category === '향미유' ? (item.isBox ? `B(${item.qty * 12}개)` : '개') : product.unit}
+                              {unitsPerBoxOf(product) > 1
+                                ? (item.isBox ? `B(${unpackQty(item.qty, product, true)}개)` : '개')
+                                : product.unit}
                             </span>
                           </div>
                           <button onClick={() => removeFromCart(item.id)} className="text-slate-300 hover:text-rose-400 transition-all shrink-0 ml-1"><X size={15} /></button>
@@ -3222,7 +3226,7 @@ const ItemList: React.FC<ItemListProps> = ({
                         <div key={i} className="px-4 py-2 flex items-center gap-3">
                           <span className="text-xs font-bold text-slate-700 flex-1">{item.name}{item.spec ? ` (${item.spec})` : ''}</span>
                           <span className="text-xs font-black text-slate-500">
-                            {item.isBox ? `${item.qty}B(${item.qty * 12}개)` : `${item.qty}개`}
+                            {item.isBox ? boxQtyLabel(item.qty, (item as { boxSize?: number }).boxSize, 'B') : `${item.qty}개`}
                           </span>
                         </div>
                       ))}
