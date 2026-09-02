@@ -97,20 +97,30 @@ export function stockUnits(
 }
 
 /**
- * 향미유·고춧가루처럼 **낱개로 세지만 박스로도 주문하는** 품목의 한 박스 개입수.
+ * 한 박스에 낱개가 몇 개 드는가.
  *
- * 근거는 품목 자신이다 — 예전엔 '향미유면 12'로 코드에 박아 둬서, 고춧가루처럼
- * 규격마다 개입수가 다른 것(1kg 20개 · 5kg 4개, 둘 다 20kg 박스)을 담을 수 없었다.
+ * **근거는 BOM 하나다.** 박스 품목의 BOM에 `낱개 × 20`이 들어 있는 것이 개입수다.
+ * 규격 글자(`1kg * 20`)는 사람이 읽으라고 **따라 적는 것**이지 근거가 아니다 —
+ * 품목 편집창도 BOM 수량을 고칠 때 규격을 따라 쓴다.
  *
- *   boxSize            품목에 직접 박아 둔 값이 가장 세다
- *   규격의 개입수       '1kg * 20' → 20
- *   향미유             옛 기본값 12 (규격이 없는 품목이 아직 있다)
- *   그 외              0 = 박스 주문 안 함
+ * 예전엔 규격 글자를 먼저 읽었는데, 그러면 **글자가 안 따라간 품목에서 0이 나온다.**
+ * 실제로 다섯 품목이 그 상태였다(참기름/병/분/엘생명 40개입 · 시골향참기름/원액 10개입 등).
+ * BOM엔 40·10이 멀쩡히 있는데 규격이 비어 있어 "박스가 아니다"로 읽혔다.
+ *
+ *   BOM               낱개 구성품 × 개입수 — **이것만이 근거다**
+ *   boxSize           BOM이 없을 때만. 옛 필드, 지금 두 품목만 쓴다(고춧가루)
+ *   규격의 개입수       그 다음. 옛 데이터 호환
+ *   향미유            더더 옛 기본값 12
+ *   그 외             0 = 박스로 안 판다
+ *
+ * 아래 셋은 **걷어낼 것들**이다. BOM만 남으면 이 함수는 `unpackComponent`의 겉옷이 된다.
  */
 export function unitsPerBoxOf(
-  product: (Pick<Item, 'boxSize' | 'spec' | 'category' | 'type'>) | undefined,
+  product: (BoxLike & Partial<Pick<Item, 'boxSize' | 'spec' | 'category' | 'type'>>) | undefined,
 ): number {
   if (!product) return 0;
+  const packed = unpackComponent(product);
+  if (packed) return packed.count;
   if (product.boxSize && product.boxSize > 1) return product.boxSize;
   const bySpec = parseSpecCount(product.spec);
   if (bySpec > 1) return bySpec;

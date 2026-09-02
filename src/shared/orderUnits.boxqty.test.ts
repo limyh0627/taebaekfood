@@ -60,3 +60,57 @@ describe('박스 수량 표기', () => {
     expect(boxQtyLabel('', 20)).toBe('0BOX(0개)');
   });
 });
+
+// ── 개입수의 근거는 BOM 이다 ────────────────────────────────────────────────
+
+import { setBomIndex, buildBomIndex, resetBomIndex } from './bomIndex';
+import { afterEach } from 'vitest';
+
+/**
+ * 규격 글자(`1kg * 20`)는 사람이 읽으라고 따라 적는 것이지 근거가 아니다.
+ * 실제로 다섯 품목이 **BOM 엔 40·10 이 있는데 규격이 비어** 있었고,
+ * 규격을 먼저 읽던 시절엔 그 품목들이 "박스가 아니다"로 읽혔다.
+ */
+const 세우기 = (items: Item[], boms: { parent_id: string; child_id: string; quantity?: number }[]) =>
+  setBomIndex(buildBomIndex(items as never, boms));
+
+afterEach(() => resetBomIndex());
+
+describe('개입수는 BOM 이 정한다', () => {
+  const 낱개 = { id: 'loose', name: '참기름/180ml', type: 'product', spec: '180ml' } as Item;
+  const 박스 = { id: 'box', name: '참기름/병/분/엘생명/180ml', type: 'product', unit: '박스' } as Item;
+
+  it('규격이 비어 있어도 BOM 이 있으면 읽는다 — 실제로 다섯 품목이 이 상태였다', () => {
+    세우기([낱개, 박스], [{ parent_id: 'box', child_id: 'loose', quantity: 40 }]);
+    expect(박스.spec).toBeUndefined();
+    expect(unitsPerBoxOf(박스)).toBe(40);
+    expect(unpackQty(3, 박스, true)).toBe(120);
+  });
+
+  it('**BOM 이 규격을 이긴다** — 규격은 따라 적는 글자일 뿐이다', () => {
+    const 어긋난박스 = { ...박스, spec: '180ml * 12' } as Item;   // 글자는 12, BOM 은 40
+    세우기([낱개, 어긋난박스], [{ parent_id: 'box', child_id: 'loose', quantity: 40 }]);
+    expect(unitsPerBoxOf(어긋난박스)).toBe(40);
+  });
+
+  it('BOM 이 없으면 예전대로 규격을 읽는다 — 옛 데이터가 아직 그렇게 산다', () => {
+    세우기([], []);
+    expect(unitsPerBoxOf({ id: 'x', spec: '1kg * 20' } as Item)).toBe(20);
+  });
+
+  it('BOM 에 낱개가 하나여도 수량이 1이면 박스가 아니다 — 그건 그냥 같은 것이다', () => {
+    세우기([낱개, 박스], [{ parent_id: 'box', child_id: 'loose', quantity: 1 }]);
+    expect(unitsPerBoxOf(박스)).toBe(0);
+  });
+
+  it('서로 다른 완제품을 하나씩 담으면 선물세트다 — 박스가 아니다', () => {
+    const 참 = { id: 'a', name: '참기름', type: 'product' } as Item;
+    const 들 = { id: 'b', name: '들기름', type: 'product' } as Item;
+    const 세트 = { id: 'set', name: '참+들/스마트', type: 'product' } as Item;
+    세우기([참, 들, 세트], [
+      { parent_id: 'set', child_id: 'a', quantity: 1 },
+      { parent_id: 'set', child_id: 'b', quantity: 1 },
+    ]);
+    expect(unitsPerBoxOf(세트)).toBe(0);
+  });
+});

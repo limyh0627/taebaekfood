@@ -271,6 +271,9 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
         const sub = submaterials.find(s => s.id === product.id);
         if (sub) {
           const actualQty = item.isBoxUnit && item.unitsPerBox > 0 ? qty * item.unitsPerBox : qty;
+          //  TODO 향미유는 boxSize 가 없어 여기서 안 나뉜다(= 낱개 그대로).
+          //  unitsPerBoxOf 로 바꾸면 12로 나뉘어 소요량이 1/12 이 된다 — 뜻이 다르다.
+          //  '박스 자재 몇 개'인지 '원료 몇 개'인지부터 정해야 손댈 수 있다.
           const needed = Math.ceil(actualQty / (product.boxSize || 1));
           if (!usage[sub.id]) usage[sub.id] = { name: sub.name, needed: 0, stock: sub.stock };
           usage[sub.id].needed += needed;

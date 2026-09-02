@@ -23,7 +23,7 @@ import VoucherComposer from './voucher/VoucherComposer';
 import { stampFor, timeOfLocal, issuedMs, nextDocNo } from '../src/shared/voucherStamp';
 import type { VoucherKind } from '../src/shared/vouchers';
 import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/shared/orderUnits';
-import { boxQtyLabel } from '../src/shared/orderUnits';
+import { boxQtyLabel, unitsPerBoxOf } from '../src/shared/orderUnits';
 import { bomOf } from '../src/shared/bomIndex';
 import { PurchaseOrder, poLines, ExpensePreset, companyOf } from '../src/shared/types';
 import VoucherSlip from '../src/shared/VoucherSlip';
@@ -1015,7 +1015,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         price: String(item.price || ''),
         isTaxExempt: false,
         isBoxUnit: item.isBox ?? false,
-        boxSize: item.isBox ? 12 : undefined,
+        //  개입수는 품목이 안다 — 12를 박아 두면 20개입 품목이 12개로 찍힌다
+        boxSize: item.isBox
+          ? (unitsPerBoxOf(allItems.find(p => p.name === item.name || p.품목 === item.name)) || undefined)
+          : undefined,
       })),
       { name: '', spec: '', qty: '', price: '', isTaxExempt: false },
     ]);
@@ -1166,15 +1169,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       if (!product) return;
       const co = confirmedOrders.find(c => c.id === id);
       if (co) {
-        const isBox = product.category === '향미유' && (co as any).isBox;
-        rows.push({ name: product.name, spec: product.spec || product.unit || '', qty: String(co.quantity), price: '', isTaxExempt: false, isBoxUnit: isBox, boxSize: isBox ? 12 : undefined });
+        //  박스로 팔 수 있느냐는 개입수가 정한다 — '향미유면 박스'가 아니다
+        const perBox = unitsPerBoxOf(product);
+        const isBox = perBox > 0 && (co as any).isBox;
+        rows.push({ name: product.name, spec: product.spec || product.unit || '', qty: String(co.quantity), price: '', isTaxExempt: false, isBoxUnit: isBox, boxSize: isBox ? perBox : undefined });
         return;
       }
       const req = orderRequests?.find((r: { id: string; quantity: number; isBox?: boolean }) => r.id === id);
       if (req) {
         const ps = partnerIn.find(s => s.itemId === id && s.partnerId === selectedClientId);
-        const isBox = product.category === '향미유' && (req as any).isBox;
-        rows.push({ name: product.name, spec: product.spec || product.unit || '', qty: String(req.quantity), price: ps?.price ? String(ps.price) : '', isTaxExempt: ps?.taxType === '면세', isBoxUnit: isBox, boxSize: isBox ? 12 : undefined });
+        const perBox = unitsPerBoxOf(product);
+        const isBox = perBox > 0 && (req as any).isBox;
+        rows.push({ name: product.name, spec: product.spec || product.unit || '', qty: String(req.quantity), price: ps?.price ? String(ps.price) : '', isTaxExempt: ps?.taxType === '면세', isBoxUnit: isBox, boxSize: isBox ? perBox : undefined });
       }
     });
     if (rows.length === 0) return;
