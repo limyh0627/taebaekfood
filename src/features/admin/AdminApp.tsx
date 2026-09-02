@@ -132,6 +132,7 @@ import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo, settleCar
 import { rawLotTarget, recordRawMaterialReceipt, adjustRawLots } from '../../shared/rawReceipt';
 import { bomQty } from '../../shared/bom';
 import { stockUnits, unpackComponent, unpackQty } from '../../shared/orderUnits';
+import { boxSpecUpdates } from '../../shared/boxSpec';
 import {
   addItem,
   updateItem,
@@ -4306,6 +4307,19 @@ const AdminApp: React.FC<AdminAppProps> = ({
               // stock도 모달 열 때 스냅샷이라 저장 시점 값과 다를 수 있어(로트 차감 등) 수정 시엔 건드리지 않는다.
               const { stock: _staleStock, ...safeData } = productData;
               await updateItem(collectionName, p.id, safeData);
+              /**
+               * **낱개 규격을 고쳤으면 그 낱개를 문 박스도 따라간다.**
+               *
+               * 박스 규격(`350ml * 20`)은 낱개 규격 + 개입수를 따라 적는 글자다. 그런데
+               * 다시 만드는 코드가 품목 편집창의 '개입수' 칸 안에만 있어서, 그 칸을 손으로
+               * 건드릴 때만 돌았다 — 낱개 용량을 300ml → 350ml 로 고쳐도 박스는
+               * `300ml * 20` 그대로 남았다(실제로 여섯 품목이 그 상태였다).
+               *
+               * 개입수 자체는 BOM 이 정한다. 여기서 맞추는 건 사람이 읽는 글자다.
+               */
+              for (const up of boxSpecUpdates(p, allItems)) {
+                await updateItem(getProductCollection('product'), up.id, { spec: up.spec });
+              }
             } else {
               //  **지금 보고 있는 회사를 붙인다.** 안 붙이면 전부 태백으로 잡혀
               //  풍회 화면에서 만든 품목이 그 목록에서 바로 사라진다.
