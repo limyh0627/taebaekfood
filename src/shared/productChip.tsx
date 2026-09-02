@@ -212,6 +212,27 @@ const CATEGORY_FIXED: Record<string, string> = {
   '테이프': 'bg-cyan-100 text-cyan-700',
   '케이스': 'bg-stone-200 text-stone-700',
 };
+/**
+ * **목록의 갈래 딱지 — 카테고리다.**
+ *
+ * 칸 이름이 '카테고리'면 `category` 를 봐야 한다. 그런데 품목관리 화면은 `subtype` 을
+ * 먼저 보고 있었고(낱개·박스·벌크), 그러면 줄이 죄다 같아 아무것도 안 갈라 준다 —
+ * 라벨 부자재에 '참기름'이 찍힌 것도 그 자국이다(subtype 이 비어 이름으로 짚었다).
+ * 재고관리 화면은 이미 `category` 를 먼저 봤다. **같은 셈을 두 벌 두어 한쪽만 고쳐져 있었다.**
+ *
+ * 이름으로 짚는 길은 **걷어냈다.** 그건 카테고리를 채우기 전 마이그레이션용 임시였고,
+ * 지금은 525품목 중 13개만 비어 있다(대부분 반제품 벌크). 빈 것은 타입 이름을 쓴다 —
+ * 이름에서 '참기름'을 읽어 채우면 라벨·부자재가 완제품 갈래로 섞인다.
+ */
+export function categoryOf(item: { category?: string; type: string }): string {
+  return item.category?.trim() || TYPE_LABELS[item.type] || item.type;
+}
+
+const TYPE_LABELS: Record<string, string> = {
+  product: '완제품', goods: '상품', wip: '반제품', raw: '원료', submaterial: '부자재',
+  container: '용기', cap: '마개', tape: '테이프', box: '박스', label: '라벨',
+};
+
 export function categoryChipClass(cat: string): string {
   if (CATEGORY_FIXED[cat]) return CATEGORY_FIXED[cat];
   const h = [...cat].reduce((a, c) => a + c.charCodeAt(0), 0);

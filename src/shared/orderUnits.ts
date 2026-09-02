@@ -146,6 +146,32 @@ export function unpackQty(qty: number, product: Parameters<typeof unitsPerBoxOf>
 }
 
 /**
+ * **낱개 재고를 박스로 환산해 적는다** — 재고 목록에 곁들이는 줄.
+ *
+ *   packBreakdown(300, 12)  →  '(12개입)25B'
+ *   packBreakdown(308, 12)  →  '(12개입)25B+8개'
+ *   packBreakdown(300, 0)   →  ''            개입수를 모르면 아무것도 안 적는다
+ *
+ * **낱개 수가 진짜다.** 환산은 창고에서 세기 편하라고 곁들이는 것이라, 화면에서도
+ * 낱개를 크게 두고 이걸 작게 붙인다. 예전엔 `25B(300개)`로 박스를 앞에 뒀는데,
+ * 재고 단위가 개인 품목에서 박스가 먼저 보이면 어느 게 재고인지 헷갈린다.
+ *
+ * 음수도 그대로 적는다(반품·마이너스 재고). `-48`이면 `(12개입)-4B`다 —
+ * 마이너스를 감추면 어긋난 재고를 못 본다.
+ */
+export function packBreakdown(stock: number, perBox: number): string {
+  const per = Number(perBox) || 0;
+  if (per <= 1) return '';
+  const n = Number(stock) || 0;
+  //  음수는 0 쪽으로 자른다 — -48개 12개입이면 -4B 이지 -5B+12개가 아니다
+  const boxes = n < 0 ? Math.ceil(n / per) : Math.floor(n / per);
+  const rem = n - boxes * per;
+  if (rem === 0) return `(${per}개입)${boxes}B`;
+  //  나머지가 음수면 부호를 겹쳐 쓰지 않는다 — '+-1개'가 아니라 '-1개'
+  return `(${per}개입)${boxes}B${rem > 0 ? '+' : ''}${rem}개`;
+}
+
+/**
  * `3BOX(60개)`처럼 적는다 — **개입수를 모르면 개수를 안 적는다.**
  * 모르면서 12라고 적는 건 틀린 값을 확신에 차서 보여주는 것이다.
  */

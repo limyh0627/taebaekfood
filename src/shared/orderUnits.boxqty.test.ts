@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { unitsPerBoxOf, unpackQty, boxQtyLabel } from './orderUnits';
+import { unitsPerBoxOf, unpackQty, boxQtyLabel, packBreakdown } from './orderUnits';
 import { setBomIndex, buildBomIndex, resetBomIndex } from './bomIndex';
 import { setPackIndex, buildPackIndex, resetPackIndex } from './packIndex';
 import type { Item } from './types';
@@ -133,5 +133,34 @@ describe('박스 수량 표기', () => {
   });
   it('빈 값이어도 개입수를 알면 그대로 적는다', () => {
     expect(boxQtyLabel('', 20)).toBe('0BOX(0개)');
+  });
+});
+
+describe('재고를 박스로 환산해 곁들인다', () => {
+  it('딱 떨어지면 박스만', () => {
+    expect(packBreakdown(300, 12)).toBe('(12개입)25B');
+    expect(packBreakdown(360, 12)).toBe('(12개입)30B');
+  });
+  it('남으면 낱개를 붙인다', () => {
+    expect(packBreakdown(308, 12)).toBe('(12개입)25B+8개');
+    expect(packBreakdown(20, 12)).toBe('(12개입)1B+8개');
+  });
+  it('**개입수를 모르면 아무것도 안 적는다** — 지어내지 않는다', () => {
+    expect(packBreakdown(300, 0)).toBe('');
+    expect(packBreakdown(300, 1)).toBe('');
+  });
+  it('한 박스가 안 되면 0B', () => {
+    expect(packBreakdown(5, 12)).toBe('(12개입)0B+5개');
+    expect(packBreakdown(0, 12)).toBe('(12개입)0B');
+  });
+  it('마이너스도 그대로 — 감추면 어긋난 재고를 못 본다', () => {
+    expect(packBreakdown(-48, 12)).toBe('(12개입)-4B');
+    expect(packBreakdown(-31, 10)).toBe('(10개입)-3B-1개');
+  });
+  it('낱개 합이 맞는다 — 박스×개입 + 나머지', () => {
+    for (const [n, per] of [[300, 12], [308, 12], [-48, 12], [-31, 10], [5, 20]] as const) {
+      const m = /\((\d+)개입\)(-?\d+)B(?:\+?(-?\d+)개)?/.exec(packBreakdown(n, per))!;
+      expect(Number(m[2]) * per + Number(m[3] ?? 0)).toBe(n);
+    }
   });
 });

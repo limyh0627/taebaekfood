@@ -12,7 +12,7 @@ import { isBoxStockItem, unpackComponent, boxSiblings, groupLooseBoxRows } from 
 import { bomOf, BomLine } from '../src/shared/bomIndex';
 import { subDotClass } from '../src/shared/submaterialStyle';
 import { calcCost, CostCalcRow, CostCalcResult } from '../src/features/admin/costCalc';
-import { ProductNameRow, ProductCard, renderColoredName, splitNameVolume, specText, catOrder, categoryChipClass } from '../src/shared/productChip';
+import { ProductNameRow, ProductCard, renderColoredName, splitNameVolume, specText, catOrder, categoryChipClass, categoryOf } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
 
 interface ItemManagerProps {
@@ -44,24 +44,7 @@ interface ItemManagerProps {
   isAdmin?: boolean;
 }
 
-const inferSubtype = (item: { subtype?: string; name: string; type: string }): string => {
-  if (item.subtype) return item.subtype;
-  const n = item.name;
-  if (n.includes('들기름')) return '들기름';
-  if (n.includes('참기름')) return '참기름';
-  if (n.includes('검정깨') || n.includes('검정참깨')) return '검정깨';
-  if (n.includes('들깨')) return '들깨';
-  if (n.includes('참깨')) return '참깨';
-  if (n.includes('고춧가루')) return '고춧가루';
-  if (n.includes('향미유')) return '향미유';
-  return CATEGORY_LABELS[item.type] || item.type;
-};
 
-//  탭 이름·순서·숨김은 전부 분류 관리(itemTaxonomy)가 쥔다 — 여기 표는 저장본이 없을 때의 이름뿐이다.
-const CATEGORY_LABELS: Record<string, string> = {
-  product: '완제품', goods: '상품', wip: '반제품', raw: '원료',
-  submaterial: '부자재',
-};
 /**
  * 부자재 정렬 — **분류 관리에 적힌 순서 그대로.**
  *
@@ -438,7 +421,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
     // 카테고리 순 → 같은 카테고리 안에서는 이름 순.
     // 참기름·들기름·깨류 순서가 실제로 보는 순서라 이름 순만으로는 섞여 보인다.
     return [...result].sort((a, b) => {
-      const d = catOrder(inferSubtype(a)) - catOrder(inferSubtype(b));
+      const d = catOrder(categoryOf(a)) - catOrder(categoryOf(b));
       return d !== 0 ? d : a.name.localeCompare(b.name, 'ko');
     });
   }, [products, activeCategory, activeSubtype, activeItemCat, activeSpec, activeGrade, selectedClientId, showAll, showNoClient, searchTerm, mainView, partners, partnerScopeTab, partnerItems, partnerAllCats]);
@@ -749,7 +732,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                   // 겉박스·테이프는 박스 품목 BOM에 들어 있다 — 거래처별 포장설정은 폐기했다.
                   return (
                     <ProductCard key={item.id} product={item} subs={subs}
-                      categoryLabel={inferSubtype(item)}
+                      categoryLabel={categoryOf(item)}
                       topChips={<>
                         {/* 낱개↔박스 전환 — 짝이 없으면 안 뜬다 */}
                         {variants.length > 1 && variants.map(v => (
@@ -862,8 +845,8 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                   {/* 박스는 낱개 밑에 딸린 줄 — 들여쓰기와 바탕색으로 가른다 */}
                   <tr className={`transition-colors group ${isChild ? 'bg-slate-200/70 hover:bg-slate-200' : 'hover:bg-slate-50/50'}`}>
                     <td className={`px-2 py-3 ${isChild ? 'pl-6' : ''}`}>
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-black whitespace-nowrap ${categoryChipClass(inferSubtype(item))}`}>
-                        {inferSubtype(item)}
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-black whitespace-nowrap ${categoryChipClass(categoryOf(item))}`}>
+                        {categoryOf(item)}
                       </span>
                     </td>
                     <td className="px-3 py-3">

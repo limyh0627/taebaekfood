@@ -50,7 +50,7 @@ import OemManager from './OemManager';
 import CategoryManager from './CategoryManager';
 import { buildTaxonomy, TaxonomyRow } from '../src/shared/taxonomy';
 import { RM_LIST, unitOf, baseRawName, lotStockInUnit, unitToKg, lotKgRemaining, parsePackageKg, parseSpecUnit, parseSpecCount } from '../src/constants/formula';
-import { catOrder, CATEGORY_ORDER_LEN, categoryChipClass, specText, splitNameVolume } from '../src/shared/productChip';
+import { catOrder, CATEGORY_ORDER_LEN, categoryChipClass, specText, splitNameVolume , categoryOf} from '../src/shared/productChip';
 import { subDotClass } from '../src/shared/submaterialStyle';
 import { isSubmaterial } from '../src/shared/types';
 import { matchesSearch } from '../src/shared/hangul';
@@ -60,6 +60,16 @@ import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage
 import { storage, db } from '../src/shared/firebase';
 import { withCarryOverLot, buildReceiveLot, nextLotNo, deductFromLots, settleCarryOver, lotQtyRemaining } from '../src/shared/lotUtils';
 import { isBackdated, latestAnchorDate } from '../src/shared/rawLedgerBalance';
+
+/**
+ * 등급(골드·A·분·특·특A·원액) — 이름 토큰으로 짚는다. 품목에 등급 칸이 따로 없다.
+ * A·특은 정확일치라야 한다 — 부분포함으로 보면 '골드A'·'특A'·'특골드'가 죄다 걸린다.
+ */
+const GRADES = ['골드', 'A', '분', '특', '특A', '원액'] as const;
+const matchGrade = (p: Item, g: string): boolean => {
+  const toks = `${p.품목 ?? ''}/${p.name}`.split(/[/()]/).map(t => t.trim());
+  return (g === 'A' || g === '특') ? toks.some(t => t === g) : toks.some(t => t.includes(g));
+};
 
 const normCat = (cat: string): string =>
   ({ product: '완제품', goods: '상품', container: '용기', cap: '마개', tape: '테이프', box: '박스', label: '라벨' } as Record<string, string>)[cat] ?? cat;
@@ -137,29 +147,6 @@ interface StockClosing { id: string; date: string; closedBy: string; createdAt: 
  * 박스 묶음인지는 딱지가 아니라 **줄 바탕색과 들여쓰기**가 말해 준다(낱개 밑에 딸려 선다).
  * 카테고리가 비어 있는 옛 품목만 이름으로 짚는다.
  */
-/**
- * 등급(골드·A·분·특·특A·원액) — 이름 토큰으로 짚는다. 품목에 등급 칸이 따로 없다.
- * A·특은 정확일치라야 한다 — 부분포함으로 보면 '골드A'·'특A'·'특골드'가 죄다 걸린다.
- */
-const GRADES = ['골드', 'A', '분', '특', '특A', '원액'] as const;
-const matchGrade = (p: Item, g: string): boolean => {
-  const toks = `${p.품목 ?? ''}/${p.name}`.split(/[/()]/).map(t => t.trim());
-  return (g === 'A' || g === '특') ? toks.some(t => t === g) : toks.some(t => t.includes(g));
-};
-
-const inferSubtype = (item: { subtype?: string; category?: string; name: string; type: string; id?: string }): string => {
-  if (item.category) return item.category;
-  const n = item.name;
-  if (n.includes('들기름')) return '들기름';
-  if (n.includes('참기름')) return '참기름';
-  if (n.includes('검정깨') || n.includes('검정참깨')) return '검정참깨';
-  if (n.includes('탈피들깨')) return '탈피들깨';
-  if (n.includes('들깨')) return '들깨';
-  if (n.includes('참깨')) return '참깨';
-  if (n.includes('고춧가루')) return '고춧가루';
-  if (n.includes('향미유')) return '향미유';
-  return normCat(item.type);
-};
 
 interface ItemListProps {
   items: Item[];
@@ -1858,8 +1845,8 @@ const ItemList: React.FC<ItemListProps> = ({
                       <td className="px-4 py-3">
                         {/* 카테고리 색은 공용(productChip.categoryChipClass) — 화면마다 다르면 헷갈린다.
                             예전엔 참기름·들기름·향미유가 모두 보라라 갈래가 안 갈렸다. */}
-                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${categoryChipClass(inferSubtype(product))}`}>
-                          {inferSubtype(product)}
+                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${categoryChipClass(categoryOf(product))}`}>
+                          {categoryOf(product)}
                         </span>
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell" onClick={e => e.stopPropagation()}>
@@ -2991,8 +2978,8 @@ const ItemList: React.FC<ItemListProps> = ({
                             {p.subtype && (
                               <span className="shrink-0 text-[10px] font-black px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">{p.subtype}</span>
                             )}
-                            <span className={`shrink-0 text-[10px] font-black px-1.5 py-0.5 rounded-md ${categoryChipClass(inferSubtype(p))}`}>
-                              {inferSubtype(p)}
+                            <span className={`shrink-0 text-[10px] font-black px-1.5 py-0.5 rounded-md ${categoryChipClass(categoryOf(p))}`}>
+                              {categoryOf(p)}
                             </span>
                             <span className="truncate">{splitNameVolume(p).base}</span>
                             {(() => {
@@ -3680,8 +3667,8 @@ const ItemList: React.FC<ItemListProps> = ({
                             <span className="shrink-0 text-[10px] font-black px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">{product.subtype}</span>
                           )}
                           {product && (
-                            <span className={`shrink-0 text-[10px] font-black px-1.5 py-0.5 rounded-md ${categoryChipClass(inferSubtype(product))}`}>
-                              {inferSubtype(product)}
+                            <span className={`shrink-0 text-[10px] font-black px-1.5 py-0.5 rounded-md ${categoryChipClass(categoryOf(product))}`}>
+                              {categoryOf(product)}
                             </span>
                           )}
                           <span className="truncate">{r.label}</span>
