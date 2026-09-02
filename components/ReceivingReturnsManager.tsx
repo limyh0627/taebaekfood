@@ -1,5 +1,6 @@
 
 import { stampFor, nextDocNo } from '../src/shared/voucherStamp';import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { today } from '../src/shared/day';
 import {
   RotateCcw, ScanLine, Building2, History, Truck,
   Camera, QrCode, X, Check, Plus, Trash2, ChevronDown,
@@ -346,7 +347,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
       } as Omit<PurchaseOrder, 'id'>);
       // 재고 가산 — 직접 updateItem을 await로 호출 (이전 fire-and-forget이 가끔 누락됨)
       // 원료(raw)는 로트가 재고를 소유하므로 매입 SKU만 stock 가산하고, 원료는 로트+수불부로 기록
-      const todayDateScan = new Date().toISOString().slice(0, 10);
+      const todayDateScan = today();
       const nowIsoScan = new Date().toISOString();
       for (const item of receiptItems) {
         if (!item.itemId) continue;
@@ -508,7 +509,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
       } as Omit<PurchaseOrder, 'id'>);
       // 재고 가산 — 직접 updateItem을 await로 호출 (이전 fire-and-forget이 가끔 누락됨)
       // 원료(raw)는 로트가 재고를 소유하므로 매입 SKU만 stock 가산하고, 원료는 로트+수불부로 기록
-      const todayDate = new Date().toISOString().slice(0, 10);
+      const todayDate = today();
       const nowIso = new Date().toISOString();
       for (const item of receiptItems) {
         if (!item.itemId) continue;
@@ -581,7 +582,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     setStatementDraft({
       receipt: po,
       partnerId: matchedClient?.id ?? po.partnerId ?? '',
-      tradeDate: po.receivedAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
+      tradeDate: po.receivedAt?.slice(0, 10) ?? today(),
       items: (po.items ?? []).map((item: PurchaseOrderItem) => {
         const pi = partnerItems.find(p =>
           (p.itemId ?? (p as any).itemId) === item.itemId && p.Direction === 'in'

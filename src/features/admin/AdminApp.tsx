@@ -16,6 +16,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { today } from '../../shared/day';
 import { nextDocNo, stampFor } from '../../shared/voucherStamp';
 import { calcCost } from './costCalc';
 import { isBulkItem } from '../../shared/itemTaxonomy';
@@ -333,7 +334,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const docLogMonthTouched = useRef(false);
   /** 달을 손으로 움직이면 표식을 남긴다 — 그 뒤엔 자동으로 안 옮긴다 */
   const markDocLogMonth = (v: string) => { docLogMonthTouched.current = true; setDocLogMonth(v); };
-  const [bulkMfgDate, setBulkMfgDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [bulkMfgDate, setBulkMfgDate] = useState(() => today());
   const [productionWorkCat, setProductionWorkCat] = useState('시골향참기름1');
   // 생산작업기록부 시트 — 브랜드 접기 상태와, 사용자가 고친 시트 제목(docSheetTitles)
   const [openSheetBrand, setOpenSheetBrand] = useState<string | null>('시골향');
@@ -348,7 +349,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   const [rmCorrectionTargetId, setRmCorrectionTargetId] = useState<string | null>(null);
   // mode: 'neg'|'pos' = 사용량 정정, 'stocktake' = 실사(잔량을 입력값으로 리셋). 수불부 전용 — 로트·재고는 안 건드림.
   const [rmCorrectionForm, setRmCorrectionForm] = useState<{ date: string; amount: string; isNegative: boolean; note: string; mode?: 'neg' | 'pos' | 'stocktake' }>(
-    { date: new Date().toISOString().slice(0, 10), amount: '', isNegative: true, note: '', mode: 'neg' });
+    { date: today(), amount: '', isNegative: true, note: '', mode: 'neg' });
   const [isMobile, setIsMobile] = useState(false);
   const [showQrLabel, setShowQrLabel] = useState(false);
   const [selectedLog, setSelectedLog] = useState<import('../../shared/types').ProductionSalesLog | null>(null);
@@ -365,7 +366,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // 라이브 구독은 7일치만 → 서류관리 > 생산판매기록부 월별 조회를 위해 24개월치 온디맨드 로드
   const [extraProductionLogs, setExtraProductionLogs] = useState<import('../../shared/types').ProductionSalesLog[]>([]);
   useEffect(() => {
-    const to = new Date().toISOString().slice(0, 10);
+    const to = today();
     const fromDate = new Date(); fromDate.setMonth(fromDate.getMonth() - 24);
     const from = fromDate.toISOString().slice(0, 10);
     fetchDateRange<import('../../shared/types').ProductionSalesLog>('productionSalesLogs', 'date', from, to)
@@ -400,7 +401,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   //   입고·반품·OEM·로트삭제 등 어디서 쓴 원장이든 진입 시점에 모두 반영된다.
   useEffect(() => {
     if (docTab !== '원료수불부' && docTab !== '생산작업기록부' && currentView !== 'inventory') return;
-    const to = new Date().toISOString().slice(0, 10);
+    const to = today();
     fetchDateRange<import('../../shared/types').RawMaterialEntry>('rawMaterialLedger', 'date', '2020-01-01', to)
       .then(setExtraRawMaterialLedger)
       .catch(e => { console.error('[AdminApp] 원료수불부 전체 이력 로드 실패:', e); });
@@ -430,7 +431,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   //   orders 날짜창은 읽기 몇 백 건 아끼자고 건 건데, 그 때문에 미발행이 안 보이면 손해라 여기선 전체 조회.
   useEffect(() => {
     if (currentView !== 'trade-statement') return;
-    loadHistoricalOrders('2020-01-01', new Date().toISOString().slice(0, 10));
+    loadHistoricalOrders('2020-01-01', today());
   }, [currentView]);
 
   // 지난달 기말재고 스냅샷 자동 저장 (없을 때만)
@@ -1073,7 +1074,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         const isSale = stmt.type !== '매입';
         await addCashEntry({
           id: `cash-return-${req.id}-${Date.now()}`,
-          date: new Date().toISOString().slice(0, 10),
+          date: today(),
           cashAccountId: '',
           dir: isSale ? '출금' : '입금',
           amount: req.totalAmount,
@@ -1982,7 +1983,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     try {
                       await adjustRawLots({
                         material: entry.material, rawItemId: holder.id, deltaKg,
-                        date: new Date().toISOString().slice(0, 10),
+                        date: today(),
                         note: `원장 기록 삭제 되돌림 (${entry.note ?? ''})`.trim(),
                         addedBy: currentUser?.name,
                         ledger: false,   // 원장 줄은 아래에서 지운다 — 여기서 또 쓰면 지운 자리에 새 줄이 생긴다
@@ -2361,7 +2362,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 if (req.type === 'oem_fee') {
                   const po = purchaseOrders.find(p => p.id === (req.oemPoId ?? req.itemId));
                   if (!po) { alert('OEM 배치를 찾을 수 없습니다.'); return; }
-                  try { await issueOemFeeStatement({ po, unitPricePerKg: req.oemFeePerKg, date: new Date().toISOString().slice(0, 10) }); }
+                  try { await issueOemFeeStatement({ po, unitPricePerKg: req.oemFeePerKg, date: today() }); }
                   catch (e) { alert(`가공비 전표 발행 실패: ${(e as Error)?.message ?? String(e)}`); return; }
                   await updateItem('adjustmentRequests', req.id, { status: 'processed', processedAt: new Date().toISOString() });
                   alert('가공비 전표를 발행했습니다.');
@@ -2375,7 +2376,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     // 요청 수량은 직원이 화면 단위(기름=L)로 넣은 값 → 저장 단위 kg으로
                     const reqKg = product.density ? req.requestedQuantity * product.density : req.requestedQuantity;
                     const deltaKg = reqKg - lotKgRemaining(product.lots);
-                    await adjustRawLots({ companyId, material: target.baseName, rawItemId: target.rawItem.id, lotsAreTotal: target.rawItem.lotsAreTotal, deltaKg, date: new Date().toISOString().slice(0, 10), note: '재고조정', addedBy: currentUser?.name });
+                    await adjustRawLots({ companyId, material: target.baseName, rawItemId: target.rawItem.id, lotsAreTotal: target.rawItem.lotsAreTotal, deltaKg, date: today(), note: '재고조정', addedBy: currentUser?.name });
                     setLedgerReloadKey(k => k + 1);
                   } else {
                     await updateItem('items', req.itemId, { stock: req.requestedQuantity });
@@ -2628,7 +2629,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 );
                 if (!proceed) return;
               }
-              const docDate = bulkMfgDate || new Date().toISOString().slice(0, 10);
+              const docDate = bulkMfgDate || today();
               // 양식은 shared/salesJournal.ts 한 곳에만 둔다 — 이력 보기의 [엑셀로 저장]도 같은 함수를 쓴다.
               const journal = {
                 date: docDate,
@@ -3356,7 +3357,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                     <div className="flex items-center justify-end gap-1">
                                       {row.id && (
                                         <button
-                                          onClick={() => { setRmCorrectionTargetId(rmCorrectionTargetId === row.id ? null : row.id!); setRmCorrectionForm({ date: new Date().toISOString().slice(0, 10), amount: '', isNegative: true, note: '' }); }}
+                                          onClick={() => { setRmCorrectionTargetId(rmCorrectionTargetId === row.id ? null : row.id!); setRmCorrectionForm({ date: today(), amount: '', isNegative: true, note: '' }); }}
                                           className="px-2 py-1 rounded-lg text-[10px] font-black bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors"
                                         >정정</button>
                                       )}
@@ -3973,7 +3974,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   const po = purchaseOrders.find(p => p.id === (req.oemPoId ?? req.itemId));
                   if (!po) { alert('OEM 배치를 찾을 수 없습니다.'); return; }
                   try {
-                    await issueOemFeeStatement({ po, unitPricePerKg: req.oemFeePerKg, date: new Date().toISOString().slice(0, 10) });
+                    await issueOemFeeStatement({ po, unitPricePerKg: req.oemFeePerKg, date: today() });
                   } catch (e) { alert(`가공비 전표 발행 실패: ${(e as Error)?.message ?? String(e)}`); return; }
                   await updateItem('adjustmentRequests', req.id, { status: 'processed', processedAt: new Date().toISOString() });
                   alert('가공비 전표를 발행했습니다.');
@@ -3989,7 +3990,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     if (target) {
                       // 요청 수량은 화면 단위(기름=L) → 저장 단위 kg으로
                       const addKg = product.density ? (req.requestedQuantity || 0) * product.density : (req.requestedQuantity || 0);
-                      await adjustRawLots({ companyId, material: target.baseName, rawItemId: target.rawItem.id, lotsAreTotal: target.rawItem.lotsAreTotal, deltaKg: addKg, date: new Date().toISOString().slice(0, 10), note: '재고조정', addedBy: currentUser?.name });
+                      await adjustRawLots({ companyId, material: target.baseName, rawItemId: target.rawItem.id, lotsAreTotal: target.rawItem.lotsAreTotal, deltaKg: addKg, date: today(), note: '재고조정', addedBy: currentUser?.name });
                       setLedgerReloadKey(k => k + 1);
                     } else {
                       await adjustItemStock(collectionName, req.itemId, req.requestedQuantity || 0);

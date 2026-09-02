@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { today as todayStr } from '../src/shared/day';
 import { X, Inbox, FileDown, Sparkles } from 'lucide-react';
 import { RawMaterialEntry } from '../types';
 import { unitOf, DENSITY } from '../src/constants/formula';
@@ -21,7 +22,6 @@ const YIELD_HINT: Record<string, { product: string; rate: number }> = {
   '검정깨': { product: '볶음검정참깨', rate: 0.95 },
 };
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
 
 const RawMaterialEntryModal: React.FC<Props> = ({
   open, mode, materials, defaultMaterial, currentUserName, onClose, onSubmit,

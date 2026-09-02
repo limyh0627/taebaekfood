@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { today } from '../../src/shared/day';
 import { X, Save, Trash2 } from 'lucide-react';
 import type { IssuedStatement, CashEntry, AccountCode, PaymentMethod } from '../../src/shared/types';
 import { cashEditSplit, cashEditAmount, type CashEditForm, type CashEditLineDraft } from '../../src/shared/cashEntryEdit';
@@ -79,7 +80,7 @@ function SettleBody({
    * 일자도 **그 전표 날짜**가 기본이다 — 오늘로 박아 두면 8/28 전표를 8/31에 열 때마다 고쳐야 한다.
    */
   const [amount, setAmount] = useState(String(Math.round(getBalance(stmt))));
-  const [date, setDate] = useState(stmt.tradeDate || new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(stmt.tradeDate || today());
   const [method, setMethod] = useState<PaymentMethod>('계좌이체');
   const [note, setNote] = useState('');
   const [scope, setScope] = useState<'stmt' | 'partner'>('stmt');   // 기본은 '이 전표'

@@ -1,5 +1,6 @@
 
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { today } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -115,7 +116,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
    * 월 드롭다운이던 시절엔 같은 해 안에서만 고를 수 있어 12월~1월처럼 해를 넘기지 못했다.
    */
   const [customStart, setCustomStart] = useState(() => `${new Date().getFullYear()}-01-01`);
-  const [customEnd, setCustomEnd] = useState(() => new Date().toISOString().slice(0, 10));
+  const [customEnd, setCustomEnd] = useState(() => today());
   const [newCodeForm, setNewCodeForm] = useState({ code: '', name: '', groupId: '' });
   const [newGroupForm, setNewGroupForm] = useState({ name: '', type: '수익' as AccountGroup['type'], plLine: undefined as AccountGroup['plLine'] });
   const [showAddCode, setShowAddCode] = useState(false);
@@ -169,7 +170,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   // 수금을 그 전표에 붙일지 — 끄면 오래된 전표부터 자동 배분(선입선출)
   const [pinToStmt, setPinToStmt] = useState(true);
   const [payTarget, setPayTarget] = useState<IssuedStatement | null>(null);
-  const [payForm, setPayForm] = useState({ amount: '', date: new Date().toISOString().slice(0, 10), method: '계좌이체' as PaymentMethod, note: '' });
+  const [payForm, setPayForm] = useState({ amount: '', date: today(), method: '계좌이체' as PaymentMethod, note: '' });
 
   // ── 미수금 상세 팝업 ──
   const [receivableDetailClient, setReceivableDetailClient] = useState<{ id: string; name: string } | null>(null);
@@ -1298,7 +1299,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
 
         const openPayModal = (stmt: IssuedStatement) => {
           setPayTarget(stmt);
-          setPayForm({ amount: String(getBalance(stmt)), date: new Date().toISOString().slice(0, 10), method: '계좌이체', note: '' });
+          setPayForm({ amount: String(getBalance(stmt)), date: today(), method: '계좌이체', note: '' });
           setPinToStmt(true);
           setShowPayModal(true);
         };
@@ -1554,7 +1555,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                               id: selId, name: selName,
                               max: Math.min(totalReceivable, totalPayable),
                               amount: String(Math.round(Math.min(totalReceivable, totalPayable))),
-                              date: new Date().toISOString().slice(0, 10),
+                              date: today(),
                             })}
                             className="ml-auto shrink-0 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-black transition-colors">
                             상계 처리

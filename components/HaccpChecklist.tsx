@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { today } from '../src/shared/day';
 import { FileDown, ClipboardList, Thermometer, Bug, CheckSquare, Scan, ShoppingCart, Wrench, ShieldAlert, Save, Trash2, BadgeCheck, User, Plus, GripVertical } from 'lucide-react';
 import { db } from '../src/shared/firebase';
 import { collection, addDoc, updateDoc, setDoc, doc, onSnapshot, query, orderBy, deleteDoc } from 'firebase/firestore';
@@ -145,7 +146,7 @@ const OverviewForm: React.FC = () => {
     OVERVIEW_ITEMS.map(i => ({ ...i, result: '', note: '' }))
   );
   const [evaluator, setEvaluator] = useState('');
-  const [evalDate, setEvalDate] = useState(new Date().toISOString().slice(0, 10));
+  const [evalDate, setEvalDate] = useState(today());
   const ref = useRef<HTMLDivElement>(null);
 
   const setResult = (idx: number, val: '' | 'O' | 'X') =>
@@ -369,11 +370,11 @@ interface PestRow {
 
 const PestForm: React.FC = () => {
   const [rows, setRows] = useState<PestRow[]>([
-    { date: new Date().toISOString().slice(0, 10), season: '하절기', location: '', checks: {}, corrective: '', inspector: '' },
+    { date: today(), season: '하절기', location: '', checks: {}, corrective: '', inspector: '' },
   ]);
   const ref = useRef<HTMLDivElement>(null);
 
-  const addRow = () => setRows(prev => [...prev, { date: new Date().toISOString().slice(0, 10), season: '하절기', location: '', checks: {}, corrective: '', inspector: '' }]);
+  const addRow = () => setRows(prev => [...prev, { date: today(), season: '하절기', location: '', checks: {}, corrective: '', inspector: '' }]);
   const updateRow = (idx: number, field: keyof PestRow, value: any) =>
     setRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
   const updateCheck = (idx: number, key: string, val: '' | 'O' | 'X') =>

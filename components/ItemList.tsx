@@ -1,5 +1,6 @@
 ﻿
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { today } from '../src/shared/day';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
 import { bomOf } from '../src/shared/bomIndex';
 import {
@@ -371,7 +372,7 @@ const ItemList: React.FC<ItemListProps> = ({
   const [closingCounts, setClosingCounts] = useState<Record<string, { boxes: string; loose: string }>>({});
   const [editClosingId, setEditClosingId] = useState<string | null>(null); // 실사 수정 중인 품목
   const [editClosingQty, setEditClosingQty] = useState('');
-  const [closingDate, setClosingDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [closingDate, setClosingDate] = useState(() => today());
   const [closingSaving, setClosingSaving] = useState(false);
   const [closingSavedAt, setClosingSavedAt] = useState('');
   const [pastClosings, setPastClosings] = useState<StockClosing[]>([]);
@@ -767,7 +768,7 @@ const ItemList: React.FC<ItemListProps> = ({
           const withCarry = withCarryOverLot(lots, stock, material);
           adjustKg = Math.round((targetKg - lotKgRemaining(withCarry)) * 1000) / 1000;
           if (adjustKg > 0.001) {
-            const lot = buildReceiveLot({ material, supplierName: '실사조정', qtyIn: 0, kgIn: adjustKg, receivedDate: new Date().toISOString().slice(0, 10) });
+            const lot = buildReceiveLot({ material, supplierName: '실사조정', qtyIn: 0, kgIn: adjustKg, receivedDate: today() });
             return settleCarryOver([...withCarry, { ...lot, lotNo: nextLotNo(withCarry, lot.receivedDate) }]);
           }
           if (adjustKg < -0.001) return deductFromLots(withCarry, -adjustKg).lots;
@@ -784,7 +785,7 @@ const ItemList: React.FC<ItemListProps> = ({
       await onAddRawMaterialEntry({
         id: `rm-stocktake-${Date.now()}`,
         material,
-        date: new Date().toISOString().slice(0, 10),
+        date: today(),
         received: adjustKg > 0 ? adjustKg : 0,
         used: adjustKg < 0 ? -adjustKg : 0,
         targetKg,

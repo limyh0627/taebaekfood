@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { today } from '../src/shared/day';
 import { ArrowUp, ArrowDown, Layers, Truck, Trash2, CornerDownRight, Tag, Check, X, History } from 'lucide-react';
 import { Item, RawMaterialLot, RawMaterialEntry } from '../src/shared/types';
 import { mutateRawMaterialLots, updateItem, addItem } from '../src/shared/services/firebaseService';
@@ -115,7 +116,7 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
         await addItem('rawMaterialLedger', {
           id: `rm-lotdel-${Date.now()}`,
           material,
-          date: new Date().toISOString().slice(0, 10),
+          date: today(),
           received: 0,
           used: lot.kgRemaining,
           note: `로트 삭제: ${lot.supplierName}${lot.lotNo ? ` (${lot.lotNo})` : ''}${currentUserName ? ` · ${currentUserName}` : ''}`,

@@ -22,6 +22,7 @@ import {
   documentId,
 } from "firebase/firestore";
 import { db } from "../firebase";
+import { today } from '../day';
 import type { RawMaterialLot } from "../types";
 import { pruneDepletedLots } from "../lotUtils";
 import { statementBlockReason } from "../statementGuard";
@@ -238,7 +239,7 @@ export const mutateRawMaterialLots = async (
         {
           id: entryId,
           material,
-          date: new Date().toISOString().slice(0, 10),
+          date: today(),
           received: opening.kg,
           used: 0,
           note: "기초이월 (로트 도입 전 재고)",

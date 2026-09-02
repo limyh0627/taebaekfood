@@ -1,5 +1,6 @@
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
+import { today } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
 import {
   FileText, Printer, Search, Check, CheckSquare, Download, X,
@@ -31,7 +32,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   // 라이브 구독은 7일치만 → 과거 12개월치를 온디맨드로 추가 로드
   const [extraStatements, setExtraStatements] = useState<IssuedStatement[]>([]);
   useEffect(() => {
-    const to = new Date().toISOString().slice(0, 10);
+    const to = today();
     const fromDate = new Date(); fromDate.setMonth(fromDate.getMonth() - 12);
     const from = fromDate.toISOString().slice(0, 10);
     fetchDateRange<IssuedStatement>('issuedStatements', 'tradeDate', from, to)

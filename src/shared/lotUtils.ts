@@ -1,8 +1,8 @@
 import type { RawMaterialLot } from './types';
+import { today as todayStr } from './day';
 import { unitToKg } from '../constants/formula';
 
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
-const todayStr = () => new Date().toISOString().slice(0, 10);
 
 /**
  * 로트가 하나도 없는 원료에 첫 로트를 얹을 때, 기존 재고(운영 단위)를 '이월' 로트로 보존한다.

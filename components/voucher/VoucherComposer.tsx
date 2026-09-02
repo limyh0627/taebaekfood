@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { today } from '../../src/shared/day';
 import { X, Plus, Save } from 'lucide-react';
 import type {
   Partner, IssuedStatement, CashEntry, AccountCode, AccountGroup, CashAccount,
@@ -90,7 +91,7 @@ export default function VoucherComposer({
 
     const [quickPayClientId, setQuickPayClientId] = useState('');
   const [quickPayClientSearch, setQuickPayClientSearch] = useState('');
-  const [quickPayDate, setQuickPayDate] = useState(initialDate ?? new Date().toISOString().slice(0, 10));
+  const [quickPayDate, setQuickPayDate] = useState(initialDate ?? today());
   const [quickPayAmount, setQuickPayAmount] = useState('');
   //  상계로 붙는 자금은 늘 계좌이체다 — 고를 자리가 없어서 값도 안 바뀐다
   const quickPayMethod: PaymentMethod = '계좌이체';

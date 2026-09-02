@@ -1,5 +1,6 @@
 ﻿
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
+import { today } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
 import { buildTaxonomy, type TaxonomyRow } from '../src/shared/taxonomy';
 import {
@@ -149,7 +150,6 @@ function buildSupplierGroups<T extends { id: string }>(
   return Array.from(map.entries()).map(([sid, v]) => ({ partnerId: sid, ...v }));
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
 // 금주 = 이번 주 월요일 ~ 이번 주 일요일 (로컬 기준, 고정 범위)
 const fmtLocalDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const weekMonday = () => { const d = new Date(); const diff = d.getDay() === 0 ? -6 : 1 - d.getDay(); d.setDate(d.getDate() + diff); return fmtLocalDate(d); };

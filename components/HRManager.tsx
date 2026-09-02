@@ -1,5 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
+//  이 파일엔 `const today = new Date()`(Date 객체)가 이미 있어 별칭으로 받는다
+import { today as todayStr } from '../src/shared/day';
 import ConfirmModal from './ConfirmModal';
 import { 
   Users, 
@@ -232,7 +234,7 @@ const HRManager: React.FC<HRManagerProps> = ({
     name: '',
     position: '사원',
     department: '생산팀',
-    joinDate: new Date().toISOString().split('T')[0],
+    joinDate: todayStr(),
     birthDate: '',
     phone: '010-0000-0000',
     status: 'working' as EmployeeStatus,
@@ -334,7 +336,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                 setEditingEmployee(null);
                 setFormData({
                   name: '', position: '사원', department: '생산팀',
-                  joinDate: new Date().toISOString().split('T')[0],
+                  joinDate: todayStr(),
                   birthDate: '',
                   phone: '010-0000-0000', status: 'working',
                   annualLeave: { carryOverLeave: 0, bonusLeave: 0 },

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { today as todayStr } from '../src/shared/day';
 import { FlaskConical, Plus, Trash2, FileDown, Save, X } from 'lucide-react';
 import { db } from '../src/shared/firebase';
 import { collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc } from 'firebase/firestore';
@@ -20,7 +21,6 @@ interface BenzopyreneTest {
 
 const COL = 'border border-slate-300 px-2 py-1.5 text-xs';
 const DEFAULT_CRITERIA = '2.0 μg/kg 이하';
-const todayStr = () => new Date().toISOString().slice(0, 10);
 
 interface Props {
   currentUserName?: string;

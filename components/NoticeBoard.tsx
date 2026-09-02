@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { today } from '../src/shared/day';
 import {
   BellRing,
   Search,
@@ -136,7 +137,7 @@ const NoticeBoard: React.FC<NoticeBoardProps> = ({ posts, onAddPost }) => {
                     title: form.title,
                     content: form.content,
                     author: form.author || '관리자',
-                    date: new Date().toISOString().slice(0, 10),
+                    date: today(),
                     tag: form.tag,
                   });
                   setForm({ title: '', content: '', author: '', tag: '공지' });

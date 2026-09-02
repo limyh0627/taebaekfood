@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { today } from '../src/shared/day';
 import { Wallet, Plus, X, Landmark, CreditCard, Coins, Settings2, Trash2, Link2 } from 'lucide-react';
 import { CashAccount, CashEntry, AccountCode, Partner, IssuedStatement, Settlement, FixedCostTemplate } from '../src/shared/types';
 import { buildAccountLedger, totalCashOnHand, unsettledStatements, unmatchedCash } from '../src/features/admin/cashLedger';
@@ -25,7 +26,6 @@ interface Props {
 }
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
-const today = () => new Date().toISOString().slice(0, 10);
 const monthStart = () => today().slice(0, 7) + '-01';
 
 const ACCOUNT_ICON = { 통장: Landmark, 카드: CreditCard, 현금: Coins } as const;

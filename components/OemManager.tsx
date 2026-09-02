@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { today } from '../src/shared/day';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
 import { Plus, X, ArrowRight } from 'lucide-react';
 import { Item, Partner, PurchaseOrder } from '../src/shared/types';
@@ -24,7 +25,6 @@ interface Props {
 }
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
-const today = () => new Date().toISOString().slice(0, 10);
 
 export default function OemManager({
   items, partners, rawStockKg, issueOpen, receiveTarget, feeTarget, onClose, onIssue, onReceive, onIssueFee,

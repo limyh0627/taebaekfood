@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { today } from '../src/shared/day';
 import {
   CalendarCheck,
   Plus,
@@ -294,8 +295,8 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
 
   const [formData, setFormData] = useState({
     type: '연차' as LeaveType,
-    startDate: new Date().toISOString().split('T')[0],
-    endDate: new Date().toISOString().split('T')[0],
+    startDate: today(),
+    endDate: today(),
     reason: ''
   });
 
@@ -331,7 +332,7 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
       id: generateLeaveId(),
       employeeId: emp.id, employeeName: emp.name,
       type: formData.type, startDate: formData.startDate, endDate: formData.endDate,
-      reason: formData.reason, status: 'pending', requestedAt: new Date().toISOString().split('T')[0],
+      reason: formData.reason, status: 'pending', requestedAt: today(),
       daysUsed
     };
     onAddLeaveRequest(newReq);
@@ -340,7 +341,7 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
   };
 
   const resetForm = () => {
-    setFormData({ type: '연차', startDate: new Date().toISOString().split('T')[0], endDate: new Date().toISOString().split('T')[0], reason: '' });
+    setFormData({ type: '연차', startDate: today(), endDate: today(), reason: '' });
     setSelectedEmployeeId('');
   };
 

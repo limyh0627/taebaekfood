@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo, memo } from 'react';
+import { today } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
 import {
   Plus,
@@ -1604,7 +1605,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 <button
                   onClick={() => {
                     const from = historyDateFrom || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-                    const to = historyDateTo || new Date().toISOString().slice(0, 10);
+                    const to = historyDateTo || today();
                     onLoadHistoricalOrders(from, to);
                   }}
                   disabled={isLoadingHistoricalOrders}

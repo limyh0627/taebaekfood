@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { today } from '../src/shared/day';
 import {
   Layers,
   RefreshCw,
@@ -48,7 +49,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
       setExtraTransactions(palletTxCache.data);
       return;
     }
-    const to = new Date().toISOString().slice(0, 10);
+    const to = today();
     const fromDate = new Date(); fromDate.setMonth(fromDate.getMonth() - 24);
     const from = fromDate.toISOString().slice(0, 10);
     fetchDateRange<PalletTransaction>('palletTransactions', 'date', from, to)
@@ -246,7 +247,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
     if (!partnerId) { alert('거래처를 선택해주세요.'); return; }
     if (!palletId) { alert('파렛트 종류를 선택해주세요.'); return; }
 
-    const date = new Date().toISOString().split('T')[0];
+    const date = today();
 
     if (transType === 'exchange') {
       const returnQty = parseInt(formData.get('returnQty') as string) || 0;
@@ -346,7 +347,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
     if (!confirm(`헌 파레트 ${retQty}개가 입고(회수)되었나요? 교체완료로 처리합니다.`)) return;
     try {
       await updateItem('palletTransactions', tx.id, { status: '교체완료' });
-      const date = new Date().toISOString().split('T')[0];
+      const date = today();
       if (retQty > 0) {
         onAddPalletTransaction({ id: `ptrans-${Date.now()}-exin`, partnerId: tx.partnerId, palletId: tx.palletId, type: 'in', quantity: retQty, date, note: '교체완료 회수' });
       }
