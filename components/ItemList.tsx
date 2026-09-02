@@ -2837,7 +2837,8 @@ const ItemList: React.FC<ItemListProps> = ({
               if (!p || isRawHolder(p)) continue;   // 원료는 대상 아님
               const add = parseFloat(v) || 0;
               if (add <= 0) continue;
-              onUpdateItem({ ...p, stock: Math.round(((p.stock ?? 0) + add) * 1000) / 1000 });
+              //  화면 값에 더하면 여러 품목을 연달아 늘릴 때 서로를 덮어쓴다 — DB 에서 읽어 더한다
+              await adjustItemStock('items', p.id, add);
             }
             setToast({ message: `${picked.length}개 품목 재고를 늘렸습니다` });
             setIsAddModalOpen(false);

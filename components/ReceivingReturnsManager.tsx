@@ -11,7 +11,7 @@ import jsQR from 'jsqr';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../src/shared/firebase';
-import { addItem, updateItem, deleteItem, subscribeToCollection, setDocument } from '../src/shared/services/firebaseService';
+import { addItem, updateItem, deleteItem, subscribeToCollection, setDocument, adjustItemStock } from '../src/shared/services/firebaseService';
 import {
   SubmaterialComponent, PurchaseOrder, PurchaseOrderItem, QrMapping,
   IssuedStatement, IssuedStatementItem, ReturnRequest, ReturnItem, ReturnReason,
@@ -360,7 +360,9 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         // 원료 로트가 재고를 소유하는 SKU(캔/포대 매입품 포함)는 stock을 누적하지 않음 (의미없는 누적 방지)
         if (!rawLotTarget(items, product, item.name)) {
           try {
-            await updateItem('items', item.itemId, { stock: (currentStock ?? 0) + item.quantity });
+            //  **DB 에서 읽어 더한다.** 화면 값(currentStock)으로 더하면 같은 품목이 두 줄일 때
+            //  뒤 줄이 앞 줄을 덮어써 그만큼 샌다. adjustItemStock 은 트랜잭션 안에서 더한다.
+            await adjustItemStock('items', item.itemId, item.quantity);
           } catch (err) {
             console.error('[스캔 입고] 재고 갱신 실패:', item.itemId, err);
             alert(`재고 갱신 실패 (${item.name}): ${(err as Error)?.message ?? String(err)}`);
@@ -522,7 +524,9 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
         // 원료 로트가 재고를 소유하는 SKU(캔/포대 매입품 포함)는 stock을 누적하지 않음 (의미없는 누적 방지)
         if (!rawLotTarget(items, product, item.name)) {
           try {
-            await updateItem('items', item.itemId, { stock: (currentStock ?? 0) + item.quantity });
+            //  **DB 에서 읽어 더한다.** 화면 값(currentStock)으로 더하면 같은 품목이 두 줄일 때
+            //  뒤 줄이 앞 줄을 덮어써 그만큼 샌다. adjustItemStock 은 트랜잭션 안에서 더한다.
+            await adjustItemStock('items', item.itemId, item.quantity);
           } catch (err) {
             console.error('[선입고] 재고 갱신 실패:', item.itemId, err);
             alert(`재고 갱신 실패 (${item.name}): ${(err as Error)?.message ?? String(err)}`);
