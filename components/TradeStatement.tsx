@@ -13,6 +13,7 @@ import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, Compan
 import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { partnerPriceWrites } from '../src/shared/partnerPriceSync';
+import { pickLines, linkWrites } from '../src/shared/itemPick';
 import { useVoucherLedger } from '../src/features/admin/useVoucherLedger';
 import CashEntryModal, { type CashModalMode, type SettleInput } from './voucher/CashEntryModal';
 import RecurringModal from './voucher/RecurringModal';
@@ -4210,24 +4211,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 ? searchableRows
                 : pickerRows.filter(r=>matchesSearch((r.product!.name)+' '+(r.product!.품목??''), q));
               const confirmPick = async () => {
-                const toAdd: ManualRow[] = [];
-                const picked: typeof pickerRows = [];
-                for (const [itemId,qtyStr] of Object.entries(pickerQtys)) {
-                  const qty=parseFloat(qtyStr);
-                  if(!qty) continue;
-                  const row=pickerRows.find(r=>r.product!.id===itemId);
-                  if(!row) continue;
-                  picked.push(row);
-                  const docN=row.product!.name;
-                  toAdd.push({name:docN,spec:row.product!.spec||'',qty:String(qty),price:String(row.pc.price??row.product!.price??''),isTaxExempt:row.pc.taxType==='면세',note:''});
-                }
-                if(toAdd.length===0){setShowItemPicker(false);return;}
+                //  고른 것을 줄로 옮기는 셈은 shared/itemPick 에 있다 — 화면은 묻고 쓰기만 한다
+                const { toAdd, unlinked } = pickLines(pickerQtys, pickerRows, linkedItemIds);
+                if (toAdd.length === 0) { setShowItemPicker(false); return; }
                 /* **거래처에 안 붙은 품목을 골랐으면 물어본다.**
                    예 → 거래처 품목으로 붙인다(단가·과세도 같이). 다음부터 검색 없이 뜬다.
                    아니요 → 이번 전표에만 쓴다. 발행할 때 자동으로 붙는 길도 막는다. */
-                const unlinked = picked.filter(r => !linkedItemIds.has(r.product!.id));
                 if (unlinked.length && selectedClientId) {
-                  const names = unlinked.map(r => `· ${r.product!.name}${r.product!.spec?` (${r.product!.spec})`:''}`).join(String.fromCharCode(10));
+                  const names = unlinked.map(r => `· ${r.product!.name}${r.product!.spec ? ` (${r.product!.spec})` : ''}`).join(String.fromCharCode(10));
                   const ok = window.confirm(
                     `${selectedClient?.name ?? '이 거래처'}에 연결된 품목이 아닙니다.
 
@@ -4240,25 +4231,19 @@ ${names}
                   );
                   if (ok) {
                     const dir = createMode === '매입' ? 'in' as const : 'out' as const;
-                    for (const r of unlinked) {
-                      const edited = pricePanelEdits[r.pc.id];
-                      const price = Number(String(edited ?? r.pc.price ?? r.product!.price ?? '').replace(/[,\s원]/g,'')) || 0;
-                      await onUpsertPartnerItem?.({
-                        id: `${r.product!.id}_${selectedClientId}_${dir}`,
-                        itemId: r.product!.id, partnerId: selectedClientId, Direction: dir,
-                        price, taxType: r.pc.taxType ?? '과세',
-                      });
+                    for (const w of linkWrites(unlinked, selectedClientId, dir, pricePanelEdits)) {
+                      await onUpsertPartnerItem?.(w);
                     }
                   } else {
                     setNoLinkIds(prev => { const n = new Set(prev); for (const r of unlinked) n.add(r.product!.id); return n; });
                   }
                 }
                 setManualMode(true);
-                setManualItems(prev=>{
-                  const existing=prev.filter(r=>r.name.trim());
-                  return [...existing,...toAdd];   // 빈 행은 안 붙인다 — 필요하면 '행 추가'
+                setManualItems(prev => {
+                  const existing = prev.filter(r => r.name.trim());
+                  return [...existing, ...toAdd];   // 빈 행은 안 붙인다 — 필요하면 '행 추가'
                 });
-                setShowItemPicker(false);setPickerSearch('');setPickerQtys({});
+                setShowItemPicker(false); setPickerSearch(''); setPickerQtys({});
               };
               return (
                 <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
