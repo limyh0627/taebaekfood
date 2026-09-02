@@ -1,0 +1,91 @@
+{
+  "at": "2026-09-02T02:18:42.547Z",
+  "before": [
+    {
+      "id": "cash-1788270287199",
+      "partnerId": "c-1778504018504",
+      "date": "2026-09-01",
+      "docNo": "260901-03",
+      "dir": "출금",
+      "partnerName": "한국농수산물유통공사",
+      "createdAt": "2026-09-01T13:44:47.199Z",
+      "cashAccountId": "",
+      "companyId": "taebaek",
+      "note": "한국농수산물유통공사 지불",
+      "lines": [
+        {
+          "accountCode": "131",
+          "amount": 20216853,
+          "note": "초과지급 — 선급금"
+        }
+      ],
+      "amount": 20216853
+    },
+    {
+      "id": "cash-1788270732129",
+      "cashAccountId": "",
+      "createdAt": "2026-09-01T13:52:12.129Z",
+      "date": "2026-09-01",
+      "companyId": "taebaek",
+      "note": "피쉬메이져 수금",
+      "docNo": "260901-10",
+      "partnerName": "피쉬메이져",
+      "dir": "입금",
+      "partnerId": "C075",
+      "amount": 632000,
+      "lines": [
+        {
+          "accountCode": "259",
+          "amount": 632000,
+          "note": "초과수금 — 선수금"
+        }
+      ]
+    },
+    {
+      "id": "cash-1788270920130",
+      "date": "2026-09-01",
+      "partnerId": "C016",
+      "docNo": "260901-13",
+      "lines": [
+        {
+          "accountCode": "108",
+          "amount": 389850,
+          "note": "미수 상계"
+        },
+        {
+          "accountCode": "259",
+          "amount": 774150,
+          "note": "초과수금 — 선수금"
+        }
+      ],
+      "cashAccountId": "",
+      "dir": "입금",
+      "createdAt": "2026-09-01T13:55:20.130Z",
+      "companyId": "taebaek",
+      "amount": 1164000,
+      "accountCode": "",
+      "note": "대왕푸드 수금",
+      "partnerName": "대왕푸드"
+    },
+    {
+      "id": "cash-1788271292976",
+      "partnerName": "기타",
+      "dir": "출금",
+      "date": "2026-09-01",
+      "partnerId": "c-misu-1785824533344-etc",
+      "amount": 44000,
+      "cashAccountId": "",
+      "companyId": "taebaek",
+      "createdAt": "2026-09-01T14:01:32.976Z",
+      "docNo": "260901-19",
+      "lines": [
+        {
+          "accountCode": "131",
+          "amount": 44000,
+          "note": "초과지급 — 선급금"
+        }
+      ],
+      "note": "기타 지불"
+    }
+  ]
+}

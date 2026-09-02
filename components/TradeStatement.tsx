@@ -14,6 +14,7 @@ import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { partnerPriceWrites } from '../src/shared/partnerPriceSync';
 import { lineAmount, lineAmountOf } from '../src/shared/lineAmount';
+import { splitPayment, owedNow } from '../src/shared/paymentSplit';
 import { pickLines, linkWrites } from '../src/shared/itemPick';
 import { useVoucherLedger } from '../src/features/admin/useVoucherLedger';
 import CashEntryModal, { type CashModalMode, type SettleInput } from './voucher/CashEntryModal';
@@ -525,9 +526,21 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
      */
     const isSale = first.type !== '매입';
     const pb0 = partnerBalances.get(first.partnerId);
-    const owed = Math.max(0, Math.round(isSale ? (pb0?.receivable ?? 0) : (pb0?.payable ?? 0)));
-    const settled = Math.min(total, owed);
-    const over = Math.round(total - settled);
+    /**
+     * **방금 끊은 전표는 아직 거래처 잔액에 안 잡혔다.**
+     *
+     * 거래명세서를 끊으면서 같은 클릭으로 수금하면 `partnerBalances`는 그 전표를 모른다
+     * (화면 상태가 아직 안 돌았다). 그래서 받을 돈이 0으로 보이고 **전액이 초과수금**으로 갔다 —
+     * 피쉬메이저 632,000이 그렇게 259 선수금에 앉았다. 같은 날 외상매출금 632,000과 함께
+     * 양쪽에 남아, 상계돼야 할 것이 둘 다 살아 있었다.
+     *
+     * 목록에서 수금할 때는 그 전표가 이미 잔액에 있으므로 더할 게 없다(pending = 0).
+     */
+    const pending = allocations
+      .filter(({ stmt }) => !mergedStatements.some(s => s.id === stmt.id))
+      .reduce((a, { stmt }) => a + Math.max(0, Math.round(stmt.totalAmount ?? 0)), 0);
+    const owed = owedNow(isSale ? pb0?.receivable : pb0?.payable, pending);
+    const { settled, over } = splitPayment(total, owed);
     const overCode = isSale ? ADVANCE_IN : PREPAID;
 
     const entryId = `cash-${Date.now()}`;
