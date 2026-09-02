@@ -1,4 +1,5 @@
 import { PurchaseOrder } from '../../shared/types';
+import { lineAmount } from '../../shared/lineAmount';
 
 /**
  * OEM(임가공) 순수 도메인 모듈 — 부수효과 없음(입력 → 값). 단위 테스트 용이.
@@ -45,9 +46,8 @@ export interface ProcessingFee {
  * @param taxable false면 면세 — 전액 공급가, 세액 0.
  */
 export function processingFee(receivedKg: number, unitPricePerKg: number, taxable = true): ProcessingFee {
-  const total = Math.round((receivedKg || 0) * (unitPricePerKg || 0));
-  const supply = taxable ? Math.round(total / 1.1) : total;
-  return { supply, tax: total - supply, total };
+  const { gross: total, supply, tax } = lineAmount(receivedKg, unitPricePerKg, !taxable);
+  return { supply, tax, total };
 }
 
 /** OEM 배치의 현재 외주 잔량(kg) — status가 sent면 보낸 전량, received면 0. 열린 배치 합이 외주재고. */

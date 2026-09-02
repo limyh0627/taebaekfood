@@ -13,6 +13,7 @@ import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, Compan
 import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { partnerPriceWrites } from '../src/shared/partnerPriceSync';
+import { lineAmount, lineAmountOf } from '../src/shared/lineAmount';
 import { pickLines, linkWrites } from '../src/shared/itemPick';
 import { useVoucherLedger } from '../src/features/admin/useVoucherLedger';
 import CashEntryModal, { type CashModalMode, type SettleInput } from './voucher/CashEntryModal';
@@ -1245,9 +1246,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
            * **원 단위로 반올림한다** — 수량이 소수인 줄(0.277kg 같은 것)이 끼면 공급가·세액에
            * 소수점이 남아 합계가 1원씩 어긋나고, 전표에 '1,234.56원'이 찍힌다.
            */
-          const gross = Math.round(qty * price);
-          const supply = item.isTaxExempt ? gross : Math.round(gross / 1.1);
-          const tax = item.isTaxExempt ? 0 : gross - supply;
+          const { supply, tax } = lineAmount(qty, price, item.isTaxExempt);
           return { key: `manual-${idx}`, no: idx + 1, name: item.name, spec: item.spec, qty, price, supply, tax, total: supply + tax, isTaxExempt: item.isTaxExempt, isBoxUnit: item.isBoxUnit, boxSize: item.boxSize, side: item.side, accountCode: item.accountCode || (stmtType === '매출' ? '800' : undefined) };
         });
     }
@@ -1288,19 +1287,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       const isTaxExempt  = key in taxExemptOverrides
         ? taxExemptOverrides[key]
         : pcTaxType === '면세';
-      // 과세: 단가는 부가세 포함 → 공급가액 역산
-      let supply: number, tax: number, displayPrice: number;
-      //  금액은 원 단위로 반올림한다 — 소수 수량이 끼면 합계가 1원씩 어긋난다.
-      if (isTaxExempt) {
-        displayPrice = unitPrice;
-        supply = Math.round(unitPrice * qtyUnits);
-        tax = 0;
-      } else {
-        // 부가세 포함 단가 → 공급가액 = round(단가/1.1)*수량
-        displayPrice = Math.round(unitPrice / 1.1);
-        supply = Math.round(displayPrice * qtyUnits);
-        tax = Math.round(unitPrice * qtyUnits) - supply;
-      }
+      //  단가는 부가세 포함 값이라 거꾸ro 푼다 — 셈은 shared/lineAmount 한 곳에 있다.
+      //  예전엔 여기만 **단가를 먼저 나눠** 손입력과 1~2원 갈렸다(1,070원 × 7개 = 6,811 vs 6,809).
+      const { supply, tax } = lineAmount(qtyUnits, unitPrice, isTaxExempt);
       if (itemMap[key]) {
         itemMap[key].qty += qtyUnits;
         itemMap[key].supply += supply;
@@ -4099,8 +4088,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               const margin = salePrice>0 ? ((salePrice-productCost)/salePrice*100).toFixed(1) : '0.0';
               const qQty = parseFloat(quickQty)||0;
               const qPrc = parseFloat(quickPrice)||0;
-              const qAmt = quickIsTaxExempt ? qQty*qPrc : Math.round(qQty*qPrc/1.1);
-              const qTax = quickIsTaxExempt ? 0 : qQty*qPrc-qAmt;
+              const { supply: qAmt, tax: qTax } = lineAmount(qQty, qPrc, quickIsTaxExempt);
               const quickResults = quickSearchOpen ? (() => {
                 if (!quickName.trim()) return [];
                 const q = quickName.toLowerCase();
@@ -4393,9 +4381,8 @@ ${names}
                       const activeRows=ro?manualItems.filter(r=>r.name.trim()):manualItems;
                       return (<>
                         {activeRows.map((row,idx)=>{
-                          const q=parseFloat(row.qty)||0,p=parseFloat(row.price)||0;
-                          const sup=row.isTaxExempt?q*p:Math.round(q*p/1.1);
-                          const tax=row.isTaxExempt?0:q*p-sup;
+                          //  셈은 shared/lineAmount 한 곳에 있다 — 화면은 그리기만 한다
+                          const { supply: sup, tax } = lineAmountOf(row.qty, row.price, row.isTaxExempt);
                           const searchResults = ro ? [] : (() => {
                             if (!row.name.trim()) return [] as typeof searchableRows;
                             const qq = row.name.toLowerCase();
@@ -4465,7 +4452,7 @@ ${names}
                                     </div>}
                               </td>
                               <td className="px-3 py-2 w-24">
-                                {ro ? <span className="block text-right font-bold">{fmt(p)}</span>
+                                {ro ? <span className="block text-right font-bold">{fmt(Number(row.price) || 0)}</span>
                                   : <input type="text" inputMode="decimal" placeholder="0" value={row.price}
                                       onChange={e=>setManualItems(prev=>prev.map((r,i)=>i===idx?{...r,price:e.target.value}:r))}
                                       className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-right outline-none focus:ring-2 focus:ring-blue-300"/>}

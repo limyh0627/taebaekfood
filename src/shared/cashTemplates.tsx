@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import type { AccountCode, FixedCostTemplate } from './types';
 import { AR, AP, VAT_PAYABLE, VAT_RECEIVABLE } from './autoJournal';
+import { lineAmount } from './lineAmount';
 
 /**
  * 일반전표 템플릿 — 자주 끊는 자금전표를 한 번에 채운다.
@@ -505,9 +506,7 @@ export function templateJournalLines(
      * 과세면 부가세 줄까지 선다 — 금액은 부가세 포함 총액으로 본다.
      */
     if (t.partnerId && t.accountCode) {
-      const gross = amt;
-      const supply = t.taxExempt ? gross : Math.round(gross / 1.1);
-      const tax = gross - supply;
+      const { gross, supply, tax } = lineAmount(1, amt, t.taxExempt);
       const other = { code: t.accountCode, label: t.itemName ?? '' };
       return t.dir === '받을돈'
         ? [

@@ -1,5 +1,6 @@
 
-import { stampFor } from './voucherStamp';import type { FixedCostTemplate, CashEntry, IssuedStatement, IssuedStatementItem } from './types';
+import { stampFor } from './voucherStamp';
+import { lineAmount } from './lineAmount';import type { FixedCostTemplate, CashEntry, IssuedStatement, IssuedStatementItem } from './types';
 
 /**
  * 정기 전표 발행 — 템플릿 하나로 무엇을 만들지 정한다. 순수 함수, DB 안 건드림.
@@ -115,8 +116,7 @@ export function buildStatementVoucher(
 ): IssuedStatement {
   const total = t.amount;
   const exempt = !!t.taxExempt;
-  const supply = exempt ? total : Math.round(total / 1.1);
-  const tax = exempt ? 0 : total - supply;
+  const { supply, tax } = lineAmount(1, total, exempt);
   const item: IssuedStatementItem = {
     // 품목명 → 계정과목 이름 → 템플릿 이름 순. 비워 두면 계정 이름이 그대로 들어간다.
     name: t.itemName?.trim() || opts.accountName || t.name,

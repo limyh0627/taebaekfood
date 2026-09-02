@@ -3,6 +3,7 @@ import { stampFor, nextDocNo } from '../../shared/voucherStamp';import { Item, I
 import { isBulkItem } from '../../shared/itemTaxonomy';
 import { parsePackageKg, parseSpecCount, baseRawName } from '../../constants/formula';
 import { itemKg } from '../../shared/orderUnits';
+import { lineAmount } from '../../shared/lineAmount';
 export { itemKg };
 import { isBoxStockItem } from '../../shared/orderUnits';
 import { buildProductLot, withCarryOverProductLot, nextLotNo } from '../../shared/lotUtils';
@@ -224,12 +225,14 @@ export function createOemEngine(deps: OemEngineDeps) {
     const feeLines = (po.items ?? []).map(pi => {
       const it = items.find(i => i.id === pi.itemId);
       const unitTotal = Math.round((it ? itemKg(it) : 0) * perKg);       // 1개당 가공비(세포함)
-      const unitSupply = taxable ? Math.round(unitTotal / 1.1) : unitTotal;
-      const unitTax = unitTotal - unitSupply;
       const q = pi.quantity ?? 0;
+      //  줄의 공급가·세액은 **합계에서** 푼다 — 개당으로 풀어 곱하면 개수만큼 오차가 쌓인다
+      const { supply: lineSupply, tax: lineTax, gross: lineGross } = lineAmount(q, unitTotal, !taxable);
+      //  단가 칸에는 개당 공급가를 적는다(이 화면의 표기 규약)
+      const unitSupply = lineAmount(1, unitTotal, !taxable).supply;
       return {
         name: pi.name, spec: it?.spec ?? pi.unit ?? '', qty: q,
-        price: unitSupply, supply: unitSupply * q, tax: unitTax * q, total: unitTotal * q,
+        price: unitSupply, supply: lineSupply, tax: lineTax, total: lineGross,
         isTaxExempt: !taxable, accountCode: feeCode,
       };
     }).filter(l => l.qty > 0 && l.total > 0);
