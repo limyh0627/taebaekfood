@@ -1,4 +1,5 @@
 import type { Item } from '../../shared/types';
+import { marginFromSupply } from '../../shared/margin';
 import { buildCostFn } from '../../shared/bomCost';
 
 /**
@@ -132,14 +133,15 @@ export function calcCost(
     return a + Number(r.qty) * costOf(it) * up;
   }, 0);
   const cost = r0(costOf.rollup(ghost) + rawTotal + fee);
-  const margin = r0(price - cost);
+  //  셈은 shared/margin 한 곳에 있다. price 는 이미 공급가 기준이라 두 번 안 나눈다.
+  const m = marginFromSupply(price, cost);
   return {
     lines,
     cost,
     fee: r0(fee),
     price: r0(price),
-    margin,
-    marginRate: rate(margin, price),
-    markupRate: rate(margin, cost),
+    margin: m.margin,
+    marginRate: m.marginRate,
+    markupRate: m.markupRate,
   };
 }

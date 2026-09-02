@@ -122,8 +122,8 @@ export const INITIAL_PRODUCTS: Item[] = [
   { id: 'sub-01', name: '300ml 유리용기', type: 'container', price: 450, stock: 1200, minStock: 500, unit: '개', image: '' },
   { id: 'sub-02', name: '참기름 전용 박스', type: 'box', price: 300, stock: 800, minStock: 200, unit: '개', image: '' },
   { id: 'sub-03', name: '들기름 전용 박스', type: 'box', price: 300, stock: 600, minStock: 200, unit: '개', image: '' },
-  { id: 'gck-1', name: '고춧가루 1kg', type: 'product', category: '고춧가루', price: 0, stock: 0, minStock: 0, unit: '개', image: '', boxSize: 20 },
-  { id: 'gck-5', name: '고춧가루 5kg', type: 'product', category: '고춧가루', price: 0, stock: 0, minStock: 0, unit: '개', image: '', boxSize: 4 },
+  { id: 'gck-1', name: '고춧가루 1kg', type: 'product', category: '고춧가루', price: 0, stock: 0, minStock: 0, unit: '개', image: '' },
+  { id: 'gck-5', name: '고춧가루 5kg', type: 'product', category: '고춧가루', price: 0, stock: 0, minStock: 0, unit: '개', image: '' },
 ];
 
 // ── 거래처 초기 데이터 ────────────────────────────────────────────────────────

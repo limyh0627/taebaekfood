@@ -70,10 +70,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     minStock: initialData?.minStock || 10,
     unit: initialData?.unit || '개',
     freightType: (initialData?.freightType || 's') as 's' | 'a' | 'b' | 'c' | 'd' | 'e',
-    boxSize: initialData?.boxSize ?? 0,
     defaultBoxConfig: initialData?.defaultBoxConfig ?? (
-      (initialData?.boxSize ?? 0) > 0
-        ? { boxType: '', unitsPerBox: initialData!.boxSize! }
+      (initialData?.defaultBoxConfig?.unitsPerBox ?? 0) > 0
+        ? { boxType: '', unitsPerBox: initialData!.defaultBoxConfig!.unitsPerBox! }
         : { boxType: '', unitsPerBox: 0 }
     ),
     partnerBoxConfigs: initialData?.partnerBoxConfigs ?? [] as ClientBoxConfig[],
@@ -275,7 +274,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       // 구성품(BOM)은 item_bom에만 저장한다 — 저장 직후 AdminApp이 동기화한다.
       //   items.submaterials는 로딩 때 withDerivedSubmaterials가 item_bom에서 통째로 다시 만들므로,
       //   여기에 써 두면 아무도 안 읽는 옛 값이 문서에 남아 나중에 진단할 때 헷갈린다.
-      ...(formData.type === 'box' && { freightType: formData.freightType, boxSize: formData.boxSize }),
+      ...(formData.type === 'box' && { freightType: formData.freightType }),
       ...(isProductCategory && hasBoxConfig && { defaultBoxConfig: formData.defaultBoxConfig }),
       ...(isProductCategory && formData.partnerBoxConfigs.length > 0 && { partnerBoxConfigs: formData.partnerBoxConfigs }),
       ...(effectiveSpec && { spec: effectiveSpec }),
@@ -410,7 +409,6 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                 //  개입수의 근거는 BOM 수량이다(unpackComponent가 여기를 읽는다). 규격 글자는 따라 적는 것.
                 submaterials: fd.submaterials.map(c => c.id === boxComp!.id ? { ...c, stock: n } : c),
                 spec: baseSpec && n > 1 ? `${baseSpec} * ${n}` : baseSpec,
-                ...(fd.boxSize > 0 ? { boxSize: n } : {}),
                 ...(fd.defaultBoxConfig.unitsPerBox > 0
                   ? { defaultBoxConfig: { ...fd.defaultBoxConfig, unitsPerBox: n } } : {}),
               }));
@@ -847,21 +845,6 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             );
           })()}
 
-          {/* 1박스 당 수량 (박스 부자재) */}
-          {formData.type === 'box' && (
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Box size={14} className="mr-2" /> 1박스 당 수량 (개)
-              </label>
-              <input
-                type="number"
-                min={0}
-                value={formData.boxSize === 0 ? '' : formData.boxSize}
-                onChange={(e) => setFormData({...formData, boxSize: e.target.value === '' ? 0 : Number(e.target.value)})}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-              />
-            </div>
-          )}
 
 
           {/* 원료 배합 · 수율 — 반제품·원료만.

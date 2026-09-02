@@ -271,10 +271,11 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
         const sub = submaterials.find(s => s.id === product.id);
         if (sub) {
           const actualQty = item.isBoxUnit && item.unitsPerBox > 0 ? qty * item.unitsPerBox : qty;
-          //  TODO 향미유는 boxSize 가 없어 여기서 안 나뉜다(= 낱개 그대로).
-          //  unitsPerBoxOf 로 바꾸면 12로 나뉘어 소요량이 1/12 이 된다 — 뜻이 다르다.
-          //  '박스 자재 몇 개'인지 '원료 몇 개'인지부터 정해야 손댈 수 있다.
-          const needed = Math.ceil(actualQty / (product.boxSize || 1));
+          //  **나누지 않는다.** 여기서 찾는 `sub` 는 겉박스가 아니라 **향미유 그 자체**다
+          //  (`submaterials = items.filter(type !== 'product')` 인데 향미유는 goods 다).
+          //  향미유 재고는 낱개로 세니 낱개 수가 곧 소요량이다. 개입수로 나누면
+          //  36개 주문이 "3개 필요"가 돼서 재고 부족 경고가 12배 느슨해진다.
+          const needed = actualQty;
           if (!usage[sub.id]) usage[sub.id] = { name: sub.name, needed: 0, stock: sub.stock };
           usage[sub.id].needed += needed;
         }
@@ -285,7 +286,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
       const actualQty = item.isBoxUnit && item.unitsPerBox > 0 ? qty * item.unitsPerBox : qty;
 
       const pc = partnerOut.find(p => p.itemId === product.id && p.partnerId === selectedClient.id);
-      const boxSize = pc?.qtyPerBox || item.unitsPerBox || 1;
+      const boxSize = pc?.qtyPerBox || item.unitsPerBox || unitsPerBoxOf(product) || 1;
       const boxesNeeded = Math.ceil(actualQty / boxSize);
 
       if (pc?.boxTypeId) {
@@ -335,7 +336,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
       }
     }
     const configs = getClientBoxConfigs(itemId, selectedClient?.id);
-    // 개입수는 품목이 안다(boxSize → 규격 → 향미유 12). 거래처 포장설정이 있으면 그게 먼저.
+    // 개입수는 품목이 안다(BOM → 포장 환산표). 거래처 포장설정이 있으면 그게 먼저.
     const first = configs[0] ?? { unitsPerBox: unitsPerBoxOf(product), boxType: '', boxSubId: undefined };
     return { itemId, quantity: 1, isBoxUnit: first.unitsPerBox > 0, unitsPerBox: first.unitsPerBox, boxType: first.boxType, boxSubId: first.boxSubId };
   };

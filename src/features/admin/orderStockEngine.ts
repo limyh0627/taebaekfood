@@ -8,7 +8,7 @@ import { deductFromLots, withCarryOverLot, buildReceiveLot, deductLotsByQty, res
 import { checkLedgerLot, gapMessage } from '../../shared/ledgerLotCheck';
 import type { ProductLotTake } from '../../shared/lotUtils';
 import { bomQty } from '../../shared/bom';
-import { stockUnits, isBoxStockItem, unpackComponent } from '../../shared/orderUnits';
+import { stockUnits, isBoxStockItem, unpackComponent, unitsPerBoxOf } from '../../shared/orderUnits';
 
 /**
  * 작업완료 때 "이미 있는 재고를 얼마나 쓸까" — 주문 라인(order.items 인덱스)별 선택.
@@ -81,7 +81,10 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
   const goodsShipQty = (item: OrderItem, product: Item) => {
     // 박스 품목(BOM에 낱개가 물린 것)은 재고 단위가 박스 → 박스 개수로 뺀다.
     if (isBoxStockItem(product)) return stockUnits(item, product);
-    const uPerBox = item.unitsPerBox || product.defaultBoxConfig?.unitsPerBox || product.boxSize || 12;
+    //  개입수는 주문 줄에 박힌 값이 먼저고(그때 판 조건), 없으면 품목이 안다
+    //  — BOM 아니면 포장 환산표. 예전엔 `|| 12` 로 물러섰는데, 박스 품목 140개 중
+    //  102개가 12개입이 아니라 **출고 차감이 그만큼 어긋날 자리**였다.
+    const uPerBox = item.unitsPerBox || unitsPerBoxOf(product) || 1;
     return item.isBoxUnit && item.boxQuantity ? item.boxQuantity * uPerBox : item.quantity;
   };
   const addDelta = (m: Map<string, number>, id: string, d: number) => { if (d) m.set(id, (m.get(id) ?? 0) + d); };

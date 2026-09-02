@@ -5,6 +5,7 @@ import { Item, InventoryCategory } from '../types';
 import PageHeader from './PageHeader';
 import ConfirmModal from './ConfirmModal';
 import { bomOf } from '../src/shared/bomIndex';
+import { marginOf } from '../src/shared/margin';
 import { subDotClass } from '../src/shared/submaterialStyle';
 
 interface ItemPriceManagerProps {
@@ -102,7 +103,10 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
                 </tr>
               ) : filtered.map(p => {
                 const isEditing = editingId === p.id;
-                const margin = p.cost && p.price ? Math.round((p.price - p.cost) / p.price * 100) : null;
+                //  마진은 **공급가에서** 센다(shared/margin) — 세포함 단가로 나누면 부풀어 보인다
+                const margin = p.cost && p.price
+                  ? Math.round(marginOf(p.price, p.cost, p.taxType === '면세').marginRate * 100)
+                  : null;
                 return (
                   <tr key={p.id} className={`hover:bg-slate-50 transition-colors ${isEditing ? 'bg-indigo-50/40' : ''}`}>
                     {/* 품목명 */}

@@ -169,7 +169,6 @@ export interface SubmaterialComponent {
   unit: string;
   spec?: string;   // 규격/용량 (완제품 구분용)
   cost?: number;   // 부자재 원가
-  boxSize?: number;
   qrCode?: string; // 납품업체 QR/바코드 값
 }
 
@@ -278,7 +277,8 @@ export interface Item {
   partnerId?: string;   // @deprecated — partnerIds 사용
   partnerIds?: string[];
   freightType?: 's' | 'a' | 'b' | 'c' | 'd' | 'e';
-  boxSize?: number;    // @deprecated
+  //  boxSize 는 걷어냈다(2026-09-02) — 개입수의 근거는 **BOM 아니면 item_pack** 둘뿐이다.
+  //  근거가 넷이던 시절의 잔재고, DB 에도 0건이다. `unitsPerBoxOf` 참고.
   defaultBoxConfig?: BoxConfig;       // @deprecated
   partnerBoxConfigs?: ClientBoxConfig[]; // @deprecated
   품목?: string;
@@ -647,8 +647,10 @@ export interface IssuedStatementItem {
   tax: number;
   total: number;
   isTaxExempt: boolean;
-  isBoxUnit?: boolean;
-  boxSize?: number;
+  //  **전표에 박스 표기는 없다**(2026-09-02). 전표는 언제나 그 품목의 단위로 끊는다 —
+  //  박스로 판다면 그건 박스 품목이고 재고·단가가 다 박스다. 낱개 품목의 전표에
+  //  '박스 3장'을 적을 자리가 없다. 주문이 박스로 들어와도 전표를 만들 때 낱개로 푼다.
+  //  옛 필드(isBoxUnit·boxSize)는 걷어냈다 — 실제로 쓰인 줄이 639개 중 0개였다.
   accountCode?: string;  // 라인별 계정과목 코드
   /**
    * 대체전표 전용 — 이 줄이 **차변인가 대변인가**.
@@ -706,9 +708,15 @@ export type PaymentMethod = '현금' | '계좌이체' | '어음' | '카드' | '�
 export interface PurchaseOrderItem {
   itemId: string;
   name: string;
+  /** **언제나 그 품목의 재고 단위.** 박스로 골랐어도 담을 때 낱개로 풀어 넣는다. */
   quantity: number;
   unit: string;
-  isBox?: boolean;
+  /**
+   * '몇 박스라고 말했는지' — **표시용**이다. 계산은 `quantity` 만 본다.
+   * 예전엔 `isBox` 로 두고 읽는 쪽마다 곱했는데, 한 곳만 빠뜨려도 재고가 어긋났다.
+   * 판매 주문(`OrderItem`)이 이미 이 방식이다.
+   */
+  boxQuantity?: number;
 }
 
 export interface PurchaseOrder {
@@ -719,7 +727,8 @@ export interface PurchaseOrder {
   partnerName?: string;
   quantity: number;
   unit?: string;
-  isBox?: boolean;
+  /** '몇 박스라고 말했는지' — 표시용. 계산은 `quantity`(재고 단위)만 본다. */
+  boxQuantity?: number;
   status: 'pending' | 'invoiced' | 'received';
   confirmedByUser?: boolean;
   linkedStatementId?: string;
@@ -744,7 +753,7 @@ export interface PurchaseOrder {
 export const poLines = (po: PurchaseOrder): PurchaseOrderItem[] =>
   (po.items && po.items.length > 0)
     ? po.items
-    : [{ itemId: po.itemId, name: po.itemName, quantity: po.quantity, unit: po.unit ?? '', isBox: po.isBox }];
+    : [{ itemId: po.itemId, name: po.itemName, quantity: po.quantity, unit: po.unit ?? '', boxQuantity: po.boxQuantity }];
 
 /**
  * 회사 — 태백푸드와 풍회유통은 **별도 사업자**다. 세무신고도 재무제표도 각각이라

@@ -5,6 +5,7 @@ import { matchesSearch } from '../src/shared/hangul';
 import { subscribeToCollection, addItem, deleteItem } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 import { today, addDays as plusDays } from '../src/shared/day';
+import { marginFromSupply } from '../src/shared/margin';
 
 /**
  * **견적서** — 팔기 전에 얼마에 줄지 적어 내미는 종이.
@@ -91,8 +92,9 @@ export function quoteTotals(lines: QuotationLine[]) {
     cost += Math.round(qty * (Number(l.cost) || 0));
   }
   //  마진은 **공급가 기준**이다 — 부가세는 받아서 그대로 내는 돈이라 남는 게 아니다.
-  const margin = supply - cost;
-  return { supply, tax, total: supply + tax, cost, margin, marginRate: supply > 0 ? margin / supply : 0 };
+  //  셈은 shared/margin 한 곳에 있다. 여기는 줄마다 세액을 따로 셌으니 공급가를 그대로 넘긴다.
+  const m = marginFromSupply(supply, cost);
+  return { supply, tax, total: supply + tax, cost, margin: m.margin, marginRate: m.marginRate };
 }
 
 const emptyLine = (): QuotationLine => ({ name: '', spec: '', qty: 1, price: 0, isTaxExempt: false });

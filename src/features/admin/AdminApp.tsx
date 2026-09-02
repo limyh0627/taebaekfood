@@ -132,7 +132,7 @@ import { docPumok, docOilKg, docSpec, addOilByRaw, docSaleLine, docUnpack, docDa
 import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo, settleCarryOver } from '../../shared/lotUtils';
 import { rawLotTarget, recordRawMaterialReceipt, adjustRawLots } from '../../shared/rawReceipt';
 import { bomQty } from '../../shared/bom';
-import { stockUnits, unpackComponent, unpackQty } from '../../shared/orderUnits';
+import { stockUnits, unpackComponent, unitsPerBoxOf } from '../../shared/orderUnits';
 import { boxSpecUpdates } from '../../shared/boxSpec';
 import {
   addItem,
@@ -795,7 +795,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
         if (sub) {
           const boxesNeeded = item.isBoxUnit && item.boxQuantity
             ? item.boxQuantity
-            : Math.ceil(item.quantity / (product.boxSize || 1));
+            //  개입수는 품목이 안다(BOM 아니면 포장 환산표). 예전엔 `boxSize || 1` 이라
+            //  그 필드를 걷어낸 뒤로 **36개 주문에 박스 자재 36개**를 잡고 있었다(3개가 맞다).
+            : Math.ceil(item.quantity / (unitsPerBoxOf(product) || 1));
           usage[sub.id] = { name: sub.name, needed: (usage[sub.id]?.needed ?? 0) + boxesNeeded, unit: 'B' };
         }
         continue;
@@ -927,7 +929,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
     const partnerName = partnerId ? partners.find(c => c.id === partnerId)?.name : undefined;
     await addItem('purchaseOrders', {
       id: `po-${Date.now()}`, itemId: id, itemName: product?.name ?? '',
-      quantity, isBox: isBox ?? false, status: 'pending',
+      //  **수량은 재고 단위로 저장한다.** 박스로 골랐으면 여기서 풀고 '몇 박스'만 따로 남긴다 —
+      //  읽는 쪽마다 곱하면 한 곳만 빠뜨려도 재고가 어긋난다(판매 주문이 이미 이 방식이다).
+      ...(() => {
+        const per = unitsPerBoxOf(product);
+        return isBox && per > 1
+          ? { quantity: quantity * per, boxQuantity: quantity }
+          : { quantity };
+      })(),
+      status: 'pending',
       confirmedByUser: true, createdAt: new Date().toISOString(),
       ...(partnerId ? { partnerId, partnerName } : {}),
     });
@@ -970,7 +980,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // 장바구니 확정 → 발주예정(pending) 생성
   // 주문카드처럼: 같은 거래처 품목은 묶어서 발주카드 1개(items[]), 제출할 때마다 새 카드 추가(append-only)
-  const handleBulkAddConfirmedOrders = async (items: { id: string, quantity: number, isBox?: boolean }[]) => {
+  const handleBulkAddConfirmedOrders = async (items: { id: string, quantity: number, boxQuantity?: number }[]) => {
     const base = Date.now();
     const createdAt = new Date().toISOString();
     // 거래처별 묶음 (partnerId 없으면 품목별 개별 카드)
@@ -987,7 +997,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
     for (const g of groups.values()) {
       const poItems = g.items.map(it => {
         const product = allItems.find(p => p.id === it.id);
-        return { itemId: it.id, name: product?.name ?? '', quantity: it.quantity, unit: product?.unit ?? '개', isBox: it.isBox ?? false };
+        //  수량은 재고 단위로 이미 풀려 왔다 — 여기서 곱하지 않는다.
+        //  boxQuantity 는 '몇 박스라고 말했는지'만 남긴다(명세서·목록 표시용).
+        return { itemId: it.id, name: product?.name ?? '', quantity: it.quantity, unit: product?.unit ?? '개', ...(it.boxQuantity ? { boxQuantity: it.boxQuantity } : {}) };
       });
       await addItem('purchaseOrders', {
         id: `po-${base}-${gi++}`, itemId: '', itemName: '', quantity: 0,
@@ -999,7 +1011,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // 발주예정 → 입고대기(invoiced)로 직접 확정 (전표 없이)
   // item.id는 PO 문서 ID (UUID 또는 itemId)
-  const handleConfirmPendingToInvoiced = async (items: { id: string, quantity: number, isBox?: boolean }[]) => {
+  const handleConfirmPendingToInvoiced = async (items: { id: string, quantity: number }[]) => {
     for (const item of items) {
       const po = purchaseOrders.find(po => po.id === item.id);
       if (!po) continue;
@@ -1013,9 +1025,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
     }
   };
 
-  const handleUpdateOrderRequestIsBox = async (id: string, isBox: boolean) => {
-    await updateItem('purchaseOrders', id, { isBox });
-  };
 
   // 출고 완료 시 완제품 품목별로 생산 실적 자동 기록
   const createProductionRecordsForOrder = async (order: Order) => {
@@ -1190,9 +1199,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
         }
       } else {
         const collectionName = getProductCollection(product.type);
-        //  개입수는 품목이 안다(unitsPerBoxOf) — '향미유면 12'로 박아 두면
-        //  20개입 품목을 박스로 입고할 때 재고가 개당 8개씩 샌다
-        const addQty = unpackQty(line.quantity, product, line.isBox);
+        //  **수량은 이미 재고 단위다** — 담을 때 풀어서 저장한다(submitCart).
+        //  예전엔 발주에 박스 수를 넣어 두고 여기서 곱했는데, 그러면 읽는 쪽마다
+        //  곱하는 코드가 필요하고 한 곳만 빠뜨려도 재고가 어긋난다.
+        const addQty = line.quantity;
         // 여러 줄을 연달아 입고하면 앞 줄이 쓴 재고가 화면에 아직 안 돌아온다 → DB에서 읽어 더한다
         await adjustItemStock(collectionName, product.id, addQty);
       }
@@ -1260,8 +1270,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
         }
       } else {
         const collectionName = getProductCollection(product.type);
-        //  입고확정 수정 경로 — 위 확정 경로와 같은 셈이라야 한다
-        const addQty = unpackQty(line.quantity, product, line.isBox);
+        //  입고확정 수정 경로 — 위 확정 경로와 같은 셈이라야 한다(둘 다 안 곱한다)
+        const addQty = line.quantity;
         // 여러 줄을 연달아 입고하면 앞 줄이 쓴 재고가 화면에 아직 안 돌아온다 → DB에서 읽어 더한다
         await adjustItemStock(collectionName, product.id, addQty);
       }
@@ -1884,12 +1894,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onUpdatePoItemQty={handleUpdatePoItemQty}
               onRemovePoItem={handleRemovePoItem}
               onRequestPoEdit={handleRequestPoEdit}
-              onUpdateOrderRequestIsBox={handleUpdateOrderRequestIsBox}
               onToggleConfirmRequestQty={handleToggleConfirmRequestQty}
-              onConfirmRequest={(id: string) => { const r = pendingPurchaseOrders.find(r => r.id === id); handleConfirmPendingToInvoiced([{ id, quantity: r?.quantity || 0, isBox: r?.isBox }]); }}
-              onConfirmRequests={(ids: string[]) => handleConfirmPendingToInvoiced(pendingPurchaseOrders.filter(r => ids.includes(r.id)).map(r => ({id: r.id, quantity: r.quantity, isBox: r.isBox})))}
+              onConfirmRequest={(id: string) => { const r = pendingPurchaseOrders.find(r => r.id === id); handleConfirmPendingToInvoiced([{ id, quantity: r?.quantity || 0 }]); }}
+              onConfirmRequests={(ids: string[]) => handleConfirmPendingToInvoiced(pendingPurchaseOrders.filter(r => ids.includes(r.id)).map(r => ({ id: r.id, quantity: r.quantity })))}
               onBulkAddConfirmedOrders={handleBulkAddConfirmedOrders}
-              onConfirmAllRequests={async () => { await handleConfirmPendingToInvoiced(pendingPurchaseOrders.map(r => ({id: r.id, quantity: r.quantity, isBox: r.isBox}))); }}
+              onConfirmAllRequests={async () => { await handleConfirmPendingToInvoiced(pendingPurchaseOrders.map(r => ({ id: r.id, quantity: r.quantity }))); }}
               onFinishConfirmedOrder={handleFinishConfirmedOrder}
               onFinishConfirmedOrders={(ids: string[]) => ids.forEach(handleFinishConfirmedOrder)}
               onFinishAllConfirmedOrders={() => invoicedPurchaseOrders.forEach(c => handleFinishConfirmedOrder(c.id))}
@@ -2703,12 +2712,22 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     <div className={`flex-wrap gap-1 bg-white p-1 rounded-2xl border border-slate-200 shadow-sm ${inCabinetDoc ? 'hidden' : 'flex'}`}>
                       {/*
                         서류는 **보는 사람 쪽에 둔다**(2026-09-01 사장님 지시).
-                          직원뷰  HACCP · 벤조피렌 · 원료수불부 · 생산작업기록부 — 현장에서 적고 보는 것
+                          직원뷰  생산판매기록부 · HACCP · 벤조피렌 · 원료수불부 · 생산작업기록부 — 현장에서 적고 보는 것
                           관리자뷰 거래명세서만 — 나머지는 직원뷰나 문서함에 있다
-                          문서함  생산판매기록부 (서류관리 › 생산판매기록부)
+                          문서함  생산판매기록부 (서류관리 › 생산판매기록부) — **관리자가 보는 쪽**
                         생산작업기록부2는 안 쓰기로 해서 통째로 걷어냈다.
+
+                        **생산판매기록부 탭은 직원뷰에 있어야 한다.** 그 자리를 문서함으로 옮기면서(b14e808)
+                        탭 단추를 지웠는데 **직원뷰 화면(`docTab === '생산판매기록부' && !isAdmin`)은 그대로 남았다.**
+                        문서함은 관리자 전용(`adminOnlyViews`)이라 직원은 그 화면에 닿을 길이 없어졌다 —
+                        처음 켰을 때 기본값이라 잠깐 보이다가, 다른 탭을 한 번 누르면 영영 못 돌아왔다.
+                        관리자뷰 문서함을 다녀오면 `docTab`이 바뀌어 다시 보이던 게 그 때문이다.
                       */}
                       {!isAdmin && (<>
+                        <button
+                          onClick={() => setDocTab('생산판매기록부')}
+                          className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === '생산판매기록부' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
+                        >생산판매기록부</button>
                         <button
                           onClick={() => setDocTab('haccp')}
                           className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all ${docTab === 'haccp' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}
@@ -3719,14 +3738,15 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 if (existing) {
                   await updateItem('purchaseOrders', item.id, {
                     status: 'invoiced', quantity: item.quantity,
-                    isBox: item.isBox ?? false, invoicedAt: new Date().toISOString(),
+                    invoicedAt: new Date().toISOString(),
                     ...(item.partnerId ? { partnerId: item.partnerId, partnerName: item.partnerName } : {}),
                   });
                 } else {
                   const product = allItems.find(p => p.id === item.id);
                   await addItem('purchaseOrders', {
                     id: item.id, itemId: item.id, itemName: product?.name ?? '',
-                    quantity: item.quantity, isBox: item.isBox ?? false,
+                    //  수량은 재고 단위 그대로 — 박스 표기는 담을 때 이미 풀렸다
+                    quantity: item.quantity,
                     partnerId: item.partnerId, partnerName: item.partnerName,
                     status: 'invoiced', createdAt: new Date().toISOString(),
                     invoicedAt: new Date().toISOString(),
