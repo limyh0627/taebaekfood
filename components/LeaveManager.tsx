@@ -477,8 +477,10 @@ const LeaveManager: React.FC<LeaveManagerProps> = ({
             const usedPersonal = 지난것.filter(r => r.type !== '휴가').reduce((s, r) => s + (r.daysUsed || 0), 0);
             const totalUsed = usedVacation + usedPersonal;
             const scheduled = mineApproved.filter(r => !hasStarted(r)).reduce((s, r) => s + (r.daysUsed || 0), 0);
-            const remaining = total - totalUsed - scheduled;
-            const usagePercent = total > 0 ? ((totalUsed + scheduled) / total) * 100 : 0;
+            //  **잔여에서 예정은 안 뺀다** — 잔여는 실제로 쓰고 남은 날이다(2026-09-03 사장님).
+            //  앞으로 쓸 수 있는 날이 궁금하면 잔여 − 예정이고, 화면이 둘을 나란히 놓는다.
+            const remaining = total - totalUsed;
+            const usagePercent = total > 0 ? (totalUsed / total) * 100 : 0;
 
             return (
               <div key={emp.id} className="flex flex-col lg:flex-row gap-4 md:gap-5 items-start">

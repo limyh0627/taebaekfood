@@ -165,8 +165,15 @@ export interface LeaveBalance {
   granted: number;      // 총 부여 = monthly + annual + carryOver + bonus
   usedTotal: number;    // 총 사용 — **이미 시작된** 승인 신청만
   usedThisMonth: number;// 당월 사용분 (신청 시작일 기준, 이미 시작된 것만)
-  scheduled: number;    // 예정 — 승인됐지만 아직 안 온 것. 잔여에서는 이것도 뺀다
-  remaining: number;    // 잔여 = granted − usedTotal − scheduled
+  /**
+   * 예정 — 승인됐지만 아직 안 온 것. **잔여에서 안 뺀다**(2026-09-03 사장님).
+   * 잔여는 "지금까지 쓰고 남은 날"이지 "앞으로 더 쓸 수 있는 날"이 아니다.
+   * 앞으로 쓸 수 있는 날을 알고 싶으면 `remaining - scheduled` 를 보면 된다 —
+   * 화면이 둘을 나란히 보여준다.
+   */
+  scheduled: number;
+  /** 잔여 = granted − usedTotal. **예정은 안 뺀다.** */
+  remaining: number;
   grant: AnnualGrantInfo;
 }
 
@@ -176,11 +183,12 @@ export interface LeaveBalance {
  *   총 부여 = 월차 + 연차 + 이월 + 보너스
  *   사용    = 승인된 신청 중 **이미 시작된 것** + 휴가(단체)
  *   예정    = 승인됐지만 **아직 안 온 것**
- *   잔여    = 총 부여 − 사용 − 예정
+ *   잔여    = 총 부여 − 사용        ← **예정은 안 뺀다**
  *
- * **사용과 예정을 가르되 잔여에서는 둘 다 뺀다.** 승인된 휴가는 이미 약속한 것이라
- * 잔여에서 빼지 않으면 없는 날을 또 내줄 수 있다. 그렇다고 '사용'에 섞으면
- * 아직 쉬지도 않았는데 쓴 것으로 보인다 — 그래서 칸을 나눈다.
+ * **셋을 다 보여준다.** 잔여에서 예정까지 빼면 "지금 며칠 남았나"를 못 읽는다
+ * (2026-09-03 사장님). 그렇다고 예정을 '사용'에 섞으면 아직 쉬지도 않았는데
+ * 쓴 것으로 보인다. 그래서 칸을 셋으로 두고, 앞으로 쓸 수 있는 날이 궁금하면
+ * **잔여 − 예정**을 보면 된다(화면이 둘을 나란히 놓는다).
  */
 export function calculateLeaveBalance(
   emp: Employee,
@@ -200,7 +208,9 @@ export function calculateLeaveBalance(
   return {
     monthly, annual, carryOver, bonus, granted,
     usedTotal, usedThisMonth, scheduled,
-    remaining: granted - usedTotal - scheduled,
+    //  **예정은 안 뺀다** — 잔여는 실제로 쓰고 남은 날이다(2026-09-03 사장님).
+    //  아직 안 온 날까지 빼면 "지금 며칠 남았나"를 못 읽는다. 예정은 옆에 따로 보여준다.
+    remaining: granted - usedTotal,
     grant: getAnnualGrantInfo(emp.joinDate, now),
   };
 }

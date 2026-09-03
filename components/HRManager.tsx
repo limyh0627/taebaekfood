@@ -668,7 +668,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                           {/*  승인만 되고 아직 안 온 휴가 — 사용에 섞으면 안 쉬었는데 쓴 것으로 보인다.
                                그래도 잔여에서는 빼고 있으니 여기 적어 둬야 숫자가 안 맞아 보이지 않는다. */}
                           {bal.scheduled > 0 && (
-                            <span className="text-[10px] font-black text-violet-400 mt-0.5" title="승인됐지만 아직 안 온 휴가 — 잔여에서는 빠져 있습니다">
+                            <span className="text-[10px] font-black text-violet-400 mt-0.5" title="승인됐지만 아직 안 온 휴가 — 잔여에는 아직 포함돼 있습니다">
                               예정 {bal.scheduled}일
                             </span>
                           )}
@@ -1194,7 +1194,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                   </p>
                   <p className="text-[10px] text-rose-400 mt-0.5">승인 {deductible.length}건</p>
                   {bal.scheduled > 0 && (
-                    <p className="text-[10px] font-black text-violet-500 mt-0.5" title="승인됐지만 아직 안 온 휴가 — 잔여에서는 빠져 있습니다">
+                    <p className="text-[10px] font-black text-violet-500 mt-0.5" title="승인됐지만 아직 안 온 휴가 — 잔여에는 아직 포함돼 있습니다">
                       예정 {bal.scheduled}일 (아직 안 옴)
                     </p>
                   )}
@@ -1202,6 +1202,11 @@ const HRManager: React.FC<HRManagerProps> = ({
                 <div className="bg-indigo-600 rounded-2xl px-4 py-3">
                   <p className="text-[10px] font-black text-indigo-200 uppercase">잔여</p>
                   <p className="text-xl font-black text-white tabular-nums">{remaining}<span className="text-xs ml-0.5 text-indigo-200">일</span></p>
+                  {bal.scheduled > 0 && (
+                    <p className="text-[10px] font-black text-indigo-200 mt-0.5" title="예정된 휴가까지 빼면 앞으로 쓸 수 있는 날">
+                      예정 빼면 {bal.remaining - bal.scheduled}일
+                    </p>
+                  )}
                   {pendingMine.length > 0 && <p className="text-[10px] text-indigo-200 mt-0.5">대기 {pendingMine.length}건</p>}
                 </div>
               </div>

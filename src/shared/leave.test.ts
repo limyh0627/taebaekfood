@@ -215,15 +215,17 @@ describe('사용과 예정을 가른다', () => {
     expect(b.scheduled).toBe(2);
   });
 
-  it('**잔여에서는 예정도 뺀다** — 승인한 날은 이미 약속한 것이라 또 내주면 안 된다', () => {
+  it('**잔여에서 예정은 안 뺀다** — 잔여는 실제로 쓰고 남은 날이다 (2026-09-03 사장님)', () => {
+    //  아직 안 온 날까지 빼면 "지금 며칠 남았나"를 못 읽는다.
+    //  앞으로 쓸 수 있는 날이 궁금하면 잔여 − 예정을 보면 된다 — 화면이 둘을 나란히 놓는다.
     const reqs = [
       req({ id: '지난것', employeeId: 'e5', startDate: '2026-06-12', endDate: '2026-06-12' }),
       req({ id: '앞으로', employeeId: 'e5', startDate: '2026-10-29', endDate: '2026-10-30', daysUsed: 2 }),
     ];
     const b = calculateLeaveBalance(은지(), reqs, 오늘);
-    expect(b.remaining).toBe(b.granted - 1 - 2);
-    //  칸을 가르기 전과 잔여는 같아야 한다 — 보이는 방식만 바뀐 것이다
-    expect(b.usedTotal + b.scheduled).toBe(3);
+    expect(b.remaining).toBe(b.granted - 1);      // 예정 2일은 안 뺀다
+    expect(b.scheduled).toBe(2);
+    expect(b.remaining - b.scheduled).toBe(b.granted - 3);   // 앞으로 쓸 수 있는 날
   });
 
   it('오늘 시작하는 휴가는 사용이다 — 오늘 쉬고 있으면 쓴 것이다', () => {
