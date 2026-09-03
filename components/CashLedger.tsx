@@ -138,17 +138,20 @@ export default function CashLedger({
           </div>
         </div>
 
+        {/*  **표는 좁은 화면에서 가로로 민다.** `w-full` 만 있으면 폭에 맞춰 칸이 찌그러지고,
+             한글이 한 글자씩 세로로 쌓여 아예 못 읽는다(2026-09-03 사장님 지적).
+             최소 너비를 줘야 `overflow-x-auto` 가 실제로 넘쳐서 스크롤이 생긴다. */}
         <div className="overflow-x-auto">
-          <table className="w-full text-xs">
+          <table className="w-full min-w-[860px] text-xs">
             <thead className="bg-slate-50/70 text-slate-400">
               <tr>
                 <th className="px-4 py-2.5 text-left font-black">일자</th>
-                <th className="px-4 py-2.5 text-left font-black">적요</th>
-                <th className="px-4 py-2.5 text-left font-black">거래처</th>
-                <th className="px-4 py-2.5 text-left font-black">계정과목</th>
-                <th className="px-4 py-2.5 text-right font-black">입금</th>
-                <th className="px-4 py-2.5 text-right font-black">출금</th>
-                <th className="px-4 py-2.5 text-right font-black">잔액</th>
+                <th className="px-4 py-2.5 text-left font-black whitespace-nowrap">적요</th>
+                <th className="px-4 py-2.5 text-left font-black whitespace-nowrap">거래처</th>
+                <th className="px-4 py-2.5 text-left font-black whitespace-nowrap">계정과목</th>
+                <th className="px-4 py-2.5 text-right font-black whitespace-nowrap">입금</th>
+                <th className="px-4 py-2.5 text-right font-black whitespace-nowrap">출금</th>
+                <th className="px-4 py-2.5 text-right font-black whitespace-nowrap">잔액</th>
                 <th className="px-2 py-2.5" />
               </tr>
             </thead>
@@ -165,14 +168,14 @@ export default function CashLedger({
                 return (
                   <tr key={entry.id} className="hover:bg-slate-50/50 group">
                     <td className="px-4 py-2.5 font-bold text-slate-500 whitespace-nowrap">{entry.date.slice(5)}</td>
-                    <td className="px-4 py-2.5 font-bold text-slate-800">
+                    <td className="px-4 py-2.5 font-bold text-slate-800 min-w-[180px]">
                       {entry.note || '-'}
                       {matchedCount > 0 && (
                         <span className="ml-1.5 text-[10px] font-black text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded">전표 {matchedCount}건</span>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-slate-500">{entry.partnerName || '-'}</td>
-                    <td className="px-4 py-2.5 text-slate-400">
+                    <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{entry.partnerName || '-'}</td>
+                    <td className="px-4 py-2.5 text-slate-400 whitespace-nowrap">
                       {/* 쪼갠 줄(대출상환 원금+이자)이면 줄마다 계정 배지를 단다 */}
                       {(entry.lines ?? []).filter(l => l.accountCode && l.amount !== 0).length ? (
                         <span className="flex flex-wrap gap-1">

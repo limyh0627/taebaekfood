@@ -1336,9 +1336,11 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
 
         return (
           <>
-            <div className="flex gap-4 min-h-[600px]">
-              {/* 좌측: 거래처 목록 */}
-              <div className="w-64 shrink-0 flex flex-col gap-3">
+            {/*  **좁은 화면에서는 위아래로 쌓는다.** 가로로 두면 오른쪽 판이 찌그러져
+                 한글이 한 글자씩 세로로 쌓인다(2026-09-03 사장님 지적). */}
+            <div className="flex flex-col lg:flex-row gap-4 lg:min-h-[600px]">
+              {/* 좌측: 거래처 목록 — 좁은 화면에선 위쪽 */}
+              <div className="w-full lg:w-64 shrink-0 flex flex-col gap-3">
                 <button
                   onClick={generateMonthlySummaryPdf}
                   className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-black rounded-xl transition-colors"
@@ -1352,7 +1354,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                     className="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
                 </div>
                 {/* 높이를 묶는다 — flex-1만 두면 거래처 수만큼 늘어나 화면 끝까지 내려간다 */}
-                <div className="bg-white rounded-2xl border border-slate-200 flex-1 min-h-0 max-h-[calc(100vh-260px)] overflow-y-auto">
+                <div className="bg-white rounded-2xl border border-slate-200 flex-1 min-h-0 max-h-[40vh] lg:max-h-[calc(100vh-260px)] overflow-y-auto">
                   {allClientList.length === 0 && <div className="py-8 text-center text-slate-300 text-xs font-bold">전표 없음</div>}
                   {allClientList.map(c => {
                     const isActive = selId === c.id;
@@ -1417,7 +1419,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                     <div className="bg-white rounded-2xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
                       {/* 이월 + 기간매출 − 기간수금 = 기간말 미수. 네 칸이 한 줄로 읽히는 식이라
                           연·월 어느 쪽으로 봐도 전표 합계와 맞는다. 이월을 빼면 기초전표(개시잔액)만큼 어긋난다. */}
-                      <div className="grid grid-cols-4 divide-x divide-slate-100">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-slate-100">
                         <div className="px-5 py-3.5 bg-slate-50/70">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{carryLabel}</p>
                           <p className="text-xl font-black text-slate-500 mt-1 tabular-nums">{fmtS(carrySale)}</p>
@@ -1449,7 +1451,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                         </div>
                       </div>
                       {(yearPurchaseTotal > 0 || totalPayable > 0 || carryBuy > 0) && (
-                        <div className="grid grid-cols-4 divide-x divide-slate-100">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-slate-100">
                           <div className="px-5 py-3.5 bg-slate-50/70">
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{carryLabel}</p>
                             <p className="text-xl font-black text-slate-500 mt-1 tabular-nums">{fmtS(carryBuy)}</p>
