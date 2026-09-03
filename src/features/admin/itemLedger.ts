@@ -1,6 +1,7 @@
 import type { Item, Order } from '../../shared/types';
 import { bomOf } from '../../shared/bomIndex';
 import { stockUnits } from '../../shared/orderUnits';
+import { dateOfLocal } from '../../shared/day';
 
 /**
  * **제품별원장** — 품목 하나가 언제 얼마나 들고 나갔나.
@@ -40,7 +41,7 @@ export interface ItemLedger {
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 const dayOf = (o: Order) =>
-  String((o as { deliveredAt?: string }).deliveredAt || o.deliveryDate || o.createdAt || '').slice(0, 10);
+  dateOfLocal(String((o as { deliveredAt?: string }).deliveredAt || o.deliveryDate || o.createdAt || ''));
 
 export function buildItemLedger(itemId: string, orders: Order[], allItems: Item[]): ItemLedger {
   const rows: ItemLedgerRow[] = [];

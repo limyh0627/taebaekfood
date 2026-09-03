@@ -1,6 +1,7 @@
 import { PRODUCT_FORMULA } from '../constants/formula';
 import { unpackComponent } from './orderUnits';
 import type { Item } from './types';
+import { dateOfLocal } from './day';
 
 /**
  * 서류(원료수불부·생산판매기록부·생산작업기록부·생산작업기록부2) 공용 계산.
@@ -103,7 +104,7 @@ const DOC_PUMOK_MERGE: Record<string, string> = {
  * 배송예정일은 예정일 뿐이라 실제와 다를 수 있다.
  */
 export const docDateOf = (o: { deliveredAt?: string }): string =>
-  String(o.deliveredAt || '').slice(0, 10);
+  dateOfLocal(String(o.deliveredAt || ''));
 
 /** 판매에서 사용량을 되계산하는 원료 — 배합표에 나오는 모든 원료.
  *  이 원료들은 원장의 자동차감 줄 대신 판매분으로 다시 구해 서류에 넣는다(= 판매기록부와 같은 근거). */

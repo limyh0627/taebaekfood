@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { addDays, addMonths, endOfMonth, today } from './day';
+import { addDays, addMonths, endOfMonth, today, dateOfLocal, timeOfLocal } from './day';
 
 /**
  * 이 셈이 틀리면 조용히 하루씩 밀린다 — 견적서 유효기한, 배송일, 앵커 시작일이
@@ -56,5 +56,45 @@ describe('달력 날짜 셈', () => {
     expect(today()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     const d = new Date();
     expect(today()).toBe(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+  });
+});
+
+/**
+ * **시간 기준은 하나다 — 로컬(KST).** (2026-09-03 사장님 지시)
+ *
+ * 저장은 ISO(UTC)로 하지만 읽을 때 UTC로 자르면 밤 9시 이후 기록이 하루 앞으로 밀린다.
+ * 실측 — 주문 만든날 75줄 · 생산일 11줄 · 전표 도장 22줄이 그렇게 밀려 있었다.
+ * (배송완료일은 0줄이라 서류 넷은 안 움직였다 — 운이 좋았던 것이다.)
+ */
+describe('dateOfLocal — 저장된 시각을 그 자리 날짜로', () => {
+  it('**밤에 만든 기록이 하루 앞으로 안 밀린다** — 이게 핵심이다', () => {
+    //  2026-08-03T15:00:00Z = 한국 8월 4일 자정
+    expect('2026-08-03T15:00:00.000Z'.slice(0, 10)).toBe('2026-08-03');   // 여태 이렇게 읽었다
+    expect(dateOfLocal('2026-08-03T15:00:00.000Z')).toBe('2026-08-04');   // 실제로는 8월 4일이다
+  });
+
+  it('낮에 만든 것은 원래도 맞았다 — 그래서 오래 안 들켰다', () => {
+    expect(dateOfLocal('2026-08-04T05:00:00.000Z')).toBe('2026-08-04');
+  });
+
+  it('이미 날짜면 그대로 — 날짜 칸과 시각 칸을 같이 받는 자리가 많다', () => {
+    expect(dateOfLocal('2026-08-04')).toBe('2026-08-04');
+    expect(dateOfLocal('2026-08-04T00:00:00')).toBe('2026-08-04');
+  });
+
+  it('비어 있거나 망가진 값에 지어내지 않는다', () => {
+    expect(dateOfLocal('')).toBe('');
+    expect(dateOfLocal(undefined)).toBe('');
+    expect(dateOfLocal('언제였더라')).toBe('언제였더라');
+  });
+
+  it('짝인 timeOfLocal 도 같은 기준이다 — 날짜만 로컬이고 시각은 UTC 면 뜻이 안 맞는다', () => {
+    const iso = '2026-08-03T15:00:00.000Z';    // 한국 8/4 00:00:00
+    expect(dateOfLocal(iso)).toBe('2026-08-04');
+    expect(timeOfLocal(iso)).toBe('00:00:00');
+  });
+
+  it('오늘도 같은 기준이다 — today() 와 dateOfLocal(지금) 이 같아야 한다', () => {
+    expect(dateOfLocal(new Date().toISOString())).toBe(today());
   });
 });

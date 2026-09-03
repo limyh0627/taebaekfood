@@ -1,6 +1,6 @@
 
 import { stampFor, nextDocNo } from '../src/shared/voucherStamp';import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { today } from '../src/shared/day';
+import { today, dateOfLocal } from '../src/shared/day';
 import {
   RotateCcw, ScanLine, Building2, History, Truck,
   Camera, QrCode, X, Check, Plus, Trash2, ChevronDown,
@@ -1680,7 +1680,7 @@ const ReturnCard: React.FC<ReturnCardProps> = ({ req, isAdmin, isProcessing, onP
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            {req.createdAt.slice(0, 10)} · {req.items.length}개 품목 · ₩{req.totalAmount.toLocaleString()}
+            {dateOfLocal(req.createdAt)} · {req.items.length}개 품목 · ₩{req.totalAmount.toLocaleString()}
             {req.createdBy && <span> · 접수: {req.createdBy}</span>}
           </p>
         </div>

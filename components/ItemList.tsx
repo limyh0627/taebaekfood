@@ -1,6 +1,6 @@
 ﻿
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { today } from '../src/shared/day';
+import { today, dateOfLocal } from '../src/shared/day';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
 import { bomOf } from '../src/shared/bomIndex';
 import {
@@ -649,7 +649,7 @@ const ItemList: React.FC<ItemListProps> = ({
         arr.push({
           orderId: o.id,
           partnerName: o.partnerName || '거래처',
-          date: o.deliveredAt?.slice(0, 10) || o.deliveryDate || '',
+          date: dateOfLocal(o.deliveredAt) || o.deliveryDate || '',
           qty: t.qty,
         });
         m.set(t.lotId, arr);
@@ -1479,7 +1479,7 @@ const ItemList: React.FC<ItemListProps> = ({
                                       가공입고
                                     </button>
                                   </div>
-                                  <p className="text-[10px] text-slate-400 font-bold">출고일 {(po.oemSentAt || po.createdAt || '').slice(0, 10)}</p>
+                                  <p className="text-[10px] text-slate-400 font-bold">출고일 {dateOfLocal(po.oemSentAt || po.createdAt)}</p>
                                   {(po.oemSent ?? []).map((s, idx) => (
                                     <div key={idx} className="flex justify-between text-xs text-slate-600 bg-white rounded-lg px-3 py-1.5">
                                       <span>{s.material} <span className="text-slate-400">보냄</span></span>
@@ -1491,7 +1491,7 @@ const ItemList: React.FC<ItemListProps> = ({
                               return (
                               <div key={po.id} className="rounded-xl border border-slate-100 p-2.5 space-y-2">
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="text-[10px] text-slate-400 font-bold">발주일 {(po.createdAt||'').slice(0,10)}</span>
+                                  <span className="text-[10px] text-slate-400 font-bold">발주일 {dateOfLocal(po.createdAt)}</span>
                                   <div className="flex items-center gap-1.5 shrink-0">
                                     <button onClick={() => onFinishConfirmedOrder(po.id)}
                                       className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-[11px] font-black hover:bg-emerald-600 transition-all">

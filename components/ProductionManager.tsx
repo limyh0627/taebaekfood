@@ -3,6 +3,7 @@ import { Plus, Trash2, Factory, ChevronLeft, ChevronRight, ChevronUp, ChevronDow
 import PageHeader from './PageHeader';
 import { ProductionRecord, Item, Order, OrderStatus, RawMaterialEntry } from '../types';
 import { PRODUCT_FORMULA, toKg } from '../src/constants/formula';
+import { dateOfLocal } from '../src/shared/day';
 
 type ItemFormulaRow = { parent_key: string; child_name: string; ratio: number; yield_rate?: number };
 
@@ -263,7 +264,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
 
           const record: ProductionRecord = {
             id: recordId,
-            date: order.deliveredAt ? order.deliveredAt.slice(0, 10) : order.createdAt.slice(0, 10),
+            date: dateOfLocal(order.deliveredAt || order.createdAt),
             itemId: item.itemId,
             itemName: product?.name ?? item.name,
             finishedQty: item.quantity,

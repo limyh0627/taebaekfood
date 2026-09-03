@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, memo } from 'react';
-import { today } from '../src/shared/day';
+import { today, dateOfLocal } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
 import {
   Plus,
@@ -1570,7 +1570,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
         const allColOrders = filteredOrders.filter(o => col.statusFilter.includes(o.status)).sort(byDeliveryThenId);
         const filteredHistoryOrders = allColOrders.filter(o => {
           if (historySearch && !((o.partnerName || '').includes(historySearch))) return false;
-          const dateStr = (o.deliveredAt || o.deliveryDate || o.createdAt || '').slice(0, 10);
+          const dateStr = dateOfLocal(o.deliveredAt || o.deliveryDate || o.createdAt);
           if (historyDateFrom && dateStr < historyDateFrom) return false;
           if (historyDateTo && dateStr > historyDateTo) return false;
           return true;

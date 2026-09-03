@@ -1,6 +1,6 @@
 ﻿
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
-import { today } from '../src/shared/day';
+import { today, dateOfLocal } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
 import { buildTaxonomy, type TaxonomyRow } from '../src/shared/taxonomy';
 import {
@@ -1236,8 +1236,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       });
     }
     // 미발행(진행) 전표는 날짜 무관하게 다 보인다 (배송완료·예전주문이어도). 날짜필터는 발행완료 건에만.
-    if (dateFrom) list = list.filter(o => !isVouchered(o) || (o.createdAt || '').slice(0, 10) >= dateFrom);
-    if (dateTo)   list = list.filter(o => !isVouchered(o) || (o.createdAt || '').slice(0, 10) <= dateTo);
+    if (dateFrom) list = list.filter(o => !isVouchered(o) || dateOfLocal(o.createdAt) >= dateFrom);
+    if (dateTo)   list = list.filter(o => !isVouchered(o) || dateOfLocal(o.createdAt) <= dateTo);
     return list;
   }, [orders, selectedClientId, onlyActive, dateFrom, dateTo, isVouchered]);
 
@@ -2426,7 +2426,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setTaxExemptOverrides({});
     //  고른 순서대로 줄을 이어 붙인다 — **합치지 않는다.**
     //  빈 행은 자동으로 안 넣는다. 더 넣으려면 '+ 행 추가'.
-    const pick = next.map(id => partnerOrders.find(x => x.id === id)).filter((x): x is Order => !!x);
+    //
+    //  **주문은 `orders` 전체에서 찾는다.** `partnerOrders` 는 고른 거래처로 걸러 놓은 것이라,
+    //  미발행 목록에서 거래처를 안 고르고 바로 누르면 비어 있다 — 그쪽은 같은 틱에
+    //  `setSelectedClientId` 를 부르지만 React 상태는 그 틱에 안 바뀐다.
+    //  그래서 품목이 한 줄도 안 들어왔다(2026-09-03 사장님 발견).
+    const pick = next.map(id => orders.find(x => x.id === id)).filter((x): x is Order => !!x);
     setManualItems(pick.flatMap(orderToRows));
     setManualMode(true);
   };
@@ -3940,7 +3945,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                   </span>
                                   <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                                     <span className="font-black text-slate-800">납품: {o.deliveryDate?.slice(0,10)||'미정'}</span>
-                                    <span className="text-slate-400">주문일 {o.createdAt?.slice(0,10)} · {o.items.length}품목</span>
+                                    <span className="text-slate-400">주문일 {dateOfLocal(o.createdAt)} · {o.items.length}품목</span>
                                   </div>
                                   <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${STATUS_COLOR[o.status]||'bg-slate-100 text-slate-500'}`}>{STATUS_LABEL[o.status]||o.status}</span>
                                   {alreadyIssued
@@ -4014,8 +4019,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                           <div className="divide-y divide-slate-50">
                             {confByMonth[month].map(po=>{
                               const alreadyIssued = !!po.linkedStatementId;
-                              const receivedDate = (po.receivedAt||po.invoicedAt||po.createdAt||'').slice(0,10);
-                              const createdDate  = (po.createdAt||'').slice(0,10);
+                              const receivedDate = dateOfLocal(po.receivedAt||po.invoicedAt||po.createdAt);
+                              const createdDate  = dateOfLocal(po.createdAt);
                               return (
                                 <button key={po.id} onClick={()=>clickCard(po)}
                                   className={`w-full flex items-center gap-3 text-left px-5 py-3 text-xs transition-all ${alreadyIssued?'bg-emerald-50 hover:bg-emerald-100':'hover:bg-pink-50'}`}>
@@ -4043,7 +4048,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                           <div className="divide-y divide-slate-50">
                             {reqByMonth[month].map(po=>{
                               const alreadyIssued = !!po.linkedStatementId;
-                              const createdDate = (po.createdAt||'').slice(0,10);
+                              const createdDate = dateOfLocal(po.createdAt);
                               return (
                                 <button key={po.id} onClick={()=>clickCard(po)}
                                   className={`w-full flex items-center gap-3 text-left px-5 py-3 text-xs transition-all ${alreadyIssued?'bg-emerald-50 hover:bg-emerald-100':'hover:bg-indigo-50'}`}>
@@ -4076,7 +4081,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 //  납품일이 비어 있으면 배송일·생성일로 물러선다 — 옛 주문은 deliveryDate가 없는 게 많아
                 //  날짜필터를 걸면 통째로 사라졌다.
                 .filter(o => {
-                  const d = ((o.deliveryDate || (o as { deliveredAt?: string }).deliveredAt || o.createdAt) || '').slice(0, 10);
+                  const d = dateOfLocal((o.deliveryDate || (o as { deliveredAt?: string }).deliveredAt || o.createdAt) || '');
                   return (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo);
                 });
               return (

@@ -1,5 +1,5 @@
 import { doc, setDoc, deleteDoc, getDoc, runTransaction, Firestore } from 'firebase/firestore';
-import { today } from '../../shared/day';
+import { today, dateOfLocal } from '../../shared/day';
 import { isBulkItem } from '../../shared/itemTaxonomy';
 import { bomOf } from '../../shared/bomIndex';
 import { Order, OrderItem, Item, OrderStatus, AppNotification, Partner, RawMaterialLot } from '../../shared/types';
@@ -261,7 +261,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     const rawNames = Object.keys(rawUsage);
     const ledgerOnlyNames = Object.keys(ledgerOnly);
     if (rawNames.length === 0 && ledgerOnlyNames.length === 0) return consumedLots;
-    const dateStr = order.deliveredAt?.slice(0, 10) || today();
+    const dateStr = dateOfLocal(order.deliveredAt) || today();
     const customerName = partners.find(c => c.id === order.partnerId)?.name || order.partnerName || '';
 
     // 임가공(OEM) 원료 — 우리 로트로 들고 있지 않으니 재고·로트는 건드리지 않고 수불부에만 남긴다.

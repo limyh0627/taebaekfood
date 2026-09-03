@@ -24,12 +24,10 @@
  * 오전 9시 전에 만든 기록은 UTC로 전날 15:00~23:59가 되어, 소급 도장(23:59:59 로컬 =
  * 14:59:59Z)보다 **뒤로** 밀린다. 소급 전표가 그날 맨 뒤라는 규칙이 깨진다.
  */
-export function timeOfLocal(iso?: string): string {
-  if (!iso) return '00:00:00';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '00:00:00';
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
-}
+import { timeOfLocal } from './day';
+//  시각을 읽는 자리는 day.ts 하나다 — 부르던 쪽이 안 깨지게 여기서도 내보낸다
+export { timeOfLocal };
+
 
 /**
  * 원장 한 줄의 정렬 기준 — **전표일 + 그날 안의 시각**.

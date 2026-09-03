@@ -18,6 +18,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { today } from '../../shared/day';
 import { nextDocNo, stampFor } from '../../shared/voucherStamp';
+import { statementEditPatch, cashEditPatch } from '../../shared/statementEdit';
 import { calcCost } from './costCalc';
 import { isBulkItem } from '../../shared/itemTaxonomy';
 import { bomOf } from '../../shared/bomIndex';
@@ -68,7 +69,7 @@ import {
   BookOpen,
   ChevronDown,
 } from 'lucide-react';
-import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, poLines, CompanyId, COMPANIES, TAEBAEK, companyOf, invSnapDocId, CashEntry } from '../../shared/types';
+import { Order, Item, PartnerItem, ViewType, OrderStatus, Partner, Post, FileItem, PalletStock, Employee, LeaveRequest, PalletTransaction, OrderItem, AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry, AppNotification, ProductionRecord, ReturnRequest, poLines, CompanyId, COMPANIES, TAEBAEK, companyOf, invSnapDocId, CashEntry, IssuedStatement } from '../../shared/types';
 import { canAutoIssue, autoVoucherId, buildCashVoucher, buildStatementVoucher, dirOf, isCashDir } from '../../shared/autoVoucher';
 import PageHeader from '../../shared/components/PageHeader';
 import Dashboard from '../../../components/Dashboard';
@@ -261,6 +262,24 @@ const AdminApp: React.FC<AdminAppProps> = ({
   // items 컬렉션 카테고리별 분리
   const products     = useMemo(() => items.filter(i => i.type === 'product'), [items]);
   const submaterials = useMemo(() => items.filter(i => i.type !== 'product'), [items]);
+
+  /**
+   * 전표 한 장 고치기 — **다섯 화면이 다 이걸 쓴다.**
+   * 예전엔 화면마다 `updateItem('issuedStatements', ...)` 을 인라인으로 부르고 있어서,
+   * 거래일이 바뀌어도 시각 도장이 안 따라갔다(`shared/statementEdit` 참고).
+   */
+  const updateStatement = useCallback(
+    (id: string, data: Partial<IssuedStatement>) =>
+      updateItem('issuedStatements', id, statementEditPatch(data, issuedStatements.find(s => s.id === id))),
+    [issuedStatements],
+  );
+
+  /** 자금원장 한 줄 고치기 — 전표와 같은 규칙(날짜가 바뀌면 도장도 다시) */
+  const updateCash = useCallback(
+    (id: string, data: Partial<CashEntry>) =>
+      updateItem('cashEntries', id, cashEditPatch(data, appData.cashEntries.find(e => e.id === id))),
+    [appData.cashEntries],
+  );
 
   // partner_item 컬렉션 Direction 기준 분리
   const partnerIn = useMemo(() => partnerItems.filter(pi => pi.Direction === 'in'),  [partnerItems]);
@@ -3686,7 +3705,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               cashEntries={companyCashEntries}
               settlements={appData.settlements}
               onAddCashEntry={(e) => addCashEntry(e)}
-              onUpdateCashEntry={(id, data) => updateItem('cashEntries', id, data)}
+              onUpdateCashEntry={updateCash}
               onAddSettlement={(s) => addItem('settlements', s)}
               onUpdateSettlement={(id, data) => updateItem('settlements', id, data)}
               onDeleteCashEntry={(id) => deleteItem('cashEntries', id)}
@@ -3713,7 +3732,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 if (payload.statement) addItem('issuedStatements', { ...payload.statement, companyId: target });
               }}
               onAddIssuedStatement={(stmt) => addItem('issuedStatements', { ...stmt, companyId }).catch(e => { console.error('전표 저장 실패:', e); alert('전표 저장 실패: ' + (e?.message ?? String(e))); })}
-              onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
+              onUpdateIssuedStatement={updateStatement}
               onProposeEdit={(id, data, stmtType, docNo, partnerName) => {
                 const stmt = issuedStatements.find(s => s.id === id);
                 addItem('pendingStatementEdits', {
@@ -3790,7 +3809,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               issuedStatements={issuedStatements}
               partners={partners}
               companyInfo={companyInfo}
-              onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
+              onUpdateIssuedStatement={updateStatement}
             />
           )}
           {(currentView === 'profit-analysis' || currentView === 'cost-management') && (
@@ -3805,7 +3824,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 partners={partners}
                 items={allItems}
                 costOf={inventoryCostOf}
-                onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
+                onUpdateIssuedStatement={updateStatement}
                 accountGroups={appData.accountGroups}
                 accountCodes={appData.accountCodes}
                 onUpdateAccountCode={(id, data) => { updateItem('accountCodes', id, data); refreshStaticData(); }}
@@ -3834,7 +3853,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   partners={partners}
                   items={allItems}
                   costOf={inventoryCostOf}
-                  onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
+                  onUpdateIssuedStatement={updateStatement}
                   accountGroups={appData.accountGroups}
                   accountCodes={appData.accountCodes}
                   inventorySnapshots={companySnapshots}
@@ -3909,7 +3928,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   partners={partners}
                   items={allItems}
                   costOf={inventoryCostOf}
-                  onUpdateIssuedStatement={(id, data) => updateItem('issuedStatements', id, data)}
+                  onUpdateIssuedStatement={updateStatement}
                   accountGroups={appData.accountGroups}
                   accountCodes={appData.accountCodes}
                   inventorySnapshots={companySnapshots}

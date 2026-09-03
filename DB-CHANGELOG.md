@@ -1305,3 +1305,20 @@ BOM 수량은 **언제나 kg**으로 저장한다(items.stock·로트·원료수
     npx tsx scripts/fix-leave-eunji-0902.mts --undo   # 되돌리기
 
 백업: `scripts/fix-leave-eunji-0902-backup.json`
+
+## 2026-09-03 — 거래일 고친 뒤 안 따라간 시각 도장 1건 (9월분만)
+
+`issuedStatements/stmt-…` `260902-03` (홍인농산, 거래일 2026-09-03, 9/2 에 미리 끊음).
+`issuedAt` 이 만든 시각(16:23:55)으로 남아 있었다 — 예약 전표라 `00:00:00` 이어야 한다.
+
+**8월은 손대지 않았다.** 사장님이 날짜를 손으로 다 맞춰 둔 것이라, 오류로 보여도 그대로 둔다.
+스크립트도 `--from` 기본이 `2026-09` 이고 그 이전은 거절한다.
+
+    npx tsx scripts/fix-stamp-after-dateedit.mts          # 미리보기
+    npx tsx scripts/fix-stamp-after-dateedit.mts --apply  # 고치기(백업 남김)
+    npx tsx scripts/fix-stamp-after-dateedit.mts --undo   # 되돌리기
+
+백업: `scripts/fix-stamp-after-dateedit-backup.json`
+
+손대지 않고 남겨 둔 것 — 태백↔풍회 입금 4줄이 `18:00:00` 으로 찍혀 있다.
+코드에도 문서에도 그렇게 찍는 자리가 없어 사람이 일부러 넣은 값으로 보고 건드리지 않았다.

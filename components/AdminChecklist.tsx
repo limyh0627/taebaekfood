@@ -10,6 +10,7 @@ import {
 import { LeaveRequest, AdjustmentRequest, Employee, ReturnRequest, ReturnItem, IssuedStatement, IssuedStatementItem, Partner, PendingStatementEdit, Item, PartnerItem, PurchaseOrder, PurchaseOrderItem, poLines } from '../src/shared/types';
 import { addItem, updateItem } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
+import { dateOfLocal } from '../src/shared/day';
 
 interface AdminChecklistProps {
   leaveRequests: LeaveRequest[];
@@ -165,7 +166,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
     setReturnStmtDraft({
       returnReq: req,
       partnerId: matchedClient?.id ?? '',
-      tradeDate: req.createdAt.slice(0, 10),
+      tradeDate: dateOfLocal(req.createdAt),
       items: (req.items as ReturnItem[]).map(item => ({
         name: item.name,
         qty: item.quantity.toString(),
@@ -665,7 +666,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
               <div>
                 <p className="font-black text-slate-800">반품 전표 발행</p>
-                <p className="text-xs text-slate-400 mt-0.5">{returnStmtDraft.returnReq.partnerName} · {returnStmtDraft.returnReq.createdAt.slice(0, 10)} 반품</p>
+                <p className="text-xs text-slate-400 mt-0.5">{returnStmtDraft.returnReq.partnerName} · {dateOfLocal(returnStmtDraft.returnReq.createdAt)} 반품</p>
               </div>
               <button onClick={() => setReturnStmtDraft(null)} className="p-2 text-slate-400 hover:text-slate-600"><X size={18} /></button>
             </div>

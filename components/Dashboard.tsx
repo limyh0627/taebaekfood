@@ -21,6 +21,7 @@ import {
 import { Order, Item, OrderStatus, ViewType, Partner } from '../types';
 import PageHeader from './PageHeader';
 import DashboardLinks from './DashboardLinks';
+import { dateOfLocal } from '../src/shared/day';
 
 interface DashboardProps {
   orders: Order[];
@@ -84,7 +85,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, items, partners = [], par
       const date = new Date(today);
       date.setDate(today.getDate() - (6 - i));
       const dateStr = date.toISOString().slice(0, 10);
-      const count = orders.filter(o => o.createdAt?.slice(0, 10) === dateStr).length;
+      const count = orders.filter(o => dateOfLocal(o.createdAt) === dateStr).length;
       return {
         name: i === 6 ? '오늘' : dayNames[date.getDay()],
         주문수: count,

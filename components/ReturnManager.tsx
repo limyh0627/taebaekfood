@@ -18,6 +18,7 @@ import {
 } from '../src/shared/types';
 import { addItem, subscribeToCollection } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
+import { dateOfLocal } from '../src/shared/day';
 
 interface ReturnManagerProps {
   items: Item[];
@@ -223,7 +224,7 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
                 <option value="">원주문 선택 (품목 자동 채움)</option>
                 {partnerOrders.map(o => (
                   <option key={o.id} value={o.id}>
-                    {o.createdAt.slice(0, 10)} — {o.items.map(i => i.name).join(', ').slice(0, 25)}
+                    {dateOfLocal(o.createdAt)} — {o.items.map(i => i.name).join(', ').slice(0, 25)}
                   </option>
                 ))}
               </select>
@@ -448,7 +449,7 @@ const ReturnCard: React.FC<ReturnCardProps> = ({ req, isAdmin, isProcessing, onP
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            {req.createdAt.slice(0, 10)} · {req.items.length}개 품목 · ₩{req.totalAmount.toLocaleString()}
+            {dateOfLocal(req.createdAt)} · {req.items.length}개 품목 · ₩{req.totalAmount.toLocaleString()}
           </p>
         </div>
 

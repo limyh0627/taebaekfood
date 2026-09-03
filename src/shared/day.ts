@@ -20,6 +20,44 @@ export const today = (): string => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
 
+/**
+ * **저장된 시각(ISO) → 그 자리 시간의 날짜.**
+ *
+ * 이 앱은 시간을 **로컬(KST) 하나로만** 읽고 쓴다(2026-09-03 사장님 지시).
+ * 저장은 ISO(UTC)로 하지만 **읽을 때 UTC로 자르면 안 된다** —
+ * `'2026-08-03T15:00:00Z'.slice(0,10)` 은 `2026-08-03` 인데 한국에서는 **8월 4일**이다.
+ * 밤 9시(=12:00Z) 이후에 만든 기록이 전부 하루 앞으로 밀린다.
+ *
+ * 실측(2026-09-03) — 주문 만든날 75줄, 생산일 11줄, 전표 도장 22줄이 그렇게 밀려 있었다.
+ * 배송완료일(서류 넷의 기준일)은 0줄이라 서류는 안 움직였다. 운이 좋았던 것이다.
+ *
+ * 이미 'YYYY-MM-DD' 인 값은 그대로 돌려준다 — 날짜 칸과 시각 칸을 같이 받는 자리가 많다.
+ *
+ * 짝은 `timeOfLocal`(같은 파일) — 날짜는 여기, 시각은 거기, **둘 다 로컬이다.**
+ */
+export function dateOfLocal(iso?: string): string {
+  const v = String(iso ?? '');
+  if (!v) return '';
+  if (!v.includes('T')) return v.slice(0, 10);   // 이미 날짜다
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return v.slice(0, 10);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/**
+ * **저장된 시각(ISO) → 그 자리 시간의 'HH:MM:SS'.**
+ * `slice(11,19)` 로 자르면 UTC 라, 아침에 만든 기록이 전날 밤으로 읽힌다.
+ * 전에 `voucherStamp` 에 있던 것을 날짜와 한집에 모았다 — **시간 기준은 하나여야 한다.**
+ */
+export function timeOfLocal(iso?: string): string {
+  if (!iso) return '00:00:00';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '00:00:00';
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
 /** 'YYYY-MM-DD'에 며칠 더하기(음수면 빼기). 형식이 아니면 그대로 돌려준다. */
 export function addDays(date: string, n: number): string {
   const m = RE.exec(String(date ?? ''));

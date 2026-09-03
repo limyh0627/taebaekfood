@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { today } from '../src/shared/day';
+import { today, dateOfLocal } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
 import {
   FileText, Printer, Search, Check, CheckSquare, Download, X,
@@ -883,7 +883,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                             )}
                           </div>
                           <span className="text-xs text-slate-600 text-center">{dateRange}</span>
-                          <span className="text-xs text-slate-600 text-center">{group.issuedAt.slice(0, 10)}</span>
+                          <span className="text-xs text-slate-600 text-center">{dateOfLocal(group.issuedAt)}</span>
                           <span className="text-sm font-black text-slate-800 text-right">{fmt(group.totalAmount)}</span>
                           <div className="flex justify-center">
                             <button onClick={() => setHistPreviewGroupKey(isSelected ? null : group.key)}
@@ -956,7 +956,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                           <h1 style={{fontSize:'20px',fontWeight:900,letterSpacing:'6px'}}>세 금 계 산 서</h1>
                           <div className="text-right" style={{fontSize:'10px',color:'#666'}}>
                             <div>거래처: {previewClient?.name}</div>
-                            <div>발행일: {previewGroup.issuedAt.slice(0,10)}</div>
+                            <div>발행일: {dateOfLocal(previewGroup.issuedAt)}</div>
                             {previewGroup.isBundle && <div style={{color:'#7c3aed',fontWeight:700}}>묶음 {previewGroup.stmts.length}건</div>}
                           </div>
                         </div>
