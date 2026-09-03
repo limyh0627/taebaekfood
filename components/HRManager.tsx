@@ -315,7 +315,7 @@ const HRManager: React.FC<HRManagerProps> = ({
               className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 relative ${activeTab === 'leave-approval' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
             >
               <ClipboardCheck size={14} /><span>승인 대기</span>
-              {pendingRequests.length > 0 && <span className="absolute -top-1 -right-1 bg-amber-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px]">{pendingRequests.length}</span>}
+              {pendingRequests.length > 0 && <span className="absolute -top-1 -right-1 bg-amber-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[10px]">{pendingRequests.length}</span>}
             </button>
             <button
               onClick={() => setActiveTab('leave-balance')}
@@ -354,7 +354,7 @@ const HRManager: React.FC<HRManagerProps> = ({
               <button
                 onClick={() => setIsEditMode(!isEditMode)}
                 className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-black shadow-sm transition-all ${
-                  isEditMode ? 'bg-rose-500 text-white hover:bg-rose-600' : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                  isEditMode ? 'bg-rose-600 text-white hover:bg-rose-600' : 'bg-emerald-600 text-white hover:bg-emerald-700'
                 }`}
               >
                 {isEditMode ? <Lock size={14} /> : <Unlock size={14} />}
@@ -397,33 +397,33 @@ const HRManager: React.FC<HRManagerProps> = ({
               <table className="w-full text-left min-w-[640px]">
                 <thead className="bg-slate-50/50 border-b border-slate-100 sticky top-0 z-10">
                   <tr>
-                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">임직원 정보</th>
-                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">부서 / 직급</th>
-                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">입사일 / 근속</th>
-                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">보건증</th>
-                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">관리</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">임직원 정보</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">부서 / 직급</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">입사일 / 근속</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center whitespace-nowrap">보건증</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap">관리</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {filteredEmployees.map(emp => (
                     <tr key={emp.id} className="hover:bg-slate-50 transition-colors group">
-                      <td className="px-4 sm:px-8 py-4 sm:py-6">
+                      <td className="px-4 sm:px-5 py-4 sm:py-6 whitespace-nowrap">
                         <div className="flex items-center space-x-3">
                           <div className="w-9 h-9 sm:w-12 sm:h-12 bg-indigo-50 text-indigo-600 rounded-xl sm:rounded-2xl flex items-center justify-center font-black shrink-0">{emp.name[0]}</div>
                           <div><p className="font-black text-slate-800 text-sm">{emp.name}</p><p className="text-xs text-slate-400">{emp.phone}</p></div>
                         </div>
                       </td>
-                      <td className="px-4 sm:px-8 py-4 sm:py-6">
+                      <td className="px-4 sm:px-5 py-4 sm:py-6 whitespace-nowrap">
                         <p className="text-sm font-bold text-slate-700">{emp.department}</p>
                         <p className="text-[10px] text-slate-400 font-black uppercase">{emp.position}</p>
                       </td>
-                      <td className="px-4 sm:px-8 py-4 sm:py-6">
+                      <td className="px-4 sm:px-5 py-4 sm:py-6 whitespace-nowrap">
                         <div className="space-y-1">
                           <p className="text-xs font-bold text-slate-600 flex items-center"><Calendar size={12} className="mr-1.5" />{emp.joinDate}</p>
                           <span className="text-[10px] font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-100">{calculateWorkDays(emp.joinDate)}일째</span>
                         </div>
                       </td>
-                      <td className="px-4 sm:px-8 py-4 sm:py-6 text-center">
+                      <td className="px-4 sm:px-5 py-4 sm:py-6 text-center whitespace-nowrap">
                         {emp.healthCertDate ? (() => {
                           const { expiry, daysLeft } = getHealthCertStatus(emp.healthCertDate);
                           const isExpired = daysLeft <= 0;
@@ -445,7 +445,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                           <span className="text-[10px] text-slate-300 font-bold">미등록</span>
                         )}
                       </td>
-                      <td className="px-4 sm:px-8 py-4 sm:py-6 text-right">
+                      <td className="px-4 sm:px-5 py-4 sm:py-6 text-right">
                         <div className="flex justify-end space-x-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-all">
                           <button onClick={() => { setEditingEmployee(emp); setFormData({ name: emp.name, position: emp.position, department: emp.department, joinDate: emp.joinDate, birthDate: emp.birthDate || '', phone: emp.phone, status: emp.status, annualLeave: { carryOverLeave: emp.annualLeave?.carryOverLeave || 0, bonusLeave: emp.annualLeave?.bonusLeave || 0 }, healthCertDate: emp.healthCertDate || '' }); setIsModalOpen(true); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><Edit2 size={18} /></button>
                           <button onClick={() => setConfirmModal({
@@ -468,10 +468,10 @@ const HRManager: React.FC<HRManagerProps> = ({
             <table className="w-full text-left min-w-[580px]">
               <thead className="bg-slate-50 border-b border-slate-100">
                 <tr>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">신청 직원</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">항목 / 사유</th>
-                  <th className="px-4 sm:px-10 py-4 sm:py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">신청 기간 / 일수</th>
-                  <th className="px-4 sm:px-10 py-4 sm:py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">결재 처리</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">신청 직원</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">항목 / 사유</th>
+                  <th className="px-4 sm:px-10 py-4 sm:py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">신청 기간 / 일수</th>
+                  <th className="px-4 sm:px-10 py-4 sm:py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap">결재 처리</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -480,13 +480,13 @@ const HRManager: React.FC<HRManagerProps> = ({
                   const isModify = req.modifyRequest?.status === 'pending';
                   return (
                   <tr key={req.id} className={`transition-colors ${isCancel ? 'hover:bg-rose-50/20' : isModify ? 'hover:bg-violet-50/20' : 'hover:bg-amber-50/20'}`}>
-                    <td className="px-4 sm:px-8 py-4 sm:py-6">
+                    <td className="px-4 sm:px-5 py-4 sm:py-6 whitespace-nowrap">
                       <p className="font-black text-slate-800 text-sm">{req.employeeName}</p>
-                      {isCancel && <span className="text-[9px] font-black px-1.5 py-0.5 bg-rose-100 text-rose-600 rounded mt-0.5 inline-block">취소 신청</span>}
-                      {isModify && <span className="text-[9px] font-black px-1.5 py-0.5 bg-violet-100 text-violet-600 rounded mt-0.5 inline-block">변경 신청</span>}
+                      {isCancel && <span className="text-[10px] font-black px-1.5 py-0.5 bg-rose-100 text-rose-600 rounded mt-0.5 inline-block">취소 신청</span>}
+                      {isModify && <span className="text-[10px] font-black px-1.5 py-0.5 bg-violet-100 text-violet-600 rounded mt-0.5 inline-block">변경 신청</span>}
                     </td>
-                    <td className="px-4 sm:px-8 py-4 sm:py-6">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase mb-1 inline-block ${req.type === '연차' ? 'bg-indigo-500 text-white' : req.type === '휴가' ? 'bg-sky-500 text-white' : 'bg-emerald-500 text-white'}`}>{req.type}</span>
+                    <td className="px-4 sm:px-5 py-4 sm:py-6 whitespace-nowrap">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase mb-1 inline-block ${req.type === '연차' ? 'bg-indigo-600 text-white' : req.type === '휴가' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'}`}>{req.type}</span>
                       {isModify ? (
                         <div className="mt-1 space-y-0.5">
                           <p className="text-[10px] text-slate-400 font-bold">변경 전: {req.startDate} ~ {req.endDate}</p>
@@ -497,9 +497,9 @@ const HRManager: React.FC<HRManagerProps> = ({
                         <p className="text-xs text-slate-500 font-medium italic">&quot;{req.reason}&quot;</p>
                       )}
                     </td>
-                    <td className="px-4 sm:px-10 py-4 sm:py-6">
+                    <td className="px-4 sm:px-10 py-4 sm:py-6 whitespace-nowrap">
                       <p className="text-xs font-bold text-slate-700">{req.startDate} ~ {req.endDate}</p>
-                      <p className="text-[10px] font-black text-indigo-600 bg-indigo-50 w-fit px-1.5 py-0.5 rounded-md mt-1">
+                      <p className="text-[10px] font-black text-indigo-600 bg-indigo-50 w-fit px-1.5 py-0.5 rounded-lg mt-1">
                         {isModify ? `${req.modifyRequest!.daysUsed}일 (변경)` : `${req.daysUsed}일 사용`}
                       </p>
                     </td>
@@ -516,7 +516,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                             reason: req.modifyRequest!.reason,
                             daysUsed: req.modifyRequest!.daysUsed,
                             modifyRequest: { ...req.modifyRequest!, status: 'approved' },
-                          })} className="flex items-center space-x-2 px-4 py-2 bg-violet-600 text-white rounded-xl text-xs font-black hover:bg-violet-700 transition-all"><Check size={14} /><span>변경 승인</span></button>
+                          })} className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black hover:bg-violet-700 transition-all"><Check size={14} /><span>변경 승인</span></button>
                           <button onClick={() => onUpdateLeave(req.id, { modifyRequest: { ...req.modifyRequest!, status: 'rejected' } })} className="flex items-center space-x-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-black hover:bg-slate-200 transition-all"><X size={14} /><span>반려</span></button>
                         </>}
                         {!isCancel && !isModify && <>
@@ -555,19 +555,19 @@ const HRManager: React.FC<HRManagerProps> = ({
             <table className="w-full text-left min-w-[640px]">
               <thead className="bg-slate-50 border-b border-slate-100 sticky top-0 z-10">
                 <tr>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">임직원</th>
-                  <th className="px-4 py-5 text-[10px] font-black text-emerald-400 uppercase tracking-widest text-center">월차</th>
-                  <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">임직원</th>
+                  <th className="px-4 py-4 text-[10px] font-black text-emerald-400 uppercase tracking-widest text-center whitespace-nowrap">월차</th>
+                  <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center whitespace-nowrap">
                     <span className="block">연차</span>
-                    <span className="text-[9px] font-bold text-slate-300 normal-case tracking-normal">입사일 기준</span>
+                    <span className="text-[10px] font-bold text-slate-300 normal-case tracking-normal">입사일 기준</span>
                   </th>
-                  <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center bg-indigo-50/30">보너스 (+)</th>
-                  <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">이월 (+)</th>
-                  <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center text-rose-500">
+                  <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center bg-indigo-50/30 whitespace-nowrap">보너스 (+)</th>
+                  <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center whitespace-nowrap">이월 (+)</th>
+                  <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center text-rose-500 whitespace-nowrap">
                     <span className="block">사용 개수</span>
-                    <span className="text-[9px] font-bold text-slate-300 normal-case tracking-normal">총 / 당월</span>
+                    <span className="text-[10px] font-bold text-slate-300 normal-case tracking-normal">총 / 당월</span>
                   </th>
-                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">최종 잔여</th>
+                  <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap">최종 잔여</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -583,7 +583,7 @@ const HRManager: React.FC<HRManagerProps> = ({
 
                   return (
                     <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-8 py-6">
+                      <td className="px-5 py-6 whitespace-nowrap">
                         <button
                           onClick={() => { setLeaveDetailEmp(emp); setOpenLeaveMonths(new Set()); }}
                           className="text-left group"
@@ -594,40 +594,40 @@ const HRManager: React.FC<HRManagerProps> = ({
                         </button>
                       </td>
                       {/* 월차 — 1년이 지나도 올해 발생분은 잔여에 포함되므로 계속 표시 */}
-                      <td className="px-4 py-6 text-center">
+                      <td className="px-4 py-6 text-center whitespace-nowrap">
                         {monthlyLeave > 0 ? (
                           <div className="flex flex-col items-center">
                             <span className="text-sm font-bold text-emerald-600">{monthlyLeave}</span>
-                            <span className="text-[9px] font-bold text-emerald-300 uppercase">올해</span>
+                            <span className="text-[10px] font-bold text-emerald-300 uppercase">올해</span>
                           </div>
                         ) : (
                           <span className="text-[10px] text-slate-200">-</span>
                         )}
                       </td>
                       {/* 연차 — 입사 응당일에 발생. 발생 전이면 0이고 잔여에도 안 더해진다 */}
-                      <td className="px-4 py-6 text-center">
+                      <td className="px-4 py-6 text-center whitespace-nowrap">
                         {(() => {
                           const g = getAnnualGrantInfo(emp.joinDate);
                           if (underOneYear) return (
                             <div className="flex flex-col items-center">
                               <span className="text-sm font-bold text-slate-300">0</span>
-                              <span className="text-[9px] font-bold text-slate-300 uppercase">1년 미만</span>
+                              <span className="text-[10px] font-bold text-slate-300 uppercase">1년 미만</span>
                             </div>
                           );
                           return g.granted ? (
                             <div className="flex flex-col items-center">
                               <span className="text-sm font-bold text-slate-600">{annualLeave}</span>
-                              <span className="text-[9px] font-black text-emerald-500">✓ {g.dateStr} 발생</span>
+                              <span className="text-[10px] font-black text-emerald-500">✓ {g.dateStr} 발생</span>
                             </div>
                           ) : (
                             <div className="flex flex-col items-center" title={`${g.dateStr}에 ${g.pendingDays}일 발생 예정 — 그때까지는 이월분으로만 사용`}>
                               <span className="text-sm font-bold text-slate-300">0</span>
-                              <span className="text-[9px] font-black text-amber-500">{g.dateStr} 예정 ({g.pendingDays})</span>
+                              <span className="text-[10px] font-black text-amber-500">{g.dateStr} 예정 ({g.pendingDays})</span>
                             </div>
                           );
                         })()}
                       </td>
-                      <td className="px-6 py-6 text-center bg-indigo-50/20">
+                      <td className="px-5 py-6 text-center bg-indigo-50/20 whitespace-nowrap">
                         {isEditMode ? (
                           <div className="flex justify-center items-center">
                             <input 
@@ -644,7 +644,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                           </div>
                         )}
                       </td>
-                      <td className="px-6 py-6 text-center">
+                      <td className="px-5 py-6 text-center whitespace-nowrap">
                         {isEditMode ? (
                           <input 
                             type="number" step="0.5"
@@ -657,30 +657,30 @@ const HRManager: React.FC<HRManagerProps> = ({
                         )}
                       </td>
                       {/* 사용 개수 — 총 / 당월 */}
-                      <td className="px-6 py-6 text-center">
+                      <td className="px-5 py-6 text-center whitespace-nowrap">
                         <div className="flex flex-col items-center">
                           <div className="flex items-baseline gap-1">
                             <span className="text-sm font-black text-rose-500">{totalUsedCount}</span>
                             <span className="text-[10px] font-bold text-slate-300">/</span>
                             <span className={`text-sm font-black ${bal.usedThisMonth > 0 ? 'text-amber-500' : 'text-slate-300'}`}>{bal.usedThisMonth}</span>
                           </div>
-                          <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter">총 / 당월</span>
+                          <span className="text-[10px] font-bold text-slate-300 uppercase tracking-tighter">총 / 당월</span>
                           {/*  승인만 되고 아직 안 온 휴가 — 사용에 섞으면 안 쉬었는데 쓴 것으로 보인다.
                                그래도 잔여에서는 빼고 있으니 여기 적어 둬야 숫자가 안 맞아 보이지 않는다. */}
                           {bal.scheduled > 0 && (
-                            <span className="text-[8px] font-black text-violet-400 mt-0.5" title="승인됐지만 아직 안 온 휴가 — 잔여에서는 빠져 있습니다">
+                            <span className="text-[10px] font-black text-violet-400 mt-0.5" title="승인됐지만 아직 안 온 휴가 — 잔여에서는 빠져 있습니다">
                               예정 {bal.scheduled}일
                             </span>
                           )}
                         </div>
                       </td>
-                      <td className="px-8 py-6 text-right">
+                      <td className="px-5 py-6 text-right">
                         <div className="flex flex-col items-end">
                           <span className={`text-xl font-black ${remaining < 0 ? 'text-rose-600' : 'text-indigo-600'}`}>
                             {remaining}
                             <span className="text-xs ml-0.5">일</span>
                           </span>
-                          <div className="flex items-center text-[9px] font-black text-slate-300 uppercase tracking-tighter">
+                          <div className="flex items-center text-[10px] font-black text-slate-300 uppercase tracking-tighter">
                              <TrendingUp size={10} className="mr-0.5" />
                              REMAINING
                           </div>
@@ -724,7 +724,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                     지급: 그날 통장에서 바로 나감(자금전표). 그날 바로 주면 이쪽. */}
                 <button onClick={makePayrollAccrual} disabled={paySaving || !onCreatePayrollAccrual}
                   title="그 달 말일에 비용으로 세운다 — 통장은 안 움직인다"
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-violet-600 text-white hover:bg-violet-500 disabled:opacity-40 transition-all">
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-indigo-600 text-white hover:bg-violet-500 disabled:opacity-40 transition-all">
                   <FileText size={13} />발생 전표
                 </button>
                 <button onClick={makePayrollEntry} disabled={paySaving || !onCreatePayrollEntry}
@@ -741,21 +741,21 @@ const HRManager: React.FC<HRManagerProps> = ({
               <table className="w-full text-left min-w-[1100px] text-xs">
                 <thead className="bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-400">
                   <tr>
-                    <th className="px-3 py-2.5">이름</th>
-                    <th className="px-3 py-2.5">부서</th>
-                    <th className="px-2 py-2.5 text-right">기본급</th>
-                    <th className="px-2 py-2.5 text-right">연장수당</th>
-                    <th className="px-2 py-2.5 text-right">기타수당</th>
-                    <th className="px-2 py-2.5 text-right bg-slate-100">지급계</th>
-                    <th className="px-2 py-2.5 text-right">소득세</th>
-                    <th className="px-2 py-2.5 text-right">지방세</th>
-                    <th className="px-2 py-2.5 text-right">국민연금</th>
-                    <th className="px-2 py-2.5 text-right">건강보험</th>
-                    <th className="px-2 py-2.5 text-right">고용보험</th>
-                    <th className="px-2 py-2.5 text-right">기타공제</th>
-                    <th className="px-2 py-2.5 text-right bg-slate-100">공제계</th>
-                    <th className="px-2 py-2.5 text-right bg-violet-50">실지급</th>
-                    <th className="px-2 py-2.5" />
+                    <th className="px-3 py-2.5 whitespace-nowrap">이름</th>
+                    <th className="px-3 py-2.5 whitespace-nowrap">부서</th>
+                    <th className="px-2 py-2.5 text-right whitespace-nowrap">기본급</th>
+                    <th className="px-2 py-2.5 text-right whitespace-nowrap">연장수당</th>
+                    <th className="px-2 py-2.5 text-right whitespace-nowrap">기타수당</th>
+                    <th className="px-2 py-2.5 text-right bg-slate-100 whitespace-nowrap">지급계</th>
+                    <th className="px-2 py-2.5 text-right whitespace-nowrap">소득세</th>
+                    <th className="px-2 py-2.5 text-right whitespace-nowrap">지방세</th>
+                    <th className="px-2 py-2.5 text-right whitespace-nowrap">국민연금</th>
+                    <th className="px-2 py-2.5 text-right whitespace-nowrap">건강보험</th>
+                    <th className="px-2 py-2.5 text-right whitespace-nowrap">고용보험</th>
+                    <th className="px-2 py-2.5 text-right whitespace-nowrap">기타공제</th>
+                    <th className="px-2 py-2.5 text-right bg-slate-100 whitespace-nowrap">공제계</th>
+                    <th className="px-2 py-2.5 text-right bg-violet-50 whitespace-nowrap">실지급</th>
+                    <th className="px-2 py-2.5 whitespace-nowrap" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
@@ -776,7 +776,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                         {cell('incomeTax')}{cell('localTax')}{cell('pension')}{cell('health')}{cell('employment')}{cell('otherDeduct')}
                         <td className="px-2 py-1.5 text-right font-black tabular-nums text-rose-500 bg-slate-50">{won(payrollDeduct(l))}</td>
                         <td className="px-2 py-1.5 text-right font-black tabular-nums text-violet-700 bg-violet-50/60">{won(payrollNet(l))}</td>
-                        <td className="px-2 py-1.5">
+                        <td className="px-2 py-1.5 whitespace-nowrap">
                           <button onClick={() => setPaySlipEmp(l)} title="급여명세서"
                             className="text-slate-300 hover:text-violet-600 transition-colors"><Printer size={13} /></button>
                         </td>
@@ -843,7 +843,7 @@ const HRManager: React.FC<HRManagerProps> = ({
       {paySlipEmp && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4" onClick={() => setPaySlipEmp(null)}>
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" />
-          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
             <div className="flex items-start justify-between mb-4">
               <div>
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">급여명세서</p>
@@ -891,7 +891,7 @@ const HRManager: React.FC<HRManagerProps> = ({
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
-          <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl flex flex-col max-h-[90vh]">
+          <div className="relative bg-white w-full max-w-lg rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
               <h3 className="text-xl font-bold text-slate-900">{editingEmployee ? '정보 수정' : '신규 직원 등록'}</h3>
               <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-full"><X size={20} /></button>
@@ -1024,8 +1024,8 @@ const HRManager: React.FC<HRManagerProps> = ({
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setShowVacation(false)}>
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
-              <div className="px-6 py-5 border-b border-slate-100 flex items-start justify-between gap-3">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
+              <div className="px-5 py-4 border-b border-slate-100 flex items-start justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-black text-slate-800">회사 단체 휴가</h3>
                   <p className="text-xs text-slate-400 font-bold">
@@ -1037,7 +1037,7 @@ const HRManager: React.FC<HRManagerProps> = ({
               </div>
 
               {/* 기간 */}
-              <div className="px-6 py-4 border-b border-slate-100 flex items-end gap-3 flex-wrap">
+              <div className="px-5 py-4 border-b border-slate-100 flex items-end gap-3 flex-wrap">
                 <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">시작일</label>
                   <input type="date" value={vacationRange.start}
@@ -1061,7 +1061,7 @@ const HRManager: React.FC<HRManagerProps> = ({
               </div>
 
               {/* 연차 차감 여부 */}
-              <div className="px-6 pb-1">
+              <div className="px-5 pb-1">
                 <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">연차 차감</label>
                 <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5 max-w-md">
                   <button type="button" onClick={() => setVacationDeducts(true)}
@@ -1069,20 +1069,20 @@ const HRManager: React.FC<HRManagerProps> = ({
                     차감 <span className="font-bold opacity-70">· 집단 연차소진</span>
                   </button>
                   <button type="button" onClick={() => setVacationDeducts(false)}
-                    className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${!vacationDeducts ? 'bg-slate-600 text-white' : 'text-slate-400'}`}>
+                    className={`flex-1 px-3 py-2 rounded-lg text-xs font-black transition-all ${!vacationDeducts ? 'bg-slate-700 text-white' : 'text-slate-400'}`}>
                     미차감 <span className="font-bold opacity-70">· 창립일·명절 등</span>
                   </button>
                 </div>
               </div>
-              <p className="px-6 pt-2 text-[10px] text-slate-400">주말은 빼고 셉니다. 공휴일은 자동 제외되지 않으니 필요하면 기간을 나눠 등록하세요.</p>
+              <p className="px-5 pt-2 text-[10px] text-slate-400">주말은 빼고 셉니다. 공휴일은 자동 제외되지 않으니 필요하면 기간을 나눠 등록하세요.</p>
 
               {/* 대상 직원 — 기본 전원 포함, 뺄 사람 클릭 */}
-              <div className="px-6 py-3 flex items-center gap-2">
+              <div className="px-5 py-3 flex items-center gap-2">
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">대상 {targets.length} / {employees.length}명</span>
                 <button onClick={() => setVacationExcluded(new Set())} className="text-[10px] font-black text-indigo-500 hover:underline">전체 선택</button>
                 <button onClick={() => setVacationExcluded(new Set(employees.map(e => e.id)))} className="text-[10px] font-black text-slate-400 hover:underline">전체 해제</button>
               </div>
-              <div className="flex-1 overflow-y-auto px-6 pb-4">
+              <div className="flex-1 overflow-y-auto px-5 pb-4">
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {employees.map(emp => {
                     const on = !vacationExcluded.has(emp.id);
@@ -1109,7 +1109,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                 </div>
               </div>
 
-              <div className="px-6 py-4 border-t border-slate-100 flex items-center gap-2">
+              <div className="px-5 py-4 border-t border-slate-100 flex items-center gap-2">
                 <p className="text-[11px] font-bold text-slate-400 flex-1">
                   {targets.length}명 × {days}일 {vacationDeducts ? '연차 차감' : '휴무(연차 미차감)'}
                 </p>
@@ -1153,9 +1153,9 @@ const HRManager: React.FC<HRManagerProps> = ({
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setLeaveDetailEmp(null)}>
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
               {/* 헤더 */}
-              <div className="px-6 py-5 border-b border-slate-100 flex items-start justify-between gap-3">
+              <div className="px-5 py-4 border-b border-slate-100 flex items-start justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-black text-slate-800">{emp.name}</h3>
                   <p className="text-xs text-slate-400 font-bold">
@@ -1167,11 +1167,11 @@ const HRManager: React.FC<HRManagerProps> = ({
               </div>
 
               {/* 요약 */}
-              <div className="px-6 py-4 grid grid-cols-3 gap-3 border-b border-slate-100">
+              <div className="px-5 py-4 grid grid-cols-3 gap-3 border-b border-slate-100">
                 <div className="bg-slate-50 rounded-2xl px-4 py-3">
                   <p className="text-[10px] font-black text-slate-400 uppercase">총 부여</p>
                   <p className="text-xl font-black text-slate-800 tabular-nums">{totalUsable}<span className="text-xs ml-0.5 text-slate-400">일</span></p>
-                  <p className="text-[9px] text-slate-400 mt-0.5">
+                  <p className="text-[10px] text-slate-400 mt-0.5">
                     {monthlyLeave > 0 && `월차 ${monthlyLeave}`}
                     {monthlyLeave > 0 && annualLeave > 0 && ' + '}
                     {annualLeave > 0 && `연차 ${annualLeave}`}
@@ -1181,7 +1181,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                   {(() => {
                     const g = getAnnualGrantInfo(emp.joinDate);
                     if (underOneYear || g.granted) return null;
-                    return <p className="text-[9px] font-black text-amber-500 mt-1">연차 {g.dateStr} 발생 예정 ({g.pendingDays}일) — 아직 미포함</p>;
+                    return <p className="text-[10px] font-black text-amber-500 mt-1">연차 {g.dateStr} 발생 예정 ({g.pendingDays}일) — 아직 미포함</p>;
                   })()}
                 </div>
                 <div className="bg-rose-50 rounded-2xl px-4 py-3">
@@ -1192,9 +1192,9 @@ const HRManager: React.FC<HRManagerProps> = ({
                     <span className={bal.usedThisMonth > 0 ? 'text-amber-600' : 'text-slate-300'}>{bal.usedThisMonth}</span>
                     <span className="text-xs ml-0.5 text-rose-300">일</span>
                   </p>
-                  <p className="text-[9px] text-rose-400 mt-0.5">승인 {deductible.length}건</p>
+                  <p className="text-[10px] text-rose-400 mt-0.5">승인 {deductible.length}건</p>
                   {bal.scheduled > 0 && (
-                    <p className="text-[9px] font-black text-violet-500 mt-0.5" title="승인됐지만 아직 안 온 휴가 — 잔여에서는 빠져 있습니다">
+                    <p className="text-[10px] font-black text-violet-500 mt-0.5" title="승인됐지만 아직 안 온 휴가 — 잔여에서는 빠져 있습니다">
                       예정 {bal.scheduled}일 (아직 안 옴)
                     </p>
                   )}
@@ -1202,12 +1202,12 @@ const HRManager: React.FC<HRManagerProps> = ({
                 <div className="bg-indigo-600 rounded-2xl px-4 py-3">
                   <p className="text-[10px] font-black text-indigo-200 uppercase">잔여</p>
                   <p className="text-xl font-black text-white tabular-nums">{remaining}<span className="text-xs ml-0.5 text-indigo-200">일</span></p>
-                  {pendingMine.length > 0 && <p className="text-[9px] text-indigo-200 mt-0.5">대기 {pendingMine.length}건</p>}
+                  {pendingMine.length > 0 && <p className="text-[10px] text-indigo-200 mt-0.5">대기 {pendingMine.length}건</p>}
                 </div>
               </div>
 
               {/* 월별 내역 — 헤더 클릭 시 펼침 */}
-              <div className="flex-1 overflow-y-auto px-6 py-4">
+              <div className="flex-1 overflow-y-auto px-5 py-4">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">{year}년 신청 내역 {mine.length}건</p>
                 {mine.length === 0 ? (
                   <p className="text-center text-sm font-bold text-slate-300 py-16">올해 신청 내역이 없습니다</p>
@@ -1261,7 +1261,7 @@ const HRManager: React.FC<HRManagerProps> = ({
                                     <div key={r.id} className="px-4 py-3 flex items-start gap-3 bg-white">
                                       <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-1.5 flex-wrap">
-                                          <span className={`text-[10px] font-black px-2 py-0.5 rounded ${r.type === '연차' ? 'bg-indigo-500 text-white' : r.type === '휴가' ? 'bg-sky-500 text-white' : 'bg-emerald-500 text-white'}`}>{r.type}</span>
+                                          <span className={`text-[10px] font-black px-2 py-0.5 rounded ${r.type === '연차' ? 'bg-indigo-600 text-white' : r.type === '휴가' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'}`}>{r.type}</span>
                                           <span className={`text-[10px] font-black px-2 py-0.5 rounded ${st.cls}`}>{st.text}</span>
                                           {nonDeduct && <span className="text-[10px] font-black px-2 py-0.5 rounded bg-slate-100 text-slate-500">미차감</span>}
                                           {r.modifyRequest?.status === 'pending' && <span className="text-[10px] font-black px-2 py-0.5 rounded bg-violet-100 text-violet-700">수정 요청</span>}

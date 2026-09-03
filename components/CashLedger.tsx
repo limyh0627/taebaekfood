@@ -142,23 +142,23 @@ export default function CashLedger({
              한글이 한 글자씩 세로로 쌓여 아예 못 읽는다(2026-09-03 사장님 지적).
              최소 너비를 줘야 `overflow-x-auto` 가 실제로 넘쳐서 스크롤이 생긴다. */}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] text-xs">
+          <table className="w-full min-w-[880px] text-xs">
             <thead className="bg-slate-50/70 text-slate-400">
               <tr>
-                <th className="px-4 py-2.5 text-left font-black">일자</th>
-                <th className="px-4 py-2.5 text-left font-black whitespace-nowrap">적요</th>
+                <th className="px-2 sm:px-4 py-2.5 text-left font-black whitespace-nowrap">일자</th>
+                <th className="px-2 sm:px-4 py-2.5 text-left font-black whitespace-nowrap">적요</th>
                 <th className="px-4 py-2.5 text-left font-black whitespace-nowrap">거래처</th>
                 <th className="px-4 py-2.5 text-left font-black whitespace-nowrap">계정과목</th>
-                <th className="px-4 py-2.5 text-right font-black whitespace-nowrap">입금</th>
-                <th className="px-4 py-2.5 text-right font-black whitespace-nowrap">출금</th>
-                <th className="px-4 py-2.5 text-right font-black whitespace-nowrap">잔액</th>
-                <th className="px-2 py-2.5" />
+                <th className="px-2 sm:px-4 py-2.5 text-right font-black whitespace-nowrap">입금</th>
+                <th className="px-2 sm:px-4 py-2.5 text-right font-black whitespace-nowrap">출금</th>
+                <th className="px-2 sm:px-4 py-2.5 text-right font-black whitespace-nowrap">잔액</th>
+                <th className="px-2 py-2.5 whitespace-nowrap" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               <tr className="bg-slate-50/40">
-                <td className="px-4 py-2.5 font-bold text-slate-400" colSpan={6}>이월 잔액</td>
-                <td className="px-4 py-2.5 text-right font-black text-slate-500 tabular-nums">{fmt(ledger?.opening ?? 0)}</td>
+                <td className="px-2 sm:px-4 py-2.5 font-bold text-slate-400" colSpan={6}>이월 잔액</td>
+                <td className="px-2 sm:px-4 py-2.5 text-right font-black text-slate-500 tabular-nums">{fmt(ledger?.opening ?? 0)}</td>
                 <td />
               </tr>
 
@@ -167,8 +167,8 @@ export default function CashLedger({
                 const matchedCount = settlements.filter(s => s.cashEntryId === entry.id).length;
                 return (
                   <tr key={entry.id} className="hover:bg-slate-50/50 group">
-                    <td className="px-4 py-2.5 font-bold text-slate-500 whitespace-nowrap">{entry.date.slice(5)}</td>
-                    <td className="px-4 py-2.5 font-bold text-slate-800 min-w-[180px]">
+                    <td className="px-2 sm:px-4 py-2.5 font-bold text-slate-500 whitespace-nowrap">{entry.date.slice(5)}</td>
+                    <td className="px-2 sm:px-4 py-2.5 font-bold text-slate-800 min-w-[180px] whitespace-nowrap">
                       {entry.note || '-'}
                       {matchedCount > 0 && (
                         <span className="ml-1.5 text-[10px] font-black text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded">전표 {matchedCount}건</span>
@@ -189,10 +189,10 @@ export default function CashLedger({
                         ? <span className="text-[10px] font-black bg-slate-100 px-1.5 py-0.5 rounded">{entry.accountCode} {codeName.get(entry.accountCode) ?? ''}</span>
                         : <span className="text-[10px] font-black text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded">미지정</span>}
                     </td>
-                    <td className="px-4 py-2.5 text-right font-black text-emerald-600 tabular-nums">{entry.dir === '입금' ? fmt(entry.amount) : ''}</td>
-                    <td className="px-4 py-2.5 text-right font-black text-rose-600 tabular-nums">{entry.dir === '출금' ? fmt(entry.amount) : ''}</td>
+                    <td className="px-2 sm:px-4 py-2.5 text-right font-black text-emerald-600 tabular-nums">{entry.dir === '입금' ? fmt(entry.amount) : ''}</td>
+                    <td className="px-2 sm:px-4 py-2.5 text-right font-black text-rose-600 tabular-nums">{entry.dir === '출금' ? fmt(entry.amount) : ''}</td>
                     <td className={`px-4 py-2.5 text-right font-black tabular-nums ${balance < 0 ? 'text-rose-600' : 'text-slate-800'}`}>{fmt(balance)}</td>
-                    <td className="px-2 py-2.5">
+                    <td className="px-2 py-2.5 whitespace-nowrap">
                       <div className="flex items-center gap-1 justify-end">
                         <button onClick={() => setMatchTarget(entry)} title="전표 매칭"
                           className={`transition-all ${open > 0 ? 'text-indigo-400 hover:text-indigo-600' : 'opacity-0 group-hover:opacity-100 text-slate-300 hover:text-slate-500'}`}>
@@ -284,7 +284,7 @@ function MatchModal({ entry, statements, settlements, cashEntries, onClose, onAd
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-black text-slate-800">전표 매칭</h3>
           <button onClick={onClose} className="text-slate-300 hover:text-slate-500"><X size={18} /></button>
@@ -344,7 +344,7 @@ function MatchModal({ entry, statements, settlements, cashEntries, onClose, onAd
               </div>
               <div className="text-right shrink-0">
                 <p className="text-xs font-black text-slate-700 tabular-nums">{fmt(open)}</p>
-                <p className="text-[9px] font-black text-indigo-500">{fmt(Math.min(open, remaining))} 상계</p>
+                <p className="text-[10px] font-black text-indigo-500">{fmt(Math.min(open, remaining))} 상계</p>
               </div>
             </button>
           ))}
@@ -547,9 +547,9 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
         {/* 방향은 제목 줄에 둔다 — 아래 목록이 통째로 바뀌므로 목록 위에 있어야 한다 */}
-        <div className="flex items-center gap-3 px-8 py-5 border-b border-slate-100 shrink-0">
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 shrink-0">
           <h3 className="text-base font-black text-slate-800 shrink-0">일반전표 발행</h3>
           {/* 일자는 제목 옆에 — 전표를 끊을 때 제일 먼저 확인하는 값이라 맨 위에 둔다 */}
           <input type="date" value={date} onChange={e => setDate(e.target.value)}
@@ -567,7 +567,7 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
           <button onClick={onClose} className="p-1.5 text-slate-300 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all shrink-0"><X size={18} /></button>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6 space-y-5">
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-6 space-y-5">
 
         {/* 기본은 직접입력. 목록은 고를 때만 창을 열어 보여준다(전표 화면과 같다) */}
         {(() => {
@@ -796,7 +796,7 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
                 {entries.map(e => {
                   const je = journalizeCashEntry(e);
                   return (
-                    <div key={e.id} className="px-4 py-2.5">
+                    <div key={e.id} className="px-2 sm:px-4 py-2.5">
                       {je ? (
                         <VoucherSlip je={je} codeName={codeName} partnerName={partnerNameMap}
                           kind={e.dir} docNo={e.docNo} date={e.date} headPartner={e.partnerName} />
@@ -863,7 +863,7 @@ export function AccountModal({ accounts, onClose, onAdd, onUpdate }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-black text-slate-800">자금 계좌 관리</h3>
           <button onClick={onClose} className="text-slate-300 hover:text-slate-500"><X size={18} /></button>

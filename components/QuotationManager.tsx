@@ -241,7 +241,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                         ? <span className={`font-black ${t.margin < 0 ? 'text-rose-500' : 'text-emerald-600'}`}>{(t.marginRate * 100).toFixed(1)}%</span>
                         : <span className="text-slate-300">—</span>}
                     </td>
-                    <td className="px-4 py-2.5">
+                    <td className="px-4 py-2.5 whitespace-nowrap">
                       <div className="flex items-center gap-1 justify-end">
                         <button onClick={() => setViewing(q)} title="보기 · 인쇄"
                           className="p-1.5 text-slate-300 hover:text-indigo-600"><Printer size={13} /></button>
@@ -262,8 +262,8 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
       {/* ── 작성 ── */}
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setOpen(false)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <FileText size={16} className="text-indigo-600" />
                 <h3 className="font-black text-slate-900">견적서 작성</h3>
@@ -271,7 +271,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
               <button onClick={() => setOpen(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl"><X size={16} /></button>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <label className="block space-y-1">
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">일자</span>
@@ -360,7 +360,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                       </span>
                       <span className="px-2 text-right text-xs font-black text-slate-800 tabular-nums">{fmt(amt.gross)}</span>
                       <button onClick={() => setLine(i, { isTaxExempt: !l.isTaxExempt })}
-                        className={`mx-1 py-1.5 rounded-lg text-[10px] font-black border ${l.isTaxExempt ? 'bg-indigo-500 text-white border-indigo-500' : 'bg-white text-slate-500 border-slate-200'}`}>
+                        className={`mx-1 py-1.5 rounded-lg text-[10px] font-black border ${l.isTaxExempt ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-white text-slate-500 border-slate-200'}`}>
                         {l.isTaxExempt ? '면세' : '과세'}
                       </button>
                       <button onClick={() => setForm(f => ({ ...f, lines: f.lines.filter((_, k) => k !== i) }))}
@@ -403,7 +403,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 px-6 py-3 border-t border-slate-100">
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-slate-100">
               <button onClick={() => setOpen(false)} className="px-4 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
               <button onClick={save} disabled={saving}
                 className="px-5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black hover:bg-indigo-700 disabled:opacity-60">
@@ -420,7 +420,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
           원가와 등록 단가를 나란히 보여줘 여기서 바로 값을 가늠할 수 있게 한다. */}
       {pickIdx !== null && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setPickIdx(null)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl h-[72vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl h-[72vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
               <div>
                 <h4 className="font-black text-slate-900 text-sm">품목 고르기</h4>
@@ -437,7 +437,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
             </div>
             {/* 크기 고정 — 검색으로 줄 수가 줄어도 창이 안 흔들린다 */}
             <div className="flex-1 overflow-y-auto">
-              <div className="grid grid-cols-[1fr_100px_100px_100px] bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-widest sticky top-0">
+              <div className="grid grid-cols-[1fr_100px_100px_100px] bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest sticky top-0">
                 <span className="px-4 py-2">품목</span>
                 <span className="px-3 py-2 text-right">원가</span>
                 <span className="px-3 py-2 text-right">등록 단가</span>
@@ -463,8 +463,8 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                     <span className="px-4 py-2 min-w-0">
                       <span className="text-xs font-bold text-slate-800 truncate block">
                         {x.name}
-                        {linked && <span className="ml-1.5 text-[9px] font-black text-indigo-500">거래중</span>}
-                        {x.taxType === '면세' && <span className="ml-1 text-[9px] font-black text-slate-400">면세</span>}
+                        {linked && <span className="ml-1.5 text-[10px] font-black text-indigo-500">거래중</span>}
+                        {x.taxType === '면세' && <span className="ml-1 text-[10px] font-black text-slate-400">면세</span>}
                       </span>
                       <span className="text-[10px] text-slate-400">{x.spec ?? ''}{x.unit ? ` · ${x.unit}` : ''}</span>
                     </span>
@@ -489,9 +489,9 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
       {viewing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 print:static print:bg-white print:p-0"
           onClick={() => setViewing(null)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden print:max-h-none print:shadow-none print:rounded-none"
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden print:max-h-none print:shadow-none print:rounded-none"
             onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-3 border-b border-slate-100 print:hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 print:hidden">
               <h3 className="font-black text-slate-900 text-sm">{viewing.quoteNo}</h3>
               <div className="flex items-center gap-2">
                 <button onClick={() => window.print()}
@@ -501,7 +501,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                 <button onClick={() => setViewing(null)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl"><X size={16} /></button>
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto px-8 py-6 print:overflow-visible">
+            <div className="flex-1 overflow-y-auto px-5 py-6 print:overflow-visible">
               <h2 className="text-center text-2xl font-black tracking-[0.4em] text-slate-900 mb-6">견 적 서</h2>
               <div className="flex justify-between gap-6 mb-5 text-xs">
                 <div className="space-y-1">
@@ -519,20 +519,20 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
               <table className="w-full text-xs border-t-2 border-slate-800">
                 <thead>
                   <tr className="bg-slate-50 text-slate-500">
-                    <th className="px-3 py-2 text-left font-black">품목</th>
-                    <th className="px-3 py-2 text-left font-black">규격</th>
-                    <th className="px-3 py-2 text-right font-black">수량</th>
-                    <th className="px-3 py-2 text-right font-black">단가</th>
-                    <th className="px-3 py-2 text-right font-black">금액</th>
+                    <th className="px-3 py-2 text-left font-black whitespace-nowrap">품목</th>
+                    <th className="px-3 py-2 text-left font-black whitespace-nowrap">규격</th>
+                    <th className="px-3 py-2 text-right font-black whitespace-nowrap">수량</th>
+                    <th className="px-3 py-2 text-right font-black whitespace-nowrap">단가</th>
+                    <th className="px-3 py-2 text-right font-black whitespace-nowrap">금액</th>
                   </tr>
                 </thead>
                 <tbody>
                   {viewing.lines.map((l, i) => (
                     <tr key={i} className="border-b border-slate-100">
-                      <td className="px-3 py-2 font-bold text-slate-800">
-                        {l.name}{l.isTaxExempt && <span className="ml-1 text-[9px] font-black text-indigo-500">면세</span>}
+                      <td className="px-3 py-2 font-bold text-slate-800 whitespace-nowrap">
+                        {l.name}{l.isTaxExempt && <span className="ml-1 text-[10px] font-black text-indigo-500">면세</span>}
                       </td>
-                      <td className="px-3 py-2 text-slate-500">{l.spec}</td>
+                      <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{l.spec}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-slate-700">{fmt(l.qty)}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-slate-700">{fmt(l.price)}</td>
                       <td className="px-3 py-2 text-right tabular-nums font-black text-slate-800">{fmt(l.qty * l.price)}</td>

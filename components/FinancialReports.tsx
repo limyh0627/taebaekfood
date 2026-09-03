@@ -227,13 +227,13 @@ const FinancialReports: React.FC<Props> = ({ statements, cashEntries, accounts, 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase">
-              <tr><th className="px-3 py-2 text-left">계정</th><th className="px-3 py-2 text-center">구분</th><th className="px-3 py-2 text-right">차변</th><th className="px-3 py-2 text-right">대변</th><th className="px-3 py-2 text-right">잔액</th></tr>
+              <tr><th className="px-3 py-2 text-left whitespace-nowrap">계정</th><th className="px-3 py-2 text-center whitespace-nowrap">구분</th><th className="px-3 py-2 text-right whitespace-nowrap">차변</th><th className="px-3 py-2 text-right whitespace-nowrap">대변</th><th className="px-3 py-2 text-right whitespace-nowrap">잔액</th></tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {tb.rows.map(r => (
                 <tr key={r.accountCode} className="hover:bg-slate-50/50">
-                  <td className="px-3 py-2 font-bold text-slate-700"><span className="text-slate-300 mr-1.5">{r.accountCode}</span>{r.name}</td>
-                  <td className="px-3 py-2 text-center"><span className={`text-[10px] font-black ${typeColor[r.type ?? ''] ?? 'text-slate-400'}`}>{r.type ?? '-'}</span></td>
+                  <td className="px-3 py-2 font-bold text-slate-700 whitespace-nowrap"><span className="text-slate-300 mr-1.5">{r.accountCode}</span>{r.name}</td>
+                  <td className="px-3 py-2 text-center whitespace-nowrap"><span className={`text-[10px] font-black ${typeColor[r.type ?? ''] ?? 'text-slate-400'}`}>{r.type ?? '-'}</span></td>
                   <td className="px-3 py-2 text-right tabular-nums text-slate-500">{r.debit ? won(r.debit) : ''}</td>
                   <td className="px-3 py-2 text-right tabular-nums text-slate-500">{r.credit ? won(r.credit) : ''}</td>
                   <td className="px-3 py-2 text-right tabular-nums font-black text-slate-800">{won(r.balance)}</td>

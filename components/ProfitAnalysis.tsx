@@ -568,7 +568,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                   {gs.map(g => (
                     <div key={g.id}>
                       <div className="flex items-center justify-between text-[11px] font-black text-slate-600">
-                        <span>{g.name}{!g.plLine && <span className="ml-1.5 text-[9px] text-amber-500">손익 줄 없음</span>}</span>
+                        <span>{g.name}{!g.plLine && <span className="ml-1.5 text-[10px] text-amber-500">손익 줄 없음</span>}</span>
                         <span className="tabular-nums">{fmt(g.amount)}</span>
                       </div>
                       {g.rows.map(r => (
@@ -721,7 +721,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                       className={`hover:bg-slate-50 transition-colors ${isEmpty ? 'opacity-40' : 'cursor-pointer'}`}
                       onClick={() => !isEmpty && setExpandedMonth(isExpanded ? null : m.ym)}
                     >
-                      <td className="px-4 py-3 text-xs font-black text-slate-700">{m.month}</td>
+                      <td className="px-4 py-3 text-xs font-black text-slate-700 whitespace-nowrap">{m.month}</td>
                       <td className="px-4 py-3 text-xs text-right text-blue-700 font-bold">{m.sales ? fmt(m.sales) : '-'}</td>
                       <td className="px-4 py-3 text-xs text-right text-amber-700 font-bold">{m.cogs ? fmt(m.cogs) : '-'}</td>
                       <td className="px-4 py-3 text-xs text-right font-bold text-slate-700">{m.grossProfit ? fmt(m.grossProfit) : '-'}</td>
@@ -736,20 +736,20 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                           </span>
                         ) : '-'}
                       </td>
-                      <td className="px-4 py-3 text-center text-slate-300">
+                      <td className="px-4 py-3 text-center text-slate-300 whitespace-nowrap">
                         {!isEmpty && (isExpanded ? <ChevronUp size={13}/> : <ChevronDown size={13}/>)}
                       </td>
                     </tr>
                     {isExpanded && (
                       <tr>
-                        <td colSpan={8} className="px-6 py-3 bg-slate-50">
+                        <td colSpan={8} className="px-5 py-3 bg-slate-50">
                           <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">전표 내역</div>
                           <div className="space-y-1">
                             {monthStmts.length === 0 ? (
                               <div className="text-xs text-slate-300">전표 없음</div>
                             ) : monthStmts.map(v => (
                               <div key={v.id} className="flex items-center gap-3 text-[11px]">
-                                <span className={`shrink-0 w-11 text-center px-1.5 py-0.5 rounded-full font-black text-[9px] ${VOUCHER_KIND_CHIP[v.kind]}`}>{v.kind}</span>
+                                <span className={`shrink-0 w-11 text-center px-1.5 py-0.5 rounded-full font-black text-[10px] ${VOUCHER_KIND_CHIP[v.kind]}`}>{v.kind}</span>
                                 <span className="text-slate-600 shrink-0">{v.date}</span>
                                 <span className="font-bold text-slate-800 truncate">{v.partnerName ?? '(거래처 없음)'}</span>
                                 <span className="text-slate-400 truncate">{[v.docNo, v.memo].filter(Boolean).join(' · ')}</span>
@@ -767,7 +767,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             {/* 합계 행 */}
             <tfoot className="bg-slate-100 border-t-2 border-slate-200">
               <tr>
-                <td className="px-4 py-3 text-xs font-black text-slate-700">합계</td>
+                <td className="px-4 py-3 text-xs font-black text-slate-700 whitespace-nowrap">합계</td>
                 <td className="px-4 py-3 text-xs text-right font-black text-blue-700">{fmt(summary.sales)}</td>
                 <td className="px-4 py-3 text-xs text-right font-black text-amber-700">{fmt(summary.cogs)}</td>
                 <td className="px-4 py-3 text-xs text-right font-black text-slate-700">{fmt(summary.grossProfit)}</td>
@@ -847,7 +847,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           // '±'(양방향) 라인은 실제 금액 부호로 색·기호 결정 — +면 초록, −면 빨강
           const eff = sign === '±' ? (amount > 0 ? '+' : amount < 0 ? '-' : '±') : sign;
           return (
-          <div className="flex items-center justify-between px-6 py-2.5">
+          <div className="flex items-center justify-between px-5 py-2.5">
             <span className="text-xs text-slate-600">
               <span className={`mr-2 text-[10px] font-black ${eff === '+' ? 'text-emerald-500' : eff === '-' ? 'text-rose-400' : 'text-slate-400'}`}>({eff})</span>{label}
             </span>
@@ -971,7 +971,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                 <span className={`text-lg font-black ${netTotal >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{netTotal >= 0 ? '+' : ''}{fmt(netTotal)}원</span>
               </div>
               {/* 기초/기말현금 */}
-              <div className="flex items-center justify-between px-6 py-2.5 border-t border-slate-100">
+              <div className="flex items-center justify-between px-5 py-2.5 border-t border-slate-100">
                 <span className="text-xs text-slate-600">기초현금 {editable && !isBaselineMonth && <span className="text-[10px] text-slate-400">· 전월 이월</span>}</span>
                 {editable && isBaselineMonth ? (
                   <input value={mVal('openingCash')} onChange={e => setM('openingCash', e.target.value)} inputMode="numeric" placeholder="기초현금 입력"
@@ -980,7 +980,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                   <span className="text-xs font-black tabular-nums text-slate-700">{fmt(opening)}원</span>
                 )}
               </div>
-              <div className="flex items-center justify-between px-6 py-3 bg-blue-50">
+              <div className="flex items-center justify-between px-5 py-3 bg-blue-50">
                 <span className="text-sm font-black text-blue-800">기말현금 {editable && <span className="text-[10px] font-bold text-blue-400">· 실제 현금·예금 직접 입력(선택)</span>}</span>
                 {editable ? (
                   <input value={mVal('closingCash')} onChange={e => setM('closingCash', e.target.value)} inputMode="numeric" placeholder={fmt(opening + computedNet)}
@@ -1014,7 +1014,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                     const label = `${Number(ym.slice(5))}월`;
                     return (
                       <div key={ym} className="flex-1 flex flex-col items-center gap-0.5 group relative">
-                        <div className="absolute bottom-full mb-2 bg-slate-800 text-white text-[9px] font-black px-2 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-10 left-1/2 -translate-x-1/2 text-center space-y-0.5">
+                        <div className="absolute bottom-full mb-2 bg-slate-800 text-white text-[10px] font-black px-2 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-10 left-1/2 -translate-x-1/2 text-center space-y-0.5">
                           <div className="text-emerald-400">수금 {fmtM(inc)}</div>
                           <div className="text-rose-400">지출 {fmtM(out)}</div>
                           <div className={(inc - out) >= 0 ? 'text-teal-300' : 'text-amber-300'}>순 {fmtM(inc - out)}</div>
@@ -1023,7 +1023,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                           <div className="flex-1 bg-emerald-400 rounded-t-sm" style={{ height: `${Math.round((inc / barMax) * 96)}px`, minHeight: inc > 0 ? 2 : 0 }}/>
                           <div className="flex-1 bg-rose-400 rounded-t-sm" style={{ height: `${Math.round((out / barMax) * 96)}px`, minHeight: out > 0 ? 2 : 0 }}/>
                         </div>
-                        <span className="text-[8px] font-bold text-slate-400">{label}</span>
+                        <span className="text-[10px] font-bold text-slate-400">{label}</span>
                       </div>
                     );
                   })}
@@ -1388,7 +1388,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                         <div className="flex bg-slate-100 rounded-lg p-0.5 gap-0.5 mr-1">
                           {([['year', '연'], ['month', '월']] as const).map(([v, lbl]) => (
                             <button key={v} onClick={() => setStatsScope(v)}
-                              className={`px-3 py-1 rounded-md text-xs font-black transition-all ${statsScope === v ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400'}`}>
+                              className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${statsScope === v ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400'}`}>
                               {lbl}
                             </button>
                           ))}
@@ -1495,7 +1495,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                               amount: String(Math.round(Math.min(totalReceivable, totalPayable))),
                               date: today(),
                             })}
-                            className="ml-auto shrink-0 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-black transition-colors">
+                            className="ml-auto shrink-0 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-500 text-white text-[11px] font-black transition-colors">
                             상계 처리
                           </button>
                         </div>
@@ -1520,16 +1520,16 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                                 <div className="w-full flex items-end justify-center gap-0.5 h-[84px]">
                                   <div className="w-1/2 bg-indigo-200 rounded-t-sm group-hover:bg-indigo-400 transition-colors"
                                     style={{ height: `${Math.round((amount / maxAmt) * 84)}px`, minHeight: amount > 0 ? 3 : 0 }} />
-                                  <div className="w-1/2 bg-emerald-400 rounded-t-sm group-hover:bg-emerald-500 transition-colors"
+                                  <div className="w-1/2 bg-emerald-400 rounded-t-sm group-hover:bg-emerald-600 transition-colors"
                                     style={{ height: `${Math.round((Math.max(0, got) / maxAmt) * 84)}px`, minHeight: got > 0 ? 3 : 0 }} />
                                 </div>
                                 {(amount > 0 || got !== 0) && (
-                                  <div className="absolute bottom-full mb-1.5 bg-slate-800 text-white text-[9px] font-black px-2 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-10 left-1/2 -translate-x-1/2 space-y-0.5">
+                                  <div className="absolute bottom-full mb-1.5 bg-slate-800 text-white text-[10px] font-black px-2 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-10 left-1/2 -translate-x-1/2 space-y-0.5">
                                     <div>매출 {fmtS(amount)}원 · {count}건</div>
                                     <div className="text-emerald-300">수금 {fmtS(got)}원</div>
                                   </div>
                                 )}
-                                <span className="text-[8px] font-bold text-slate-400">{label}</span>
+                                <span className="text-[10px] font-bold text-slate-400">{label}</span>
                               </div>
                             );
                           })}
@@ -1570,7 +1570,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                             return (
                               <div key={t.id} className="px-5 py-2.5 flex items-center gap-3 hover:bg-slate-50/60 transition-colors">
                                 <span className="w-14 shrink-0 text-[11px] font-bold text-slate-500 tabular-nums">{t.date.slice(2)}</span>
-                                <span className={`shrink-0 px-2 py-0.5 rounded-full text-[9px] font-black ${style}`}>{t.kind}</span>
+                                <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-black ${style}`}>{t.kind}</span>
                                 <span className="flex-1 min-w-0 text-[11px] text-slate-400 truncate">{t.note || '—'}</span>
                                 <span className={`shrink-0 w-24 text-right text-[12px] font-black tabular-nums ${
                                   isCash ? (t.amount < 0 ? 'text-rose-500' : t.kind === '수금' ? 'text-emerald-600' : 'text-orange-600') : 'text-slate-700'
@@ -1597,7 +1597,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             {/* 미수 ↔ 미지급 상계 모달 */}
             {offsetForm && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-                <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-4">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
                   <h3 className="text-sm font-black text-slate-800">미수 · 미지급 상계</h3>
                   <div className="text-xs text-slate-400">{offsetForm.name}</div>
                   <div className="bg-slate-50 rounded-xl px-4 py-3 text-xs space-y-1">
@@ -1722,7 +1722,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           <div className="space-y-4">
             {/* 재고총액 + 기말재고 기록 */}
             <div className="flex gap-3 flex-wrap">
-              <div className="flex-1 bg-teal-50 border border-teal-200 rounded-2xl px-6 py-4 flex items-center justify-between">
+              <div className="flex-1 bg-teal-50 border border-teal-200 rounded-2xl px-5 py-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Package size={18} className="text-teal-600" />
                   <span className="text-sm font-black text-teal-700">현재 재고총액 (기말재고액)</span>
@@ -1745,7 +1745,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                       yearMonth: currentYm, value: totalValue, recordedAt: new Date().toISOString(),
                       items: rows.map(p => ({ itemId: p.id, name: p.name, category: catLabel(p), qty: p.stock, value: p.value, ...(p.spec ? { spec: p.spec } : {}) })),
                     })}
-                    className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black transition-all ${existingSnap ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' : 'bg-teal-600 text-white hover:bg-teal-700'}`}>
+                    className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black transition-all ${existingSnap ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' : 'bg-emerald-600 text-white hover:bg-teal-700'}`}>
                     <Archive size={12}/>{existingSnap ? '덮어쓰기' : '기말재고 기록'}
                   </button>
                 </div>
@@ -1817,11 +1817,11 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                           <React.Fragment key={snap.id}>
                           <tr onClick={() => hasItems && setExpandedSnapId(open ? null : snap.id)}
                             className={`transition-colors ${hasItems ? 'cursor-pointer hover:bg-slate-50' : ''} ${snap.yearMonth === currentYm ? 'bg-teal-50/50' : ''}`}>
-                            <td className="px-4 py-3 text-xs font-black text-slate-700">
+                            <td className="px-4 py-3 text-xs font-black text-slate-700 whitespace-nowrap">
                               {hasItems && <span className="mr-1.5 text-slate-300">{open ? '▾' : '▸'}</span>}
                               {snap.yearMonth}
-                              {snap.yearMonth === currentYm && <span className="ml-2 text-[9px] bg-teal-100 text-teal-600 px-1.5 py-0.5 rounded-full">이번달</span>}
-                              {hasItems && <span className="ml-2 text-[9px] text-slate-400">{snap.items!.length}품목</span>}
+                              {snap.yearMonth === currentYm && <span className="ml-2 text-[10px] bg-teal-100 text-teal-600 px-1.5 py-0.5 rounded-full">이번달</span>}
+                              {hasItems && <span className="ml-2 text-[10px] text-slate-400">{snap.items!.length}품목</span>}
                             </td>
                             <td className="px-4 py-3 text-xs text-right font-black text-teal-700">{fmt(snap.value)}원</td>
                             <td className="px-4 py-3 text-[10px] text-right text-slate-400">{snap.recordedAt.slice(0, 16).replace('T', ' ')}</td>
@@ -1829,26 +1829,26 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                           {open && snapGroups.map(([g, list]) => (
                             <React.Fragment key={snap.id + '-g-' + g}>
                               <tr className="bg-slate-100/80">
-                                <td className="pl-9 pr-4 py-1.5 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                <td className="pl-9 pr-4 py-1.5 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap">
                                   {g} <span className="text-slate-400 font-bold normal-case">{list.length}품목</span>
                                 </td>
                                 <td className="px-4 py-1.5 text-[11px] text-right font-black text-slate-600">
                                   {fmt(list.reduce((a, x) => a + Number(x.value || 0), 0))}원
                                 </td>
-                                <td className="px-4 py-1.5"></td>
+                                <td className="px-4 py-1.5 whitespace-nowrap"></td>
                               </tr>
                               {list.map((it, i) => {
                                 // 옛 기록엔 규격이 안 담겨 있다 — 품목에서 찾아 붙인다(지워진 품목이면 없는 대로)
                                 const spec = it.spec ?? products.find(p => p.id === it.itemId)?.spec;
                                 return (
                                   <tr key={snap.id + '-' + g + '-' + i} className="bg-slate-50/60">
-                                    <td className="pl-12 pr-4 py-1.5 text-[11px] text-slate-600">
+                                    <td className="pl-12 pr-4 py-1.5 text-[11px] text-slate-600 whitespace-nowrap">
                                       {it.name}
                                       {spec && <span className="ml-1.5 text-[10px] font-black text-slate-400">{spec}</span>}
                                       <span className="text-slate-400 ml-1.5">× {it.qty}</span>
                                     </td>
                                     <td className="px-4 py-1.5 text-[11px] text-right font-bold text-slate-600">{fmt(it.value)}원</td>
-                                    <td className="px-4 py-1.5"></td>
+                                    <td className="px-4 py-1.5 whitespace-nowrap"></td>
                                   </tr>
                                 );
                               })}
@@ -1889,14 +1889,14 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                           <tr key={p.id} className="hover:bg-slate-50 transition-colors">
                             {/* 규격을 같이 안 적으면 **낱개와 박스를 못 가른다** — 이름이 똑같다.
                                 350ml * 1(병)과 350ml * 20(박스)이 나란히 서는데 재고액은 20배 차이가 난다. */}
-                            <td className="px-4 py-3 text-xs font-bold text-slate-700">
+                            <td className="px-4 py-3 text-xs font-bold text-slate-700 whitespace-nowrap">
                               {p.name}
                               {p.spec && <span className="ml-1.5 text-[10px] font-black text-slate-400">{p.spec}</span>}
                             </td>
                             <td className="px-4 py-3 text-xs text-right text-slate-600">{p.stock.toLocaleString()} {p.unit}</td>
                             <td className="px-4 py-3 text-xs text-right text-slate-500">
                               {p.unitCost > 0
-                                ? <>{fmt(Math.round(p.unitCost))}원{(p.cost == null || p.cost === 0) && <span className="ml-1 text-[9px] font-black text-teal-500" title="BOM 롤업 원가">롤업</span>}</>
+                                ? <>{fmt(Math.round(p.unitCost))}원{(p.cost == null || p.cost === 0) && <span className="ml-1 text-[10px] font-black text-teal-500" title="BOM 롤업 원가">롤업</span>}</>
                                 : <span className="text-slate-300">-</span>}
                             </td>
                             <td className={`px-4 py-3 text-xs text-right font-black ${p.value > 0 ? 'text-teal-700' : 'text-slate-300'}`}>
@@ -1933,7 +1933,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
       {showAccountSettings && (
         <div className="fixed inset-0 z-50 flex flex-col bg-slate-50 overflow-hidden">
           {/* 헤더 */}
-          <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0">
+          <div className="bg-white border-b border-slate-200 px-5 py-4 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-3">
               <Wallet size={18} className="text-amber-600"/>
               <span className="text-base font-black text-slate-800">계정 설정</span>
@@ -1941,11 +1941,11 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             </div>
             <div className="flex items-center gap-2">
               <button onClick={() => { setShowAddGroup(false); setShowAddCode(v => !v); }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${showAddCode ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}>
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${showAddCode ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}>
                 + 계정과목
               </button>
               <button onClick={() => { setShowAddCode(false); setShowAddGroup(v => !v); }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${showAddGroup ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}>
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${showAddGroup ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}>
                 + 계정그룹
               </button>
               <button onClick={() => setShowAccountSettings(false)}
@@ -1955,7 +1955,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             </div>
           </div>
           {(showAddCode || showAddGroup) && (
-            <div className="bg-white border-b border-slate-200 px-6 py-3 shrink-0">
+            <div className="bg-white border-b border-slate-200 px-5 py-3 shrink-0">
               {showAddCode && (
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs font-black text-slate-500 mr-1">계정과목 추가</span>

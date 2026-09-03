@@ -493,7 +493,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                 </div>
                 <button
                   onClick={() => setOnlyUnissued(p => !p)}
-                  className={`w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-black transition-all ${onlyUnissued ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                  className={`w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-black transition-all ${onlyUnissued ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                 >
                   미발행 거래처만 보기
                 </button>
@@ -544,7 +544,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                     { key: 'address', label: '주소', placeholder: '사업장 주소' },
                   ].map(f => (
                     <div key={f.key}>
-                      <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">{f.label}</label>
+                      <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">{f.label}</label>
                       <input type="text" placeholder={f.placeholder}
                         value={(taxBuyerInfo as any)[f.key]}
                         onChange={e => setTaxBuyerInfo(prev => ({ ...prev, [f.key]: e.target.value }))}
@@ -616,7 +616,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                         <Download size={11}/>PDF
                       </button>
                       <button onClick={handleTaxPrint}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-slate-600 text-white rounded-lg text-[11px] font-black hover:bg-slate-700">
+                        className="flex items-center gap-1 px-3 py-1.5 bg-slate-700 text-white rounded-lg text-[11px] font-black hover:bg-slate-700">
                         <Printer size={11}/>인쇄
                       </button>
                     </div>
@@ -665,25 +665,25 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                         <tbody>
                           {activeItems.map((item, idx) => (
                             <tr key={idx} className={item.isTaxExempt ? 'bg-indigo-50/40' : 'bg-blue-50/30'}>
-                              <td className="px-1 py-1">
+                              <td className="px-1 py-1 whitespace-nowrap">
                                 <input value={item.name} onChange={e => updateEditedItem(idx, 'name', e.target.value)}
                                   className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-xs font-bold outline-none focus:ring-1 focus:ring-emerald-300"/>
                               </td>
-                              <td className="px-1 py-1">
+                              <td className="px-1 py-1 whitespace-nowrap">
                                 <input value={item.spec} onChange={e => updateEditedItem(idx, 'spec', e.target.value)}
                                   className="w-20 bg-white border border-slate-200 rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-emerald-300"/>
                               </td>
-                              <td className="px-1 py-1">
+                              <td className="px-1 py-1 whitespace-nowrap">
                                 <input type="number" value={item.qty} onChange={e => updateEditedItem(idx, 'qty', e.target.value)}
                                   className="w-16 bg-white border border-slate-200 rounded px-2 py-1 text-xs text-right outline-none focus:ring-1 focus:ring-emerald-300"/>
                               </td>
-                              <td className="px-1 py-1">
+                              <td className="px-1 py-1 whitespace-nowrap">
                                 <input type="number" value={item.supply} onChange={e => updateEditedItem(idx, 'supply', e.target.value)}
                                   className="w-24 bg-white border border-slate-200 rounded px-2 py-1 text-xs text-right outline-none focus:ring-1 focus:ring-emerald-300"/>
                               </td>
                               <td className="px-2 py-1 text-xs text-right text-slate-500">{item.isTaxExempt ? '면세' : fmt(item.tax)}</td>
                               <td className="px-2 py-1 text-xs text-right font-black text-slate-700">{fmt(item.total)}</td>
-                              <td className="px-1 py-1">
+                              <td className="px-1 py-1 whitespace-nowrap">
                                 <button onClick={() => setEditedItems(prev => prev.filter((_, i) => i !== idx))}
                                   className="p-1 text-slate-300 hover:text-rose-400 transition-colors"><Trash2 size={11}/></button>
                               </td>
@@ -858,9 +858,9 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                             <div className="flex items-center gap-2 flex-wrap">
                               <Building2 size={13} className="text-slate-400 shrink-0"/>
                               <span className="text-sm font-black text-slate-800">{cl?.name ?? group.partnerName ?? '-'}</span>
-                              <span className="text-[9px] font-black bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full">발행완료</span>
+                              <span className="text-[10px] font-black bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full">발행완료</span>
                               {group.isBundle && (
-                                <span className="text-[9px] font-black bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                                <span className="text-[10px] font-black bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
                                   <Package size={8}/>묶음 {group.stmts.length}건
                                 </span>
                               )}
@@ -919,15 +919,15 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
       {previewGroup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
           onClick={() => setHistPreviewGroupKey(null)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden"
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden"
             onClick={e => e.stopPropagation()}>
             {/* 오버레이 헤더 */}
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-black text-slate-800">세금계산서 미리보기</span>
                 <span className="text-xs text-slate-400">— {previewClient?.name}</span>
                 {previewGroup.isBundle && (
-                  <span className="text-[9px] font-black bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                  <span className="text-[10px] font-black bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
                     <Package size={8}/>묶음 {previewGroup.stmts.length}건
                   </span>
                 )}
@@ -938,7 +938,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                   <Download size={11}/>PDF
                 </button>
                 <button onClick={handleHistPrint}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-slate-600 text-white rounded-lg text-xs font-black hover:bg-slate-700">
+                  className="flex items-center gap-1 px-3 py-1.5 bg-slate-700 text-white rounded-lg text-xs font-black hover:bg-slate-700">
                   <Printer size={11}/>인쇄
                 </button>
                 <button onClick={() => setHistPreviewGroupKey(null)}

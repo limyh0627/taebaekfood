@@ -89,7 +89,7 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">품목명</th>
+                <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">품목명</th>
                 <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">카테고리</th>
                 <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">원가</th>
                 <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">재고</th>
@@ -110,7 +110,7 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
                 return (
                   <tr key={p.id} className={`hover:bg-slate-50 transition-colors ${isEditing ? 'bg-indigo-50/40' : ''}`}>
                     {/* 품목명 */}
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 whitespace-nowrap">
                       <div className="font-black text-slate-800 text-sm">{p.name}</div>
                       {(() => {
                         //  부자재는 BOM 그대로 — 용기·마개만 골라 뽑던 자리다(그 필터는 늘 비어 있었다).
@@ -133,7 +133,7 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
                       {p.sku && <div className="text-[10px] text-slate-300 mt-0.5">{p.sku}</div>}
                     </td>
                     {/* 카테고리 */}
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">{p.type}</span>
                     </td>
                     {/* 원가 */}
@@ -156,7 +156,7 @@ const ItemPriceManager: React.FC<ItemPriceManagerProps> = ({
                       <span className="text-sm font-bold text-slate-500">{p.stock ?? 0}{p.unit ? ` ${p.unit}` : ''}</span>
                     </td>
                     {/* 관리 */}
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex items-center justify-center gap-1.5">
                         {isEditing ? (
                           <>

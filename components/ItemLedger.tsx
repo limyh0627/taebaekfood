@@ -45,10 +45,11 @@ const ItemLedger: React.FC<{
     () => (pickedId ? buildItemLedger(pickedId, orders, items, receipts) : null),
     [pickedId, orders, items, receipts]);
 
+  //  좁은 화면에서는 위아래로 — 가로로 두면 오른쪽 표가 찌그러진다(shared/ui/table)
   return (
-    <div className="flex gap-4 h-full min-h-0">
+    <div className="flex flex-col lg:flex-row gap-3 lg:gap-4 h-full min-h-0">
       {/* 품목 고르기 — 크기 고정. 검색으로 줄 수가 줄어도 창이 안 흔들린다. */}
-      <div className="w-[280px] shrink-0 flex flex-col bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div className="w-full lg:w-[280px] shrink-0 flex flex-col max-h-[38vh] lg:max-h-none bg-white rounded-2xl border border-slate-200 overflow-hidden">
         <div className="p-2 border-b border-slate-100 relative">
           <Search size={13} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="품목명·규격으로 찾기"
@@ -105,7 +106,7 @@ const ItemLedger: React.FC<{
                   {ledger.rows.map((r, i) => (
                     <tr key={`${r.orderId}-${r.kind}-${i}`} className="hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-2 text-[11px] font-bold text-slate-500 whitespace-nowrap">{r.date || '—'}</td>
-                      <td className="px-4 py-2"><span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${KIND_CLS[r.kind]}`}>{r.kind}</span></td>
+                      <td className="px-4 py-2 whitespace-nowrap"><span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${KIND_CLS[r.kind]}`}>{r.kind}</span></td>
                       <td className="px-4 py-2 text-[11px] font-bold text-slate-600 truncate max-w-[140px]">{r.partnerName || '—'}</td>
                       <td className="px-4 py-2 text-[11px] text-slate-400 truncate max-w-[240px]">{r.note}</td>
                       <td className={`px-4 py-2 text-xs text-right font-black ${r.qty > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>

@@ -3936,12 +3936,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   )}
                   {createMode==='매입' && (
                     <>
+                      {/*  매출 쪽과 같은 모양으로 — `N건` (2026-09-03 사장님, ui 통일) */}
                       <span className="text-xs text-slate-400">
                         {(confirmedBySupplier.find(s=>s.partnerId===selectedClientId)?.items.length??0) + (orderRequestsBySupplier.find(s=>s.partnerId===selectedClientId)?.items.length??0)}건
                       </span>
-                      <div className="ml-auto flex items-center gap-2">
+                      {/*  매출 쪽은 '발주 불러오기 | 직접 입력' 토글이라 여기도 같게 맞춘다 */}
+                      <div className="ml-auto flex bg-slate-200 rounded-lg p-0.5 gap-0.5">
+                        <button onClick={()=>setManualMode(false)}
+                          className={`px-3 py-1 rounded-md text-xs font-black transition-all ${!manualMode?'bg-white text-slate-800 shadow-sm':'text-slate-500'}`}>
+                          발주 불러오기
+                        </button>
                         <button onClick={()=>setManualMode(true)}
-                          className="px-3 py-1.5 rounded-lg text-xs font-black bg-slate-700 text-white hover:bg-slate-800 transition-all">
+                          className={`px-3 py-1 rounded-md text-xs font-black transition-all ${manualMode?'bg-white text-slate-800 shadow-sm':'text-slate-500'}`}>
                           직접 입력
                         </button>
                       </div>
@@ -4117,6 +4123,45 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 })()}
               </div>
             )}
+
+            {/*
+              ── 미발행 발주 목록 (매입·거래처 미선택) ──
+              매출 쪽에는 '미발행 주문'이 있는데 매입 쪽엔 없어서, 거래처를 안 고르면
+              빈 화면이었다. 대칭으로 맞춘다(2026-09-03 사장님).
+              누르면 그 거래처로 들어가 발주 목록이 뜬다 — 매출 쪽과 같은 흐름이다.
+            */}
+            {createMode==='매입' && !selectedClientId && (() => {
+              const 그룹 = confirmedBySupplier
+                .filter(g => matchKo(g.partnerName || '', partnerSearch))
+                .filter(g => g.items.length > 0)
+                .sort((a, b) => (a.partnerName || '').localeCompare(b.partnerName || '', 'ko'));
+              const 합 = 그룹.reduce((n, g) => n + g.items.length, 0);
+              if (!그룹.length) return null;
+              return (
+                <div className="flex-1 min-h-0 flex flex-col">
+                  <div className="px-5 py-2 bg-slate-50 flex items-center gap-2 flex-shrink-0">
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">미발행 발주</span>
+                    <span className="text-[10px] text-slate-400">{합}건</span>
+                  </div>
+                  <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
+                    {그룹.map(g => (
+                      <button key={g.partnerId || g.partnerName}
+                        onClick={() => { setSelectedClientId(g.partnerId ?? ''); setManualMode(false); }}
+                        className="w-full flex items-center gap-2 text-left px-5 py-2.5 text-xs hover:bg-rose-50 transition-colors">
+                        <span className="font-black text-slate-800 w-40 truncate shrink-0">{g.partnerName || '거래처 미지정'}</span>
+                        <span className="text-slate-400 flex-1 min-w-0 truncate">
+                          {g.items.slice(0, 2).map(x => x.product?.name).filter(Boolean).join(', ')}
+                          {g.items.length > 2 && ` 외 ${g.items.length - 2}`}
+                        </span>
+                        <span className="text-slate-600 font-bold shrink-0">{g.items.length}품목</span>
+                        <span className="text-[10px] font-black text-pink-500 bg-pink-100 px-1.5 py-0.5 rounded-full shrink-0">미발행</span>
+                        <ChevronRight size={14} className="text-slate-300 shrink-0"/>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* ── 진행 주문 목록 (매출·진행주문만·거래처 미선택) ── */}
             {createMode==='매출' && !selectedClientId && activeOrders.length > 0 && (() => {
