@@ -4192,6 +4192,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                         <span className={`w-16 text-center shrink-0 text-[10px] font-black px-1.5 py-0.5 rounded-full ${STATUS_COLOR[o.status] || 'bg-slate-100 text-slate-500'}`}>
                           {STATUS_LABEL[o.status] || o.status}
                         </span>
+                        {/*  카드번호 — 어느 주문 카드인지 가리킬 이름(2026-09-03) */}
+                        <span className="w-24 shrink-0 text-[10px] font-black text-slate-400 tabular-nums truncate">{cardNoLabel(o)}</span>
                         <span className="w-28 shrink-0 text-slate-400">납품 {o.deliveryDate?.slice(5,10) || '미정'}</span>
                         <span className="w-14 shrink-0 text-center">
                           {isVouchered(o)

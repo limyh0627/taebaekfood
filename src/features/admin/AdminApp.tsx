@@ -132,6 +132,7 @@ import { docPumok, docOilKg, docSpec, addOilByRaw, docSaleLine, docUnpack, docDa
 import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo, settleCarryOver } from '../../shared/lotUtils';
 import { rawLotTarget, adjustRawLots } from '../../shared/rawReceipt';
 import { recordReceipt } from '../../shared/receipt';
+import { buildPaymentEntry } from '../../shared/payment';
 import { nextOrderNo, nextPoNo, cardNoLabel } from '../../shared/cardNo';
 import { bomQty } from '../../shared/bom';
 import { stockUnits, unpackComponent, unitsPerBoxOf } from '../../shared/orderUnits';
@@ -1115,19 +1116,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
     if (req.linkedStatementId && req.totalAmount > 0) {
       const stmt = issuedStatements.find(s => s.id === req.linkedStatementId);
       if (stmt) {
-        const isSale = stmt.type !== '매입';
-        await addCashEntry({
+        //  셈은 shared/payment 하나다. 반품이라 방향을 뒤집는다(reverse).
+        await addCashEntry(buildPaymentEntry({
           id: `cash-return-${req.id}-${Date.now()}`,
-          date: today(),
-          cashAccountId: '',
-          dir: isSale ? '출금' : '입금',
-          amount: req.totalAmount,
           partnerId: stmt.partnerId ?? '',
           partnerName: stmt.partnerName ?? '',
-          accountCode: isSale ? '108' : '251',
+          type: stmt.type === '매입' ? '매입' : '매출',
+          amount: req.totalAmount,
+          date: today(),
+          reverse: true,
           note: `반품 처리 (${req.items.map(i => i.name).join(', ')})`,
-          createdAt: new Date().toISOString(),
-        });
+        }));
       }
     }
 
@@ -3888,6 +3887,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       cashEntries={companyCashEntries}
                       accountCodes={appData.accountCodes}
                       onOpenVoucher={(_id, docNo) => { setFocusDocNo(docNo); setCurrentView('trade-statement'); }}
+                      onAddCashEntry={(e) => addCashEntry(e)}
                     />
                   ) : (
                   <CashLedger

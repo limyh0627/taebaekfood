@@ -1,0 +1,66 @@
+[
+  {
+    "col": "fileCabinetCategories",
+    "id": "7btPK2d1qZDhMFcfe0Sw",
+    "data": {
+      "name": "서류관리",
+      "order": 90,
+      "createdAt": "2026-09-02T08:15:32.415Z"
+    }
+  },
+  {
+    "col": "fileCabinetCategories",
+    "id": "BA8zckv9H0bE0aFDpumD",
+    "data": {
+      "order": 90,
+      "name": "서류관리",
+      "createdAt": "2026-09-02T08:16:54.419Z"
+    }
+  },
+  {
+    "col": "fileCabinetCategories",
+    "id": "DCIYNAmk03dFRdfzxJ1H",
+    "data": {
+      "order": 90,
+      "createdAt": "2026-09-02T08:18:48.189Z",
+      "name": "서류관리"
+    }
+  },
+  {
+    "col": "fileCabinetCategories",
+    "id": "KJTATkPTax2BdCFLahKf",
+    "data": {
+      "order": 90,
+      "name": "서류관리",
+      "createdAt": "2026-09-02T08:17:08.753Z"
+    }
+  },
+  {
+    "col": "fileCabinetCategories",
+    "id": "VoTtIUpVkrdOJIEjWyEL",
+    "data": {
+      "order": 90,
+      "createdAt": "2026-09-02T08:18:23.454Z",
+      "name": "서류관리"
+    }
+  },
+  {
+    "col": "fileCabinetCategories",
+    "id": "h04CBfzqFzH71fo6eSob",
+    "data": {
+      "name": "서류관리",
+      "order": 90,
+      "createdAt": "2026-09-02T08:11:26.779Z"
+    }
+  },
+  {
+    "col": "fileCabinetSubCategories",
+    "id": "KowMOmYuGnvyeTGsEyYw",
+    "data": {
+      "order": 0,
+      "name": "생산판매기록부",
+      "category": "서류관리",
+      "createdAt": "2026-09-02T08:11:26.806Z"
+    }
+  }
+]

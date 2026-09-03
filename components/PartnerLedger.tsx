@@ -1,6 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Search, Users } from 'lucide-react';
+import { Search, Users, Wallet, X } from 'lucide-react';
 import { AccountCode, CashEntry, IssuedStatement } from '../src/shared/types';
+import { today } from '../src/shared/day';
+import { claimDocNo } from '../src/shared/voucherStamp';
+import { buildPaymentEntry } from '../src/shared/payment';
+import VoucherSlip from '../src/shared/VoucherSlip';
 import { buildPartnerLedger, partnerBalances } from '../src/features/admin/cashLedger';
 import { buildJournals } from '../src/shared/buildJournals';
 
@@ -10,11 +14,25 @@ interface Props {
   accountCodes: AccountCode[];
   /** 전표번호를 눌렀을 때 — 그 전표를 열어 보여준다 */
   onOpenVoucher?: (sourceId: string, docNo: string) => void;
+  /**
+   * 수금·지불을 자금원장에 적는다.
+   * 이 기능은 **거래처통계에 있던 것**인데 거기로 옮겨 왔다(2026-09-03 사장님) —
+   * 거래처통계는 매출 추이·이익률을 보는 자리고, 돈이 오가는 일은 원장이 할 일이다.
+   */
+  onAddCashEntry?: (e: CashEntry) => void;
 }
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
 
-export default function PartnerLedger({ issuedStatements, cashEntries, accountCodes, onOpenVoucher }: Props) {
+export default function PartnerLedger({ issuedStatements, cashEntries, accountCodes, onOpenVoucher, onAddCashEntry }: Props) {
+  //  수금·지불 창 — 고른 거래처에 대해 돈이 오간 것을 적는다
+  //  전표번호를 누르면 **그 자리에서** 전표를 보여준다 — 다른 화면으로 안 보낸다
+  //  (2026-09-03 사장님). 전표 모양은 shared/VoucherSlip 하나뿐이라 새로 안 짓는다.
+  const [openVoucher, setOpenVoucher] = useState<{ sourceId: string; docNo: string } | null>(null);
+  /** 계정코드 → 이름 — 전표에 '108 외상매출금' 으로 적기 위해 */
+  const codeName = useMemo(() => new Map(accountCodes.map(c => [String(c.code), c.name])), [accountCodes]);
+  const [payOpen, setPayOpen] = useState(false);
+  const [payForm, setPayForm] = useState({ amount: '', date: today(), note: '' });
   // 채권·채무가 움직인 곳은 분개의 108·251 줄뿐이다 — 원장도 잔액도 거기서 뽑는다.
   // 기초잔액은 거래처가 없으니 안 넘겨도 결과가 같다.
   const journals = useMemo(
@@ -28,6 +46,28 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
     () => partnerBalances(type, issuedStatements, cashEntries, journals),
     [type, issuedStatements, cashEntries, journals],
   );
+  /**
+   * 수금·지불 한 건을 자금원장에 적는다.
+   *
+   * **전표에 안 붙인다** — 어느 청구서를 갚았는지는 배분(`allocatePartnerCash`)이
+   * 오래된 것부터 알아서 맞춘다. 전표에 매다는 옛 경로는 걷어냈다.
+   * 계정은 매출이면 108(외상매출금), 매입이면 251(외상매입금)이다.
+   */
+  const savePay = () => {
+    if (!sel || !onAddCashEntry) return;
+    const amt = Number(String(payForm.amount).replace(/[,\s원]/g, ''));
+    if (!Number.isFinite(amt) || amt <= 0) { alert('금액을 숫자로 넣으세요.'); return; }
+    //  셈은 shared/payment 하나다 — 여기서 또 짓지 않는다
+    onAddCashEntry(buildPaymentEntry({
+      partnerId: sel.partnerId, partnerName: sel.partnerName, type,
+      amount: amt, date: payForm.date,
+      note: [`${sel.partnerName} ${type === '매출' ? '수금' : '지불'}`, payForm.note].filter(Boolean).join(' · '),
+      docNo: claimDocNo(payForm.date, cashEntries),
+    }));
+    setPayOpen(false);
+    setPayForm({ amount: '', date: today(), note: '' });
+  };
+
   const shown = balances.filter(b => !search.trim() || b.partnerName.includes(search.trim()));
   const sel = balances.find(b => b.partnerId === selId) ?? shown[0];
   const ledger = useMemo(
@@ -97,6 +137,14 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
           <div className="px-5 py-3 border-b border-slate-50 flex items-center justify-between gap-3 flex-wrap">
             <span className="font-black text-sm text-slate-800">{sel?.partnerName ?? '—'}</span>
+            {/*  돈이 오간 것을 적는 자리 — 거래처통계에 있던 걸 여기로 옮겼다(2026-09-03 사장님) */}
+            {sel && onAddCashEntry && (
+              <button type="button" onClick={() => setPayOpen(true)}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black text-white transition-all ${
+                  type === '매출' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-slate-700 hover:bg-slate-800'}`}>
+                <Wallet size={13} />{type === '매출' ? '수금' : '지불'}
+              </button>
+            )}
             {ledger && (
               /* 기초 + 발생 − 결제 = 잔액. 기초를 발생에 뭉치면 이번 달에 새로 산 것처럼 읽힌다 —
                  청양식품은 넘어온 5,800만원이 8월 매입으로 보였다. */
@@ -151,8 +199,8 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
                     <td className="px-2 sm:px-4 py-2.5 font-bold text-slate-700 truncate max-w-[260px] min-w-[140px]">{r.label}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
                       {r.docNo
-                        ? (onOpenVoucher && r.sourceId
-                            ? <button type="button" onClick={() => onOpenVoucher(r.sourceId!, r.docNo!)}
+                        ? (r.sourceId
+                            ? <button type="button" onClick={() => setOpenVoucher({ sourceId: r.sourceId!, docNo: r.docNo! })}
                                 className="text-[11px] font-black text-indigo-600 hover:text-indigo-800 underline underline-offset-2 tabular-nums">
                                 {r.docNo}
                               </button>
@@ -172,11 +220,100 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
           </div>
 
           <p className="px-5 py-3 border-t border-slate-50 text-[10px] text-slate-400 leading-snug">
-            결제는 <b>거래명세서의 지불·수금처리</b>(구 방식)와 <b>현금출납장 매칭</b>(자금) 양쪽에서 옵니다. 같은 결제를 두 곳에 적으면
-            이중으로 빠지니, 앞으로는 <b>현금출납장에 기록하고 전표에 매칭</b>하는 쪽으로만 넣으세요.
+            결제는 <b>위 수금·지불 단추</b>로 넣으세요 — 자금원장에 적히고, 어느 전표를 갚았는지는
+            오래된 것부터 저절로 맞춰집니다. 거래명세서의 지불·수금처리는 <b>옛 방식</b>이라
+            같은 결제를 두 곳에 적으면 이중으로 빠집니다.
           </p>
         </div>
       </div>
+      {/*  전표 보기 — 원장에서 번호를 누르면 그 자리에서 뜬다 */}
+      {openVoucher && (() => {
+        const je = journals.find(j => j.sourceId === openVoucher.sourceId) ?? null;
+        const st = issuedStatements.find(x => x.id === openVoucher.sourceId);
+        const ce = cashEntries.find(x => x.id === openVoucher.sourceId);
+        return (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setOpenVoucher(null)}>
+            <div className="bg-white rounded-2xl w-full max-w-lg max-h-[80vh] overflow-auto" onClick={e => e.stopPropagation()}>
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <p className="font-black text-slate-800">{openVoucher.docNo}</p>
+                  <p className="text-[10px] font-bold text-slate-400 mt-0.5">
+                    {st?.tradeDate ?? ce?.date ?? ''} · {st?.partnerName ?? ce?.partnerName ?? ''}
+                  </p>
+                </div>
+                <button onClick={() => setOpenVoucher(null)} className="p-1 text-slate-300 hover:text-slate-600"><X size={16} /></button>
+              </div>
+              <div className="p-5">
+                <VoucherSlip
+                  je={je}
+                  kind={st ? (st.type === '비용' ? '대체' : st.type) : ce?.dir}
+                  docNo={openVoucher.docNo}
+                  date={st?.tradeDate ?? ce?.date}
+                  codeName={codeName}
+                  headPartner={st?.partnerName ?? ce?.partnerName}
+                />
+              </div>
+              {onOpenVoucher && (
+                <div className="px-5 py-4 border-t border-slate-100">
+                  <button
+                    onClick={() => { onOpenVoucher(openVoucher.sourceId, openVoucher.docNo); setOpenVoucher(null); }}
+                    className="w-full px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-black hover:bg-slate-50">
+                    전표 화면에서 열기 →
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/*  수금·지불 창 — 전표에 안 붙인다. 어느 청구서를 갚았는지는 배분이 알아서 맞춘다. */}
+      {payOpen && sel && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setPayOpen(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <p className="font-black text-slate-800">{sel.partnerName} {type === '매출' ? '수금' : '지불'}</p>
+                <p className="text-[10px] font-bold text-slate-400 mt-0.5">
+                  지금 {type === '매출' ? '미수' : '미지급'} {fmt(sel.balance)}원
+                </p>
+              </div>
+              <button onClick={() => setPayOpen(false)} className="p-1 text-slate-300 hover:text-slate-600"><X size={16} /></button>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <div>
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">금액</p>
+                <input autoFocus inputMode="numeric" value={payForm.amount}
+                  onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))}
+                  onKeyDown={e => { if (e.key === 'Enter') savePay(); }}
+                  placeholder={String(sel.balance)}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-black text-right tabular-nums outline-none focus:border-indigo-400" />
+                <button type="button" onClick={() => setPayForm(f => ({ ...f, amount: String(sel.balance) }))}
+                  className="mt-1 text-[10px] font-black text-indigo-500 hover:text-indigo-700">전액 넣기</button>
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">날짜</p>
+                <input type="date" value={payForm.date} onChange={e => setPayForm(f => ({ ...f, date: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-indigo-400" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">메모 <span className="text-slate-300 normal-case">(선택)</span></p>
+                <input value={payForm.note} onChange={e => setPayForm(f => ({ ...f, note: e.target.value }))}
+                  placeholder="계좌이체 등"
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold outline-none focus:border-indigo-400" />
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-slate-100 flex gap-2">
+              <button onClick={() => setPayOpen(false)}
+                className="flex-1 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-black hover:bg-slate-50">취소</button>
+              <button onClick={savePay}
+                className={`flex-1 px-4 py-2 rounded-xl text-white text-xs font-black ${type === '매출' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-slate-700 hover:bg-slate-800'}`}>
+                {type === '매출' ? '수금' : '지불'} 기록
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
