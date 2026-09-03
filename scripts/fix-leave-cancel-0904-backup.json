@@ -1,0 +1,14 @@
+{
+  "id": "lv-4ikuei2h1",
+  "data": {
+    "employeeId": "e1",
+    "reason": "",
+    "daysUsed": 1,
+    "employeeName": "이지영",
+    "startDate": "2026-09-04",
+    "endDate": "2026-09-04",
+    "requestedAt": "2026-08-26",
+    "type": "연차",
+    "status": "approved"
+  }
+}
