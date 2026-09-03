@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  buildAccountLedger, totalCashOnHand, openBalance, unsettledStatements, unmatchedCash, buildPartnerLedger, partnerBalances, partnerOpenBalance, allocatePartnerCash, partnerBalanceFromJournals, partnerCarryOver, allPartnerBalances, partnerCashParts,
+  buildAccountLedger, totalCashOnHand, openBalance, unsettledStatements, unmatchedCash, buildPartnerLedger, partnerBalances, partnerOpenBalance, allocatePartnerCash, partnerBalanceFromJournals, partnerCarryOver, allPartnerBalances, partnerCashParts, cashPaidByMonth,
 } from './cashLedger';
 import type { AccountCode, CashAccount, CashEntry, IssuedStatement, Settlement, JournalEntry } from '../../shared/types';
 import { buildJournals } from '../../shared/buildJournals';
@@ -585,5 +585,176 @@ describe('초과수금·초과지급', () => {
     } as CashEntry;
     const parts = partnerCashParts(초과지급);
     expect(parts.map(p => [p.code, p.reduce])).toEqual([['251', 400_000]]);
+  });
+});
+
+/**
+ * **적요와 전표번호는 다른 칸이다.** (2026-09-03 사장님)
+ *
+ * 전에는 `label` 한 칸에 `전표번호 || 적요` 를 뭉쳐 담았다. 그래서
+ *   · 번호가 있으면 적요가 안 보이고
+ *   · 번호가 없으면 번호 자리에 적요가 앉아
+ * 그 줄이 무슨 거래였는지 못 읽었다. 화면에서 번호를 눌러 전표를 열려면 번호도 따로 있어야 한다.
+ */
+describe('거래처원장 줄 — 적요·전표번호·시각을 갈라 담는다', () => {
+  const 계정: AccountCode[] = [
+    { id: '251', code: '251', name: '외상매입금', type: '부채', normalBalance: 'credit' },
+    { id: '500', code: '500', name: '원재료비', type: '비용', normalBalance: 'debit' },
+    { id: '103', code: '103', name: '보통예금', type: '자산', normalBalance: 'debit' },
+  ] as AccountCode[];
+  const 매입: IssuedStatement = {
+    id: 'st1', issuedAt: '2026-08-28T05:30:00.000Z', tradeDate: '2026-08-28', type: '매입',
+    partnerId: 'p1', partnerName: '(인천)청정식품', orderId: '', docNo: '260828-12',
+    totalSupply: 5_600_210, totalTax: 0, totalAmount: 5_600_210,
+    items: [{ name: '깨분참기름', spec: '', qty: 1, price: 5_600_210, supply: 5_600_210, tax: 0, total: 5_600_210, isTaxExempt: true, accountCode: '500' }],
+  } as unknown as IssuedStatement;
+
+  const 원장 = (st: IssuedStatement[], ce: CashEntry[] = []) =>
+    buildPartnerLedger('p1', '매입', st, ce, buildJournals({ statements: st, cashEntries: ce, accounts: 계정 }).entries);
+
+  it('**전표번호는 제 칸에, 적요에는 무슨 거래였나가 온다**', () => {
+    const r = 원장([매입]).rows[0];
+    expect(r.docNo).toBe('260828-12');
+    expect(r.label).toBe('깨분참기름');       // 예전엔 여기가 '260828-12' 였다
+  });
+
+  it('전표 id 를 함께 담는다 — 눌러서 찾아가려면 필요하다', () => {
+    expect(원장([매입]).rows[0].sourceId).toBe('st1');
+  });
+
+  it('**시각은 로컬로 담는다** — 같은 날 여러 건이면 순서가 이걸로 갈린다', () => {
+    //  2026-08-28T05:30Z = 한국 14:30
+    expect(원장([매입]).rows[0].time).toBe('14:30:00');
+  });
+
+  it('품목이 여럿이면 둘까지 적는다 — 줄이 길어지면 못 읽는다', () => {
+    //  품목 합과 전표 합이 어긋나면 분개가 아예 안 선다(journalizeStatement) — 맞춰 둔다
+    const 한줄 = (name: string) => ({ ...매입.items[0], name, price: 1_000_000, supply: 1_000_000, total: 1_000_000 });
+    const 둘 = { ...매입, totalSupply: 3_000_000, totalAmount: 3_000_000,
+      items: [한줄('볶음참깨'), 한줄('볶음검정참깨'), 한줄('깨분')] } as IssuedStatement;
+    expect(원장([둘]).rows[0].label).toBe('볶음참깨, 볶음검정참깨');
+  });
+
+  it('자금줄은 제 적요를 쓴다 — 전표가 없으니 품목도 없다', () => {
+    const 지불: CashEntry = { id: 'c1', date: '2026-08-27', dir: '출금', amount: 2_130_000,
+      accountCode: '251', cashAccountId: 'bank', partnerId: 'p1', partnerName: '(인천)청정식품',
+      note: '(인천)청정식품 지불', createdAt: '2026-08-27T05:00:00.000Z' } as CashEntry;
+    const r = 원장([], [지불]).rows[0];
+    expect(r.label).toBe('(인천)청정식품 지불');
+    expect(r.docNo).toBeUndefined();          // 번호가 없으면 칸이 빈다 — 적요가 대신 앉지 않는다
+  });
+});
+
+/**
+ * **월별 실수금·실지불 — 근거를 자금원장 하나로.** (2026-09-03)
+ *
+ * 예전엔 `settlements`(전표↔자금 매칭)를 더했다. 그건 **전표에 매단 결제만** 담아서,
+ * 자금원장에만 넣은 수금·지불은 줄이 아예 없었다. 게다가 원본이 지워지면
+ * `if (!s) continue; if (!e) continue;` 로 말없이 건너뛰었다 — 실측 155줄 중 11줄(3,897만원).
+ *
+ * 실제 데이터로 대조했다 — 2026-08 태백 자금원장에서 거래처 채권·채무로 간 183줄이
+ * **500,739,881원**이고, 이 함수가 내는 값이 **원 단위까지 같다**.
+ */
+describe('월별 실수금·실지불', () => {
+  const 줄 = (over: Partial<CashEntry>): CashEntry => ({
+    id: 'c1', date: '2026-08-10', dir: '입금', amount: 1_000_000,
+    accountCode: '108', partnerId: 'p1', partnerName: '가득찬식품', createdAt: '',
+    ...over,
+  } as CashEntry);
+
+  it('108 입금은 수금, 251 출금은 지불', () => {
+    const m = cashPaidByMonth([줄({}), 줄({ id: 'c2', dir: '출금', accountCode: '251', amount: 700_000 })]);
+    expect(m.get('2026-08')).toEqual({ inc: 1_000_000, out: 700_000 });
+  });
+
+  it('**되돌린 것은 음수로 깎는다** — 환불을 수금으로 세면 부풀어 오른다', () => {
+    const m = cashPaidByMonth([줄({}), 줄({ id: 'c2', dir: '출금', amount: 300_000 })]);
+    expect(m.get('2026-08')!.inc).toBe(700_000);
+  });
+
+  it('**상계는 안 센다** — 통장이 안 움직이는데 수금·지불 양쪽에 잡히면 두 번 세어진다', () => {
+    //  지금 데이터의 상계는 위쪽 accountCode 가 비어 있어 계정 검사에서 이미 걸린다.
+    //  그래도 **계정이 붙은 복합 줄**을 막아야 한다 — 안 그러면 상계가 현금으로 샌다.
+    //  (2026-08 에 4줄 6,795만원이 그렇게 두 번 세어질 뻔했다.)
+    const 상계 = { id: 'c-offset', date: '2026-08-31', dir: '입금', amount: 24_604_700,
+      accountCode: '108', partnerId: 'p1', partnerName: '가득찬식품', createdAt: '',
+      lines: [{ accountCode: '251', amount: 24_604_700, side: '차변' },
+              { accountCode: '108', amount: 24_604_700, side: '대변' }] } as unknown as CashEntry;
+    expect(cashPaidByMonth([상계]).get('2026-08')).toBeUndefined();
+  });
+
+  it('계정이 아예 없는 복합 줄도 안 센다 — 지금 데이터의 상계가 그 모양이다', () => {
+    const 상계 = { id: 'c-offset2', date: '2026-08-31', dir: '입금', amount: 1_000_000,
+      partnerId: 'p1', partnerName: '한중교역', createdAt: '',
+      lines: [{ accountCode: '251', amount: 1_000_000, side: '차변' }] } as unknown as CashEntry;
+    expect(cashPaidByMonth([상계]).size).toBe(0);
+  });
+
+  it('거래처가 없으면 안 센다 — 채권·채무가 아니다', () => {
+    expect(cashPaidByMonth([줄({ partnerId: '' } as never)]).size).toBe(0);
+  });
+
+  it('채권·채무 계정이 아니면 안 센다 — 급여·이자는 수금이 아니다', () => {
+    expect(cashPaidByMonth([줄({ accountCode: '515' })]).size).toBe(0);
+    expect(cashPaidByMonth([줄({ accountCode: '106' })]).size).toBe(0);
+  });
+
+  it('253(미지급금)도 지불로 센다 — 상거래가 아닌 채무도 갚는 건 같다', () => {
+    expect(cashPaidByMonth([줄({ dir: '출금', accountCode: '253' })]).get('2026-08')!.out).toBe(1_000_000);
+  });
+
+  it('달마다 따로 담는다', () => {
+    const m = cashPaidByMonth([줄({}), 줄({ id: 'c2', date: '2026-09-02' })]);
+    expect(m.get('2026-08')!.inc).toBe(1_000_000);
+    expect(m.get('2026-09')!.inc).toBe(1_000_000);
+  });
+
+  it('날짜가 망가진 줄은 건너뛴다 — 지어내지 않는다', () => {
+    expect(cashPaidByMonth([줄({ date: '' }), 줄({ date: '언제였더라' })]).size).toBe(0);
+  });
+});
+
+/**
+ * **지워진 자금줄에 매달린 매칭은 안 센다.** (2026-09-03)
+ *
+ * `settlements` 는 "이 수금이 이 전표를 갚았다"는 연결 기록인데, 자금줄을 지울 때
+ * 같이 안 지워서 고아가 남았다(155줄 중 11줄 · 3,897만원).
+ *
+ * 잔액(`allocatePartnerCash`)은 진작 살아 있는 자금줄만 봤는데 `openBalance` 만 안 봐서,
+ * **같은 전표가 두 화면에서 다른 잔액으로** 보였다 —
+ *   260827-02 희성실업  전표 목록 1,026만 미지급 · 매칭 창 186만
+ *   260902-04 해피유통   전표 목록      0원      · 매칭 창 **−995만**(총액보다 더 갚은 셈)
+ */
+describe('openBalance 는 살아 있는 자금줄만 센다', () => {
+  const 매입: IssuedStatement = {
+    id: 'st1', issuedAt: '', tradeDate: '2026-08-27', type: '매입',
+    partnerId: 'p1', partnerName: '희성실업', orderId: '', docNo: '260827-02',
+    totalSupply: 10_264_980, totalTax: 0, totalAmount: 10_264_980,
+    items: [{ name: '병', spec: '', qty: 1, price: 10_264_980, supply: 10_264_980, tax: 0, total: 10_264_980, isTaxExempt: true, accountCode: '505' }],
+  } as unknown as IssuedStatement;
+  const 지정 = { id: 'se1', statementId: 'st1', cashEntryId: 'cash-지워짐', amount: 8_405_463 } as Settlement;
+  const 산자금 = [{ id: 'cash-살아있음' }] as CashEntry[];
+
+  it('**근거가 지워졌으면 안 갚은 것이다** — 없는 돈으로 갚을 수는 없다', () => {
+    expect(openBalance(매입, [지정], new Set(산자금.map(e => e.id)))).toBe(10_264_980);
+  });
+
+  it('근거가 살아 있으면 센다', () => {
+    expect(openBalance(매입, [지정], new Set(['cash-지워짐']))).toBe(1_859_517);
+  });
+
+  it('안 넘기면 예전처럼 다 센다 — 옛 호출부가 안 깨진다', () => {
+    expect(openBalance(매입, [지정])).toBe(1_859_517);
+  });
+
+  it('**매칭 후보 목록도 같은 눈으로 본다** — 두 화면이 갈리면 안 된다', () => {
+    const 후보 = unsettledStatements([매입], [지정], { type: '매입', cashEntries: 산자금 });
+    expect(후보).toHaveLength(1);
+    expect(후보[0].open).toBe(10_264_980);
+  });
+
+  it('총액보다 더 갚은 것으로 잡히지 않는다 — 음수가 나오면 후보에서 통째로 빠진다', () => {
+    const 과잉 = { ...지정, amount: 20_000_000 } as Settlement;
+    expect(openBalance(매입, [과잉], new Set(산자금.map(e => e.id)))).toBe(10_264_980);
   });
 });

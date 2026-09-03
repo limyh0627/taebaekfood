@@ -40,6 +40,7 @@ import { subDotClass } from '../src/shared/submaterialStyle';
 
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
+import { cardNoLabel } from '../src/shared/cardNo';
 
 /** 이름 끝 용량은 뗀다 — 규격 칩이 이미 들고 있어 '참기름/병/A/300ml [300ml * 20]'처럼 겹친다. */
 const baseName = (name: string): string => splitNameVolume({ name }).base;
@@ -783,6 +784,13 @@ export const OrderCard = memo<OrderCardProps>(({
       )}
 
 
+      {/*  카드번호 — 주문일자·배송기한 윗줄. 화면끼리 이 카드를 가리킬 이름이다
+           (전표 만들 때 고른 주문이 어느 카드인지 확인하려면 있어야 한다). */}
+      {cardNoLabel(order) && (
+        <div className="pt-2 border-t border-slate-50 mt-2 -mb-1">
+          <span className="text-[9px] font-black text-slate-400 tabular-nums">{cardNoLabel(order)}</span>
+        </div>
+      )}
       <div className="flex items-center justify-between pt-2 border-t border-slate-50 mt-2">
         {isEditing ? (
           <div className="flex flex-col">

@@ -1,6 +1,7 @@
 /**
  * 매입 입고 → 원료(raw) 로트 + 수불부 기록 공용 로직.
- * 스캔 입고·선입고·발주 입고확인 등 모든 입고 경로에서 동일하게 사용한다.
+ * 발주 입고확인·반품 재입고 등 모든 입고 경로에서 동일하게 사용한다.
+ * (스캔입고·선입고는 2026-09-03 에 없앴다 — 사장님 판단.)
  */
 import type { CompanyId, Item } from './types';
 import { companyOf } from './types';
@@ -35,6 +36,23 @@ export function rawLotTarget(
 }
 
 /**
+ * **같은 입고가 겹쳐 들어오는 것을 막는다.**
+ *
+ * 2026-08-06 에 참깨 1500kg 이 두 번 들어갔다 — 원장 두 줄(`rm-rcv-…697` · `rm-rcv-…804`,
+ * **107밀리초 차이**)에 로트도 둘(`260806-02` · `260806-03`). 같은 클릭이 두 번 돈 것이다.
+ *
+ * 차감 쪽은 원장 줄 id 가 `rm-auto-{주문}-{원료}` 로 고정이라 두 번 처리해도 덮어써진다.
+ * 그런데 **입고 쪽은 `rm-rcv-{지금}-{난수}`** 라 부를 때마다 새 줄이 선다.
+ * 로트도 같이 하나 더 서서, 원료가 실제보다 많이 들어온 것으로 남는다.
+ *
+ * 부르는 자리가 셋이라(발주 입고확인·반품 재입고 둘) 화면마다 막으면
+ * 언젠가 하나를 빠뜨린다. **여기서 막는다** — `orderStockEngine.changeOrderStatus` 와 같은 수다.
+ *
+ * 표는 일이 끝나면 지운다. 나중에 같은 입고를 **정말로 또 하는 것**(분할 입고)은 막지 않는다.
+ */
+const 처리중 = new Set<string>();
+
+/**
  * 매입 입고 1건을 원료(raw)에 반영한다: 로트 생성(+기존재고 이월 보존) + 원료수불부(kg) 기록.
  * 캔/포대 SKU는 품목명 접미사("/16.5kg")가 붙어도 baseRawName으로 매칭하고,
  * 개수 단위는 packageKg(spec 파싱)로 kg 환산한다.
@@ -59,6 +77,12 @@ export async function recordRawMaterialReceipt(opts: {
   const target = rawLotTarget(allItems, product, itemName, companyId);
   if (!target) return { recorded: false };
   const { baseName, rawItem } = target;
+
+  //  같은 원료·같은 날·같은 수량·같은 거래처가 아직 처리 중이면 두 번째는 돌려보낸다
+  const 표 = `${rawItem.id}|${dateStr}|${quantity}|${partnerId ?? partnerName}|${poId ?? ''}`;
+  if (처리중.has(표)) return { recorded: false };
+  처리중.add(표);
+  try {
 
   /*
    * 포장 1개가 몇 kg인가 — **박스면 개입수까지 곱해야 한다.**
@@ -109,6 +133,9 @@ export async function recordRawMaterialReceipt(opts: {
   });
 
   return { recorded: true, baseName, kgIn, lotted: true };
+  } finally {
+    처리중.delete(표);
+  }
 }
 
 /**

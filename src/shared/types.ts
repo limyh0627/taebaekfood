@@ -120,6 +120,17 @@ export type OrderSource = '스마트스토어' | '택배' | '일반';
 
 export interface Order {
   id: string;
+  /**
+   * **주문 카드번호** — `ORD-260901-01`. 전표번호와 같은 규칙(`nextDocNo`)이다.
+   *
+   * 카드 id 는 만든 순간(ms)이라 사람이 못 읽는다(`ORD-1785712782954`). 그래서 화면끼리
+   * 같은 카드를 가리킬 방법이 없었다 — 전표를 끊을 때 고른 주문이 어느 카드인지
+   * 확인할 길이 없었다(2026-09-03 사장님).
+   *
+   * **날짜 + 그날 순번**이라 읽을 수 있고, 지운 번호를 다시 안 쓴다.
+   * 옛 카드는 비어 있다(2026-09-03 이전) — 그때는 id 뒤를 보여준다.
+   */
+  cardNo?: string;
   partnerId?: string;
   partnerName: string;
   items: OrderItem[];
@@ -520,7 +531,7 @@ export interface ChatRoom {
 }
 
 
-export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'partners' | 'partners' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'partner-portal' | 'item-management' | 'item-price-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'tax-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'inbound-scan' | 'smartstore-analytics' | 'haccp-checklist' | 'return-management' | 'inbound-returns' | 'partner-stats' | 'cash-flow' | 'sanitation-checklist' | 'partner-signup' | 'file-cabinet' | 'ledger-cash' | 'item-ledger' | 'financial-reports' | 'quotation';
+export type ViewType = 'dashboard' | 'orders' | 'shipping' | 'inventory' | 'partners' | 'partners' | 'ai-consultant' | 'pallets' | 'database' | 'hr' | 'notice' | 'leave-portal' | 'partner-portal' | 'item-management' | 'item-price-management' | 'confirmation-items' | 'officetalk' | 'documents' | 'trade-statement' | 'tax-statement' | 'cost-management' | 'profit-analysis' | 'production' | 'admin-checklist' | 'smartstore-analytics' | 'haccp-checklist' | 'return-management' | 'inbound-returns' | 'partner-stats' | 'cash-flow' | 'sanitation-checklist' | 'partner-signup' | 'file-cabinet' | 'ledger-cash' | 'item-ledger' | 'financial-reports' | 'quotation';
 
 // ── 생산 실적 ──────────────────────────────────────────────────────────────────
 export interface ProductionRecord {
@@ -732,6 +743,11 @@ export interface PurchaseOrder {
   status: 'pending' | 'invoiced' | 'received';
   confirmedByUser?: boolean;
   linkedStatementId?: string;
+  /**
+   * **발주 카드번호** — `260901-01`. 전표번호와 같은 규칙(`nextDocNo`)이다.
+   * 카드 id 는 만든 순간(ms)이라 사람이 못 읽는다. 화면끼리 같은 카드를 가리키려면 번호가 있어야 한다.
+   */
+  cardNo?: string;
   linkedStatementAt?: string;   // 전표 발행(연결) 시각 — 선입고 이력 1일 뒤 자동삭제 기준
   createdAt: string;
   invoicedAt?: string;
@@ -879,14 +895,6 @@ export interface RawMaterialEntry {
   targetKg?: number;         // 재고실사정정일 때 실사 목표 절대값(kg) — 수불부 잔량을 이 값으로 리셋(앵커)
 }
 
-
-export interface QrMapping {
-  id: string;
-  qrValue: string;         // 스캔된 QR/바코드 값
-  submaterialId: string;   // 매핑된 품목 ID
-  submaterialName: string;
-  createdAt: string;
-}
 
 // ── 원료 배합비 (item_formula 컬렉션) ────────────────────────────────────
 export type ItemType = 'RAW' | 'SUB' | 'WIP' | 'FINISHED';

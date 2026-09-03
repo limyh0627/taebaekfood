@@ -84,3 +84,57 @@ describe('제품별원장', () => {
     expect(l.rows.map(r => r.balance)).toEqual([2, 3]);
   });
 });
+
+/**
+ * **입고 줄** — 2026-09-03 에 입고 문(`shared/receipt`)을 만들면서 생겼다.
+ *
+ * 그 전에는 산 것이 재고 숫자만 바꾸고 아무 데도 안 남아, 원장이 통째로 `gap` 으로 냈다.
+ * 흐름이 0인데 재고만 있는 품목이 134개(858만원)였다 — `300ML-사각병` 13,180개 같은 것.
+ */
+describe('사 온 것도 원장에 선다', () => {
+  const 병 = { id: 'b1', name: '300ML-사각병', type: 'submaterial', unit: '개', stock: 500 } as never;
+  const 입고 = (over: Record<string, unknown> = {}) => ({
+    id: 'r1', itemId: 'b1', itemName: '300ML-사각병', quantity: 500,
+    partnerName: '미광팩', date: '2026-09-03', createdAt: '2026-09-03T10:00:00.000Z', ...over,
+  } as never);
+
+  it('입고가 +로 잡히고 gap 이 사라진다 — 이게 이 변경의 값어치다', () => {
+    const l = buildItemLedger('b1', [], [병], [입고()]);
+    expect(l.rows).toHaveLength(1);
+    expect(l.rows[0].kind).toBe('입고');
+    expect(l.rows[0].qty).toBe(500);
+    expect(l.inSum).toBe(500);
+    expect(l.gap).toBe(0);            // 재고 500 = 흐름 500
+  });
+
+  it('**입고를 안 넘기면 예전 그대로** — 옛 호출부가 안 깨진다', () => {
+    const l = buildItemLedger('b1', [], [병]);
+    expect(l.rows).toHaveLength(0);
+    expect(l.gap).toBe(500);          // 설명 안 되는 차이로 남는다
+  });
+
+  it('다른 품목의 입고는 안 담는다', () => {
+    expect(buildItemLedger('b1', [], [병], [입고({ itemId: 'other' })]).rows).toHaveLength(0);
+  });
+
+  it('수량이 0이면 줄을 안 만든다', () => {
+    expect(buildItemLedger('b1', [], [병], [입고({ quantity: 0 })]).rows).toHaveLength(0);
+  });
+
+  it('발주에서 온 것은 그렇게 적는다 — 되짚을 근거다', () => {
+    const l = buildItemLedger('b1', [], [병], [입고({ poId: 'po-9' })]);
+    expect(l.rows[0].note).toBe('발주 입고');
+    expect(l.rows[0].orderId).toBe('po-9');
+  });
+
+  it('**날짜는 로컬로 읽는다** — 밤에 넣은 입고가 하루 앞으로 밀리면 안 된다', () => {
+    const l = buildItemLedger('b1', [], [병], [입고({ date: '2026-09-02T15:00:00.000Z' })]);
+    expect(l.rows[0].date).toBe('2026-09-03');
+  });
+
+  it('반품 재입고(음수)도 그대로 — 감추면 어긋난 재고를 못 본다', () => {
+    const l = buildItemLedger('b1', [], [병], [입고({ quantity: -20 })]);
+    expect(l.rows[0].qty).toBe(-20);
+    expect(l.outSum).toBe(-20);
+  });
+});

@@ -1,0 +1,101 @@
+[
+  {
+    "id": "st-cash-1788334718263-stmt-1788333991053",
+    "data": {
+      "statementId": "stmt-1788333991053",
+      "amount": 9950000,
+      "createdAt": "2026-09-02T07:38:38.264Z",
+      "cashEntryId": "cash-1788334718263"
+    }
+  },
+  {
+    "id": "settle-1787287204908-402pm",
+    "data": {
+      "amount": 9268425,
+      "cashEntryId": "cash-1787285900791",
+      "createdAt": "2026-08-21T04:40:04.908Z",
+      "statementId": "stmt-1786445647246"
+    }
+  },
+  {
+    "id": "settle-1787893544382-h8bxs",
+    "data": {
+      "cashEntryId": "cash-1787893544381",
+      "amount": 8405462.64,
+      "createdAt": "2026-08-28T05:05:44.382Z",
+      "statementId": "stmt-1787812662935"
+    }
+  },
+  {
+    "id": "st-cash-1788334718263-stmt-1788334023308",
+    "data": {
+      "amount": 3507000,
+      "statementId": "stmt-1788334023308",
+      "createdAt": "2026-09-02T07:38:38.264Z",
+      "cashEntryId": "cash-1788334718263"
+    }
+  },
+  {
+    "id": "settle-1787291488759-0fu9h",
+    "data": {
+      "statementId": "stmt-punghoe-opening",
+      "amount": 3200000,
+      "createdAt": "2026-08-21T05:51:28.759Z",
+      "cashEntryId": "cash-ph-mirror-cash-1786430851802"
+    }
+  },
+  {
+    "id": "settle-1786514255825-0",
+    "data": {
+      "cashEntryId": "cash-1786514255824",
+      "createdAt": "2026-08-12T05:57:35.825Z",
+      "amount": 1537750,
+      "statementId": "stmt-open-C066-매출"
+    }
+  },
+  {
+    "id": "settle-1786514255825-1",
+    "data": {
+      "createdAt": "2026-08-12T05:57:35.825Z",
+      "cashEntryId": "cash-1786514255824",
+      "amount": 1462250,
+      "statementId": "stmt-1785902869450"
+    }
+  },
+  {
+    "id": "settle-1786084618111-1",
+    "data": {
+      "amount": 692400,
+      "cashEntryId": "cash-1786084618111",
+      "statementId": "stmt-1785759225411",
+      "createdAt": "2026-08-07T06:36:58.111Z"
+    }
+  },
+  {
+    "id": "settle-1786084618111-0",
+    "data": {
+      "cashEntryId": "cash-1786084618111",
+      "createdAt": "2026-08-07T06:36:58.111Z",
+      "statementId": "stmt-1786084601851",
+      "amount": 466800
+    }
+  },
+  {
+    "id": "settle-1786585759821-0",
+    "data": {
+      "statementId": "stmt-open-c-1778831007772-매출",
+      "amount": 462000,
+      "cashEntryId": "cash-1786585759821",
+      "createdAt": "2026-08-13T01:49:19.821Z"
+    }
+  },
+  {
+    "id": "settle-1787287204909-2lfr8",
+    "data": {
+      "statementId": "stmt-1787203656453",
+      "createdAt": "2026-08-21T04:40:04.909Z",
+      "cashEntryId": "cash-1787285900791",
+      "amount": 24225
+    }
+  }
+]

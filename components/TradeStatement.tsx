@@ -1,4 +1,6 @@
 ﻿
+import { plOfJournals } from '../src/features/admin/financials';
+import { cardNoLabel } from '../src/shared/cardNo';
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { today, dateOfLocal } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
@@ -22,7 +24,7 @@ import { useVoucherLedger } from '../src/features/admin/useVoucherLedger';
 import CashEntryModal, { type CashModalMode, type SettleInput } from './voucher/CashEntryModal';
 import RecurringModal from './voucher/RecurringModal';
 import VoucherComposer from './voucher/VoucherComposer';
-import { stampFor, timeOfLocal, issuedMs, nextDocNo } from '../src/shared/voucherStamp';
+import { stampFor, timeOfLocal, issuedMs, nextDocNo, claimDocNo } from '../src/shared/voucherStamp';
 import type { VoucherKind } from '../src/shared/vouchers';
 import { boxDerivedUnitPrice, unpackComponent, isBoxStockItem } from '../src/shared/orderUnits';
 import { bomOf } from '../src/shared/bomIndex';
@@ -77,6 +79,9 @@ interface TradeStatementProps {
   onAddForCompany?: (companyId: CompanyId, payload: { cashEntry?: CashEntry; statement?: IssuedStatement }) => void;
   onUpdateIssuedStatement?: (id: string, data: Partial<IssuedStatement>) => void;
   onProposeEdit?: (id: string, data: Partial<IssuedStatement>, stmtType: '매출' | '매입', docNo: string, partnerName: string) => void;
+  /** 거래처원장에서 전표번호를 눌러 넘어왔을 때 — 그 번호로 조회창을 연다 */
+  focusDocNo?: string;
+  onFocusHandled?: () => void;
   onDeleteIssuedStatement?: (id: string) => void;
   pendingInvoice?: { partnerId: string; partnerName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }>; poIds?: string[] } | null;
   onClearPendingInvoice?: () => void;
@@ -184,6 +189,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   onMarkInvoicePrinted, onAddIssuedStatement,
   onUpdateIssuedStatement,
   onProposeEdit,
+  focusDocNo,
+  onFocusHandled,
   onDeleteIssuedStatement,
   pendingInvoice,
   onClearPendingInvoice,
@@ -642,7 +649,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     if (!type) return 0;
     let left = unmatchedCash(entry, settlements);
     if (left <= 0) return 0;
-    const targets = unsettledStatements(mergedStatements, settlements, { type, partnerId: entry.partnerId });
+    const targets = unsettledStatements(mergedStatements, settlements, { type, partnerId: entry.partnerId, cashEntries });
     if (!targets.length) return 0;
     const willMatch = Math.min(left, targets.reduce((a, t) => a + t.open, 0));
     if (!window.confirm(
@@ -771,6 +778,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [acctPickerOpen, setAcctPickerOpen] = useState(false);
   const [acctQuery, setAcctQuery] = useState('');
   const [histSearch, setHistSearch] = useState('');
+  /**
+   * 밖에서 전표번호를 찍어 주면(거래처원장에서 번호를 누르면) 그 번호로 조회창을 연다.
+   * 기간도 함께 넓힌다 — 기본 창이 최근이라, 옛 전표를 찍으면 걸러져서 안 보인다.
+   */
+  useEffect(() => {
+    if (!focusDocNo) return;
+    setHistSearch(focusDocNo);
+    setHistKind('전체');
+    setHistFrom('2020-01-01');
+    setHistTo(today());
+    onFocusHandled?.();
+  }, [focusDocNo]);   // eslint-disable-line react-hooks/exhaustive-deps
   /** 거래처 필터 — 이 거래처 전표만. 빈 값이면 안 거른다. */
   const [histPartner, setHistPartner] = useState('');
   const [partnerPickerOpen, setPartnerPickerOpen] = useState(false);
@@ -1343,6 +1362,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const tradeDateObj = new Date(tradeDate + 'T00:00:00');
   const dateStr = `${tradeDateObj.getFullYear()}년 ${tradeDateObj.getMonth() + 1}월 ${tradeDateObj.getDate()}일`;
   //  번호는 **그날 전표 전부**를 보고 매긴다 — 7일 밖으로 소급하면 겹친다
+  //  미리보기용 — 실제 발행 때는 claimDocNo 로 다시 받는다(그 사이 다른 전표가 나갔을 수 있다)
   const docNo   = nextDocNo(tradeDate, mergedStatements);
 
   const inboundPartnerLabel = stmtType === '매출' ? '【 공급자 】' : `【 공급자 】　${selectedClient?.name||''}`;
@@ -1387,7 +1407,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       partnerName: selectedClient?.name || '',
       //  여러 주문을 한 전표로 묶으면 쉼표로 이어 담는다 — 읽는 쪽이 그렇게 갈라 읽는다
       orderId: selectedOrderIds.join(','),
-      docNo,
+      //  **번호는 여기서 받아 간다**(claimDocNo). 위쪽 `docNo` 는 미리보기용이라
+      //  화면에 떠 있는 동안 다른 전표가 나갔으면 낡아 있다. 받아 가면 이번 판에서
+      //  다시 안 나온다 — 연달아 발행해도 목록 갱신을 안 기다린다.
+      docNo: claimDocNo(tradeDate, mergedStatements),
       totalSupply,
       totalTax,
       totalAmount,
@@ -2344,17 +2367,29 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // 하단 합계 — 현재 필터·기간에 걸린 전표/수금/지불 총액 (검색·날짜와 무관하게 항상 합계 표시)
   const histTotals = useMemo(() => {
     let stmtSum = 0, stmtCnt = 0, receiveSum = 0, paySum = 0, receiveCnt = 0, payCnt = 0;
-    // 전표 없이 자금원장으로만 나간 손익 — 이자비용·전력비 등. 매입/매출 합계에 같이 세야
-    // "이번 달 얼마 썼나"가 맞는다(대출상환의 이자 줄이 여기로 온다).
-    let costCash = 0, incomeCash = 0;
+    /*
+     * **발생 손익은 분개에서 센다** — 셈은 `financials.plOfJournals` 하나다.
+     *
+     * 예전엔 `type === '매입'` 인 전표만 더했다. 그러면 **대체전표가 통째로 빠진다** —
+     * 급여 발생·감가상각·퇴직급여충당은 갈래가 '비용'이라 한 푼도 안 잡혔다
+     * (2026-08 급여 19,314,620원이 하단 합계에서 사라져 있었다, 2026-09-03 사장님 발견).
+     * 여기 있던 `costCash`·`incomeCash` 는 **아무 데서도 안 더해서 늘 0이었다.**
+     *
+     * 분개로 세면 갈래와 상관없이 맞고 부가세도 저절로 빠진다. 손익 화면과 같은 근거다.
+     */
+    const 고른분개 = filteredHistory
+      .map(r => (r.kind === 'stmt' ? r.data.id : r.entry?.id))
+      .map(id => (id ? journalBySource.get(id) : undefined))
+      .filter((je): je is NonNullable<typeof je> => !!je);
+    const { income: incomeCash, cost: costCash } = plOfJournals(고른분개, accountCodes);
     for (const r of filteredHistory) {
       const c = classifyRow(r);                      // 구분 판정은 한 곳에서만 — 필터와 같은 규칙
       if (r.kind === 'stmt') { stmtSum += r.data.totalAmount; stmtCnt++; }
-      if (c.cash === '입금') { receiveSum += r.kind === 'cash' ? r.amount : (r as { amount: number }).amount; receiveCnt++; incomeCash += c.plAmount; }
-      else if (c.cash === '출금') { paySum += r.kind === 'cash' ? r.amount : (r as { amount: number }).amount; payCnt++; costCash += c.plAmount; }
+      if (c.cash === '입금') { receiveSum += r.kind === 'cash' ? r.amount : (r as { amount: number }).amount; receiveCnt++; }
+      else if (c.cash === '출금') { paySum += r.kind === 'cash' ? r.amount : (r as { amount: number }).amount; payCnt++; }
     }
     return { stmtSum, stmtCnt, receiveSum, paySum, receiveCnt, payCnt, costCash, incomeCash };
-  }, [filteredHistory, classifyRow]);
+  }, [filteredHistory, classifyRow, journalBySource, accountCodes]);
 
   // 거래처별 미수금/미지급금 — 전표별 매칭이 아니라 거래처 잔액 기준(partnerBalances).
   const partnerBalanceMap = partnerBalances;
@@ -2433,8 +2468,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     //  그래서 품목이 한 줄도 안 들어왔다(2026-09-03 사장님 발견).
     const pick = next.map(id => orders.find(x => x.id === id)).filter((x): x is Order => !!x);
     setManualItems(pick.flatMap(orderToRows));
-    setManualMode(true);
+    //  **목록에 남는다.** 예전엔 여기서 바로 양식으로 넘어갔는데(단건이라 그게 맞았다),
+    //  여러 건을 묶게 되면서 그러면 둘째를 고를 수가 없다 — 첫 클릭에 목록이 사라진다.
+    //  줄은 이미 담겼으니, 다 골랐으면 아래 '전표 작성' 으로 넘어간다.
   };
+
+  /** 고르기를 끝내고 양식으로 — 목록 아래 단추가 부른다 */
+  const goCompose = () => setManualMode(true);
 
   return (
     <div className="space-y-5 animate-in fade-in duration-300">
@@ -3188,11 +3228,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   const isOpen = expandedJournal.has(row.entry.id);
                   // 거래처가 붙은 돈인데 전표 매칭도 계정도 없으면 '미배분' — 받았지만 어느 청구서에
                   // 넣을지 안 정한 돈이다. 계정이 있으면 성격이 정해진 것이라 정상(이자·차입금 등).
-                  const matchedAmt = settlements
-                    .filter(s => s.cashEntryId === row.entry.id)
-                    .reduce((a, s) => a + s.amount, 0);
+                  //  **셈은 cashLedger.unmatchedCash 하나다.** 여기 손으로 한 벌 더
+                  //  적혀 있었는데(2026-09-03 사장님 지적), 그러면 규칙이 바뀔 때
+                  //  이 자리만 안 따라온다 — 실제로 '자금줄 생사를 본다'가 그랬다.
                   const unallocated = row.entry.partnerId && !split.length && !row.accountCode
-                    ? Math.max(0, row.entry.amount - matchedAmt) : 0;
+                    ? Math.max(0, unmatchedCash(row.entry, settlements)) : 0;
                   return (
                   <React.Fragment key={`cash__${row.entry.id}`}>
                     <tr
@@ -3541,12 +3581,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         </>)}
         {/* ── 하단 합계 (현재 필터·기간 기준) — 매출·매입·수금·지불 항상 표시 ── */}
         {filteredHistory.length > 0 && (() => {
-          const stmts = filteredHistory.filter((r): r is Extract<TimelineRow, { kind: 'stmt' }> => r.kind === 'stmt');
-          // 전표분 + 자금원장으로만 나간 손익(이자비용 등). 대출상환의 이자 줄이 매입 합계에 들어온다.
-          const sale = stmts.filter(r => r.data.type === '매출').reduce((s, r) => s + (r.data.totalAmount || 0), 0)
-                     + histTotals.incomeCash;
-          const buy  = stmts.filter(r => r.data.type === '매입').reduce((s, r) => s + (r.data.totalAmount || 0), 0)
-                     + histTotals.costCash;
+          //  발생 손익은 분개에서 센다(financials.plOfJournals) — 갈래로 세면 대체전표가
+          //  빠지고, 전표 총액으로 세면 부가세가 섞인다. 손익 화면과 같은 근거다.
+          const sale = histTotals.incomeCash;
+          const buy  = histTotals.costCash;
           const cell = (label: string, val: number, cls: string) => (
             <div className="flex items-center gap-2">
               <span className={`text-[10px] font-black uppercase tracking-widest ${cls}`}>{label}</span>
@@ -3868,6 +3906,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       <button type="button"
                         onClick={() => { setSelectedOrderIds([]); setManualMode(false); setManualItems([{ name: '', spec: '', qty: '', price: '', isTaxExempt: false }]); }}
                         className="text-[11px] font-bold text-slate-400 hover:text-slate-600 underline">선택 해제</button>
+                      <button type="button" onClick={goCompose}
+                        className="text-[11px] font-black px-2.5 py-1 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-all">
+                        전표 작성 →
+                      </button>
                     </span>
                   )}
                   {createMode==='매출' && (
@@ -3945,7 +3987,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                   </span>
                                   <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                                     <span className="font-black text-slate-800">납품: {o.deliveryDate?.slice(0,10)||'미정'}</span>
-                                    <span className="text-slate-400">주문일 {dateOfLocal(o.createdAt)} · {o.items.length}품목</span>
+                                    <span className="text-slate-400">
+                                      {/*  카드번호 — 어느 주문 카드인지 화면끼리 가리킬 이름 */}
+                                      <b className="text-slate-500 font-black tabular-nums mr-1.5">{cardNoLabel(o)}</b>
+                                      주문일 {dateOfLocal(o.createdAt)} · {o.items.length}품목
+                                    </span>
                                   </div>
                                   <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${STATUS_COLOR[o.status]||'bg-slate-100 text-slate-500'}`}>{STATUS_LABEL[o.status]||o.status}</span>
                                   {alreadyIssued
@@ -4026,7 +4072,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                                   className={`w-full flex items-center gap-3 text-left px-5 py-3 text-xs transition-all ${alreadyIssued?'bg-emerald-50 hover:bg-emerald-100':'hover:bg-pink-50'}`}>
                                   <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                                     <span className="font-black text-slate-800">입고: {receivedDate||'미정'}</span>
-                                    <span className="text-slate-400">발주일 {createdDate} · {summarize(po)}</span>
+                                    <span className="text-slate-400"><b className="text-slate-500 font-black tabular-nums mr-1.5">{cardNoLabel(po)}</b>발주일 {createdDate} · {summarize(po)}</span>
                                   </div>
                                   <span className="text-slate-600 font-bold shrink-0">{totalQty(po)}개</span>
                                   {alreadyIssued

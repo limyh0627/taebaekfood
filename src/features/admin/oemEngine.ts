@@ -1,5 +1,5 @@
 
-import { stampFor, nextDocNo } from '../../shared/voucherStamp';import { Item, IssuedStatement, PurchaseOrder, RawMaterialLot } from '../../shared/types';
+import { stampFor, claimDocNo } from '../../shared/voucherStamp';import { Item, IssuedStatement, PurchaseOrder, RawMaterialLot } from '../../shared/types';
 import { isBulkItem } from '../../shared/itemTaxonomy';
 import { parsePackageKg, parseSpecCount, baseRawName } from '../../constants/formula';
 import { itemKg } from '../../shared/orderUnits';
@@ -253,7 +253,7 @@ export function createOemEngine(deps: OemEngineDeps) {
       partnerId: po.oemPartnerId ?? po.partnerId ?? '', partnerName: po.partnerName ?? '',
       orderId: po.id,
       // 전에는 `가공2026-08` — 순번이 없어 그달 가공전표가 전부 같은 번호였다
-      docNo: nextDocNo(input.date, statementsOf(), '가공'),
+      docNo: claimDocNo(input.date, statementsOf(), '가공'),
       totalSupply, totalTax, totalAmount: totalSupply + totalTax,
       items: lines,
     } as Partial<IssuedStatement>);

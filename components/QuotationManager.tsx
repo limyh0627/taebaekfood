@@ -6,6 +6,7 @@ import { subscribeToCollection, addItem, deleteItem } from '../src/shared/servic
 import PageHeader from './PageHeader';
 import { today, addDays as plusDays } from '../src/shared/day';
 import { marginFromSupply } from '../src/shared/margin';
+import { lineAmountFromSupply } from '../src/shared/lineAmount';
 
 /**
  * **견적서** — 팔기 전에 얼마에 줄지 적어 내미는 종이.
@@ -86,9 +87,10 @@ export function quoteTotals(lines: QuotationLine[]) {
   let supply = 0, tax = 0, cost = 0;
   for (const l of lines) {
     const qty = Number(l.qty) || 0;
-    const amt = Math.round(qty * (Number(l.price) || 0));
-    supply += amt;
-    if (!l.isTaxExempt) tax += Math.round(amt * 0.1);
+    //  **단가는 공급가 기준**(세별도) — 셈은 shared/lineAmount 하나다
+    const a = lineAmountFromSupply(qty, Number(l.price) || 0, l.isTaxExempt);
+    supply += a.supply;
+    tax += a.tax;
     cost += Math.round(qty * (Number(l.cost) || 0));
   }
   //  마진은 **공급가 기준**이다 — 부가세는 받아서 그대로 내는 돈이라 남는 게 아니다.
@@ -315,21 +317,27 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
 
               {/* 품목 — 원가와 마진율을 줄마다 보여준다. 값을 매기는 자리라 이게 안 보이면 감으로 적게 된다. */}
               <div className="rounded-2xl border border-slate-200 overflow-hidden">
-                <div className="grid grid-cols-[1fr_70px_92px_100px_64px_100px_48px_30px] bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                <div className="grid grid-cols-[1fr_64px_88px_96px_58px_88px_100px_44px_28px] bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                   <span className="px-3 py-2">품목</span>
                   <span className="px-2 py-2 text-right">수량</span>
                   <span className="px-2 py-2 text-right">원가</span>
-                  <span className="px-2 py-2 text-right">단가</span>
+                  {/*  **단가는 공급가 기준이다**(세별도). 원가에 마진을 얹은 값이다.
+                       전표·거래명세서의 '단가'는 세포함이라 뜻이 다르다 — 그래서 칸 이름에 박는다.
+                       세액과 판매가를 나란히 둬야 손님한테 부를 값이 화면에서 바로 읽힌다. */}
+                  <span className="px-2 py-2 text-right">단가<span className="text-slate-400 font-bold"> 공급가</span></span>
                   <span className="px-2 py-2 text-right">마진율</span>
-                  <span className="px-2 py-2 text-right">금액</span>
+                  <span className="px-2 py-2 text-right">세액</span>
+                  <span className="px-2 py-2 text-right">판매가<span className="text-slate-400 font-bold"> 세포함</span></span>
                   <span className="px-1 py-2 text-center">과세</span>
                   <span />
                 </div>
                 {form.lines.map((l, i) => {
                   const lineMargin = l.price - (l.cost ?? 0);
                   const lineRate = l.price > 0 ? lineMargin / l.price : 0;
+                  //  줄마다 세액·판매가를 낸다 — 셈은 shared/lineAmount 한 곳이다
+                  const amt = lineAmountFromSupply(Number(l.qty) || 0, Number(l.price) || 0, l.isTaxExempt);
                   return (
-                    <div key={i} className="grid grid-cols-[1fr_70px_92px_100px_64px_100px_48px_30px] border-t border-slate-100 items-center">
+                    <div key={i} className="grid grid-cols-[1fr_64px_88px_96px_58px_88px_100px_44px_28px] border-t border-slate-100 items-center">
                       <div className="px-3 py-2 min-w-0">
                         <button onClick={() => { setPickIdx(i); setItemSearch(''); }}
                           className={`w-full text-left text-xs font-bold truncate px-2 py-1.5 rounded-lg border transition-all ${l.name ? 'border-slate-200 text-slate-700 hover:border-indigo-300' : 'border-dashed border-slate-300 text-slate-400'}`}>
@@ -347,7 +355,10 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                       <span className={`px-2 text-right text-xs font-black tabular-nums ${!l.cost || !l.price ? 'text-slate-300' : lineMargin < 0 ? 'text-rose-500' : 'text-emerald-600'}`}>
                         {l.cost && l.price ? `${(lineRate * 100).toFixed(1)}%` : '—'}
                       </span>
-                      <span className="px-2 text-right text-xs font-black text-slate-800 tabular-nums">{fmt(l.qty * l.price)}</span>
+                      <span className={`px-2 text-right text-xs font-bold tabular-nums ${amt.tax ? 'text-slate-500' : 'text-slate-300'}`}>
+                        {amt.tax ? fmt(amt.tax) : '—'}
+                      </span>
+                      <span className="px-2 text-right text-xs font-black text-slate-800 tabular-nums">{fmt(amt.gross)}</span>
                       <button onClick={() => setLine(i, { isTaxExempt: !l.isTaxExempt })}
                         className={`mx-1 py-1.5 rounded-lg text-[10px] font-black border ${l.isTaxExempt ? 'bg-indigo-500 text-white border-indigo-500' : 'bg-white text-slate-500 border-slate-200'}`}>
                         {l.isTaxExempt ? '면세' : '과세'}

@@ -194,8 +194,6 @@ interface ItemListProps {
   isAdmin?: boolean;
   onUpdateSubmaterial?: (id: string, data: Partial<Item>) => void;
   receivedOrders?: PurchaseOrder[];
-  inboundContent?: React.ReactNode;
-  inboundBadge?: number;
   returnContent?: React.ReactNode;
   returnBadge?: number;
   // 임가공(OEM) — 발주는 입고대기에, 이력은 입고이력에 함께 표시된다(별도 목록 없음)
@@ -320,8 +318,6 @@ const ItemList: React.FC<ItemListProps> = ({
   onUpdateSubmaterial,
   receivedOrders = [],
   partnerItems = [],
-  inboundContent,
-  inboundBadge = 0,
   returnContent,
   returnBadge = 0,
   oemEnabled = false,
@@ -1056,7 +1052,7 @@ const ItemList: React.FC<ItemListProps> = ({
               className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-black transition-all ${activeTab === 'inbound' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
             >
               <Inbox size={13} /><span>입고/반품</span>
-              {(inboundBadge + returnBadge) > 0 && <span className="absolute -top-1 -right-1 bg-amber-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow">{inboundBadge + returnBadge}</span>}
+              {returnBadge > 0 && <span className="absolute -top-1 -right-1 bg-amber-500 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow">{returnBadge}</span>}
             </button>
             <button
               onClick={() => setActiveTab('lots')}
@@ -1137,14 +1133,8 @@ const ItemList: React.FC<ItemListProps> = ({
         )}
 
         {/* 입고처리/반품처리 버튼 행 (입고/반품 탭에서만) */}
-        {activeTab === 'inbound' && (inboundContent || returnContent) && (
+        {activeTab === 'inbound' && returnContent && (
           <div className="flex items-center justify-end gap-2">
-            {inboundContent && (
-              <button onClick={() => setShowInboundOverlay(true)} className="flex items-center gap-1.5 px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-black transition-all shadow-sm relative">
-                <Inbox size={13} /><span>입고처리</span>
-                {inboundBadge > 0 && <span className="absolute -top-1 -right-1 bg-amber-400 text-white w-4 h-4 flex items-center justify-center rounded-full text-[9px] shadow">{inboundBadge}</span>}
-              </button>
-            )}
             {returnContent && (
               <button onClick={() => setShowReturnOverlay(true)} className="flex items-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black transition-all shadow-sm relative">
                 <RotateCcw size={13} /><span>반품처리</span>
@@ -1160,16 +1150,8 @@ const ItemList: React.FC<ItemListProps> = ({
         )}
 
         {/* 입고/반품 서브탭 (필터 행 위치) */}
-        {activeTab === 'inbound' && (inboundContent || returnContent) && (
+        {activeTab === 'inbound' && returnContent && (
           <div className="flex items-center gap-2">
-            {inboundContent && (
-              <button
-                onClick={() => setInboundSubTab('입고')}
-                className={`px-4 py-2 rounded-2xl border text-xs font-black transition-all ${inboundSubTab === '입고' ? 'bg-teal-50 border-teal-200 text-teal-700 ring-2 ring-teal-50' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
-              >
-                입고
-              </button>
-            )}
             {returnContent && (
               <button
                 onClick={() => setInboundSubTab('반품')}
@@ -1335,19 +1317,6 @@ const ItemList: React.FC<ItemListProps> = ({
       </div>
 
       {/* 입고처리 오버레이 */}
-      {showInboundOverlay && inboundContent && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center" onClick={e => { if (e.target === e.currentTarget) setShowInboundOverlay(false); }}>
-          <div className="bg-slate-50 rounded-t-3xl sm:rounded-3xl w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl">
-            <div className="sticky top-0 z-10 bg-slate-50 px-5 pt-5 pb-3 border-b border-slate-200 flex items-center justify-between">
-              <span className="font-black text-slate-800 text-base">입고 처리</span>
-              <button onClick={() => setShowInboundOverlay(false)} className="p-2 rounded-xl hover:bg-slate-200 transition-colors">
-                <X size={18} className="text-slate-500" />
-              </button>
-            </div>
-            <div className="p-4">{inboundContent}</div>
-          </div>
-        </div>
-      )}
 
       {/* 반품처리 오버레이 */}
       {showReturnOverlay && returnContent && (
@@ -2383,56 +2352,6 @@ const ItemList: React.FC<ItemListProps> = ({
               </>
             )}
 
-            {/* 선입고 섹션 — 발주 없이 스캔된 입고 (전표 작성 전) */}
-            {activeTab === 'requests' && (() => {
-              const unlinked = receivedOrders.filter(r => !r.linkedStatementId);
-              if (unlinked.length === 0) return null;
-              return (
-                <div className="bg-white rounded-2xl border border-amber-100 shadow-sm overflow-hidden mb-4">
-                  <div className="px-5 py-3 border-b border-amber-50 flex items-center justify-between bg-amber-50/50">
-                    <div className="flex items-center gap-2">
-                      <Inbox size={15} className="text-amber-500" />
-                      <span className="font-black text-sm text-slate-800">선입고</span>
-                      <span className="text-[10px] font-black bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{unlinked.length}건</span>
-                      <span className="text-[10px] text-slate-400">전표 작성 전 · 재고 반영 완료</span>
-                    </div>
-                  </div>
-                  <div className="divide-y divide-slate-50">
-                    {unlinked.sort((a, b) => (b.receivedAt ?? '').localeCompare(a.receivedAt ?? '')).map(r => (
-                      <div key={r.id} className="px-5 py-3 flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-bold text-xs text-slate-700">{r.partnerName || '거래처 미확인'}</span>
-                            <span className="text-[10px] text-slate-400">{(r.receivedAt ?? '').slice(0, 10)}</span>
-                          </div>
-                          {(r.items ?? []).map((item, i) => (
-                            <div key={i} className="flex items-center gap-1 text-xs text-slate-600">
-                              <span>{item.name}</span>
-                              <span className="text-slate-400">·</span>
-                              <span className="font-bold">{item.quantity.toLocaleString()} {item.unit}</span>
-                            </div>
-                          ))}
-                        </div>
-                        {isAdmin && onRequestPurchaseInvoice && (
-                          <button
-                            onClick={() => {
-                              onRequestPurchaseInvoice(
-                                '',
-                                r.partnerName ?? '',
-                                (r.items ?? []).map(i => ({ name: i.name, spec: '', qty: i.quantity, price: 0 }))
-                              );
-                            }}
-                            className="shrink-0 flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-[11px] font-black hover:bg-indigo-700 transition-all"
-                          >
-                            전표 작성
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
 
             {/* 발주 내역 — 입고 대기 (통합: 수동 발주 + 전표 기반) */}
             {(() => {

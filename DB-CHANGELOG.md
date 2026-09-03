@@ -1322,3 +1322,20 @@ BOM 수량은 **언제나 kg**으로 저장한다(items.stock·로트·원료수
 
 손대지 않고 남겨 둔 것 — 태백↔풍회 입금 4줄이 `18:00:00` 으로 찍혀 있다.
 코드에도 문서에도 그렇게 찍는 자리가 없어 사람이 일부러 넣은 값으로 보고 건드리지 않았다.
+
+## 2026-09-03 — 아직 안 끝난 9월의 '월말' 재고 스냅샷 삭제
+
+`inventorySnapshots/inv-snap-2026-09` (219,518,832원, 회사 taebaek, 기록 2026-09-01 10:03).
+**9월이 안 끝났는데 월말 실사액 자리에 8월 값이 그대로 들어가 있었다.**
+
+그냥 두면 스케줄러가 9/30에 돌아도 "이미 있네" 하고 건너뛴다. 지웠으니 9/30 23:00에
+그날 재고로 제대로 찍힌다. 7·8월 스냅샷은 안 건드렸다 — 지난 달 장부가 그걸 딛고 서 있다.
+
+    npx tsx scripts/fix-drop-sep-invsnap.mts          # 미리보기
+    npx tsx scripts/fix-drop-sep-invsnap.mts --apply  # 지우기(백업 남김)
+    npx tsx scripts/fix-drop-sep-invsnap.mts --undo   # 되돌리기
+
+백업: `scripts/fix-drop-sep-invsnap-backup.json`
+
+같은 날 `firebase deploy --only functions` 로 스케줄러도 올렸다 —
+재고평가 규칙을 앱과 맞추고(회사별·음수 포함) 전표번호를 새 형식으로 바꾼 것.

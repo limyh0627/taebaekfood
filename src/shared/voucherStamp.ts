@@ -96,6 +96,45 @@ export function stampFor(date: string, now: Date = new Date()): string {
  * @param existing 이미 있는 전표들 (docNo만 본다)
  * @param prefix   갈래 접두사 — 반품·대체처럼 따로 세는 것
  */
+/**
+ * **이번 판에서 이미 내준 번호** — 목록이 갱신되기 전에 또 부르면 같은 값이 나온다.
+ *
+ * `nextDocNo` 는 순수 함수라 **부르는 쪽이 넘긴 목록**에서만 최대값을 찾는다.
+ * 그런데 그 목록은 구독으로 갱신되므로, 연달아 발행하면 두 번째가 첫 번째를 아직 못 본다.
+ * (실제로 겹친 `2026-08-0216` 은 다른 원인이었지만 — 개수 기반 — 이 구멍은 그대로 남아 있었다.)
+ *
+ * 그래서 내준 번호를 여기 담아 두고 다음부터 건너뛴다. 화면을 새로 켜면 비워진다 —
+ * 그때는 목록이 이미 최신이라 필요 없다.
+ *
+ * **여러 사람이 동시에 끊는 경우는 이걸로 못 막는다.** 그건 서버에서 번호를 원자적으로
+ * 받아야 한다(할일에 적어 뒀다). 지금은 한 사람이 쓰므로 이걸로 충분하다.
+ */
+const 내준번호 = new Set<string>();
+
+/** 테스트·초기화용 */
+export function resetDocNoClaims(): void {
+  내준번호.clear();
+}
+
+/**
+ * 번호를 **받아 간다** — 실제로 발행할 때 부른다.
+ * `nextDocNo` 는 미리보기용(순수)이고, 이건 그 번호를 찜해서 다음 발행이 안 겹치게 한다.
+ */
+export function claimDocNo(
+  date: string,
+  existing: { docNo?: string }[],
+  prefix = '',
+): string {
+  const no = nextDocNo(date, existing, prefix);
+  내준번호.add(no);
+  return no;
+}
+
+/** 쓰지 않기로 한 번호를 놓아준다(발행이 엎어졌을 때). */
+export function releaseDocNo(no: string): void {
+  내준번호.delete(no);
+}
+
 export function nextDocNo(
   date: string,
   existing: { docNo?: string }[],
@@ -106,12 +145,15 @@ export function nextDocNo(
   const head = `${prefix}${ymd}-`;
   let max = 0;
   // 그날 쓰인 가장 큰 번호를 찾는다 — 개수를 세면 지운 자리를 다시 쓴다
-  for (const s of existing) {
+  //  이번 판에서 이미 내준 번호도 쓰인 것으로 친다 — 목록이 아직 못 봤을 수 있다
+  for (const s of [...existing, ...[...내준번호].map(no => ({ docNo: no }))]) {
     const no = s.docNo ?? '';
     if (!no.startsWith(head)) continue;
     const tail = no.slice(head.length);
     if (!/^[0-9]+$/.test(tail)) continue;
     max = Math.max(max, Number(tail));
   }
-  return `${head}${String(max + 1).padStart(2, '0')}`;
+  //  세 자리로 찍는다(2026-09-03 사장님) — 하루 백 장을 넘겨도 자릿수가 안 흔들린다.
+  //  읽을 때는 자릿수를 안 따지므로(숫자면 다 본다) 옛 두 자리 번호와 섞여도 순서가 맞는다.
+  return `${head}${String(max + 1).padStart(3, '0')}`;
 }

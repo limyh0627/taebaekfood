@@ -2,13 +2,15 @@ import React, { useMemo, useState } from 'react';
 import { Search, Package, ArrowDownRight, ArrowUpRight } from 'lucide-react';
 import type { Item, Order } from '../src/shared/types';
 import { buildItemLedger, type ItemLedgerKind } from '../src/features/admin/itemLedger';
+import type { ItemReceipt } from '../src/shared/receipt';
 import { matchesSearch } from '../src/shared/hangul';
 
 /**
  * 제품별원장 — 품목 하나가 언제 얼마나 들고 났나.
  *
  * 원료·벌크는 원료수불부가 이미 있다. 여긴 **완제품·부자재**를 본다.
- * 근거는 주문에 남은 스냅샷뿐이라(itemLedger.ts 참조) 재고조정·실사는 안 잡힌다.
+ * 근거는 주문 스냅샷과 입고 기록이다(itemLedger.ts 참조). 재고조정·실사는 안 잡힌다.
+ * 입고는 2026-09-03부터다 — 그 전에 산 것은 여전히 '차이'로 남는다.
  * 그래서 잔량을 억지로 맞추지 않고 **지금 재고와의 차이를 그대로 밝힌다** — 가리면 못 찾는다.
  */
 const KIND_CLS: Record<ItemLedgerKind, string> = {
@@ -16,11 +18,17 @@ const KIND_CLS: Record<ItemLedgerKind, string> = {
   '먼저생산': 'bg-teal-100 text-teal-700',
   '출고': 'bg-rose-100 text-rose-600',
   '자재사용': 'bg-amber-100 text-amber-700',
+  '입고': 'bg-sky-100 text-sky-700',
 };
 
 const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 3 });
 
-const ItemLedger: React.FC<{ items: Item[]; orders: Order[] }> = ({ items, orders }) => {
+const ItemLedger: React.FC<{
+  items: Item[];
+  orders: Order[];
+  /** 사 온 기록 — 없으면 예전처럼 주문만 본다 */
+  receipts?: ItemReceipt[];
+}> = ({ items, orders, receipts = [] }) => {
   const [q, setQ] = useState('');
   const [pickedId, setPickedId] = useState('');
 
@@ -34,8 +42,8 @@ const ItemLedger: React.FC<{ items: Item[]; orders: Order[] }> = ({ items, order
 
   const picked = items.find(i => i.id === pickedId);
   const ledger = useMemo(
-    () => (pickedId ? buildItemLedger(pickedId, orders, items) : null),
-    [pickedId, orders, items]);
+    () => (pickedId ? buildItemLedger(pickedId, orders, items, receipts) : null),
+    [pickedId, orders, items, receipts]);
 
   return (
     <div className="flex gap-4 h-full min-h-0">

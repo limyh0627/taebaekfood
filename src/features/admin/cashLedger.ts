@@ -1,5 +1,5 @@
 import { CashAccount, CashEntry, IssuedStatement, JournalEntry, Settlement } from '../../shared/types';
-import { rowStamp, issuedMs } from '../../shared/voucherStamp';
+import { rowStamp, issuedMs, timeOfLocal } from '../../shared/voucherStamp';
 
 /**
  * 자금 원장(현금출납장) 순수 도메인 모듈 — 부수효과 없음(입력 → 값).
@@ -94,27 +94,51 @@ export function totalCashOnHand(accounts: CashAccount[], allEntries: CashEntry[]
   }, 0);
 }
 
-/** 전표에 대해 이미 매칭(상계)된 금액 */
-export function settledAmount(statementId: string, settlements: Settlement[]): number {
+/**
+ * 전표에 대해 이미 매칭(상계)된 금액.
+ *
+ * **근거가 살아 있는 것만 센다.** 자금줄이 지워져도 매칭 기록(settlements)은 남는데,
+ * 그걸 세면 없는 돈으로 갚은 것이 된다. `allocatePartnerCash` 는 진작 그렇게 하고 있었고
+ * 여기만 안 봐서 **같은 전표가 두 화면에서 다른 잔액으로 보였다**(2026-09-03 실측) —
+ *
+ *   260827-02 희성실업   전표 목록 1,026만 미지급   매칭 후보 창 186만
+ *   260902-04 해피유통    전표 목록      0원        매칭 후보 창 **−995만**
+ *
+ * @param liveCashIds 살아 있는 자금줄 id. 안 넘기면 예전처럼 다 센다(옛 호출부 호환).
+ */
+export function settledAmount(
+  statementId: string,
+  settlements: Settlement[],
+  liveCashIds?: Set<string>,
+): number {
   return settlements
     .filter(s => s.statementId === statementId)
+    .filter(s => !liveCashIds || liveCashIds.has(s.cashEntryId))
     .reduce((a, s) => a + s.amount, 0);
 }
 
 /** 전표의 미결제 잔액. 0 이하면 결제 완료. */
-export function openBalance(stmt: IssuedStatement, settlements: Settlement[]): number {
-  return stmt.totalAmount - settledAmount(stmt.id, settlements);
+export function openBalance(
+  stmt: IssuedStatement,
+  settlements: Settlement[],
+  liveCashIds?: Set<string>,
+): number {
+  return stmt.totalAmount - settledAmount(stmt.id, settlements, liveCashIds);
 }
 
-/** 아직 안 끝난 전표들 — 자금 원장에서 매칭 대상으로 띄울 목록 */
+/**
+ * 아직 안 끝난 전표들 — 자금 원장에서 매칭 대상으로 띄울 목록.
+ * `cashEntries` 를 넘기면 지워진 자금줄에 매달린 매칭은 안 센다(넘기는 게 맞다).
+ */
 export function unsettledStatements(
   statements: IssuedStatement[],
   settlements: Settlement[],
-  opts?: { type?: '매출' | '매입'; partnerId?: string },
+  opts?: { type?: '매출' | '매입'; partnerId?: string; cashEntries?: CashEntry[] },
 ): { stmt: IssuedStatement; open: number }[] {
+  const live = opts?.cashEntries ? new Set(opts.cashEntries.map(e => e.id)) : undefined;
   return statements
     .filter(s => (!opts?.type || s.type === opts.type) && (!opts?.partnerId || s.partnerId === opts.partnerId))
-    .map(stmt => ({ stmt, open: openBalance(stmt, settlements) }))
+    .map(stmt => ({ stmt, open: openBalance(stmt, settlements, live) }))
     .filter(r => r.open > 0)
     .sort((a, b) => (a.stmt.tradeDate || '').localeCompare(b.stmt.tradeDate || ''));
 }
@@ -133,7 +157,18 @@ export interface PartnerLedgerRow {
   kind: '전표' | '결제';
   id: string;
   date: string;
-  label: string;          // 적요 (전표=문서번호, 결제=적요/방법)
+  /**
+   * 적요 — **무슨 거래였나.** 전표번호는 여기 안 섞는다(2026-09-03 사장님).
+   * 전에는 `전표번호 || 적요` 한 칸이라, 번호가 있으면 적요가 안 보이고
+   * 없으면 번호 자리에 적요가 앉아 무엇이 무엇인지 못 읽었다.
+   */
+  label: string;
+  /** 전표번호 — 있으면 화면이 눌러서 그 전표를 연다 */
+  docNo?: string;
+  /** 그 전표·자금줄의 id — 눌렀을 때 찾아갈 곳 */
+  sourceId?: string;
+  /** 그날 안의 시각 'HH:MM:SS' — 소급이면 23:59:59, 예약이면 00:00:00 */
+  time?: string;
   amount: number;         // 전표 = +발생(채권·채무 증가), 결제 = −상계
   balance: number;        // 이 행 직후 잔액
   /** 결제 출처 — 자금원장 매칭뿐이다(전표에 매다는 옛 경로는 걷어냈다) */
@@ -198,7 +233,12 @@ export function buildPartnerLedger(
           kind: amt > 0 ? '전표' : '결제',
           id: `${je.id}__${l.accountCode}`,
           date,
-          label: st?.docNo || ce?.note || je.memo || (amt > 0 ? '발생' : '결제'),
+          //  적요와 전표번호를 갈라 담는다 — 화면이 따로 보여준다
+          label: ce?.note || st?.items?.slice(0, 2).map(i => i.name).filter(Boolean).join(', ')
+                 || je.memo || (amt > 0 ? '발생' : '결제'),
+          ...(st?.docNo ? { docNo: st.docNo } : ce?.docNo ? { docNo: ce.docNo } : {}),
+          ...(je.sourceId ? { sourceId: je.sourceId } : {}),
+          time: timeOfLocal(st?.issuedAt ?? ce?.createdAt),
           amount: amt,
           ...(ce ? { source: 'cash' as const } : {}),
           ...(isOpening && amt > 0 ? { opening: true as const } : {}),
@@ -483,4 +523,47 @@ export function partnerBalances(
       return { partnerId, partnerName, balance: l.balance, count: l.rows.filter(r => r.kind === '전표').length };
     })
     .sort((a, b) => b.balance - a.balance);
+}
+
+/**
+ * **월별 실수금·실지불 — 통장에서 실제로 오간 돈만.**
+ *
+ * 예전엔 `settlements`(전표↔자금 매칭)를 더했는데, 그건 **전표에 매단 결제만** 담는다.
+ * 전표에 안 매달고 자금원장에만 넣은 수금·지불은 줄 자체가 없다. 게다가 원본이 지워지면
+ * `if (!s) continue; if (!e) continue;` 로 **말없이 건너뛴다**.
+ * 2026-09-03 실측 — settlements 155줄 중 11줄(3,897만원)이 그렇게 사라지고 있었고,
+ * 8월 값이 1억 9,872만으로 나왔다. 실제 통장에서 거래처로 오간 돈은 **5억 74만**이었다.
+ *
+ * 그래서 근거를 **자금원장 하나로** 옮긴다. 거래처가 붙고 채권·채무 계정으로 간 줄이
+ * 곧 실수금·실지불이다. 거래처원장(`buildPartnerLedger`)과 같은 근거라 두 화면이 안 갈린다.
+ *
+ * ---
+ * **상계는 여기 안 들어온다.** 미수·미지급 상계는 108 과 251 을 같이 줄이지만
+ * 통장에서는 한 푼도 안 움직인다. 원장에서는 양쪽 다 '결제'로 잡히는 게 맞지만,
+ * 그걸 현금으로 합산하면 **두 번 세어진다**(2026-08 에 4줄 6,795만원).
+ * 상계는 `lines` 에 차·대를 직접 적은 **복합 줄**이라 위쪽 `accountCode` 가 없다.
+ * 그래서 "계정 하나짜리 줄"만 세면 저절로 빠진다.
+ * (`cashAccountId` 로는 못 가른다 — 지금 데이터는 204줄이 전부 비어 있다.)
+ *
+ * @returns 'YYYY-MM' → { inc 수금, out 지불 }
+ */
+export function cashPaidByMonth(cashEntries: CashEntry[]): Map<string, { inc: number; out: number }> {
+  const out = new Map<string, { inc: number; out: number }>();
+  for (const e of cashEntries) {
+    if (!e.partnerId) continue;                       // 거래처가 없으면 채권·채무가 아니다
+    //  복합 줄(lines)은 상계·대체다 — 통장이 안 움직인다
+    if ((e.lines?.length ?? 0) > 0) continue;
+    const code = String(e.accountCode ?? '');
+    const isAR = code === AR, isAP = PAYABLES.includes(code);
+    if (!isAR && !isAP) continue;
+    const ym = String(e.date ?? '').slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(ym)) continue;
+    const amt = Number(e.amount) || 0;
+    //  받은 게 수금, 준 게 지불 — 되돌린 건 음수로 깎는다
+    const signed = e.dir === '입금' ? amt : -amt;
+    const cur = out.get(ym) ?? { inc: 0, out: 0 };
+    if (isAR) cur.inc += signed; else cur.out -= signed;
+    out.set(ym, cur);
+  }
+  return out;
 }

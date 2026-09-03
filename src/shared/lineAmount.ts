@@ -23,6 +23,20 @@
  * 그래서 통일해도 **전표에 찍히는 단가는 안 바뀌고** 공급가액·세액만 1~2원 움직인다.
  *
  * ---
+ * ---
+ * **단가라는 말이 두 뜻으로 쓰인다 — 이름으로 가른다.**
+ *
+ *   판매단가(세포함)   손님한테 부르는 값. 전표·거래명세서·주문이 쓴다.   `lineAmount`
+ *   공급가 단가(세별도) 원가에 마진을 얹은 값. 견적서가 쓴다.           `lineAmountFromSupply`
+ *
+ * 견적서는 사장님이 셈하는 순서를 그대로 따른다 —
+ *
+ *     원가(세별도) 10,000 → 마진 30% 3,000 → 공급가액 13,000 → 부가세 1,300 → 판매가 14,300
+ *
+ * 같은 칸을 두 뜻으로 쓰면 어느 쪽인지 화면에서도 코드에서도 안 보인다. 그래서 함수를
+ * 둘로 두고, 화면도 **둘 다 보여준다**(공급가액과 판매가를 나란히).
+ *
+ * ---
  * **반품은 음수 그대로 둔다.** 수량이 음수면 공급가액·세액·합계가 다 음수다.
  * `> 0`으로 거르면 반품 전표의 세 칸이 통째로 비어 보인다.
  */
@@ -66,4 +80,46 @@ export function sumLines(lines: LineAmount[]): LineAmount {
     (a, l) => ({ gross: a.gross + l.gross, supply: a.supply + l.supply, tax: a.tax + l.tax }),
     { gross: 0, supply: 0, tax: 0 },
   );
+}
+
+/**
+ * **공급가 단가에서 세액과 판매가를 얹는다** — `lineAmount` 의 거울.
+ *
+ * 견적서처럼 원가에 마진을 얹어 값을 만드는 자리가 쓴다. 치는 값이 **세별도**다.
+ *
+ *   과세 : 공급가액 = 반올림(수량 × 단가) · 세액 = 반올림(공급가액 × 0.1)
+ *   면세 : 세액 0
+ *
+ * 여기서는 **공급가액을 반올림한 뒤 세액을 얹는다.** `lineAmount` 는 반대로 합계를
+ * 나눠 내려오므로, 같은 줄을 두 함수에 태우면 1원쯤 갈릴 수 있다 — 그게 정상이다.
+ * 어느 쪽이 근거인지는 **그 화면이 무엇을 받아 적었느냐**가 정한다.
+ *
+ * @param qty     수량. 반품이면 음수다.
+ * @param supply  **세금 별도** 단가(공급가 기준)
+ * @param exempt  면세면 true
+ */
+export function lineAmountFromSupply(qty: number, supply: number, exempt?: boolean): LineAmount {
+  const s = Math.round((Number(qty) || 0) * (Number(supply) || 0));
+  if (exempt) return { gross: s, supply: s, tax: 0 };
+  const tax = Math.round(s * VAT_RATE);
+  return { gross: s + tax, supply: s, tax };
+}
+
+/**
+ * **한 줄로 보여줄 단가 딱지** — 과세면 공급가액을 곁들인다.
+ *
+ * 화면 여기저기서 '판매단가'라고 한 숫자만 보여주는데, 그게 세포함이라 원가와 나란히
+ * 두면 마진이 부풀어 보인다(원가는 세별도다). 그래서 과세 품목은 둘 다 적는다.
+ *
+ *   과세  `99,000` + `공급가 90,000`
+ *   면세  `99,000`              ← 곁들일 게 없다
+ *
+ * @param price  **세금 포함** 판매단가
+ */
+export function priceParts(price: number | undefined | null, exempt?: boolean): {
+  sale: number; supply: number; showSupply: boolean;
+} {
+  const sale = Math.round(Number(price) || 0);
+  const { supply } = lineAmount(1, sale, exempt);
+  return { sale, supply, showSupply: !exempt && supply !== sale };
 }

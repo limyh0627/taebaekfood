@@ -8,11 +8,13 @@ interface Props {
   issuedStatements: IssuedStatement[];
   cashEntries: CashEntry[];
   accountCodes: AccountCode[];
+  /** 전표번호를 눌렀을 때 — 그 전표를 열어 보여준다 */
+  onOpenVoucher?: (sourceId: string, docNo: string) => void;
 }
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
 
-export default function PartnerLedger({ issuedStatements, cashEntries, accountCodes }: Props) {
+export default function PartnerLedger({ issuedStatements, cashEntries, accountCodes, onOpenVoucher }: Props) {
   // 채권·채무가 움직인 곳은 분개의 108·251 줄뿐이다 — 원장도 잔액도 거기서 뽑는다.
   // 기초잔액은 거래처가 없으니 안 넘겨도 결과가 같다.
   const journals = useMemo(
@@ -116,7 +118,10 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
                 <tr>
                   <th className="px-4 py-2.5 text-left font-black">일자</th>
                   <th className="px-4 py-2.5 text-left font-black">구분</th>
+                  {/*  적요와 전표번호를 갈라 둔다 — 한 칸에 뭉쳐 있으면 번호가 있을 때
+                       적요가 안 보이고, 없을 때 번호 자리에 적요가 앉는다(2026-09-03 사장님). */}
                   <th className="px-4 py-2.5 text-left font-black">적요</th>
+                  <th className="px-4 py-2.5 text-left font-black">전표번호</th>
                   <th className="px-4 py-2.5 text-right font-black">발생</th>
                   <th className="px-4 py-2.5 text-right font-black">결제</th>
                   <th className="px-4 py-2.5 text-right font-black">잔액</th>
@@ -125,24 +130,39 @@ export default function PartnerLedger({ issuedStatements, cashEntries, accountCo
               <tbody className="divide-y divide-slate-50">
                 {ledger?.rows.map(r => (
                   <tr key={`${r.kind}-${r.id}`} className="hover:bg-slate-50/50">
-                    <td className="px-4 py-2.5 font-bold text-slate-500 whitespace-nowrap">{r.date.slice(5)}</td>
-                    <td className="px-4 py-2.5">
-                      {r.opening
-                        ? <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">기초</span>
-                        : r.kind === '전표'
-                        ? <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${type === '매입' ? 'bg-rose-50 text-rose-600' : 'bg-blue-50 text-blue-600'}`}>전표</span>
-                        : <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600">
-                            {r.source === 'cash' ? '결제·자금' : '결제'}
-                          </span>}
+                    {/*  날짜에 시각도 — 같은 날 여러 건이면 순서가 이걸로 갈린다
+                         (소급은 23:59:59, 미리 끊은 건 00:00:00) */}
+                    <td className="px-4 py-2.5 font-bold text-slate-500 whitespace-nowrap tabular-nums">
+                      {r.date.slice(5)}
+                      {r.time && <span className="ml-1.5 text-[10px] font-bold text-slate-300">{r.time.slice(0, 5)}</span>}
                     </td>
-                    <td className="px-4 py-2.5 font-bold text-slate-700 truncate max-w-[220px]">{r.label}</td>
+                    {/*  구분은 글자만 — 박스에 넣으면 줄마다 알록달록해서 오히려 안 읽힌다 */}
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      <span className={`text-[11px] font-black ${
+                        r.opening ? 'text-slate-400'
+                        : r.kind === '전표' ? (type === '매입' ? 'text-rose-600' : 'text-blue-600')
+                        : 'text-emerald-600'}`}>
+                        {r.opening ? '기초' : r.kind === '전표' ? '전표' : r.source === 'cash' ? '결제·자금' : '결제'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 font-bold text-slate-700 truncate max-w-[260px]">{r.label}</td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      {r.docNo
+                        ? (onOpenVoucher && r.sourceId
+                            ? <button type="button" onClick={() => onOpenVoucher(r.sourceId!, r.docNo!)}
+                                className="text-[11px] font-black text-indigo-600 hover:text-indigo-800 underline underline-offset-2 tabular-nums">
+                                {r.docNo}
+                              </button>
+                            : <span className="text-[11px] font-bold text-slate-500 tabular-nums">{r.docNo}</span>)
+                        : <span className="text-slate-200">—</span>}
+                    </td>
                     <td className="px-4 py-2.5 text-right font-black text-slate-700 tabular-nums">{r.amount > 0 ? fmt(r.amount) : ''}</td>
                     <td className="px-4 py-2.5 text-right font-black text-emerald-600 tabular-nums">{r.amount < 0 ? fmt(-r.amount) : ''}</td>
                     <td className={`px-4 py-2.5 text-right font-black tabular-nums ${r.balance === 0 ? 'text-slate-300' : 'text-slate-800'}`}>{fmt(r.balance)}</td>
                   </tr>
                 ))}
                 {(!ledger || ledger.rows.length === 0) && (
-                  <tr><td colSpan={6} className="px-4 py-20 text-center text-slate-300 font-bold">거래 내역이 없습니다</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-20 text-center text-slate-300 font-bold">거래 내역이 없습니다</td></tr>
                 )}
               </tbody>
             </table>

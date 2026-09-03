@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { makeCodeToGroup, computeCashFlowMonth, addMonthStr, filterCodesForContext, isNoncashCode } from './financials';
+import { makeCodeToGroup, computeCashFlowMonth, addMonthStr, filterCodesForContext, isNoncashCode, plMovement, plOfJournals } from './financials';
 import type { IssuedStatement, AccountCode, AccountGroup, FixedCostEntry, CashEntry } from '../../shared/types';
 
 describe('filterCodesForContext', () => {
@@ -315,5 +315,69 @@ describe('비현금 비용 (감가상각 · 퇴직급여충당금)', () => {
     expect(isNoncashCode('510', noncashCodes)).toBe(false);
     expect(isNoncashCode('818', noncashCodes)).toBe(true);   // 플래그
     expect(isNoncashCode(undefined, noncashCodes)).toBe(false);
+  });
+});
+
+/**
+ * **손익은 분개에서 센다 — 전표 갈래로 세면 안 된다.** (2026-09-03 사장님 발견)
+ *
+ * 전표 화면 하단 합계가 `type === '매입'` 인 것만 더하고 있었다. 그래서 **대체전표가
+ * 통째로 빠졌다** — 급여 발생·감가상각·퇴직급여충당은 갈래가 '비용'이다.
+ * 2026-08 급여 19,314,620원이 그렇게 사라져 있었다.
+ */
+describe('plMovement · plOfJournals — 손익 판정은 한 곳', () => {
+  const 계정: AccountCode[] = [
+    { id: '515', code: '515', name: '급여', type: '비용', normalBalance: 'debit' },
+    { id: '800', code: '800', name: '일반매출', type: '수익', normalBalance: 'credit' },
+    { id: '254', code: '254', name: '예수금', type: '부채', normalBalance: 'credit' },
+    { id: '263', code: '263', name: '미지급급여', type: '부채', normalBalance: 'credit' },
+    { id: '255', code: '255', name: '부가세예수금', type: '부채', normalBalance: 'credit' },
+    { id: '108', code: '108', name: '외상매출금', type: '자산', normalBalance: 'debit' },
+  ] as AccountCode[];
+  const je = (lines: { accountCode: string; debit?: number; credit?: number }[]) =>
+    ([{ id: 'j', date: '2026-08-31', lines }] as never);
+
+  it('**대체전표의 비용도 잡힌다** — 갈래가 비용이라 예전엔 통째로 빠졌다', () => {
+    //  급여260831-01 실물: 차변 515 급여 / 대변 254 예수금 + 263 미지급급여
+    const r = plOfJournals(je([
+      { accountCode: '515', debit: 19_314_620, credit: 0 },
+      { accountCode: '254', debit: 0, credit: 1_608_610 },
+      { accountCode: '263', debit: 0, credit: 17_706_010 },
+    ]), 계정);
+    expect(r.cost).toBe(19_314_620);
+    expect(r.income).toBe(0);
+  });
+
+  it('**부가세는 손익이 아니다** — 전표 총액으로 세면 섞인다', () => {
+    //  1,070,000 매출전표의 손익은 1,000,000 이다
+    const r = plOfJournals(je([
+      { accountCode: '108', debit: 1_070_000, credit: 0 },
+      { accountCode: '800', debit: 0, credit: 1_000_000 },
+      { accountCode: '255', debit: 0, credit: 70_000 },
+    ]), 계정);
+    expect(r.income).toBe(1_000_000);
+  });
+
+  it('되돌린 줄은 깎는다 — 반품이 매출을 부풀리면 안 된다', () => {
+    expect(plOfJournals(je([{ accountCode: '800', debit: 300_000, credit: 0 }]), 계정).income).toBe(-300_000);
+  });
+
+  it('자산·부채만 움직인 분개는 손익이 0 — 수금은 이익이 아니다', () => {
+    const r = plOfJournals(je([
+      { accountCode: '108', debit: 0, credit: 500_000 },
+      { accountCode: '263', debit: 500_000, credit: 0 },
+    ]), 계정);
+    expect(r).toEqual({ income: 0, cost: 0 });
+  });
+
+  it('모르는 계정은 안 센다 — 지어내지 않는다', () => {
+    expect(plOfJournals(je([{ accountCode: '999', debit: 1_000 }]), 계정)).toEqual({ income: 0, cost: 0 });
+  });
+
+  it('plMovement 은 정상 방향으로 부호를 잡는다', () => {
+    expect(plMovement(계정[0], 100, 0)).toBe(100);    // 비용 차변 = +
+    expect(plMovement(계정[1], 0, 100)).toBe(100);    // 수익 대변 = +
+    expect(plMovement(계정[2], 0, 100)).toBe(0);      // 부채는 손익이 아니다
+    expect(plMovement(undefined, 100, 0)).toBe(0);
   });
 });

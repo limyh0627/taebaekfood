@@ -3,7 +3,8 @@ import type { IssuedStatement, CashEntry, Settlement, AccountCode, CompanyId, Jo
 import { openingDocId } from '../../shared/types';
 import { fetchDateRange, fetchByIds, fetchWhere, fetchCollection } from '../../shared/services/firebaseService';
 import { buildJournals } from '../../shared/buildJournals';
-import { isReceivableStmt, allocatePartnerCash } from './cashLedger';
+import { allocatePartnerCash } from './cashLedger';
+import { mergeStatements, voucheredOrderIds, canSettleStatement } from './voucherMerge';
 import {
   anchorBefore, readFrom, openStatementIds, allocationInputs, balancesWithAnchor,
   type PartnerAnchor,
@@ -173,13 +174,9 @@ export function useVoucherLedger({
   // **회사로 한 번 더 거른다.** props는 이미 걸러져 오지만 extraStatements는 이 화면이
   // 직접 떠온 것이라 안 걸러져 있다 — 그래서 풍회로 바꿔도 태백 전표가 다 보였다.
   const mergedStatements = useMemo(() => {
-    const map = new Map<string, IssuedStatement>();
-    //  앵커가 짚어 준 옛 미결 전표가 맨 밑 — 나중 것이 이긴다
-    anchorStatements.forEach(s => map.set(s.id, s));
-    extraStatements.forEach(s => map.set(s.id, s));
-    issuedStatements.forEach(s => map.set(s.id, s));
-    for (const id of deletedStmtIds) map.delete(id);
-    return Array.from(map.values()).filter(s => (s.companyId ?? 'taebaek') === companyId);
+    //  합치는 규칙은 voucherMerge 하나다 — 나중 것이 이긴다
+    return mergeStatements({ anchor: anchorStatements, extra: extraStatements,
+      live: issuedStatements, deletedIds: deletedStmtIds, companyId });
   }, [issuedStatements, extraStatements, anchorStatements, deletedStmtIds, companyId]);
 
   /**
@@ -195,10 +192,7 @@ export function useVoucherLedger({
    * 한 전표가 여러 주문을 묶기도 해서 콤마·공백으로 갈라 담는다.
    */
   const voucherOrderIds = useMemo(() => {
-    const set = new Set<string>();
-    for (const st of mergedStatements)
-      for (const v of String(st.orderId ?? '').split(/[,\s]+/)) if (v) set.add(v);
-    return set;
+    return voucheredOrderIds(mergedStatements);
   }, [mergedStatements]);
 
   /**
@@ -278,9 +272,7 @@ export function useVoucherLedger({
    *
    * 기초이월은 type이 '비용'이지만 108·251을 세우므로 여기 걸린다 — 실제로 갚아야 할 것이다.
    */
-  const canSettle = useCallback((s: IssuedStatement) =>
-    (isReceivableStmt(s, '매출') || isReceivableStmt(s, '매입')) && getBalance(s) > 0,
-    [getBalance]);
+  const canSettle = useCallback((s: IssuedStatement) => canSettleStatement(s, getBalance(s)), [getBalance]);
 
   /**
    * **지운 전표를 잊는다** — 서버에서 지우는 건 화면 쪽 일이고, 여기선 목록에서 뺀다.

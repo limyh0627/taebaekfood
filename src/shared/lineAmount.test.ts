@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { lineAmount, lineAmountOf, sumLines } from './lineAmount';
+import { lineAmount, lineAmountOf, sumLines, lineAmountFromSupply, priceParts } from './lineAmount';
 
 /**
  * 이 셈이 아홉 군데로 흩어져 두 갈래로 갈려 있었다. 여기 하나로 모았으니
@@ -75,5 +75,57 @@ describe('줄을 더할 때', () => {
 
   it('빈 목록은 0', () => {
     expect(sumLines([])).toEqual({ gross: 0, supply: 0, tax: 0 });
+  });
+});
+
+/**
+ * **단가라는 말이 두 뜻이다.** (2026-09-03 사장님 지적 — "화면에서 판매단가와 공급가액이 구분이 안 된다")
+ *
+ *   판매단가(세포함)   손님한테 부르는 값 — 전표·거래명세서    `lineAmount`
+ *   공급가 단가(세별도) 원가에 마진을 얹은 값 — 견적서          `lineAmountFromSupply`
+ */
+describe('공급가 단가에서 세액을 얹는다', () => {
+  it('사장님 셈 그대로 — 공급가 13,000 → 세 1,300 → 판매가 14,300', () => {
+    expect(lineAmountFromSupply(1, 13_000)).toEqual({ supply: 13_000, tax: 1_300, gross: 14_300 });
+  });
+
+  it('화면의 그 줄 — 공급가 99,000 → 세 9,900 → 108,900', () => {
+    expect(lineAmountFromSupply(1, 99_000)).toEqual({ supply: 99_000, tax: 9_900, gross: 108_900 });
+  });
+
+  it('면세면 세액이 0이고 판매가가 곧 공급가다', () => {
+    expect(lineAmountFromSupply(3, 5_000, true)).toEqual({ supply: 15_000, tax: 0, gross: 15_000 });
+  });
+
+  it('수량을 곱한 뒤 세를 얹는다 — 줄마다 반올림한다', () => {
+    expect(lineAmountFromSupply(7, 1_070)).toEqual({ supply: 7_490, tax: 749, gross: 8_239 });
+  });
+
+  it('**반품(음수)도 그대로** — 거르면 반품 줄이 통째로 비어 보인다', () => {
+    expect(lineAmountFromSupply(-2, 10_000)).toEqual({ supply: -20_000, tax: -2_000, gross: -22_000 });
+  });
+
+  it('**거울이지만 완전한 왕복은 아니다** — 근거가 다르면 1원쯤 갈린다', () => {
+    //  공급가 99,000 로 매기면 판매가 108,900. 그 108,900 을 세포함으로 되풀면 다시 99,000.
+    const 올림 = lineAmountFromSupply(1, 99_000);
+    expect(lineAmount(1, 올림.gross).supply).toBe(99_000);
+    //  그런데 딱 안 떨어지는 값은 갈린다 — 어느 쪽이 근거인지 화면이 정해야 한다
+    const 갈림 = lineAmountFromSupply(1, 13_333);
+    expect(갈림.gross).toBe(14_666);
+    expect(lineAmount(1, 14_666).supply).toBe(13_333);
+  });
+});
+
+describe('단가 딱지 — 과세면 공급가액을 곁들인다', () => {
+  it('과세면 둘 다 — 원가(세별도)와 나란히 두려면 공급가가 보여야 한다', () => {
+    expect(priceParts(99_000)).toEqual({ sale: 99_000, supply: 90_000, showSupply: true });
+  });
+  it('면세면 곁들일 게 없다', () => {
+    expect(priceParts(99_000, true)).toEqual({ sale: 99_000, supply: 99_000, showSupply: false });
+  });
+  it('0이나 빈 값이면 안 곁들인다 — 0원 옆에 0원을 또 적지 않는다', () => {
+    expect(priceParts(0).showSupply).toBe(false);
+    expect(priceParts(undefined).showSupply).toBe(false);
+    expect(priceParts(null).sale).toBe(0);
   });
 });

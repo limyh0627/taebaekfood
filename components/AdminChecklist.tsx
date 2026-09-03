@@ -1,5 +1,5 @@
 
-import { stampFor, nextDocNo } from '../src/shared/voucherStamp';﻿
+import { stampFor, claimDocNo } from '../src/shared/voucherStamp';﻿
 import React, { useMemo, useState } from 'react';
 import {
   Clock, AlertCircle, Package, ArrowRight,
@@ -194,7 +194,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
       });
       const totalSupply = stmtItems.reduce((s, i) => s + i.supply, 0);
       const totalTax = stmtItems.reduce((s, i) => s + i.tax, 0);
-      const docNo = nextDocNo(returnStmtDraft.tradeDate, issuedStatements, '반품');
+      const docNo = claimDocNo(returnStmtDraft.tradeDate, issuedStatements, '반품');
       const stmtId = await addItem('issuedStatements', {
         issuedAt: stampFor(returnStmtDraft.tradeDate),
         tradeDate: returnStmtDraft.tradeDate,

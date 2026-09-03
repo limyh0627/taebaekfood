@@ -7,7 +7,7 @@ import type {
 } from '../../src/shared/types';
 import { COMPANIES, companyOf } from '../../src/shared/types';
 import { filterCodesForContext, isCashAccountCode } from '../../src/features/admin/financials';
-import { stampFor, nextDocNo } from '../../src/shared/voucherStamp';
+import { stampFor, nextDocNo, claimDocNo } from '../../src/shared/voucherStamp';
 import { isReceivableStmt } from '../../src/features/admin/cashLedger';
 import { journalizeStatement, journalizeTransfer, journalizeCashEntry, settlementAccountCode } from '../../src/shared/autoJournal';
 import {
@@ -491,7 +491,7 @@ export default function VoucherComposer({
             return;
           }
           // 대체는 따로 센다 — 매입·매출과 번호가 섞이면 어느 갈래인지 번호로 못 읽는다
-          const accrDocNo = nextDocNo(quickPayDate, mergedStatements, accrType === '비용' ? '대체' : '');
+          const accrDocNo = claimDocNo(quickPayDate, mergedStatements, accrType === '비용' ? '대체' : '');
           const stmt: IssuedStatement = {
             id: `stmt-${Date.now()}`,
             issuedAt: stampFor(quickPayDate),

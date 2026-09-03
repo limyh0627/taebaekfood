@@ -231,7 +231,7 @@ export default function CashLedger({
           onAdd={onAddCashAccount} onUpdate={onUpdateCashAccount} />
       )}
       {matchTarget && (
-        <MatchModal entry={matchTarget} statements={issuedStatements} settlements={settlements}
+        <MatchModal entry={matchTarget} statements={issuedStatements} settlements={settlements} cashEntries={cashEntries}
           onClose={() => setMatchTarget(null)} onAdd={onAddSettlement} onDelete={onDeleteSettlement} />
       )}
     </div>
@@ -240,10 +240,12 @@ export default function CashLedger({
 
 // ── 전표 매칭 모달 ────────────────────────────────────────────────────────────
 // 출금 → 매입전표 상계, 입금 → 매출전표 상계. 이체 1건을 전표 여러 건에 나눠 붙일 수 있다.
-function MatchModal({ entry, statements, settlements, onClose, onAdd, onDelete }: {
+function MatchModal({ entry, statements, settlements, cashEntries, onClose, onAdd, onDelete }: {
   entry: CashEntry;
   statements: IssuedStatement[];
   settlements: Settlement[];
+  /** 살아 있는 자금줄 — 지워진 줄에 매달린 매칭은 안 센다 */
+  cashEntries: CashEntry[];
   onClose: () => void;
   onAdd: Props['onAddSettlement'];
   onDelete: Props['onDeleteSettlement'];
@@ -261,8 +263,10 @@ function MatchModal({ entry, statements, settlements, onClose, onAdd, onDelete }
     () => unsettledStatements(statements, settlements, {
       type: stmtType,
       ...(entry.partnerId ? { partnerId: entry.partnerId } : {}),
+      //  지워진 자금줄에 매달린 매칭은 안 센다 — 없는 돈으로 갚은 게 된다
+      cashEntries,
     }),
-    [statements, settlements, stmtType, entry.partnerId],
+    [statements, settlements, stmtType, entry.partnerId, cashEntries],
   );
 
   const attach = (statementId: string, open: number) => {

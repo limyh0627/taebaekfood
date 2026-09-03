@@ -17,7 +17,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { today } from '../../shared/day';
-import { nextDocNo, stampFor } from '../../shared/voucherStamp';
+import { nextDocNo, stampFor, claimDocNo } from '../../shared/voucherStamp';
 import { statementEditPatch, cashEditPatch } from '../../shared/statementEdit';
 import { calcCost } from './costCalc';
 import { isBulkItem } from '../../shared/itemTaxonomy';
@@ -109,7 +109,6 @@ import DocumentManager from '../../../components/DocumentManager';
 import QuotationManager from '../../../components/QuotationManager';
 import type * as ExcelJSType from 'exceljs';
 
-const InboundScan = React.lazy(() => import('../../../components/InboundScan'));
 const QrLabelPrint = React.lazy(() => import('../../../components/QrLabelPrint'));
 const SmartStoreAnalytics = React.lazy(() => import('../../../components/SmartStoreAnalytics'));
 const HaccpChecklist = React.lazy(() => import('../../../components/HaccpChecklist'));
@@ -131,7 +130,9 @@ import { db } from '../../shared/firebase';
 import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName, lotStockInUnit, lotKgRemaining, parseSpecUnit } from '../../constants/formula';
 import { docPumok, docOilKg, docSpec, addOilByRaw, docSaleLine, docUnpack, docDateOf, findDocDrops, DOC_RECALC_RAWS, DOC_SHEET_GROUPS, DOC_SHEET_CATS, DEFAULT_SHEET_TITLE, mixLabel } from '../../shared/docOil';
 import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo, settleCarryOver } from '../../shared/lotUtils';
-import { rawLotTarget, recordRawMaterialReceipt, adjustRawLots } from '../../shared/rawReceipt';
+import { rawLotTarget, adjustRawLots } from '../../shared/rawReceipt';
+import { recordReceipt } from '../../shared/receipt';
+import { nextOrderNo, nextPoNo, cardNoLabel } from '../../shared/cardNo';
 import { bomQty } from '../../shared/bom';
 import { stockUnits, unpackComponent, unitsPerBoxOf } from '../../shared/orderUnits';
 import { boxSpecUpdates } from '../../shared/boxSpec';
@@ -342,6 +343,23 @@ const AdminApp: React.FC<AdminAppProps> = ({
    * 고르면 파일 목록 자리에 그 서류가 뜬다.
    */
   const [cabinetSel, setCabinetSel] = useState<{ cat: string; sub: string }>({ cat: '', sub: '' });
+  //  거래처원장에서 전표번호를 누르면 전표 화면이 그 번호로 조회창을 연다
+  const [focusDocNo, setFocusDocNo] = useState('');
+
+  /**
+   * 자금줄을 지운다 — **매달린 지정매칭도 같이.**
+   *
+   * `settlements` 는 "이 수금은 이 전표를 갚은 것"이라는 연결 기록이라, 자금줄이 사라지면
+   * 가리킬 데가 없어진다. 예전엔 자금줄만 지워서 고아가 쌓였다(2026-09-03 에 11줄 3,897만원).
+   * 잔액은 살아 있는 자금줄만 보므로 멀쩡했지만, 매칭 창은 그 고아를 세서
+   * 같은 전표가 두 화면에서 다른 잔액으로 보였다.
+   */
+  const deleteCashEntry = useCallback(async (id: string) => {
+    for (const st of appData.settlements.filter(x => x.cashEntryId === id)) {
+      await deleteItem('settlements', st.id);
+    }
+    await deleteItem('cashEntries', id);
+  }, [appData.settlements]);
   const [docTab, setDocTab] = useState<'생산판매기록부' | '원료수불부' | '거래명세서' | '생산작업기록부' | '벤조피렌' | 'haccp'>('생산판매기록부');
   const [docYearMonth, setDocYearMonth] = useState(() => new Date().toISOString().slice(0, 7));
   /**
@@ -947,7 +965,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
     const partnerId = ps?.partnerId || (ps as any)?.partnerId;
     const partnerName = partnerId ? partners.find(c => c.id === partnerId)?.name : undefined;
     await addItem('purchaseOrders', {
-      id: `po-${Date.now()}`, itemId: id, itemName: product?.name ?? '',
+      id: `po-${Date.now()}`, cardNo: nextPoNo(today(), purchaseOrders), itemId: id, itemName: product?.name ?? '',
       //  **수량은 재고 단위로 저장한다.** 박스로 골랐으면 여기서 풀고 '몇 박스'만 따로 남긴다 —
       //  읽는 쪽마다 곱하면 한 곳만 빠뜨려도 재고가 어긋난다(판매 주문이 이미 이 방식이다).
       ...(() => {
@@ -1021,7 +1039,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         return { itemId: it.id, name: product?.name ?? '', quantity: it.quantity, unit: product?.unit ?? '개', ...(it.boxQuantity ? { boxQuantity: it.boxQuantity } : {}) };
       });
       await addItem('purchaseOrders', {
-        id: `po-${base}-${gi++}`, itemId: '', itemName: '', quantity: 0,
+        id: `po-${base}-${gi++}`, cardNo: nextPoNo(today(), purchaseOrders), itemId: '', itemName: '', quantity: 0,
         items: poItems, status: 'pending', createdAt,
         ...(g.partnerId ? { partnerId: g.partnerId, partnerName: g.partnerName } : {}),
       });
@@ -1081,16 +1099,14 @@ const AdminApp: React.FC<AdminAppProps> = ({
       if (!item.isResellable) continue;
       const product = allItems.find(p => p.id === item.itemId);
       if (!product) continue;
-      const target = rawLotTarget(allItems, product, product.name, companyId);
-      if (target) {
-        // 원료 반품 재입고: 입고 로트 + 수불부 (stock 직접 X)
-        const nowIso = new Date().toISOString();
-        await recordRawMaterialReceipt({ companyId, allItems, product, itemName: product.name, quantity: item.quantity, unit: product.unit, partnerName: '반품', dateStr: nowIso.slice(0, 10), nowIso, addedBy: currentUser?.name });
-      } else {
-        const col = getProductCollection(product.type as string);
-        // 재고는 DB에서 읽어 더한다 — 화면값에 더해 덮어쓰면 그 사이 들어온 쓰기가 날아간다
-        await adjustItemStock(col, product.id, item.quantity);
-      }
+      //  반품 재입고도 같은 문을 지난다 — 원료면 로트+수불부, 아니면 재고+입고기록
+      const nowIso = new Date().toISOString();
+      await recordReceipt({
+        companyId, allItems, product, itemName: product.name,
+        quantity: item.quantity, unit: product.unit,
+        partnerId: req.partnerId, partnerName: req.partnerName || '반품',
+        dateStr: nowIso.slice(0, 10), nowIso, addedBy: currentUser?.name,
+      });
     }
     setLedgerReloadKey(k => k + 1);   // 반품 재입고로 쓴 원료수불부 반영
 
@@ -1205,25 +1221,22 @@ const AdminApp: React.FC<AdminAppProps> = ({
 지워진 품목을 가리키는 발주 줄입니다. 품목을 다시 만들거나 발주를 고친 뒤 입고하세요.`);
         continue;
       }
-      const isRawLinked = !!rawLotTarget(allItems, product, product.name, companyId);
-      if (isRawLinked) {
-        // 원료 로트가 재고를 소유 → SKU stock 누적 안 하고 로트+수불부로 기록
-        try {
-          await recordRawMaterialReceipt({ companyId, allItems, product, itemName: product.name, quantity: line.quantity, unit: product.unit,
-            partnerId: po.partnerId, partnerName: po.partnerName || '거래처', dateStr, nowIso, poId: id, addedBy: currentUser?.name,
-          });
-        } catch (err) {
-          console.error('[입고확인] 원료 로트/수불부 기록 실패:', product.name, err);
-          alert(`⚠️ "${product.name}" 원료 재고/수불부 기록 실패\n사유: ${(err as Error)?.message ?? String(err)}\n\n입고확인은 됐지만 원료 로트가 안 잡혔습니다. (Firebase 한도 초과 등) 잠시 후 다시 시도하거나 관리자에게 알려주세요.`);
-        }
-      } else {
-        const collectionName = getProductCollection(product.type);
-        //  **수량은 이미 재고 단위다** — 담을 때 풀어서 저장한다(submitCart).
-        //  예전엔 발주에 박스 수를 넣어 두고 여기서 곱했는데, 그러면 읽는 쪽마다
-        //  곱하는 코드가 필요하고 한 곳만 빠뜨려도 재고가 어긋난다.
-        const addQty = line.quantity;
-        // 여러 줄을 연달아 입고하면 앞 줄이 쓴 재고가 화면에 아직 안 돌아온다 → DB에서 읽어 더한다
-        await adjustItemStock(collectionName, product.id, addQty);
+      //  **입고는 문 하나로** — 원료면 로트+수불부, 아니면 재고+입고기록.
+      //  그 갈림은 shared/receipt 안에 있다(겹쳐 눌러도 거기서 막는다).
+      try {
+        await recordReceipt({
+          companyId, allItems, product, itemName: product.name,
+          //  **수량은 이미 재고 단위다** — 담을 때 풀어서 저장한다(orderUnits.unpackQty).
+          //  예전엔 발주에 박스 수를 넣어 두고 여기서 곱했는데, 그러면 읽는 자리마다
+          //  곱하는 코드가 필요하고 한 곳만 빠뜨려도 재고가 어긋났다.
+          quantity: line.quantity, unit: product.unit,
+          partnerId: po.partnerId, partnerName: po.partnerName || '거래처',
+          dateStr, nowIso, poId: id, addedBy: currentUser?.name,
+        });
+      } catch (err) {
+        console.error('[입고확인] 입고 기록 실패:', product.name, err);
+        alert(`⚠️ "${product.name}" 입고 기록 실패
+사유: ${(err as Error)?.message ?? String(err)}`);
       }
     }
     await updateItem('purchaseOrders', id, { status: 'received', receivedAt: new Date().toISOString() });
@@ -1278,21 +1291,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
     for (const line of newPoItems) {
       const product = allItems.find(p => p.id === line.itemId);
       if (!product) continue;
-      if (rawLotTarget(allItems, product, product.name, companyId)) {
-        try {
-          await recordRawMaterialReceipt({ companyId, allItems, product, itemName: product.name, quantity: line.quantity, unit: product.unit,
-            partnerId: po.partnerId, partnerName: po.partnerName || '거래처', dateStr: dateStr2, nowIso: nowIso2, poId, addedBy: currentUser?.name,
-          });
-        } catch (err) {
-          console.error('[입고확정-수정] 원료 로트/수불부 기록 실패:', product.name, err);
-          alert(`⚠️ "${product.name}" 원료 재고/수불부 기록 실패\n사유: ${(err as Error)?.message ?? String(err)}\n\n입고확정은 됐지만 원료 로트가 안 잡혔습니다. (Firebase 한도 초과 등) 잠시 후 다시 시도하세요.`);
-        }
-      } else {
-        const collectionName = getProductCollection(product.type);
-        //  입고확정 수정 경로 — 위 확정 경로와 같은 셈이라야 한다(둘 다 안 곱한다)
-        const addQty = line.quantity;
-        // 여러 줄을 연달아 입고하면 앞 줄이 쓴 재고가 화면에 아직 안 돌아온다 → DB에서 읽어 더한다
-        await adjustItemStock(collectionName, product.id, addQty);
+      //  입고는 문 하나로(shared/receipt) — 위 확정 경로와 같은 셈이라야 한다
+      try {
+        await recordReceipt({
+          companyId, allItems, product, itemName: product.name,
+          quantity: line.quantity, unit: product.unit,
+          partnerId: po.partnerId, partnerName: po.partnerName || '거래처',
+          dateStr: dateStr2, nowIso: nowIso2, poId, addedBy: currentUser?.name,
+        });
+      } catch (err) {
+        console.error('[입고확정-수정] 입고 기록 실패:', product.name, err);
+        alert(`⚠️ "${product.name}" 입고 기록 실패
+사유: ${(err as Error)?.message ?? String(err)}`);
       }
     }
     await updateItem('purchaseOrders', poId, { items: newPoItems, status: 'received', receivedAt: new Date().toISOString() });
@@ -1400,7 +1410,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       ...allIssuedStatements.filter(x => companyOf(x) === co),
       ...appData.cashEntries.filter(x => companyOf(x) === co),
     ];
-    return addItem('cashEntries', { ...e, companyId: co, docNo: e.docNo ?? nextDocNo(e.date, pool) } as any);
+    return addItem('cashEntries', { ...e, companyId: co, docNo: e.docNo ?? claimDocNo(e.date, pool) } as any);
   };
 
   const generateRecurringCosts = async (ym: string, onlyId?: string): Promise<number> => {
@@ -1420,7 +1430,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         await addCashEntry(buildCashVoucher(t, ym, { cashAccountId: defaultAcctId, accountName }) as any);
       } else {
         const v = buildStatementVoucher(t, ym, { docNo: '', accountName });
-        const docNo = nextDocNo(v.tradeDate, [...issuedStatements, ...made]);
+        const docNo = claimDocNo(v.tradeDate, [...issuedStatements, ...made]);
         made.push({ docNo });
         await addItem('issuedStatements', { ...v, docNo } as any);
       }
@@ -1750,7 +1760,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 'production': '생산 실적', 'admin-checklist': '확인사항',
                 'leave-portal': '연차 신청', 'confirmation-items': '확인사항',
                 'item-management': '품목 관리', 'item-price-management': '품목 관리', 'item-ledger': '제품별원장',
-                'inbound-scan': '입고 스캔', 'partner-portal': '거래처 포털',
+                'partner-portal': '거래처 포털',
                 'officetalk': '오피스톡', 'smartstore-analytics': '스마트스토어 분석',
                 'haccp-checklist': 'HACCP 체크리스트', 'return-management': '반품 관리',
                 'inbound-returns': '입고 / 반품', 'sanitation-checklist': '작업장 위생점검표',
@@ -1789,7 +1799,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               </div>
             </div>
           ) : (
-          <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'partners', 'notice', 'pallets', 'confirmation-items', 'shipping', 'production', 'inbound-scan', 'return-management', 'sanitation-checklist'].includes(currentView)) ? '' : 'h-full'}>
+          <div className={(['orders', 'officetalk', 'leave-portal', 'inventory', 'partners', 'notice', 'pallets', 'confirmation-items', 'shipping', 'production', 'return-management', 'sanitation-checklist'].includes(currentView)) ? '' : 'h-full'}>
           {(currentView === 'dashboard' || currentView === 'ai-consultant') && (
             <div className="h-full flex flex-col overflow-hidden">
               <div className="shrink-0">
@@ -2030,39 +2040,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onLedgerChanged={() => setLedgerReloadKey(k => k + 1)}
               onUpdateSubmaterial={(id, data) => updateItem('items', id, data)}
               receivedOrders={receivedOrders}
-              inboundBadge={receivedOrders.filter(r => !r.linkedStatementId).length}
-              inboundContent={
-                <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
-                  <ReceivingReturnsManager
-                    items={allItems}
-                    partners={partners}
-                    partnerItems={partnerItems}
-                    orders={allOrders}
-                    issuedStatements={issuedStatements}
-                    currentUser={{ id: currentUser.id, name: currentUser.name }}
-                    isAdmin={isAdmin}
-                    onUpdateSubmaterial={(id, data) => updateItem('items', id, data)}
-                    onProcessReturn={handleProcessReturn}
-                    onLinkInbound={(itemId, partnerId) => upsertPartnerItemSafe({ id: `${itemId}_${partnerId}_in`, itemId, partnerId, Direction: 'in' } as PartnerItem, 'in')}
-                    initialTab="입고"
-                  />
-                </React.Suspense>
-              }
               returnBadge={returnRequests.filter(r => r.status === 'pending').length}
               returnContent={
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                   <ReceivingReturnsManager
                     items={allItems}
                     partners={partners}
-                    partnerItems={partnerItems}
                     orders={allOrders}
-                    issuedStatements={issuedStatements}
                     currentUser={{ id: currentUser.id, name: currentUser.name }}
                     isAdmin={isAdmin}
-                    onUpdateSubmaterial={(id, data) => updateItem('items', id, data)}
                     onProcessReturn={handleProcessReturn}
-                    onLinkInbound={(itemId, partnerId) => upsertPartnerItemSafe({ id: `${itemId}_${partnerId}_in`, itemId, partnerId, Direction: 'in' } as PartnerItem, 'in')}
-                    initialTab="반품"
                   />
                 </React.Suspense>
               }
@@ -2096,17 +2083,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
               }}
             />
             </>
-          )}
-          {currentView === 'inbound-scan' && (
-            <InboundScan
-              allItems={allItems}
-              confirmedOrders={invoicedPurchaseOrders}
-              qrMappings={appData.qrMappings}
-              currentUser={{ id: currentUser.id, name: currentUser.name }}
-              onUpdateSubmaterial={(id, data) => updateItem('items', id, data)}
-              onFinishConfirmedOrder={handleFinishConfirmedOrder}
-              onClose={() => setCurrentView('inventory')}
-            />
           )}
           {showQrLabel && (
             <React.Suspense fallback={null}>
@@ -2349,7 +2325,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 await addItem('issuedStatements', {
                   id, companyId, issuedAt: stampFor(date), tradeDate: date, type: '비용',
                   partnerId: '', partnerName: '급여', orderId: '',
-                  docNo: nextDocNo(date, issuedStatements, '급여'),
+                  docNo: claimDocNo(date, issuedStatements, '급여'),
                   totalSupply: gross, totalTax: 0, totalAmount: gross,
                   // 차·대를 명시한다 — 대체전표는 짐작하지 않는다
                   items: [
@@ -2806,6 +2782,25 @@ const AdminApp: React.FC<AdminAppProps> = ({
                             className="text-xs font-bold text-slate-700 bg-transparent outline-none cursor-pointer"
                           />
                         </div>
+                        {/*
+                          **저장은 문서함에서만 감춘다.**
+                          2026-09-01(7d6d889)에 "엑셀 저장 없애라"는 지시를 통째로 지우는 걸로 잘못 읽어
+                          단추 자체를 걷어냈다. 사장님 뜻은 **문서함에 뜨는 것**을 없애라는 것이었다
+                          (2026-09-03 확인). 그래서 직원뷰에서는 그날 서류를 저장할 길이 없어졌다.
+
+                          이 단추는 두 가지를 같이 한다 — 엑셀 파일 내려받기 + `productionSalesLogs` 기록.
+                          기록이 없으면 관리자 문서함에 그날 서류가 안 쌓인다.
+                          **서류관리 메뉴에서는 이름 그대로 '엑셀 저장'이다**(2026-09-03 사장님).
+                        */}
+                        {!inCabinetDoc && (
+                          <button
+                            onClick={exportExcel}
+                            className="flex items-center space-x-2 bg-emerald-600 text-white px-5 py-2.5 rounded-2xl font-bold shadow hover:bg-emerald-700 transition-all text-sm"
+                          >
+                            <FileText size={16} />
+                            <span>엑셀 저장</span>
+                          </button>
+                        )}
                       </div>
                     )}
                     {docTab === '생산작업기록부' && (
@@ -3706,10 +3701,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
               settlements={appData.settlements}
               onAddCashEntry={(e) => addCashEntry(e)}
               onUpdateCashEntry={updateCash}
-              onAddSettlement={(s) => addItem('settlements', s)}
               onUpdateSettlement={(id, data) => updateItem('settlements', id, data)}
-              onDeleteCashEntry={(id) => deleteItem('cashEntries', id)}
-              onDeleteSettlement={(id) => deleteItem('settlements', id)}
+              onDeleteCashEntry={deleteCashEntry}
               onAddCashAccount={(a) => addItem('cashAccounts', { ...a, companyId })}
               onUpdateCashAccount={(id, data) => updateItem('cashAccounts', id, data)}
               fixedCostTemplates={companyTemplates}
@@ -3733,6 +3726,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
               }}
               onAddIssuedStatement={(stmt) => addItem('issuedStatements', { ...stmt, companyId }).catch(e => { console.error('전표 저장 실패:', e); alert('전표 저장 실패: ' + (e?.message ?? String(e))); })}
               onUpdateIssuedStatement={updateStatement}
+              focusDocNo={focusDocNo}
+              onFocusHandled={() => setFocusDocNo('')}
               onProposeEdit={(id, data, stmtType, docNo, partnerName) => {
                 const stmt = issuedStatements.find(s => s.id === id);
                 addItem('pendingStatementEdits', {
@@ -3763,7 +3758,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 } else {
                   const product = allItems.find(p => p.id === item.id);
                   await addItem('purchaseOrders', {
-                    id: item.id, itemId: item.id, itemName: product?.name ?? '',
+                    id: item.id, cardNo: nextPoNo(today(), purchaseOrders), itemId: item.id, itemName: product?.name ?? '',
                     //  수량은 재고 단위 그대로 — 박스 표기는 담을 때 이미 풀렸다
                     quantity: item.quantity,
                     partnerId: item.partnerId, partnerName: item.partnerName,
@@ -3784,7 +3779,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               }}
               onCreateInboundPO={(po) =>
                 addItem('purchaseOrders', {
-                  id: `po-${Date.now()}`, itemId: '', itemName: '', quantity: 0,
+                  id: `po-${Date.now()}`, cardNo: nextPoNo(today(), purchaseOrders), itemId: '', itemName: '', quantity: 0,
                   partnerId: po.partnerId, partnerName: po.partnerName,
                   items: po.items, status: 'invoiced',
                   invoicedAt: new Date().toISOString(), createdAt: new Date().toISOString(),
@@ -3860,8 +3855,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   cashEntries={companyCashEntries}
                   onAddCashEntry={(e) => addCashEntry(e)}
                   settlements={appData.settlements}
-                  onAddSettlement={(s) => addItem('settlements', s)}
-                  onDeleteSettlement={(id) => deleteItem('settlements', id)}
                 />
               </React.Suspense>
             </div>
@@ -3871,7 +3864,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               <PageHeader title="제품별원장" subtitle="품목 하나가 언제 얼마나 들고 났나 — 주문에 남은 기록 기준" />
               <div className="flex-1 min-h-0 p-6">
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
-                  <ItemLedger items={companyItems} orders={allOrders} />
+                  <ItemLedger items={companyItems} orders={allOrders} receipts={appData.itemReceipts} />
                 </React.Suspense>
               </div>
             </div>
@@ -3894,6 +3887,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       issuedStatements={issuedStatements}
                       cashEntries={companyCashEntries}
                       accountCodes={appData.accountCodes}
+                      onOpenVoucher={(_id, docNo) => { setFocusDocNo(docNo); setCurrentView('trade-statement'); }}
                     />
                   ) : (
                   <CashLedger
@@ -3908,8 +3902,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     onAddCashAccount={(a) => addItem('cashAccounts', { ...a, companyId })}
                     onUpdateCashAccount={(id, data) => updateItem('cashAccounts', id, data)}
                     onAddCashEntry={(e) => addCashEntry(e)}
-                    onDeleteCashEntry={(id) => deleteItem('cashEntries', id)}
-                    onAddSettlement={(s) => addItem('settlements', s)}
+                    onDeleteCashEntry={deleteCashEntry}
+                    onAddSettlement={(x) => addItem('settlements', x)}
                     onDeleteSettlement={(id) => deleteItem('settlements', id)}
                   />
                   )}
@@ -3934,8 +3928,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   inventorySnapshots={companySnapshots}
                   cashEntries={companyCashEntries}
                   settlements={appData.settlements}
-                  onAddSettlement={(s) => addItem('settlements', s)}
-                  onDeleteSettlement={(id) => deleteItem('settlements', id)}
                   cashFlowManual={appData.cashFlowManual}
                   onSaveCashFlowManual={async (month, data) => {
                     const clean = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined && v !== null));
@@ -4262,7 +4254,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
         try {
           console.log('[AddOrder] 저장 시작', o);
           const orderId = `ORD-${Date.now()}`;
-          await addItem('orders', {...o, id: orderId, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
+          //  카드번호는 전표번호와 같은 규칙(shared/cardNo) — 날짜 + 그날 순번
+          const cardNo = nextOrderNo(today(), allOrders);
+          await addItem('orders', {...o, id: orderId, cardNo, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
           console.log('[AddOrder] orders 저장 완료', orderId);
           await checkAndAlertShortage(o.items, o.partnerId);
           const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '거래처';
@@ -4279,7 +4273,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
         try {
           console.log('[PasteOrder] 저장 시작', o);
           const orderId = `ORD-${Date.now()}`;
-          await addItem('orders', {...o, id: orderId, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
+          //  카드번호는 전표번호와 같은 규칙(shared/cardNo) — 날짜 + 그날 순번
+          const cardNo = nextOrderNo(today(), allOrders);
+          await addItem('orders', {...o, id: orderId, cardNo, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
           console.log('[PasteOrder] orders 저장 완료', orderId);
           await checkAndAlertShortage(o.items, o.partnerId);
           const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '거래처';

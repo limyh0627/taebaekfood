@@ -1,10 +1,11 @@
+import type { ItemReceipt } from '../receipt';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Order, Item, Partner, PartnerItem, Post,
   PalletStock, PalletTransaction, Employee, LeaveRequest,
   AdjustmentRequest, ChatRoom, ChatMessage, RawMaterialEntry,
   AppNotification, IssuedStatement,
-  ItemFormula, ItemBom, CompanyInfo, QrMapping, ReturnRequest,
+  ItemFormula, ItemBom, CompanyInfo, ReturnRequest,
   AccountCode, AccountGroup, FixedCostTemplate, InventorySnapshot, ProductionSalesLog,
   PendingStatementEdit, PurchaseOrder, ExpensePreset, CashFlowManual,
   CashAccount, CashEntry, Settlement,
@@ -29,7 +30,6 @@ export interface WorkOrderItem {
 }
 
 export interface AppData {
-  qrMappings: QrMapping[];
   // 주문
   orders: Order[];
   purchaseOrders: PurchaseOrder[];
@@ -62,6 +62,7 @@ export interface AppData {
   /** 포장 환산표 — 박스로 주문할 수 있는 낱개 품목과 그 개입수 */
   itemPacks: PackRow[];
   returnRequests: ReturnRequest[];
+  itemReceipts: ItemReceipt[];
   companyInfo: CompanyInfo | null;
   accountGroups: AccountGroup[];
   accountCodes: AccountCode[];
@@ -102,12 +103,13 @@ export function useAppData(): AppData {
   const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
   const [workOrderItems, setWorkOrderItems] = useState<WorkOrderItem[]>([]);
   const [issuedStatements, setIssuedStatements] = useState<IssuedStatement[]>([]);
-  const [qrMappings, setQrMappings] = useState<QrMapping[]>([]);
   const [itemFormulas, setItemFormulas] = useState<ItemFormula[]>([]);
   const [itemBoms, setItemBoms] = useState<ItemBom[]>([]);
   //  포장 환산표 — 낱개로만 세는데 박스로 말하는 품목(향미유·고춧가루)의 개입수
   const [itemPacks, setItemPacks] = useState<PackRow[]>([]);
   const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([]);
+  //  사 온 기록 — 제품별원장이 '입고' 줄로 읽는다(2026-09-03부터)
+  const [itemReceipts, setItemReceipts] = useState<ItemReceipt[]>([]);
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
   const [accountGroups, setAccountGroups] = useState<AccountGroup[]>([]);
   const [accountCodes, setAccountCodes] = useState<AccountCode[]>([]);
@@ -206,6 +208,7 @@ export function useAppData(): AppData {
         subscribeToCollection<CashEntry>('cashEntries', setCashEntries),
         subscribeToCollection<Settlement>('settlements', setSettlements),
         subscribeToRecentCollection<ReturnRequest>('returnRequests', 'createdAt', 7, setReturnRequests),
+        subscribeToCollection<ItemReceipt>('itemReceipts', setItemReceipts),
         subscribeToDocument<CompanyInfo>('settings', 'company', setCompanyInfo),
         subscribeToCollection<InventorySnapshot>('inventorySnapshots', setInventorySnapshots),
         subscribeToRecentCollection<ProductionSalesLog>('productionSalesLogs', 'date', 7, setProductionSalesLogs),
@@ -249,10 +252,9 @@ export function useAppData(): AppData {
         fetchCollection<AccountGroup>('accountGroups'),
         fetchCollection<AccountCode>('accountCodes'),
         fetchCollection<FixedCostTemplate>('fixedCostTemplates'),
-        fetchCollection<QrMapping>('qrMappings'),
         fetchCollection<ExpensePreset>('expensePresets'),
         fetchCollection<CashFlowManual>('cashFlowManual'),
-      ]).then(([piData, bomData, packData, ifData, agData, acData, fctData, qrData, epData, cfmData]) => {
+      ]).then(([piData, bomData, packData, ifData, agData, acData, fctData, epData, cfmData]) => {
         // partner_item은 canonical(itemId/partnerId/price)만 쓴다. 레거시 대문자 별칭 주입 안 함.
         setPartnerItems(piData);
         setItemBoms(bomData);
@@ -261,7 +263,6 @@ export function useAppData(): AppData {
         setAccountGroups(agData);
         setAccountCodes(acData);
         setFixedCostTemplates(fctData);
-        setQrMappings(qrData);
         setExpensePresets(epData);
         setCashFlowManual(cfmData);
       });
@@ -293,7 +294,7 @@ export function useAppData(): AppData {
     noticePosts, chatRooms, chatMessages,
     rawMaterialLedger, sesameInputLedger,
     appNotifications, workOrderItems, issuedStatements,
-    qrMappings, itemFormulas, itemBoms, itemPacks, returnRequests,
+    itemFormulas, itemBoms, itemPacks, returnRequests, itemReceipts,
     companyInfo, accountGroups, accountCodes, fixedCostTemplates, expensePresets, cashFlowManual, inventorySnapshots,
     cashAccounts, cashEntries, settlements,
     productionSalesLogs, pendingStatementEdits,

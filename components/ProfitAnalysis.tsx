@@ -11,7 +11,7 @@ import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Partner, PaymentMet
 import PageHeader from './PageHeader';
 import CostManager from './CostManager';
 import { makeCodeToGroup, computeMonthPLFromJournals, computeCashFlowMonth, computeCashFlowDirect, addMonthStr, SGNA_LEGACY_IDS, COMPUTED_GROUP_IDS } from '../src/features/admin/financials';
-import { partnerBalanceFromJournals, partnerCarryOver, allocatePartnerCash, partnerCashParts } from '../src/features/admin/cashLedger';
+import { partnerBalanceFromJournals, partnerCarryOver, allocatePartnerCash, partnerCashParts, cashPaidByMonth } from '../src/features/admin/cashLedger';
 import { buildJournals } from '../src/shared/buildJournals';
 import type { OpeningBalance } from '../src/shared/autoJournal';
 import { fetchCollection } from '../src/shared/services/firebaseService';
@@ -54,8 +54,6 @@ interface ProfitAnalysisProps {
   settlements?: Settlement[];
   /** 보고 있는 회사 — 기초잔액 문서가 회사별로 다르다 */
   companyId?: CompanyId;
-  onAddSettlement?: (s: Settlement) => void;
-  onDeleteSettlement?: (id: string) => void;
   initialTab?: MainTab;
 }
 
@@ -71,7 +69,7 @@ const MONTHS = 12;
 const INVENTORY_EXPENSE_CODE = '500';
 // (전표 갈래 색은 shared/vouchers의 VOUCHER_KIND_CHIP 하나를 쓴다)
 
-const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCostTemplates = [], onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], costOf, onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = [], onSaveCashFlowManual, cashEntries, onAddCashEntry, settlements = [], onAddSettlement, onDeleteSettlement, companyId = 'taebaek', initialTab }) => {
+const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixedCostTemplates = [], onAddTemplate, onUpdateTemplate, onDeleteTemplate, partners = [], items: products = [], costOf, onUpdateIssuedStatement, accountGroups: rawAccountGroups = [], accountCodes = [], onUpdateAccountCode, onAddAccountCode, onDeleteAccountCode, onAddAccountGroup, onUpdateAccountGroup, onDeleteAccountGroup, inventorySnapshots = [], onSaveInventorySnapshot, onGenerateRecurringCosts, cashFlowManual = [], onSaveCashFlowManual, cashEntries, onAddCashEntry, settlements = [], companyId = 'taebaek', initialTab }) => {
   // 계산결과 그룹만 숨긴다. **id는 안 갈아끼운다** — 예전엔 판관비를 'ag-sgna'로 바꿔
   // 보여줬는데 설정 화면이 그 id를 그대로 저장해서, 없는 그룹을 가리키는 계정이 생겼다.
   // 그런 계정은 plLine을 못 찾아 손익에서 통째로 빠진다(운임·카드대금이 그랬다).
@@ -166,14 +164,10 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   // ── 미수금 탭 상태 ──
   const [recClientId, setRecClientId] = useState('');
   const [recClientSearch, setRecClientSearch] = useState('');
-  const [showPayModal, setShowPayModal] = useState(false);
   // 수금을 그 전표에 붙일지 — 끄면 오래된 전표부터 자동 배분(선입선출)
   const [pinToStmt, setPinToStmt] = useState(true);
-  const [payTarget, setPayTarget] = useState<IssuedStatement | null>(null);
-  const [payForm, setPayForm] = useState({ amount: '', date: today(), method: '계좌이체' as PaymentMethod, note: '' });
 
   // ── 미수금 상세 팝업 ──
-  const [receivableDetailClient, setReceivableDetailClient] = useState<{ id: string; name: string } | null>(null);
 
   // ── 거래처 탭 서브탭 ──
   const [partnersSubTab, setClientsSubTab] = useState<'receivables' | 'stats'>('receivables');
@@ -265,29 +259,15 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
     }
   }, [period, selectedYear, selectedQuarter, selectedHalf, customStart, customEnd, todayYm, openingYm]);
 
-  // ── 월별 실수금·실지불 (결제가 실제로 일어난 달 기준) ──
-  // 결제는 자금원장 매칭(settlements)에서만 온다 — 전표에 매다는 옛 경로는 걷어냈다.
-  // settlement엔 날짜가 없어서 연결된 cashEntry의 날짜를 쓴다. 자금기록이 지워졌으면 상계로 안 친다
-  // (cashLedger.buildPartnerLedger와 같은 규칙).
-  const paidByMonth = useMemo(() => {
-    const entryById = new Map(cashEntries.map(e => [e.id, e]));
-    const stmtById = new Map(issuedStatements.map(s => [s.id, s]));
-    const acc = new Map<string, { inc: number; out: number }>();
-    const bump = (ym: string, type: string, amt: number) => {
-      if (!ym) return;
-      const cur = acc.get(ym) ?? { inc: 0, out: 0 };
-      if (type === '매출') cur.inc += amt; else cur.out += amt;
-      acc.set(ym, cur);
-    };
-    for (const st of settlements) {
-      const s = stmtById.get(st.statementId);
-      if (!s || (s.type !== '매출' && s.type !== '매입')) continue;
-      const e = entryById.get(st.cashEntryId);
-      if (!e) continue;
-      bump((e.date ?? '').slice(0, 7), s.type, st.amount);
-    }
-    return acc;
-  }, [issuedStatements, settlements, cashEntries]);
+  /**
+   * 월별 실수금·실지불 — **자금원장 하나가 근거다**(2026-09-03).
+   *
+   * 예전엔 `settlements`(전표↔자금 매칭)를 더했는데 그건 **전표에 매단 결제만** 담는다.
+   * 자금원장에만 넣은 수금·지불은 줄이 없고, 원본이 지워지면 말없이 건너뛴다.
+   * 실측 — 8월이 1억 9,872만으로 나왔는데 통장에서 실제로 오간 건 5억 74만이었다.
+   * 거래처원장(`buildPartnerLedger`)과 같은 근거라 두 화면이 이제 안 갈린다.
+   */
+  const paidByMonth = useMemo(() => cashPaidByMonth(cashEntries), [cashEntries]);
 
   // ── 재고 스냅샷 → 기초/기말재고 (손익분석 COGS 패널용) ──
   const openingSnapshot = useMemo(() => {
@@ -1297,47 +1277,9 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
           setOffsetForm(null);
         };
 
-        const openPayModal = (stmt: IssuedStatement) => {
-          setPayTarget(stmt);
-          setPayForm({ amount: String(getBalance(stmt)), date: today(), method: '계좌이체', note: '' });
-          setPinToStmt(true);
-          setShowPayModal(true);
-        };
         // 수금·지불은 **자금원장에 쓴다** — 전표에 붙이지 않는다.
         //   전표에 붙이면 "어느 청구서를 갚았나"가 어긋나고, 잔액 계산 근거가 둘로 갈린다.
         //   거래처 잔액은 '전표 합계 − 자금원장 108/251'로 나오므로 여기 한 줄이면 충분하다.
-        const savePayment = () => {
-          if (!payTarget || !payForm.amount) return;
-          const amt = Number(payForm.amount);
-          if (!Number.isFinite(amt) || amt <= 0) { alert('금액을 숫자로 입력하세요.'); return; }
-          const isSale = payTarget.type === '매출';
-          const entryId = `cash-${Date.now()}`;
-          onAddCashEntry?.({
-            id: entryId,
-            date: payForm.date,
-            cashAccountId: '',                       // 계좌는 관리하지 않는다(전표화면과 같은 규칙)
-            dir: isSale ? '입금' : '출금',
-            amount: amt,
-            partnerId: payTarget.partnerId ?? '',
-            partnerName: payTarget.partnerName ?? '',
-            accountCode: isSale ? '108' : '251',     // 외상매출금 / 외상매입금
-            note: [`${payTarget.partnerName ?? ''} ${isSale ? '수금' : '지불'}`, payForm.method, payForm.note.trim()]
-              .filter(Boolean).join(' · '),
-            createdAt: stampFor(payForm.date),
-          });
-          // 이 전표를 찍고 연 수금이면 **그 전표에 붙인다**(매칭). 금액이 아니라 연결만 붙는 것이라
-          // 매칭이 틀려도 거래처 잔액은 안 흔들린다 — 어느 청구서냐만 바뀐다.
-          if (pinToStmt && onAddSettlement) {
-            onAddSettlement({
-              id: `settle-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-              cashEntryId: entryId, statementId: payTarget.id,
-              amount: Math.min(amt, getBalance(payTarget)),
-              createdAt: new Date().toISOString(),
-            });
-          }
-          setShowPayModal(false);
-          setPayTarget(null);
-        };
 
         const generateMonthlySummaryPdf = async () => {
           const month = new Date().toISOString().slice(0, 7);
@@ -1418,15 +1360,9 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                       <button key={c.id} onClick={() => { setStatsClientId(c.id); setStatsYear(currentYear); }}
                         className={`w-full text-left px-4 py-3 border-b border-slate-50 transition-all ${isActive ? 'bg-indigo-50 border-l-2 border-l-indigo-500' : 'hover:bg-slate-50'}`}>
                         <p className={`text-xs font-black truncate ${isActive ? 'text-indigo-700' : 'text-slate-700'}`}>{c.name}</p>
-                        <div className="flex gap-2 mt-0.5">
-                          {c.receivable > 0 && (
-                            <span
-                              onClick={e => { e.stopPropagation(); setReceivableDetailClient({ id: c.id, name: c.name }); }}
-                              className="text-[9px] font-black text-blue-500 underline underline-offset-2 cursor-pointer hover:text-blue-700"
-                            >미수 {fmtS(c.receivable)}</span>
-                          )}
-                          {c.payable > 0 && <span className="text-[9px] font-black text-rose-600">미지급 {fmtS(c.payable)}</span>}
-                        </div>
+                        {/*  **미수·미지급과 수금·지불은 여기 없다**(2026-09-03 사장님).
+                             이 화면은 매출 추이와 이익률을 보는 자리다. 돈이 오가는 일은 거래처원장에서 한다 —
+                             한 사실을 두 화면에서 만지면 어느 쪽이 근거인지 흐려진다. */}
                       </button>
                     );
                   })}
@@ -1499,10 +1435,10 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                             {yearSalesTotal > 0 ? `${Math.round((yearCollected / yearSalesTotal) * 100)}% 회수` : '—'}
                           </p>
                         </div>
-                        <button
-                          type="button"
-                          disabled={totalReceivable <= 0}
-                          onClick={() => setReceivableDetailClient({ id: selId, name: selName })}
+                        <div
+
+
+
                           className={`px-5 py-3.5 text-left transition-colors ${totalReceivable > 0 ? 'hover:bg-blue-50/60 cursor-pointer' : 'cursor-default'}`}
                         >
                           <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">{statsScope === 'month' ? '월말 미수' : '연말 미수'}</p>
@@ -1510,7 +1446,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                             {closingReceivable > 0 ? fmtS(closingReceivable) : '없음'}
                           </p>
                           <p className="text-[10px] font-bold text-slate-400 mt-0.5">{totalReceivable > 0 ? '눌러서 상세' : '전부 회수'}</p>
-                        </button>
+                        </div>
                       </div>
                       {(yearPurchaseTotal > 0 || totalPayable > 0 || carryBuy > 0) && (
                         <div className="grid grid-cols-4 divide-x divide-slate-100">
@@ -1634,17 +1570,6 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                                 <span className="w-14 shrink-0 text-[11px] font-bold text-slate-500 tabular-nums">{t.date.slice(2)}</span>
                                 <span className={`shrink-0 px-2 py-0.5 rounded-full text-[9px] font-black ${style}`}>{t.kind}</span>
                                 <span className="flex-1 min-w-0 text-[11px] text-slate-400 truncate">{t.note || '—'}</span>
-                                {/* 매출은 받을 돈(미수), 매입은 줄 돈(미지급) — 한쪽 말로 뭉뚱그리면 방향을 잘못 읽는다 */}
-                                {t.stmt && bal > 0 && (
-                                  <button onClick={() => openPayModal(t.stmt!)}
-                                    className={`shrink-0 px-2 py-1 rounded-lg text-[9px] font-black transition-colors ${
-                                      t.kind === '매입'
-                                        ? 'bg-rose-50 text-rose-600 hover:bg-rose-100'
-                                        : 'bg-slate-100 text-slate-500 hover:bg-indigo-100 hover:text-indigo-600'
-                                    }`}>
-                                    {t.kind === '매입' ? '미지급' : '미수'} {fmtS(bal)}
-                                  </button>
-                                )}
                                 <span className={`shrink-0 w-24 text-right text-[12px] font-black tabular-nums ${
                                   isCash ? (t.amount < 0 ? 'text-rose-500' : t.kind === '수금' ? 'text-emerald-600' : 'text-orange-600') : 'text-slate-700'
                                 }`}>
@@ -1666,121 +1591,6 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             </div>
 
             {/* 미수금 상세 팝업 */}
-            {receivableDetailClient && (() => {
-              const unpaidStmts = issuedStatements
-                .filter(s => s.partnerId === receivableDetailClient.id && s.type === '매출' && getBalance(s) > 0)
-                .sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
-              const detailTotal = unpaidStmts.reduce((a, s) => a + getBalance(s), 0);
-              // 수금·지불 이력 — 잔액을 깎은 자금 움직임 그대로(108 채권 / 251 채무).
-              //   잔액은 이 합계를 빼서 나오므로, 숫자가 이상하면 여기서 근거를 바로 볼 수 있다.
-              const payHistory = cashEntries
-                .filter(e => e.partnerId === receivableDetailClient.id)
-                .flatMap(e => partnerCashParts(e).map(p => ({
-                  id: `${e.id}-${p.code}`,
-                  date: e.date ?? '',
-                  kind: p.code === '108' ? '수금' : '지불',
-                  signed: p.reduce,   // 양수면 그만큼 줄었다(수금·지불·상계)
-                  note: p.note || e.note || '',
-                  ts: rowStamp(e.date ?? '', e.createdAt),
-                })))
-                // 최신이 위 — 같은 날이면 그날 안의 시각, 동시각이면 나중에 끊은 것이 위
-                .sort((a, b) => b.ts.localeCompare(a.ts) || issuedMs(b.id) - issuedMs(a.id));
-              const payTotal = payHistory.reduce((a, p) => a + p.signed, 0);
-              return (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-                  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[85vh]">
-                    <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
-                      <div>
-                        <h3 className="font-black text-slate-800">{receivableDetailClient.name} · 미수금 상세</h3>
-                        <p className="text-sm font-black text-rose-600 mt-0.5">총 {fmt(detailTotal)}원 미수</p>
-                      </div>
-                      <button onClick={() => setReceivableDetailClient(null)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400">
-                        <X size={18} />
-                      </button>
-                    </div>
-                    <div className="overflow-y-auto flex-1 divide-y divide-slate-50">
-                      {unpaidStmts.length === 0 && (
-                        <p className="py-8 text-center text-slate-300 text-sm font-bold">미수금 없음</p>
-                      )}
-                      {unpaidStmts.map(s => {
-                        const bal = getBalance(s);
-                        const paid = s.totalAmount - bal;   // 이 전표에 배분된 수금액
-                        // 이 전표에 사람이 찍어 붙인 매칭 — 근거(자금기록)가 살아 있는 것만
-                        const pins = settlements.filter(st => st.statementId === s.id && cashEntries.some(e => e.id === st.cashEntryId));
-                        const pinned = pins.reduce((a, st) => a + (st.amount ?? 0), 0);
-                        return (
-                          <div key={s.id} className="px-5 py-3.5 flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-xs font-black text-slate-700">{s.tradeDate}</span>
-                                <span className="text-[10px] font-mono text-slate-400">{s.docNo}</span>
-                                {pinned > 0 && (
-                                  <span className="inline-flex items-center gap-1 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600">
-                                    지정 {fmt(pinned)}
-                                    {onDeleteSettlement && (
-                                      <button
-                                        onClick={() => { if (window.confirm('이 전표에 지정한 수금 연결을 풀까요?\n\n금액은 그대로고, 오래된 전표부터 자동 배분으로 돌아갑니다.')) pins.forEach(st => onDeleteSettlement(st.id)); }}
-                                        title="지정 해제 — 자동 배분으로 되돌린다"
-                                        className="text-indigo-300 hover:text-rose-500">✕</button>
-                                    )}
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-[10px] text-slate-400 mt-0.5 truncate">
-                                {s.items.slice(0, 2).map(i => i.name).join(', ')}{s.items.length > 2 ? ` 외 ${s.items.length - 2}건` : ''}
-                              </p>
-                              <p className="text-[10px] text-slate-500 mt-0.5">
-                                청구 {fmt(s.totalAmount)}원{paid > 0 && ` · 수금 ${fmt(paid)}원`}
-                                {' · '}잔액 <span className="text-rose-600 font-black">{fmt(bal)}원</span>
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => { setReceivableDetailClient(null); openPayModal(s); }}
-                              className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black rounded-xl transition-colors"
-                            >
-                              <CreditCard size={12} /> 입금 처리
-                            </button>
-                          </div>
-                        );
-                      })}
-                      {/* 수금·지불 이력 — 이 거래처 잔액을 깎은 자금 움직임 */}
-                      {payHistory.length > 0 && (
-                        <div className="bg-slate-50/60">
-                          <div className="px-5 py-2.5 flex items-center justify-between border-b border-slate-100">
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">수금 · 지불 이력</span>
-                            <span className="text-[11px] font-black text-slate-500 tabular-nums">
-                              누계 {fmt(payTotal)}원 · {payHistory.length}건
-                            </span>
-                          </div>
-                          {payHistory.map(p => (
-                            <div key={p.id} className="px-5 py-2 flex items-center gap-3 border-b border-slate-100/70 last:border-0">
-                              <span className="w-16 shrink-0 text-[11px] font-bold text-slate-500 tabular-nums">{p.date.slice(2)}</span>
-                              <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-black ${p.kind === '수금' ? 'bg-emerald-50 text-emerald-700' : 'bg-orange-50 text-orange-700'}`}>
-                                {p.kind}
-                              </span>
-                              <span className="flex-1 min-w-0 text-[11px] text-slate-400 truncate">{p.note || '—'}</span>
-                              <span className={`shrink-0 text-[12px] font-black tabular-nums ${p.signed < 0 ? 'text-rose-500' : 'text-slate-700'}`}>
-                                {p.signed < 0 ? '−' : ''}{fmt(Math.abs(p.signed))}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    {unpaidStmts.length > 1 && (
-                      <div className="px-5 py-3 border-t border-slate-100 shrink-0">
-                        <button
-                          onClick={() => { setReceivableDetailClient(null); openPayModal(unpaidStmts[0]); }}
-                          className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black rounded-xl transition-colors flex items-center justify-center gap-2"
-                        >
-                          <CreditCard size={14} /> 가장 오래된 전표부터 입금 처리
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
 
             {/* 미수 ↔ 미지급 상계 모달 */}
             {offsetForm && (
@@ -1836,66 +1646,6 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             )}
 
             {/* 수금/지불 등록 모달 */}
-            {showPayModal && payTarget && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-                <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-4">
-                  <h3 className="text-sm font-black text-slate-800">{payTarget.type === '매출' ? '수금 등록 — 미수금 감소' : '지불 등록 — 미지급금 감소'}</h3>
-                  <div className="text-xs text-slate-400">{resolveName(payTarget.partnerId)} · {payTarget.tradeDate}</div>
-                  <div className="bg-slate-50 rounded-xl px-4 py-3 text-xs text-center">
-                    <span className="text-slate-500">잔여 {payTarget.type === '매출' ? '미수금' : '미지급금'} </span>
-                    <span className="font-black text-rose-600 text-base">{fmt(getBalance(payTarget))}원</span>
-                  </div>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">금액</label>
-                      <input type="number" value={payForm.amount}
-                        onChange={e => setPayForm(p => ({ ...p, amount: e.target.value }))}
-                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">일자</label>
-                      <input type="date" value={payForm.date}
-                        onChange={e => setPayForm(p => ({ ...p, date: e.target.value }))}
-                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">결제 방법</label>
-                      <div className="flex gap-1.5 flex-wrap">
-                        {(['현금', '계좌이체', '어음', '카드', '기타'] as PaymentMethod[]).map(m => (
-                          <button key={String(m)} onClick={() => setPayForm(p => ({ ...p, method: m }))}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-black border transition-all ${payForm.method === m ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>
-                            {m}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">비고</label>
-                      <input type="text" placeholder="예: 1차 분할" value={payForm.note}
-                        onChange={e => setPayForm(p => ({ ...p, note: e.target.value }))}
-                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
-                    </div>
-                    {/* 끄면 오래된 전표부터 자동으로 채워진다(선입선출) */}
-                    <label className="flex items-start gap-2 cursor-pointer select-none">
-                      <input type="checkbox" checked={pinToStmt} onChange={e => setPinToStmt(e.target.checked)}
-                        className="mt-0.5 w-4 h-4 accent-indigo-600 shrink-0"/>
-                      <span className="text-[11px] font-bold text-slate-500 leading-snug">
-                        이 전표에 지정 <span className="text-slate-400 font-normal">({payTarget.docNo || payTarget.tradeDate})</span>
-                        <br/>
-                        <span className="text-[10px] text-slate-400 font-normal">끄면 오래된 전표부터 자동으로 채워집니다.</span>
-                      </span>
-                    </label>
-                  </div>
-                  <div className="flex gap-2 pt-1">
-                    <button onClick={() => setShowPayModal(false)} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black hover:bg-slate-200">취소</button>
-                    <button onClick={savePayment} disabled={!payForm.amount || Number(payForm.amount) <= 0}
-                      className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-black hover:bg-indigo-700 disabled:opacity-40 flex items-center justify-center gap-1.5">
-                      <Save size={12}/>저장
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
           </>
         );
       })()}

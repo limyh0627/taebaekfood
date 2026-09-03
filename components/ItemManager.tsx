@@ -14,6 +14,7 @@ import { subDotClass } from '../src/shared/submaterialStyle';
 import { calcCost, CostCalcRow, CostCalcResult } from '../src/features/admin/costCalc';
 import { ProductNameRow, ProductCard, renderColoredName, splitNameVolume, specText, catOrder, categoryChipClass, categoryOf } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
+import { priceParts } from '../src/shared/lineAmount';
 
 interface ItemManagerProps {
   items: Item[];
@@ -770,9 +771,18 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                                 onClick={e => { e.stopPropagation(); setSalesPriceEdits(prev => ({ ...prev, [editKey]: String(curPrice ?? '') })); }}
                                 className="flex items-center gap-1 text-[11px] font-black px-1.5 py-0.5 rounded-md hover:bg-indigo-50 transition-all whitespace-nowrap"
                                 title="판매단가 수정">
+                                {/*  **판매단가는 세포함이다.** 원가는 세별도라 나란히 두면
+                                     마진이 부풀어 보인다 — 과세면 공급가액을 곁들인다(2026-09-03 사장님). */}
                                 <span className={curPrice != null ? 'text-slate-700' : 'text-slate-300'}>
                                   {curPrice != null ? Number(curPrice).toLocaleString() : '미설정'}
                                 </span>
+                                {(() => {
+                                  if (curPrice == null) return null;
+                                  const pp = priceParts(curPrice, item.taxType === '면세');
+                                  return pp.showSupply
+                                    ? <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">공급가 {pp.supply.toLocaleString()}</span>
+                                    : null;
+                                })()}
                                 <Edit size={11} className="text-slate-400 shrink-0" />
                               </button>
                             ) : (
@@ -965,16 +975,26 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                       return (
                         <td className="px-2 py-3 text-right">
                           {editVal === undefined ? (
-                            <div className="flex items-center justify-end gap-1.5">
-                              <span className={`text-[11px] font-bold whitespace-nowrap ${curPrice != null ? 'text-slate-700' : 'text-slate-300'}`}>
-                                {curPrice != null ? `${Number(curPrice).toLocaleString()}원` : '미설정'}
-                              </span>
-                              <button
-                                onClick={() => setSalesPriceEdits(prev => ({ ...prev, [editKey]: String(curPrice ?? '') }))}
-                                className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all shrink-0"
-                                title="판매단가 수정">
-                                <Edit size={13} />
-                              </button>
+                            <div className="flex flex-col items-end gap-0.5">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <span className={`text-[11px] font-bold whitespace-nowrap ${curPrice != null ? 'text-slate-700' : 'text-slate-300'}`}>
+                                  {curPrice != null ? `${Number(curPrice).toLocaleString()}원` : '미설정'}
+                                </span>
+                                <button
+                                  onClick={() => setSalesPriceEdits(prev => ({ ...prev, [editKey]: String(curPrice ?? '') }))}
+                                  className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all shrink-0"
+                                  title="판매단가 수정">
+                                  <Edit size={13} />
+                                </button>
+                              </div>
+                              {/*  판매단가는 세포함이다 — 원가는 세별도라 과세 품목은 공급가액을 곁들인다 */}
+                              {(() => {
+                                if (curPrice == null) return null;
+                                const pp = priceParts(curPrice, item.taxType === '면세');
+                                return pp.showSupply
+                                  ? <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">공급가 {pp.supply.toLocaleString()}</span>
+                                  : null;
+                              })()}
                             </div>
                           ) : (
                             <div className="flex items-center justify-end gap-1">

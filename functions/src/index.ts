@@ -83,34 +83,48 @@ export const monthlyInventorySnapshot = onSchedule(
     const month = kst.getMonth() + 1;
     const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
 
-    // 이미 해당 월 스냅샷이 있으면 스킵
-    const snapRef = db.collection('inventorySnapshots').doc(`inv-snap-${yearMonth}`);
-    const existing = await snapRef.get();
-    if (existing.exists) {
-      console.log(`Snapshot for ${yearMonth} already exists, skipping.`);
-      return;
-    }
+    //  이미 있는지는 **회사마다 따로** 본다(아래 루프).
+    //  전에는 태백 문서 하나만 보고 통째로 빠져나가서, 태백이 있으면 풍회는 영영 안 생겼다.
 
-    // items 컬렉션에서 재고액 합산 (stock × cost)
+    /*
+     * **재고 평가는 앱(ProfitAnalysis 재고평가 탭)과 같은 규칙이어야 한다.**
+     * 이 값이 `journalizeInventory` 를 타고 매출원가로 흘러가므로,
+     * 앱에서 본 숫자와 장부의 숫자가 다르면 어디가 맞는지 아무도 못 가린다.
+     * 2026-09-03 에 재 보니 **1,050만원** 갈려 있었다. 규칙 셋 중 둘이 달랐다.
+     *
+     *   ① 회사    앱은 태백/풍회를 가르는데 여기는 안 갈랐다 → 풍회 재고 566만원이
+     *              태백 재고자산에 얹혔다. 실지재고조사법이라 양쪽이 같이 틀어진다.
+     *   ② 음수    앱은 넣는데 여기는 `stock > 0` 으로 뺐다 → 483만원. 어긋난 재고를
+     *              감추면 장부만 맞아 보이고 창고는 안 맞는다.
+     *   ③ 단가    `item.cost` 를 쓴다 — **이건 앱과 같다.** 앱이 BOM 롤업 결과를
+     *              `recomputeAllCosts` 로 이 칸에 되써 두기 때문이다(차이 37원).
+     *              BOM 롤업을 여기 또 옮겨 적으면 갈릴 자리만 하나 더 는다.
+     */
     const itemsSnap = await db.collection('items').get();
-    let totalValue = 0;
+    const 회사별 = new Map<string, number>();
     for (const doc of itemsSnap.docs) {
       const data = doc.data();
-      const stock: number = data.stock ?? 0;
-      const cost: number = data.cost ?? 0;
-      if (stock > 0 && cost > 0) {
-        totalValue += stock * cost;
-      }
+      const stock: number = Number(data.stock) || 0;
+      const cost: number = Number(data.cost) || 0;
+      if (!stock || !cost) continue;
+      //  회사가 안 붙은 옛 품목은 태백 것으로 본다(앱의 companyOf 와 같다)
+      const co: string = data.companyId ?? 'taebaek';
+      회사별.set(co, (회사별.get(co) ?? 0) + stock * cost);   // 음수도 그대로 더한다
     }
+    //  회사를 안 쓰는 곳에서도 태백 스냅샷은 늘 서야 한다
+    if (!회사별.has('taebaek')) 회사별.set('taebaek', 0);
 
-    await snapRef.set({
-      id: `inv-snap-${yearMonth}`,
-      yearMonth,
-      value: totalValue,
-      recordedAt: new Date().toISOString(),
-    });
-
-    console.log(`Inventory snapshot saved: ${yearMonth} = ${totalValue}원`);
+    for (const [co, value] of 회사별) {
+      //  문서 id 규칙은 앱의 invSnapDocId 와 같다 — 태백은 옛 문서 이름을 그대로 쓴다
+      const id = co === 'taebaek' ? `inv-snap-${yearMonth}` : `inv-snap-${co}-${yearMonth}`;
+      const ref = db.collection('inventorySnapshots').doc(id);
+      if ((await ref.get()).exists) {
+        console.log(`Snapshot ${id} already exists, skipping.`);
+        continue;
+      }
+      await ref.set({ id, yearMonth, value: Math.round(value), companyId: co, recordedAt: new Date().toISOString() });
+      console.log(`Inventory snapshot saved: ${id} = ${Math.round(value)}원`);
+    }
   }
 );
 
@@ -171,8 +185,28 @@ export const dailyAutoVoucher = onSchedule(
         const exempt = !!t.taxExempt;
         const supply = exempt ? amount : Math.round(amount / 1.1);
         const tax = exempt ? 0 : amount - supply;
-        // 문서번호는 그 달 발행 건수 + 1 — 사람이 끊은 것과 형식을 맞춘다
-        const monthCount = (await db.collection('issuedStatements').where('tradeDate', '>=', `${ym}-01`).where('tradeDate', '<=', `${ym}-31`).get()).size;
+        /*
+         * 문서번호 — **그날(YYMMDD) 쓰인 가장 큰 번호 + 1.**  `260901-001`
+         *
+         * 앱은 2026-08-21(커밋 1a421f5)에 이 규칙으로 바꿨는데 **여기만 안 바꿨다.**
+         * 그래서 스케줄러가 만든 정기 전표만 옛 형식(`2026-09-0001`)으로 나온다.
+         * 옛 방식은 '그 달 전표 개수 + 1'이라 —
+         *   · 전표를 하나 지우면 개수가 줄어 **지워진 번호를 다시 쓴다.**
+         *   · 실제로 `2026-08-0216` 이 두 전표에 붙어 있다.
+         *
+         * 위 주석대로 functions 는 앱 소스를 import 못 한다.
+         * `shared/voucherStamp.ts` 의 `nextDocNo` 와 **같은 규칙을 손으로 옮겨 둔 것**이다.
+         * 한쪽을 고치면 반드시 다른 쪽도 고쳐야 한다.
+         */
+        const dayHead = `${today.slice(2).replace(/-/g, '')}-`;
+        const daySnap = await db.collection('issuedStatements').where('tradeDate', '==', today).get();
+        let maxNo = 0;
+        daySnap.forEach(doc => {
+          const no = String(doc.data().docNo ?? '');
+          if (!no.startsWith(dayHead)) return;
+          const tail = no.slice(dayHead.length);
+          if (/^[0-9]+$/.test(tail)) maxNo = Math.max(maxNo, Number(tail));
+        });
         await ref.set({
           id: key,
           issuedAt: new Date().toISOString(),
@@ -181,7 +215,7 @@ export const dailyAutoVoucher = onSchedule(
           partnerId: t.partnerId,
           partnerName: t.partnerName ?? '',
           orderId: key,
-          docNo: `${ym}-${String(monthCount + 1).padStart(4, '0')}`,
+          docNo: `${dayHead}${String(maxNo + 1).padStart(3, '0')}`,
           totalSupply: supply,
           totalTax: tax,
           totalAmount: amount,
