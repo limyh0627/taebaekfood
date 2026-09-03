@@ -11,11 +11,17 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'prompt',
+      //  **새 버전을 알아서 받는다**(2026-09-03 사장님).
+      //  'prompt' 였을 때는 배포해도 폰이 옛것을 붙들고 있어서, 앱을 완전히 닫았다
+      //  다시 열어야 바뀌었다. 자주 배포하는 동안엔 그게 더 번거롭다.
+      //  대신 쓰던 중에 새 버전이 오면 화면이 한 번 새로고침될 수 있다.
+      registerType: 'autoUpdate',
       manifest: false,
       workbox: {
         maximumFileSizeToCacheInBytes: 5000000,
         clientsClaim: true,
+        //  기다리지 않고 바로 새 일꾼으로 넘어간다 — autoUpdate 와 짝이다
+        skipWaiting: true,
       },
     }),
   ],
