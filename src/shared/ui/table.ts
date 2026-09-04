@@ -87,3 +87,17 @@ export const pill = (on: boolean) =>
 
 /** 딱지(상태 표시) — 색은 부르는 쪽이 정한다 */
 export const CHIP = 'text-[10px] font-black px-1.5 py-0.5 rounded';
+
+/**
+ * 거르는 드롭다운.
+ * **고를 값이 많으면 알약(pill)이 아니라 드롭다운이다** — 알약을 늘어놓으면
+ * 폰에서 줄이 서너 겹으로 접혀 화면을 다 잡아먹는다(2026-09-04 사장님: 제품별원장
+ * 분류가 20칸이 됐다). 고르는 값이 서넛뿐일 때만 알약을 쓴다.
+ * @param on 전체가 아닌 값이 걸려 있으면 테두리로 표가 난다
+ */
+export const SELECT = (on = false) =>
+  `border rounded-lg px-2.5 py-1.5 text-[11px] font-black bg-white outline-none focus:ring-2 focus:ring-indigo-300 cursor-pointer ${
+    on ? 'border-indigo-300 text-indigo-700' : 'border-slate-200 text-slate-600'}`;
+
+/** 드롭다운 옆에 붙는 이름표 */
+export const SELECT_LABEL = 'text-[10px] font-black text-slate-300 uppercase tracking-widest shrink-0';

@@ -108,6 +108,7 @@ import { pickNewOrders, newOrderMessage } from '../../shared/newOrderAlert';
 import { pickNewChats, chatMessage } from '../../shared/newChatAlert';
 import { roomNameFor } from '../../shared/roomName';
 import AccountMenu from '../../../components/AccountMenu';
+const MyPage = React.lazy(() => import('../../../components/MyPage'));
 import AdminChecklist from '../../../components/AdminChecklist';
 import PartnerSignupApproval from '../../../components/PartnerSignupApproval';
 import DocumentManager from '../../../components/DocumentManager';
@@ -1643,7 +1644,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
           {/*  계정 메뉴 — 알림 권한·소리설정·로그아웃이 다 여기 있다.
                권한을 묻는 자리는 앱 전체에서 이 한 곳이다(2026-09-03 사장님). */}
-          <AccountMenu currentUser={currentUser} collapsed={isSidebarCollapsed} onLogout={onLogout} />
+          <AccountMenu currentUser={currentUser} collapsed={isSidebarCollapsed}
+            active={currentView === 'mypage'} onOpen={() => setCurrentView('mypage')} />
           
           <div className="flex-1 min-h-0 space-y-8 overflow-y-auto no-scrollbar">
 
@@ -1799,7 +1801,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 'leave-portal': '연차 신청', 'confirmation-items': '확인사항',
                 'item-management': '품목 관리', 'item-price-management': '품목 관리', 'item-ledger': '제품별원장',
                 'partner-portal': '거래처 포털',
-                'officetalk': '오피스톡', 'smartstore-analytics': '스마트스토어 분석',
+                'officetalk': '오피스톡', 'smartstore-analytics': '스마트스토어 분석', 'mypage': '마이페이지',
                 'haccp-checklist': 'HACCP 체크리스트', 'return-management': '반품 관리',
                 'inbound-returns': '입고 / 반품', 'sanitation-checklist': '작업장 위생점검표',
               } as Record<string, string>)[currentView]) ?? ''}
@@ -4214,6 +4216,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onUpdateCost={(itemId, cost) => updateItem('items', itemId, { cost })}
               onUpdatePrice={(itemId, price) => updateItem('items', itemId, { price })}
             />
+          )}
+
+          {currentView === 'mypage' && (
+            <React.Suspense fallback={<div className="p-8 text-center text-xs font-bold text-slate-300">불러오는 중…</div>}>
+              <MyPage currentUser={currentUser} onLogout={onLogout} />
+            </React.Suspense>
           )}
 
           {currentView === 'officetalk' && (

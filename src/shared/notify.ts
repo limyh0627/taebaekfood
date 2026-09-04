@@ -133,3 +133,27 @@ function 창으로띄우기(title: string, opts: NotificationOptions, onClick?: 
     n.onclick = () => { window.focus(); onClick?.(); n.close(); };
   } catch { /* 안드로이드는 여기로 온다 — 위에서 서비스워커를 먼저 쓴다 */ }
 }
+
+/** 알림이 왜 안 뜨는지 사람 말로. 안 뜬다는 신고를 받았을 때 짚을 곳이 여기다. */
+export async function notifyDiagnose(): Promise<{ ok: boolean; msg: string }> {
+  if (!notifySupported()) return { ok: false, msg: '이 브라우저는 알림을 못 씁니다.' };
+
+  const perm = notifyPermission();
+  if (perm === 'denied') return { ok: false, msg: '알림이 차단돼 있습니다. 주소창 왼쪽 자물쇠 → 사이트 설정 → 알림에서 허용해 주세요.' };
+  if (perm === 'default') return { ok: false, msg: '아직 알림을 켜지 않았습니다. 위 "폰 알림 켜기"를 눌러 주세요.' };
+
+  if (!('serviceWorker' in navigator)) {
+    return { ok: false, msg: '이 브라우저에는 서비스워커가 없습니다 — 안드로이드에서는 상단 알림이 안 뜹니다.' };
+  }
+  const reg = await navigator.serviceWorker.getRegistration();
+  if (!reg) {
+    return { ok: false, msg: '서비스워커가 아직 안 붙었습니다. 앱을 완전히 닫았다 다시 열어 주세요.' };
+  }
+
+  await reg.showNotification('🔔 알림 시험', {
+    body: '이 알림이 상단에 보이면 제대로 켜진 것입니다.',
+    icon: NOTIFY_ICON, badge: NOTIFY_ICON, tag: 'notify-test',
+  } as NotificationOptions);
+  buzz();
+  return { ok: true, msg: '알림을 보냈습니다. 상단(알림창)을 내려 보세요.' };
+}

@@ -2944,7 +2944,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400 hover:text-slate-700'
               }`}>{p}</button>
           ))}
-          <div className="flex items-center gap-1.5 ml-1">
+          {/*  좁으면 한 줄을 통째로 쓴다 — 안 접히면 날짜 두 개가 카드 밖으로 나간다(2026-09-04 사장님) */}
+          <div className="flex items-center gap-1.5 w-full sm:w-auto sm:ml-1">
             <input type="date" value={histFrom}
               onChange={e=>{setHistFrom(e.target.value);setHistQuick('');}}
               className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
@@ -4501,17 +4502,17 @@ ${names}
                 {/*  **칸 폭을 글자에 맞춘다**(2026-09-03 사장님) — 비율(%)로 두니 720px 안에서
                      품목명이 158px 밖에 안 돼 '참기름/병/분/전통/350ml' 이 잘렸다.
                      어차피 옆으로 미는 표다. 미는 김에 안 잘리는 게 맞다. */}
-                <table className="w-full min-w-[1040px] text-left border-collapse table-fixed">
+                <table className="w-full min-w-[1004px] text-left border-collapse table-fixed">
                   <colgroup>
                     <col style={{width:'40px'}}/>
                     <col style={{width:'240px'}}/>{/* 품목명 */}
-                    <col style={{width:'92px'}}/>{/* 규격 */}
-                    <col style={{width:'84px'}}/>{/* 수량 */}
-                    <col style={{width:'104px'}}/>{/* 단가 */}
-                    <col style={{width:'120px'}}/>{/* 공급가액 */}
-                    <col style={{width:'110px'}}/>{/* 세액 */}
-                    <col style={{width:'126px'}}/>{/* 합계 */}
-                    <col style={{width:'112px'}}/>{/* 계정 */}
+                    <col style={{width:'84px'}}/>{/* 규격 */}
+                    <col style={{width:'72px'}}/>{/* 수량 */}
+                    <col style={{width:'88px'}}/>{/* 단가 */}
+                    <col style={{width:'100px'}}/>{/* 공급가액 */}
+                    <col style={{width:'88px'}}/>{/* 세액 */}
+                    <col style={{width:'104px'}}/>{/* 합계 */}
+                    <col style={{width:'148px'}}/>{/* 계정 — '800 일반매출' + 화살표가 들어가야 한다 */}
                     <col style={{width:'36px'}}/>
                   </colgroup>
                   <thead className="sticky top-0 z-10 bg-slate-50">
@@ -4775,7 +4776,7 @@ ${names}
                 </table>
                   {/*  **전표 비고** — 합계 바로 밑(2026-09-03 사장님). 품목 줄이 아니라
                        전표 전체에 붙는 말이라 결제 조건·납기 같은 걸 적는다. 인쇄물에도 나간다. */}
-                  <div className="min-w-[1040px] px-3 py-2.5 border-t border-slate-100 bg-slate-50/50">
+                  <div className="min-w-[1004px] px-3 py-2.5 border-t border-slate-100 bg-slate-50/50">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">비고</p>
                     <textarea
                       value={stmtMemo}

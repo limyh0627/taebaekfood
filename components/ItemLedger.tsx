@@ -4,7 +4,7 @@ import type { Item, Order } from '../src/shared/types';
 import { buildItemLedger, type ItemLedgerKind } from '../src/features/admin/itemLedger';
 import type { ItemReceipt } from '../src/shared/receipt';
 import { typeOptions, categoryOptions, filterItems, keepCategory, ALL } from '../src/shared/itemFilter';
-import { pill } from '../src/shared/ui/table';
+import { SELECT, SELECT_LABEL } from '../src/shared/ui/table';
 
 /**
  * 제품별원장 — 품목 하나가 언제 얼마나 들고 났나.
@@ -65,20 +65,24 @@ const ItemLedger: React.FC<{
             <input value={q} onChange={e => setQ(e.target.value)} placeholder="품목명·규격으로 찾기"
               className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-7 pr-2 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
           </div>
-          {/* 타입 — 완제품·상품·부자재… 있는 것만 나온다 */}
-          <div className="flex flex-wrap gap-1">
-            <button onClick={() => 타입고르기(ALL)} className={pill(type === ALL)}>전체 {pickable.length}</button>
-            {types.map(o => (
-              <button key={o.key} onClick={() => 타입고르기(o.key)} className={pill(type === o.key)}>{o.label} {o.count}</button>
-            ))}
+          {/*  **드롭다운이다**(2026-09-04 사장님) — 알약으로 늘어놓으니 카테고리가
+               14칸이라 폰에서 필터가 화면을 다 잡아먹었다. 모양은 shared/ui/table 의 SELECT. */}
+          <div className="flex items-center gap-1.5">
+            <span className={SELECT_LABEL}>분류</span>
+            <select value={type} onChange={e => 타입고르기(e.target.value)}
+              className={`${SELECT(type !== ALL)} flex-1 min-w-0`}>
+              <option value={ALL}>전체 {pickable.length}</option>
+              {types.map(o => <option key={o.key} value={o.key}>{o.label} {o.count}</option>)}
+            </select>
           </div>
-          {/* 카테고리 — 고른 타입 안에서만. 하나뿐이면 고를 게 없으니 안 그린다 */}
           {cats.length > 1 && (
-            <div className="flex flex-wrap gap-1 pt-1 border-t border-slate-50">
-              <button onClick={() => setCat(ALL)} className={pill(cat === ALL)}>전체</button>
-              {cats.map(o => (
-                <button key={o.key} onClick={() => setCat(o.key)} className={pill(cat === o.key)}>{o.label} {o.count}</button>
-              ))}
+            <div className="flex items-center gap-1.5">
+              <span className={SELECT_LABEL}>품목</span>
+              <select value={cat} onChange={e => setCat(e.target.value)}
+                className={`${SELECT(cat !== ALL)} flex-1 min-w-0`}>
+                <option value={ALL}>전체</option>
+                {cats.map(o => <option key={o.key} value={o.key}>{o.label} {o.count}</option>)}
+              </select>
             </div>
           )}
         </div>
