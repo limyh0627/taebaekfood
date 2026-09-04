@@ -44,3 +44,28 @@ export function fileSizeLabel(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
 }
+
+/**
+ * 사진을 폰에 저장한다.
+ *
+ * `<a download>` 만으로는 안 된다 — 다른 도메인(Storage)에 있는 파일은 브라우저가
+ * `download` 를 무시하고 그냥 화면에 열어 버린다. 그래서 **파일을 받아서** 저장한다.
+ * 받는 게 막히면(CORS·오래된 폰) 새 탭으로 열어 준다 — 거기서 꾹 눌러 저장할 수 있다.
+ */
+export async function saveImage(url: string, name = `오피스톡-${Date.now()}.jpg`): Promise<void> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(String(res.status));
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+  } catch {
+    window.open(url, '_blank', 'noopener');
+  }
+}

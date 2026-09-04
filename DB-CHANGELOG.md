@@ -5,6 +5,26 @@
 
 ---
 
+## 2026-09-03 — 이총제 팀장 · 황준호 대리 관리자 앱 접근 허용
+
+**작업자:** Claude 에이전트 (사장님 지시: "이총제 황준호도 관리자 기능 access해줘")
+
+| 문서 | 전 | 후 |
+|---|---|---|
+| 이총제 팀장 (`e3`) | `adminAccess` 없음 | `adminAccess: true` |
+| 황준호 대리 (`e6`) | `adminAccess` 없음 | `adminAccess: true` |
+
+**되돌리기:** `npx tsx scripts/fix-admin-access-add.mts --undo`
+(백업: `scripts/fix-admin-access-add-backup.json`)
+
+이번엔 사람마다 스크립트를 짜지 않았다 — [fix-admin-access-add.mts](scripts/fix-admin-access-add.mts)
+맨 위 `IDS` 목록만 갈아 끼우면 다음 사람에게도 쓴다.
+(이은경 상무 때 만든 `fix-admin-access-eunkyung.mts` 는 그 건의 되돌리기용으로만 남긴다.)
+
+**지금 관리자 앱에 들어갈 수 있는 사람** — 태백식품(사장님) · 이은경 상무 · 이총제 팀장 · 황준호 대리.
+
+---
+
 ## 2026-09-03 — 이은경 상무 관리자 앱 접근 허용
 
 **작업자:** Claude 에이전트 (사장님 지시: "이은경 상무 계정도 관리자 앱 들어갈 수 있게 해줘")

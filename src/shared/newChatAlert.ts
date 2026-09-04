@@ -6,6 +6,7 @@
 export interface RoomLike {
   id: string;
   name?: string;
+  nameBy?: Record<string, string>;
   participantIds: string[];
   lastMessage?: string;
   lastUpdatedAt: string;
@@ -46,9 +47,14 @@ export function pickNewChats<T extends RoomLike>(rooms: T[], seen: Map<string, s
   return 알릴것;
 }
 
-export function chatMessage(room: RoomLike): { title: string; body: string } {
+/**
+ * 알림에 띄울 글.
+ * @param 방이름 화면에 보이는 그 이름을 그대로 넣는다 — `roomNameFor` 로 뽑은 것.
+ *              여기서 `room.name` 을 직접 읽으면 각자 고친 이름이 알림에만 안 뜬다.
+ */
+export function chatMessage(room: RoomLike, 방이름: string): { title: string; body: string } {
   return {
-    title: `💬 ${room.name || '오피스톡'}`,
+    title: `💬 ${방이름 || '오피스톡'}`,
     body: room.lastMessage || '새 메시지가 도착했습니다.',
   };
 }

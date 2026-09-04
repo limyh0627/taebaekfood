@@ -106,6 +106,7 @@ import OfficeTalk from '../../../components/OfficeTalk';
 import { notify, loadNotifyMode } from '../../shared/notify';
 import { pickNewOrders, newOrderMessage } from '../../shared/newOrderAlert';
 import { pickNewChats, chatMessage } from '../../shared/newChatAlert';
+import { roomNameFor } from '../../shared/roomName';
 import AccountMenu from '../../../components/AccountMenu';
 import AdminChecklist from '../../../components/AdminChecklist';
 import PartnerSignupApproval from '../../../components/PartnerSignupApproval';
@@ -846,7 +847,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       focused: currentView === 'officetalk' && document.hasFocus(),
     });
     for (const room of 새것) {
-      const { title, body } = chatMessage(room);
+      const { title, body } = chatMessage(room, roomNameFor(room, currentUser.id, employees));
       notify({
         title, body, tag: room.id, mode: loadNotifyMode(), view: 'officetalk', whenFocused: true,
         onClick: () => { setCurrentView('officetalk'); setOpenChatRoomId(room.id); },

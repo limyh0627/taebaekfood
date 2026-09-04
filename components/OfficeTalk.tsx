@@ -16,13 +16,15 @@ import {
   Image as ImageIcon,
   Paperclip,
   Loader2,
+  Download,
   ArrowLeft
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Employee, ChatRoom, ChatMessage } from '../types';
 import { appendMention, replaceMentionQuery, mentionedIds, MENTION_ADMIN, MENTION_ADMIN_ID } from '../src/shared/mention';
-import { uploadChatFile, fileSizeLabel, ChatAttachment } from '../src/shared/chatUpload';
+import { uploadChatFile, fileSizeLabel, saveImage, ChatAttachment } from '../src/shared/chatUpload';
 import { consumeSharedText } from '../src/shared/shareTarget';
+import { roomNameFor, renameRoomPatch, isOwner } from '../src/shared/roomName';
 import { notify, notifyPermission, loadNotifyMode, saveNotifyMode, NotifyMode } from '../src/shared/notify';
 import {
   collection,
@@ -179,12 +181,18 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     }
   }, [localMessages, isLoadingMore]);
 
-  const getRoomName = (room: ChatRoom) => {
-    if (room.name) return room.name;
-    const otherParticipants = room.participantIds
-      .filter(id => id !== currentUser.id)
-      .map(id => employees.find(e => e.id === id)?.name || '알 수 없음');
-    return otherParticipants.join(', ') || '나와의 대화';
+  //  이름 규칙은 shared/roomName.ts 하나가 안다 — 목록·머리·알림이 같은 이름을 쓴다
+  const getRoomName = (room: ChatRoom) => roomNameFor(room, currentUser.id, employees);
+
+  /**
+   * 방 이름 저장. **방장이면 모두의 기본이 바뀌고, 아니면 나한테만 바뀐다** —
+   * 어느 칸에 쓸지는 [roomName.ts](../src/shared/roomName.ts) 가 정한다.
+   */
+  const saveRoomName = () => {
+    const room = chatRooms.find(r => r.id === activeRoomId);
+    if (!room) return;
+    onUpdateRoom(room.id, renameRoomPatch(room, currentUser.id, newRoomName));
+    setIsEditingRoomName(false);
   };
 
   const handleCreateRoom = () => {
@@ -210,6 +218,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     const newRoom: ChatRoom = {
       id: `ROOM-${Date.now()}`,
       participantIds,
+      createdBy: currentUser.id,   // 기본 이름을 정할 수 있는 사람
       lastUpdatedAt: new Date().toISOString(),
       isGroup: participantIds.length > 2
     };
@@ -486,39 +495,47 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                 </div>
                 <div>
                   {isEditingRoomName ? (
-                    <div className="flex items-center space-x-2">
+                    /*  **폰에서 저장이 안 됐다**(2026-09-03 사장님) — 입력칸이 좁은 머리에서
+                        넘쳐 ✓ 버튼이 화면 밖으로 밀렸다. 폭을 잡고, 엔터로도 저장되게 한다. */
+                    <div className="flex items-center gap-1 min-w-0">
                       <input 
                         type="text"
                         value={newRoomName}
                         onChange={(e) => setNewRoomName(e.target.value)}
-                        className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); saveRoomName(); }
+                          if (e.key === 'Escape') setIsEditingRoomName(false);
+                        }}
+                        placeholder={isOwner(activeRoom, currentUser.id) ? '모두에게 보일 이름' : '나에게만 보일 이름'}
+                        className="min-w-0 flex-1 w-28 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500"
                         autoFocus
                       />
                       <button 
-                        onClick={() => {
-                          onUpdateRoom(activeRoom.id, { name: newRoomName });
-                          setIsEditingRoomName(false);
-                        }}
-                        className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-lg"
+                        onClick={saveRoomName}
+                        aria-label="저장"
+                        className="shrink-0 p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg"
                       >
                         <Check size={16} />
                       </button>
                       <button 
                         onClick={() => setIsEditingRoomName(false)}
-                        className="p-1 text-rose-600 hover:bg-rose-50 rounded-lg"
+                        aria-label="취소"
+                        className="shrink-0 p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg"
                       >
                         <X size={16} />
                       </button>
                     </div>
                   ) : (
-                    <div className="flex items-center space-x-2">
-                      <h3 className="text-lg font-black text-slate-900">{getRoomName(activeRoom)}</h3>
+                    <div className="flex items-center gap-1 min-w-0">
+                      <h3 className="text-base lg:text-lg font-black text-slate-900 truncate">{getRoomName(activeRoom)}</h3>
                       <button 
                         onClick={() => {
-                          setNewRoomName(activeRoom.name || getRoomName(activeRoom));
+                          //  내가 고쳐 둔 게 있으면 그걸, 없으면 지금 보이는 이름을 띄운다
+                          setNewRoomName(activeRoom.nameBy?.[currentUser.id] || activeRoom.name || getRoomName(activeRoom));
                           setIsEditingRoomName(true);
                         }}
-                        className="p-1 text-slate-300 hover:text-indigo-600 transition-colors"
+                        aria-label="이름 바꾸기"
+                        className="shrink-0 p-1 text-slate-300 hover:text-indigo-600 transition-colors"
                       >
                         <Edit2 size={14} />
                       </button>
@@ -621,7 +638,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                             <img 
                               src={msg.imageUrl} 
                               alt="Uploaded" 
-                              className="max-w-full h-auto object-cover cursor-pointer hover:scale-[1.02] transition-transform"
+                              className="max-w-full max-h-48 lg:max-h-64 w-auto object-cover cursor-pointer hover:scale-[1.02] transition-transform"
                               referrerPolicy="no-referrer"
                               onClick={(e) => { e.stopPropagation(); setViewImage(msg.imageUrl!); }}
                             />
@@ -958,6 +975,12 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
           onClick={() => setViewImage(null)}
         >
           <img src={viewImage} alt="" className="max-w-full max-h-full object-contain" referrerPolicy="no-referrer" />
+          <button
+            onClick={(e) => { e.stopPropagation(); saveImage(viewImage); }}
+            className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 px-5 py-2.5 bg-white/15 text-white rounded-full text-xs font-black active:scale-95 transition-transform"
+          >
+            <Download size={16} /> 저장
+          </button>
           <button
             onClick={() => setViewImage(null)}
             aria-label="닫기"

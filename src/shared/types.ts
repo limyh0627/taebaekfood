@@ -531,7 +531,12 @@ export interface ChatMessage {
 
 export interface ChatRoom {
   id: string;
+  /** 방장이 정한 이름 — 모두에게 기본으로 보인다. 규칙은 shared/roomName.ts */
   name?: string;
+  /** 각자 따로 정한 이름 — 자기한테만 보인다 */
+  nameBy?: Record<string, string>;
+  /** 누가 만들었나. 옛 방은 비어 있다(2026-09-03 이전) — 그때는 아무나 기본을 고친다 */
+  createdBy?: string;
   participantIds: string[];
   lastMessage?: string;
   lastUpdatedAt: string;

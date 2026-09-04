@@ -60,11 +60,14 @@ describe('pickNewChats', () => {
 });
 
 describe('chatMessage', () => {
-  it('방 이름과 마지막 말', () => {
-    expect(chatMessage(room())).toEqual({ title: '💬 이은경', body: '확인 부탁' });
+  it('받은 이름을 그대로 쓴다 — 화면과 알림이 같은 이름이어야 한다', () => {
+    expect(chatMessage(room(), '이은경')).toEqual({ title: '💬 이은경', body: '확인 부탁' });
   });
-  it('이름 없는 방은 오피스톡', () => {
-    expect(chatMessage(room({ name: undefined, lastMessage: undefined }))).toEqual({
+  it('내가 고친 이름이 알림에도 뜬다', () => {
+    expect(chatMessage(room(), '택배건').title).toBe('💬 택배건');
+  });
+  it('이름이 없으면 오피스톡', () => {
+    expect(chatMessage(room({ lastMessage: undefined }), '')).toEqual({
       title: '💬 오피스톡', body: '새 메시지가 도착했습니다.',
     });
   });
