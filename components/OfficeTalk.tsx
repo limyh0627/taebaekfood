@@ -20,6 +20,10 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Employee, ChatRoom, ChatMessage } from '../types';
+import { appendMention, replaceMentionQuery, mentionedIds, MENTION_ADMIN, MENTION_ADMIN_ID } from '../src/shared/mention';
+import { uploadChatFile, fileSizeLabel, ChatAttachment } from '../src/shared/chatUpload';
+import { consumeSharedText } from '../src/shared/shareTarget';
+import { notify, notifyPermission, loadNotifyMode, saveNotifyMode, NotifyMode } from '../src/shared/notify';
 import {
   collection,
   query,
@@ -81,81 +85,34 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const docInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  //  카톡처럼 사진·파일은 + 뒤에 숨긴다 — 입력칸이 좁아지는 걸 막는다(2026-09-03 사장님)
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  //  **카톡·문자에서 공유해 들어온 글**(2026-09-03 사장님).
+  //  들어올 땐 대화방이 안 정해져 있다. 방을 고를 때까지 들고 있다가 입력칸에 넣는다.
+  const [pendingShare, setPendingShare] = useState<string>(() => consumeSharedText());
+  //  사진을 눌렀을 때 — 전에는 새 탭으로 보내서 앱 밖으로 나가 버렸다(2026-09-03 사장님)
+  const [viewImage, setViewImage] = useState<string | null>(null);
   const prevRoomTimestamps = useRef<Record<string, string>>({});
-  const [notifPermission, setNotifPermission] = useState<NotificationPermission>(
-    'Notification' in window ? Notification.permission : 'denied'
-  );
-  const [notifMode, setNotifMode] = useState<'sound' | 'vibration' | 'both'>(() => {
-    return (localStorage.getItem('officetalk_notif_mode') as 'sound' | 'vibration' | 'both') ?? 'both';
-  });
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>(notifyPermission);
+  const [notifMode, setNotifMode] = useState<NotifyMode>(loadNotifyMode);
   const [showNotifSettings, setShowNotifSettings] = useState(false);
 
-  const saveNotifMode = (mode: 'sound' | 'vibration' | 'both') => {
-    setNotifMode(mode);
-    localStorage.setItem('officetalk_notif_mode', mode);
-  };
+  const saveNotifMode = (mode: NotifyMode) => { setNotifMode(mode); saveNotifyMode(mode); };
 
-  // 알림 권한 요청
-  const requestNotifPermission = async () => {
-    if (!('Notification' in window)) return;
-    const result = await Notification.requestPermission();
-    setNotifPermission(result);
-  };
 
-  // Web Audio API로 알림음 생성
-  const playNotificationSound = () => {
-    try {
-      const ctx = new AudioContext();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(880, ctx.currentTime);
-      osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.08);
-      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.16);
-      gain.gain.setValueAtTime(0.25, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.4);
-    } catch {}
-  };
-
-  // 알림 권한 요청 (마운트 시)
+  //  종에서 권한을 켜면 이 화면 표시도 따라간다 — 화면을 다시 볼 때 한 번 확인한다
   useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission().then(p => setNotifPermission(p));
-    }
+    const 다시읽기 = () => setNotifPermission(notifyPermission());
+    window.addEventListener('focus', 다시읽기);
+    return () => window.removeEventListener('focus', 다시읽기);
   }, []);
 
-  // 새 메시지 감지 → 알림
-  useEffect(() => {
-    chatRooms.forEach(room => {
-      if (!room.participantIds.includes(currentUser.id)) return;
-      const prev = prevRoomTimestamps.current[room.id];
-      const isNew = prev !== undefined && room.lastUpdatedAt > prev;
-      const isUnread = room.lastUpdatedAt > (room.lastReadBy?.[currentUser.id] ?? '');
-      const isOtherRoom = room.id !== activeRoomId || !document.hasFocus();
-
-      if (isNew && isUnread && isOtherRoom) {
-        // 소리
-        if (notifMode === 'sound' || notifMode === 'both') playNotificationSound();
-        // 진동 (Android)
-        if ((notifMode === 'vibration' || notifMode === 'both') && 'vibrate' in navigator) navigator.vibrate([150, 80, 150]);
-        // 브라우저 알림
-        if (notifPermission === 'granted' && !document.hasFocus()) {
-          const roomName = room.name || '오피스톡';
-          const notif = new Notification(`💬 ${roomName}`, {
-            body: room.lastMessage || '새 메시지가 도착했습니다.',
-            icon: '/pwa-192x192.png',
-            tag: room.id,
-          } as NotificationOptions);
-          notif.onclick = () => { window.focus(); };
-        }
-      }
-      prevRoomTimestamps.current[room.id] = room.lastUpdatedAt;
-    });
-  }, [chatRooms]);
+  //  **새 메시지 알림은 여기서 안 한다**(2026-09-03 사장님).
+  //  이 화면 안에서 감지하면 오피스톡을 보고 있을 때만 알림이 온다. 지금은 AdminApp 이
+  //  화면 밖에서 지켜본다 — [newChatAlert.ts](../src/shared/newChatAlert.ts).
 
   const markRoomAsRead = (roomId: string) => {
     const room = chatRooms.find(r => r.id === roomId);
@@ -263,18 +220,19 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     setSelectedParticipants([]);
   };
 
-  const handleSendMessage = async (e?: React.FormEvent, imageUrl?: string) => {
+  useEffect(() => {
+    if (!pendingShare || !activeRoomId) return;
+    setMessageText(t => (t ? t + '\n' + pendingShare : pendingShare));
+    setPendingShare('');
+    inputRef.current?.focus();
+  }, [pendingShare, activeRoomId]);
+
+  const handleSendMessage = async (e?: React.FormEvent, attach?: ChatAttachment) => {
     e?.preventDefault();
-    if ((!messageText.trim() && !imageUrl) || !activeRoomId || isSending) return;
+    if ((!messageText.trim() && !attach) || !activeRoomId || isSending) return;
 
-    const mentions = employees
-      .filter(e => messageText.includes(`@${e.name}`))
-      .map(e => e.id);
-
-    // Special check for @관리자
-    if (messageText.includes('@관리자')) {
-      mentions.push('admin');
-    }
+    //  누가 불렸나 — 이름 겹침·@관리자까지 shared/mention 이 혼자 판단한다
+    const mentions = mentionedIds(messageText, employees);
 
     const newMessage: ChatMessage = {
       id: `MSG-${Date.now()}`,
@@ -283,7 +241,8 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
       senderName: currentUser.name,
       text: messageText,
       createdAt: new Date().toISOString(),
-      ...(imageUrl ? { imageUrl } : {}),
+      ...(attach?.isImage ? { imageUrl: attach.url } : {}),
+      ...(attach && !attach.isImage ? { fileUrl: attach.url, fileName: attach.name, fileSize: attach.size } : {}),
       ...(mentions.length > 0 ? { mentions } : {}),
     };
 
@@ -301,18 +260,21 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  //  사진·파일 한 길 — Storage 에 올리고 주소만 메시지에 싣는다.
+  //  base64 로 글자에 실으면 Firestore 1MB 한계에 걸려 폰 사진은 아예 안 갔다.
+  const handleFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Basic compression/preview logic: Convert to base64
-    // In a real app, we'd upload to Storage and get a URL
-    const reader = new window.FileReader();
-    reader.onload = (event) => {
-      const base64 = event.target?.result as string;
-      handleSendMessage(undefined, base64);
-    };
-    reader.readAsDataURL(file);
+    e.target.value = '';           // 같은 파일을 다시 골라도 다시 올라가게
+    if (!file || !activeRoomId) return;
+    setUploading(true);
+    try {
+      const attach = await uploadChatFile(activeRoomId, file);
+      await handleSendMessage(undefined, attach);
+    } catch (err: any) {
+      setFirestoreError(`첨부 실패: ${err?.message || '네트워크 오류'}`);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -334,11 +296,37 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
 
   const insertMention = (name: string) => {
     if (mentionSearch === null) return;
-    const lastAtIdx = messageText.lastIndexOf('@');
-    const newValue = messageText.slice(0, lastAtIdx) + `@${name} ` + messageText.slice(lastAtIdx + 1 + mentionSearch.length);
-    setMessageText(newValue);
+    setMessageText(replaceMentionQuery(messageText, mentionSearch, name));
     setMentionSearch(null);
+    inputRef.current?.focus();
   };
+
+  //  **메시지를 꾹 누르면 그 사람을 부른다**(2026-09-03 사장님).
+  //  카톡의 '답장'자리를 멘션으로 쓴다 — 이 앱은 인용이 아니라 멘션으로 알림이 간다.
+  const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelLongPress = () => { if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; } };
+  const mentionSender = (name: string) => {
+    if (!name || name === currentUser.name) return;
+    setMessageText(t => appendMention(t, name));
+    setMentionSearch(null);
+    inputRef.current?.focus();
+    navigator.vibrate?.(15);
+  };
+  const startLongPress = (name: string) => {
+    cancelLongPress();
+    longPressRef.current = setTimeout(() => { longPressRef.current = null; mentionSender(name); }, 450);
+  };
+
+  /**
+   *  **보내기 전에 누가 불렸는지 보여준다**(2026-09-03 사장님).
+   *  `@이름` 을 쳐도 글자만 남아서 멘션이 먹었는지 알 수 없었다.
+   *  전송할 때 쓰는 mentionedIds 를 그대로 써야 화면과 실제가 안 갈라진다.
+   */
+  const pendingMentions = useMemo(() => {
+    return mentionedIds(messageText, employees).map(id =>
+      id === MENTION_ADMIN_ID ? MENTION_ADMIN : (employees.find(e => e.id === id)?.name ?? '')
+    ).filter(Boolean);
+  }, [messageText, employees]);
 
   const filteredMentionUsers = useMemo(() => {
     if (mentionSearch === null) return [];
@@ -399,17 +387,16 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                   </button>
                 ))}
               </div>
+              {/*  **권한은 여기서 안 묻는다**(2026-09-03 사장님) — 묻는 자리가 흩어져 있으면
+                   어디서 켰는지 헷갈린다. 폰 알림 권한은 **계정 메뉴 한 곳**에서만 받는다.
+                   여기 남은 건 소리를 낼지 진동을 줄지 하는 취향이고, 그 값도 공용 자리에 있다. */}
               {notifPermission !== 'granted' && (
-                <button
-                  onClick={requestNotifPermission}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-[11px] font-bold hover:bg-amber-100 transition-all"
-                >
-                  <span>🔔</span>
-                  <span>{notifPermission === 'denied' ? '알림 차단됨 — 브라우저 설정에서 허용' : '알림 허용하기'}</span>
-                </button>
+                <p className="text-[10px] font-bold text-amber-600 px-1 leading-relaxed">
+                  폰 알림은 왼쪽 아래 <b>계정</b> 을 눌러 한 번만 켜면 됩니다.
+                </p>
               )}
               {notifPermission === 'granted' && (
-                <p className="text-[10px] text-emerald-600 font-bold px-1">✅ 알림 허용됨</p>
+                <p className="text-[10px] text-emerald-600 font-bold px-1">✅ 폰 알림 켜져 있음</p>
               )}
             </div>
           )}
@@ -425,6 +412,12 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
           </div>
         </div>
 
+        {pendingShare && (
+          <div className="mx-2 mt-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl">
+            <p className="text-[10px] font-black text-indigo-700 mb-0.5">공유된 내용 — 보낼 대화방을 고르세요</p>
+            <p className="text-[10px] font-bold text-indigo-500 line-clamp-2 whitespace-pre-wrap">{pendingShare}</p>
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto no-scrollbar p-2 space-y-1">
           {myRooms.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-slate-400 p-6 text-center">
@@ -574,7 +567,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
             </div>
 
             {/* Messages List */}
-            <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-slate-50/30">
+            <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 space-y-0.5 custom-scrollbar bg-slate-50/30">
               {firestoreError && (
                 <div className="flex items-center space-x-2 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-xs font-bold text-rose-600">
                   <X size={14} className="shrink-0" />
@@ -599,18 +592,29 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                 localMessages.map((msg, idx) => {
                   const isMine = msg.senderId === currentUser.id;
                   const showSender = idx === 0 || localMessages[idx - 1].senderId !== msg.senderId;
+                  //  시간은 이어 말한 덩어리의 마지막에만 — 줄마다 찍으면 지저분하다(카톡과 같다)
+                  const nx = localMessages[idx + 1];
+                  const showTime = !nx || nx.senderId !== msg.senderId
+                    || msg.createdAt.slice(0, 16) !== nx.createdAt.slice(0, 16);
                   
                   return (
-                    <div key={msg.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
+                    <div key={msg.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'} ${showSender ? 'mt-3 first:mt-0' : ''}`}>
                       {!isMine && showSender && (
                         <p className="text-[10px] font-black text-slate-400 mb-1 ml-1 uppercase tracking-tighter">
                           {msg.senderName}
                         </p>
                       )}
-                      <div className={`max-w-[70%] px-4 py-3 rounded-2xl text-sm font-medium shadow-sm relative group ${
+                      <div
+                        onPointerDown={() => { if (!isMine) startLongPress(msg.senderName); }}
+                        onPointerUp={cancelLongPress}
+                        onPointerLeave={cancelLongPress}
+                        onPointerCancel={cancelLongPress}
+                        onContextMenu={(e) => { if (!isMine) { e.preventDefault(); cancelLongPress(); mentionSender(msg.senderName); } }}
+                        title={isMine ? undefined : '꾹 누르면 이 사람을 부릅니다'}
+                        className={`max-w-[70%] px-4 py-3 rounded-2xl text-sm font-medium shadow-sm relative group ${
                         isMine 
                           ? 'bg-indigo-600 text-white rounded-tr-none' 
-                          : 'bg-white text-slate-700 border border-slate-100 rounded-tl-none'
+                          : 'bg-white text-slate-700 border border-slate-100 rounded-tl-none select-none cursor-pointer active:scale-[0.99] transition-transform'
                       }`}>
                         {msg.imageUrl && (
                           <div className="mb-2 rounded-xl overflow-hidden border border-white/10">
@@ -619,9 +623,30 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                               alt="Uploaded" 
                               className="max-w-full h-auto object-cover cursor-pointer hover:scale-[1.02] transition-transform"
                               referrerPolicy="no-referrer"
-                              onClick={() => window.open(msg.imageUrl, '_blank')}
+                              onClick={(e) => { e.stopPropagation(); setViewImage(msg.imageUrl!); }}
                             />
                           </div>
+                        )}
+                        {msg.fileUrl && (
+                          <a
+                            href={msg.fileUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            className={`mb-2 flex items-center gap-2 px-3 py-2 rounded-xl border ${
+                              isMine ? 'bg-white/10 border-white/20' : 'bg-slate-50 border-slate-200'
+                            }`}
+                          >
+                            <Paperclip size={16} className="shrink-0" />
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-xs font-black truncate">{msg.fileName}</span>
+                              {msg.fileSize != null && (
+                                <span className={`block text-[10px] font-bold ${isMine ? 'text-white/60' : 'text-slate-400'}`}>
+                                  {fileSizeLabel(msg.fileSize)}
+                                </span>
+                              )}
+                            </span>
+                          </a>
                         )}
                         {msg.text && (
                           <p className="whitespace-pre-wrap leading-relaxed">
@@ -633,10 +658,13 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                             })}
                           </p>
                         )}
-                        <span className={`absolute bottom-0 ${isMine ? 'right-full mr-2' : 'left-full ml-2'} text-[9px] font-bold text-slate-300 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity`}>
-                          {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
                       </div>
+                      {/*  시간은 늘 보인다 — hover 로만 뜨게 해놨더니 폰에선 아예 못 봤다(2026-09-03 사장님) */}
+                      {showTime && (
+                        <span className={`text-[9px] font-bold text-slate-400 whitespace-nowrap mt-0.5 ${isMine ? 'mr-1' : 'ml-1'}`}>
+                          {new Date(msg.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
                     </div>
                   );
                 })
@@ -645,14 +673,14 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
             </div>
 
             {/* Message Input */}
-            <div className="p-6 bg-white border-t border-slate-100 relative">
+            <div className="p-3 sm:p-6 bg-white border-t border-slate-100 relative">
               <AnimatePresence>
                 {mentionSearch !== null && filteredMentionUsers.length > 0 && (
                   <motion.div 
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 10 }}
-                    className="absolute bottom-full left-6 mb-2 w-64 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-20"
+                    className="absolute bottom-full left-3 sm:left-6 mb-2 w-64 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-20"
                   >
                     <div className="p-3 bg-slate-50 border-b border-slate-100 flex items-center space-x-2">
                       <AtSign size={14} className="text-indigo-600" />
@@ -679,31 +707,72 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                 )}
               </AnimatePresence>
 
-              <form onSubmit={handleSendMessage} className="flex items-end space-x-4">
-                <div className="flex items-center space-x-2 mb-2">
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    onChange={handleImageUpload} 
-                    accept="image/*" 
-                    className="hidden" 
-                  />
-                  <button 
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="p-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all"
-                  >
-                    <ImageIcon size={20} />
-                  </button>
-                  <button 
-                    type="button"
-                    className="p-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all"
-                  >
-                    <Paperclip size={20} />
-                  </button>
+              {pendingMentions.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                  <AtSign size={12} className="text-indigo-500 shrink-0" />
+                  {pendingMentions.map(n => (
+                    <span key={n} className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-[10px] font-black">{n}</span>
+                  ))}
+                  <span className="text-[10px] font-bold text-slate-400">에게 알림</span>
                 </div>
-                <div className="flex-1 relative">
+              )}
+              {attachOpen && <div className="fixed inset-0 z-10" onClick={() => setAttachOpen(false)} />}
+              {uploading && (
+                <div className="absolute -top-8 left-3 sm:left-6 flex items-center gap-2 px-3 py-1.5 bg-slate-900/80 text-white rounded-full">
+                  <Loader2 size={12} className="animate-spin" />
+                  <span className="text-[10px] font-black">올리는 중…</span>
+                </div>
+              )}
+              <form onSubmit={handleSendMessage} className="flex items-end gap-2">
+                <input type="file" ref={fileInputRef} onChange={handleFilePick} accept="image/*" className="hidden" />
+                <input type="file" ref={docInputRef} onChange={handleFilePick} className="hidden" />
+
+                {/*  **+ 하나로 접었다**(2026-09-03 사장님) — 사진·클립이 나와 있으면
+                     폰에서 입력칸이 두 글자 폭이 된다. 카톡처럼 눌러야 펴진다. */}
+                <div className="relative shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setAttachOpen(v => !v)}
+                    disabled={uploading}
+                    aria-label="첨부"
+                    className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all active:scale-95 ${
+                      attachOpen ? 'bg-indigo-600 text-white rotate-45' : 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50'
+                    }`}
+                  >
+                    <Plus size={22} />
+                  </button>
+                  <AnimatePresence>
+                    {attachOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                        className="absolute bottom-full left-0 mb-2 w-40 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-20"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => { setAttachOpen(false); fileInputRef.current?.click(); }}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-indigo-50 transition-all text-left"
+                        >
+                          <ImageIcon size={18} className="text-indigo-600 shrink-0" />
+                          <span className="text-xs font-black text-slate-700">사진</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setAttachOpen(false); docInputRef.current?.click(); }}
+                          className="w-full flex items-center gap-3 px-4 py-3 border-t border-slate-100 hover:bg-indigo-50 transition-all text-left"
+                        >
+                          <Paperclip size={18} className="text-indigo-600 shrink-0" />
+                          <span className="text-xs font-black text-slate-700">파일</span>
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                <div className="flex-1 min-w-0">
                   <textarea 
+                    ref={inputRef}
                     value={messageText}
                     onChange={handleInputChange}
                     onKeyDown={(e) => {
@@ -712,17 +781,17 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                         handleSendMessage();
                       }
                     }}
-                    placeholder="메시지를 입력하세요... (@를 입력하여 멘션)"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none max-h-32 custom-scrollbar"
+                    placeholder="메시지 입력"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none max-h-32 custom-scrollbar"
                     rows={1}
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={!messageText.trim() || isSending}
-                  className="w-14 h-14 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-100 hover:bg-indigo-700 disabled:opacity-50 disabled:shadow-none transition-all active:scale-95 shrink-0"
+                  className="w-11 h-11 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-100 hover:bg-indigo-700 disabled:opacity-50 disabled:shadow-none transition-all active:scale-95 shrink-0"
                 >
-                  {isSending ? <Loader2 size={22} className="animate-spin" /> : <Send size={24} />}
+                  {isSending ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
                 </button>
               </form>
             </div>
@@ -882,6 +951,22 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
           </div>
         )}
       </AnimatePresence>
+      {/*  사진 크게 보기 — 아무 데나 누르면 닫힌다 */}
+      {viewImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setViewImage(null)}
+        >
+          <img src={viewImage} alt="" className="max-w-full max-h-full object-contain" referrerPolicy="no-referrer" />
+          <button
+            onClick={() => setViewImage(null)}
+            aria-label="닫기"
+            className="absolute top-4 right-4 w-10 h-10 bg-white/15 text-white rounded-full flex items-center justify-center"
+          >
+            <X size={20} />
+          </button>
+        </div>
+      )}
       {confirmModal && (
         <ConfirmModal
           message={confirmModal.message}

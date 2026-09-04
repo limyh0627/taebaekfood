@@ -414,6 +414,11 @@ export interface Employee {
   birthDate?: string;
   annualLeave?: AnnualLeave;
   healthCertDate?: string;  // 보건증 발급일 (YYYY-MM-DD)
+  /**
+   * **관리자 앱 접근 허용.** 판정은 [adminAccess.ts](adminAccess.ts) 의 `canEnterAdmin` 하나만 한다.
+   * 사람 이름을 코드에 박지 않으려고 둔 칸이다 — 권한을 주고 거두는 데 배포가 필요 없다.
+   */
+  adminAccess?: boolean;
 }
 
 // ── 급여대장 ────────────────────────────────────────────────────────────────
@@ -518,6 +523,10 @@ export interface ChatMessage {
   imageUrl?: string;
   createdAt: string;
   mentions?: string[]; // Array of mentioned user IDs
+  /** 사진이 아닌 첨부(문서·엑셀 등) — Storage 주소만 싣는다 */
+  fileUrl?: string;
+  fileName?: string;
+  fileSize?: number;
 }
 
 export interface ChatRoom {
@@ -693,6 +702,11 @@ export interface IssuedStatement {
   totalTax: number;
   totalAmount: number;
   items: IssuedStatementItem[];
+  /**
+   * **전표 비고** — 결제 조건·납기 같은 걸 적는 자리(2026-09-03 사장님).
+   * 품목 줄이 아니라 **전표 전체**에 붙는 말이다. 인쇄물 합계 밑에 찍힌다.
+   */
+  memo?: string;
   taxIssuedAt?: string;   // 세금계산서(과세분) 발행 일시
   /**
    * **계산서(면세분) 발행 일시** — 과세와 면세는 서류가 따로 나간다(세금계산서 / 계산서).

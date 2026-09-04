@@ -273,12 +273,24 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
       {/* 대분류 탭 + 검색 */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap gap-1 bg-white p-1 rounded-2xl border border-slate-200 shadow-sm">
+          {/*  **더블클릭 삭제는 없앴다**(2026-09-03 사장님) — 고르려다 두 번 눌려 지워진다.
+               대분류·중분류를 지우려면 손으로 지우는 길을 따로 둔다. */}
           {sortedCats.map(cat => (
-            <button key={cat.id} onClick={() => selectCat(cat.name)} onDoubleClick={() => handleDeleteCategory(cat)}
-              title="더블클릭 시 빈 대분류 삭제" className={tabCls(activeCat === cat.name)}>
+            <span key={cat.id} className="relative inline-flex items-center">
+            <button onClick={() => selectCat(cat.name)}
+              className={tabCls(activeCat === cat.name)}>
               {cat.name}
               <span className={`ml-1.5 text-[10px] ${activeCat === cat.name ? 'text-indigo-200' : 'text-slate-400'}`}>{docCountByCat.get(cat.name) ?? 0}</span>
             </button>
+            {/*  지우는 길은 **작은 X 하나** — 고르고 있는 것에만 뜬다.
+                 더블클릭은 고르려다 두 번 눌려 지워져서 없앴다(2026-09-03 사장님). */}
+            {activeCat === cat.name && (docCountByCat.get(cat.name) ?? 0) === 0 && (
+              <button onClick={() => handleDeleteCategory(cat)} title="빈 대분류 지우기"
+                className="ml-0.5 p-0.5 rounded text-slate-300 hover:text-rose-500 hover:bg-rose-50">
+                <X className="w-3 h-3" />
+              </button>
+            )}
+            </span>
           ))}
           {addingCat ? (
             <div className="flex items-center gap-1 px-1">
@@ -307,11 +319,20 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
         <div className="flex flex-wrap items-center gap-1.5 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm">
           <button onClick={() => setActiveSub('')} className={chipCls(activeSub === '')}>전체</button>
           {subsOfActive.map(sub => (
-            <button key={sub.id} onClick={() => setActiveSub(sub.name)} onDoubleClick={() => handleDeleteSub(sub)}
-              title="더블클릭 시 빈 중분류 삭제" className={chipCls(activeSub === sub.name)}>
+            <span key={sub.id} className="relative inline-flex items-center">
+            <button onClick={() => setActiveSub(sub.name)}
+              className={chipCls(activeSub === sub.name)}>
               {sub.name}
               <span className={`ml-1 text-[10px] ${activeSub === sub.name ? 'text-indigo-500' : 'text-slate-400'}`}>{docCountBySub.get(`${sub.category}|${sub.name}`) ?? 0}</span>
             </button>
+            {/*  지우는 길은 작은 X 하나 — 고르고 있는 것에만 */}
+            {activeSub === sub.name && (
+              <button onClick={() => handleDeleteSub(sub)} title="빈 중분류 지우기"
+                className="ml-0.5 p-0.5 rounded text-slate-300 hover:text-rose-500 hover:bg-rose-50">
+                <X className="w-3 h-3" />
+              </button>
+            )}
+            </span>
           ))}
           {addingSub ? (
             <div className="flex items-center gap-1">

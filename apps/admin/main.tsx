@@ -17,6 +17,8 @@ import { updateItem } from '../../src/shared/services/firebaseService';
 import { DEFAULT_COMPANY_INFO } from '../../src/config';
 import AuthPage from '../../src/shared/components/AuthPage';
 import AdminApp from '../../src/features/admin/AdminApp';
+import { takeShareFromUrl } from '../../src/shared/shareTarget';
+import { canEnterAdmin, freshAccess } from '../../src/shared/adminAccess';
 import '../../src/index.css';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -44,6 +46,9 @@ const AdminRoot: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
   const [currentView, setCurrentView] = useState<ViewType>(() => {
+    //  카톡·문자에서 공유해 들어왔으면 오피스톡부터 연다(2026-09-03 사장님).
+    //  주소는 여기서 바로 비운다 — 새로고침에 같은 글이 또 뜨면 안 된다.
+    if (takeShareFromUrl()) return 'officetalk';
     try { return (localStorage.getItem('tb_admin_view') as ViewType) || 'orders'; } catch { return 'orders'; }
   });
   useEffect(() => { try { localStorage.setItem('tb_admin_view', currentView); } catch {} }, [currentView]);
@@ -75,7 +80,11 @@ const AdminRoot: React.FC = () => {
     );
   }
 
-  if (currentUser.id !== 'admin' && !isAdminAuthenticated) {
+  //  들어갈 수 있는지는 직원 기록의 `adminAccess` 칸이 정한다(canEnterAdmin).
+  //  localStorage 에 박힌 사본은 낡으니, 지금 목록의 권한으로 덮어 본다.
+  const 접근가능 = canEnterAdmin(freshAccess(currentUser, appData.employees));
+
+  if (!접근가능 && !isAdminAuthenticated) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
         <div className="bg-white rounded-3xl shadow-xl border border-slate-100 p-10 max-w-sm w-full text-center space-y-4">

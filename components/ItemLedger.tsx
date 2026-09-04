@@ -78,11 +78,17 @@ const ItemLedger: React.FC<{
           <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-3 flex-wrap">
             <span className="text-sm font-black text-slate-800">{picked.name}</span>
             <span className="text-[11px] font-bold text-slate-400">{picked.spec || picked.unit}</span>
-            <div className="ml-auto flex items-center gap-3 text-[11px] font-black">
-              <span className="text-emerald-600 flex items-center gap-0.5"><ArrowDownRight size={12}/>들어옴 {fmt(ledger.inSum)}</span>
-              <span className="text-rose-500 flex items-center gap-0.5"><ArrowUpRight size={12}/>나감 {fmt(-ledger.outSum)}</span>
-              <span className="text-slate-700">흐름 {fmt(ledger.net)}</span>
-              <span className="text-slate-400">지금 재고 {fmt(Number(picked.stock ?? 0))}{picked.unit}</span>
+            {/*  **기초 + 들어옴 − 나감 = 지금 재고** — 거래처원장과 같은 모양으로 읽힌다
+                 (2026-09-03 사장님). '기초'는 이 원장이 못 본 몫이다 — 주문 스냅샷이 없던
+                 옛 생산, 실사·조정, 그리고 2026-09-03 전에 산 것. 감추지 않고 첫 칸에 놓는다. */}
+            <div className="ml-auto flex items-center gap-2.5 text-[11px] font-black flex-wrap">
+              <span className="text-slate-400">기초 <span className="text-slate-500 tabular-nums">{fmt(ledger.gap)}</span></span>
+              <span className="text-slate-300">+</span>
+              <span className="text-emerald-600">들어옴 <span className="tabular-nums">{fmt(ledger.inSum)}</span></span>
+              <span className="text-slate-300">−</span>
+              <span className="text-rose-500">나감 <span className="tabular-nums">{fmt(-ledger.outSum)}</span></span>
+              <span className="text-slate-300">=</span>
+              <span className="text-slate-700">재고 <span className="tabular-nums">{fmt(Number(picked.stock ?? 0))}</span>{picked.unit}</span>
             </div>
           </div>
           {/* 차이를 가리지 않는다 — 주문 밖에서 움직인 몫이 곧 실사·조정이다 */}

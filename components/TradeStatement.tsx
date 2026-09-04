@@ -132,6 +132,8 @@ const AXIS_CLS: Record<string, string> = {
 };
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
+/** 인쇄 HTML에 사람이 친 글을 그대로 끼울 때 — <, & 가 태그로 새는 걸 막는다. */
+const esc = (t: string) => t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
 /**
  * 잔액이 뒤집혔을 때의 이름 — 매출인데 더 받았으면 **선수금**, 매입인데 더 냈으면 **선급금**.
@@ -259,6 +261,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // ── 직접 입력 모드 ──
   const [manualMode, setManualMode] = useState(false);
+  /** 전표 비고 — 합계 밑에 적는다. 품목이 아니라 전표 전체에 붙는 말이다. */
+  const [stmtMemo, setStmtMemo] = useState('');
   /**
    * `side`가 달린 줄 = **양변 전표(일반전표)**. 기초이월·감가상각처럼 차·대를 직접 세우는 것.
    * 안 실어 나르면 저장 한 번에 side가 사라지고, autoJournal이 짐작을 안 하므로
@@ -1028,7 +1032,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setManualItems([{ name: '', spec: '', qty: '', price: '', isTaxExempt: false }]);
     setLoadedPoIds([]);
   };
-  const closeCreate = () => { setCreateMode(null); setEditingStmt(null); setIsEditMode(false); setTradeNote(''); setSelectedItemIdx(null); setQuickName(''); setQuickSpec(''); setQuickQty(''); setQuickPrice(''); setQuickNote(''); setQuickSearchOpen(false); setQuickIsTaxExempt(false); setShowItemPicker(false); setPickerSearch(''); setPickerQtys({}); setNoLinkIds(new Set()); setAccountCodeOverrides({}); setLoadedPoIds([]); setIssuePay(false); setIssuePayAmount(''); hasIssuedRef.current = false; };
+  const closeCreate = () => { setCreateMode(null); setEditingStmt(null); setIsEditMode(false); setTradeNote(''); setStmtMemo(''); setSelectedItemIdx(null); setQuickName(''); setQuickSpec(''); setQuickQty(''); setQuickPrice(''); setQuickNote(''); setQuickSearchOpen(false); setQuickIsTaxExempt(false); setShowItemPicker(false); setPickerSearch(''); setPickerQtys({}); setNoLinkIds(new Set()); setAccountCodeOverrides({}); setLoadedPoIds([]); setIssuePay(false); setIssuePayAmount(''); hasIssuedRef.current = false; };
 
   // pendingInvoice가 오면 자동으로 매입전표 생성 모달 열기
   useEffect(() => {
@@ -1077,6 +1081,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setSelectedClientId(stmt.partnerId);
     setSelectedOrderIds(String(stmt.orderId ?? '').split(/[,\s]+/).filter(Boolean));
     setTradeDate(stmt.tradeDate);
+    setStmtMemo(stmt.memo ?? '');
     setManualMode(true);
     setManualItems([
       ...stmt.items.map(i => ({
@@ -1411,6 +1416,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       //  화면에 떠 있는 동안 다른 전표가 나갔으면 낡아 있다. 받아 가면 이번 판에서
       //  다시 안 나온다 — 연달아 발행해도 목록 갱신을 안 기다린다.
       docNo: claimDocNo(tradeDate, mergedStatements),
+      ...(stmtMemo.trim() ? { memo: stmtMemo.trim() } : {}),
       totalSupply,
       totalTax,
       totalAmount,
@@ -1505,6 +1511,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     if (!editingStmt || lineItems.length === 0) return;
     const proposed: Partial<IssuedStatement> = {
       tradeDate,
+      memo: stmtMemo.trim(),
       partnerId: selectedClientId,
       partnerName: selectedClient?.name || '',
       totalSupply,
@@ -1526,7 +1533,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     alert('전표가 수정되었습니다.');
   }, [editingStmt, tradeDate, selectedClientId, selectedClient, totalSupply, totalTax, totalAmount, lineItems, onUpdateIssuedStatement, onUpsertPartnerItem, onUpdateItemCost, allItems, partnerIn]);
 
-  const buildPrintHtml = (items: LineItem[] | IssuedStatement['items'], sup: number, tax: number, amt: number, type: StatementType, partner: string, docNoStr: string, dateString: string) => {
+  const buildPrintHtml = (items: LineItem[] | IssuedStatement['items'], sup: number, tax: number, amt: number, type: StatementType, partner: string, docNoStr: string, dateString: string, memoText = '') => {
     const m = dateString.match(/(\d+)년\s*(\d+)월\s*(\d+)일/);
     const yyyy = m ? m[1] : '';
     const mmN  = m ? m[2] : '';
@@ -1704,7 +1711,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             <td style="border-bottom:1px solid ${BC};text-align:right;font-size:9.5px;padding:1.5px 5px;">0</td></tr>
         <tr><td style="border-bottom:1px solid ${BC};border-right:1px solid ${BC};font-size:9.5px;font-weight:bold;padding:1.5px 4px;">금일미수</td>
             <td style="border-bottom:1px solid ${BC};text-align:right;font-size:11px;font-weight:bold;padding:1.5px 5px;">${fmt(amt)}</td></tr>
-        <tr><td colspan="2" style="font-size:9.5px;font-weight:bold;padding:2px 4px;height:10mm;vertical-align:top;">비&nbsp;고</td></tr>
+        <tr><td colspan="2" style="font-size:9.5px;font-weight:bold;padding:2px 4px;height:10mm;vertical-align:top;">비&nbsp;고${memoText ? `<div style="font-weight:normal;font-size:9px;white-space:pre-wrap;margin-top:1px;">${esc(memoText)}</div>` : ''}</td></tr>
       </table>
     </td>
     <td style="border:1px solid ${BC};text-align:center;vertical-align:middle;font-size:11px;font-weight:bold;letter-spacing:3px;">인<br/>수<br/>확<br/>인</td>
@@ -1760,7 +1767,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   };
 
   const handlePrint = () => {
-    const html = buildPrintHtml(lineItems, totalSupply, totalTax, totalAmount, stmtType, selectedClient?.name || '', docNo, dateStr);
+    const html = buildPrintHtml(lineItems, totalSupply, totalTax, totalAmount, stmtType, selectedClient?.name || '', docNo, dateStr, stmtMemo.trim());
     printViaIframe(html, `${stmtType}전표`);
     // 인쇄는 '출력'만 — 발행(저장)은 '저장' 버튼(markIssued) 한 곳에서만. 저장된 전표만 인쇄 가능.
   };
@@ -1768,7 +1775,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const handleDetailPrint = (stmt: IssuedStatement) => {
     const d = new Date(stmt.tradeDate + 'T00:00:00');
     const ds = `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
-    const html = buildPrintHtml(stmt.items as any, stmt.totalSupply, stmt.totalTax, stmt.totalAmount, stmt.type, stmt.partnerName, stmt.docNo, ds);
+    const html = buildPrintHtml(stmt.items as any, stmt.totalSupply, stmt.totalTax, stmt.totalAmount, stmt.type, stmt.partnerName, stmt.docNo, ds, stmt.memo ?? '');
     printViaIframe(html, `${stmt.type}전표`);
   };
 
@@ -4762,6 +4769,17 @@ ${names}
                     </tr>
                   </tbody>
                 </table>
+                  {/*  **전표 비고** — 합계 바로 밑(2026-09-03 사장님). 품목 줄이 아니라
+                       전표 전체에 붙는 말이라 결제 조건·납기 같은 걸 적는다. 인쇄물에도 나간다. */}
+                  <div className="min-w-[720px] px-3 py-2.5 border-t border-slate-100 bg-slate-50/50">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">비고</p>
+                    <textarea
+                      value={stmtMemo}
+                      onChange={e => setStmtMemo(e.target.value)}
+                      placeholder="결제 조건, 납기 등 (선택)"
+                      rows={2}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-indigo-400 resize-y" />
+                  </div>
               </div>
             ) : (!selectedClientId && activeOrders.length === 0) ? (
               <div className="flex-1 flex items-center justify-center text-slate-200 bg-slate-50">

@@ -18,6 +18,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       manifest: false,
       workbox: {
+        //  알림 누름 처리를 얹는다 — 안드로이드는 알림을 서비스워커가 띄우므로
+        //  누른 뒤 앱을 여는 것도 서비스워커 몫이다(public/notif-sw.js).
+        importScripts: ['notif-sw.js'],
         maximumFileSizeToCacheInBytes: 5000000,
         clientsClaim: true,
         //  기다리지 않고 바로 새 일꾼으로 넘어간다 — autoUpdate 와 짝이다

@@ -5,6 +5,30 @@
 
 ---
 
+## 2026-09-03 — 이은경 상무 관리자 앱 접근 허용
+
+**작업자:** Claude 에이전트 (사장님 지시: "이은경 상무 계정도 관리자 앱 들어갈 수 있게 해줘")
+
+`employees/emp-1773373867440` (이은경) 에 **`adminAccess: true`** 를 넣었다. 한 칸이다.
+
+**왜 데이터인가** — 전에는 [apps/admin/main.tsx](apps/admin/main.tsx) 에 `id !== 'admin'`
+이 박혀 있어서 사장님 계정 말고는 아무도 못 들어왔다. 사람 이름을 코드에 박으면 사람이
+바뀔 때마다 배포해야 한다. 그래서 **직원 기록에 칸을 두고** 코드는
+[adminAccess.ts](src/shared/adminAccess.ts) `canEnterAdmin` 하나만 본다.
+
+| 문서 | 전 | 후 |
+|---|---|---|
+| 이은경 (`emp-1773373867440`) | `adminAccess` 없음 | `adminAccess: true` |
+
+**되돌리기:** `npx tsx scripts/fix-admin-access-eunkyung.mts --undo`
+(백업: `scripts/fix-admin-access-eunkyung-backup.json`)
+
+**앞으로 다른 사람에게 줄 때** — 스크립트를 또 짤 일이 아니다. 직원 문서에
+`adminAccess: true` 만 넣으면 된다. 로그인할 때 박아 둔 사본이 낡아도
+`freshAccess` 가 지금 목록으로 덮어쓰므로 앱을 다시 깔 필요는 없다.
+
+---
+
 ## 2026-09-01 — 251/253 분리 · 풍회 깻묵 · 상차비 계정
 
 **작업자:** Claude 에이전트 (사장님 지시)

@@ -103,6 +103,10 @@ import ItemPriceManager from '../../../components/ItemPriceManager';
 import PriceManager from '../../../components/PriceManager';
 import TaxStatement from '../../../components/TaxStatement';
 import OfficeTalk from '../../../components/OfficeTalk';
+import { notify, loadNotifyMode } from '../../shared/notify';
+import { pickNewOrders, newOrderMessage } from '../../shared/newOrderAlert';
+import { pickNewChats, chatMessage } from '../../shared/newChatAlert';
+import AccountMenu from '../../../components/AccountMenu';
 import AdminChecklist from '../../../components/AdminChecklist';
 import PartnerSignupApproval from '../../../components/PartnerSignupApproval';
 import DocumentManager from '../../../components/DocumentManager';
@@ -807,6 +811,60 @@ const AdminApp: React.FC<AdminAppProps> = ({
         setDoc(resetRef, { date: today });
       }
     });
+  }, []);
+
+  /*  **새 주문이 들어오면 폰으로 알린다**(2026-09-03 사장님).
+   *  주문 문서를 직접 본다 — 알림 문서(`notifications`)는 관리자 앱이 넣을 때만 쓰이고,
+   *  직원 앱에서 들어온 주문은 안 남기기 때문이다.
+   *  고르는 셈은 [newOrderAlert.ts](../../shared/newOrderAlert.ts) 에 있고 테스트가 붙어 있다. */
+  const 본주문 = useRef(new Set<string>());
+  const 주문받아봤나 = useRef(false);
+  const 내가넣은주문 = useRef(new Set<string>());
+  const 켠시각 = useRef(new Date().toISOString());
+
+  useEffect(() => {
+    if (!orders.length && !주문받아봤나.current) return;
+    const 새것 = pickNewOrders(orders, 본주문.current, {
+      seeded: 주문받아봤나.current,
+      since: 켠시각.current,
+      mine: 내가넣은주문.current,
+    });
+    주문받아봤나.current = true;
+    if (!새것.length) return;
+    const { title, body } = newOrderMessage(새것.map(o => o.partnerName || '거래처'));
+    notify({ title, body, tag: 'new-order', mode: loadNotifyMode(), view: 'orders', whenFocused: true, onClick: () => setCurrentView('orders') });
+  }, [orders]);
+
+  /*  **오피스톡 알림은 어느 화면에 있어도 온다**(2026-09-03 사장님).
+   *  전에는 감지가 OfficeTalk 안에 있어서 그 화면을 보고 있을 때만 왔다.
+   *  고르는 셈은 [newChatAlert.ts](../../shared/newChatAlert.ts) 에 있고 테스트가 붙어 있다. */
+  const 본방 = useRef(new Map<string, string>());
+  useEffect(() => {
+    const 새것 = pickNewChats(chatRooms, 본방.current, {
+      userId: currentUser.id,
+      openRoomId: currentView === 'officetalk' ? openChatRoomId : null,
+      focused: currentView === 'officetalk' && document.hasFocus(),
+    });
+    for (const room of 새것) {
+      const { title, body } = chatMessage(room);
+      notify({
+        title, body, tag: room.id, mode: loadNotifyMode(), view: 'officetalk', whenFocused: true,
+        onClick: () => { setCurrentView('officetalk'); setOpenChatRoomId(room.id); },
+      });
+    }
+  }, [chatRooms]);
+
+  /*  알림을 눌러 앱이 열렸을 때 그 화면으로 보낸다.
+   *  꺼져 있었으면 주소로(`?notif=`), 열려 있었으면 서비스워커가 보낸 쪽지로 온다. */
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('notif');
+    if (q) { setCurrentView(q as ViewType); window.history.replaceState(null, '', window.location.pathname); }
+
+    const 쪽지 = (e: MessageEvent) => {
+      if (e.data?.type === 'notif-open' && e.data.view) setCurrentView(e.data.view as ViewType);
+    };
+    navigator.serviceWorker?.addEventListener('message', 쪽지);
+    return () => navigator.serviceWorker?.removeEventListener('message', 쪽지);
   }, []);
 
   // 2주 지난 알림 자동 삭제
@@ -1582,29 +1640,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
             </div>
           )}
 
-          {/* 계정 정보 (클릭 → 로그아웃) */}
-          <div
-            className={`mb-6 cursor-pointer group ${isSidebarCollapsed ? 'flex justify-center' : ''}`}
-            onClick={() => window.confirm(`${currentUser.name}님, 로그아웃 하시겠습니까?`) && onLogout()}
-            title="클릭하여 로그아웃"
-          >
-            {isSidebarCollapsed ? (
-              <div className="w-9 h-9 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-sm overflow-hidden group-hover:ring-2 group-hover:ring-rose-400 transition-all">
-                <img src={`https://picsum.photos/seed/${currentUser.id}/36/36`} alt="profile" />
-              </div>
-            ) : (
-              <div className="flex items-center space-x-3 bg-slate-50 group-hover:bg-rose-50 rounded-2xl px-3 py-2.5 border border-slate-100 group-hover:border-rose-200 transition-all">
-                <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-sm overflow-hidden shrink-0">
-                  <img src={`https://picsum.photos/seed/${currentUser.id}/32/32`} alt="profile" />
-                </div>
-                <div className="overflow-hidden flex-1">
-                  <p className="text-xs font-bold text-slate-700 truncate group-hover:text-rose-600 transition-colors">{currentUser.name}</p>
-                  <p className="text-[9px] text-slate-400 font-medium uppercase tracking-tighter truncate">{currentUser.department} · {currentUser.position}</p>
-                </div>
-                <LogOut size={13} className="text-slate-300 group-hover:text-rose-400 shrink-0 transition-colors" />
-              </div>
-            )}
-          </div>
+          {/*  계정 메뉴 — 알림 권한·소리설정·로그아웃이 다 여기 있다.
+               권한을 묻는 자리는 앱 전체에서 이 한 곳이다(2026-09-03 사장님). */}
+          <AccountMenu currentUser={currentUser} collapsed={isSidebarCollapsed} onLogout={onLogout} />
           
           <div className="flex-1 min-h-0 space-y-8 overflow-y-auto no-scrollbar">
 
@@ -3887,6 +3925,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       cashEntries={companyCashEntries}
                       accountCodes={appData.accountCodes}
                       onOpenVoucher={(_id, docNo) => { setFocusDocNo(docNo); setCurrentView('trade-statement'); }}
+                      settlements={appData.settlements}
                       onAddCashEntry={(e) => addCashEntry(e)}
                     />
                   ) : (
@@ -4256,6 +4295,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           const orderId = `ORD-${Date.now()}`;
           //  카드번호는 전표번호와 같은 규칙(shared/cardNo) — 날짜 + 그날 순번
           const cardNo = nextOrderNo(today(), allOrders);
+          내가넣은주문.current.add(orderId);
           await addItem('orders', {...o, id: orderId, cardNo, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
           console.log('[AddOrder] orders 저장 완료', orderId);
           await checkAndAlertShortage(o.items, o.partnerId);
@@ -4275,6 +4315,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           const orderId = `ORD-${Date.now()}`;
           //  카드번호는 전표번호와 같은 규칙(shared/cardNo) — 날짜 + 그날 순번
           const cardNo = nextOrderNo(today(), allOrders);
+          내가넣은주문.current.add(orderId);
           await addItem('orders', {...o, id: orderId, cardNo, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
           console.log('[PasteOrder] orders 저장 완료', orderId);
           await checkAndAlertShortage(o.items, o.partnerId);

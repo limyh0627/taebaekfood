@@ -52,8 +52,13 @@ export const SPLIT_SIDE = 'max-h-[40vh] lg:max-h-[calc(100vh-260px)] overflow-y-
 
 /** 이 화면에서 **제일 중요한 한 가지** — 발행·저장처럼 되돌리기 어려운 것 */
 export const BTN = 'px-4 py-2 rounded-xl bg-slate-700 text-white text-xs font-black hover:bg-slate-800 transition-all disabled:opacity-40';
-/** 돈이 들어오는 쪽(수금·매출) */
+/**
+ * **돈이 들어오는 쪽은 파랑, 나가는 쪽은 빨강.** (2026-09-03 사장님)
+ * 회색으로 바꿔 봤더니 "들어오나 나가나"가 색으로 안 읽혔다 — 그게 제일 중요한 정보다.
+ */
 export const BTN_IN = 'px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-black hover:bg-blue-700 transition-all disabled:opacity-40';
+/** 돈이 나가는 쪽(지불·매입) */
+export const BTN_OUT_MONEY = 'px-4 py-2 rounded-xl bg-rose-600 text-white text-xs font-black hover:bg-rose-700 transition-all disabled:opacity-40';
 /** 서류를 내보내는 쪽(엑셀·PDF) */
 export const BTN_OUT = 'px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-black hover:bg-emerald-700 transition-all disabled:opacity-40';
 /** 그 밖 — 취소·닫기·보조 */
