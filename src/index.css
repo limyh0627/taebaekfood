@@ -50,6 +50,15 @@ input[type=number] {
   -moz-appearance: textfield;
 }
 
+/*  **날짜 칸이 잘리던 것**(2026-09-03 사장님) — 폰에서 `2026. 09. 0` 까지만 보였다.
+    브라우저가 주는 기본 폭이 우리 로케일 표기('2026. 09. 04')보다 좁다.
+    화면마다 폭을 적으면 또 갈린다 — 앱에 62군데다. 한 줄로 다 잡는다. */
+input[type="date"], input[type="month"], input[type="datetime-local"] {
+  min-width: 9.5rem;
+  flex-shrink: 0;
+}
+input[type="month"] { min-width: 7.5rem; }
+
 /* iOS Safari 스크롤 부드럽게 */
 .overflow-y-auto, .overflow-x-auto {
   -webkit-overflow-scrolling: touch;

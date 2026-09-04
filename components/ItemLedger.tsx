@@ -3,7 +3,8 @@ import { Search, Package, ArrowDownRight, ArrowUpRight } from 'lucide-react';
 import type { Item, Order } from '../src/shared/types';
 import { buildItemLedger, type ItemLedgerKind } from '../src/features/admin/itemLedger';
 import type { ItemReceipt } from '../src/shared/receipt';
-import { matchesSearch } from '../src/shared/hangul';
+import { typeOptions, categoryOptions, filterItems, keepCategory, ALL } from '../src/shared/itemFilter';
+import { pill } from '../src/shared/ui/table';
 
 /**
  * 제품별원장 — 품목 하나가 언제 얼마나 들고 났나.
@@ -31,14 +32,22 @@ const ItemLedger: React.FC<{
 }> = ({ items, orders, receipts = [] }) => {
   const [q, setQ] = useState('');
   const [pickedId, setPickedId] = useState('');
+  //  **분류 필터**(2026-09-03 사장님) — 품목이 많아 이름으로만 찾기 어렵다.
+  //  고를 것은 [itemFilter.ts](../src/shared/itemFilter.ts) 가 **눈앞의 품목에서** 뽑는다.
+  const [type, setType] = useState<string>(ALL);
+  const [cat, setCat] = useState<string>(ALL);
 
   const pickable = useMemo(
     () => items.filter(i => !i.archived).sort((a, b) => a.name.localeCompare(b.name, 'ko')),
     [items]);
-  const shown = useMemo(() => {
-    const t = q.trim();
-    return (t ? pickable.filter(i => matchesSearch(i.name, t) || matchesSearch(String(i.spec ?? ''), t)) : pickable).slice(0, 200);
-  }, [pickable, q]);
+  const types = useMemo(() => typeOptions(pickable), [pickable]);
+  const cats = useMemo(() => categoryOptions(pickable, type), [pickable, type]);
+  const shown = useMemo(
+    () => filterItems(pickable, { type, category: cat, q }).slice(0, 200),
+    [pickable, type, cat, q]);
+
+  //  타입을 바꾸면 카테고리가 그 타입에 없을 수 있다 — 그때는 전체로 돌린다
+  const 타입고르기 = (k: string) => { setType(k); setCat(c => keepCategory(pickable, k, c)); };
 
   const picked = items.find(i => i.id === pickedId);
   const ledger = useMemo(
@@ -50,13 +59,39 @@ const ItemLedger: React.FC<{
     <div className="flex flex-col lg:flex-row gap-3 lg:gap-4 h-full min-h-0">
       {/* 품목 고르기 — 크기 고정. 검색으로 줄 수가 줄어도 창이 안 흔들린다. */}
       <div className="w-full lg:w-[280px] shrink-0 flex flex-col max-h-[38vh] lg:max-h-none bg-white rounded-2xl border border-slate-200 overflow-hidden">
-        <div className="p-2 border-b border-slate-100 relative">
-          <Search size={13} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="품목명·규격으로 찾기"
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-7 pr-2 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
+        <div className="p-2 border-b border-slate-100 space-y-2">
+          <div className="relative">
+            <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="품목명·규격으로 찾기"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-7 pr-2 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
+          </div>
+          {/* 타입 — 완제품·상품·부자재… 있는 것만 나온다 */}
+          <div className="flex flex-wrap gap-1">
+            <button onClick={() => 타입고르기(ALL)} className={pill(type === ALL)}>전체 {pickable.length}</button>
+            {types.map(o => (
+              <button key={o.key} onClick={() => 타입고르기(o.key)} className={pill(type === o.key)}>{o.label} {o.count}</button>
+            ))}
+          </div>
+          {/* 카테고리 — 고른 타입 안에서만. 하나뿐이면 고를 게 없으니 안 그린다 */}
+          {cats.length > 1 && (
+            <div className="flex flex-wrap gap-1 pt-1 border-t border-slate-50">
+              <button onClick={() => setCat(ALL)} className={pill(cat === ALL)}>전체</button>
+              {cats.map(o => (
+                <button key={o.key} onClick={() => setCat(o.key)} className={pill(cat === o.key)}>{o.label} {o.count}</button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex-1 overflow-y-auto">
-          {shown.length === 0 && <p className="px-3 py-8 text-center text-[11px] font-bold text-slate-300">찾는 품목이 없습니다</p>}
+          {shown.length === 0 && (
+            <div className="px-3 py-8 text-center">
+              <p className="text-[11px] font-bold text-slate-300">찾는 품목이 없습니다</p>
+              {(type !== ALL || cat !== ALL) && (
+                <button onClick={() => { setType(ALL); setCat(ALL); }}
+                  className="mt-2 text-[10px] font-black text-indigo-500 underline">분류 필터 풀기</button>
+              )}
+            </div>
+          )}
           {shown.map(i => (
             <button key={i.id} onClick={() => setPickedId(i.id)}
               className={`w-full text-left px-3 py-2 border-b border-slate-50 last:border-0 transition-colors ${

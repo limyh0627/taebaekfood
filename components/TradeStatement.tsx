@@ -4,6 +4,7 @@ import { cardNoLabel } from '../src/shared/cardNo';
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { today, dateOfLocal } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
+import { itemSummary } from '../src/shared/itemSummary';
 import { buildTaxonomy, type TaxonomyRow } from '../src/shared/taxonomy';
 import {
   FileText, Printer, Search, ChevronDown, CalendarDays,
@@ -2745,7 +2746,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                               <span className="text-xs font-black text-slate-700">{s.tradeDate}</span>
                               <span className="text-[10px] text-slate-400 font-mono">{s.docNo}</span>
                               <span className="text-[10px] text-slate-400 flex-1 truncate">
-                                {s.items.slice(0,2).map(i=>i.name).join(', ')}{s.items.length>2?` 외 ${s.items.length-2}건`:''}
+                                {itemSummary(s.items)}
                               </span>
                               {isIssued && <span className="text-[9px] font-black bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full shrink-0">발행</span>}
                               <span className={`text-xs font-black shrink-0 ${isSel ? 'text-emerald-700' : 'text-slate-700'}`}>{fmt2(s.totalAmount)}원</span>
@@ -3359,7 +3360,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 const issuedDate = new Date(stmt.issuedAt);
                 const dateLabel  = `${stmt.tradeDate} ${String(issuedDate.getHours()).padStart(2,'0')}:${String(issuedDate.getMinutes()).padStart(2,'0')}`;
                 const stmtItems  = stmt.items ?? [];
-                const summary    = stmtItems.slice(0, 2).map(i => i.name).join(', ') + (stmtItems.length > 2 ? ` 외 ${stmtItems.length - 2}건` : '');
+                const summary    = itemSummary(stmtItems);
                 const isReturn   = stmtItems.some(i => i.qty < 0);
                 const cumul = row.cumul;
                 const jOpen = expandedJournal.has(stmt.id);
@@ -3537,7 +3538,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               const issuedDate = new Date(stmt.issuedAt);
               const dateLabel = `${stmt.tradeDate} ${String(issuedDate.getHours()).padStart(2,'0')}:${String(issuedDate.getMinutes()).padStart(2,'0')}`;
               const stmtItems = stmt.items ?? [];
-              const summary = stmtItems.slice(0, 2).map(i => i.name).join(', ') + (stmtItems.length > 2 ? ` 외 ${stmtItems.length - 2}건` : '');
+              const summary = itemSummary(stmtItems);
               const isReturn = stmtItems.some(i => i.qty < 0);
               const cumul = row.cumul;
               const mJOpen = expandedJournal.has(stmt.id);
@@ -4497,17 +4498,20 @@ ${names}
             {/* ── 품목 테이블 ── */}
             {selectedClientId && (selectedOrderId || manualMode || editingStmt) ? (
               <div className="flex-1 overflow-auto">
-                <table className="w-full min-w-[720px] text-left border-collapse table-fixed">
+                {/*  **칸 폭을 글자에 맞춘다**(2026-09-03 사장님) — 비율(%)로 두니 720px 안에서
+                     품목명이 158px 밖에 안 돼 '참기름/병/분/전통/350ml' 이 잘렸다.
+                     어차피 옆으로 미는 표다. 미는 김에 안 잘리는 게 맞다. */}
+                <table className="w-full min-w-[1040px] text-left border-collapse table-fixed">
                   <colgroup>
                     <col style={{width:'40px'}}/>
-                    <col style={{width:'22%'}}/>
-                    <col style={{width:'13%'}}/>
-                    <col style={{width:'10%'}}/>
-                    <col style={{width:'12%'}}/>
-                    <col style={{width:'12%'}}/>
-                    <col style={{width:'9%'}}/>
-                    <col style={{width:'12%'}}/>
-                    <col style={{width:'10%'}}/>
+                    <col style={{width:'240px'}}/>{/* 품목명 */}
+                    <col style={{width:'92px'}}/>{/* 규격 */}
+                    <col style={{width:'84px'}}/>{/* 수량 */}
+                    <col style={{width:'104px'}}/>{/* 단가 */}
+                    <col style={{width:'120px'}}/>{/* 공급가액 */}
+                    <col style={{width:'110px'}}/>{/* 세액 */}
+                    <col style={{width:'126px'}}/>{/* 합계 */}
+                    <col style={{width:'112px'}}/>{/* 계정 */}
                     <col style={{width:'36px'}}/>
                   </colgroup>
                   <thead className="sticky top-0 z-10 bg-slate-50">
@@ -4771,7 +4775,7 @@ ${names}
                 </table>
                   {/*  **전표 비고** — 합계 바로 밑(2026-09-03 사장님). 품목 줄이 아니라
                        전표 전체에 붙는 말이라 결제 조건·납기 같은 걸 적는다. 인쇄물에도 나간다. */}
-                  <div className="min-w-[720px] px-3 py-2.5 border-t border-slate-100 bg-slate-50/50">
+                  <div className="min-w-[1040px] px-3 py-2.5 border-t border-slate-100 bg-slate-50/50">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">비고</p>
                     <textarea
                       value={stmtMemo}
