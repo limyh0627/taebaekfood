@@ -349,10 +349,11 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                       <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1">
                           {req.status === 'cancel_pending' ? (
-                            <>
-                              <button onClick={() => onUpdateLeaveStatus(req.id, 'approved')} className="px-2 py-1.5 bg-orange-500 text-white rounded-lg text-[10px] font-black hover:bg-orange-600 transition-all shadow-sm whitespace-nowrap">취소승인</button>
-                              <button onClick={() => onUpdateLeaveStatus(req.id, 'rejected')} className="px-2 py-1.5 bg-white border border-slate-200 text-slate-400 rounded-lg text-[10px] font-black hover:bg-slate-50 transition-all">반려</button>
-                            </>
+                            /*  취소 요청은 **받아 주기만** 한다(2026-09-04 사장님:
+                                "직원이 취소한걸 반려하는 경우는 없어").
+                                전에 있던 반려 단추가 뜻이 뒤집혀 쓰이던 자리다.
+                                'approved' 를 보내서 **취소가 아무 일도 안 했다** — 이제 'cancelled' 다. */
+                            <button onClick={() => onUpdateLeaveStatus(req.id, 'cancelled')} className="px-2 py-1.5 bg-orange-500 text-white rounded-lg text-[10px] font-black hover:bg-orange-600 transition-all shadow-sm whitespace-nowrap">취소승인</button>
                           ) : (
                             <>
                               <button onClick={() => onUpdateLeaveStatus(req.id, 'approved')} className="px-2 py-1.5 bg-indigo-600 text-white rounded-lg text-[10px] font-black hover:bg-indigo-700 transition-all shadow-sm whitespace-nowrap">승인</button>

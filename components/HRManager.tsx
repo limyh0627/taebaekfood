@@ -499,10 +499,12 @@ const HRManager: React.FC<HRManagerProps> = ({
                     </td>
                     <td className="px-4 sm:px-10 py-4 sm:py-6 text-right">
                       <div className="flex justify-end space-x-3">
-                        {isCancel && <>
-                          <button onClick={() => onUpdateLeaveStatus(req.id, 'cancelled')} className="flex items-center space-x-2 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-black hover:bg-rose-700 transition-all"><Check size={14} /><span>취소 승인</span></button>
-                          <button onClick={() => onUpdateLeaveStatus(req.id, 'approved')} className="flex items-center space-x-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-black hover:bg-slate-200 transition-all"><X size={14} /><span>반려</span></button>
-                        </>}
+                        {/*  취소 요청은 **받아 주기만** 한다(2026-09-04 사장님:
+                             "직원이 취소한걸 반려하는 경우는 없어").
+                             있던 반려 단추가 뜻이 뒤집혀 쓰이던 자리다 — 취소를 거절했는데
+                             오히려 취소가 확정돼 연차가 사라졌다. */}
+                        {isCancel &&
+                          <button onClick={() => onUpdateLeaveStatus(req.id, 'cancelled')} className="flex items-center space-x-2 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-black hover:bg-rose-700 transition-all"><Check size={14} /><span>취소 승인</span></button>}
                         {isModify && <>
                           <button onClick={() => onUpdateLeave(req.id, {
                             startDate: req.modifyRequest!.startDate,
