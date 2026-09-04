@@ -18,6 +18,7 @@ import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { partnerPriceWrites } from '../src/shared/partnerPriceSync';
 import { manualLines, orderLines, lineTotals, type LineItem, type ManualRow } from '../src/shared/statementLines';
+import { partnerOrders as 거래처주문, activeOrders as 진행주문, activePartnerIds, ACTIVE_STATUSES } from '../src/shared/statementOrders';
 import { lineAmount, lineAmountOf } from '../src/shared/lineAmount';
 import { marginOf } from '../src/shared/margin';
 import { splitPayment, owedNow } from '../src/shared/paymentSplit';
@@ -121,7 +122,6 @@ const STATUS_COLOR: Record<string, string> = {
   [OrderStatus.DELIVERED]: 'bg-emerald-100 text-emerald-700',
 };
 
-const ACTIVE_STATUSES = new Set([OrderStatus.PENDING, OrderStatus.PROCESSING, OrderStatus.DISPATCHED, OrderStatus.SHIPPED]);
 
 // 초성 검색: 한글 이름의 초성 추출 + 매칭(부분일치 or 초성일치)
 const matchKo = (name: string, q: string) => matchesSearch(name, q);
@@ -1180,17 +1180,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    *
    * 전표가 걸린 배송완료 주문은 계속 뺀다(발행내역에서 본다).
    */
-  const activeOrders = useMemo(() =>
-    orders
-      .filter(o => o.partnerName !== '생산기록')
-      .filter(o => ACTIVE_STATUSES.has(o.status as OrderStatus) || !isVouchered(o))
-      .sort((a, b) => {
-        const aP = isVouchered(a), bP = isVouchered(b);
-        if (aP !== bP) return aP ? 1 : -1;
-        return new Date(a.deliveryDate || a.createdAt).getTime() - new Date(b.deliveryDate || b.createdAt).getTime();
-      }),
-    [orders, isVouchered]
-  );
+  const activeOrders = useMemo(() => 진행주문(orders, isVouchered), [orders, isVouchered]);
 
   // ── 선택된 발주항목(확정+예정) → 매입전표 직접 입력 모드 ──
   const loadSelectedToManual = () => {
@@ -1216,10 +1206,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   };
 
   // ── 거래처 목록 ──
-  const activeClientIds = useMemo(() =>
-    new Set(orders.filter(o => ACTIVE_STATUSES.has(o.status as OrderStatus)).map(o => o.partnerId)),
-    [orders]
-  );
+  const activeClientIds = useMemo(() => activePartnerIds(orders), [orders]);
   const availableClients = useMemo(() => {
     /*
      * **고르는 목록은 이 회사 거래처만.** 계산(잔액·분개)은 아래에서 거르지 않은 partners를
@@ -1246,25 +1233,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   }, [partners, partnerSearch, onlyActive, activeClientIds, createMode, companyId]);
 
   // ── 주문 목록 ──
-  const partnerOrders = useMemo(() => {
-    let list = orders
-      .filter(o => o.partnerId === selectedClientId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    if (onlyActive) {
-      // 진행주문 = 미발행(배송완료·예전주문이어도 전표가 안 걸렸으면 표시) + 진행중 상태.
-      // 발행완료는 발행내역에서 본다. **판정은 전표 실물** — 플래그만 남고 전표가 없는 건 여기 떠야 한다.
-      list = list.filter(o => !isVouchered(o) || ACTIVE_STATUSES.has(o.status as OrderStatus));
-      list = [...list].sort((a, b) => {
-        const aP = isVouchered(a), bP = isVouchered(b);
-        if (aP !== bP) return aP ? 1 : -1;
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      });
-    }
-    // 미발행(진행) 전표는 날짜 무관하게 다 보인다 (배송완료·예전주문이어도). 날짜필터는 발행완료 건에만.
-    if (dateFrom) list = list.filter(o => !isVouchered(o) || dateOfLocal(o.createdAt) >= dateFrom);
-    if (dateTo)   list = list.filter(o => !isVouchered(o) || dateOfLocal(o.createdAt) <= dateTo);
-    return list;
-  }, [orders, selectedClientId, onlyActive, dateFrom, dateTo, isVouchered]);
+  //  셈은 [shared/statementOrders](../src/shared/statementOrders.ts) 에 있다.
+  //  날짜 필터가 **발행완료 건에만** 걸린다는 규칙이 거기 있고 시험이 붙어 있다.
+  const partnerOrders = useMemo(
+    () => 거래처주문({ orders, partnerId: selectedClientId, isVouchered, onlyActive, dateFrom, dateTo }),
+    [orders, selectedClientId, onlyActive, dateFrom, dateTo, isVouchered]);
 
   const selectedOrder  = partnerOrders.find(o => o.id === selectedOrderId);
   const selectedClient = partners.find(c => c.id === selectedClientId);
