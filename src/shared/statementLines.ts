@@ -98,12 +98,15 @@ export function orderLines(input: OrderLinesInput): LineItem[] {
     // 박스 품목 → 낱개로 변환 (전표는 낱개 기준). 수량 = 박스개수 × 개입.
     const uc = unpackComponent(product);
     let qtyUnits = item.quantity;
+    /** 박스를 풀었으면 주문에 적힌 단가는 **박스값**이다 — 낱개로 나눠야 한다 */
+    let 개입수 = 1;
     if (uc) {
       const loose = allItems.find(p => p.id === uc.itemId);
       if (loose) {
         const boxCount = item.isBoxUnit && item.boxQuantity ? item.boxQuantity : item.quantity;
         product = loose;
         qtyUnits = boxCount * uc.count;
+        개입수 = uc.count;
       }
     }
 
@@ -116,8 +119,17 @@ export function orderLines(input: OrderLinesInput): LineItem[] {
     const pcPrice = pcEntry?.price ?? boxDerivedUnitPrice(product, partnerId, partnerItems as any);
     const pcTaxType = pcEntry?.taxType;   // '과세' | '면세' | undefined(=과세 기본)
 
-    //  단가 우선순위: 이번에 고친 값 > 거래처 단가 > 주문에 적힌 값
-    const defaultPrice = pcPrice ?? item.price ?? 0;
+    /**
+     * 단가 우선순위: 이번에 고친 값 > 거래처 단가 > 주문에 적힌 값.
+     *
+     * **주문에 적힌 값으로 물러설 때는 개입수로 나눈다.** 주문은 박스로 받는데
+     * (`10개입 180,000`) 위에서 수량을 낱개로 풀었다. 안 나누면 낱개 10개에
+     * 180,000씩 붙어 **열 배로 끊긴다.**
+     * 지금 실제로 걸리는 줄은 0이다(2026-09-05 실측) — 박스 주문마다 낱개 거래처단가가
+     * 있어서 그게 먼저 이긴다. 없는 거래처가 하나 생기는 날을 막는다.
+     */
+    const 주문단가 = item.price !== undefined ? Math.round(item.price / 개입수) : undefined;
+    const defaultPrice = pcPrice ?? 주문단가 ?? 0;
     const unitPrice = editablePrices[key] !== undefined
       ? (parseFloat(editablePrices[key]) || 0) : defaultPrice;
 

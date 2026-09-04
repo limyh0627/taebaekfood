@@ -123,6 +123,22 @@ describe('orderLines — 단가 우선순위', () => {
     expect(r[0].price).toBe(12000);
   });
 
+  it('박스를 풀었으면 주문 단가를 개입수로 나눈다 — 안 나누면 열 배로 끊긴다', () => {
+    //  주문에 적힌 180,000 은 10개들이 **박스** 값이다. 낱개 10개로 풀었으니 18,000 이다.
+    const r = orderLines({
+      ...공통,
+      order: 주문([{ itemId: 'box', name: '참기름/1750ml 박스', quantity: 1, price: 180000 }]),
+      partnerItems: [],
+    });
+    expect(r[0]).toMatchObject({ qty: 10, price: 18000 });
+    expect(r[0].total).toBe(180000);   // 전표 금액은 주문과 같아야 한다
+  });
+
+  it('박스가 아니면 주문 단가를 그대로 쓴다', () => {
+    const r = orderLines({ ...공통, order: 주, partnerItems: [] });
+    expect(r[0].price).toBe(9900);
+  });
+
   it('다른 거래처 단가는 안 쓴다 — 남한테 팔던 값으로 끊기면 안 된다', () => {
     const r = orderLines({ ...공통, order: 주, partnerItems: [단가({ itemId: 'loose', partnerId: 'B', Direction: 'out', price: 99999 })] });
     expect(r[0].price).toBe(9900);
