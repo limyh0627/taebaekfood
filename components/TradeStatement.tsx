@@ -19,6 +19,8 @@ import { fetchCollection } from '../src/shared/services/firebaseService';
 import { partnerPriceWrites } from '../src/shared/partnerPriceSync';
 import { manualLines, orderLines, lineTotals, type LineItem, type ManualRow } from '../src/shared/statementLines';
 import { partnerOrders as 거래처주문, activeOrders as 진행주문, activePartnerIds, ACTIVE_STATUSES } from '../src/shared/statementOrders';
+import { rowKind as 갈래, rowCodes as 계정들, rowName as 상대이름, filterTimeline, sortTimeline, partnerNamesOf,
+  type TimelineRow, type StmtRow, type PayRow, type CashRow } from '../src/shared/timelineRows';
 import { lineAmount, lineAmountOf } from '../src/shared/lineAmount';
 import { marginOf } from '../src/shared/margin';
 import { splitPayment, owedNow } from '../src/shared/paymentSplit';
@@ -742,14 +744,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * **줄이 여럿이어도 갈래는 하나다.** 대출상환은 (차)차입금+이자 /(대)통장 —
    * 대변이 통장 하나이므로 출금전표다. 차변이 여럿인 건 갈래와 상관없다.
    */
-  const rowKind = useCallback((row: TimelineRow): VoucherKind => {
-    if (row.kind === 'stmt') {
-      return row.data.type === '매출' ? '매출' : row.data.type === '매입' ? '매입' : '대체';
-    }
-    if (row.kind === 'pay') return row.stmtType === '매출' ? '입금' : '출금';
-    if (row.entry.dir === '대체') return '대체';
-    return row.dir === '입금' ? '입금' : '출금';
-  }, []);
+  const rowKind = 갈래;
 
   /*
    * 갈래(매출·매입·대체·입금·출금)는 **필터가 아니라 표시**다.
@@ -927,20 +922,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * 하나도 안 잡혀서, 재무 필터가 사실상 자금전표만 고르는 꼴이 됐다(자금흐름과 똑같아졌다).
    * 그래서 분개가 세우는 상대계정을 여기서 같이 넣는다 — journalizeStatement와 같은 규칙.
    */
-  const rowCodes = useCallback((row: TimelineRow): string[] => {
-    if (row.kind === 'stmt') {
-      const items = (row.data.items ?? []).map(i => i.accountCode ?? '').filter(Boolean);
-      if (row.data.type === '비용') return items;          // 대체전표는 차·대가 줄에 다 있다
-      // 채권·채무만 넣는다. 부가세(255 예수금·135 대급금)는 **일부러 뺀다** —
-      // 회계로는 매출전표가 부채(255)를, 매입전표가 자산(135)을 건드리는 게 맞지만,
-      // 그걸 넣으면 과세 전표가 죄다 자산·부채에 걸려 필터가 무용지물이 된다.
-      // 부가세는 신고 때 부가세 화면에서 본다.
-      return [...items, row.data.type === '매출' ? AR : AP];
-    }
-    if (row.kind === 'pay') return [row.stmtType === '매출' ? AR : AP];
-    const ls = (row.entry.lines ?? []).map(l => l.accountCode).filter(Boolean) as string[];
-    return ls.length ? ls : (row.accountCode ? [row.accountCode] : []);
-  }, []);
+  const rowCodes = 계정들;
   const [histQuick, setHistQuick] = useState<'당일'|'금주'|'당월'|'당년'|'ALL'|''>('당일');
   // 발행내역 페이지네이션
   const HIST_PAGE_SIZE = 50;
@@ -2029,21 +2011,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // ── 전표 통합 타임라인 (거래명세서 + 수금/지불 + 자금 입출금) ──
   //  cumul이 undefined = 잔액이라는 게 없는 줄(거래처가 안 붙은 전표). 화면은 —로 띄운다.
-  type StmtRow = { kind: 'stmt'; data: IssuedStatement; cumul?: number; dateKey: string; ts: string };
-  type PayRow  = { kind: 'pay';  partnerId: string; partnerName: string; stmtType: '매출'|'매입';
-                   /** 상계 — 받을 것과 줄 것을 맞바꾼 것. 미수·미지급 양쪽에 한 줄씩 선다. */
-                   offset?: boolean;
-                   date: string; amount: number; method?: string; note?: string;
-                   paymentId: string; cumul: number; dateKey: string; ts: string; src: IssuedStatement;
-                   /** 이 수금·지불의 자금원장 원본 */
-                   entry?: CashEntry };
-  // 자금 입출금 전표 — 전표에 상계되지 않은 순수 현금 이동(전기요금·급여·상환·기계구입 등)
-  type CashRow = { kind: 'cash'; entry: CashEntry; dir: '입금'|'출금'; amount: number;
-                   accountCode?: string; note?: string; partnerName?: string;
-                   /** 그 시점 이 거래처의 채권·채무 잔액. 거래처가 없거나 잔액 자취가 없으면 undefined */
-                   cumul?: number;
-                   date: string; ts: string; dateKey: string };
-  type TimelineRow = StmtRow | PayRow | CashRow;
+  //  줄 모양·갈래·계정 셈은 [shared/timelineRows](../src/shared/timelineRows.ts) 에 있다.
 
   // 화면 표시값 기준 정렬용 시각 (로컬 HH:MM:SS) — 규칙은 voucherStamp 한 곳에 둔다
   const timeOf = timeOfLocal;
@@ -2205,66 +2173,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     return rows;
   }, [mergedStatements, cashEntries, arapOf]);
 
-  const filteredHistory = useMemo((): TimelineRow[] => {
-    return allTimelineRows
-      .filter(row => {
-        const d = row.kind === 'stmt' ? row.data.tradeDate : row.date;
-        const name = (row.kind === 'stmt' ? row.data.partnerName : row.kind === 'pay' ? row.partnerName : (row.partnerName ?? '')) || '';
-        const cashCodes = row.kind === 'cash'
-          ? ((row.entry.lines ?? []).filter(l => l.accountCode && l.amount !== 0).map(l => l.accountCode)
-             .concat(row.accountCode ? [row.accountCode] : []))
-          : [];
-        const docNo = row.kind === 'stmt' ? row.data.docNo : '';
-        const note  = row.kind === 'cash' ? (row.note ?? '') : '';
-        if (histFrom && d < histFrom) return false;
-        if (histTo   && d > histTo)   return false;
-        // rowKind가 이미 다섯 갈래라 그대로 견준다 — 예전엔 여기서 수금→입금으로 또 옮겨
-        // 매핑이 두 군데에 있었고, 한쪽만 고치면 엉뚱한 탭이 걸렸다.
-        if (histKind !== '전체' && rowKind(row) !== histKind) return false;
-        if (histPartner && name !== histPartner) return false;
-        // 계정은 **줄**로 본다 — 전표 머리로 보면 복합 전표가 통째로 빠진다
-        if (histAccount && !matchAccount(rowCodes(row))) return false;
-        if (histSearch.trim()) {
-          const q = histSearch.toLowerCase();
-          // 계정과목·품목까지 검색 대상 — "이자"로 이번 달 이자비용만 뽑아보려면 이게 있어야 한다.
-          // 자금 행은 계정명이 화면에만 있고 적요엔 없어서, 이게 없으면 계정으로 못 찾는다.
-          const acctText = row.kind === 'cash'
-            ? cashCodes.map(c => `${c} ${codeName.get(c) ?? ''}`).join(' ')
-              + ' ' + (row.entry.lines ?? []).map(l => l.note ?? '').join(' ')
-            : row.kind === 'stmt'
-              ? (row.data.items ?? []).map(i => `${i.accountCode ?? ''} ${codeName.get(i.accountCode ?? '') ?? ''} ${i.name ?? ''}`).join(' ')
-              : '';
-          if (!matchesSearch(name, q) && !docNo.includes(q)
-            && !matchesSearch(note, q) && !matchesSearch(acctText, q)) return false;
-        }
-        return true;
-      })
-      .sort((a, b) => {
-        // 실제 발생시각(ts) 오래된→최신 — 전표·지불 통합 정렬
-        const d = a.ts.localeCompare(b.ts);
-        if (d !== 0) return d;
-        // 동시각이면 전표를 위로(매출 가산 후 수금 차감 순)
-        if (a.kind === 'stmt' && b.kind === 'pay') return -1;
-        if (a.kind === 'pay' && b.kind === 'stmt') return 1;
-        // 그래도 같으면 **끊은 순서** — 소급 전표는 시각이 전부 23:59:59라 여기서 갈린다
-        const ida = a.kind === 'stmt' ? a.data.id : a.kind === 'pay' ? a.paymentId : a.entry.id;
-        const idb = b.kind === 'stmt' ? b.data.id : b.kind === 'pay' ? b.paymentId : b.entry.id;
-        return issuedMs(ida) - issuedMs(idb)
-          || String(ida).localeCompare(String(idb), undefined, { numeric: true });
-      }); // 오래된→최신
-  }, [allTimelineRows, histFrom, histTo, histKind, histAccount, histPartner, histSearch, codeType, codeName, classifyRow, rowKind, rowCodes, matchAccount]);
+  //  거르기·줄 세우기 셈은 [shared/timelineRows](../src/shared/timelineRows.ts) 에 있다.
+  //  계정을 **줄**로 보는 것과, 소급 전표 정렬(시각이 전부 23:59:59)이 거기 있고 시험이 붙어 있다.
+  const filteredHistory = useMemo((): TimelineRow[] => sortTimeline(
+    filterTimeline(allTimelineRows,
+      { from: histFrom, to: histTo, kind: histKind, partner: histPartner, search: histSearch },
+      { matchAccount: histAccount ? matchAccount : undefined, codeName })),
+    [allTimelineRows, histFrom, histTo, histKind, histAccount, histPartner, histSearch, codeName, matchAccount]);
 
   // 페이지네이션: 필터 변경 시 1페이지로 리셋, 최신 페이지부터 보여줌
   useEffect(() => { setHistoryPage(1); }, [histFrom, histTo, histKind, histAccount, histPartner, histSearch]);
   /** 거래처 목록 — 실제로 전표가 있는 이름만. 없는 이름을 고르게 하면 빈 목록만 본다. */
-  const histPartnerNames = useMemo(() => {
-    const set = new Set<string>();
-    for (const row of allTimelineRows) {
-      const n = (row.kind === 'stmt' ? row.data.partnerName : row.kind === 'pay' ? row.partnerName : (row.partnerName ?? '')) || '';
-      if (n) set.add(n);
-    }
-    return [...set].sort((a, b) => a.localeCompare(b, 'ko'));
-  }, [allTimelineRows]);
+  const histPartnerNames = useMemo(() => partnerNamesOf(allTimelineRows), [allTimelineRows]);
   const partnerShown = useMemo(() => {
     const q = partnerQuery.trim().toLowerCase();
     return q ? histPartnerNames.filter(n => matchesSearch(n, q)) : histPartnerNames;
