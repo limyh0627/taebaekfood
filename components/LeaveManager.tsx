@@ -42,7 +42,7 @@ interface LeaveManagerProps {
   employees: Employee[];
   leaveRequests: LeaveRequest[];
   onAddLeaveRequest: (_req: LeaveRequest) => void;
-  onUpdateLeaveStatus: (_id: string, _status: LeaveStatus) => void;
+  onUpdateLeaveStatus: (_id: string, _status: LeaveStatus, _reason?: string) => void;
   onUpdateLeave: (_id: string, _updates: Partial<LeaveRequest>) => void;
   /** 관리자만 조직도·비상연락망을 편집할 수 있다. 직원 앱에서는 읽기 전용. */
   isAdmin?: boolean;

@@ -512,6 +512,15 @@ export interface LeaveRequest {
    */
   deductsLeave?: boolean;
   modifyRequest?: LeaveModifyRequest;
+  /**
+   * 취소한 자국 — **지우지 않고 남긴다**(2026-09-04 사장님).
+   * 연차는 사람이 다투는 자리라 "승인했다가 물렀다"가 보여야 한다.
+   * 셈에서는 저절로 빠진다 — `getApprovedLeaveDays` 가 'approved' 만 센다.
+   */
+  cancelledAt?: string;
+  cancelledBy?: string;
+  cancelledByName?: string;
+  cancelReason?: string;
 }
 
 export interface ChatMessage {

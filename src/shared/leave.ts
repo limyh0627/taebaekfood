@@ -1,4 +1,4 @@
-import { Employee, LeaveRequest, LeaveType } from './types';
+import { Employee, LeaveRequest, LeaveStatus, LeaveType } from './types';
 
 /**
  * 연차 계산 공용 모듈 — 관리자(HRManager)와 직원 앱(LeaveManager)이 **같은 함수**를 쓴다.
@@ -213,4 +213,41 @@ export function calculateLeaveBalance(
     remaining: granted - usedTotal,
     grant: getAnnualGrantInfo(emp.joinDate, now),
   };
+}
+
+export interface LeaveActor { id: string; name: string }
+
+/**
+ * 연차 신청의 상태를 바꿀 때 **DB 에 무엇을 쓸지**.
+ *
+ * 세 화면(HRManager·AdminChecklist·LeaveManager)이 각자 판단하다 갈렸고,
+ * 그중 하나가 **정반대로 쓰고 있었다**(2026-09-04 발견):
+ *   · '취소 승인' 을 누르면 `cancelled` 가 아니라 `rejected` 로 들어갔다
+ *   · **'반려'(취소를 거절) 를 누르면 오히려 `cancelled` 로 들어가 연차가 사라졌다**
+ * 지금 상태를 보고 뜻을 뒤집으려던 게 원인이다. 이제 **부르는 쪽이 바뀔 상태를
+ * 그대로 주고**, 이 함수는 자국만 붙인다. 뒤집을 일이 없으니 뒤집혀 쓸 일도 없다.
+ *
+ * @param next   바꿀 상태 (화면이 바라는 결과 그대로)
+ * @param by     누가 바꿨나 — 취소일 때만 남긴다
+ * @param reason 왜 취소했나
+ */
+export function leaveStatusPatch(
+  next: LeaveStatus,
+  by?: LeaveActor,
+  reason?: string,
+  now = new Date(),
+): Partial<LeaveRequest> {
+  if (next !== 'cancelled') return { status: next };
+  const 사유 = (reason ?? '').trim();
+  return {
+    status: 'cancelled',
+    cancelledAt: now.toISOString(),
+    ...(by ? { cancelledBy: by.id, cancelledByName: by.name } : {}),
+    ...(사유 ? { cancelReason: 사유 } : {}),
+  };
+}
+
+/** 이 신청을 지금 취소할 수 있나 — 이미 취소·반려된 건 다시 취소할 게 없다. */
+export function canCancel(r: Pick<LeaveRequest, 'status'>): boolean {
+  return r.status === 'approved' || r.status === 'pending' || r.status === 'cancel_pending';
 }

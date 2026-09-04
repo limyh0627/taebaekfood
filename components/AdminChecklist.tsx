@@ -7,7 +7,7 @@ import {
   ClipboardList, RotateCcw, Building2, FileText, History, Link2,
   X, Loader2, Check, Plus,
 } from 'lucide-react';
-import { LeaveRequest, AdjustmentRequest, Employee, ReturnRequest, ReturnItem, IssuedStatement, IssuedStatementItem, Partner, PendingStatementEdit, Item, PartnerItem, PurchaseOrder, PurchaseOrderItem, poLines } from '../src/shared/types';
+import { LeaveRequest, LeaveStatus, AdjustmentRequest, Employee, ReturnRequest, ReturnItem, IssuedStatement, IssuedStatementItem, Partner, PendingStatementEdit, Item, PartnerItem, PurchaseOrder, PurchaseOrderItem, poLines } from '../src/shared/types';
 import { addItem, updateItem } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 import { dateOfLocal } from '../src/shared/day';
@@ -20,7 +20,7 @@ interface AdminChecklistProps {
   receivedOrders?: PurchaseOrder[];
   partners?: Partner[];
   issuedStatements?: IssuedStatement[];
-  onUpdateLeaveStatus: (_id: string, _status: 'approved' | 'rejected') => void;
+  onUpdateLeaveStatus: (_id: string, _status: LeaveStatus, _reason?: string) => void;
   onUpdateAdjustmentStatus: (_id: string, _status: 'processed' | 'rejected') => void;
   onDeleteAdjustmentRequest?: (_id: string) => void;
   onProcessAdjustment: (_req: AdjustmentRequest) => void;

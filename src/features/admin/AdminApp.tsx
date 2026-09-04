@@ -107,6 +107,7 @@ import { notify, loadNotifyMode } from '../../shared/notify';
 import { pickNewOrders, newOrderMessage } from '../../shared/newOrderAlert';
 import { pickNewChats, chatMessage } from '../../shared/newChatAlert';
 import { roomNameFor } from '../../shared/roomName';
+import { leaveStatusPatch } from '../../shared/leave';
 import AccountMenu from '../../../components/AccountMenu';
 const MyPage = React.lazy(() => import('../../../components/MyPage'));
 import AdminChecklist from '../../../components/AdminChecklist';
@@ -2329,7 +2330,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onUpdateEmployee={(emp) => updateItem('employees', emp.id, emp)}
               onAddEmployee={(emp) => addItem('employees', emp)}
               onDeleteEmployee={(id) => deleteItem('employees', id)}
-              onUpdateLeaveStatus={(id, status) => updateItem('leaveRequests', id, { status })}
+              onUpdateLeaveStatus={(id, status, reason) =>
+                updateItem('leaveRequests', id,
+                  leaveStatusPatch(status, { id: currentUser.id, name: currentUser.name }, reason))}
               onUpdateLeave={(id, updates) => updateItem('leaveRequests', id, updates)}
               onDeleteLeaveRequest={(id) => deleteItem('leaveRequests', id)}
               onAddLeaveRequests={async (reqs) => {
@@ -2387,18 +2390,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
               receivedOrders={receivedOrders}
               partners={partners}
               issuedStatements={issuedStatements}
-              onUpdateLeaveStatus={(id, status) => {
-                if (status === 'approved') {
-                  const req = leaveRequests.find(r => r.id === id);
-                  if (req?.status === 'cancel_pending') {
-                    updateItem('leaveRequests', id, { status: 'cancelled' });
-                  } else {
-                    updateItem('leaveRequests', id, { status: 'approved' });
-                  }
-                } else {
-                  updateItem('leaveRequests', id, { status: 'rejected' });
-                }
-              }}
+              /*  **여기서 뜻을 뒤집지 않는다**(2026-09-04). 지금 상태를 보고 뒤집으려던
+                   코드가 정반대로 썼다 — '취소 승인'은 rejected 로, **'반려'(취소 거절)는
+                   cancelled 로** 들어가 연차가 사라졌다. 화면이 바라는 결과를 그대로 준다. */
+              onUpdateLeaveStatus={(id, status, reason) =>
+                updateItem('leaveRequests', id,
+                  leaveStatusPatch(status, { id: currentUser.id, name: currentUser.name }, reason))}
               onUpdateAdjustmentStatus={(id, status) => updateItem('adjustmentRequests', id, { status, processedAt: new Date().toISOString() })}
               onDeleteAdjustmentRequest={(id) => deleteItem('adjustmentRequests', id)}
               onProcessAdjustment={async (req) => {
@@ -4108,7 +4105,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
                   linkedId: req.id,
                 } as Omit<AppNotification, 'id'>);
               }}
-              onUpdateLeaveStatus={(id, status) => updateItem('leaveRequests', id, { status })}
+              onUpdateLeaveStatus={(id, status, reason) =>
+                updateItem('leaveRequests', id,
+                  leaveStatusPatch(status, { id: currentUser.id, name: currentUser.name }, reason))}
               onUpdateLeave={(id, updates) => updateItem('leaveRequests', id, updates)}
             />
           )}

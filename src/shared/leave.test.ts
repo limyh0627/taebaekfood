@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  calculateRequestDays, isUnderOneYear, calculateMonthlyLeave,
-  getAnnualGrantInfo, calculateAnnualLeave, calculateLeaveBalance, isDeductible,
-} from './leave';
+import { calculateRequestDays, isUnderOneYear, calculateMonthlyLeave, getAnnualGrantInfo, calculateAnnualLeave, calculateLeaveBalance, isDeductible, leaveStatusPatch, canCancel, getApprovedLeaveDays } from './leave';
 import type { Employee, LeaveRequest } from './types';
 
 const NOW = new Date('2026-07-23T00:00:00');
@@ -277,5 +274,62 @@ describe('사용과 예정을 가른다', () => {
     ];
     const b = calculateLeaveBalance(은지(), reqs, 오늘);
     expect(b.scheduled).toBe(0);
+  });
+});
+
+describe('leaveStatusPatch — 상태를 바꿀 때 쓸 것', () => {
+  const 나 = { id: 'admin', name: '태백식품' };
+  const 때 = new Date('2026-09-04T10:00:00+09:00');
+
+  it('보통 상태는 그대로 쓴다', () => {
+    expect(leaveStatusPatch('approved')).toEqual({ status: 'approved' });
+    expect(leaveStatusPatch('rejected')).toEqual({ status: 'rejected' });
+    expect(leaveStatusPatch('cancel_pending')).toEqual({ status: 'cancel_pending' });
+  });
+
+  it('취소는 자국을 남긴다 — 누가 언제 왜', () => {
+    expect(leaveStatusPatch('cancelled', 나, '안 쉬기로 함', 때)).toEqual({
+      status: 'cancelled',
+      cancelledAt: 때.toISOString(),
+      cancelledBy: 'admin',
+      cancelledByName: '태백식품',
+      cancelReason: '안 쉬기로 함',
+    });
+  });
+
+  it('사유를 안 적어도 취소는 된다', () => {
+    const p = leaveStatusPatch('cancelled', 나, '   ', 때);
+    expect(p.status).toBe('cancelled');
+    expect(p.cancelReason).toBeUndefined();
+  });
+
+  //  전에 갈려 있던 자리 — 이 둘이 뒤집혀 있었다
+  it('**취소 승인은 cancelled 다** — rejected 로 들어가던 것', () => {
+    expect(leaveStatusPatch('cancelled', 나, '', 때).status).toBe('cancelled');
+  });
+  it('**취소를 거절하면 approved 로 남는다** — cancelled 로 들어가 연차가 사라지던 것', () => {
+    expect(leaveStatusPatch('approved')).toEqual({ status: 'approved' });
+  });
+});
+
+describe('canCancel', () => {
+  it('승인·대기·취소요청은 취소할 수 있다', () => {
+    expect(canCancel({ status: 'approved' })).toBe(true);
+    expect(canCancel({ status: 'pending' })).toBe(true);
+    expect(canCancel({ status: 'cancel_pending' })).toBe(true);
+  });
+  it('이미 취소·반려된 건 다시 취소할 게 없다', () => {
+    expect(canCancel({ status: 'cancelled' })).toBe(false);
+    expect(canCancel({ status: 'rejected' })).toBe(false);
+  });
+});
+
+describe('취소하면 셈에서 빠진다 — 지우지 않아도 된다', () => {
+  it('cancelled 는 사용에 안 잡힌다', () => {
+    const reqs: any[] = [
+      { id: 'a', employeeId: 'e1', status: 'approved',  type: '연차', startDate: '2026-09-01', daysUsed: 1 },
+      { id: 'b', employeeId: 'e1', status: 'cancelled', type: '연차', startDate: '2026-09-02', daysUsed: 1 },
+    ];
+    expect(getApprovedLeaveDays('e1', reqs, undefined, undefined, new Date('2026-09-04T00:00:00+09:00'))).toBe(1);
   });
 });

@@ -33,13 +33,7 @@ import PageHeader from './PageHeader';
 import { subscribeToCollection, setDocument } from '../src/shared/services/firebaseService';
 
 // 연차 계산은 공용 모듈(src/shared/leave.ts) — 직원 앱과 같은 함수를 쓴다
-import {
-  isDeductible,
-  calculateRequestDays as calcRequestDays,
-  isUnderOneYear as isUnderOneYearShared,
-  getAnnualGrantInfo as getGrantInfo,
-  calculateLeaveBalance,
-} from '../src/shared/leave';
+import { isDeductible, calculateRequestDays as calcRequestDays, isUnderOneYear as isUnderOneYearShared, getAnnualGrantInfo as getGrantInfo, calculateLeaveBalance, canCancel } from '../src/shared/leave';
 
 interface HRManagerProps {
   /** 지금 보고 있는 회사 — 명부·급여대장을 회사별로 가른다 */
@@ -49,7 +43,7 @@ interface HRManagerProps {
   onUpdateEmployee: (_emp: Employee) => void;
   onAddEmployee: (_emp: Employee) => void;
   onDeleteEmployee: (_id: string) => void;
-  onUpdateLeaveStatus: (_id: string, _status: LeaveStatus) => void;
+  onUpdateLeaveStatus: (_id: string, _status: LeaveStatus, _reason?: string) => void;
   onUpdateLeave: (_id: string, _updates: Partial<LeaveRequest>) => void;
   onDeleteLeaveRequest: (_id: string) => void;
   /** 회사 단체 휴가 일괄 등록 — 선택 직원별로 승인된 '휴가' 신청을 만든다(연차 차감) */
@@ -1276,11 +1270,32 @@ const HRManager: React.FC<HRManagerProps> = ({
                                         </p>
                                         {r.reason && <p className="text-[11px] text-slate-400 mt-0.5 break-words">{r.reason}</p>}
                                         <p className="text-[10px] text-slate-300 mt-1">신청 {(r.requestedAt ?? '').slice(0, 10)}</p>
+                                        {r.status === 'cancelled' && (r.cancelledAt || r.cancelReason) && (
+                                          <p className="text-[10px] text-rose-400 font-bold mt-0.5">
+                                            취소 {(r.cancelledAt ?? '').slice(0, 10)}
+                                            {r.cancelledByName ? ` · ${r.cancelledByName}` : ''}
+                                            {r.cancelReason ? ` · "${r.cancelReason}"` : ''}
+                                          </p>
+                                        )}
                                       </div>
                                       <div className="text-right shrink-0">
                                         <p className={`text-lg font-black tabular-nums ${r.status === 'approved' && !nonDeduct ? 'text-rose-600' : 'text-slate-300'}`}>
                                           {r.daysUsed}<span className="text-xs ml-0.5">일</span>
                                         </p>
+                                        {/*  **관리자가 바로 무를 수 있다**(2026-09-04 사장님).
+                                             전에는 직원이 취소를 신청해야만 관리자가 승인할 수 있어서,
+                                             사장님이 남의 연차를 무를 길이 없었다(이지영 09-04 는 스크립트로 지웠다). */}
+                                        {canCancel(r) && (
+                                          <button
+                                            onClick={() => {
+                                              const why = window.prompt(`${r.employeeName} ${r.startDate} 연차를 취소합니다.
+사유 (선택)`, '');
+                                              if (why === null) return;
+                                              onUpdateLeaveStatus(r.id, 'cancelled', why);
+                                            }}
+                                            className="mt-1 text-[9px] font-black px-2 py-1 rounded-lg bg-rose-50 text-rose-500 hover:bg-rose-100 transition-all"
+                                          >취소</button>
+                                        )}
                                       </div>
                                     </div>
                                   );
