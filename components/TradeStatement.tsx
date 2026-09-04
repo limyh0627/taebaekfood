@@ -17,6 +17,7 @@ import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, Compan
 import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { partnerPriceWrites } from '../src/shared/partnerPriceSync';
+import { manualLines, orderLines, lineTotals, type LineItem, type ManualRow } from '../src/shared/statementLines';
 import { lineAmount, lineAmountOf } from '../src/shared/lineAmount';
 import { marginOf } from '../src/shared/margin';
 import { splitPayment, owedNow } from '../src/shared/paymentSplit';
@@ -269,7 +270,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * 안 실어 나르면 저장 한 번에 side가 사라지고, autoJournal이 짐작을 안 하므로
    * 그 전표의 분개가 통째로 안 선다(미광팩 기초 미지급이 그렇게 비어 있었다).
    */
-  type ManualRow = { name: string; spec: string; qty: string; price: string; isTaxExempt: boolean; note?: string; accountCode?: string; side?: '차변' | '대변' };
   const [manualItems, setManualItems] = useState<ManualRow[]>([
     { name: '', spec: '', qty: '', price: '', isTaxExempt: false, note: '' },
   ]);
@@ -1270,100 +1270,32 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const selectedClient = partners.find(c => c.id === selectedClientId);
 
   // ── 품목 행 계산 ──
-  type LineItem = {
-    key: string; no: number; name: string; spec: string;
-    qty: number; price: number; supply: number; tax: number; total: number;
-    isTaxExempt: boolean; accountCode?: string;
-    /** 차·대를 직접 세운 줄 — 있으면 양변 전표(일반전표)다. 합계는 차변 합만 센다. */
-    side?: '차변' | '대변';
-    /** 주문의 품목을 못 찾음 — 박스가 안 풀렸을 수 있어 화면에 경고를 단다 */
-    unknownItem?: boolean;
-  };
-
+  //  셈은 [shared/statementLines](../src/shared/statementLines.ts) 한 곳에 있다.
+  //  박스↔낱개, 단가·과세·계정 우선순위, 같은 품목 합치기가 다 거기 있고 시험이 붙어 있다.
+  //  여기서는 지금 화면 상태를 넘겨 받아 쓰기만 한다(2026-09-05).
   const lineItems = useMemo((): LineItem[] => {
-    if (manualMode) {
-      return manualItems
-        .filter(i => i.name.trim())
-        .map((item, idx) => {
-          const qty = parseFloat(item.qty) || 0;
-          const price = parseFloat(item.price) || 0;
-          /**
-           * 단가는 부가세 포함 → 공급가액 역산 (주문 기반 경로 및 품목행 표시와 동일 규칙).
-           * **원 단위로 반올림한다** — 수량이 소수인 줄(0.277kg 같은 것)이 끼면 공급가·세액에
-           * 소수점이 남아 합계가 1원씩 어긋나고, 전표에 '1,234.56원'이 찍힌다.
-           */
-          const { supply, tax } = lineAmount(qty, price, item.isTaxExempt);
-          return { key: `manual-${idx}`, no: idx + 1, name: item.name, spec: item.spec, qty, price, supply, tax, total: supply + tax, isTaxExempt: item.isTaxExempt, side: item.side, accountCode: item.accountCode || (stmtType === '매출' ? '800' : undefined) };
-        });
-    }
+    if (manualMode) return manualLines(manualItems, stmtType);
     if (!selectedOrder) return [];
-    const itemMap: Record<string, LineItem> = {};
-    let no = 1;
-    selectedOrder.items.forEach(item => {
-      // 품목이 지워졌거나 id가 바뀌면 못 찾는다 → 박스가 안 풀리고 박스 수량 그대로 들어간다.
-      // 이름으로 한 번 더 찾아보고, 그래도 없으면 아래에서 경고 표시를 단다(조용히 넘기지 않는다).
-      let product = allItems.find(p => p.id === item.itemId)
-        ?? (item.name ? allItems.find(p => !p.archived && p.name === item.name) : undefined);
-      const unknownItem = !product;
-      // 박스 품목 → 낱개로 변환 (전표는 낱개 기준). 수량 = 박스개수 × 개입 = 낱개 수량으로 환산.
-      const uc = unpackComponent(product);
-      let qtyUnits = item.quantity;
-      if (uc) {
-        const loose = allItems.find(p => p.id === uc.itemId);
-        if (loose) {
-          const boxCount = item.isBoxUnit && item.boxQuantity ? item.boxQuantity : item.quantity;
-          product = loose;
-          qtyUnits = boxCount * uc.count;
-        }
-      }
-      const displayName = product?.name || item.name;
-      const spec = product?.spec || item.displaySize || '';
-      const key  = `${displayName}||${spec}`;
-      const piList = stmtType === '매출' ? partnerOut : partnerIn;
-      const pcEntry = piList.find(
-        pc => pc.itemId === product?.id && pc.partnerId === selectedClientId
-      );
-      // 낱개 단가 (박스는 위에서 낱개로 바꿔 조회 → 낱개 partner_item 단가)
-      const pcPrice   = pcEntry?.price ?? boxDerivedUnitPrice(product, selectedClientId, piList);
-      const pcTaxType = pcEntry?.taxType; // '과세' | '면세' | undefined(=과세 기본)
-      const defaultPrice = pcPrice ?? item.price ?? 0;
-      const unitPrice    = editablePrices[key] !== undefined
-        ? (parseFloat(editablePrices[key]) || 0) : defaultPrice;
-      // 면세 여부: 수동 오버라이드 > PC taxType (undefined이면 과세 기본)
-      const isTaxExempt  = key in taxExemptOverrides
-        ? taxExemptOverrides[key]
-        : pcTaxType === '면세';
-      //  단가는 부가세 포함 값이라 거꾸ro 푼다 — 셈은 shared/lineAmount 한 곳에 있다.
-      //  예전엔 여기만 **단가를 먼저 나눠** 손입력과 1~2원 갈렸다(1,070원 × 7개 = 6,811 vs 6,809).
-      const { supply, tax } = lineAmount(qtyUnits, unitPrice, isTaxExempt);
-      if (itemMap[key]) {
-        itemMap[key].qty += qtyUnits;
-        itemMap[key].supply += supply;
-        itemMap[key].tax += tax;
-        itemMap[key].total += supply + tax;
-      } else {
-        // 우선순위: 이번에 고른 값 > 전에 끊었던 계정(pcEntry) > 매출이면 800 기본. 빈값('')도 800으로.
-        const acCode = accountCodeOverrides[key] || pcEntry?.Account_Code || (stmtType === '매출' ? '800' : undefined);
-        itemMap[key] = { key, no: no++, name: displayName, spec, qty: qtyUnits, price: unitPrice, supply, tax, total: supply + tax, isTaxExempt, accountCode: acCode, ...(unknownItem ? { unknownItem: true } : {}) };
-      }
+    return orderLines({
+      order: selectedOrder,
+      stmtType,
+      allItems,
+      partnerItems: stmtType === '매출' ? partnerOut : partnerIn,
+      partnerId: selectedClientId,
+      editablePrices,
+      taxExemptOverrides,
+      accountCodeOverrides,
     });
-    return Object.values(itemMap);
   }, [manualMode, manualItems, selectedOrder, allItems, partnerOut, partnerIn, selectedClientId, editablePrices, taxExemptOverrides, accountCodeOverrides, stmtType]);
 
-  /**
-   * 양변 전표(일반전표)인가 — 줄마다 차·대를 직접 세운 것.
-   *
-   * 이런 전표는 **차변 합만이 전표 금액**이다. 품목표처럼 전 줄을 더하면 차·대가 겹쳐
-   * 두 배가 된다 — 거산농산 기초이월 1,230,000이 2,460,000으로 떴다.
-   */
-  const isTwoSided = lineItems.some(r => r.side === '차변' || r.side === '대변');
-  const sumOf = (pick: (r: typeof lineItems[number]) => number) =>
-    isTwoSided
-      ? lineItems.filter(r => r.side === '차변').reduce((s, r) => s + pick(r), 0)
-      : lineItems.reduce((s, r) => s + pick(r), 0);
-  const totalSupply = sumOf(r => r.supply);
-  const totalTax    = sumOf(r => r.tax);
-  const totalAmount = totalSupply + totalTax;
+  const 합계 = lineTotals(lineItems);
+  const isTwoSided = 합계.isTwoSided;
+  //  양변 전표는 차변만 센다 — 수량처럼 합계에 없는 값을 더할 때도 같은 규칙을 따라야 한다
+  const sumOf = (pick: (r: LineItem) => number) =>
+    (isTwoSided ? lineItems.filter(r => r.side === '차변') : lineItems).reduce((s, r) => s + pick(r), 0);
+  const totalSupply = 합계.supply;
+  const totalTax    = 합계.tax;
+  const totalAmount = 합계.amount;
 
   const tradeDateObj = new Date(tradeDate + 'T00:00:00');
   const dateStr = `${tradeDateObj.getFullYear()}년 ${tradeDateObj.getMonth() + 1}월 ${tradeDateObj.getDate()}일`;
