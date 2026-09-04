@@ -3,7 +3,7 @@ import { createOemEngine, itemKg } from './oemEngine';
 import type { Item, PurchaseOrder } from '../../shared/types';
 
 const item = (over: Partial<Item>): Item =>
-  ({ id: 'x', name: 'x', type: 'product', unit: '개', price: 0, stock: 0, minStock: 0, image: '', ...over });
+  ({ id: 'x', name: 'x', type: 'product', unit: '개', stock: 0, minStock: 0, image: '', ...over });
 
 // 참깨(raw 홀더) + 볶음참깨 완제품/벌크
 const items: Item[] = [

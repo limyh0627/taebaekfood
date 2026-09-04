@@ -6,7 +6,7 @@ import type { Item } from '../../shared/types';
 describe('hasProductComponent — 품목 원료식을 또 적용하면 안 되는 품목', () => {
   //  구성은 품목에 안 붙는다 — item_bom을 세워 두고 판정이 id로 읽는다.
   const it_ = (id: string, type: string) =>
-    ({ id, name: id, type, unit: '개', stock: 0, minStock: 0, price: 0 }) as Item;
+    ({ id, name: id, type, unit: '개', stock: 0, minStock: 0 }) as Item;
   const bom = (parent: string, child: string) => ({ parent_id: parent, child_id: child, quantity: 1 });
   const children = [
     it_('참기름300', 'product'), it_('들기름300', 'product'), it_('낱개', 'product'),

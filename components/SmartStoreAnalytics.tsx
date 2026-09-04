@@ -216,7 +216,7 @@ export default function SmartStoreAnalytics({ orders, partners, items, onUpdateI
 
   function startEdit(p: Item) {
     setEditingId(p.id);
-    setEditValue(String(p.smartStorePrice ?? p.price ?? ''));
+    setEditValue(String(p.smartStorePrice ?? ''));
   }
   function cancelEdit() { setEditingId(null); setEditValue(''); }
   function saveEdit(id: string) {
@@ -447,7 +447,6 @@ export default function SmartStoreAnalytics({ orders, partners, items, onUpdateI
               <thead>
                 <tr className="border-b border-slate-100">
                   <th className="text-left px-5 py-3 font-bold text-slate-600">품목명</th>
-                  <th className="text-right px-5 py-3 font-bold text-slate-600">기본 단가</th>
                   <th className="text-right px-5 py-3 font-bold text-slate-600">스마트스토어 단가</th>
                   <th className="text-right px-5 py-3 font-bold text-slate-600">누적 판매</th>
                   <th className="text-right px-5 py-3 font-bold text-slate-600">누적 매출</th>
@@ -457,7 +456,7 @@ export default function SmartStoreAnalytics({ orders, partners, items, onUpdateI
               <tbody>
                 {ssProducts.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="text-center py-10 text-slate-400">
+                    <td colSpan={5} className="text-center py-10 text-slate-400">
                       스마트스토어 전용 품목이 없습니다.<br />
                       <span className="text-xs">품목 관리에서 스마트스토어 전용 체크 후 추가해주세요.</span>
                     </td>
@@ -471,7 +470,6 @@ export default function SmartStoreAnalytics({ orders, partners, items, onUpdateI
                         <p className="font-semibold text-slate-800">{p.name}</p>
                         {p.spec && <p className="text-xs text-slate-400 mt-0.5">{p.spec}</p>}
                       </td>
-                      <td className="px-5 py-3.5 text-right text-slate-400">{formatAmount(p.price)}</td>
                       <td className="px-5 py-3.5 text-right">
                         {editingId === p.id ? (
                           <input

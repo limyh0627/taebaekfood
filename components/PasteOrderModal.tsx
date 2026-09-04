@@ -171,7 +171,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
         itemId: line.selectedProductId!,
         name: product.name,
         quantity: actualQty,
-        price: product.price || 0,
+        price: 0,
         ...(line.isBox ? {
           isBoxUnit: true,
           boxQuantity: line.qty,

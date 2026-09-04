@@ -2435,7 +2435,7 @@ const ItemList: React.FC<ItemListProps> = ({
                                     onRequestPurchaseInvoice(
                                       psMap.get(product.id)!,
                                       partnerName || '',
-                                      [{ name: product.name, spec: product.spec || '', qty: conf.quantity, price: product.price ?? 0 }]
+                                      [{ name: product.name, spec: product.spec || '', qty: conf.quantity, price: 0 }]
                                     );
                                   }}
                                   className="text-[10px] font-black px-2.5 py-1.5 rounded-xl transition-all shrink-0 border bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50"
@@ -3082,7 +3082,7 @@ const ItemList: React.FC<ItemListProps> = ({
                     name: product.name,
                     spec: product.spec || '',
                     qty: item.qty,
-                    price: product.price ?? 0,
+                    price: 0,
                     itemId: product.id,
                     isBox: item.isBox,
                   });
@@ -3161,7 +3161,7 @@ const ItemList: React.FC<ItemListProps> = ({
                     name: product.name,
                     spec: product.spec || '',
                     qty: conf.quantity,
-                    price: product.price ?? 0,
+                    price: 0,
                     itemId: product.id,
                   });
                 });

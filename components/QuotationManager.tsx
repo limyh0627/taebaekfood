@@ -454,7 +454,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                     onClick={() => {
                       setLine(pickIdx, {
                         itemId: x.id, name: x.name, spec: String(x.spec ?? ''),
-                        cost: c, price: p ?? Number(x.price ?? 0),
+                        cost: c, price: p ?? 0,
                         isTaxExempt: x.taxType === '면세',
                       });
                       setPickIdx(null);

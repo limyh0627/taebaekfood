@@ -52,6 +52,7 @@ const App: React.FC = () => {
         <PartnerPortal
           partners={appData.partners}
           items={appData.items}
+          partnerItems={appData.partnerItems}
           onOrderSubmit={(o) => addItem('orders', o)}
           onExit={() => setCurrentView('orders')}
         />

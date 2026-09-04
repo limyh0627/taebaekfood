@@ -170,7 +170,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
       items: (req.items as ReturnItem[]).map(item => ({
         name: item.name,
         qty: item.quantity.toString(),
-        price: (item.price ?? 0).toString(),
+        price: '0',
         unit: '',
         isTaxExempt: false,
       })),

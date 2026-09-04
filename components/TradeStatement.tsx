@@ -1326,7 +1326,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       // 낱개 단가 (박스는 위에서 낱개로 바꿔 조회 → 낱개 partner_item 단가)
       const pcPrice   = pcEntry?.price ?? boxDerivedUnitPrice(product, selectedClientId, piList);
       const pcTaxType = pcEntry?.taxType; // '과세' | '면세' | undefined(=과세 기본)
-      const defaultPrice = pcPrice ?? item.price ?? product?.price ?? 0;
+      const defaultPrice = pcPrice ?? item.price ?? 0;
       const unitPrice    = editablePrices[key] !== undefined
         ? (parseFloat(editablePrices[key]) || 0) : defaultPrice;
       // 면세 여부: 수동 오버라이드 > PC taxType (undefined이면 과세 기본)
@@ -2056,7 +2056,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       .filter(p => !linkedIds.has(p.id) && !isBoxStockItem(p))   // 박스 품목은 전표 피커에서 제외(낱개만)
       .map(p => {
         const ex = src.find(pc => (pc.itemId) === p.id && (pc.partnerId) === selectedClientId);
-        return { pc: { id: ex?.id ?? p.id, itemId: p.id, partnerId: selectedClientId, price: ex?.price ?? ex?.price ?? p.price, taxType: ex?.taxType }, product: p };
+        return { pc: { id: ex?.id ?? p.id, itemId: p.id, partnerId: selectedClientId, price: ex?.price, taxType: ex?.taxType }, product: p };
       });
     //  **분류로 줄을 세운다.** 거래처에 등록된 품목을 앞에 두는 것은 그대로 — 자주 쓰는 게 위에 와야 한다.
     const sorted = (rows: typeof searchableRows) =>
@@ -2117,7 +2117,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       //  빈 행은 안 붙인다 — 누를 때마다 하나씩 딸려 나와 지우는 일이 된다. 필요하면 '행 추가'가 있다.
       return [
         ...filled,
-        { name: pc.product!.name, spec: pc.product!.spec || '', qty: '1', price: String(pc.pc.price ?? pc.product!.price ?? 0), isTaxExempt: false },
+        { name: pc.product!.name, spec: pc.product!.spec || '', qty: '1', price: String(pc.pc.price ?? 0), isTaxExempt: false },
       ];
     });
   }, []);
@@ -2441,7 +2441,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const displayName = product?.name || item.name;
     const spec = uc ? (product?.spec || item.displaySize || '') : (item.displaySize || product?.spec || '');
     const pcEntry = partnerOut.find(pc => pc.itemId === product?.id && pc.partnerId === o.partnerId);
-    const price = pcEntry?.price ?? item.price ?? product?.price ?? 0;
+    const price = pcEntry?.price ?? item.price ?? 0;
     const isTaxExempt = pcEntry?.taxType === '면세';
     return { name: displayName, spec, qty: String(qty), price: String(price), isTaxExempt, note: '',
              accountCode: pcEntry?.Account_Code || undefined } as ManualRow;
@@ -4257,7 +4257,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   .map(p => {
                     const existingPc = partnerOut.find(pc => pc.itemId === p.id && pc.partnerId === selectedClientId);
                     return {
-                      pc: { id: existingPc?.id ?? p.id, itemId: p.id, partnerId: selectedClientId, price: existingPc?.price ?? p.price, taxType: existingPc?.taxType },
+                      pc: { id: existingPc?.id ?? p.id, itemId: p.id, partnerId: selectedClientId, price: existingPc?.price, taxType: existingPc?.taxType },
                       product: p,
                     };
                   });
@@ -4279,7 +4279,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       <input type="text" value={quickName} placeholder="품목명..."
                         onChange={e=>{setQuickName(e.target.value);setQuickSearchOpen(true);
                           const match=searchableRows.find(r=>(r.product!.name)===e.target.value);
-                          if(match){setQuickSpec(match.product!.spec||'');setQuickPrice(String(match.pc.price??match.product!.price??''));setQuickIsTaxExempt(match.pc.taxType==='면세');}
+                          if(match){setQuickSpec(match.product!.spec||'');setQuickPrice(String(match.pc.price??''));setQuickIsTaxExempt(match.pc.taxType==='면세');}
                         }}
                         onFocus={()=>setQuickSearchOpen(true)}
                         onBlur={()=>setTimeout(()=>setQuickSearchOpen(false),150)}
@@ -4552,7 +4552,7 @@ ${names}
                               .filter(p => !isBoxStockItem(p) && matchesSearch(p.name + ' ' + (p.품목 ?? ''), qq))
                               .map(p => {
                                 const ex = src.find(pc => (pc.itemId) === p.id && (pc.partnerId) === selectedClientId);
-                                return { pc: { id: ex?.id ?? p.id, itemId: p.id, partnerId: selectedClientId, price: ex?.price ?? ex?.price ?? p.price, taxType: ex?.taxType }, product: p };
+                                return { pc: { id: ex?.id ?? p.id, itemId: p.id, partnerId: selectedClientId, price: ex?.price, taxType: ex?.taxType }, product: p };
                               }) as unknown as typeof searchableRows;
                           })();
                           const isSel=selectedItemIdx===idx;
@@ -4580,7 +4580,7 @@ ${names}
                                         const tags2 = [용기2, 마개2, 정보2].filter(Boolean).join(' · ');
                                         return (
                                           <button key={r.pc.id}
-                                            onMouseDown={()=>{setManualItems(prev=>prev.map((item,i)=>i===idx?{...item,name:docN,spec:r.product!.spec||'',price:String(r.pc.price??r.product!.price??0),isTaxExempt:r.pc.taxType==='면세'}:item));setActiveSearchRow(null);}}
+                                            onMouseDown={()=>{setManualItems(prev=>prev.map((item,i)=>i===idx?{...item,name:docN,spec:r.product!.spec||'',price:String(r.pc.price??0),isTaxExempt:r.pc.taxType==='면세'}:item));setActiveSearchRow(null);}}
                                             className="w-full flex items-center justify-between px-3 py-2 text-xs hover:bg-blue-50 text-left transition-colors">
                                             <span className="font-black text-slate-800">{docN}</span>
                                             <span className="text-slate-400 text-[10px]">{tags2}</span>

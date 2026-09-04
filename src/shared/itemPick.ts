@@ -57,7 +57,7 @@ export function pickLines(
       name: row.product.name,
       spec: row.product.spec || '',
       //  단가·과세는 **그 거래처에 파는 값**이 먼저다. 없으면 품목 값으로 물러선다.
-      price: String(row.pc.price ?? row.product.price ?? ''),
+      price: String(row.pc.price ?? ''),
       qty: String(qty),
       isTaxExempt: row.pc.taxType === '면세',
       note: '',
@@ -84,7 +84,7 @@ export function linkWrites(
     itemId: r.product!.id,
     partnerId,
     Direction: dir,
-    price: Number(String(edits[r.pc.id] ?? r.pc.price ?? r.product!.price ?? '').replace(/[,\s원]/g, '')) || 0,
+    price: Number(String(edits[r.pc.id] ?? r.pc.price ?? '').replace(/[,\s원]/g, '')) || 0,
     taxType: r.pc.taxType ?? '과세',
   } as PartnerItem));
 }

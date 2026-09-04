@@ -4213,7 +4213,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onAddItem={() => { setEditingProduct(null); setIsProductModalOpen(true); }}
               onDeleteItem={(id) => deleteItem('items', id)}
               onUpdateCost={(itemId, cost) => updateItem('items', itemId, { cost })}
-              onUpdatePrice={(itemId, price) => updateItem('items', itemId, { price })}
+              partnerItems={partnerItems}
             />
           )}
 

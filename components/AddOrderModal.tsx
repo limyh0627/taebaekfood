@@ -406,7 +406,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
     );
   };
 
-  const renderItemControls = (product: { id: string; unit?: string; price: number; category?: string }) => {
+  const renderItemControls = (product: { id: string; unit?: string; category?: string }) => {
     const selection = selectedItems.find(i => i.itemId === product.id);
     if (!selection) return null;
     const uPerBox = selection.unitsPerBox ?? 0;
@@ -532,7 +532,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
         itemId: item.itemId,
         name: product.name || '알 수 없는 상품',
         quantity: actualQty,
-        price: boxPrice ?? product.price ?? 0,
+        price: boxPrice ?? 0,
         ...(item.isBoxUnit && uPerBox > 0 ? { isBoxUnit: true, boxQuantity: item.quantity, unitsPerBox: uPerBox, boxType: item.boxType } : {}),
         ...(item.boxSubId ? { boxSubId: item.boxSubId } : {}),   // 겉박스 — 박스 품목/일반 공통
         ...(item.displaySize ? { displaySize: item.displaySize } : {}),
@@ -546,7 +546,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
       const uPerBox = item.unitsPerBox ?? 0;
       const actualQty = item.isBoxUnit && uPerBox > 0 ? item.quantity * uPerBox : item.quantity;
       const boxPrice = selectedClient ? boxDerivedUnitPrice(product, selectedClient.id, partnerOut) : undefined;
-      return sum + (boxPrice ?? product.price ?? 0) * actualQty;
+      return sum + (boxPrice ?? 0) * actualQty;
     }, 0);
 
     onSave({

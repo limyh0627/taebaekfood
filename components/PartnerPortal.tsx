@@ -12,16 +12,22 @@ import {
   X,
   AlertCircle
 } from 'lucide-react';
-import { Partner, Item, Order, OrderStatus, OrderSource, OrderItem } from '../types';
+import { Partner, Item, PartnerItem, Order, OrderStatus, OrderSource, OrderItem } from '../types';
+import { salePriceOf } from '../src/shared/partnerPrice';
 
 interface PartnerPortalProps {
   partners: Partner[];
   items: Item[];
+  /**
+   * 거래처별 단가. **없으면 금액이 안 나온다** —
+   * 전에는 죽은 `items.price` 를 보느라 모든 주문이 0원으로 들어갔다(2026-09-04).
+   */
+  partnerItems?: PartnerItem[];
   onOrderSubmit: (_order: Order) => void;
   onExit: () => void;
 }
 
-const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, onOrderSubmit, onExit }) => {
+const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, partnerItems, onOrderSubmit, onExit }) => {
   const [step, setStep] = useState<'auth' | 'order' | 'confirm'>('auth');
   const [partnerIdInput, setPartnerIdInput] = useState('');
   const [selectedClient, setSelectedClient] = useState<Partner | null>(null);
@@ -63,8 +69,11 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, onOrderS
   const totalAmount = Object.entries(cart).reduce((sum: number, [id, qty]) => {
     const product = items.find(p => p.id === id);
     // Fix: Explicitly cast qty as number as Object.entries value might be inferred as unknown in some environments
-    return sum + (product ? product.price * (qty as number) : 0);
+    return sum + (product ? (단가(product.id) ?? 0) * (qty as number) : 0);
   }, 0);
+
+  /** 이 거래처에 파는 단가. 안 정해져 있으면 undefined — 0 으로 눙치지 않는다. */
+  const 단가 = (itemId: string) => salePriceOf(partnerItems, selectedClient?.id ?? '', itemId);
 
   const handleSubmit = () => {
     if (!selectedClient) return;
@@ -76,7 +85,7 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, onOrderS
         name: product.name,
         // Fix: Explicitly cast qty as number to match OrderItem.quantity type
         quantity: qty as number,
-        price: product.price,
+        price: 단가(id) ?? 0,
         checked: false
       };
     });
@@ -209,7 +218,11 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, onOrderS
                               </div>
                               <div>
                                  <h5 className="font-black text-slate-800">{p.name}</h5>
-                                 <p className="text-xs font-bold text-indigo-600">{p.price.toLocaleString()}원 / {p.unit}</p>
+                                 <p className="text-xs font-bold text-indigo-600">
+                                   {단가(p.id) === undefined
+                                     ? <span className="text-amber-600">단가 미정</span>
+                                     : `${단가(p.id)!.toLocaleString()}원 / ${p.unit}`}
+                                 </p>
                               </div>
                            </div>
                         </div>

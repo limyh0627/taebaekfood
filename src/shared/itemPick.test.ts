@@ -4,10 +4,13 @@ import type { Item, PartnerItem } from './types';
 
 /**
  * 팝업에서 고른 것이 전표 줄로 어떻게 옮겨지는가.
- * 단가가 어디서 오는지(거래처 값 > 품목 값)와, 안 붙은 품목을 가려내는 게 전부다.
+ * 단가가 어디서 오는지와, 안 붙은 품목을 가려내는 게 전부다.
+ *
+ * **단가는 거래처 값 하나뿐이다**(2026-09-04). 전에는 품목 값(`items.price`)으로
+ * 물러섰는데, 그 칸이 527개 전부 0이라 **물러서면 0원 전표가 끊겼다.** 칸을 지웠다.
  */
 const 품목 = (id: string, name: string, over: Partial<Item> = {}): Item =>
-  ({ id, name, spec: '500ml', price: 4000, ...over } as Item);
+  ({ id, name, spec: '500ml', ...over } as Item);
 const 단가 = (over: Partial<PartnerItem> = {}): PartnerItem =>
   ({ id: 'pc1', itemId: 'i1', partnerId: 'p1', Direction: 'out', ...over } as PartnerItem);
 const 줄 = (id: string, name: string, pc: Partial<PartnerItem> = {}, it: Partial<Item> = {}): PickRow =>
@@ -29,17 +32,17 @@ describe('고른 것을 전표 줄로', () => {
     expect(pickLines({ i1: '' }, rows, linked).toAdd).toEqual([]);
   });
 
-  it('단가는 **거래처 값**이 먼저다 — 품목 값을 쓰면 남한테 팔던 값으로 끊긴다', () => {
+  it('단가는 **거래처 값**이다 — 품목에는 판매단가가 없다', () => {
     expect(pickLines({ i1: '1' }, rows, linked).toAdd[0].price).toBe('6000');
   });
 
-  it('거래처 단가가 없으면 품목 값으로 물러선다', () => {
-    const r = pickLines({ i9: '1' }, [줄('i9', '깨', {}, { price: 4500 })], new Set(['i9']));
-    expect(r.toAdd[0].price).toBe('4500');
+  it('거래처 단가가 없으면 **빈 칸** — 물러설 곳이 없다', () => {
+    const r = pickLines({ i9: '1' }, [줄('i9', '깨', {})], new Set(['i9']));
+    expect(r.toAdd[0].price).toBe('');
   });
 
   it('둘 다 없으면 빈 칸 — 0을 넣으면 0원 전표가 끊긴다', () => {
-    const r = pickLines({ i9: '1' }, [줄('i9', '깨', {}, { price: undefined })], new Set(['i9']));
+    const r = pickLines({ i9: '1' }, [줄('i9', '깨', {})], new Set(['i9']));
     expect(r.toAdd[0].price).toBe('');
   });
 
@@ -88,7 +91,7 @@ describe('"예"라고 답했을 때 붙일 것', () => {
   });
 
   it('단가가 아무데도 없으면 0으로 붙인다 — 붙이는 게 목적이고 값은 나중에 채운다', () => {
-    const 빈 = [줄('i3', '깨', {}, { price: undefined })];
+    const 빈 = [줄('i3', '깨', {})];
     expect(linkWrites(빈, 'p1', 'out')[0].price).toBe(0);
     expect(linkWrites(빈, 'p1', 'out')[0].taxType).toBe('과세');
   });

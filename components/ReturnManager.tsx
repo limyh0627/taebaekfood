@@ -115,7 +115,7 @@ const ReturnManager: React.FC<ReturnManagerProps> = ({
     const p = items.find(x => x.id === itemId);
     setReturnLineItems(prev =>
       prev.map((it, i) =>
-        i === idx ? { ...it, itemId, name: p?.name ?? '', price: p?.price ?? 0 } : it
+        i === idx ? { ...it, itemId, name: p?.name ?? '', price: 0 } : it
       )
     );
   };

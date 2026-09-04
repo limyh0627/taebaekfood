@@ -286,7 +286,7 @@ export const OrderCard = memo<OrderCardProps>(({
   const handleAddItem = (product: Item) => {
     const newItem: OrderItem = {
       itemId: product.id, name: product.name,
-      quantity: 1, price: product.price, checked: false,
+      quantity: 1, price: 0, checked: false,
     };
     onUpdateItems?.(order.id, [...order.items, newItem]);
     setShowAddProductSelect(null);
