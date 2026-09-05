@@ -4,6 +4,7 @@ import { FileText, FileSpreadsheet, FileImage, File as FileIcon, Download, Trash
 import { storage } from '../src/shared/firebase';
 import { subscribeToCollection, addItem, deleteItem, updateItem, fetchCollection } from '../src/shared/services/firebaseService';
 import { CabinetCategory, CabinetSubCategory, CabinetDoc } from '../src/shared/types';
+import { dateOfLocal } from '../src/shared/day';
 
 const DEFAULT_CATEGORIES = ['직원용', '업무용', '거래처용'];
 /** 이번 탭에서 이미 세운 자리 — 화면을 드나들어도 두 번 안 만든다 */
@@ -383,7 +384,7 @@ const DocumentManager: React.FC<DocumentManagerProps> = ({ currentUser, seed = [
                   <p className="text-sm font-bold text-slate-800 truncate">{d.fileName}</p>
                   <p className="text-[11px] text-slate-400 truncate">
                     {activeSub === '' && d.subCategory ? <span className="text-indigo-400 font-bold">{d.subCategory} · </span> : null}
-                    {fmtSize(d.size)} · {d.uploadedBy} · {(d.uploadedAt ?? '').slice(0, 10)}
+                    {fmtSize(d.size)} · {d.uploadedBy} · {dateOfLocal(d.uploadedAt)}
                     {d.note ? <span className="text-slate-500"> · {d.note}</span> : null}
                   </p>
                 </div>

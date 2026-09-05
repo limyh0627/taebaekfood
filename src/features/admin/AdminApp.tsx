@@ -159,6 +159,8 @@ import type { AppData } from '../../shared/hooks/useAppData';
 import type { AdminData } from '../../hooks/useAdminData';
 import { collection, getDocs, writeBatch, doc, getDoc, setDoc, deleteDoc, onSnapshot, query, where } from 'firebase/firestore';
 import { vatOn } from '../../shared/lineAmount';
+import { resolveOrderItem } from '../../shared/statementLines';
+import { dateOfLocal } from '../../shared/day';
 
 // 거래처 주문 포털(웹) URL — .env의 VITE_PARTNER_PORTAL_URL로 운영 도메인 지정 가능
 const PARTNER_PORTAL_URL =
@@ -1133,18 +1135,17 @@ const AdminApp: React.FC<AdminAppProps> = ({
       return p && p.type === 'product';
     });
     for (const item of finishedItems) {
-      let product = allItems.find(p => p.id === item.itemId);
-      if (!product) continue;
-      // 박스 품목은 낱개로 기록 — 실제 생산된 건 낱개(볶음참깨 1kg × 개입수).
-      const unpack = unpackComponent(product);
-      let qty = item.quantity;
-      if (unpack) {
-        const loose = allItems.find(p => p.id === unpack.itemId);
-        if (loose) { product = loose; qty = item.quantity * unpack.count; }
-      }
+      const 원래 = allItems.find(p => p.id === item.itemId);
+      if (!원래) continue;
+      //  박스 품목은 낱개로 기록 — 실제 생산된 건 낱개(볶음참깨 1kg × 개입수).
+      //  푸는 셈은 [statementLines](../../shared/statementLines.ts) 와 **같은 함수**다.
+      const 푼것 = resolveOrderItem(item, allItems);
+      const product = 푼것.product ?? 원래;
+      const qty = 푼것.qty;
       const record: ProductionRecord = {
         id: `pr-${order.id}-${product.id}-${Date.now()}`,
-        date: (order.deliveredAt ?? new Date().toISOString()).slice(0, 10),
+        //  `slice(0,10)` 은 UTC 라 밤 12시~아침 9시 사이 것이 하루 앞으로 밀린다
+        date: dateOfLocal(order.deliveredAt ?? new Date().toISOString()),
         itemId: product.id,
         itemName: product.name,
         finishedQty: qty,

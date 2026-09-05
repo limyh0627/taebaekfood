@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 //  이 파일엔 `const today = new Date()`(Date 객체)가 이미 있어 별칭으로 받는다
-import { today as todayStr } from '../src/shared/day';
+import { today as todayStr, dateOfLocal } from '../src/shared/day';
 import ConfirmModal from './ConfirmModal';
 import { 
   Users, 
@@ -1271,10 +1271,10 @@ const HRManager: React.FC<HRManagerProps> = ({
                                           {r.startDate}{r.endDate && r.endDate !== r.startDate ? ` ~ ${r.endDate}` : ''}
                                         </p>
                                         {r.reason && <p className="text-[11px] text-slate-400 mt-0.5 break-words">{r.reason}</p>}
-                                        <p className="text-[10px] text-slate-300 mt-1">신청 {(r.requestedAt ?? '').slice(0, 10)}</p>
+                                        <p className="text-[10px] text-slate-300 mt-1">신청 {dateOfLocal(r.requestedAt)}</p>
                                         {r.status === 'cancelled' && (r.cancelledAt || r.cancelReason) && (
                                           <p className="text-[10px] text-rose-400 font-bold mt-0.5">
-                                            취소 {(r.cancelledAt ?? '').slice(0, 10)}
+                                            취소 {dateOfLocal(r.cancelledAt)}
                                             {r.cancelledByName ? ` · ${r.cancelledByName}` : ''}
                                             {r.cancelReason ? ` · "${r.cancelReason}"` : ''}
                                           </p>
