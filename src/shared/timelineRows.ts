@@ -188,3 +188,66 @@ export function partnerNamesOf(rows: readonly TimelineRow[]): string[] {
   }
   return [...set].sort((a, b) => a.localeCompare(b, 'ko'));
 }
+
+// ── 줄의 성격 · 합계 ─────────────────────────────────────────────
+
+/** 계정코드 → 성격('수익'·'비용'·그 밖). 부르는 쪽이 계정표에서 만들어 준다. */
+export type CodeType = ReadonlyMap<string, string | undefined>;
+
+export interface RowClass {
+  pl?: '수익' | '비용';
+  /** 손익에 잡히는 금액 — 자금전표는 줄 중 손익 계정만 센다 */
+  plAmount: number;
+  cash?: '입금' | '출금';
+  /** 대체전표 — 현금이 안 움직인다 */
+  transfer?: boolean;
+}
+
+/**
+ * 이 줄이 수익인가 비용인가, 돈이 들어왔나 나갔나.
+ *
+ * **자금전표는 줄로 본다.** 대출상환 출금전표는 안에 차입금(부채)과 이자(비용)가
+ * 같이 있어서, 전표 금액을 통째로 비용으로 세면 원금까지 비용이 된다.
+ */
+export function classifyRow(row: TimelineRow, codeType: CodeType): RowClass {
+  if (row.kind === 'stmt') {
+    if (row.data.type === '매출') return { pl: '수익', plAmount: row.data.totalAmount };
+    if (row.data.type === '매입') return { pl: '비용', plAmount: row.data.totalAmount };
+    return { transfer: true, plAmount: 0 };                       // 대체전표
+  }
+  if (row.kind === 'pay') {
+    return { cash: row.stmtType === '매출' ? '입금' : '출금', plAmount: 0 };
+  }
+  const want = row.dir === '입금' ? '수익' : '비용';
+  const parts = (row.entry.lines ?? []).filter(l => l.accountCode && l.amount > 0);
+  const plAmount = parts.length
+    ? parts.reduce((a, l) => a + (codeType.get(l.accountCode!) === want ? l.amount : 0), 0)
+    : (row.accountCode && codeType.get(row.accountCode) === want ? row.amount : 0);
+  return { cash: row.dir, plAmount, ...(plAmount > 0 ? { pl: want } : {}) };
+}
+
+export interface TimelineTotals {
+  stmtSum: number; stmtCnt: number;
+  receiveSum: number; receiveCnt: number;
+  paySum: number; payCnt: number;
+}
+
+/**
+ * 목록 하단 합계 — 지금 걸린 줄의 전표·수금·지불 총액.
+ *
+ * 손익(발생 수익·비용)은 여기서 안 센다. **그건 분개에서 센다** —
+ * 갈래로 세면 대체전표가 통째로 빠진다(급여 발생·감가상각은 갈래가 '비용'이다).
+ * 부르는 쪽이 `financials.plOfJournals` 로 따로 구해 붙인다.
+ */
+export function timelineTotals(rows: readonly TimelineRow[], codeType: CodeType): TimelineTotals {
+  const t: TimelineTotals = { stmtSum: 0, stmtCnt: 0, receiveSum: 0, receiveCnt: 0, paySum: 0, payCnt: 0 };
+  for (const r of rows) {
+    const c = classifyRow(r, codeType);      // 구분 판정은 한 곳에서만 — 필터와 같은 규칙
+    if (r.kind === 'stmt') { t.stmtSum += r.data.totalAmount; t.stmtCnt++; }
+    if (r.kind === 'stmt') continue;         // 전표는 수금·지불이 아니다
+    const amount = r.amount;
+    if (c.cash === '입금') { t.receiveSum += amount; t.receiveCnt++; }
+    else if (c.cash === '출금') { t.paySum += amount; t.payCnt++; }
+  }
+  return t;
+}

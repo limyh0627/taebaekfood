@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   rowKind, rowCodes, rowName, rowDate, rowSearchText,
-  filterTimeline, sortTimeline, partnerNamesOf,
+  filterTimeline, sortTimeline, partnerNamesOf, classifyRow, timelineTotals,
   type TimelineRow,
 } from './timelineRows';
 
@@ -176,5 +176,74 @@ describe('rowName · rowDate', () => {
 describe('rowSearchText', () => {
   it('수금 행은 검색할 글이 없다 — 이름·문서번호로 찾는다', () => {
     expect(rowSearchText(수금(), 이름)).toBe('');
+  });
+});
+
+describe('classifyRow — 수익·비용·현금', () => {
+  const 성격 = new Map<string, string>([['931', '비용'], ['260', '부채'], ['901', '수익']]);
+
+  it('매출전표는 수익, 매입전표는 비용', () => {
+    expect(classifyRow(전표({ data: { type: '매출', totalAmount: 1000 } }), 성격))
+      .toMatchObject({ pl: '수익', plAmount: 1000 });
+    expect(classifyRow(전표({ data: { type: '매입', totalAmount: 500 } }), 성격))
+      .toMatchObject({ pl: '비용', plAmount: 500 });
+  });
+
+  it('대체전표는 손익을 안 센다 — 여기 말고 분개에서 센다', () => {
+    expect(classifyRow(전표({ data: { type: '비용', totalAmount: 900 } }), 성격))
+      .toMatchObject({ transfer: true, plAmount: 0 });
+  });
+
+  it('수금은 입금, 지불은 출금 — 둘 다 손익이 아니다', () => {
+    expect(classifyRow(수금({ stmtType: '매출' }), 성격)).toMatchObject({ cash: '입금', plAmount: 0 });
+    expect(classifyRow(수금({ stmtType: '매입' }), 성격)).toMatchObject({ cash: '출금', plAmount: 0 });
+  });
+
+  it('**대출상환은 이자만 비용이다** — 통째로 세면 원금까지 비용이 된다', () => {
+    const 상환 = 자금({ amount: 1_050_000, entry: { id: 'c1', dir: '출금', lines: [
+      { accountCode: '260', amount: 1_000_000 },   // 차입금(부채)
+      { accountCode: '931', amount: 50_000 },      // 이자비용
+    ] } });
+    expect(classifyRow(상환, 성격)).toMatchObject({ cash: '출금', pl: '비용', plAmount: 50_000 });
+  });
+
+  it('줄이 없으면 머리의 계정으로 본다', () => {
+    const r = 자금({ amount: 3000, accountCode: '931', entry: { id: 'c2', dir: '출금', lines: [] } });
+    expect(classifyRow(r, 성격).plAmount).toBe(3000);
+  });
+
+  it('손익 계정이 하나도 없으면 손익이 아니다 — 기계 구입 같은 것', () => {
+    const r = 자금({ amount: 5_000_000, entry: { id: 'c3', dir: '출금', lines: [{ accountCode: '206', amount: 5_000_000 }] } });
+    expect(classifyRow(r, 성격)).toMatchObject({ cash: '출금', plAmount: 0 });
+    expect(classifyRow(r, 성격).pl).toBeUndefined();
+  });
+});
+
+describe('timelineTotals — 하단 합계', () => {
+  const 성격 = new Map<string, string>([['931', '비용']]);
+
+  it('전표는 전표끼리, 수금·지불은 따로 센다', () => {
+    const t = timelineTotals([
+      전표({ data: { totalAmount: 1000 } }),
+      전표({ data: { totalAmount: 2000 } }),
+      수금({ stmtType: '매출', amount: 700 }),
+      수금({ stmtType: '매입', amount: 300 }),
+    ], 성격);
+    expect(t).toEqual({ stmtSum: 3000, stmtCnt: 2, receiveSum: 700, receiveCnt: 1, paySum: 300, payCnt: 1 });
+  });
+
+  it('자금 출금도 지불에 센다', () => {
+    const t = timelineTotals([자금({ dir: '출금', amount: 5000 })], 성격);
+    expect(t).toMatchObject({ paySum: 5000, payCnt: 1 });
+  });
+
+  it('**전표는 수금·지불에 안 낀다** — 매출전표를 입금으로 세면 두 번 잡힌다', () => {
+    const t = timelineTotals([전표({ data: { type: '매출', totalAmount: 1000 } })], 성격);
+    expect(t).toMatchObject({ stmtSum: 1000, receiveSum: 0, paySum: 0 });
+  });
+
+  it('빈 목록은 전부 0', () => {
+    expect(timelineTotals([], 성격))
+      .toEqual({ stmtSum: 0, stmtCnt: 0, receiveSum: 0, receiveCnt: 0, paySum: 0, payCnt: 0 });
   });
 });

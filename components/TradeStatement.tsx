@@ -20,6 +20,7 @@ import { partnerPriceWrites } from '../src/shared/partnerPriceSync';
 import { manualLines, orderLines, lineTotals, resolveOrderItem, orderItemPrice, type LineItem, type ManualRow } from '../src/shared/statementLines';
 import { partnerOrders as 거래처주문, activeOrders as 진행주문, activePartnerIds, ACTIVE_STATUSES } from '../src/shared/statementOrders';
 import { rowKind as 갈래, rowCodes as 계정들, rowName as 상대이름, filterTimeline, sortTimeline, partnerNamesOf,
+  classifyRow as 성격판정, timelineTotals,
   type TimelineRow, type StmtRow, type PayRow, type CashRow } from '../src/shared/timelineRows';
 import { lineAmount, lineAmountOf } from '../src/shared/lineAmount';
 import { marginOf } from '../src/shared/margin';
@@ -422,24 +423,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * 반대로 이자비용처럼 전표 없이 자금으로만 생긴 손익은 두 축에 함께 걸린다
    * (통장에서 나갔으니 출금이고, 전표가 없었으니 여기서 비용이 발생한 것).
    */
-  const classifyRow = useCallback((row: TimelineRow): {
-    pl?: '수익' | '비용'; plAmount: number; cash?: '입금' | '출금'; transfer?: boolean;
-  } => {
-    if (row.kind === 'stmt') {
-      if (row.data.type === '매출') return { pl: '수익', plAmount: row.data.totalAmount };
-      if (row.data.type === '매입') return { pl: '비용', plAmount: row.data.totalAmount };
-      return { transfer: true, plAmount: 0 };                       // 대체전표
-    }
-    if (row.kind === 'pay') {
-      return { cash: row.stmtType === '매출' ? '입금' : '출금', plAmount: 0 };
-    }
-    const want = row.dir === '입금' ? '수익' : '비용';
-    const parts = (row.entry.lines ?? []).filter(l => l.accountCode && l.amount > 0);
-    const plAmount = parts.length
-      ? parts.reduce((a, l) => a + (codeType.get(l.accountCode) === want ? l.amount : 0), 0)
-      : (row.accountCode && codeType.get(row.accountCode) === want ? row.amount : 0);
-    return { cash: row.dir, plAmount, ...(plAmount > 0 ? { pl: want } : {}) };
-  }, [codeType]);
+  //  줄의 성격(수익·비용·입금·출금)은 [shared/timelineRows](../src/shared/timelineRows.ts) 가 안다.
+  //  자금전표를 **줄로** 보는 규칙이 거기 있다 — 대출상환은 원금이 아니라 이자만 비용이다.
+  const classifyRow = useCallback((row: TimelineRow) => 성격판정(row, codeType), [codeType]);
+
   // ── 분개 펼침 ── 목록의 모든 줄(매출·매입·대체·수금/지불·자금)이 같은 방식으로 열린다.
   // 계산은 재무제표·손익분석이 쓰는 journalize* 함수 그대로라 화면끼리 숫자가 어긋날 수 없다.
   const [expandedJournal, setExpandedJournal] = useState<Set<string>>(new Set());
@@ -2195,7 +2182,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // 하단 합계 — 현재 필터·기간에 걸린 전표/수금/지불 총액 (검색·날짜와 무관하게 항상 합계 표시)
   const histTotals = useMemo(() => {
-    let stmtSum = 0, stmtCnt = 0, receiveSum = 0, paySum = 0, receiveCnt = 0, payCnt = 0;
     /*
      * **발생 손익은 분개에서 센다** — 셈은 `financials.plOfJournals` 하나다.
      *
@@ -2211,14 +2197,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       .map(id => (id ? journalBySource.get(id) : undefined))
       .filter((je): je is NonNullable<typeof je> => !!je);
     const { income: incomeCash, cost: costCash } = plOfJournals(고른분개, accountCodes);
-    for (const r of filteredHistory) {
-      const c = classifyRow(r);                      // 구분 판정은 한 곳에서만 — 필터와 같은 규칙
-      if (r.kind === 'stmt') { stmtSum += r.data.totalAmount; stmtCnt++; }
-      if (c.cash === '입금') { receiveSum += r.kind === 'cash' ? r.amount : (r as { amount: number }).amount; receiveCnt++; }
-      else if (c.cash === '출금') { paySum += r.kind === 'cash' ? r.amount : (r as { amount: number }).amount; payCnt++; }
-    }
-    return { stmtSum, stmtCnt, receiveSum, paySum, receiveCnt, payCnt, costCash, incomeCash };
-  }, [filteredHistory, classifyRow, journalBySource, accountCodes]);
+    return { ...timelineTotals(filteredHistory, codeType), costCash, incomeCash };
+  }, [filteredHistory, codeType, journalBySource, accountCodes]);
 
   // 거래처별 미수금/미지급금 — 전표별 매칭이 아니라 거래처 잔액 기준(partnerBalances).
   const partnerBalanceMap = partnerBalances;
