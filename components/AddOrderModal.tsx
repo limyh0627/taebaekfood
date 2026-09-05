@@ -9,6 +9,7 @@ import { subDotClass } from '../src/shared/submaterialStyle';
 import { catOrder } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
 import { bomOf } from '../src/shared/bomIndex';
+import { sellsTo } from '../src/shared/partnerRole';
 
 interface AddOrderModalProps {
   items: Item[];
@@ -71,7 +72,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
   const quickClients = useMemo(() => {
     const seen = new Set<string>();
     return [...partners]
-      .filter(c => !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처')
+      .filter(sellsTo)
       .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'))
       .filter(c => { if (seen.has(c.name)) return false; seen.add(c.name); return true; })
       .slice(0, 15);
@@ -80,7 +81,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
   const filteredClients = useMemo(() => {
     if (!searchTerm.trim()) return [];
     return partners.filter(c =>
-      (!c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처') &&
+      sellsTo(c) &&
       (matchClient(c.name || '', searchTerm) || (c.phone || '').includes(searchTerm))
     );
   }, [searchTerm, partners]);

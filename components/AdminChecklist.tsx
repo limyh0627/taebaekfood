@@ -12,6 +12,8 @@ import { addItem, updateItem } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 import { dateOfLocal } from '../src/shared/day';
 import { vatOn } from '../src/shared/lineAmount';
+import { adjTypeLabel, adjTypeClass } from '../src/shared/adjustmentStyle';
+import { sellsTo } from '../src/shared/partnerRole';
 
 interface AdminChecklistProps {
   leaveRequests: LeaveRequest[];
@@ -139,20 +141,9 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
     return Array.from(map.values());
   }, [orderRequests, partnerItems, partners]);
 
-  const getAdjTypeLabel = (type: string) => {
-    if (type === 'quantity_change') return '수량 변동';
-    if (type === 'cancel_receipt') return '입고 취소';
-    if (type === 'reorder_alert') return '발주 필요';
-    if (type === 'oem_fee') return '가공비 전표';
-    return '채팅 언급';
-  };
-  const getAdjTypeClass = (type: string) => {
-    if (type === 'quantity_change') return 'bg-blue-50 text-blue-600';
-    if (type === 'cancel_receipt') return 'bg-rose-50 text-rose-600';
-    if (type === 'reorder_alert') return 'bg-rose-50 text-rose-600';
-    if (type === 'oem_fee') return 'bg-violet-50 text-violet-600';
-    return 'bg-indigo-50 text-indigo-600';
-  };
+  //  이름·색은 [shared/adjustmentStyle](../src/shared/adjustmentStyle.ts) 한 곳이 정한다
+  const getAdjTypeLabel = adjTypeLabel;
+  const getAdjTypeClass = adjTypeClass;
   const getLeaveStatusBadge = (req: LeaveRequest) => {
     if (req.status === 'cancel_pending')
       return <span className="flex items-center gap-1 text-orange-500 font-black text-[10px]"><Clock size={11} />취소 요청</span>;
@@ -683,7 +674,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                 >
                   <option value="">거래처 선택</option>
                   {partners
-                    .filter(c => !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처')
+                    .filter(sellsTo)
                     .map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>

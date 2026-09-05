@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { X, ClipboardPaste, CheckCircle2, AlertCircle, ChevronDown, User, Truck, Store, LayoutGrid, Search, ArrowRight, ShoppingBag } from 'lucide-react';
 import { Item, PartnerItem, Order, Partner, OrderSource, OrderItem, OrderPallet } from '../types';
 import { bomOf } from '../src/shared/bomIndex';
+import { sellsTo } from '../src/shared/partnerRole';
 
 // ── 퍼지 매칭 ───────────────────────────────────────────────
 const getBigrams = (s: string) => {
@@ -130,7 +131,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   const filteredClients = useMemo(() => {
     if (!searchTerm.trim()) return [];
     return partners.filter(c =>
-      (!c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처') &&
+      sellsTo(c) &&
       matchClient(c.name || '', searchTerm)
     );
   }, [searchTerm, partners]);
@@ -138,7 +139,7 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   const quickClients = useMemo(() => {
     const seen = new Set<string>();
     return partners
-      .filter(c => !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처')
+      .filter(sellsTo)
       .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'))
       .filter(c => { if (seen.has(c.name)) return false; seen.add(c.name); return true; })
       .slice(0, 12);

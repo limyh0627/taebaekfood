@@ -2,9 +2,10 @@
 import { X, Package, Tag, Box, Layers, Plus, Building2, Check, Trash2, ChevronRight, FileText } from 'lucide-react';
 import { Item, InventoryCategory, ItemSubtype, Partner, ClientBoxConfig, PartnerItem, SubmaterialComponent } from '../types';
 import { fetchCollection } from '../src/shared/services/firebaseService';
-import { buildTaxonomy, DEFAULT_CATEGORY_LABELS, TaxonomyRow } from '../src/shared/taxonomy';
+import { DEFAULT_CATEGORY_LABELS, TaxonomyRow, buildTaxonomy, categoryRank } from '../src/shared/taxonomy';
 import { bomOf, BomDraftLine } from '../src/shared/bomIndex';
 import { baseRawName, PRODUCT_FORMULA } from '../src/constants/formula';
+import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 
 interface ProductModalProps {
   initialData?: Item;
@@ -223,10 +224,10 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     .sort();
 
   const inboundPartners = partners.filter(c =>
-    c.partnerType === '매입처' || c.partnerType === '매출+매입처'
+    buysFrom(c)
   );
   const salesClients = partners.filter(c =>
-    !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처'
+    sellsTo(c)
   );
 
   // 타입 목록 — 분류 관리(itemTaxonomy)에서 정한 것. 숨긴 타입(배송·선물세트 등)은 빠진다.
@@ -637,15 +638,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             };
             const catLabelOf = (k: string) => taxo.labelOf(k);
             //  묶음 순서도 분류 관리 그대로 — 타입 순서 → 그 안의 카테고리 순서.
-            const CAT_RANK = (() => {
-              const m = new Map<string, number>();
-              let n = 0;
-              for (const t of taxo.allTypes) {
-                if (!m.has(t.key)) m.set(t.key, n++);
-                for (const c of taxo.categoriesOf(t.key)) if (!m.has(c)) m.set(c, n++);
-              }
-              return m;
-            })();
+            const CAT_RANK = categoryRank(taxo);
             const catRankOf = (k: string) => CAT_RANK.get(k) ?? 999;
             const selectable = pool.filter(p => p.id !== initialData?.id && !addedIds.has(p.id));
             // 칩 목록은 전체 품목 기준으로 고정 (추가/필터에 따라 안 바뀌게)

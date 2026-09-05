@@ -7,6 +7,7 @@ import {
 } from '../src/shared/types';
 import PageHeader from './PageHeader';
 import { dateOfLocal } from '../src/shared/day';
+import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 
 type ReturnTab = '받기' | '보내기' | '이력';
 
@@ -71,7 +72,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   // ══════════════════════════════════════════
 
   const inboundPartners = partners.filter(c =>
-    c.partnerType === '매입처' || c.partnerType === '매출+매입처'
+    buysFrom(c)
   );
 
   // 거래처별 연결 품목
@@ -286,7 +287,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
                   {showReturnClientDropdown && (
                     <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-auto">
                       {partners
-                        .filter(c => !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처')
+                        .filter(sellsTo)
                         .filter(c => !returnClientSearch || c.name.toLowerCase().includes(returnClientSearch.toLowerCase()))
                         .map(c => (
                           <button

@@ -124,3 +124,23 @@ export function defaultTaxonomyRows(): Omit<TaxonomyRow, 'id'>[] {
   });
   return rows;
 }
+
+/**
+ * **분류 차례** — 타입 순서 → 그 안의 카테고리 순서로 번호를 매긴다.
+ *
+ * 품목을 늘어놓을 때 **분류 관리 화면과 같은 차례**로 보여야 한다. 그 셈이
+ * [AddItemModal](../../components/AddItemModal.tsx)·[ItemList](../../components/ItemList.tsx)
+ * 두 곳에 똑같이 적혀 있었다(2026-09-05). 한쪽만 고치면 같은 품목이 화면마다 다른
+ * 자리에 뜬다.
+ *
+ * @returns 타입키·카테고리 → 차례(0부터). 없는 것은 부르는 쪽이 뒤로 보낸다.
+ */
+export function categoryRank(taxo: Pick<Taxonomy, 'allTypes' | 'categoriesOf'>): Map<string, number> {
+  const m = new Map<string, number>();
+  let n = 0;
+  for (const t of taxo.allTypes) {
+    if (!m.has(t.key)) m.set(t.key, n++);
+    for (const c of taxo.categoriesOf(t.key)) if (!m.has(c)) m.set(c, n++);
+  }
+  return m;
+}

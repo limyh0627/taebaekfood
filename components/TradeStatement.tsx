@@ -49,6 +49,7 @@ import { PREPAID, ADVANCE_IN } from '../src/shared/interCompany';
 import type { JournalEntry } from '../src/shared/types';
 import { AccountModal } from './CashLedger';
 import PageHeader from './PageHeader';
+import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 
 interface TradeStatementProps {
   orders: Order[];
@@ -1163,11 +1164,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     let base = partners.filter(c => companyOf(c) === companyId).filter(c => {
       if (createMode === '매입') {
         // 매입전표: 매입처 또는 매출+매입처
-        return c.partnerType === '매입처' || c.partnerType === '매출+매입처';
+        return buysFrom(c);
       }
       // 매출전표: 매출처(기본) 또는 매출+매입처 — 채널(일반/택배/스마트스토어)·미설정 무관하게 모두 노출
       // (예전엔 type==='일반'||'택배'만 허용해 스마트스토어·type 미설정 거래처가 검색에서 누락됐음)
-      return c.partnerType === undefined || c.partnerType === '매출처' || c.partnerType === '매출+매입처';
+      return sellsTo(c);
     });
     // 검색 중이면 진행주문 필터(onlyActive)를 무시하고 해당 유형 전체 거래처에서 찾는다.
     // 매입은 '주문(orders=매출)' 개념이 없어 진행주문 필터를 아예 안 건다 — 매입처 전체를 노출.

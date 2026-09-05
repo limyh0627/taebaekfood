@@ -7,6 +7,7 @@ import {
 import { AdjustmentRequest } from '../types';
 import { Item } from '../src/shared/types';
 import PageHeader from './PageHeader';
+import { adjTypeLabel, adjTypeClass } from '../src/shared/adjustmentStyle';
 
 interface ConfirmationItemsProps {
   requests: AdjustmentRequest[];
@@ -41,21 +42,10 @@ const ConfirmationItems: React.FC<ConfirmationItemsProps> = ({
 
   const pendingCount = visibleRequests.filter(r => r.status === 'pending').length;
 
-  const getTypeLabel = (type: string) => {
-    if (type === 'quantity_change') return '수량 변동';
-    if (type === 'cancel_receipt') return '입고 취소';
-    if (type === 'reorder_alert') return '발주 필요';
-    if (type === 'oem_fee') return '가공비 전표';
-    return '채팅 언급';
-  };
+  //  이름·색은 [shared/adjustmentStyle](../src/shared/adjustmentStyle.ts) 한 곳이 정한다
+  const getTypeLabel = adjTypeLabel;
 
-  const getTypeClass = (type: string) => {
-    if (type === 'quantity_change') return 'bg-blue-50 text-blue-600';
-    if (type === 'cancel_receipt') return 'bg-rose-50 text-rose-600';
-    if (type === 'reorder_alert') return 'bg-rose-50 text-rose-600';
-    if (type === 'oem_fee') return 'bg-violet-50 text-violet-600';
-    return 'bg-indigo-50 text-indigo-600';
-  };
+  const getTypeClass = adjTypeClass;
 
   return (
     <div className="space-y-4 animate-in slide-in-from-right-4 duration-500">

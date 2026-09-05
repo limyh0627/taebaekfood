@@ -15,6 +15,7 @@ import { calcCost, CostCalcRow, CostCalcResult } from '../src/features/admin/cos
 import { ProductNameRow, ProductCard, renderColoredName, splitNameVolume, specText, catOrder, categoryChipClass, categoryOf } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
 import { priceParts } from '../src/shared/lineAmount';
+import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 
 interface ItemManagerProps {
   items: Item[];
@@ -280,7 +281,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
   const TYPE_ORDER: Record<string, number> = { '일반': 0, '택배': 1, '스마트스토어': 2 };
   const salesClients = useMemo(() =>
     partners
-      .filter(c => !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처')
+      .filter(sellsTo)
       .sort((a, b) => {
         const tDiff = (TYPE_ORDER[a.type] ?? 0) - (TYPE_ORDER[b.type] ?? 0);
         return tDiff !== 0 ? tDiff : a.name.localeCompare(b.name, 'ko');
@@ -289,7 +290,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
   );
   const purchaseClients = useMemo(() =>
     partners
-      .filter(c => c.partnerType === '매입처' || c.partnerType === '매출+매입처')
+      .filter(buysFrom)
       .sort((a, b) => a.name.localeCompare(b.name, 'ko')),
     [partners]
   );
@@ -881,7 +882,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                             'bg-rose-100 text-rose-700','bg-sky-100 text-sky-700','bg-violet-100 text-violet-700',
                             'bg-teal-100 text-teal-700','bg-orange-100 text-orange-700','bg-pink-100 text-pink-700',
                           ];
-                          const partnerList = partners.filter(c => !c.partnerType || c.partnerType === '매출처' || c.partnerType === '매출+매입처');
+                          const partnerList = partners.filter(sellsTo);
                           const matched = (item.partnerIds ?? []).map(id => partnerList.find(c => c.id === id)).filter(Boolean) as typeof partnerList;
                           if (!matched.length) return <span className="text-slate-200">-</span>;
                           const isExp = expandedClientRowId === item.id;

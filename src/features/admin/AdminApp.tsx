@@ -161,6 +161,7 @@ import { collection, getDocs, writeBatch, doc, getDoc, setDoc, deleteDoc, onSnap
 import { vatOn } from '../../shared/lineAmount';
 import { resolveOrderItem } from '../../shared/statementLines';
 import { dateOfLocal } from '../../shared/day';
+import { buysFrom } from '../../shared/partnerRole';
 
 // 거래처 주문 포털(웹) URL — .env의 VITE_PARTNER_PORTAL_URL로 운영 도메인 지정 가능
 const PARTNER_PORTAL_URL =
@@ -1983,7 +1984,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 deleteItem(inProducts ? 'items' : 'items', id);
               }}
               onAddAdjustmentRequest={(req) => addItem('adjustmentRequests', req)}
-              inboundPartners={partners.filter(c => c.partnerType === '매입처' || c.partnerType === '매출+매입처')}
+              inboundPartners={partners.filter(buysFrom)}
               partnerItems={partnerItems}
               partners={partners}
               currentUser={currentUser}

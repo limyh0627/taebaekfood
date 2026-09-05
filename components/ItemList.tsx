@@ -49,7 +49,7 @@ import ProductLotPanel, { LotShipment } from './ProductLotPanel';
 import RawLedgerList from './RawLedgerList';
 import OemManager from './OemManager';
 import CategoryManager from './CategoryManager';
-import { buildTaxonomy, TaxonomyRow } from '../src/shared/taxonomy';
+import { TaxonomyRow, buildTaxonomy, categoryRank } from '../src/shared/taxonomy';
 import { RM_LIST, unitOf, baseRawName, lotStockInUnit, unitToKg, lotKgRemaining, parsePackageKg, parseSpecUnit, parseSpecCount } from '../src/constants/formula';
 import { catOrder, CATEGORY_ORDER_LEN, categoryChipClass, specText, splitNameVolume , categoryOf} from '../src/shared/productChip';
 import { subDotClass } from '../src/shared/submaterialStyle';
@@ -952,15 +952,7 @@ const ItemList: React.FC<ItemListProps> = ({
     //  분류 관리 순서 그대로 — 타입 순서 → 그 안의 카테고리 순서. 코드에 박아 두면
     //  새로 만든 분류(비닐·케이스)가 늘 맨 뒤로 밀리고 화면에서 바꿔도 안 따라온다.
     //  근거는 품목의 category, 없으면 타입 — 라벨이 아니라 **키**로 잡는다(이름은 바뀐다).
-    const CAT_RANK = (() => {
-      const m = new Map<string, number>();
-      let n = 0;
-      for (const t of taxo.allTypes) {
-        if (!m.has(t.key)) m.set(t.key, n++);
-        for (const c of taxo.categoriesOf(t.key)) if (!m.has(c)) m.set(c, n++);
-      }
-      return m;
-    })();
+    const CAT_RANK = categoryRank(taxo);
     const rankOf = (p: Item) => CAT_RANK.get(String(p.category ?? '')) ?? CAT_RANK.get(String(p.type)) ?? 999;
     return [...result].sort((a, b) => {
       const aCritical = a.type !== 'product' && displayStockOf(a) < a.minStock ? 0 : 1;
