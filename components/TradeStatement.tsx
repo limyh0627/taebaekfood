@@ -17,7 +17,7 @@ import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, Compan
 import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { partnerPriceWrites } from '../src/shared/partnerPriceSync';
-import { manualLines, orderLines, lineTotals, type LineItem, type ManualRow } from '../src/shared/statementLines';
+import { manualLines, orderLines, lineTotals, resolveOrderItem, orderItemPrice, type LineItem, type ManualRow } from '../src/shared/statementLines';
 import { partnerOrders as 거래처주문, activeOrders as 진행주문, activePartnerIds, ACTIVE_STATUSES } from '../src/shared/statementOrders';
 import { rowKind as 갈래, rowCodes as 계정들, rowName as 상대이름, filterTimeline, sortTimeline, partnerNamesOf,
   type TimelineRow, type StmtRow, type PayRow, type CashRow } from '../src/shared/timelineRows';
@@ -287,23 +287,19 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   // 재고·단가가 다 박스다. 낱개 품목의 전표에 '박스'를 적을 자리가 없다.
   const poToManualRows = (po: PurchaseOrder): ManualRow[] =>
     poLines(po).map(line => {
-      let product = allItems.find(p => p.id === line.itemId);
-      let qty = line.quantity;
-      const uc = unpackComponent(product);
-      if (uc) {
-        const loose = allItems.find(p => p.id === uc.itemId);
-        if (loose) { product = loose; qty = line.quantity * uc.count; }
-      }
+      //  푸는 것은 [statementLines](../src/shared/statementLines.ts) 와 같은 함수를 쓴다
+      const r = resolveOrderItem({ itemId: line.itemId, name: line.name, quantity: line.quantity } as any, allItems);
+      const 박스였나 = r.perBox > 1;
       // 단가는 바뀐 품목(낱개) 기준으로 다시 찾는다. 없으면 박스 단가 ÷ 개입수로 파생.
       const ps = (partnerItems ?? []).find((s: any) =>
-        s.Direction === 'in' && s.itemId === (product?.id ?? line.itemId) && s.partnerId === selectedClientId);
-      const boxPs = uc ? (partnerItems ?? []).find((s: any) =>
+        s.Direction === 'in' && s.itemId === (r.product?.id ?? line.itemId) && s.partnerId === selectedClientId);
+      const boxPs = 박스였나 ? (partnerItems ?? []).find((s: any) =>
         s.Direction === 'in' && s.itemId === line.itemId && s.partnerId === selectedClientId) : undefined;
-      const unitPrice = ps?.price ?? (boxPs?.price && uc ? Math.round(boxPs.price / uc.count) : undefined);
+      const unitPrice = ps?.price ?? (boxPs?.price ? Math.round(boxPs.price / r.perBox) : undefined);
       return {
-        name: product?.name || line.name || '',
-        spec: product?.spec || line.unit || '',
-        qty: String(qty),
+        name: r.product?.name || line.name || '',
+        spec: r.product?.spec || line.unit || '',
+        qty: String(r.qty),
         price: unitPrice ? String(unitPrice) : '',
         isTaxExempt: (ps ?? boxPs)?.taxType === '면세',
         accountCode: (ps ?? boxPs)?.Account_Code,
@@ -2250,26 +2246,29 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   };
 
   // ── 주문 클릭 처리 (중복 발행 감지) ──
-  /** 주문 한 건을 전표 줄로 편다 — 박스 품목은 낱개로(수량 = 박스 × 개입수) */
+  /**
+   * 주문 한 건을 전표 줄로 편다 — 박스 품목은 낱개로(수량 = 박스 × 개입수).
+   *
+   * 푸는 것과 단가 고르는 것은 [statementLines](../src/shared/statementLines.ts) 와
+   * **같은 함수**를 쓴다. 예전엔 여기 따로 적혀 있어서, 박스 단가를 개입수로 나누는
+   * 고침이 저쪽에만 들어가고 여기는 **열 배로 남아 있었다**(2026-09-05).
+   */
   const orderToRows = (o: Order): ManualRow[] => o.items.map(item => {
-    let product = allItems.find(p => p.id === item.itemId);
-    let qty = item.quantity;
-    const uc = unpackComponent(product);
-    if (uc) {
-      const loose = allItems.find(p => p.id === uc.itemId);
-      if (loose) {
-        const boxCount = item.isBoxUnit && item.boxQuantity ? item.boxQuantity : item.quantity;
-        product = loose;
-        qty = boxCount * uc.count;
-      }
-    }
-    const displayName = product?.name || item.name;
-    const spec = uc ? (product?.spec || item.displaySize || '') : (item.displaySize || product?.spec || '');
-    const pcEntry = partnerOut.find(pc => pc.itemId === product?.id && pc.partnerId === o.partnerId);
-    const price = pcEntry?.price ?? item.price ?? 0;
-    const isTaxExempt = pcEntry?.taxType === '면세';
-    return { name: displayName, spec, qty: String(qty), price: String(price), isTaxExempt, note: '',
-             accountCode: pcEntry?.Account_Code || undefined } as ManualRow;
+    const r = resolveOrderItem(item, allItems);
+    const pcEntry = partnerOut.find(pc => pc.itemId === r.product?.id && pc.partnerId === o.partnerId);
+    //  규격은 박스를 풀었을 때만 품목 것을 앞세운다 — 낱개는 주문에 적힌 표시규격이 맞다
+    const spec = r.perBox > 1
+      ? (r.product?.spec || item.displaySize || '')
+      : (item.displaySize || r.product?.spec || '');
+    return {
+      name: r.product?.name || item.name,
+      spec,
+      qty: String(r.qty),
+      price: String(orderItemPrice(r, item, pcEntry?.price)),
+      isTaxExempt: pcEntry?.taxType === '면세',
+      note: '',
+      accountCode: pcEntry?.Account_Code || undefined,
+    } as ManualRow;
   });
 
   const handleOrderClick = (o: Order) => {

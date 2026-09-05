@@ -1,4 +1,4 @@
-import type { Item, Order, PartnerItem } from './types';
+import type { Item, Order, OrderItem, PartnerItem } from './types';
 import { lineAmount } from './lineAmount';
 import { unpackComponent, boxDerivedUnitPrice } from './orderUnits';
 
@@ -58,6 +58,58 @@ export function manualLines(rows: readonly ManualRow[], stmtType: StatementType)
     });
 }
 
+/** 주문 한 줄이 실제로 무엇인지 — 박스면 낱개로 풀어서. */
+export interface ResolvedOrderItem {
+  /** 박스였으면 **낱개 품목**으로 바뀌어 있다 */
+  product?: Item;
+  /** 낱개 기준 수량 */
+  qty: number;
+  /** 박스를 풀었으면 개입수, 아니면 1 — **주문에 적힌 단가를 나눌 때 쓴다** */
+  perBox: number;
+  /** 품목을 못 찾음 — 박스가 안 풀렸을 수 있다 */
+  unknownItem: boolean;
+}
+
+/**
+ * 주문 줄 → 실제 품목·수량.
+ *
+ * **전표는 낱개 기준이다.** 박스 품목이면 낱개로 바꾸고 수량을 개입수만큼 늘린다.
+ * 품목이 지워졌거나 id가 바뀌면 못 찾는다 → 박스가 안 풀리고 박스 수량 그대로 들어간다.
+ * 이름으로 한 번 더 찾아보고, 그래도 없으면 `unknownItem` 을 단다(조용히 넘기지 않는다).
+ */
+export function resolveOrderItem(item: OrderItem, allItems: readonly Item[]): ResolvedOrderItem {
+  let product = allItems.find(p => p.id === item.itemId)
+    ?? (item.name ? allItems.find(p => !p.archived && p.name === item.name) : undefined);
+  const unknownItem = !product;
+
+  const uc = unpackComponent(product);
+  let qty = item.quantity;
+  let perBox = 1;
+  if (uc) {
+    const loose = allItems.find(p => p.id === uc.itemId);
+    if (loose) {
+      const boxCount = item.isBoxUnit && item.boxQuantity ? item.boxQuantity : item.quantity;
+      product = loose;
+      qty = boxCount * uc.count;
+      perBox = uc.count;
+    }
+  }
+  return { product, qty, perBox, unknownItem };
+}
+
+/**
+ * 이 줄에 붙일 단가. **거래처 단가 > 주문에 적힌 값**.
+ *
+ * **주문 값으로 물러설 때는 개입수로 나눈다.** 주문은 박스로 받는데(`10개입 180,000`)
+ * 위에서 수량을 낱개로 풀었다. 안 나누면 낱개 10개에 180,000씩 붙어 **열 배로 끊긴다.**
+ */
+export function orderItemPrice(
+  r: Pick<ResolvedOrderItem, 'perBox'>, item: Pick<OrderItem, 'price'>, pcPrice?: number,
+): number {
+  const 주문단가 = item.price !== undefined ? Math.round(item.price / r.perBox) : undefined;
+  return pcPrice ?? 주문단가 ?? 0;
+}
+
 export interface OrderLinesInput {
   order: Order;
   stmtType: StatementType;
@@ -89,27 +141,7 @@ export function orderLines(input: OrderLinesInput): LineItem[] {
   let no = 1;
 
   for (const item of order.items) {
-    // 품목이 지워졌거나 id가 바뀌면 못 찾는다 → 박스가 안 풀리고 박스 수량 그대로 들어간다.
-    // 이름으로 한 번 더 찾아보고, 그래도 없으면 경고 표시를 단다(조용히 넘기지 않는다).
-    let product = allItems.find(p => p.id === item.itemId)
-      ?? (item.name ? allItems.find(p => !p.archived && p.name === item.name) : undefined);
-    const unknownItem = !product;
-
-    // 박스 품목 → 낱개로 변환 (전표는 낱개 기준). 수량 = 박스개수 × 개입.
-    const uc = unpackComponent(product);
-    let qtyUnits = item.quantity;
-    /** 박스를 풀었으면 주문에 적힌 단가는 **박스값**이다 — 낱개로 나눠야 한다 */
-    let 개입수 = 1;
-    if (uc) {
-      const loose = allItems.find(p => p.id === uc.itemId);
-      if (loose) {
-        const boxCount = item.isBoxUnit && item.boxQuantity ? item.boxQuantity : item.quantity;
-        product = loose;
-        qtyUnits = boxCount * uc.count;
-        개입수 = uc.count;
-      }
-    }
-
+    const { product, qty: qtyUnits, perBox, unknownItem } = resolveOrderItem(item, allItems);
     const displayName = product?.name || item.name;
     const spec = product?.spec || item.displaySize || '';
     const key = `${displayName}||${spec}`;
@@ -119,17 +151,8 @@ export function orderLines(input: OrderLinesInput): LineItem[] {
     const pcPrice = pcEntry?.price ?? boxDerivedUnitPrice(product, partnerId, partnerItems as any);
     const pcTaxType = pcEntry?.taxType;   // '과세' | '면세' | undefined(=과세 기본)
 
-    /**
-     * 단가 우선순위: 이번에 고친 값 > 거래처 단가 > 주문에 적힌 값.
-     *
-     * **주문에 적힌 값으로 물러설 때는 개입수로 나눈다.** 주문은 박스로 받는데
-     * (`10개입 180,000`) 위에서 수량을 낱개로 풀었다. 안 나누면 낱개 10개에
-     * 180,000씩 붙어 **열 배로 끊긴다.**
-     * 지금 실제로 걸리는 줄은 0이다(2026-09-05 실측) — 박스 주문마다 낱개 거래처단가가
-     * 있어서 그게 먼저 이긴다. 없는 거래처가 하나 생기는 날을 막는다.
-     */
-    const 주문단가 = item.price !== undefined ? Math.round(item.price / 개입수) : undefined;
-    const defaultPrice = pcPrice ?? 주문단가 ?? 0;
+    //  단가 우선순위: 이번에 고친 값 > 거래처 단가 > 주문에 적힌 값(개입수로 나눠서)
+    const defaultPrice = orderItemPrice({ perBox }, item, pcPrice);
     const unitPrice = editablePrices[key] !== undefined
       ? (parseFloat(editablePrices[key]) || 0) : defaultPrice;
 

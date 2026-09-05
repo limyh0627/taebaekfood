@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { manualLines, orderLines, lineTotals } from './statementLines';
+import { manualLines, orderLines, lineTotals, resolveOrderItem, orderItemPrice } from './statementLines';
 
 const 품목 = (o: any) => o as any;
 const 주문 = (items: any[]) => ({ id: 'o1', items } as any);
@@ -201,5 +201,41 @@ describe('lineTotals', () => {
 
   it('빈 전표는 0', () => {
     expect(lineTotals([])).toEqual({ isTwoSided: false, supply: 0, tax: 0, amount: 0 });
+  });
+});
+
+describe('resolveOrderItem — 주문 줄이 실제로 무엇인가', () => {
+  it('박스면 낱개로 바꾸고 개입수를 알려준다', () => {
+    const r = resolveOrderItem({ itemId: 'box', name: '박스', quantity: 2 } as any, 목록);
+    expect(r).toMatchObject({ qty: 20, perBox: 10, unknownItem: false });
+    expect(r.product?.id).toBe('loose');
+  });
+
+  it('낱개면 그대로, 개입수는 1', () => {
+    const r = resolveOrderItem({ itemId: 'loose', name: '낱개', quantity: 3 } as any, 목록);
+    expect(r).toMatchObject({ qty: 3, perBox: 1 });
+  });
+
+  it('못 찾으면 표시를 달고 수량을 그대로 둔다', () => {
+    const r = resolveOrderItem({ itemId: '없음', name: '없음', quantity: 4 } as any, 목록);
+    expect(r).toMatchObject({ qty: 4, perBox: 1, unknownItem: true, product: undefined });
+  });
+});
+
+describe('orderItemPrice — 박스 단가를 낱개로 나눈다', () => {
+  it('거래처 단가가 있으면 그게 이긴다 (이미 낱개 값이라 안 나눈다)', () => {
+    expect(orderItemPrice({ perBox: 10 }, { price: 180000 } as any, 18500)).toBe(18500);
+  });
+
+  it('거래처 단가가 없으면 주문 단가를 개입수로 나눈다 — 안 나누면 열 배다', () => {
+    expect(orderItemPrice({ perBox: 10 }, { price: 180000 } as any, undefined)).toBe(18000);
+  });
+
+  it('박스가 아니면 그대로', () => {
+    expect(orderItemPrice({ perBox: 1 }, { price: 9900 } as any, undefined)).toBe(9900);
+  });
+
+  it('둘 다 없으면 0', () => {
+    expect(orderItemPrice({ perBox: 1 }, {} as any, undefined)).toBe(0);
   });
 });
