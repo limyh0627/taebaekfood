@@ -1648,8 +1648,9 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
               </div>
 
               {/* 구성품 */}
-              <div className="rounded-2xl border border-slate-200 overflow-hidden">
-                <div className="grid grid-cols-[1fr_92px_110px_110px_36px] bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              {/*  옆으로 민다 — 칸이 다섯이라 폰 폭에 안 들어간다(2026-09-05) */}
+              <div className="rounded-2xl border border-slate-200 overflow-x-auto">
+                <div className="grid grid-cols-[minmax(140px,1fr)_92px_110px_110px_36px] min-w-[500px] bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                   <span className="px-3 py-2">구성품</span>
                   <span className="px-3 py-2 text-right">수량</span>
                   <span className="px-3 py-2 text-right">단위원가</span>
@@ -1660,7 +1661,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                   const line = calcResult.lines.find(l => l.itemId === row.itemId);
                   const picked = items.find(x => x.id === row.itemId);
                   return (
-                    <div key={i} className="grid grid-cols-[1fr_92px_110px_110px_36px] border-t border-slate-100 items-start">
+                    <div key={i} className="grid grid-cols-[minmax(140px,1fr)_92px_110px_110px_36px] min-w-[500px] border-t border-slate-100 items-start">
                       <div className="px-3 py-2 min-w-0">
                         <button onClick={() => { setCalcPickIdx(calcPickIdx === i ? null : i); setCalcSearch(''); }}
                           className={`w-full text-left text-xs font-bold truncate px-2 py-1.5 rounded-lg border transition-all ${picked ? 'border-slate-200 text-slate-700 hover:border-emerald-300' : 'border-dashed border-slate-300 text-slate-400'}`}>

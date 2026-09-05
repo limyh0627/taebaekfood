@@ -441,9 +441,10 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300" />
               </div>
             </div>
-            {/* 크기 고정 — 검색으로 줄 수가 줄어도 창이 안 흔들린다 */}
-            <div className="flex-1 overflow-y-auto">
-              <div className="grid grid-cols-[1fr_100px_100px_100px] bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest sticky top-0">
+            {/* 크기 고정 — 검색으로 줄 수가 줄어도 창이 안 흔들린다.
+                 가로는 밀어서 본다 — 폰에서 품목 칸이 눌리면 이름이 안 보인다(2026-09-05) */}
+            <div className="flex-1 overflow-y-auto overflow-x-auto">
+              <div className="grid grid-cols-[minmax(150px,1fr)_100px_100px_100px] min-w-[460px] bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest sticky top-0">
                 <span className="px-4 py-2">품목</span>
                 <span className="px-3 py-2 text-right">원가</span>
                 <span className="px-3 py-2 text-right">등록 단가</span>
@@ -465,7 +466,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                       });
                       setPickIdx(null);
                     }}
-                    className="w-full grid grid-cols-[1fr_100px_100px_100px] items-center border-t border-slate-50 hover:bg-indigo-50/70 text-left">
+                    className="w-full grid grid-cols-[minmax(150px,1fr)_100px_100px_100px] min-w-[460px] items-center border-t border-slate-50 hover:bg-indigo-50/70 text-left">
                     <span className="px-4 py-2 min-w-0">
                       <span className="text-xs font-bold text-slate-800 truncate block">
                         {x.name}

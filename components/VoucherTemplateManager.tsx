@@ -454,12 +454,12 @@ export default function VoucherTemplateManager({
                 const 대 = lines.filter(l => l.side === '대변').reduce((a, l) => a + l.amount, 0);
                 return (
                   <div>
-                    <div className="grid grid-cols-[44px_minmax(0,1fr)_110px_110px] bg-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                    <div className="grid grid-cols-[44px_minmax(140px,1fr)_110px_110px] min-w-[440px] bg-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-widest">
                       <span className="px-2 py-1">구분</span><span className="px-2 py-1">계정</span>
                       <span className="px-2 py-1 text-right">차변</span><span className="px-2 py-1 text-right">대변</span>
                     </div>
                     {lines.map((l, i) => (
-                      <div key={i} className="grid grid-cols-[44px_minmax(0,1fr)_110px_110px] border-t border-slate-50 text-[11px]">
+                      <div key={i} className="grid grid-cols-[44px_minmax(140px,1fr)_110px_110px] min-w-[440px] border-t border-slate-50 text-[11px]">
                         <span className={`px-2 py-1.5 font-black ${l.side === '차변' ? 'text-slate-600' : 'text-amber-600'}`}>{l.side}</span>
                         {/* 계정명은 안 자른다 — '255 부가세…'로 잘리면 예수금인지 대급금인지 못 가린다 */}
                         <span className="px-2 py-1.5 font-bold text-slate-700 break-keep">

@@ -1271,16 +1271,17 @@ export default function VoucherComposer({
                         const je = journalizeCashEntry(e);
                         return (
                           <div key={e.id} className="px-4 py-2.5">
+                            {/*  표는 옆으로 민다 — 폰에서 계정 칸이 눌려 이름이 안 보였다(2026-09-05) */}
                             {je ? (
-                              <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-                                <div className="grid grid-cols-[42px_1fr_100px_100px] bg-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                              <div className="rounded-xl border border-slate-200 bg-white overflow-x-auto">
+                                <div className="grid grid-cols-[42px_minmax(140px,1fr)_100px_100px] min-w-[420px] bg-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-widest">
                                   <span className="px-2 py-1.5">구분</span>
                                   <span className="px-2 py-1.5">계정</span>
                                   <span className="px-2 py-1.5 text-right">차변</span>
                                   <span className="px-2 py-1.5 text-right">대변</span>
                                 </div>
                                 {je.lines.map((l, i) => (
-                                  <div key={i} className="grid grid-cols-[42px_1fr_100px_100px] border-t border-slate-50 text-[11px]">
+                                  <div key={i} className="grid grid-cols-[42px_minmax(140px,1fr)_100px_100px] min-w-[420px] border-t border-slate-50 text-[11px]">
                                     <span className={`px-2 py-1.5 font-black ${l.debit ? 'text-slate-600' : 'text-slate-400'}`}>{l.debit ? '차변' : '대변'}</span>
                                     <span className="px-2 py-1.5 font-bold text-slate-700 truncate">
                                       <span className="text-slate-400 font-mono mr-1">{l.accountCode}</span>{codeName.get(l.accountCode) ?? ''}

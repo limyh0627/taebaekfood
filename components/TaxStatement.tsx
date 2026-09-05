@@ -815,7 +815,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                 </div>
               ) : (
                 <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
-                  <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 grid grid-cols-[1fr_100px_100px_120px_80px] gap-3 min-w-[580px]">
+                  <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 grid grid-cols-[minmax(150px,1fr)_100px_100px_120px_80px] gap-3 min-w-[580px]">
                     <span className="text-[10px] font-black text-slate-400 uppercase">거래처 / 전표</span>
                     <span className="text-[10px] font-black text-slate-400 uppercase text-center">거래기간</span>
                     <span className="text-[10px] font-black text-slate-400 uppercase text-center">발행일</span>
@@ -832,7 +832,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                       : `${tradeDates[0].slice(5)}~${tradeDates[tradeDates.length-1].slice(5)}`;
                     return (
                       <div key={group.key}>
-                        <div className={`grid grid-cols-[1fr_100px_100px_120px_80px] gap-3 items-center px-4 py-3.5 border-b border-slate-50 transition-all min-w-[580px] ${isSelected ? 'bg-amber-50' : 'hover:bg-slate-50'}`}>
+                        <div className={`grid grid-cols-[minmax(150px,1fr)_100px_100px_120px_80px] min-w-[580px] gap-3 items-center px-4 py-3.5 border-b border-slate-50 transition-all min-w-[580px] ${isSelected ? 'bg-amber-50' : 'hover:bg-slate-50'}`}>
                           <div>
                             <div className="flex items-center gap-2 flex-wrap">
                               <Building2 size={13} className="text-slate-400 shrink-0"/>
@@ -873,7 +873,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                         </div>
                         {/* 묶음 펼치기 - 개별 전표 */}
                         {group.isBundle && isExpanded && group.stmts.map(s => (
-                          <div key={s.id} className="grid grid-cols-[1fr_100px_100px_120px_80px] gap-3 items-center px-4 py-2 border-b border-slate-50 bg-violet-50/60 pl-10 min-w-[580px]">
+                          <div key={s.id} className="grid grid-cols-[minmax(150px,1fr)_100px_100px_120px_80px] min-w-[580px] gap-3 items-center px-4 py-2 border-b border-slate-50 bg-violet-50/60 pl-10 min-w-[580px]">
                             <div className="text-[10px] text-slate-500">
                               {s.docNo} · {s.items.slice(0,2).map(i=>i.name).join(', ')}{s.items.length>2?` 외 ${s.items.length-2}건`:''}
                             </div>
