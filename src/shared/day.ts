@@ -81,3 +81,35 @@ export function endOfMonth(ym: string): string {
   if (!m) return String(ym ?? '');
   return new Date(Date.UTC(Number(m[1]), Number(m[2]), 0)).toISOString().slice(0, 10);
 }
+
+/** 'YYYY-MM-DD' — 로컬 기준. UTC 로 자르면 자정 근처에서 하루가 밀린다. */
+const fmtLocalDate = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+//  기간 빠른선택 — 화면마다 "금주"가 다르면 안 된다. **월요일 시작 고정**이다.
+//  (전에는 TradeStatement 안에만 있었다, 2026-09-05)
+
+/** 이번 주 월요일 */
+export const weekMonday = (now = new Date()): string => {
+  const d = new Date(now);
+  d.setDate(d.getDate() + (d.getDay() === 0 ? -6 : 1 - d.getDay()));
+  return fmtLocalDate(d);
+};
+
+/** 이번 주 일요일 */
+export const weekSunday = (now = new Date()): string => {
+  const d = new Date(now);
+  d.setDate(d.getDate() + (d.getDay() === 0 ? 0 : 7 - d.getDay()));
+  return fmtLocalDate(d);
+};
+
+/** 이번 달 1일 */
+export const monthStart = (now = new Date()): string =>
+  fmtLocalDate(new Date(now.getFullYear(), now.getMonth(), 1));
+
+/** 이번 달 말일 */
+export const monthEnd = (now = new Date()): string =>
+  fmtLocalDate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+
+/** 올해 1월 1일 */
+export const yearStart = (now = new Date()): string => `${now.getFullYear()}-01-01`;
