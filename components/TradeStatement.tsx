@@ -23,6 +23,7 @@ import { rowKind as 갈래, rowCodes as 계정들, rowName as 상대이름, filt
   classifyRow as 성격판정, timelineTotals,
   type TimelineRow, type StmtRow, type PayRow, type CashRow } from '../src/shared/timelineRows';
 import { buildTimeline } from '../src/shared/timelineBuild';
+import { groupByMonth as 월별묶기 } from '../src/shared/groupByMonth';
 import { lineAmount, lineAmountOf } from '../src/shared/lineAmount';
 import { marginOf } from '../src/shared/margin';
 import { splitPayment, owedNow } from '../src/shared/paymentSplit';
@@ -3651,23 +3652,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                       <p className="text-xs font-bold text-slate-400">해당 조건의 주문이 없습니다</p>
                     </div>
                   );
-                  const byMonth: Record<string,Order[]>={};
-                  partnerOrders.forEach(o=>{
-                    const m=(o.deliveryDate||o.createdAt||'').slice(0,7);
-                    if(!byMonth[m])byMonth[m]=[];
-                    byMonth[m].push(o);
-                  });
-                  const months=Object.keys(byMonth).sort().reverse();
+                  //  묶는 규칙은 [shared/groupByMonth](../src/shared/groupByMonth.ts) — 주문은 납기 기준
+                  const months = 월별묶기(partnerOrders, o => o.deliveryDate || o.createdAt || '');
                   return (
                     <div className="divide-y divide-slate-100">
-                      {months.map(month=>(
+                      {months.map(({month, rows})=>(
                         <div key={month}>
                           <div className="px-5 py-2 bg-slate-50 flex items-center gap-2 sticky top-0 z-10">
                             <span className="text-[11px] font-black text-slate-500">{month}</span>
-                            <span className="text-[10px] text-slate-400">{byMonth[month].length}건</span>
+                            <span className="text-[10px] text-slate-400">{rows.length}건</span>
                           </div>
                           <div className="divide-y divide-slate-50">
-                            {byMonth[month].map(o=>{
+                            {rows.map(o=>{
                               const alreadyIssued = isVouchered(o);   // 목록 필터와 같은 기준
                               return (
                                 <button key={o.id} onClick={()=>handleOrderClick(o)}
@@ -3728,37 +3724,28 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                     loadCard(po);
                   };
                   // 카드 요약: 품목명 나열
-                  const summarize = (po: PurchaseOrder) => {
-                    const lines = poLines(po);
-                    const first = lines[0]?.name || (allItems.find(p=>p.id===lines[0]?.itemId)?.name) || '품목';
-                    return lines.length > 1 ? `${first} 외 ${lines.length-1}건` : first;
-                  };
+                  //  요약은 전표 카드와 같은 함수를 쓴다 — 전에는 여기만 '건', 저기는 '개'였다
+                  const summarize = (po: PurchaseOrder) =>
+                    itemSummary(poLines(po).map(l => ({
+                      name: l.name || allItems.find(p => p.id === l.itemId)?.name || '품목',
+                    }))) || '품목';
                   const totalQty = (po: PurchaseOrder) => poLines(po).reduce((s,l)=>s+(l.quantity||0),0);
 
                   // 월별 그룹 (주문카드와 동일 구조)
-                  const groupByMonth = (pos: PurchaseOrder[]) => {
-                    const m: Record<string, PurchaseOrder[]> = {};
-                    [...pos].sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).forEach(po=>{
-                      const k = (po.createdAt||'').slice(0,7)||'미정';
-                      (m[k] ??= []).push(po);
-                    });
-                    return m;
-                  };
-                  const confByMonth = groupByMonth(myConfirmed);
-                  const confMonths = Object.keys(confByMonth).sort().reverse();
-                  const reqByMonth = groupByMonth(myRequests);
-                  const reqMonths = Object.keys(reqByMonth).sort().reverse();
+                  //  발주는 등록일 기준 — 묶는 규칙은 주문과 같은 함수다
+                  const confMonths = 월별묶기(myConfirmed, po => po.createdAt || '');
+                  const reqMonths  = 월별묶기(myRequests,  po => po.createdAt || '');
 
                   return (
                     <div className="divide-y divide-slate-100">
-                      {myConfirmed.length>0 && confMonths.map(month=>(
+                      {myConfirmed.length>0 && confMonths.map(({month, rows})=>(
                         <div key={month}>
                           <div className="px-5 py-2 bg-slate-50 flex items-center gap-2 sticky top-0 z-10">
                             <span className="text-[11px] font-black text-slate-500">{month}</span>
-                            <span className="text-[10px] text-slate-400">{confByMonth[month].length}건</span>
+                            <span className="text-[10px] text-slate-400">{rows.length}건</span>
                           </div>
                           <div className="divide-y divide-slate-50">
-                            {confByMonth[month].map(po=>{
+                            {rows.map(po=>{
                               const alreadyIssued = !!po.linkedStatementId;
                               const receivedDate = dateOfLocal(po.receivedAt||po.invoicedAt||po.createdAt);
                               const createdDate  = dateOfLocal(po.createdAt);
@@ -3780,14 +3767,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                           </div>
                         </div>
                       ))}
-                      {myRequests.length>0 && reqMonths.map(month=>(
+                      {myRequests.length>0 && reqMonths.map(({month, rows})=>(
                         <div key={`req-${month}`}>
                           <div className="px-5 py-2 bg-indigo-50 flex items-center gap-2 sticky top-0 z-10">
                             <span className="text-[11px] font-black text-indigo-600">발주예정 {month}</span>
-                            <span className="text-[10px] text-indigo-400">{reqByMonth[month].length}건</span>
+                            <span className="text-[10px] text-indigo-400">{rows.length}건</span>
                           </div>
                           <div className="divide-y divide-slate-50">
-                            {reqByMonth[month].map(po=>{
+                            {rows.map(po=>{
                               const alreadyIssued = !!po.linkedStatementId;
                               const createdDate = dateOfLocal(po.createdAt);
                               return (
