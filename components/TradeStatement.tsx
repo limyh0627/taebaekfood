@@ -22,6 +22,7 @@ import { partnerOrders as 거래처주문, activeOrders as 진행주문, activeP
 import { rowKind as 갈래, rowCodes as 계정들, rowName as 상대이름, filterTimeline, sortTimeline, partnerNamesOf,
   classifyRow as 성격판정, timelineTotals,
   type TimelineRow, type StmtRow, type PayRow, type CashRow } from '../src/shared/timelineRows';
+import { buildTimeline } from '../src/shared/timelineBuild';
 import { lineAmount, lineAmountOf } from '../src/shared/lineAmount';
 import { marginOf } from '../src/shared/margin';
 import { splitPayment, owedNow } from '../src/shared/paymentSplit';
@@ -2025,136 +2026,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     return { side: null, delta: 0 };   // 감가상각처럼 거래처 빚이 없는 대체
   }, [journalBySource]);
 
-  const allTimelineRows = useMemo((): TimelineRow[] => {
-    const rows: TimelineRow[] = [];
-    const grouped = new Map<string, IssuedStatement[]>();
-    const arap = new Map<string, { side: '채권' | '채무' | null; delta: number }>();
-    mergedStatements.forEach(s => {
-      const a = arapOf(s);
-      arap.set(s.id, a);
-      const key = `${s.partnerId}__${a.side ?? '기타'}`;
-      if (!grouped.has(key)) grouped.set(key, []);
-      grouped.get(key)!.push(s);
-    });
-    grouped.forEach((stmts, key) => {
-      const side = key.slice(key.indexOf('__') + 2) as '채권' | '채무' | '기타';
-      type Ev =
-        | { kind: 'stmt'; s: IssuedStatement; date: string; ts: string }
-        | { kind: 'pay';  date: string; ts: string; amount: number; method?: string; note?: string; paymentId: string; src: IssuedStatement; entry?: CashEntry };
-      const evs: Ev[] = [];
-      stmts.forEach(s => {
-        evs.push({ kind: 'stmt', s, date: s.tradeDate, ts: `${s.tradeDate}T${timeOf(s.issuedAt)}` });
-      });
-      // 수금/지불 — 전표에 붙이지 않는다. 그 거래처로 오간 채권·채무(108/251) 자금을 그대로 뺀다.
-      //  "어느 청구서를 갚았나"를 안 따지므로 매칭이 어긋날 자리가 없다. 분개(108·251 잔액)와 같은 방식.
-      const pid = stmts[0]?.partnerId;
-      if (pid && side !== '기타') for (const e of cashEntries) {
-        if (e.partnerId !== pid) continue;
-        const want = side === '채무' ? AP : AR;
-        /*
-         * 얼마를 갚았나는 **partnerCashParts 한 곳**에서 센다(자금원장·거래처잔액과 같은 함수).
-         * 여기서 따로 세다가 상계를 통째로 놓쳤다 — 상계는 dir이 '대체'라 방향으로 못 거르고,
-         * 줄 하나가 음수다(한중교역 8/19: 251 +9,370,000 / 108 −9,370,000).
-         * 그래서 채권 쪽은 음수라 걸러지고 채무 쪽은 방향에서 걸려, 미수·미지급이 나란히
-         * 9,370,000씩 안 줄었다. 자금 행으로도 안 떴다(상계분을 뺀 나머지가 0이라).
-         */
-        const amt = partnerCashParts(e)
-          .filter(x => x.code === want)
-          .reduce((a, x) => a + x.reduce, 0);
-        if (amt <= 0.5) continue;
-        evs.push({ kind: 'pay', date: e.date, ts: `${e.date}T${timeOf(e.createdAt)}`,
-          amount: amt, method: e.dir === '대체' ? '상계' : '계좌이체', note: e.note, paymentId: e.id, src: stmts[0], entry: e });
-      }
-      // 실제 발생시각(ts) 오름차순으로 누적잔액 계산. 동시각이면 전표 먼저(매출 가산 후 수금 차감).
-      //  그래도 동률이면 **번호순**으로 못 박는다 — 안 그러면 읽어온 순서를 그대로 쓰게 돼
-      //  새로고침할 때마다 순서가 달라질 수 있다. 소급 전표는 전부 23:59:59라 자주 부딪힌다.
-      const idOf = (e: Ev) => e.kind === 'stmt' ? e.s.id : e.paymentId;
-      evs.sort((a, b) => {
-        const d = (a.ts ?? '').localeCompare(b.ts ?? '');
-        if (d !== 0) return d;
-        if (a.kind === 'stmt' && b.kind === 'pay') return -1;
-        if (a.kind === 'pay' && b.kind === 'stmt') return 1;
-        return issuedMs(idOf(a)) - issuedMs(idOf(b))
-          || String(idOf(a)).localeCompare(String(idOf(b)), undefined, { numeric: true });
-      });
-      let running = 0;
-      evs.forEach(e => {
-        if (e.kind === 'stmt') {
-          // 잔액에 얹는 건 **분개가 세운 채권·채무**다. 매출·매입은 전표 총액과 같고,
-          // 기초 이월(대체)도 제자리를 찾는다. 거래처 빚이 없는 대체는 0이라 잔액을 안 흔든다.
-          running += arap.get(e.s.id)?.delta ?? e.s.totalAmount;
-          rows.push({ kind: 'stmt', data: e.s, cumul: running, dateKey: `${e.date}__${e.ts}`, ts: e.ts });
-        } else {
-          running -= e.amount;
-          rows.push({ kind: 'pay', partnerId: e.src.partnerId, partnerName: e.src.partnerName,
-            // 딱지는 묶음이 정한다 — 기초 이월(대체)이 맨 앞에 선 묶음이라도 '수금'은 수금이다
-            stmtType: side === '채무' ? '매입' : '매출', offset: e.entry?.dir === '대체',
-            date: e.date, amount: e.amount, method: e.method, note: e.note,
-            paymentId: e.paymentId, cumul: running, dateKey: `${e.date}__${e.ts}`, ts: e.ts, src: e.src, entry: e.entry });
-        }
-      });
-    });
-    /**
-     * 거래처별 잔액 자취 — **자금 행에도 누적잔액을 달기 위한 것.**
-     *
-     * 입금·출금 행은 그 거래처 잔액을 안 보여줬다. 잔액이 안 움직이는 돈(비용·상환)이라도
-     * "이 거래처가 지금 얼마 남았나"는 같이 보여야 읽힌다.
-     * 위에서 이미 계산한 cumul을 그대로 쓰므로 수금/지불 행과 숫자가 저절로 맞는다.
-     */
-    const balTrail = new Map<string, { ts: string; cumul: number }[]>();
-    for (const r of rows) {
-      if (r.kind !== 'stmt' && r.kind !== 'pay') continue;      // 자금 행은 아직 안 만들었다
-      //  채권·채무를 안 세우는 전표(급여·감가상각·선급금대체)는 제 묶음('기타')에서 0부터 굴러서
-      //  그 값을 자취에 넣으면 그 거래처 잔액이 통째로 흐려진다. 자취는 채권·채무만 쌓는다.
-      if (r.kind === 'stmt' && !arap.get(r.data.id)?.side) continue;
-      const pid = r.kind === 'stmt' ? r.data.partnerId : r.partnerId;
-      if (!pid || r.cumul == null) continue;
-      const arr = balTrail.get(pid) ?? [];
-      arr.push({ ts: r.ts, cumul: r.cumul });
-      balTrail.set(pid, arr);
-    }
-    for (const arr of balTrail.values()) arr.sort((a, b) => a.ts.localeCompare(b.ts));
-    /** 그 시각까지의 마지막 잔액. 그 앞에 아무 것도 없으면 undefined(잔액을 아직 세울 수 없음) */
-    const balanceAt = (pid: string | undefined, ts: string): number | undefined => {
-      const arr = pid ? balTrail.get(pid) : undefined;
-      if (!arr?.length) return undefined;
-      let out: number | undefined;
-      for (const x of arr) { if (x.ts <= ts) out = x.cumul; else break; }
-      return out;
-    };
-
-    /**
-     * 채권·채무를 안 세우는 전표의 잔액 칸 — **그 거래처의 그 시점 잔액**을 적는다.
-     *
-     * 그 전표 자체는 잔액을 안 흔들지만, 거래처가 붙어 있으면 "이 거래처가 지금 얼마 남았나"는
-     * 보여야 읽힌다(자금 행과 같은 규칙). 거래처가 없으면 undefined — 화면에서 —로 뜬다.
-     */
-    for (const r of rows) {
-      if (r.kind !== 'stmt' || arap.get(r.data.id)?.side) continue;
-      r.cumul = balanceAt(r.data.partnerId, r.ts);
-    }
-
-    // ── 자금 입출금 전표 ── 거래처 채권·채무(108/251)로 나간 부분은 이미 수금/지불 행으로 보였다.
-    // 나머지(계정이 붙은 비용·차입금·선수금 등)만 자금 행으로 띄운다.
-    cashEntries.forEach(e => {
-      const parts = (e.lines ?? []).filter(l => l.accountCode && l.amount > 0);
-      const arap = e.partnerId
-        ? (parts.length
-            ? parts.reduce((a, l) => a + (l.accountCode === AR || l.accountCode === AP ? l.amount : 0), 0)
-            : (e.accountCode === AR || e.accountCode === AP ? e.amount : 0))
-        : 0;
-      const rest = e.amount - arap;
-      if (rest <= 0.5) return;            // 전액이 거래처 상계분 → 수금/지불 행으로만
-      const ts = `${e.date}T${timeOf(e.createdAt)}`;
-      rows.push({
-        kind: 'cash', entry: e, dir: e.dir === '대체' ? '출금' : e.dir, amount: rest,
-        accountCode: e.accountCode, note: e.note, partnerName: e.partnerName,
-        cumul: balanceAt(e.partnerId, ts),
-        date: e.date, ts, dateKey: `${e.date}`,
-      });
-    });
-    return rows;
-  }, [mergedStatements, cashEntries, arapOf]);
+  //  줄을 만들고 누적잔액을 굴리는 셈은 [shared/timelineBuild](../src/shared/timelineBuild.ts) 에 있다.
+  //  돈이 걸린 자리라 그동안 난 사고가 거기 주석으로 남아 있다.
+  const allTimelineRows = useMemo(
+    (): TimelineRow[] => buildTimeline({ statements: mergedStatements, cashEntries, arapOf }),
+    [mergedStatements, cashEntries, arapOf]);
 
   //  거르기·줄 세우기 셈은 [shared/timelineRows](../src/shared/timelineRows.ts) 에 있다.
   //  계정을 **줄**로 보는 것과, 소급 전표 정렬(시각이 전부 23:59:59)이 거기 있고 시험이 붙어 있다.
