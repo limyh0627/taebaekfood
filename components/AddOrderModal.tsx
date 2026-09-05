@@ -6,11 +6,12 @@ import { Item, PartnerItem, OrderItem, Order, Partner, OrderSource, OrderPallet,
 import { bomQty } from '../src/shared/bom';
 import { unpackComponent, isBoxStockItem, boxSiblings, boxDerivedUnitPrice, unitsPerBoxOf } from '../src/shared/orderUnits';
 import { subDotClass } from '../src/shared/submaterialStyle';
-import { catOrder, renderColoredName } from '../src/shared/productChip';
+import { VOLUME_CHIP_COLORS, catOrder, renderColoredName } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
 import { bomOf, packingSubmaterials } from '../src/shared/bomIndex';
 import { sellsTo } from '../src/shared/partnerRole';
 import { channelStyle, isDeliveryChannel } from '../src/shared/channelStyle';
+import { DEFAULT_CATEGORY_LABELS } from '../src/shared/taxonomy';
 
 interface AddOrderModalProps {
   items: Item[];
@@ -102,19 +103,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
   };
   //  이름 색칠은 [shared/productChip](../src/shared/productChip) 한 곳이 한다
 
-  // 용량 칩 — 이름 끝 용량(없으면 spec)을 뽑아 카드 오른쪽에 용량별 고정색 배지로 표시
-  const VOLUME_CHIP_COLORS: Record<string, string> = {
-    '180ml': 'bg-pink-100 text-pink-700',
-    '300ml': 'bg-green-100 text-green-700',
-    '350ml': 'bg-sky-100 text-sky-700',
-    '1500ml': 'bg-indigo-100 text-indigo-700',
-    '1750ml': 'bg-violet-100 text-violet-700',
-    '1800ml': 'bg-red-100 text-red-700',
-    '1kg': 'bg-amber-100 text-amber-800',
-    '4kg': 'bg-orange-100 text-orange-700',
-    '16.5kg': 'bg-cyan-100 text-cyan-700',
-    '20kg': 'bg-emerald-100 text-emerald-800',
-  };
+  //  용량 색도 [shared/productChip](../src/shared/productChip) 한 곳이 정한다
   const VOLUME_RE = /^\d+(\.\d+)?\s*(ml|l|g|kg)$/i;
   const normVolume = (s: string) => s.trim().toLowerCase().replace(/\s/g, '');
   // "참기름/병/분/300ml" → { base: "참기름/병/분", vol: "300ml" } / 이름에 없으면 spec 폴백
@@ -207,9 +196,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
    * 한 줄로 섞여 나왔다. 어디까지가 완제품인지 눈으로 안 갈린다.
    * 순서는 완제품 → 상품 → 반제품 → 원료 → 부자재. 타입 안에서는 원래 정렬 그대로.
    */
-  const TYPE_LABEL: Record<string, string> = {
-    product: '완제품', goods: '상품', wip: '반제품', raw: '원료', submaterial: '부자재',
-  };
+  //  이름표는 shared/taxonomy 한 곳에서 온다
+  const TYPE_LABEL = DEFAULT_CATEGORY_LABELS;
   const TYPE_ORDER = ['product', 'goods', 'wip', 'raw', 'submaterial'];
   const shownGroups = useMemo(() => {
     const m = new Map<string, Item[]>();

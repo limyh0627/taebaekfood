@@ -60,6 +60,5 @@ export function toFields(v: { type: string; subtype?: string; category?: string 
 export const TYPE_KEYS = ['product', 'goods', 'wip', 'raw', 'submaterial'] as const;
 export type TypeKey = typeof TYPE_KEYS[number];
 
-export const DEFAULT_TYPE_LABELS: Record<string, string> = {
-  product: '완제품', goods: '상품', wip: '반제품', raw: '원료', submaterial: '부자재',
-};
+//  이름표는 [taxonomy](taxonomy.ts) 한 곳에서 온다 — 여기서 다시 적지 않는다
+export { DEFAULT_CATEGORY_LABELS as DEFAULT_TYPE_LABELS } from './taxonomy';

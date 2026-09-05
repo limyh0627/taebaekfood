@@ -42,6 +42,7 @@ import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 import { cardNoLabel } from '../src/shared/cardNo';
 import { channelStyle } from '../src/shared/channelStyle';
+import { DEFAULT_CATEGORY_LABELS } from '../src/shared/taxonomy';
 
 /** 이름 끝 용량은 뗀다 — 규격 칩이 이미 들고 있어 '참기름/병/A/300ml [300ml * 20]'처럼 겹친다. */
 const baseName = (name: string): string => splitNameVolume({ name }).base;
@@ -713,9 +714,8 @@ export const OrderCard = memo<OrderCardProps>(({
                   .filter(p => !p.archived && !already.has(p.id) && orderable(p))
                   .filter(p => !(isBoxStockItem(p) && items.some(x => !x.archived && x.id === unpackComponent(p)?.itemId)))
                   .filter(p => !q || matchesSearch(p.name, q) || matchesSearch(String(p.spec ?? ''), q));
-                const TYPE_LABEL: Record<string, string> = {
-                  product: '완제품', goods: '상품', wip: '반제품', raw: '원료', submaterial: '부자재',
-                };
+                //  이름표는 shared/taxonomy 한 곳에서 온다
+                const TYPE_LABEL = DEFAULT_CATEGORY_LABELS;
                 const TYPE_ORDER = ['product', 'goods', 'wip', 'raw', 'submaterial'];
                 const rank = (name: string) => /가루/.test(name) ? 3 : /참기름|참진|참고소|참향/.test(name) ? 0 : /들기름|들향|들진|들고소/.test(name) ? 1 : /깨/.test(name) ? 2 : 4;
                 const groups = new Map<string, typeof pool>();

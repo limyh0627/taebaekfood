@@ -17,6 +17,7 @@ import { AR, AP, type OpeningBalance } from '../src/shared/autoJournal';
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { stampFor, rowStamp, issuedMs } from '../src/shared/voucherStamp';
 import { vouchersOfMonth, VOUCHER_KIND_CHIP } from '../src/shared/vouchers';
+import { DEFAULT_CATEGORY_LABELS } from '../src/shared/taxonomy';
 
 type MainTab = 'analysis' | 'costs' | 'partners' | 'inventory-value' | 'account-settings' | 'cash-flow';
 
@@ -1696,9 +1697,8 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
          *   표가 15개로 갈렸다. 스냅샷에 저장하는 값은 catLabel 그대로 둔다 —
          *   거기선 용기·라벨 구분이 있어야 나중에 되짚을 수 있다.
          */
-        const TYPE_GROUP: Record<string, string> = {
-          product: '완제품', goods: '상품', wip: '반제품', raw: '원료', submaterial: '부자재',
-        };
+        //  이름표는 shared/taxonomy 한 곳에서 온다
+        const TYPE_GROUP = DEFAULT_CATEGORY_LABELS;
         const typeLabel = (p: Item): string => TYPE_GROUP[String(p.type)] ?? catLabel(p);
         const groupOrder = ['완제품', '상품', '반제품', '원료', '부자재', '기타'];
         const byLabel = new Map<string, typeof rows>();

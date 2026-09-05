@@ -1,5 +1,6 @@
 import React from 'react';
 import { subDotClass } from './submaterialStyle';
+import { DEFAULT_CATEGORY_LABELS } from './taxonomy';
 
 /**
  * 품목 카드 공용 표기 — 주문 생성·거래처별 품목이 같은 모양을 쓴다.
@@ -20,7 +21,7 @@ const NAME_TOKEN_COLORS: Record<string, string> = {
 };
 
 /** 용량별 고정색 — 같은 용량은 어느 화면에서든 같은 색이라 눈으로 바로 갈린다 */
-const VOLUME_CHIP_COLORS: Record<string, string> = {
+export const VOLUME_CHIP_COLORS: Record<string, string> = {
   '180ml': 'bg-pink-100 text-pink-700',
   '300ml': 'bg-green-100 text-green-700',
   '350ml': 'bg-sky-100 text-sky-700',
@@ -228,8 +229,10 @@ export function categoryOf(item: { category?: string; type: string }): string {
   return item.category?.trim() || TYPE_LABELS[item.type] || item.type;
 }
 
+//  기본 다섯은 [taxonomy](taxonomy.ts) 것을 쓴다. 아래 다섯은 **옛 타입 이름**이라
+//  여기만 안다 — 옛 품목에 아직 남아 있어 화면에 뜨면 읽혀야 한다.
 const TYPE_LABELS: Record<string, string> = {
-  product: '완제품', goods: '상품', wip: '반제품', raw: '원료', submaterial: '부자재',
+  ...DEFAULT_CATEGORY_LABELS,
   container: '용기', cap: '마개', tape: '테이프', box: '박스', label: '라벨',
 };
 
