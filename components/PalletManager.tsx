@@ -184,7 +184,7 @@ const PalletManager: React.FC<PalletManagerProps> = ({
   const outstandingOf = (p: PalletStock) => outstandingByPallet.get(p.name) ?? 0;
 
   const CLIENT_PAGE_SIZE = 15;
-  const [partnerPage, setClientPage] = useState(1);
+  const [partnerPage, setPartnerPage] = useState(1);
   const partnerTotalPages = Math.max(1, Math.ceil(partnerPalletStatus.length / CLIENT_PAGE_SIZE));
   const partnerSafePage = Math.min(partnerPage, partnerTotalPages);
   const pagedClientPalletStatus = partnerPalletStatus.slice((partnerSafePage - 1) * CLIENT_PAGE_SIZE, partnerSafePage * CLIENT_PAGE_SIZE);
@@ -765,15 +765,15 @@ const PalletManager: React.FC<PalletManagerProps> = ({
             </table>
             {partnerTotalPages > 1 && (
               <div className="flex items-center justify-center gap-1 py-4 border-t border-slate-100">
-                <button onClick={() => setClientPage(p => Math.max(1, p - 1))} disabled={partnerSafePage === 1}
+                <button onClick={() => setPartnerPage(p => Math.max(1, p - 1))} disabled={partnerSafePage === 1}
                   className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:bg-slate-50 disabled:opacity-30 transition-all">←</button>
                 {Array.from({ length: partnerTotalPages }, (_, i) => i + 1).map(p => (
-                  <button key={p} onClick={() => setClientPage(p)}
+                  <button key={p} onClick={() => setPartnerPage(p)}
                     className={`w-8 h-8 rounded-lg text-xs font-black transition-all ${partnerSafePage === p ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:bg-slate-50'}`}>
                     {p}
                   </button>
                 ))}
-                <button onClick={() => setClientPage(p => Math.min(partnerTotalPages, p + 1))} disabled={partnerSafePage === partnerTotalPages}
+                <button onClick={() => setPartnerPage(p => Math.min(partnerTotalPages, p + 1))} disabled={partnerSafePage === partnerTotalPages}
                   className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:bg-slate-50 disabled:opacity-30 transition-all">→</button>
               </div>
             )}

@@ -19,8 +19,8 @@ const PriceManager: React.FC<PriceManagerProps> = ({
   const partnerOut = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'out');
   const partnerIn = (partnerItems ?? []).filter((pi: any) => pi.Direction === 'in');
   const [mode, setMode] = useState<'매출' | '매입'>('매출');
-  const [partnerId, setClientId] = useState('');
-  const [partnerSearch, setClientSearch] = useState('');
+  const [partnerId, setPartnerId] = useState('');
+  const [partnerSearch, setPartnerSearch] = useState('');
   const [priceEdits, setPriceEdits] = useState<Record<string, string>>({});
   const [taxEdits, setTaxEdits] = useState<Record<string, '과세' | '면세'>>({});
   const [costEdits, setCostEdits] = useState<Record<string, string>>({});
@@ -121,7 +121,7 @@ const PriceManager: React.FC<PriceManagerProps> = ({
               type="text"
               placeholder="거래처 검색..."
               value={partnerSearch}
-              onChange={e => setClientSearch(e.target.value)}
+              onChange={e => setPartnerSearch(e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-7 pr-2 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-violet-300"
             />
           </div>
@@ -138,7 +138,7 @@ const PriceManager: React.FC<PriceManagerProps> = ({
             return (
               <button
                 key={c.id}
-                onClick={() => { setClientId(c.id); setPriceEdits({}); setTaxEdits({}); }}
+                onClick={() => { setPartnerId(c.id); setPriceEdits({}); setTaxEdits({}); }}
                 className={`w-full text-left px-3 py-2.5 transition-all hover:bg-violet-50 ${partnerId === c.id ? 'bg-violet-50 border-r-2 border-violet-500' : ''}`}
               >
                 <div className="flex items-center justify-between">
@@ -161,7 +161,7 @@ const PriceManager: React.FC<PriceManagerProps> = ({
           <div className="flex bg-slate-100 rounded-lg p-0.5 gap-0.5">
             {(['매출', '매입'] as const).map(m => (
               <button key={m}
-                onClick={() => { setMode(m); setClientId(''); setPriceEdits({}); setTaxEdits({}); setCostEdits({}); }}
+                onClick={() => { setMode(m); setPartnerId(''); setPriceEdits({}); setTaxEdits({}); setCostEdits({}); }}
                 className={`px-3 py-1 rounded-md text-xs font-black transition-all ${mode === m ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
                 {m}단가
               </button>

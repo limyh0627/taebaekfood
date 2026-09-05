@@ -170,7 +170,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   // ── 미수금 상세 팝업 ──
 
   // ── 거래처 탭 서브탭 ──
-  const [partnersSubTab, setClientsSubTab] = useState<'receivables' | 'stats'>('receivables');
+  const [partnersSubTab, setPartnersSubTab] = useState<'receivables' | 'stats'>('receivables');
   const now = new Date();
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);

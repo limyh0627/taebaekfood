@@ -225,7 +225,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
   }, [items, activeCategory]);
   const [partnerAllCats, setPartnerAllCats] = useState(true); // 거래처별 뷰: 전체 카테고리(연결된 전 품목) 표시
   const [searchTerm, setSearchTerm] = useState('');
-  const [partnerSearch, setClientSearch] = useState('');
+  const [partnerSearch, setPartnerSearch] = useState('');
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
   const [linkSearch, setLinkSearch] = useState('');
@@ -263,7 +263,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
     }
     return u;
   }, [items]);
-  const [partnerTypeFilter, setClientTypeFilter] = useState<string | null>(null);
+  const [partnerTypeFilter, setPartnerTypeFilter] = useState<string | null>(null);
   const [expandedClientRowId, setExpandedClientRowId] = useState<string | null>(null);
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [dupExpandedKeys, setDupExpandedKeys] = useState<Set<string>>(new Set());
@@ -272,7 +272,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
   const [selectedMergeIds, setSelectedMergeIds] = useState<Record<string, Set<string>>>({});
   const [editingIc, setEditingIc] = useState<Record<string, Partial<PartnerItem>>>({});
   const [partnerTab, setPartnerTab] = useState<'sales' | 'purchase'>('sales');
-  const [partnerScopeTab, setClientScopeTab] = useState<'sales' | 'purchase'>('sales');
+  const [partnerScopeTab, setPartnerScopeTab] = useState<'sales' | 'purchase'>('sales');
   const [salesPriceEdits, setSalesPriceEdits] = useState<Record<string, string>>({});
   // 카드에서 고른 변형(낱개/N개입) — 낱개 id → 보여줄 품목 id
   const [variantPick, setVariantPick] = useState<Record<string, string>>({});
@@ -376,7 +376,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
 
   const handleClientTypeFilter = (type: string) => {
     const next = partnerTypeFilter === type ? null : type;
-    setClientTypeFilter(next);
+    setPartnerTypeFilter(next);
     if (next && selectedClientId) {
       const cur = partners.find(c => c.id === selectedClientId);
       if (cur && cur.type !== next) {
@@ -443,7 +443,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
     setPartnerAllCats(true); // 거래처 선택 시 연결된 전체 품목이 기본
     setPage(1);
     setSearchTerm('');
-    setClientScopeTab(partnerTab);
+    setPartnerScopeTab(partnerTab);
   };
 
   const handleShowAll = () => {
@@ -463,7 +463,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
           type="text"
           placeholder="거래처 검색..."
           value={partnerSearch}
-          onChange={e => setClientSearch(e.target.value)}
+          onChange={e => setPartnerSearch(e.target.value)}
           className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
         />
       </div>
@@ -1322,7 +1322,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                 <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
                   {([['sales', '매출처'], ['purchase', '매입처']] as const).map(([tab, label]) => (
                     <button key={tab}
-                      onClick={() => { setPartnerTab(tab); setSelectedClientId(null); setClientSearch(''); }}
+                      onClick={() => { setPartnerTab(tab); setSelectedClientId(null); setPartnerSearch(''); }}
                       className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${partnerTab === tab ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
                       {label}
                     </button>
@@ -1334,7 +1334,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                     type="text"
                     placeholder="거래처 검색..."
                     value={partnerSearch}
-                    onChange={e => setClientSearch(e.target.value)}
+                    onChange={e => setPartnerSearch(e.target.value)}
                     className="w-full bg-white border border-slate-200 rounded-2xl pl-10 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all shadow-sm"
                   />
                 </div>
@@ -1420,11 +1420,11 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                     {/* 매출/매입 품목 토글 */}
                     <div className="flex bg-slate-100 rounded-lg p-0.5 gap-0.5 shrink-0">
                       <button
-                        onClick={() => { setClientScopeTab('sales'); setPage(1); }}
+                        onClick={() => { setPartnerScopeTab('sales'); setPage(1); }}
                         className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${partnerScopeTab === 'sales' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                       >매출 품목</button>
                       <button
-                        onClick={() => { setClientScopeTab('purchase'); setPage(1); }}
+                        onClick={() => { setPartnerScopeTab('purchase'); setPage(1); }}
                         className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${partnerScopeTab === 'purchase' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                       >매입 품목</button>
                     </div>

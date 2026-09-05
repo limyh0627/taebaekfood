@@ -129,8 +129,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     return comps.length === 1 && (typeof comps[0].stock === 'number' ? comps[0].stock : 1) > 1;
   }, [formData.submaterials, items]);
 
-  const [partnerSearch, setClientSearch] = useState('');
-  const [inboundPartnerSearch, setSupplierSearch] = useState('');
+  const [partnerSearch, setPartnerSearch] = useState('');
+  const [inboundPartnerSearch, setInboundPartnerSearch] = useState('');
   const [showPumokDrop, setShowPumokDrop] = useState(false);
   const [pumokWarn, setPumokWarn] = useState(false);
   const [expandedBoxClient, setExpandedBoxClient] = useState<string | null>(null);
@@ -942,7 +942,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
               <input
                 type="text"
                 value={inboundPartnerSearch}
-                onChange={e => setSupplierSearch(e.target.value)}
+                onChange={e => setInboundPartnerSearch(e.target.value)}
                 placeholder="거래처 검색..."
                 className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-400 transition-all"
               />

@@ -222,7 +222,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    */
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const selectedOrderId = selectedOrderIds[0] ?? '';
-  const [partnerSearch, setClientSearch] = useState('');
+  const [partnerSearch, setPartnerSearch] = useState('');
   const [onlyActive, setOnlyActive] = useState(true); // 진행주문(미발행) 디폴트 ON
   const [activeVisible, setActiveVisible] = useState(30);
 
@@ -966,7 +966,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setEditablePrices({});
     setTaxExemptOverrides({});
     setTradeDate(today());
-    setClientSearch('');
+    setPartnerSearch('');
     setDateFrom('');
     setDateTo('');
     setOrderDateQuick(type === '매출' ? '전체' : '');
@@ -1044,7 +1044,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     ]);
     setEditablePrices({});
     setTaxExemptOverrides({});
-    setClientSearch('');
+    setPartnerSearch('');
     setActiveSearchRow(null);
   };
 
@@ -3119,7 +3119,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 <div className="relative">
                   <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"/>
                   <input type="text" placeholder="거래처 검색..." value={partnerSearch}
-                    onChange={e=>setClientSearch(e.target.value)}
+                    onChange={e=>setPartnerSearch(e.target.value)}
                     className="bg-white border border-slate-200 rounded-lg pl-7 pr-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300 w-40"/>
                 </div>
                 <select value={selectedClientId}
