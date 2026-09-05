@@ -16,6 +16,7 @@ import {
   SPLIT_MODES, splitModeOf,
 } from '../../src/shared/cashTemplates';
 import { buildTransfer, splitTransfer, type OverKind } from '../../src/shared/interCompany';
+import { splitCashEntry } from '../../src/shared/splitEntry';
 
 /**
  * **일반전표 발행 — 돈이 움직였거나 움직일 일을 한 장으로 적는 창.**
@@ -345,20 +346,14 @@ export default function VoucherComposer({
         // 통장에서 나간 건 원금+이자 합계 한 번. 자금은 그 금액으로 한 건 만들고,
         // 그 안에서 원금(차입금=부채 감소)과 이자(비용)를 줄로 가른다.
         // → 지불 합계엔 6만원 전부, 비용 합계엔 이자 3만원만 잡힌다.
-        const loanEntry = (): CashEntry | null => {
-          const memo = quickPayNote.trim() || '대출 상환';
-          const lines = [
-            ...(prin > 0 ? [{ accountCode: qpLoanCode, amount: prin, note: '원금' }] : []),
-            ...(intr > 0 ? [{ accountCode: INTEREST_CODE, amount: intr, note: '이자' }] : []),
-          ];
-          if (!lines.length) return null;
-          return {
-            id: `cash-${Date.now()}`, dir: '출금', amount: prin + intr,
-            ...(lines.length > 1 ? { lines } : { accountCode: lines[0].accountCode }),
-            note: lines.length > 1 ? memo : `${memo} (${lines[0].note})`,
-            ...base(),
-          } as CashEntry;
-        };
+        //  가르는 셈은 [shared/splitEntry](../../src/shared/splitEntry.ts) — 자금원장과 같은 함수다
+        const loanEntry = (): CashEntry | null => splitCashEntry({
+          lines: [
+            { accountCode: qpLoanCode, amount: prin, note: '원금' },
+            { accountCode: INTEREST_CODE, amount: intr, note: '이자' },
+          ],
+          note: quickPayNote, fallbackNote: '대출 상환', base: base(),
+        });
         const doLoanSave = () => {
           const e = loanEntry();
           if (!e) return;
@@ -380,19 +375,13 @@ export default function VoucherComposer({
          *   근로자부담분  급여에서 떼어 맡아둔 돈 → 예수금(254)을 턴다
          * 전액을 530으로 몰면 비용이 부풀고 예수금이 영영 안 줄어든다.
          */
-        const insuranceEntry = (): CashEntry => {
-          const memo = quickPayNote.trim() || '4대보험';
-          const lines = [
-            ...(insCorp > 0 ? [{ accountCode: INS_CODE, amount: insCorp, note: '회사부담' }] : []),
-            ...(insEmp > 0 ? [{ accountCode: WITHHOLD_CODE, amount: insEmp, note: '근로자부담(예수금)' }] : []),
-          ];
-          return {
-            id: `cash-${Date.now()}`, dir: '출금', amount: insTotal,
-            ...(lines.length > 1 ? { lines } : { accountCode: lines[0].accountCode }),
-            note: lines.length > 1 ? memo : `${memo} (${lines[0].note})`,
-            ...base(),
-          } as CashEntry;
-        };
+        const insuranceEntry = (): CashEntry | null => splitCashEntry({
+          lines: [
+            { accountCode: INS_CODE, amount: insCorp, note: '회사부담' },
+            { accountCode: WITHHOLD_CODE, amount: insEmp, note: '근로자부담(예수금)' },
+          ],
+          note: quickPayNote, fallbackNote: '4대보험', base: base(),
+        });
         /**
          * 세금 — 한 번에 내지만 **둘 다 비용이 아니다.**
          *   부가세    손님한테 받아 맡아둔 돈 → 255 부가세예수금(부채)을 턴다
@@ -404,27 +393,23 @@ export default function VoucherComposer({
         const taxTotal = vat + incomeTax;
         const VAT_CODE = accountCodes.find(c => c.name === '부가세예수금')?.code ?? '255';
         const DRAW_CODE = accountCodes.find(c => c.name === '인출금')?.code ?? '338';
-        const taxEntry = (): CashEntry => {
-          const memo = quickPayNote.trim() || '세금 납부';
-          const lines = [
-            ...(vat > 0 ? [{ accountCode: VAT_CODE, amount: vat, note: '부가세' }] : []),
-            ...(incomeTax > 0 ? [{ accountCode: DRAW_CODE, amount: incomeTax, note: '소득세' }] : []),
-          ];
-          return {
-            id: `cash-${Date.now()}`, dir: '출금', amount: taxTotal,
-            ...(lines.length > 1 ? { lines } : { accountCode: lines[0].accountCode }),
-            note: lines.length > 1 ? memo : `${memo} (${lines[0].note})`,
-            ...base(),
-          } as CashEntry;
-        };
+        const taxEntry = (): CashEntry | null => splitCashEntry({
+          lines: [
+            { accountCode: VAT_CODE, amount: vat, note: '부가세' },
+            { accountCode: DRAW_CODE, amount: incomeTax, note: '소득세' },
+          ],
+          note: quickPayNote, fallbackNote: '세금 납부', base: base(),
+        });
         const doTaxSave = () => {
-          if (taxTotal <= 0) return;
-          onAddCashEntry?.(taxEntry() as any);
+          const e = taxEntry();
+          if (!e) return;
+          onAddCashEntry?.(e as any);
           onClose();
         };
         const doInsuranceSave = () => {
-          if (insTotal <= 0) return;
-          onAddCashEntry?.(insuranceEntry() as any);
+          const e = insuranceEntry();
+          if (!e) return;
+          onAddCashEntry?.(e as any);
           onClose();
         };
 
@@ -567,8 +552,8 @@ export default function VoucherComposer({
         const previewEntries = (): CashEntry[] => {
           if (qpMode === '상환') { const e = loanEntry(); return e ? [e] : []; }
           if (qpMode === '급여') return grs > 0 ? [salaryEntry()] : [];
-          if (qpMode === '보험') return insTotal > 0 ? [insuranceEntry()] : [];
-          if (qpMode === '세금') return taxTotal > 0 ? [taxEntry()] : [];
+          if (qpMode === '보험') { const e = insuranceEntry(); return e ? [e] : []; }
+          if (qpMode === '세금') { const e = taxEntry(); return e ? [e] : []; }
           if (qpDir === '회사이체') {
             if (advAmt <= 0) return [];
             const t = buildTransfer({

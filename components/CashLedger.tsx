@@ -7,6 +7,7 @@ import { CashTemplateModal, filterTemplates, activeTemplateId, activeTemplate, i
 import { journalizeCashEntry } from '../src/shared/autoJournal';
 import { stampFor } from '../src/shared/voucherStamp';
 import VoucherSlip from '../src/shared/VoucherSlip';
+import { splitCashEntry, payrollEntries } from '../src/shared/splitEntry';
 
 interface Props {
   cashAccounts: CashAccount[];
@@ -480,35 +481,28 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
       return [{ id: `cash-${Date.now()}`, dir, amount: amt, accountCode, ...(note.trim() ? { note: note.trim() } : {}), ...base() } as CashEntry];
     }
     if (mode === '상환') {
-      // 통장에서 나간 건 합계 한 번. 그 안에서 원금(차입금=부채 감소)·이자(비용)를 줄로 가른다.
-      const memo = note.trim() || '대출 상환';
-      const lines = [
-        ...(prin > 0 ? [{ accountCode: loanCode, amount: prin, note: '원금' }] : []),
-        ...(intr > 0 ? [{ accountCode: INTEREST_CODE, amount: intr, note: '이자' }] : []),
-      ];
-      if (!lines.length) return [];
-      return [{
-        id: `cash-${Date.now()}`, dir: '출금', amount: prin + intr,
-        ...(lines.length > 1 ? { lines } : { accountCode: lines[0].accountCode }),
-        note: lines.length > 1 ? memo : `${memo} (${lines[0].note})`,
-        ...base(),
-      } as CashEntry];
+      //  통장에서 나간 건 합계 한 번. 그 안에서 원금(차입금=부채 감소)·이자(비용)를 줄로 가른다.
+      //  가르는 셈은 [shared/splitEntry](../src/shared/splitEntry.ts) — 일반전표 화면과 같은 함수다.
+      const e = splitCashEntry({
+        lines: [
+          { accountCode: loanCode, amount: prin, note: '원금' },
+          { accountCode: INTEREST_CODE, amount: intr, note: '이자' },
+        ],
+        note, fallbackNote: '대출 상환', base: base(),
+      });
+      return e ? [e] : [];
     }
     if (mode === '보험') {
       // 통장에서 한 번 나가지만 성격이 둘 — 회사부담은 비용, 근로자부담은 맡아둔 예수금을 턴다.
       // 전액을 530으로 몰면 비용이 부풀고 예수금이 영영 안 줄어든다.
-      if (insTotal <= 0) return [];
-      const memo = note.trim() || '4대보험';
-      const lines = [
-        ...(insCorp > 0 ? [{ accountCode: INS_CODE, amount: insCorp, note: '회사부담' }] : []),
-        ...(insEmp > 0 ? [{ accountCode: WITHHOLD_CODE, amount: insEmp, note: '근로자부담(예수금)' }] : []),
-      ];
-      return [{
-        id: `cash-${Date.now()}`, dir: '출금', amount: insTotal,
-        ...(lines.length > 1 ? { lines } : { accountCode: lines[0].accountCode }),
-        note: lines.length > 1 ? memo : `${memo} (${lines[0].note})`,
-        ...base(),
-      } as CashEntry];
+      const e = splitCashEntry({
+        lines: [
+          { accountCode: INS_CODE, amount: insCorp, note: '회사부담' },
+          { accountCode: WITHHOLD_CODE, amount: insEmp, note: '근로자부담(예수금)' },
+        ],
+        note, fallbackNote: '4대보험', base: base(),
+      });
+      return e ? [e] : [];
     }
     if (mode === '세금') {
       /*
@@ -517,26 +511,21 @@ function EntryModal({ account, accounts, accountCodes, partners, currentUser, fi
        * 종합소득세는 사업이 아니라 사장님 개인에게 매기는 세금이라 인출금(338)이다.
        * 비용으로 몰면 이익이 그만큼 줄어 보이고 부가세예수금은 영영 안 줄어든다.
        */
-      if (taxTotal <= 0) return [];
-      const memo = note.trim() || '세금 납부';
-      const lines = [
-        ...(vatAmt > 0 ? [{ accountCode: VAT_CODE, amount: vatAmt, note: '부가세' }] : []),
-        ...(taxAmt > 0 ? [{ accountCode: DRAW_CODE, amount: taxAmt, note: '소득세' }] : []),
-      ];
-      return [{
-        id: `cash-${Date.now()}`, dir: '출금', amount: taxTotal,
-        ...(lines.length > 1 ? { lines } : { accountCode: lines[0].accountCode }),
-        note: lines.length > 1 ? memo : `${memo} (${lines[0].note})`,
-        ...base(),
-      } as CashEntry];
+      const e = splitCashEntry({
+        lines: [
+          { accountCode: VAT_CODE, amount: vatAmt, note: '부가세' },
+          { accountCode: DRAW_CODE, amount: taxAmt, note: '소득세' },
+        ],
+        note, fallbackNote: '세금 납부', base: base(),
+      });
+      return e ? [e] : [];
     }
-    // 급여 → 총급여 출금(급여) + 공제 입금(예수금). 합산하면 급여 비용 전액 + 예수금 + 실지급.
-    if (grs <= 0) return [];
-    const memo = note.trim() || '급여';
-    return [
-      { id: `cash-${Date.now()}-g`, dir: '출금', amount: grs, accountCode: SALARY_CODE, note: `${memo} (총급여)`, ...base() } as CashEntry,
-      ...(ded > 0 ? [{ id: `cash-${Date.now()}-w`, dir: '입금', amount: ded, accountCode: WITHHOLD_CODE, note: `${memo} (원천공제 예수)`, ...base() } as CashEntry] : []),
-    ];
+    //  급여 → 총급여 출금(급여) + 공제 입금(예수금). 합산하면 급여 비용 전액 + 예수금 + 실지급.
+    return payrollEntries({
+      gross: grs, deduction: ded,
+      salaryCode: SALARY_CODE, withholdCode: WITHHOLD_CODE,
+      note, base: base(),
+    });
   };
 
   const save = () => {
