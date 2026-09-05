@@ -13,7 +13,7 @@ import CostManager from './CostManager';
 import { makeCodeToGroup, computeMonthPLFromJournals, computeCashFlowMonth, computeCashFlowDirect, addMonthStr, SGNA_LEGACY_IDS, COMPUTED_GROUP_IDS } from '../src/features/admin/financials';
 import { partnerBalanceFromJournals, partnerCarryOver, allocatePartnerCash, partnerCashParts, cashPaidByMonth } from '../src/features/admin/cashLedger';
 import { buildJournals } from '../src/shared/buildJournals';
-import type { OpeningBalance } from '../src/shared/autoJournal';
+import { AR, AP, type OpeningBalance } from '../src/shared/autoJournal';
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { stampFor, rowStamp, issuedMs } from '../src/shared/voucherStamp';
 import { vouchersOfMonth, VOUCHER_KIND_CHIP } from '../src/shared/vouchers';
@@ -1050,9 +1050,9 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             ? parts.map(l => ({ c: l.accountCode, a: l.amount }))
             : (e.accountCode ? [{ c: e.accountCode, a: e.amount }] : []);
           for (const p of list) {
-            if (p.c !== '108' && p.c !== '251') continue;
+            if (p.c !== AR && p.c !== AP) continue;
             const cur = paidByPartner.get(e.partnerId) ?? { in: 0, out: 0 };
-            if (p.c === '108') cur.in += e.dir === '입금' ? p.a : -p.a;
+            if (p.c === AR) cur.in += e.dir === '입금' ? p.a : -p.a;
             else cur.out += e.dir === '출금' ? p.a : -p.a;
             paidByPartner.set(e.partnerId, cur);
           }
@@ -1186,7 +1186,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             id: `${e.id}-${p.code}`, date: e.date ?? '',
             // 그날 안의 자리 — 날짜만으로는 소급 기록이 앞에 끼어든다
             ts: rowStamp(e.date ?? '', e.createdAt),
-            kind: (p.code === '108' ? '수금' : '지불') as '수금' | '지불',
+            kind: (p.code === AR ? '수금' : '지불') as '수금' | '지불',
             signed: p.reduce,   // 양수면 그만큼 줄었다(수금·지불·상계)
             note: p.note || e.note || '',
           }))) : [];
@@ -1268,8 +1268,8 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             partnerId: offsetForm.id, partnerName: offsetForm.name,
             // 양수 = 차변, 음수 = 대변
             lines: [
-              { accountCode: '251', amount: amt, side: '차변' as const },   // 외상매입금 — 줄 돈이 준다
-              { accountCode: '108', amount: amt, side: '대변' as const },   // 외상매출금 — 받을 돈이 준다
+              { accountCode: AP, amount: amt, side: '차변' as const },   // 외상매입금 — 줄 돈이 준다
+              { accountCode: AR, amount: amt, side: '대변' as const },   // 외상매출금 — 받을 돈이 준다
             ],
             note: `${offsetForm.name} 미수·미지급 상계`,
             createdAt: stampFor(offsetForm.date),

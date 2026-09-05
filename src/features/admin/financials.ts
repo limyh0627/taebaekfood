@@ -2,7 +2,7 @@ import {
   IssuedStatement, FixedCostEntry, AccountCode, AccountGroup, AccountGroupCfSection,
   CashFlowManual, InventorySnapshot, CashEntry, Settlement, JournalEntry,
 } from '../../shared/types';
-import { BANK } from '../../shared/autoJournal';
+import { AR, AP, OTHER_PAYABLE, VAT_PAYABLE, VAT_RECEIVABLE, INVENTORY, BANK } from '../../shared/autoJournal';
 
 /**
  * 손익 계산 순수 도메인 모듈 — 부수효과 없음(입력 → 값). 단위 테스트 용이.
@@ -199,19 +199,19 @@ export function computeMonthPLFromJournals(
  * '자산/부채인데 영업'인 것들을 여기서 먼저 건져낸다. 차입금(260·293)과 유형자산은 일부러 뺀다.
  */
 const OPERATING_CODES = new Set([
-  '108', // 외상매출금
-  '251', // 외상매입금
-  '253', // 미지급금
+  AR,    // 외상매출금
+  AP,    // 외상매입금
+  OTHER_PAYABLE, // 미지급금
   '254', // 예수금(원천세)
-  '255', // 부가세예수금
-  '135', // 부가세대급금
+  VAT_PAYABLE,    // 부가세예수금
+  VAT_RECEIVABLE, // 부가세대급금
   '262', // 미지급비용
   '263', // 미지급급여 — 급여 지급은 영업이다. 부채라고 재무로 찍히면 급여가 재무활동에 선다
   '261', // 미지급세금 — 부가세·소득세 납부
   '259', // 선수금 — 고객에게 미리 받은 돈
   '295', // 퇴직급여충당부채
   '131', // 선급금
-  '146', // 재고자산
+  INVENTORY, // 재고자산
 ]);
 
 export interface CashFlowDirectLine {
@@ -323,7 +323,7 @@ export function isNoncashCode(code: string | undefined, accountCodes: AccountCod
  */
 export function isOperatingCounterCode(code: string | undefined, accountCodes: AccountCode[] = []): boolean {
   if (!code) return false;
-  if (code === '108' || code === '251') return true;          // 외상매출금 / 외상매입금
+  if (code === AR || code === AP) return true;                // 외상매출금 / 외상매입금
   return accountCodes.find(a => a.code === code)?.isCash === true;  // 계좌 간 이동
 }
 

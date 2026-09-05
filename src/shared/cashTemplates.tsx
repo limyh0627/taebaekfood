@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import type { AccountCode, FixedCostTemplate } from './types';
-import { AR, AP, VAT_PAYABLE, VAT_RECEIVABLE } from './autoJournal';
+import { AR, AP, OTHER_PAYABLE, VAT_PAYABLE, VAT_RECEIVABLE, BANK } from './autoJournal';
 import { lineAmount } from './lineAmount';
 
 /**
@@ -143,7 +143,7 @@ export const CASH_TEMPLATES: CashTemplate[] = [
   { id: 'loan',    label: '대출상환', dir: '출금', mode: '상환', hint: '원금 + 이자' },
   { id: 'salary',  label: '급여',     dir: '출금', mode: '급여', hint: '총급여 − 공제' },
   // 거래처 채무 상계 — 매입전표가 이미 비용을 잡았으므로 지불은 미지급금이 준다
-  { id: 'payout',  label: '지불',     dir: '출금', mode: '일반', accountCode: '251', wantsPartner: true, hint: '미지급 상계' },
+  { id: 'payout',  label: '지불',     dir: '출금', mode: '일반', accountCode: AP, wantsPartner: true, hint: '미지급 상계' },
 
   // 매달 나가는 고정비
   { id: 'elec',    label: '전기세',   dir: '출금', mode: '일반', accountCode: '520' },
@@ -157,7 +157,7 @@ export const CASH_TEMPLATES: CashTemplate[] = [
   { id: 'card',    label: '카드대금', dir: '출금', mode: '일반', accountCode: '650' },
   //  할부로 산 물건 값 — 살 때 (차)자산 /(대)253 미지급금이 서고, 매달 그 미지급금을 턴다.
   //  비용이 아니다. 비용으로 끊으면 물건값을 두 번 털게 된다(살 때 자산 + 낼 때 비용).
-  { id: 'installment', label: '할부금', dir: '출금', mode: '일반', accountCode: '253', hint: '미지급금 상환' },
+  { id: 'installment', label: '할부금', dir: '출금', mode: '일반', accountCode: OTHER_PAYABLE, hint: '미지급금 상환' },
   { id: 'freight', label: '운임',     dir: '출금', mode: '일반', accountCode: '605', wantsPartner: true },
   { id: 'outwork', label: '외주가공', dir: '출금', mode: '일반', accountCode: '540', wantsPartner: true },
   { id: 'submat',  label: '부자재',   dir: '출금', mode: '일반', accountCode: '505', wantsPartner: true },
@@ -165,7 +165,7 @@ export const CASH_TEMPLATES: CashTemplate[] = [
 
   // 받아 뒀다 대신 내주는 돈 — 급여에서 뗀 원천세·4대보험이 예수금으로 잡혀 있다가 여기서 털린다
   { id: 'withhold',label: '원천세납부', dir: '출금', mode: '일반', accountCode: '254', note: '원천공제 납부', hint: '예수금 정리' },
-  { id: 'tax',     label: '세금납부',   dir: '출금', mode: '세금', accountCode: '255', hint: '부가세 + 소득세' },
+  { id: 'tax',     label: '세금납부',   dir: '출금', mode: '세금', accountCode: VAT_PAYABLE, hint: '부가세 + 소득세' },
   { id: 'vatPay',  label: '부가세 납부', dir: '출금', mode: '일반', accountCode: '261', note: '부가세 납부', hint: '신고로 세운 미지급세금을 턴다', group: '수시' },
 
   // 사는 것 · 사장님 돈
@@ -178,11 +178,11 @@ export const CASH_TEMPLATES: CashTemplate[] = [
 
   // ══ 입금 ══════════════════════════════════════════════════════════
   // 거래처 채권 상계 — 매출전표가 이미 수익을 잡았으므로 수금은 미수금이 준다
-  { id: 'collect', label: '수금',     dir: '입금', mode: '일반', accountCode: '108', wantsPartner: true, hint: '미수 상계' },
+  { id: 'collect', label: '수금',     dir: '입금', mode: '일반', accountCode: AR, wantsPartner: true, hint: '미수 상계' },
   { id: 'advance', label: '선수금',   dir: '입금', mode: '일반', accountCode: '259', wantsPartner: true },
   { id: 'loanIn',  label: '차입실행', dir: '입금', mode: '일반', accountCode: '260' },
   { id: 'loanInL', label: '장기차입', dir: '입금', mode: '일반', accountCode: '293' },
-  { id: 'vat',     label: '부가세환급', dir: '입금', mode: '일반', accountCode: '135', hint: '135에 남은 돌려받을 돈' },
+  { id: 'vat',     label: '부가세환급', dir: '입금', mode: '일반', accountCode: VAT_RECEIVABLE, hint: '135에 남은 돌려받을 돈' },
   { id: 'depBack', label: '보증금회수', dir: '입금', mode: '일반', accountCode: '232' },
 
   // ══ 대체 ══════════════════════════════════════════════════════════
@@ -198,18 +198,18 @@ export const CASH_TEMPLATES: CashTemplate[] = [
    * 135에 돌려받을 돈을 남긴 뒤, 들어올 때 '부가세환급'(입금·135)으로 턴다.
    * 두 금액은 재무제표 > 합계잔액시산표의 255·135 잔액을 그대로 옮겨 적는다.
    */
-  { id: 'vatSettle', label: '부가세 신고(납부)', dir: '대체', mode: '일반', accountCode: '255', group: '결산',
+  { id: 'vatSettle', label: '부가세 신고(납부)', dir: '대체', mode: '일반', accountCode: VAT_PAYABLE, group: '결산',
     hint: '매출세액 − 매입세액 = 낼 돈',
     transferLines: [
-      { accountCode: '255', side: '차변', name: '매출세액' },
-      { accountCode: '135', side: '대변', name: '매입세액' },
+      { accountCode: VAT_PAYABLE, side: '차변', name: '매출세액' },
+      { accountCode: VAT_RECEIVABLE, side: '대변', name: '매입세액' },
       { accountCode: '261', side: '대변', name: '납부할 세액' },
     ] },
-  { id: 'vatRefund', label: '부가세 신고(환급)', dir: '대체', mode: '일반', accountCode: '255', group: '결산',
+  { id: 'vatRefund', label: '부가세 신고(환급)', dir: '대체', mode: '일반', accountCode: VAT_PAYABLE, group: '결산',
     hint: '매입세액이 클 때 — 남는 건 135에',
     transferLines: [
-      { accountCode: '255', side: '차변', name: '매출세액' },
-      { accountCode: '135', side: '대변', name: '매출세액분 상계' },
+      { accountCode: VAT_PAYABLE, side: '차변', name: '매출세액' },
+      { accountCode: VAT_RECEIVABLE, side: '대변', name: '매출세액분 상계' },
     ] },
 ];
 
@@ -472,7 +472,7 @@ export function templateJournalLines(
   bankName = '보통예금',
 ): { side: '차변' | '대변'; code: string; label: string; amount: number; perVoucher?: true }[] {
   const amt = t.amount ?? 0;
-  const bank = { code: '103', label: bankName };
+  const bank = { code: BANK, label: bankName };
   const sm = splitModeOf(t.mode);
 
   if (sm) {
@@ -490,7 +490,7 @@ export function templateJournalLines(
     // 보험·상환·세금 — 차변이 둘, 대변은 통장 하나
     const [c1, l1, c2, l2] = sm === '보험' ? ['530', '사대보험', '254', '예수금']
       : sm === '상환' ? [t.loanCode ?? '293', '차입금', '951', '이자비용']
-      : ['255', '부가세예수금', '338', '인출금'];
+      : [VAT_PAYABLE, '부가세예수금', '338', '인출금'];
     return [
       ...(a ? [{ side: '차변' as const, code: c1, label: l1, amount: a }] : []),
       ...(b ? [{ side: '차변' as const, code: c2, label: l2, amount: b }] : []),

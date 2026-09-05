@@ -25,11 +25,9 @@ export interface AccountLedger {
 }
 
 /** 거래처 채권·채무 계정 — 이 둘만 거래처 잔액을 움직인다 */
-import { journalizeStatement } from '../../shared/autoJournal';
-
-const AR = '108';   // 외상매출금
-const AP = '251';   // 외상매입금
-const OTHER_PAYABLE = '253';   // 미지급금 — 상거래가 아닌 채무(autoJournal 과 같은 값)
+//  계정코드는 [autoJournal](../../shared/autoJournal.ts) 한 곳에서 온다 —
+//  손으로 옮겨 적으면 표준계정과목으로 옮길 때 한쪽만 고쳐진다(2026-09-05)
+import { journalizeStatement, AR, AP, OTHER_PAYABLE } from '../../shared/autoJournal';
 /*
  * **거래처 잔액은 251·253을 한 덩어리로 본다.**
  * 둘 다 그 거래처에 갚을 돈이다 — 재무상태표에서만 매입채무와 미지급금으로 갈린다.

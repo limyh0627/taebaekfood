@@ -19,8 +19,9 @@ import { stampFor } from './voucherStamp';import type { CashEntry, IssuedStateme
  * 두 장부에 **대칭으로** 서야 한다. 한쪽만 적으면 어긋나고, 그건 눈으로 못 잡는다.
  * 그래서 한 번에 두 건을 같이 만든다.
  */
-export const AR = '108';         // 외상매출금 — 받을 쪽 채권
-export const AP = '251';         // 외상매입금 — 보낼 쪽 채무
+//  AR·AP 는 [autoJournal](autoJournal.ts) 것을 그대로 쓴다 — 여기서 다시 적지 않는다
+import { AR, AP } from './autoJournal';
+export { AR, AP };
 export const PREPAID = '131';    // 선급금 — 미리 준 물건값
 export const ADVANCE_IN = '259'; // 선수금 — 미리 받은 물건값
 export const LOAN_OUT = '137';   // 관계회사대여금 — 빌려준 것(자산)
