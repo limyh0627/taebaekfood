@@ -7,6 +7,7 @@ import {
   Receipt, Eye, Calendar, Building2, ChevronDown, ChevronUp, Edit2, Trash2, Package,
 } from 'lucide-react';
 import { Partner, IssuedStatement, CompanyInfo, CompanyId } from '../types';
+import { mergeStatementItems, mergeAndSplit, type MergedItem } from '../src/shared/mergeStatementItems';
 import { fetchDateRange } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 
@@ -123,19 +124,8 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
 
   const selectedStmts = useMemo(() => partnerStmts.filter(s => taxStmtIds.includes(s.id)), [partnerStmts, taxStmtIds]);
 
-  type MergedItem = { name: string; spec: string; qty: number; supply: number; tax: number; total: number; isTaxExempt: boolean };
-  const mergedFromStmts = useMemo(() => {
-    const mergedMap = new Map<string, MergedItem>();
-    selectedStmts.forEach(stmt => {
-      stmt.items.forEach(item => {
-        const k = `${item.name}||${item.spec}||${item.isTaxExempt}`;
-        const ex = mergedMap.get(k);
-        if (ex) { ex.qty += item.qty; ex.supply += item.supply; ex.tax += item.tax; ex.total += item.total; }
-        else mergedMap.set(k, { name: item.name, spec: item.spec, qty: item.qty, supply: item.supply, tax: item.tax, total: item.total, isTaxExempt: !!item.isTaxExempt });
-      });
-    });
-    return [...mergedMap.values()];
-  }, [selectedStmts]);
+  //  합치는 셈은 [shared/mergeStatementItems](../src/shared/mergeStatementItems.ts) 한 곳이다
+  const mergedFromStmts = useMemo(() => mergeStatementItems(selectedStmts), [selectedStmts]);
 
   // 데이터 로드 후 현재 월에 전표가 없으면 가장 최근 데이터 있는 월로 자동 이동
   useEffect(() => {
@@ -296,20 +286,9 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   // ── 미리보기용 그룹 ──
   const previewGroup = histPreviewGroupKey ? histGroups.find(g => g.key === histPreviewGroupKey) : null;
   const previewClient = previewGroup ? partners.find(c => c.id === previewGroup.partnerId) : null;
-  const previewMerged = useMemo((): { taxable: MergedItem[]; exempt: MergedItem[] } => {
-    if (!previewGroup) return { taxable: [], exempt: [] };
-    const map = new Map<string, MergedItem>();
-    previewGroup.stmts.forEach(stmt => {
-      stmt.items.forEach(item => {
-        const k = `${item.name}||${item.spec}||${item.isTaxExempt}`;
-        const ex = map.get(k);
-        if (ex) { ex.qty += item.qty; ex.supply += item.supply; ex.tax += item.tax; ex.total += item.total; }
-        else map.set(k, { name: item.name, spec: item.spec, qty: item.qty, supply: item.supply, tax: item.tax, total: item.total, isTaxExempt: !!item.isTaxExempt });
-      });
-    });
-    const all = [...map.values()];
-    return { taxable: all.filter(i => !i.isTaxExempt), exempt: all.filter(i => i.isTaxExempt) };
-  }, [previewGroup]);
+  const previewMerged = useMemo(
+    () => (previewGroup ? mergeAndSplit(previewGroup.stmts) : { taxable: [], exempt: [] }),
+    [previewGroup]);
   const previewPrintRef = useRef<HTMLDivElement>(null);
 
   const handleHistPrint = () => {

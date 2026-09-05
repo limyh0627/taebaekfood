@@ -5,6 +5,7 @@ import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react'
 import { today, dateOfLocal } from '../src/shared/day';
 import { matchesSearch } from '../src/shared/hangul';
 import { itemSummary } from '../src/shared/itemSummary';
+import { mergeAndSplit } from '../src/shared/mergeStatementItems';
 import { buildTaxonomy, type TaxonomyRow } from '../src/shared/taxonomy';
 import {
   FileText, Printer, Search, ChevronDown, CalendarDays,
@@ -2193,20 +2194,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         // 선택된 전표들
         const selectedStmts = partnerStmts.filter(s => taxStmtIds.includes(s.id));
 
-        // 선택 전표 품목 합산 (과세/면세 분리)
-        type MergedItem = { name: string; spec: string; qty: number; supply: number; tax: number; total: number; isTaxExempt: boolean };
-        const mergedMap = new Map<string, MergedItem>();
-        selectedStmts.forEach(stmt => {
-          stmt.items.forEach(item => {
-            const k = `${item.name}||${item.spec}||${item.isTaxExempt}`;
-            const ex = mergedMap.get(k);
-            if (ex) { ex.qty += item.qty; ex.supply += item.supply; ex.tax += item.tax; ex.total += item.total; }
-            else mergedMap.set(k, { name: item.name, spec: item.spec, qty: item.qty, supply: item.supply, tax: item.tax, total: item.total, isTaxExempt: !!item.isTaxExempt });
-          });
-        });
-        const allCombined = [...mergedMap.values()];
-        const taxableItems = allCombined.filter(i => !i.isTaxExempt);
-        const exemptItems  = allCombined.filter(i => i.isTaxExempt);
+        //  선택 전표 품목 합산 (과세/면세 분리) — 셈은 세금계산서 화면과 **같은 함수**다
+        const { taxable: taxableItems, exempt: exemptItems } = mergeAndSplit(selectedStmts);
         const taxSupply  = taxableItems.reduce((s, i) => s + i.supply, 0);
         const taxAmt     = taxableItems.reduce((s, i) => s + i.tax, 0);
         const exemptSup  = exemptItems.reduce((s, i) => s + i.supply, 0);
