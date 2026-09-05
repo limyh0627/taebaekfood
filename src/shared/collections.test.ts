@@ -55,3 +55,32 @@ describe('컬렉션 이름', () => {
     expect(어긋남, `키와 값이 다른 것:\n${어긋남.join('\n')}`).toEqual([]);
   });
 });
+
+/**
+ * **회사 가르기는 `companyOf` 만 안다.**
+ *
+ * 회사가 안 적힌 옛 기록은 **태백으로 본다**(`companyOf` 가 그렇게 정한다).
+ * 손으로 `(x.companyId ?? 'taebaek')` 을 적으면 그 규칙이 갈리고,
+ * 받침을 빼먹으면 **옛 기록이 통째로 빠진다** — 화면에 표시가 안 난다.
+ */
+describe('회사 가르기', () => {
+  it("`?? 'taebaek'` 을 손으로 적지 않는다 — companyOf 를 쓴다", () => {
+    const 걸림: string[] = [];
+    //  **앱 코드만 본다.** 스크립트(scripts/)와 스케줄러(functions/)는 앱 모듈을
+    //  못 가져다 쓴다 — 일회용이고 따로 도는 코드다(할일에 그 건이 있다).
+    const 앱코드 = 파일들.filter(f => {
+      const q = f.replace(/\\/g, '/');
+      return !q.startsWith('scripts/') && !q.startsWith('functions/')
+        && !q.endsWith('src/shared/types.ts');   // companyOf 가 사는 곳
+    });
+    for (const file of 앱코드) {
+      readFileSync(file, 'utf8').split('\n').forEach((l, i) => {
+        const t = l.trim();
+        if (t.startsWith('//') || t.startsWith('*')) return;
+        if (/companyId\s*\?\?\s*'taebaek'/.test(l)) 걸림.push(`  ${file}:${i + 1}  ${t.slice(0, 80)}`);
+      });
+    }
+    expect(걸림, `회사 받침을 손으로 적은 곳:\n${걸림.join('\n')}\n\n` +
+      `shared/types 의 companyOf 를 써라.`).toEqual([]);
+  });
+});

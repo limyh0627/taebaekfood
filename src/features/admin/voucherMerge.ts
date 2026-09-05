@@ -1,5 +1,6 @@
 import type { IssuedStatement } from '../../shared/types';
 import { isReceivableStmt } from './cashLedger';
+import { companyOf } from '../../shared/types';
 
 /**
  * **전표 화면이 딛고 선 셈 셋** — `useVoucherLedger` 안에 갇혀 있던 것을 꺼냈다.
@@ -32,7 +33,7 @@ export function mergeStatements(input: {
   for (const s of extra) map.set(s.id, s);
   for (const s of live) map.set(s.id, s);      //  구독분이 이긴다
   for (const id of deletedIds) map.delete(id);
-  return [...map.values()].filter(s => (s.companyId ?? 'taebaek') === companyId);
+  return [...map.values()].filter(s => companyOf(s) === companyId);
 }
 
 /**

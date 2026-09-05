@@ -21,6 +21,7 @@ import { stampFor } from './voucherStamp';import type { CashEntry, IssuedStateme
  */
 //  AR·AP 는 [autoJournal](autoJournal.ts) 것을 그대로 쓴다 — 여기서 다시 적지 않는다
 import { AR, AP } from './autoJournal';
+import { companyOf } from './types';
 export { AR, AP };
 export const PREPAID = '131';    // 선급금 — 미리 준 물건값
 export const ADVANCE_IN = '259'; // 선수금 — 미리 받은 물건값
@@ -121,7 +122,7 @@ export function interCompanyBalance(companyId: CompanyId, cashEntries: CashEntry
   const want = companyId === 'taebaek' ? LOAN_OUT : LOAN_IN;
   const plus = want === LOAN_OUT ? '출금' : '입금';
   return cashEntries
-    .filter(e => (e.companyId ?? 'taebaek') === companyId)
+    .filter(e => companyOf(e) === companyId)
     .reduce((a, e) => {
       const parts = (e.lines ?? []).filter(l => l.accountCode === want);
       const v = parts.length ? parts.reduce((b, l) => b + l.amount, 0) : (e.accountCode === want ? e.amount : 0);

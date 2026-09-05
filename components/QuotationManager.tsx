@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, X, Trash2, Search, Printer, FileText, Copy } from 'lucide-react';
-import { Item, Partner, PartnerItem, CompanyId, COMPANIES } from '../src/shared/types';
+import { Item, Partner, PartnerItem, CompanyId, COMPANIES, companyOf } from '../src/shared/types';
 import { matchesSearch } from '../src/shared/hangul';
 import { subscribeToCollection, addItem, deleteItem } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
@@ -126,7 +126,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
   const [saving, setSaving] = useState(false);
 
   const mine = useMemo(
-    () => quotes.filter(q => (q.companyId ?? 'taebaek') === companyId)
+    () => quotes.filter(q => companyOf(q) === companyId)
       .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.quoteNo).localeCompare(String(a.quoteNo))),
     [quotes, companyId],
   );

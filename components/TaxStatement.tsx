@@ -11,6 +11,7 @@ import { mergeStatementItems, mergeAndSplit, type MergedItem } from '../src/shar
 import { fetchDateRange } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 import { vatOn } from '../src/shared/lineAmount';
+import { companyOf } from '../src/shared/types';
 
 interface TaxStatementProps {
   /** 보고 있는 회사 — 이 화면이 직접 떠오는 과거 전표도 걸러야 한다 */
@@ -53,7 +54,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
     const map = new Map<string, IssuedStatement>();
     extraStatements.forEach(s => map.set(s.id, s));
     liveStatements.forEach(s => map.set(s.id, s));
-    return Array.from(map.values()).filter(s => (s.companyId ?? 'taebaek') === companyId);
+    return Array.from(map.values()).filter(s => companyOf(s) === companyId);
   }, [liveStatements, extraStatements, companyId]);
 
   // 과거 전표를 업데이트할 때 라이브 구독이 잡지 못하므로 로컬 캐시도 갱신
