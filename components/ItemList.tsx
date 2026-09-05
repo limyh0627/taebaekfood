@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { today, dateOfLocal } from '../src/shared/day';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
-import { bomOf } from '../src/shared/bomIndex';
+import { bomOf, packingSubmaterials } from '../src/shared/bomIndex';
 import {
   Package,
   Edit,
@@ -61,6 +61,7 @@ import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage
 import { storage, db } from '../src/shared/firebase';
 import { withCarryOverLot, buildReceiveLot, nextLotNo, deductFromLots, settleCarryOver, lotQtyRemaining } from '../src/shared/lotUtils';
 import { isBackdated, latestAnchorDate } from '../src/shared/rawLedgerBalance';
+import FilterRow from '../src/shared/ui/FilterRow';
 
 /**
  * 등급(골드·A·분·특·특A·원액) — 이름 토큰으로 짚는다. 품목에 등급 칸이 따로 없다.
@@ -228,15 +229,6 @@ type MainTab = 'requests' | 'history' | 'master' | 'inbound' | 'lots';
  * 드롭다운 안의 선택지 한 줄 — **한 줄에 하나.**
  * 칩을 흘려 놓으면(flex-wrap) 줄바꿈 자리가 값에 따라 달라져 눈이 훑을 기준선이 없다.
  */
-const FilterRow: React.FC<{ on: boolean; onClick: () => void; children: React.ReactNode; tone?: string }> =
-  ({ on, onClick, children, tone = 'text-indigo-600 bg-indigo-50' }) => (
-    <button type="button" onClick={onClick}
-      className={`w-full text-left px-3 py-2 text-[11px] font-black transition-colors flex items-center justify-between gap-2 ${
-        on ? tone : 'text-slate-500 hover:bg-slate-50'}`}>
-      <span className="truncate">{children}</span>
-      {on && <Check size={12} className="shrink-0"/>}
-    </button>
-  );
 
 const FilterDrop: React.FC<{
   label: string;
@@ -3574,9 +3566,7 @@ const ItemList: React.FC<ItemListProps> = ({
                         </span>
                         {(() => {
                           // 챙길 물건만 — 내용물(반제품·원료)과 벌크는 통에서 나오므로 뺀다
-                          const chips = bomOf(product?.id)
-                            .map(l => l.child)
-                            .filter((c): c is Item => !!c && c.type === 'submaterial' && !isBulkItem(c) && !c.phantom);
+                          const chips = packingSubmaterials(product?.id, isBulkItem) as Item[];
                           if (chips.length === 0) return null;
                           return (
                             <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-7">

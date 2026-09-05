@@ -4,6 +4,7 @@ import { X, ClipboardPaste, CheckCircle2, AlertCircle, ChevronDown, User, Truck,
 import { Item, PartnerItem, Order, Partner, OrderSource, OrderItem, OrderPallet } from '../types';
 import { bomOf } from '../src/shared/bomIndex';
 import { sellsTo } from '../src/shared/partnerRole';
+import { channelStyle } from '../src/shared/channelStyle';
 
 // ── 퍼지 매칭 ───────────────────────────────────────────────
 const getBigrams = (s: string) => {
@@ -196,11 +197,8 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
     });
   };
 
-  const typeConfig = (type: string) => ({
-    '일반': { icon: User, color: 'bg-indigo-100 text-indigo-600' },
-    '택배': { icon: Truck, color: 'bg-pink-100 text-pink-600' },
-    '스마트스토어': { icon: Store, color: 'bg-lime-100 text-lime-600' },
-  }[type] || { icon: LayoutGrid, color: 'bg-slate-100 text-slate-600' });
+  //  채널 아이콘·색은 [shared/channelStyle](../src/shared/channelStyle) 한 곳이 정한다
+  const typeConfig = (type: string) => ({ ...channelStyle(type), color: channelStyle(type).chip });
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">

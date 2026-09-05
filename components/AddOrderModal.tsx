@@ -6,10 +6,11 @@ import { Item, PartnerItem, OrderItem, Order, Partner, OrderSource, OrderPallet,
 import { bomQty } from '../src/shared/bom';
 import { unpackComponent, isBoxStockItem, boxSiblings, boxDerivedUnitPrice, unitsPerBoxOf } from '../src/shared/orderUnits';
 import { subDotClass } from '../src/shared/submaterialStyle';
-import { catOrder } from '../src/shared/productChip';
+import { catOrder, renderColoredName } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
-import { bomOf } from '../src/shared/bomIndex';
+import { bomOf, packingSubmaterials } from '../src/shared/bomIndex';
 import { sellsTo } from '../src/shared/partnerRole';
+import { channelStyle, isDeliveryChannel } from '../src/shared/channelStyle';
 
 interface AddOrderModalProps {
   items: Item[];
@@ -99,29 +100,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
     if (/참깨/.test(n)) return '참깨';
     return '';
   };
-
-  // 품목명 토큰 색상 — 기름 등급(분·특A·A·골드·원액)과 용기(병)를 색으로 구분해 비슷한 이름 헷갈림 방지
-  const NAME_TOKEN_COLORS: Record<string, string> = {
-    '병': 'text-teal-600',
-    '분': 'text-blue-600',
-    '특A': 'text-amber-800',
-    'A': 'text-orange-500',
-    '골드': 'text-yellow-500',
-    '원액': 'text-purple-600',
-  };
-  const renderColoredName = (name: string): React.ReactNode => {
-    const parts = name.split('/');
-    if (parts.length === 1) return name;
-    return parts.map((part, i) => {
-      const color = NAME_TOKEN_COLORS[part.trim()];
-      return (
-        <React.Fragment key={i}>
-          {i > 0 && <span className="text-slate-300">/</span>}
-          {color ? <span className={color}>{part}</span> : part}
-        </React.Fragment>
-      );
-    });
-  };
+  //  이름 색칠은 [shared/productChip](../src/shared/productChip) 한 곳이 한다
 
   // 용량 칩 — 이름 끝 용량(없으면 spec)을 뽑아 카드 오른쪽에 용량별 고정색 배지로 표시
   const VOLUME_CHIP_COLORS: Record<string, string> = {
@@ -612,11 +591,8 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                     <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest px-1">자주 사용하는 거래처</p>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       {quickClients.map(partner => {
-                        const typeConfig = {
-                          '일반': { icon: User, color: 'bg-indigo-100 text-indigo-600' },
-                          '택배': { icon: Truck, color: 'bg-pink-100 text-pink-600' },
-                          '스마트스토어': { icon: Store, color: 'bg-lime-100 text-lime-600' },
-                        }[partner.type] || { icon: LayoutGrid, color: 'bg-slate-100 text-slate-600' };
+                        //  채널 아이콘·색은 [shared/channelStyle](../src/shared/channelStyle) 한 곳이 정한다
+                        const typeConfig = { ...channelStyle(partner.type), color: channelStyle(partner.type).chip };
                         const TypeIcon = typeConfig.icon;
                         return (
                           <button
@@ -753,9 +729,7 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
                           //  · 예전엔 언제나 낱개(looseProduct) BOM을 읽고 박스·테이프를 일부러 뺐다
                           //    → 박스를 골라도 낱개 부자재만 나왔다. 거래처 포장설정(boxTypeId) 경로도 폐기됐다.
                           // 내용물(반제품·원료·완제품)과 벌크는 뺀다 — 챙길 물건이 아니라 통에서 나온다.
-                          const chips = bomOf(product.id)
-                            .map(l => l.child)
-                            .filter((c): c is Item => !!c && c.type === 'submaterial' && !isBulkItem(c) && !c.phantom);
+                          const chips = packingSubmaterials(product.id, isBulkItem) as Item[];
                           if (chips.length === 0) return null;
                           return (
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5"

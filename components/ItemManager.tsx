@@ -9,13 +9,15 @@ import CategoryManager from './CategoryManager';
 import { buildTaxonomy, TaxonomyRow } from '../src/shared/taxonomy';
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { isBoxStockItem, unpackComponent, boxSiblings, groupLooseBoxRows } from '../src/shared/orderUnits';
-import { bomOf, BomLine } from '../src/shared/bomIndex';
+import { BomLine, bomOf, packingSubmaterials } from '../src/shared/bomIndex';
 import { subDotClass } from '../src/shared/submaterialStyle';
 import { calcCost, CostCalcRow, CostCalcResult } from '../src/features/admin/costCalc';
 import { ProductNameRow, ProductCard, renderColoredName, splitNameVolume, specText, catOrder, categoryChipClass, categoryOf } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
 import { priceParts } from '../src/shared/lineAmount';
 import { buysFrom, sellsTo } from '../src/shared/partnerRole';
+import { channelStyle } from '../src/shared/channelStyle';
+import FilterRow from '../src/shared/ui/FilterRow';
 
 interface ItemManagerProps {
   items: Item[];
@@ -89,15 +91,6 @@ const FilterDrop: React.FC<{
   );
 };
 
-const FilterRow: React.FC<{ on: boolean; onClick: () => void; children: React.ReactNode; tone?: string }> =
-  ({ on, onClick, children, tone = 'text-indigo-600 bg-indigo-50' }) => (
-    <button type="button" onClick={onClick}
-      className={`w-full text-left px-3 py-2 text-[11px] font-black transition-colors flex items-center justify-between gap-2 ${
-        on ? tone : 'text-slate-500 hover:bg-slate-50'}`}>
-      <span className="truncate">{children}</span>
-      {on && <Check size={12} className="shrink-0"/>}
-    </button>
-  );
 
 /**
  * 등급(골드·A·분·특·특A·원액) — 재고관리와 같은 규칙.
@@ -728,9 +721,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                     return (
                 <React.Fragment key={anchor.id}>
                 {(() => {
-                  const subs = bomOf(item.id)
-                    .map(l => l.child)
-                    .filter((c): c is Item => !!c && c.type === 'submaterial' && !isBulkItem(c) && !c.phantom);
+                  const subs = packingSubmaterials(item.id, isBulkItem) as Item[];
                   // 겉박스·테이프는 박스 품목 BOM에 들어 있다 — 거래처별 포장설정은 폐기했다.
                   return (
                     <ProductCard key={item.id} product={item} subs={subs}
@@ -1361,11 +1352,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                       ];
                       const av = AV[[...c.name].reduce((a, ch) => a + ch.charCodeAt(0), 0) % AV.length];
                       // 주문 생성의 거래처 카드와 같은 모양 — 흰 바탕 + 타입 아이콘 + 이름 + 타입 배지
-                      const typeConfig = {
-                        '일반': { icon: User, color: 'bg-indigo-100 text-indigo-600' },
-                        '택배': { icon: Truck, color: 'bg-pink-100 text-pink-600' },
-                        '스마트스토어': { icon: Store, color: 'bg-lime-100 text-lime-600' },
-                      }[c.type as string] || { icon: LayoutGrid, color: 'bg-slate-100 text-slate-600' };
+                      const typeConfig = { ...channelStyle(c.type as string), color: channelStyle(c.type as string).chip };
                       const TypeIcon = typeConfig.icon;
                       return (
                         <button key={c.id} onClick={() => handleSelectClient(c.id)}

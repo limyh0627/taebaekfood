@@ -109,3 +109,25 @@ export function bomParentsOf(childId: string | undefined): BomParentLine[] {
 export function resetBomIndex(): void {
   current = EMPTY;
 }
+
+/**
+ * **챙길 부자재만** — 그 품목을 포장할 때 실제로 집어야 하는 것들.
+ *
+ * BOM 에는 내용물(반제품·원료·완제품)도 같이 들어 있는데 그건 통에서 나오는 것이지
+ * 챙길 물건이 아니다. 벌크와 팬텀(원료배합 반제품)도 뺀다.
+ *
+ * 세 화면이 이 판정을 따로 적고 있었다(2026-09-05) —
+ * AddOrderModal · ItemList · ItemManager. 갈리면 **같은 품목의 포장 목록이
+ * 화면마다 달라진다.**
+ *
+ * @param isBulk 벌크인지 가리는 함수 — [itemTaxonomy](itemTaxonomy.ts) 의 `isBulkItem`
+ */
+export function packingSubmaterials(
+  parentId: string | undefined,
+  isBulk: (i: { subtype?: string; type?: string }) => boolean,
+): BomLine['child'][] {
+  return bomOf(parentId)
+    .map(l => l.child)
+    .filter((c): c is NonNullable<BomLine['child']> =>
+      !!c && c.type === 'submaterial' && !isBulk(c) && !(c as { phantom?: boolean }).phantom);
+}

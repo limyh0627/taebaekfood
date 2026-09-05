@@ -19,11 +19,7 @@ import {
 import RegionSelect from './RegionSelect';
 import { Partner, PartnerChannel, PartnerType } from '../types';
 
-declare global {
-  interface Window {
-    daum: { Postcode: new (config: { oncomplete: (data: { address: string }) => void }) => { open: () => void } };
-  }
-}
+//  window.daum 타입은 [AddPartnerModal](AddPartnerModal.tsx) 이 한 번만 선언한다
 import AddPartnerModal from './AddPartnerModal';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';

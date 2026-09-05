@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { X, Users, Phone, Mail, LayoutGrid, Check, Store, Truck, User, MapPin } from 'lucide-react';
 import { Partner, PartnerChannel, PartnerType } from '../types';
+import { channelStyle, CHANNELS } from '../src/shared/channelStyle';
 
 declare global {
   interface Window {
@@ -31,11 +32,11 @@ const AddPartnerModal: React.FC<AddPartnerModalProps> = ({ onClose, onSave }) =>
     }).open();
   };
 
-  const partnerChannelTypes: { id: PartnerChannel, label: string, icon: any, color: string }[] = [
-    { id: '일반', label: '일반 거래처', icon: User, color: 'bg-indigo-100 text-indigo-600' },
-    { id: '택배', label: '택배사/대행', icon: Truck, color: 'bg-pink-100 text-pink-600' },
-    { id: '스마트스토어', label: '스마트스토어', icon: Store, color: 'bg-lime-100 text-lime-600' },
-  ];
+  //  아이콘·이름표·색은 [shared/channelStyle](../src/shared/channelStyle) 한 곳이 정한다
+  const partnerChannelTypes = CHANNELS.map(id => {
+    const c = channelStyle(id);
+    return { id: id as PartnerChannel, label: c.label, icon: c.icon, color: c.chip };
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

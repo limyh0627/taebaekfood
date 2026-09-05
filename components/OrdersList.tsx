@@ -41,6 +41,7 @@ import { subDotClass } from '../src/shared/submaterialStyle';
 import ConfirmModal from './ConfirmModal';
 import PageHeader from './PageHeader';
 import { cardNoLabel } from '../src/shared/cardNo';
+import { channelStyle } from '../src/shared/channelStyle';
 
 /** 이름 끝 용량은 뗀다 — 규격 칩이 이미 들고 있어 '참기름/병/A/300ml [300ml * 20]'처럼 겹친다. */
 const baseName = (name: string): string => splitNameVolume({ name }).base;
@@ -911,11 +912,12 @@ export const OrderCard = memo<OrderCardProps>(({
 
 // ─── OrderSourceGroup ─────────────────────────────────────────────────────────
 
-const SOURCE_CONFIGS = {
-  '스마트스토어': { icon: Store, color: 'text-lime-600', bgColor: 'bg-lime-50' },
-  '택배': { icon: Truck, color: 'text-pink-600', bgColor: 'bg-pink-50' },
-  '일반': { icon: User, color: 'text-indigo-600', bgColor: 'bg-indigo-50' },
-} as const;
+//  채널 아이콘·색은 [shared/channelStyle](../src/shared/channelStyle) 한 곳이 정한다.
+//  여기만 색을 `text-`/`bg-` 로 나눠 쓰고 있었다 — 모듈이 둘 다 낸다.
+const sourceConfig = (s: string) => {
+  const c = channelStyle(s);
+  return { icon: c.icon, color: c.fg, bgColor: c.bg };
+};
 
 const OrderSourceGroup = memo<OrderSourceGroupProps>(({
   colId, source, orders, gridCols = 1,
@@ -925,7 +927,7 @@ const OrderSourceGroup = memo<OrderSourceGroupProps>(({
   const isCollapsed = collapsedCategories.has(`${colId}-${source}`);
   if (orders.length === 0) return null;
 
-  const config = SOURCE_CONFIGS[source] || { icon: Box, color: 'text-slate-600', bgColor: 'bg-slate-50' };
+  const config = sourceConfig(source) || { icon: Box, color: 'text-slate-600', bgColor: 'bg-slate-50' };
   const Icon = config.icon;
 
   return (
