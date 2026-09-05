@@ -41,7 +41,10 @@ export interface Quotation {
   validUntil?: string;
   partnerId: string;
   partnerName: string;
-  /** 받는 사람 (담당자) */
+  /**
+   * 담당자 — **이 견적을 낸 우리 쪽 사람.** 받는 쪽이 물어볼 데가 있어야 한다.
+   * 새로 쓸 때는 쓰는 사람 이름이 저절로 들어간다(2026-09-05 사장님).
+   */
   attention?: string;
   lines: QuotationLine[];
   totalSupply: number;
@@ -112,7 +115,8 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
     attention?: string; lines: QuotationLine[]; note?: string;
   }>({
     date: today(), validUntil: plusDays(today(), 30),
-    partnerId: '', partnerName: '', attention: '', lines: [emptyLine()], note: '',
+    //  담당자는 **쓰는 사람**이 기본이다 — 매번 제 이름을 치게 할 일이 아니다
+    partnerId: '', partnerName: '', attention: currentUser?.name ?? '', lines: [emptyLine()], note: '',
   });
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -143,7 +147,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
   const resetForm = (base?: Quotation) => setForm({
     date: today(), validUntil: plusDays(today(), 30),
     partnerId: base?.partnerId ?? '', partnerName: base?.partnerName ?? '',
-    attention: base?.attention ?? '',
+    attention: base?.attention ?? currentUser?.name ?? '',
     lines: base ? base.lines.map(l => ({ ...l })) : [emptyLine()],
     note: base?.note ?? '',
   });
@@ -285,7 +289,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                 </label>
                 <label className="block space-y-1">
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">담당자</span>
-                  <input value={form.attention ?? ''} onChange={e => setForm(f => ({ ...f, attention: e.target.value }))} placeholder="예: 김과장"
+                  <input value={form.attention ?? ''} onChange={e => setForm(f => ({ ...f, attention: e.target.value }))} placeholder="예: 임태백"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300" />
                 </label>
               </div>
@@ -316,19 +320,21 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
               </div>
 
               {/* 품목 — 원가와 마진율을 줄마다 보여준다. 값을 매기는 자리라 이게 안 보이면 감으로 적게 된다. */}
-              <div className="rounded-2xl border border-slate-200 overflow-hidden">
-                <div className="grid grid-cols-[1fr_64px_88px_96px_58px_88px_100px_44px_28px] bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  <span className="px-3 py-2">품목</span>
-                  <span className="px-2 py-2 text-right">수량</span>
-                  <span className="px-2 py-2 text-right">원가</span>
+              {/*  **옆으로 민다**(2026-09-05 사장님) — 폰에서 품목 칸이 0으로 눌려
+                   '품/목' 으로 접히고 뒷칸이 잘렸다. 칸이 아홉이라 폰 폭에 안 들어간다. */}
+              <div className="rounded-2xl border border-slate-200 overflow-x-auto">
+                <div className="grid grid-cols-[minmax(150px,1fr)_64px_88px_96px_58px_88px_100px_44px_28px] min-w-[740px] bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  <span className="px-3 py-2 whitespace-nowrap">품목</span>
+                  <span className="px-2 py-2 text-right whitespace-nowrap">수량</span>
+                  <span className="px-2 py-2 text-right whitespace-nowrap">원가</span>
                   {/*  **단가는 공급가 기준이다**(세별도). 원가에 마진을 얹은 값이다.
                        전표·거래명세서의 '단가'는 세포함이라 뜻이 다르다 — 그래서 칸 이름에 박는다.
                        세액과 판매가를 나란히 둬야 손님한테 부를 값이 화면에서 바로 읽힌다. */}
-                  <span className="px-2 py-2 text-right">단가<span className="text-slate-400 font-bold"> 공급가</span></span>
-                  <span className="px-2 py-2 text-right">마진율</span>
-                  <span className="px-2 py-2 text-right">세액</span>
-                  <span className="px-2 py-2 text-right">판매가<span className="text-slate-400 font-bold"> 세포함</span></span>
-                  <span className="px-1 py-2 text-center">과세</span>
+                  <span className="px-2 py-2 text-right whitespace-nowrap">단가<span className="text-slate-400 font-bold"> 공급가</span></span>
+                  <span className="px-2 py-2 text-right whitespace-nowrap">마진율</span>
+                  <span className="px-2 py-2 text-right whitespace-nowrap">세액</span>
+                  <span className="px-2 py-2 text-right whitespace-nowrap">판매가<span className="text-slate-400 font-bold"> 세포함</span></span>
+                  <span className="px-1 py-2 text-center whitespace-nowrap">과세</span>
                   <span />
                 </div>
                 {form.lines.map((l, i) => {
@@ -337,7 +343,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                   //  줄마다 세액·판매가를 낸다 — 셈은 shared/lineAmount 한 곳이다
                   const amt = lineAmountFromSupply(Number(l.qty) || 0, Number(l.price) || 0, l.isTaxExempt);
                   return (
-                    <div key={i} className="grid grid-cols-[1fr_64px_88px_96px_58px_88px_100px_44px_28px] border-t border-slate-100 items-center">
+                    <div key={i} className="grid grid-cols-[minmax(150px,1fr)_64px_88px_96px_58px_88px_100px_44px_28px] min-w-[740px] border-t border-slate-100 items-center">
                       <div className="px-3 py-2 min-w-0">
                         <button onClick={() => { setPickIdx(i); setItemSearch(''); }}
                           className={`w-full text-left text-xs font-bold truncate px-2 py-1.5 rounded-lg border transition-all ${l.name ? 'border-slate-200 text-slate-700 hover:border-indigo-300' : 'border-dashed border-slate-300 text-slate-400'}`}>
@@ -369,7 +375,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                   );
                 })}
                 <button onClick={() => setForm(f => ({ ...f, lines: [...f.lines, emptyLine()] }))}
-                  className="w-full py-2 border-t border-slate-100 text-[11px] font-black text-indigo-600 hover:bg-indigo-50">+ 줄 추가</button>
+                  className="w-full min-w-[740px] py-2 border-t border-slate-100 text-[11px] font-black text-indigo-600 hover:bg-indigo-50">+ 줄 추가</button>
               </div>
 
               <label className="block space-y-1">
