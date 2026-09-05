@@ -1,6 +1,7 @@
 import { Item } from './types';
 import { toKg, baseRawName, unitToKg } from '../constants/formula';
 import { bomQty } from './bom';
+import { VAT_UP } from './lineAmount';
 
 /**
  * BOM 원가 롤업 — 순수 함수(DI).
@@ -76,7 +77,7 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
    * 원료가 과세면 매입세액을 빼므로 단가 그대로다.
    */
   const vatUp = (child: Item, parent: Item) =>
-    (child.taxType === '면세' && parent.taxType !== '면세' ? 1.1 : 1);
+    (child.taxType === '면세' && parent.taxType !== '면세' ? VAT_UP : 1);
   const feeOf = ctx.processingFeeOf ?? (() => 0);
   const memo = new Map<string, number>();
 

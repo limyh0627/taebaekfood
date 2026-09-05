@@ -158,6 +158,7 @@ import {
 import type { AppData } from '../../shared/hooks/useAppData';
 import type { AdminData } from '../../hooks/useAdminData';
 import { collection, getDocs, writeBatch, doc, getDoc, setDoc, deleteDoc, onSnapshot, query, where } from 'firebase/firestore';
+import { vatOn } from '../../shared/lineAmount';
 
 // 거래처 주문 포털(웹) URL — .env의 VITE_PARTNER_PORTAL_URL로 운영 도메인 지정 가능
 const PARTNER_PORTAL_URL =
@@ -1322,7 +1323,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
         if (newQty <= 0) continue; // 0 = 품목 삭제
         const unitSupply = it.qty !== 0 ? it.supply / it.qty : 0;
         const supply = Math.round(unitSupply * newQty);
-        const tax = it.isTaxExempt ? 0 : Math.round(supply * 0.1);
+        const tax = vatOn(supply, it.isTaxExempt);
         newItems.push({ ...it, qty: newQty, supply, tax, total: supply + tax });
       }
       if (changes.length > 0) {

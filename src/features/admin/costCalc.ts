@@ -1,6 +1,7 @@
 import type { Item } from '../../shared/types';
 import { marginFromSupply } from '../../shared/margin';
 import { buildCostFn } from '../../shared/bomCost';
+import { VAT_UP } from '../../shared/lineAmount';
 
 /**
  * **원가계산기** — 아직 만들지 않은 품목의 원가를 미리 굴려 본다.
@@ -120,7 +121,7 @@ export function calcCost(
       unit: String(it?.unit ?? ''),
       qty: Number(r.qty),
       unitCost,
-      amount: Number(r.qty) * unitCost * (vatUp ? 1.1 : 1),
+      amount: Number(r.qty) * unitCost * (vatUp ? VAT_UP : 1),
       vatUp,
     };
   });
@@ -129,7 +130,7 @@ export function calcCost(
   //  원료 몫은 위에서 말한 까닭으로 여기서 따로 더한다.
   const rawTotal = rawRows.reduce((a, r) => {
     const it = byId.get(r.itemId)!;
-    const up = it.taxType === '면세' && taxType !== '면세' ? 1.1 : 1;
+    const up = it.taxType === '면세' && taxType !== '면세' ? VAT_UP : 1;
     return a + Number(r.qty) * costOf(it) * up;
   }, 0);
   const cost = r0(costOf.rollup(ghost) + rawTotal + fee);

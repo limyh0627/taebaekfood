@@ -11,6 +11,7 @@ import { LeaveRequest, LeaveStatus, AdjustmentRequest, Employee, ReturnRequest, 
 import { addItem, updateItem } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 import { dateOfLocal } from '../src/shared/day';
+import { vatOn } from '../src/shared/lineAmount';
 
 interface AdminChecklistProps {
   leaveRequests: LeaveRequest[];
@@ -189,7 +190,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
         const qty = Number(i.qty);
         const price = Number(i.price);
         const supply = qty * price;
-        const tax = i.isTaxExempt ? 0 : Math.round(supply * 0.1);
+        const tax = vatOn(supply, i.isTaxExempt);
         return { name: i.name, spec: i.unit, qty, price, supply, tax, total: supply + tax, isTaxExempt: i.isTaxExempt };
       });
       const totalSupply = stmtItems.reduce((s, i) => s + i.supply, 0);
@@ -752,7 +753,7 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
                 const supply = returnStmtDraft.items.reduce((s, i) => s + Number(i.qty || 0) * Number(i.price || 0), 0);
                 const tax = returnStmtDraft.items.reduce((s, i) => {
                   const amt = Number(i.qty || 0) * Number(i.price || 0);
-                  return s + (i.isTaxExempt ? 0 : Math.round(amt * 0.1));
+                  return s + vatOn(amt, i.isTaxExempt);
                 }, 0);
                 return (
                   <div className="bg-rose-50 rounded-xl px-4 py-3 space-y-1">

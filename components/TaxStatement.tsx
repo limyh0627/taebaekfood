@@ -10,6 +10,7 @@ import { Partner, IssuedStatement, CompanyInfo, CompanyId } from '../types';
 import { mergeStatementItems, mergeAndSplit, type MergedItem } from '../src/shared/mergeStatementItems';
 import { fetchDateRange } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
+import { vatOn } from '../src/shared/lineAmount';
 
 interface TaxStatementProps {
   /** 보고 있는 회사 — 이 화면이 직접 떠오는 과거 전표도 걸러야 한다 */
@@ -169,7 +170,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
       if (field === 'qty' || field === 'supply') {
         const supply = field === 'supply' ? Number(raw) : next.supply;
         next.supply = supply;
-        next.tax = next.isTaxExempt ? 0 : Math.round(supply * 0.1);
+        next.tax = vatOn(supply, next.isTaxExempt);
         next.total = supply + next.tax;
       }
       return next;

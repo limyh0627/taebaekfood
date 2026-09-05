@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { lineAmount, lineAmountOf, sumLines, lineAmountFromSupply, priceParts } from './lineAmount';
+import { lineAmount, lineAmountOf, sumLines, lineAmountFromSupply, priceParts, vatOn, VAT_UP, VAT_RATE } from './lineAmount';
 
 /**
  * 이 셈이 아홉 군데로 흩어져 두 갈래로 갈려 있었다. 여기 하나로 모았으니
@@ -127,5 +127,37 @@ describe('단가 딱지 — 과세면 공급가액을 곁들인다', () => {
     expect(priceParts(0).showSupply).toBe(false);
     expect(priceParts(undefined).showSupply).toBe(false);
     expect(priceParts(null).sale).toBe(0);
+  });
+});
+
+describe('vatOn — 공급가액에 붙는 세액', () => {
+  it('공급가액의 10%', () => {
+    expect(vatOn(100000)).toBe(10000);
+  });
+  it('면세는 0', () => {
+    expect(vatOn(100000, true)).toBe(0);
+  });
+  it('원 단위로 반올림한다', () => {
+    expect(vatOn(13333)).toBe(1333);
+    expect(vatOn(13335)).toBe(1334);
+  });
+  it('반품(음수)도 음수로 낸다 — 0으로 뭉개면 반품 세액이 사라진다', () => {
+    expect(vatOn(-100000)).toBe(-10000);
+  });
+  it('빈 값은 0', () => {
+    expect(vatOn(NaN)).toBe(0);
+    expect(vatOn(undefined as any)).toBe(0);
+  });
+  it('lineAmountFromSupply 의 세액과 같다 — 두 셈이 갈리면 안 된다', () => {
+    for (const s of [1000, 13333, 99999, 1_234_567]) {
+      expect(vatOn(s)).toBe(lineAmountFromSupply(1, s).tax);
+    }
+  });
+});
+
+describe('VAT_UP — 면세 원료가 과세품 원가에 얹히는 곱수', () => {
+  it('1 + 세율이다', () => {
+    expect(VAT_UP).toBe(1 + VAT_RATE);
+    expect(VAT_UP).toBeCloseTo(1.1, 10);
   });
 });

@@ -106,6 +106,22 @@ export function lineAmountFromSupply(qty: number, supply: number, exempt?: boole
 }
 
 /**
+ * **공급가액에 붙는 세액.** 세별도 값에서 세금만 낼 때 쓴다.
+ *
+ * `Math.round(supply * 0.1)` 이 네 군데에 손으로 적혀 있었다(2026-09-05).
+ * 세율이 한 곳에 있어도 **쓰는 자리가 손으로 곱하면 소용이 없다.**
+ *
+ * @param supply **세금 별도** 공급가액
+ * @param exempt 면세면 세액이 0
+ */
+export function vatOn(supply: number, exempt?: boolean): number {
+  return exempt ? 0 : Math.round((Number(supply) || 0) * VAT_RATE);
+}
+
+/** 세금 포함 값을 만드는 곱수 — 면세 원료로 과세품을 만들 때 원가에 얹는 데도 쓴다 */
+export const VAT_UP = 1 + VAT_RATE;
+
+/**
  * **한 줄로 보여줄 단가 딱지** — 과세면 공급가액을 곁들인다.
  *
  * 화면 여기저기서 '판매단가'라고 한 숫자만 보여주는데, 그게 세포함이라 원가와 나란히
