@@ -2898,8 +2898,11 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               )}
               {histTotals.saleSum > 0 && cell('매출', histTotals.saleSum, 'text-blue-700')}
               {histTotals.buySum > 0 && cell('매입', histTotals.buySum, 'text-rose-700')}
+              {/*  **'발생' 부터 한 줄 내린다**(2026-09-07 사장님). 전표(총액)와 발생(공급가액)은
+                   뜻이 다른 값이라 한 줄에 이어 두면 같은 줄기로 읽힌다. 줄을 갈라 놓는다. */}
+              {anyPl && <span className="basis-full h-0" aria-hidden />}
               {anyPl && (
-                <span className="text-[9px] font-black text-slate-400 tracking-widest border-l border-slate-200 pl-5">
+                <span className="text-[9px] font-black text-slate-400 tracking-widest">
                   발생<span className="ml-1 font-bold normal-case tracking-normal text-slate-300">공급가액</span>
                 </span>
               )}

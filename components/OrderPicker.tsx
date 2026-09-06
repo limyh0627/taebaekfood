@@ -106,8 +106,11 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
                   <span className="text-xs font-black text-slate-600">{createMode==='매출'?'주문 선택':'발주 선택'}</span>
                   {createMode==='매출' && <span className="text-xs text-slate-400">{partnerOrders.length}건</span>}
                   {/* 몇 건을 골랐는지 — 여러 건이면 한 전표로 묶인다는 걸 여기서 알려 준다 */}
+                  {/*  고른 뒤 뜨는 것들은 **한 줄 내려서** 놓는다(2026-09-07 사장님).
+                       '주문 선택 1건' 옆에 딱지·해제·작성이 다 붙으니 폰에서 빽빽했다.
+                       `basis-full` 로 제 줄을 차지하게 한다(부모가 flex-wrap 이다). */}
                   {createMode==='매출' && selectedOrderIds.length > 0 && (
-                    <span className="flex items-center gap-1.5">
+                    <span className="basis-full flex items-center gap-1.5 pt-0.5">
                       <span className="text-[11px] font-black text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
                         {selectedOrderIds.length}건 선택{selectedOrderIds.length > 1 && ' — 한 전표로'}
                       </span>
