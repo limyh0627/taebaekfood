@@ -20,6 +20,7 @@ import AdminApp from '../../src/features/admin/AdminApp';
 import { takeShareFromUrl } from '../../src/shared/shareTarget';
 import { canEnterAdmin, freshAccess } from '../../src/shared/adminAccess';
 import '../../src/index.css';
+import { loadStartView, saveView } from '../../src/shared/startView';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null };
@@ -49,9 +50,9 @@ const AdminRoot: React.FC = () => {
     //  카톡·문자에서 공유해 들어왔으면 오피스톡부터 연다(2026-09-03 사장님).
     //  주소는 여기서 바로 비운다 — 새로고침에 같은 글이 또 뜨면 안 된다.
     if (takeShareFromUrl()) return 'officetalk';
-    try { return (localStorage.getItem('tb_admin_view') as ViewType) || 'orders'; } catch { return 'orders'; }
+    return loadStartView<ViewType>('tb_admin_view', 'dashboard');
   });
-  useEffect(() => { try { localStorage.setItem('tb_admin_view', currentView); } catch {} }, [currentView]);
+  useEffect(() => { saveView('tb_admin_view', currentView); }, [currentView]);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [previewAsStaff, setPreviewAsStaff] = useState(false);
 

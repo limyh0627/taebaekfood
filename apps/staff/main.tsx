@@ -19,6 +19,7 @@ import AuthPage from '../../src/shared/components/AuthPage';
 import PartnerPortal from '../../components/PartnerPortal';
 import StaffApp from '../../src/features/staff/StaffApp';
 import '../../src/index.css';
+import { loadStartView, saveView } from '../../src/shared/startView';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null };
@@ -44,10 +45,9 @@ const StaffRoot: React.FC = () => {
     const saved = localStorage.getItem('tb_user');
     return saved ? JSON.parse(saved) : null;
   });
-  const [currentView, setCurrentView] = useState<ViewType>(() => {
-    try { return (localStorage.getItem('tb_staff_view') as ViewType) || 'orders'; } catch { return 'orders'; }
-  });
-  useEffect(() => { try { localStorage.setItem('tb_staff_view', currentView); } catch {} }, [currentView]);
+  const [currentView, setCurrentView] = useState<ViewType>(() =>
+    loadStartView<ViewType>('tb_staff_view', 'orders'));
+  useEffect(() => { saveView('tb_staff_view', currentView); }, [currentView]);
   const [isAdminAuthenticated] = useState(false);
 
   const appData = useAppData();

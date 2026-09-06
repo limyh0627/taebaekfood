@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react';
 /**
  * **테스트 설정 — 개발용 vite 설정과 일부러 갈라 둔다.**
  *
- * `vite.config.ts`에는 PWA 플러그인과 번들 쪼개기가 들어 있는데 테스트에는 필요 없고,
+ * 앱 vite 설정(`vite.admin.config.ts`)에는 PWA 플러그인과 번들 쪼개기가 들어 있는데 테스트에는 필요 없고,
  * 서비스워커를 만들려다 느려지기만 한다. 여기 두면 테스트가 **왜 이렇게 도는지**가
  * 한 파일에 다 있다.
  *
