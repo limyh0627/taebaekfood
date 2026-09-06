@@ -204,3 +204,67 @@ export function lineTotals(lines: readonly LineItem[]): LineTotals {
   const tax = 셀것.reduce((s, r) => s + r.tax, 0);
   return { isTwoSided, supply, tax, amount: supply + tax };
 }
+
+/**
+ * **서류용 품목명 — 종이에 찍을 때만 쓴다.**
+ *
+ * 품목에는 이름이 둘이다. 실제 이름(`name`)은 「참기름/골드/대왕/1800ml」처럼
+ * 거래처·병 모양까지 붙어 있고, 서류용 이름(`품목`)은 「시골향참기름1」처럼 뭉뚱그린
+ * 것이다. 원료수불부·생산작업기록부가 그 뭉뚱그린 이름으로 나간다.
+ *
+ * **전표도 같은 이름으로 찍는다**(2026-09-06 사장님) — 서류끼리 이름이 갈리면
+ * 대조가 안 된다.
+ *
+ * 화면·저장은 그대로 둔다. 실제 이름이 있어야 어느 품목인지 알고, 재고도 그걸로 빠진다.
+ * 바꾸는 건 **인쇄 HTML 을 만드는 그 순간뿐이다**.
+ */
+export function docItemName(
+  name: string,
+  spec: string | undefined,
+  allItems: readonly Item[],
+): string {
+  const 후보 = allItems.filter(p => !p.archived && p.name === name);
+  //  같은 이름이 규격만 다르게 여럿 있다 — 규격까지 맞는 것을 먼저 본다.
+  const hit = 후보.find(p => (p.spec ?? '') === (spec ?? '')) ?? 후보[0];
+  return hit?.품목?.trim() || name;
+}
+
+/** 인쇄용 줄 — 전표 줄이든 저장된 전표 줄이든 이 모양만 본다. */
+interface PrintableLine {
+  name?: string; spec?: string; unit?: string;
+  qty?: number; price?: number; supply?: number; tax?: number; total?: number;
+}
+
+/**
+ * 인쇄 직전에 이름을 서류용으로 바꾼다.
+ *
+ * **뭉뚱그린 이름이라 줄이 겹칠 수 있다.** 서류용 이름은 20가지뿐인데 품목은 178개다 —
+ * 「시골향들기름/병/350ml」과 「시골향들기름/병/특/350ml」은 둘 다 “시골향들기름2 350ml”가
+ * 된다. 한 장에 똑같아 보이는 줄이 둘 나오면 받는 쪽이 잘못 찍힌 줄 안다.
+ *
+ * 그래서 **이름·규격·단위·단가가 전부 같을 때만 한 줄로 합친다**(수량과 금액을 더한다).
+ * 단가가 다르면 안 합친다 — 합치면 어느 값을 찍어야 할지 없고, 실제로 다른 값을 판 것이다.
+ */
+export function withDocNames<T extends PrintableLine>(
+  lines: readonly T[],
+  allItems: readonly Item[],
+): T[] {
+  const 줄: T[] = [];
+  const 자리 = new Map<string, T>();
+  for (const l of lines) {
+    const name = docItemName(l.name ?? '', l.spec, allItems);
+    const key = `${name}||${l.spec ?? ''}||${l.unit ?? ''}||${l.price ?? ''}`;
+    const 있던 = 자리.get(key);
+    if (있던) {
+      있던.qty = (있던.qty ?? 0) + (l.qty ?? 0);
+      있던.supply = (있던.supply ?? 0) + (l.supply ?? 0);
+      있던.tax = (있던.tax ?? 0) + (l.tax ?? 0);
+      있던.total = (있던.total ?? 0) + (l.total ?? 0);
+      continue;
+    }
+    const 새줄 = { ...l, name } as T;
+    자리.set(key, 새줄);
+    줄.push(새줄);
+  }
+  return 줄;
+}

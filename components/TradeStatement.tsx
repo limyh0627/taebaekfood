@@ -17,7 +17,7 @@ import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, Compan
 import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { partnerPriceWrites } from '../src/shared/partnerPriceSync';
-import { manualLines, orderLines, lineTotals, resolveOrderItem, orderItemPrice, type LineItem, type ManualRow } from '../src/shared/statementLines';
+import { withDocNames, manualLines, orderLines, lineTotals, resolveOrderItem, orderItemPrice, type LineItem, type ManualRow } from '../src/shared/statementLines';
 import { partnerOrders as 거래처주문, activeOrders as 진행주문, activePartnerIds, ACTIVE_STATUSES } from '../src/shared/statementOrders';
 import { rowKind as 갈래, rowCodes as 계정들, rowName as 상대이름, filterTimeline, sortTimeline, partnerNamesOf,
   classifyRow as 성격판정, timelineTotals,
@@ -1414,7 +1414,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const buyFax   = isSale ? '' : (ci?.fax||'');
 
     const MAX_ROWS = 11;
-    const itemList = items as any[];
+    //  **인쇄에만** 서류용 품목명으로 바꾼다 — 화면·저장은 실제 이름 그대로다.
+    //  (2026-09-06 사장님) 원료수불부·생산작업기록부가 그 이름으로 나가서, 전표도 맞춰야
+    //  서류끼리 대조가 된다. shared/statementLines 의 withDocNames 참고.
+    const itemList = withDocNames(items as any[], allItems);
     const totalQty = itemList.reduce((s,i)=>s+(Number(i.qty)||0),0);
 
     const makePage = (borderColor: string, pageLabel: string, stripeColor: string) => {
