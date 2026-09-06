@@ -33,6 +33,7 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 import { db } from '../src/firebase';
+import { actionsFor, replySnippet, deletePatch, isDeleted, type MessageAction } from '../src/shared/messageActions';
 
 interface OfficeTalkProps {
   currentUser: Employee;
@@ -45,6 +46,10 @@ interface OfficeTalkProps {
   onUpdateRoom: (_id: string, _data: Partial<ChatRoom>) => void;
   onDeleteRoom: (_id: string) => void;
   onSendMessage: (_msg: ChatMessage) => void;
+  /** 말 지우기 — 줄은 남기고 내용만 비운다(shared/messageActions) */
+  onUpdateMessage?: (_id: string, _data: Partial<ChatMessage>) => void;
+  /** 관리자면 남의 말도 지울 수 있다 */
+  isAdmin?: boolean;
 }
 
 
@@ -57,7 +62,9 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
   onAddRoom,
   onUpdateRoom,
   onDeleteRoom,
-  onSendMessage
+  onSendMessage,
+  onUpdateMessage,
+  isAdmin,
 }) => {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
 
@@ -253,11 +260,14 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
       ...(attach?.isImage ? { imageUrl: attach.url } : {}),
       ...(attach && !attach.isImage ? { fileUrl: attach.url, fileName: attach.name, fileSize: attach.size } : {}),
       ...(mentions.length > 0 ? { mentions } : {}),
+      //  답장이면 그때 보인 글을 같이 담는다 — 원본이 지워져도 무엇에 답한 건지 남는다
+      ...(replyTo ? { replyTo: replySnippet(replyTo) } : {}),
     };
 
     setIsSending(true);
     const savedText = messageText;
     setMessageText('');
+    setReplyTo(null);
     try {
       await (onSendMessage as (_msg: ChatMessage) => Promise<void>)(newMessage);
     } catch (err: any) {
@@ -310,20 +320,69 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
     inputRef.current?.focus();
   };
 
-  //  **메시지를 꾹 누르면 그 사람을 부른다**(2026-09-03 사장님).
-  //  카톡의 '답장'자리를 멘션으로 쓴다 — 이 앱은 인용이 아니라 멘션으로 알림이 간다.
+  //  **메시지를 꾹 누르면 창이 뜬다**(2026-09-06 사장님, 카톡처럼).
+  //  할 수 있는 일을 고르는 규칙은 [shared/messageActions](../src/shared/messageActions.ts) 가 안다.
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [actionMsg, setActionMsg] = useState<ChatMessage | null>(null);
+  /** 답장할 말 — 입력칸 위에 인용으로 뜬다 */
+  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
+  const [알림글, set알림글] = useState('');
+
   const cancelLongPress = () => { if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; } };
-  const mentionSender = (name: string) => {
-    if (!name || name === currentUser.name) return;
-    setMessageText(t => appendMention(t, name));
-    setMentionSearch(null);
-    inputRef.current?.focus();
-    navigator.vibrate?.(15);
-  };
-  const startLongPress = (name: string) => {
+  const startLongPress = (msg: ChatMessage) => {
     cancelLongPress();
-    longPressRef.current = setTimeout(() => { longPressRef.current = null; mentionSender(name); }, 450);
+    longPressRef.current = setTimeout(() => {
+      longPressRef.current = null;
+      if (actionsFor({ msg, me: currentUser, isAdmin }).length === 0) return;   // 지운 말
+      setActionMsg(msg);
+      navigator.vibrate?.(15);
+    }, 450);
+  };
+
+  /** 잠깐 뜨는 알림 — '복사했습니다' 같은 것 */
+  const 알리기 = (t: string) => { set알림글(t); setTimeout(() => set알림글(''), 1600); };
+
+  /** 나와의 대화방 — 없으면 만든다. '나에게' 가 쓴다. */
+  const myRoom = useMemo(
+    () => chatRooms.find(r => !r.isGroup && r.participantIds.length === 1 && r.participantIds[0] === currentUser.id),
+    [chatRooms, currentUser.id]);
+
+  const doAction = async (act: MessageAction, msg: ChatMessage) => {
+    setActionMsg(null);
+    if (act === '복사') {
+      try { await navigator.clipboard.writeText(msg.text); 알리기('복사했습니다'); }
+      catch { 알리기('복사하지 못했습니다'); }
+      return;
+    }
+    if (act === '답장') { setReplyTo(msg); inputRef.current?.focus(); return; }
+    if (act === '공유') {
+      //  폰이 공유 시트를 열어 준다. 없으면(PC) 복사로 물러선다.
+      if (navigator.share) { try { await navigator.share({ text: msg.text }); } catch { /* 사람이 닫음 */ } return; }
+      try { await navigator.clipboard.writeText(msg.text); 알리기('공유를 못 써서 복사했습니다'); } catch { /* 무시 */ }
+      return;
+    }
+    if (act === '나에게') {
+      let room = myRoom;
+      if (!room) {
+        //  나와의 대화방이 없으면 만든다 — 메모장처럼 쓰는 자리다
+        room = { id: `ROOM-${Date.now()}`, participantIds: [currentUser.id], createdBy: currentUser.id,
+                 lastUpdatedAt: new Date().toISOString(), isGroup: false } as ChatRoom;
+        onAddRoom(room);
+      }
+      await (onSendMessage as (_m: ChatMessage) => Promise<void>)({
+        id: `MSG-${Date.now()}`, roomId: room.id,
+        senderId: currentUser.id, senderName: currentUser.name,
+        text: msg.text, createdAt: new Date().toISOString(),
+        replyTo: replySnippet(msg),
+      } as ChatMessage);
+      알리기('나에게 보냈습니다');
+      return;
+    }
+    if (act === '삭제') {
+      if (!window.confirm('이 말을 지울까요?\n(줄은 남고 내용만 지워집니다)')) return;
+      onUpdateMessage?.(msg.id, deletePatch(currentUser.id));
+      알리기('지웠습니다');
+    }
   };
 
   /**
@@ -622,18 +681,24 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                         </p>
                       )}
                       <div
-                        onPointerDown={() => { if (!isMine) startLongPress(msg.senderName); }}
+                        //  폰은 꾹 누르기, PC는 **우클릭** — 같은 창이 뜬다(2026-09-06 사장님)
+                        onPointerDown={() => startLongPress(msg)}
                         onPointerUp={cancelLongPress}
                         onPointerLeave={cancelLongPress}
                         onPointerCancel={cancelLongPress}
-                        onContextMenu={(e) => { if (!isMine) { e.preventDefault(); cancelLongPress(); mentionSender(msg.senderName); } }}
-                        title={isMine ? undefined : '꾹 누르면 이 사람을 부릅니다'}
-                        className={`max-w-[70%] px-4 py-3 rounded-2xl text-sm font-medium shadow-sm relative group ${
-                        isMine 
-                          ? 'bg-indigo-600 text-white rounded-tr-none' 
-                          : 'bg-white text-slate-700 border border-slate-100 rounded-tl-none select-none cursor-pointer active:scale-[0.99] transition-transform'
+                        onContextMenu={(e) => {
+                          e.preventDefault(); cancelLongPress();
+                          if (actionsFor({ msg, me: currentUser, isAdmin }).length) setActionMsg(msg);
+                        }}
+                        title={isDeleted(msg) ? undefined : '꾹 누르기 (PC는 우클릭)'}
+                        className={`max-w-[70%] px-4 py-3 rounded-2xl text-sm font-medium shadow-sm relative group select-none ${
+                        isDeleted(msg)
+                          ? 'bg-slate-50 text-slate-400 border border-dashed border-slate-200 italic'
+                          : isMine
+                          ? 'bg-indigo-600 text-white rounded-tr-none cursor-pointer active:scale-[0.99] transition-transform'
+                          : 'bg-white text-slate-700 border border-slate-100 rounded-tl-none cursor-pointer active:scale-[0.99] transition-transform'
                       }`}>
-                        {msg.imageUrl && (
+                        {msg.imageUrl && !isDeleted(msg) && (
                           <div className="mb-2 rounded-xl overflow-hidden border border-white/10">
                             <img 
                               src={msg.imageUrl} 
@@ -644,7 +709,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                             />
                           </div>
                         )}
-                        {msg.fileUrl && (
+                        {msg.fileUrl && !isDeleted(msg) && (
                           <a
                             href={msg.fileUrl}
                             target="_blank"
@@ -665,7 +730,16 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                             </span>
                           </a>
                         )}
-                        {msg.text && (
+                        {/*  답장 인용 — 무엇에 답한 건지 위에 붙인다 */}
+                        {msg.replyTo && !isDeleted(msg) && (
+                          <div className={`mb-1.5 pl-2 border-l-2 text-[11px] ${
+                            isMine ? 'border-white/40 text-white/70' : 'border-slate-300 text-slate-400'}`}>
+                            <span className="font-black">{msg.replyTo.senderName}</span>
+                            <span className="ml-1">{msg.replyTo.text}</span>
+                          </div>
+                        )}
+                        {isDeleted(msg) && <p className="text-xs">지운 말입니다</p>}
+                        {msg.text && !isDeleted(msg) && (
                           <p className="whitespace-pre-wrap leading-relaxed">
                             {msg.text.split(/(@\S+)/).map((part, i) => {
                               if (part.startsWith('@')) {
@@ -724,6 +798,17 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                 )}
               </AnimatePresence>
 
+              {/*  답장할 말 — 카톡처럼 입력칸 위에 인용으로 붙는다 */}
+              {replyTo && (
+                <div className="flex items-start gap-2 mb-2 px-3 py-2 bg-slate-50 border-l-2 border-indigo-400 rounded-r-xl">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-black text-indigo-600">{replyTo.senderName}에게 답장</p>
+                    <p className="text-[11px] font-bold text-slate-500 truncate">{replySnippet(replyTo).text}</p>
+                  </div>
+                  <button onClick={() => setReplyTo(null)} aria-label="답장 취소"
+                    className="shrink-0 p-1 text-slate-300 hover:text-slate-500"><X size={14} /></button>
+                </div>
+              )}
               {pendingMentions.length > 0 && (
                 <div className="flex items-center gap-1.5 flex-wrap mb-2">
                   <AtSign size={12} className="text-indigo-500 shrink-0" />
@@ -968,6 +1053,37 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
           </div>
         )}
       </AnimatePresence>
+      {/*  **꾹 누르기 창**(2026-09-06 사장님, 카톡처럼). PC 는 우클릭.
+           할 수 있는 일은 [shared/messageActions](../src/shared/messageActions.ts) 가 고른다. */}
+      {actionMsg && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40"
+          onClick={() => setActionMsg(null)}>
+          <div className="w-full sm:w-80 bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden mb-0 sm:mb-0"
+            onClick={e => e.stopPropagation()}>
+            <div className="px-4 py-3 border-b border-slate-100">
+              <p className="text-[10px] font-black text-slate-400">{actionMsg.senderName}</p>
+              <p className="text-xs font-bold text-slate-600 line-clamp-2 whitespace-pre-wrap">{actionMsg.text || '(사진·파일)'}</p>
+            </div>
+            {actionsFor({ msg: actionMsg, me: currentUser, isAdmin }).map(act => (
+              <button key={act} onClick={() => doAction(act, actionMsg)}
+                className={`w-full px-5 py-3.5 text-left text-sm font-black border-b border-slate-50 last:border-0 transition-colors ${
+                  act === '삭제' ? 'text-rose-600 hover:bg-rose-50' : 'text-slate-700 hover:bg-slate-50'}`}>
+                {act}
+              </button>
+            ))}
+            <button onClick={() => setActionMsg(null)}
+              className="w-full px-5 py-3.5 text-sm font-black text-slate-400 bg-slate-50">닫기</button>
+          </div>
+        </div>
+      )}
+
+      {/*  잠깐 뜨는 알림 — '복사했습니다' 같은 것 */}
+      {알림글 && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[70] px-4 py-2 bg-slate-900/85 text-white rounded-full text-xs font-black">
+          {알림글}
+        </div>
+      )}
+
       {/*  사진 크게 보기 — 아무 데나 누르면 닫힌다 */}
       {viewImage && (
         <div

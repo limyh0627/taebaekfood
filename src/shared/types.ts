@@ -538,6 +538,17 @@ export interface ChatMessage {
   fileUrl?: string;
   fileName?: string;
   fileSize?: number;
+  /**
+   * 답장 — 어느 말에 답한 것인가. **그때 보인 글을 같이 담는다.**
+   * 원본이 지워져도 무엇에 답한 건지 남아야 대화가 읽힌다.
+   */
+  replyTo?: { id: string; senderName: string; text: string };
+  /**
+   * 지운 말. **줄은 남기고 내용만 지운다**(카톡과 같다) —
+   * 통째로 없애면 앞뒤 대화가 어긋나고, 답장이 가리키던 자리가 사라진다.
+   */
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 export interface ChatRoom {

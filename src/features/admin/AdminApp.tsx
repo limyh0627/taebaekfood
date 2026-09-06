@@ -4238,6 +4238,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
               onAddRoom={(room) => addItem('chatRooms', room)}
               onUpdateRoom={(id, data) => updateItem('chatRooms', id, data)}
               onDeleteRoom={(id) => deleteItem('chatRooms', id)}
+              isAdmin={isAdmin || isAdminAuthenticated}
+              onUpdateMessage={(id, data) => updateItem('chatMessages', id, data)}
               onSendMessage={async (msg) => {
                 // 메시지 저장 (핵심 동작 — 실패 시 에러 전파)
                 await addItem('chatMessages', msg);
