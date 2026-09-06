@@ -222,3 +222,36 @@ export function groupLooseBoxRows<T extends Pick<Item, 'id' | 'unpackTo'>>(arr: 
   }
   return out;
 }
+
+/**
+ * **이 품목 재고 1단위가 몇 kg인가.**
+ *
+ * 낱개면 규격에서 읽고(`1kg` → 1), **박스면 개입수까지 곱한다**(`1kg` 낱개 20개입 → 20).
+ * 규격에 kg 이 안 적혔으면 undefined — 알 수 없는 걸 0으로 치면 총량이 조용히 줄어든다.
+ *
+ * 재고 화면이 **박스도 kg 으로 더해 보여주려고** 쓴다(2026-09-06 사장님:
+ * "박스로 들어온 애들도 총량이 kg으로 더해져야지").
+ *
+ * @param findItem 낱개를 찾는 함수 — 박스는 제 규격이 아니라 낱개 규격으로 센다
+ */
+export function kgPerStockUnit(
+  product: (BoxLike & { spec?: string }) | undefined,
+  findItem: (id: string) => { spec?: string } | undefined,
+): number | undefined {
+  if (!product) return undefined;
+  const uc = unpackComponent(product);
+  if (!uc) return parsePackageKg(product.spec);
+  //  박스 규격(`1kg * 20`)에서 읽으면 1이 나온다 — 낱개 규격 × 개입수가 맞다
+  const looseKg = parsePackageKg(findItem(uc.itemId)?.spec);
+  return looseKg === undefined ? undefined : looseKg * uc.count;
+}
+
+/** 재고 수량 → kg. 못 알면 undefined(0 으로 치지 않는다). */
+export function stockKg(
+  qty: number,
+  product: (BoxLike & { spec?: string }) | undefined,
+  findItem: (id: string) => { spec?: string } | undefined,
+): number | undefined {
+  const per = kgPerStockUnit(product, findItem);
+  return per === undefined ? undefined : Math.round(qty * per * 1000) / 1000;
+}

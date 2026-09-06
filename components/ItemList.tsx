@@ -38,7 +38,7 @@ import {
 import { Item, InventoryCategory, AdjustmentRequest, AdjustmentType, RawMaterialEntry, IssuedStatement, PartnerItem } from '../types';
 import { PurchaseOrder, poLines } from '../src/shared/types';
 import type { Order } from '../src/shared/types';
-import { unpackComponent, isBoxStockItem, groupLooseBoxRows, unitsPerBoxOf, unpackQty, boxQtyLabel, packBreakdown } from '../src/shared/orderUnits';
+import { boxQtyLabel, groupLooseBoxRows, isBoxStockItem, packBreakdown, stockKg, unitsPerBoxOf, unpackComponent, unpackQty } from '../src/shared/orderUnits';
 import { packUnitsOf } from '../src/shared/packIndex';
 import AddItemModal from './AddItemModal';
 import ConfirmModal from './ConfirmModal';
@@ -1590,6 +1590,20 @@ const ItemList: React.FC<ItemListProps> = ({
                 const rawLotCount = (raw?.lots ?? []).filter(l => l.status === 'active' && (l.kgRemaining ?? 0) > 0).length;
                 const boxLotCount = boxes.reduce((n, b) => n + (b.lots ?? []).filter(l => l.status === 'active' && (l.qtyRemaining ?? 0) > 0).length, 0);
                 const boxQty = boxes.reduce((n, b) => n + lotQtyRemaining((b.lots ?? []).filter(l => l.status === 'active')), 0);
+                /*  **박스도 kg 으로 더한다**(2026-09-06 사장님) — 같은 물건인데 벌크는 kg,
+                 *  박스는 개수로 따로 보여서 "이 원료가 통틀어 몇 kg 있나"를 한눈에 못 봤다.
+                 *  환산은 [orderUnits.stockKg](../src/shared/orderUnits.ts) 가 한다.
+                 *  **kg 을 못 읽는 박스는 안 더한다** — 0 으로 치면 총량이 조용히 줄어든다. */
+                const 박스kg = boxes.reduce((sum, b) => {
+                  const qty = lotQtyRemaining((b.lots ?? []).filter(l => l.status === 'active'));
+                  if (!qty) return sum;
+                  const kg = stockKg(qty, b, id => items.find((x: Item) => x.id === id));
+                  return kg === undefined ? sum : sum + kg;
+                }, 0);
+                const 못센박스 = boxes.some(b => {
+                  const qty = lotQtyRemaining((b.lots ?? []).filter(l => l.status === 'active'));
+                  return qty > 0 && stockKg(qty, b, id => items.find((x: Item) => x.id === id)) === undefined;
+                });
                 const isOpen = lotExpandedId === rowId;
                 return (
                   <div key={rowId} className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
@@ -1603,11 +1617,25 @@ const ItemList: React.FC<ItemListProps> = ({
                         {/* 박스 로트는 재고를 들고 있는 품목이 달라 합치지 않는다 — 물질만 같다 */}
                         {boxLotCount > 0 && <span className="text-[9px] font-black text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full shrink-0">박스 {boxLotCount}</span>}
                       </button>
-                      <span className="flex items-baseline gap-2 shrink-0">
-                        {raw && (() => { const stock = displayStockOf(raw); return (
-                          <span className={`text-sm font-black tabular-nums ${stock < 0 ? 'text-rose-600' : 'text-slate-800'}`}>{Math.round(stock)} {unitLabel}</span>
-                        ); })()}
-                        {boxQty !== 0 && <span className="text-xs font-black tabular-nums text-violet-700">+{Math.round(boxQty)}개</span>}
+                      {/*  **kg 이 메인, 박스·개수는 서브**(2026-09-06 사장님).
+                           벌크와 박스를 통틀어 몇 kg 인지가 먼저 읽혀야 한다. */}
+                      <span className="flex flex-col items-end shrink-0 leading-tight">
+                        {(() => {
+                          const 벌크 = raw ? displayStockOf(raw) : 0;
+                          const 통합 = 벌크 + 박스kg;
+                          return (
+                            <span className={`text-sm font-black tabular-nums ${통합 < 0 ? 'text-rose-600' : 'text-slate-800'}`}>
+                              {Math.round(통합)} {unitLabel || 'kg'}
+                            </span>
+                          );
+                        })()}
+                        {(박스kg !== 0 || boxQty !== 0) && (
+                          <span className="text-[10px] font-bold tabular-nums text-slate-400">
+                            {raw && <>벌크 {Math.round(displayStockOf(raw))} · </>}
+                            <span className="text-violet-600">박스 {Math.round(박스kg)}{unitLabel || 'kg'} ({Math.round(boxQty)}개)</span>
+                            {못센박스 && <span className="text-amber-600"> · 일부 못 셈</span>}
+                          </span>
+                        )}
                       </span>
                     </div>
                     {isOpen && (

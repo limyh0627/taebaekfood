@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.notifyNewOrder = exports.dailyAutoVoucher = exports.monthlyInventorySnapshot = exports.requestPasswordReset = exports.findUsername = void 0;
+exports.notifyChatMessage = exports.notifyNewOrder = exports.dailyAutoVoucher = exports.monthlyInventorySnapshot = exports.requestPasswordReset = exports.findUsername = void 0;
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-functions/v2/firestore");
@@ -243,37 +243,27 @@ exports.dailyAutoVoucher = (0, scheduler_1.onSchedule)({ schedule: '0 22 * * *',
 //   · **넣은 사람 빼고** (내가 넣고 내가 알림받을 일은 없다)
 //   · 표(token)가 죽었으면 지운다 — 안 지우면 계속 쌓여 발송이 느려진다
 // ─────────────────────────────────────────────────────────────────────────
-exports.notifyNewOrder = (0, firestore_1.onDocumentCreated)({ region: REGION, document: 'orders/{orderId}' }, async (event) => {
-    var _a, _b, _c, _d;
-    const order = (_a = event.data) === null || _a === void 0 ? void 0 : _a.data();
-    if (!order)
-        return;
-    if (order.partnerName === '생산기록')
-        return; // 주문이 아니다
-    //  관리자 앱을 쓰는 사람 = 알림 받을 사람. 사장님 계정(id 'admin')도 포함한다.
-    const emps = await db.collection('employees').get();
-    const 받을사람 = emps.docs.filter(d => d.id === 'admin' || d.data().adminAccess === true);
-    //  넣은 사람은 뺀다. 주문에 누가 넣었는지가 없으면(직원 앱) 아무도 안 뺀다.
-    const 넣은사람 = String((_b = order.createdBy) !== null && _b !== void 0 ? _b : '');
+/**
+ * 표(token)를 모아 밀고, **죽은 표는 지운다.**
+ *
+ * 앱을 지웠거나 기기가 바뀌면 표가 죽는데, 안 지우면 계속 쌓여 발송이 느려진다.
+ * 새 주문·오피스톡이 같은 함수를 쓴다 — 한쪽만 고쳐지면 한쪽 알림만 이상해진다.
+ */
+async function 밀기(받을사람, data, 이름) {
     const 표 = [];
-    for (const d of 받을사람) {
-        if (d.id === 넣은사람)
-            continue;
-        for (const t of ((_c = d.data().fcmTokens) !== null && _c !== void 0 ? _c : []))
-            표.push({ token: String(t), empId: d.id });
-    }
+    for (const p of 받을사람)
+        for (const t of p.tokens)
+            표.push({ token: String(t), empId: p.id });
     if (!표.length)
         return;
-    const body = `${(_d = order.partnerName) !== null && _d !== void 0 ? _d : '거래처'} 주문이 들어왔습니다.`;
     const res = await admin.messaging().sendEachForMulticast({
         tokens: 표.map(x => x.token),
         //  **data 만 보낸다** — notification 을 같이 보내면 폰이 제멋대로 한 번 더 띄워
         //  알림이 두 개로 보인다. 띄우는 건 firebase-messaging-sw.js 가 한다.
-        data: { title: '🧾 신규 주문', body, tag: 'new-order', view: 'orders' },
+        data,
         android: { priority: 'high' },
         webpush: { headers: { Urgency: 'high' } },
     });
-    //  죽은 표 지우기 — 앱을 지웠거나 기기가 바뀌면 표가 죽는다
     const 죽은표 = {};
     res.responses.forEach((r, i) => {
         var _a, _b, _c;
@@ -286,6 +276,72 @@ exports.notifyNewOrder = (0, firestore_1.onDocumentCreated)({ region: REGION, do
     await Promise.all(Object.entries(죽은표).map(([empId, tokens]) => db.collection('employees').doc(empId).update({
         fcmTokens: admin.firestore.FieldValue.arrayRemove(...tokens),
     })));
-    console.log(`[notifyNewOrder] 보냄 ${res.successCount}/${표.length}, 죽은 표 ${Object.values(죽은표).flat().length}개 지움`);
+    console.log(`[${이름}] 보냄 ${res.successCount}/${표.length}, 죽은 표 ${Object.values(죽은표).flat().length}개 지움`);
+}
+exports.notifyNewOrder = (0, firestore_1.onDocumentCreated)({ region: REGION, document: 'orders/{orderId}' }, async (event) => {
+    var _a, _b, _c;
+    const order = (_a = event.data) === null || _a === void 0 ? void 0 : _a.data();
+    if (!order)
+        return;
+    if (order.partnerName === '생산기록')
+        return; // 주문이 아니다
+    //  관리자 앱을 쓰는 사람 = 알림 받을 사람. 사장님 계정(id 'admin')도 포함한다.
+    const emps = await db.collection('employees').get();
+    const 받을사람 = emps.docs.filter(d => d.id === 'admin' || d.data().adminAccess === true);
+    //  넣은 사람은 뺀다. 주문에 누가 넣었는지가 없으면(직원 앱) 아무도 안 뺀다.
+    const 넣은사람 = String((_b = order.createdBy) !== null && _b !== void 0 ? _b : '');
+    const 받을 = 받을사람
+        .filter(d => d.id !== 넣은사람)
+        .map(d => { var _a; return ({ id: d.id, tokens: ((_a = d.data().fcmTokens) !== null && _a !== void 0 ? _a : []) }); })
+        .filter(x => x.tokens.length);
+    await 밀기(받을, {
+        title: '🧾 신규 주문',
+        body: `${(_c = order.partnerName) !== null && _c !== void 0 ? _c : '거래처'} 주문이 들어왔습니다.`,
+        tag: 'new-order', view: 'orders',
+    }, 'notifyNewOrder');
+});
+// ─────────────────────────────────────────────────────────────────────────
+// 오피스톡 새 메시지 푸시 — 앱을 완전히 닫아도 온다.
+//
+// 화면 안의 알림(shared/newChatAlert)은 앱이 살아 있을 때만 만든다. 그래서 앱을
+// 닫아 두면 말이 와도 몰랐다(2026-09-06 사장님: "오피스톡 알람은 안 오는거 같은데").
+//
+// 규칙은 화면 것과 같게 —
+//   · 그 방 사람들에게만
+//   · **보낸 사람은 빼고**
+//   · 지운 말은 안 보낸다
+// ─────────────────────────────────────────────────────────────────────────
+exports.notifyChatMessage = (0, firestore_1.onDocumentCreated)({ region: REGION, document: 'chatMessages/{msgId}' }, async (event) => {
+    var _a, _b, _c, _d, _e, _f, _g, _h;
+    const msg = (_a = event.data) === null || _a === void 0 ? void 0 : _a.data();
+    if (!msg || msg.deletedAt)
+        return;
+    const roomSnap = await db.collection('chatRooms').doc(String(msg.roomId)).get();
+    if (!roomSnap.exists)
+        return;
+    const room = (_b = roomSnap.data()) !== null && _b !== void 0 ? _b : {};
+    const 참여자 = ((_c = room.participantIds) !== null && _c !== void 0 ? _c : []).filter((id) => id !== msg.senderId);
+    if (!참여자.length)
+        return; // 나와의 대화
+    //  방 이름은 **각자 고쳐 둔 게 있으면 그걸** 쓴다(shared/roomName 과 같은 규칙).
+    //  사람마다 다르므로 한 번에 못 보내고 사람별로 나눠 보낸다.
+    const emps = await Promise.all(참여자.map(id => db.collection('employees').doc(id).get()));
+    const 글 = msg.text
+        ? String(msg.text)
+        : msg.imageUrl ? '사진을 보냈습니다'
+            : msg.fileUrl ? '파일을 보냈습니다' : '새 메시지가 도착했습니다.';
+    for (const d of emps) {
+        if (!d.exists)
+            continue;
+        const tokens = (_e = (_d = d.data()) === null || _d === void 0 ? void 0 : _d.fcmTokens) !== null && _e !== void 0 ? _e : [];
+        if (!tokens.length)
+            continue;
+        const 내이름 = ((_g = (_f = room.nameBy) === null || _f === void 0 ? void 0 : _f[d.id]) === null || _g === void 0 ? void 0 : _g.trim()) || ((_h = room.name) === null || _h === void 0 ? void 0 : _h.trim()) || msg.senderName || '오피스톡';
+        await 밀기([{ id: d.id, tokens }], {
+            title: `💬 ${내이름}`,
+            body: 글.length > 80 ? `${글.slice(0, 80)}…` : 글,
+            tag: String(msg.roomId), view: 'officetalk',
+        }, 'notifyChatMessage');
+    }
 });
 //# sourceMappingURL=index.js.map
