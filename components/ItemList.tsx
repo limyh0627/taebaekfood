@@ -1642,7 +1642,10 @@ const ItemList: React.FC<ItemListProps> = ({
                     </div>
                     {isOpen && (
                       <div className="px-4 pb-4 pt-1 bg-emerald-50/40 border-t border-emerald-100 flex flex-col gap-3">
-                        {raw && (
+                        {/*  차례는 **벌크 로트 › 박스 로트 › 입출고 기록**이다(2026-09-06 사장님).
+                             전에는 입출고 기록이 벌크 판 안에 딸려 있어 박스 로트를 밑으로 밀어냈다.
+                             박스 로트를 판 안에 끼워 넣어 기록 앞에 세운다. */}
+                        {raw ? (
                           <RawMaterialLotPanel
                             product={raw}
                             isAdmin={isAdmin}
@@ -1650,11 +1653,14 @@ const ItemList: React.FC<ItemListProps> = ({
                             onDeleteEntry={onDeleteRawMaterialEntry}
                             currentUserName={currentUser?.name}
                             onLotChanged={onLedgerChanged}
+                            박스로트={boxes.length > 0
+                              ? <ProductLotPanel material={material} items={boxes} shipmentsByLot={shipmentsByLot} />
+                              : undefined}
                           />
-                        )}
-                        {boxes.length > 0 && (
+                        ) : boxes.length > 0 ? (
+                          /* 벌크 없이 박스만 있는 원료 — 판이 없으니 그대로 놓는다 */
                           <ProductLotPanel material={material} items={boxes} shipmentsByLot={shipmentsByLot} />
-                        )}
+                        ) : null}
                       </div>
                     )}
                   </div>

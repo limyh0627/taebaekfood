@@ -11,6 +11,8 @@ interface Props {
   isAdmin?: boolean;
   linkedNote?: string;  // 다른 SKU(캔/반제품)에서 펼친 경우 안내 문구
   ledgerEntries?: RawMaterialEntry[];        // 이 원료의 입출고(수불) 기록
+  /** 로트 목록과 입출고 기록 **사이**에 끼울 것 — 박스 로트 판이 여기 온다 */
+  박스로트?: React.ReactNode;
   onDeleteEntry?: (id: string) => void;      // 기록 삭제(관리자)
   currentUserName?: string;
   onLotChanged?: () => void;                 // 로트 삭제 등 원장 쓰기 후 상위 화면 재조회 트리거
@@ -19,7 +21,7 @@ interface Props {
 const fmt = (n: number) => (Math.round(n * 10) / 10).toLocaleString();
 
 /** 원료재고 로트 패널 — 배열 순서 = 선입선출(앞=먼저 사용). 기름은 L 표시(괄호 kg 병기). */
-const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linkedNote, ledgerEntries, onDeleteEntry, currentUserName, onLotChanged }) => {
+const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linkedNote, ledgerEntries, onDeleteEntry, currentUserName, onLotChanged, 박스로트 }) => {
   const material = baseRawName(product.name);
   const isOil = unitOf(material) === 'L';
   const unitLabel = isOil ? 'L' : 'kg';
@@ -347,6 +349,11 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
           )}
         </div>
       )}
+
+      {/*  **박스 로트는 입출고 기록보다 위다**(2026-09-06 사장님).
+           로트끼리(벌크·박스) 먼저 보이고, 그 밑에 기록이 온다. 전에는 이 판이 통째로
+           박스 판 위에 있어서 입출고 기록이 박스 로트를 가로막고 있었다. */}
+      {박스로트}
 
       {/* 이 원료의 입출고(수불) 기록 — 수동/자동/정정 모두 */}
       {ledgerEntries && (
