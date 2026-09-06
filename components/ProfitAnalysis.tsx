@@ -9,8 +9,9 @@ import {
 import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, BarChart2, DollarSign, Wallet, Users, ChevronLeft, ChevronRight, Save, Search, Package, X, CreditCard, Download, Archive, Clock, Pencil, Check } from 'lucide-react';
 import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Partner, PaymentMethod, Item, AccountCode, AccountGroup, AccountGroupPlLine, InventorySnapshot, CashFlowManual, CashEntry, Settlement, CompanyId, openingDocId, companyOf } from '../types';
 import PageHeader from './PageHeader';
+import PeriodPicker from '../src/shared/ui/PeriodPicker';
 import CostManager from './CostManager';
-import { makeCodeToGroup, computeMonthPLFromJournals, computeCashFlowMonth, computeCashFlowDirect, addMonthStr, SGNA_LEGACY_IDS, COMPUTED_GROUP_IDS } from '../src/features/admin/financials';
+import { makeCodeToGroup, computeMonthPLFromJournals, computeCashFlowDirect, addMonthStr, SGNA_LEGACY_IDS, COMPUTED_GROUP_IDS } from '../src/features/admin/financials';
 import { partnerBalanceFromJournals, partnerCarryOver, allocatePartnerCash, partnerCashParts, cashPaidByMonth } from '../src/features/admin/cashLedger';
 import { buildJournals } from '../src/shared/buildJournals';
 import { AR, AP, type OpeningBalance } from '../src/shared/autoJournal';
@@ -120,7 +121,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   const [newGroupForm, setNewGroupForm] = useState({ name: '', type: '수익' as AccountGroup['type'], plLine: undefined as AccountGroup['plLine'] });
   const [showAddCode, setShowAddCode] = useState(false);
   const [showAddGroup, setShowAddGroup] = useState(false);
-  // ── 현금흐름표(간접법): 월별 / 기간 모드 ──
+  // ── 현금흐름표(직접법): 월별 / 기간 모드 ──
   const [cfMode, setCfMode] = useState<'month' | 'period'>('month');
   const [cfMonth, setCfMonth] = useState<string>(() => {
     const d = new Date(); d.setMonth(d.getMonth() - 1); // 기본: 전월
@@ -453,7 +454,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         <PageHeader title="거래처 현황" subtitle="거래처별 매출 통계, 미수금 · 미지급금 조회" />
       )}
       {isStandalone && mainTab === 'cash-flow' && (
-        <PageHeader title="현금흐름 분석" subtitle="간접법 현금흐름표 — 순이익에서 운전자본·투자·재무를 조정합니다." />
+        <PageHeader title="현금흐름 분석" subtitle="직접법 현금흐름표 — 분개에서 현금이 실제로 움직인 것만 셉니다." />
       )}
 
       {mainTab === 'analysis' && <>
@@ -462,63 +463,16 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
       <div className="flex items-start justify-between gap-3 flex-wrap">
         {/* 기간 갈래를 **왼쪽 맨 앞**에 둔다 — 화면이 어느 기간인지가 먼저 읽혀야 한다.
             제목에 '2026년 1월~8월'을 또 쓰지 않는다. 고른 값이 곧 제목이라 두 번 말하는 것이다. */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
-            {([['1M','당월'],['3M','분기'],['6M','반기'],['1Y','당년'],['custom','기간']] as const).map(([val,label]) => {
-              const disabled =
-                (val === '1Y' && !yearlyAvailable) ||
-                (val === '6M' && !halfAvailable(1) && !halfAvailable(2)) ||
-                (val === '3M' && !([1,2,3,4] as const).some(q => quarterAvailable(q)));
-              return (
-                <button key={val}
-                  disabled={disabled}
-                  onClick={() => !disabled && setPeriod(val)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${
-                    disabled ? 'text-slate-300 cursor-not-allowed' :
-                    period === val ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'
-                  }`}>
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-          {period !== 'custom' && (
-            <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))}
-              className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer">
-              {years.map(y => <option key={y} value={y}>{y}년</option>)}
-            </select>
-          )}
-          {period === '3M' && (
-            <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
-              {([1,2,3,4] as const).filter(q => quarterAvailable(q)).map(q => (
-                <button key={q} onClick={() => setSelectedQuarter(q)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all ${selectedQuarter === q ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400'}`}>
-                  {q}분기
-                </button>
-              ))}
-            </div>
-          )}
-          {period === '6M' && (
-            <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
-              {([1,2] as const).filter(h => halfAvailable(h)).map(h => (
-                <button key={h} onClick={() => setSelectedHalf(h)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all ${selectedHalf === h ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400'}`}>
-                  {h === 1 ? '상반기' : '하반기'}
-                </button>
-              ))}
-            </div>
-          )}
-          {period === 'custom' && (
-            /* 날짜로 고른다 — 전표 화면과 같은 모양. 셈은 달 단위라 고른 날짜가 걸친 달을 쓴다. */
-            <div className="flex items-center gap-1">
-              <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)}
-                className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer"/>
-              <span className="text-slate-400 text-xs font-black">~</span>
-              <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)}
-                className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer"/>
-            </div>
-          )}
-        </div>
+        <PeriodPicker
+          period={period} setPeriod={setPeriod}
+          years={years} selectedYear={selectedYear} setSelectedYear={setSelectedYear}
+          selectedQuarter={selectedQuarter} setSelectedQuarter={setSelectedQuarter}
+          selectedHalf={selectedHalf} setSelectedHalf={setSelectedHalf}
+          customStart={customStart} setCustomStart={setCustomStart}
+          customEnd={customEnd} setCustomEnd={setCustomEnd}
+          quarterAvailable={quarterAvailable} halfAvailable={halfAvailable}
+          yearlyAvailable={yearlyAvailable}
+        />
         <div className="flex items-center gap-1.5 shrink-0">
           <button
             onClick={() => setShowAccountSettings(true)}
@@ -788,7 +742,9 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
 
       {/* ── 현금흐름표 ── */}
       {mainTab === 'cash-flow' && (() => {
-        // 간접법 현금흐름표 — 월별/기간. 계산은 순수 모듈(financials.computeCashFlowMonth)에 위임.
+        //  **직접법** 현금흐름표 — 월별/기간. 분개에서 현금 계정이 실제로 움직인 것만 센다.
+        //  간접법(순이익에서 되돌려 세는 것)은 `financials.computeCashFlowMonth` 에 아직
+        //  남아 있지만 **화면은 아무도 안 부른다** — 시험만 붙들고 있다.
         const addMonth = addMonthStr;
         const manualOf = (ym: string): Partial<CashFlowManual> => ym === cfMonth ? { ...(cashFlowManual.find(m => m.month === ym) ?? {}), ...cfEdit } : (cashFlowManual.find(m => m.month === ym) ?? {});
         // 직접법 — 분개에서 현금계정이 실제로 움직인 것만. 추정이 없어 통장 증감과 그대로 맞는다.
@@ -844,37 +800,18 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
         const mVal = (f: keyof CashFlowManual) => (cfEdit[f] != null ? Number(cfEdit[f]).toLocaleString() : '');
         const setM = (f: keyof CashFlowManual, v: string) => { const n = v.replace(/[^\d]/g, ''); setCfEdit(prev => ({ ...prev, [f]: n === '' ? undefined : Number(n) })); };
         const saveCf = () => onSaveCashFlowManual?.(cfMonth, cfEdit);
-        const cfLine = (label: string, amount: number, sign: '+' | '-' | '±', field?: keyof CashFlowManual) => {
-          // '±'(양방향) 라인은 실제 금액 부호로 색·기호 결정 — +면 초록, −면 빨강
-          const eff = sign === '±' ? (amount > 0 ? '+' : amount < 0 ? '-' : '±') : sign;
-          return (
-          <div className="flex items-center justify-between px-5 py-2.5">
-            <span className="text-xs text-slate-600">
-              <span className={`mr-2 text-[10px] font-black ${eff === '+' ? 'text-emerald-500' : eff === '-' ? 'text-rose-400' : 'text-slate-400'}`}>({eff})</span>{label}
-            </span>
-            {editable && field ? (
-              <input value={mVal(field)} onChange={e => setM(field, e.target.value)} inputMode="numeric" placeholder="0"
-                className="w-32 border border-slate-200 rounded-lg px-2 py-1 text-xs font-black text-right outline-none focus:ring-2 focus:ring-blue-300" />
-            ) : (
-              <span className={`text-xs font-black tabular-nums ${amount === 0 ? 'text-slate-300' : eff === '+' ? 'text-emerald-700' : eff === '-' ? 'text-rose-700' : 'text-slate-700'}`}>{amount === 0 ? '—' : fmt(amount) + '원'}</span>
-            )}
-          </div>
-          );
-        };
-
         return (
           <div className="space-y-4">
-            {/* 모드/기간 컨트롤 */}
+            {/*  손익분석과 **같은 줄 모양**이다(2026-09-06 사장님: "통일성 있게").
+                 기간 갈래를 왼쪽 맨 앞에 두고, 화면마다 따로 그리던 고르개를
+                 shared/ui/PeriodPicker 하나로 모았다. 제목은 PageHeader 가 이미
+                 말했으니 여기서 또 말하지 않는다 — 손익분석이 그 규칙을 쓰고 있었다. */}
             <div className="flex items-start justify-between gap-3 flex-wrap">
-              <div>
-                <div className="text-base font-black text-slate-800">{cfLabel} 현금흐름표 <span className="text-[11px] font-bold text-slate-400">(간접법)</span></div>
-                <div className="text-[11px] text-slate-400 mt-0.5">순이익 → 운전자본 조정 · 투자/재무 반영</div>
-              </div>
-              <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
                   {([['month','월별'],['period','기간']] as const).map(([val,label]) => (
                     <button key={val} onClick={() => setCfMode(val)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all ${cfMode===val ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400'}`}>{label}</button>
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${cfMode===val ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>{label}</button>
                   ))}
                 </div>
                 {cfMode === 'month' ? (
@@ -884,63 +821,23 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                       className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer"/>
                     <button onClick={() => setCfMonth(m => addMonth(m, 1))} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500"><ChevronRight size={16}/></button>
                   </div>
-                ) : (<>
-                {period !== 'custom' && (
-                  <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))}
-                    className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer">
-                    {years.map(y => <option key={y} value={y}>{y}년</option>)}
-                  </select>
+                ) : (
+                  //  '당월'은 뺀다 — 왼쪽 '월별' 모드가 그 일을 한다. 두 자리에 두면 갈린다.
+                  <PeriodPicker
+                    period={period} setPeriod={setPeriod}
+                    years={years} selectedYear={selectedYear} setSelectedYear={setSelectedYear}
+                    selectedQuarter={selectedQuarter} setSelectedQuarter={setSelectedQuarter}
+                    selectedHalf={selectedHalf} setSelectedHalf={setSelectedHalf}
+                    customStart={customStart} setCustomStart={setCustomStart}
+                    customEnd={customEnd} setCustomEnd={setCustomEnd}
+                    quarterAvailable={quarterAvailable} halfAvailable={halfAvailable}
+                    yearlyAvailable={yearlyAvailable}
+                    당월={false}
+                  />
                 )}
-                {period === '3M' && (
-                  <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
-                    {([1,2,3,4] as const).filter(q => quarterAvailable(q)).map(q => (
-                      <button key={q} onClick={() => setSelectedQuarter(q)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all ${selectedQuarter === q ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400'}`}>
-                        {q}분기
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {period === '6M' && (
-                  <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
-                    {([1,2] as const).filter(h => halfAvailable(h)).map(h => (
-                      <button key={h} onClick={() => setSelectedHalf(h)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all ${selectedHalf === h ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-400'}`}>
-                        {h === 1 ? '상반기' : '하반기'}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {period === 'custom' && (() => {
-                  return (
-                    /* 손익분석과 같은 모양 — 날짜로 고른다 */
-                    <div className="flex items-center gap-1">
-                      <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)}
-                        className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer"/>
-                      <span className="text-slate-400 text-xs font-black">~</span>
-                      <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)}
-                        className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black outline-none cursor-pointer"/>
-                    </div>
-                  );
-                })()}
-                <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5">
-                  {([['3M','분기'],['6M','반기'],['1Y','연간'],['custom','기간']] as const).map(([val, label]) => {
-                    const disabled =
-                      (val === '1Y' && !yearlyAvailable) ||
-                      (val === '6M' && !halfAvailable(1) && !halfAvailable(2)) ||
-                      (val === '3M' && !([1,2,3,4] as const).some(q => quarterAvailable(q)));
-                    return (
-                      <button key={val} disabled={disabled} onClick={() => !disabled && setPeriod(val)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all ${
-                          period === val ? 'bg-white text-blue-700 shadow-sm' :
-                          disabled ? 'text-slate-200 cursor-not-allowed' : 'text-slate-400 hover:text-slate-600'
-                        }`}>
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-                </>)}
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="text-xs font-black text-slate-400">{cfLabel}</span>
               </div>
             </div>
 
