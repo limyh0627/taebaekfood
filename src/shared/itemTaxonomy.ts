@@ -12,7 +12,7 @@
  * 그래서 읽는 지점에서 toLegacyFields로 되돌리고 쓰는 지점에서 다시 뒤집었다.
  * 이름과 뜻이 어긋난 자리라 읽는 사람마다 다르게 짚었다 — 그 왕복을 없앴다.
  *
- * 새 코드는 필드를 직접 읽지 말고 아래 헬퍼(typeOf·categoryOf·subtypeOf)를 쓴다.
+ * 카테고리를 읽는 건 shared/productChip 의 categoryOf 하나다.
  */
 
 /**
@@ -27,28 +27,9 @@
  * 이제 근거는 subtype 하나뿐이다 (DB·코드 모두 subtype='벌크').
  */
 export function isBulkItem(item: { subtype?: string } | undefined): boolean {
-  return subtypeOf(item) === '벌크';
+  return String(item?.subtype ?? '') === '벌크';
 }
 
-/** 타입 — 엔진 분기 키 */
-export function typeOf(item: { type?: string } | undefined): string {
-  return String(item?.type ?? '');
-}
-
-/** 서브타입 — 낱개/배송/선물세트/벌크. 없으면 '' */
-export function subtypeOf(item: { subtype?: string } | undefined): string {
-  return String(item?.subtype ?? '');
-}
-
-/** 카테고리 — 참기름/라벨/용기…. 없으면 '' */
-export function categoryOf(item: { category?: string } | undefined): string {
-  return String(item?.category ?? '');
-}
-
-/** 저장용 — 3단 값 그대로. DB 필드 이름이 같아져서 뒤집을 게 없다. */
-export function toFields(v: { type: string; subtype?: string; category?: string }) {
-  return { type: v.type, category: v.category ?? '', subtype: v.subtype ?? '' };
-}
 
 /**
  * 타입 키(고정) — 사용자가 못 바꾼다.

@@ -8,32 +8,29 @@ import { categoryOf } from './productChip';
  */
 describe('갈래 딱지는 카테고리를 본다', () => {
   it('카테고리가 있으면 그대로', () => {
-    expect(categoryOf({ category: '라벨', type: 'submaterial' })).toBe('라벨');
-    expect(categoryOf({ category: '참기름', type: 'product' })).toBe('참기름');
+    expect(categoryOf({ category: '라벨' })).toBe('라벨');
+    expect(categoryOf({ category: '참기름' })).toBe('참기름');
   });
 
   it('**이름으로 짚지 않는다** — 라벨이 참기름으로 찍히던 자국이다', () => {
-    expect(categoryOf({ category: '라벨', type: 'submaterial' })).toBe('라벨');
-    //  카테고리가 비어도 이름은 안 본다
-    expect(categoryOf({ type: 'submaterial' })).toBe('부자재');
+    expect(categoryOf({ category: '라벨' })).toBe('라벨');
   });
 
   it('**subtype 을 보지 않는다** — 낱개·박스는 카테고리가 아니다', () => {
-    expect(categoryOf({ category: '참기름', type: 'product' })).toBe('참기름');
-    expect(categoryOf({ type: 'product' })).toBe('완제품');
+    expect(categoryOf({ category: '참기름' })).toBe('참기름');
   });
 
-  it('비어 있으면 타입 이름 — 13품목이 그 상태다(대부분 반제품 벌크)', () => {
-    expect(categoryOf({ type: 'wip' })).toBe('반제품');
-    expect(categoryOf({ type: 'raw' })).toBe('원료');
-    expect(categoryOf({ type: 'goods' })).toBe('상품');
+  /**
+   * 2026-09-06 사장님: "완제품이라는 카테고리가 어딨나 없으면 비워놔"
+   * 전에는 비면 타입 이름으로 메꿔서 카테고리 칸에 '완제품'·'부자재'가 찍혔다.
+   * 완제품은 **타입**이지 카테고리가 아니다. 칸을 비운다.
+   */
+  it('비어 있으면 빈 값이다 — 타입 이름으로 메꾸지 않는다', () => {
+    expect(categoryOf({})).toBe('');
+    expect(categoryOf({ category: undefined })).toBe('');
   });
 
-  it('공백만 있는 카테고리는 빈 것으로 본다', () => {
-    expect(categoryOf({ category: '   ', type: 'wip' })).toBe('반제품');
-  });
-
-  it('모르는 타입은 그대로 — 지어내지 않는다', () => {
-    expect(categoryOf({ type: '새타입' })).toBe('새타입');
+  it('공백만 있는 카테고리도 빈 값이다', () => {
+    expect(categoryOf({ category: '   ' })).toBe('');
   });
 });

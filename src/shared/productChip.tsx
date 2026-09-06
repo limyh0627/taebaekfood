@@ -222,18 +222,41 @@ const CATEGORY_FIXED: Record<string, string> = {
  * 재고관리 화면은 이미 `category` 를 먼저 봤다. **같은 셈을 두 벌 두어 한쪽만 고쳐져 있었다.**
  *
  * 이름으로 짚는 길은 **걷어냈다.** 그건 카테고리를 채우기 전 마이그레이션용 임시였고,
- * 지금은 525품목 중 13개만 비어 있다(대부분 반제품 벌크). 빈 것은 타입 이름을 쓴다 —
- * 이름에서 '참기름'을 읽어 채우면 라벨·부자재가 완제품 갈래로 섞인다.
+ * 지금은 525품목 중 13개만 비어 있다(대부분 반제품 벌크).
+ *
+ * **비어 있으면 빈 값이다**(2026-09-06 사장님: "완제품이라는 카테고리가 어딨나 없으면
+ * 비워놔"). 전에는 타입 이름으로 메꿔서 카테고리 칸에 '완제품'이 찍혔는데, 완제품은
+ * 카테고리가 아니라 타입이다. 칸 이름이 '카테고리'면 카테고리만 나와야 한다.
+ * 딱지를 그리는 쪽에서 빈 값이면 아무것도 안 그린다.
  */
-export function categoryOf(item: { category?: string; type: string }): string {
-  return item.category?.trim() || TYPE_LABELS[item.type] || item.type;
+export function categoryOf(item: { category?: string }): string {
+  return item.category?.trim() ?? '';
 }
 
-//  기본 다섯은 [taxonomy](taxonomy.ts) 것을 쓴다. 아래 다섯은 **옛 타입 이름**이라
-//  여기만 안다 — 옛 품목에 아직 남아 있어 화면에 뜨면 읽혀야 한다.
-const TYPE_LABELS: Record<string, string> = {
-  ...DEFAULT_CATEGORY_LABELS,
-  container: '용기', cap: '마개', tape: '테이프', box: '박스', label: '라벨',
+/**
+ * **카테고리 딱지 — 비면 아무것도 안 그린다.**
+ *
+ * 네 화면이 딱지를 따로 그리고 있었고, 비었을 때 무엇을 할지도 제각각이었다.
+ * 카테고리가 없는 품목(525개 중 13개)에 '완제품'이라는 없는 카테고리가 찍혔다.
+ *
+ * `모양`
+ *   'table'   표 칸 — 작고 동그란 딱지
+ *   'inline'  이름 줄에 끼는 딱지 — 조금 크고 모서리가 각지다
+ */
+export const CategoryChip: React.FC<{
+  item: { category?: string };
+  모양?: 'table' | 'inline';
+}> = ({ item, 모양 = 'table' }) => {
+  const cat = categoryOf(item);
+  if (!cat) return null;
+  const 크기 = 모양 === 'table'
+    ? 'text-[9px] px-2 py-0.5 rounded-full'
+    : 'shrink-0 text-[10px] px-1.5 py-0.5 rounded-md';
+  return (
+    <span className={`inline-block font-black whitespace-nowrap ${크기} ${categoryChipClass(cat)}`}>
+      {cat}
+    </span>
+  );
 };
 
 export function categoryChipClass(cat: string): string {

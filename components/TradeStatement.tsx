@@ -19,6 +19,7 @@ import { fetchCollection } from '../src/shared/services/firebaseService';
 import { partnerPriceWrites } from '../src/shared/partnerPriceSync';
 import { manualLines, orderLines, lineTotals, resolveOrderItem, orderItemPrice, type LineItem, type ManualRow } from '../src/shared/statementLines';
 import { withDocNames } from '../src/shared/docName';
+import { 서류당사자 } from '../src/shared/docParty';
 import { partnerOrders as 거래처주문, activeOrders as 진행주문, activePartnerIds, ACTIVE_STATUSES } from '../src/shared/statementOrders';
 import { rowKind as 갈래, rowCodes as 계정들, rowName as 상대이름, filterTimeline, sortTimeline, partnerNamesOf,
   classifyRow as 성격판정, timelineTotals,
@@ -1386,7 +1387,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     alert('전표가 수정되었습니다.');
   }, [editingStmt, tradeDate, selectedClientId, selectedClient, totalSupply, totalTax, totalAmount, lineItems, onUpdateIssuedStatement, onUpsertPartnerItem, onUpdateItemCost, allItems, partnerIn]);
 
-  const buildPrintHtml = (items: LineItem[] | IssuedStatement['items'], sup: number, tax: number, amt: number, type: StatementType, partner: string, docNoStr: string, dateString: string, memoText = '') => {
+  const buildPrintHtml = (items: LineItem[] | IssuedStatement['items'], sup: number, tax: number, amt: number, type: StatementType, partner: string, docNoStr: string, dateString: string, memoText = '', partnerIdStr = '') => {
     const m = dateString.match(/(\d+)년\s*(\d+)월\s*(\d+)일/);
     const yyyy = m ? m[1] : '';
     const mmN  = m ? m[2] : '';
@@ -1396,23 +1397,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const ci = companyInfo;
     const isSale = type === '매출';
 
-    const supName    = isSale ? (ci?.name || '') : partner;
-    const supCeo     = isSale ? (ci?.ceoName || '') : '';
-    const supBizNo   = isSale ? (ci?.bizNo || '') : '';
-    const supBizType = isSale ? (ci?.bizType || '') : '';
-    const supBizItem = isSale ? (ci?.bizItem || '') : '';
-    const supAddr    = isSale ? (ci?.address || '') : '';
-    const supPhone   = isSale ? (ci?.phone || '') : '';
-    const supFax     = isSale ? (ci?.fax || '') : '';
-
-    const buyName    = isSale ? partner : (ci?.name || '');
-    const buyCeo     = isSale ? '' : (ci?.ceoName || '');
-    const buyBizNo   = isSale ? '' : (ci?.bizNo || '');
-    const buyBizType = isSale ? '' : (ci?.bizType || '');
-    const buyBizItem = isSale ? '' : (ci?.bizItem || '');
-    const buyAddr    = isSale ? '' : (ci?.address || '');
-    const buyPhone   = isSale ? (partners.find(c => c.name === partner)?.phone || '') : (ci?.phone || '');
-    const buyFax   = isSale ? '' : (ci?.fax||'');
+    //  **거래처 칸을 저장된 값으로 채운다**(2026-09-06 사장님: "저장된 거래처 정보가
+    //  다 안 들어가냐"). 전에는 거래처 쪽이 이름과 전화만이었고 사업자번호·대표자·
+    //  주소·팩스가 빈 문자열로 박혀 있었다. shared/docParty 가 양쪽을 같은 규칙으로 낸다.
+    //  거래처는 **id 로 찾는다** — 이름으로 찾으면 같은 이름이 둘일 때 엉뚱한 곳이 걸린다.
+    const 상대 = partners.find(c => c.id === partnerIdStr) ?? partners.find(c => c.name === partner);
+    const { sup: 파는쪽, buy: 사는쪽 } = 서류당사자(isSale, ci ?? undefined, 상대, partner);
+    const supName = 파는쪽.name, supCeo = 파는쪽.ceo, supBizNo = 파는쪽.bizNo;
+    const supBizType = 파는쪽.bizType, supBizItem = 파는쪽.bizItem;
+    const supAddr = 파는쪽.addr, supPhone = 파는쪽.tel, supFax = 파는쪽.fax;
+    const buyName = 사는쪽.name, buyCeo = 사는쪽.ceo, buyBizNo = 사는쪽.bizNo;
+    const buyBizType = 사는쪽.bizType, buyBizItem = 사는쪽.bizItem;
+    const buyAddr = 사는쪽.addr, buyPhone = 사는쪽.tel, buyFax = 사는쪽.fax;
 
     const MAX_ROWS = 11;
     //  **인쇄에만** 서류용 품목명으로 바꾼다 — 화면·저장은 실제 이름 그대로다.
@@ -1623,7 +1619,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   };
 
   const handlePrint = () => {
-    const html = buildPrintHtml(lineItems, totalSupply, totalTax, totalAmount, stmtType, selectedClient?.name || '', docNo, dateStr, stmtMemo.trim());
+    const html = buildPrintHtml(lineItems, totalSupply, totalTax, totalAmount, stmtType, selectedClient?.name || '', docNo, dateStr, stmtMemo.trim(), selectedClient?.id || '');
     printViaIframe(html, `${stmtType}전표`);
     // 인쇄는 '출력'만 — 발행(저장)은 '저장' 버튼(markIssued) 한 곳에서만. 저장된 전표만 인쇄 가능.
   };
@@ -1631,7 +1627,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const handleDetailPrint = (stmt: IssuedStatement) => {
     const d = new Date(stmt.tradeDate + 'T00:00:00');
     const ds = `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
-    const html = buildPrintHtml(stmt.items as any, stmt.totalSupply, stmt.totalTax, stmt.totalAmount, stmt.type, stmt.partnerName, stmt.docNo, ds, stmt.memo ?? '');
+    const html = buildPrintHtml(stmt.items as any, stmt.totalSupply, stmt.totalTax, stmt.totalAmount, stmt.type, stmt.partnerName, stmt.docNo, ds, stmt.memo ?? '', stmt.partnerId);
     printViaIframe(html, `${stmt.type}전표`);
   };
 
@@ -1645,18 +1641,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     const taxAmt    = taxableItems.reduce((s,i)=>s+i.tax, 0);
     const exSupply  = exemptItems.reduce((s,i)=>s+i.supply, 0);
 
-    const supName  = isSale ? (ci?.name||'') : (partnerObj?.name||'');
-    const supBizNo = isSale ? (ci?.bizNo||'') : '';
-    const supCeo   = isSale ? (ci?.ceoName||'') : '';
-    const supAddr  = isSale ? (ci?.address||'') : (partnerObj?.region||'');
-    const supBizType = isSale ? (ci?.bizType||'') : '';
-    const supBizItem = isSale ? (ci?.bizItem||'') : '';
-    const buyName  = isSale ? (partnerObj?.name||'') : (ci?.name||'');
-    const buyBizNo = isSale ? '' : (ci?.bizNo||'');
-    const buyCeo   = isSale ? '' : (ci?.ceoName||'');
-    const buyAddr  = isSale ? (partnerObj?.region||'') : (ci?.address||'');
-    const buyBizType = isSale ? '' : (ci?.bizType||'');
-    const buyBizItem = isSale ? '' : (ci?.bizItem||'');
+    //  거래명세서와 **같은 규칙**으로 양쪽 칸을 낸다(shared/docParty).
+    //  여기는 더 나빴다 — 거래처 등록번호가 빈 문자열이었고, 주소는 `address` 가 아니라
+    //  `region`(시·도)이었다. 세금계산서에 등록번호가 비면 서류 구실을 못 한다.
+    const { sup: 공급자, buy: 공급받는자 } = 서류당사자(isSale, ci ?? undefined, partnerObj ?? undefined);
+    const supName = 공급자.name, supBizNo = 공급자.bizNo, supCeo = 공급자.ceo;
+    const supAddr = 공급자.addr, supBizType = 공급자.bizType, supBizItem = 공급자.bizItem;
+    const buyName = 공급받는자.name, buyBizNo = 공급받는자.bizNo, buyCeo = 공급받는자.ceo;
+    const buyAddr = 공급받는자.addr, buyBizType = 공급받는자.bizType, buyBizItem = 공급받는자.bizItem;
 
     const d = new Date(tradeDate+'T00:00:00');
     const yyyy = d.getFullYear(), mm = d.getMonth()+1, dd = d.getDate();

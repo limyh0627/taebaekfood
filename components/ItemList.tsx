@@ -51,7 +51,7 @@ import OemManager from './OemManager';
 import CategoryManager from './CategoryManager';
 import { TaxonomyRow, buildTaxonomy, categoryRank } from '../src/shared/taxonomy';
 import { RM_LIST, unitOf, baseRawName, lotStockInUnit, unitToKg, lotKgRemaining, parsePackageKg, parseSpecUnit, parseSpecCount } from '../src/constants/formula';
-import { catOrder, CATEGORY_ORDER_LEN, categoryChipClass, specText, splitNameVolume , categoryOf} from '../src/shared/productChip';
+import { catOrder, CATEGORY_ORDER_LEN, categoryChipClass, specText, splitNameVolume, categoryOf, CategoryChip } from '../src/shared/productChip';
 import { subDotClass } from '../src/shared/submaterialStyle';
 import { isSubmaterial } from '../src/shared/types';
 import { matchesSearch } from '../src/shared/hangul';
@@ -1743,13 +1743,16 @@ const ItemList: React.FC<ItemListProps> = ({
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">서브타입</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">카테고리</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hidden sm:table-cell">거래처</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">품목명</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hidden sm:table-cell">라벨</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">현재 재고</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right hidden sm:table-cell">최소 수량</th>
+                  {/* 좁은 폰에서 머리글이 **한 글자씩 세로로 쪼개졌다**(2026-09-06 사장님).
+                      tracking-widest 로 글자를 벌려 놓은 데다 칸이 좁아서 그렇다.
+                      안 쪼개지게 못 박고, 대신 표가 옆으로 밀리게 둔다(바깥에 overflow-x-auto). */}
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">서브타입</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">카테고리</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap hidden sm:table-cell">거래처</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">품목명</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap hidden sm:table-cell">라벨</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap">현재 재고</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right whitespace-nowrap hidden sm:table-cell">최소 수량</th>
                   <th className="px-4 py-3 hidden sm:table-cell"></th>
                 </tr>
               </thead>
@@ -1806,9 +1809,7 @@ const ItemList: React.FC<ItemListProps> = ({
                       <td className="px-4 py-3">
                         {/* 카테고리 색은 공용(productChip.categoryChipClass) — 화면마다 다르면 헷갈린다.
                             예전엔 참기름·들기름·향미유가 모두 보라라 갈래가 안 갈렸다. */}
-                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${categoryChipClass(categoryOf(product))}`}>
-                          {categoryOf(product)}
-                        </span>
+                        <CategoryChip item={product} />
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell" onClick={e => e.stopPropagation()}>
                         {normCat(product.type) === '완제품' ? (
@@ -2891,9 +2892,7 @@ const ItemList: React.FC<ItemListProps> = ({
                             {p.subtype && (
                               <span className="shrink-0 text-[10px] font-black px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">{p.subtype}</span>
                             )}
-                            <span className={`shrink-0 text-[10px] font-black px-1.5 py-0.5 rounded-md ${categoryChipClass(categoryOf(p))}`}>
-                              {categoryOf(p)}
-                            </span>
+                            <CategoryChip item={p} 모양="inline" />
                             <span className="truncate">{splitNameVolume(p).base}</span>
                             {(() => {
                               const sp = specText(p.spec) || splitNameVolume(p).vol;
@@ -3584,9 +3583,7 @@ const ItemList: React.FC<ItemListProps> = ({
                             <span className="shrink-0 text-[10px] font-black px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">{product.subtype}</span>
                           )}
                           {product && (
-                            <span className={`shrink-0 text-[10px] font-black px-1.5 py-0.5 rounded-md ${categoryChipClass(categoryOf(product))}`}>
-                              {categoryOf(product)}
-                            </span>
+                            <CategoryChip item={product} 모양="inline" />
                           )}
                           <span className="truncate">{r.label}</span>
                           {(() => {

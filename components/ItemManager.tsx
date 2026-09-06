@@ -12,7 +12,7 @@ import { isBoxStockItem, unpackComponent, boxSiblings, groupLooseBoxRows } from 
 import { BomLine, bomOf, packingSubmaterials } from '../src/shared/bomIndex';
 import { subDotClass } from '../src/shared/submaterialStyle';
 import { calcCost, CostCalcRow, CostCalcResult } from '../src/features/admin/costCalc';
-import { ProductNameRow, ProductCard, renderColoredName, splitNameVolume, specText, catOrder, categoryChipClass, categoryOf } from '../src/shared/productChip';
+import { ProductNameRow, ProductCard, renderColoredName, splitNameVolume, specText, catOrder, categoryChipClass, categoryOf, CategoryChip } from '../src/shared/productChip';
 import { isBulkItem } from '../src/shared/itemTaxonomy';
 import { priceParts } from '../src/shared/lineAmount';
 import { buysFrom, sellsTo } from '../src/shared/partnerRole';
@@ -848,9 +848,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                   {/* 박스는 낱개 밑에 딸린 줄 — 들여쓰기와 바탕색으로 가른다 */}
                   <tr className={`transition-colors group ${isChild ? 'bg-slate-200/70 hover:bg-slate-200' : 'hover:bg-slate-50/50'}`}>
                     <td className={`px-2 py-3 ${isChild ? 'pl-6' : ''}`}>
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-black whitespace-nowrap ${categoryChipClass(categoryOf(item))}`}>
-                        {categoryOf(item)}
-                      </span>
+                      <CategoryChip item={item} />
                     </td>
                     <td className="px-3 py-3">
                       {/* 주문 생성 화면과 같은 표기 — 이름 토큰 색 + 규격칩 (src/shared/productChip) */}
@@ -1335,7 +1333,10 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
               {filteredClients.length === 0 ? (
                 <p className="py-12 text-center text-slate-400 text-sm">거래처가 없습니다.</p>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                /*  폰에서는 **한 줄에 거래처 하나**다(2026-09-06 사장님). 두 칸으로 놓으면
+                    칸이 좁아 거래처 이름이 '거산…' 처럼 죄다 잘려서, 이름을 보려고
+                    하나씩 눌러 봐야 했다. 화면이 넓어지면 그때 여러 칸으로 벌린다. */
+                <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
                   {filteredClients
                     .map(c => {
                       const count = partnerTab === 'sales'
@@ -1364,7 +1365,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2">
-                                <h3 className="text-sm font-bold text-slate-900 truncate">{c.name}</h3>
+                                <h3 className="text-sm font-bold text-slate-900 truncate flex-1 min-w-0">{c.name}</h3>
                                 {c.type && <span className={`px-1.5 py-0.5 rounded text-[9px] font-black flex-shrink-0 ${typeConfig.color}`}>{c.type}</span>}
                               </div>
                               <p className="text-[11px] text-slate-400 mt-0.5">
