@@ -4310,7 +4310,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           //  카드번호는 전표번호와 같은 규칙(shared/cardNo) — 날짜 + 그날 순번
           const cardNo = nextOrderNo(today(), allOrders);
           내가넣은주문.current.add(orderId);
-          await addItem('orders', {...o, id: orderId, cardNo, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
+          await addItem('orders', {...o, id: orderId, cardNo, createdBy: currentUser.id, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
           console.log('[AddOrder] orders 저장 완료', orderId);
           await checkAndAlertShortage(o.items, o.partnerId);
           const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '거래처';
@@ -4330,7 +4330,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           //  카드번호는 전표번호와 같은 규칙(shared/cardNo) — 날짜 + 그날 순번
           const cardNo = nextOrderNo(today(), allOrders);
           내가넣은주문.current.add(orderId);
-          await addItem('orders', {...o, id: orderId, cardNo, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
+          await addItem('orders', {...o, id: orderId, cardNo, createdBy: currentUser.id, createdAt: new Date().toISOString(), status: OrderStatus.PENDING});
           console.log('[PasteOrder] orders 저장 완료', orderId);
           await checkAndAlertShortage(o.items, o.partnerId);
           const partnerName = partners.find(c => c.id === o.partnerId)?.name || o.partnerName || '거래처';

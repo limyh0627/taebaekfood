@@ -1,5 +1,6 @@
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import * as admin from 'firebase-admin';
 
 admin.initializeApp();
@@ -246,4 +247,63 @@ export const dailyAutoVoucher = onSchedule(
     }
     console.log(`[autoVoucher] ${today} — ${created}건 발행`);
   }
+);
+
+// ─────────────────────────────────────────────────────────────────────────
+// 새 주문 푸시 알림 — 앱을 완전히 닫아도 온다.
+//
+// 화면 안의 알림(shared/newOrderAlert)은 앱이 살아 있을 때만 만든다. 최근앱에서
+// 밀어 닫으면 코드가 안 돌아 알릴 방법이 없다. 그래서 **서버가 폰으로 직접 민다.**
+//
+// 규칙은 화면 것과 같게 맞춘다 —
+//   · 관리자 앱을 쓰는 사람에게만 (employees.adminAccess)
+//   · **넣은 사람 빼고** (내가 넣고 내가 알림받을 일은 없다)
+//   · 표(token)가 죽었으면 지운다 — 안 지우면 계속 쌓여 발송이 느려진다
+// ─────────────────────────────────────────────────────────────────────────
+export const notifyNewOrder = onDocumentCreated(
+  { region: REGION, document: 'orders/{orderId}' },
+  async (event) => {
+    const order = event.data?.data();
+    if (!order) return;
+    if (order.partnerName === '생산기록') return;   // 주문이 아니다
+
+    //  관리자 앱을 쓰는 사람 = 알림 받을 사람. 사장님 계정(id 'admin')도 포함한다.
+    const emps = await db.collection('employees').get();
+    const 받을사람 = emps.docs.filter(d => d.id === 'admin' || d.data().adminAccess === true);
+
+    //  넣은 사람은 뺀다. 주문에 누가 넣었는지가 없으면(직원 앱) 아무도 안 뺀다.
+    const 넣은사람 = String(order.createdBy ?? '');
+
+    const 표: { token: string; empId: string }[] = [];
+    for (const d of 받을사람) {
+      if (d.id === 넣은사람) continue;
+      for (const t of (d.data().fcmTokens ?? [])) 표.push({ token: String(t), empId: d.id });
+    }
+    if (!표.length) return;
+
+    const body = `${order.partnerName ?? '거래처'} 주문이 들어왔습니다.`;
+    const res = await admin.messaging().sendEachForMulticast({
+      tokens: 표.map(x => x.token),
+      //  **data 만 보낸다** — notification 을 같이 보내면 폰이 제멋대로 한 번 더 띄워
+      //  알림이 두 개로 보인다. 띄우는 건 firebase-messaging-sw.js 가 한다.
+      data: { title: '🧾 신규 주문', body, tag: 'new-order', view: 'orders' },
+      android: { priority: 'high' },
+      webpush: { headers: { Urgency: 'high' } },
+    });
+
+    //  죽은 표 지우기 — 앱을 지웠거나 기기가 바뀌면 표가 죽는다
+    const 죽은표: Record<string, string[]> = {};
+    res.responses.forEach((r, i) => {
+      const code = (r.error as { code?: string } | undefined)?.code ?? '';
+      if (r.success || !/registration-token-not-registered|invalid-argument/.test(code)) return;
+      const { empId, token } = 표[i];
+      (죽은표[empId] ??= []).push(token);
+    });
+    await Promise.all(Object.entries(죽은표).map(([empId, tokens]) =>
+      db.collection('employees').doc(empId).update({
+        fcmTokens: admin.firestore.FieldValue.arrayRemove(...tokens),
+      })));
+
+    console.log(`[notifyNewOrder] 보냄 ${res.successCount}/${표.length}, 죽은 표 ${Object.values(죽은표).flat().length}개 지움`);
+  },
 );

@@ -17,7 +17,8 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
-const app = initializeApp(firebaseConfig);
+//  FCM 이 이 앱 인스턴스를 쓴다(shared/push) — 두 번 초기화하면 표를 두 벌 받는다
+export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const storage = getStorage(app);

@@ -6,6 +6,7 @@ import {
   loadNotifyMode, saveNotifyMode, NotifyMode,
 } from '../src/shared/notify';
 import { canEnterAdmin } from '../src/shared/adminAccess';
+import { registerPush, pushSupported } from '../src/shared/push';
 
 /**
  * 마이페이지 — 내 계정과 알림 설정.
@@ -38,14 +39,32 @@ const MyPage: React.FC<{
 
   const pickMode = (m: NotifyMode) => { setMode(m); saveNotifyMode(m); };
 
+  //  앱을 완전히 닫아도 알림이 오게 — 이 폰의 표를 받아 직원 기록에 담는다(shared/push)
+  const [푸시, set푸시] = useState<'모름' | '켜짐' | '안됨'>('모름');
+  const [푸시사유, set푸시사유] = useState('');
+
+  const 푸시켜기 = async () => {
+    const r = await registerPush(currentUser.id);
+    set푸시(r.ok ? '켜짐' : '안됨');
+    set푸시사유(r.reason ?? '');
+  };
+
   const 켜기 = async () => {
     const r = await askNotifyPermission();
     setPerm(r);
     set시험(null);
     if (r === 'granted') {
       notify({ title: '🔔 알림이 켜졌습니다', body: '새 주문과 오피스톡 메시지를 알려드립니다.', whenFocused: true, mode: 'sound' });
+      푸시켜기();   // 권한을 켠 김에 표도 받아 둔다
     }
   };
+
+  //  이미 권한이 켜져 있으면 열 때 표를 갱신한다 — 표는 가끔 바뀐다(앱 재설치·기기 초기화)
+  useEffect(() => {
+    if (perm !== 'granted') return;
+    pushSupported().then(ok => { if (ok) 푸시켜기(); else set푸시('안됨'); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [perm]);
 
   const 관리자 = canEnterAdmin(currentUser);
 
@@ -138,6 +157,15 @@ const MyPage: React.FC<{
         {시험 && (
           <p className={`text-xs font-bold mt-3 leading-relaxed ${시험.ok ? 'text-emerald-600' : 'text-rose-600'}`}>
             {시험.ok ? '✅ ' : '⚠ '}{시험.msg}
+          </p>
+        )}
+
+        {perm === 'granted' && (
+          <p className={`text-[10px] font-bold mt-3 leading-relaxed ${
+            푸시 === '켜짐' ? 'text-emerald-600' : 푸시 === '안됨' ? 'text-amber-600' : 'text-slate-400'}`}>
+            {푸시 === '켜짐' ? '📡 앱을 닫아도 알림이 옵니다'
+              : 푸시 === '안됨' ? `📡 앱을 닫으면 알림이 안 옵니다 — ${푸시사유}`
+              : '📡 확인 중…'}
           </p>
         )}
 

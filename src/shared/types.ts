@@ -131,6 +131,11 @@ export interface Order {
    * 옛 카드는 비어 있다(2026-09-03 이전) — 그때는 id 뒤를 보여준다.
    */
   cardNo?: string;
+  /**
+   * 누가 넣었나. **넣은 사람에겐 알림을 안 보낸다**(functions.notifyNewOrder).
+   * 거래처 포털에서 들어온 주문은 비어 있다 — 그때는 아무도 안 뺀다.
+   */
+  createdBy?: string;
   partnerId?: string;
   partnerName: string;
   items: OrderItem[];
@@ -421,6 +426,11 @@ export interface Employee {
    * 사람 이름을 코드에 박지 않으려고 둔 칸이다 — 권한을 주고 거두는 데 배포가 필요 없다.
    */
   adminAccess?: boolean;
+  /**
+   * 이 사람 폰·PC 의 푸시 표(FCM token). **여럿이다** — 한 사람이 폰과 PC 를 같이 쓴다.
+   * 앱을 완전히 닫아도 알림을 보내는 데 쓴다(shared/push).
+   */
+  fcmTokens?: string[];
 }
 
 // ── 급여대장 ────────────────────────────────────────────────────────────────
