@@ -18,13 +18,34 @@ type BoxLike = Pick<Item, 'id' | 'unpackTo'>;
  *
  * 옛 `unpackTo` 필드는 BOM에 구성품이 없을 때만 본다(이전 데이터 호환).
  */
+/**
+ * **묶음 갈래 — 이 품목이 다른 완제품을 담고 있나, 어떤 식으로.**
+ *
+ *   박스   같은 것의 묶음.   볶음참깨/20kg박스 ← 낱개/1kg ×20
+ *   세트   다른 것을 모음.   참+들/스마트/300ml ← 참기름 ×1, 들기름 ×1
+ *   null   그냥 낱개다.
+ *
+ * **둘은 서류에서 똑같이 다뤄진다**(2026-09-06 사장님: "박스품목 서류에 들어가는거랑
+ * 통합해서 처리해") — 둘 다 **든 완제품으로 풀어서** 원료수불부·생산작업기록부·
+ * 판매일지에 올린다. 그래서 둘 다 **자기 서류용 품목·규격이 없어도 된다.**
+ *
+ * 근거는 **구성**이다. 서브타입 이름('배송'·'선물세트')으로 견주면 분류 관리에서
+ * 이름을 바꾸는 순간 그 자리들이 조용히 다 안 걸린다.
+ *
+ * 저장된 품목(BOM)과 편집 중인 폼(아직 저장 안 한 구성) 둘 다 이 함수로 판정한다 —
+ * 판정이 갈리면 화면에서는 서류용 품목을 안 받고 서류에서는 안 풀리는 일이 생긴다.
+ */
+export type 묶음갈래 = '박스' | '세트' | null;
+
+export function 묶음갈래of(완제품구성: readonly { qty: number }[]): 묶음갈래 {
+  if (완제품구성.length > 1) return '세트';
+  if (완제품구성.length === 1 && 완제품구성[0].qty > 1) return '박스';
+  return null;
+}
+
 export function unpackComponent(product: BoxLike | undefined): { itemId: string; count: number } | null {
-  // 완제품 구성품이 **딱 한 종류**이고 수량이 2 이상일 때만 박스로 본다.
-  // 선물세트와 갈라내는 조건 — 세트는 서로 다른 완제품을 하나씩 담으므로 여기 안 걸린다.
-  //   볶음참깨/20kg박스 ← 낱개/1kg ×20        → 박스 (같은 것의 묶음)
-  //   참+들/스마트/300ml ← 참기름 ×1, 들기름 ×1 → 세트 (다른 것을 모음)
   const comps = bomOf(product?.id).filter(l => l.child?.type === 'product' || l.child?.type === '완제품');
-  if (comps.length === 1 && comps[0].qty > 1) return { itemId: comps[0].childId, count: comps[0].qty };
+  if (묶음갈래of(comps) === '박스') return { itemId: comps[0].childId, count: comps[0].qty };
   const legacy = product?.unpackTo;
   return legacy && legacy.count > 1 ? { itemId: legacy.itemId, count: legacy.count } : null;
 }

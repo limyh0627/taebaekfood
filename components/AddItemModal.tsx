@@ -7,6 +7,7 @@ import { bomOf, BomDraftLine } from '../src/shared/bomIndex';
 import { baseRawName, PRODUCT_FORMULA } from '../src/constants/formula';
 import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 import { docName } from '../src/shared/docName';
+import { 묶음갈래of } from '../src/shared/orderUnits';
 
 interface ProductModalProps {
   initialData?: Item;
@@ -116,20 +117,29 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   );
 
   /**
-   * 박스 묶음 품목인가 — 낱개 ×N을 담는 것. 낱개로 풀려 서류는 낱개 기준이라
-   * **서류용 품목(품목·용량)이 없어도 된다.**
+   * **서류에서 풀리는 품목인가** — 박스 묶음이거나 선물세트다.
    *
-   * 근거는 **구성**이다. 예전엔 서브타입 이름(`'배송'`)을 네 곳에서 견줬는데,
-   * 분류 관리에서 이름을 바꾸면(배송→박스) 그 자리들이 조용히 다 안 걸린다.
-   * 판정 규칙은 unpackComponent와 같다 — 완제품 구성품 딱 하나 × 수량 2 이상.
+   * 둘 다 든 완제품으로 풀어서 서류에 올리므로(shared/docOil 의 docUnpack)
+   * **자기 서류용 품목(품목·용량)이 없어도 된다.**
+   *
+   * 전엔 박스만 봤다. 그래서 선물세트를 등록할 때 서류용 품목을 내놓으라고 했고,
+   * 실제로 세트 7개 중 4개가 든 것 하나의 품목만 적혀 서류가 틀어져 있었다
+   * (2026-09-06 사장님: "박스품목 서류에 들어가는거랑 통합해서 처리해").
+   *
+   * 판정은 shared/orderUnits 의 `묶음갈래of` 한 곳이 한다 — 저장된 BOM 을 보는 쪽과
+   * 여기 편집 중인 폼을 보는 쪽이 갈리면, 화면은 품목을 받는데 서류는 안 푸는 일이 생긴다.
    */
-  const isBoxDraft = useMemo(() => {
-    const comps = formData.submaterials.filter(sm => {
-      const c = (items ?? []).find(x => x.id === sm.id);
-      return c?.type === 'product' || c?.type === '완제품';
-    });
-    return comps.length === 1 && (typeof comps[0].stock === 'number' ? comps[0].stock : 1) > 1;
+  const 묶음 = useMemo(() => {
+    const comps = formData.submaterials
+      .filter(sm => {
+        const c = (items ?? []).find(x => x.id === sm.id);
+        return c?.type === 'product' || c?.type === '완제품';
+      })
+      .map(sm => ({ qty: typeof sm.stock === 'number' ? sm.stock : 1 }));
+    return 묶음갈래of(comps);
   }, [formData.submaterials, items]);
+  /** 서류에서 든 것으로 풀리므로 자기 서류용 품목이 필요 없다 */
+  const 서류에서풀림 = 묶음 !== null;
 
   const [partnerSearch, setPartnerSearch] = useState('');
   const [inboundPartnerSearch, setInboundPartnerSearch] = useState('');
@@ -244,10 +254,10 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const handleSubmit = async (e?: React.SyntheticEvent) => {
     e?.preventDefault();
     if (!formData.name) return;
-    // 박스 묶음 품목은 서류용 품목이 없어도 저장 가능 — 낱개로 풀려 서류는 낱개 기준
+    // 박스·선물세트는 서류용 품목이 없어도 저장 가능 — 든 완제품으로 풀려 서류에 올라간다
     // 서류용 품목이 비어 있으면 — 예전엔 조용히 막아서 '저장 버튼이 안 눌린다'로 보였다.
     // 이제 물어보고, 그대로 진행하겠다면 저장한다(서류에서 이 품목은 빠진다).
-    if (formData.type === 'product' && !isBoxDraft && !formData.품목) {
+    if (formData.type === 'product' && !서류에서풀림 && !formData.품목) {
       setPumokWarn(true);
       const go = window.confirm(
         '서류용 품목이 비어 있습니다.\n\n이대로 저장하면 원료수불부·생산작업기록부에서 이 품목이 빠집니다.\n그래도 저장할까요?',
@@ -682,16 +692,23 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                     const childRaw = child ? (itemFormulas ?? []).filter(f => f.parent_key === docName(child)) : [];
                     return (
                     <div key={`${s.id}-${idx}`} className="rounded-2xl border border-slate-100 overflow-hidden">
-                      <div className="flex items-center gap-2 bg-slate-50 px-4 py-2.5">
+                      {/*  **폰에서는 이름을 한 줄로, 수량·단위·삭제는 그 아래로 내린다**
+                           (2026-09-06 사장님: "여기 잘리는거 안 잘리게하고").
+                           한 줄에 다 넣으면 수량칸·단위·X가 폭을 먹어 이름이 '선…' 으로 잘렸다.
+                           이름은 자르지 않고 접어서 다 보인다. 넓은 화면(sm~)은 그대로 한 줄. */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 bg-slate-50 px-4 py-2.5">
+                        <div className="flex items-start gap-2 min-w-0 flex-1">
                         {isAssembly ? (
                           <button type="button" title="완제품 구성 보기"
                             onClick={() => setExpandedBom(prev => { const n = new Set(prev); n.has(s.id) ? n.delete(s.id) : n.add(s.id); return n; })}
-                            className="shrink-0 text-slate-400 hover:text-indigo-600">
+                            className="shrink-0 text-slate-400 hover:text-indigo-600 mt-0.5">
                             <ChevronRight size={15} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
                           </button>
                         ) : <span className="w-[15px] shrink-0" />}
-                        <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md shrink-0">{catLabelOf(catKey(s))}</span>
-                        <span className="flex-1 text-sm font-bold text-slate-700 truncate">{s.name}{(s as any).spec && <span className="ml-1.5 text-[11px] font-black text-indigo-400">{(s as any).spec}</span>}</span>
+                        <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md shrink-0 mt-0.5">{catLabelOf(catKey(s))}</span>
+                        <span className="flex-1 text-sm font-bold text-slate-700 break-keep">{s.name}{(s as any).spec && <span className="ml-1.5 text-[11px] font-black text-indigo-400">{(s as any).spec}</span>}</span>
+                        </div>
+                        <div className="flex items-center gap-2 justify-end shrink-0 pl-[31px] sm:pl-0">
                         {/* BOM 수량은 **kg으로 저장**한다. 밀도가 있는 오일은 화면에서만 L로 보여주고
                             입력받은 L에 밀도를 곱해 되돌린다 — 안 그러면 kg 숫자에 'L' 딱지만 붙는다. */}
                         {(() => {
@@ -724,6 +741,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                           onClick={() => setFormData(fd => ({ ...fd, submaterials: fd.submaterials.filter((_, i) => i !== idx) }))}
                           className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all shrink-0"
                         ><X size={14} /></button>
+                        </div>
                       </div>
                       {isAssembly && open && (
                         <div className="bg-white px-4 py-2.5 pl-10 border-t border-slate-100 space-y-1">
@@ -734,14 +752,14 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                           {childRaw.map((f, i) => (
                             <div key={`r${i}`} className="flex items-center gap-2 text-[12px]">
                               <span className="text-[8px] font-black text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded shrink-0">원료</span>
-                              <span className="flex-1 text-slate-600 truncate">{f.child_name}</span>
+                              <span className="flex-1 text-slate-600 break-keep">{f.child_name}</span>
                               <span className="text-slate-400 font-bold shrink-0">×{f.ratio ?? 1}</span>
                             </div>
                           ))}
                           {childSubs.map((cs, i) => (
                             <div key={`s${i}`} className="flex items-center gap-2 text-[12px]">
                               <span className="text-[8px] font-black text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">{catLabelOf(catKey(cs))}</span>
-                              <span className="flex-1 text-slate-600 truncate">{cs.name}</span>
+                              <span className="flex-1 text-slate-600 break-keep">{cs.name}</span>
                               <span className="text-slate-400 font-bold shrink-0">×{cs.stock ?? 1}</span>
                             </div>
                           ))}
@@ -1011,7 +1029,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                여기 두 개는 판매일지·거래명세서 같은 **서류**에만 쓰인다.
                재고 차감량은 위 구성품(BOM)의 수량이 정하며 이 값들과 무관하다.
                (원료수불부는 이 품목·용량으로 오일 사용량을 따로 집계한다) ── */}
-          {(formData.type === 'product' || formData.type === 'wip') && !isBoxDraft && (
+          {(formData.type === 'product' || formData.type === 'wip') && !서류에서풀림 && (
             <div className="pt-2 mt-2 border-t-2 border-dashed border-slate-200 space-y-5">
               <div className="flex items-start gap-2">
                 <FileText size={15} className="text-slate-400 mt-0.5 shrink-0" />
@@ -1021,7 +1039,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                 </div>
               </div>
             {/* 서류용 품목명 (완제품) — 박스 묶음은 낱개로 풀리므로 숨김 */}
-            {formData.type === 'product' && !isBoxDraft && (
+            {formData.type === 'product' && !서류에서풀림 && (
               <div className="space-y-2" ref={pumokRef}>
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
                   <Tag size={14} className="mr-2" /> 품목

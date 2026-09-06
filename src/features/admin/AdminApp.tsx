@@ -135,7 +135,7 @@ const PartnerLedger = React.lazy(() => import('../../../components/PartnerLedger
 
 import { db } from '../../shared/firebase';
 import { PRODUCT_FORMULA, DENSITY, RM_LIST, toKg, unitOf, unitToKg, baseRawName, lotStockInUnit, lotKgRemaining, parseSpecUnit } from '../../constants/formula';
-import { docPumok, docOilKg, docSpec, addOilByRaw, docSaleLine, docUnpack, docDateOf, findDocDrops, DOC_RECALC_RAWS, DOC_SHEET_GROUPS, DOC_SHEET_CATS, DEFAULT_SHEET_TITLE, mixLabel } from '../../shared/docOil';
+import { docPumok, docOilKg, docSpec, addOilByRaw, docSaleLines, docUnpack, docDateOf, findDocDrops, DOC_RECALC_RAWS, DOC_SHEET_GROUPS, DOC_SHEET_CATS, DEFAULT_SHEET_TITLE, mixLabel } from '../../shared/docOil';
 import { deductFromLots, buildReceiveLot, withCarryOverLot, nextLotNo, settleCarryOver } from '../../shared/lotUtils';
 import { rawLotTarget, adjustRawLots } from '../../shared/rawReceipt';
 import { recordReceipt } from '../../shared/receipt';
@@ -737,11 +737,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
       if (!ds) continue;
       for (const item of o.items) {
         const p = allItems.find(pr => pr.id === item.itemId) || allItems.find(pr => pr.name === item.name);
-        const line = docSaleLine(p, item.quantity, id => allItems.find(x => x.id === id));
-        if (!line) continue;
-        const kg = docOilKg(line.spec, line.qty);
-        if (kg <= 0) continue;
-        (dayCat[ds] = dayCat[ds] || {})[line.품목] = (dayCat[ds][line.품목] || 0) + Math.round(kg);
+        //  선물세트는 든 완제품 각각으로 풀린다 — 줄이 여럿 나올 수 있다.
+        for (const line of docSaleLines(p, item.quantity, id => allItems.find(x => x.id === id))) {
+          const kg = docOilKg(line.spec, line.qty);
+          if (kg <= 0) continue;
+          (dayCat[ds] = dayCat[ds] || {})[line.품목] = (dayCat[ds][line.품목] || 0) + Math.round(kg);
+        }
       }
     }
     // 품목 → 원료 배분은 docOil(=PRODUCT_FORMULA) 한 곳에서만 온다.
@@ -2483,13 +2484,16 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 if (product && SUB_ONLY_CATS.has(product.type)) return [];
                 // 완사입(goods: 향미유·고춧가루)은 우리가 생산한 게 아니므로 생산작업판매일지엔 제외(표시만 — 재고 차감엔 영향 없음)
                 if (product && product.type === 'goods') return [];
-                // 박스 품목은 포장일 뿐 — 낱개 기준으로 푼다(수불부·생산작업기록부와 같은 docUnpack).
-                const u = docUnpack(product, item.quantity, id => allItems.find(p => p.id === id));
-                const base = u?.item ?? product;
-                const qty = u?.qty ?? item.quantity;
-                const 용량 = docSpec(base?.spec) || base?.용량 || item.displaySize || '';
-                // 품목이 비면 이름으로 대체 — 판매일지는 줄을 떨어뜨리지 않는다(수량 문서라서)
-                return [{ 상호: partnerName, 품목: docPumok(base?.품목) || item.name, 용량, 수량: qty, 소비기한: calcExpiry(item.mfgDate || ''), 제조일자: item.mfgDate || '', orderId: order.id, itemIdx }];
+                // 박스는 낱개로, **선물세트는 든 완제품 각각으로** 푼다
+                // (수불부·생산작업기록부와 같은 docUnpack). 세트 하나가 줄 여럿이 된다.
+                const 푼것 = docUnpack(product, item.quantity, id => allItems.find(p => p.id === id));
+                const 줄들 = 푼것.length ? 푼것 : [{ item: product as typeof product, qty: item.quantity }];
+                return 줄들.map(u => {
+                  const base = u.item ?? product;
+                  const 용량 = docSpec(base?.spec) || base?.용량 || item.displaySize || '';
+                  // 품목이 비면 이름으로 대체 — 판매일지는 줄을 떨어뜨리지 않는다(수량 문서라서)
+                  return { 상호: partnerName, 품목: docPumok(base?.품목) || base?.name || item.name, 용량, 수량: u.qty, 소비기한: calcExpiry(item.mfgDate || ''), 제조일자: item.mfgDate || '', orderId: order.id, itemIdx };
+                });
               });
             });
             const rightRows: RightRow[] = Object.values(
@@ -2884,12 +2888,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                   order.items.forEach(item => {
                                     const p = allItems.find(pr => pr.id === item.itemId);
                                     // 박스는 낱개로 풀어서 본다(박스 품목엔 품목·규격이 없다)
-                                    const line = docSaleLine(p, item.quantity, id => allItems.find(x => x.id === id));
-                                    if (!line || line.품목 !== cat) return;
-                                    if (!dayMap[day]) dayMap[day] = [];
-                                    const existing = dayMap[day].find(r => r.spec === line.spec);
-                                    if (existing) existing.수량 += line.qty;
-                                    else dayMap[day].push({ spec: line.spec, 수량: line.qty, mfgDate: item.mfgDate || '' });
+                                    for (const line of docSaleLines(p, item.quantity, id => allItems.find(x => x.id === id))) {
+                                      if (line.품목 !== cat) continue;
+                                      if (!dayMap[day]) dayMap[day] = [];
+                                      const existing = dayMap[day].find(r => r.spec === line.spec);
+                                      if (existing) existing.수량 += line.qty;
+                                      else dayMap[day].push({ spec: line.spec, 수량: line.qty, mfgDate: item.mfgDate || '' });
+                                    }
                                   });
                                 });
                               const ws = wb.addWorksheet(cat);
@@ -3594,12 +3599,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       order.items.forEach(item => {
                         const p = allItems.find(pr => pr.id === item.itemId);
                         // 박스는 낱개로 풀어서 본다(박스 품목엔 품목·규격이 없다)
-                        const line = docSaleLine(p, item.quantity, id => allItems.find(x => x.id === id));
-                        if (!line || line.품목 !== productionWorkCat) return;
-                        if (!dayMap[day]) dayMap[day] = [];
-                        const existing = dayMap[day].find(r => r.spec === line.spec);
-                        if (existing) existing.수량 += line.qty;
-                        else dayMap[day].push({ spec: line.spec, 수량: line.qty, mfgDate: item.mfgDate || '' });
+                        for (const line of docSaleLines(p, item.quantity, id => allItems.find(x => x.id === id))) {
+                          if (line.품목 !== productionWorkCat) continue;
+                          if (!dayMap[day]) dayMap[day] = [];
+                          const existing = dayMap[day].find(r => r.spec === line.spec);
+                          if (existing) existing.수량 += line.qty;
+                          else dayMap[day].push({ spec: line.spec, 수량: line.qty, mfgDate: item.mfgDate || '' });
+                        }
                       });
                     });
                   let totalInput = 0;

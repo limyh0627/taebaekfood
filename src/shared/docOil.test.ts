@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { docPumok, docOilKg, addOilByRaw, docSaleLine, docDateOf, reconcileSaleVsRaw, findDocDrops, DOC_RECALC_RAWS, DOC_DENSITY, docSpec } from './docOil';
+import { docPumok, docOilKg, addOilByRaw, docSaleLines, docDateOf, reconcileSaleVsRaw, findDocDrops, DOC_RECALC_RAWS, DOC_DENSITY, docSpec } from './docOil';
 import { buildBomIndex, setBomIndex } from './bomIndex';
 
 describe('docOilKg — 판매 1줄 → 서류상 기름 kg', () => {
@@ -69,37 +69,80 @@ describe('addOilByRaw — 품목 kg → 원료별 kg', () => {
   });
 });
 
-describe('docSaleLine — 박스는 낱개로 풀어서 집계', () => {
-  const loose = { id: 'p-loose', name: '참기름/350ml', category: 'product', spec: '350ml', 품목: '시골향참기름1' } as any;
-  const box = {
-    id: 'p-box', name: '참기름/350ml (20개입)', category: 'product', spec: '', 품목: '',
-  } as any;
-  const find = (id: string) => (id === 'p-loose' ? loose : undefined);
-  //  구성은 item_bom이 유일 원천 — 박스 1개 = 낱개 ×20.
-  setBomIndex(buildBomIndex(
-    [{ ...loose, type: 'product' }, { ...box, type: 'product' }] as any,
-    [{ parent_id: 'p-box', child_id: 'p-loose', quantity: 20 }],
-  ));
+describe('docSaleLines — 박스는 낱개로, 선물세트는 든 것 각각으로', () => {
+  const 참 = { id: 'p-참', name: '참기름/300ml', type: 'product', spec: '300ml', 품목: '시골향참기름1' } as any;
+  const 들 = { id: 'p-들', name: '들기름/300ml', type: 'product', spec: '300ml', 품목: '시골향들기름2' } as any;
+  const 깨 = { id: 'p-깨', name: '볶음참깨/200g', type: 'product', spec: '200g', 품목: '시골향볶음참깨' } as any;
+  const 케이스 = { id: 'p-케이스', name: '선물세트-3구', type: 'submaterial', spec: '' } as any;
+  const loose = { id: 'p-loose', name: '참기름/350ml', type: 'product', spec: '350ml', 품목: '시골향참기름1' } as any;
+  const box = { id: 'p-box', name: '참기름/350ml (20개입)', type: 'product', spec: '', 품목: '' } as any;
+  //  세트: 케이스 1 + 참 1 + 들 1 + 깨 1.  세트2: 참 2 + 깨 1 (같은 것을 둘 담는다)
+  const 세트 = { id: 'p-세트', name: '참+들+깨/300ml', type: 'product', spec: '', 품목: '' } as any;
+  const 세트2 = { id: 'p-세트2', name: '참2+깨/300ml', type: 'product', spec: '', 품목: '' } as any;
+  const 모두 = [참, 들, 깨, 케이스, loose, box, 세트, 세트2];
+  const find = (id: string) => 모두.find(x => x.id === id);
+
+  setBomIndex(buildBomIndex(모두 as any, [
+    { parent_id: 'p-box', child_id: 'p-loose', quantity: 20 },
+    { parent_id: 'p-세트', child_id: 'p-케이스', quantity: 1 },
+    { parent_id: 'p-세트', child_id: 'p-참', quantity: 1 },
+    { parent_id: 'p-세트', child_id: 'p-들', quantity: 1 },
+    { parent_id: 'p-세트', child_id: 'p-깨', quantity: 1 },
+    { parent_id: 'p-세트2', child_id: 'p-참', quantity: 2 },
+    { parent_id: 'p-세트2', child_id: 'p-깨', quantity: 1 },
+  ]));
 
   it('박스 1개 → 낱개 20개, 품목·규격은 낱개 것', () => {
-    expect(docSaleLine(box, 1, find)).toEqual({ 품목: '시골향참기름1', spec: '350ml', qty: 20 });
+    expect(docSaleLines(box, 1, find)).toEqual([{ 품목: '시골향참기름1', spec: '350ml', qty: 20 }]);
   });
 
   it('박스 3개 → 낱개 60개', () => {
-    expect(docSaleLine(box, 3, find)?.qty).toBe(60);
+    expect(docSaleLines(box, 3, find)[0].qty).toBe(60);
   });
 
   it('낱개는 그대로', () => {
-    expect(docSaleLine(loose, 5, find)).toEqual({ 품목: '시골향참기름1', spec: '350ml', qty: 5 });
+    expect(docSaleLines(loose, 5, find)).toEqual([{ 품목: '시골향참기름1', spec: '350ml', qty: 5 }]);
   });
 
-  it('품목이 없으면 null — 서류에 잡을 근거가 없다', () => {
-    expect(docSaleLine({ ...loose, 품목: '' }, 5, find)).toBeNull();
-    expect(docSaleLine(undefined, 5, find)).toBeNull();
+  /**
+   * 전에는 세트를 한 줄로 잡고 세트 자신의 품목·규격을 썼다. 실제로 `참+들+볶음참깨/300ml`
+   * 이 **들기름 하나로만** 잡혀 참기름·볶음참깨가 서류에서 빠져 있었다(2026-09-06).
+   */
+  it('선물세트는 든 완제품 셋이 각각 한 줄이 된다', () => {
+    expect(docSaleLines(세트, 1, find)).toEqual([
+      { 품목: '시골향참기름1', spec: '300ml', qty: 1 },
+      { 품목: '시골향들기름2', spec: '300ml', qty: 1 },
+      { 품목: '시골향볶음참깨', spec: '200g', qty: 1 },
+    ]);
+  });
+
+  it('케이스 같은 부자재는 서류에 안 잡는다', () => {
+    expect(docSaleLines(세트, 1, find).some(l => l.품목.includes('케이스'))).toBe(false);
+  });
+
+  it('세트를 3개 팔면 든 것도 3배다', () => {
+    expect(docSaleLines(세트, 3, find).map(l => l.qty)).toEqual([3, 3, 3]);
+  });
+
+  /** `참2+볶음참깨` 는 참기름이 2병인데 1병으로 잡히고 있었다. */
+  it('세트 안에 같은 것이 둘이면 둘로 센다', () => {
+    expect(docSaleLines(세트2, 1, find)).toEqual([
+      { 품목: '시골향참기름1', spec: '300ml', qty: 2 },
+      { 품목: '시골향볶음참깨', spec: '200g', qty: 1 },
+    ]);
+  });
+
+  it('세트 자신에는 서류용 품목·규격이 없어도 된다 — 든 것이 대신 잡힌다', () => {
+    expect(docSaleLines(세트, 1, find)).toHaveLength(3);
+  });
+
+  it('품목이 없으면 빈 목록 — 서류에 잡을 근거가 없다', () => {
+    expect(docSaleLines({ ...loose, 품목: '' }, 5, find)).toEqual([]);
+    expect(docSaleLines(undefined, 5, find)).toEqual([]);
   });
 
   it('박스 판매가 서류에서 통째로 누락되지 않는다 (회귀 방지)', () => {
-    const line = docSaleLine(box, 2, find)!;
+    const line = docSaleLines(box, 2, find)[0];
     const kg = docOilKg(line.spec, line.qty);           // 40병 × 0.35L × 0.92
     expect(kg).toBeCloseTo(40 * 0.35 * DOC_DENSITY, 6);
     expect(addOilByRaw({}, line.품목, Math.round(kg))).toEqual({ 통깨참기름: 13 });

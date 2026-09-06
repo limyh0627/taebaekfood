@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { stockUnits, isBoxStockItem, unpackComponent, boxSiblings, boxDerivedUnitPrice } from './orderUnits';
+import { boxDerivedUnitPrice, boxSiblings, isBoxStockItem, stockUnits, unpackComponent, 묶음갈래of } from './orderUnits';
 import { buildBomIndex, setBomIndex } from './bomIndex';
 import { toKg } from '../constants/formula';
 import type { Item } from './types';
@@ -137,5 +137,33 @@ describe('isBoxStockItem', () => {
     const 한개 = it_({ id: '한개짜리', type: 'product' });
     setBomIndex(buildBomIndex([...ITEMS, 한개], [bom('한개짜리', 낱개ID, 1)]));
     expect(isBoxStockItem(한개)).toBe(false);
+  });
+});
+
+/**
+ * **박스와 선물세트는 한 규칙이 가른다.**
+ *
+ * 서류(원료수불부·생산작업기록부·판매일지)에서 **둘 다 든 완제품으로 풀린다**
+ * (2026-09-06 사장님: "박스품목 서류에 들어가는거랑 통합해서 처리해").
+ * 그래서 둘 다 자기 서류용 품목·규격이 없어도 된다 — 품목 등록 화면도 이 판정을 쓴다.
+ */
+describe('묶음 갈래', () => {
+  it('같은 것 여러 개 = 박스', () => {
+    expect(묶음갈래of([{ qty: 20 }])).toBe('박스');
+    expect(묶음갈래of([{ qty: 2 }])).toBe('박스');
+  });
+
+  it('다른 것을 모으면 = 세트', () => {
+    expect(묶음갈래of([{ qty: 1 }, { qty: 1 }])).toBe('세트');
+    expect(묶음갈래of([{ qty: 2 }, { qty: 1 }]), '같은 것을 둘 담아도 종류가 여럿이면 세트').toBe('세트');
+    expect(묶음갈래of([{ qty: 1 }, { qty: 1 }, { qty: 1 }])).toBe('세트');
+  });
+
+  it('완제품을 하나만 1개 담으면 묶음이 아니다 — 그냥 그 품목이다', () => {
+    expect(묶음갈래of([{ qty: 1 }])).toBeNull();
+  });
+
+  it('완제품 구성품이 없으면 묶음이 아니다', () => {
+    expect(묶음갈래of([])).toBeNull();
   });
 });

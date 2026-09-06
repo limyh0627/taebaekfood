@@ -1,5 +1,6 @@
 import { PRODUCT_FORMULA } from '../constants/formula';
-import { unpackComponent } from './orderUnits';
+import { unpackComponent, 묶음갈래of } from './orderUnits';
+import { bomOf } from './bomIndex';
 import type { Item } from './types';
 import { dateOfLocal } from './day';
 
@@ -22,7 +23,7 @@ import { dateOfLocal } from './day';
  *  ┌─ 서류용 원장 (rawDocEntries 컬렉션) ──────────────────────────────────────┐
  *  │  관청 제출용 원료수불부를 만들기 위한 기록. **실제 원장과 별개 컬렉션이다.**     │
  *  │  · 담는 것    : 서류 전용 실사, 첫 달 전월이월                               │
- *  │  · 사용량     : 판매에서 되계산 (docSaleLine → docOilKg → addOilByRaw)      │
+ *  │  · 사용량     : 판매에서 되계산 (docSaleLines → docOilKg → addOilByRaw)     │
  *  │  · 입고       : 실제 원장 그대로 ← 실제 원장에서 오는 **유일한** 값           │
  *  │  · 전월이월   : 전달 서류의 기말재고 — 실제 원장 누적이 아니다                 │
  *  │  · 날짜 기준  : 배송완료일(docDateOf) — 판매기록부와 같은 날                  │
@@ -164,28 +165,59 @@ export const docUnpack = (
   product: Item | undefined,
   quantity: number,
   findItem: (id: string) => Item | undefined,
-): { item: Item; qty: number } | null => {
-  if (!product) return null;
-  const unpack = unpackComponent(product);
-  if (unpack) {
-    const loose = findItem(unpack.itemId);
-    if (loose) return { item: loose, qty: quantity * unpack.count };
-  }
-  return { item: product, qty: quantity };
-};
+): { item: Item; qty: number }[] => 푸는중(product, quantity, findItem, 0);
 
-/** 위를 거친 뒤 기름 집계에 쓸 형태로. 품목이 없으면 null(서류에 잡을 근거가 없는 줄). */
-export const docSaleLine = (
+/**
+ * **선물세트는 든 완제품 각각으로 푼다**(2026-09-06 사장님: "선물세트는 낱개 완제품들이
+ * 일지에 각각 들어갔으면 좋겠는데").
+ *
+ * 전에는 세트를 **한 줄**로 잡고 세트 자신의 서류용 품목·규격을 썼다. 그래서 실제로
+ * 틀렸다 — 세트 7개 중 4개가 든 것 하나로만 잡히고 나머지가 서류에서 통째로 빠졌고
+ * (`참+들+볶음참깨/300ml` 이 들기름 하나로만), `참2+볶음참깨` 는 참기름이 2병인데
+ * 1병으로 잡혔다. 서류용 품목이 없는 세 개는 줄 자체가 사라졌다.
+ *
+ * **부자재는 안 센다** — 케이스·포장박스는 서류에 올릴 것이 아니다.
+ * 세트 안에 박스가 들었거나 세트가 겹쳐 있어도 풀리게 되짚는다(깊이 3까지).
+ */
+const 푸는중 = (
   product: Item | undefined,
   quantity: number,
   findItem: (id: string) => Item | undefined,
-): { 품목: string; spec: string; qty: number } | null => {
-  const u = docUnpack(product, quantity, findItem);
-  if (!u) return null;
-  const 품목 = docPumok(u.item.품목);
-  if (!품목) return null;
-  return { 품목, spec: u.item.spec ?? '', qty: u.qty };
+  깊이: number,
+): { item: Item; qty: number }[] => {
+  if (!product) return [];
+  if (깊이 > 3) return [{ item: product, qty: quantity }];   // 서로 물린 BOM에서 멈춘다
+
+  //  ① 박스 — 같은 것의 묶음. 낱개로 푼다.
+  const unpack = unpackComponent(product);
+  if (unpack) {
+    const loose = findItem(unpack.itemId);
+    if (loose) return 푸는중(loose, quantity * unpack.count, findItem, 깊이 + 1);
+  }
+
+  //  ② 선물세트 — 다른 것을 모은 것. 든 완제품 각각으로 푼다.
+  //     갈래 판정은 orderUnits 의 묶음갈래of 한 곳이 정한다(박스와 같은 규칙).
+  const 든완제품 = bomOf(product.id)
+    .filter(l => l.child?.type === 'product' || l.child?.type === '완제품');
+  if (묶음갈래of(든완제품) === '세트') {
+    return 든완제품.flatMap(l => {
+      const c = findItem(l.childId);
+      return c ? 푸는중(c, quantity * (l.qty || 1), findItem, 깊이 + 1) : [];
+    });
+  }
+
+  return [{ item: product, qty: quantity }];
 };
+
+/** 위를 거친 뒤 기름 집계에 쓸 형태로. 서류용 품목이 없는 줄은 뺀다(잡을 근거가 없다). */
+export const docSaleLines = (
+  product: Item | undefined,
+  quantity: number,
+  findItem: (id: string) => Item | undefined,
+): { 품목: string; spec: string; qty: number }[] =>
+  docUnpack(product, quantity, findItem)
+    .map(u => ({ 품목: docPumok(u.item.품목), spec: u.item.spec ?? '', qty: u.qty }))
+    .filter(l => l.품목);
 
 /**
  * 품목별 기름 kg → 원료별 kg. 배합비는 PRODUCT_FORMULA 한 곳에서만 온다.
@@ -230,7 +262,7 @@ export interface DocMismatch {
  * 판매기록부는 주문 줄을 그대로 싣지만 원료수불부는 품목→규격→배합비로 옮겨 담으므로,
  * 아래 세 가지로도 줄이 사라질 수 있다. 다만 오탐이 많을 수 있어 지금은 켜지 않는다.
  *
- *   ② 품목 미지정   — docSaleLine이 null (품목 필드가 비어 서류에 잡을 근거가 없음)
+ *   ② 품목 미지정   — docSaleLines 가 빈 목록 (품목 필드가 비어 잡을 근거가 없음)
  *   ③ 규격 못 읽음   — docOilKg가 0 ("한 박스"처럼 ml/L/kg가 없는 규격)
  *   ④ 배합비 없음   — PRODUCT_FORMULA에 그 품목이 없어 원료로 안 내려감
  *
@@ -278,7 +310,7 @@ export const findDocDrops = (
     // ── 아직 안 켠 검사 (오탐 확인 후 활성화) ──────────────────────────────
     // for (const it of o.items ?? []) {
     //   const product = it.itemId ? findItem(it.itemId) : undefined;
-    //   const line = docSaleLine(product, it.quantity, findItem);
+    //   for (const line of docSaleLines(product, it.quantity, findItem)) {
     //   if (!line) { push('품목 미지정'); continue; }
     //   if (docOilKg(line.spec, line.qty) <= 0) { push('규격 못 읽음'); continue; }
     //   const formula = PRODUCT_FORMULA[docPumok(line.품목)];
