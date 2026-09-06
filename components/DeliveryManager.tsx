@@ -19,6 +19,7 @@ import {
   CheckSquare
 } from 'lucide-react';
 import { Order, Partner, OrderStatus, Item } from '../types';
+import { statusChip, statusText, statusLabel } from '../src/shared/orderStatusStyle';
 import { X, Save } from 'lucide-react';
 import { subscribeToDocument, setDocument } from '../src/shared/services/firebaseService';
 import { OrderCard } from './OrdersList';
@@ -227,16 +228,9 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
 
   const renderWeekCalendar = () => {
     const todayStr = toLocalDateStr(new Date());
-    const getStatusColor = (status: OrderStatus) => {
-      switch (status) {
-        case OrderStatus.PENDING: return 'bg-amber-100 text-amber-700 border-amber-200';
-        case OrderStatus.PROCESSING: return 'bg-sky-100 text-pink-700 border-sky-200';
-        case OrderStatus.SHIPPED: return 'bg-indigo-100 text-indigo-700 border-indigo-200';
-        case OrderStatus.DISPATCHED: return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-        case OrderStatus.DELIVERED: return 'bg-slate-100 text-slate-500 border-slate-200';
-        default: return 'bg-slate-100 text-slate-600 border-slate-200';
-      }
-    };
+    //  상태 색은 [shared/orderStatusStyle](../src/shared/orderStatusStyle) 한 곳이 정한다.
+    //  여기 있던 표는 **하늘 배경에 분홍 글씨**(`text-pink-700`)였다 — 복사 실수다(2026-09-06).
+    const getStatusColor = statusChip;
 
     // 금일 배송순서 공통 데이터 (오늘 열에서 사용)
     // deliveryOrdering에 있는 것 + 오늘 날짜 캘린더 주문 중 ordering에 없는 것 자동 포함
@@ -439,16 +433,9 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
     const startDay = firstDayOfMonth(year, month);
     const days = [];
 
-    const getStatusColor = (status: OrderStatus) => {
-      switch (status) {
-        case OrderStatus.PENDING: return 'bg-amber-100 text-amber-700 border-amber-200';
-        case OrderStatus.PROCESSING: return 'bg-sky-100 text-pink-700 border-sky-200';
-        case OrderStatus.SHIPPED: return 'bg-indigo-100 text-indigo-700 border-indigo-200';
-        case OrderStatus.DISPATCHED: return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-        case OrderStatus.DELIVERED: return 'bg-slate-100 text-slate-500 border-slate-200';
-        default: return 'bg-slate-100 text-slate-600 border-slate-200';
-      }
-    };
+    //  상태 색은 [shared/orderStatusStyle](../src/shared/orderStatusStyle) 한 곳이 정한다.
+    //  여기 있던 표는 **하늘 배경에 분홍 글씨**(`text-pink-700`)였다 — 복사 실수다(2026-09-06).
+    const getStatusColor = statusChip;
 
     const todayStr = toLocalDateStr(new Date());
     const renderDayCell = (day: number, dateStr: string) => {
@@ -1067,17 +1054,10 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                                   <Clock size={10} className="text-slate-400" />
                                   <span className="text-slate-500 font-medium">배송일: {order.deliveryDate.split('T')[0]}</span>
                                 </div>
-                                <span className={`font-black text-[9px] ${
-                                  order.status === OrderStatus.PENDING ? 'text-amber-500' :
-                                  order.status === OrderStatus.PROCESSING ? 'text-indigo-500' :
-                                  order.status === OrderStatus.ON_HOLD ? 'text-orange-500' :
-                                  'text-emerald-500'
-                                }`}>
-                                  {order.status === OrderStatus.PENDING ? '대기중' :
-                                   order.status === OrderStatus.PROCESSING ? '작업중' :
-                                   order.status === OrderStatus.DISPATCHED ? '작업완료' :
-                                   order.status === OrderStatus.ON_HOLD ? '보류' :
-                                   order.status === OrderStatus.SHIPPED ? '출고' : '완료'}
+                                {/*  글자색도 [shared/orderStatusStyle](../src/shared/orderStatusStyle) 이 정한다 —
+                                     여기만 작업중이 **남색**이었다(다른 데선 하늘색, 2026-09-06) */}
+                                <span className={`font-black text-[9px] ${statusText(order.status)}`}>
+                                  {statusLabel(order.status)}
                                 </span>
                               </div>
                             </div>

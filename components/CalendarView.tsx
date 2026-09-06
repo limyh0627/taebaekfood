@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Package, X } from 'lucide-react';
 import { Order, OrderStatus } from '../types';
+import { statusChip } from '../src/shared/orderStatusStyle';
 
 interface CalendarViewProps {
   orders: Order[];
@@ -70,16 +71,9 @@ const CalendarView: React.FC<CalendarViewProps> = ({ orders, onUpdateDeliveryDat
     onUpdateDeliveryDate(orderId, new Date(currentDate.getFullYear(), currentDate.getMonth(), day).toISOString());
   };
 
-  const getStatusColor = (status: OrderStatus) => {
-    switch (status) {
-      case OrderStatus.PENDING:    return 'bg-amber-100 text-amber-700 border-amber-200';
-      case OrderStatus.PROCESSING: return 'bg-sky-100 text-sky-700 border-sky-200';
-      case OrderStatus.SHIPPED:    return 'bg-indigo-100 text-indigo-700 border-indigo-200';
-      case OrderStatus.DISPATCHED: return 'bg-violet-100 text-violet-700 border-violet-200';
-      case OrderStatus.DELIVERED:  return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-      default:                     return 'bg-slate-50 text-slate-500';
-    }
-  };
+  //  상태 색은 [shared/orderStatusStyle](../src/shared/orderStatusStyle) 한 곳이 정한다.
+  //  여기만 **작업완료가 보라, 배송완료가 초록**이었다 — 주문 화면과 거꾸로였다(2026-09-06).
+  const getStatusColor = statusChip;
 
   return (
     <div className="bg-white rounded-3xl border border-slate-200 shadow-sm flex flex-col mb-8 animate-in fade-in duration-500">

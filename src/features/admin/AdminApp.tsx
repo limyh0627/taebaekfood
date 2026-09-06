@@ -162,6 +162,7 @@ import { vatOn } from '../../shared/lineAmount';
 import { resolveOrderItem } from '../../shared/statementLines';
 import { dateOfLocal } from '../../shared/day';
 import { buysFrom } from '../../shared/partnerRole';
+import { COL } from '../../shared/collections';
 
 // 거래처 주문 포털(웹) URL — .env의 VITE_PARTNER_PORTAL_URL로 운영 도메인 지정 가능
 const PARTNER_PORTAL_URL =
@@ -698,7 +699,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
   ).length;
 
   // 판매 상품(완제품/향미유/고춧가루)은 products, 부자재는 submaterials
-  const getProductCollection = (_category: string) => 'items';
+  //  품목이 갈려 있던 시절의 껍데기(`getProductCollection`)를 지웠다 — 늘 'items' 였다(2026-09-06)
 
 
   // 작업완료(생산됨·미출고) 주문분 — 지금 현재고에 얹혀 있는 완제품 수량(품목별 합).
@@ -1955,9 +1956,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
               items={companyItems}
               orders={allOrders}
               onUpdateItem={async (p) => {
-                await updateItem(getProductCollection(p.type), p.id, p);
+                await updateItem(COL.items, p.id, p);
               }}
-              onAddItem={(p) => addItem(getProductCollection(p.type), p)} 
+              onAddItem={(p) => addItem(COL.items, p)} 
               orderRequests={pendingPurchaseOrders}
               confirmedOrders={invoicedPurchaseOrders}
               dispatchedQtyByItem={dispatchedQtyByItem}
@@ -4056,7 +4057,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 // 실제 재고 반영 로직
                 const product = allItems.find(p => p.id === req.itemId);
                 if (product) {
-                  const collectionName = getProductCollection(product.type);
+                  const collectionName = COL.items;
                   if (req.type === 'quantity_change') {
                     // 수량 변동 승인 시, 요청된 수량만큼 재고에 더함
                     const target = rawLotTarget(allItems, product, product.name, companyId);
@@ -4377,10 +4378,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
             return id as string;
           }}
           onSave={async (p) => {
-            const collectionName = getProductCollection(p.type);
+            const collectionName = COL.items;
             // 기존 컬렉션과 다른 경우(카테고리 변경) 이전 문서 삭제
             if (editingProduct) {
-              const prevCollection = getProductCollection(editingProduct.type);
+              const prevCollection = COL.items;
               if (prevCollection !== collectionName) {
                 await deleteItem(prevCollection, p.id);
               }
@@ -4406,7 +4407,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                * 개입수 자체는 BOM 이 정한다. 여기서 맞추는 건 사람이 읽는 글자다.
                */
               for (const up of boxSpecUpdates(p, allItems)) {
-                await updateItem(getProductCollection('product'), up.id, { spec: up.spec });
+                await updateItem(COL.items, up.id, { spec: up.spec });
               }
             } else {
               //  **지금 보고 있는 회사를 붙인다.** 안 붙이면 전부 태백으로 잡혀

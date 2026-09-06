@@ -26,9 +26,11 @@ import { today } from '../day';
 import type { RawMaterialLot } from "../types";
 import { pruneDepletedLots } from "../lotUtils";
 import { statementBlockReason } from "../statementGuard";
+//  컬렉션 이름을 **글자가 아니라 목록에서** 받는다 — 오타가 컴파일에서 걸린다(2026-09-06)
+import type { CollectionName } from '../collections';
 
 export const subscribeToDocument = <T>(
-  collectionName: string,
+  collectionName: CollectionName,
   docId: string,
   callback: (data: T | null) => void
 ) => {
@@ -37,12 +39,12 @@ export const subscribeToDocument = <T>(
   });
 };
 
-export const setDocument = async (collectionName: string, docId: string, data: any) => {
+export const setDocument = async (collectionName: CollectionName, docId: string, data: any) => {
   await setDoc(doc(db, collectionName, docId), data, { merge: true });
 };
 
 export const subscribeToCollection = <T extends { id: string }>(
-  collectionName: string,
+  collectionName: CollectionName,
   callback: (data: T[]) => void,
   constraints: QueryConstraint[] = []
 ) => {
@@ -66,7 +68,7 @@ export const subscribeToCollection = <T extends { id: string }>(
 
 // 1회 읽기 (정적 데이터용)
 export const fetchCollection = async <T extends { id: string }>(
-  collectionName: string,
+  collectionName: CollectionName,
   constraints: QueryConstraint[] = []
 ): Promise<T[]> => {
   const q = query(collection(db, collectionName), ...constraints);
@@ -76,7 +78,7 @@ export const fetchCollection = async <T extends { id: string }>(
 
 // 날짜 기준 과거 N일치 구독
 export const subscribeToRecentCollection = <T extends { id: string }>(
-  collectionName: string,
+  collectionName: CollectionName,
   dateField: string,
   daysBack: number,
   callback: (data: T[]) => void
@@ -90,7 +92,7 @@ export const subscribeToRecentCollection = <T extends { id: string }>(
 
 // 특정 날짜 범위 one-time fetch (과거 데이터 온디맨드)
 export const fetchDateRange = async <T extends { id: string }>(
-  collectionName: string,
+  collectionName: CollectionName,
   dateField: string,
   startDate: string,
   endDate: string
@@ -122,7 +124,7 @@ const stripUndefined = (obj: any): any => {
  * 쓰기 직전에 뒤집어 줬는데, 2026-08-23에 코드를 DB 이름으로 맞추고 그 변환을 없앴다.
  */
 
-export const addItem = async (collectionName: string, item: any) => {
+export const addItem = async (collectionName: CollectionName, item: any) => {
   /**
    * **차·대를 못 채우는 전표는 안 만든다.** 만드는 길이 여러 갈래(전표화면·확인사항·반품·임가공)라
    * 화면마다 막으면 한 곳은 반드시 새다. 쓰는 문 하나에서 막는다.
@@ -143,14 +145,14 @@ export const addItem = async (collectionName: string, item: any) => {
   }
 };
 
-export const updateItem = async (collectionName: string, id: string, data: any) => {
+export const updateItem = async (collectionName: CollectionName, id: string, data: any) => {
   const docRef = doc(db, collectionName, id);
   // getFirestore는 ignoreUndefinedProperties가 꺼져 있어 undefined가 있으면 updateDoc이 throw한다.
   // (예: 전표 items[].accountCode가 빈 값이면 undefined로 들어와 저장이 통째로 실패) → 깊게 제거.
   await updateDoc(docRef, stripUndefined(data));
 };
 
-export const deleteItem = async (collectionName: string, id: string) => {
+export const deleteItem = async (collectionName: CollectionName, id: string) => {
   const docRef = doc(db, collectionName, id);
   await deleteDoc(docRef);
 };
@@ -176,7 +178,7 @@ export const deleteItem = async (collectionName: string, id: string) => {
  * @returns 반영 뒤 재고. 문서가 없으면 null.
  */
 export const adjustItemStock = async (
-  collectionName: string,
+  collectionName: CollectionName,
   itemId: string,
   delta: number,
 ): Promise<number | null> => {
@@ -361,7 +363,7 @@ export const setProductSuppliers = async (itemId: string, inboundPartnerIds: str
   await batch.commit();
 };
 
-export const syncInitialData = async (collectionName: string, initialData: any[]) => {
+export const syncInitialData = async (collectionName: CollectionName, initialData: any[]) => {
   // This is a helper to seed data if needed
   for (const item of initialData) {
     await addItem(collectionName, item);
@@ -381,7 +383,7 @@ export const syncInitialData = async (collectionName: string, initialData: any[]
 
 /** 한 필드가 어떤 값인 문서만. 컬렉션 전체를 읽어 거르는 것보다 싸다. */
 export const fetchWhere = async <T extends { id: string }>(
-  collectionName: string,
+  collectionName: CollectionName,
   field: string,
   value: unknown,
 ): Promise<T[]> => {
@@ -397,7 +399,7 @@ export const fetchWhere = async <T extends { id: string }>(
  * 날짜 범위로 훑는 것과 달리 **읽는 양이 요청한 개수만큼**이라, 앵커가 값을 하는 자리다.
  */
 export const fetchByIds = async <T extends { id: string }>(
-  collectionName: string,
+  collectionName: CollectionName,
   ids: string[],
 ): Promise<T[]> => {
   const uniq = [...new Set(ids.filter(Boolean))];
@@ -410,7 +412,7 @@ export const fetchByIds = async <T extends { id: string }>(
 };
 
 export const subscribeWhere = <T extends { id: string }>(
-  collectionName: string,
+  collectionName: CollectionName,
   field: string,
   value: unknown,
   cb: (_rows: T[]) => void,
@@ -447,7 +449,7 @@ export const writeMany = async (
  * @param write 그 값으로 무엇을 쓸지 정한다. undefined를 주면 아무것도 안 쓴다.
  */
 export const mutateDoc = async <T>(
-  collectionName: string,
+  collectionName: CollectionName,
   id: string,
   next: (_cur: T | undefined) => Record<string, unknown> | undefined,
 ): Promise<void> => {

@@ -9,6 +9,7 @@ import { checkLedgerLot, gapMessage } from '../../shared/ledgerLotCheck';
 import type { ProductLotTake } from '../../shared/lotUtils';
 import { bomQty } from '../../shared/bom';
 import { stockUnits, isBoxStockItem, unpackComponent, unitsPerBoxOf } from '../../shared/orderUnits';
+import type { CollectionName } from '../../shared/collections';
 
 /**
  * 작업완료 때 "이미 있는 재고를 얼마나 쓸까" — 주문 라인(order.items 인덱스)별 선택.
@@ -45,8 +46,8 @@ export interface OrderStockEngineDeps {
   buildFormula: (prodKey: string) => { raw: string; ratio: number }[];
   createProductionRecordsForOrder: (order: Order) => Promise<void>;
   mutateRawMaterialLots: (rawItemId: string, transform: (lots: RawMaterialLot[], stock: number) => RawMaterialLot[], computeStock?: (lots: RawMaterialLot[]) => number) => Promise<RawMaterialLot[]>;
-  updateItem: (collection: string, id: string, data: Record<string, any>) => Promise<any>;
-  addItem: (collection: string, data: Record<string, any>) => Promise<any>;
+  updateItem: (collection: CollectionName, id: string, data: Record<string, any>) => Promise<any>;
+  addItem: (collection: CollectionName, data: Record<string, any>) => Promise<any>;
 }
 
 /**

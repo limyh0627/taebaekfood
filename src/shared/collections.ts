@@ -51,10 +51,12 @@ export const COL = {
   palletTransactions: 'palletTransactions',
   sesameInputLedger: 'sesameInputLedger',
   stockClosings: 'stockClosings',
+  partnerBalanceSnapshots: 'partnerBalanceSnapshots',
 
   // ── 사람 ──
   employees: 'employees',
   users: 'users',
+  settings: 'settings',
   leaveRequests: 'leaveRequests',
   payrolls: 'payrolls',
   notifications: 'notifications',
@@ -67,6 +69,7 @@ export const COL = {
   fileCabinetSubCategories: 'fileCabinetSubCategories',
   fileCabinetDocs: 'fileCabinetDocs',
   docSheetTitles: 'docSheetTitles',
+  dashboardLinks: 'dashboardLinks',
 
   // ── HACCP ──
   benzopyreneTests: 'benzopyreneTests',

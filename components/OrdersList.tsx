@@ -43,6 +43,7 @@ import PageHeader from './PageHeader';
 import { cardNoLabel } from '../src/shared/cardNo';
 import { channelStyle } from '../src/shared/channelStyle';
 import { DEFAULT_CATEGORY_LABELS } from '../src/shared/taxonomy';
+import { STATUS_COLOR, STATUS_HEAD, STATUS_LABEL, statusLabel, statusColumn } from '../src/shared/orderStatusStyle';
 
 /** 이름 끝 용량은 뗀다 — 규격 칩이 이미 들고 있어 '참기름/병/A/300ml [300ml * 20]'처럼 겹친다. */
 const baseName = (name: string): string => splitNameVolume({ name }).base;
@@ -54,29 +55,15 @@ const CATEGORY_MAP: Record<string, string> = {
 };
 const normalizeCategory = (cat: string) => CATEGORY_MAP[cat] || cat;
 
-const STATUS_LABEL: Record<string, string> = {
-  PENDING: '대기중', PROCESSING: '작업중', DISPATCHED: '작업완료',
-  SHIPPED: '출고', DELIVERED: '예전 주문',
-};
-const STATUS_COLOR: Record<string, string> = {
-  PENDING: 'bg-amber-100 text-amber-700',
-  PROCESSING: 'bg-sky-100 text-sky-700',
-  DISPATCHED: 'bg-emerald-100 text-emerald-700',
-  SHIPPED: 'bg-indigo-100 text-indigo-700',
-  DELIVERED: 'bg-slate-100 text-slate-500',
-};
+//  이름표도 [shared/orderStatusStyle](../src/shared/orderStatusStyle) 이 정한다
+//  이름·색은 [shared/orderStatusStyle](../src/shared/orderStatusStyle) 한 곳이 정한다 —
+//  여기 있던 표가 그 주인이라 그대로 옮겼다(2026-09-06).
 
 /**
  * 카드 머리 띠 — 거래처명 줄에 **상태색 바탕**을 깐다. 카드를 멀리서 봐도 상태가 읽힌다.
  * 글자는 진한 쪽, 바탕은 옅은 쪽이라 이름이 묻히지 않는다.
  */
-const STATUS_HEAD: Record<string, string> = {
-  PENDING: 'bg-amber-100 text-amber-800',
-  PROCESSING: 'bg-sky-100 text-sky-800',
-  DISPATCHED: 'bg-emerald-100 text-emerald-800',
-  SHIPPED: 'bg-indigo-100 text-indigo-800',
-  DELIVERED: 'bg-slate-100 text-slate-600',
-};
+
 
 // ─── Props 타입 ───────────────────────────────────────────────────────────────
 
@@ -334,9 +321,9 @@ export const OrderCard = memo<OrderCardProps>(({
               onClick={(e) => e.stopPropagation()}
             >
               {([
-                [OrderStatus.PENDING,    '대기중',   'hover:bg-amber-50 text-amber-700'],
-                [OrderStatus.PROCESSING, '작업중',   'hover:bg-sky-50 text-sky-700'],
-                [OrderStatus.DISPATCHED, '작업완료', 'hover:bg-emerald-50 text-emerald-700'],
+                [OrderStatus.PENDING,    statusLabel(OrderStatus.PENDING),    'hover:bg-amber-50 text-amber-700'],
+                [OrderStatus.PROCESSING, statusLabel(OrderStatus.PROCESSING), 'hover:bg-sky-50 text-sky-700'],
+                [OrderStatus.DISPATCHED, statusLabel(OrderStatus.DISPATCHED), 'hover:bg-emerald-50 text-emerald-700'],
               ] as [OrderStatus, string, string][]).map(([st, label, cls]) => (
                 <button
                   key={st}
@@ -878,11 +865,11 @@ export const OrderCard = memo<OrderCardProps>(({
             className="flex-1 bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-2 text-[10px] font-black outline-none"
           >
             {([
-              [OrderStatus.PENDING, '대기중'],
-              [OrderStatus.PROCESSING, '작업중'],
-              [OrderStatus.DISPATCHED, '작업완료'],
-              [OrderStatus.ON_HOLD, '보류'],
-              [OrderStatus.SHIPPED, '출고'],
+              [OrderStatus.PENDING, statusLabel(OrderStatus.PENDING)],
+              [OrderStatus.PROCESSING, statusLabel(OrderStatus.PROCESSING)],
+              [OrderStatus.DISPATCHED, statusLabel(OrderStatus.DISPATCHED)],
+              [OrderStatus.ON_HOLD, statusLabel(OrderStatus.ON_HOLD)],
+              [OrderStatus.SHIPPED, statusLabel(OrderStatus.SHIPPED)],
             ] as [OrderStatus, string][]).map(([val, label]) => (
               <option key={val} value={val}>{label}</option>
             ))}
@@ -1075,17 +1062,25 @@ const DeliveryRow = memo<DeliveryRowProps>(({ order, partnerName, items, onToggl
 const defaultUnits: Record<string, number> = { pending_col: 2, processing_col: 2, dispatch_col: 1, shipped_col: 1 };
 const maxUnits: Record<string, number> = { pending_col: 2, processing_col: 3, dispatch_col: 2, shipped_col: 2 };
 
+//  칸 색은 상태에서 나온다 — [shared/orderStatusStyle](../src/shared/orderStatusStyle) 의
+//  `statusColumn` 이 점·배경·테두리·글자색을 한 벌로 낸다. 상태 색을 고치면 칸도 따라간다.
+const 칸 = (id: string, st: OrderStatus, icon: any, label?: string) => ({
+  id, icon, label: label ?? statusLabel(st), ...statusColumn(st),
+  statusFilter: [st], targetStatus: st as OrderStatus | undefined,
+});
+
 const activeConfigs = [
-  { id: 'pending_col',    label: '대기중',   icon: Clock,    color: 'bg-amber-500',   bgColor: 'bg-amber-50/50',   borderColor: 'border-amber-100',   textColor: 'text-amber-700',   statusFilter: [OrderStatus.PENDING],    targetStatus: OrderStatus.PENDING },
-  { id: 'processing_col', label: '작업중',   icon: Activity, color: 'bg-sky-500',     bgColor: 'bg-sky-50/50',     borderColor: 'border-sky-100',     textColor: 'text-sky-700',     statusFilter: [OrderStatus.PROCESSING], targetStatus: OrderStatus.PROCESSING },
+  칸('pending_col', OrderStatus.PENDING, Clock),
+  칸('processing_col', OrderStatus.PROCESSING, Activity),
 ];
 
 const deliveryExtraConfigs = [
-  { id: 'dispatch_col', label: '작업완료', icon: Truck,   color: 'bg-emerald-600', bgColor: 'bg-emerald-50/50', borderColor: 'border-emerald-100', textColor: 'text-emerald-700', statusFilter: [OrderStatus.DISPATCHED], targetStatus: OrderStatus.DISPATCHED },
-  { id: 'shipped_col',  label: '출고',    icon: Truck,   color: 'bg-indigo-500',  bgColor: 'bg-indigo-50/50',  borderColor: 'border-indigo-100',  textColor: 'text-indigo-700',  statusFilter: [OrderStatus.SHIPPED],   targetStatus: OrderStatus.SHIPPED },
+  칸('dispatch_col', OrderStatus.DISPATCHED, Truck),
+  칸('shipped_col', OrderStatus.SHIPPED, Truck),
 ];
 
-const historyConfig = { id: 'history_col', label: '예전 주문 이력', icon: History, color: 'bg-slate-700', bgColor: 'bg-slate-50/80', borderColor: 'border-slate-200', textColor: 'text-slate-700', statusFilter: [OrderStatus.DELIVERED], targetStatus: undefined };
+//  예전 주문 칸은 옮길 데가 없다 — targetStatus 를 비운다
+const historyConfig = { ...칸('history_col', OrderStatus.DELIVERED, History, '예전 주문 이력'), targetStatus: undefined };
 
 const OrdersList: React.FC<OrdersListProps> = ({
   title, subtitle, orders, partners, items, partnerItems, palletStocks, itemBoms = [],
@@ -1521,8 +1516,8 @@ const OrdersList: React.FC<OrdersListProps> = ({
                         <div key={o.id} className="px-5 py-3 border-b border-slate-50">
                           <div className="flex items-center gap-2 mb-2">
                             <span className="text-sm font-bold text-slate-700">{partnerName}</span>
-                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${o.status === OrderStatus.PROCESSING ? 'bg-sky-100 text-sky-600' : 'bg-amber-100 text-amber-600'}`}>
-                              {o.status === OrderStatus.PROCESSING ? '작업중' : '대기중'}
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${STATUS_COLOR[o.status]}`}>
+                              {statusLabel(o.status)}
                             </span>
                           </div>
                           <div className="space-y-1">
@@ -1661,9 +1656,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 <div>
                   <h3 className="font-black text-slate-900">{partnerName}</h3>
                   <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                    order.status === OrderStatus.PROCESSING ? 'bg-sky-100 text-sky-600' : 'bg-amber-100 text-amber-600'
+                    STATUS_COLOR[order.status]
                   }`}>
-                    {order.status === OrderStatus.PROCESSING ? '작업중' : '대기중'}
+                    {statusLabel(order.status)}
                   </span>
                 </div>
                 <button onClick={() => setPreviewOrderId(null)} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400">

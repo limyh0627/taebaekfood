@@ -15,16 +15,22 @@ import { COL, isKnownCollection } from './collections';
 const 파일들 = globSync('{components,src,scripts,functions/src}/**/*.{ts,tsx,mts}')
   .filter(f => !f.includes('.test.') && !f.replace(/\\/g, '/').endsWith('src/shared/collections.ts'));
 
-/** DB 를 부르는 자리에서 첫 인자로 쓴 글자 */
+/**
+ * DB 를 부르는 자리에서 첫 인자로 쓴 글자.
+ *
+ * **부르는 모양이 여럿이다** — 처음엔 `addItem` 계열만 봤다가
+ * `fetchWhere`·`setDocument`, 그리고 상수에 담아 쓰는 것(`const COL = 'dashboardLinks'`)을
+ * 놓쳤다(2026-09-06). 타입을 좁히고 나서야 컴파일러가 잡아 줬다.
+ */
 const 부르는곳 =
-  /(?:addItem|updateItem|deleteItem|adjustItemStock|fetchCollection|fetchDateRange|subscribeToCollection|subscribeToRecentCollection)\s*(?:<[^>]*>)?\s*\(\s*'([a-zA-Z_][\w]*)'|collection\(\s*db\s*,\s*'([a-zA-Z_][\w]*)'/g;
+  /(?:addItem|updateItem|deleteItem|adjustItemStock|setDocument|fetchCollection|fetchDateRange|fetchWhere|subscribeToCollection|subscribeToRecentCollection)\s*(?:<[^>]*>)?\s*\(\s*'([a-zA-Z_]\w*)'|collection\(\s*db\s*,\s*'([a-zA-Z_]\w*)'|const\s+COL\s*=\s*'([a-zA-Z_]\w*)'/gm;
 
 const 쓰는이름 = (): Map<string, string[]> => {
   const m = new Map<string, string[]>();
   for (const file of 파일들) {
     const src = readFileSync(file, 'utf8');
     for (const hit of src.matchAll(부르는곳)) {
-      const name = hit[1] ?? hit[2];
+      const name = hit[1] ?? hit[2] ?? hit[3];
       if (!name) continue;
       m.set(name, [...(m.get(name) ?? []), file]);
     }

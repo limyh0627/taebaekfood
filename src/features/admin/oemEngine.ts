@@ -8,6 +8,7 @@ export { itemKg };
 import { isBoxStockItem } from '../../shared/orderUnits';
 import { buildProductLot, withCarryOverProductLot, nextLotNo } from '../../shared/lotUtils';
 import { batchLoss, processingFee, sentKg } from './oem';
+import type { CollectionName } from '../../shared/collections';
 
 /**
  * OEM(임가공) 실행 엔진 — 재고·전표 쓰기. 의존성 주입으로 부수효과를 분리해 단위 테스트 가능.
@@ -25,8 +26,8 @@ export const OEM_DEFAULT_FEE_PER_KG = 500;    // 가공단가 기본값(원/kg) 
 export interface OemEngineDeps {
   items: Item[];
   adjustRawLots: (opts: { material: string; rawItemId: string; deltaKg: number; date: string; note: string; addedBy?: string; ledgerType?: 'auto' | 'manual' | 'correction' }) => Promise<void>;
-  updateItem: (collection: string, id: string, data: Record<string, any>) => Promise<any>;
-  addItem: (collection: string, data: Record<string, any>) => Promise<any>;
+  updateItem: (collection: CollectionName, id: string, data: Record<string, any>) => Promise<any>;
+  addItem: (collection: CollectionName, data: Record<string, any>) => Promise<any>;
   /** 원료식(BOM) — 가공입고분을 어느 원료 그룹에 kg으로 올릴지 결정 */
   buildFormula: (prodKey: string) => { raw: string; ratio: number }[];
   /** 이미 있는 전표 — 문서번호를 그날 순번으로 매기는 데 쓴다 */
