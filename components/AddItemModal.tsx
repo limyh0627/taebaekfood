@@ -8,6 +8,7 @@ import { baseRawName, PRODUCT_FORMULA } from '../src/constants/formula';
 import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 import { docName } from '../src/shared/docName';
 import { 묶음갈래of } from '../src/shared/orderUnits';
+import PickRow from '../src/shared/ui/PickRow';
 
 interface ProductModalProps {
   initialData?: Item;
@@ -458,98 +459,37 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                       onChange={e => { setVolNum(e.target.value); writeSpec(e.target.value, volUnit); }}
                       placeholder="예: 350" inputMode="decimal"
                       className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400"/>
-                    <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5 shrink-0">
-                      {SPEC_UNITS.map(u => (
-                        <button key={u} type="button" onClick={() => { setVolUnit(u); writeSpec(volNum, u); }}
-                          className={`px-2 py-1 rounded-lg text-[11px] font-black transition-all ${volUnit === u ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>{u}</button>
-                      ))}
-                    </div>
+                    {/* 단위도 드롭다운 — 네 개가 늘 자리를 먹어 숫자칸이 좁았다(2026-09-06 사장님) */}
+                    <select value={volUnit} onChange={e => { const u = e.target.value as typeof volUnit; setVolUnit(u); writeSpec(volNum, u); }}
+                      className="shrink-0 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer">
+                      {SPEC_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
                   </div>
                 </>)}
               </div>
             );
           })()}
 
-          {/* 타입 */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-              <Package size={14} className="mr-2" /> 타입
-            </label>
-            <div className="grid grid-cols-4 gap-1.5">
-              {typeList.map(({ key, label }) => {
-                const isSelected = formData.type === key;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setFormData({...formData, type: key as InventoryCategory, category: '', subtype: '' } as any)}
-                    className={`py-2 rounded-xl text-xs font-black border transition-all ${
-                      isSelected
-                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
-                        : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          {/* 타입 — 타입을 바꾸면 서브타입·카테고리 목록이 통째로 달라져서 고른 값을 비운다 */}
+          <PickRow label="타입" icon={<Package size={14} className="mr-2" />}
+            value={formData.type}
+            options={typeList.map(({ key, label }) => ({ key, label }))}
+            onPick={k => setFormData({ ...formData, type: k as InventoryCategory, category: '', subtype: '' } as any)} />
 
           {/* 서브타입 — 낱개/배송/선물세트. 분류 관리에서 정한 목록 */}
           {taxo.subtypesOf(formData.type).length > 0 && (
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Layers size={14} className="mr-2" /> 서브타입
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {taxo.subtypesOf(formData.type).map((sub: string) => {
-                  const isSelected = formData.subtype === sub;
-                  return (
-                    <button
-                      key={sub}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, subtype: isSelected ? '' : sub } as any)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all ${
-                        isSelected
-                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
-                          : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'
-                      }`}
-                    >
-                      {sub}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            <PickRow label="서브타입" icon={<Layers size={14} className="mr-2" />}
+              value={formData.subtype ?? ''} 빈값이름="선택 안 함"
+              options={taxo.subtypesOf(formData.type).map((sub: string) => ({ key: sub, label: sub }))}
+              onPick={k => setFormData({ ...formData, subtype: k } as any)} />
           )}
 
           {/* 카테고리 — 참기름/라벨/용기…. 분류 관리에서 정한 목록 */}
           {taxo.categoriesOf(formData.type).length > 0 && (
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-                <Tag size={14} className="mr-2" /> 카테고리
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {taxo.categoriesOf(formData.type).map((c: string) => {
-                  const isSelected = formData.category === c;
-                  return (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, category: isSelected ? '' : c })}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all ${
-                        isSelected
-                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
-                          : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'
-                      }`}
-                    >
-                      {c}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            <PickRow label="카테고리" icon={<Tag size={14} className="mr-2" />}
+              value={formData.category ?? ''} 빈값이름="선택 안 함"
+              options={taxo.categoriesOf(formData.type).map((c: string) => ({ key: c, label: c }))}
+              onPick={k => setFormData({ ...formData, category: k })} />
           )}
 
           {/* 단위 */}
@@ -615,7 +555,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
           {/* 과세 · 면세 — 면세 원료로 과세품을 만들면 매입세액을 못 빼 원가에 얹힌다(×1.1) */}
           <div className="space-y-2">
             <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-              <Tag size={14} className="mr-2" /> 과세 구분
+              <Tag size={14} className="mr-2" /> 부가세 구분 · 원가 계산용
             </label>
             <div className="flex gap-1.5">
               {(['과세', '면세'] as const).map(v => (
@@ -626,7 +566,14 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                 </button>
               ))}
             </div>
-            <p className="text-[11px] text-slate-400">면세 원료(참깨·들깨 등)로 과세품을 만들면 매입세액을 못 빼 원가에 10%가 얹힙니다.</p>
+            {/*  **전표에 찍히는 과세·면세가 아니다**(2026-09-06 사장님이 여기 있는 게 맞냐고
+                 물으셨다). 전표 세액은 거래처마다 따로 정한다(전표 화면의 과세·면세 단추).
+                 이 칸은 **원가 계산에만** 쓰인다 — 원료 8개 중 6개(참깨·들깨)가 면세다. */}
+            <p className="text-[11px] text-slate-400">
+              면세 원료(참깨·들깨 등)로 과세품을 만들면 매입세액을 못 빼 원가에 10%가 얹힙니다.
+              <br />
+              <span className="text-slate-400">전표에 찍히는 과세·면세는 <b>거래처마다 따로</b> 정합니다 — 여기 값은 원가에만 쓰입니다.</span>
+            </p>
           </div>
 
 

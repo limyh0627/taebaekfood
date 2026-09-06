@@ -159,13 +159,13 @@ const CategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {} }) => {
     kind: 'subtype' | 'category', title: string, icon: React.ReactNode,
     list: TaxonomyRow[], value: string, setValue: (s: string) => void, hint: string,
   ) => (
-    <div className="flex-1 flex flex-col min-h-0 border-l border-slate-100">
+    <div className="flex-1 flex flex-col min-h-0 border-t md:border-t-0 md:border-l border-slate-100">
       <div className="p-4 pb-2 shrink-0">
         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
           {icon} {title}
         </p>
       </div>
-      <div className="flex-1 overflow-y-auto px-4 space-y-1.5">
+      <div className="flex-1 md:overflow-y-auto px-4 space-y-1.5">
         {list.length === 0 && <p className="text-xs font-bold text-slate-300 py-6 text-center">{hint}</p>}
         {list.map((r, i) => {
           const n = usage[`${kind === 'subtype' ? 'sub' : 'cat'}:${sel}:${r.label}`] ?? 0;
@@ -205,7 +205,7 @@ const CategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {} }) => {
   return (
     <div className="fixed inset-0 z-[1200] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={close} />
-      <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col animate-in zoom-in-95 duration-200">
+      <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-4xl h-[88vh] md:h-[80vh] flex flex-col animate-in zoom-in-95 duration-200">
         <div className="p-5 border-b border-slate-100 flex items-center justify-between shrink-0">
           <div>
             <h3 className="text-base font-black text-slate-900">분류 관리</h3>
@@ -219,9 +219,12 @@ const CategoryManager: React.FC<Props> = ({ onClose, onSaved, usage = {} }) => {
         {loading ? (
           <div className="flex-1 flex items-center justify-center text-sm font-bold text-slate-400">불러오는 중…</div>
         ) : (
-          <div className="flex-1 flex min-h-0">
+          /*  **폰에서는 위아래로 쌓는다**(2026-09-06 사장님: "모바일 ui 수정 좀").
+              세 칸을 나란히 두니 폰에서 '타입' 이 한 글자씩 세로로 쪼개지고, 오른쪽
+              개수와 화살표가 화면 밖으로 밀려 나갔다. 넓은 화면(md~)은 그대로 셋을 나란히. */
+          <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-y-auto md:overflow-hidden">
             {/* 타입 */}
-            <div className="w-[38%] overflow-y-auto p-4 space-y-2">
+            <div className="w-full md:w-[38%] md:overflow-y-auto p-4 space-y-2 shrink-0">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5 mb-2">
                 <Layers size={12} /> 타입
               </p>
