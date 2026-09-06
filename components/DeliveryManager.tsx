@@ -226,6 +226,17 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
     return sM === eM ? `${yr}년 ${sM}월 ${sD}일 – ${eD}일` : `${yr}년 ${sM}월 ${sD}일 – ${eM}월 ${eD}일`;
   })();
 
+  /**
+   * **폰에서는 날짜를 눌러 창으로 본다**(2026-09-06 사장님: "날짜 눌러서 상세보기 창
+   * 뜨게 만들어").
+   *
+   * 한 주가 7칸이라 폰에서는 칸 하나가 50px 밖에 안 된다. 거기 요일·날짜·건수 배지·
+   * 거래처 칩을 다 넣으니 **글자가 한 글자씩 세로로 쪼개지고** 이름이 잘렸다.
+   * 좁은 화면에서는 칸에 날짜와 건수만 두고, 목록은 창으로 띄운다.
+   * 넓은 화면은 그대로 — 칸 안에서 끌어다 옮기는 게 되어야 한다.
+   */
+  const [dayModal, setDayModal] = useState<string | null>(null);
+
   const renderWeekCalendar = () => {
     const todayStr = toLocalDateStr(new Date());
     //  상태 색은 [shared/orderStatusStyle](../src/shared/orderStatusStyle) 한 곳이 정한다.
@@ -265,26 +276,33 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
 
       // 날짜 헤더 공통
       const dateHeader = (
-        <div className="flex justify-between items-center mb-2 flex-shrink-0">
-          <div className="flex flex-col items-start">
+        /*  폰에서는 세로로 쌓는다 — 한 칸이 50px 라 요일·날짜·배지를 나란히 두면
+            글자가 한 글자씩 세로로 쪼개진다(2026-09-06 사장님). */
+        <div className="flex flex-col items-center gap-0.5 sm:flex-row sm:justify-between sm:items-center mb-2 flex-shrink-0">
+          <div className="flex flex-col items-center sm:items-start">
             <span className="text-[10px] font-black text-slate-400 uppercase">{dayLabels[d.getDay()]}</span>
-            <span className={`text-lg font-black w-8 h-8 flex items-center justify-center rounded-full ${isToday ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-700 group-hover:text-indigo-600'}`}>
+            <span className={`text-base sm:text-lg font-black w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-full ${isToday ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-700 group-hover:text-indigo-600'}`}>
               {d.getDate()}
             </span>
           </div>
-          <div className="flex flex-col items-end gap-0.5">
+          <div className="flex flex-col items-center sm:items-end gap-0.5">
             {(isToday ? todayValidDelivery.length : dayOrders.length) > 0 && (
-              <span className="text-[10px] font-black text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-md">
+              <span className="text-[10px] font-black text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-md whitespace-nowrap">
                 {isToday ? todayValidDelivery.length : dayOrders.length}건
               </span>
             )}
             {deliveredOrders.length > 0 && (
               <button
                 onClick={e => { e.stopPropagation(); toggleDeliveredDate(dateStr); }}
-                className="text-[10px] font-black text-slate-400 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded-md transition-all"
+                className="hidden sm:block text-[10px] font-black text-slate-400 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded-md transition-all whitespace-nowrap"
               >
                 이전 {deliveredOrders.length}건
               </button>
+            )}
+            {deliveredOrders.length > 0 && (
+              <span className="sm:hidden text-[10px] font-black text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md whitespace-nowrap">
+                +{deliveredOrders.length}
+              </span>
             )}
           </div>
         </div>
@@ -295,11 +313,13 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
         return (
           <div
             key={dateStr}
-            className="border-r border-slate-100 p-3 flex flex-col bg-indigo-50/30"
+            className="border-r border-slate-100 p-1.5 sm:p-3 flex flex-col bg-indigo-50/30 relative"
             style={{ minHeight: 200 }}
           >
+            <button type="button" onClick={() => setDayModal(dateStr)}
+              className="sm:hidden absolute inset-0 z-10" aria-label={`${d.getDate()}일 배송 보기`} />
             {dateHeader}
-            <div className="flex-1 flex flex-col gap-1 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+            <div className="hidden sm:flex flex-1 flex-col gap-1 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
               {todayValidDelivery.length === 0 ? (
                 <p className="text-center text-[10px] text-slate-300 font-bold py-4">배송순서 미설정</p>
               ) : (
@@ -386,11 +406,13 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
           key={dateStr}
           onDragOver={handleDragOver}
           onDrop={(e) => handleDrop(e, dateStr)}
-          className="border-r border-slate-100 p-3 flex flex-col transition-all hover:bg-indigo-50/30 group bg-white"
+          className="border-r border-slate-100 p-1.5 sm:p-3 flex flex-col transition-all hover:bg-indigo-50/30 group bg-white relative"
           style={{ minHeight: 200 }}
         >
+          <button type="button" onClick={() => setDayModal(dateStr)}
+            className="sm:hidden absolute inset-0 z-10" aria-label={`${d.getDate()}일 배송 보기`} />
           {dateHeader}
-          <div className="flex-1 space-y-1.5 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+          <div className="hidden sm:block flex-1 space-y-1.5 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
             {dayOrders.map(order => {
               const progress = order.items.length > 0
                 ? Math.round((order.items.filter(i => i.checked).length / order.items.length) * 100) : 0;
@@ -450,31 +472,41 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
           key={day}
           onDragOver={handleDragOver}
           onDrop={(e) => handleDrop(e, dateStr)}
-          className={`border-b border-r border-slate-100 p-2 transition-all hover:bg-indigo-50/30 group relative ${isToday ? 'bg-indigo-50/20' : compact ? 'bg-slate-50/40' : 'bg-white'}`}
+          className={`border-b border-r border-slate-100 p-1.5 sm:p-2 transition-all hover:bg-indigo-50/30 group relative ${isToday ? 'bg-indigo-50/20' : compact ? 'bg-slate-50/40' : 'bg-white'}`}
           style={{ minHeight: compact ? 36 : 110 }}
         >
-          <div className="flex justify-between items-center">
-            <span className={`text-xs font-black w-6 h-6 flex items-center justify-center rounded-full ${isToday ? 'bg-indigo-600 text-white shadow-md' : compact ? 'text-slate-300' : 'text-slate-400 group-hover:text-indigo-600'}`}>
+          {/*  폰에서는 칸을 통째로 누르면 그날 상세가 창으로 뜬다 — 칸이 50px 라
+               목록을 넣으면 글자가 세로로 쪼개진다. 넓은 화면에서는 안 덮는다(끌어 옮기기). */}
+          <button type="button" onClick={() => setDayModal(dateStr)}
+            className="sm:hidden absolute inset-0 z-10" aria-label={`${day}일 배송 보기`} />
+          {/*  폰에서는 날짜 밑에 건수를 놓는다 — 옆에 두면 칸이 좁아 배지가 날짜를 밀어낸다. */}
+          <div className="flex flex-col items-center sm:flex-row sm:justify-between sm:items-center gap-0.5">
+            <span className={`text-xs font-black w-6 h-6 flex items-center justify-center rounded-full shrink-0 ${isToday ? 'bg-indigo-600 text-white shadow-md' : compact ? 'text-slate-300' : 'text-slate-400 group-hover:text-indigo-600'}`}>
               {day}
             </span>
             <div className="flex items-center gap-1">
               {dayOrders.length > 0 && (
-                <span className="text-[10px] font-black text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-md">
+                <span className="text-[10px] font-black text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-md whitespace-nowrap">
                   {dayOrders.length}건
                 </span>
               )}
               {deliveredOrders.length > 0 && (
                 <button
                   onClick={e => { e.stopPropagation(); toggleDeliveredDate(dateStr); }}
-                  className="text-[10px] font-black text-slate-400 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded-md transition-all"
+                  className="hidden sm:block text-[10px] font-black text-slate-400 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded-md transition-all whitespace-nowrap"
                 >
                   이전 {deliveredOrders.length}건
                 </button>
               )}
+              {deliveredOrders.length > 0 && (
+                <span className="sm:hidden text-[10px] font-black text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md whitespace-nowrap">
+                  +{deliveredOrders.length}
+                </span>
+              )}
             </div>
           </div>
           {dayOrders.length > 0 && (
-            <div className="mt-1 space-y-1 overflow-y-auto" style={{ maxHeight: 110, scrollbarWidth: 'thin' }}>
+            <div className="hidden sm:block mt-1 space-y-1 overflow-y-auto" style={{ maxHeight: 110, scrollbarWidth: 'thin' }}>
               {dayOrders.map(order => {
                 const progress = order.items.length > 0
                   ? Math.round((order.items.filter(i => i.checked).length / order.items.length) * 100)
@@ -495,7 +527,7 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
             </div>
           )}
           {showDelivered && deliveredOrders.length > 0 && (
-            <div className="mt-1 space-y-1 overflow-y-auto border-t border-slate-100 pt-1" style={{ maxHeight: 80, scrollbarWidth: 'thin' }}>
+            <div className="hidden sm:block mt-1 space-y-1 overflow-y-auto border-t border-slate-100 pt-1" style={{ maxHeight: 80, scrollbarWidth: 'thin' }}>
               {deliveredOrders.map(order => (
                 <div
                   key={order.id}
@@ -988,6 +1020,56 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
           </>}
         </div>
       )}
+
+      {/*  **하루 상세 창** — 폰에서 날짜를 누르면 뜬다(2026-09-06 사장님).
+           칸이 좁아 목록을 못 넣으니 여기서 다 보여준다. 주문을 누르면 원래 상세로 넘어간다. */}
+      {dayModal && (() => {
+        const 진행 = deliverySchedules[dayModal] || [];
+        const 완료 = deliveredSchedules[dayModal] || [];
+        const d = new Date(dayModal + 'T00:00:00');
+        const 제목 = `${d.getMonth() + 1}월 ${d.getDate()}일 (${dayLabels[d.getDay()]})`;
+        const 줄 = (order: Order, done: boolean) => {
+          const progress = order.items.length > 0
+            ? Math.round((order.items.filter(i => i.checked).length / order.items.length) * 100) : 0;
+          return (
+            <button key={order.id} type="button"
+              onClick={() => { setDayModal(null); handleOrderClick(order); }}
+              className={`w-full text-left text-xs font-bold py-2.5 px-3 rounded-xl border flex justify-between items-center gap-2 transition-all active:scale-[0.98] ${
+                done ? 'bg-slate-50 border-slate-200 text-slate-400' : statusChip(order.status)}`}>
+              <span className="flex-1 min-w-0 break-keep">{order.partnerName}</span>
+              <span className="shrink-0 opacity-70">{done ? '완료' : `${progress}%`}</span>
+            </button>
+          );
+        };
+        return (
+          <div className="fixed inset-0 z-[1200] flex items-end sm:items-center justify-center p-0 sm:p-4">
+            <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setDayModal(null)} />
+            <div className="relative bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-md max-h-[80vh] flex flex-col">
+              <div className="p-5 border-b border-slate-100 flex items-center justify-between shrink-0">
+                <div>
+                  <h3 className="text-base font-black text-slate-900">{제목}</h3>
+                  <p className="text-[11px] text-slate-400 font-bold mt-0.5">
+                    배송 {진행.length}건{완료.length > 0 && ` · 이전 ${완료.length}건`}
+                  </p>
+                </div>
+                <button onClick={() => setDayModal(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                {진행.length === 0 && 완료.length === 0 && (
+                  <p className="py-12 text-center text-sm font-bold text-slate-300">이 날은 배송이 없습니다.</p>
+                )}
+                {진행.map(o => 줄(o, false))}
+                {완료.length > 0 && (
+                  <>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest pt-3 pb-1">이전 배송</p>
+                    {완료.map(o => 줄(o, true))}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {deliveryTab === '배송일정관리' && <div className="space-y-6">
         <div className="flex items-center space-x-3">
