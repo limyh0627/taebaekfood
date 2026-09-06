@@ -8,6 +8,7 @@ import { today, addDays as plusDays } from '../src/shared/day';
 import { marginFromSupply } from '../src/shared/margin';
 import { lineAmountFromSupply } from '../src/shared/lineAmount';
 import { isSaleTaxExempt } from '../src/shared/partnerPrice';
+import { boxDerivedUnitPrice } from '../src/shared/orderUnits';
 
 /**
  * **견적서** — 팔기 전에 얼마에 줄지 적어 내미는 종이.
@@ -140,9 +141,21 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
   const totals = quoteTotals(form.lines);
   const companyName = COMPANIES.find(c => c.id === companyId)?.name ?? '';
 
-  /** 그 거래처에 등록된 단가 — 있으면 기본값으로 쓴다 */
-  const priceFor = (itemId: string) =>
-    partnerItems.find(p => p.itemId === itemId && p.partnerId === form.partnerId && p.Direction !== 'in')?.price;
+  /**
+   * 그 거래처에 등록된 단가 — 있으면 기본값으로 쓴다.
+   *
+   * **박스는 낱개 단가 × 개입수다**(2026-09-06 사장님이 마진 −523% 를 보고 물으셨다).
+   * 박스 품목엔 단가를 안 박고 낱개만 관리한다(shared/orderUnits). 견적서만 그 규칙을
+   * 안 따라서, 박스 품목에 낱개 단가가 붙은 채 박스 원가(12병 값)와 견줘 마진이
+   * 수백 % 밑진 것처럼 나왔다. 주문 넣기·전표와 같은 차례로 맞춘다 —
+   * **저장된 값 > 낱개 × 개입수**.
+   */
+  const priceFor = (itemId: string) => {
+    const 붙은값 = partnerItems.find(p => p.itemId === itemId && p.partnerId === form.partnerId && p.Direction !== 'in')?.price;
+    if (typeof 붙은값 === 'number' && 붙은값 > 0) return 붙은값;
+    const it = items.find(i => i.id === itemId);
+    return form.partnerId ? boxDerivedUnitPrice(it, form.partnerId, partnerItems as never) : undefined;
+  };
   const costFor = (it: Item) => Math.round(costOf?.(it) ?? Number(it.cost ?? 0));
 
   const resetForm = (base?: Quotation) => setForm({
@@ -445,7 +458,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
             {/* 크기 고정 — 검색으로 줄 수가 줄어도 창이 안 흔들린다.
                  가로는 밀어서 본다 — 폰에서 품목 칸이 눌리면 이름이 안 보인다(2026-09-05) */}
             <div className="flex-1 overflow-y-auto overflow-x-auto">
-              <div className="grid grid-cols-[minmax(150px,1fr)_100px_100px_100px] min-w-[460px] bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest sticky top-0">
+              <div className="hidden sm:grid grid-cols-[minmax(150px,1fr)_100px_100px_100px] min-w-[460px] bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest sticky top-0">
                 <span className="px-4 py-2">품목</span>
                 <span className="px-3 py-2 text-right">원가</span>
                 <span className="px-3 py-2 text-right">등록 단가</span>
@@ -467,20 +480,30 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                       });
                       setPickIdx(null);
                     }}
-                    className="w-full grid grid-cols-[minmax(150px,1fr)_100px_100px_100px] min-w-[460px] items-center border-t border-slate-50 hover:bg-indigo-50/70 text-left">
-                    <span className="px-4 py-2 min-w-0">
-                      <span className="text-xs font-bold text-slate-800 truncate block">
+                    className="w-full sm:grid sm:grid-cols-[minmax(150px,1fr)_100px_100px_100px] sm:min-w-[460px] sm:items-center border-t border-slate-50 hover:bg-indigo-50/70 text-left">
+                    {/*  폰에서는 **이름 한 줄, 숫자 한 줄**이다(2026-09-06 사장님).
+                         네 칸을 나란히 두니 460px 가 필요해 가로로 밀어야 했고, 그러면
+                         품목명이 화면 밖으로 나가 무엇을 고르는지 안 보였다.
+                         `sm:contents` 로 넓은 화면에서는 감싼 것이 사라져 원래 표가 된다. */}
+                    <span className="block px-4 pt-2 sm:py-2 min-w-0">
+                      <span className="text-xs font-bold text-slate-800 break-keep sm:truncate sm:block">
                         {x.name}
                         {linked && <span className="ml-1.5 text-[10px] font-black text-indigo-500">거래중</span>}
                         {isSaleTaxExempt(partnerItems, x.id) && <span className="ml-1 text-[10px] font-black text-slate-400">면세</span>}
                       </span>
-                      <span className="text-[10px] text-slate-400">{x.spec ?? ''}{x.unit ? ` · ${x.unit}` : ''}</span>
+                      <span className="block text-[10px] text-slate-400">{x.spec ?? ''}{x.unit ? ` · ${x.unit}` : ''}</span>
                     </span>
-                    <span className="px-3 py-2 text-right text-xs font-bold text-slate-500 tabular-nums">{c > 0 ? fmt(c) : '—'}</span>
-                    <span className="px-3 py-2 text-right text-xs font-bold text-slate-700 tabular-nums">{p !== undefined ? fmt(p) : '—'}</span>
-                    <span className={`px-3 py-2 text-right text-xs font-black tabular-nums ${rt == null ? 'text-slate-300' : rt < 0 ? 'text-rose-500' : 'text-emerald-600'}`}>
-                      {rt == null ? '—' : `${(rt * 100).toFixed(1)}%`}
-                    </span>
+                    <div className="flex justify-between gap-2 px-4 pb-2 sm:contents">
+                      <span className="sm:px-3 sm:py-2 text-right text-xs font-bold text-slate-500 tabular-nums">
+                        <span className="sm:hidden text-[9px] font-black text-slate-300 mr-1">원가</span>{c > 0 ? fmt(c) : '—'}
+                      </span>
+                      <span className="sm:px-3 sm:py-2 text-right text-xs font-bold text-slate-700 tabular-nums">
+                        <span className="sm:hidden text-[9px] font-black text-slate-300 mr-1">단가</span>{p !== undefined ? fmt(p) : '—'}
+                      </span>
+                      <span className={`sm:px-3 sm:py-2 text-right text-xs font-black tabular-nums ${rt == null ? 'text-slate-300' : rt < 0 ? 'text-rose-500' : 'text-emerald-600'}`}>
+                        <span className="sm:hidden text-[9px] font-black text-slate-300 mr-1">마진</span>{rt == null ? '—' : `${(rt * 100).toFixed(1)}%`}
+                      </span>
+                    </div>
                   </button>
                 );
               })}
