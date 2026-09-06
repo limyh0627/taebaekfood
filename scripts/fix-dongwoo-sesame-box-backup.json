@@ -1,0 +1,23 @@
+{
+  "b10Stock": 45,
+  "b20Stock": -12,
+  "orderItems": [
+    {
+      "mfgDate": "2026-08-09",
+      "name": "볶음참깨/1kg",
+      "itemId": "p-1785907940315",
+      "price": 0,
+      "quantity": 5
+    },
+    {
+      "boxType": "",
+      "unitsPerBox": 12,
+      "name": "참진한기름",
+      "isBoxUnit": true,
+      "boxQuantity": 4,
+      "quantity": 48,
+      "itemId": "f1",
+      "price": 0
+    }
+  ]
+}

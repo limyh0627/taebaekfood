@@ -5,6 +5,7 @@ import { Item, PartnerItem, Order, Partner, OrderSource, OrderItem, OrderPallet 
 import { bomOf } from '../src/shared/bomIndex';
 import { sellsTo } from '../src/shared/partnerRole';
 import { channelStyle } from '../src/shared/channelStyle';
+import { isSmartStoreItem } from '../src/shared/partnerPrice';
 
 // ── 퍼지 매칭 ───────────────────────────────────────────────
 const getBigrams = (s: string) => {
@@ -18,13 +19,26 @@ const bigramSim = (a: string, b: string) => {
   if (!ba.size || !bb.size) return 0;
   return (2 * [...ba].filter(x => bb.has(x)).length) / (ba.size + bb.size);
 };
-const scoreProduct = (name: string, query: string): number => {
-  const pn = name.toLowerCase().replace(/\s+/g, '');
-  const q  = query.toLowerCase().replace(/\s+/g, '');
+/**
+ * 붙여넣은 글과 품목이 얼마나 닮았나.
+ *
+ * **이름만 보면 안 된다** — 낱개와 그 박스들이 **같은 이름**을 쓴다(`볶음참깨/1kg`).
+ * 규격으로만 갈리므로 이름만 보면 점수가 같아 아무거나 잡힌다.
+ * 그래서 이름과 `이름 규격` 둘 다 재서 높은 쪽을 쓴다.
+ */
+const scoreOne = (target: string, q: string): number => {
+  const pn = target.toLowerCase().replace(/\s+/g, '');
   if (!q) return 0;
   if (pn === q) return 1;
   if (pn.includes(q) || q.includes(pn)) return 0.85;
   return bigramSim(pn, q);
+};
+
+const scoreProduct = (product: { name: string; spec?: string }, query: string): number => {
+  const q = query.toLowerCase().replace(/\s+/g, '');
+  const 이름 = scoreOne(product.name, q);
+  const 규격까지 = product.spec ? scoreOne(`${product.name} ${product.spec}`, q) : 0;
+  return Math.max(이름, 규격까지);
 };
 
 type ParsedLine = {
@@ -47,7 +61,7 @@ const parseLine = (line: string, pool: Item[]): ParsedLine => {
   }
   const rawName = line.replace(/\d+(?:\.\d+)?\s*(?:박스|box|개|kg|g|L|ml|l)(?=\s|$)/gi, '').trim();
   const scored = pool
-    .map(p => ({ product: p, score: scoreProduct(p.name, rawName) }))
+    .map(p => ({ product: p, score: scoreProduct(p, rawName) }))
     .sort((a, b) => b.score - a.score);
   return {
     rawText: line,
@@ -114,20 +128,32 @@ const PasteOrderModal: React.FC<PasteOrderModalProps> = ({
   const [pallets] = useState<OrderPallet[]>([]);
 
   // 거래처별 품목 풀 — 거래처에 연결된 품목만 포함
+  /**
+   * 붙여넣은 글에서 찾아볼 품목들.
+   *
+   * **전에는 아무것도 안 나왔다**(2026-09-06) — `p.type !== '완제품'` 으로 걸렀는데
+   * 타입 값은 `product` 다('완제품'은 화면에 보이는 이름이다). `향미유`·`고춧가루` 도
+   * 타입이 아니라 **카테고리**라 마찬가지였다. 셋 다 늘 거짓이라 목록이 비어 있었다.
+   *
+   * 연결 판정도 주문 화면과 **같은 규칙**을 쓴다 — 거기는 `partner_item` 도 보는데
+   * 여기는 `partnerIds` 만 봐서, 품목연결로 붙인 것이 통째로 빠졌다.
+   */
+  const partnerOutIds = useMemo(
+    () => new Set((partnerItems ?? [])
+      .filter((r: any) => r.partnerId === selectedClient?.id && r.Direction !== 'in')
+      .map((r: any) => String(r.itemId))),
+    [partnerItems, selectedClient?.id]);
+
   const productPool = useMemo(() => {
     if (!selectedClient) return [];
-    const finished = items.filter(p => {
-      if (p.type !== '완제품') return false;
-      if (p.partnerIds?.includes(selectedClient.id)) return true;
-      if (selectedClient.type === '스마트스토어' && (p.partnerIds?.includes('SMARTSTORE') || p.isSmartStore)) return true;
+    return items.filter(p => {
+      if (p.archived) return false;
+      if (p.type !== 'product' && p.type !== 'goods') return false;
+      if (partnerOutIds.has(p.id)) return true;
+      if (selectedClient.type === '스마트스토어' && isSmartStoreItem(p)) return true;
       return false;
     });
-    const hyangmiyu = selectedClient.type !== '스마트스토어'
-      ? items.filter(p => p.type === '향미유') : [];
-    const gochu = selectedClient.type !== '스마트스토어'
-      ? items.filter(p => p.type === '고춧가루') : [];
-    return [...finished, ...hyangmiyu, ...gochu];
-  }, [products, selectedClient]);
+  }, [items, partnerOutIds, selectedClient]);
 
   const filteredClients = useMemo(() => {
     if (!searchTerm.trim()) return [];

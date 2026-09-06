@@ -2,6 +2,7 @@
 import { Order, Partner, Item } from '../src/shared/types';
 import { TrendingUp, Users, RefreshCw, ChevronDown, ChevronUp, Tag, Check, X } from 'lucide-react';
 import PageHeader from './PageHeader';
+import { isSmartStoreItem } from '../src/shared/partnerPrice';
 
 interface Props {
   orders: Order[];
@@ -44,7 +45,7 @@ export default function SmartStoreAnalytics({ orders, partners, items, onUpdateI
 
   const ssProducts = useMemo(
     () => items.filter(p =>
-      p.isSmartStore === true || p.partnerIds?.includes('SMARTSTORE')
+      isSmartStoreItem(p)
     ).sort((a, b) => a.name.localeCompare(b.name, 'ko')),
     [items]
   );

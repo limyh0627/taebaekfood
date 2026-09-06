@@ -278,7 +278,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       ...(isProductCategory && formData.partnerBoxConfigs.length > 0 && { partnerBoxConfigs: formData.partnerBoxConfigs }),
       ...(effectiveSpec && { spec: effectiveSpec }),
       ...(formData.품목 && { 품목: formData.품목 }),
-      ...(formData.type === 'product' && formData.partnerIds.length > 0 && { partnerIds: formData.partnerIds }),
+      //  **거래처 연결은 partner_item 에만 쓴다**(2026-09-06) — 옛 칸(partnerIds)에
+      //  같이 쓰다가 둘이 어긋나 동우 볶음참깨가 10개입 대신 20개입으로 주문됐다.
       ...(formData.type === 'product' && { isSmartStore: formData.isSmartStore }),
       ...((formData.type === 'wip' || formData.type === 'raw') && { phantom: !!formData.phantom }),
       costSource: formData.costSource,

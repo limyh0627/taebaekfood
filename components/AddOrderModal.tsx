@@ -12,6 +12,7 @@ import { bomOf, packingSubmaterials } from '../src/shared/bomIndex';
 import { sellsTo } from '../src/shared/partnerRole';
 import { channelStyle, isDeliveryChannel } from '../src/shared/channelStyle';
 import { DEFAULT_CATEGORY_LABELS } from '../src/shared/taxonomy';
+import { isSmartStoreItem } from '../src/shared/partnerPrice';
 
 interface AddOrderModalProps {
   items: Item[];
@@ -140,10 +141,10 @@ const AddOrderModal: React.FC<AddOrderModalProps> = ({ items, partners, partnerI
     [partnerOut, selectedClient?.id]);
   const orderableForClient = (p: Item): boolean => {
     if (!selectedClient) return false;
-    if (p.partnerIds?.includes(selectedClient.id)) return true;
+    //  **연결은 partner_item 하나가 근거다**(2026-09-06). 옛 방식(items.partnerIds)도
+    //  같이 보다가 둘이 어긋나 동우 볶음참깨가 10개입 대신 20개입으로 주문됐다.
     if (partnerOutIds.has(p.id)) return true;
-    if (selectedClient.type === '스마트스토어' && p.partnerIds?.includes('SMARTSTORE')) return true;
-    if (selectedClient.type === '스마트스토어' && p.isSmartStore) return true;
+    if (selectedClient.type === '스마트스토어' && isSmartStoreItem(p)) return true;
 
     return false;
   };

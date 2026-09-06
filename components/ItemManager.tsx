@@ -18,6 +18,7 @@ import { priceParts } from '../src/shared/lineAmount';
 import { buysFrom, sellsTo } from '../src/shared/partnerRole';
 import { channelStyle } from '../src/shared/channelStyle';
 import FilterRow from '../src/shared/ui/FilterRow';
+import { partnersOfItem, isLinkedToPartner } from '../src/shared/partnerPrice';
 
 interface ItemManagerProps {
   items: Item[];
@@ -330,7 +331,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
         const items = prods.map(p => ({
           product: p,
           pcs: pcByProduct[p.id] || [],
-          directClients: [...new Set([...(p.partnerIds || [])])],
+          directClients: partnersOfItem(partnerItems, p.id),
           subMap,
         }));
         return { key, name: key.split('||')[0], subs: bomOf(prods[0].id), items };
@@ -389,11 +390,11 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
       : selectedClientId
         ? isByClientPurchase
           ? items.filter(p => !p.archived && partnerIn.some(ps => (ps.itemId) === p.id && (ps.partnerId) === selectedClientId))
-          : items.filter(p => !p.archived && (partnerAllCats || p.type === activeCategory) && (p.partnerIds ?? []).includes(selectedClientId))
+          : items.filter(p => !p.archived && (partnerAllCats || p.type === activeCategory) && isLinkedToPartner(partnerItems, selectedClientId, p.id))
         : [];
 
     if (showNoClient) {
-      result = result.filter(p => (p.partnerIds ?? []).length === 0);
+      result = result.filter(p => partnersOfItem(partnerItems, p.id).length === 0);
     }
 
     //  고른 만큼만 좁힌다 — 안 고른 단은 거르지 않는다.
@@ -407,7 +408,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
       if (mainView === 'flat') {
         result = result.filter(p =>
           p.name.toLowerCase().includes(term) ||
-          partners.some(c => (p.partnerIds ?? []).includes(c.id) && c.name.toLowerCase().includes(term))
+          partners.some(c => isLinkedToPartner(partnerItems, c.id, p.id) && c.name.toLowerCase().includes(term))
         );
       } else {
         result = result.filter(p => p.name.toLowerCase().includes(term) || p.id.toLowerCase().includes(term));
@@ -516,7 +517,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
     //  **items 전체**를 본다 — products는 완제품만이라 goods·wip·raw·부자재가 통째로 빠졌다.
     return items
       .filter(p => !p.archived)
-      .filter(p => p.type === linkCategory && (alreadyLinked ? !alreadyLinked.has(p.id) : !(p.partnerIds ?? []).includes(selectedClientId)))
+      .filter(p => p.type === linkCategory && (alreadyLinked ? !alreadyLinked.has(p.id) : !isLinkedToPartner(partnerItems, selectedClientId, p.id)))
       .filter(p => !term || matchKo(p.name, term))   // 다른 검색과 같게 초성으로도 찾는다
       .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
   }, [items, selectedClientId, linkCategory, linkSearch, partnerScopeTab, partnerIn]);
@@ -874,7 +875,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                             'bg-teal-100 text-teal-700','bg-orange-100 text-orange-700','bg-pink-100 text-pink-700',
                           ];
                           const partnerList = partners.filter(sellsTo);
-                          const matched = (item.partnerIds ?? []).map(id => partnerList.find(c => c.id === id)).filter(Boolean) as typeof partnerList;
+                          const matched = partnersOfItem(partnerItems, item.id).map(id => partnerList.find(c => c.id === id)).filter(Boolean) as typeof partnerList;
                           if (!matched.length) return <span className="text-slate-200">-</span>;
                           const isExp = expandedClientRowId === item.id;
                           const shown = isExp ? matched : matched.slice(0, 1);

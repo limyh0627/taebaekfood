@@ -62,6 +62,7 @@ import { storage, db } from '../src/shared/firebase';
 import { withCarryOverLot, buildReceiveLot, nextLotNo, deductFromLots, settleCarryOver, lotQtyRemaining } from '../src/shared/lotUtils';
 import { isBackdated, latestAnchorDate } from '../src/shared/rawLedgerBalance';
 import FilterRow from '../src/shared/ui/FilterRow';
+import { partnersOfItem } from '../src/shared/partnerPrice';
 
 /**
  * 등급(골드·A·분·특·특A·원액) — 이름 토큰으로 짚는다. 품목에 등급 칸이 따로 없다.
@@ -328,8 +329,8 @@ const ItemList: React.FC<ItemListProps> = ({
       if (!itemId || !nm) return;
       m.set(itemId, m.has(itemId) ? `${m.get(itemId)} ${nm}` : nm);
     };
+    //  연결은 partner_item 하나가 근거다 — 옛 방식(items.partnerIds)은 걷어냈다(2026-09-06)
     for (const pi of partnerItems) if (pi.Direction === 'out') add(pi.itemId, pi.partnerId);
-    for (const p of items) for (const cid of (p.partnerIds ?? [])) add(p.id, cid);
     return m;
   }, [partnerItems, partners, items]);
   /**
@@ -930,7 +931,8 @@ const ItemList: React.FC<ItemListProps> = ({
         if ((p.spec ?? '').toLowerCase().includes(q)) return true;
         const inboundPartnerName = inboundPartners.find(s => s.id === psMap.get(p.id))?.name || '';
         if (inboundPartnerName.toLowerCase().includes(q)) return true;
-        const hasPartnerMatch = (p.partnerIds ?? []).some(cid => partners.find(c => c.id === cid)?.name.toLowerCase().includes(q));
+        //  연결은 partner_item 하나가 근거다(2026-09-06)
+        const hasPartnerMatch = partnersOfItem(partnerItems, p.id).some(cid => partners.find(c => c.id === cid)?.name.toLowerCase().includes(q));
         return hasPartnerMatch;
       });
     }
@@ -1811,11 +1813,12 @@ const ItemList: React.FC<ItemListProps> = ({
                       <td className="px-4 py-3 hidden sm:table-cell" onClick={e => e.stopPropagation()}>
                         {normCat(product.type) === '완제품' ? (
                           // 완제품: 매출처 (Direction='out', partnerIds 기반)
-                          product.partnerIds && product.partnerIds.length > 0 ? (() => {
+                          (() => { const 걸린곳 = partnersOfItem(partnerItems, product.id); return 걸린곳.length > 0; })() ? (() => {
+                            const 걸린곳 = partnersOfItem(partnerItems, product.id);
                             const isExp = expandedClientRowId === product.id;
-                            const sorted = priorityClientId && product.partnerIds.includes(priorityClientId)
-                              ? [priorityClientId, ...product.partnerIds.filter(id => id !== priorityClientId)]
-                              : product.partnerIds;
+                            const sorted = priorityClientId && 걸린곳.includes(priorityClientId)
+                              ? [priorityClientId, ...걸린곳.filter(id => id !== priorityClientId)]
+                              : 걸린곳;
                             const shown = isExp ? sorted : sorted.slice(0, 1);
                             return (
                               <div className="flex flex-wrap gap-1 items-center">
@@ -1825,8 +1828,8 @@ const ItemList: React.FC<ItemListProps> = ({
                                   if (!cname) return null;
                                   return <span key={cid} className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${CLIENT_BADGE_COLORS[cIdx % CLIENT_BADGE_COLORS.length]}`}>{cname}</span>;
                                 })}
-                                {!isExp && product.partnerIds.length > 1 && (
-                                  <button onClick={() => setExpandedClientRowId(product.id)} className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 transition-colors">+{product.partnerIds.length - 1}</button>
+                                {!isExp && 걸린곳.length > 1 && (
+                                  <button onClick={() => setExpandedClientRowId(product.id)} className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 transition-colors">+{걸린곳.length - 1}</button>
                                 )}
                                 {isExp && (
                                   <button onClick={() => setExpandedClientRowId(null)} className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 transition-colors">접기</button>

@@ -13,7 +13,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { Partner, Item, PartnerItem, Order, OrderStatus, OrderSource, OrderItem } from '../types';
-import { salePriceOf } from '../src/shared/partnerPrice';
+import { isLinkedToPartner, salePriceOf } from '../src/shared/partnerPrice';
 
 interface PartnerPortalProps {
   partners: Partner[];
@@ -49,7 +49,7 @@ const PartnerPortal: React.FC<PartnerPortalProps> = ({ partners, items, partnerI
     if (!selectedClient) return [];
     return items.filter(p => 
       p.type === 'product' &&
-      (!p.partnerIds?.length || p.partnerIds.includes(selectedClient.id))
+      isLinkedToPartner(partnerItems, selectedClient.id, p.id)
     );
   }, [items, selectedClient]);
 

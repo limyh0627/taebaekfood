@@ -5,6 +5,40 @@
 
 ---
 
+## 2026-09-06 — 거래처-품목 연결의 옛 방식(`items.partnerIds`) 걷어냄
+
+**작업자:** Claude 에이전트 (사장님 지시: "옛방식은 정리")
+**스크립트:** `scripts/fix-drop-legacy-partnerids.mts` (`--apply`), 백업 `scripts/fix-drop-legacy-partnerids-backup.json`
+
+거래처-품목 연결이 **두 벌**로 있었다 - 새 방식인 `partner_item` 컬렉션과,
+품목 문서 안에 배열로 든 옛 방식 `items.partnerIds`. 두 벌이 어긋나도 화면엔
+아무 표시가 안 났다.
+
+**실제로 한 건이 어긋나 있었다.** 동우 볶음참깨는 `partner_item` 으론 10개입에
+연결돼 있는데 옛 배열은 20개입을 가리켰다. 그래서 9/1 주문 5박스가
+**20개입 재고에서 차감됐다** (같은 날 `fix-dongwoo-sesame-box.mts` 로 정정).
+
+재 본 값: 연결 561개 중 554개는 두 벌 다 있었고, **7개만 옛 배열에만** 있었다.
+
+- (1) 옛 배열에만 있던 연결 7개를 `partner_item` 에 만들었다
+      - C033 <- 볶음참깨-낱개/1kg
+      - C067 <- 시골향참기름/특골드/1750ml (2건)
+      - C040, C047 <- 시골향참기름/특/1750ml (12개입)
+      - c-1773584858565 <- 시골향탈피들깨가루/1kg
+      - C060 <- 시골향들깨가루(고운)/4kg
+- (2) 품목 96개에서 `partnerIds` 를 비웠다. **`'SMARTSTORE'` 표식은 남겼다** -
+      그건 거래처 연결이 아니라 판매 채널 표시라서 뜻이 다르다.
+
+코드는 먼저 옮겼다 - 화면 8곳(`AddOrderModal`, `PasteOrderModal`, `ItemList`,
+`ItemManager`, `AddItemModal`, `OrdersList`, `PartnerPortal`,
+`ReceivingReturnsManager`)이 이제 `shared/partnerPrice` 의
+`partnersOfItem` / `isLinkedToPartner` 로 `partner_item` 만 본다.
+되돌아가지 않게 `src/shared/partnerLink.test.ts` 가 소스를 훑는다.
+
+**되돌리기:** `npx tsx scripts/fix-drop-legacy-partnerids.mts --undo`
+
+---
+
 ## 2026-09-04 — 박스 품목 3건의 서브타입을 '박스' 로
 
 **작업자:** Claude 에이전트 (사장님 지시)

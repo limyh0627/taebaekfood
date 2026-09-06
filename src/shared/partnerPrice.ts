@@ -56,3 +56,45 @@ export function salePriceRange(
   if (값.length === 0) return null;
   return { min: Math.min(...값), max: Math.max(...값), count: 값.length };
 }
+
+/**
+ * **이 품목이 어느 거래처에 걸려 있나.**
+ *
+ * 연결이 두 군데 살았다 — 옛 방식 `items.partnerIds` 와 지금 쓰는 `partner_item`.
+ * 둘이 어긋나면서 동우 볶음참깨 주문이 10개입 대신 20개입으로 들어갔다(2026-09-06).
+ * **근거는 `partner_item` 하나다.** `partnerIds` 는 걷어냈다.
+ *
+ * `SMARTSTORE` 는 거래처가 아니라 **채널 표식**이라 `items.partnerIds` 에 남아 있다 —
+ * 그건 이 함수가 안 본다(부르는 쪽이 따로 본다).
+ */
+export function partnersOfItem(
+  partnerItems: readonly PartnerItem[] | undefined,
+  itemId: string,
+): string[] {
+  return [...new Set((partnerItems ?? [])
+    .filter(p => p.itemId === itemId && !isPurchaseLine(p))
+    .map(p => p.partnerId)
+    .filter(Boolean))];
+}
+
+/** 이 거래처가 이 품목을 주문할 수 있나 — 판매 연결이 있으면 된다. */
+export const isLinkedToPartner = (
+  partnerItems: readonly PartnerItem[] | undefined,
+  partnerId: string,
+  itemId: string,
+): boolean => (partnerItems ?? []).some(p =>
+  p.itemId === itemId && p.partnerId === partnerId && !isPurchaseLine(p));
+
+/**
+ * **이 품목을 스마트스토어에서 파는가.**
+ *
+ * 표시가 **두 군데로 갈려 있었다** — 품목의 `isSmartStore` 스위치와,
+ * 거래처 연결 배열에 끼워 넣은 `'SMARTSTORE'` 딱지다. 화면마다 보는 게 달라서
+ * 주문 넣기(AddOrderModal)는 스위치만 보고, 붙여넣기(PasteOrderModal)와
+ * 매출 분석은 둘 다 봤다 — **같은 품목이 화면에 따라 나왔다 안 나왔다 했다**.
+ *
+ * 스위치가 새 방식이다. 옛 딱지는 아직 품목에 남아 있어 같이 본다.
+ */
+export const isSmartStoreItem = (
+  item: { isSmartStore?: boolean; partnerIds?: readonly string[] } | undefined,
+): boolean => item?.isSmartStore === true || (item?.partnerIds ?? []).includes('SMARTSTORE');

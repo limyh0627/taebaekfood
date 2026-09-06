@@ -2090,6 +2090,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 <React.Suspense fallback={<div className="flex items-center justify-center h-64 text-slate-400">로딩중...</div>}>
                   <ReceivingReturnsManager
                     items={allItems}
+                    partnerItems={partnerItems}
                     partners={partners}
                     orders={allOrders}
                     currentUser={{ id: currentUser.id, name: currentUser.name }}

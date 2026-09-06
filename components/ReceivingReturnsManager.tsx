@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { RotateCcw, History, Truck, X, ChevronDown, Loader2 } from 'lucide-react';
 import { addItem, subscribeToCollection } from '../src/shared/services/firebaseService';
-import {
-  ReturnRequest, ReturnItem, ReturnReason,
-  Item, Partner, Order,
-} from '../src/shared/types';
+import { Item, Order, Partner, PartnerItem, ReturnItem, ReturnReason, ReturnRequest } from '../src/shared/types';
 import PageHeader from './PageHeader';
 import { dateOfLocal } from '../src/shared/day';
 import { buysFrom, sellsTo } from '../src/shared/partnerRole';
+import { isLinkedToPartner } from '../src/shared/partnerPrice';
 
 type ReturnTab = '받기' | '보내기' | '이력';
 
 interface ReceivingReturnsManagerProps {
   items: Item[];
+  /** 거래처–품목 연결 — 반품 넣을 품목을 고르는 데 쓴다 */
+  partnerItems?: PartnerItem[];
   partners: Partner[];
   orders: Order[];
   currentUser: { id: string; name: string };
@@ -24,6 +24,7 @@ interface ReceivingReturnsManagerProps {
 
 const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
   items,
+  partnerItems,
   partners,
   orders,
   currentUser,
@@ -96,7 +97,7 @@ const ReceivingReturnsManager: React.FC<ReceivingReturnsManagerProps> = ({
     if (!returnClientId) { setReturnItems([]); return; }
     // 거래처에 연결된 품목(partnerIds 기반) 우선 표시
     const linked = sellableProducts
-      .filter(p => p.partnerIds?.includes(returnClientId))
+      .filter(p => isLinkedToPartner(partnerItems, returnClientId, p.id))
       .map(p => ({ itemId: p.id, name: p.name, qty: '', unit: p.unit }));
     if (linked.length > 0) {
       setReturnItems(linked);

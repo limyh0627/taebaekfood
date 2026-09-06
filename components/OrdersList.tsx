@@ -691,7 +691,7 @@ export const OrderCard = memo<OrderCardProps>(({
                 );
                 const already = new Set(order.items.map(i => String(i.itemId)));
                 const q = addItemQuery.trim();
-                const orderable = (p: Item) => linkedIds.has(p.id) || (p.partnerIds ?? []).includes(pid);
+                const orderable = (p: Item) => linkedIds.has(p.id);   // 연결은 partner_item 하나가 근거다(2026-09-06)
                 /**
                  * **낱개↔박스는 한 줄에 토글로.** 둘을 따로 띄우면 이름이 같아 어느 쪽을 눌렀는지
                  * 모르고, 목록도 두 배로 길어진다. 주문 추가 화면과 같은 규칙이다.
