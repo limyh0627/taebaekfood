@@ -5,10 +5,12 @@ import { matchesSearch } from '../src/shared/hangul';
 import { subscribeToCollection, addItem, deleteItem } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 import { today, addDays as plusDays } from '../src/shared/day';
-import { marginFromSupply } from '../src/shared/margin';
+import { marginFromSupply, marginOf } from '../src/shared/margin';
 import { lineAmountFromSupply } from '../src/shared/lineAmount';
 import { isSaleTaxExempt } from '../src/shared/partnerPrice';
 import { boxDerivedUnitPrice } from '../src/shared/orderUnits';
+import ItemFilterBar from '../src/shared/ui/ItemFilterBar';
+import { filterItems, ALL } from '../src/shared/itemFilter';
 
 /**
  * **견적서** — 팔기 전에 얼마에 줄지 적어 내미는 종이.
@@ -197,13 +199,18 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
   };
 
   /** 품목 고르기 — 검색 결과. 전 품목을 뒤진다(견적은 안 팔던 걸 새로 팔 때 낸다). */
+  //  거르개는 공용이다 — 제품별 원장·재고관리와 같은 것을 쓴다(shared/ui/ItemFilterBar).
+  const [pickType, setPickType] = useState<string>(ALL);
+  const [pickCat, setPickCat] = useState<string>(ALL);
+
   const pickResults = useMemo(() => {
     const q = itemSearch.trim();
-    const rows = q ? items.filter(x => matchesSearch(`${x.name} ${x.spec ?? ''} ${x.품목 ?? ''}`, q)) : items;
+    const 걸러진 = filterItems(items as never, { type: pickType, category: pickCat }) as typeof items;
+    const rows = q ? 걸러진.filter(x => matchesSearch(`${x.name} ${x.spec ?? ''} ${x.품목 ?? ''}`, q)) : 걸러진;
     //  그 거래처에 이미 붙은 품목을 앞에 둔다 — 검색어가 없을 때 자주 쓰는 게 위로 온다
     const linked = new Set(partnerItems.filter(p => p.partnerId === form.partnerId).map(p => p.itemId));
     return [...rows].sort((a, b) => (linked.has(b.id) ? 1 : 0) - (linked.has(a.id) ? 1 : 0)).slice(0, 300);
-  }, [items, itemSearch, partnerItems, form.partnerId]);
+  }, [items, itemSearch, partnerItems, form.partnerId, pickType, pickCat]);
 
   return (
     <div className="space-y-4">
@@ -454,21 +461,34 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                 <input autoFocus value={itemSearch} onChange={e => setItemSearch(e.target.value)} placeholder="품목명·규격 검색 (초성도 됩니다)"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300" />
               </div>
+              {/*  300품목을 검색으로만 찾아야 했다(2026-09-06 사장님). 분류로 먼저 좁힌다. */}
+              <div className="mt-2">
+                <ItemFilterBar items={items as never} type={pickType} setType={setPickType}
+                  category={pickCat} setCategory={setPickCat} 가로 />
+              </div>
             </div>
             {/* 크기 고정 — 검색으로 줄 수가 줄어도 창이 안 흔들린다.
                  가로는 밀어서 본다 — 폰에서 품목 칸이 눌리면 이름이 안 보인다(2026-09-05) */}
             <div className="flex-1 overflow-y-auto overflow-x-auto">
-              <div className="hidden sm:grid grid-cols-[minmax(150px,1fr)_100px_100px_100px] min-w-[460px] bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest sticky top-0">
+              <div className="hidden sm:grid grid-cols-[minmax(150px,1fr)_92px_92px_84px_92px] min-w-[520px] bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest sticky top-0">
                 <span className="px-4 py-2">품목</span>
                 <span className="px-3 py-2 text-right">원가</span>
-                <span className="px-3 py-2 text-right">등록 단가</span>
+                <span className="px-3 py-2 text-right">공급가</span>
                 <span className="px-3 py-2 text-right">마진율</span>
+                <span className="px-3 py-2 text-right">판매단가</span>
               </div>
               {pickResults.length === 0 && <p className="px-4 py-16 text-center text-slate-300 font-bold text-sm">품목이 없습니다</p>}
               {pickResults.map(x => {
                 const c = costFor(x);
                 const p = priceFor(x.id);
-                const rt = p && p > 0 ? (p - c) / p : null;
+                /**
+                 * **마진은 공급가액과 견준다**(2026-09-06 사장님: "마진은 공급가액이랑
+                 * 비교해서 내라니까"). 판매단가는 세포함이라 그대로 나누면 마진이 부풀어
+                 * 보인다 — 셈은 shared/margin 한 곳이다. 여기만 손으로 나누고 있었다.
+                 * 판매단가는 **옆 칸에 따로** 둔다.
+                 */
+                const m = p && p > 0 ? marginOf(p, c, isSaleTaxExempt(partnerItems, x.id)) : null;
+                const rt = m ? m.marginRate : null;
                 const linked = p !== undefined;
                 return (
                   <button key={x.id}
@@ -480,7 +500,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                       });
                       setPickIdx(null);
                     }}
-                    className="w-full sm:grid sm:grid-cols-[minmax(150px,1fr)_100px_100px_100px] sm:min-w-[460px] sm:items-center border-t border-slate-50 hover:bg-indigo-50/70 text-left">
+                    className="w-full sm:grid sm:grid-cols-[minmax(150px,1fr)_92px_92px_84px_92px] sm:min-w-[520px] sm:items-center border-t border-slate-50 hover:bg-indigo-50/70 text-left">
                     {/*  폰에서는 **이름 한 줄, 숫자 한 줄**이다(2026-09-06 사장님).
                          네 칸을 나란히 두니 460px 가 필요해 가로로 밀어야 했고, 그러면
                          품목명이 화면 밖으로 나가 무엇을 고르는지 안 보였다.
@@ -498,10 +518,13 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                         <span className="sm:hidden text-[9px] font-black text-slate-300 mr-1">원가</span>{c > 0 ? fmt(c) : '—'}
                       </span>
                       <span className="sm:px-3 sm:py-2 text-right text-xs font-bold text-slate-700 tabular-nums">
-                        <span className="sm:hidden text-[9px] font-black text-slate-300 mr-1">단가</span>{p !== undefined ? fmt(p) : '—'}
+                        <span className="sm:hidden text-[9px] font-black text-slate-300 mr-1">공급가</span>{m ? fmt(m.supply) : '—'}
                       </span>
                       <span className={`sm:px-3 sm:py-2 text-right text-xs font-black tabular-nums ${rt == null ? 'text-slate-300' : rt < 0 ? 'text-rose-500' : 'text-emerald-600'}`}>
                         <span className="sm:hidden text-[9px] font-black text-slate-300 mr-1">마진</span>{rt == null ? '—' : `${(rt * 100).toFixed(1)}%`}
+                      </span>
+                      <span className="sm:px-3 sm:py-2 text-right text-xs font-bold text-slate-400 tabular-nums">
+                        <span className="sm:hidden text-[9px] font-black text-slate-300 mr-1">판매단가</span>{p !== undefined ? fmt(p) : '—'}
                       </span>
                     </div>
                   </button>

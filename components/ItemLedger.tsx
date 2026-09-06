@@ -3,8 +3,9 @@ import { Search, Package, ArrowDownRight, ArrowUpRight } from 'lucide-react';
 import type { Item, Order } from '../src/shared/types';
 import { buildItemLedger, type ItemLedgerKind } from '../src/features/admin/itemLedger';
 import type { ItemReceipt } from '../src/shared/receipt';
-import { typeOptions, categoryOptions, filterItems, keepCategory, ALL } from '../src/shared/itemFilter';
-import { SELECT, SELECT_LABEL } from '../src/shared/ui/table';
+import { filterItems, ALL } from '../src/shared/itemFilter';
+
+import ItemFilterBar from '../src/shared/ui/ItemFilterBar';
 
 /**
  * 제품별원장 — 품목 하나가 언제 얼마나 들고 났나.
@@ -40,14 +41,9 @@ const ItemLedger: React.FC<{
   const pickable = useMemo(
     () => items.filter(i => !i.archived).sort((a, b) => a.name.localeCompare(b.name, 'ko')),
     [items]);
-  const types = useMemo(() => typeOptions(pickable), [pickable]);
-  const cats = useMemo(() => categoryOptions(pickable, type), [pickable, type]);
   const shown = useMemo(
     () => filterItems(pickable, { type, category: cat, q }).slice(0, 200),
     [pickable, type, cat, q]);
-
-  //  타입을 바꾸면 카테고리가 그 타입에 없을 수 있다 — 그때는 전체로 돌린다
-  const 타입고르기 = (k: string) => { setType(k); setCat(c => keepCategory(pickable, k, c)); };
 
   const picked = items.find(i => i.id === pickedId);
   const ledger = useMemo(
@@ -65,26 +61,9 @@ const ItemLedger: React.FC<{
             <input value={q} onChange={e => setQ(e.target.value)} placeholder="품목명·규격으로 찾기"
               className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-7 pr-2 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-300"/>
           </div>
-          {/*  **드롭다운이다**(2026-09-04 사장님) — 알약으로 늘어놓으니 카테고리가
-               14칸이라 폰에서 필터가 화면을 다 잡아먹었다. 모양은 shared/ui/table 의 SELECT. */}
-          <div className="flex items-center gap-1.5">
-            <span className={SELECT_LABEL}>분류</span>
-            <select value={type} onChange={e => 타입고르기(e.target.value)}
-              className={`${SELECT(type !== ALL)} flex-1 min-w-0`}>
-              <option value={ALL}>전체 {pickable.length}</option>
-              {types.map(o => <option key={o.key} value={o.key}>{o.label} {o.count}</option>)}
-            </select>
-          </div>
-          {cats.length > 1 && (
-            <div className="flex items-center gap-1.5">
-              <span className={SELECT_LABEL}>품목</span>
-              <select value={cat} onChange={e => setCat(e.target.value)}
-                className={`${SELECT(cat !== ALL)} flex-1 min-w-0`}>
-                <option value={ALL}>전체</option>
-                {cats.map(o => <option key={o.key} value={o.key}>{o.label} {o.count}</option>)}
-              </select>
-            </div>
-          )}
+          {/*  거르개는 공용이다 — 견적서 품목 고르기·재고관리와 같은 것을 쓴다
+               (shared/ui/ItemFilterBar). 화면마다 새로 만들지 않는다. */}
+          <ItemFilterBar items={pickable} type={type} setType={setType} category={cat} setCategory={setCat} />
         </div>
         <div className="flex-1 overflow-y-auto">
           {shown.length === 0 && (
