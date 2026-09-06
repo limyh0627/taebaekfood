@@ -10,6 +10,7 @@ import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronUp, BarChart2, Dol
 import { IssuedStatement, FixedCostEntry, FixedCostTemplate, Partner, PaymentMethod, Item, AccountCode, AccountGroup, AccountGroupPlLine, InventorySnapshot, CashFlowManual, CashEntry, Settlement, CompanyId, openingDocId, companyOf } from '../types';
 import PageHeader from './PageHeader';
 import PeriodPicker from '../src/shared/ui/PeriodPicker';
+import { LedgerCard, LedgerLine, LedgerResult, LedgerSub } from '../src/shared/ui/LedgerCard';
 import CostManager from './CostManager';
 import { makeCodeToGroup, computeMonthPLFromJournals, computeCashFlowDirect, addMonthStr, SGNA_LEGACY_IDS, COMPUTED_GROUP_IDS } from '../src/features/admin/financials';
 import { partnerBalanceFromJournals, partnerCarryOver, allocatePartnerCash, partnerCashParts, cashPaidByMonth } from '../src/features/admin/cashLedger';
@@ -122,6 +123,8 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
   const [showAddCode, setShowAddCode] = useState(false);
   const [showAddGroup, setShowAddGroup] = useState(false);
   // ── 현금흐름표(직접법): 월별 / 기간 모드 ──
+  //  손익의 closedPlLines 와 같은 결 — 접은 것만 담는다(기본은 펼침).
+  const [closedCfSections, setClosedCfSections] = useState<Set<string>>(new Set());
   const [cfMode, setCfMode] = useState<'month' | 'period'>('month');
   const [cfMonth, setCfMonth] = useState<string>(() => {
     const d = new Date(); d.setMonth(d.getMonth() - 1); // 기본: 전월
@@ -506,19 +509,9 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             return next;
           });
           return (
-            <div className="border-b border-slate-100">
-              <button onClick={toggle}
-                className="w-full flex items-center justify-between px-5 py-3 hover:bg-slate-50/70 transition-colors text-left">
-                <span className="flex items-center gap-1.5 text-sm font-bold text-slate-600">
-                  <ChevronRight size={13} className={`text-slate-300 transition-transform ${open ? 'rotate-90' : ''}`} />
-                  <span className="text-slate-300 w-3">{sign}</span>{label}
-                </span>
-                <span className={`text-base font-black tabular-nums ${TONE[tone]}`}>
-                  {fmt(amount)}<span className="text-[10px] font-bold text-slate-400 ml-1.5 w-9 inline-block text-right">{pct(Math.abs(amount))}</span>
-                </span>
-              </button>
-              {open && (
-                <div className="bg-slate-50/60 px-5 pb-3 pt-1 space-y-2">
+            <LedgerLine label={label} amount={amount} sign={sign} tone={tone}
+              열림={open} onToggle={toggle} 곁수치={pct(Math.abs(amount))}>
+              <>
                   {gs.length === 0 && <p className="text-[11px] font-bold text-slate-300 py-2">이 줄에 붙은 계정그룹이 없습니다 — 계정 설정에서 손익 줄을 정해 주세요.</p>}
                   {gs.map(g => (
                     <div key={g.id}>
@@ -528,10 +521,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                       </div>
                       {g.rows.map(r => (
                         <React.Fragment key={r.code}>
-                          <div className={`flex items-center justify-between pl-3 text-[11px] ${r.amount ? 'text-slate-400' : 'text-slate-300'}`}>
-                            <span><span className="text-slate-300 mr-1.5 tabular-nums">{r.code}</span>{r.name}</span>
-                            <span className="tabular-nums">{fmt(r.amount)}</span>
-                          </div>
+                          <LedgerSub code={r.code} name={r.name} amount={r.amount} />
                           {/* 재고 조정은 이 계정 **안에** 실려 있다(분개: (차)146 재고자산 /(대)500 원료매입).
                               그래서 나란히가 아니라 이 줄 밑에 들여써서 어떻게 그 금액이 나왔는지 보여준다.
                               따로 빼 놓으면 매출원가에서 또 빼는 것처럼 읽힌다. */}
@@ -555,9 +545,8 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                       ))}
                     </div>
                   ))}
-                </div>
-              )}
-            </div>
+              </>
+            </LedgerLine>
           );
         };
 
@@ -568,18 +557,12 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
          * 색은 안 쓴다: 초록·빨강은 더하는 줄·빼는 줄을 가리는 표시라, 결과에까지 칠하면 뜻이 흐려진다.
          */
         const Result = ({ label, amount }: { label: string; amount: number }) => (
-          <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-slate-50/70">
-            <span className="text-sm font-black text-slate-800 pl-[18px]"><span className="text-slate-300 mr-1.5">=</span>{label}</span>
-            <span className="text-right">
-              <span className="text-base font-black tabular-nums text-slate-900">{fmt(amount)}</span>
-              <span className="text-[10px] font-bold text-slate-400 ml-1.5 w-9 inline-block text-right">{pct(amount)}</span>
-            </span>
-          </div>
+          <LedgerResult label={label} amount={amount} 곁수치={pct(amount)} />
         );
 
         const other = summary.otherIncome - summary.otherExpense;
         return (
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <LedgerCard>
             {/* 고른 기간이 통째로 장부 시작 이전이면 모든 줄이 0이 된다.
                 아무 말 없이 0만 뜨면 '집계가 깨졌나' 싶다 — 왜 0인지 여기서 밝힌다. */}
             {periodMonths.length === 0 && (
@@ -596,7 +579,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
             <Result label="영업이익" amount={summary.operatingProfit} />
             <Line label="기타손익 (영업외)" amount={other} lines={['other-income', 'other-expense']} sign={other >= 0 ? '+' : '−'} keyName="other" tone="green" />
             <Result label="당기순이익" amount={summary.netIncome} />
-          </div>
+          </LedgerCard>
         );
       })()}
 
@@ -836,58 +819,46 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                   />
                 )}
               </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <span className="text-xs font-black text-slate-400">{cfLabel}</span>
-              </div>
             </div>
 
-            {/* 현금흐름표 (직접법) — 분개에서 현금이 실제로 움직인 것만. 추정 없음. */}
-            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden mb-4">
-              <div className="px-5 py-3 bg-slate-800 flex items-center justify-between">
-                <span className="text-sm font-black text-white">직접법 현금흐름 <span className="text-[10px] font-bold text-slate-400 ml-1">분개 기준 · 추정 없음</span></span>
-                <span className={`text-sm font-black tabular-nums ${D(r => r.net) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {D(r => r.net) >= 0 ? '+' : ''}{fmt(D(r => r.net))}원
-                </span>
-              </div>
+            {/*  **손익분석과 같은 카드**다(2026-09-06 사장님: "이게 통일한거야?").
+                 전에는 검은 머리띠로 시작하고 구역이 안 접혔다 — 같은 일을 하는 두 화면이
+                 딴판이었다. shared/ui/LedgerCard 를 둘이 같이 쓴다. */}
+            <LedgerCard>
               {([['operating', '영업활동', D(r => r.op)], ['investing', '투자활동', D(r => r.inv)], ['financing', '재무활동', D(r => r.fin)]] as const).map(([sec, label, total]) => (
-                <React.Fragment key={sec}>
-                  <div className="px-5 py-2.5 bg-slate-50 border-y border-slate-100 flex items-center justify-between">
-                    <span className="text-xs font-black text-slate-600">{label}</span>
-                    <span className={`text-xs font-black tabular-nums ${total > 0 ? 'text-emerald-600' : total < 0 ? 'text-rose-600' : 'text-slate-400'}`}>
-                      {total === 0 ? '—' : `${total > 0 ? '+' : ''}${fmt(total)}원`}
-                    </span>
-                  </div>
-                  <div className="divide-y divide-slate-50">
-                    {dSection(sec).length ? dSection(sec).map(dRow)
-                      : <div className="px-5 py-2 text-[11px] text-slate-300 font-bold">내역 없음</div>}
-                  </div>
-                </React.Fragment>
+                <LedgerLine key={sec} label={label} amount={total}
+                  sign={total > 0 ? '+' : total < 0 ? '−' : '='}
+                  tone={total > 0 ? 'green' : total < 0 ? 'red' : 'slate'}
+                  열림={!closedCfSections.has(sec)}
+                  onToggle={() => setClosedCfSections(prev => {
+                    const next = new Set(prev);
+                    if (next.has(sec)) next.delete(sec); else next.add(sec);
+                    return next;
+                  })}>
+                  {dSection(sec).length
+                    ? dSection(sec).map(l => (
+                        <LedgerSub key={l.code} code={l.code} name={nameOfCode(l.code)} amount={l.inflow - l.outflow}
+                          색={l.inflow - l.outflow >= 0 ? 'text-emerald-600' : 'text-rose-500'} />
+                      ))
+                    : <p className="text-[11px] font-bold text-slate-300 py-2">이 활동에 잡힌 현금 움직임이 없습니다.</p>}
+                </LedgerLine>
               ))}
-              {/* 총 현금흐름 */}
-              <div className="px-5 py-3.5 flex items-center justify-between border-t-2 border-slate-200 bg-slate-50">
-                <span className="text-sm font-black text-slate-700">총 현금흐름</span>
-                <span className={`text-lg font-black ${netTotal >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{netTotal >= 0 ? '+' : ''}{fmt(netTotal)}원</span>
-              </div>
-              {/* 기초/기말현금 */}
-              <div className="flex items-center justify-between px-5 py-2.5 border-t border-slate-100">
-                <span className="text-xs text-slate-600">기초현금 {editable && !isBaselineMonth && <span className="text-[10px] text-slate-400">· 전월 이월</span>}</span>
-                {editable && isBaselineMonth ? (
+
+              <LedgerResult label="총 현금흐름" amount={netTotal} />
+
+              {/*  기초현금은 기준월에만 손으로 넣는다 — 그 뒤로는 저절로 이월된다. */}
+              <LedgerResult label={`기초현금${editable && !isBaselineMonth ? ' · 전월 이월' : ''}`} amount={opening}
+                right={editable && isBaselineMonth ? (
                   <input value={mVal('openingCash')} onChange={e => setM('openingCash', e.target.value)} inputMode="numeric" placeholder="기초현금 입력"
                     className="w-32 border border-slate-200 rounded-lg px-2 py-1 text-xs font-black text-right outline-none focus:ring-2 focus:ring-blue-300" />
-                ) : (
-                  <span className="text-xs font-black tabular-nums text-slate-700">{fmt(opening)}원</span>
-                )}
-              </div>
-              <div className="flex items-center justify-between px-5 py-3 bg-blue-50">
-                <span className="text-sm font-black text-blue-800">기말현금 {editable && <span className="text-[10px] font-bold text-blue-400">· 실제 현금·예금 직접 입력(선택)</span>}</span>
-                {editable ? (
+                ) : undefined} />
+
+              <LedgerResult label={`기말현금${editable ? ' · 실제 잔액 입력(선택)' : ''}`} amount={closing} 강조
+                right={editable ? (
                   <input value={mVal('closingCash')} onChange={e => setM('closingCash', e.target.value)} inputMode="numeric" placeholder={fmt(opening + computedNet)}
                     className="w-40 border border-blue-300 rounded-lg px-2 py-1.5 text-base font-black text-right text-blue-700 outline-none focus:ring-2 focus:ring-blue-400 bg-white" />
-                ) : (
-                  <span className="text-base font-black text-blue-700 tabular-nums">{fmt(closing)}원</span>
-                )}
-              </div>
-            </div>
+                ) : undefined} />
+            </LedgerCard>
 
             {editable ? (
               <div className="flex items-center justify-between gap-3 flex-wrap">
