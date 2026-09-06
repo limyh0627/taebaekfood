@@ -230,41 +230,19 @@ export function docItemName(
 }
 
 /** 인쇄용 줄 — 전표 줄이든 저장된 전표 줄이든 이 모양만 본다. */
-interface PrintableLine {
-  name?: string; spec?: string; unit?: string;
-  qty?: number; price?: number; supply?: number; tax?: number; total?: number;
-}
+interface PrintableLine { name?: string; spec?: string }
 
 /**
- * 인쇄 직전에 이름을 서류용으로 바꾼다.
+ * 인쇄 직전에 이름을 서류용으로 바꾼다. **바꾸기만 한다.**
  *
- * **뭉뚱그린 이름이라 줄이 겹칠 수 있다.** 서류용 이름은 20가지뿐인데 품목은 178개다 —
- * 「시골향들기름/병/350ml」과 「시골향들기름/병/특/350ml」은 둘 다 “시골향들기름2 350ml”가
- * 된다. 한 장에 똑같아 보이는 줄이 둘 나오면 받는 쪽이 잘못 찍힌 줄 안다.
- *
- * 그래서 **이름·규격·단위·단가가 전부 같을 때만 한 줄로 합친다**(수량과 금액을 더한다).
- * 단가가 다르면 안 합친다 — 합치면 어느 값을 찍어야 할지 없고, 실제로 다른 값을 판 것이다.
+ * 서류용 이름은 20가지뿐인데 완제품은 178개라, 한 장에 똑같아 보이는 줄이 둘 나올 수 있다
+ * (「시골향들기름/병/350ml」과 「시골향들기름/병/특/350ml」이 둘 다 “시골향들기름2 350ml”).
+ * **겹쳐도 그대로 둔다**(2026-09-06 사장님) — 줄을 합치면 수량·금액을 손대게 되고,
+ * 그러면 전표 합계가 화면과 어긋날 수 있다. 이름만 바꾸면 숫자는 하나도 안 건드린다.
  */
 export function withDocNames<T extends PrintableLine>(
   lines: readonly T[],
   allItems: readonly Item[],
 ): T[] {
-  const 줄: T[] = [];
-  const 자리 = new Map<string, T>();
-  for (const l of lines) {
-    const name = docItemName(l.name ?? '', l.spec, allItems);
-    const key = `${name}||${l.spec ?? ''}||${l.unit ?? ''}||${l.price ?? ''}`;
-    const 있던 = 자리.get(key);
-    if (있던) {
-      있던.qty = (있던.qty ?? 0) + (l.qty ?? 0);
-      있던.supply = (있던.supply ?? 0) + (l.supply ?? 0);
-      있던.tax = (있던.tax ?? 0) + (l.tax ?? 0);
-      있던.total = (있던.total ?? 0) + (l.total ?? 0);
-      continue;
-    }
-    const 새줄 = { ...l, name } as T;
-    자리.set(key, 새줄);
-    줄.push(새줄);
-  }
-  return 줄;
+  return lines.map(l => ({ ...l, name: docItemName(l.name ?? '', l.spec, allItems) }));
 }

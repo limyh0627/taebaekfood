@@ -36,33 +36,27 @@ describe('인쇄 줄 바꾸기', () => {
   const 줄 = (name: string, spec: string, qty: number, price: number) =>
     ({ name, spec, qty, price, supply: qty * price, tax: 0, total: qty * price });
 
-  it('단가까지 같으면 한 줄로 합치고 수량·금액을 더한다', () => {
+  it('이름만 바꾼다 — 줄 수도 숫자도 그대로다', () => {
+    const out = withDocNames([줄('참기름/골드/대왕/1800ml', '1800ml', 2, 9000),
+                              줄('포장박스', '', 1, 500)], 품목들);
+    expect(out).toHaveLength(2);
+    expect(out.map(l => l.name)).toEqual(['시골향참기름1', '포장박스']);
+    expect(out.map(l => l.qty)).toEqual([2, 1]);
+    expect(out.map(l => l.total)).toEqual([18000, 500]);
+  });
+
+  it('서류용 이름이 겹쳐도 합치지 않는다 — 겹쳐도 그대로 둔다(2026-09-06 사장님)', () => {
     const out = withDocNames([줄('시골향들기름/병/350ml', '350ml', 2, 5000),
                               줄('시골향들기름/병/특/350ml', '350ml', 3, 5000)], 품목들);
-    expect(out).toHaveLength(1);
-    expect(out[0].name).toBe('시골향들기름2');
-    expect(out[0].qty).toBe(5);
-    expect(out[0].total).toBe(25000);
-  });
-
-  it('단가가 다르면 안 합친다 — 어느 값을 찍을지 없다', () => {
-    const out = withDocNames([줄('시골향들기름/병/350ml', '350ml', 2, 5000),
-                              줄('시골향들기름/병/특/350ml', '350ml', 3, 6000)], 품목들);
     expect(out).toHaveLength(2);
     expect(out.map(l => l.name)).toEqual(['시골향들기름2', '시골향들기름2']);
-    expect(out.map(l => l.total)).toEqual([10000, 18000]);
-  });
-
-  it('규격이 다르면 안 합친다', () => {
-    const out = withDocNames([줄('같은이름', '1kg', 1, 100), 줄('같은이름', '4kg', 1, 100)], 품목들);
-    expect(out).toHaveLength(2);
-    expect(out.map(l => l.name)).toEqual(['뭉뚱1', '뭉뚱4']);
+    expect(out.map(l => l.qty)).toEqual([2, 3]);
+    expect(out.map(l => l.total)).toEqual([10000, 15000]);
   });
 
   it('넣은 줄을 건드리지 않는다 — 화면은 실제 이름 그대로 봐야 한다', () => {
     const 원본 = [줄('참기름/골드/대왕/1800ml', '1800ml', 1, 9000)];
     withDocNames(원본, 품목들);
     expect(원본[0].name).toBe('참기름/골드/대왕/1800ml');
-    expect(원본[0].qty).toBe(1);
   });
 });
