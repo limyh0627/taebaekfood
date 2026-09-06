@@ -17,7 +17,8 @@ import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, Compan
 import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { partnerPriceWrites } from '../src/shared/partnerPriceSync';
-import { withDocNames, manualLines, orderLines, lineTotals, resolveOrderItem, orderItemPrice, type LineItem, type ManualRow } from '../src/shared/statementLines';
+import { manualLines, orderLines, lineTotals, resolveOrderItem, orderItemPrice, type LineItem, type ManualRow } from '../src/shared/statementLines';
+import { withDocNames } from '../src/shared/docName';
 import { partnerOrders as 거래처주문, activeOrders as 진행주문, activePartnerIds, ACTIVE_STATUSES } from '../src/shared/statementOrders';
 import { rowKind as 갈래, rowCodes as 계정들, rowName as 상대이름, filterTimeline, sortTimeline, partnerNamesOf,
   classifyRow as 성격판정, timelineTotals,

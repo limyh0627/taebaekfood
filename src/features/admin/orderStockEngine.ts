@@ -10,6 +10,7 @@ import type { ProductLotTake } from '../../shared/lotUtils';
 import { bomQty } from '../../shared/bom';
 import { stockUnits, isBoxStockItem, unpackComponent, unitsPerBoxOf } from '../../shared/orderUnits';
 import type { CollectionName } from '../../shared/collections';
+import { docName } from '../../shared/docName';
 
 /**
  * 작업완료 때 "이미 있는 재고를 얼마나 쓸까" — 주문 라인(order.items 인덱스)별 선택.
@@ -204,7 +205,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       }
       return;
     }
-    for (const f of buildFormula(product.품목 || product.name)) {
+    for (const f of buildFormula(docName(product))) {
       const kg = toKg(product.spec || '', f.raw, units) * f.ratio;
       if (kg > 0) rawUsage[f.raw] = (rawUsage[f.raw] ?? 0) + kg;
     }
@@ -360,7 +361,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
     for (const item of order.items) {
       const product = allItems.find(p => p.id === item.itemId);
       if (product?.procureType !== '임가공') continue;
-      for (const f of buildFormula(product.품목 || product.name)) {
+      for (const f of buildFormula(docName(product))) {
         if (byMat[f.raw]) continue;   // 위에서 이미 지움
         await deleteDoc(doc(db, 'rawMaterialLedger', `rm-auto-${order.id}-${f.raw.replace(/\s/g, '_')}`));
       }
@@ -420,7 +421,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       // 임가공(OEM): 완제품은 가공입고로 이미 재고에 있고 원료도 우리 로트가 아니다.
       // 재고는 아무것도 안 건드리되, 원료수불부에는 쓴 만큼 kg으로 남긴다(서류가 흐름을 봐야 함).
       if (product.procureType === '임가공') {
-        for (const f of buildFormula(product.품목 || product.name)) {
+        for (const f of buildFormula(docName(product))) {
           const usedKg = toKg(product.spec || '', f.raw, units) * f.ratio;
           if (usedKg > 0) rawUsageLedgerOnly[f.raw] = (rawUsageLedgerOnly[f.raw] ?? 0) + usedKg;
         }

@@ -6,6 +6,7 @@ import { DEFAULT_CATEGORY_LABELS, TaxonomyRow, buildTaxonomy, categoryRank } fro
 import { bomOf, BomDraftLine } from '../src/shared/bomIndex';
 import { baseRawName, PRODUCT_FORMULA } from '../src/constants/formula';
 import { buysFrom, sellsTo } from '../src/shared/partnerRole';
+import { docName } from '../src/shared/docName';
 
 interface ProductModalProps {
   initialData?: Item;
@@ -159,7 +160,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
   const [formulaRows, setFormulaRows] = useState<{ child_name: string; yield_pct: number }[]>(() => {
     if (!initialData) return [];
     const isProduct = initialData.type === 'product';
-    const key = isProduct ? (initialData.품목 || initialData.name) : baseRawName(initialData.name);
+    const key = isProduct ? docName(initialData) : baseRawName(initialData.name);
     const rows = (itemFormulas ?? []).filter(f => f.parent_key === key);
     if (rows.length > 0)
       return rows.map(f => ({ child_name: f.child_name, yield_pct: Math.round((f.ratio ?? 1) * (f.yield_rate ?? 1) * 1000) / 10 }));
@@ -678,7 +679,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
                       id: l.childId, name: l.child?.name ?? l.childId,
                       category: l.child?.type ?? 'submaterial', stock: l.qty, unit: l.child?.unit ?? '개',
                     })) as any[];
-                    const childRaw = child ? (itemFormulas ?? []).filter(f => f.parent_key === ((child as any).품목 || child.name)) : [];
+                    const childRaw = child ? (itemFormulas ?? []).filter(f => f.parent_key === docName(child)) : [];
                     return (
                     <div key={`${s.id}-${idx}`} className="rounded-2xl border border-slate-100 overflow-hidden">
                       <div className="flex items-center gap-2 bg-slate-50 px-4 py-2.5">

@@ -163,6 +163,7 @@ import { resolveOrderItem } from '../../shared/statementLines';
 import { dateOfLocal } from '../../shared/day';
 import { buysFrom } from '../../shared/partnerRole';
 import { COL } from '../../shared/collections';
+import { docName, findByDocName } from '../../shared/docName';
 
 // 거래처 주문 포털(웹) URL — .env의 VITE_PARTNER_PORTAL_URL로 운영 도메인 지정 가능
 const PARTNER_PORTAL_URL =
@@ -914,7 +915,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const units = stockUnits(item, product);   // 박스 품목이면 박스 개수 (spec은 박스 1개 내용량)
 
       // 원료식(item_formula/PRODUCT_FORMULA) 기반 원료 kg 소요 집계 — 부자재와 별도 경로
-      for (const f of buildFormula(product.품목 || product.name)) {
+      for (const f of buildFormula(docName(product))) {
         const kg = toKg(product.spec || '', f.raw, units) * f.ratio;
         if (kg > 0) rawUsageKg[f.raw] = (rawUsageKg[f.raw] ?? 0) + kg;
       }
@@ -1319,7 +1320,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
       const changes: { name: string; oldQty: number; newQty: number }[] = [];
       const newItems: typeof stmt.items = [];
       for (const it of stmt.items) {
-        const product = allItems.find(p => (p.품목 || p.name) === it.name);
+        const product = findByDocName(allItems, it.name);
         const newQty = product ? qtyByItemId.get(product.id) : undefined;
         if (newQty === undefined || newQty === it.qty) { newItems.push(it); continue; }
         changes.push({ name: it.name, oldQty: it.qty, newQty });

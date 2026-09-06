@@ -9,6 +9,7 @@ import { isBoxStockItem } from '../../shared/orderUnits';
 import { buildProductLot, withCarryOverProductLot, nextLotNo } from '../../shared/lotUtils';
 import { batchLoss, processingFee, sentKg } from './oem';
 import type { CollectionName } from '../../shared/collections';
+import { docName } from '../../shared/docName';
 
 /**
  * OEM(임가공) 실행 엔진 — 재고·전표 쓰기. 의존성 주입으로 부수효과를 분리해 단위 테스트 가능.
@@ -135,7 +136,7 @@ export function createOemEngine(deps: OemEngineDeps) {
       poItems.push({ itemId: item.id, name: item.name, quantity: r.qty, unit: item.unit ?? '개' });
 
       // 원료수불부는 BOM(원료식)으로 집계 — 볶음참깨 그룹에 kg 입고로 잡힌다.
-      const formula = buildFormula(item.품목 || item.name);
+      const formula = buildFormula(docName(item));
       for (const f of formula) {
         if (kg * f.ratio > 0) receivedByRaw[f.raw] = (receivedByRaw[f.raw] ?? 0) + kg * f.ratio;
       }

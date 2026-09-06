@@ -2,6 +2,7 @@ import { Item } from './types';
 import { toKg, baseRawName, unitToKg } from '../constants/formula';
 import { bomQty } from './bom';
 import { VAT_UP } from './lineAmount';
+import { docName } from './docName';
 
 /**
  * BOM 원가 롤업 — 순수 함수(DI).
@@ -112,7 +113,7 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
        * 곱하면 0.37kg으로 잡혀 원가가 7배 작아진다.
        */
       if (item.type === 'wip' && ctx.formulaRowsOf) {
-        const rows = ctx.formulaRowsOf(item.품목 || item.name);
+        const rows = ctx.formulaRowsOf(docName(item));
         if (rows.length) {
           const blended = rows.reduce((sum, r) => {
             const src = byRawName.get(r.raw);
@@ -138,7 +139,7 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
 
     let total = 0;
     if (!hasAssembled) {
-      for (const f of ctx.formulaOf(item.품목 || item.name)) {
+      for (const f of ctx.formulaOf(docName(item))) {
         const kg = toKg(item.spec || '', f.raw, 1) * f.ratio;
         const src = byRawName.get(f.raw);
         if (kg > 0) total += kg * rawCostPerKg(f.raw, byRawName) * (src ? vatUp(src, item) : 1);

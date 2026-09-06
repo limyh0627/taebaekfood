@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { docItemName, withDocNames } from './statementLines';
+import { readFileSync, globSync } from 'node:fs';
+import { docName, docNameOf, findByDocName, withDocNames } from './docName';
 import type { Item } from './types';
 
 const 품목들 = [
@@ -14,21 +15,21 @@ const 품목들 = [
 
 describe('서류용 품목명', () => {
   it('서류용 이름이 있으면 그걸 쓴다', () => {
-    expect(docItemName('참기름/골드/대왕/1800ml', '1800ml', 품목들)).toBe('시골향참기름1');
+    expect(docNameOf('참기름/골드/대왕/1800ml', '1800ml', 품목들)).toBe('시골향참기름1');
   });
 
   it('없으면 실제 이름 그대로 둔다 — 빈 칸으로 찍히면 안 된다', () => {
-    expect(docItemName('포장박스', '', 품목들)).toBe('포장박스');
-    expect(docItemName('목록에 없는 것', '1kg', 품목들)).toBe('목록에 없는 것');
+    expect(docNameOf('포장박스', '', 품목들)).toBe('포장박스');
+    expect(docNameOf('목록에 없는 것', '1kg', 품목들)).toBe('목록에 없는 것');
   });
 
   it('이름이 같고 규격만 다른 품목은 규격까지 보고 고른다', () => {
-    expect(docItemName('같은이름', '1kg', 품목들)).toBe('뭉뚱1');
-    expect(docItemName('같은이름', '4kg', 품목들)).toBe('뭉뚱4');
+    expect(docNameOf('같은이름', '1kg', 품목들)).toBe('뭉뚱1');
+    expect(docNameOf('같은이름', '4kg', 품목들)).toBe('뭉뚱4');
   });
 
   it('버린 품목은 안 본다', () => {
-    expect(docItemName('옛품목', '1kg', 품목들)).toBe('옛품목');
+    expect(docNameOf('옛품목', '1kg', 품목들)).toBe('옛품목');
   });
 });
 
@@ -58,5 +59,31 @@ describe('인쇄 줄 바꾸기', () => {
     const 원본 = [줄('참기름/골드/대왕/1800ml', '1800ml', 1, 9000)];
     withDocNames(원본, 품목들);
     expect(원본[0].name).toBe('참기름/골드/대왕/1800ml');
+  });
+});
+
+/**
+ * **`품목 || name` 을 손으로 적지 않는다.**
+ *
+ * 여덟 군데에 따로 적혀 있었다(2026-09-06) — AddItemModal 2곳, BomIntegrityPanel 2곳,
+ * ProductionManager, AdminApp 2곳, oemEngine. 전표 인쇄를 붙이며 아홉 번째를 적을 뻔했다.
+ * 이 규칙이 갈리면 **원료가 조용히 안 빠진다** — 원료식 열쇠가 안 맞으면 그냥 빈 목록이라
+ * 화면에 아무 표시가 안 난다.
+ */
+describe('서류용 이름 규칙은 한 곳에만 있다', () => {
+  it('품목 || name 을 손으로 적은 곳이 없다', () => {
+    const 걸림: string[] = [];
+    const 볼파일 = globSync('{components,src}/**/*.{ts,tsx}')
+      .filter(f => !f.includes('.test.') && !f.replace(/\\/g, '/').endsWith('src/shared/docName.ts'));
+    for (const file of 볼파일) {
+      readFileSync(file, 'utf8').split('\n').forEach((l, i) => {
+        const t = l.trim();
+        if (t.startsWith('//') || t.startsWith('*')) return;
+        //  `품목 || name` · `품목 ?? name` — 사이에 형변환이 끼어도 잡는다.
+        if (/품목\s*(?:\|\||\?\?)\s*[\w.()\s]*\bname\b/.test(l)) 걸림.push(`  ${file}:${i + 1}  ${t.slice(0, 90)}`);
+      });
+    }
+    expect(걸림, `서류용 이름 규칙을 손으로 적은 곳:\n${걸림.join('\n')}\n\n` +
+      `shared/docName 의 docName 을 써라.`).toEqual([]);
   });
 });

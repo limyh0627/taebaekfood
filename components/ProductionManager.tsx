@@ -4,6 +4,7 @@ import PageHeader from './PageHeader';
 import { ProductionRecord, Item, Order, OrderStatus, RawMaterialEntry } from '../types';
 import { PRODUCT_FORMULA, toKg } from '../src/constants/formula';
 import { dateOfLocal } from '../src/shared/day';
+import { docName } from '../src/shared/docName';
 
 type ItemFormulaRow = { parent_key: string; child_name: string; ratio: number; yield_rate?: number };
 
@@ -115,7 +116,7 @@ const ProductionManager: React.FC<ProductionManagerProps> = ({
     // 제품(BOM) 단위로 투입 원료 계산 → 같은 주문의 다른 제품 원료가 섞이지 않음
     const product = items.find(p => p.id === r.itemId);
     if (!product) return undefined;
-    const prodKey = (product as { 품목?: string }).품목 || product.name;
+    const prodKey = docName(product);
     const bomRows = itemFormulas.filter(b => b.parent_key === prodKey);
     const formula = bomRows.length > 0
       ? bomRows.map(b => ({ raw: b.child_name, ratio: b.ratio * (b.yield_rate || 1) }))
