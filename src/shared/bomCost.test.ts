@@ -196,7 +196,7 @@ describe('제조 반제품 — 수율을 나눈다', () => {
  * 전에는 분자에서만 세금을 빼고 분모(원가)엔 세금이 든 채라 마진이 나쁘게 나왔다.
  */
 describe('원가는 부가세를 안 얹는다', () => {
-  const 참깨 = mk({ id: 'raw-참깨', name: '참깨', type: 'raw', unit: 'kg', cost: 4105, taxType: '면세' });
+  const 참깨 = mk({ id: 'raw-참깨', name: '참깨', type: 'raw', unit: 'kg', cost: 4105 });
   const 깨분 = mk({ id: 'raw-깨분', name: '깨분', type: 'raw', unit: 'kg', cost: 2970 });   // 과세
   const 통깨참기름 = mk({ id: 'wip-통깨', name: '통깨참기름', type: 'wip', unit: 'L' });
   const 깨분참기름 = mk({ id: 'wip-깨분', name: '깨분참기름', type: 'wip', unit: 'L' });
@@ -218,8 +218,8 @@ describe('원가는 부가세를 안 얹는다', () => {
   });
 
   it('만드는 물건이 과세든 면세든 원가는 같다', () => {
-    const 면세품 = mk({ id: 'wip-면세', name: '면세품', type: 'wip', taxType: '면세' });
-    const 과세품 = mk({ id: 'wip-과세', name: '과세품', type: 'wip', taxType: '과세' });
+    const 면세품 = mk({ id: 'wip-면세', name: '면세품', type: 'wip' });
+    const 과세품 = mk({ id: 'wip-과세', name: '과세품', type: 'wip' });
     const c2 = buildCostFn({
       allItems: [참깨, 면세품, 과세품], itemBoms: [], formulaOf: () => [],
       formulaRowsOf: k => (k === '면세품' || k === '과세품' ? [{ raw: '참깨', ratio: 1, yieldRate: 0.5 }] : []),

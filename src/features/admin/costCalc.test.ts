@@ -7,9 +7,9 @@ const item = (over: Partial<Item> & { id: string; name: string }): Item => ({
 } as Item);
 
 //  참기름 한 병 — 병 + 캡 + 라벨 + 기름
-const 병 = item({ id: 'sub-bottle', name: '1750ML-페트병', cost: 420, taxType: '과세' });
-const 캡 = item({ id: 'sub-cap', name: '물엿캡-빨강', cost: 55, taxType: '과세' });
-const 기름 = item({ id: 'raw-oil', name: '참기름A', type: 'raw', unit: 'kg', cost: 7_000, taxType: '면세' });
+const 병 = item({ id: 'sub-bottle', name: '1750ML-페트병', cost: 420 });
+const 캡 = item({ id: 'sub-cap', name: '물엿캡-빨강', cost: 55 });
+const 기름 = item({ id: 'raw-oil', name: '참기름A', type: 'raw', unit: 'kg', cost: 7_000 });
 const ALL = [병, 캡, 기름];
 
 describe('원가계산기', () => {
@@ -41,13 +41,13 @@ describe('원가계산기', () => {
   });
 
   it('가공비를 더한다', () => {
-    const r = calcCost([{ itemId: 병.id, qty: 1 }], ALL, [], { taxType: '면세', fee: 300 });
+    const r = calcCost([{ itemId: 병.id, qty: 1 }], ALL, [], { fee: 300 });
     expect(r.cost).toBe(720);
     expect(r.fee).toBe(300);
   });
 
   it('마진 = 판매가 − 원가, 마진율은 판매가 기준', () => {
-    const x = calcCost([{ itemId: 병.id, qty: 1 }], ALL, [], { taxType: '면세', price: 1_000 });
+    const x = calcCost([{ itemId: 병.id, qty: 1 }], ALL, [], { price: 1_000 });
     expect(x.cost).toBe(420);
     expect(x.margin).toBe(580);
     expect(x.marginRate).toBeCloseTo(0.58, 5);      // 580 / 1,000
@@ -55,7 +55,7 @@ describe('원가계산기', () => {
   });
 
   it('원가보다 싸게 팔면 마진이 음수다', () => {
-    const r = calcCost([{ itemId: 병.id, qty: 1 }], ALL, [], { taxType: '면세', price: 300 });
+    const r = calcCost([{ itemId: 병.id, qty: 1 }], ALL, [], { price: 300 });
     expect(r.margin).toBe(-120);
     expect(r.marginRate).toBeCloseTo(-0.4, 5);
   });
@@ -81,8 +81,8 @@ describe('원가계산기', () => {
    * 계산기가 한 단만 보면 박스 원가가 겉박스 값만 나온다.
    */
   it('하위 BOM까지 굴린다', () => {
-    const 낱개 = item({ id: 'p-unit', name: '참기름/1750ml', type: 'product', taxType: '면세' });
-    const 겉박스 = item({ id: 'sub-box', name: '4호박스', cost: 900, taxType: '과세' });
+    const 낱개 = item({ id: 'p-unit', name: '참기름/1750ml', type: 'product' });
+    const 겉박스 = item({ id: 'sub-box', name: '4호박스', cost: 900 });
     const all = [...ALL, 낱개, 겉박스];
     const boms = [
       { parent_id: 낱개.id, child_id: 병.id, quantity: 1 },

@@ -85,7 +85,6 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
     phantom: initialData?.phantom ?? false,
     //  원가 출처 — 안 정했으면 롤업이 기본이다(구성·원료식에서 계산).
     costSource: (initialData?.costSource ?? 'rollup') as 'rollup' | 'manual',
-    taxType: (initialData?.taxType ?? '과세') as '과세' | '면세',
     partnerIds: initialData?.partnerIds ?? (initialData?.partnerId ? [initialData.partnerId] : []),
     inPartnerIds: partnerIn
       .filter(pi => pi.itemId === initialData?.id)
@@ -295,7 +294,6 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
       ...(formData.type === 'product' && { isSmartStore: formData.isSmartStore }),
       ...((formData.type === 'wip' || formData.type === 'raw') && { phantom: !!formData.phantom }),
       costSource: formData.costSource,
-      taxType: formData.taxType,
     };
 
     /**
@@ -508,7 +506,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
 
           {/* 원가 — 롤업(구성·원료식에서 계산) / 입력단가(손으로 못 박기) 중 고른다 */}
           {(() => {
-            const draft = { ...(initialData ?? {}), id: initialData?.id ?? 'draft', name: formData.name, type: formData.type, category: formData.category, subtype: formData.subtype, spec: formData.spec, 품목: formData.품목, taxType: formData.taxType, cost: formData.cost, costSource: 'rollup' } as unknown as Item;
+            const draft = { ...(initialData ?? {}), id: initialData?.id ?? 'draft', name: formData.name, type: formData.type, category: formData.category, subtype: formData.subtype, spec: formData.spec, 품목: formData.품목, cost: formData.cost, costSource: 'rollup' } as unknown as Item;
             const bomDraft = formData.submaterials.map(sm => ({ childId: sm.id, qty: typeof sm.stock === 'number' ? sm.stock : 1 }));
             const rolled = rollupCostOf ? Math.round(rollupCostOf(draft, bomDraft) * 100) / 100 : 0;
             const manual = formData.costSource === 'manual';
@@ -552,30 +550,12 @@ const ProductModal: React.FC<ProductModalProps> = ({ initialData, allSubmaterial
             );
           })()}
 
-          {/* 과세 · 면세 — 면세 원료로 과세품을 만들면 매입세액을 못 빼 원가에 얹힌다(×1.1) */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center">
-              <Tag size={14} className="mr-2" /> 부가세 구분 · 원가 계산용
-            </label>
-            <div className="flex gap-1.5">
-              {(['과세', '면세'] as const).map(v => (
-                <button key={v} type="button"
-                  onClick={() => setFormData(fd => ({ ...fd, taxType: v }))}
-                  className={`flex-1 py-2.5 rounded-xl text-xs font-black border transition-all ${formData.taxType === v ? 'bg-indigo-600 border-indigo-600 text-white shadow' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'}`}>
-                  {v}
-                </button>
-              ))}
-            </div>
-            {/*  **전표에 찍히는 과세·면세가 아니다**(2026-09-06 사장님이 여기 있는 게 맞냐고
-                 물으셨다). 전표 세액은 거래처마다 따로 정한다(전표 화면의 과세·면세 단추).
-                 이 칸은 **원가 계산에만** 쓰인다 — 원료 8개 중 6개(참깨·들깨)가 면세다. */}
-            <p className="text-[11px] text-slate-400">
-              면세 원료(참깨·들깨 등)로 과세품을 만들면 매입세액을 못 빼 원가에 10%가 얹힙니다.
-              <br />
-              <span className="text-slate-400">전표에 찍히는 과세·면세는 <b>거래처마다 따로</b> 정합니다 — 여기 값은 원가에만 쓰입니다.</span>
-            </p>
-          </div>
+          {/*  **과세·면세 칸은 없앴다**(2026-09-06 사장님: "품목에 과세 면세 정보가 없는게
+               맞는거 같다니까 그냥 거래처-품목 연결 테이블에 있으면 되는거 아니야?").
 
+               원가에서 ×1.1을 걷어낸 뒤로 품목의 taxType 은 할 일이 없어졌다. 남은 쓰임은
+               전부 "이 판매가에 부가세가 붙어 있나"였고, 그건 거래처마다 다르다 —
+               `partner_item.taxType` 이 안다(shared/partnerPrice 의 isSaleTaxExempt). */}
 
           {/* 구성품 (BOM) — 완제품·반제품: 전체 품목 검색·추가 (선물세트·배송도 완제품이다 — subtype으로 갈린다) */}
           {['product', 'wip'].includes(formData.type) && (() => {

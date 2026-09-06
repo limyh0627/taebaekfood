@@ -98,3 +98,28 @@ export const isLinkedToPartner = (
 export const isSmartStoreItem = (
   item: { isSmartStore?: boolean; partnerIds?: readonly string[] } | undefined,
 ): boolean => item?.isSmartStore === true || (item?.partnerIds ?? []).includes('SMARTSTORE');
+
+/**
+ * **과세·면세는 거래처–품목 연결이 안다** (2026-09-06 사장님: "품목에 과세 면세 정보가
+ * 없는게 맞는거 같다니까 그냥 거래처-품목 연결 테이블에 있으면 되는거 아니야?").
+ *
+ * 맞다. 품목에도 `taxType` 이 있었는데, 원가에서 ×1.1을 걷어낸 뒤로는 할 일이 없어졌다.
+ * 남은 쓰임은 전부 **"이 판매가에 부가세가 붙어 있나"** 였고 그건 거래처마다 다르다 —
+ * 화면들이 거래처 단가를 보여주면서 면세 여부만 품목에서 읽어 어긋나 있었다.
+ *
+ * 연결이 없거나 안 정했으면 **과세로 본다** — 안 정한 것을 면세로 보면 세금이 조용히 빠진다.
+ */
+export const isSaleTaxExempt = (
+  partnerItems: readonly PartnerItem[] | undefined,
+  itemId: string,
+  partnerId?: string,
+): boolean => {
+  const 줄 = (partnerItems ?? []).filter(p =>
+    p.itemId === itemId && !isPurchaseLine(p) && (!partnerId || p.partnerId === partnerId));
+  if (partnerId) return 줄[0]?.taxType === '면세';
+  //  거래처를 안 짚었으면 **가장 싼 단가**의 줄을 본다 — 마진을 제일 나쁜 경우로 잡는 것과 짝이다.
+  const 싼줄 = 줄
+    .filter(p => Number.isFinite(Number(p.price)) && Number(p.price) > 0)
+    .sort((a, b) => Number(a.price) - Number(b.price))[0];
+  return (싼줄 ?? 줄[0])?.taxType === '면세';
+};

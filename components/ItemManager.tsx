@@ -769,7 +769,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                                      판매단가는 세포함이라 원가와 나란히 두면 마진이 부풀어 보인다. */}
                                 {(() => {
                                   if (curPrice == null) return null;
-                                  const pp = priceParts(curPrice, item.taxType === '면세');
+                                  const pp = priceParts(curPrice, psOut?.taxType === '면세');
                                   return pp.showSupply
                                     ? <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">공급가 {pp.supply.toLocaleString()}</span>
                                     : null;
@@ -982,7 +982,7 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                               {/*  판매단가는 세포함이다 — 원가는 세별도라 과세 품목은 공급가액을 곁들인다 */}
                               {(() => {
                                 if (curPrice == null) return null;
-                                const pp = priceParts(curPrice, item.taxType === '면세');
+                                const pp = priceParts(curPrice, psOut?.taxType === '면세');
                                 return pp.showSupply
                                   ? <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">공급가 {pp.supply.toLocaleString()}</span>
                                   : null;

@@ -7,6 +7,7 @@ import PageHeader from './PageHeader';
 import { today, addDays as plusDays } from '../src/shared/day';
 import { marginFromSupply } from '../src/shared/margin';
 import { lineAmountFromSupply } from '../src/shared/lineAmount';
+import { isSaleTaxExempt } from '../src/shared/partnerPrice';
 
 /**
  * **견적서** — 팔기 전에 얼마에 줄지 적어 내미는 종이.
@@ -462,7 +463,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                       setLine(pickIdx, {
                         itemId: x.id, name: x.name, spec: String(x.spec ?? ''),
                         cost: c, price: p ?? 0,
-                        isTaxExempt: x.taxType === '면세',
+                        isTaxExempt: isSaleTaxExempt(partnerItems, x.id),
                       });
                       setPickIdx(null);
                     }}
@@ -471,7 +472,7 @@ export default function QuotationManager({ items, partners, partnerItems = [], c
                       <span className="text-xs font-bold text-slate-800 truncate block">
                         {x.name}
                         {linked && <span className="ml-1.5 text-[10px] font-black text-indigo-500">거래중</span>}
-                        {x.taxType === '면세' && <span className="ml-1 text-[10px] font-black text-slate-400">면세</span>}
+                        {isSaleTaxExempt(partnerItems, x.id) && <span className="ml-1 text-[10px] font-black text-slate-400">면세</span>}
                       </span>
                       <span className="text-[10px] text-slate-400">{x.spec ?? ''}{x.unit ? ` · ${x.unit}` : ''}</span>
                     </span>
