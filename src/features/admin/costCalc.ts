@@ -1,7 +1,6 @@
 import type { Item } from '../../shared/types';
 import { marginFromSupply } from '../../shared/margin';
 import { buildCostFn } from '../../shared/bomCost';
-import { VAT_UP } from '../../shared/lineAmount';
 
 /**
  * **원가계산기** — 아직 만들지 않은 품목의 원가를 미리 굴려 본다.
@@ -33,7 +32,6 @@ export interface CostCalcLine {
   /** qty × unitCost × (면세할증) */
   amount: number;
   /** 면세 원료를 과세품에 쓴 줄인가 — 매입세액을 못 빼서 10%가 원가에 얹힌다 */
-  vatUp: boolean;
 }
 
 export interface CostCalcResult {
@@ -113,7 +111,6 @@ export function calcCost(
   const lines: CostCalcLine[] = valid.map(r => {
     const it = byId.get(r.itemId);
     const unitCost = it ? costOf(it) : 0;
-    const vatUp = !!it && it.taxType === '면세' && taxType !== '면세';
     return {
       itemId: r.itemId,
       name: it?.name ?? '(없는 품목)',
@@ -121,18 +118,14 @@ export function calcCost(
       unit: String(it?.unit ?? ''),
       qty: Number(r.qty),
       unitCost,
-      amount: Number(r.qty) * unitCost * (vatUp ? VAT_UP : 1),
-      vatUp,
+      amount: Number(r.qty) * unitCost,
     };
   });
 
   //  BOM 몫은 **롤업이 낸 값**을 쓴다 — 줄 합을 쓰면 하위 BOM 재귀에서 갈린다.
   //  원료 몫은 위에서 말한 까닭으로 여기서 따로 더한다.
-  const rawTotal = rawRows.reduce((a, r) => {
-    const it = byId.get(r.itemId)!;
-    const up = it.taxType === '면세' && taxType !== '면세' ? VAT_UP : 1;
-    return a + Number(r.qty) * costOf(it) * up;
-  }, 0);
+  //  원가는 공급가액으로만 본다 — 면세 매입엔 뗄 부가세가 없다(shared/bomCost 머리말).
+  const rawTotal = rawRows.reduce((a, r) => a + Number(r.qty) * costOf(byId.get(r.itemId)!), 0);
   const cost = r0(costOf.rollup(ghost) + rawTotal + fee);
   //  셈은 shared/margin 한 곳에 있다. price 는 이미 공급가 기준이라 두 번 안 나눈다.
   const m = marginFromSupply(price, cost);

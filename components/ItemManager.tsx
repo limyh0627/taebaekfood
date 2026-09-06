@@ -764,11 +764,9 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                                 onClick={e => { e.stopPropagation(); setSalesPriceEdits(prev => ({ ...prev, [editKey]: String(curPrice ?? '') })); }}
                                 className="flex items-center gap-1 text-[11px] font-black px-1.5 py-0.5 rounded-md hover:bg-indigo-50 transition-all whitespace-nowrap"
                                 title="판매단가 수정">
-                                {/*  **판매단가는 세포함이다.** 원가는 세별도라 나란히 두면
-                                     마진이 부풀어 보인다 — 과세면 공급가액을 곁들인다(2026-09-03 사장님). */}
-                                <span className={curPrice != null ? 'text-slate-700' : 'text-slate-300'}>
-                                  {curPrice != null ? Number(curPrice).toLocaleString() : '미설정'}
-                                </span>
+                                {/*  **원가 › 공급가 › 판매단가** 차례로 둔다(2026-09-06 사장님).
+                                     왼쪽 원가와 곧바로 견줄 값이 공급가라 그 둘이 붙어야 읽힌다 —
+                                     판매단가는 세포함이라 원가와 나란히 두면 마진이 부풀어 보인다. */}
                                 {(() => {
                                   if (curPrice == null) return null;
                                   const pp = priceParts(curPrice, item.taxType === '면세');
@@ -776,6 +774,9 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                                     ? <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">공급가 {pp.supply.toLocaleString()}</span>
                                     : null;
                                 })()}
+                                <span className={curPrice != null ? 'text-slate-700' : 'text-slate-300'}>
+                                  {curPrice != null ? Number(curPrice).toLocaleString() : '미설정'}
+                                </span>
                                 <Edit size={11} className="text-slate-400 shrink-0" />
                               </button>
                             ) : (
@@ -1656,7 +1657,6 @@ const ItemManager: React.FC<ItemManagerProps> = ({ items, partners, partnerItems
                         <button onClick={() => { setCalcPickIdx(calcPickIdx === i ? null : i); setCalcSearch(''); }}
                           className={`w-full text-left text-xs font-bold truncate px-2 py-1.5 rounded-lg border transition-all ${picked ? 'border-slate-200 text-slate-700 hover:border-emerald-300' : 'border-dashed border-slate-300 text-slate-400'}`}>
                           {picked ? `${picked.name}${picked.spec ? ` · ${picked.spec}` : ''}` : '구성품 고르기'}
-                          {line?.vatUp && <span className="ml-1.5 text-[9px] font-black text-amber-600">면세+10%</span>}
                         </button>
                         {calcPickIdx === i && (
                           <div className="mt-1.5 rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden">

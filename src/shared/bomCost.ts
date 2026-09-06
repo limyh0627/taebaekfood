@@ -1,7 +1,6 @@
 import { Item } from './types';
 import { toKg, baseRawName, unitToKg } from '../constants/formula';
 import { bomQty } from './bom';
-import { VAT_UP } from './lineAmount';
 import { docName } from './docName';
 
 /**
@@ -73,12 +72,19 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
     if (!byRawName.has(key) || r > (rankOf.get(key) ?? -1)) { byRawName.set(key, i); rankOf.set(key, r); }
   }
   /**
-   * **면세 원료로 과세품을 만들면 매입세액을 못 뺀다** — 그만큼이 그대로 원가에 얹힌다.
-   * 참깨·들깨(면세 농산물)로 참기름·들기름(과세)을 짜는 자리가 그렇다.
-   * 원료가 과세면 매입세액을 빼므로 단가 그대로다.
+   * **원가는 공급가액으로만 본다**(2026-09-06 사장님: "아예 면세로만 원가 보는게 fm 아니야?").
+   *
+   * 전에는 면세 원료로 과세품을 만들면 원가에 ×1.1을 얹었다. **틀린 셈이었다** —
+   * 면세 농산물은 살 때 부가세를 **애초에 안 낸다.** 못 빼는 매입세액이 없으니
+   * 얹을 것도 없다. 과세 원료는 낸 부가세를 매출세액에서 공제받으므로 역시 원가가 아니다.
+   *
+   * 어느 쪽이든 **원가 = 공급가액**이다. 그래서 여기서 갈래를 볼 일이 없다.
+   * 마진도 판매가의 공급가액과 견주므로(shared/margin) 양쪽 기준이 이제 같다 —
+   * 전에는 분자에서만 세금을 빼고 분모(원가)엔 세금이 든 채라 마진이 나쁘게 나왔다.
+   *
+   * 대신 **넣는 값이 공급가액이어야 한다.** 매입 단가는 부가세 포함으로 적히므로
+   * 과세 품목은 ÷1.1 해서 넣는다(`scripts/fix-cost-supply-basis.mts` 로 한 번 맞췄다).
    */
-  const vatUp = (child: Item, parent: Item) =>
-    (child.taxType === '면세' && parent.taxType !== '면세' ? VAT_UP : 1);
   const feeOf = ctx.processingFeeOf ?? (() => 0);
   const memo = new Map<string, number>();
 
@@ -117,7 +123,7 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
         if (rows.length) {
           const blended = rows.reduce((sum, r) => {
             const src = byRawName.get(r.raw);
-            const unit = src ? cost(src, s2) * vatUp(src, item) : 0;   // 중간 반제품도 제 원료식으로 굴린다(재귀)
+            const unit = src ? cost(src, s2) : 0;   // 중간 반제품도 제 원료식으로 굴린다(재귀)
             return sum + unit * r.ratio / (r.yieldRate || 1);
           }, 0);
           if (blended > 0) { memo.set(item.id, blended); return blended; }
@@ -141,8 +147,7 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
     if (!hasAssembled) {
       for (const f of ctx.formulaOf(docName(item))) {
         const kg = toKg(item.spec || '', f.raw, 1) * f.ratio;
-        const src = byRawName.get(f.raw);
-        if (kg > 0) total += kg * rawCostPerKg(f.raw, byRawName) * (src ? vatUp(src, item) : 1);
+        if (kg > 0) total += kg * rawCostPerKg(f.raw, byRawName);
       }
     }
     for (const s of subs) {
@@ -153,7 +158,7 @@ export function buildCostFn(ctx: BomCostCtx): CostFn {
       // 이제 낱개 BOM에 그것들을 안 둔다(박스 품목을 만들 때 그 BOM으로 잡힌다). BOM이 곧 구성이다.
       const q = bomQty(s);
       if (q <= 0) continue;                          // 테이프 등 0 = 원가 산입 안 함
-      total += q * cost(comp, s2) * vatUp(comp, item);
+      total += q * cost(comp, s2);
     }
     total += feeOf(item);
     memo.set(item.id, total);

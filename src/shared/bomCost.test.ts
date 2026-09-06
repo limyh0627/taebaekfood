@@ -185,7 +185,17 @@ describe('제조 반제품 — 수율을 나눈다', () => {
  * 면세 원료 → 과세품. 매입세액을 못 빼니 그만큼 원가에 얹힌다.
  * 사장님 지적 — "통깨는 참깨가 면세고 통깨참기름은 과세여서 참깨에 1.1곱해서 해야할걸".
  */
-describe('면세 원료 가산(×1.1)', () => {
+/**
+ * **원가는 공급가액으로만 본다**(2026-09-06 사장님: "아예 면세로만 원가 보는게 fm 아니야?").
+ *
+ * 전에는 면세 원료로 과세품을 만들면 원가에 ×1.1을 얹었다. 틀린 셈이었다 —
+ * 면세 농산물은 살 때 부가세를 **애초에 안 낸다.** 못 빼는 매입세액이 없으니 얹을 것도 없다.
+ * 과세 원료는 낸 부가세를 매출세액에서 공제받으므로 역시 원가가 아니다.
+ *
+ * 마진도 판매가의 공급가액과 견주므로(shared/margin) 이제 양쪽 기준이 같다 —
+ * 전에는 분자에서만 세금을 빼고 분모(원가)엔 세금이 든 채라 마진이 나쁘게 나왔다.
+ */
+describe('원가는 부가세를 안 얹는다', () => {
   const 참깨 = mk({ id: 'raw-참깨', name: '참깨', type: 'raw', unit: 'kg', cost: 4105, taxType: '면세' });
   const 깨분 = mk({ id: 'raw-깨분', name: '깨분', type: 'raw', unit: 'kg', cost: 2970 });   // 과세
   const 통깨참기름 = mk({ id: 'wip-통깨', name: '통깨참기름', type: 'wip', unit: 'L' });
@@ -199,20 +209,22 @@ describe('면세 원료 가산(×1.1)', () => {
     formulaOf: () => [], formulaRowsOf: k => ROWS[k] ?? [],
   });
 
-  it('면세 참깨는 1.1 얹어서 나눈다', () => {
-    expect(c(통깨참기름)).toBeCloseTo(4105 * 1.1 / 0.48, 0);
+  it('면세 원료도 단가 그대로 — 살 때 부가세를 안 냈으니 얹을 게 없다', () => {
+    expect(c(통깨참기름)).toBeCloseTo(4105 / 0.48, 0);
   });
 
-  it('과세 원료는 그대로 — 매입세액을 빼니까', () => {
+  it('과세 원료도 단가 그대로 — 낸 부가세는 공제받으니 원가가 아니다', () => {
     expect(c(깨분참기름)).toBeCloseTo(2970 / 0.45, 0);
   });
 
-  it('면세품을 만들면 안 얹는다 — 뗄 세금이 없다', () => {
+  it('만드는 물건이 과세든 면세든 원가는 같다', () => {
     const 면세품 = mk({ id: 'wip-면세', name: '면세품', type: 'wip', taxType: '면세' });
+    const 과세품 = mk({ id: 'wip-과세', name: '과세품', type: 'wip', taxType: '과세' });
     const c2 = buildCostFn({
-      allItems: [참깨, 면세품], itemBoms: [], formulaOf: () => [],
-      formulaRowsOf: k => (k === '면세품' ? [{ raw: '참깨', ratio: 1, yieldRate: 0.5 }] : []),
+      allItems: [참깨, 면세품, 과세품], itemBoms: [], formulaOf: () => [],
+      formulaRowsOf: k => (k === '면세품' || k === '과세품' ? [{ raw: '참깨', ratio: 1, yieldRate: 0.5 }] : []),
     });
     expect(c2(면세품)).toBeCloseTo(4105 / 0.5, 0);
+    expect(c2(과세품)).toBeCloseTo(4105 / 0.5, 0);
   });
 });
