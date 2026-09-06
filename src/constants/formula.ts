@@ -106,15 +106,6 @@ export function unitToKg(val: number, material: string): number {
 /** 원료 목록을 화면에서 묶는 갈래 — 원료가 많아 종류별로 접어 본다. 표시 순서이기도 하다. */
 export const RAW_GROUPS = ['참기름', '들기름', '참깨', '들깨', '기타'] as const;
 
-/** 원료명 → 갈래. 이름으로 판단하므로 새 원료가 생겨도 어딘가에는 들어간다. */
-export function rawGroupOf(material: string): string {
-  const n = String(material ?? '');
-  if (n.includes('참기름')) return '참기름';
-  if (n.includes('들기름')) return '들기름';
-  if (n.includes('들깨')) return '들깨';
-  if (n.includes('깨')) return '참깨';       // 참깨·깨분·검정깨·볶음참깨…
-  return '기타';
-}
 
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 

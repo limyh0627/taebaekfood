@@ -93,8 +93,14 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
 
   return (
     <>
-            {/* ── 중간 단계: 주문/발주 선택 ── */}
-            {selectedClientId && !(selectedOrderId || manualMode || editingStmt) && (
+            {/*  ── 중간 단계: 주문/발주 선택 ──
+                 **고르는 동안 목록에 남는다.** 문지기가 `selectedOrderId` 를 보고 있어서,
+                 체크를 하나 넣는 순간 목록이 닫히고 직접입력으로 튀었다
+                 (2026-09-07 사장님: "박스 누르려고 해도 그냥 직접입력으로 가버리네").
+                 `selectedOrderId` 는 `selectedOrderIds[0]` 라 **첫 체크에 값이 생긴다** —
+                 한 건만 고르던 시절의 찌꺼기다. 여러 건을 묶게 된 뒤로는
+                 '전표 작성 →' 을 눌러야 양식으로 넘어간다(`goCompose`). */}
+            {selectedClientId && !(manualMode || editingStmt) && (
               <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
                 <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-100 bg-slate-50 flex-shrink-0 flex-wrap">
                   <span className="text-xs font-black text-slate-600">{createMode==='매출'?'주문 선택':'발주 선택'}</span>

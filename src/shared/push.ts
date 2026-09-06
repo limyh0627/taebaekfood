@@ -56,8 +56,22 @@ export async function registerPush(employeeId: string): Promise<PushResult> {
   }
 }
 
-/** 이 폰을 뺀다 — 로그아웃할 때. 안 빼면 남의 알림이 이 폰으로 온다. */
-export async function unregisterPush(employeeId: string, token: string): Promise<void> {
-  try { await updateDoc(doc(db, COL.employees, employeeId), { fcmTokens: arrayRemove(token) }); }
-  catch { /* 지우기 실패는 조용히 넘긴다 — 다음 로그인 때 다시 담긴다 */ }
+/**
+ * **이 폰을 뺀다 — 로그아웃할 때.**
+ *
+ * 안 빼면 **남의 알림이 이 폰으로 온다.** 한 폰을 여럿이 돌려 쓰면(사무실 공용 태블릿)
+ * 먼저 쓰던 사람의 주문 알림이 다음 사람 폰에 계속 뜬다.
+ *
+ * 로그아웃 시점에는 표를 들고 있지 않으므로 **여기서 다시 받아서** 뺀다.
+ * 표를 못 받아도(권한이 이미 꺼졌거나 브라우저가 못 쓰거나) 조용히 넘긴다 —
+ * 로그아웃 자체는 막으면 안 된다.
+ */
+export async function unregisterPush(employeeId: string, token?: string): Promise<void> {
+  try {
+    const t = token ?? (await pushSupported()
+      ? await getToken(getMessaging(app), { vapidKey: VAPID! }).catch(() => undefined)
+      : undefined);
+    if (!t) return;
+    await updateDoc(doc(db, COL.employees, employeeId), { fcmTokens: arrayRemove(t) });
+  } catch { /* 지우기 실패는 조용히 넘긴다 — 로그아웃을 막을 일이 아니다 */ }
 }

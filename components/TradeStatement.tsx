@@ -3197,7 +3197,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             />
 
             {/* ── 빠른 품목 입력 바 ── */}
-            {selectedClientId && (selectedOrderId || manualMode || editingStmt) && (!editingStmt || isEditMode) && (() => {
+            {/*  양식 쪽 문지기 — [OrderPicker](OrderPicker.tsx) 의 목록과 **정반대**여야 한다.
+                 셋이 짝이라 한쪽만 고치면 목록과 양식이 같이 뜬다(2026-09-07). */}
+            {selectedClientId && (manualMode || editingStmt) && (!editingStmt || isEditMode) && (() => {
               const qProduct = searchableRows.find(r=>(r.product!.name)===quickName)?.product as any;
               const selRow = selectedItemIdx!==null&&manualMode ? manualItems[selectedItemIdx] : null;
               const selItem = selectedItemIdx!==null&&!manualMode ? lineItems[selectedItemIdx] : null;
@@ -3468,7 +3470,7 @@ ${names}
             )}
 
             {/* ── 품목 테이블 ── */}
-            {selectedClientId && (selectedOrderId || manualMode || editingStmt) ? (
+            {selectedClientId && (manualMode || editingStmt) ? (
               <div className="flex-1 overflow-auto">
                 {/*  **칸 폭을 글자에 맞춘다**(2026-09-03 사장님) — 비율(%)로 두니 720px 안에서
                      품목명이 158px 밖에 안 돼 '참기름/병/분/전통/350ml' 이 잘렸다.
@@ -3806,7 +3808,7 @@ ${names}
             })()}
 
             {/* ── 하단 액션 바 ── */}
-            {(selectedOrderId || manualMode || editingStmt) && (
+            {(manualMode || editingStmt) && (
             <div className="flex items-center gap-4 px-5 py-3 border-t border-slate-100 bg-white flex-shrink-0 flex-wrap">
               <div className="ml-auto flex items-center gap-2 flex-wrap">
                 {editingStmt ? (

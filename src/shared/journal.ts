@@ -133,7 +133,3 @@ export function partnerBalance(entries: JournalEntry[], accountCode: string, par
   return normalBalance === 'debit' ? round(d - c) : round(c - d);
 }
 
-/** 기간 필터 — [from, to] 포함 (YYYY-MM-DD 문자열 비교) */
-export function inRange(entries: JournalEntry[], from: string, to: string): JournalEntry[] {
-  return entries.filter(e => e.date >= from && e.date <= to);
-}
