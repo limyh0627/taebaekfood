@@ -31,6 +31,16 @@ export interface LineItem {
   side?: '차변' | '대변';
   /** 주문의 품목을 못 찾음 — 박스가 안 풀렸을 수 있어 화면에 경고를 단다 */
   unknownItem?: boolean;
+  /**
+   * **과세·면세를 아직 아무도 안 정했다** — 거래처–품목 연결에 `taxType` 이 없고
+   * 이번에 손으로 뒤집지도 않았다.
+   *
+   * 전에는 그냥 **과세로 떨어뜨렸다**. 정한 적 없는 것과 과세로 정한 것이 화면에서
+   * 똑같이 보여서, 안 정한 채로 전표가 나가도 아무도 몰랐다(2026-09-06 사장님).
+   * 셈은 그대로 과세로 한다 — 합계가 비면 그게 더 나쁘다. 대신 화면에 `-` 로 띄워
+   * **아직 안 정했다는 걸 보이게** 한다.
+   */
+  taxUnknown?: boolean;
 }
 
 /** 매출이면 기본 계정이 800(일반매출)이다. 매입은 줄마다 골라야 한다. */
@@ -158,6 +168,8 @@ export function orderLines(input: OrderLinesInput): LineItem[] {
 
     //  면세 여부: 사람이 뒤집은 것 > 거래처 taxType (없으면 과세)
     const isTaxExempt = key in taxExemptOverrides ? taxExemptOverrides[key] : pcTaxType === '면세';
+    //  아무도 안 정했다 — 연결에 taxType 이 없고 이번에 뒤집지도 않았다.
+    const taxUnknown = !(key in taxExemptOverrides) && pcTaxType === undefined;
 
     //  단가는 부가세 포함 값이라 거꾸로 푼다 — 셈은 shared/lineAmount 한 곳에 있다.
     //  예전엔 여기만 **단가를 먼저 나눠** 손입력과 1~2원 갈렸다(1,070원 × 7개 = 6,811 vs 6,809).
@@ -177,6 +189,7 @@ export function orderLines(input: OrderLinesInput): LineItem[] {
         qty: qtyUnits, price: unitPrice, supply, tax, total: supply + tax,
         isTaxExempt, accountCode: acCode,
         ...(unknownItem ? { unknownItem: true } : {}),
+        ...(taxUnknown ? { taxUnknown: true } : {}),
       };
     }
   }

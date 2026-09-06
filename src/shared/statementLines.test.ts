@@ -239,3 +239,51 @@ describe('orderItemPrice — 박스 단가를 낱개로 나눈다', () => {
     expect(orderItemPrice({ perBox: 1 }, {} as any, undefined)).toBe(0);
   });
 });
+
+/**
+ * **과세·면세를 정한 적 없는 품목은 `-` 로 보인다.**
+ *
+ * 거래처–품목 연결에 `taxType` 이 없으면 그냥 **과세로 떨어뜨렸다**. 그래서 정한 적 없는
+ * 것과 과세로 정한 것이 화면에서 똑같이 보였고, 안 정한 채로 전표가 나가도 몰랐다
+ * (2026-09-06 사장님). 셈은 그대로 과세로 한다 — 합계가 비면 그게 더 나쁘다.
+ * 대신 `taxUnknown` 을 달아 화면이 `-` 로 띄운다.
+ */
+describe('과세·면세를 정했나', () => {
+  const 주문 = (itemId: string) => ({
+    id: 'o1', items: [{ itemId, quantity: 1 }],
+  } as never);
+  const 품목 = [{ id: 'A', name: '참기름', spec: '350ml', type: 'product' }] as never;
+  const 셈 = (partnerItems: unknown[], overrides = {}) => orderLines({
+    order: 주문('A'), stmtType: '매출', allItems: 품목,
+    partnerItems: partnerItems as never, partnerId: 'p1',
+    taxExemptOverrides: overrides,
+  } as never)[0];
+
+  it('연결에 taxType 이 없으면 아직 안 정한 것이다', () => {
+    const l = 셈([{ itemId: 'A', partnerId: 'p1', price: 1000 }]);
+    expect(l.taxUnknown).toBe(true);
+    expect(l.isTaxExempt, '셈은 그대로 과세로 한다').toBe(false);
+  });
+
+  it('연결이 아예 없어도 안 정한 것이다', () => {
+    expect(셈([]).taxUnknown).toBe(true);
+  });
+
+  it('과세로 정해 뒀으면 정해진 것이다 — `-` 가 아니다', () => {
+    const l = 셈([{ itemId: 'A', partnerId: 'p1', price: 1000, taxType: '과세' }]);
+    expect(l.taxUnknown).toBeUndefined();
+    expect(l.isTaxExempt).toBe(false);
+  });
+
+  it('면세로 정해 뒀으면 면세다', () => {
+    const l = 셈([{ itemId: 'A', partnerId: 'p1', price: 1000, taxType: '면세' }]);
+    expect(l.taxUnknown).toBeUndefined();
+    expect(l.isTaxExempt).toBe(true);
+  });
+
+  it('이번에 손으로 정했으면 그때부터 정해진 것이다', () => {
+    const l = 셈([{ itemId: 'A', partnerId: 'p1', price: 1000 }], { '참기름||350ml': false });
+    expect(l.taxUnknown).toBeUndefined();
+    expect(l.isTaxExempt).toBe(false);
+  });
+});

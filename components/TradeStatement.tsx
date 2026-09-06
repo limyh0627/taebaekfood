@@ -3702,9 +3702,17 @@ ${names}
                             </td>
                             <td className="px-3 py-2 text-right text-slate-700">{fmt(item.supply)}</td>
                             <td className="px-3 py-2 text-center" onClick={e=>e.stopPropagation()}>
-                              <button onClick={()=>setTaxExemptOverrides(prev=>({...prev,[item.key]:!item.isTaxExempt}))}
-                                className={`px-2 py-0.5 rounded-md text-[10px] font-black border transition-all ${item.isTaxExempt?'bg-indigo-100 text-indigo-700 border-indigo-200':'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}>
-                                {item.isTaxExempt?'면세':fmt(item.tax)}
+                              {/*  **아직 아무도 안 정한 품목은 `-` 로 둔다**(2026-09-06 사장님).
+                                   거래처–품목 연결에 taxType 이 없으면 그냥 과세로 떨어뜨리고 있었는데,
+                                   정한 적 없는 것과 과세로 정한 것이 똑같이 보여서 안 정한 채로 나가도 몰랐다.
+                                   누르면 과세 → 면세 → 과세 로 돈다. 한 번 누르면 그때부터 정해진 것이다. */}
+                              <button onClick={()=>setTaxExemptOverrides(prev=>({...prev,[item.key]:item.taxUnknown?false:!item.isTaxExempt}))}
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-black border transition-all ${
+                                  item.taxUnknown?'bg-amber-50 text-amber-600 border-amber-300 hover:bg-amber-100'
+                                  :item.isTaxExempt?'bg-indigo-100 text-indigo-700 border-indigo-200'
+                                  :'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}
+                                title={item.taxUnknown?'과세·면세를 정한 적이 없습니다 — 눌러서 정하세요':undefined}>
+                                {item.taxUnknown?'-':item.isTaxExempt?'면세':fmt(item.tax)}
                               </button>
                             </td>
                             <td className="px-3 py-2 text-right font-black text-slate-800">{fmt(item.total)}</td>

@@ -24,8 +24,10 @@ export type LedgerTone = keyof typeof TONE;
 /**
  * 접히는 큰 줄 — 카드의 뼈대다. 부호 · 이름 / 큰 금액 · 곁수치.
  *
- * `곁수치` 는 손익에선 매출 대비 비율(`83%`), 현금흐름에선 안 쓴다. 자리를 늘 비워 두어
- * **줄이 여럿일 때 금액 끝이 맞는다** — 있다 없다 하면 숫자가 들쭉날쭉해 읽기 나쁘다.
+ * `곁수치` 는 손익에선 매출 대비 비율(`83%`)이고 현금흐름에선 안 쓴다.
+ * **안 쓰면 자리도 안 잡는다** — 처음엔 늘 비워 뒀는데 현금흐름 쪽 금액 오른쪽이
+ * 통째로 휑했다(2026-09-06 사장님: "오른쪽에 여백이 너무 많아").
+ * 한 카드 안에서는 줄마다 있고 없고가 갈리지 않아 금액 끝은 그대로 맞는다.
  */
 export const LedgerLine: React.FC<{
   label: string;
@@ -46,7 +48,7 @@ export const LedgerLine: React.FC<{
       </span>
       <span className={`text-base font-black tabular-nums ${TONE[tone]}`}>
         {fmt(amount)}
-        <span className="text-[10px] font-bold text-slate-400 ml-1.5 w-9 inline-block text-right">{곁수치}</span>
+        {곁수치 && <span className="text-[10px] font-bold text-slate-400 ml-1.5 w-9 inline-block text-right">{곁수치}</span>}
       </span>
     </button>
     {열림 && <div className="bg-slate-50/60 px-5 pb-3 pt-1 space-y-2">{children}</div>}
@@ -64,17 +66,23 @@ export const LedgerResult: React.FC<{
     <span className="text-right">
       {right ?? <>
         <span className={`text-base font-black tabular-nums ${강조 ? 'text-blue-700' : 'text-slate-900'}`}>{fmt(amount)}</span>
-        <span className="text-[10px] font-bold text-slate-400 ml-1.5 w-9 inline-block text-right">{곁수치}</span>
+        {곁수치 && <span className="text-[10px] font-bold text-slate-400 ml-1.5 w-9 inline-block text-right">{곁수치}</span>}
       </>}
     </span>
   </div>
 );
 
-/** 펼친 안쪽의 계정 줄 — 코드 · 이름 / 금액. */
-export const LedgerSub: React.FC<{ code: string; name: string; amount: number; 색?: string }> = ({
-  code, name, amount, 색,
+/**
+ * 펼친 안쪽의 계정 줄 — 코드 · 이름 / 금액.
+ *
+ * **색을 안 쓴다.** 초록·빨강은 카드의 큰 줄이 더하는 줄인지 빼는 줄인지 가리는 표시다.
+ * 안쪽 계정까지 칠하면 온통 색이라 그 표시가 뜻을 잃는다(2026-09-06 사장님:
+ * "왜 계정이름이나 숫자에 색이 다 들어가있어"). 손익은 처음부터 회색이었다.
+ */
+export const LedgerSub: React.FC<{ code: string; name: string; amount: number }> = ({
+  code, name, amount,
 }) => (
-  <div className={`flex items-center justify-between pl-3 text-[11px] ${색 ?? (amount ? 'text-slate-400' : 'text-slate-300')}`}>
+  <div className={`flex items-center justify-between pl-3 text-[11px] ${amount ? 'text-slate-400' : 'text-slate-300'}`}>
     <span><span className="text-slate-300 mr-1.5 tabular-nums">{code}</span>{name}</span>
     <span className="tabular-nums">{fmt(amount)}</span>
   </div>

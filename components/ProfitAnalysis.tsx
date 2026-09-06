@@ -837,8 +837,7 @@ const ProfitAnalysis: React.FC<ProfitAnalysisProps> = ({ issuedStatements, fixed
                   })}>
                   {dSection(sec).length
                     ? dSection(sec).map(l => (
-                        <LedgerSub key={l.code} code={l.code} name={nameOfCode(l.code)} amount={l.inflow - l.outflow}
-                          색={l.inflow - l.outflow >= 0 ? 'text-emerald-600' : 'text-rose-500'} />
+                        <LedgerSub key={l.code} code={l.code} name={nameOfCode(l.code)} amount={l.inflow - l.outflow} />
                       ))
                     : <p className="text-[11px] font-bold text-slate-300 py-2">이 활동에 잡힌 현금 움직임이 없습니다.</p>}
                 </LedgerLine>
