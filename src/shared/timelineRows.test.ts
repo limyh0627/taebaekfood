@@ -229,7 +229,7 @@ describe('timelineTotals — 하단 합계', () => {
       수금({ stmtType: '매출', amount: 700 }),
       수금({ stmtType: '매입', amount: 300 }),
     ], 성격);
-    expect(t).toEqual({ stmtSum: 3000, stmtCnt: 2, receiveSum: 700, receiveCnt: 1, paySum: 300, payCnt: 1 });
+    expect(t).toEqual({ stmtSum: 3000, stmtCnt: 2, saleSum: 3000, buySum: 0, receiveSum: 700, receiveCnt: 1, paySum: 300, payCnt: 1 });
   });
 
   it('자금 출금도 지불에 센다', () => {
@@ -244,6 +244,42 @@ describe('timelineTotals — 하단 합계', () => {
 
   it('빈 목록은 전부 0', () => {
     expect(timelineTotals([], 성격))
-      .toEqual({ stmtSum: 0, stmtCnt: 0, receiveSum: 0, receiveCnt: 0, paySum: 0, payCnt: 0 });
+      .toEqual({ stmtSum: 0, stmtCnt: 0, saleSum: 0, buySum: 0, receiveSum: 0, receiveCnt: 0, paySum: 0, payCnt: 0 });
+  });
+});
+
+describe('전표 합계는 화면의 줄과 맞아야 한다', () => {
+  const 성격 = new Map<string, string>();
+
+  it('매출·매입을 갈래별로 따로 센다', () => {
+    const t = timelineTotals([
+      전표({ data: { type: '매출', totalAmount: 3_150_000 } }),
+      전표({ data: { type: '매출', totalAmount: 2_320_000 } }),
+      전표({ data: { type: '매입', totalAmount: 900_000 } }),
+    ], 성격);
+    expect(t.saleSum).toBe(5_470_000);
+    expect(t.buySum).toBe(900_000);
+  });
+
+  it('**줄 금액을 그대로 더한다** — 손익(공급가액)과 달리 세가 들어 있다', () => {
+    //  사장님이 화면에서 눈으로 더하는 값이다. 여기서 세를 빼면 또 안 맞는다.
+    const t = timelineTotals([전표({ data: { type: '매출', totalAmount: 1_100_000 } })], 성격);
+    expect(t.saleSum).toBe(1_100_000);   // 1,000,000 이 아니다
+  });
+
+  it('대체전표는 어느 쪽도 아니다 — 물건이 오간 게 아니라 계정을 옮긴 것이다', () => {
+    const t = timelineTotals([전표({ data: { type: '비용', totalAmount: 900_000 } })], 성격);
+    expect(t.saleSum).toBe(0);
+    expect(t.buySum).toBe(0);
+    expect(t.stmtSum).toBe(900_000);     // 전표 수·총액에는 든다
+  });
+
+  it('수금·지불은 전표 합계에 안 낀다', () => {
+    const t = timelineTotals([
+      전표({ data: { type: '매출', totalAmount: 1_000 } }),
+      수금({ stmtType: '매출', amount: 700 }),
+    ], 성격);
+    expect(t.saleSum).toBe(1_000);
+    expect(t.receiveSum).toBe(700);
   });
 });

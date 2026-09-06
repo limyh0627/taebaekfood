@@ -29,7 +29,7 @@ import { groupByMonth as 월별묶기 } from '../src/shared/groupByMonth';
 import OrderPicker from './OrderPicker';
 import { STATUS_LABEL, STATUS_COLOR } from '../src/shared/orderStatusStyle';
 import { weekMonday, weekSunday, monthStart, monthEnd, yearStart } from '../src/shared/day';
-import { lineAmount, lineAmountOf } from '../src/shared/lineAmount';
+import { lineAmount, lineAmountOf, priceParts } from '../src/shared/lineAmount';
 import { marginOf } from '../src/shared/margin';
 import { splitPayment, owedNow } from '../src/shared/paymentSplit';
 import { pickLines, linkWrites } from '../src/shared/itemPick';
@@ -2890,8 +2890,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
           return (
             <div className="px-4 py-3 border-t border-slate-200 bg-slate-50/60 flex flex-wrap items-center justify-end gap-x-5 gap-y-1.5">
               {/* 발생 = 이번 기간에 생긴 손익, 현금 = 이번 기간에 오간 돈. 외상이 있는 한 둘은 안 맞는다. */}
+              {/*  **줄과 맞는 합계를 먼저 놓는다**(2026-09-07 사장님: "덧셈이 틀린거같다").
+                   줄은 총액(세 포함)인데 손익은 공급가액이라, 손익만 띄워 두면 화면의 어느
+                   숫자와도 안 맞아 덧셈이 틀린 걸로 보였다. 뜻이 다르니 둘 다 낸다. */}
+              {(histTotals.saleSum > 0 || histTotals.buySum > 0) && (
+                <span className="text-[9px] font-black text-slate-400 tracking-widest">전표</span>
+              )}
+              {histTotals.saleSum > 0 && cell('매출', histTotals.saleSum, 'text-blue-700')}
+              {histTotals.buySum > 0 && cell('매입', histTotals.buySum, 'text-rose-700')}
               {anyPl && (
-                <span className="text-[9px] font-black text-slate-400 tracking-widest">발생</span>
+                <span className="text-[9px] font-black text-slate-400 tracking-widest border-l border-slate-200 pl-5">
+                  발생<span className="ml-1 font-bold normal-case tracking-normal text-slate-300">공급가액</span>
+                </span>
               )}
               {showIncome && sale > 0 && cell('수익', sale, 'text-blue-600')}
               {showCost && buy > 0 && cell('비용', buy, 'text-rose-600')}
@@ -3310,7 +3320,18 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                   </div>
                   <div className="flex items-center gap-4 text-[10px] text-slate-400">
                     <span>원가 <b className="text-slate-600">{fmt(productCost)}</b></span>
-                    <span>매출단가 <b className="text-slate-600">{salePrice>0?fmt(salePrice):'-'}</b></span>
+                    {/*  **마진을 견주는 값을 같이 보인다**(2026-09-07 사장님: "마진율이 이상하다").
+                         마진은 공급가액에서 세는데 옆에 세포함 단가만 보이니, 원가 4,021 · 단가 4,000
+                         인데 −10.6% 로 떠서 셈이 틀린 것처럼 읽혔다(견주는 값은 3,636 이다). */}
+                    <span>매출단가 <b className="text-slate-600">{salePrice>0?fmt(salePrice):'-'}</b>
+                      {(() => {
+                        if (!(salePrice > 0)) return null;
+                        const { supply, showSupply } = priceParts(salePrice, quickIsTaxExempt);
+                        return showSupply
+                          ? <span className="ml-1 text-slate-400">(공급가 <b className="text-slate-500">{fmt(supply)}</b>)</span>
+                          : null;
+                      })()}
+                    </span>
                     {qAmt>0 && <span>공급가액 <b className="text-blue-600">{fmt(qAmt)}</b></span>}
                     {qTax>0 && <span>세액 <b className="text-slate-600">{fmt(qTax)}</b></span>}
                     {salePrice>0 && <span>마진율 <b className={parseFloat(margin)>0?'text-emerald-600':'text-rose-600'}>{margin}%</b></span>}

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { marginOf, marginFromSupply, ratePct } from './margin';
+import { priceParts } from './lineAmount';
 
 /**
  * 마진 셈이 네 벌로 흩어져 있었고, 둘은 **세금 포함 단가를 그대로 나눴다.**
@@ -53,5 +54,26 @@ describe('마진은 공급가에서 센다', () => {
     expect(ratePct(0.2)).toBe('20.0%');
     expect(ratePct(-0.082)).toBe('-8.2%');
     expect(ratePct(0.2, 0)).toBe('20%');
+  });
+});
+
+describe('마진은 무엇과 견주는가 — 화면에 그 값이 보여야 한다', () => {
+  it('원가 4,021 · 세포함 단가 4,000 → −10.6%', () => {
+    //  2026-09-07 사장님이 "이상하다" 하신 화면 그대로.
+    //  4,000 은 세포함이라 견주는 값은 3,636(공급가액)이다. 4,021 과 견주면 −10.6%.
+    //  세포함 4,000 과 그냥 견주면 −0.5% 라 셈이 딴판이 된다.
+    const r = marginOf(4000, 4021, false);
+    expect(Math.round(r.marginRate * 1000) / 10).toBe(-10.6);
+    expect(priceParts(4000, false).supply).toBe(3636);
+  });
+
+  it('면세면 세포함·공급가액이 같아 곁들일 게 없다', () => {
+    const p = priceParts(4000, true);
+    expect(p.supply).toBe(4000);
+    expect(p.showSupply).toBe(false);
+  });
+
+  it('과세면 곁들여 보여준다 — 안 보이면 마진이 틀려 보인다', () => {
+    expect(priceParts(4000, false).showSupply).toBe(true);
   });
 });

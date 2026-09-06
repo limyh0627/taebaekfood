@@ -228,6 +228,14 @@ export function classifyRow(row: TimelineRow, codeType: CodeType): RowClass {
 
 export interface TimelineTotals {
   stmtSum: number; stmtCnt: number;
+  /**
+   * 갈래별 **전표 총액**(부가세 포함) — 화면에 뜬 줄 금액을 그대로 더한 값이다.
+   *
+   * 손익(`plOfJournals`)은 **공급가액**이라 줄과 안 맞는다. 그걸 '수익·비용' 이라고만
+   * 띄워 두니 **덧셈이 틀린 것처럼 보였다**(2026-09-07 사장님: "덧셈이 틀린거같다").
+   * 둘은 뜻이 다르니 **둘 다 낸다** — 줄과 맞는 것도 있어야 눈으로 검산이 된다.
+   */
+  saleSum: number; buySum: number;
   receiveSum: number; receiveCnt: number;
   paySum: number; payCnt: number;
 }
@@ -240,10 +248,15 @@ export interface TimelineTotals {
  * 부르는 쪽이 `financials.plOfJournals` 로 따로 구해 붙인다.
  */
 export function timelineTotals(rows: readonly TimelineRow[], codeType: CodeType): TimelineTotals {
-  const t: TimelineTotals = { stmtSum: 0, stmtCnt: 0, receiveSum: 0, receiveCnt: 0, paySum: 0, payCnt: 0 };
+  const t: TimelineTotals = { stmtSum: 0, stmtCnt: 0, saleSum: 0, buySum: 0, receiveSum: 0, receiveCnt: 0, paySum: 0, payCnt: 0 };
   for (const r of rows) {
     const c = classifyRow(r, codeType);      // 구분 판정은 한 곳에서만 — 필터와 같은 규칙
-    if (r.kind === 'stmt') { t.stmtSum += r.data.totalAmount; t.stmtCnt++; }
+    if (r.kind === 'stmt') {
+      t.stmtSum += r.data.totalAmount; t.stmtCnt++;
+      //  대체전표(비용)는 어느 쪽도 아니다 — 물건이 오간 게 아니라 계정을 옮긴 것이다
+      if (r.data.type === '매출') t.saleSum += r.data.totalAmount;
+      else if (r.data.type === '매입') t.buySum += r.data.totalAmount;
+    }
     if (r.kind === 'stmt') continue;         // 전표는 수금·지불이 아니다
     const amount = r.amount;
     if (c.cash === '입금') { t.receiveSum += amount; t.receiveCnt++; }
