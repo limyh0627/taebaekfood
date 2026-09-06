@@ -21,6 +21,7 @@ import { takeShareFromUrl } from '../../src/shared/shareTarget';
 import { canEnterAdmin, freshAccess } from '../../src/shared/adminAccess';
 import '../../src/index.css';
 import { loadStartView, saveView } from '../../src/shared/startView';
+import { 새버전확인붙이기 } from '../../src/shared/swUpdate';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null };
@@ -55,6 +56,9 @@ const AdminRoot: React.FC = () => {
   useEffect(() => { saveView('tb_admin_view', currentView); }, [currentView]);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [previewAsStaff, setPreviewAsStaff] = useState(false);
+
+  //  배포한 게 폰에 안 오던 것 — 앱이 앞으로 나올 때 새 버전을 물어본다.
+  useEffect(새버전확인붙이기, []);
 
   const appData = useAppData();
   const adminData = useAdminData(true);
