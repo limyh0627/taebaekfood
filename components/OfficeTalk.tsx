@@ -22,7 +22,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { Employee, ChatRoom, ChatMessage } from '../types';
 import { appendMention, replaceMentionQuery, mentionedIds, MENTION_ADMIN, MENTION_ADMIN_ID } from '../src/shared/mention';
-import { uploadChatFile, fileSizeLabel, saveImage, ChatAttachment } from '../src/shared/chatUpload';
+import { uploadChatFile, fileFromPaste, fileSizeLabel, saveImage, ChatAttachment } from '../src/shared/chatUpload';
 import { consumeSharedText } from '../src/shared/shareTarget';
 import { roomNameFor, renameRoomPatch, isOwner } from '../src/shared/roomName';
 import { notify, notifyPermission, loadNotifyMode, saveNotifyMode, NotifyMode } from '../src/shared/notify';
@@ -281,10 +281,9 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
 
   //  사진·파일 한 길 — Storage 에 올리고 주소만 메시지에 싣는다.
   //  base64 로 글자에 실으면 Firestore 1MB 한계에 걸려 폰 사진은 아예 안 갔다.
-  const handleFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';           // 같은 파일을 다시 골라도 다시 올라가게
-    if (!file || !activeRoomId) return;
+  //  **고르든 붙여넣든 여기 하나를 지난다.**
+  const sendFile = async (file: File) => {
+    if (!activeRoomId) return;
     setUploading(true);
     try {
       const attach = await uploadChatFile(activeRoomId, file);
@@ -295,6 +294,48 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
       setUploading(false);
     }
   };
+
+  const handleFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';           // 같은 파일을 다시 골라도 다시 올라가게
+    if (file) await sendFile(file);
+  };
+
+  /**
+   * **Ctrl+V 로 사진을 붙인다**(2026-09-07 사장님) — 캡처해서 바로 보내는 길.
+   *
+   * 클립보드에서 파일을 꺼내는 건 [chatUpload.fileFromPaste](../src/shared/chatUpload.ts) 가 안다.
+   * **글자면 null 이 오고, 그때는 아무것도 안 한다** — 여기서 preventDefault 를 해버리면
+   * 글자 붙여넣기가 통째로 죽는다.
+   *
+   * 파일은 **기다리기 전에** 꺼내야 한다. await 를 지나면 브라우저가 클립보드를 놓아 버린다.
+   */
+  const 붙여넣기 = (data: DataTransfer | null, prevent: () => void): boolean => {
+    if (!activeRoomId) return false;
+    const file = fileFromPaste(data);
+    if (!file) return false;
+    prevent();
+    void sendFile(file);
+    return true;
+  };
+
+  /**
+   * 입력칸 밖에서 눌러도 붙는다 — 방을 열어 두고 바로 Ctrl+V 하는 게 자연스럽다.
+   * **글자 칸에 커서가 있으면 손대지 않는다** — 그 칸이 제 몫을 한다(입력칸은 제 onPaste 가,
+   * 방 이름 고치는 칸은 글자를 받아야 한다). 안 그러면 방 이름 고치다 사진이 날아간다.
+   */
+  useEffect(() => {
+    if (!activeRoomId) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const el = document.activeElement as HTMLElement | null;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA)$/.test(el.tagName))) return;
+      붙여넣기(e.clipboardData, () => e.preventDefault());
+    };
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+    //  일부러 딸림값을 안 적는다 — 매 렌더 다시 달아야 방·보내기 함수가 늘 지금 것이다.
+    //  붙였다 떼는 비용은 없다시피 하고, 묵은 닫힘(stale closure)으로 엉뚱한 방에 보내는 게 훨씬 나쁘다.
+  });
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
@@ -682,21 +723,25 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                       )}
                       <div
                         //  폰은 꾹 누르기, PC는 **우클릭** — 같은 창이 뜬다(2026-09-06 사장님)
-                        onPointerDown={() => startLongPress(msg)}
+                        //  **마우스로는 꾹 눌러도 창이 안 뜬다**(2026-09-07 사장님) — 글자를 긁으려고
+                        //  누르고 끄는 데 0.45초가 넘게 걸려서, 긁는 도중에 창이 튀어나왔다.
+                        onPointerDown={(e) => { if (e.pointerType !== 'mouse') startLongPress(msg); }}
                         onPointerUp={cancelLongPress}
                         onPointerLeave={cancelLongPress}
                         onPointerCancel={cancelLongPress}
                         onContextMenu={(e) => {
+                          //  글자를 긁어 뒀으면 브라우저 메뉴를 그대로 둔다 — 거기 '복사'가 있다
+                          if (!window.getSelection()?.isCollapsed) return;
                           e.preventDefault(); cancelLongPress();
                           if (actionsFor({ msg, me: currentUser, isAdmin }).length) setActionMsg(msg);
                         }}
-                        title={isDeleted(msg) ? undefined : '꾹 누르기 (PC는 우클릭)'}
-                        className={`max-w-[70%] px-4 py-3 rounded-2xl text-sm font-medium shadow-sm relative group select-none ${
+                        title={isDeleted(msg) ? undefined : '꾹 누르기 (PC는 우클릭 · 긁어서 복사도 됩니다)'}
+                        className={`max-w-[70%] px-4 py-3 rounded-2xl text-sm font-medium shadow-sm relative group msg-bubble ${
                         isDeleted(msg)
                           ? 'bg-slate-50 text-slate-400 border border-dashed border-slate-200 italic'
                           : isMine
-                          ? 'bg-indigo-600 text-white rounded-tr-none cursor-pointer active:scale-[0.99] transition-transform'
-                          : 'bg-white text-slate-700 border border-slate-100 rounded-tl-none cursor-pointer active:scale-[0.99] transition-transform'
+                          ? 'bg-indigo-600 text-white rounded-tr-none active:scale-[0.99] transition-transform'
+                          : 'bg-white text-slate-700 border border-slate-100 rounded-tl-none active:scale-[0.99] transition-transform'
                       }`}>
                         {msg.imageUrl && !isDeleted(msg) && (
                           <div className="mb-2 rounded-xl overflow-hidden border border-white/10">
@@ -883,7 +928,8 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                         handleSendMessage();
                       }
                     }}
-                    placeholder="메시지 입력"
+                    onPaste={(e) => 붙여넣기(e.clipboardData, () => e.preventDefault())}
+                    placeholder="메시지 입력 (사진은 Ctrl+V 로도 붙습니다)"
                     className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none max-h-32 custom-scrollbar"
                     rows={1}
                   />

@@ -60,6 +60,21 @@ input[type="date"], input[type="month"], input[type="datetime-local"] {
 }
 input[type="month"] { min-width: 7rem; }
 
+/*  **오피스톡 말풍선 — 마우스로는 긁을 수 있어야 한다**(2026-09-07 사장님).
+    "채팅 좌클릭하는데 수정 삭제 그거 뜨면 긁어서 복사하거나 이런걸 못하잖아"
+
+    폰과 PC 가 서로 다른 걸 원한다 —
+      폰  꾹 눌러 창을 띄운다 → 글자 고르기를 막아야 한다(OS 선택과 겹쳐 둘 다 어정쩡해진다)
+      PC  긁어서 복사하는 게 기본 → 고를 수 있어야 한다
+
+    가리키개(pointer)로 가른다. 손가락은 coarse, 마우스는 fine 이다.
+    앱으로 깔았을 때(display-mode: standalone) body 에 걸어 둔 user-select:none 도 여기서 푼다 —
+    그건 화면이 밀려 다니는 걸 막으려는 것이지 말풍선까지 막으려던 게 아니다. */
+.msg-bubble { -webkit-user-select: none; user-select: none; cursor: pointer; }
+@media (pointer: fine) {
+  .msg-bubble { -webkit-user-select: text; user-select: text; cursor: text; }
+}
+
 /* iOS Safari 스크롤 부드럽게 */
 .overflow-y-auto, .overflow-x-auto {
   -webkit-overflow-scrolling: touch;
