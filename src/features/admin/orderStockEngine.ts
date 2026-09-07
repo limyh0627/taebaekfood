@@ -166,14 +166,18 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
         newStock = Math.round((before + delta) * 1000) / 1000;
         tx.update(ref, { stock: newStock });
       });
-      if (newStock < 0) {
-        console.warn(`[재고 부족] ${it.name}: ${before} → ${newStock}`);
-        await addItem('notifications', {
-          type: 'inventory_shortage', title: '재고 부족 경고',
-          body: `${it.name}: 재고 ${newStock} (부족분 ${Math.abs(newStock)}). 주문 상태변경 반영 확인 필요.`,
-          linkedId: itemId, readBy: [], createdAt: new Date().toISOString(),
-        } as Omit<AppNotification, 'id'>);
-      }
+      /*
+       * **재고가 음수여도 알림을 안 보낸다**(2026-09-08 사장님: "알람에 재고부족경고 안오게 해").
+       *
+       * 이 집은 먼저 내보내고 나중에 만든다. 그래서 출고 때 재고가 음수로 내려가는 게
+       * 사고가 아니라 **평소 모습**이다. 실제로 종에 67건이 쌓여 있었고, 전체 알림의
+       * 15%가 이것이었다 — 새 주문·언급이 그 사이에 묻혔다.
+       *
+       * 없앤 게 아니라 **자리를 옮긴 것**이다. 음수 재고는 재고관리 화면에 늘 떠 있다.
+       * 알림은 "지금 눈을 떼고 봐야 할 일"에만 쓴다. 이건 그런 게 아니다.
+       * (원장·로트 불일치와 배송완료일 누락은 그대로 둔다 — 그건 재고량이 아니라 **어긋남**이다)
+       */
+      if (newStock < 0) console.warn(`[재고 부족] ${it.name}: ${before} → ${newStock}`);
     }
   };
 
@@ -311,10 +315,9 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
               ...(d.lotId ? { lotId: d.lotId } : {}), ...(d.lotNo ? { lotNo: d.lotNo } : {}), ...(d.receivedDate ? { receivedDate: d.receivedDate } : {}),
             });
           }
-          if (result.shortageKg > 0) {
-            console.warn(`[원료 부족] ${raw}: 로트 잔량보다 ${result.shortageKg}kg 더 사용 (주문 ${order.id})`);
-            await addItem('notifications', { type: 'inventory_shortage', title: '원료 로트 부족', body: `${raw}: 로트 잔량보다 ${result.shortageKg}kg 더 사용됨 (주문 ${order.id}, ${customerName}). 입고/이월 확인 필요.`, linkedId: rawItem.id, readBy: [], createdAt: new Date().toISOString() } as Omit<AppNotification, 'id'>);
-          }
+          //  로트 잔량보다 더 쓴 것도 알림을 안 보낸다 — 위 '재고 부족'과 같은 이유다.
+          //  초과분은 이월 로트(미상)로 넘어가 원장에 그대로 남고, 원료재고 화면에서 보인다.
+          if (result.shortageKg > 0) console.warn(`[원료 부족] ${raw}: 로트 잔량보다 ${result.shortageKg}kg 더 사용 (주문 ${order.id})`);
         }
       }
       const entryId = `rm-auto-${order.id}-${raw.replace(/\s/g, '_')}`;

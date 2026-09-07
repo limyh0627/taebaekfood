@@ -1,0 +1,1019 @@
+{
+  "적은날": "2026-09-07T17:17:57.943Z",
+  "알림": [
+    {
+      "id": "06lEp12l8FycEiPudWf0",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "title": "재고 부족 경고",
+      "createdAt": "2026-09-02T07:55:18.272Z",
+      "body": "200G 페트 마개: 재고 -25 (부족분 25). 주문 상태변경 반영 확인 필요.",
+      "linkedId": "hsGvS0lNTwJkJ4LPubmO",
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "1FJgEDikMTC689cgIEGM",
+      "type": "inventory_shortage",
+      "linkedId": "p-1785903975026",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "title": "재고 부족 경고",
+      "body": "모란 볶음참깨: 재고 -100 (부족분 100). 주문 상태변경 반영 확인 필요.",
+      "createdAt": "2026-08-26T06:07:09.130Z"
+    },
+    {
+      "id": "1NJ7XlGiAFAKVvrc6RwL",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "body": "볶음참깨: 재고 -39 (부족분 39). 주문 상태변경 반영 확인 필요.",
+      "title": "재고 부족 경고",
+      "type": "inventory_shortage",
+      "linkedId": "raw-볶음참깨",
+      "createdAt": "2026-08-30T10:41:50.896Z"
+    },
+    {
+      "id": "1cjoQ9SOew4QmIKU4wmY",
+      "createdAt": "2026-09-02T07:56:46.944Z",
+      "type": "inventory_shortage",
+      "title": "재고 부족 경고",
+      "body": "시골향탈피들깨가루/1kg: 재고 -2 (부족분 2). 주문 상태변경 반영 확인 필요.",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "linkedId": "p-104"
+    },
+    {
+      "id": "1iJwkhII1Vq83fTGkIZC",
+      "type": "inventory_shortage",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "linkedId": "box-p-1776598644385-20",
+      "createdAt": "2026-09-01T08:33:05.824Z",
+      "body": "들깨가루(중간)/거산/1kg: 재고 -5 (부족분 5). 주문 상태변경 반영 확인 필요.",
+      "title": "재고 부족 경고"
+    },
+    {
+      "id": "3Um9MLV0JNkRo233WgcT",
+      "linkedId": "PLDhkjOgcPIhO1hhReHm",
+      "body": "볶음참깨-낱개/1kg: 재고 -33 (부족분 33). 주문 상태변경 반영 확인 필요.",
+      "createdAt": "2026-08-27T08:25:11.123Z",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "title": "재고 부족 경고",
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "4s6Z4wfIa7mwH1zn8cXl",
+      "body": "시골향참기름/골드/1800ml: 재고 -10 (부족분 10). 주문 상태변경 반영 확인 필요.",
+      "readBy": [],
+      "title": "재고 부족 경고",
+      "createdAt": "2026-09-07T08:24:44.432Z",
+      "linkedId": "p-64",
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "6OIMMUPKTNaQiifCwTKw",
+      "body": "수입들기름: 로트 잔량보다 38.808kg 더 사용됨 (주문 ORD-1788143529009, 해피유통(포천)). 입고/이월 확인 필요.",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "title": "원료 로트 부족",
+      "createdAt": "2026-09-02T01:42:00.400Z",
+      "linkedId": "raw-수입들기름",
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "7EZlXBTZEnShCJRbMJ5W",
+      "type": "inventory_shortage",
+      "linkedId": "box-p-22-12",
+      "title": "재고 부족 경고",
+      "createdAt": "2026-09-07T08:11:33.155Z",
+      "readBy": [],
+      "body": "시골향참기름/분/1800ml: 재고 -7 (부족분 7). 주문 상태변경 반영 확인 필요."
+    },
+    {
+      "id": "7YENzGbVMFSDQaW6NLkI",
+      "createdAt": "2026-08-31T02:50:42.262Z",
+      "body": "수입들기름: 로트 잔량보다 10.291kg 더 사용됨 (주문 ORD-1788143714789, 가득찬식품). 입고/이월 확인 필요.",
+      "title": "원료 로트 부족",
+      "type": "inventory_shortage",
+      "linkedId": "raw-수입들기름",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ]
+    },
+    {
+      "id": "7nafCwhmS4G4TFwiMUtN",
+      "linkedId": "raw-수입들기름",
+      "createdAt": "2026-08-26T07:39:29.779Z",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "type": "inventory_shortage",
+      "body": "수입들기름: 로트 잔량보다 5.168kg 더 사용됨 (주문 ORD-1787729963250, 유원식품(시흥)). 입고/이월 확인 필요.",
+      "title": "원료 로트 부족"
+    },
+    {
+      "id": "8AIq4xeLk3ovnaWtBT2t",
+      "body": "시골향참기름/분/1800ml: 재고 -6 (부족분 6). 주문 상태변경 반영 확인 필요.",
+      "title": "재고 부족 경고",
+      "createdAt": "2026-09-07T08:11:20.862Z",
+      "readBy": [],
+      "linkedId": "box-p-22-12",
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "8kyhYzjtC9VWiOyywGde",
+      "type": "inventory_shortage",
+      "createdAt": "2026-08-27T08:26:18.035Z",
+      "linkedId": "p-1785907940315",
+      "title": "재고 부족 경고",
+      "body": "볶음참깨/1kg: 재고 -4 (부족분 4). 주문 상태변경 반영 확인 필요.",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ]
+    },
+    {
+      "id": "8wvfOl6HVrUy6orXSKHn",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "body": "참기름/분(스마트)/1800ml: 재고 -3 (부족분 3). 주문 상태변경 반영 확인 필요.",
+      "title": "재고 부족 경고",
+      "createdAt": "2026-09-02T07:56:16.688Z",
+      "linkedId": "p-1775086496028",
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "95Q0e1DrpiGTHyraZScx",
+      "readBy": [
+        "emp-1773373867440"
+      ],
+      "body": "수입들기름: 로트 잔량보다 13.296kg 더 사용됨 (주문 ORD-1788663037891, 청우). 입고/이월 확인 필요.",
+      "title": "원료 로트 부족",
+      "linkedId": "raw-수입들기름",
+      "createdAt": "2026-09-06T06:01:59.274Z",
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "A03c3TQK9PRU7BEn0r8v",
+      "type": "inventory_shortage",
+      "linkedId": "p-1785907940315",
+      "createdAt": "2026-09-02T07:56:46.829Z",
+      "body": "볶음참깨/1kg: 재고 -7 (부족분 7). 주문 상태변경 반영 확인 필요.",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "title": "재고 부족 경고"
+    },
+    {
+      "id": "AdgR3Q3Bh9XusVTXxlc8",
+      "type": "inventory_shortage",
+      "readBy": [],
+      "title": "재고 부족 경고",
+      "createdAt": "2026-09-07T08:18:04.401Z",
+      "linkedId": "box-p-166-20",
+      "body": "시골향참기름/병/골드A/350ml: 재고 -3 (부족분 3). 주문 상태변경 반영 확인 필요."
+    },
+    {
+      "id": "B6fP4oCvXokxy7C09IZt",
+      "createdAt": "2026-09-03T08:09:26.414Z",
+      "body": "참기름/골드(스마트)/1800ml: 재고 -1 (부족분 1). 주문 상태변경 반영 확인 필요.",
+      "type": "inventory_shortage",
+      "title": "재고 부족 경고",
+      "linkedId": "p-1775173203214",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ]
+    },
+    {
+      "id": "B7vEti7Ad80ncrxGmM2R",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "title": "원료 로트 부족",
+      "body": "수입들기름: 로트 잔량보다 25.872kg 더 사용됨 (주문 ORD-1787632809834, 유원식품(시흥)). 입고/이월 확인 필요.",
+      "linkedId": "raw-수입들기름",
+      "type": "inventory_shortage",
+      "createdAt": "2026-08-26T00:36:03.624Z"
+    },
+    {
+      "id": "BXeUuriNcFWNGGQKFK4F",
+      "createdAt": "2026-09-03T08:06:51.260Z",
+      "body": "수입들기름: 로트 잔량보다 38.808kg 더 사용됨 (주문 ORD-1788232006202, 양념나라). 입고/이월 확인 필요.",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "type": "inventory_shortage",
+      "title": "원료 로트 부족",
+      "linkedId": "raw-수입들기름"
+    },
+    {
+      "id": "BY7ce0sRG8Dh4kWlYuhp",
+      "type": "inventory_shortage",
+      "linkedId": "PET-H-1800-RD",
+      "createdAt": "2026-08-26T00:33:03.584Z",
+      "title": "재고 부족 경고",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "body": "1800ML-페트병-빨강n: 재고 -54 (부족분 54). 주문 상태변경 반영 확인 필요."
+    },
+    {
+      "id": "CD2rtYz8UfI9xKuAJspW",
+      "linkedId": "box-p-91-10",
+      "type": "inventory_shortage",
+      "title": "재고 부족 경고",
+      "createdAt": "2026-09-07T08:24:44.301Z",
+      "body": "볶음검정참깨/1kg: 재고 -18 (부족분 18). 주문 상태변경 반영 확인 필요.",
+      "readBy": []
+    },
+    {
+      "id": "CbneF72dKO2d7Rn07M0z",
+      "type": "inventory_shortage",
+      "linkedId": "hsGvS0lNTwJkJ4LPubmO",
+      "readBy": [],
+      "title": "재고 부족 경고",
+      "body": "200G 페트 마개: 재고 -25 (부족분 25). 주문 상태변경 반영 확인 필요.",
+      "createdAt": "2026-09-06T17:15:55.028Z"
+    },
+    {
+      "id": "Eg84dHO0TJvfhbh4zDnL",
+      "body": "참기름/A/가득찬/1800ml: 재고 -12 (부족분 12). 주문 상태변경 반영 확인 필요.",
+      "linkedId": "box-p-1777364661145-12",
+      "title": "재고 부족 경고",
+      "type": "inventory_shortage",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "createdAt": "2026-09-03T08:09:27.277Z"
+    },
+    {
+      "id": "FnQSermGaXt0QFY25Ylm",
+      "body": "시골향탈피들깨가루/1kg: 재고 -1 (부족분 1). 주문 상태변경 반영 확인 필요.",
+      "title": "재고 부족 경고",
+      "linkedId": "box-p-104-20",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "type": "inventory_shortage",
+      "createdAt": "2026-09-01T08:35:34.277Z"
+    },
+    {
+      "id": "G7Cq2XIB3r59bJyKxkh5",
+      "linkedId": "p-1775173203214",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "title": "재고 부족 경고",
+      "body": "참기름/골드(스마트)/1800ml: 재고 -1 (부족분 1). 주문 상태변경 반영 확인 필요.",
+      "createdAt": "2026-09-02T07:56:15.700Z",
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "GAVDyHan1oGqqWNdfVvv",
+      "title": "재고 부족 경고",
+      "body": "시골향생들기름/병/300ml: 재고 -500 (부족분 500). 주문 상태변경 반영 확인 필요.",
+      "readBy": [],
+      "linkedId": "p-61",
+      "type": "inventory_shortage",
+      "createdAt": "2026-09-07T00:09:13.977Z"
+    },
+    {
+      "id": "IeziaK5s9TxXTjSFdRGd",
+      "readBy": [],
+      "title": "재고 부족 경고",
+      "linkedId": "B-05-1",
+      "createdAt": "2026-09-07T08:09:05.422Z",
+      "body": "5-1호박스: 재고 -13 (부족분 13). 주문 상태변경 반영 확인 필요.",
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "KPuR02qylXNOD8sA50gE",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "title": "재고 부족 경고",
+      "body": "300ML-사각병: 재고 -160 (부족분 160). 주문 상태변경 반영 확인 필요.",
+      "linkedId": "GLA-S-300-TR",
+      "createdAt": "2026-08-26T09:19:09.768Z",
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "KfInSpHlxplkDPpf33Lp",
+      "type": "inventory_shortage",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "linkedId": "raw-수입들기름",
+      "createdAt": "2026-09-03T02:05:12.996Z",
+      "body": "수입들기름: 로트 잔량보다 2.584kg 더 사용됨 (주문 ORD-1788318457325, 알이네식품). 입고/이월 확인 필요.",
+      "title": "원료 로트 부족"
+    },
+    {
+      "id": "KgYq4ZYls9kQ836FeUho",
+      "createdAt": "2026-08-27T00:04:27.234Z",
+      "type": "inventory_shortage",
+      "body": "수입들기름: 로트 잔량보다 12.936kg 더 사용됨 (주문 ORD-1787201394234, 현대유통(원주)). 입고/이월 확인 필요.",
+      "linkedId": "raw-수입들기름",
+      "title": "원료 로트 부족",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ]
+    },
+    {
+      "id": "KsQqMiwD3abNan6IzYb5",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "title": "재고 부족 경고",
+      "body": "참고소한기름: 재고 -36 (부족분 36). 주문 상태변경 반영 확인 필요.",
+      "linkedId": "f2",
+      "createdAt": "2026-09-01T08:33:05.692Z",
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "LXC5ng2ZMfVAnPYdq6g2",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "title": "재고 부족 경고",
+      "body": "참고소한기름: 재고 -48 (부족분 48). 주문 상태변경 반영 확인 필요.",
+      "linkedId": "f2",
+      "type": "inventory_shortage",
+      "createdAt": "2026-09-01T08:35:34.343Z"
+    },
+    {
+      "id": "M5cRaC6FUmbaXzFJoCBM",
+      "readBy": [],
+      "title": "재고 부족 경고",
+      "body": "시골향참기름/병/골드A/350ml: 재고 -5 (부족분 5). 주문 상태변경 반영 확인 필요.",
+      "type": "inventory_shortage",
+      "createdAt": "2026-09-07T06:54:04.506Z",
+      "linkedId": "box-p-166-20"
+    },
+    {
+      "id": "M7LU9pEBGJqNtzXQmnr1",
+      "body": "수입들기름: 로트 잔량보다 5.168kg 더 사용됨 (주문 ORD-1788242548326, 홍인농산). 입고/이월 확인 필요.",
+      "linkedId": "raw-수입들기름",
+      "title": "원료 로트 부족",
+      "createdAt": "2026-09-03T08:07:13.721Z",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "MktYyXURMjKWWFnBga3l",
+      "linkedId": "box-p-137-20",
+      "title": "재고 부족 경고",
+      "type": "inventory_shortage",
+      "body": "시골향들기름/병/350ml: 재고 -1 (부족분 1). 주문 상태변경 반영 확인 필요.",
+      "readBy": [],
+      "createdAt": "2026-09-07T08:21:27.386Z"
+    },
+    {
+      "id": "MmD120j6LEZE85n4azZ8",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "title": "재고 부족 경고",
+      "body": "시골향탈피들깨가루/1kg: 재고 -1 (부족분 1). 주문 상태변경 반영 확인 필요.",
+      "createdAt": "2026-09-01T08:29:05.391Z",
+      "linkedId": "box-p-104-20",
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "Nstly8HOHSlVYWKvH017",
+      "type": "inventory_shortage",
+      "title": "재고 부족 경고",
+      "createdAt": "2026-09-07T08:17:53.004Z",
+      "body": "시골향생들기름/병/300ml: 재고 -500 (부족분 500). 주문 상태변경 반영 확인 필요.",
+      "readBy": [],
+      "linkedId": "p-61"
+    },
+    {
+      "id": "OJPg5IOVK5Y4p5WnBybA",
+      "title": "재고 부족 경고",
+      "createdAt": "2026-09-03T08:06:09.128Z",
+      "body": "16.5kg 캔: 재고 -93 (부족분 93). 주문 상태변경 반영 확인 필요.",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "linkedId": "p-1784790249489",
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "OSAcbtUOuGjAAFsbHaHb",
+      "createdAt": "2026-09-03T08:09:26.509Z",
+      "type": "inventory_shortage",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "linkedId": "p-1785907940315",
+      "body": "볶음참깨/1kg: 재고 -12 (부족분 12). 주문 상태변경 반영 확인 필요.",
+      "title": "재고 부족 경고"
+    },
+    {
+      "id": "OWP3CpemjRnpHqX5VIrv",
+      "body": "수입들기름: 로트 잔량보다 110.8kg 더 사용됨 (주문 ORD-1787632647751, 해피유통(포천)). 입고/이월 확인 필요.",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "createdAt": "2026-08-27T00:03:00.814Z",
+      "title": "원료 로트 부족",
+      "linkedId": "raw-수입들기름",
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "OjKDZg1lT7JHJ6uTTPsJ",
+      "type": "inventory_shortage",
+      "createdAt": "2026-08-31T04:54:33.674Z",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "linkedId": "raw-수입들기름",
+      "body": "수입들기름: 로트 잔량보다 15.965kg 더 사용됨 (주문 ORD-1787875710027, 지구식품). 입고/이월 확인 필요.",
+      "title": "원료 로트 부족"
+    },
+    {
+      "id": "PGhcMFz0Q47ZHCavnTBx",
+      "type": "inventory_shortage",
+      "linkedId": "p-1785907900413",
+      "readBy": [],
+      "title": "재고 부족 경고",
+      "body": "볶음참깨/1kg: 재고 -160 (부족분 160). 주문 상태변경 반영 확인 필요.",
+      "createdAt": "2026-09-07T08:24:44.056Z"
+    },
+    {
+      "id": "QBpDvEzIWnkfImr0hjJh",
+      "createdAt": "2026-08-27T08:21:03.764Z",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "body": "시골향참기름/병/특/350ml: 재고 -15 (부족분 15). 주문 상태변경 반영 확인 필요.",
+      "type": "inventory_shortage",
+      "linkedId": "box-p-20-20",
+      "title": "재고 부족 경고"
+    },
+    {
+      "id": "RntHWFYxiGgIlmvAh5QW",
+      "title": "재고 부족 경고",
+      "createdAt": "2026-08-27T08:21:03.907Z",
+      "body": "볶음참깨/1kg: 재고 -3 (부족분 3). 주문 상태변경 반영 확인 필요.",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "type": "inventory_shortage",
+      "linkedId": "p-1785907940315"
+    },
+    {
+      "id": "Vn71NRBb0aRTsHK7BR4c",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "type": "inventory_shortage",
+      "title": "재고 부족 경고",
+      "body": "엘생명 원액참기름 180ml: 재고 -370 (부족분 370). 주문 상태변경 반영 확인 필요.",
+      "linkedId": "p-1786519128773",
+      "createdAt": "2026-09-01T08:33:33.516Z"
+    },
+    {
+      "id": "W0HyF054A3NUgdrAkxfi",
+      "createdAt": "2026-09-02T03:30:49.455Z",
+      "type": "inventory_shortage",
+      "linkedId": "raw-수입들기름",
+      "title": "원료 로트 부족",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "body": "수입들기름: 로트 잔량보다 15.504kg 더 사용됨 (주문 ORD-1787873823116, 진보반찬). 입고/이월 확인 필요."
+    },
+    {
+      "id": "Wd3x9r54eqByC4Pfr7CS",
+      "readBy": [],
+      "body": "시골향참기름/골드/1800ml: 재고 -10 (부족분 10). 주문 상태변경 반영 확인 필요.",
+      "title": "재고 부족 경고",
+      "createdAt": "2026-09-07T08:17:54.739Z",
+      "linkedId": "p-64",
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "WsKdW7ATnQJ4qfDCiUMD",
+      "linkedId": "box-p-1777506850191-10",
+      "type": "inventory_shortage",
+      "createdAt": "2026-08-26T07:55:28.726Z",
+      "title": "재고 부족 경고",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "body": "시골향참기름/골드A/1750ml: 재고 -2 (부족분 2). 주문 상태변경 반영 확인 필요."
+    },
+    {
+      "id": "WzLhDOqoGy1mY48wIzG2",
+      "type": "inventory_shortage",
+      "createdAt": "2026-09-07T02:41:45.860Z",
+      "linkedId": "p-61",
+      "readBy": [],
+      "body": "시골향생들기름/병/300ml: 재고 -460 (부족분 460). 주문 상태변경 반영 확인 필요.",
+      "title": "재고 부족 경고"
+    },
+    {
+      "id": "Y2iFhxoUtaJg712sYHvo",
+      "createdAt": "2026-09-03T08:09:27.672Z",
+      "body": "시골향탈피들깨가루/1kg: 재고 -1 (부족분 1). 주문 상태변경 반영 확인 필요.",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "linkedId": "box-p-104-20",
+      "title": "재고 부족 경고",
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "YIwvodMpN73igU8APwHi",
+      "linkedId": "raw-수입들기름",
+      "type": "inventory_shortage",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "title": "원료 로트 부족",
+      "createdAt": "2026-08-26T00:52:14.162Z",
+      "body": "수입들기름: 로트 잔량보다 7.982kg 더 사용됨 (주문 ORD-1787701554769, 선화리). 입고/이월 확인 필요."
+    },
+    {
+      "id": "Z7U1fUPQdsvS5kIAWJLE",
+      "createdAt": "2026-08-26T07:57:35.977Z",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "body": "수입들기름: 로트 잔량보다 25.872kg 더 사용됨 (주문 ORD-1787731039463, 일성상회). 입고/이월 확인 필요.",
+      "linkedId": "raw-수입들기름",
+      "type": "inventory_shortage",
+      "title": "원료 로트 부족"
+    },
+    {
+      "id": "ZnV7VAXzvSJZuvqTqEad",
+      "linkedId": "raw-깨분참기름",
+      "createdAt": "2026-08-27T06:54:28.991Z",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "type": "inventory_shortage",
+      "body": "깨분참기름: 로트 잔량보다 383.833kg 더 사용됨 (주문 ORD-1787543469060, 해피유통(쿠팡)). 입고/이월 확인 필요.",
+      "title": "원료 로트 부족"
+    },
+    {
+      "id": "bXif8WPSWBMgQk3I4FjA",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "type": "inventory_shortage",
+      "title": "원료 로트 부족",
+      "createdAt": "2026-08-28T02:05:49.873Z",
+      "body": "깨분참기름: 로트 잔량보다 26.078kg 더 사용됨 (주문 ORD-1787818788854, 해피유통(쿠팡)). 입고/이월 확인 필요.",
+      "linkedId": "raw-깨분참기름"
+    },
+    {
+      "id": "bmtgdEQNp7JT2ox5MwzN",
+      "body": "200G 페트 마개: 재고 -85 (부족분 85). 주문 상태변경 반영 확인 필요.",
+      "readBy": [],
+      "linkedId": "hsGvS0lNTwJkJ4LPubmO",
+      "title": "재고 부족 경고",
+      "type": "inventory_shortage",
+      "createdAt": "2026-09-06T17:17:14.736Z"
+    },
+    {
+      "id": "cHDRnkXYmc2S7qIEWGZ7",
+      "type": "inventory_shortage",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "body": "볶음참깨: 재고 -39 (부족분 39). 주문 상태변경 반영 확인 필요.",
+      "linkedId": "raw-볶음참깨",
+      "createdAt": "2026-08-29T15:00:36.980Z",
+      "title": "재고 부족 경고"
+    },
+    {
+      "id": "cw9rEpJak2a6RLyik6Fq",
+      "title": "재고 부족 경고",
+      "body": "시골향참기름/병/골드A/350ml: 재고 -6 (부족분 6). 주문 상태변경 반영 확인 필요.",
+      "linkedId": "box-p-166-20",
+      "type": "inventory_shortage",
+      "readBy": [],
+      "createdAt": "2026-09-07T00:09:29.787Z"
+    },
+    {
+      "id": "dQ2JBLCupTt67Y44nNqi",
+      "title": "원료 로트 부족",
+      "body": "수입들기름: 로트 잔량보다 15.504kg 더 사용됨 (주문 ORD-1787204536189, 한통). 입고/이월 확인 필요.",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "createdAt": "2026-08-27T00:04:22.574Z",
+      "type": "inventory_shortage",
+      "linkedId": "raw-수입들기름"
+    },
+    {
+      "id": "dv05eVh4e9lopJdGgv0b",
+      "type": "inventory_shortage",
+      "linkedId": "raw-깨분참기름",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "body": "깨분참기름: 로트 잔량보다 36.278kg 더 사용됨 (주문 ORD-1787701797520, 혜성). 입고/이월 확인 필요.",
+      "title": "원료 로트 부족",
+      "createdAt": "2026-08-27T08:20:01.794Z"
+    },
+    {
+      "id": "ewSRPWUqb6x56L2wJNXg",
+      "body": "고춧가루 1kg: 재고 -40 (부족분 40). 주문 상태변경 반영 확인 필요.",
+      "createdAt": "2026-09-07T00:09:30.159Z",
+      "title": "재고 부족 경고",
+      "readBy": [
+        "admin"
+      ],
+      "linkedId": "gck-1",
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "fMKA0k1tZbZODQgDpG92",
+      "body": "수입들기름: 로트 잔량보다 2.584kg 더 사용됨 (주문 ORD-1788400170002, 대왕푸드). 입고/이월 확인 필요.",
+      "title": "원료 로트 부족",
+      "createdAt": "2026-09-04T02:19:42.870Z",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "linkedId": "raw-수입들기름",
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "fbQEBn1xXlHheaUY1f8o",
+      "createdAt": "2026-08-25T08:07:03.336Z",
+      "type": "inventory_shortage",
+      "body": "참기름/분(스마트)/1800ml: 재고 -3 (부족분 3). 주문 상태변경 반영 확인 필요.",
+      "linkedId": "p-1775086496028",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "title": "재고 부족 경고"
+    },
+    {
+      "id": "h1sbJj8JjK4yRbOS125c",
+      "body": "참기름/분(스마트)/1800ml: 재고 -3 (부족분 3). 주문 상태변경 반영 확인 필요.",
+      "readBy": [],
+      "createdAt": "2026-09-07T00:09:48.671Z",
+      "title": "재고 부족 경고",
+      "linkedId": "p-1775086496028",
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "j6W7fAbOtHJN8OZxAajx",
+      "linkedId": "p-1775086496028",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "type": "inventory_shortage",
+      "title": "재고 부족 경고",
+      "body": "참기름/분(스마트)/1800ml: 재고 -2 (부족분 2). 주문 상태변경 반영 확인 필요.",
+      "createdAt": "2026-08-25T08:07:02.283Z"
+    },
+    {
+      "id": "jC6ynOTORvTUjbeasPYb",
+      "title": "재고 부족 경고",
+      "linkedId": "box-p-22-12",
+      "body": "시골향참기름/분/1800ml: 재고 -7 (부족분 7). 주문 상태변경 반영 확인 필요.",
+      "type": "inventory_shortage",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "createdAt": "2026-09-01T08:28:56.028Z"
+    },
+    {
+      "id": "jWKivGh58l2fK0UZ7MGi",
+      "linkedId": "box-p-104-10",
+      "readBy": [],
+      "title": "재고 부족 경고",
+      "type": "inventory_shortage",
+      "body": "시골향탈피들깨가루/1kg: 재고 -27 (부족분 27). 주문 상태변경 반영 확인 필요.",
+      "createdAt": "2026-09-07T08:24:44.177Z"
+    },
+    {
+      "id": "jdvPN00hhoVMB6ajsFXd",
+      "readBy": [],
+      "type": "inventory_shortage",
+      "createdAt": "2026-09-07T08:17:53.041Z",
+      "linkedId": "p-104",
+      "title": "재고 부족 경고",
+      "body": "시골향탈피들깨가루/1kg: 재고 -2 (부족분 2). 주문 상태변경 반영 확인 필요."
+    },
+    {
+      "id": "kPgaRgSLJ7KnpRnepizQ",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "linkedId": "PET-H-1800-RD",
+      "createdAt": "2026-08-27T04:01:33.426Z",
+      "type": "inventory_shortage",
+      "title": "재고 부족 경고",
+      "body": "1800ML-페트병-빨강n: 재고 -354 (부족분 354). 주문 상태변경 반영 확인 필요."
+    },
+    {
+      "id": "lG413k06ANVgyLGHi1t0",
+      "title": "재고 부족 경고",
+      "body": "들향기름골드: 재고 -10 (부족분 10). 주문 상태변경 반영 확인 필요.",
+      "type": "inventory_shortage",
+      "createdAt": "2026-08-27T08:21:19.364Z",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "linkedId": "f6"
+    },
+    {
+      "id": "lJlOzRCiMVGhsz4il9dL",
+      "createdAt": "2026-09-02T07:55:17.557Z",
+      "body": "수입들기름: 로트 잔량보다 0.775kg 더 사용됨 (주문 ORD-1788306191012, 이진영). 입고/이월 확인 필요.",
+      "title": "원료 로트 부족",
+      "type": "inventory_shortage",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "linkedId": "raw-수입들기름"
+    },
+    {
+      "id": "mU6E4eZbEeOs9X3n7uCs",
+      "body": "300ML-사각병: 재고 -820 (부족분 820). 주문 상태변경 반영 확인 필요.",
+      "title": "재고 부족 경고",
+      "type": "inventory_shortage",
+      "createdAt": "2026-08-27T04:01:24.844Z",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "linkedId": "GLA-S-300-TR"
+    },
+    {
+      "id": "mu5azDBj4co8UPhrT4W1",
+      "createdAt": "2026-08-28T03:12:26.392Z",
+      "body": "수입들기름: 로트 잔량보다 15.504kg 더 사용됨 (주문 ORD-1787873836337, 유통가교). 입고/이월 확인 필요.",
+      "type": "inventory_shortage",
+      "title": "원료 로트 부족",
+      "linkedId": "raw-수입들기름",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ]
+    },
+    {
+      "id": "nH8wCRGaaWddZ6y1i2cO",
+      "type": "inventory_shortage",
+      "linkedId": "raw-수입들기름",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "title": "원료 로트 부족",
+      "body": "수입들기름: 로트 잔량보다 12.936kg 더 사용됨 (주문 ORD-1787731071098, 일성상회). 입고/이월 확인 필요.",
+      "createdAt": "2026-08-28T10:28:20.950Z"
+    },
+    {
+      "id": "nbshomw4ROxxEC1va3SD",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "body": "볶음참깨-낱개/1kg: 재고 -3 (부족분 3). 주문 상태변경 반영 확인 필요.",
+      "linkedId": "PLDhkjOgcPIhO1hhReHm",
+      "title": "재고 부족 경고",
+      "createdAt": "2026-08-27T08:21:18.921Z",
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "oC9jNSFYRSCpFn4dUsO9",
+      "linkedId": "p-1775173203214",
+      "body": "참기름/골드(스마트)/1800ml: 재고 -1 (부족분 1). 주문 상태변경 반영 확인 필요.",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "createdAt": "2026-09-01T08:29:23.010Z",
+      "title": "재고 부족 경고",
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "odCJqyDKrkpvnmwKbZKP",
+      "linkedId": "PET-H-1800-RD",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "body": "1800ML-페트병-빨강n: 재고 -44 (부족분 44). 주문 상태변경 반영 확인 필요.",
+      "type": "inventory_shortage",
+      "title": "재고 부족 경고",
+      "createdAt": "2026-08-25T04:36:04.526Z"
+    },
+    {
+      "id": "p5vJQiIHYLrChQ2BxJis",
+      "body": "참기름/분(스마트)/1800ml: 재고 -3 (부족분 3). 주문 상태변경 반영 확인 필요.",
+      "linkedId": "p-1775086496028",
+      "createdAt": "2026-09-03T08:09:25.942Z",
+      "title": "재고 부족 경고",
+      "type": "inventory_shortage",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ]
+    },
+    {
+      "id": "p8KSo6jimvfacLf7dJlV",
+      "createdAt": "2026-09-07T08:17:54.691Z",
+      "readBy": [],
+      "type": "inventory_shortage",
+      "body": "시골향들기름/병/350ml: 재고 -1 (부족분 1). 주문 상태변경 반영 확인 필요.",
+      "linkedId": "box-p-137-20",
+      "title": "재고 부족 경고"
+    },
+    {
+      "id": "pk8LrKaHbPNv4CwBx8CD",
+      "type": "inventory_shortage",
+      "linkedId": "GLA-R-350-TR",
+      "title": "재고 부족 경고",
+      "createdAt": "2026-08-27T06:54:30.683Z",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "body": "350ML-소주병: 재고 -765 (부족분 765). 주문 상태변경 반영 확인 필요."
+    },
+    {
+      "id": "rIcNtlWkdexPkGyXXyO2",
+      "body": "시골향탈피들깨가루/1kg: 재고 -1 (부족분 1). 주문 상태변경 반영 확인 필요.",
+      "linkedId": "p-104",
+      "title": "재고 부족 경고",
+      "readBy": [],
+      "type": "inventory_shortage",
+      "createdAt": "2026-09-07T08:15:11.572Z"
+    },
+    {
+      "id": "txGMJ307xQR7gP6O5qxy",
+      "type": "inventory_shortage",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "createdAt": "2026-09-01T08:36:43.986Z",
+      "title": "재고 부족 경고",
+      "linkedId": "p-1785907940315",
+      "body": "볶음참깨/1kg: 재고 -4 (부족분 4). 주문 상태변경 반영 확인 필요."
+    },
+    {
+      "id": "uEQcXUjOeoPShPqsKceZ",
+      "linkedId": "box-p-166-20",
+      "body": "시골향참기름/병/골드A/350ml: 재고 -5 (부족분 5). 주문 상태변경 반영 확인 필요.",
+      "title": "재고 부족 경고",
+      "type": "inventory_shortage",
+      "readBy": [],
+      "createdAt": "2026-09-07T08:21:27.270Z"
+    },
+    {
+      "id": "ui7C8TMSNdcmpK1c8ESw",
+      "type": "inventory_shortage",
+      "readBy": [
+        "emp-1773373867440"
+      ],
+      "title": "재고 부족 경고",
+      "linkedId": "hsGvS0lNTwJkJ4LPubmO",
+      "createdAt": "2026-09-06T06:02:01.855Z",
+      "body": "200G 페트 마개: 재고 -85 (부족분 85). 주문 상태변경 반영 확인 필요."
+    },
+    {
+      "id": "usyCiqeiYmjJysRhWa3Y",
+      "linkedId": "p-1775173203214",
+      "readBy": [],
+      "createdAt": "2026-09-07T08:17:53.091Z",
+      "type": "inventory_shortage",
+      "body": "참기름/골드(스마트)/1800ml: 재고 -1 (부족분 1). 주문 상태변경 반영 확인 필요.",
+      "title": "재고 부족 경고"
+    },
+    {
+      "id": "uznWlENROGwsz3UMDIyO",
+      "linkedId": "p-1785907940315",
+      "body": "볶음참깨/1kg: 재고 -8 (부족분 8). 주문 상태변경 반영 확인 필요.",
+      "readBy": [],
+      "createdAt": "2026-09-07T08:23:21.229Z",
+      "title": "재고 부족 경고",
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "vK9kchbOgltwowiw1cgs",
+      "createdAt": "2026-08-26T07:55:26.683Z",
+      "type": "inventory_shortage",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "title": "재고 부족 경고",
+      "linkedId": "box-p-104-20",
+      "body": "시골향탈피들깨가루/1kg: 재고 -1 (부족분 1). 주문 상태변경 반영 확인 필요."
+    },
+    {
+      "id": "vSHSVhXRiqDISyb4jUAv",
+      "readBy": [],
+      "body": "볶음참깨-낱개/1kg: 재고 -36 (부족분 36). 주문 상태변경 반영 확인 필요.",
+      "title": "재고 부족 경고",
+      "createdAt": "2026-09-07T08:13:21.816Z",
+      "linkedId": "PLDhkjOgcPIhO1hhReHm",
+      "type": "inventory_shortage"
+    },
+    {
+      "id": "wbmk38gMbhsX4MPG4bx1",
+      "body": "수입들기름: 로트 잔량보다 1.294kg 더 사용됨 (주문 ORD-1788478207531, 김밥천국(관설동)). 입고/이월 확인 필요.",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "createdAt": "2026-09-04T02:19:35.324Z",
+      "title": "원료 로트 부족",
+      "type": "inventory_shortage",
+      "linkedId": "raw-수입들기름"
+    },
+    {
+      "id": "xG4lN3smNtbRRr9erSi0",
+      "linkedId": "raw-수입들기름",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "body": "수입들기름: 로트 잔량보다 25.84kg 더 사용됨 (주문 ORD-1788136812057, 무경유통). 입고/이월 확인 필요.",
+      "title": "원료 로트 부족",
+      "type": "inventory_shortage",
+      "createdAt": "2026-09-02T03:06:18.002Z"
+    },
+    {
+      "id": "xUcJ8kKefYLGcYfkm5ci",
+      "readBy": [
+        "admin",
+        "emp-1773373867440"
+      ],
+      "linkedId": "GLA-S-300-TR",
+      "title": "재고 부족 경고",
+      "type": "inventory_shortage",
+      "body": "300ML-사각병: 재고 -760 (부족분 760). 주문 상태변경 반영 확인 필요.",
+      "createdAt": "2026-08-27T00:03:01.229Z"
+    }
+  ]
+}
