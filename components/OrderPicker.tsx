@@ -378,7 +378,10 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{onlyActive ? '미발행 주문' : '진행 주문'}</span>
                   <span className="text-[10px] text-slate-400">{listOrders.length}건</span>
                 </div>
-                <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
+                {/*  줄에 못 박은 칸이 456px 이라 폰(안쪽 약 330px)에서는 뒤가 잘려 나간다 —
+                     발행 여부와 품목 수가 화면 밖이었다. **옆으로 민다**(table.ts 규칙, 칸을 감추지 않는다). */}
+                <div className="flex-1 overflow-y-auto overflow-x-auto divide-y divide-slate-50">
+                  <div className="min-w-[560px]">
                   {listOrders.slice(0, activeVisible).map(o => {
                     const cl = partners.find(c => c.id === o.partnerId);
                     return (
@@ -407,6 +410,7 @@ const OrderPicker: React.FC<OrderPickerProps> = ({ mode, pick, filter, data, on 
                       + {listOrders.length - activeVisible}건 더 보기
                     </button>
                   )}
+                  </div>
                 </div>
               </div>
               );

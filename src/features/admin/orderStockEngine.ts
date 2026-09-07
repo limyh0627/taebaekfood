@@ -38,6 +38,15 @@ export type StockUsePlan = Record<number, StockUseChoice>;
  * AdminApp에서 매 렌더 시점의 데이터·쓰기 함수를 주입해 생성한다(순수 로직 + 의존성 주입).
  */
 export interface OrderStockEngineDeps {
+  /**
+   * **지금 이 일을 하는 사람** — 자동으로 찍히는 원료 원장 줄에 `addedBy` 로 남는다.
+   *
+   * 여태 자동 줄에는 아무 이름도 안 적혔다(2026-09-07 사장님: "누가했는지 하나도 안 나오내").
+   * 손으로 넣는 길은 전부 이름을 남기는데 **제일 많은 자동 길만 비어 있었다** —
+   * 재고가 왜 빠졌는지 되짚을 때 물어볼 사람이 없다.
+   * 자동이라도 **버튼은 사람이 누른다.** 누른 사람을 적는다.
+   */
+  actorName?: string;
   allItems: Item[];
   submaterials: Item[];
   partners: Partner[];
@@ -77,8 +86,10 @@ export const isGoodsItem = (p: Item) =>
   p.procureType === '완사입' || p.procureType === '임가공';
 
 export function createOrderStockEngine(deps: OrderStockEngineDeps) {
-  const { allItems, submaterials, partners, allOrders, orders, db,
+  const { actorName, allItems, submaterials, partners, allOrders, orders, db,
     buildFormula, createProductionRecordsForOrder, mutateRawMaterialLots, updateItem, addItem } = deps;
+  /** 원장 줄에 붙일 작성자 — 빈 이름은 아예 안 적는다(Firestore 에 빈 칸을 만들지 않는다) */
+  const 작성자 = actorName ? { addedBy: actorName } : {};
 
   const goodsShipQty = (item: OrderItem, product: Item) => {
     // 박스 품목(BOM에 낱개가 물린 것)은 재고 단위가 박스 → 박스 개수로 뺀다.
@@ -274,6 +285,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
       await setDoc(doc(db, 'rawMaterialLedger', entryId), {
         id: entryId, material: raw, date: dateStr, received: 0, used: usedKg,
         note: `자동: ${customerName}`, createdAt: new Date().toISOString(), type: 'auto', unit: 'kg', orderId: order.id,
+        ...작성자,
       }, { merge: true });
     }
 
@@ -306,7 +318,7 @@ export function createOrderStockEngine(deps: OrderStockEngineDeps) {
         }
       }
       const entryId = `rm-auto-${order.id}-${raw.replace(/\s/g, '_')}`;
-      await setDoc(doc(db, 'rawMaterialLedger', entryId), { id: entryId, material: raw, date: dateStr, received: 0, used: usedKg, note: `자동: ${customerName}${noteSuffix}`, createdAt: new Date().toISOString(), type: 'auto', orderId: order.id }, { merge: true });
+      await setDoc(doc(db, 'rawMaterialLedger', entryId), { id: entryId, material: raw, date: dateStr, received: 0, used: usedKg, note: `자동: ${customerName}${noteSuffix}`, createdAt: new Date().toISOString(), type: 'auto', orderId: order.id, ...작성자 }, { merge: true });
 
       /**
        * **둘 다 쓴 뒤에 되읽어 대조한다.**

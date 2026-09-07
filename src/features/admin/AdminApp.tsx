@@ -89,6 +89,7 @@ import ConfirmationItems from '../../../components/ConfirmationItems';
 import ProductModal from '../../../components/AddItemModal';
 import { downloadSalesJournal } from '../../shared/salesJournal';
 import { sortLedger, isBackdated, latestAnchorDate } from '../../shared/rawLedgerBalance';
+import { ledgerTrace, orderIndex } from '../../shared/ledgerTrace';
 import { createOrderStockEngine, StockUsePlan } from './orderStockEngine';
 import { buildStockUseRows, StockUseRow } from './stockUseRows';
 import { buildRollbackPlan } from './rollbackSummary';
@@ -1206,6 +1207,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // ── 생산/출고 분리 재고 엔진 → 도메인 모듈(orderStockEngine)로 분리. 매 렌더 데이터/쓰기 함수 주입. ──
   const { changeOrderStatus } = createOrderStockEngine({
+    actorName: currentUser?.name,
     allItems, submaterials, partners, allOrders, orders, db,
     buildFormula, createProductionRecordsForOrder, mutateRawMaterialLots, updateItem, addItem,
   });
@@ -2017,6 +2019,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     used: 0,
                     note: `${entry.material} 압착 (수율 ${rate * 100}%)`,
                     createdAt: new Date().toISOString(),
+                    //  파생입고는 원본 사용 줄을 넣은 사람이 만든 것이다 — 이름을 물려준다
+                    ...(entry.addedBy ? { addedBy: entry.addedBy } : {}),
                     type: 'auto', // 자동 파생 — 수불부 표시 파생행과 이중계상 방지 판별에도 사용
                     unit: 'kg', // canonical
                   });
@@ -3179,7 +3183,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 )}
 
                 {docTab === '원료수불부' && (() => {
-                  type UsageRow = { date: string; received: number; used: number; note: string; type: 'auto' | 'manual' | 'correction'; id?: string; createdAt?: string; targetKg?: number };
+                  //  addedBy·orderId 를 여기서 떨어뜨리면 서류에도 '누가·어디'가 영영 안 뜬다
+                  //  (2026-09-07 사장님: "원료수불부도 그렇고"). 원장 줄이 들고 온 것을 그대로 나른다.
+                  type UsageRow = { date: string; received: number; used: number; note: string; type: 'auto' | 'manual' | 'correction'; id?: string; createdAt?: string; targetKg?: number; addedBy?: string; orderId?: string };
+                  //  자동 줄이 어느 주문 때문인지 푸는 표. 원료 11개를 도는 엑셀 저장에서도 한 번만 만든다.
+                  const orderById = orderIndex(allOrders);
 
                   // 수율: 원재료 사용 → 반제품 입고 자동 파생 (규칙은 yieldRules = item_formula 데이터)
                   const calcDerivedReceived = (material: string): UsageRow[] => {
@@ -3230,7 +3238,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         const isLegacyL = e.unit === 'L' && density !== 1.0;
                         const received = isLegacyL ? Math.round(e.received * density * 1000) / 1000 : e.received;
                         const used     = isLegacyL ? Math.round(e.used     * density * 1000) / 1000 : e.used;
-                        return { date: e.date, received, used, note: e.note, type: (e.type || 'manual') as UsageRow['type'], id: e.id, createdAt: e.createdAt, targetKg: e.targetKg };
+                        return { date: e.date, received, used, note: e.note, type: (e.type || 'manual') as UsageRow['type'], id: e.id, createdAt: e.createdAt, targetKg: e.targetKg, addedBy: e.addedBy, orderId: e.orderId };
                       });
                     const derivedEntries = calcDerivedReceived(material);
                     // 같은 날짜 안에서는 기록 시각 순 — 실사(targetKg 앵커)와 당일 입출고의 순서가 잔량에 영향
@@ -3271,7 +3279,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                     ].sort((a, b) => a.date === b.date ? (a.createdAt ?? '').localeCompare(b.createdAt ?? '') : a.date.localeCompare(b.date));
                     let balance = prevBalance;
                     const r3 = (n: number) => Math.round(n * 1000) / 1000;
-                    const groups = new Map<string, { date: string; received: number; used: number; adj: number; prevBalance: number; currentBalance: number; notes: string[]; types: Set<string>; delIds: string[] }>();
+                    const groups = new Map<string, { date: string; received: number; used: number; adj: number; prevBalance: number; currentBalance: number; notes: string[]; who: Set<string>; wheres: Set<string>; types: Set<string>; delIds: string[] }>();
                     // 같은 날이라도 **정정을 만나면 줄을 끊는다.**
                     //   정정 전 입고·사용과 정정 후 입고·사용이 한 줄에 섞이면 무엇이 정정 대상이었는지 알 수 없다.
                     //   → [정정 전 묶음] [정정 줄] [정정 후 묶음] 순으로 따로 남는다.
@@ -3284,7 +3292,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       if (e.date !== segDate) { segDate = e.date; seg = 0; }
                       const key = isCorrCol ? `${e.date}#adj${seg}` : `${e.date}#${seg}`;
                       let g = groups.get(key);
-                      if (!g) { g = { date: e.date, received: 0, used: 0, adj: 0, prevBalance: prev, currentBalance: balance, notes: [], types: new Set(), delIds: [] }; groups.set(key, g); }
+                      if (!g) { g = { date: e.date, received: 0, used: 0, adj: 0, prevBalance: prev, currentBalance: balance, notes: [], who: new Set(), wheres: new Set(), types: new Set(), delIds: [] }; groups.set(key, g); }
                       if (!isCorrCol) {
                         g.received = r3(g.received + e.received);
                         g.used = r3(g.used + e.used);
@@ -3294,7 +3302,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
                         g.adj = r3(g.adj + (target != null ? balance - prev : e.received - e.used));
                       }
                       g.currentBalance = balance;           // 그 묶음 마지막 잔량
-                      if (e.note) g.notes.push(e.note);
+                      //  누가·어디는 재고 원장 화면(RawLedgerList)과 **같은 함수**가 푼다
+                      const tr = ledgerTrace(e, orderById);
+                      if (tr.note) g.notes.push(tr.note);
+                      if (tr.who) g.who.add(tr.who);
+                      if (tr.where) g.wheres.add(tr.where);
                       g.types.add(isCorrCol ? 'correction' : e.type);
                       if (e.id && e.type !== 'auto') g.delIds.push(e.id);   // 수동/정정만 삭제 대상
                       if (isCorrCol) seg++;                 // 정정 뒤부터는 새 묶음
@@ -3307,6 +3319,8 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       prevBalance: Math.round(g.prevBalance),
                       currentBalance: Math.round(g.currentBalance),
                       note: Array.from(new Set(g.notes)).join(', '),
+                      who: Array.from(g.who).join(', '),
+                      where: Array.from(g.wheres).join(', '),
                       type: (g.types.has('correction') ? 'correction' : g.types.has('manual') ? 'manual' : 'auto') as UsageRow['type'],
                       id: key,                                             // 정정 UI 앵커 · React key (날짜+묶음)
                       delId: g.delIds.length === 1 ? g.delIds[0] : undefined, // 그날 삭제가능 항목이 딱 하나일 때만 삭제 노출
@@ -3393,9 +3407,10 @@ const AdminApp: React.FC<AdminAppProps> = ({
                           </button>
                         ))}
                       </div>
-                      {/* 테이블 */}
+                      {/* 테이블 — 칸이 아홉이라 폰에서는 옆으로 민다(table.ts 규칙). 칸을 감추지 않는다. */}
                       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                        <table className="w-full text-left">
+                        <div className="overflow-x-auto custom-scrollbar">
+                        <table className="w-full min-w-[900px] text-left">
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-100">
                               <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase">날짜</th>
@@ -3404,6 +3419,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
                               <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">사용량(kg)</th>
                               <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">정정(kg)</th>
                               <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase text-right">현재고(kg)</th>
+                              {/*  '누가'는 서류(엑셀)에는 안 넣는다 — 관청 양식에 없는 칸이다.
+                                   화면에서만 보여준다. 되짚을 때 물어볼 사람을 아는 게 목적이다. */}
+                              <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase">누가</th>
                               <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase">비고</th>
                               <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase"></th>
                             </tr>
@@ -3417,6 +3435,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                               <td className="px-4 py-2.5 text-[11px] text-slate-300 text-right">-</td>
                               <td className="px-4 py-2.5 text-[11px] text-slate-300 text-right">-</td>
                               <td className="px-4 py-2.5 text-[11px] font-black text-slate-700 text-right">{activeLedger.opening}</td>
+                              <td className="px-4 py-2.5 text-[11px] text-slate-300">—</td>
                               <td className="px-4 py-2.5 text-[11px] text-slate-400">전월 말 현재고</td>
                               <td className="px-3 py-2.5"></td>
                             </tr>
@@ -3433,7 +3452,12 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                   <td className="px-4 py-2.5 text-[11px] font-black text-rose-500 text-right">{row.used !== 0 ? (row.used > 0 ? `-${row.used}` : `+${Math.abs(row.used)}`) : '-'}</td>
                                   <td className="px-4 py-2.5 text-[11px] font-black text-amber-600 text-right">{row.adj !== 0 ? (row.adj > 0 ? `+${row.adj}` : `${row.adj}`) : '-'}</td>
                                   <td className="px-4 py-2.5 text-[11px] font-black text-slate-800 text-right">{row.currentBalance}</td>
-                                  <td className="px-4 py-2.5 text-[11px] text-slate-500">{row.note || '-'}</td>
+                                  <td className={`px-4 py-2.5 text-[11px] font-bold ${row.who ? 'text-slate-600' : 'text-slate-300'}`}>{row.who || '—'}</td>
+                                  <td className="px-4 py-2.5 text-[11px] text-slate-500">
+                                    {row.where && <span className="font-bold text-slate-600">{row.where}</span>}
+                                    {row.where && row.note ? <span className="mx-1 text-slate-300">·</span> : null}
+                                    {row.note || (row.where ? '' : '-')}
+                                  </td>
                                   <td className="px-3 py-2.5 text-right">
                                     <div className="flex items-center justify-end gap-1">
                                       {row.id && (
@@ -3453,7 +3477,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                 </tr>
                                 {rmCorrectionTargetId === row.id && (
                                   <tr className="bg-amber-50 border-t border-amber-200">
-                                    <td colSpan={8} className="px-4 py-3">
+                                    <td colSpan={9} className="px-4 py-3">
                                       <div className="flex items-center gap-2 flex-wrap">
                                         <span className="text-[11px] font-black text-amber-700">정정 추가</span>
                                         <input type="date" value={rmCorrectionForm.date}
@@ -3499,6 +3523,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                               ...(isStocktake ? { targetKg: amtKg } : {}),
                                               note: baseNote + inputTag,
                                               createdAt: new Date().toISOString(),
+                                              ...(currentUser?.name ? { addedBy: currentUser.name } : {}),
                                               type: 'correction',
                                               unit: 'kg',
                                               originalAmount: amt,
@@ -3563,11 +3588,13 @@ const AdminApp: React.FC<AdminAppProps> = ({
                               <td className="px-4 py-2.5 text-[11px] font-black text-rose-500 text-right">{activeLedger.totalOut !== 0 ? `-${activeLedger.totalOut}` : '-'}</td>
                               <td className="px-4 py-2.5 text-[11px] font-black text-amber-600 text-right">{activeLedger.totalAdj !== 0 ? (activeLedger.totalAdj > 0 ? `+${activeLedger.totalAdj}` : `${activeLedger.totalAdj}`) : '-'}</td>
                               <td className="px-4 py-2.5 text-[11px] font-black text-slate-800 text-right">{activeLedger.closing}</td>
+                              <td className="px-4 py-2.5 text-[11px] text-slate-300">—</td>
                               <td className="px-4 py-2.5 text-[11px] text-slate-400 font-bold">당월 총 입고·사용</td>
                               <td className="px-3 py-2.5"></td>
                             </tr>
                           </tbody>
                         </table>
+                        </div>
                       </div>
                     </div>
                   );

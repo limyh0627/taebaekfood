@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { today } from '../src/shared/day';
 import { ArrowUp, ArrowDown, Layers, Truck, Trash2, CornerDownRight, Tag, Check, X, History } from 'lucide-react';
-import { Item, RawMaterialLot, RawMaterialEntry } from '../src/shared/types';
+import { Item, Order, RawMaterialLot, RawMaterialEntry } from '../src/shared/types';
 import { mutateRawMaterialLots, updateItem, addItem } from '../src/shared/services/firebaseService';
 import { baseRawName, unitOf, kgToUnit, lotKgRemaining, lotStockInUnit } from '../src/constants/formula';
 import RawLedgerList from './RawLedgerList';
@@ -11,6 +11,7 @@ interface Props {
   isAdmin?: boolean;
   linkedNote?: string;  // 다른 SKU(캔/반제품)에서 펼친 경우 안내 문구
   ledgerEntries?: RawMaterialEntry[];        // 이 원료의 입출고(수불) 기록
+  orders?: Order[];                          // 자동 줄이 어느 주문 때문인지 풀 때 쓴다
   /** 로트 목록과 입출고 기록 **사이**에 끼울 것 — 박스 로트 판이 여기 온다 */
   박스로트?: React.ReactNode;
   onDeleteEntry?: (id: string) => void;      // 기록 삭제(관리자)
@@ -21,7 +22,7 @@ interface Props {
 const fmt = (n: number) => (Math.round(n * 10) / 10).toLocaleString();
 
 /** 원료재고 로트 패널 — 배열 순서 = 선입선출(앞=먼저 사용). 기름은 L 표시(괄호 kg 병기). */
-const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linkedNote, ledgerEntries, onDeleteEntry, currentUserName, onLotChanged, 박스로트 }) => {
+const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linkedNote, ledgerEntries, orders, onDeleteEntry, currentUserName, onLotChanged, 박스로트 }) => {
   const material = baseRawName(product.name);
   const isOil = unitOf(material) === 'L';
   const unitLabel = isOil ? 'L' : 'kg';
@@ -121,7 +122,10 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
           date: today(),
           received: 0,
           used: lot.kgRemaining,
-          note: `로트 삭제: ${lot.supplierName}${lot.lotNo ? ` (${lot.lotNo})` : ''}${currentUserName ? ` · ${currentUserName}` : ''}`,
+          note: `로트 삭제: ${lot.supplierName}${lot.lotNo ? ` (${lot.lotNo})` : ''}`,
+          //  이름은 비고에 이어 붙이지 않는다 — '누가'는 addedBy 한 칸이 맡는다.
+          //  글자로 섞어 두면 화면이 그걸 이름으로 못 읽어 '본인' 표시도 안 되고 걸러지지도 않는다.
+          ...(currentUserName ? { addedBy: currentUserName } : {}),
           createdAt: new Date().toISOString(),
           type: 'correction',
           unit: 'kg',
@@ -364,6 +368,7 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
           </div>
           <RawLedgerList
             entries={ledgerEntries}
+            orders={orders}
             isAdmin={isAdmin}
             currentUserName={currentUserName}
             onDelete={onDeleteEntry}

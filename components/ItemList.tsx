@@ -1650,6 +1650,7 @@ const ItemList: React.FC<ItemListProps> = ({
                             product={raw}
                             isAdmin={isAdmin}
                             ledgerEntries={rawMaterialLedger.filter(e => e.material === material)}
+                            orders={orders}
                             onDeleteEntry={onDeleteRawMaterialEntry}
                             currentUserName={currentUser?.name}
                             onLotChanged={onLedgerChanged}
@@ -3798,6 +3799,7 @@ const ItemList: React.FC<ItemListProps> = ({
             <RawLedgerList
               entries={entries}
               allEntries={rawMaterialLedger}
+              orders={orders}
               isAdmin={isAdmin}
               currentUserName={currentUser?.name}
               onDelete={onDeleteRawMaterialEntry}
