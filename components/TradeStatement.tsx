@@ -1266,7 +1266,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     if (!selectedClientId || lineItems.length === 0) return null;
     // 발행 차단(백스톱) — 인쇄·세금계산서·엑셀 경로에서도 계정 미설정/단가 0이면 발행 기록 안 함
     if (lineItems.some(i => !i.accountCode)) { alert('계정과목이 설정되지 않은 품목이 있어 발행할 수 없습니다.'); return null; }
-    if (lineItems.some(i => !i.price || i.price <= 0)) { alert('단가가 0인 품목이 있어 발행할 수 없습니다.'); return null; }
+    if (lineItems.some(i => !i.price)) { alert('단가가 0인 품목이 있어 발행할 수 없습니다.'); return null; }
     //  고른 주문 **전부**에 발행 표시를 찍는다 — 한 건만 찍으면 나머지가 목록에 다시 뜬다
     if (!onAddIssuedStatement) throw new Error('전표 저장 기능이 연결되지 않았습니다.');
     const identity = issueIdentityRef.current ?? {
@@ -1342,8 +1342,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       alert(`계정과목이 설정되지 않은 품목이 ${missingAccountCodes.length}건 있습니다.\n(${missingAccountCodes.slice(0, 3).map(i => i.name).join(', ')}${missingAccountCodes.length > 3 ? ' 외' : ''})\n계정을 설정해야 발행할 수 있습니다.`);
       return;
     }
-    // 단가 0(미입력) 품목이 있으면 발행 차단
-    const zeroPriceItems = lineItems.filter(i => !i.price || i.price <= 0);
+    // 단가 0(미입력) 품목이 있으면 발행 차단.
+    //  ※ 0만 막는다. 음수는 통과 — 할인·반품 줄(단가 또는 수량이 마이너스)이
+    //    전표 한 장에 단독으로 설 수 있어야 한다.
+    const zeroPriceItems = lineItems.filter(i => !i.price);
     if (zeroPriceItems.length > 0) {
       alert(`단가가 0인 품목이 ${zeroPriceItems.length}건 있습니다.\n(${zeroPriceItems.slice(0, 3).map(i => i.name).join(', ')}${zeroPriceItems.length > 3 ? ' 외' : ''})\n단가를 입력해야 발행할 수 있습니다.`);
       return;
@@ -3654,8 +3656,7 @@ ${names}
                                       onChange={e=>setManualItems(prev=>prev.map((r,i)=>i===idx?{...r,price:e.target.value}:r))}
                                       className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-right outline-none focus:ring-2 focus:ring-blue-300"/>}
                               </td>
-                              {/* 반품은 수량이 음수라 공급가·세액·합계가 다 음수다 — >0으로 걸러 세 칸이 통째로 '-'였다. */}
-                              <td className="px-3 py-2 text-right text-slate-700">{sup!==0?fmt(sup):'-'}</td>
+                              <td className={`px-3 py-2 text-right ${sup<0?'text-rose-600 font-bold':'text-slate-700'}`}>{sup!==0?fmt(sup):'-'}</td>
                               <td className="px-3 py-2 text-center">
                                 {ro ? (
                                   <span className={`text-[10px] font-black ${row.isTaxExempt?'text-indigo-600':''}`}>
@@ -3668,7 +3669,7 @@ ${names}
                                   </button>
                                 )}
                               </td>
-                              <td className="px-3 py-2 text-right font-black text-slate-800">{(sup+tax)!==0?fmt(sup+tax):'-'}</td>
+                              <td className={`px-3 py-2 text-right font-black ${(sup+tax)<0?'text-rose-600':'text-slate-800'}`}>{(sup+tax)!==0?fmt(sup+tax):'-'}</td>
                               <td className="px-3 py-2 w-24">
                                 {ro
                                   ? <span className="text-[10px] font-black text-slate-500">{row.accountCode || (stmtType === '매출' ? '800' : '-')}</span>
