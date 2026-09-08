@@ -86,18 +86,18 @@ interface TradeStatementProps {
   onUpdateStatus?: (id: string, status: OrderStatus) => void;
   onUpsertPartnerItem?: (ps: PartnerItem) => void | Promise<void>;
   onMarkInvoicePrinted?: (id: string, value: boolean) => void;
-  onAddIssuedStatement?: (stmt: IssuedStatement) => void;
+  onAddIssuedStatement?: (stmt: IssuedStatement) => void | Promise<unknown>;
   /** 지금 보고 있는 회사 — 대납은 상대 회사 장부에도 써야 한다 */
   companyId?: CompanyId;
   /** 회사를 지정해서 저장(대납 전용) — 지금 회사가 아닌 장부에 쓴다 */
   onAddForCompany?: (companyId: CompanyId, payload: { cashEntry?: CashEntry; statement?: IssuedStatement }) => void;
-  onUpdateIssuedStatement?: (id: string, data: Partial<IssuedStatement>) => void;
+  onUpdateIssuedStatement?: (id: string, data: Partial<IssuedStatement>) => void | Promise<unknown>;
   onProposeEdit?: (id: string, data: Partial<IssuedStatement>, stmtType: '매출' | '매입', docNo: string, partnerName: string) => void;
   /** 거래처원장에서 전표번호를 눌러 넘어왔을 때 — 그 번호로 조회창을 연다 */
   focusDocNo?: string;
   onFocusHandled?: () => void;
   onDeleteIssuedStatement?: (id: string) => void;
-  pendingInvoice?: { partnerId: string; partnerName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }>; poIds?: string[] } | null;
+  pendingInvoice?: { partnerId: string; partnerName: string; items: Array<{ itemId: string; name: string; spec: string; qty: number; price: number; isBox?: boolean }>; poIds?: string[] } | null;
   onClearPendingInvoice?: () => void;
   confirmedOrders?: PurchaseOrder[];
   orderRequests?: PurchaseOrder[];
@@ -109,10 +109,9 @@ interface TradeStatementProps {
   onLinkPurchaseOrder?: (poId: string, statementId: string) => void;
   companyInfo?: CompanyInfo | null;
   onSaveCompanyInfo?: (info: CompanyInfo) => void;
-  onUpdateItemCost?: (itemId: string, cost: number) => void;
+  onUpdateItemCost?: (itemId: string, cost: number) => void | Promise<unknown>;
   onUpdateOrder?: (id: string, data: Partial<import('../types').Order>) => void;
   defaultTab?: 'history' | 'taxinvoice';
-  onAddProductClient?: (itemId: string, partnerId: string, price: number, taxType: '과세' | '면세') => void;
   expensePresets?: ExpensePreset[];
   onAddExpensePreset?: (p: Omit<ExpensePreset, 'id' | 'createdAt'>) => Promise<string>;
   onDeleteExpensePreset?: (id: string) => void;
@@ -200,7 +199,6 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   onUpdateItemCost,
   onUpdateOrder,
   defaultTab = 'history',
-  onAddProductClient,
   expensePresets = [],
   onAddExpensePreset,
   onDeleteExpensePreset,
@@ -285,6 +283,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         s.Direction === 'in' && s.itemId === line.itemId && s.partnerId === selectedClientId) : undefined;
       const unitPrice = ps?.price ?? (boxPs?.price ? Math.round(boxPs.price / r.perBox) : undefined);
       return {
+        itemId: r.product?.id ?? line.itemId,
         name: r.product?.name || line.name || '',
         spec: r.product?.spec || line.unit || '',
         qty: String(r.qty),
@@ -315,6 +314,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
   const [selectedItemIdx, setSelectedItemIdx] = useState<number | null>(null); // 선택된 품목 행
 
   // ── 빠른 품목 입력 행 ──
+  const [quickItemId, setQuickItemId] = useState<string | undefined>();
   const [quickName, setQuickName] = useState('');
   const [quickSpec, setQuickSpec] = useState('');
   const [quickQty, setQuickQty] = useState('');
@@ -335,6 +335,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // 현재 전표 세션에서 이미 issuedStatement에 저장했는지 추적 (인쇄 중복 방지)
   const hasIssuedRef = useRef(false);
+  const saveBusyRef = useRef(false);
+  const [isSaving, setIsSaving] = useState(false);
+  // 전표 저장 뒤 단가 저장만 실패해도 재시도는 같은 전표에 쓴다. 새 ID면 중복 발행된다.
+  const issueIdentityRef = useRef<{ id: string; docNo: string } | null>(null);
 
   /**
    * **자금 전표 창 하나** — 수금·지불도, 이미 난 전표를 고치는 것도 여기로 연다.
@@ -962,6 +966,8 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
 
   // ── 생성 오버레이 열기/닫기 ──
   const openCreate = (type: StatementType) => {
+    issueIdentityRef.current = null;
+    setPricePanelEdits({});
     setCreateMode(type);
     setSelectedClientId('');
     setSelectedOrderIds([]);
@@ -981,7 +987,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setManualItems([{ name: '', spec: '', qty: '', price: '', isTaxExempt: false }]);
     setLoadedPoIds([]);
   };
-  const closeCreate = () => { setCreateMode(null); setEditingStmt(null); setIsEditMode(false); setTradeNote(''); setStmtMemo(''); setSelectedItemIdx(null); setQuickName(''); setQuickSpec(''); setQuickQty(''); setQuickPrice(''); setQuickNote(''); setQuickSearchOpen(false); setQuickIsTaxExempt(false); setShowItemPicker(false); setPickerSearch(''); setPickerQtys({}); setNoLinkIds(new Set()); setAccountCodeOverrides({}); setLoadedPoIds([]); setIssuePay(false); setIssuePayAmount(''); hasIssuedRef.current = false; };
+  const closeCreate = () => { if (saveBusyRef.current) return; issueIdentityRef.current = null; setCreateMode(null); setEditingStmt(null); setIsEditMode(false); setTradeNote(''); setStmtMemo(''); setSelectedItemIdx(null); setQuickItemId(undefined); setQuickName(''); setQuickSpec(''); setQuickQty(''); setQuickPrice(''); setQuickNote(''); setQuickSearchOpen(false); setQuickIsTaxExempt(false); setShowItemPicker(false); setPickerSearch(''); setPickerQtys({}); setPricePanelEdits({}); setNoLinkIds(new Set()); setAccountCodeOverrides({}); setLoadedPoIds([]); setIssuePay(false); setIssuePayAmount(''); hasIssuedRef.current = false; };
 
   // pendingInvoice가 오면 자동으로 매입전표 생성 모달 열기
   useEffect(() => {
@@ -993,14 +999,20 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     if (matchedClient) setSelectedClientId(matchedClient.id);
     // 품목 채우기
     setManualItems([
-      ...pendingInvoice.items.map(item => ({
-        name: item.name,
-        spec: item.spec,
-        qty: String(item.qty),
-        price: String(item.price || ''),
-        isTaxExempt: false,
-      })),
-      { name: '', spec: '', qty: '', price: '', isTaxExempt: false },
+      ...pendingInvoice.items.map(item => {
+        const resolved = resolveOrderItem({ itemId: item.itemId, name: item.name, quantity: item.qty } as any, allItems);
+        const itemId = resolved.product?.id ?? item.itemId;
+        const pc = partnerIn.find(p => p.itemId === itemId && p.partnerId === pendingInvoice.partnerId);
+        return {
+          itemId,
+          name: resolved.product?.name ?? item.name,
+          spec: resolved.product?.spec ?? item.spec,
+          qty: String(resolved.qty),
+          price: String(orderItemPrice(resolved, item, pc?.price) || ''),
+          isTaxExempt: pc?.taxType === '면세',
+          accountCode: pc?.Account_Code,
+        };
+      }),
     ]);
     // 선입고/발주에서 넘어온 소스 PO들 — 발행 시 linkedStatementId 연결 + 입고대기 전환
     setLoadedPoIds(pendingInvoice.poIds ?? []);
@@ -1034,6 +1046,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     setManualMode(true);
     setManualItems([
       ...stmt.items.map(i => ({
+        itemId: i.itemId,
         name: i.name,
         spec: i.spec,
         qty: String(i.qty),
@@ -1138,13 +1151,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       if (!product) return;
       const co = confirmedOrders.find(c => c.id === id);
       if (co) {
-        rows.push({ name: product.name, spec: product.spec || product.unit || '', qty: String(co.quantity), price: '', isTaxExempt: false });
+        rows.push({ itemId: product.id, name: product.name, spec: product.spec || product.unit || '', qty: String(co.quantity), price: '', isTaxExempt: false });
         return;
       }
       const req = orderRequests?.find((r: { id: string; quantity: number; isBox?: boolean }) => r.id === id);
       if (req) {
         const ps = partnerIn.find(s => s.itemId === id && s.partnerId === selectedClientId);
-        rows.push({ name: product.name, spec: product.spec || product.unit || '', qty: String(req.quantity), price: ps?.price ? String(ps.price) : '', isTaxExempt: ps?.taxType === '면세' });
+        rows.push({ itemId: product.id, name: product.name, spec: product.spec || product.unit || '', qty: String(req.quantity), price: ps?.price ? String(ps.price) : '', isTaxExempt: ps?.taxType === '면세' });
       }
     });
     if (rows.length === 0) return;
@@ -1238,26 +1251,30 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    * 예전엔 발행-매출 · 발행-매입 · 수정-매입 세 벌로 쓰여 있었고 셋이 서로 달랐다.
    * (수정이 "이번 전표에만"을 무시했고, 수정에는 매출이 통째로 없었다.)
    */
-  const applyPriceSync = useCallback((type: string) => {
+  const applyPriceSync = useCallback(async (type: string) => {
     if (!onUpsertPartnerItem) return;
     const { upserts, costUpdates } = partnerPriceWrites({
       type, partnerId: selectedClientId, lines: lineItems, items: allItems,
       partnerItems: [...partnerOut, ...partnerIn], noLinkIds,
     });
-    for (const u of upserts) onUpsertPartnerItem(u);
-    for (const c of costUpdates) onUpdateItemCost?.(c.itemId, c.price);
+    for (const u of upserts) await onUpsertPartnerItem(u);
+    for (const c of costUpdates) await onUpdateItemCost?.(c.itemId, c.price);
   }, [onUpsertPartnerItem, onUpdateItemCost, selectedClientId, lineItems, allItems, partnerOut, partnerIn, noLinkIds]);
 
   /** 전표를 만들고 **그 전표를 돌려준다** — 발행하면서 바로 수금·지불하려면 그 객체가 필요하다. */
-  const markIssued = useCallback((): IssuedStatement | null => {
+  const markIssued = async (): Promise<IssuedStatement | null> => {
     if (!selectedClientId || lineItems.length === 0) return null;
     // 발행 차단(백스톱) — 인쇄·세금계산서·엑셀 경로에서도 계정 미설정/단가 0이면 발행 기록 안 함
     if (lineItems.some(i => !i.accountCode)) { alert('계정과목이 설정되지 않은 품목이 있어 발행할 수 없습니다.'); return null; }
     if (lineItems.some(i => !i.price || i.price <= 0)) { alert('단가가 0인 품목이 있어 발행할 수 없습니다.'); return null; }
     //  고른 주문 **전부**에 발행 표시를 찍는다 — 한 건만 찍으면 나머지가 목록에 다시 뜬다
-    for (const id of selectedOrderIds) onMarkInvoicePrinted?.(id, true);
+    if (!onAddIssuedStatement) throw new Error('전표 저장 기능이 연결되지 않았습니다.');
+    const identity = issueIdentityRef.current ?? {
+      id: `stmt-${Date.now()}`, docNo: claimDocNo(tradeDate, mergedStatements),
+    };
+    issueIdentityRef.current = identity;
     const stmt: IssuedStatement = {
-      id: `stmt-${Date.now()}`,
+      id: identity.id,
       // 시각은 전표 날짜에 맞춰 잡는다 — 소급이면 그날 맨 뒤, 미리 끊으면 맨 앞.
       issuedAt: stampFor(tradeDate),
       tradeDate,
@@ -1269,12 +1286,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       //  **번호는 여기서 받아 간다**(claimDocNo). 위쪽 `docNo` 는 미리보기용이라
       //  화면에 떠 있는 동안 다른 전표가 나갔으면 낡아 있다. 받아 가면 이번 판에서
       //  다시 안 나온다 — 연달아 발행해도 목록 갱신을 안 기다린다.
-      docNo: claimDocNo(tradeDate, mergedStatements),
+      docNo: identity.docNo,
       ...(stmtMemo.trim() ? { memo: stmtMemo.trim() } : {}),
       totalSupply,
       totalTax,
       totalAmount,
       items: lineItems.map(i => ({
+        ...(i.itemId ? { itemId: i.itemId } : {}),
         name: i.name, spec: i.spec, qty: i.qty, price: i.price,
         supply: i.supply, tax: i.tax, total: i.total, isTaxExempt: i.isTaxExempt,
         accountCode: i.accountCode || undefined,
@@ -1283,12 +1301,14 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       // 매입전표: 발주된 품목 ID 목록 (purchaseOrders 연결용)
       ...(stmtType === '매입' ? {
         purchaseOrderIds: lineItems
-          .map(i => allItems.find(p => p.name === i.name))
+          .map(i => allItems.find(p => p.id === i.itemId))
           .filter(Boolean)
           .map(p => p!.id),
       } : {}),
     };
-    onAddIssuedStatement?.(stmt);
+    await onAddIssuedStatement(stmt);
+    await applyPriceSync(stmtType);
+    for (const id of selectedOrderIds) await onMarkInvoicePrinted?.(id, true);
     // 매입전표 발행 시 발주카드 처리:
     //  - 발주카드 선택해서 발행 → 그 PO들의 linkedStatementId에 전표 id 연결 + 입고대기 전환
     //  - 발주카드 없이 직접입력 발행 → 같은 거래처로 품목 묶어 새 입고대기 카드 1개 생성(전표 id 연결)
@@ -1299,7 +1319,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
         // 품목에 매칭되는 줄만 발주카드로 — 비용 항목(택배비·상차비·기타)은 발주/입고 대상 아님 → 제외
         const newItems = lineItems
           .map(item => {
-            const product = allItems.find(p => p.name === item.name || p.품목 === item.name);
+            const product = allItems.find(p => p.id === item.itemId);
             return product ? { itemId: product.id, itemName: item.name, quantity: item.qty, isBox: false, unit: product.unit || '개' } : null;
           })
           .filter((it): it is NonNullable<typeof it> => it !== null);
@@ -1310,13 +1330,13 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     }
     //  전표에 찍힌 단가·계정을 거래처 단가로 되민다 — 발행이든 수정이든 같은 셈이다
     //  (shared/partnerPriceSync). 예전엔 세 벌로 쓰여 있어 서로 갈렸다.
-    applyPriceSync(stmtType);
     // (원본 주문 자동반영 기능 제거됨 — 전표 편집은 원본 주문을 건드리지 않는다.
     //  박스→낱개 변환 때문에 낱개가 주문에 이중으로 붙는 문제도 함께 방지.)
     return stmt;
-  }, [manualMode, selectedOrderId, selectedClientId, tradeDate, stmtType, selectedClient, docNo, totalSupply, totalTax, totalAmount, lineItems, onMarkInvoicePrinted, onAddIssuedStatement, onAddConfirmedOrder, onRemoveConfirmedOrder, onRemoveOrderRequest, onCreateInboundPO, onLinkPurchaseOrder, loadedPoIds, allItems, confirmedOrders, orderRequests, partnerOut, partnerIn, onUpsertPartnerItem, onUpdateItemCost, onUpdateOrder, selectedOrder, manualItems]);
+  };
 
-  const handleIssue = () => {
+  const handleIssue = async () => {
+    if (saveBusyRef.current) return;
     // 계정과목 미설정 품목이 있으면 발행 차단 (매출은 800 기본이라 대개 매입에서 걸림)
     if (missingAccountCodes.length > 0) {
       alert(`계정과목이 설정되지 않은 품목이 ${missingAccountCodes.length}건 있습니다.\n(${missingAccountCodes.slice(0, 3).map(i => i.name).join(', ')}${missingAccountCodes.length > 3 ? ' 외' : ''})\n계정을 설정해야 발행할 수 있습니다.`);
@@ -1333,7 +1353,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     //   · 수동/매입: 같은 거래처+거래일+합계로 이미 발행됨 (주문 없는 매입 중복 방지)
     //   확정이 아니라 확인(confirm) — 정당하게 같은 금액이 반복될 수 있으니 사용자가 넘길 수 있게.
     const dup = mergedStatements.find(s =>
-      s.type === stmtType && s.id !== editingStmt?.id && (
+      s.type === stmtType && s.id !== editingStmt?.id && s.id !== issueIdentityRef.current?.id && (
         //  고른 주문 중 **하나라도** 이미 전표에 물려 있으면 묻는다
         (selectedOrderIds.length > 0 && selectedOrderIds.some(id =>
           String(s.orderId ?? '').split(/[,\s]+/).includes(id))) ||
@@ -1347,21 +1367,33 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       );
       if (!ok) return;
     }
-    const stmt = markIssued();
-    //  발행과 같은 클릭에서 수금·지불까지. 전표에 붙여(pin) 그 전표부터 갚아지게 한다.
-    if (stmt && issuePay) {
-      const amt = Number((issuePayAmount || '').replace(/[,\s원]/g, '')) || 0;
-      if (amt > 0) {
-        recordPayment([{ stmt, amount: amt }], {
-          date: tradeDate, method: '계좌이체', cashAccountId: activeCashAccounts[0]?.id ?? '', pin: true,
-        });
+    saveBusyRef.current = true;
+    setIsSaving(true);
+    try {
+      const stmt = await markIssued();
+      if (!stmt) return;
+      //  발행과 같은 클릭에서 수금·지불까지. 전표에 붙여(pin) 그 전표부터 갚아지게 한다.
+      if (issuePay) {
+        const amt = Number((issuePayAmount || '').replace(/[,\s원]/g, '')) || 0;
+        if (amt > 0) {
+          recordPayment([{ stmt, amount: amt }], {
+            date: tradeDate, method: '계좌이체', cashAccountId: activeCashAccounts[0]?.id ?? '', pin: true,
+          });
+        }
       }
+      setIssuePay(false); setIssuePayAmount('');
+      saveBusyRef.current = false;
+      closeCreate();
+    } catch (e: any) {
+      alert('전표 또는 거래처 단가 저장에 실패했습니다. 입력 내용은 유지됩니다. 다시 저장해 주세요.\n' + (e?.message ?? String(e)));
+    } finally {
+      saveBusyRef.current = false;
+      setIsSaving(false);
     }
-    setIssuePay(false); setIssuePayAmount('');
-    closeCreate();
   };
 
-  const handleSaveEdit = useCallback(() => {
+  const handleSaveEdit = async () => {
+    if (saveBusyRef.current) return;
     if (!editingStmt || lineItems.length === 0) return;
     const proposed: Partial<IssuedStatement> = {
       tradeDate,
@@ -1372,6 +1404,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       totalTax,
       totalAmount,
       items: lineItems.map(i => ({
+        ...(i.itemId ? { itemId: i.itemId } : {}),
         name: i.name, spec: i.spec, qty: i.qty, price: i.price,
         supply: i.supply, tax: i.tax, total: i.total, isTaxExempt: i.isTaxExempt,
         accountCode: i.accountCode || undefined,
@@ -1380,12 +1413,22 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
     };
     // 거래명세서 탭에서의 수정은 즉시 반영 (확인사항 안 거침)
     // ※ 입고대기 발주카드 수정 → 연결된 전표 수정요청은 AdminApp.handleRequestPoEdit 경로(별도)
-    onUpdateIssuedStatement?.(editingStmt.id, proposed);
-    applyPriceSync(editingStmt.type);
-    setIsEditMode(false);
-    closeCreate();
-    alert('전표가 수정되었습니다.');
-  }, [editingStmt, tradeDate, selectedClientId, selectedClient, totalSupply, totalTax, totalAmount, lineItems, onUpdateIssuedStatement, onUpsertPartnerItem, onUpdateItemCost, allItems, partnerIn]);
+    saveBusyRef.current = true;
+    setIsSaving(true);
+    try {
+      if (!onUpdateIssuedStatement) throw new Error('전표 수정 기능이 연결되지 않았습니다.');
+      await onUpdateIssuedStatement(editingStmt.id, proposed);
+      await applyPriceSync(editingStmt.type);
+      saveBusyRef.current = false;
+      closeCreate();
+      alert('전표가 수정되었습니다.');
+    } catch (e: any) {
+      alert('전표 또는 거래처 단가 저장에 실패했습니다. 입력 내용은 유지됩니다. 다시 저장해 주세요.\n' + (e?.message ?? String(e)));
+    } finally {
+      saveBusyRef.current = false;
+      setIsSaving(false);
+    }
+  };
 
   const buildPrintHtml = (items: LineItem[] | IssuedStatement['items'], sup: number, tax: number, amt: number, type: StatementType, partner: string, docNoStr: string, dateString: string, memoText = '', partnerIdStr = '') => {
     const m = dateString.match(/(\d+)년\s*(\d+)월\s*(\d+)일/);
@@ -1964,7 +2007,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       //  빈 행은 안 붙인다 — 누를 때마다 하나씩 딸려 나와 지우는 일이 된다. 필요하면 '행 추가'가 있다.
       return [
         ...filled,
-        { name: pc.product!.name, spec: pc.product!.spec || '', qty: '1', price: String(pc.pc.price ?? 0), isTaxExempt: false },
+        { itemId: pc.product!.id, name: pc.product!.name, spec: pc.product!.spec || '', qty: '1', price: String(pc.pc.price ?? 0), isTaxExempt: pc.pc.taxType === '면세' },
       ];
     });
   }, []);
@@ -2093,6 +2136,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       ? (r.product?.spec || item.displaySize || '')
       : (item.displaySize || r.product?.spec || '');
     return {
+      itemId: r.product?.id ?? item.itemId,
       name: r.product?.name || item.name,
       spec,
       qty: String(r.qty),
@@ -3090,7 +3134,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
       {createMode && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-0 sm:p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeCreate}/>
-          <div className="relative w-full h-[100dvh] sm:h-[80vh] sm:max-w-7xl flex flex-col bg-white sm:rounded-3xl shadow-2xl overflow-hidden">
+          <fieldset disabled={isSaving} aria-busy={isSaving} className="relative min-w-0 m-0 p-0 border-0 w-full h-[100dvh] sm:h-[80vh] sm:max-w-7xl flex flex-col bg-white sm:rounded-3xl shadow-2xl overflow-hidden">
 
             {/* ── 헤더 ── */}
             <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-5 py-3 border-b border-slate-100 flex-shrink-0 flex-wrap">
@@ -3213,12 +3257,12 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
             {/*  양식 쪽 문지기 — [OrderPicker](OrderPicker.tsx) 의 목록과 **정반대**여야 한다.
                  셋이 짝이라 한쪽만 고치면 목록과 양식이 같이 뜬다(2026-09-07). */}
             {selectedClientId && (manualMode || editingStmt) && (!editingStmt || isEditMode) && (() => {
-              const qProduct = searchableRows.find(r=>(r.product!.name)===quickName)?.product as any;
+              const qProduct = allItems.find(p => p.id === quickItemId);
               const selRow = selectedItemIdx!==null&&manualMode ? manualItems[selectedItemIdx] : null;
               const selItem = selectedItemIdx!==null&&!manualMode ? lineItems[selectedItemIdx] : null;
               const infoProduct = quickName ? qProduct
-                : selRow ? (searchableRows.find(r=>(r.product!.name)===selRow.name)?.product as any)
-                : selItem ? (allItems.find(p=>p.name===selItem.name||p.품목===selItem.name) as any)
+                : selRow ? allItems.find(p => p.id === selRow.itemId)
+                : selItem ? allItems.find(p => p.id === selItem.itemId)
                 : null;
               const productCost = infoProduct?.cost ?? 0;
               const salePrice = quickName ? (parseFloat(quickPrice)||0)
@@ -3239,9 +3283,9 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 });
                 if (partnerMatches.length > 0) return partnerMatches;
                 return allItems
-                  .filter(p => !isBoxStockItem(p) && matchesSearch(p.name + ' ' + (p.품목 ?? ''), q))
+                  .filter(p => companyOf(p) === companyId && !isBoxStockItem(p) && matchesSearch(p.name + ' ' + (p.품목 ?? ''), q))
                   .map(p => {
-                    const existingPc = partnerOut.find(pc => pc.itemId === p.id && pc.partnerId === selectedClientId);
+                    const existingPc = (createMode === '매입' ? partnerIn : partnerOut).find(pc => pc.itemId === p.id && pc.partnerId === selectedClientId);
                     return {
                       pc: { id: existingPc?.id ?? p.id, itemId: p.id, partnerId: selectedClientId, price: existingPc?.price, taxType: existingPc?.taxType },
                       product: p,
@@ -3250,23 +3294,20 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
               })() : [];
               const addQuickItem = () => {
                 if (!quickName.trim()) return;
-                const newRow: ManualRow = {name:quickName,spec:quickSpec,qty:quickQty.trim()||'1',price:quickPrice,isTaxExempt:quickIsTaxExempt,note:quickNote};
+                const newRow: ManualRow = {itemId:quickItemId,name:quickName,spec:quickSpec,qty:quickQty.trim()||'1',price:quickPrice,isTaxExempt:quickIsTaxExempt,note:quickNote};
                 setManualMode(true);
                 setManualItems(prev=>{
                   const rows = prev.filter(r=>r.name.trim());
                   return [...rows,newRow];   // 빈 행은 안 붙인다 — 필요하면 '행 추가'
                 });
-                setQuickName('');setQuickSpec('');setQuickQty('');setQuickPrice('');setQuickNote('');setQuickSearchOpen(false);setQuickIsTaxExempt(false);
+                setQuickItemId(undefined);setQuickName('');setQuickSpec('');setQuickQty('');setQuickPrice('');setQuickNote('');setQuickSearchOpen(false);setQuickIsTaxExempt(false);
               };
               return (
                 <div className="flex-shrink-0 border-b border-slate-100 px-5 py-2.5 bg-white space-y-1.5">
                   <div className="flex items-center gap-2 flex-wrap">
                     <div className="relative">
                       <input type="text" value={quickName} placeholder="품목명..."
-                        onChange={e=>{setQuickName(e.target.value);setQuickSearchOpen(true);
-                          const match=searchableRows.find(r=>(r.product!.name)===e.target.value);
-                          if(match){setQuickSpec(match.product!.spec||'');setQuickPrice(String(match.pc.price??''));setQuickIsTaxExempt(match.pc.taxType==='면세');}
-                        }}
+                        onChange={e=>{setQuickItemId(undefined);setQuickName(e.target.value);setQuickSearchOpen(true);}}
                         onFocus={()=>setQuickSearchOpen(true)}
                         onBlur={()=>setTimeout(()=>setQuickSearchOpen(false),150)}
                         className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300 w-40"/>
@@ -3286,13 +3327,10 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                             return (
                               <button key={r.pc.id}
                                 onMouseDown={()=>{
-                                  const price = r.pc.price ?? (r.product as any)?.price ?? 0;
+                                  const price = r.pc.price ?? 0;
                                   const taxType: '과세'|'면세' = r.pc.taxType === '면세' ? '면세' : '과세';
-                                  const isLinked = searchableRows.some(sr => sr.product!.id === r.product!.id);
-                                  if (!isLinked && selectedClientId && r.product!.id && createMode === '매출') {
-                                    onAddProductClient?.(r.product!.id, selectedClientId, price, taxType);
-                                  }
-                                  setQuickName(docN);setQuickSpec(r.product!.spec||'');setQuickPrice(String(price||''));setQuickIsTaxExempt(taxType==='면세');setQuickSearchOpen(false);
+                                  // 선택 순간의 기본값을 따로 저장하면 최종 단가와 경합한다. 발행 경로에서 함께 쓴다.
+                                  setQuickItemId(r.product!.id);setQuickName(docN);setQuickSpec(r.product!.spec||'');setQuickPrice(String(price||''));setQuickIsTaxExempt(taxType==='면세');setQuickSearchOpen(false);
                                 }}
                                 className="w-full flex items-center justify-between px-3 py-2 text-xs hover:bg-blue-50 text-left transition-colors">
                                 <span className="font-black text-slate-800">{docN}</span>
@@ -3352,7 +3390,7 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
                 : pickerRows.filter(r=>matchesSearch((r.product!.name)+' '+(r.product!.품목??''), q));
               const confirmPick = async () => {
                 //  고른 것을 줄로 옮기는 셈은 shared/itemPick 에 있다 — 화면은 묻고 쓰기만 한다
-                const { toAdd, unlinked } = pickLines(pickerQtys, pickerRows, linkedItemIds);
+                const { toAdd, unlinked } = pickLines(pickerQtys, pickerRows, linkedItemIds, pricePanelEdits);
                 if (toAdd.length === 0) { setShowItemPicker(false); return; }
                 /* **거래처에 안 붙은 품목을 골랐으면 물어본다.**
                    예 → 거래처 품목으로 붙인다(단가·과세도 같이). 다음부터 검색 없이 뜬다.
@@ -3496,6 +3534,11 @@ ${names}
             {/* ── 품목 테이블 ── */}
             {selectedClientId && (manualMode || editingStmt) ? (
               <div className="flex-1 overflow-auto">
+                {(!editingStmt || isEditMode) && lineItems.some(i => !i.itemId) && (
+                  <p className="px-5 py-2 text-[11px] text-slate-500">
+                    직접 적은 줄과 예전 전표는 품목을 목록에서 선택해야 단가·과세구분이 거래처에 저장됩니다.
+                  </p>
+                )}
                 {/*  **칸 폭을 글자에 맞춘다**(2026-09-03 사장님) — 비율(%)로 두니 720px 안에서
                      품목명이 158px 밖에 안 돼 '참기름/병/분/전통/350ml' 이 잘렸다.
                      어차피 옆으로 미는 표다. 미는 김에 안 잘리는 게 맞다. */}
@@ -3562,7 +3605,7 @@ ${names}
                               <td className="px-3 py-2 relative min-w-[120px]">
                                 {ro ? <span className="font-black text-slate-800">{row.name}</span> : (<>
                                   <input type="text" placeholder="제품명..." value={row.name}
-                                    onChange={e=>setManualItems(prev=>prev.map((r,i)=>i===idx?{...r,name:e.target.value}:r))}
+                                    onChange={e=>setManualItems(prev=>prev.map((r,i)=>i===idx?{...r,itemId:undefined,name:e.target.value}:r))}
                                     onFocus={()=>setActiveSearchRow(idx)}
                                     onBlur={()=>setTimeout(()=>setActiveSearchRow(null),150)}
                                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-300 min-w-[120px]"/>
@@ -3577,7 +3620,7 @@ ${names}
                                         const tags2 = [용기2, 마개2, 정보2].filter(Boolean).join(' · ');
                                         return (
                                           <button key={r.pc.id}
-                                            onMouseDown={()=>{setManualItems(prev=>prev.map((item,i)=>i===idx?{...item,name:docN,spec:r.product!.spec||'',price:String(r.pc.price??0),isTaxExempt:r.pc.taxType==='면세'}:item));setActiveSearchRow(null);}}
+                                            onMouseDown={()=>{setManualItems(prev=>prev.map((item,i)=>i===idx?{...item,itemId:r.product!.id,name:docN,spec:r.product!.spec||'',price:String(r.pc.price??0),isTaxExempt:r.pc.taxType==='면세'}:item));setActiveSearchRow(null);}}
                                             className="w-full flex items-center justify-between px-3 py-2 text-xs hover:bg-blue-50 text-left transition-colors">
                                             <span className="font-black text-slate-800">{docN}</span>
                                             <span className="text-slate-400 text-[10px]">{tags2}</span>
@@ -3837,9 +3880,9 @@ ${names}
               <div className="ml-auto flex items-center gap-2 flex-wrap">
                 {editingStmt ? (
                   isEditMode ? (<>
-                    <button onClick={handleSaveEdit}
+                    <button onClick={handleSaveEdit} disabled={isSaving}
                       className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-black hover:bg-emerald-700 transition-all">
-                      <Save size={13}/>저장
+                      <Save size={13}/>{isSaving ? '저장 중…' : '저장'}
                     </button>
                     <button onClick={handlePrint}
                       className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-700 text-white text-xs font-black hover:bg-slate-800 transition-all">
@@ -3882,9 +3925,9 @@ ${names}
                       )}
                     </div>
                   )}
-                  <button onClick={handleIssue}
+                  <button onClick={handleIssue} disabled={isSaving}
                     className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black transition-all ${createMode==='매출'?'bg-blue-600 text-white hover:bg-blue-700':'bg-rose-600 text-white hover:bg-rose-700'}`}>
-                    <Plus size={13} strokeWidth={3}/>저장
+                    <Plus size={13} strokeWidth={3}/>{isSaving ? '저장 중…' : '저장'}
                   </button>
                   <span className="text-[10px] text-slate-400 font-bold self-center ml-1">저장 후 인쇄·엑셀 가능</span>
                 </>) : null}
@@ -3900,7 +3943,7 @@ ${names}
 
             <style>{`@media print{.no-print{display:none!important;}}`}</style>
 
-          </div>
+          </fieldset>
         </div>
       )}
 

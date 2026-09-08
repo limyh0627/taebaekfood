@@ -22,6 +22,8 @@ import type { PartnerItem, Item } from './types';
  * 이 함수는 **쓰지 않는다.** 무엇을 써야 하는지만 돌려준다 — 그래야 시험할 수 있다.
  */
 export interface PriceSyncLine {
+  /** 옛 전표·비용 줄은 없을 수 있다 — 이름으로 짐작해서 다른 품목을 고치지 않는다. */
+  itemId?: string;
   name: string;
   price?: number;
   accountCode?: string;
@@ -32,8 +34,8 @@ export interface PriceSyncInput {
   type: '매출' | '매입' | string;
   partnerId: string;
   lines: PriceSyncLine[];
-  /** 품목 원장 — 줄의 이름으로 품목을 되찾는다 */
-  items: Pick<Item, 'id' | 'name' | '품목'>[];
+  /** 품목 원장 — 전표 줄의 ID가 실제로 존재하는지 확인한다 */
+  items: Pick<Item, 'id'>[];
   /** 이미 저장돼 있는 거래처 단가 (그 방향 것만 넘겨도 되고 전부 넘겨도 된다) */
   partnerItems: PartnerItem[];
   /**
@@ -60,7 +62,7 @@ export function partnerPriceWrites(input: PriceSyncInput): PriceSyncResult {
   for (const line of lines) {
     const price = Number(line.price ?? 0);
     if (!(price > 0)) continue;
-    const product = items.find(p => p.name === line.name || p.품목 === line.name);
+    const product = line.itemId ? items.find(p => p.id === line.itemId) : undefined;
     if (!product) continue;
     if (noLinkIds?.has(product.id)) continue;
 
@@ -74,6 +76,7 @@ export function partnerPriceWrites(input: PriceSyncInput): PriceSyncResult {
      */
     if (type === '매출') {
       const changed = !prev || prev.price !== price
+        || prev.taxType !== (line.isTaxExempt ? '면세' : '과세')
         || !!(line.accountCode && prev.Account_Code !== line.accountCode);
       if (!changed) continue;
     }

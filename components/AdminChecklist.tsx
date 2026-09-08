@@ -33,7 +33,7 @@ interface AdminChecklistProps {
   orderRequests?: PurchaseOrder[];
   items?: Item[];
   partnerItems?: PartnerItem[];
-  onCreatePurchaseStatement?: (_data: { partnerId: string; partnerName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }>; poIds?: string[] }) => void;
+  onCreatePurchaseStatement?: (_data: { partnerId: string; partnerName: string; items: Array<{ itemId: string; name: string; spec: string; qty: number; price: number; isBox?: boolean }>; poIds?: string[] }) => void;
 }
 
 type TabType = 'leave' | 'adjustment' | 'ops';
@@ -221,9 +221,10 @@ const AdminChecklist: React.FC<AdminChecklistProps> = ({
       (partnerName && (c.name.includes(partnerName) || partnerName.includes(c.name)))
     );
     const invoiceItems = pos.flatMap(po => poLines(po)).map(line => {
-      const pi = partnerItems.find(p => (p.itemId ?? (p as any).itemId) === line.itemId && p.Direction === 'in');
+      const pi = partnerItems.find(p => p.itemId === line.itemId && p.partnerId === partnerId && p.Direction === 'in');
       const item = items.find(it => it.id === line.itemId);
       return {
+        itemId: line.itemId,
         name: line.name || item?.name || '',
         spec: line.unit || item?.unit || '',
         qty: line.quantity,

@@ -18,12 +18,14 @@ export type StatementType = '매출' | '매입' | '비용';
 
 /** 손으로 적는 줄 — 화면의 입력칸 그대로라 전부 글자다. */
 export interface ManualRow {
+  itemId?: string;
   name: string; spec: string; qty: string; price: string;
   isTaxExempt: boolean; note?: string; accountCode?: string;
   side?: '차변' | '대변';
 }
 
 export interface LineItem {
+  itemId?: string;
   key: string; no: number; name: string; spec: string;
   qty: number; price: number; supply: number; tax: number; total: number;
   isTaxExempt: boolean; accountCode?: string;
@@ -60,6 +62,7 @@ export function manualLines(rows: readonly ManualRow[], stmtType: StatementType)
        */
       const { supply, tax } = lineAmount(qty, price, item.isTaxExempt);
       return {
+        ...(item.itemId ? { itemId: item.itemId } : {}),
         key: `manual-${idx}`, no: idx + 1, name: item.name, spec: item.spec,
         qty, price, supply, tax, total: supply + tax,
         isTaxExempt: item.isTaxExempt, side: item.side,
@@ -85,11 +88,10 @@ export interface ResolvedOrderItem {
  *
  * **전표는 낱개 기준이다.** 박스 품목이면 낱개로 바꾸고 수량을 개입수만큼 늘린다.
  * 품목이 지워졌거나 id가 바뀌면 못 찾는다 → 박스가 안 풀리고 박스 수량 그대로 들어간다.
- * 이름으로 한 번 더 찾아보고, 그래도 없으면 `unknownItem` 을 단다(조용히 넘기지 않는다).
+ * 같은 이름의 박스·낱개가 있으므로 이름으로 대신 찾지 않고 `unknownItem` 을 단다.
  */
 export function resolveOrderItem(item: OrderItem, allItems: readonly Item[]): ResolvedOrderItem {
-  let product = allItems.find(p => p.id === item.itemId)
-    ?? (item.name ? allItems.find(p => !p.archived && p.name === item.name) : undefined);
+  let product = item.itemId ? allItems.find(p => p.id === item.itemId) : undefined;
   const unknownItem = !product;
 
   const uc = unpackComponent(product);
@@ -138,7 +140,7 @@ export interface OrderLinesInput {
 /**
  * 주문 → 전표 줄.
  *
- * **같은 품목·규격은 한 줄로 합친다**(`key`). 주문 카드가 여럿이거나 한 카드에 같은 품목이
+ * **같은 품목 ID·규격은 한 줄로 합친다**(`key`). 주문 카드가 여럿이거나 한 카드에 같은 품목이
  * 두 번 들어 있어도 전표에는 한 줄로 나가야 한다.
  */
 export function orderLines(input: OrderLinesInput): LineItem[] {
@@ -150,11 +152,13 @@ export function orderLines(input: OrderLinesInput): LineItem[] {
   const itemMap: Record<string, LineItem> = {};
   let no = 1;
 
-  for (const item of order.items) {
+  for (const [orderItemIndex, item] of order.items.entries()) {
     const { product, qty: qtyUnits, perBox, unknownItem } = resolveOrderItem(item, allItems);
     const displayName = product?.name || item.name;
     const spec = product?.spec || item.displaySize || '';
-    const key = `${displayName}||${spec}`;
+    const itemId = product?.id ?? item.itemId;
+    // 이름·규격이 같아도 다른 회사 품목일 수 있다. ID 없는 옛 줄은 서로 합치지 않는다.
+    const key = itemId ? `${itemId}||${spec}` : `unknown-${orderItemIndex}`;
 
     const pcEntry = partnerItems.find(pc => pc.itemId === product?.id && pc.partnerId === partnerId);
     // 낱개 단가 (박스는 위에서 낱개로 바꿔 조회 → 낱개 partner_item 단가)
@@ -185,6 +189,7 @@ export function orderLines(input: OrderLinesInput): LineItem[] {
       // 계정 우선순위: 이번에 고른 값 > 전에 끊었던 계정(pcEntry) > 매출이면 800. 빈값('')도 800으로.
       const acCode = accountCodeOverrides[key] || pcEntry?.Account_Code || 기본계정(stmtType);
       itemMap[key] = {
+        ...(itemId ? { itemId } : {}),
         key, no: no++, name: displayName, spec,
         qty: qtyUnits, price: unitPrice, supply, tax, total: supply + tax,
         isTaxExempt, accountCode: acCode,

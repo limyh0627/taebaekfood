@@ -693,6 +693,8 @@ export interface FixedCostTemplate {
 }
 
 export interface IssuedStatementItem {
+  /** 비용·옛 전표는 없을 수 있다. 이름으로 품목을 추정해 단가를 덮어쓰지 않는다. */
+  itemId?: string;
   name: string;
   spec: string;
   qty: number;

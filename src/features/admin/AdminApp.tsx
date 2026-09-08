@@ -350,7 +350,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   const { fixedCosts, productionRecords } = adminData;
 
-  const [pendingInvoice, setPendingInvoice] = useState<{ partnerId: string; partnerName: string; items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }>; poIds?: string[] } | null>(null);
+  const [pendingInvoice, setPendingInvoice] = useState<{ partnerId: string; partnerName: string; items: Array<{ itemId: string; name: string; spec: string; qty: number; price: number; isBox?: boolean }>; poIds?: string[] } | null>(null);
   /**
    * 문서함에서 지금 고른 자리 — **생산판매기록부를 문서함에 얹기 위한 것.**
    * 그 화면은 서류관리 화면 안 커다란 IIFE 안에서 만들어져서 밖으로 못 뺀다.
@@ -3800,7 +3800,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 if (payload.cashEntry) addCashEntry(payload.cashEntry, target);
                 if (payload.statement) addItem('issuedStatements', { ...payload.statement, companyId: target });
               }}
-              onAddIssuedStatement={(stmt) => addItem('issuedStatements', { ...stmt, companyId }).catch(e => { console.error('전표 저장 실패:', e); alert('전표 저장 실패: ' + (e?.message ?? String(e))); })}
+              onAddIssuedStatement={(stmt) => addItem('issuedStatements', { ...stmt, companyId })}
               onUpdateIssuedStatement={updateStatement}
               focusDocNo={focusDocNo}
               onFocusHandled={() => setFocusDocNo('')}
@@ -3864,14 +3864,6 @@ const AdminApp: React.FC<AdminAppProps> = ({
               companyInfo={companyInfo}
               onSaveCompanyInfo={(info) => setDocument('settings', 'company', info)}
               onUpdateItemCost={(itemId, cost) => cascadeItemCost(itemId, cost)}
-              onAddProductClient={(itemId, partnerId, price, taxType) =>
-                addItem('partner_item', {
-                  id: `${itemId}_${partnerId}_out`,
-                  itemId, partnerId,
-                  Direction: 'out' as const,
-                  price, taxType,
-                })
-              }
             />
           )}
           {currentView === 'tax-statement' && (

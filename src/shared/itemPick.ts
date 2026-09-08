@@ -6,7 +6,7 @@ import type { Item, PartnerItem } from './types';
  * 화면(품목 선택 팝업)에서 수량을 적은 것만 전표에 담는다. 그런데 두 가지가 얽힌다.
  *
  * ① **단가와 과세는 거래처 단가에서 온다.** 품목 자체의 값이 아니라 그 거래처에 파는 값이다.
- *    거래처 단가가 없으면 품목 값으로 물러선다.
+ *    거래처 단가가 없으면 빈 칸으로 둔다.
  * ② **거래처에 안 붙은 품목을 고를 수 있다.** 검색하면 전 품목이 뜨기 때문이다.
  *    그때 붙일지 말지를 물어봐야 하고, "아니요"의 뜻은 **발행할 때까지** 지켜져야 한다.
  *
@@ -20,6 +20,7 @@ export interface PickRow {
 
 /** 전표에 담길 줄 — 화면의 `ManualRow`와 같은 모양(전부 글자다) */
 export interface PickedLine {
+  itemId?: string;
   name: string;
   spec: string;
   qty: string;
@@ -35,6 +36,14 @@ export interface PickResult {
   unlinked: PickRow[];
 }
 
+/** 전표에 담는 값과 거래처에 붙이는 값이 갈리면, 발행할 때 옛 단가로 다시 덮인다. */
+function pickedPrice(pc: PartnerItem, edits: Record<string, string>): number | undefined {
+  const raw = String(edits[pc.id] ?? pc.price ?? '').replace(/[,\s원]/g, '');
+  if (!raw) return undefined;
+  const price = Number(raw);
+  return Number.isFinite(price) ? price : undefined;
+}
+
 /**
  * 수량을 적은 것만 골라 줄로 만든다.
  *
@@ -45,6 +54,7 @@ export function pickLines(
   qtys: Record<string, string>,
   rows: PickRow[],
   linkedItemIds: Set<string>,
+  edits: Record<string, string> = {},
 ): PickResult {
   const toAdd: PickedLine[] = [];
   const unlinked: PickRow[] = [];
@@ -54,10 +64,11 @@ export function pickLines(
     const row = rows.find(r => r.product?.id === itemId);
     if (!row?.product) continue;
     toAdd.push({
+      itemId: row.product.id,
       name: row.product.name,
       spec: row.product.spec || '',
-      //  단가·과세는 **그 거래처에 파는 값**이 먼저다. 없으면 품목 값으로 물러선다.
-      price: String(row.pc.price ?? ''),
+      //  아직 저장 안 한 입력도 담아야, 연결 직후 발행하면서 옛 단가로 되돌리지 않는다.
+      price: String(pickedPrice(row.pc, edits) ?? ''),
       qty: String(qty),
       isTaxExempt: row.pc.taxType === '면세',
       note: '',
@@ -84,7 +95,7 @@ export function linkWrites(
     itemId: r.product!.id,
     partnerId,
     Direction: dir,
-    price: Number(String(edits[r.pc.id] ?? r.pc.price ?? '').replace(/[,\s원]/g, '')) || 0,
+    price: pickedPrice(r.pc, edits) ?? 0,
     taxType: r.pc.taxType ?? '과세',
   } as PartnerItem));
 }

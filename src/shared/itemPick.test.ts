@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { pickLines, linkWrites, type PickRow } from './itemPick';
 import type { Item, PartnerItem } from './types';
+import { manualLines } from './statementLines';
+import { partnerPriceWrites } from './partnerPriceSync';
 
 /**
  * 팝업에서 고른 것이 전표 줄로 어떻게 옮겨지는가.
@@ -19,6 +21,19 @@ const 줄 = (id: string, name: string, pc: Partial<PartnerItem> = {}, it: Partia
 describe('고른 것을 전표 줄로', () => {
   const rows = [줄('i1', '참기름', { price: 6000, taxType: '면세' }), 줄('i2', '들기름', { price: 7000 })];
   const linked = new Set(['i1', 'i2']);
+
+  it('팝업 입력값과 ID가 전표·거래처 연결·발행까지 그대로 이어진다', () => {
+    const edits = { 'pc-i1': '8,500원' };
+    const picked = pickLines({ i1: '3' }, rows, new Set(), edits);
+    const writes = linkWrites(picked.unlinked, 'p1', 'out', edits);
+    const lines = manualLines(picked.toAdd, '매출');
+    expect(lines[0]).toMatchObject({ itemId: 'i1', price: 8500, isTaxExempt: true });
+    expect(writes[0]).toMatchObject({ itemId: 'i1', price: 8500, taxType: '면세' });
+    const afterIssue = partnerPriceWrites({ type: '매출', partnerId: 'p1', lines,
+      items: rows.map(r => r.product!), partnerItems: writes });
+    expect(afterIssue.upserts.every(w => w.price === 8500)).toBe(true);
+    expect(pickLines({ i1: '1' }, rows, linked, edits).toAdd[0].price).toBe('8500');
+  });
 
   it('수량을 적은 것만 담는다', () => {
     const r = pickLines({ i1: '3', i2: '' }, rows, linked);

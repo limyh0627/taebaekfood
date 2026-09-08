@@ -12,10 +12,11 @@ const 품목: Pick<Item, 'id' | 'name' | '품목'>[] = [
 ] as never;
 
 const 줄 = (name: string, price: number, over: Record<string, unknown> = {}) =>
-  ({ name, price, accountCode: '800', isTaxExempt: true, ...over });
+  ({ itemId: name === '참기름 500ml' ? 'i1' : name === '들기름 500ml' ? 'i2' : undefined,
+    name, price, accountCode: '800', isTaxExempt: true, ...over });
 
 const 단가 = (over: Partial<PartnerItem>): PartnerItem =>
-  ({ id: 'pi1', itemId: 'i1', partnerId: 'p1', Direction: 'out', price: 5000, ...over } as PartnerItem);
+  ({ id: 'pi1', itemId: 'i1', partnerId: 'p1', Direction: 'out', price: 5000, taxType: '면세', ...over } as PartnerItem);
 
 describe('전표 단가를 거래처 단가로 되민다', () => {
   it('매출 — 바뀐 값을 되민다', () => {
@@ -90,6 +91,13 @@ describe('전표 단가를 거래처 단가로 되민다', () => {
 });
 
 describe('안 쓰는 자리', () => {
+  it('ID 없는 옛 전표는 이름이 같아도 거래처 단가를 건드리지 않는다', () => {
+    for (const itemId of [undefined, '', '삭제된품목']) {
+      expect(partnerPriceWrites({ type: '매출', partnerId: 'p1',
+        lines: [줄('참기름 500ml', 7000, { itemId })], items: 품목, partnerItems: [],
+      }).upserts).toEqual([]);
+    }
+  });
   it('"이번 전표에만"이라고 답한 품목은 안 쓴다 — 발행이든 수정이든', () => {
     const 입력 = {
       partnerId: 'p1', lines: [줄('참기름 500ml', 6000)], items: 품목, partnerItems: [],
@@ -133,6 +141,36 @@ describe('안 쓰는 자리', () => {
       items: 품목, partnerItems: [],
     });
     expect(r.upserts).toEqual([]);
+  });
+});
+
+describe('해피유통 단가 누락 회귀', () => {
+  it('이름이 같은 박스 대신 선택한 낱개 ID에 단가와 과세를 쓴다', () => {
+    const items = [{ id: 'box', name: '생들기름/300ml' }, { id: 'loose', name: '생들기름/300ml' }];
+    const r = partnerPriceWrites({ type: '매출', partnerId: 'p1', items,
+      lines: [{ itemId: 'loose', name: '생들기름/300ml', price: 6000, isTaxExempt: false, accountCode: '800' }],
+      partnerItems: [{ id: 'box-p1', itemId: 'box', partnerId: 'p1', Direction: 'out', price: 6000, Account_Code: '800' }],
+    });
+    expect(r.upserts).toHaveLength(1);
+    expect(r.upserts[0]).toMatchObject({ itemId: 'loose', price: 6000, taxType: '과세' });
+  });
+
+  it.each([
+    ['과세', true, '면세'], ['면세', false, '과세'], [undefined, false, '과세'], [undefined, true, '면세'],
+  ] as const)('단가·계정이 같아도 %s에서 면세=%s로 정하면 %s를 저장한다', (before, isTaxExempt, after) => {
+    const r = partnerPriceWrites({ type: '매출', partnerId: 'p1', items: 품목,
+      lines: [줄('참기름 500ml', 5000, { isTaxExempt })],
+      partnerItems: [단가({ taxType: before, Account_Code: '800' })],
+    });
+    expect(r.upserts).toHaveLength(1);
+    expect(r.upserts[0].taxType).toBe(after);
+  });
+
+  it('표시 이름을 달리 적어도 ID가 같으면 같은 품목에 저장한다', () => {
+    const r = partnerPriceWrites({ type: '매출', partnerId: 'p1', items: 품목, partnerItems: [],
+      lines: [줄('별도 인쇄 이름', 6000, { itemId: 'i1' })],
+    });
+    expect(r.upserts[0].itemId).toBe('i1');
   });
 });
 

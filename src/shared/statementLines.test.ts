@@ -62,10 +62,10 @@ describe('orderLines — 박스를 낱개로 푼다', () => {
     expect(r[0].qty).toBe(5);
   });
 
-  it('찾는 품목이 이름으로라도 걸리면 푼다', () => {
+  it('ID가 없거나 바뀌었으면 같은 이름으로 박스를 추정하지 않는다', () => {
     const r = orderLines({ ...공통, order: 주문([{ itemId: '바뀐id', name: '참기름/1750ml 박스', quantity: 1, price: 1000 }]) });
-    expect(r[0].qty).toBe(10);
-    expect(r[0].unknownItem).toBeUndefined();
+    expect(r[0].qty).toBe(1);
+    expect(r[0].unknownItem).toBe(true);
   });
 });
 
@@ -118,7 +118,7 @@ describe('orderLines — 단가 우선순위', () => {
     const r = orderLines({
       ...공통, order: 주,
       partnerItems: [단가({ itemId: 'loose', partnerId: 'A', Direction: 'out', price: 11000 })],
-      editablePrices: { '참기름/1750ml||1750ml': '12000' },
+      editablePrices: { 'loose||1750ml': '12000' },
     });
     expect(r[0].price).toBe(12000);
   });
@@ -148,7 +148,7 @@ describe('orderLines — 단가 우선순위', () => {
 describe('orderLines — 과세·계정', () => {
   const 공통 = { stmtType: '매출' as const, allItems: 목록, partnerId: 'A' };
   const 주 = 주문([{ itemId: 'loose', name: '참기름/1750ml', quantity: 1, price: 11000 }]);
-  const key = '참기름/1750ml||1750ml';
+  const key = 'loose||1750ml';
 
   it('거래처가 면세면 면세다', () => {
     const r = orderLines({ ...공통, order: 주, partnerItems: [단가({ itemId: 'loose', partnerId: 'A', Direction: 'out', taxType: '면세' })] });
@@ -282,8 +282,26 @@ describe('과세·면세를 정했나', () => {
   });
 
   it('이번에 손으로 정했으면 그때부터 정해진 것이다', () => {
-    const l = 셈([{ itemId: 'A', partnerId: 'p1', price: 1000 }], { '참기름||350ml': false });
+    const l = 셈([{ itemId: 'A', partnerId: 'p1', price: 1000 }], { 'A||350ml': false });
     expect(l.taxUnknown).toBeUndefined();
     expect(l.isTaxExempt).toBe(false);
+  });
+});
+
+describe('전표 줄의 품목 ID', () => {
+  it('같은 이름·규격이라도 ID가 다르면 합치지 않는다', () => {
+    const r = orderLines({ stmtType: '매출', partnerId: 'p1', partnerItems: [],
+      allItems: [{ ...낱개, id: 'first' }, { ...낱개, id: 'second' }],
+      order: 주문([{ itemId: 'first', name: 낱개.name, quantity: 1, price: 1000 },
+        { itemId: 'second', name: 낱개.name, quantity: 2, price: 2000 }]),
+    });
+    expect(r.map(x => [x.itemId, x.qty, x.price])).toEqual([['first', 1, 1000], ['second', 2, 2000]]);
+  });
+
+  it('박스를 푼 뒤에는 낱개 ID가 전표에 남는다', () => {
+    const r = orderLines({ stmtType: '매출', partnerId: 'p1', partnerItems: [], allItems: 목록,
+      order: 주문([{ itemId: 'box', name: '박스', quantity: 1, price: 10000 }]),
+    });
+    expect(r[0].itemId).toBe('loose');
   });
 });

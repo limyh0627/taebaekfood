@@ -187,7 +187,7 @@ interface ItemListProps {
   rawMaterialLedger: RawMaterialEntry[];
   /** 로트 탭 — 어느 박스 로트가 어느 거래처로 나갔는지 거꾸로 읽는다(회수·클레임) */
   orders?: Order[];
-  onRequestPurchaseInvoice?: (partnerId: string, partnerName: string, items: Array<{ name: string; spec: string; qty: number; price: number; isBox?: boolean }>) => void;
+  onRequestPurchaseInvoice?: (partnerId: string, partnerName: string, items: Array<{ itemId: string; name: string; spec: string; qty: number; price: number; isBox?: boolean }>) => void;
   issuedStatements?: IssuedStatement[];
   onAddRawMaterialEntry: (entry: RawMaterialEntry) => void;
   onDeleteRawMaterialEntry: (id: string) => void;
@@ -2458,7 +2458,7 @@ const ItemList: React.FC<ItemListProps> = ({
                                     onRequestPurchaseInvoice(
                                       psMap.get(product.id)!,
                                       partnerName || '',
-                                      [{ name: product.name, spec: product.spec || '', qty: conf.quantity, price: 0 }]
+                                      [{ itemId: product.id, name: product.name, spec: product.spec || '', qty: conf.quantity, price: 0 }]
                                     );
                                   }}
                                   className="text-[10px] font-black px-2.5 py-1.5 rounded-xl transition-all shrink-0 border bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50"
