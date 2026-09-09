@@ -744,19 +744,19 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
               const 공지 = noticeOf(activeRoom);
               if (!공지) return null;
               return (
-                <div className="shrink-0 border-b border-amber-100 bg-amber-50">
+                <div className="shrink-0 border-b border-slate-100 bg-white">
                   <div className="flex items-start gap-2 px-4 py-2">
-                    <Pin size={13} className="shrink-0 mt-0.5 text-amber-500" />
+                    <Pin size={13} className="shrink-0 mt-0.5 text-slate-400" />
                     <button
                       onClick={() => setNoticeOpen(v => !v)}
                       className="flex-1 min-w-0 text-left"
                       title={noticeOpen ? '접기' : '펼치기'}
                     >
-                      <p className={`text-[11px] font-bold text-amber-900 ${noticeOpen ? 'whitespace-pre-wrap' : 'truncate'}`}>
+                      <p className={`text-[11px] font-bold text-slate-700 ${noticeOpen ? 'whitespace-pre-wrap' : 'truncate'}`}>
                         {noticeOpen ? 공지.text : noticeLine(공지)}
                       </p>
                       {noticeOpen && (
-                        <p className="text-[10px] font-bold text-amber-500 mt-1">
+                        <p className="text-[10px] font-bold text-slate-400 mt-1">
                           {공지.byName} · {new Date(공지.at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                         </p>
                       )}
@@ -765,7 +765,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                       onClick={() => onUpdateRoom(activeRoom.id, unpinPatch())}
                       aria-label="공지 내리기"
                       title="공지 내리기"
-                      className="shrink-0 p-1 text-amber-400 hover:text-amber-600 transition-colors"
+                      className="shrink-0 p-1 text-slate-300 hover:text-slate-500 transition-colors"
                     >
                       <X size={14} />
                     </button>
@@ -829,7 +829,7 @@ const OfficeTalk: React.FC<OfficeTalkProps> = ({
                         title={isDeleted(msg) ? undefined : '꾹 누르기 (PC는 우클릭 · 긁어서 복사도 됩니다)'}
                         className={`max-w-[70%] px-4 py-3 rounded-2xl text-sm font-medium shadow-sm relative group msg-bubble ${
                         //  지금 공지로 걸린 말은 테두리로 표시한다 — 위 띠가 어느 말에서 온 건지 보인다
-                        isPinned(activeRoom, msg) ? 'ring-2 ring-amber-300 ' : ''}${
+                        isPinned(activeRoom, msg) ? 'ring-2 ring-slate-300 ' : ''}${
                         isDeleted(msg)
                           ? 'bg-slate-50 text-slate-400 border border-dashed border-slate-200 italic'
                           : isMine
