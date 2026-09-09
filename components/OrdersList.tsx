@@ -380,19 +380,19 @@ export const OrderCard = memo<OrderCardProps>(({
               //  박스로 주문할 수 있느냐는 **개입수가 있느냐**로 정한다 —
               //  박스 품목은 BOM 이, 향미유·고춧가루는 포장 환산표가 답한다.
               //  예전엔 '향미유·고춧가루면'으로 갈래를 박아 둬서 다른 품목은 아예 못 골랐다.
-              const isOil = unitsPerBoxOf(editProductInfo) > 0;
+              /*
+               *  **낱개↔박스 토글은 없앴다**(2026-09-09 사장님: "수정화면에는 토글이 없이
+               *  그냥 박스면 박스다 낱개면 낱개다가 맞다").
+               *
+               *  박스로 받을지는 **주문을 넣을 때** 정해지는 것이지 나중에 뒤집을 일이 아니다.
+               *  끄는 쪽이 반쪽이라 사고가 났다 — 박스 20으로 넣은 뒤 낱개로 끄면 `isBoxUnit` 만
+               *  꺼지고 `quantity` 는 낱개(200)로 남아, 재고가 200을 박스로 읽었다(무경유통 2,000kg).
+               *  단위를 바꿔야 하면 줄을 지우고 다시 담는다.
+               */
               // 주문에 박힌 값 → 품목이 아는 개입수(BOM 아니면 포장 환산표)
               const qtyPerBox = item.unitsPerBox ?? unitsPerBoxOf(editProductInfo);
-              const toggleBoxUnit = () => {
-                const newItems = [...order.items];
-                if (item.isBoxUnit) {
-                  newItems[idx] = { ...item, isBoxUnit: false, boxQuantity: undefined };
-                } else {
-                  const bq = qtyPerBox ? Math.max(1, Math.round(item.quantity / qtyPerBox)) : item.quantity;
-                  newItems[idx] = { ...item, isBoxUnit: true, boxQuantity: bq, unitsPerBox: qtyPerBox, quantity: qtyPerBox ? bq * qtyPerBox : bq };
-                }
-                onUpdateItems?.(order.id, newItems);
-              };
+              //  개입수를 아는 품목(박스 품목·향미유·고춧가루)에는 제조일자 칸을 안 띄운다
+              const 개입수있음 = unitsPerBoxOf(editProductInfo) > 0;
               return (
                 <div key={idx} className="flex flex-col gap-1 text-[10px] font-bold border-b border-slate-50 pb-2 last:border-0">
                   {/* **이름 → 규격 → 수량**을 한 줄에. 수량을 아래로 내리면 품목마다 두 줄이 되고,
@@ -407,14 +407,12 @@ export const OrderCard = memo<OrderCardProps>(({
                         {editProductInfo?.spec || '벌크'}
                       </span>
                     )}
-                    {/* 향미유·고춧가루: 낱개/박스 토글 */}
-                    {isOil && (
-                      <button
-                        onClick={() => toggleBoxUnit()}
-                        className={`text-[8px] font-black px-1.5 py-0.5 rounded border transition-all shrink-0 ${item.isBoxUnit ? 'bg-indigo-100 border-indigo-300 text-indigo-700' : 'bg-slate-100 border-slate-200 text-slate-500'}`}
-                      >
-                        {item.isBoxUnit ? '박스' : '낱개'}
-                      </button>
+                    {/*  박스로 받은 줄임을 **보여주기만** 한다 — 여기서 못 바꾼다.
+                         박스 품목은 품목 자체가 박스라 이 딱지가 안 붙는다. */}
+                    {item.isBoxUnit && (
+                      <span className="text-[8px] font-black px-1.5 py-0.5 rounded border bg-indigo-100 border-indigo-300 text-indigo-700 shrink-0">
+                        박스
+                      </span>
                     )}
                     {item.isBoxUnit ? (
                       <div className="flex items-center gap-0.5 shrink-0">
@@ -433,7 +431,7 @@ export const OrderCard = memo<OrderCardProps>(({
                     )}
                     <button onClick={() => handleRemoveItem(idx)} className="ml-auto p-1 text-rose-400 hover:bg-rose-50 rounded shrink-0"><Trash2 size={10} /></button>
                   </div>
-                  {!isOil && (
+                  {!개입수있음 && (
                     <input type="date" value={item.mfgDate || ''} onChange={(e) => handleExpirationDateChange(idx, e.target.value)}
                       className="text-[9px] bg-slate-50 border border-indigo-200 rounded font-bold py-0.5 px-1 w-full text-center text-slate-600 cursor-pointer" />
                   )}

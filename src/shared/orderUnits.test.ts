@@ -167,3 +167,30 @@ describe('묶음 갈래', () => {
     expect(묶음갈래of([])).toBeNull();
   });
 });
+
+/**
+ * **박스 품목이면 `isBoxUnit` 을 안 본다**(2026-09-09 사장님:
+ * "박스 품목으로 주문 들어오면 isBoxUnit 이 true 일 필요는 없는거야?").
+ *
+ * 품목이 이미 "나는 박스다" 라고 말하는데 줄에도 같은 사실이 또 있었고, 그 둘이 갈려서
+ * 무경유통 볶음참깨가 2,000kg 빠졌다 — 박스 20으로 넣고 낱개로 토글하니 `isBoxUnit` 만
+ * 꺼지고 `quantity` 는 낱개(200)로 남아 여기서 200을 박스로 읽었다.
+ */
+describe('박스 품목의 재고 차감 수량', () => {
+  //  box10 은 위 픽스처에서 낱개가 10개 물린 박스 품목이다
+  it('박스 수가 적혀 있으면 그게 임자다', () => {
+    expect(stockUnits({ quantity: 200, boxQuantity: 20, isBoxUnit: true }, box10)).toBe(20);
+  });
+
+  it('**isBoxUnit 이 꺼져 있어도 박스 수를 본다** — 갈린 줄에서 200을 박스로 읽으면 안 된다', () => {
+    expect(stockUnits({ quantity: 200, boxQuantity: 20, isBoxUnit: false }, box10)).toBe(20);
+  });
+
+  it('박스 수가 없으면 quantity 가 박스 수다 — 운영 데이터 309줄이 그 모양이다', () => {
+    expect(stockUnits({ quantity: 50, isBoxUnit: false }, box10)).toBe(50);
+  });
+
+  it('박스 품목이 아니면 quantity 그대로 — 향미유는 낱개로 센다', () => {
+    expect(stockUnits({ quantity: 60, boxQuantity: 5, isBoxUnit: true }, 참기름300)).toBe(60);
+  });
+});
