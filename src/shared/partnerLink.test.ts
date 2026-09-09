@@ -54,4 +54,12 @@ describe('옛 배열을 다시 읽지 않는다', () => {
     expect(걸림, `옛 배열로 거래처 연결을 판단하는 곳:\n${걸림.join('\n')}\n\n` +
       `shared/partnerPrice 의 partnersOfItem · isLinkedToPartner 를 써라 (partner_item 을 본다).`).toEqual([]);
   });
+
+  it('품목 정보 저장이 옛 partnerIds로 매출 연결 전체를 다시 쓰지 않는다', () => {
+    const adminApp = readFileSync('src/features/admin/AdminApp.tsx', 'utf8');
+
+    // 품목 모달은 연결 편집 UI가 아니며 저장 payload에도 partnerIds가 없다.
+    // 여기서 [] fallback으로 전체 동기화하면 이름·규격만 고쳐도 기존 연결이 모두 삭제된다.
+    expect(adminApp).not.toMatch(/setProductClients\s*\(\s*p\.id\s*,\s*p\.partnerIds\s*\?\?\s*\[\]\s*\)/);
+  });
 });

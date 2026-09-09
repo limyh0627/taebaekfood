@@ -4513,13 +4513,9 @@ const AdminApp: React.FC<AdminAppProps> = ({
             } catch (e) {
               if ((e as Error).message !== '__skip_bom__') console.error('[품목 저장] item_bom 동기화 실패:', e);
             }
-            // partnerOut 컬렉션 거래처 매핑 — 실패해도 품목 저장은 유지(읽기 한도 등).
-            try {
-              await setProductClients(p.id, p.partnerIds ?? []);
-            } catch (e) {
-              console.error('[품목 저장] 거래처 매핑 저장 실패 (품목 자체는 저장됨):', e);
-              alert('품목은 저장됐지만, 거래처 연결 저장은 실패했습니다 (읽기 한도 등).\n거래처 연결은 잠시 후 다시 시도해 주세요.');
-            }
+            // 매출 거래처 연결은 품목관리의 연결/해제 동작만 고친다.
+            // 품목 모달 payload에는 옛 partnerIds가 없어서 여기서 전체 동기화하면
+            // 이름·규격만 저장해도 기존 partner_item(out)이 전부 삭제된다.
             setIsProductModalOpen(false);
             setEditingProduct(null);
           }} 
