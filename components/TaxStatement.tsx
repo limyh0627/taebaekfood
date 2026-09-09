@@ -12,6 +12,7 @@ import { fetchDateRange } from '../src/shared/services/firebaseService';
 import PageHeader from './PageHeader';
 import { vatOn } from '../src/shared/lineAmount';
 import { companyOf } from '../src/shared/types';
+import { 서류당사자ById, type DocParty } from '../src/shared/docParty';
 
 interface TaxStatementProps {
   /** 보고 있는 회사 — 이 화면이 직접 떠오는 과거 전표도 걸러야 한다 */
@@ -23,6 +24,17 @@ interface TaxStatementProps {
 }
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
+
+const partyRows = (party: DocParty): Array<[string, string]> => [
+  ['등록번호', party.bizNo],
+  ['상    호', party.name],
+  ['대 표 자', party.ceo],
+  ['사업장주소', party.addr],
+  ['업    태', party.bizType],
+  ['종    목', party.bizItem],
+  ['전화번호', party.tel],
+  ['팩스번호', party.fax],
+];
 
 const TaxStatement: React.FC<TaxStatementProps> = ({
   companyId = 'taebaek',
@@ -69,7 +81,6 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   const [taxClientId, setTaxClientId] = useState('');
   const [taxClientSearch, setTaxClientSearch] = useState('');
   const [taxStmtIds, setTaxStmtIds] = useState<string[]>([]);
-  const [taxBuyerInfo, setTaxBuyerInfo] = useState({ bizNo: '', ceoName: '', bizType: '', bizItem: '', address: '' });
   const taxPrintRef = useRef<HTMLDivElement>(null);
 
   // ── 발행 탭 편집 상태 ──
@@ -189,6 +200,13 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
 
   const selectedClient = partners.find(c => c.id === taxClientId);
   const tradeMonth = selectedStmts.length > 0 ? selectedStmts[selectedStmts.length - 1].tradeDate.slice(0, 7) : '';
+  const issueParties = 서류당사자ById({
+    isSale: true,
+    companyInfo,
+    partners,
+    partnerId: taxClientId,
+    partnerName: selectedClient?.name ?? partnerStmts[0]?.partnerName,
+  });
 
   /**
    * 발행 표시 — **고른 쪽만** 찍는다.
@@ -288,6 +306,13 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
   // ── 미리보기용 그룹 ──
   const previewGroup = histPreviewGroupKey ? histGroups.find(g => g.key === histPreviewGroupKey) : null;
   const previewClient = previewGroup ? partners.find(c => c.id === previewGroup.partnerId) : null;
+  const previewParties = 서류당사자ById({
+    isSale: true,
+    companyInfo,
+    partners,
+    partnerId: previewGroup?.partnerId,
+    partnerName: previewClient?.name ?? previewGroup?.partnerName,
+  });
   const previewMerged = useMemo(
     () => (previewGroup ? mergeAndSplit(previewGroup.stmts) : { taxable: [], exempt: [] }),
     [previewGroup]);
@@ -318,105 +343,6 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
     const imgW = pageW - 20, imgH = canvas.height * imgW / canvas.width;
     pdf.addImage(imgData, 'PNG', 10, imgH < pageH ? (pageH - imgH) / 2 : 10, imgW, imgH);
     pdf.save(`세금계산서_${previewClient?.name}_${previewGroup.stmts[0].tradeDate.slice(0, 7)}.pdf`);
-  };
-
-  const sup = companyInfo;
-
-  const TaxInvoicePreview = ({ stmt, partnerName, buyerInfo }: {
-    stmt: IssuedStatement;
-    partnerName?: string;
-    buyerInfo?: typeof taxBuyerInfo;
-  }) => {
-    const taxable = stmt.items.filter(i => !i.isTaxExempt);
-    const exempt = stmt.items.filter(i => i.isTaxExempt);
-    const ts = taxable.reduce((s, i) => s + i.supply, 0);
-    const ta = taxable.reduce((s, i) => s + i.tax, 0);
-    const es = exempt.reduce((s, i) => s + i.supply, 0);
-    const total = ts + ta + es;
-    return (
-      <div className="wrap border-2 border-black" style={{fontFamily:"'Malgun Gothic','맑은 고딕',sans-serif",minWidth:600,fontSize:'11px'}}>
-        <div className="flex items-center justify-between border-b-2 border-black px-4 py-3">
-          <h1 style={{fontSize:'20px',fontWeight:900,letterSpacing:'6px'}}>세 금 계 산 서</h1>
-          <div className="text-right" style={{fontSize:'10px',color:'#666'}}>
-            <div>거래처: {partnerName}</div>
-            <div>거래일: {stmt.tradeDate}</div>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 border-b border-black">
-          <div className="p-3 border-r border-black">
-            <h3 style={{fontSize:'10px',fontWeight:900,marginBottom:'6px',paddingBottom:'4px',borderBottom:'1px solid #eee',color:'#444'}}>공 급 자</h3>
-            {[['등록번호', sup?.bizNo||''], ['상    호', sup?.name||''], ['대 표 자', sup?.ceoName||''], ['사업장주소', sup?.address||''], ['업    태', sup?.bizType||''], ['종    목', sup?.bizItem||'']].map(([label, value]) => (
-              <div key={label} style={{display:'flex',gap:'8px',marginBottom:'3px',fontSize:'10px'}}>
-                <span style={{color:'#666',width:'60px',flexShrink:0}}>{label}</span>
-                <span style={{fontWeight:700}}>{value}</span>
-              </div>
-            ))}
-          </div>
-          <div className="p-3">
-            <h3 style={{fontSize:'10px',fontWeight:900,marginBottom:'6px',paddingBottom:'4px',borderBottom:'1px solid #eee',color:'#444'}}>공급받는자</h3>
-            {[['등록번호', buyerInfo?.bizNo||''], ['상    호', partnerName||''], ['대 표 자', buyerInfo?.ceoName||''], ['사업장주소', buyerInfo?.address||''], ['업    태', buyerInfo?.bizType||''], ['종    목', buyerInfo?.bizItem||'']].map(([label, value]) => (
-              <div key={label} style={{display:'flex',gap:'8px',marginBottom:'3px',fontSize:'10px'}}>
-                <span style={{color:'#666',width:'60px',flexShrink:0}}>{label}</span>
-                <span style={{fontWeight:700}}>{value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px'}}>
-          <thead>
-            <tr>{['품목','규격','수량','공급가액','세액','합계'].map(h => (
-              <th key={h} style={{border:'1px solid #ccc',background:'#f5f5f5',padding:'6px 8px',fontWeight:900,textAlign:'center'}}>{h}</th>
-            ))}</tr>
-          </thead>
-          <tbody>
-            {taxable.length > 0 && (<>
-              <tr><td colSpan={6} style={{padding:'4px 8px',background:'#dbeafe',fontWeight:900,color:'#1d4ed8',border:'1px solid #ccc',fontSize:'10px'}}>▶ 과세 품목</td></tr>
-              {taxable.map((item, i) => (
-                <tr key={i}>
-                  <td style={{border:'1px solid #ccc',padding:'5px 8px',fontWeight:700}}>{item.name}</td>
-                  <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'center'}}>{item.spec}</td>
-                  <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'right'}}>{fmt(item.qty)}</td>
-                  <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'right'}}>{fmt(item.supply)}</td>
-                  <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'right'}}>{fmt(item.tax)}</td>
-                  <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'right',fontWeight:900}}>{fmt(item.total)}</td>
-                </tr>
-              ))}
-              <tr style={{background:'#eff6ff'}}>
-                <td colSpan={3} style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'right',fontWeight:900,color:'#1d4ed8'}}>과세 소계</td>
-                <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'right',fontWeight:900,color:'#1d4ed8'}}>{fmt(ts)}</td>
-                <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'right',fontWeight:900,color:'#1d4ed8'}}>{fmt(ta)}</td>
-                <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'right',fontWeight:900,color:'#1d4ed8'}}>{fmt(ts+ta)}</td>
-              </tr>
-            </>)}
-            {exempt.length > 0 && (<>
-              <tr><td colSpan={6} style={{padding:'4px 8px',background:'#e0e7ff',fontWeight:900,color:'#4338ca',border:'1px solid #ccc',fontSize:'10px'}}>▶ 면세 품목</td></tr>
-              {exempt.map((item, i) => (
-                <tr key={i}>
-                  <td style={{border:'1px solid #ccc',padding:'5px 8px',fontWeight:700}}>{item.name}</td>
-                  <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'center'}}>{item.spec}</td>
-                  <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'right'}}>{fmt(item.qty)}</td>
-                  <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'right'}}>{fmt(item.supply)}</td>
-                  <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'center',color:'#666'}}>면세</td>
-                  <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'right',fontWeight:900}}>{fmt(item.supply)}</td>
-                </tr>
-              ))}
-              <tr style={{background:'#eef2ff'}}>
-                <td colSpan={3} style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'right',fontWeight:900,color:'#4338ca'}}>면세 소계</td>
-                <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'right',fontWeight:900,color:'#4338ca'}}>{fmt(es)}</td>
-                <td style={{border:'1px solid #ccc',padding:'5px 8px'}}/>
-                <td style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'right',fontWeight:900,color:'#4338ca'}}>{fmt(es)}</td>
-              </tr>
-            </>)}
-            <tr style={{background:'#f1f5f9'}}>
-              <td colSpan={3} style={{border:'1px solid #ccc',padding:'7px 8px',textAlign:'right',fontWeight:900,fontSize:'12px'}}>합 계</td>
-              <td style={{border:'1px solid #ccc',padding:'7px 8px',textAlign:'right',fontWeight:900}}>{fmt(ts+es)}</td>
-              <td style={{border:'1px solid #ccc',padding:'7px 8px',textAlign:'right',fontWeight:900}}>{fmt(ta)}</td>
-              <td style={{border:'1px solid #ccc',padding:'7px 8px',textAlign:'right',fontWeight:900,color:'#059669',fontSize:'13px'}}>{fmt(total)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    );
   };
 
   return (
@@ -513,23 +439,16 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                 <p className="text-slate-400 text-sm font-bold">거래처를 선택하세요</p>
               </div>
             ) : (<>
-              {/* 공급받는자 정보 */}
+              {/* 서류와 같은 공용 변환값을 보여준다 — 여기서 따로 적으면 거래처를 바꿀 때 값이 섞였다 */}
               <div className="bg-white rounded-2xl border border-slate-200 px-4 py-3">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">공급받는자 정보 (선택)</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">공급받는자 정보 (거래처관리 기준)</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {[
-                    { key: 'bizNo', label: '사업자번호', placeholder: '000-00-00000' },
-                    { key: 'ceoName', label: '대표자명', placeholder: '홍길동' },
-                    { key: 'bizType', label: '업태', placeholder: '제조업' },
-                    { key: 'bizItem', label: '종목', placeholder: '식품' },
-                    { key: 'address', label: '주소', placeholder: '사업장 주소' },
-                  ].map(f => (
-                    <div key={f.key}>
-                      <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">{f.label}</label>
-                      <input type="text" placeholder={f.placeholder}
-                        value={(taxBuyerInfo as any)[f.key]}
-                        onChange={e => setTaxBuyerInfo(prev => ({ ...prev, [f.key]: e.target.value }))}
-                        className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300"/>
+                  {partyRows(issueParties.buy).map(([label, value]) => (
+                    <div key={label}>
+                      <span className="text-[10px] font-black text-slate-400 uppercase block mb-1">{label.replaceAll(' ', '')}</span>
+                      <span className="block min-h-7 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-700">
+                        {value || '미등록'}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -687,7 +606,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                         <div className="grid grid-cols-2 border-b border-black">
                           <div className="p-3 border-r border-black">
                             <h3 style={{fontSize:'10px',fontWeight:900,marginBottom:'6px',paddingBottom:'4px',borderBottom:'1px solid #eee',color:'#444'}}>공 급 자</h3>
-                            {[['등록번호', sup?.bizNo||''], ['상    호', sup?.name||''], ['대 표 자', sup?.ceoName||''], ['사업장주소', sup?.address||''], ['업    태', sup?.bizType||''], ['종    목', sup?.bizItem||'']].map(([label, value]) => (
+                            {partyRows(issueParties.sup).map(([label, value]) => (
                               <div key={label} style={{display:'flex',gap:'8px',marginBottom:'3px',fontSize:'10px'}}>
                                 <span style={{color:'#666',width:'60px',flexShrink:0}}>{label}</span>
                                 <span style={{fontWeight:700}}>{value}</span>
@@ -696,7 +615,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                           </div>
                           <div className="p-3">
                             <h3 style={{fontSize:'10px',fontWeight:900,marginBottom:'6px',paddingBottom:'4px',borderBottom:'1px solid #eee',color:'#444'}}>공급받는자</h3>
-                            {[['등록번호', taxBuyerInfo.bizNo||''], ['상    호', selectedClient?.name||''], ['대 표 자', taxBuyerInfo.ceoName||''], ['사업장주소', taxBuyerInfo.address||''], ['업    태', taxBuyerInfo.bizType||''], ['종    목', taxBuyerInfo.bizItem||'']].map(([label, value]) => (
+                            {partyRows(issueParties.buy).map(([label, value]) => (
                               <div key={label} style={{display:'flex',gap:'8px',marginBottom:'3px',fontSize:'10px'}}>
                                 <span style={{color:'#666',width:'60px',flexShrink:0}}>{label}</span>
                                 <span style={{fontWeight:700}}>{value}</span>
@@ -944,7 +863,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                         <div className="grid grid-cols-2 border-b border-black">
                           <div className="p-3 border-r border-black">
                             <h3 style={{fontSize:'10px',fontWeight:900,marginBottom:'6px',paddingBottom:'4px',borderBottom:'1px solid #eee',color:'#444'}}>공 급 자</h3>
-                            {[['등록번호', sup?.bizNo||''], ['상    호', sup?.name||''], ['대 표 자', sup?.ceoName||''], ['사업장주소', sup?.address||''], ['업    태', sup?.bizType||''], ['종    목', sup?.bizItem||'']].map(([label, value]) => (
+                            {partyRows(previewParties.sup).map(([label, value]) => (
                               <div key={label} style={{display:'flex',gap:'8px',marginBottom:'3px',fontSize:'10px'}}>
                                 <span style={{color:'#666',width:'60px',flexShrink:0}}>{label}</span>
                                 <span style={{fontWeight:700}}>{value}</span>
@@ -953,7 +872,7 @@ const TaxStatement: React.FC<TaxStatementProps> = ({
                           </div>
                           <div className="p-3">
                             <h3 style={{fontSize:'10px',fontWeight:900,marginBottom:'6px',paddingBottom:'4px',borderBottom:'1px solid #eee',color:'#444'}}>공급받는자</h3>
-                            {[['상    호', previewClient?.name||'']].map(([label, value]) => (
+                            {partyRows(previewParties.buy).map(([label, value]) => (
                               <div key={label} style={{display:'flex',gap:'8px',marginBottom:'3px',fontSize:'10px'}}>
                                 <span style={{color:'#666',width:'60px',flexShrink:0}}>{label}</span>
                                 <span style={{fontWeight:700}}>{value}</span>

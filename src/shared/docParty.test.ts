@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { partyOfPartner, partyOfCompany, 서류당사자 } from './docParty';
+import { readFileSync } from 'node:fs';
+import { partyOfPartner, partyOfCompany, 서류당사자, 서류당사자ById } from './docParty';
 import type { Partner, CompanyInfo } from './types';
 
 const 우리: CompanyInfo = {
@@ -29,10 +30,11 @@ describe('서류에 찍는 당사자 칸', () => {
   });
 
   /** 313곳 중 `phone` 이 찬 것은 18곳뿐이고 실제 번호는 tel·mobile 에 있었다. */
-  it('전화는 tel → phone → mobile 차례로 본다', () => {
+  it('전화는 거래처관리 화면과 같은 tel → mobile → phone 차례로 본다', () => {
     expect(partyOfPartner({ tel: '02-1', phone: '02-2', mobile: '010-3' } as never).tel).toBe('02-1');
-    expect(partyOfPartner({ phone: '02-2', mobile: '010-3' } as never).tel).toBe('02-2');
+    expect(partyOfPartner({ phone: '02-2', mobile: '010-3' } as never).tel).toBe('010-3');
     expect(partyOfPartner({ mobile: '010-3' } as never).tel).toBe('010-3');
+    expect(partyOfPartner({ phone: '02-2' } as never).tel).toBe('02-2');
     expect(partyOfPartner({} as never).tel).toBe('');
   });
 
@@ -66,5 +68,40 @@ describe('공급자 · 공급받는자 가르기', () => {
     expect(sup.name).toBe('대왕유통');
     expect(buy.name).toBe('태백식품');
     expect(sup.bizNo).toBe('111-22-33333');
+  });
+
+  it('동명이인이 있어도 partnerId가 가리킨 거래처관리 원본만 쓴다', () => {
+    const 같은이름 = [
+      { ...거래처, id: 'wrong', bizNo: '000-00-00000', address: '틀린 주소' },
+      { ...거래처, id: 'right', bizNo: '999-88-77777', address: '맞는 주소' },
+    ] as Partner[];
+    const { buy } = 서류당사자ById({
+      isSale: true, companyInfo: 우리, partners: 같은이름,
+      partnerId: 'right', partnerName: 거래처.name,
+    });
+    expect(buy.bizNo).toBe('999-88-77777');
+    expect(buy.addr).toContain('맞는 주소');
+  });
+
+  it('없는 ID를 이름으로 다시 찾지 않고 저장 당시 상호만 남긴다', () => {
+    const { buy } = 서류당사자ById({
+      isSale: true, companyInfo: 우리, partners: [거래처],
+      partnerId: 'deleted', partnerName: 거래처.name,
+    });
+    expect(buy.name).toBe(거래처.name);
+    expect(buy.bizNo).toBe('');
+    expect(buy.addr).toBe('');
+  });
+});
+
+describe('서류 화면의 공용 모듈 연결', () => {
+  it('거래명세서와 세금계산서가 모두 ID 공용 진입점을 쓴다', () => {
+    const 거래명세서 = readFileSync(new URL('../../components/TradeStatement.tsx', import.meta.url), 'utf8');
+    const 세금계산서 = readFileSync(new URL('../../components/TaxStatement.tsx', import.meta.url), 'utf8');
+
+    expect(거래명세서).toContain('서류당사자ById({');
+    expect(세금계산서).toContain('서류당사자ById({');
+    expect(거래명세서).not.toMatch(/partners\.find\([^\n]*\.name\s*===/);
+    expect(세금계산서).not.toContain('taxBuyerInfo');
   });
 });
