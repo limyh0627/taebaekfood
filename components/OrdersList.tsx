@@ -1183,9 +1183,20 @@ const OrdersList: React.FC<OrdersListProps> = ({
   };
 
   // 완료된 주문의 품목 자동 정리
+  /**
+   * 작업순서에 남길 줄.
+   *
+   * 작업순서 줄은 **담을 때 찍어 둔 사본**이지 주문을 실시간으로 비추는 창이 아니다.
+   * 그래서 주문에서 그 품목을 지우면 줄이 유령으로 남았다 — 없는 품목이 계속 목록에 떠 있고,
+   * 체크칸은 가리킬 데가 없다. **품목이 없어지면 줄도 같이 없어져야 한다**(2026-09-09 사장님).
+   */
   const validWorkItems = useMemo(() => {
-    const activeIds = new Set(orders.filter(o => o.status === OrderStatus.PENDING || o.status === OrderStatus.PROCESSING).map(o => o.id));
-    return workItems.filter(wi => activeIds.has(wi.orderId));
+    const 살아있는주문 = new Map(
+      orders.filter(o => o.status === OrderStatus.PENDING || o.status === OrderStatus.PROCESSING).map(o => [o.id, o]));
+    return workItems.filter(wi => {
+      const o = 살아있는주문.get(wi.orderId);
+      return !!o && itemIndexOf(wi, o) >= 0;
+    });
   }, [workItems, orders]);
 
   const isPowder = (name: string) => name.includes('가루') || name.includes('깨') || name.includes('Garu');
