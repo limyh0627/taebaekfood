@@ -51,6 +51,22 @@ export interface LineAmount {
 export const VAT_RATE = 0.1;
 
 /**
+ * **매입 단가(세포함) → 품목 원가(공급가액).**
+ *
+ * 거래처 매입단가와 품목 원가는 **밑이 다르다.** 전표에 치는 단가는 세금 포함이고
+ * (`lineAmount` 의 price 가 그렇다), 품목 원가는 공급가액이다
+ * ([인수인계](../../인수인계.md) "원가는 공급가액으로만 본다").
+ *
+ * 두 값을 한 칸처럼 복사하다 2026-09-06 에 품목 60개 원가가 10% 부풀었고,
+ * `scripts/fix-cost-supply-basis.mts` 로 ÷1.1 해서 되돌렸다. 그런데 전표를 다시 끊으면
+ * 그대로 되살아났다(2026-09-09) — 복사하는 자리가 그냥 남아 있었기 때문이다.
+ *
+ * **매입 단가를 원가로 옮길 때는 언제나 이 함수를 지난다.** 면세는 세금이 없어 그대로다.
+ */
+export const costOfPurchase = (price: number, exempt?: boolean): number =>
+  lineAmount(1, price, exempt).supply;
+
+/**
  * @param qty      수량. 반품이면 음수다.
  * @param price    **세금 포함** 단가
  * @param exempt   면세면 true

@@ -221,3 +221,32 @@ describe('최신 전표일 때만 되민다', () => {
     expect(partnerPriceWrites({ ...공통, lines: [줄('참기름 500ml', 7000)] }).upserts).toHaveLength(1);
   });
 });
+
+/**
+ * **거래처 매입단가와 품목 원가는 밑이 다르다**(2026-09-09).
+ *
+ * 전표에 치는 단가는 **세금 포함**이고 품목 원가는 **공급가액**이다.
+ * 두 값을 한 칸처럼 복사하다 2026-09-06 에 60개 원가가 10% 부풀었고,
+ * ÷1.1 스크립트로 되돌렸는데 **전표를 다시 끊으면 그대로 되살아났다** — 복사하는 자리를
+ * 안 고쳤기 때문이다. 그 자리를 여기서 잠근다.
+ */
+describe('매입 — 거래처 단가는 세포함, 품목 원가는 공급가액', () => {
+  const 공통 = { partnerId: 'p1', items: 품목, partnerItems: [] as PartnerItem[], type: '매입' as const };
+
+  it('과세 11,000원 → 거래처 단가 11,000 · 원가 10,000', () => {
+    const r = partnerPriceWrites({ ...공통, lines: [줄('참기름 500ml', 11000, { isTaxExempt: false })] });
+    expect(r.upserts[0]).toMatchObject({ price: 11000, taxType: '과세' });
+    expect(r.costUpdates).toEqual([{ itemId: 'i1', price: 10000 }]);
+  });
+
+  it('면세 11,000원 → 둘 다 11,000 — 면세는 세금이 없다', () => {
+    const r = partnerPriceWrites({ ...공통, lines: [줄('참기름 500ml', 11000, { isTaxExempt: true })] });
+    expect(r.upserts[0]).toMatchObject({ price: 11000, taxType: '면세' });
+    expect(r.costUpdates).toEqual([{ itemId: 'i1', price: 11000 }]);
+  });
+
+  it('매출은 원가를 안 건드린다 — 원가는 산 값에서만 온다', () => {
+    const r = partnerPriceWrites({ ...공통, type: '매출', lines: [줄('참기름 500ml', 11000)] });
+    expect(r.costUpdates).toEqual([]);
+  });
+});

@@ -1,4 +1,5 @@
 import type { PartnerItem, Item } from './types';
+import { costOfPurchase } from './lineAmount';
 
 /**
  * **전표에 찍힌 단가·계정을 거래처 단가로 되민다.**
@@ -105,7 +106,12 @@ export function partnerPriceWrites(input: PriceSyncInput): PriceSyncResult {
       Account_Code: line.accountCode || prev?.Account_Code,
     } as PartnerItem);
 
-    if (type === '매입') out.costUpdates.push({ itemId: product.id, price });
+    /*
+     * **원가는 공급가액이다.** 전표 단가는 세금 포함이라 그대로 넣으면 과세 품목 원가가
+     * 10% 부푼다 — 2026-09-06 에 60개를 ÷1.1 로 되돌렸는데 전표를 다시 끊으면 되살아났다.
+     * 밑을 맞추는 셈은 [lineAmount.costOfPurchase](./lineAmount.ts) 한 곳이다.
+     */
+    if (type === '매입') out.costUpdates.push({ itemId: product.id, price: costOfPurchase(price, line.isTaxExempt) });
   }
   return out;
 }
