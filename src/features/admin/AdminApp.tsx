@@ -1897,6 +1897,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
           )}
           {currentView === 'shipping' && (
             <DeliveryManager
+              currentUserName={currentUser?.name}
               orders={orders}
               partners={partners}
               items={allItems}
