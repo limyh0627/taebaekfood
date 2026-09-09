@@ -741,8 +741,11 @@ const AdminApp: React.FC<AdminAppProps> = ({
       if (!ds) continue;
       for (const item of o.items) {
         const p = allItems.find(pr => pr.id === item.itemId) || allItems.find(pr => pr.name === item.name);
-        //  선물세트는 든 완제품 각각으로 풀린다 — 줄이 여럿 나올 수 있다.
-        for (const line of docSaleLines(p, item.quantity, id => allItems.find(x => x.id === id))) {
+        /*  선물세트는 든 완제품 각각으로 풀린다 — 줄이 여럿 나올 수 있다.
+         *  **수량은 stockUnits 를 지난다**(2026-09-09 사장님: "전표는 쓰고 재고는 안 쓸 수가 있나").
+         *  docUnpack 이 박스를 낱개로 푸는데, 박스 수가 아니라 낱개 수를 주면 **또 풀어서 열 배**가 된다.
+         *  재고·전표와 같은 함수를 지나야 세 숫자가 안 갈린다. */
+        for (const line of docSaleLines(p, stockUnits(item, p), id => allItems.find(x => x.id === id))) {
           const kg = docOilKg(line.spec, line.qty);
           if (kg <= 0) continue;
           (dayCat[ds] = dayCat[ds] || {})[line.품목] = (dayCat[ds][line.품목] || 0) + Math.round(kg);
@@ -2909,7 +2912,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                                   order.items.forEach(item => {
                                     const p = allItems.find(pr => pr.id === item.itemId);
                                     // 박스는 낱개로 풀어서 본다(박스 품목엔 품목·규격이 없다)
-                                    for (const line of docSaleLines(p, item.quantity, id => allItems.find(x => x.id === id))) {
+                                    for (const line of docSaleLines(p, stockUnits(item, p), id => allItems.find(x => x.id === id))) {
                                       if (line.품목 !== cat) continue;
                                       if (!dayMap[day]) dayMap[day] = [];
                                       const existing = dayMap[day].find(r => r.spec === line.spec);
@@ -3643,7 +3646,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       order.items.forEach(item => {
                         const p = allItems.find(pr => pr.id === item.itemId);
                         // 박스는 낱개로 풀어서 본다(박스 품목엔 품목·규격이 없다)
-                        for (const line of docSaleLines(p, item.quantity, id => allItems.find(x => x.id === id))) {
+                        for (const line of docSaleLines(p, stockUnits(item, p), id => allItems.find(x => x.id === id))) {
                           if (line.품목 !== productionWorkCat) continue;
                           if (!dayMap[day]) dayMap[day] = [];
                           const existing = dayMap[day].find(r => r.spec === line.spec);

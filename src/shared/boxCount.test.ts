@@ -44,6 +44,29 @@ const 봐주는것 = new Set([
   'components/OrdersList.tsx',
 ]);
 
+/**
+ * **서류도 같은 답을 써야 한다**(2026-09-09 사장님: "전표는 쓰고 재고는 안 쓸 수가 있나").
+ *
+ * `docUnpack` 이 박스를 낱개로 푼다. 그러니 넘기는 수량이 **박스 수**여야 한다 —
+ * 낱개 수를 주면 또 풀어서 열 배가 된다. 재고·전표와 같은 함수(`stockUnits`)를 지나야
+ * 세 숫자가 안 갈린다.
+ */
+describe('서류도 stockUnits 를 지난다', () => {
+  it('docSaleLines 에 item.quantity 를 날로 넘기지 않는다', () => {
+    const 걸림: string[] = [];
+    for (const f of 파일들) {
+      const src = readFileSync(f, 'utf8');
+      src.split('\n').forEach((l, i) => {
+        const t = l.trim();
+        if (t.startsWith('//') || t.startsWith('*')) return;   // 주석 속 예시는 셈이 아니다
+        if (/docSaleLines\(\s*[\w.]+\s*,\s*\w+\.quantity/.test(l)) 걸림.push(`  ${f}:${i + 1}  ${t.slice(0, 80)}`);
+      });
+    }
+    expect(걸림, `서류에 낱개 수를 날로 넘기는 곳:\n${걸림.join('\n')}\n\n` +
+      `stockUnits(item, product) 를 넘겨라 — 박스 품목이면 박스 수가 나온다.`).toEqual([]);
+  });
+});
+
 describe('몇 박스인가는 한 곳만 답한다', () => {
   it('boxCountOf 말고 따로 판단하는 곳이 없다', () => {
     const 걸림: string[] = [];
