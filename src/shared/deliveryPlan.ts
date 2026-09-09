@@ -191,3 +191,30 @@ export function toggleDone(plan: DayPlan, orderId: string): DayPlan {
   const has = (plan.done ?? []).includes(orderId);
   return { ...plan, done: has ? plan.done.filter(x => x !== orderId) : [...(plan.done ?? []), orderId] };
 }
+
+/**
+ * 오전·오후처럼 화면에 일부만 보인 줄의 순서를 전체 순서에 다시 끼운다.
+ * 일부 배열을 그대로 `ordering`에 저장하면 반대 시간대 주문이 순서표에서 사라진다.
+ */
+export function mergeReorderedSubset(allIds: readonly string[], reorderedIds: readonly string[]): string[] {
+  const all = new Set(allIds);
+  const subset = Array.from(new Set(reorderedIds)).filter(id => all.has(id));
+  const targets = new Set(subset);
+  let i = 0;
+  return allIds.map(id => targets.has(id) ? subset[i++] : id);
+}
+
+/**
+ * 다른 날짜로 옮긴 주문을 원래 날짜 계획에서 완전히 뺀다.
+ * 날짜만 바꾸고 수동 ordering을 남기면 `dayRows`가 그 주문을 원래 날에도 계속 보여준다.
+ */
+export function removeOrderFromPlan(plan: DayPlan, orderId: string): DayPlan {
+  const { [orderId]: _slot, ...timeSlots } = plan.timeSlots ?? {};
+  const withoutOrder = {
+    ...plan,
+    ordering: (plan.ordering ?? []).filter(id => id !== orderId),
+    timeSlots,
+    done: (plan.done ?? []).filter(id => id !== orderId),
+  };
+  return ungroup(withoutOrder, orderId);
+}

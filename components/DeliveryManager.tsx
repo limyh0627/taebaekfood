@@ -18,6 +18,9 @@ import {
 } from 'lucide-react';
 import { Order, Partner, OrderStatus, Item } from '../types';
 import { statusText, statusLabel } from '../src/shared/orderStatusStyle';
+import { cardNoLabel } from '../src/shared/cardNo';
+import { orderItemQuantityLabel } from '../src/shared/orderUnits';
+import { specText, splitNameVolume } from '../src/shared/productChip';
 import { X, Save } from 'lucide-react';
 import { subscribeToDocument, setDocument } from '../src/shared/services/firebaseService';
 import { OrderCard } from './OrdersList';
@@ -25,6 +28,7 @@ import PageHeader from './PageHeader';
 import DeliveryDayList from './DeliveryDayList';
 import {
   planFor, withPlan, dayRows, bySlot, 정한이, toggleDone, stamp, withGroup, ungroup,
+  mergeReorderedSubset, removeOrderFromPlan,
   type DeliveryPlanDoc, type DayPlan,
 } from '../src/shared/deliveryPlan';
 
@@ -86,13 +90,22 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
 
   /** 하루치 카드에 물릴 손잡이들 — 캘린더 칸·판·상세창이 모두 이걸 쓴다 */
   const handlersFor = (dateStr: string) => ({
-    open: (o: Order) => setPreviewDeliveryOrderId(o.id),
+    // 주문번호는 배송일과 주문 품목을 함께 확인·수정하는 기존 창을 연다.
+    open: (o: Order) => {
+      setEditingOrder(o);
+      setNewDate(o.deliveryDate.split('T')[0]);
+    },
     toggleDone: (id: string) => savePlan(dateStr, toggleDone(planOf(dateStr), id)),
     toggleSlot: (id: string) => {
       const p = planOf(dateStr);
       savePlan(dateStr, { ...p, timeSlots: { ...p.timeSlots, [id]: p.timeSlots?.[id] === '오후' ? '오전' : '오후' } });
     },
-    reorder: (next: string[]) => savePlan(dateStr, { ...planOf(dateStr), ordering: next }),
+    // 오전·오후 중 한 목록에서 받은 순서를 하루 전체 순서에 다시 끼운다.
+    // 일부 목록을 그대로 저장하면 반대 시간대 주문이 수동 순서표에서 빠진다.
+    reorder: (next: string[]) => savePlan(dateStr, {
+      ...planOf(dateStr),
+      ordering: mergeReorderedSubset(rowsOf(dateStr).map(r => r.orderId), next),
+    }),
     select: (id: string) => toggleGroupPick(dateStr, id),
   });
 
@@ -116,7 +129,6 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
   };
   const [showDeliveryPicker, setShowDeliveryPicker] = useState(false);
   const [pickerDeliveryOrdering, setPickerDeliveryOrdering] = useState<string[]>([]);
-  const [previewDeliveryOrderId, setPreviewDeliveryOrderId] = useState<string | null>(null);
   const [deliveryTab, setDeliveryTab] = useState<'배송일정관리' | '배송캘린더'>('배송일정관리');
   const [calendarView, setCalendarView] = useState<'주간' | '월간'>('주간');
   const [currentWeekDate, setCurrentWeekDate] = useState(new Date());
@@ -142,6 +154,8 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
 
   const handleDragStart = (e: React.DragEvent, orderId: string) => {
     e.dataTransfer.setData('orderId', orderId);
+    const sourceDate = orders.find(o => o.id === orderId)?.deliveryDate?.split('T')[0];
+    if (sourceDate) e.dataTransfer.setData('deliverySourceDate', sourceDate);
     e.dataTransfer.effectAllowed = 'move';
   };
 
@@ -149,6 +163,11 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
     e.preventDefault();
     const orderId = e.dataTransfer.getData('orderId');
     if (orderId && onUpdateDeliveryDate) {
+      const sourceDate = e.dataTransfer.getData('deliverySourceDate');
+      if (sourceDate && sourceDate !== dateStr) {
+        // 날짜만 바꾸면 옛 ordering 때문에 원래 날짜에도 계속 보인다.
+        savePlan(sourceDate, removeOrderFromPlan(planOf(sourceDate), orderId));
+      }
       onUpdateDeliveryDate(orderId, new Date(dateStr).toISOString());
     }
   };
@@ -316,23 +335,28 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
           <button type="button" onClick={() => setDayModal(dateStr)}
             className="sm:hidden absolute inset-0 z-10" aria-label={`${d.getDate()}일 배송 보기`} />
 
-          {/*  폰에서는 세로로 쌓는다 — 한 칸이 50px 라 나란히 두면 글자가 세로로 쪼개진다 */}
-          <div className="flex flex-col items-center gap-0.5 sm:flex-row sm:justify-between sm:items-center mb-2 flex-shrink-0">
+          {/* 날짜 오른쪽에 예전 주문과 현재 주문 건수를 한 줄로 붙인다. */}
+          <div className="flex flex-col items-center gap-0.5 sm:flex-row sm:justify-between sm:items-start mb-2 flex-shrink-0">
             <div className="flex flex-col items-center sm:items-start">
               <span className="text-[10px] font-black text-slate-400 uppercase">{dayLabels[d.getDay()]}</span>
               <span className={`text-base sm:text-lg font-black w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-full ${isToday ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-700 group-hover:text-indigo-600'}`}>
                 {d.getDate()}
               </span>
             </div>
-            <div className="flex flex-col items-center sm:items-end gap-0.5">
+            <div className="flex items-center justify-center sm:justify-end gap-1">
+              {deliveredOrders.length > 0 && (
+                <button
+                  type="button"
+                  onClick={e => { e.stopPropagation(); toggleDeliveredDate(dateStr); }}
+                  className="relative z-20 inline-flex items-center gap-0.5 text-[10px] font-black text-slate-500 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded-md whitespace-nowrap"
+                >
+                  {deliveredOrders.length}건
+                  <ChevronDown size={11} className={`transition-transform ${expandedDeliveredDates.has(dateStr) ? 'rotate-180' : ''}`} />
+                </button>
+              )}
               {rows.length > 0 && (
                 <span className="text-[10px] font-black text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-md whitespace-nowrap">
                   {rows.length}건
-                </span>
-              )}
-              {deliveredOrders.length > 0 && (
-                <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md whitespace-nowrap">
-                  +{deliveredOrders.length}
                 </span>
               )}
             </div>
@@ -348,12 +372,12 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                 {오전.length > 0 && <span className="text-[9px] font-black text-amber-500 px-1">오전</span>}
                 {오전.length > 0 && (
                   <DeliveryDayList rows={오전} orders={orders} partners={partners} compact
-                    on={handlersFor(dateStr)} selected={groupPick.date === dateStr ? new Set(groupPick.ids) : undefined} />
+                    dateStr={dateStr} on={handlersFor(dateStr)} selected={groupPick.date === dateStr ? new Set(groupPick.ids) : undefined} />
                 )}
                 {오후.length > 0 && <span className="text-[9px] font-black text-indigo-500 px-1 pt-1">오후</span>}
                 {오후.length > 0 && (
                   <DeliveryDayList rows={오후} orders={orders} partners={partners} compact
-                    on={handlersFor(dateStr)} selected={groupPick.date === dateStr ? new Set(groupPick.ids) : undefined} />
+                    dateStr={dateStr} positionOffset={오전.length} on={handlersFor(dateStr)} selected={groupPick.date === dateStr ? new Set(groupPick.ids) : undefined} />
                 )}
                 {groupPick.date === dateStr && groupPick.ids.length >= 2 && (
                   <button onClick={() => confirmGroup(dateStr)}
@@ -362,6 +386,22 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                   </button>
                 )}
               </>
+            )}
+            {expandedDeliveredDates.has(dateStr) && deliveredOrders.length > 0 && (
+              <div className="mt-1 pt-1 border-t border-slate-100 space-y-1">
+                <p className="px-1 text-[10px] font-black text-slate-400">예전 주문</p>
+                {deliveredOrders.map(order => (
+                  <button
+                    key={order.id}
+                    type="button"
+                    onClick={() => handleOrderClick(order)}
+                    className="w-full text-left px-2 py-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-500"
+                  >
+                    <span className="block text-xs font-bold truncate">{order.partnerName}</span>
+                    <span className="block text-[10px] font-black text-slate-400 whitespace-nowrap">{cardNoLabel(order)}</span>
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         </div>
@@ -408,19 +448,18 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
             {deliveredOrders.length > 0 && (
               <button
                 onClick={e => { e.stopPropagation(); toggleDeliveredDate(dateStr); }}
-                className="text-[10px] font-black text-slate-400 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded-md transition-all whitespace-nowrap shrink-0"
+                className="inline-flex items-center gap-0.5 text-[10px] font-black text-slate-500 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded-md transition-all whitespace-nowrap shrink-0"
               >
-                +{deliveredOrders.length}
+                {deliveredOrders.length}건
+                <ChevronDown size={10} className={`transition-transform ${showDelivered ? 'rotate-180' : ''}`} />
               </button>
             )}
-          </div>
-          {dayOrders.length > 0 && (
-            <div className="mt-0.5">
+            {dayOrders.length > 0 && (
               <span className="text-[10px] font-black text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-md whitespace-nowrap">
                 {dayOrders.length}건
               </span>
-            </div>
-          )}
+            )}
+          </div>
           {/*  **주간과 같은 카드다**(2026-09-09 사장님: "금일만 다는게 아니라 캘린더 쪽에도").
                월간만 옛 카드로 남아 상태 색은 있어도 글자가 없었고, 순서·오전오후·체크·묶음도
                없었다. [DeliveryDayList](./DeliveryDayList.tsx) 한 벌로 맞춘다. */}
@@ -434,11 +473,11 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
               <div className="hidden sm:block mt-1 space-y-0.5 overflow-y-auto" style={{ maxHeight: 130, scrollbarWidth: 'thin' }}>
                 {오전.length > 0 && <span className="block text-[8px] font-black text-amber-500 px-0.5">오전</span>}
                 {오전.length > 0 && (
-                  <DeliveryDayList rows={오전} orders={orders} partners={partners} compact on={on} selected={picked} />
+                  <DeliveryDayList rows={오전} orders={orders} partners={partners} compact dateStr={dateStr} on={on} selected={picked} />
                 )}
                 {오후.length > 0 && <span className="block text-[8px] font-black text-indigo-500 px-0.5 pt-0.5">오후</span>}
                 {오후.length > 0 && (
-                  <DeliveryDayList rows={오후} orders={orders} partners={partners} compact on={on} selected={picked} />
+                  <DeliveryDayList rows={오후} orders={orders} partners={partners} compact dateStr={dateStr} positionOffset={오전.length} on={on} selected={picked} />
                 )}
                 {picked && picked.size >= 2 && (
                   <button onClick={e => { e.stopPropagation(); confirmGroup(dateStr); }}
@@ -556,11 +595,11 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                       <span className="text-[9px] font-black text-amber-500 px-1">오전</span>
                       {morningRows.length === 0
                         ? <p className="text-[10px] text-slate-300 text-center py-1 font-bold">없음</p>
-                        : <DeliveryDayList rows={morningRows} orders={orders} partners={partners} on={todayOn} selected={todayPicked} />}
+                        : <DeliveryDayList rows={morningRows} orders={orders} partners={partners} dateStr={todayStr} on={todayOn} selected={todayPicked} />}
                       <span className="text-[9px] font-black text-indigo-500 px-1 pt-1">오후</span>
                       {afternoonRows.length === 0
                         ? <p className="text-[10px] text-slate-300 text-center py-1 font-bold">없음</p>
-                        : <DeliveryDayList rows={afternoonRows} orders={orders} partners={partners} on={todayOn} selected={todayPicked} />}
+                        : <DeliveryDayList rows={afternoonRows} orders={orders} partners={partners} dateStr={todayStr} positionOffset={morningRows.length} on={todayOn} selected={todayPicked} />}
                       {todayPicked && todayPicked.size >= 2 && (
                         <button onClick={() => confirmGroup(todayStr)}
                           className="mt-1 text-[10px] font-black text-white bg-indigo-500 hover:bg-indigo-600 rounded-xl py-2 transition-colors">
@@ -873,9 +912,9 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                   <p className="py-12 text-center text-sm font-bold text-slate-300">이 날은 배송이 없습니다.</p>
                 )}
                 {오전.length > 0 && <p className="text-[10px] font-black text-amber-500 px-1">오전</p>}
-                {오전.length > 0 && <DeliveryDayList rows={오전} orders={orders} partners={partners} on={on} selected={picked} />}
+                {오전.length > 0 && <DeliveryDayList rows={오전} orders={orders} partners={partners} dateStr={dayModal} on={on} selected={picked} />}
                 {오후.length > 0 && <p className="text-[10px] font-black text-indigo-500 px-1 pt-2">오후</p>}
-                {오후.length > 0 && <DeliveryDayList rows={오후} orders={orders} partners={partners} on={on} selected={picked} />}
+                {오후.length > 0 && <DeliveryDayList rows={오후} orders={orders} partners={partners} dateStr={dayModal} positionOffset={오전.length} on={on} selected={picked} />}
                 {picked && picked.size >= 2 && (
                   <button onClick={() => confirmGroup(dayModal)}
                     className="w-full text-[11px] font-black text-white bg-indigo-500 hover:bg-indigo-600 rounded-xl py-2.5 transition-colors">
@@ -1026,22 +1065,35 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                 <div className="space-y-2">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">주문 품목</p>
                   <div className="bg-slate-50 rounded-2xl border border-slate-100 divide-y divide-slate-100 overflow-hidden max-h-48 overflow-y-auto">
-                    {editingOrder.items.map((item, idx) => (
-                      <div key={idx} className={`flex items-center justify-between px-4 py-2.5 ${item.checked ? 'opacity-50' : ''}`}>
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${item.checked ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'}`}>
-                            {item.checked && <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1 4l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                    {editingOrder.items.map((item, idx) => {
+                      const product = products.find(p => p.id === item.itemId);
+                      const display = splitNameVolume({
+                        name: product?.name || item.name || '품목',
+                        spec: product?.spec || item.displaySize,
+                      });
+                      const spec = specText(product?.spec || item.displaySize) || display.vol || '';
+                      return (
+                        <div key={idx} className={`flex items-center justify-between gap-3 px-4 py-2.5 ${item.checked ? 'opacity-50' : ''}`}>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${item.checked ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'}`}>
+                              {item.checked && <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1 4l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                            </span>
+                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border shrink-0 ${
+                              (item.labelType ?? '대기') === '대기' ? 'bg-red-50 border-red-200 text-red-600' :
+                              item.labelType === '날인' ? 'bg-yellow-50 border-yellow-200 text-yellow-600' :
+                              'bg-emerald-50 border-emerald-300 text-emerald-600'
+                            }`}>{item.labelType ?? '대기'}</span>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className={`text-[11px] font-bold truncate ${item.checked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{display.base}</span>
+                              {spec && <span className="shrink-0 whitespace-nowrap text-[10px] font-bold text-slate-400">{spec}</span>}
+                            </div>
+                          </div>
+                          <span className="text-[11px] font-black text-indigo-600 shrink-0 whitespace-nowrap">
+                            {orderItemQuantityLabel(item, product?.unit)}
                           </span>
-                          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border shrink-0 ${
-                            (item.labelType ?? '대기') === '대기' ? 'bg-red-50 border-red-200 text-red-600' :
-                            item.labelType === '날인' ? 'bg-yellow-50 border-yellow-200 text-yellow-600' :
-                            'bg-emerald-50 border-emerald-300 text-emerald-600'
-                          }`}>{item.labelType ?? '대기'}</span>
-                          <span className={`text-[11px] font-bold truncate ${item.checked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{item.name}</span>
                         </div>
-                        <span className="text-[11px] font-black text-indigo-600 shrink-0 ml-2">{item.quantity}</span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -1066,49 +1118,6 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
         </div>
       )}
 
-      {/* 배송순서 클릭 → 주문카드 팝업 */}
-      {previewDeliveryOrderId && (() => {
-        const order = orders.find(o => o.id === previewDeliveryOrderId);
-        if (!order) return null;
-        const partnerName = order.partnerName || partners.find(c => c.id === order.partnerId)?.name || '이름없음';
-        return (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-            onClick={() => setPreviewDeliveryOrderId(null)}
-          >
-            <div
-              className="bg-slate-50 rounded-3xl shadow-2xl w-full max-w-sm mx-4 animate-in fade-in zoom-in-95 duration-200 flex flex-col overflow-hidden"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-white rounded-t-3xl">
-                <div>
-                  <h3 className="font-black text-slate-900">{partnerName}</h3>
-                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-600">작업완료</span>
-                </div>
-                <button onClick={() => setPreviewDeliveryOrderId(null)} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400">
-                  <X size={16} />
-                </button>
-              </div>
-              <div className="p-4 overflow-y-auto max-h-[70vh]">
-                <OrderCard
-                  order={order}
-                  partners={partners}
-                  items={products}
-                  editingOrderId={editingOrderId}
-                  setEditingOrderId={setEditingOrderId}
-                  showAddProductSelect={showAddProductSelect}
-                  setShowAddProductSelect={setShowAddProductSelect}
-                  onUpdateItems={onUpdateItems}
-                  onUpdateDeliveryDate={onUpdateDeliveryDate ?? (() => {})}
-                  onUpdateStatus={onUpdateStatus ?? (() => {})}
-                  onToggleItemChecked={onToggleItemChecked}
-                  onDeleteOrder={onDeleteOrder ?? (() => {})}
-                />
-              </div>
-            </div>
-          </div>
-        );
-      })()}
     </div>
   );
 };

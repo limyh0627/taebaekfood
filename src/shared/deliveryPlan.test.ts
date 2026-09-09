@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { planFor, withPlan, dayRows, bySlot, 정한이, toggleDone, stamp, withGroup, ungroup, EMPTY_PLAN, type DeliveryPlanDoc, type DayPlan } from './deliveryPlan';
+import { planFor, withPlan, dayRows, bySlot, 정한이, toggleDone, stamp, withGroup, ungroup, removeOrderFromPlan, mergeReorderedSubset, EMPTY_PLAN, type DeliveryPlanDoc, type DayPlan } from './deliveryPlan';
 import { OrderStatus, type Order } from './types';
 
 const 오늘 = '2026-09-09';
@@ -135,6 +135,28 @@ describe('체크박스', () => {
     const next = toggleDone(plan, 'A');
     expect(next.ordering).toEqual(['A']);
     expect(next.timeSlots).toEqual({ A: '오후' });
+  });
+});
+
+describe('배송 순서 이동', () => {
+  it('오전 줄만 순서를 바꿔도 오후 줄을 잃지 않는다', () => {
+    expect(mergeReorderedSubset(['A', 'B', 'C', 'D'], ['C', 'A']))
+      .toEqual(['C', 'B', 'A', 'D']);
+  });
+
+  it('다른 날짜로 옮긴 주문은 원래 날짜의 순서·시간·완료·묶음에서 모두 뺀다', () => {
+    const plan: DayPlan = {
+      ordering: ['A', 'B', 'C'],
+      timeSlots: { A: '오전', B: '오후' },
+      done: ['B', 'C'],
+      groups: [{ id: 'g1', orderIds: ['A', 'B'] }],
+    };
+    expect(removeOrderFromPlan(plan, 'B')).toEqual({
+      ordering: ['A', 'C'],
+      timeSlots: { A: '오전' },
+      done: ['C'],
+      groups: [],
+    });
   });
 });
 
