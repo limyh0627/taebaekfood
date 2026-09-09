@@ -1,6 +1,6 @@
 import type { Item, Order, OrderItem, PartnerItem } from './types';
 import { lineAmount } from './lineAmount';
-import { unpackComponent, boxDerivedUnitPrice } from './orderUnits';
+import { unpackComponent, boxDerivedUnitPrice, boxCountOf } from './orderUnits';
 
 /**
  * **전표 품목 줄을 세우는 셈.**
@@ -100,7 +100,9 @@ export function resolveOrderItem(item: OrderItem, allItems: readonly Item[]): Re
   if (uc) {
     const loose = allItems.find(p => p.id === uc.itemId);
     if (loose) {
-      const boxCount = item.isBoxUnit && item.boxQuantity ? item.boxQuantity : item.quantity;
+      //  몇 박스인가는 **orderUnits.boxCountOf 한 곳**이 답한다 — 재고 차감(stockUnits)과 같은 답이라야
+      //  전표에 찍힌 낱개 수와 재고에서 빠진 양이 안 갈린다.
+      const boxCount = boxCountOf(item);
       product = loose;
       qty = boxCount * uc.count;
       perBox = uc.count;

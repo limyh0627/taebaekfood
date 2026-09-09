@@ -127,8 +127,24 @@ export function stockUnits(
    * 이제 박스 수가 적혀 있으면(`boxQuantity`) 그게 임자고, 없으면 `quantity` 가 박스 수다
    * — 운영 데이터의 박스 품목 주문줄 309개가 전부 그 모양이다(2026-09-09 실측).
    */
-  return item.boxQuantity ?? item.quantity;
+  return boxCountOf(item);
 }
+
+/**
+ * **박스 품목 줄이 몇 박스인가** — 재고를 깔 때도, 전표를 낱개로 풀 때도 이 답을 쓴다.
+ *
+ * 2026-09-09 사장님: "서류나 전표 쪽에서 박스품목 낱개로 풀때는 안쓰고?" — 쓰고 있었다.
+ * 그리고 **재고 쪽과 똑같은 모양으로 어긋나 있었다**(`statementLines.resolveOrderItem`).
+ * 한쪽만 고치면 재고와 전표가 갈린다. 같은 판단은 여기 하나로 둔다.
+ *
+ * `isBoxUnit` 은 안 본다 — 박스 품목은 품목 자체가 박스라 그 칸이 나를 정보가 없다.
+ * 박스 수가 적혀 있으면 그게 임자, 없으면 `quantity` 가 박스 수다.
+ *
+ * ⚠ **박스 품목에만 쓴다.** 향미유·고춧가루처럼 재고가 낱개인 상품은 다르다 —
+ * 거기서는 `isBoxUnit` 이 진짜 정보라 `quantity / 개입수` 로 박스 수를 낸다.
+ */
+export const boxCountOf = (item: Pick<OrderItem, 'quantity' | 'boxQuantity'>): number =>
+  item.boxQuantity ?? item.quantity;
 
 /**
  * 전표의 미발행 주문 두 목록에 적을 수량 — 어느 화면에서 보든 같은 말을 쓰게 한다.
