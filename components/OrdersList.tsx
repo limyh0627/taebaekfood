@@ -639,7 +639,9 @@ export const OrderCard = memo<OrderCardProps>(({
                               })()}
                             </div>
                             <span className={`text-[8px] font-black shrink-0 ${isItemChecked ? 'text-emerald-700 bg-emerald-100' : 'text-teal-600 bg-teal-50'} px-1 py-0.5 rounded`}>
-                              {item.isBoxUnit && item.boxQuantity ? `${item.boxQuantity}B` : `${item.quantity}개`}
+                              {item.isBoxUnit && item.boxQuantity
+                                ? `${item.boxQuantity}B`
+                                : `${item.quantity}${items.find(p => p.id === item.itemId)?.unit || '개'}`}
                             </span>
                           </div>
                         );
@@ -666,7 +668,9 @@ export const OrderCard = memo<OrderCardProps>(({
                               })()}
                             </div>
                             <span className={`text-[8px] font-black shrink-0 ${isItemChecked ? 'text-emerald-700 bg-emerald-100' : 'text-orange-600 bg-orange-50'} px-1 py-0.5 rounded`}>
-                              {item.isBoxUnit && item.boxQuantity ? `${item.boxQuantity}B` : `${item.quantity}개`}
+                              {item.isBoxUnit && item.boxQuantity
+                                ? `${item.boxQuantity}B`
+                                : `${item.quantity}${items.find(p => p.id === item.itemId)?.unit || '개'}`}
                             </span>
                           </div>
                         );
@@ -1466,7 +1470,9 @@ const OrdersList: React.FC<OrdersListProps> = ({
                 className="flex-1 min-w-0 text-left hover:opacity-70 transition-opacity"
               >
                 <p className={`text-[11px] font-bold truncate ${checked ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{wi.itemName}</p>
-                <p className="text-[9px] text-slate-400 truncate">{wi.partnerName} · {wi.qty}개</p>
+                {/*  **단위를 품목에서 읽는다**(2026-09-09 사장님: "여기 단위가 다 개야").
+                     박스 품목이면 '박스' 다 — '개' 로 박아 두면 50박스가 50개로 읽힌다. */}
+                <p className="text-[9px] text-slate-400 truncate">{wi.partnerName} · {wi.qty}{items.find(p => p.id === wi.itemId)?.unit || '개'}</p>
               </button>
               <div className="flex flex-col gap-0.5">
                 <button onClick={e => { e.stopPropagation(); moveInSection(wi.key, 'up'); }} disabled={isFirst} className="text-slate-300 hover:text-violet-500 disabled:opacity-20 transition-all"><ChevronUp size={12} /></button>
@@ -1621,7 +1627,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
                                     {isSelected ? sectionPos : ''}
                                   </div>
                                   <span className="flex-1 text-sm font-bold text-slate-700 truncate">{wi.itemName}</span>
-                                  <span className="text-[10px] font-black text-slate-400 shrink-0">{wi.qty}개</span>
+                                  <span className="text-[10px] font-black text-slate-400 shrink-0">{wi.qty}{items.find(p => p.id === wi.itemId)?.unit || '개'}</span>
                                 </div>
                               );
                             })}
