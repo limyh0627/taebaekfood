@@ -43,6 +43,15 @@ export interface PriceSyncInput {
    * 발행이든 수정이든 그 뜻을 지킨다 — 한쪽만 지키면 지키는 시늉이다.
    */
   noLinkIds?: Set<string>;
+  /**
+   * **그 거래처의 최신 전표인가**(2026-09-09 사장님) — 아니면 아무것도 안 되민다.
+   *
+   * 거래처 단가는 "지금 파는 값"이다. 6월 전표의 오타를 고쳤다고 오늘 단가가 6월 값으로
+   * 돌아가면 안 된다. 판정은 [latestStatement.isLatestForPartner](./latestStatement.ts) 가 한다.
+   *
+   * 안 넘기면 되민다 — 이 규칙을 모르는 옛 부름자(시험 포함)의 뜻은 "늘 되민다"였다.
+   */
+  isLatest?: boolean;
 }
 
 export interface PriceSyncResult {
@@ -52,9 +61,11 @@ export interface PriceSyncResult {
 }
 
 export function partnerPriceWrites(input: PriceSyncInput): PriceSyncResult {
-  const { type, partnerId, lines, items, partnerItems, noLinkIds } = input;
+  const { type, partnerId, lines, items, partnerItems, noLinkIds, isLatest } = input;
   const out: PriceSyncResult = { upserts: [], costUpdates: [] };
   if (!partnerId || (type !== '매출' && type !== '매입')) return out;
+  //  옛 전표를 고치는 중이면 거래처 단가는 안 건드린다 — 지난 거래가 지금 값을 덮으면 안 된다
+  if (isLatest === false) return out;
 
   const dir: 'in' | 'out' = type === '매출' ? 'out' : 'in';
   const book = partnerItems.filter(p => p.Direction === dir);

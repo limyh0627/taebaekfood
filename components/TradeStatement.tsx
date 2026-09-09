@@ -17,6 +17,7 @@ import { Order, Item, Partner, PartnerItem, OrderStatus, IssuedStatement, Compan
 import { filterCodesForContext } from '../src/features/admin/financials';
 import { fetchCollection } from '../src/shared/services/firebaseService';
 import { partnerPriceWrites } from '../src/shared/partnerPriceSync';
+import { isLatestForPartner } from '../src/shared/latestStatement';
 import { manualLines, orderLines, lineTotals, resolveOrderItem, orderItemPrice, type LineItem, type ManualRow } from '../src/shared/statementLines';
 import { withDocNames } from '../src/shared/docName';
 import { 서류당사자ById } from '../src/shared/docParty';
@@ -1253,13 +1254,20 @@ const TradeStatement: React.FC<TradeStatementProps> = ({
    */
   const applyPriceSync = useCallback(async (type: string) => {
     if (!onUpsertPartnerItem) return;
+    /*
+     * **옛 전표를 고칠 때는 거래처 단가를 안 건드린다**(2026-09-09 사장님).
+     * 거래처 단가는 "지금 파는 값"이라, 6월 전표의 오타를 고쳤다고 오늘 값이 6월로
+     * 돌아가면 안 된다. 지금 고치는 게 그 거래처의 마지막 거래일 때만 되민다.
+     */
+    const 이번전표 = { id: editingStmt?.id, partnerId: selectedClientId, type, tradeDate };
     const { upserts, costUpdates } = partnerPriceWrites({
-      type, partnerId: selectedClientId, lines: lineItems, items: allItems,
+      type, partnerId: 이번전표.partnerId, lines: lineItems, items: allItems,
       partnerItems: [...partnerOut, ...partnerIn], noLinkIds,
+      isLatest: isLatestForPartner({ this: 이번전표, all: mergedStatements }),
     });
     for (const u of upserts) await onUpsertPartnerItem(u);
     for (const c of costUpdates) await onUpdateItemCost?.(c.itemId, c.price);
-  }, [onUpsertPartnerItem, onUpdateItemCost, selectedClientId, lineItems, allItems, partnerOut, partnerIn, noLinkIds]);
+  }, [onUpsertPartnerItem, onUpdateItemCost, selectedClientId, lineItems, allItems, partnerOut, partnerIn, noLinkIds, editingStmt, tradeDate, mergedStatements]);
 
   /** 전표를 만들고 **그 전표를 돌려준다** — 발행하면서 바로 수금·지불하려면 그 객체가 필요하다. */
   const markIssued = async (): Promise<IssuedStatement | null> => {

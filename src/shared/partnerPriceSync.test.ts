@@ -192,3 +192,32 @@ describe('발행과 수정이 같은 답을 낸다 — 갈려 있던 자리', ()
     expect(수정.upserts).toEqual([]);
   });
 });
+
+/**
+ * **옛 전표를 고쳐도 거래처 단가는 안 바뀐다**(2026-09-09 사장님:
+ * "옛 전표는 고쳐도 단가 반영이 안되도 돼 그게 그 거래처의 최신 전표가 아니면").
+ *
+ * 거래처 단가는 "지금 파는 값"이다. 6월 오타를 고쳤다고 오늘 값이 6월로 돌아가면 안 된다.
+ * **어느 전표가 최신인지는 여기서 안 센다** — [latestStatement](./latestStatement.ts) 가 판정해
+ * 넘겨준다. 여기는 그 답을 지키기만 한다.
+ */
+describe('최신 전표일 때만 되민다', () => {
+  const 공통 = { partnerId: 'p1', items: 품목, partnerItems: [] as PartnerItem[], type: '매출' as const };
+
+  it('최신이면 되민다', () => {
+    const r = partnerPriceWrites({ ...공통, lines: [줄('참기름 500ml', 7000)], isLatest: true });
+    expect(r.upserts).toHaveLength(1);
+  });
+
+  it('최신이 아니면 아무것도 안 쓴다 — 매출도 매입도', () => {
+    expect(partnerPriceWrites({ ...공통, lines: [줄('참기름 500ml', 7000)], isLatest: false }).upserts).toEqual([]);
+    const 매입 = partnerPriceWrites({ ...공통, type: '매입', lines: [줄('참기름 500ml', 3000)], isLatest: false });
+    expect(매입.upserts).toEqual([]);
+    //  매입은 원가로도 흘러간다 — 그것도 같이 막혀야 한다
+    expect(매입.costUpdates).toEqual([]);
+  });
+
+  it('안 넘기면 되민다 — 이 규칙을 모르는 옛 부름자의 뜻은 "늘 되민다" 였다', () => {
+    expect(partnerPriceWrites({ ...공통, lines: [줄('참기름 500ml', 7000)] }).upserts).toHaveLength(1);
+  });
+});
