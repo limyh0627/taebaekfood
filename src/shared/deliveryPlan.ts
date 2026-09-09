@@ -23,6 +23,19 @@ import { dateOfLocal } from './day';
  * 부수효과 없음(입력 → 값).
  */
 
+/**
+ * **같이 나가는 묶음** — 한 차에 싣는 것들(2026-09-09 사장님).
+ *
+ * 묶음에 든 주문은 목록에서 **붙어 서게** 한다. 흩어져 있으면 "같이 간다"가 안 읽힌다.
+ * 자리는 그 묶음의 **제일 앞 사람 자리**다 — 묶는다고 순서가 통째로 뒤집히면 안 된다.
+ */
+export interface DeliveryGroup {
+  id: string;
+  /** 안 적으면 화면이 '묶음' 이라고만 쓴다 */
+  name?: string;
+  orderIds: string[];
+}
+
 /** 하루치 계획 */
 export interface DayPlan {
   /** 사람이 정한 차례. 여기 없는 자동 주문은 뒤에 붙는다. */
@@ -33,6 +46,8 @@ export interface DayPlan {
   done: string[];
   /** 누가 마지막으로 손댔나. 아무도 안 건드렸으면 없다 = 자동. */
   by?: { name: string; at: string };
+  /** 같이 나가는 묶음들 */
+  groups?: DeliveryGroup[];
 }
 
 /** `settings/deliveryOrdering` 문서 전체 */
@@ -86,6 +101,12 @@ export interface DayRow {
   auto: boolean;
   slot: '오전' | '오후';
   done: boolean;
+  /** 같이 나가는 묶음 — 없으면 혼자 간다 */
+  groupId?: string;
+  groupName?: string;
+  /** 묶음 안에서 첫 줄·끝 줄인가 — 화면이 이걸로 이음선을 그린다 */
+  groupFirst?: boolean;
+  groupLast?: boolean;
 }
 
 /**
@@ -117,7 +138,54 @@ export function dayRows(input: {
     .filter(o => 배송대상(o) && !넣은것.has(o.id) && dateOfLocal(o.deliveryDate) === dateStr)
     .map(o => o.id);
 
-  return [...손으로.map(id => 줄만들기(id, false)), ...저절로.map(id => 줄만들기(id, true))];
+  const 늘어놓기 = [...손으로.map(id => 줄만들기(id, false)), ...저절로.map(id => 줄만들기(id, true))];
+  return 묶어세우기(늘어놓기, plan.groups ?? []);
+}
+
+/**
+ * 같은 묶음끼리 **붙여 세운다**. 자리는 그 묶음의 **제일 앞 사람 자리**다.
+ *
+ * 흩어져 있으면 "같이 간다"가 안 읽힌다. 그렇다고 묶음을 맨 앞으로 끌어올리면
+ * 애써 잡은 순서가 통째로 뒤집힌다 — 그래서 첫 사람 자리에 나머지를 데려온다.
+ */
+function 묶어세우기(rows: DayRow[], groups: readonly DeliveryGroup[]): DayRow[] {
+  if (groups.length === 0) return rows;
+  const 어느묶음 = new Map<string, DeliveryGroup>();
+  for (const g of groups) for (const id of g.orderIds) 어느묶음.set(id, g);
+
+  const out: DayRow[] = [];
+  const 이미 = new Set<string>();
+  for (const r of rows) {
+    if (이미.has(r.orderId)) continue;
+    const g = 어느묶음.get(r.orderId);
+    if (!g) { out.push(r); 이미.add(r.orderId); continue; }
+    //  이 묶음 사람들을 **지금 늘어선 차례 그대로** 데려온다
+    const 식구 = rows.filter(x => 어느묶음.get(x.orderId)?.id === g.id && !이미.has(x.orderId));
+    식구.forEach((x, i) => {
+      out.push({ ...x, groupId: g.id, groupName: g.name, groupFirst: i === 0, groupLast: i === 식구.length - 1 });
+      이미.add(x.orderId);
+    });
+  }
+  return out;
+}
+
+/** 고른 것들을 한 묶음으로. 이미 다른 묶음에 있던 건 거기서 빠진다 — 한 사람은 한 차만 탄다. */
+export function withGroup(plan: DayPlan, orderIds: readonly string[], name?: string, id = `g-${Date.now()}`): DayPlan {
+  const 넣을것 = orderIds.filter(Boolean);
+  if (넣을것.length === 0) return plan;
+  const 남은묶음 = (plan.groups ?? [])
+    .map(g => ({ ...g, orderIds: g.orderIds.filter(x => !넣을것.includes(x)) }))
+    //  한 명만 남은 묶음은 묶음이 아니다
+    .filter(g => g.orderIds.length > 1);
+  return { ...plan, groups: [...남은묶음, { id, ...(name ? { name } : {}), orderIds: [...넣을것] }] };
+}
+
+/** 이 주문을 묶음에서 뺀다. 한 명만 남으면 그 묶음도 없앤다. */
+export function ungroup(plan: DayPlan, orderId: string): DayPlan {
+  const groups = (plan.groups ?? [])
+    .map(g => ({ ...g, orderIds: g.orderIds.filter(x => x !== orderId) }))
+    .filter(g => g.orderIds.length > 1);
+  return { ...plan, groups };
 }
 
 /** 오전/오후로 가른다 — 화면이 두 묶음으로 그린다 */
