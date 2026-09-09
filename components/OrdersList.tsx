@@ -1347,8 +1347,12 @@ const OrdersList: React.FC<OrdersListProps> = ({
         const allPickableItems: WorkItem[] = pickableOrders.flatMap(o => {
           const partnerName = o.partnerName || partners.find(c => c.id === o.partnerId)?.name || '이름없음';
           return o.items
-            .map((item, idx) => ({
-              key: `${o.id}-${idx}`,
+            .map((item) => ({
+              /*  **열쇠에 자리를 안 넣는다**(2026-09-09 사장님: "몇번째 주문이냐는 너무 위험한데").
+               *  전에는 `주문id-번호` 였는데, 이 줄은 Firestore 에 저장되는 **사본**이라
+               *  주문에서 앞 품목을 지우면 그 번호가 다른 품목을 가리켰다.
+               *  품목 id 는 안 밀린다. (바꾸는 값이 0원이었다 — 그때 저장된 줄이 0개였다) */
+              key: `${o.id}-${item.itemId}`,
               orderId: o.id,
               itemId: item.itemId,
               itemName: item.name,
