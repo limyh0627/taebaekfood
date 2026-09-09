@@ -89,6 +89,7 @@ import ConfirmationItems from '../../../components/ConfirmationItems';
 import ProductModal from '../../../components/AddItemModal';
 import { downloadSalesJournal } from '../../shared/salesJournal';
 import { sortLedger, isBackdated, latestAnchorDate } from '../../shared/rawLedgerBalance';
+import { canEditItems, editBlockMessage } from '../../shared/orderEditGuard';
 import { ledgerTrace, orderIndex } from '../../shared/ledgerTrace';
 import { createOrderStockEngine, StockUsePlan } from './orderStockEngine';
 import { buildStockUseRows, StockUseRow } from './stockUseRows';
@@ -1410,7 +1411,19 @@ const AdminApp: React.FC<AdminAppProps> = ({
     }
   };
 
+  /**
+   * 주문 품목 고치기.
+   *
+   * **재고가 이미 움직인 주문은 막는다**(2026-09-09). 전에는 `items` 만 덮어썼고
+   * 재고·로트는 손도 안 댔다 — 그래서 200으로 출고된 뒤 20으로 고치면 로트에서는
+   * 200이 빠진 채 남았다(무경유통 볶음참깨, 2,000kg). 아무 표시도 안 났다.
+   *
+   * 여기서 차이를 계산해 재고를 손보지 않는다 — 되돌리기(reconcileOrderStock)와 두 벌이 되고
+   * 그 둘이 갈리면 어느 쪽이 맞는지 알 방법이 없어진다. 판정은 shared/orderEditGuard.
+   */
   const handleUpdateItems = (orderId: string, items: OrderItem[]) => {
+    const o = allOrders.find(x => x.id === orderId) ?? orders.find(x => x.id === orderId);
+    if (!canEditItems(o)) { alert(editBlockMessage(o)); return; }
     updateItem('orders', orderId, { items });
   };
 
