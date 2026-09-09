@@ -49,10 +49,19 @@ export function buildReceiveLot(params: {
   packageKg?: number;      // 포장 1개당 kg
   receivedDate?: string;
   poId?: string;
+  /**
+   * 로트 id 를 밖에서 정해 넣는다 — **트랜잭션 안에서 부를 때는 반드시 넘긴다.**
+   * Firestore 트랜잭션 콜백은 경합하면 여러 번 돈다. 안에서 `Date.now()`·난수로 id 를 만들면
+   * 재시도마다 다른 로트가 생겨, 한 번의 입고가 여러 로트로 남을 수 있다.
+   * (설계: docs/원료실제원장-로트-원자화-설계.md §6)
+   */
+  id?: string;
+  /** 만든 시각을 밖에서 정해 넣는다 — 위와 같은 이유. */
+  createdAt?: string;
 }): RawMaterialLot {
-  const now = new Date().toISOString();
+  const now = params.createdAt ?? new Date().toISOString();
   return {
-    id: `lot-${params.material}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    id: params.id ?? `lot-${params.material}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     material: params.material,
     supplierId: params.supplierId,
     supplierName: params.supplierName,
@@ -82,6 +91,11 @@ export function deductFromLots(
   lots: RawMaterialLot[],
   kgToUse: number,
   mix?: { topPercent: number },
+  /**
+   * 초과 출고 때 새로 세우는 '이월(미상)' 버킷의 id·시각을 밖에서 정한다.
+   * 트랜잭션 안에서는 반드시 넘긴다 — 재시도마다 버킷이 하나씩 더 생기면 안 된다(§6).
+   */
+  carryOver?: { id: string; createdAt: string; receivedDate: string },
 ): {
   lots: RawMaterialLot[];
   distribution: { lotId?: string; supplierName: string; lotNo?: string; receivedDate?: string; kg: number }[];
@@ -128,9 +142,10 @@ export function deductFromLots(
     let bIdx = next.findIndex(l => l.supplierName === '이월');
     if (bIdx < 0) {
       next.push({
-        id: `lot-carry-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        id: carryOver?.id ?? `lot-carry-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         supplierName: '이월', kgIn: 0, kgRemaining: 0,
-        receivedDate: todayStr(), status: 'active', createdAt: new Date().toISOString(),
+        receivedDate: carryOver?.receivedDate ?? todayStr(), status: 'active',
+        createdAt: carryOver?.createdAt ?? new Date().toISOString(),
       } as RawMaterialLot);
       bIdx = next.length - 1;
     }
@@ -200,9 +215,9 @@ export function receiptToKg(params: {
  * (원료 소비 이력은 주문의 rawConsumedLots 스냅샷에 별도 보존 → 추적성 손실 없음)
  * 변화가 없으면 원본 배열을 그대로 반환(불필요한 쓰기 방지).
  */
-export function pruneDepletedLots(lots: RawMaterialLot[], retentionMonths = 6): RawMaterialLot[] {
+export function pruneDepletedLots(lots: RawMaterialLot[], retentionMonths = 6, asOf?: string): RawMaterialLot[] {
   if (!Array.isArray(lots) || lots.length === 0) return lots;
-  const cutoff = new Date();
+  const cutoff = asOf ? new Date(asOf) : new Date();
   cutoff.setMonth(cutoff.getMonth() - retentionMonths);
   const cutoffStr = cutoff.toISOString().slice(0, 10);
   const kept = lots.filter(l => l.status !== 'depleted' || (l.receivedDate ?? '9999-99-99') >= cutoffStr);

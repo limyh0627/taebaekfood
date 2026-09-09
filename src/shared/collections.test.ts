@@ -25,14 +25,30 @@ const 파일들 = globSync('{components,src,scripts,functions/src}/**/*.{ts,tsx,
 const 부르는곳 =
   /(?:addItem|updateItem|deleteItem|adjustItemStock|setDocument|fetchCollection|fetchDateRange|fetchWhere|subscribeToCollection|subscribeToRecentCollection)\s*(?:<[^>]*>)?\s*\(\s*'([a-zA-Z_]\w*)'|collection\(\s*db\s*,\s*'([a-zA-Z_]\w*)'|const\s+COL\s*=\s*'([a-zA-Z_]\w*)'/gm;
 
+/**
+ * **`COL.무엇` 으로 쓴 것도 쓴 것이다.**
+ *
+ * 글자 대신 이 목록을 쓰라고 만들어 놓고, 정작 세는 쪽은 **글자만** 봤다.
+ * 그래서 처음부터 `COL.rawInventories` 로 제대로 쓴 새 컬렉션이
+ * "적어 두고 안 쓰는 이름"으로 걸렸다(2026-09-09) — 권장한 방식을 벌주고 있었다.
+ *
+ * 키가 아니라 **값**으로 센다. 둘이 다른 게 있다(`itemBom: 'item_bom'`).
+ */
+const 상수로쓴곳 = /COL\.([a-zA-Z_]\w*)/g;
+
 const 쓰는이름 = (): Map<string, string[]> => {
   const m = new Map<string, string[]>();
+  const 담기 = (name: string, file: string) => m.set(name, [...(m.get(name) ?? []), file]);
   for (const file of 파일들) {
     const src = readFileSync(file, 'utf8');
     for (const hit of src.matchAll(부르는곳)) {
       const name = hit[1] ?? hit[2] ?? hit[3];
       if (!name) continue;
-      m.set(name, [...(m.get(name) ?? []), file]);
+      담기(name, file);
+    }
+    for (const hit of src.matchAll(상수로쓴곳)) {
+      const value = (COL as Record<string, string>)[hit[1]];
+      if (value) 담기(value, file);
     }
   }
   return m;

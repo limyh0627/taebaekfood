@@ -46,6 +46,10 @@ export const COL = {
   productionRecords: 'productionRecords',
   productionSalesLogs: 'productionSalesLogs',
   rawMaterialLedger: 'rawMaterialLedger',
+  //  원료 재고 코어(원자화) — 상태와 이력을 한 트랜잭션에 같이 쓴다.
+  //  docs/원료실제원장-로트-원자화-설계.md · src/shared/rawInventoryCore.ts
+  //  (여러 원료를 묶는 rawInventoryJobs 는 8단계에 붙는다 — 쓸 때 여기 적는다)
+  rawInventories: 'rawInventories',
   inventorySnapshots: 'inventorySnapshots',
   pallets: 'pallets',
   palletTransactions: 'palletTransactions',
