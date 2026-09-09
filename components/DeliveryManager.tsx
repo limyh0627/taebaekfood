@@ -17,7 +17,7 @@ import {
   CheckSquare
 } from 'lucide-react';
 import { Order, Partner, OrderStatus, Item } from '../types';
-import { statusChip, statusText, statusLabel } from '../src/shared/orderStatusStyle';
+import { statusText, statusLabel } from '../src/shared/orderStatusStyle';
 import { X, Save } from 'lucide-react';
 import { subscribeToDocument, setDocument } from '../src/shared/services/firebaseService';
 import { OrderCard } from './OrdersList';
@@ -374,10 +374,6 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
     const startDay = firstDayOfMonth(year, month);
     const days = [];
 
-    //  상태 색은 [shared/orderStatusStyle](../src/shared/orderStatusStyle) 한 곳이 정한다.
-    //  여기 있던 표는 **하늘 배경에 분홍 글씨**(`text-pink-700`)였다 — 복사 실수다(2026-09-06).
-    const getStatusColor = statusChip;
-
     const todayStr = toLocalDateStr(new Date());
     const renderDayCell = (day: number, dateStr: string) => {
       const dayOrders = deliverySchedules[dateStr] || [];
@@ -398,53 +394,61 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
                목록을 넣으면 글자가 세로로 쪼개진다. 넓은 화면에서는 안 덮는다(끌어 옮기기). */}
           <button type="button" onClick={() => setDayModal(dateStr)}
             className="sm:hidden absolute inset-0 z-10" aria-label={`${day}일 배송 보기`} />
-          {/*  폰에서는 날짜 밑에 건수를 놓는다 — 옆에 두면 칸이 좁아 배지가 날짜를 밀어낸다. */}
-          <div className="flex flex-col items-center sm:flex-row sm:justify-between sm:items-center gap-0.5">
-            <span className={`text-xs font-black w-6 h-6 flex items-center justify-center rounded-full shrink-0 ${isToday ? 'bg-indigo-600 text-white shadow-md' : compact ? 'text-slate-300' : 'text-slate-400 group-hover:text-indigo-600'}`}>
+          {/*  **날짜는 왼쪽 위**(2026-09-09 사장님: "날짜가 너무 한 가운데 있다").
+               가운데 두니 달력이 아니라 표처럼 읽혔다. 종이 달력처럼 왼쪽 위에 붙인다.
+
+               **날짜 옆에는 예전 주문, 활성 주문은 한 줄 밑**(사장님).
+               지금 할 일(활성)이 눈에 먼저 들어와야 하는데, 옆에 나란히 두니 지나간 것과
+               섞여 어느 게 오늘 할 일인지 안 갈렸다. */}
+          <div className="flex items-center gap-1">
+            <span className={`text-xs font-black w-6 h-6 flex items-center justify-center rounded-full shrink-0 ${isToday ? 'bg-indigo-600 text-white shadow-md' : compact ? 'text-slate-300' : 'text-slate-500 group-hover:text-indigo-600'}`}>
               {day}
             </span>
-            <div className="flex items-center gap-1">
-              {dayOrders.length > 0 && (
-                <span className="text-[10px] font-black text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-md whitespace-nowrap">
-                  {dayOrders.length}건
-                </span>
-              )}
-              {deliveredOrders.length > 0 && (
-                <button
-                  onClick={e => { e.stopPropagation(); toggleDeliveredDate(dateStr); }}
-                  className="hidden sm:block text-[10px] font-black text-slate-400 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded-md transition-all whitespace-nowrap"
-                >
-                  이전 {deliveredOrders.length}건
-                </button>
-              )}
-              {deliveredOrders.length > 0 && (
-                <span className="sm:hidden text-[10px] font-black text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md whitespace-nowrap">
-                  +{deliveredOrders.length}
-                </span>
-              )}
-            </div>
+            {/*  예전 주문 — 지나간 것이라 옅게. 넓은 화면에서는 눌러서 펼친다. */}
+            {deliveredOrders.length > 0 && (
+              <button
+                onClick={e => { e.stopPropagation(); toggleDeliveredDate(dateStr); }}
+                className="text-[10px] font-black text-slate-400 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded-md transition-all whitespace-nowrap shrink-0"
+              >
+                +{deliveredOrders.length}
+              </button>
+            )}
           </div>
           {dayOrders.length > 0 && (
-            <div className="hidden sm:block mt-1 space-y-1 overflow-y-auto" style={{ maxHeight: 110, scrollbarWidth: 'thin' }}>
-              {dayOrders.map(order => {
-                const progress = order.items.length > 0
-                  ? Math.round((order.items.filter(i => i.checked).length / order.items.length) * 100)
-                  : 0;
-                return (
-                  <div
-                    key={order.id}
-                    onClick={() => handleOrderClick(order)}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, order.id)}
-                    className={`text-[9px] font-bold py-1 px-2 rounded-lg border flex justify-between items-center cursor-pointer hover:brightness-95 transition-all active:scale-95 ${getStatusColor(order.status)}`}
-                  >
-                    <span className="flex-1 min-w-[32px] truncate">{order.partnerName}</span>
-                    <span className="ml-1 shrink-0 opacity-70">{progress}%</span>
-                  </div>
-                );
-              })}
+            <div className="mt-0.5">
+              <span className="text-[10px] font-black text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-md whitespace-nowrap">
+                {dayOrders.length}건
+              </span>
             </div>
           )}
+          {/*  **주간과 같은 카드다**(2026-09-09 사장님: "금일만 다는게 아니라 캘린더 쪽에도").
+               월간만 옛 카드로 남아 상태 색은 있어도 글자가 없었고, 순서·오전오후·체크·묶음도
+               없었다. [DeliveryDayList](./DeliveryDayList.tsx) 한 벌로 맞춘다. */}
+          {(() => {
+            const rows = rowsOf(dateStr);
+            if (rows.length === 0) return null;
+            const { 오전, 오후 } = bySlot(rows);
+            const on = handlersFor(dateStr);
+            const picked = groupPick.date === dateStr ? new Set(groupPick.ids) : undefined;
+            return (
+              <div className="hidden sm:block mt-1 space-y-0.5 overflow-y-auto" style={{ maxHeight: 130, scrollbarWidth: 'thin' }}>
+                {오전.length > 0 && <span className="block text-[8px] font-black text-amber-500 px-0.5">오전</span>}
+                {오전.length > 0 && (
+                  <DeliveryDayList rows={오전} orders={orders} partners={partners} compact on={on} selected={picked} />
+                )}
+                {오후.length > 0 && <span className="block text-[8px] font-black text-indigo-500 px-0.5 pt-0.5">오후</span>}
+                {오후.length > 0 && (
+                  <DeliveryDayList rows={오후} orders={orders} partners={partners} compact on={on} selected={picked} />
+                )}
+                {picked && picked.size >= 2 && (
+                  <button onClick={e => { e.stopPropagation(); confirmGroup(dateStr); }}
+                    className="w-full mt-0.5 text-[8px] font-black text-white bg-indigo-500 hover:bg-indigo-600 rounded py-0.5">
+                    {picked.size}건 묶기
+                  </button>
+                )}
+              </div>
+            );
+          })()}
           {showDelivered && deliveredOrders.length > 0 && (
             <div className="hidden sm:block mt-1 space-y-1 overflow-y-auto border-t border-slate-100 pt-1" style={{ maxHeight: 80, scrollbarWidth: 'thin' }}>
               {deliveredOrders.map(order => (
@@ -778,20 +782,23 @@ const DeliveryManager: React.FC<DeliveryManagerProps> = ({ orders, partners, ite
       {/* Calendar (Weekly / Monthly toggle) */}
       {deliveryTab === '배송캘린더' && (
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-          {/* 공통 헤더 — 뷰 토글 + 현재 뷰 내비게이션 */}
-          <div className="p-5 border-b border-slate-100 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-inner ${calendarView === '주간' ? 'bg-violet-100 text-violet-600' : 'bg-indigo-100 text-indigo-600'}`}>
+          {/*  공통 헤더 — 뷰 토글 + 내비게이션.
+               **폰에서는 두 줄로 쌓는다**(2026-09-09 사장님: "상단이 너무 답답하고").
+               한 줄에 다 넣으니 폭이 모자라 글자가 한 자씩 쪼개졌다 — `2026 / 년 9월`,
+               `주 / 간`, `오 / 늘`. 아이콘과 부제는 폰에서 뺀다(위에 '배송 관리'가 이미 있다). */}
+          <div className="p-3 sm:p-5 border-b border-slate-100 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className={`hidden sm:flex w-9 h-9 rounded-xl items-center justify-center shadow-inner ${calendarView === '주간' ? 'bg-violet-100 text-violet-600' : 'bg-indigo-100 text-indigo-600'}`}>
                 <CalendarIcon size={18} />
               </div>
               <div>
-                <h3 className="text-base font-black text-slate-900">
+                <h3 className="text-base font-black text-slate-900 whitespace-nowrap">
                   {calendarView === '주간' ? weekLabel : `${year}년 ${monthNames[month]}`}
                 </h3>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">배송 캘린더</p>
+                <p className="hidden sm:block text-[10px] text-slate-400 font-bold uppercase tracking-widest">배송 캘린더</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2 [&_button]:whitespace-nowrap">
               {/* 주간/월간 토글 */}
               <div className="flex bg-slate-100 p-0.5 rounded-xl">
                 {(['주간', '월간'] as const).map(v => (
