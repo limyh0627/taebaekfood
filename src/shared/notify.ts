@@ -48,8 +48,40 @@ export function saveNotifyMode(mode: NotifyMode): void {
   try { localStorage.setItem(NOTIFY_MODE_KEY, mode); } catch { /* 무시 */ }
 }
 
-/** 알림음 — 파일 없이 그 자리에서 만든다. */
-export function playChime(): void {
+//  ── 알림음 크기 ───────────────────────────────────────────────
+//  2026-09-09 사장님: "알림소리 조절할 수 있게 해줄 수 있음?"
+//
+//  ⚠ **앱을 닫았을 때 나는 소리는 여기서 못 만진다.** 그건 폰이 제 알림음으로 울리는 것이라
+//  폰 설정(소리·알림)에서 바꾼다. 여기 크기는 **앱이 열려 있을 때** 나는 소리에만 걸린다.
+
+export type NotifyVolume = 'off' | 'low' | 'mid' | 'high';
+export const NOTIFY_VOLUME_KEY = 'tb_notif_volume';
+
+/** 소리 크기 → 실제 세기. 0.25 가 예전 값이라 '보통' 을 거기 맞춘다. */
+const 세기 = { off: 0, low: 0.08, mid: 0.25, high: 0.6 } as const;
+
+const 쓸수있는크기 = (v: unknown): v is NotifyVolume =>
+  v === 'off' || v === 'low' || v === 'mid' || v === 'high';
+
+export function loadNotifyVolume(): NotifyVolume {
+  try {
+    const v = localStorage.getItem(NOTIFY_VOLUME_KEY);
+    if (쓸수있는크기(v)) return v;
+  } catch { /* 사생활 모드 */ }
+  return 'mid';
+}
+
+export function saveNotifyVolume(v: NotifyVolume): void {
+  try { localStorage.setItem(NOTIFY_VOLUME_KEY, v); } catch { /* 무시 */ }
+}
+
+/**
+ * 알림음 — 파일 없이 그 자리에서 만든다.
+ * @param volume 안 넘기면 저장된 크기를 쓴다. '꺼짐'이면 아무 소리도 안 낸다.
+ */
+export function playChime(volume?: NotifyVolume): void {
+  const gain세기 = 세기[volume ?? loadNotifyVolume()];
+  if (gain세기 <= 0) return;
   try {
     const Ctx = window.AudioContext || (window as any).webkitAudioContext;
     if (!Ctx) return;
@@ -61,7 +93,7 @@ export function playChime(): void {
     osc.frequency.setValueAtTime(880, ctx.currentTime);
     osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.08);
     osc.frequency.setValueAtTime(880, ctx.currentTime + 0.16);
-    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.setValueAtTime(gain세기, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 0.4);
@@ -105,10 +137,18 @@ export function notify({ title, body, tag, mode = 'both', whenFocused = false, o
   if (notifyPermission() !== 'granted') return;
   if (focused && !whenFocused) return;
 
+  /*
+   *  **아이폰에서 진동 모드가 '무음 알림'이 되던 것**(2026-09-09).
+   *
+   *  진동만 고르면 `silent: true` 로 폰 소리를 껐다. 안드로이드는 `vibrate` 가 대신 울려서
+   *  뜻이 맞는데, **아이폰은 `navigator.vibrate` 자체가 없다** — 소리도 진동도 없는
+   *  조용한 알림만 떴다. 진동을 못 하는 폰에서는 소리를 끄지 않는다.
+   */
+  const 진동됨 = typeof navigator !== 'undefined' && 'vibrate' in navigator;
   const opts = {
     body, icon: NOTIFY_ICON, badge: NOTIFY_ICON, tag,
     //  폰이 소리·진동을 알림에 붙여 준다. 화면이 꺼져 있어도 울린다.
-    silent: mode === 'vibration',
+    silent: mode === 'vibration' && 진동됨,
     vibrate: mode === 'sound' ? undefined : [150, 80, 150],
     data: { view },
   } as NotificationOptions;
