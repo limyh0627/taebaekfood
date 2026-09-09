@@ -5,6 +5,7 @@
  */
 import type { CompanyId, Item } from './types';
 import { addItem, mutateRawMaterialLots } from './services/firebaseService';
+import { executeRawInventoryCommand } from './services/rawInventoryService';
 import { RM_LIST, DENSITY, baseRawName, parsePackageKg, lotStockInUnit } from '../constants/formula';
 import { itemKg } from './orderUnits';
 import { withCarryOverLot, buildReceiveLot, receiptToKg, nextLotNo, deductFromLots, settleCarryOver } from './lotUtils';
@@ -71,6 +72,11 @@ export async function recordRawMaterialReceipt(opts: {
   addedBy?: string;
   /** 어느 회사 창고로 들어가나. 로트를 고를 때도, 원장 줄에 박을 때도 쓴다. */
   companyId?: CompanyId;
+  /**
+   * 이 입고의 **작업 id**. 같은 id 로 두 번 보내면 수량은 한 번만 움직인다.
+   * 안 넘기면 발주(poId)에서 만들고, 그것도 없으면 그때그때 다른 id 가 된다(예전 동작).
+   */
+  operationId?: string;
 }): Promise<{ recorded: boolean; baseName?: string; kgIn?: number; lotted?: boolean }> {
   const { allItems, product, itemName, quantity, unit, partnerId, partnerName, dateStr, nowIso, poId, addedBy, companyId } = opts;
   const target = rawLotTarget(allItems, product, itemName, companyId);
@@ -94,43 +100,57 @@ export async function recordRawMaterialReceipt(opts: {
   const u = (unit ?? product?.unit ?? '').toLowerCase();
   const kgIn = receiptToKg({ quantity, unit: u, density, packageKg });
 
-  const newLot = buildReceiveLot({
-    material: baseName,
-    supplierId: partnerId,
-    supplierName: partnerName,
-    qtyIn: quantity,
-    kgIn,
-    packageType: product?.packageType ?? (packageKg && u !== 'kg' && u !== 'l' ? '캔' : undefined),
-    packageKg,
-    receivedDate: dateStr,
-    poId,
-  });
-  await mutateRawMaterialLots(
-    rawItem.id,
-    // 입고 로트 추가 후, 음수 이월(미상)이 있으면 이 입고로 먼저 상쇄(net)한다.
-    (lots, stock) => settleCarryOver([...withCarryOverLot(lots, stock, baseName), { ...newLot, lotNo: nextLotNo(lots, newLot.receivedDate) }]),
-    // 로트가 포장분까지 세는 원료는 stock을 안 덮어쓴다 — 벌크 재고는 따로 세는 숫자다
-    rawItem.lotsAreTotal ? undefined : (lots) => lotStockInUnit(lots, baseName),
-  );
+  /**
+   * **로트와 원장을 한 트랜잭션에 넣는다**(설계 §6, 이관 5단계).
+   *
+   * 예전엔 `mutateRawMaterialLots` 로 로트를 먼저 쓰고 원장을 **따로** 썼다. 뒤가 실패하면
+   * 로트만 늘어난 채 조용히 끝났다. 생산완료 주문 304건 중 46건이 이 종류로 기록이 비어
+   * 있었다(2026-09-10 조사). 이제 둘이 같이 성공하거나 같이 실패한다.
+   *
+   * **작업 id 가 중복을 막는다** — 원장 문서 id 가 곧 작업 id 라, 같은 입고를 두 번 보내도
+   * 수량은 한 번만 움직인다. 2026-08-06 에 참깨 1500kg 이 **107밀리초 차이로 두 번** 들어간
+   * 적이 있는데(`rm-rcv-…697` · `rm-rcv-…804`), 그건 이제 문서 id 가 같아 두 번째가 no-op 이다.
+   *
+   * 발주(poId)가 없는 손입고는 그때그때 다른 id 라 예전처럼 막지 않는다 —
+   * 아래 `처리중` 표가 같은 클릭만 걸러 준다.
+   */
+  const operationId = opts.operationId
+    ?? (poId ? `purchase:${poId}:${rawItem.id}:${dateStr}:${kgIn}` : `receipt:${rawItem.id}:${nowIso}`);
 
-  await addItem('rawMaterialLedger', {
-    id: `rm-rcv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    material: baseName,
-    //  **열쇠를 같이 박는다**(companyId + rawItemId) — 이름으로 되짚지 않는다.
+  const r = await executeRawInventoryCommand({
+    operationId,
     ...rawLedgerKeys(rawItem),
-    date: dateStr,
-    received: kgIn,
-    used: 0,
-    note: `${partnerName} 입고`,
-    createdAt: nowIso,
-    type: 'manual',
-    unit: 'kg',
-    ...(packageKg ? { canSize: packageKg, canCount: quantity } : {}),
-    ...(product?.packageType ? { canSizeTag: product.packageType } : {}),
-    originalAmount: quantity,
-    originalUnit: (u === 'l' ? 'L' : 'kg'),
-    addedBy,
+    materialSnapshot: baseName,
+    effectiveDate: dateStr,
+    source: { type: 'purchase', id: poId ?? (partnerId ?? partnerName) },
+    ...(addedBy ? { actorName: addedBy } : {}),
+    kind: 'receive',
+    kg: kgIn,
+    lot: {
+      supplierId: partnerId,
+      supplierName: partnerName,
+      packageType: product?.packageType ?? (packageKg && u !== 'kg' && u !== 'l' ? '캔' : undefined),
+      packageKg,
+      qtyIn: quantity,
+      poId,
+    },
+  }, {
+    now: nowIso,
+    //  로트 id 도 작업 id 에서 뽑는다 — 재시도해도 같은 로트다(트랜잭션 콜백은 여러 번 돈다).
+    newLotId: `lot-${operationId}`,
+    legacy: {
+      note: `${partnerName} 입고`,
+      type: 'manual',
+      ...(addedBy ? { addedBy } : {}),
+      ...(packageKg ? { canSize: packageKg, canCount: quantity } : {}),
+      ...(product?.packageType ? { canSizeTag: product.packageType } : {}),
+      originalAmount: quantity,
+      originalUnit: (u === 'l' ? 'L' : 'kg') as 'kg' | 'L',
+    },
   });
+
+  //  거절은 삼키지 않는다 — 예전엔 실패가 콘솔에만 남아 아무도 몰랐다(설계 §14).
+  if (r.status === 'rejected') throw new Error(`원료 입고 거절: ${r.reason}`);
 
   return { recorded: true, baseName, kgIn, lotted: true };
   } finally {

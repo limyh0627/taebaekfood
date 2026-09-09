@@ -18,6 +18,14 @@ vi.mock('./services/firebaseService', () => ({
   adjustItemStock: async (_c: string, id: string, d: number) => { 기록.재고.push({ id, d }); },
   mutateRawMaterialLots: async (id: string) => { 기록.로트.push(id); return []; },
 }));
+//  원료 입고는 이제 **한 명령**으로 나간다 — 로트와 원장이 한 트랜잭션에 같이 들어간다.
+vi.mock('./services/rawInventoryService', () => ({
+  executeRawInventoryCommand: async (command: any) => {
+    기록.로트.push(command.rawItemId);
+    기록.원장.push({ material: command.materialSnapshot, received: command.kg, used: 0 });
+    return { status: 'applied', state: {}, movement: {} };
+  },
+}));
 
 const { recordReceipt } = await import('./receipt');
 

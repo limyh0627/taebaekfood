@@ -12,10 +12,17 @@ import type { Item } from './types';
  * 입고 쪽은 `rm-rcv-{지금}-{난수}` 라 부를 때마다 새 줄이 섰다. 로트도 하나 더 서서
  * 원료가 실제보다 많이 들어온 것으로 남는다.
  */
-const 기록 = vi.hoisted(() => ({ 원장: [] as any[], 로트호출: [] as string[] }));
+const 기록 = vi.hoisted(() => ({ 명령: [] as any[], 옵션: [] as any[] }));
 vi.mock('./services/firebaseService', () => ({
-  addItem: async (col: string, data: any) => { if (col === 'rawMaterialLedger') 기록.원장.push(data); },
-  mutateRawMaterialLots: async (id: string) => { 기록.로트호출.push(id); return []; },
+  addItem: async () => {},
+  mutateRawMaterialLots: async () => [],
+}));
+//  이제 입고는 **한 명령**으로 나간다 — 로트와 원장이 한 트랜잭션에 같이 들어간다.
+vi.mock('./services/rawInventoryService', () => ({
+  executeRawInventoryCommand: async (command: any, options: any) => {
+    기록.명령.push(command); 기록.옵션.push(options);
+    return { status: 'applied', state: {}, movement: {} };
+  },
 }));
 
 const { recordRawMaterialReceipt } = await import('./rawReceipt');
@@ -29,13 +36,13 @@ const 입고 = (over: Record<string, unknown> = {}) => recordRawMaterialReceipt(
   dateStr: '2026-08-06', nowIso: '2026-08-06T07:47:34.000Z', ...over,
 } as never);
 
-beforeEach(() => { 기록.원장 = []; 기록.로트호출 = []; });
+beforeEach(() => { 기록.명령 = []; 기록.옵션 = []; });
 
 describe('겹쳐 들어온 입고를 막는다', () => {
   it('**같은 클릭이 세 번 돌아도 한 번만 들어간다** — 실제로 107ms 차이로 두 번 들어갔다', async () => {
     const r = await Promise.all([입고(), 입고(), 입고()]);
-    expect(기록.원장).toHaveLength(1);
-    expect(기록.로트호출).toHaveLength(1);
+    expect(기록.명령).toHaveLength(1);
+    expect(기록.명령).toHaveLength(1);
     //  막힌 쪽은 '기록했다'고 거짓말하지 않는다
     expect(r.filter(x => x.recorded)).toHaveLength(1);
   });
@@ -43,27 +50,27 @@ describe('겹쳐 들어온 입고를 막는다', () => {
   it('**끝난 뒤에는 다시 받는다** — 분할 입고까지 막으면 안 된다', async () => {
     await 입고();
     await 입고();
-    expect(기록.원장).toHaveLength(2);
+    expect(기록.명령).toHaveLength(2);
   });
 
   it('수량이 다르면 다른 입고다', async () => {
     await Promise.all([입고(), 입고({ quantity: 800 })]);
-    expect(기록.원장).toHaveLength(2);
+    expect(기록.명령).toHaveLength(2);
   });
 
   it('날짜가 다르면 다른 입고다', async () => {
     await Promise.all([입고(), 입고({ dateStr: '2026-08-07' })]);
-    expect(기록.원장).toHaveLength(2);
+    expect(기록.명령).toHaveLength(2);
   });
 
   it('거래처가 다르면 다른 입고다 — 같은 날 같은 양을 두 곳에서 받을 수 있다', async () => {
     await Promise.all([입고(), 입고({ partnerId: 'p2', partnerName: '카프코' })]);
-    expect(기록.원장).toHaveLength(2);
+    expect(기록.명령).toHaveLength(2);
   });
 
   it('발주가 다르면 다른 입고다', async () => {
     await Promise.all([입고({ poId: 'po-1' }), 입고({ poId: 'po-2' })]);
-    expect(기록.원장).toHaveLength(2);
+    expect(기록.명령).toHaveLength(2);
   });
 });
 
@@ -74,16 +81,16 @@ describe('원료로 안 잡히는 입고', () => {
       partnerName: '미광팩', dateStr: '2026-08-06', nowIso: '2026-08-06T07:47:34.000Z',
     } as never);
     expect(r.recorded).toBe(false);
-    expect(기록.원장).toHaveLength(0);
-    expect(기록.로트호출).toHaveLength(0);
+    expect(기록.명령).toHaveLength(0);
+    expect(기록.명령).toHaveLength(0);
   });
 });
 
 describe('입고량을 kg 으로 옮긴다', () => {
   it('kg 으로 들어오면 그대로', async () => {
     await 입고();
-    expect(기록.원장[0].received).toBe(1500);
-    expect(기록.원장[0].material).toBe('참깨');
-    expect(기록.원장[0].used).toBe(0);
+    expect(기록.명령[0].kg).toBe(1500);
+    expect(기록.명령[0].materialSnapshot).toBe('참깨');
+    expect(기록.명령[0].kind).toBe('receive');
   });
 });
