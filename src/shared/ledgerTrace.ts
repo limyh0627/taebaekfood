@@ -17,10 +17,12 @@ import { itemSummary } from './itemSummary';
  * ③을 여기서 푼다 — 자동 줄은 `orderId` 를 들고 있으니 그 주문에서 **거래처 · 품목**을 낸다.
  *
  * ---
- * **주의 — '품목'은 그 주문에 담긴 것이지, 이 원료가 들어간 것만 고른 게 아니다.**
- * 한 주문에 참기름과 들기름이 같이 있으면 참깨 줄에도 들기름이 같이 뜬다.
- * 원료→품목을 정확히 가르려면 BOM 전개를 줄마다 저장해야 하는데, 그건 원장 줄에 없다.
- * 화면에서도 **'주문'** 이라고 부른다 — 이 원료가 그 주문 때문에 빠졌다는 뜻까지만 말한다.
+ * **품목은 이 원료를 쓰는 줄만 고른다**(2026-09-10 사장님: "왜 볶음참깨 외 품목들이 보이냐").
+ *
+ * 예전엔 주문에 담긴 것을 통째로 적었다. 한 주문에 참기름과 들깨가루가 같이 있으면
+ * **볶음참깨 줄에도 들깨가루가 떴다.** 숫자는 맞는데 이름이 엉뚱해 보인다.
+ * 이제 `linesOf` 를 받으면 [rawUsers](./rawUsers.ts) 가 배합식으로 걸러 준 줄만 쓴다.
+ * 안 넘기면 예전대로 전부 보여준다(배합식을 모르는 화면도 있다).
  *
  * 부수효과 없음(입력 → 값).
  */
@@ -47,8 +49,10 @@ export const orderIndex = (orders: readonly Order[] | undefined): Map<string, Or
   new Map((orders ?? []).map(o => [o.id, o]));
 
 export function ledgerTrace(
-  e: Pick<RawMaterialEntry, 'note' | 'addedBy' | 'orderId'>,
+  e: Pick<RawMaterialEntry, 'note' | 'addedBy' | 'orderId'> & { material?: string },
   byId?: Map<string, Order>,
+  /** 그 주문에서 **이 원료를 쓰는 줄만** 골라 주는 함수. 못 고르면 undefined 를 주면 된다. */
+  linesOf?: (order: Order, material: string) => Order['items'] | undefined,
 ): LedgerTrace {
   const raw = String(e.note ?? '').trim();
   const order = e.orderId ? byId?.get(e.orderId) : undefined;
@@ -57,7 +61,9 @@ export function ledgerTrace(
   const 조각 = auto ? raw.replace(AUTO_HEAD, '').split(LOT_SEP) : [];
   //  주문을 찾았으면 거기 적힌 이름이 먼저다 — 비고는 찍힐 때 값이라 거래처명이 바뀌면 옛것이 남는다
   const 거래처 = order?.partnerName || (auto ? (조각[0] ?? '').trim() : '');
-  const 품목 = itemSummary(order?.items, 1);
+  //  이 원료를 쓰는 줄만 — 못 고르면(배합식 미등록 등) 예전대로 전부 보여준다.
+  const 줄 = order && linesOf ? linesOf(order, String(e.material ?? '')) : undefined;
+  const 품목 = itemSummary(줄 ?? order?.items, 1);
 
   return {
     who: String(e.addedBy ?? '').trim(),

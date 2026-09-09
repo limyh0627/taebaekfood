@@ -186,6 +186,8 @@ interface ItemListProps {
   partners?: { id: string; name: string; partnerType?: string }[];
   partnerItems?: PartnerItem[];
   rawMaterialLedger: RawMaterialEntry[];
+  /** 그 주문에서 **이 원료를 쓰는 줄만** 골라 준다 — 원장 목록이 "어디 쓰였나"를 적을 때 쓴다. */
+  linesUsingRaw?: (order: Order, material: string) => Order['items'] | undefined;
   /** 로트 탭 — 어느 박스 로트가 어느 거래처로 나갔는지 거꾸로 읽는다(회수·클레임) */
   orders?: Order[];
   onRequestPurchaseInvoice?: (partnerId: string, partnerName: string, items: Array<{ itemId: string; name: string; spec: string; qty: number; price: number; isBox?: boolean }>) => void;
@@ -301,7 +303,7 @@ const ItemList: React.FC<ItemListProps> = ({
   onAddAdjustmentRequest,
   inboundPartners,
   partners = [],
-  rawMaterialLedger,
+  rawMaterialLedger, linesUsingRaw,
   orders,
   onRequestPurchaseInvoice,
   issuedStatements = [],
@@ -1649,6 +1651,7 @@ const ItemList: React.FC<ItemListProps> = ({
                              박스 로트를 판 안에 끼워 넣어 기록 앞에 세운다. */}
                         {raw ? (
                           <RawMaterialLotPanel
+                            linesUsingRaw={linesUsingRaw}
                             product={raw}
                             isAdmin={isAdmin}
                             ledgerEntries={rawMaterialLedger.filter(e => e.material === material)}
@@ -3799,6 +3802,7 @@ const ItemList: React.FC<ItemListProps> = ({
               (없으면 부모 overflow-hidden에 잘려 목록 몇 줄과 페이지네이션이 안 보인다) */}
           <div className="p-4 flex-1 min-h-0 overflow-y-auto">
             <RawLedgerList
+              linesUsingRaw={linesUsingRaw}
               entries={entries}
               allEntries={rawMaterialLedger}
               orders={orders}

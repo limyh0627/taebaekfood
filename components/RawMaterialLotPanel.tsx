@@ -8,6 +8,8 @@ import { rawLedgerKeys } from '../src/shared/rawHolder';
 import RawLedgerList from './RawLedgerList';
 
 interface Props {
+  /** 그 주문에서 이 원료를 쓰는 줄만 골라 준다 — RawLedgerList 로 그대로 넘긴다. */
+  linesUsingRaw?: (order: Order, material: string) => Order['items'] | undefined;
   product: Item;        // 로트가 저장된 원료(raw) 품목
   isAdmin?: boolean;
   linkedNote?: string;  // 다른 SKU(캔/반제품)에서 펼친 경우 안내 문구
@@ -23,7 +25,7 @@ interface Props {
 const fmt = (n: number) => (Math.round(n * 10) / 10).toLocaleString();
 
 /** 원료재고 로트 패널 — 배열 순서 = 선입선출(앞=먼저 사용). 기름은 L 표시(괄호 kg 병기). */
-const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linkedNote, ledgerEntries, orders, onDeleteEntry, currentUserName, onLotChanged, 박스로트 }) => {
+const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linkedNote, ledgerEntries, orders, onDeleteEntry, currentUserName, onLotChanged, 박스로트, linesUsingRaw }) => {
   const material = baseRawName(product.name);
   const isOil = unitOf(material) === 'L';
   const unitLabel = isOil ? 'L' : 'kg';
@@ -370,6 +372,7 @@ const RawMaterialLotPanel: React.FC<Props> = ({ product, isAdmin = false, linked
             <span className="text-[11px] font-black text-slate-600 uppercase tracking-wide">입출고 기록</span>
           </div>
           <RawLedgerList
+            linesUsingRaw={linesUsingRaw}
             entries={ledgerEntries}
             orders={orders}
             isAdmin={isAdmin}

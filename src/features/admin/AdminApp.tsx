@@ -23,6 +23,7 @@ import { calcCost } from './costCalc';
 import { isBulkItem } from '../../shared/itemTaxonomy';
 import { rawHolderByName, resolveRawHolder, rawLedgerKeys } from '../../shared/rawHolder';
 import { bomOf } from '../../shared/bomIndex';
+import { orderLinesUsingRaw } from '../../shared/rawUsers';
 import { createPortal } from 'react-dom';
 import {
   LayoutDashboard,
@@ -606,6 +607,18 @@ const AdminApp: React.FC<AdminAppProps> = ({
 
   // 배합식 전개(재귀)는 순수 도메인 모듈(bom.ts)로 분리. 여기선 현재 데이터로 얇게 감싸 호출.
   const buildFormula = (prodKey: string) => buildFormulaBom(prodKey, itemFormulas, allItems);
+
+  /**
+   * 원장의 "어디 쓰였나" 칸에 **이 원료를 쓰는 줄만** 적기 위한 필터.
+   *
+   * 2026-09-10 사장님: "왜 볶음참깨 외 품목들이 보이냐". 원장 줄은 `orderId` 만 들고 있어
+   * 그 주문에 담긴 품목을 통째로 적고 있었다 — 한 주문에 참기름과 들깨가루가 같이 있으면
+   * 볶음참깨 줄에도 들깨가루가 떴다. 배합식으로 걸러 준다([rawUsers](../../shared/rawUsers.ts)).
+   */
+  const linesUsingRaw = useMemo(() => {
+    const deps = { allItems, bomOf, buildFormula: (k: string) => buildFormulaBom(k, itemFormulas, allItems), baseRawName };
+    return (order: Order, material: string) => orderLinesUsingRaw(order.items, material, deps);
+  }, [allItems, itemFormulas]);
 
   // 재고평가·마진용 BOM 롤업 원가 (완제품 제조원가 자동). effectiveCost = 저장 cost 우선, 없으면 롤업.
   const inventoryCostOf = useMemo(
@@ -2040,6 +2053,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                 setCurrentView('trade-statement');
               }}
               rawMaterialLedger={mergedRawMaterialLedger}
+              linesUsingRaw={linesUsingRaw}
               
               onAddRawMaterialEntry={async (entry) => {
                 //  **열쇠를 박아 저장한다** — 모달은 원료 이름만 안다.
@@ -3348,7 +3362,7 @@ const AdminApp: React.FC<AdminAppProps> = ({
                       }
                       g.currentBalance = balance;           // 그 묶음 마지막 잔량
                       //  누가·어디는 재고 원장 화면(RawLedgerList)과 **같은 함수**가 푼다
-                      const tr = ledgerTrace(e, orderById);
+                      const tr = ledgerTrace(e, orderById, linesUsingRaw);
                       if (tr.note) g.notes.push(tr.note);
                       if (tr.who) g.who.add(tr.who);
                       if (tr.where) g.wheres.add(tr.where);

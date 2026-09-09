@@ -21,12 +21,14 @@ interface Props {
   allEntries?: RawMaterialEntry[];
   /** 자동 줄이 **어느 주문 때문에 빠졌나**를 풀 주문 목록. 없으면 비고에 적힌 거래처까지만 뜬다. */
   orders?: Order[];
+  /** 그 주문에서 **이 원료를 쓰는 줄만** 골라 준다. 안 넘기면 주문에 담긴 것을 전부 보여준다. */
+  linesUsingRaw?: (order: Order, material: string) => Order['items'] | undefined;
 }
 
 /** 원료 입출고(수불) 기록 목록 — 유형 필터 + 페이지네이션. 원료별 패널·전체 목록에서 공용. */
 const RawLedgerList: React.FC<Props> = ({
   entries, isAdmin = false, currentUserName, onDelete, showMaterial = false, pageSize = 8, emptyText = '기록 없음',
-  allEntries, orders,
+  allEntries, orders, linesUsingRaw,
 }) => {
   const [filter, setFilter] = useState<FilterType>('전체');
   const [page, setPage] = useState(1);
@@ -93,7 +95,7 @@ const RawLedgerList: React.FC<Props> = ({
         else { g.received = r3(g.received + toKg(e.received ?? 0)); g.used = r3(g.used + toKg(e.used ?? 0)); }
         if (e.targetKg != null) g.anchor = Number(e.targetKg);
         //  누가·어디는 **ledgerTrace 한 곳**이 푼다 — 원료수불부(서류)도 같은 함수를 쓴다
-        const tr = ledgerTrace(e, orderById);
+        const tr = ledgerTrace(e, orderById, linesUsingRaw);
         if (tr.note) g.notes.push(tr.note);
         if (tr.who) g.who.add(tr.who);
         if (tr.where) g.wheres.add(tr.where);
@@ -265,7 +267,7 @@ const RawLedgerList: React.FC<Props> = ({
                       : e.type === 'correction' ? { t: '정정', c: 'bg-amber-50 text-amber-700' }
                       : { t: '수동', c: 'bg-white text-slate-500 border border-slate-200' };
                     //  펼친 줄에서는 줄이지 않고 다 보인다 — 주문 카드번호까지 나와야 찾아갈 수 있다
-                    const tr = ledgerTrace(e, orderById);
+                    const tr = ledgerTrace(e, orderById, linesUsingRaw);
                     return (
                       <div key={e.id ?? i} className="flex items-start gap-2 text-[10px] tabular-nums">
                         <span className={`shrink-0 px-1.5 py-0.5 rounded-full font-black ${kind.c}`}>{kind.t}</span>
