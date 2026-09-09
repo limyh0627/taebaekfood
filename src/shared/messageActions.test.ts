@@ -5,13 +5,23 @@ const 나 = { id: 'me' };
 const 말 = (o: any = {}) => ({ senderId: 'u2', text: '안녕하세요', ...o });
 
 describe('actionsFor — 무엇을 할 수 있나', () => {
-  it('남의 말: 복사·답장·공유·나에게 (삭제는 없다)', () => {
-    expect(actionsFor({ msg: 말(), me: 나 })).toEqual(['복사', '답장', '공유', '나에게']);
+  it('남의 말: 복사·답장·공유·나에게·공지 (삭제는 없다)', () => {
+    expect(actionsFor({ msg: 말(), me: 나 })).toEqual(['복사', '답장', '공유', '나에게', '공지 등록']);
   });
 
   it('내 말: 삭제까지', () => {
     expect(actionsFor({ msg: 말({ senderId: 'me' }), me: 나 }))
-      .toEqual(['복사', '답장', '공유', '나에게', '삭제']);
+      .toEqual(['복사', '답장', '공유', '나에게', '공지 등록', '삭제']);
+  });
+
+  it('이미 공지면 내리기로 바뀐다 — 같은 자리에서 켜고 끈다', () => {
+    const a = actionsFor({ msg: 말(), me: 나, pinned: true });
+    expect(a).toContain('공지 내리기');
+    expect(a).not.toContain('공지 등록');
+  });
+
+  it('공지는 남의 말에도 걸 수 있다 — 방에 있는 사람이면 누구나', () => {
+    expect(actionsFor({ msg: 말({ senderId: '남' }), me: 나 })).toContain('공지 등록');
   });
 
   it('관리자는 남의 말도 지울 수 있다', () => {

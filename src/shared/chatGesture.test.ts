@@ -56,10 +56,10 @@ describe('붙여넣기로 사진 보내기', () => {
   });
 
   it('클립보드에서 파일 꺼내는 셈은 shared 것을 쓴다 — 화면에서 또 짜지 않는다', () => {
-    expect(톡).toContain('fileFromPaste');
+    expect(톡).toContain('filesFromPaste');
     //  `getAsFile` 이 화면에 나오면 클립보드를 직접 뒤지고 있다는 뜻이다.
     //  거기서 다시 짜면 캡처 이름 짓기(image.png → 날짜)가 빠져 Storage 에 같은 이름이 쌓인다.
     expect(/getAsFile|clipboardData\.(items|files)/.test(톡),
-      '화면에서 클립보드를 직접 뒤진다 — chatUpload.fileFromPaste 한 곳에 둔다').toBe(false);
+      '화면에서 클립보드를 직접 뒤진다 — chatUpload.filesFromPaste 한 곳에 둔다').toBe(false);
   });
 });

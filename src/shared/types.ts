@@ -539,6 +539,13 @@ export interface ChatMessage {
   senderName: string;
   text: string;
   imageUrl?: string;
+  /**
+   * **여러 장을 한 말로 보낼 때** — 주소를 순서대로 담는다(2026-09-09 사장님).
+   *
+   * 한 장이면 `imageUrl` 그대로다. 옛 말은 전부 그쪽에만 있다.
+   * **읽는 쪽은 `messageImages()` 한 곳을 지난다** — 두 칸을 화면마다 따로 풀면 갈린다.
+   */
+  images?: string[];
   createdAt: string;
   mentions?: string[]; // Array of mentioned user IDs
   /** 사진이 아닌 첨부(문서·엑셀 등) — Storage 주소만 싣는다 */
@@ -571,6 +578,26 @@ export interface ChatRoom {
   lastUpdatedAt: string;
   isGroup: boolean;
   lastReadBy?: Record<string, string>; // userId → ISO timestamp
+  /**
+   * **방 위에 붙여 둔 공지** — 카톡과 같다(2026-09-09 사장님). 방마다 하나뿐이다.
+   *
+   * 말을 지워도 공지는 남는다 — 그래서 그때 글을 통째로 담는다(`replyTo` 와 같은 규칙).
+   * 내리면 `null` 로 둔다(칸을 지우지 않는다 — Firestore 에서 지운 칸과 없는 칸은 다르게 굴러서
+   * 구독하는 쪽이 옛 값을 들고 있을 수 있다).
+   */
+  notice?: RoomNotice | null;
+}
+
+/** 방 위에 붙은 공지 한 줄 */
+export interface RoomNotice {
+  /** 어느 말에서 왔나 — 눌러서 그 자리로 갈 때 쓴다 */
+  messageId: string;
+  text: string;
+  /** 붙인 사람 */
+  by: string;
+  byName: string;
+  /** 붙인 때 ISO */
+  at: string;
 }
 
 
