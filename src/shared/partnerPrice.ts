@@ -158,3 +158,28 @@ export const isSaleTaxExempt = (
     .sort((a, b) => Number(a.price) - Number(b.price))[0];
   return (싼줄 ?? 줄[0])?.taxType === '면세';
 };
+
+/**
+ * **정해진 게 있나** — `'과세'` · `'면세'`, 아니면 `undefined`.
+ *
+ * `isSaleTaxExempt` 는 안 정한 것을 **과세로 본다**. 셈하는 자리에서는 그게 맞다 —
+ * 안 정한 걸 면세로 보면 세금이 조용히 빠진다.
+ *
+ * 그런데 **사람에게 고르라고 물어야 하는 자리**(견적서)에서는 그 물러섬이 해롭다.
+ * 안 정한 것이 과세로 보여 버리면 고를 일이 없어져 그냥 지나간다
+ * (2026-09-09 사장님: "-가 디폴트고 사용자가 고르게 만들어").
+ * 그런 자리는 이 함수로 **"모른다"를 모른다고** 받는다.
+ */
+export const saleTaxTypeOf = (
+  partnerItems: readonly PartnerItem[] | undefined,
+  itemId: string,
+  partnerId?: string,
+): '과세' | '면세' | undefined => {
+  const 줄 = (partnerItems ?? []).filter(p =>
+    p.itemId === itemId && !isPurchaseLine(p) && (!partnerId || p.partnerId === partnerId));
+  const 싼줄 = partnerId ? 줄[0] : (줄
+    .filter(p => Number.isFinite(Number(p.price)) && Number(p.price) > 0)
+    .sort((a, b) => Number(a.price) - Number(b.price))[0] ?? 줄[0]);
+  const t = 싼줄?.taxType;
+  return t === '면세' || t === '과세' ? t : undefined;
+};
