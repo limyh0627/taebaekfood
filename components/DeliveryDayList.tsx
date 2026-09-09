@@ -3,6 +3,7 @@ import { GripVertical, X, Link2, Unlink } from 'lucide-react';
 import type { Order, Partner } from '../types';
 import type { DayRow } from '../src/shared/deliveryPlan';
 import { cardNoLabel } from '../src/shared/cardNo';
+import { statusColor, statusLabel } from '../src/shared/orderStatusStyle';
 
 /**
  * **하루치 배송 줄 — 화면 한 벌.**
@@ -111,6 +112,13 @@ const DeliveryDayList: React.FC<Props> = ({ rows, orders, partners, on, compact 
               <div className="flex items-center gap-1 min-w-0">
                 <span className={`font-bold text-slate-700 truncate ${r.done ? 'line-through' : ''} ${compact ? 'text-[10px]' : 'text-[11px]'}`}>
                   {이름}
+                </span>
+                {/*  **아직 안 만든 주문인지 보여야 한다**(2026-09-09 사장님: "금일 배송순서에
+                     대기중 작업중 이 상태가 없네"). 전에는 작업완료 주문만 올라와서 상태가
+                     늘 같았는데, 이제 대기중·작업중도 같이 뜬다 — 색으로 갈라 보인다.
+                     색은 [orderStatusStyle](../src/shared/orderStatusStyle.ts) 한 곳이 정한다. */}
+                <span className={`shrink-0 font-black rounded px-1 py-0.5 ${statusColor(o.status)} ${compact ? 'text-[8px]' : 'text-[9px]'}`}>
+                  {statusLabel(o.status)}
                 </span>
                 {/*  캘린더에서 저절로 들어온 줄. 사람이 손대면 떨어진다. */}
                 {r.auto && (
