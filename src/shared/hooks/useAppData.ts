@@ -28,6 +28,11 @@ export interface WorkOrderItem {
   sortIndex: number;
   date?: string;
   /**
+   * **주문 품목 줄의 이름표** — `참기름` 또는 같은 품목이 두 줄이면 `참기름#2`.
+   * 만드는 곳은 [orderLine.lineKeyAt](../orderLine.ts). 자리(몇 번째)는 안 싣는다.
+   */
+  lineKey?: string;
+  /**
    * **같이 만들 것끼리 묶은 표식**(2026-09-09 사장님). 배송의 '한 차' 와 같은 얼개다 —
    * 붙여 세우는 규칙은 [rowGroup](../rowGroup.ts) 한 곳이 안다.
    */

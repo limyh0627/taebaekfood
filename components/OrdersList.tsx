@@ -39,6 +39,7 @@ import { isBulkItem } from '../src/shared/itemTaxonomy';
 import { boxSiblings, isBoxStockItem, unpackComponent, unitsPerBoxOf } from '../src/shared/orderUnits';
 import { bomOf } from '../src/shared/bomIndex';
 import { subDotClass } from '../src/shared/submaterialStyle';
+import { lineKeyAt, lineSuffix } from '../src/shared/orderLine';
 import { itemIndexOf } from '../src/shared/workItemLine';
 import { clusterByGroup } from '../src/shared/rowGroup';
 
@@ -98,8 +99,8 @@ interface OrdersListProps {
   onHighlightClear?: () => void;
   newOrderId?: string | null;
   onNewOrderIdClear?: () => void;
-  workOrderItems?: { key: string; orderId: string; itemId: string; itemName: string; partnerName: string; qty: number; category: string; groupId?: string; groupName?: string }[];
-  onSetWorkOrderItems?: (items: { key: string; orderId: string; itemId: string; itemName: string; partnerName: string; qty: number; category: string; groupId?: string; groupName?: string }[]) => void;
+  workOrderItems?: { key: string; orderId: string; itemId: string; lineKey?: string; itemName: string; partnerName: string; qty: number; category: string; groupId?: string; groupName?: string }[];
+  onSetWorkOrderItems?: (items: { key: string; orderId: string; itemId: string; lineKey?: string; itemName: string; partnerName: string; qty: number; category: string; groupId?: string; groupName?: string }[]) => void;
   onLoadHistoricalOrders?: (start: string, end: string) => Promise<void>;
   isLoadingHistoricalOrders?: boolean;
   ordersMonths?: number;
@@ -632,7 +633,7 @@ export const OrderCard = memo<OrderCardProps>(({
                               <div className={`shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`}>
                                 {isItemChecked ? <CheckSquare size={12} /> : <Square size={12} />}
                               </div>
-                              <span className={`${isItemChecked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{abbrev(baseName(item.name))}</span>
+                              <span className={`${isItemChecked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{abbrev(baseName(item.name))}{lineSuffix(order.items, idx)}</span>
                               {(() => {
                                 const _p = items.find(p => p.id === item.itemId);
                                 const sp = _p ? (specText(_p.spec) || splitNameVolume(_p).vol) : '';
@@ -659,7 +660,7 @@ export const OrderCard = memo<OrderCardProps>(({
                               <div className={`shrink-0 ${isItemChecked ? 'text-emerald-600' : 'text-slate-300'}`}>
                                 {isItemChecked ? <CheckSquare size={12} /> : <Square size={12} />}
                               </div>
-                              <span className={`${isItemChecked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{baseName(item.name)}</span>
+                              <span className={`${isItemChecked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{baseName(item.name)}{lineSuffix(order.items, idx)}</span>
                               {(() => {
                                 const _p = items.find(p => p.id === item.itemId);
                                 const sp = _p ? (specText(_p.spec) || splitNameVolume(_p).vol) : '';
@@ -1123,7 +1124,7 @@ const OrdersList: React.FC<OrdersListProps> = ({
   const [historyDateFrom, setHistoryDateFrom] = useState('');
   const [historyDateTo, setHistoryDateTo] = useState('');
   const HISTORY_PREVIEW = 5;
-  type WorkItem = { key: string; orderId: string; itemId: string; itemName: string; partnerName: string; qty: number; category: string; groupId?: string; groupName?: string; };
+  type WorkItem = { key: string; orderId: string; itemId: string; lineKey?: string; itemName: string; partnerName: string; qty: number; category: string; groupId?: string; groupName?: string; };
   const workItems: WorkItem[] = workOrderItemsProp;
   const setWorkItems = (items: WorkItem[] | ((prev: WorkItem[]) => WorkItem[])) => {
     const resolved = typeof items === 'function' ? items(workItems) : items;
@@ -1347,15 +1348,17 @@ const OrdersList: React.FC<OrdersListProps> = ({
         const allPickableItems: WorkItem[] = pickableOrders.flatMap(o => {
           const partnerName = o.partnerName || partners.find(c => c.id === o.partnerId)?.name || '이름없음';
           return o.items
-            .map((item) => ({
+            .map((item, idx) => ({
               /*  **열쇠에 자리를 안 넣는다**(2026-09-09 사장님: "몇번째 주문이냐는 너무 위험한데").
-               *  전에는 `주문id-번호` 였는데, 이 줄은 Firestore 에 저장되는 **사본**이라
-               *  주문에서 앞 품목을 지우면 그 번호가 다른 품목을 가리켰다.
-               *  품목 id 는 안 밀린다. (바꾸는 값이 0원이었다 — 그때 저장된 줄이 0개였다) */
-              key: `${o.id}-${item.itemId}`,
+               *  이 줄은 Firestore 에 저장되는 **사본**이라, 주문에서 앞 품목을 지우면
+               *  자리 번호가 다른 품목을 가리킨다. 되찾는 이름은 **주문 쪽이 만든다** —
+               *  같은 품목이 두 줄이면 `참기름#1`·`참기름#2` 로 갈라진다(orderLine.lineKeyAt). */
+              key: `${o.id}-${lineKeyAt(o.items, idx)}`,
               orderId: o.id,
               itemId: item.itemId,
-              itemName: item.name,
+              lineKey: lineKeyAt(o.items, idx),
+              //  같은 품목이 두 줄이면 이름 뒤에 -1 · -2 가 붙는다. 주문카드와 같은 글자다.
+              itemName: `${item.name}${lineSuffix(o.items, idx)}`,
               partnerName,
               qty: item.quantity,
               category: items.find(p => p.id === item.itemId)?.type || '',
