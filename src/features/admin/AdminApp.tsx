@@ -90,6 +90,7 @@ import ProductModal from '../../../components/AddItemModal';
 import { downloadSalesJournal } from '../../shared/salesJournal';
 import { sortLedger, isBackdated, latestAnchorDate } from '../../shared/rawLedgerBalance';
 import { canEditItems, editBlockMessage } from '../../shared/orderEditGuard';
+import { registerPush, pushSupported } from '../../shared/push';
 import { ledgerTrace, orderIndex } from '../../shared/ledgerTrace';
 import { createOrderStockEngine, StockUsePlan } from './orderStockEngine';
 import { buildStockUseRows, StockUseRow } from './stockUseRows';
@@ -829,6 +830,27 @@ const AdminApp: React.FC<AdminAppProps> = ({
       }
     });
   }, []);
+
+  /**
+   * **앱을 열 때 이 폰의 푸시 표를 받아 둔다.**
+   *
+   * 전에는 마이페이지에서만 받았다. 그래서 **마이페이지를 한 번도 안 연 사람은 표가 없어
+   * 앱을 닫으면 알림이 아예 안 왔다** — 실제로 10명 중 4명이 표가 없었고, 그중 이은경 상무는
+   * 새 주문 알림을 받아야 하는 사람이었다(2026-09-09 확인).
+   *
+   * 권한이 이미 켜져 있을 때만 받는다 — **여기서 권한을 묻지 않는다.** 묻는 자리는
+   * 마이페이지 하나다(자동으로 물으면 그냥 닫아 버려 'default' 로 남고 매번 다시 뜬다).
+   *
+   * 표는 가끔 바뀐다(앱 재설치·기기 초기화). 열 때마다 받아 두면 저절로 갱신된다 —
+   * 같은 표를 또 담아도 `arrayUnion` 이 한 번만 넣는다.
+   */
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    pushSupported()
+      .then(ok => { if (ok) return registerPush(currentUser.id); })
+      .catch(() => { /* 알림이 안 되는 브라우저 — 앱은 그대로 굴러가야 한다 */ });
+  }, [currentUser?.id]);
 
   /*  **새 주문이 들어오면 폰으로 알린다**(2026-09-03 사장님).
    *  주문 문서를 직접 본다 — 알림 문서(`notifications`)는 관리자 앱이 넣을 때만 쓰이고,
